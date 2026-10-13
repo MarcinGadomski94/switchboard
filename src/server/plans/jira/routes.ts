@@ -1,4 +1,5 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { AGENT_SESSION_HEADER } from '../../../core/todos.ts';
 import { PlanError } from '../service.ts';
 import { JiraError } from './client.ts';
 import { JiraCredentialError, type JiraCredentialSource } from './credentials.ts';
@@ -25,7 +26,21 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
   ['GET', '/api/plans/:id/jira'],
   ['PUT', '/api/plans/:id/jira'],
   ['POST', '/api/plans/:id/jira/refresh'],
+  ['GET', '/api/plans/:id/proposals'],
+  ['POST', '/api/plans/:id/proposals/ask'],
+  ['POST', '/api/plans/:id/proposals/accept-all'],
+  ['POST', '/api/plans/:id/proposals/reject-all'],
+  ['POST', '/api/plans/:id/proposals/:proposalId/accept'],
+  ['POST', '/api/plans/:id/proposals/:proposalId/reject'],
 ];
+
+/** The agent's route (the `plan_propose_dependencies` tool; the session's agent token, checked by `security.ts`). */
+export const PLAN_PROPOSE_AGENT_ROUTE = '/agent/v1/plans/:planId/proposals';
+
+function agentSession(request: FastifyRequest): string {
+  const value = request.headers[AGENT_SESSION_HEADER];
+  return typeof value === 'string' ? value : '';
+}
 
 /**
  * D99 · Plans · Jira (contract → *Plans · Jira (D99)*). Every route answers 404 `plans-off`
@@ -39,6 +54,12 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
  *   maxConcurrency?, sync?, transitions? }` → 201 `{ plan, jira, preview }` (a draft plan).
  * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
+ *
+ * - Proposed order (D99-Jira-q1): `GET /api/plans/{id}/proposals` → `PlanEdgeProposal[]`;
+ *   `POST /api/plans/{id}/proposals/ask` (Propose order: the source session is asked; a draft);
+ *   `POST /api/plans/{id}/proposals/{proposalId}/accept | reject`, `…/proposals/accept-all | reject-all`
+ *   → `{ proposals, refused }` (a single refused Accept: 409 `cycle`); the agent's
+ *   `POST /agent/v1/plans/{planId}/proposals` `{ proposals: [{ from, to, reason }] }` → 201 `{ added, skipped }`.
  *
  * A session's or a plan's remote id (`r~<machine>~<id>`) is forwarded to that machine by the
  * peers' proxy like every `:id` route: import and sync run on the machine that owns the plan,
@@ -111,6 +132,47 @@ export async function registerPlanJiraRoutes(app: FastifyInstance, jira: PlanJir
   app.post<{ Params: { id: string } }>('/api/plans/:id/jira/refresh', async (request, reply) => {
     try {
       return await jira.refreshNow(request.params.id);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  app.get<{ Params: { id: string } }>('/api/plans/:id/proposals', async (request, reply) => {
+    try {
+      return await jira.proposals(request.params.id);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/api/plans/:id/proposals/ask', async (request, reply) => {
+    try {
+      return await jira.askForOrder(request.params.id);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  for (const action of ['accept', 'reject'] as const) {
+    app.post<{ Params: { id: string } }>(`/api/plans/:id/proposals/${action}-all`, async (request, reply) => {
+      try {
+        return await jira.decide(request.params.id, null, action);
+      } catch (error) {
+        return send(reply, error);
+      }
+    });
+    app.post<{ Params: { id: string; proposalId: string } }>(`/api/plans/:id/proposals/:proposalId/${action}`, async (request, reply) => {
+      try {
+        return await jira.decide(request.params.id, request.params.proposalId, action);
+      } catch (error) {
+        return send(reply, error);
+      }
+    });
+  }
+
+  app.post<{ Params: { planId: string } }>(PLAN_PROPOSE_AGENT_ROUTE, async (request, reply) => {
+    try {
+      return reply.code(201).send(await jira.propose(agentSession(request), request.params.planId, request.body));
     } catch (error) {
       return send(reply, error);
     }

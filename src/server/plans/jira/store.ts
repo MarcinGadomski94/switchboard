@@ -15,7 +15,9 @@ import { transaction } from '../../db/database.ts';
  * - `plan_jira_writes`: one row per write event (`start:<run>`, `pr-transition:<url>`, …):
  *   `done` / `soft` (a missing transition: never retried) / `pending` (a transient failure,
  *   retried) with its attempts, so a retry never writes twice;
- * - `plan_jira_activity`: what the sync did, newest {@link JIRA_ACTIVITY_MAX} per plan.
+ * - `plan_jira_activity`: what the sync did, newest {@link JIRA_ACTIVITY_MAX} per plan;
+ * - `plan_edge_proposals`: dependencies the source session's agent proposed
+ *   (`plan_propose_dependencies`), pending / accepted / rejected, for any plan (not only Jira's).
  *
  * No secret is stored here: the credentials live in the keychain or the environment.
  */
@@ -63,6 +65,19 @@ CREATE TABLE IF NOT EXISTS plan_jira_activity (
   text      TEXT NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS plan_jira_activity_plan_at ON plan_jira_activity (plan_id, at);
+CREATE TABLE IF NOT EXISTS plan_edge_proposals (
+  id          TEXT PRIMARY KEY,
+  plan_id     TEXT NOT NULL,
+  from_item   TEXT NOT NULL,
+  to_item     TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  state       TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'accepted', 'rejected')),
+  note        TEXT,
+  created_at  TEXT NOT NULL,
+  decided_at  TEXT,
+  UNIQUE (plan_id, from_item, to_item)
+) STRICT;
+CREATE INDEX IF NOT EXISTS plan_edge_proposals_plan ON plan_edge_proposals (plan_id);
 `;
 
 /** A plan's Jira row. */
@@ -90,6 +105,19 @@ export interface PlanJiraItemRecord {
   readonly syncNote: string | null;
   readonly questionOpen: boolean;
   readonly questionCount: number;
+}
+
+/** A proposal's row. */
+export interface PlanEdgeProposalRecord {
+  readonly id: string;
+  readonly planId: string;
+  readonly fromItemId: string;
+  readonly toItemId: string;
+  readonly reason: string;
+  readonly state: 'pending' | 'accepted' | 'rejected';
+  readonly note: string | null;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
 }
 
 /** A write event's row. */
@@ -188,6 +216,34 @@ export class PlanJiraStore {
   /** Forgets a plan (its plan was deleted): items, writes and activity go with it. */
   async deletePlan(planId: string): Promise<void> {
     this.#db.prepare('DELETE FROM plan_jira WHERE plan_id = ?').run(planId);
+    this.#db.prepare('DELETE FROM plan_edge_proposals WHERE plan_id = ?').run(planId);
+  }
+
+  /** Adds a pending proposal; `false` when the pair was proposed before (any state). */
+  async addProposal(input: { readonly id: string; readonly planId: string; readonly fromItemId: string; readonly toItemId: string; readonly reason: string }): Promise<boolean> {
+    const result = this.#db
+      .prepare('INSERT INTO plan_edge_proposals (id, plan_id, from_item, to_item, reason, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (plan_id, from_item, to_item) DO NOTHING')
+      .run(input.id, input.planId, input.fromItemId, input.toItemId, input.reason, this.#iso());
+    return Number(result.changes) > 0;
+  }
+
+  /** A plan's proposals, oldest first. */
+  async proposals(planId: string): Promise<PlanEdgeProposalRecord[]> {
+    return (this.#db.prepare('SELECT * FROM plan_edge_proposals WHERE plan_id = ? ORDER BY created_at, rowid').all(planId) as Row[]).map((row) => ({
+      id: String(row['id']),
+      planId: String(row['plan_id']),
+      fromItemId: String(row['from_item']),
+      toItemId: String(row['to_item']),
+      reason: String(row['reason']),
+      state: String(row['state']) as PlanEdgeProposalRecord['state'],
+      note: text(row['note']),
+      createdAt: String(row['created_at']),
+      decidedAt: text(row['decided_at']),
+    }));
+  }
+
+  async decideProposal(id: string, patch: { readonly state: PlanEdgeProposalRecord['state']; readonly note: string | null }): Promise<void> {
+    this.#db.prepare('UPDATE plan_edge_proposals SET state = ?, note = ?, decided_at = ? WHERE id = ?').run(patch.state, patch.note, patch.state === 'pending' ? null : this.#iso(), id);
   }
 
   async items(planId: string): Promise<PlanJiraItemRecord[]> {

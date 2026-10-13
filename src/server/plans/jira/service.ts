@@ -1,5 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
-import type { Plan, PlanItem } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
 import {
   DEFAULT_JIRA_TRANSITIONS,
   JIRA_COMMENTS,
@@ -9,8 +10,13 @@ import {
   type JiraPreview,
   type JiraSyncMode,
   type JiraTransitionNames,
+  EDGE_PROPOSALS_MAX,
+  EDGE_PROPOSAL_REASON_MAX,
+  type PlanEdgeProposal,
   type PlanJiraActivity,
   type PlanJiraState,
+  proposalText,
+  proposeOrderMessage,
   buildJiraPreview,
   checkTransitionName,
   findTransition,
@@ -81,6 +87,11 @@ export interface PlanJiraServiceOptions {
   /** How often a running plan's tickets are read again (default {@link JIRA_REFRESH_MS}). */
   readonly refreshMs?: number;
   readonly onError?: (error: unknown) => void;
+  /**
+   * Sends a message to a session the normal way (queued while it works; a hooked session's
+   * mailbox): the ask for the missing order. Without one, asking answers 409 `no-messages`.
+   */
+  readonly send?: (sessionId: string, text: string) => Promise<void>;
 }
 
 /** The fields the import reads (plus the acceptance-criteria field when Jira has one). */
@@ -283,7 +294,7 @@ export class PlanJiraService {
    * `targetBranch` (required), optional `title`, `baseBranch`, `repos`, `maxConcurrency`,
    * `sync` (default `off`), `transitions`. The merge mode is chosen at Start (the core requires it).
    */
-  async importPlan(sessionId: string, body: unknown): Promise<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview }> {
+  async importPlan(sessionId: string, body: unknown): Promise<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview; readonly askedForOrder: boolean }> {
     await this.#gate();
     await this.#source(sessionId);
     const input = isRecord(body) ? body : {};
@@ -319,8 +330,18 @@ export class PlanJiraService {
     });
     const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}`].filter(Boolean);
     await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
+    // D99-Jira-q1 (b): items without links → the source session's agent is asked to propose the missing order.
+    let askedForOrder = false;
+    if (preview.unlinked.length > 0) {
+      askedForOrder = await this.#ask(created.plan)
+        .then(() => true)
+        .catch(async (error: unknown) => {
+          await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'error', text: `Could not ask the session to propose the missing order: ${error instanceof Error ? error.message : 'failed'}` });
+          return false;
+        });
+    }
     this.#options.bus.publish('planChanged', { planId: created.plan.id, state: created.plan.state });
-    return { plan: created.plan, jira: await this.#state(created.plan), preview };
+    return { plan: created.plan, jira: await this.#state(created.plan), preview, askedForOrder };
   }
 
   // ── a plan's Jira state and settings ────────────────────────────────────
@@ -458,6 +479,128 @@ export class PlanJiraService {
     await (await this.#jdb()).updatePlan(plan.id, { lastRefreshAt: this.#clock.now().toISOString() });
     const summary = `Refreshed ${read} ticket(s)${updated > 0 ? `, ${updated} pending item(s) updated` : ''}${by === 'timer' ? ' (every 30 min)' : ''}`;
     await (await this.#jdb()).addActivity(plan.id, { itemId: null, key: null, kind: failed.length > 0 ? 'error' : 'refresh', text: failed.length > 0 ? `${summary}; failed: ${failed.join('; ')}` : summary });
+  }
+
+  // ── proposed order (D99-Jira-q1 ruling (b)) ─────────────────────────────
+
+  /** Sends the plan's source session the ask ({@link proposeOrderMessage}). */
+  async #ask(plan: Plan): Promise<void> {
+    if (!this.#options.send) throw new PlanJiraError(409, 'no-messages', 'this Switchboard cannot send the session a message');
+    const linked = new Set(plan.edges.flatMap((edge) => [edge.from, edge.to]));
+    const label = new Map(plan.items.map((item) => [item.id, itemLabel(item)]));
+    const text = proposeOrderMessage({
+      planId: plan.id,
+      planTitle: plan.title,
+      items: plan.items.map((item) => ({ label: itemLabel(item), title: item.title, unlinked: !linked.has(item.id) })),
+      edges: plan.edges.map((edge) => ({ from: label.get(edge.from) ?? edge.from, to: label.get(edge.to) ?? edge.to })),
+    });
+    await this.#options.send(plan.sourceSessionId, text);
+  }
+
+  /** `POST /api/plans/{id}/proposals/ask`: the developer's **Propose order** on a draft plan. */
+  async askForOrder(planId: string): Promise<{ readonly asked: true; readonly sessionId: string }> {
+    await this.#gate();
+    const plan = await this.#plan(planId);
+    if (plan.state !== 'draft') throw new PlanJiraError(409, 'not-draft', 'the order is proposed for a draft plan (before it starts)');
+    if (plan.items.length < 2) throw new PlanJiraError(422, 'too-few', 'a plan needs two items for an order');
+    try {
+      await this.#ask(plan);
+    } catch (error) {
+      if (error instanceof PlanJiraError) throw error;
+      throw new PlanJiraError(409, 'not-sent', `the source session could not be asked: ${error instanceof Error ? error.message : 'failed'}`);
+    }
+    return { asked: true, sessionId: plan.sourceSessionId };
+  }
+
+  async #views(plan: Plan): Promise<PlanEdgeProposal[]> {
+    const label = new Map(plan.items.map((item) => [item.id, itemLabel(item)]));
+    return (await (await this.#jdb()).proposals(plan.id))
+      .filter((row) => label.has(row.fromItemId) && label.has(row.toItemId))
+      .map((row) => {
+        const from = label.get(row.fromItemId) as string;
+        const to = label.get(row.toItemId) as string;
+        return { ...row, from, to, text: proposalText(from, to) };
+      });
+  }
+
+  /** `GET /api/plans/{id}/proposals`: every proposal of the plan (pending first is the UI's choice), oldest first. */
+  async proposals(planId: string): Promise<PlanEdgeProposal[]> {
+    await this.#gate();
+    return this.#views(await this.#plan(planId));
+  }
+
+  /**
+   * `POST /agent/v1/plans/{planId}/proposals` (the `plan_propose_dependencies` tool, the plan's
+   * source session only): stores each proposal as pending. Skipped (with the reason): an unknown
+   * item, the same item twice, a dependency the plan has, a pair proposed before.
+   */
+  async propose(sessionId: string, planId: string, body: unknown): Promise<{ readonly added: PlanEdgeProposal[]; readonly skipped: ReadonlyArray<{ readonly from: string; readonly to: string; readonly why: string }> }> {
+    await this.#gate();
+    await this.#options.plans.agentPlan(sessionId, planId);
+    const plan = await this.#plan(planId);
+    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanJiraError(409, 'finished', `the plan is ${plan.state}`);
+    const list = isRecord(body) && Array.isArray(body['proposals']) ? (body['proposals'] as unknown[]) : null;
+    if (!list || list.length === 0) throw new PlanJiraError(422, 'invalid', 'give proposals: [{ from, to, reason }]', 'proposals');
+    if (list.length > EDGE_PROPOSALS_MAX) throw new PlanJiraError(422, 'invalid', `at most ${EDGE_PROPOSALS_MAX} proposals at once`, 'proposals');
+    const find = (ref: unknown): PlanItem | null => {
+      if (typeof ref !== 'string' || ref.trim() === '') return null;
+      const value = ref.trim().replace(/^\[|\]$/g, '');
+      return plan.items.find((item) => item.id === value) ?? plan.items.find((item) => item.key !== null && item.key === value.toUpperCase()) ?? null;
+    };
+    const db = await this.#jdb();
+    const addedIds: string[] = [];
+    const skipped: Array<{ from: string; to: string; why: string }> = [];
+    for (const raw of list) {
+      const entry = isRecord(raw) ? raw : {};
+      const from = find(entry['from']);
+      const to = find(entry['to']);
+      const names = { from: String(entry['from'] ?? ''), to: String(entry['to'] ?? '') };
+      const reason = typeof entry['reason'] === 'string' ? entry['reason'].trim().slice(0, EDGE_PROPOSAL_REASON_MAX) : '';
+      if (!from || !to) skipped.push({ ...names, why: `no item ${!from ? names.from : names.to} in the plan` });
+      else if (from.id === to.id) skipped.push({ ...names, why: 'an item cannot wait on itself' });
+      else if (plan.edges.some((edge) => edge.from === from.id && edge.to === to.id)) skipped.push({ ...names, why: 'the plan has this dependency already' });
+      else {
+        const id = randomBytes(5).toString('hex');
+        if (await db.addProposal({ id, planId, fromItemId: from.id, toItemId: to.id, reason: reason === '' ? '(no reason given)' : reason })) addedIds.push(id);
+        else skipped.push({ ...names, why: 'proposed before' });
+      }
+    }
+    if (addedIds.length > 0) this.#options.bus.publish('planChanged', { planId, state: plan.state });
+    const views = await this.#views(plan);
+    return { added: views.filter((view) => addedIds.includes(view.id)), skipped };
+  }
+
+  /**
+   * Accept or reject one proposal (`proposalId`) or every pending one (`null`). Accept adds the
+   * dependency through the core (`PlanService.addEdge`): a cycle is refused there, and the
+   * proposal stays pending with the reason (`note`). A single refused Accept answers 409 `cycle`.
+   */
+  async decide(planId: string, proposalId: string | null, action: 'accept' | 'reject'): Promise<{ readonly proposals: PlanEdgeProposal[]; readonly refused: ReadonlyArray<{ readonly id: string; readonly text: string; readonly reason: string }> }> {
+    await this.#gate();
+    const plan = await this.#plan(planId);
+    const db = await this.#jdb();
+    const all = await this.#views(plan);
+    const chosen = proposalId === null ? all.filter((entry) => entry.state === 'pending') : all.filter((entry) => entry.id === proposalId);
+    if (proposalId !== null && chosen.length === 0) throw new PlanJiraError(404, 'not-found', `no proposal ${proposalId} in plan ${planId}`);
+    if (proposalId !== null && chosen[0]?.state !== 'pending') throw new PlanJiraError(409, 'decided', `the proposal was ${chosen[0]?.state} already`);
+    const refused: Array<{ id: string; text: string; reason: string }> = [];
+    for (const entry of chosen) {
+      if (action === 'reject') {
+        await db.decideProposal(entry.id, { state: 'rejected', note: null });
+        continue;
+      }
+      try {
+        await this.#options.plans.addEdge(planId, { from: entry.fromItemId, to: entry.toItemId });
+        await db.decideProposal(entry.id, { state: 'accepted', note: null });
+      } catch (error) {
+        if (!(error instanceof PlanError)) throw error;
+        await db.decideProposal(entry.id, { state: 'pending', note: error.message });
+        refused.push({ id: entry.id, text: entry.text, reason: error.message });
+      }
+    }
+    this.#options.bus.publish('planChanged', { planId, state: plan.state });
+    if (proposalId !== null && refused.length > 0) throw new PlanJiraError(409, (refused[0]?.reason ?? '').includes('cycle') ? 'cycle' : 'refused', refused[0]?.reason ?? 'refused');
+    return { proposals: await this.#views(await this.#plan(planId)), refused };
   }
 
   // ── the write mode ──────────────────────────────────────────────────────

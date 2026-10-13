@@ -67,6 +67,11 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
     release,
     credentials,
     enabled,
+    // The ask for the missing order goes the normal way: a hooked session's mailbox, else the supervisor (queued while it works).
+    send: async (sessionId, text) => {
+      if (await context.hooks.isHooked(sessionId)) await context.hooks.sendMessage(sessionId, text);
+      else await context.supervisor.sendMessage(sessionId, text, 'service');
+    },
     ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(options.refreshMs ? { refreshMs: options.refreshMs } : {}),
   });

@@ -9,6 +9,10 @@
  *   soft-failure notes per ticket, the Jira activity). Renders nothing for a plan not from Jira.
  * - {@link JiraCredentialsForm} `{ onChanged? }`: Settings → Integrations → Jira (this computer only;
  *   renders nothing while Plans is off).
+ * - {@link PlanEdgeProposals} `{ planId }`: the dependencies the plan's source session proposed
+ *   (`plan_propose_dependencies`), "PROJ-12 should wait on PROJ-11 — <reason>" with ✓ / ✕ and
+ *   Accept all; renders nothing without a pending one. **Propose order** on a draft plan is
+ *   `jiraApi.askForOrder(planId)` (the session is asked; its proposals arrive later).
  * - {@link jiraApi}: the calls, if the page needs them directly.
  *
  * A stand-alone mount for development and the Playwright spec is
@@ -17,4 +21,5 @@
 export { ImportJiraDialog, type ImportJiraDialogProps } from './ImportJiraDialog.tsx';
 export { PlanJiraPanel, type PlanJiraPanelProps } from './PlanJiraPanel.tsx';
 export { JiraCredentialsForm, type JiraCredentialsFormProps } from './JiraCredentialsForm.tsx';
+export { PlanEdgeProposals, type PlanEdgeProposalsProps } from './PlanEdgeProposals.tsx';
 export { JiraApiError, type JiraImportBody, jiraApi } from './api.ts';

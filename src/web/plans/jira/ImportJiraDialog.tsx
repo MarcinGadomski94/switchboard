@@ -119,7 +119,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
           >
             <label className="sb-jira-field sb-jira-grow">
               <span>Epic key or link</span>
-              <input ref={input} data-testid="jira-epic" value={epic} placeholder="PROJ-100 or https://acme.atlassian.net/browse/PROJ-100" onChange={(event) => setEpic(event.target.value)} />
+              <input ref={input} data-testid="jira-epic" data-tour="plans-jira-epic" value={epic} placeholder="PROJ-100 or https://acme.atlassian.net/browse/PROJ-100" onChange={(event) => setEpic(event.target.value)} />
             </label>
             <button type="submit" className="sb-jira-btn" data-testid="jira-preview" disabled={busy !== null || epic.trim() === ''}>
               {busy === 'preview' ? 'Reading…' : 'Preview'}

@@ -149,6 +149,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
   ['GET|PUT', /^\/api\/plans\/[^/]+\/jira$/],
   ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
+  // Plans (D99) hook: proposed order (read, Propose order, accept / reject one or all); a phone may (developer ruling 2026-10-13).
+  ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
+  ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
 ];
 
 /**

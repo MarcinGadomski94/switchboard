@@ -235,6 +235,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/plans\/[^/]+\/jira$/],
   ['PUT', /^\/api\/plans\/[^/]+\/jira$/],
   ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
+  // Plans (D99) hook: proposed order, on the machine that owns the plan.
+  ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
+  ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

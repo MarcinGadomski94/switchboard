@@ -256,3 +256,33 @@
     border-radius: 0;
   }
 }
+
+/* D99-Jira-q1: the proposed order on a plan; the Jira connection under Settings → Experimental → Plans. */
+.sb-jira-proposals-title {
+  margin: 0;
+  font-size: var(--fs-section-label);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-1);
+}
+
+.sb-jira-proposal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-jira-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 16px;
+}
+
+.sb-jira-settings h3 {
+  margin: 0;
+  font-size: var(--fs-section-label);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-1);
+}

@@ -1,5 +1,5 @@
 import type { Plan } from '../../../core/plans.ts';
-import type { JiraConnectionStatus, JiraPreview, JiraSyncMode, JiraTransitionNames, PlanJiraState } from '../../../core/plans-jira.ts';
+import type { JiraConnectionStatus, JiraPreview, JiraSyncMode, JiraTransitionNames, PlanEdgeProposal, PlanJiraState } from '../../../core/plans-jira.ts';
 
 /** A refused call: the HTTP status and the answer's `error` / `message` / field errors. */
 export class JiraApiError extends Error {
@@ -51,8 +51,15 @@ export const jiraApi = {
   saveCredentials: (body: { readonly baseUrl: string; readonly email: string; readonly token: string }) => call<JiraConnectionStatus>('PUT', '/api/integrations/jira', body),
   clearCredentials: () => call<JiraConnectionStatus>('DELETE', '/api/integrations/jira'),
   preview: (sessionId: string, epic: string) => call<JiraPreview>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/preview`, { epic }),
-  importPlan: (sessionId: string, body: JiraImportBody) => call<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview }>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/import`, body),
+  importPlan: (sessionId: string, body: JiraImportBody) => call<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview; readonly askedForOrder: boolean }>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/import`, body),
   state: (planId: string) => call<PlanJiraState>('GET', `/api/plans/${enc(planId)}/jira`),
   update: (planId: string, body: { readonly sync?: JiraSyncMode; readonly transitions?: Partial<JiraTransitionNames> }) => call<PlanJiraState>('PUT', `/api/plans/${enc(planId)}/jira`, body),
   refresh: (planId: string) => call<PlanJiraState>('POST', `/api/plans/${enc(planId)}/jira/refresh`),
+  proposals: (planId: string) => call<PlanEdgeProposal[]>('GET', `/api/plans/${enc(planId)}/proposals`),
+  askForOrder: (planId: string) => call<{ readonly asked: true; readonly sessionId: string }>('POST', `/api/plans/${enc(planId)}/proposals/ask`),
+  decide: (planId: string, proposalId: string | 'all', action: 'accept' | 'reject') =>
+    call<{ readonly proposals: PlanEdgeProposal[]; readonly refused: ReadonlyArray<{ readonly id: string; readonly text: string; readonly reason: string }> }>(
+      'POST',
+      proposalId === 'all' ? `/api/plans/${enc(planId)}/proposals/${action}-all` : `/api/plans/${enc(planId)}/proposals/${enc(proposalId)}/${action}`,
+    ),
 };

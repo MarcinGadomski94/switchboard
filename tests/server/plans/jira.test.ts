@@ -81,6 +81,7 @@ interface Rig {
   keychain: MemoryKeychain;
   sourceId: string;
   errors: unknown[];
+  sent: Array<{ sessionId: string; text: string }>;
   enabled: boolean;
   close(): Promise<void>;
 }
@@ -129,7 +130,8 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
   const state = { enabled: true };
   const jiraStore = new PlanJiraStore(db, () => clock.now());
   const on = () => state.enabled && plans.state().available;
-  const jira = new PlanJiraService({ store, plans, todos, bus, db: async () => jiraStore, credentials, enabled: on, clock, onError: (error) => errors.push(error) });
+  const sent: Array<{ sessionId: string; text: string }> = [];
+  const jira = new PlanJiraService({ store, plans, todos, bus, db: async () => jiraStore, credentials, enabled: on, clock, send: async (sessionId, text) => void sent.push({ sessionId, text }), onError: (error) => errors.push(error) });
   jira.start();
   const app = Fastify();
   await registerPlanJiraRoutes(app, jira, credentials, on);
@@ -147,6 +149,7 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
     keychain,
     sourceId: source.id,
     errors,
+    sent,
     get enabled() {
       return state.enabled;
     },
@@ -487,5 +490,45 @@ describe('D99-Jira · credentials', () => {
     } finally {
       Object.assign(console, original);
     }
+  });
+});
+
+describe('D99-Jira-q1 · proposed order (unit)', () => {
+  it('asks the source session once after an import with unlinked items; on demand only for a draft', async () => {
+    const r = await setup();
+    const answer = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-10', targetBranch: 'feature/PROJ-10-acme-checkout' });
+    expect(answer.body.askedForOrder).toBe(true);
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]?.sessionId).toBe(r.sourceId);
+    expect(r.sent[0]?.text).toContain('These items have no dependency yet: PROJ-15.');
+    expect(r.sent[0]?.text).toContain('- PROJ-13 waits on PROJ-12');
+    const planId = answer.body.plan.id as string;
+    expect((await call(r, 'POST', `/api/plans/${planId}/proposals/ask`)).status).toBe(200);
+    expect(r.sent).toHaveLength(2);
+    await r.plans.startPlan(planId, { mergeMode: 'developer' });
+    expect((await call(r, 'POST', `/api/plans/${planId}/proposals/ask`)).body.error).toBe('not-draft');
+    expect(await call(r, 'GET', `/api/plans/${planId}/proposals`)).toMatchObject({ status: 200, body: [] });
+  });
+
+  it('stores proposals from the plan\'s own session only; accept-all adds them, a cycle stays pending with its reason', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'off');
+    const agent = (sessionId: string, body: unknown) => r.app.inject({ method: 'POST', url: `/agent/v1/plans/${planId}/proposals`, headers: { 'x-switchboard-session': sessionId }, payload: body as Record<string, unknown> });
+    const other = await r.store.sessions.create({ name: 'other', claudeSessionId: 'c-other', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: [], worktrees: false });
+    expect((await agent(other.id, { proposals: [{ from: 'PROJ-11', to: 'PROJ-15', reason: 'x' }] })).statusCode).toBe(404);
+    expect((await agent(r.sourceId, { proposals: [] })).statusCode).toBe(422);
+    const made = await agent(r.sourceId, { proposals: [{ from: 'PROJ-11', to: 'PROJ-15', reason: 'needs the cart' }, { from: 'PROJ-13', to: 'PROJ-12', reason: 'cycle' }, { from: 'proj-11', to: 'PROJ-15', reason: 'again' }] });
+    expect(made.statusCode, made.body).toBe(201);
+    expect(made.json().added.map((entry: { text: string }) => entry.text)).toEqual(['PROJ-15 should wait on PROJ-11', 'PROJ-12 should wait on PROJ-13']);
+    expect(made.json().skipped).toEqual([{ from: 'proj-11', to: 'PROJ-15', why: 'proposed before' }]);
+    const all = await call(r, 'POST', `/api/plans/${planId}/proposals/accept-all`);
+    expect(all.status).toBe(200);
+    expect(all.body.refused).toHaveLength(1);
+    expect(all.body.refused[0].reason).toContain('cycle');
+    expect(all.body.proposals.map((entry: { state: string }) => entry.state)).toEqual(['accepted', 'pending']);
+    expect((await r.plans.get(planId)).edges).toHaveLength(4);
+    const pending = all.body.proposals[1].id as string;
+    expect((await call(r, 'POST', `/api/plans/${planId}/proposals/${pending}/reject`)).body.proposals[1].state).toBe('rejected');
+    expect((await call(r, 'POST', `/api/plans/${planId}/proposals/${pending}/accept`)).body.error).toBe('decided');
   });
 });

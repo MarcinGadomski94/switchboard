@@ -5,7 +5,7 @@
  * of the optional status sync. No I/O here: the server's `src/server/plans/jira/` reads Jira.
  */
 import { findCycle, type PlanEdge } from './plans.ts';
-import { TODO_DESCRIPTION_MAX, TODO_TITLE_MAX } from './todos.ts';
+import { TODO_DESCRIPTION_MAX, TODO_TITLE_MAX, type TodoToolDefinition } from './todos.ts';
 
 // ── sync settings ─────────────────────────────────────────────────────────
 
@@ -553,3 +553,90 @@ export function checkTransitionName(value: unknown): string | null {
   const name = value.trim();
   return name === '' || name.length > JIRA_TRANSITION_NAME_MAX ? null : name;
 }
+
+// ── proposed order (D99-Jira-q1 ruling (b)) ───────────────────────────────
+
+/** A proposal's state: `pending` (waiting for the developer), `accepted` (the dependency was added), `rejected`. */
+export const EDGE_PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;
+/** One of {@link EDGE_PROPOSAL_STATES}. */
+export type EdgeProposalState = (typeof EDGE_PROPOSAL_STATES)[number];
+
+/**
+ * A dependency the source session's agent proposed (`plan_propose_dependencies`): "`to` should
+ * wait on `from`". Nothing changes until the developer accepts it on the plan.
+ */
+export interface PlanEdgeProposal {
+  readonly id: string;
+  readonly planId: string;
+  /** The item that goes first (its id). */
+  readonly fromItemId: string;
+  /** The item that waits (its id). */
+  readonly toItemId: string;
+  /** Their labels (the key, else the title in quotes). */
+  readonly from: string;
+  readonly to: string;
+  readonly reason: string;
+  readonly state: EdgeProposalState;
+  /** Why the last Accept was refused (a cycle), `null` = none. */
+  readonly note: string | null;
+  /** "PROJ-12 should wait on PROJ-11". */
+  readonly text: string;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+}
+
+/** The most proposals one call may make, and the longest reason kept. */
+export const EDGE_PROPOSALS_MAX = 50;
+export const EDGE_PROPOSAL_REASON_MAX = 500;
+
+/** "PROJ-12 should wait on PROJ-11". */
+export function proposalText(from: string, to: string): string {
+  return `${to} should wait on ${from}`;
+}
+
+/**
+ * The message the plan's source session gets (after a Jira import with unlinked items, or
+ * the developer's **Propose order**): the plan, its items (the unlinked ones marked), the
+ * dependencies it has, and the ask to call `plan_propose_dependencies`, which changes nothing.
+ */
+export function proposeOrderMessage(input: { readonly planId: string; readonly planTitle: string; readonly items: ReadonlyArray<{ readonly label: string; readonly title: string; readonly unlinked: boolean }>; readonly edges: ReadonlyArray<{ readonly from: string; readonly to: string }> }): string {
+  const unlinked = input.items.filter((item) => item.unlinked);
+  return [
+    `Please propose the missing order for the plan "${input.planTitle}" [${input.planId}].`,
+    unlinked.length > 0 ? `These items have no dependency yet: ${unlinked.map((item) => item.label).join(', ')}.` : 'Check whether any dependency is missing.',
+    `Items:\n${input.items.map((item) => `- ${item.label}: ${item.title}${item.unlinked ? ' (no links)' : ''}`).join('\n')}`,
+    input.edges.length > 0 ? `Existing dependencies:\n${input.edges.map((edge) => `- ${edge.to} waits on ${edge.from}`).join('\n')}` : 'There are no dependencies yet.',
+    `Read the items' todos (todo_get) if you need their details, then call plan_propose_dependencies once with plan_id ${input.planId} and every dependency you think is missing (from = the item that goes first, to = the one that waits, and a one-line reason). These are only proposals: the developer accepts or rejects each on the plan. Do not call plan_add_dependency for them, and do not start any work.`,
+  ].join('\n\n');
+}
+
+/** D99-Jira-q1: the plan tool that proposes dependencies (registered with the other plan tools, only while Plans is on). */
+export const PLAN_PROPOSE_TOOL: TodoToolDefinition = {
+  name: 'plan_propose_dependencies',
+  description:
+    'Propose dependencies for a plan of this session ("to should wait on from"), each with a one-line reason. These are PROPOSALS for the developer, not changes: nothing in the plan changes until the developer accepts each one on the plan (a proposal that would make a cycle is refused then). Use it when Switchboard asks you to propose the missing order of a plan, e.g. after a Jira import. Proposals already made, already in the plan, or naming the same item twice are skipped.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      plan_id: { type: 'string', description: 'The plan id, as plan_status or the message shows it in brackets.' },
+      proposals: {
+        type: 'array',
+        maxItems: EDGE_PROPOSALS_MAX,
+        description: 'The dependencies you propose.',
+        items: {
+          type: 'object',
+          properties: {
+            from: { type: 'string', description: 'The key (or item id) of the item that goes first.' },
+            to: { type: 'string', description: 'The key (or item id) of the item that waits for it.' },
+            reason: { type: 'string', description: 'One line: why it should wait (e.g. "the page calls the cart API").' },
+          },
+          required: ['from', 'to', 'reason'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['plan_id', 'proposals'],
+    additionalProperties: false,
+  },
+  annotations: { title: 'Propose plan dependencies', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+};
