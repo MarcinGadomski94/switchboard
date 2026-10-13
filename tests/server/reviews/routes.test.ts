@@ -41,7 +41,7 @@ async function setup() {
     store: w.store,
     bus,
     git: new ReviewGit({ gh: fakeGhCommand(), env: w.env }),
-    resolveRepo: (solution, folder) => manager.resolveRepo(solution, folder),
+    repos: (session) => manager.repos.of(session),
     enabled: async () => true,
     send: async () => undefined,
   });

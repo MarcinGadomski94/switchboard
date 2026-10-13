@@ -35,3 +35,30 @@ export async function checkoutOf(dir: string): Promise<string | null> {
   }
   return nested.length === 1 ? (nested[0] as string) : null;
 }
+
+/**
+ * `true` when `<dir>/.git` exists as a directory (a main checkout) or a regular
+ * file (a linked worktree or a submodule): `dir` is the top of a git working tree.
+ * A symlinked `.git` is not followed.
+ */
+export async function isWorkingTreeTop(dir: string): Promise<boolean> {
+  try {
+    const info = await lstat(path.join(dir, '.git'));
+    return info.isDirectory() || info.isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The git working tree a solution folder stands for when Switchboard only
+ * **watches** it (review cards, turn checkpoints, the Diff tab; `docs/reviews.md`
+ * → *Which repositories*): the folder itself when it is a main checkout **or a
+ * linked worktree** (an agent-made `…-wt-…` folder), else its one nested main
+ * checkout ({@link checkoutOf}). Never used to pick where a worktree is created:
+ * that stays {@link checkoutOf} (main checkouts only).
+ */
+export async function watchedCheckoutOf(dir: string): Promise<string | null> {
+  if (await isWorkingTreeTop(dir)) return dir;
+  return checkoutOf(dir);
+}

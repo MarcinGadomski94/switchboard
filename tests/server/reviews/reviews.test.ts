@@ -78,7 +78,7 @@ async function setup(): Promise<Setup> {
     store: w.store,
     bus,
     git: new ReviewGit({ gh: fakeGhCommand(), env: w.env }),
-    resolveRepo: (solution, folder) => manager.resolveRepo(solution, folder),
+    repos: (session) => manager.repos.of(session),
     enabled: async () => state.enabled,
     send: async (sessionId, text) => {
       sent.push({ sessionId, text });
@@ -169,7 +169,7 @@ describe('raising review cards (D79)', () => {
     // In the Inbox as a "Review" item.
     const items = (await listInbox(s.w.store)).filter((item) => item.kind === 'review');
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ id: card?.id, label: 'Review', status: 'need', title: '1 file changed (+2 −0)', detail: 'Tests failed (exit 1) · npm test', branches: [{ solution: 'web-front', branch: 'session/fix-login → main' }] });
+    expect(items[0]).toMatchObject({ id: card?.id, label: 'Review', status: 'need', title: '1 file changed (+2 −0) · web-front', detail: 'Tests failed (exit 1) · npm test', branches: [{ solution: 'web-front', branch: 'session/fix-login → main' }] });
     expect(s.events.some((event) => event.name === 'reviewsChanged')).toBe(true);
 
     // The same change set at the next turn end: no second card.

@@ -150,7 +150,9 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
       <div className="sb-review__repos">
         {review.repos.map((repo) => (
           <div key={`${repo.repo}\u0000${repo.dir}`} className="sb-review__repo" data-testid="review-repo">
-            <span className="sb-review__repo-name">{repo.repo}</span>
+            <span className="sb-review__repo-name" title={repo.dir}>
+              {repo.repo}
+            </span>
             <span className="sb-review__branch">{repoLine(repo)}</span>
             {repo.prUrl ? (
               <a className="sb-review__pr" href={repo.prUrl} target="_blank" rel="noopener noreferrer" data-testid="review-pr">

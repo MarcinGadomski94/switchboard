@@ -282,6 +282,32 @@ export class EventRepository {
       .filter((value): value is string => typeof value === 'string' && value !== '');
   }
 
+  /**
+   * {@link editedFilePaths} incrementally (D79/D80/D90 follow-up 2026-10-13): the
+   * paths of the edit tool calls stored after event `afterId` (rowid order, so the
+   * scan starts there), and the newest such event's id (`afterId` when there is
+   * none). A caller that remembers `lastId` reads each edit once.
+   */
+  async editedFilePathsAfter(sessionId: string, names: readonly string[], afterId: number): Promise<{ readonly paths: string[]; readonly lastId: number }> {
+    if (names.length === 0) return { paths: [], lastId: afterId };
+    const marks = names.map(() => '?').join(', ');
+    const rows = this.#table
+      .statement(
+        `SELECT id, COALESCE(json_extract(payload, '$.input.file_path'), json_extract(payload, '$.input.notebook_path')) AS p FROM events ` +
+          `WHERE id > ? AND session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') IN (${marks}) ORDER BY id`,
+      )
+      .all(afterId, sessionId, ...names);
+    let lastId = afterId;
+    const paths: string[] = [];
+    for (const row of rows) {
+      const id = Number(row['id']);
+      if (id > lastId) lastId = id;
+      const value = row['p'];
+      if (typeof value === 'string' && value !== '' && !paths.includes(value)) paths.push(value);
+    }
+    return { paths, lastId };
+  }
+
   /** D96-q1: the session's tool call event (`payload.type` = `tool`) of a `tool_use` id, not its permission request or denial. */
   async findToolCall(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
     return this.#table.first("session_id = ? AND tool_use_id = ? AND json_extract(payload, '$.type') = 'tool'", [sessionId, toolUseId], 'id DESC');

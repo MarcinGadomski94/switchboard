@@ -73,7 +73,7 @@ async function setup(): Promise<Rig> {
     store: sw.store,
     bus,
     git: new ReviewGit({ gh: fakeGhCommand(), env: g.env }),
-    resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+    repos: (session) => worktrees.repos.of(session),
     enabled: async () => true,
     send: async (sessionId, text) => {
       sent.push({ sessionId, text });
