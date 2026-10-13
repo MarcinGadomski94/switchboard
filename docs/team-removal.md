@@ -35,7 +35,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/router.tsx` | `team` in `ViewName` and `SIMPLE_VIEWS`; the `{ view: 'team'; teamId? }` member of the `Route` union; the `/team/{teamId}` branch of `parseRoute` and the `case 'team'` of `routePath` (multiple teams, 2026-10-14); the `/team` row of the header table | remove `team` in `ViewName` and `SIMPLE_VIEWS`, the union member, the branch, the case and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
-| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` and `team-update` entries of `WHATS_NEW` | remove them |
+| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team`, `team-update` and (D105) `better-charters` entries of `WHATS_NEW` | remove them |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |
@@ -47,7 +47,7 @@ Tests that name Team's additions (revert with the code):
 - `tests/server/api/settings.test.ts`: the `'experimental.team': false` line of the fresh-install answer.
 - `tests/web/updates.test.ts`: the last six sections (back to the last five, without `experimental`).
 - `tests/e2e/settings.spec.ts`: the `'Experimental'` nav label.
-- `tests/server/tutorial/tutorial.test.ts`: `'D100'` at the end of the What's-new decisions.
+- `tests/server/tutorial/tutorial.test.ts`: `'D100'` (and D105's `'D105'`) in the What's-new decisions.
 - `tests/e2e/shell.spec.ts`: the `/api/team/state` branch of the shell's API calls.
 - `tests/helpers/server-process.ts`: T2's `SWITCHBOARD_TEST_SECRET_STORE: 'memory'` default (harmless without Team; may stay).
 
@@ -57,7 +57,7 @@ Docs: the *Team (D100)* section of `docs/handoff/contracts/local-api.md`, D100 i
 
 Before deleting the code, **Revoke** every member's access (or remove the members): that removes their values from the OS keychain. Otherwise delete the keychain items named `Switchboard Team` by hand (Keychain Access on macOS, Credential Manager entries `Switchboard Team:…` on Windows, `secret-tool clear service "Switchboard Team" account …` on Linux).
 
-`<dataDir>/team.db` (and `team.db-wal` / `team.db-shm` if present). Nothing of Team is in `switchboard.db`: the only row Team ever wrote there is the `experimental.team` setting, which an older or Team-less build ignores (an unknown settings key is never read); delete it with `DELETE FROM settings WHERE key = 'experimental.team'` if you want it gone.
+`<dataDir>/team.db` (and `team.db-wal` / `team.db-shm` if present). Nothing of Team is in `switchboard.db`: the only rows Team ever wrote there are the `experimental.team` setting and (D105) the one-time charter offer's `team.charterOffer`, which an older or Team-less build ignores (an unknown settings key is never read); delete them with `DELETE FROM settings WHERE key IN ('experimental.team', 'team.charterOffer')` if you want them gone.
 
 Member sessions are ordinary sessions throughout: their records, sidebar places, todos, loops and history are untouched by removal. A member process started while Team was on keeps the charter text until its next start (Settings → Apply to open sessions restarts it at once).
 
