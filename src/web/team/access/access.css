@@ -1,0 +1,210 @@
+/* D100-T2: a member's Access tab and the access Needs-you card (docs/team.md -> Access requests). App tokens only (styles/tokens.css). */
+.sb-access {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.sb-access-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.sb-access-entry,
+.sb-access-request {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+}
+
+.sb-access-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sb-access-service {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-access-chip {
+  font: 400 11px var(--font-mono);
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-chip);
+  padding: 1px 6px;
+}
+
+.sb-access-status.is-done {
+  color: var(--status-done);
+}
+
+.sb-access-status.is-need {
+  color: var(--status-need);
+}
+
+.sb-access-status.is-fail {
+  color: var(--status-fail);
+}
+
+.sb-access-status.is-idle {
+  color: var(--status-idle);
+}
+
+.sb-access-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-access code,
+.sb-access-request code,
+.sb-access-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.sb-access-why {
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.sb-access-muted {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-access-warning,
+.sb-access-device {
+  font-size: 12px;
+  color: var(--status-need);
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+}
+
+.sb-access-error {
+  font-size: 12px;
+  color: var(--status-fail);
+}
+
+.sb-access-ok {
+  font-size: 12px;
+  color: var(--status-done);
+}
+
+.sb-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-access-primary,
+.sb-access-secondary,
+.sb-access-danger {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-button);
+  border: 1px solid var(--border-control);
+}
+
+.sb-access-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sb-access-secondary {
+  color: var(--text);
+}
+
+.sb-access-danger {
+  color: var(--status-fail);
+}
+
+.sb-access-primary[disabled],
+.sb-access-secondary[disabled],
+.sb-access-danger[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-access-link {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--muted-2);
+  text-decoration: underline;
+}
+
+.sb-access-form,
+.sb-access-server {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border-divider);
+  padding-top: 10px;
+}
+
+.sb-access-server {
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-button);
+  padding: 8px 10px;
+}
+
+.sb-access-form-title {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-access-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-access-label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-access-input {
+  font: 400 12px var(--font-ui);
+  color: var(--text);
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 5px 8px;
+}
+
+.sb-access-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-access-audit {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
