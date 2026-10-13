@@ -632,9 +632,10 @@ export class TeamService {
     this.#assertCapacity();
     const template = templateById(fields.templateId ?? null);
     const sessionBody = { ...((body['session'] ?? {}) as Record<string, unknown>) };
-    if (sessionBody['name'] === undefined) sessionBody['name'] = `${fields.name ?? 'member'}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'member';
+    // A session name of its own (kebab-case, unique): the role's slug and a short suffix.
+    if (sessionBody['name'] === undefined) sessionBody['name'] = `${(fields.name ?? 'member').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'member'}-${randomUUID().slice(0, 4)}`;
     if (sessionBody['task'] === undefined) sessionBody['task'] = '';
-    if (sessionBody['model'] === undefined && fields.model === undefined && template?.model.model) sessionBody['model'] = template.model.model;
+    // The template's model is recorded on the member, not forced on the session (it may not be on offer for this CLI).
     if (sessionBody['model'] === undefined && fields.model) sessionBody['model'] = fields.model;
     if (sessionBody['effort'] === undefined && fields.effort) sessionBody['effort'] = fields.effort;
     let memberId: string | null = null;
@@ -654,9 +655,9 @@ export class TeamService {
         sessionId,
         workplace: fields.workplace && fields.workplace.folders.length > 0 ? fields.workplace : { folders: session?.cwd ? [session.cwd] : [] },
         provider: session?.provider ?? null,
-        model: session?.model ?? null,
-        effort: session?.effort ?? null,
-        rhythm: { loops: [], onHandoff: fields.rhythm?.onHandoff ?? true },
+        model: session?.model ?? fields.model ?? template?.model.model ?? null,
+        effort: session?.effort ?? fields.effort ?? template?.model.effort ?? null,
+        rhythm: { loops: [], onHandoff: fields.rhythm?.onHandoff ?? template?.rhythm.onHandoff ?? true },
         budget: fields.budget ?? NO_BUDGET,
         gates: fields.gates ?? normalizeGates([]),
         paused: false,

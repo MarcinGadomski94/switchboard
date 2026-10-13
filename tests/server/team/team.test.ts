@@ -68,6 +68,12 @@ async function setup(options: { readonly hooked?: (id: string) => Promise<boolea
     reviews: null,
     takeover: null,
     isHooked: options.hooked ?? (async () => false),
+    // As install.ts wires it (POST /api/sessions' logic), reduced to the supervisor's start in the world's folder.
+    startSession: async (body, beforeSpawn) => {
+      const input = body as { name: string; task: string };
+      const started = await world.supervisor.start(newSession({ name: input.name, task: input.task }), world.place, input.task, { beforeSpawn: (record) => beforeSpawn(record.id) });
+      return { ok: true, sessionId: started.id };
+    },
     pushDelayMs: 10,
   });
   rig = { world, team, loops, todos, bus, dataDir };
@@ -175,6 +181,20 @@ describe('D100 · adopt and return', () => {
     // The charter is withdrawn: the next process runs without it.
     expect(await instructionAfterRestart(r, session.id, adoptedPid)).toBeNull();
     expect((await r.team.view()).activity.map((a) => a.text)).toEqual(expect.arrayContaining(['Adopted tracker-one as Tracker', 'Tracker returned to the sessions list']));
+  });
+
+  it('create starts a new session whose very first process already carries the charter', async () => {
+    const r = await setup();
+    await r.team.init();
+    await switchOn(r);
+    const member = await r.team.create({ name: 'Release manager', templateId: 'release-manager', session: { task: 'Prepare the checklist.' } });
+    expect(member.templateId).toBe('release-manager');
+    expect(member.charter.neverDoes).toBe('Tags, publishes or deploys without approval.');
+    expect(member.gates).toEqual(['outward-facing', 'merge-default-branch', 'release']);
+    expect(r.team.state().hiddenSessionIds).toEqual([member.sessionId]);
+    const first = await instructionAfterRestart(r, member.sessionId, null);
+    expect(first).toContain('You are now Release manager in team Team.');
+    expect(first).toContain('Ask the developer before: anything outward-facing; merging into a protected or default branch; releases and deployments.');
   });
 
   it('refuses a hooked terminal session (continue it in Switchboard first)', async () => {
