@@ -961,6 +961,8 @@ export class HookService {
       });
       void (async () => {
         try {
+          // D96-q1: the call (and the agent's message right above it) stored first, so the item has its context.
+          await this.#syncNow(record.id, false);
           await this.#questions.canUseTool({
             session: record,
             request: {

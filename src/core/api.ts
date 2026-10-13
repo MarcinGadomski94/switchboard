@@ -1464,6 +1464,13 @@ export interface InboxItem {
   readonly actions?: readonly InboxAction[];
   /** Additive (M3.1): a permission item's request, verbatim (D6). */
   readonly permission?: PermissionRequest;
+  /**
+   * Additive (D96-q1): a permission item's context: the agent's message right above
+   * the call it asks about (a progress note or ordinary text, ≤ 2,000 characters),
+   * shown above {@link detail} (the model's description). Absent when there is none.
+   * A question item carries its context in {@link detail} (D96).
+   */
+  readonly context?: string;
   /** Additive (M3.3): what "Open fix session" (action `open-fix-session`) opens the New-session modal with. */
   readonly prefill?: NewSessionPrefill;
   /** Additive (D48): the paired machine the item comes from (a peer's item; its ids are remote ids); absent for this machine's own. */

@@ -188,8 +188,11 @@
   max-width: 720px;
 }
 
-/* D96: a question's context (the agent's message right above it): line breaks kept, long ones scroll. */
+/* D96: a question's / permission's context (the agent's message right above the call): line breaks kept,
+   long ones scroll, a rule on its left sets it apart from the model's description (D96-q1). */
 .sb-inbox__text--context {
+  border-left: 2px solid var(--border-control);
+  padding-left: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 240px;

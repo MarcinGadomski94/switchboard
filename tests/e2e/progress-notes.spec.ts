@@ -66,3 +66,26 @@ test('the progress note shows as an agent message right above the question card,
   await expect(page.getByTestId('question-card')).toBeVisible();
   if (SHOTS) await page.getByTestId('inbox-detail').screenshot({ path: `${SHOTS}/inbox-question-context.png` });
 });
+
+test('D96-q1: a permission request shows the agent\'s message right above its call as context, above the description', async ({ page }) => {
+  if (SHOTS) await mkdir(SHOTS, { recursive: true });
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'perm-notes-e2e', `[fake:perm-allow] [fake:note ${JSON.stringify(NOTE)}] Run it.`);
+  await expect.poll(async () => (await detail(page, id)).status).toBe('need');
+
+  await page.goto(`${world.baseUrl}/inbox`);
+  const card = page.getByTestId('inbox-item').filter({ hasText: 'perm-notes-e2e' });
+  await expect(card).toHaveCount(1);
+  await card.click();
+  await expect(page.getByTestId('permission-request')).toBeVisible();
+  const context = page.getByTestId('inbox-context');
+  await expect(context).toHaveText(NOTE);
+  await expect(context).toHaveCSS('white-space', 'pre-wrap');
+  // Order in the detail: the context, then the model's description (D6), then the request.
+  const order = await page.getByTestId('inbox-detail').evaluate((root) =>
+    [...root.querySelectorAll('[data-testid="inbox-context"], [data-testid="inbox-text"], [data-testid="permission-request"]')].map((el) => el.getAttribute('data-testid')),
+  );
+  expect(order[0]).toBe('inbox-context');
+  expect(order.at(-1)).toBe('permission-request');
+  if (SHOTS) await page.getByTestId('inbox-detail').screenshot({ path: `${SHOTS}/inbox-permission-context.png` });
+});

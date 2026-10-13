@@ -254,6 +254,11 @@ export class EventRepository {
       .filter((value): value is string => typeof value === 'string' && value !== '');
   }
 
+  /** D96-q1: the session's tool call event (`payload.type` = `tool`) of a `tool_use` id, not its permission request or denial. */
+  async findToolCall(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
+    return this.#table.first("session_id = ? AND tool_use_id = ? AND json_extract(payload, '$.type') = 'tool'", [sessionId, toolUseId], 'id DESC');
+  }
+
   /** The newest event of the session for a `tool_use` id. */
   async findByToolUseId(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId], 'id DESC');
