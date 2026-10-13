@@ -10,7 +10,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/web/plans-jira-dev.html` (the Jira import dialog's dev mount)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
 - `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans page lane adds its page here)
-- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/core/plans-jira.test.ts`, `tests/helpers/fake-jira.ts`, `tests/e2e/plans-jira.spec.ts`
+- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/e2e/plans-switch.spec.ts`, `tests/core/plans-jira.test.ts`, `tests/helpers/fake-jira.ts`, `tests/e2e/plans-jira.spec.ts`
 - `docs/plans.md`, this file
 
 ## 2. Revert the hooks
@@ -23,7 +23,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/hook/sb-mcp.ts` | imports `registerPlanToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
 | `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
 | `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state `none`) | remove them |
-| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state and refresh); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call | remove them |
+| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state and refresh); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` (with the Jira lane's preview, import, plan Jira state and refresh) and of `DEVICE_REFUSED` (`/api/integrations/jira`), and "(D99) plans" in the file comment | remove them |
 | `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |
@@ -37,7 +37,7 @@ Outside `src/` (not markers): `vite.config.ts` builds the Jira dialog's dev moun
 Tests that name Plans' additions (revert with the code):
 
 - `tests/server/api/settings.test.ts`: the `'experimental.plans': false` line of the fresh-install answer.
-- `tests/e2e/visual/settings.spec.ts` / `tests/e2e/settings.spec.ts`: nothing Plans-specific beyond the Experimental section's second row (its screenshot changes back).
+- `tests/core/plans.test.ts` goes with step 1; nothing else names Plans (the Experimental section's Plans row has no screenshot of its own).
 
 Docs: the *Plans (D99)* and *Plans · Jira (D99)* sections of `docs/handoff/contracts/local-api.md`, *Jira credentials (D99)* in `docs/security.md`, the Jira paragraphs of `PRIVACY.md`, the *D99-Jira* section of `.loop/questions.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* section of `.loop/questions.md`.
 
