@@ -1,4 +1,5 @@
 import { AccountService } from './accounts/service.ts';
+import { SharedAccounts } from './accounts/shared.ts';
 import { AutoSwitcher } from './accounts/auto-switch.ts';
 import { SignInManager } from './accounts/signin.ts';
 import { CliRegistry } from './cli/registry.ts';
@@ -318,6 +319,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   peers.useApp(app);
   peersRef = peers;
+  // D98 (docs/accounts.md → Shared across paired machines): the paired machines' accounts, merged by identity with these.
+  const sharedAccounts = config.demo ? null : new SharedAccounts({ accounts, store: options.store, peers, bus });
+  if (sharedAccounts) {
+    accounts.useShared(sharedAccounts);
+    sharedAccounts.start();
+    app.addHook('preClose', async () => {
+      await sharedAccounts.stop();
+      accounts.useShared(null);
+    });
+  }
   let hooks = options.hooks;
   if (!hooks) {
     const own = new HookService({ config, store: options.store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
@@ -532,7 +543,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

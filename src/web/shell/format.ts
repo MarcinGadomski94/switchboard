@@ -4,6 +4,7 @@ import type { SessionStatus } from '../../core/model.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { sessionPace, weeklyPace } from '../../core/usage.ts';
+import { machinesLabel } from '../../core/shared-accounts.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -164,6 +165,8 @@ export interface UsageGridLine {
   readonly week: UsageCell;
   /** The line's tooltip: each window's reset, the pace, each model's weekly limit. */
   readonly title: string;
+  /** D98: the machines the account is on (`Mac + PC`), while a paired machine's accounts are shown; omitted otherwise. */
+  readonly machines?: string;
 }
 
 /** A window as the grid reads it, from `usageWindows`, `accountUsage[].windows` or `cliUsage`. */
@@ -182,7 +185,15 @@ function windowLine(name: string, window: GridWindow, now: number): string {
 }
 
 function gridLine(
-  input: { readonly key: string; readonly cli: CliProviderId; readonly label: string; readonly active: boolean; readonly exhaustedUntil: string | null },
+  input: {
+    readonly key: string;
+    readonly cli: CliProviderId;
+    readonly label: string;
+    readonly active: boolean;
+    readonly exhaustedUntil: string | null;
+    readonly machines?: readonly string[] | undefined;
+    readonly windowsFrom?: string | undefined;
+  },
   windows: readonly GridWindow[],
   now: number,
 ): UsageGridLine {
@@ -193,7 +204,9 @@ function gridLine(
     week: usageCell('week', windows.find((w) => w.key === 'week'), withPace, now),
   };
   const outUntil = spent ? `out until ${clockTime(new Date(input.exhaustedUntil as string))}` : null;
+  const machines = input.machines && input.machines.length > 0 ? machinesLabel(input.machines) : null;
   const title: string[] = [input.active ? `${input.label} · new sessions start here` : input.label];
+  if (machines) title.push(`On ${machines}${input.windowsFrom ? ` · reading from ${input.windowsFrom}` : ''}`);
   if (outUntil) title.push(`Out of usage until ${clockTime(new Date(input.exhaustedUntil as string))}`);
   for (const key of ['session', 'week'] as const) {
     const window = windows.find((w) => w.key === key);
@@ -203,7 +216,7 @@ function gridLine(
   }
   for (const window of windows.filter((w) => w.key === 'model')) title.push(windowLine(window.model ? `${window.label} week` : window.label, window, now));
   title.push('Settings → Accounts');
-  return { key: input.key, cli: input.cli, label: input.label, active: input.active, spent, outUntil, ...cells, title: title.join('\n') };
+  return { key: input.key, cli: input.cli, label: input.label, active: input.active, spent, outUntil, ...cells, title: title.join('\n'), ...(machines ? { machines } : {}) };
 }
 
 /**
@@ -230,13 +243,14 @@ export function usageGridLines(system: SystemInfo | null, now: number = Date.now
     lines.push(gridLine({ ...single('claude'), cli: 'claude', active: false, exhaustedUntil: null }, system?.usageWindows ?? [], now));
   }
   for (const row of claude) {
-    const windows = row.active ? (system?.usageWindows ?? row.windows ?? []) : (row.windows ?? []);
-    lines.push(gridLine({ key: row.profileId, cli: row.cli, label: row.name, active: row.active, exhaustedUntil: row.exhaustedUntil }, windows, now));
+    // D98: a paired machine's newer reading of the active account is shown as it is (not this machine's meter).
+    const windows = row.active && !row.windowsFrom ? (system?.usageWindows ?? row.windows ?? []) : (row.windows ?? []);
+    lines.push(gridLine({ key: row.profileId, cli: row.cli, label: row.name, active: row.active, exhaustedUntil: row.exhaustedUntil, machines: row.machines, windowsFrom: row.windowsFrom }, windows, now));
   }
   for (const cli of ['codex', 'opencode'] as const) {
     const own = rows.filter((row) => row.cli === cli);
     for (const row of own) {
-      lines.push(gridLine({ key: row.profileId, cli, label: `${CLI_SHORT_LABELS[cli]} ${row.name}`, active: row.active, exhaustedUntil: row.exhaustedUntil }, row.windows ?? [], now));
+      lines.push(gridLine({ key: row.profileId, cli, label: `${CLI_SHORT_LABELS[cli]} ${row.name}`, active: row.active, exhaustedUntil: row.exhaustedUntil, machines: row.machines, windowsFrom: row.windowsFrom }, row.windows ?? [], now));
     }
     if (own.length > 0) continue;
     const windows = (system?.cliUsage ?? []).filter((w) => w.provider === cli).map((w): GridWindow => ({ key: w.key ?? 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt }));

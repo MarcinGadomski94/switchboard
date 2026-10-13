@@ -34,6 +34,18 @@ export interface ProfileExhausted {
   readonly until: string;
   readonly window: LimitWindow;
   readonly text: string | null;
+  /** D98: the paired machine that found it spent (omitted: this one). */
+  readonly machine?: string;
+}
+
+/** D98: the same account (identity) on a connected paired machine. */
+export interface AccountElsewhere {
+  readonly machineId: string;
+  readonly machineName: string;
+  /** Its profile id there. */
+  readonly profileId: string;
+  /** Its name there (the same once the shared name has gone round). */
+  readonly name: string;
 }
 
 /** One account profile as the API returns it (`GET /api/accounts`). */
@@ -58,6 +70,16 @@ export interface AccountProfile {
   readonly signInCommand: string;
   /** Sessions currently on it. */
   readonly sessions: number;
+  /**
+   * Additive (D98, `docs/accounts.md` → *Shared across paired machines*): the
+   * identity of the account it is signed in to (`claude:<email>`), when known;
+   * the same identity on a paired machine is the same account.
+   */
+  readonly identity?: string;
+  /** Additive (D98): the same account on the connected paired machines (omitted when none). */
+  readonly elsewhere?: readonly AccountElsewhere[];
+  /** Additive (D98): `usage` is a paired machine's newer reading (that machine's name). */
+  readonly usageFrom?: string;
 }
 
 /** Where the settings live (`settings` table, one JSON value). */
@@ -364,6 +386,13 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
   if (!current) return none('the session\'s profile is unknown');
   if (cooling) return none('cooldown after the last switch');
   if (trigger.kind === 'threshold') {
+    // D98: the current account is known spent (here, or by a paired machine sharing it): move before a turn fails on it,
+    // to an account with allowance (under the thresholds, else just under 100 %), never a stop.
+    if (current.exhaustedUntil && Date.parse(current.exhaustedUntil) > now) {
+      const target = firstWithAllowance(view, settings, now, current.id);
+      if (!target) return none('no other account has allowance');
+      return { action: 'switch', to: target.id, reason: `out of usage until ${clock(current.exhaustedUntil, new Date(now))}` };
+    }
     if (!settings.thresholds.enabled) return none('early switching is off');
     if (hasAllowance(current, settings, 'threshold', now)) return none('under the thresholds');
     const target = view.filter((p) => p.id !== current.id).sort((a, b) => a.position - b.position).find((p) => hasAllowance(p, settings, 'threshold', now));

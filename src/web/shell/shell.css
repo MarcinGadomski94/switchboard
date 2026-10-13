@@ -541,6 +541,10 @@
   text-overflow: ellipsis;
 }
 
+.sb-usage-machines {
+  color: var(--muted-3);
+}
+
 .sb-usage-cell {
   display: contents;
 }
