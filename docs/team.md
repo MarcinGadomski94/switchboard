@@ -161,7 +161,7 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
 
 **Live updates.** `useTeamData` reads `GET /api/team` and Needs you while Team is on and something shows them, again on `teamChanged`, `inboxChanged`, a member session's `sessionUpdated` (at most once a second) and a hub reconnect. The switch itself (`hidden.ts`) is read on load, on `teamChanged`, on reconnect and right after Settings saves it.
 
-**What's new**: the `team` mini-tour (V1_18 = 1.18.0): the switch, adopting, Needs you and Return to sessions (`data-tour`: `experimental-team`, `team-add`, `team-needs-you`, `team-member-menu`); on an install with Team off its later steps show a card pointing to the switch.
+**What's new**: the `team` mini-tour (V1_17 = 1.17.0): the switch, adopting, Needs you and Return to sessions (`data-tour`: `experimental-team`, `team-add`, `team-needs-you`, `team-member-menu`); on an install with Team off its later steps show a card pointing to the switch.
 
 **Tests**: `tests/web/team.test.ts` (the rules), `tests/e2e/team-page.spec.ts` (switch, review → adopt → chat → Return, template, Needs you, pause, phone), `tests/e2e/team-move.spec.ts` (two machines), `tests/e2e/visual/team.spec.ts` (desktop, tablet, phone; empty and populated; report `docs/visual/team.md`).
 

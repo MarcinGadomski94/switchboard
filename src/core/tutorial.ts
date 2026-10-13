@@ -76,11 +76,8 @@ const V1_15 = '1.15.0';
 /** The version D97 (search across everything) ships in. */
 const V1_16 = '1.16.0';
 
-/** The version D98 (accounts shared across paired machines) ships in. */
+/** The version D98 (accounts shared across paired machines), D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
 const V1_17 = '1.17.0';
-
-/** The version D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
-const V1_18 = '1.18.0';
 
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
@@ -622,7 +619,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
   {
     id: 'plans',
     decision: 'D99',
-    version: V1_18,
+    version: V1_17,
     title: 'Plans (experimental)',
     steps: [
       {
@@ -658,7 +655,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
   {
     id: 'team',
     decision: 'D100',
-    version: V1_18,
+    version: V1_17,
     title: 'Team (experimental)',
     steps: [
       {

@@ -275,7 +275,7 @@ test("What's new: the Plans tour is listed while Plans is on, and replays", asyn
   await openWithHub(page, `${world.baseUrl}/settings/tutorial`);
   const row = page.locator('.sb-set-row[data-row="whats-new-plans"]');
   await expect(row).toContainText('Plans (experimental)');
-  await expect(row).toContainText('1.18.0');
+  await expect(row).toContainText('1.17.0');
   await page.getByTestId('whats-new-replay-plans').click();
   await expect(page.getByTestId('tour-card').getByTestId('tour-kicker')).toHaveText("What's new · Plans (experimental)");
   await page.getByTestId('tour-next').click();

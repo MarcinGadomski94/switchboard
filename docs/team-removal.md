@@ -35,7 +35,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/router.tsx` | `team` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/team` row of the header table | remove `team` in the three places and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
-| `src/core/tutorial.ts` | `team` in `TourRoute`; `V1_18`, `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them (and `V1_18` if nothing else ships in it) |
+| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |

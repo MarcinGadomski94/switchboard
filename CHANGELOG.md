@@ -1,12 +1,26 @@
 # Changelog
 
-## Unreleased (1.18.0)
+## 1.17.0 (2026-10-14)
 
 ### Team (experimental)
-- **Run a set of role agents from one page.** Settings → Experimental → Team (off by default). A member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for; it leaves your session list and lives on the Team page, with its history, worktrees, todos and loops.
-- **Suggestions and templates:** Switchboard suggests sessions that look like team members and drafts a charter for each; or start a member from a template (Planner, Developer, Reviewer / QA, Release manager, On-call, Delivery tracking, Marketing monitoring).
-- **One page:** member cards by status, Needs you answered in place (questions, reviews, approvals), the activity feed, and each member's chat, settings, pause, tasks and moves between your paired machines. ↩ Return to sessions puts a session back where it was; switching Team off returns every member.
-- What's new has a short tour of it.
+- **Run a set of role agents from one page.** Settings → Experimental → Team (off by default). A member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for; it leaves your session list and lives on the Team page, with its history, worktrees, todos and loops. ↩ Return to sessions puts it back where it was; switching Team off returns every member.
+- **Suggestions and templates:** Switchboard suggests sessions that look like team members (from their titles, loops and how they work) and drafts a charter for each; or start a member from a template (Planner, Developer, Reviewer / QA, Release manager, On-call, Delivery tracking, Marketing monitoring).
+- **One page:** member cards by status, Needs you answered in place (questions, reviews, approvals), the activity feed, and each member's chat, settings, pause, tasks and hand-offs. The team is shared between your paired machines, and a member can move from one machine to the other.
+- **Access requests:** a member can ask for an MCP server or an API key it needs. You approve it in Needs you and fill it in on the member's Access tab; keys are kept in your system keychain, given only to that member, masked in what Switchboard records, and never synced between machines.
+
+### Plans (experimental)
+- **Run a set of todos in dependency order.** Settings → Experimental → Plans (off by default). A plan's items start by themselves as soon as what they wait on is done, within a limit of how many run at once and your usage allowance.
+- **You choose how work is merged** into the epic branch when a plan starts: agents merge, agents merge with hold points you merge yourself, or you merge each one. Agents never merge into dev or main, checks must be green, and a failed item holds only what depends on it.
+- **Graph, Timeline and List views** with the critical path, each item's state and history (working, waiting on you, waiting on another item, paused), and answers, merges and pauses right on the page.
+- **Import from Jira:** paste an epic; its tickets and their "blocks" links become a draft plan. The session's agent can propose the missing order for you to tick. Optional status sync per plan (off, read-only, or moving tickets to In Progress / In Review with comments).
+- A plan follows its session when you continue in a fresh session.
+
+### Accounts across paired machines
+- **The same account is shown once:** usage, names and order of your Claude accounts are shared between your paired machines, and an account that runs out on one machine is skipped on the other.
+
+### Fixed
+- **Review cards and Undo now see all your work.** Sessions working in worktrees the agent made, or editing repositories outside their folder, got no review cards and no per-turn snapshots; they now do. Review cards whose changes are gone close by themselves.
+- **Phone notifications come back after re-pairing** without touching the switch, and an address the push service rejected is never reused.
 
 ## 1.16.0 (2026-10-13)
 

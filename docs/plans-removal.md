@@ -29,7 +29,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) | drop the import and the call |
 | `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |
 | `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
-| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.18.0) | remove both (`V1_18` stays while Team ships in it) |
+| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) | remove both |
 | `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table | remove them |
 | `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` | drop the imports and the cases |
 | `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` | drop them |
