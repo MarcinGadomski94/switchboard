@@ -5,7 +5,8 @@ import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId } from '../../../core/cli
 import { type AccountSignIn, ApiError, accountsApi, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { Row, SectionTitle, ToggleValue } from './rows.tsx';
-import { TERMINAL_HINT, droppedOrder, exhaustedText, movedOrder, signInStatusText, signInText, usageText } from './accounts.ts';
+import { TERMINAL_HINT, droppedOrder, exhaustedText, movedOrder, peerAccountText, sharedText, sharedUsageText, signInStatusText, signInText, usageText } from './accounts.ts';
+import type { PeerOnlyAccount } from '../../../core/shared-accounts.ts';
 import './accounts.css';
 
 type Client = ReturnType<typeof accountsApi>;
@@ -225,8 +226,11 @@ function ProfileCard({
   onMove,
   onDropOn,
   builtinName,
+  selfName,
 }: {
   readonly profile: AccountProfile;
+  /** D98: this machine's name (the shared line's first machine); `null` when not known. */
+  readonly selfName: string | null;
   /** The CLI's built-in account's current name (D67: it can be renamed). */
   readonly builtinName: string;
   readonly position: number;
@@ -257,7 +261,8 @@ function ProfileCard({
     }
   };
   const spent = exhaustedText(profile);
-  const usage = usageText(profile.usage);
+  const usage = sharedUsageText(profile);
+  const shared = sharedText(profile, selfName);
   return (
     <div
       className="sb-acc-profile"
@@ -313,6 +318,11 @@ function ProfileCard({
       {spent ? (
         <div className="sb-acc-spent" data-testid="account-spent">
           {spent}
+        </div>
+      ) : null}
+      {shared ? (
+        <div className="sb-acc-muted" data-testid="account-machines" data-tour="accounts-shared">
+          {shared}
         </div>
       ) : null}
       <div className="sb-acc-controls">
@@ -404,6 +414,47 @@ function ProfileCard({
       {error ? (
         <div className="sb-set-note sb-set-error" role="alert" data-testid="account-error">
           {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── a paired machine's account (D98) ─────────────────────────────────────────
+
+/**
+ * D98 (`docs/accounts.md` → *Shared across paired machines*): an account only a
+ * connected paired machine has (the same login on several merged), read-only here:
+ * its name, account, machines, usage and spent mark, and **Manage** (the Machine
+ * picker on its machine).
+ */
+function PeerAccountRow({ account, onManage }: { readonly account: PeerOnlyAccount; readonly onManage: (machineId: string) => void }) {
+  const usage = usageText(account.usage);
+  const spent = exhaustedText(account);
+  const first = account.machines[0];
+  return (
+    <div className="sb-acc-profile sb-acc-peer" data-testid="account-peer" data-key={account.key} data-name={account.name} data-spent={spent ? 'true' : 'false'}>
+      <div className="sb-acc-head">
+        <span className="sb-acc-peer-name" data-testid="account-peer-name">
+          {account.name}
+        </span>
+        <span className="sb-acc-status" data-testid="account-peer-account">
+          {peerAccountText(account)}
+        </span>
+        {usage ? (
+          <span className="sb-acc-usage" data-testid="account-usage">
+            {usage}
+          </span>
+        ) : null}
+        {first ? (
+          <button type="button" className="sb-set-button" data-testid="account-peer-manage" onClick={() => onManage(first.id)}>
+            Manage on {first.name}
+          </button>
+        ) : null}
+      </div>
+      {spent ? (
+        <div className="sb-acc-spent" data-testid="account-spent">
+          {spent}
         </div>
       ) : null}
     </div>
@@ -622,6 +673,7 @@ export function AccountsSection() {
     client.order(cli, order).then(setOverview, (caught: unknown) => setError(errorText(caught)));
   };
   const peers = (machines.data?.machines ?? []).filter((entry) => entry.state === 'online');
+  const selfName = machines.data?.self.name ?? null;
   return (
     <>
       <SectionTitle withLede>Accounts</SectionTitle>
@@ -653,7 +705,7 @@ export function AccountsSection() {
             const ids = mine.map((p) => p.id);
             const builtinName = mine.find((p) => p.builtin)?.name ?? 'Default';
             return (
-              <div className="sb-set-cli sb-acc-cli" key={cli} data-testid="accounts-cli" data-cli={cli}>
+              <div className="sb-set-cli sb-acc-cli" key={cli} data-testid="accounts-cli" data-cli={cli} {...(cli === 'claude' ? { 'data-tour': 'accounts-list' } : {})}>
                 <div className="sb-set-cli-head">
                   <span className="sb-set-cli-name">{CLI_LABELS[cli]}</span>
                   <span className="sb-set-cli-state">{mine.length === 1 ? 'one account' : `${mine.length} accounts`} · the first with allowance is used</span>
@@ -672,9 +724,23 @@ export function AccountsSection() {
                     onMove={(delta) => reorder(cli, movedOrder(ids, profile.id, delta))}
                     onDropOn={(dragged) => reorder(cli, droppedOrder(ids, dragged, profile.id))}
                     builtinName={builtinName}
+                    selfName={selfName}
                   />
                 ))}
                 <AddProfile cli={cli} client={client} onAdded={() => load(false)} builtinName={builtinName} />
+                {(() => {
+                  // D98: the connected paired machines' accounts of this CLI that are not here (read-only; Manage opens their machine).
+                  const others = (overview.others ?? []).filter((o) => o.cli === cli);
+                  if (others.length === 0) return null;
+                  return (
+                    <div className="sb-acc-others" data-testid="accounts-others" data-cli={cli} data-tour="accounts-others">
+                      <div className="sb-acc-muted">On other machines</div>
+                      {others.map((other) => (
+                        <PeerAccountRow key={other.key} account={other} onManage={setMachine} />
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

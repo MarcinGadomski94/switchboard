@@ -75,6 +75,9 @@ const V1_15 = '1.15.0';
 /** The version D97 (search across everything) ships in. */
 const V1_16 = '1.16.0';
 
+/** The version D98 (accounts shared across paired machines) ships in. */
+const V1_17 = '1.17.0';
+
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
 
@@ -575,6 +578,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Pick a chip to see only that kind of result.', 'Press ⌘K and type ? and a few words.'],
         anchors: ['search-chips'],
         route: { view: 'search' },
+        missing: null,
+      },
+    ],
+  },
+  {
+    id: 'shared-accounts',
+    decision: 'D98',
+    version: V1_17,
+    title: 'Accounts shared across your machines',
+    steps: [
+      {
+        id: 'footer',
+        title: 'One usage grid for every machine',
+        what: 'With paired machines connected, the usage grid lists their accounts too, each labelled with the machine it is on. The same login on two machines is one line: its newest reading counts on both, because both spend from the same limits.',
+        todo: ['Pair a second machine in Settings → Machines.', 'Look at the grid: each line ends with the machines it is on.', 'Hover a line to see whose reading it shows.'],
+        anchors: ['usage'],
+        drawer: true,
+        missing: 'The usage grid sits at the bottom of the sidebar.',
+      },
+      {
+        id: 'settings',
+        title: 'Names, order and limits follow the account',
+        what: 'An account signed in on several machines shows "Same account on …" in Settings → Accounts. Its name and the account order are shared, and when one machine finds it out of usage the others skip it until the reset. Accounts only another machine has are listed under "On other machines". Each machine still signs in on its own.',
+        todo: ['Rename a shared account: the other machine shows the new name.', 'Reorder the accounts: the order follows.', 'Use Manage on a listed account to open its machine\'s accounts.'],
+        anchors: ['accounts-shared', 'accounts-others', 'accounts-list'],
+        route: { view: 'settings', section: 'accounts' },
         missing: null,
       },
     ],

@@ -216,6 +216,8 @@ Report back what differed, especially: `claude agents --json` on Windows, exec-f
 ## Accounts (D63)
 The account routes (`GET /api/accounts`, the settings, profiles, order, check / sync, sign-in / paste-back / cancel / sign-out, a session's `…/account` and `…/profile-pin`) are on `PEER_API_ALLOW`: Settings → Accounts has a *Machine* picker that manages a paired machine's profiles through `/api/machines/{id}/api/accounts…`. The login runs on that machine; the new tab opens in the browser here; a browser that cannot reach that machine's localhost callback uses the paste-back (`docs/accounts.md` → *Signing in and out*). This is the one place a peer may change another machine's configuration; pairing is the trust. Tested through the allow-list unit test.
 
+**D98 · accounts shared across machines:** `POST /api/accounts/shared` is on `PEER_API_ALLOW` too: every 30 s, when a machine comes online and shortly after a local change, each online machine gets this machine's accounts (names, the identity the CLI reports, readings, spent marks; never a credential) and shared names / order, and answers with its own (`PeerService.ask`, 10 s limit; `SharedAccounts`). A machine before D98 answers 403 and is read with `GET /api/accounts`, unmerged. A peer's request answers its own accounts only. Details: `docs/accounts.md` → *Shared across paired machines*.
+
 ## Taking a session over (D65)
 
 "Once Switchboards are connected peer-to-peer, take over a session: e.g. a session running on my Windows PC is stopped there and resumed on my Mac." Rulings: `docs/decisions.md` → D65. Choices where the rulings are silent: `.loop/questions.md` → *D65 · Session take-over*.

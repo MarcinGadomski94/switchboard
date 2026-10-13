@@ -1,6 +1,7 @@
 import type { AccountProfile, ProfileUsage } from '../../../core/accounts.ts';
 import { clock } from '../../../core/accounts.ts';
 import type { AccountSignIn } from '../../api/client.ts';
+import { type PeerOnlyAccount, machinesLabel } from '../../../core/shared-accounts.ts';
 
 /**
  * D63 · Settings → Accounts (`docs/accounts.md`): the pure part. Nothing here is
@@ -29,7 +30,28 @@ export function exhaustedText(profile: Pick<AccountProfile, 'exhausted'>): strin
   const spent = profile.exhausted;
   if (!spent) return null;
   const what = spent.window === 'session' ? 'session limit' : spent.window === 'weekly' ? 'weekly limit' : 'usage limit';
-  return `Out of usage until ${clock(spent.until)} (${what})`;
+  return `Out of usage until ${clock(spent.until)} (${what}${spent.machine ? `, found on ${spent.machine}` : ''})`;
+}
+
+/**
+ * D98: the line of an account that is on paired machines too: "Same account on Desk + Studio · its name,
+ * order and usage are shared" (`self` = this machine's name); `null` when it is here only.
+ */
+export function sharedText(profile: Pick<AccountProfile, 'elsewhere'>, self: string | null): string | null {
+  const names = (profile.elsewhere ?? []).map((e) => e.machineName);
+  if (names.length === 0) return null;
+  return `Same account on ${machinesLabel([self ?? 'this machine', ...names])} · its name, order and usage are shared`;
+}
+
+/** D98: a reading that came from a paired machine says so: "5h 62% · week 10% (from Studio)". */
+export function sharedUsageText(profile: Pick<AccountProfile, 'usage' | 'usageFrom'>, now: number = Date.now()): string | null {
+  const text = usageText(profile.usage, now);
+  return text && profile.usageFrom ? `${text} (from ${profile.usageFrom})` : text;
+}
+
+/** D98: a paired machine's account that is not here: "lab@example.com · pro · on Studio". */
+export function peerAccountText(account: Pick<PeerOnlyAccount, 'account' | 'machines'>): string {
+  return [account.account, `on ${machinesLabel(account.machines.map((m) => m.name))}`].filter((part): part is string => !!part).join(' · ');
 }
 
 /** The new order after moving `id` by `delta` places (clamped); the same list when it cannot move. */
