@@ -1,5 +1,5 @@
 import type { StatementSync } from 'node:sqlite';
-import type { PlanAnswers, PlanChecks, PlanEdge, PlanExternalRef, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
+import type { PlanAnswers, PlanChecks, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
 import type { RepoContext } from '../db/context.ts';
 import { transaction } from '../db/database.ts';
 
@@ -283,6 +283,16 @@ export class PlanRepository {
     return Number(this.#statement('UPDATE plans SET source_session_id = ?, updated_at = ? WHERE source_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId).changes);
   }
 
+  /** D83: an item whose run session was continued in a fresh one is run by the fresh session from then on. */
+  async moveRunSession(fromSessionId: string, toSessionId: string): Promise<number> {
+    return Number(this.#statement('UPDATE plan_items SET run_session_id = ?, updated_at = ? WHERE run_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId).changes);
+  }
+
+  /** The distinct run sessions of the items (the service follows continued ones). */
+  async runSessionIds(): Promise<string[]> {
+    return (this.#statement('SELECT DISTINCT run_session_id AS s FROM plan_items WHERE run_session_id IS NOT NULL').all() as unknown as Row[]).map((row) => String(row['s']));
+  }
+
   // ── items ───────────────────────────────────────────────────────────────
 
   async items(planId: string): Promise<PlanItemRecord[]> {
@@ -343,6 +353,34 @@ export class PlanRepository {
 
   async removeEdge(planId: string, from: string, to: string): Promise<boolean> {
     return Number(this.#statement('DELETE FROM plan_edges WHERE plan_id = ? AND from_item = ? AND to_item = ?').run(planId, from, to).changes) > 0;
+  }
+
+  // ── item spans (the Timeline's history) ────────────────────────────────
+
+  /** The plan's spans per item, oldest first, at most `cap` (the newest) per item. */
+  async spans(planId: string, cap: number): Promise<Map<string, PlanItemSpan[]>> {
+    const rows = this.#statement(
+      'SELECT item_id, kind, started_at, ended_at FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY started_at DESC, id DESC) AS n FROM plan_item_spans WHERE plan_id = ?) WHERE n <= ? ORDER BY started_at, id',
+    ).all(planId, cap) as unknown as Row[];
+    const out = new Map<string, PlanItemSpan[]>();
+    for (const row of rows) {
+      const itemId = String(row['item_id']);
+      out.set(itemId, [...(out.get(itemId) ?? []), { kind: String(row['kind']) as PlanItemSpanKind, startedAt: String(row['started_at']), endedAt: text(row['ended_at'] ?? null) }]);
+    }
+    return out;
+  }
+
+  /** The open spans of a plan (id, item, kind). */
+  async openSpans(planId: string): Promise<Array<{ readonly id: number; readonly itemId: string; readonly kind: PlanItemSpanKind }>> {
+    return (this.#statement('SELECT id, item_id, kind FROM plan_item_spans WHERE plan_id = ? AND ended_at IS NULL ORDER BY id').all(planId) as unknown as Row[]).map((row) => ({ id: Number(row['id']), itemId: String(row['item_id']), kind: String(row['kind']) as PlanItemSpanKind }));
+  }
+
+  async openSpan(planId: string, itemId: string, kind: PlanItemSpanKind, at: string): Promise<void> {
+    this.#statement('INSERT INTO plan_item_spans (plan_id, item_id, kind, started_at) VALUES (?, ?, ?, ?)').run(planId, itemId, kind, at);
+  }
+
+  async closeSpan(id: number, at: string): Promise<void> {
+    this.#statement('UPDATE plan_item_spans SET ended_at = ? WHERE id = ? AND ended_at IS NULL').run(at, id);
   }
 
   /** Runs `work` in one transaction (a whole external import). */

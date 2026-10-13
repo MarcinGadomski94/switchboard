@@ -6,6 +6,8 @@
 export interface PlanHooks {
   /** Settings → Experimental → Plans was switched (`PUT /api/settings`). */
   switchChanged(): Promise<void>;
+  /** D83: session `from` was continued in the fresh session `to` (its todos, ids kept, moved there). */
+  sessionContinued(from: string, to: string): Promise<void>;
 }
 
 const registry = new WeakMap<object, PlanHooks>();
@@ -16,6 +18,15 @@ export function registerPlanHooks(store: object, hooks: PlanHooks): () => void {
   return () => {
     if (registry.get(store) === hooks) registry.delete(store);
   };
+}
+
+/**
+ * D83 seam (Continue in a fresh session): the plans whose source is `from` follow it to `to`, and
+ * items run by `from` are run by `to`. A no-op while Plans is off: the move is then made when Plans
+ * is switched on (from the sessions' `continuedTo` / `continuedFrom` links, `docs/plans.md`).
+ */
+export async function plansFollowContinuation(store: object, from: string, to: string): Promise<void> {
+  await registry.get(store)?.sessionContinued(from, to);
 }
 
 /** Settings seam: the Plans switch changed. */

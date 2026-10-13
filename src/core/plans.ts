@@ -137,6 +137,53 @@ export interface PlanItem {
   readonly waitingSince: string | null;
   readonly mergedAt: string | null;
   readonly doneAt: string | null;
+  /** Its history, oldest first (at most {@link PLAN_ITEM_SPANS_MAX}, the newest); additive. */
+  readonly spans: readonly PlanItemSpan[];
+}
+
+/**
+ * What an item was doing over a span of time (the Plans page's Timeline; `docs/plans.md` → *Item history*):
+ * - `running`: its agent works (including while its PR's checks run);
+ * - `waiting-you`: a question, its Review card, a second conflict or a stopped session waits for the developer;
+ * - `waiting-dependency`: an item it runs after is not done (or is blocked);
+ * - `paused-usage`: it is ready, but new starts are held by the usage threshold;
+ * - `paused-plan`: the plan is paused (by the developer, or because Plans was switched off).
+ */
+export const PLAN_ITEM_SPAN_KINDS = ['running', 'waiting-you', 'waiting-dependency', 'paused-usage', 'paused-plan'] as const;
+/** One of {@link PLAN_ITEM_SPAN_KINDS}. */
+export type PlanItemSpanKind = (typeof PLAN_ITEM_SPAN_KINDS)[number];
+
+/** One span of an item's history; `endedAt` `null` = still open. */
+export interface PlanItemSpan {
+  readonly kind: PlanItemSpanKind;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+}
+
+/** At most this many spans per item in a plan's answer (the newest). */
+export const PLAN_ITEM_SPANS_MAX = 200;
+
+/**
+ * The span kind an item is in now (`null` = none: a draft, a finished or cancelled plan, a done or
+ * failed item, or a ready item about to start).
+ */
+export function planItemSpanKind(plan: { readonly state: PlanState; readonly heldReason: string | null }, item: Pick<PlanItem, 'state' | 'storedState'>): PlanItemSpanKind | null {
+  if (plan.state !== 'running' && plan.state !== 'paused') return null;
+  switch (item.state) {
+    case 'running':
+      return 'running';
+    case 'question':
+    case 'review':
+      return 'waiting-you';
+    case 'blocked':
+      return item.storedState === 'running' ? 'waiting-you' : item.storedState === 'pending' ? 'waiting-dependency' : null;
+    case 'waiting':
+      return plan.state === 'paused' ? 'paused-plan' : 'waiting-dependency';
+    case 'ready':
+      return plan.state === 'paused' ? 'paused-plan' : plan.heldReason !== null ? 'paused-usage' : null;
+    case 'done':
+      return null;
+  }
 }
 
 /** "B after A": `to` runs after `from`. */
@@ -469,6 +516,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
       waitingSince: item.waitingSince,
       mergedAt: item.mergedAt,
       doneAt: item.doneAt,
+      spans: [],
     };
   });
   return {

@@ -22,6 +22,8 @@ import { SessionTeleporter } from '../sessions/teleport.ts';
 import { rememberModelChoice } from '../settings/models.ts';
 import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
+// Plans (D99) hook (docs/plans-removal.md).
+import { plansFollowContinuation } from '../plans/hooks.ts';
 
 /** Session routes (contract → REST, `/api/sessions*`) not implemented yet. */
 export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -365,6 +367,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
           // D94: so do its Switchboard loops (they fire in the fresh session from then on).
           await context.loops.moveAll(from.id, to.id);
           await context.worktrees.assign(await store.worktrees.list({ sessionId: from.id }), to.id);
+          // Plans (D99) hook: the plans whose source it was, and the items it ran, follow it (a no-op while Plans is off; docs/plans-removal.md).
+          await plansFollowContinuation(store, from.id, to.id);
         },
         beforeClosePublish: (id) => context.questions.closeSession(id),
       });
