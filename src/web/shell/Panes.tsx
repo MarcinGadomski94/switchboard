@@ -3,6 +3,7 @@ import { api } from '../api/client.ts';
 import { routePath, useRouter } from '../router.tsx';
 import { useLayout, useVisualViewportHeight } from './useLayout.ts';
 import { type Layout, isCompact } from './viewport.ts';
+import { seedToolsCollapsed } from './useToolsCollapsed.ts';
 import {
   PANES_SHOWN,
   type Pane,
@@ -43,7 +44,13 @@ const APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(na
  * first paint ({@link loadPaneStateFrom}), so a hidden pane never flashes open.
  */
 export function loadPaneState(): Promise<PaneState> {
-  return loadPaneStateFrom(api.settings);
+  // D101: the same read carries the sidebar's TOOLS state (useToolsCollapsed.ts).
+  return loadPaneStateFrom(() =>
+    api.settings().then((body) => {
+      seedToolsCollapsed(body);
+      return body;
+    }),
+  );
 }
 
 /** The pane state and its controls. */

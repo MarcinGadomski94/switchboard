@@ -83,6 +83,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'usage.warnAtPct': 90,
       'ui.sidebarHidden': false,
       'ui.rightPanelHidden': false,
+      // D101: the sidebar's TOOLS section, expanded by default.
+      'ui.toolsCollapsed': false,
       'newSession.mode': 'simple',
       'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
       'agents.standingInstruction.enabled': true,

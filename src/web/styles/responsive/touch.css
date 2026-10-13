@@ -9,11 +9,28 @@
 @media (pointer: coarse) {
   /* ---------- Sidebar ---------- */
   .sb-new,
-  .sb-nav-item,
   .sb-settings,
   .sb-tool {
     box-sizing: border-box;
     min-height: 44px;
+    align-items: center;
+  }
+
+  /* D101: the nav grid's cells are 44 px squares at least (the drawer's are wider and 56 px high). */
+  .sb-nav {
+    grid-template-columns: repeat(5, 44px);
+  }
+
+  .sb-nav-item {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The TOOLS header's toggle and + Add: full-height tap targets. */
+  .sb-section-toggle,
+  .sb-tools-head .sb-section-action {
+    min-height: 44px;
+    display: flex;
     align-items: center;
   }
 

@@ -9,7 +9,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/core/plans-jira.ts` (the Jira lane's shapes and rules; its server code is `src/server/plans/jira/`, its UI `src/web/plans/jira/`, both inside the folders above)
 - `src/web/plans-jira-dev.html` (the Jira import dialog's dev mount)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
-- `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav item and the session's Plan tab, the Jira lane's `jira/` folder)
+- `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav grid's cell (D101: through the shell's `NavCell`; the `plans` icon in `src/web/shell/nav-icon-glyphs.ts` and `plansBadge` in `nav-grid.ts` may stay) and the session's Plan tab, the Jira lane's `jira/` folder)
 - `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/e2e/plans-switch.spec.ts`, `tests/core/plans-jira.test.ts`, `tests/helpers/fake-jira.ts`, `tests/e2e/plans-jira.spec.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
 - `docs/plans.md`, `docs/plans-ui.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
 
@@ -33,7 +33,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table | remove them |
 | `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` | drop the imports and the cases |
 | `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` | drop them |
-| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (renders nothing while Plans is off) | drop the import and the element |
+| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is off) | drop the import and the element |
 | `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while off) | drop the import and the element |
 | `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_ID`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tour while Plans is off | `const tours = pendingTours(state);` |
 | `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while off | `state.data?.whatsNew` in its two places |
