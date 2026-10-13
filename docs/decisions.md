@@ -717,6 +717,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **AGENTS.md** loopback rule amended (approved by this ruling) to describe the device listener and its auth.
   - **Peers:** a device talks to this machine only; a paired machine's sessions show through the existing peer proxy as on the desktop.
   - **ASSUMED / OPEN:** `.loop/questions.md` → *D73 · Devices*.
+  - **Fix (developer bug report, 2026-10-13: "the mobile phone loses the binding to Switchboard"):** the device cookie is `SameSite=Lax`, no longer `Strict`. The log showed the paired phone's page load answered 302 → `/pair` while the very next request from the same page carried a valid credential: the browser leaves a `Strict` cookie off a page load started outside the site (a notification tap, a link from another app, the installed app's launch). Cross-site POSTs, fetches and frames still get no cookie, and the Origin check is unchanged. `docs/devices.md` → *Why the cookie is Lax*.
   - Details: `docs/devices.md`, `docs/security.md` → *Device listener (D73)*, `docs/handoff/contracts/local-api.md` → *Devices (D73)*, `docs/database.md` (0030).
 
 ## Responsive layout (added 2026-10-08)

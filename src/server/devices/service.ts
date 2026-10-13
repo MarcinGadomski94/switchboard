@@ -71,7 +71,7 @@ import { type TailscaleCallOptions, isTailscaleFailure, serveOff, serveOn, serve
  * - **Pairing:** a one-time code (10 minutes, single use, burned after 5 wrong
  *   tries, at most 10 tries per 10 minutes) shown as a QR code on this machine;
  *   the device trades it for a long-lived credential (an HttpOnly, Secure,
- *   SameSite=Strict `__Host-` cookie; only its hash is stored).
+ *   SameSite=Lax `__Host-` cookie; only its hash is stored).
  * - **Revoking** deletes the device and destroys its open connections (its `/hub`
  *   stream ends at once).
  * - **Push:** VAPID keys (`<dataDir>/vapid.json`, 0600) and each device's

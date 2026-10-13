@@ -7,7 +7,7 @@ import { generateToken } from '../token.ts';
 /**
  * D73 device credentials (`docs/devices.md` → *Security*, `docs/security.md` →
  * *Device listener*): a long-lived cookie `__Host-sb_device=<device id>.<secret>`
- * (32 random bytes, base64url), HttpOnly, Secure, SameSite=Strict, host-only on
+ * (32 random bytes, base64url), HttpOnly, Secure, SameSite=Lax, host-only on
  * the device origin (the `__Host-` prefix forbids a `Domain` and needs `Path=/` +
  * `Secure`). The server keeps only sha256 of the secret, compared in constant time.
  */
@@ -38,14 +38,19 @@ export function deviceSecretMatches(secret: string, storedHash: string): boolean
   return hashesMatch(hashDeviceSecret(secret), storedHash);
 }
 
-/** The `Set-Cookie` value carrying `<id>.<secret>`. */
+/**
+ * The `Set-Cookie` value carrying `<id>.<secret>`. `Lax`, not `Strict`: a page load
+ * started outside the site (a notification tap, a link from another app, the
+ * installed app's launch) carries no `Strict` cookie, so a paired phone was sent to
+ * `/pair` (docs/devices.md → *Why the cookie is Lax*).
+ */
 export function serializeDeviceCookie(id: string, secret: string): string {
-  return `${DEVICE_COOKIE}=${id}.${secret}; Path=/; Max-Age=${DEVICE_COOKIE_MAX_AGE_S}; HttpOnly; Secure; SameSite=Strict`;
+  return `${DEVICE_COOKIE}=${id}.${secret}; Path=/; Max-Age=${DEVICE_COOKIE_MAX_AGE_S}; HttpOnly; Secure; SameSite=Lax`;
 }
 
 /** The `Set-Cookie` value that removes the cookie (a revoked device's next page load). */
 export function clearDeviceCookie(): string {
-  return `${DEVICE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
+  return `${DEVICE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 }
 
 /** The well-formed `{ id, secret }` pairs of a `Cookie` header (every value of the device cookie, in order). */

@@ -89,7 +89,7 @@ describe('D73 device listener: unpaired requests', () => {
 });
 
 describe('D73 pairing', () => {
-  it('trades a one-time code for a device credential (HttpOnly, Secure, SameSite=Strict, __Host-); stored hashed; single use', async () => {
+  it('trades a one-time code for a device credential (HttpOnly, Secure, SameSite=Lax, __Host-); stored hashed; single use', async () => {
     world = await startDeviceWorld();
     const w = world;
     const code = await w.ui('POST', '/api/devices/pairing');
@@ -102,7 +102,7 @@ describe('D73 pairing', () => {
     expect(paired.body.device).toMatchObject({ name: 'Android phone · Chrome', push: false });
     const setCookie = ([] as string[]).concat(paired.headers['set-cookie'] ?? [])[0] as string;
     expect(setCookie).toMatch(/^__Host-sb_device=[a-z2-7]{12}\.[A-Za-z0-9_-]{43}; /);
-    for (const attribute of ['Path=/', 'HttpOnly', 'Secure', 'SameSite=Strict', 'Max-Age=34560000']) expect(setCookie).toContain(attribute);
+    for (const attribute of ['Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Max-Age=34560000']) expect(setCookie).toContain(attribute);
     expect(setCookie).not.toMatch(/Domain=/i);
     const cookie = deviceCookieOf(paired) as string;
     const secret = cookie.split('.')[1] as string;

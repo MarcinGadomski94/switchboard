@@ -162,10 +162,10 @@ test('pairs a phone with a QR code, enables its notifications, and revokes it', 
     await mobile.getByTestId('drawer-open').tap();
     await expect(mobile.getByTestId('sidebar').getByText(SESSION_TITLE)).toBeVisible();
     await mobile.getByTestId('drawer-scrim').tap();
-    // Its credential is an HttpOnly, Secure, SameSite=Strict cookie on the devices' origin only; never the install token.
+    // Its credential is an HttpOnly, Secure, SameSite=Lax cookie on the devices' origin only; never the install token.
     const cookies = await android.cookies();
     expect(cookies.map((c) => c.name)).toEqual(['__Host-sb_device']);
-    expect(cookies[0]).toMatchObject({ domain: 'localhost', path: '/', httpOnly: true, secure: true, sameSite: 'Strict' });
+    expect(cookies[0]).toMatchObject({ domain: 'localhost', path: '/', httpOnly: true, secure: true, sameSite: 'Lax' });
 
     // The desktop's list shows it; the code is gone.
     await expect(page.getByTestId('devices-paired-note')).toHaveText('Paired: Pixel.');
