@@ -1587,7 +1587,7 @@ Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `d
 | GET | /api/team | | 200 `TeamView` `{ team, self, members, handoffs, activity }` (activity: newest 100) |
 | PUT | /api/team | `{ name }` | 200 `TeamView` · 422 |
 | GET | /api/team/templates | | 200 `TeamTemplate[]` |
-| GET | /api/team/suggestions | | 200 `TeamSuggestion[]` `{ sessionId, title, folder, evidence: { repos, loops, cliLoops, events7d, edits, reads, editRatio, planning? }, templateId, reason, score, charterDraft: null }` (only sessions with ≥ 50 events whose evidence matches a template's pattern) |
+| GET | /api/team/suggestions | | 200 `TeamSuggestion[]` `{ sessionId, title, folder, evidence: { repos, loops, cliLoops, events7d, edits, reads, editRatio, planning?, activeDays? }, templateId, reason, confidence?: 'high' \| 'medium' \| 'low', score, charterDraft: null }` (only sessions with ≥ 50 events whose title or evidence names a template; `confidence`: title + behaviour agree = high, one of them = medium, weak = low; `activeDays` and `confidence` are additive, absent from older machines; see `docs/team.md` → *Templates and suggestions*) |
 | GET | /api/team/activity | `?before=<iso>&limit=1–500` | 200 `TeamActivityRecord[]` (newest first) |
 | GET | /api/team/needs-you | | 200 `TeamNeedsYouItem[]` |
 | POST | /api/team/members | adopt: `{ sessionId, name, charter?, templateId?, rhythm?: { loopIds, onHandoff }, budget?: { dailyPct, profileId }, gates?, workplace?: { folders }, model?, effort?, charterDraft? }` · create: the same without `sessionId`, with `session: NewSession` | 201 `TeamMember` · 404 · 409 `hooked` / `detached` / `closed` / `already-member` / `too-many` · 422 (create: `POST /api/sessions`' refusals in the body) |

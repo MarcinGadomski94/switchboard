@@ -95,7 +95,7 @@ test('review → adopt: the session leaves the list, its card appears, the chat 
   await expect(suggestion).toContainText('Developer');
   await expect(suggestion).toContainText('file tool calls edit: looks like implementation.');
   await expect(dialog.getByTestId('team-suggestion')).toHaveCount(1);
-  await expect(dialog.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity to tell');
+  await expect(dialog.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity or no clear role to tell');
   await suggestion.getByTestId('team-suggestion-adopt').click();
 
   const form = page.getByTestId('team-form-dialog');

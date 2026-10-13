@@ -353,7 +353,12 @@ export interface SuggestionEvidence {
   readonly editRatio: number | null;
   /** Planning calls (todo lists, plan mode, Switchboard todos and hand-offs); additive, absent from older machines. */
   readonly planning?: number;
+  /** Days with at least one event in the last 7 (edits per active day); additive, absent from older machines. */
+  readonly activeDays?: number;
 }
+
+/** How sure a suggestion is: the title and the behaviour agree = high; only one of them = medium; weak = low. */
+export type SuggestionConfidence = 'high' | 'medium' | 'low';
 
 /** One candidate member (`GET /api/team/suggestions`): only sessions whose evidence matches a template's pattern. */
 export interface TeamSuggestion {
@@ -363,8 +368,10 @@ export interface TeamSuggestion {
   readonly evidence: SuggestionEvidence;
   /** The template it looks like (a heuristic). */
   readonly templateId: string;
-  /** Why, in one line. */
+  /** Why, in one line (names the title's words and / or the behaviour it is based on). */
   readonly reason: string;
+  /** How sure the heuristic is (`classifySuggestion`); additive, absent from older machines (the Team page then derives one). */
+  readonly confidence?: SuggestionConfidence;
   /** Higher = a better candidate (events, loops). */
   readonly score: number;
   /** A drafted charter; always `null` from the server: the Team page drafts one on demand (`src/web/team/charter-draft.ts`). */

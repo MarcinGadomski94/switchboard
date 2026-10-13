@@ -181,8 +181,14 @@ export type Confidence = 'high' | 'medium' | 'low' | 'new';
 /** The pill's words. */
 export const CONFIDENCE_LABEL: Readonly<Record<Confidence, string>> = { high: 'high', medium: 'medium', low: 'low', new: 'new member' };
 
-/** How sure the heuristic is: a busy session with a clear pattern is high; some activity medium; little low. */
-export function confidenceOf(suggestion: Pick<TeamSuggestion, 'score' | 'evidence' | 'templateId'>): Exclude<Confidence, 'new'> {
+/**
+ * How sure the heuristic is: the server's `confidence` (title and behaviour agree = high,
+ * one of them = medium, weak = low; `src/server/team/suggestions.ts`). A suggestion from
+ * an older machine has none, so it is derived: a busy session with a clear pattern is
+ * high; some activity medium; little low.
+ */
+export function confidenceOf(suggestion: Pick<TeamSuggestion, 'score' | 'evidence' | 'templateId' | 'confidence'>): Exclude<Confidence, 'new'> {
+  if (suggestion.confidence) return suggestion.confidence;
   const { evidence } = suggestion;
   const pattern = evidence.loops + evidence.cliLoops > 0 || (evidence.editRatio !== null && (evidence.editRatio >= 0.5 || evidence.editRatio < 0.2));
   if (suggestion.score >= 100 && pattern) return 'high';
@@ -200,8 +206,8 @@ export function evidenceLine(suggestion: Pick<TeamSuggestion, 'reason' | 'eviden
   return `${suggestion.reason} (${counts.join(', ')})`;
 }
 
-/** Why an ordinary session is not suggested. */
-export const TOO_LITTLE = 'too little activity to tell';
+/** Why an ordinary session is not suggested: under 50 events in 7 days, or neither its title nor its work names a role. */
+export const TOO_LITTLE = 'too little activity or no clear role to tell';
 
 /** A session that is not suggested, and why. */
 export interface NotSuggested {
@@ -225,8 +231,9 @@ export interface SessionLike {
 /**
  * The review's two lists: the suggestions (in the server's order, the dismissed ones
  * left out), and "Not suggested": the dismissed ones and the open sessions the server
- * left out: hooked, in a terminal, on another machine, or with too little activity to
- * tell (the server suggests only evidence that matches a template). Members are in neither.
+ * left out: hooked, in a terminal, on another machine, or with too little activity or no
+ * clear role to tell (the server suggests only sessions whose title or evidence names a
+ * template). Members are in neither.
  */
 export function splitSuggestions(
   suggestions: readonly TeamSuggestion[],
@@ -247,7 +254,7 @@ export function splitSuggestions(
     if (session.hooked) notSuggested.push({ sessionId: session.id, title: session.title, reason: 'A hooked terminal session: continue it in Switchboard first', adoptable: false });
     else if (!session.attached) notSuggested.push({ sessionId: session.id, title: session.title, reason: 'It continues in a terminal: attach it here first', adoptable: false });
     else if (session.machineName) notSuggested.push({ sessionId: session.id, title: session.title, reason: `Runs on ${session.machineName}: its own machine suggests it`, adoptable: true });
-    // The server suggests only sessions whose evidence matches a template's pattern; the rest carry too little signal.
+    // The server suggests only sessions whose title or evidence names a template; the rest are too quiet or show no clear role.
     else notSuggested.push({ sessionId: session.id, title: session.title, reason: TOO_LITTLE, adoptable: true });
   }
   return { suggested, notSuggested };

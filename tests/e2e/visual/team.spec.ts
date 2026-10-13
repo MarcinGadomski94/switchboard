@@ -99,7 +99,7 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   await expect(review.getByTestId('team-suggestion')).toHaveCount(2);
   await expect(review.locator(`[data-testid="team-suggestion"][data-session-id="${builder.id}"]`)).toContainText('Developer');
   await expect(review.locator(`[data-testid="team-suggestion"][data-session-id="${monitor.id}"]`)).toContainText('On-call / Production monitoring');
-  for (const quiet of [tracker, asker]) await expect(review.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity to tell');
+  for (const quiet of [tracker, asker]) await expect(review.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity or no clear role to tell');
   await expect(review.getByTestId('team-suggestion-draft').first()).toContainText('Draft charter · owns');
   await expect(review.locator('[data-testid="team-confidence"][data-confidence="new"]').first()).toHaveText('new member');
   expect(await color(page, '[data-testid="team-confidence"][data-confidence="new"]', 'color')).toBe((await canonicalColors(page, ['oklch(0.78 0.09 300)']))[0]);

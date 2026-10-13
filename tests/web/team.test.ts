@@ -158,7 +158,13 @@ describe('D100 · Team page: places, notes and toasts', () => {
 });
 
 describe('D100 · Team page: suggestions', () => {
-  it('rates confidence from the score and the pattern', () => {
+  it("uses the server's confidence when it sends one", () => {
+    expect(confidenceOf(suggestion({ sessionId: 'a', score: 5, confidence: 'high' }))).toBe('high');
+    expect(confidenceOf(suggestion({ sessionId: 'a', score: 150, confidence: 'low' }))).toBe('low');
+    expect(confidenceOf(suggestion({ sessionId: 'a', score: 150, confidence: 'medium' }))).toBe('medium');
+  });
+
+  it('rates confidence from the score and the pattern for an older machine without one', () => {
     expect(confidenceOf(suggestion({ sessionId: 'a', score: 150 }))).toBe('high');
     expect(confidenceOf(suggestion({ sessionId: 'a', score: 150, evidence: { repos: 1, loops: 0, cliLoops: 0, events7d: 150, edits: 3, reads: 7, editRatio: 0.3 } }))).toBe('medium');
     expect(confidenceOf(suggestion({ sessionId: 'a', score: 30 }))).toBe('medium');
@@ -178,7 +184,7 @@ describe('D100 · Team page: suggestions', () => {
     expect(split.suggested.map((s) => s.sessionId)).toEqual(['a']);
     expect(split.notSuggested.map((n) => [n.sessionId, n.reason, n.adoptable])).toEqual([
       ['gone', 'Dismissed', true],
-      ['quiet', 'too little activity to tell', true],
+      ['quiet', 'too little activity or no clear role to tell', true],
       ['hooked', 'A hooked terminal session: continue it in Switchboard first', false],
       ['term', 'It continues in a terminal: attach it here first', false],
       ['r~pc~1', 'Runs on Windows PC: its own machine suggests it', true],
