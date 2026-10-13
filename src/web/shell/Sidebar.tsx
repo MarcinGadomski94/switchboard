@@ -21,6 +21,8 @@ import { cliBadgeOf } from './cli-switch.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { useTeamHiddenSessions, withoutTeamMembers } from '../team/hidden.ts';
 import { TeamNavItem, TeamSidebarEntry } from '../team/SidebarTeam.tsx';
+// Plans (D99) hook (docs/plans-removal.md).
+import { PlansNavItem } from '../plans/PlansNav.tsx';
 import {
   type Meter,
   type UsageCell,
@@ -271,6 +273,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         ))}
         {/* Team (D100) hook: the Team item, only while Team is on (nothing while off). */}
         <TeamNavItem />
+        {/* Plans (D99) hook: the Plans item, only while Plans is on (nothing while off). */}
+        <PlansNavItem />
       </nav>
 
       <div className="sb-section-label">

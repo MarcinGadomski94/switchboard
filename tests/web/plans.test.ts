@@ -1,0 +1,272 @@
+import { describe, expect, it } from 'vitest';
+import type { Plan, PlanItem } from '../../src/core/plans.ts';
+import {
+  GRAPH,
+  STATE_LOOK,
+  criticalEdgeKeys,
+  doneText,
+  durationShort,
+  editHint,
+  finishText,
+  graphLayout,
+  inlineAction,
+  limitsChip,
+  mergeModeChip,
+  planStateText,
+  progressText,
+  refuseEdge,
+  repoLine,
+  runningCount,
+  shortLabel,
+  statusLine,
+  targetChip,
+  timeLeftText,
+  timeline,
+  timelineSummary,
+  waitingText,
+} from '../../src/web/plans/model.ts';
+
+const T0 = Date.parse('2026-10-13T08:00:00.000Z');
+const iso = (hours: number): string => new Date(T0 + hours * 3_600_000).toISOString();
+
+function item(id: string, patch: Partial<PlanItem> = {}): PlanItem {
+  return {
+    id,
+    todoId: `t-${id}`,
+    key: `PROJ-${id}`,
+    title: `Ticket ${id}`,
+    hold: false,
+    solutions: [],
+    state: 'waiting',
+    reason: null,
+    note: null,
+    storedState: 'pending',
+    waitingOn: null,
+    dependsOn: [],
+    runSessionId: null,
+    branch: null,
+    prUrl: null,
+    checks: null,
+    developerMerges: false,
+    estimateMinutes: 60,
+    actualMinutes: null,
+    onCriticalPath: false,
+    position: Number(id),
+    startedAt: null,
+    waitingSince: null,
+    mergedAt: null,
+    doneAt: null,
+    ...patch,
+  };
+}
+
+function plan(items: readonly PlanItem[], edges: readonly { from: string; to: string }[], patch: Partial<Plan> = {}): Plan {
+  return {
+    id: 'p1',
+    title: 'PROJ-100 Acme checkout',
+    sourceSessionId: 's1',
+    targetBranch: 'feature/PROJ-100-acme-epic',
+    repos: ['acme'],
+    baseBranch: 'dev',
+    mergeMode: null,
+    maxConcurrency: 3,
+    usageThreshold: 85,
+    answers: null,
+    state: 'draft',
+    external: null,
+    held: null,
+    items: items.map((entry) => ({ ...entry, dependsOn: edges.filter((edge) => edge.to === entry.id).map((edge) => edge.from) })),
+    edges,
+    criticalPath: { itemIds: [], minutes: 0 },
+    progress: { done: items.filter((entry) => entry.state === 'done').length, total: items.length, percent: 0 },
+    estimatedMinutesLeft: 180,
+    createdAt: iso(0),
+    updatedAt: iso(0),
+    startedAt: null,
+    finishedAt: null,
+    machine: null,
+    ...patch,
+  };
+}
+
+describe('the state look', () => {
+  it('maps each state to its icon and colour (the approved design)', () => {
+    expect(STATE_LOOK.waiting).toEqual({ icon: '○', color: 'var(--status-idle)', word: 'waiting' });
+    expect(STATE_LOOK.ready.icon).toBe('◌');
+    expect(STATE_LOOK.ready.color).toBe('var(--muted-1)');
+    expect(STATE_LOOK.running).toMatchObject({ icon: '●', color: 'var(--status-run)' });
+    expect(STATE_LOOK.question).toMatchObject({ icon: '?', color: 'var(--status-need)' });
+    expect(STATE_LOOK.review).toMatchObject({ icon: '◐', color: 'oklch(0.75 0.12 310)' });
+    expect(STATE_LOOK.done).toMatchObject({ icon: '✔', color: 'var(--status-done)' });
+    expect(STATE_LOOK.blocked).toMatchObject({ icon: '✖', color: 'var(--status-fail)' });
+  });
+
+  it('writes the status line', () => {
+    const a = item('3157', { state: 'running' });
+    const b = item('3160', { state: 'done' });
+    const c = item('3165', { state: 'waiting' });
+    const p = plan([a, b, c], [
+      { from: '3157', to: '3165' },
+      { from: '3160', to: '3165' },
+    ]);
+    const [pa, pb, pc] = p.items as [PlanItem, PlanItem, PlanItem];
+    expect(statusLine(pc, p.items)).toBe('waiting on 3157');
+    expect(statusLine(pa, p.items)).toBe('running');
+    expect(statusLine(pb, p.items)).toBe('done · merged');
+    expect(statusLine({ ...pa, state: 'question' }, p.items)).toBe('needs your answer');
+    expect(statusLine({ ...pa, state: 'review' }, p.items)).toBe('in review');
+    expect(statusLine({ ...pa, state: 'blocked' }, p.items)).toBe('blocked');
+    expect(waitingText(pc, p.items)).toBe('Starts by itself when 3157 is done.');
+    expect(waitingText({ ...pc }, p.items.map((entry) => (entry.id === '3160' ? { ...entry, state: 'running' as const } : entry)))).toBe('Starts by itself when 3157 and 3160 are done.');
+  });
+
+  it('shortens keys only when every key shares one prefix', () => {
+    expect(shortLabel(item('1'), [item('1'), item('2')])).toBe('1');
+    expect(shortLabel(item('1'), [item('1'), { key: 'ACME-9' }])).toBe('PROJ-1');
+    expect(shortLabel({ key: null, title: 'A rather long title for a todo item' }, [])).toBe('A rather long title for…');
+  });
+});
+
+describe('header texts', () => {
+  it('formats the chips and progress', () => {
+    const p = plan([item('1', { state: 'done', hold: true }), item('2', { hold: true })], [], { mergeMode: 'agents-with-holds', progress: { done: 1, total: 2, percent: 50 } });
+    expect(progressText(p)).toBe('1/2 done');
+    expect(timeLeftText(p)).toBe('~3h left');
+    expect(timeLeftText({ estimatedMinutesLeft: null })).toBeNull();
+    expect(mergeModeChip(p)).toBe('Merge: agents · hold ⚑ 1, 2');
+    expect(mergeModeChip({ ...p, mergeMode: 'developer' })).toBe('Merge: I merge each one');
+    expect(mergeModeChip({ ...p, mergeMode: null })).toBe('Merge mode: not chosen yet');
+    expect(mergeModeChip({ ...p, mergeMode: 'agents' })).toBe('Merge: agents');
+    expect(limitsChip(p)).toBe('3 at once · 85 %');
+    expect(targetChip(p)).toBe('⎇ feature/PROJ-100-acme-epic → dev');
+    expect(repoLine(item('1', { estimateMinutes: 45 }), p)).toBe('acme · ~45m');
+    expect(repoLine(item('1', { estimateMinutes: null }), { repos: ['a', 'b'] })).toBe('all repos · ~?');
+    expect(durationShort(150)).toBe('2.5h');
+    expect(durationShort(60 * 30)).toBe('30h');
+    expect(durationShort(60 * 50)).toBe('2d 2h');
+    expect(runningCount([{ state: 'running' }, { state: 'paused' }, { state: 'running' }])).toBe(2);
+    expect(planStateText({ state: 'paused', held: 'Plans was switched off' })).toBe('paused · Plans was switched off');
+    expect(planStateText({ state: 'paused', held: 'the plan is paused' })).toBe('paused');
+  });
+
+  it('writes the detail lines', () => {
+    expect(doneText({ checks: { state: 'green', summary: null, sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✔');
+    expect(doneText({ checks: { state: 'red', summary: 'failed: ci', sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✖');
+    expect(inlineAction({ state: 'question' })).toBe('answer');
+    expect(inlineAction({ state: 'review' })).toBe('merge');
+    expect(inlineAction({ state: 'running' })).toBeNull();
+  });
+});
+
+describe('graph layout', () => {
+  it('puts each item one layer right of its furthest dependency', () => {
+    // 1 → 2 → 4, 1 → 3, 3 → 4, 5 alone.
+    const items = ['1', '2', '3', '4', '5'].map((id) => item(id));
+    const edges = [
+      { from: '1', to: '2' },
+      { from: '2', to: '4' },
+      { from: '1', to: '3' },
+      { from: '3', to: '4' },
+    ];
+    const layout = graphLayout(items, edges);
+    const layer = Object.fromEntries(layout.nodes.map((node) => [node.id, node.layer]));
+    expect(layer).toEqual({ '1': 0, '5': 0, '2': 1, '3': 1, '4': 2 });
+    expect(layout.final.layer).toBe(3);
+    expect(layout.sinks).toEqual(['4', '5']);
+    const one = layout.nodes.find((node) => node.id === '1');
+    const four = layout.nodes.find((node) => node.id === '4');
+    expect(one?.x).toBe(GRAPH.pad);
+    expect(four?.x).toBe(GRAPH.pad + 2 * (GRAPH.cardWidth + GRAPH.gapX));
+    expect(layout.width).toBe(GRAPH.pad * 2 + 4 * GRAPH.cardWidth + 3 * GRAPH.gapX);
+    expect(layout.height).toBe(GRAPH.pad * 2 + 2 * GRAPH.cardHeight + GRAPH.gapY);
+  });
+
+  it('uses the longest path, not the shortest', () => {
+    const items = ['1', '2', '3'].map((id) => item(id));
+    const layout = graphLayout(items, [
+      { from: '1', to: '2' },
+      { from: '2', to: '3' },
+      { from: '1', to: '3' },
+    ]);
+    expect(layout.nodes.find((node) => node.id === '3')?.layer).toBe(2);
+  });
+
+  it('orders a layer by the rows of its dependencies', () => {
+    const items = ['1', '2', '3', '4'].map((id) => item(id));
+    // 4 depends on 1 (row 0), 3 depends on 2 (row 1): 4 above 3.
+    const layout = graphLayout(items, [
+      { from: '2', to: '3' },
+      { from: '1', to: '4' },
+    ]);
+    const row = Object.fromEntries(layout.nodes.map((node) => [node.id, node.row]));
+    expect(row['4']).toBe(0);
+    expect(row['3']).toBe(1);
+  });
+
+  it('lists the critical path edges', () => {
+    expect([...criticalEdgeKeys({ criticalPath: { itemIds: ['1', '2', '4'], minutes: 90 } })]).toEqual(['1>2', '2>4']);
+  });
+});
+
+describe('dependency editing', () => {
+  const p = plan([item('1'), item('2'), item('3')], [
+    { from: '1', to: '2' },
+    { from: '2', to: '3' },
+  ]);
+
+  it('refuses a cycle with the design text', () => {
+    // "3 after... 1 after 3": from 3 to 1 closes 1 → 2 → 3 → 1.
+    expect(refuseEdge(p, '3', '1')).toBe('Refused: 3 already waits on 1 — that would be a loop');
+    expect(refuseEdge(p, '1', '3')).toBeNull();
+    expect(refuseEdge(p, '1', '2')).toBe('Refused: 2 already waits on 1');
+    expect(refuseEdge(p, '1', '1')).toBe('Refused: a ticket cannot wait on itself');
+  });
+
+  it('writes the hint', () => {
+    expect(editHint(null, p.items)).toContain('Click the ticket that must finish first.');
+    expect(editHint(p.items[0] as PlanItem, p.items)).toContain('Now click the ticket that depends on 1…');
+  });
+});
+
+describe('timeline', () => {
+  it('builds the segments from the timestamps and projects the rest', () => {
+    const now = T0 + 5 * 3_600_000;
+    const a = item('1', { state: 'done', storedState: 'done', startedAt: iso(0), mergedAt: iso(2), doneAt: iso(2), solutions: ['acme'] });
+    const b = item('2', { state: 'review', storedState: 'running', startedAt: iso(2), waitingOn: 'review', waitingSince: iso(3), solutions: ['acme'], estimateMinutes: 120 });
+    const c = item('3', { state: 'waiting', solutions: ['billing'], estimateMinutes: 60 });
+    const p = plan([a, b, c], [
+      { from: '1', to: '2' },
+      { from: '2', to: '3' },
+    ], { state: 'running', startedAt: iso(0), repos: ['acme', 'billing'] });
+    const view = timeline(p, now);
+    expect(view.groups.map((group) => group.repo)).toEqual(['acme', 'billing']);
+    const rowOf = (id: string) => view.groups.flatMap((group) => group.rows).find((row) => row.itemId === id);
+    expect(rowOf('1')?.segments).toEqual([{ kind: 'working', from: T0, to: T0 + 2 * 3_600_000 }]);
+    const second = rowOf('2')?.segments ?? [];
+    expect(second.map((segment) => segment.kind)).toEqual(['dependency', 'working', 'you', 'projected']);
+    expect(second[2]).toMatchObject({ from: T0 + 3 * 3_600_000, to: now, on: 'review' });
+    const third = rowOf('3')?.segments ?? [];
+    expect(third.map((segment) => segment.kind)).toEqual(['dependency', 'projected']);
+    // 2's estimate (2 h) ran out: at least a minute is left; 3 is projected after it for its hour.
+    expect(third[1]?.from).toBe(second[3]?.to);
+    expect(view.youHours).toBe(2);
+    expect(view.totalHours).toBe(5);
+    expect(view.longest).toMatchObject({ itemId: '2', on: 'review', hours: 2 });
+    expect(view.projectedFinish).toBe((third[1]?.from ?? 0) + 3_600_000);
+    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 2 h of 5 · longest: 2 review \(2 h\) · Projected finish: /);
+  });
+
+  it('shows a ready item held for usage in red', () => {
+    const now = T0 + 3_600_000;
+    const p = plan([item('1', { state: 'ready' })], [], { state: 'running', startedAt: iso(0), held: 'acme is at 90 % of its 5-hour limit' });
+    const segments = timeline(p, now).groups[0]?.rows[0]?.segments ?? [];
+    expect(segments.map((segment) => segment.kind)).toEqual(['usage', 'projected']);
+  });
+
+  it('names the finish day', () => {
+    const now = new Date(2026, 9, 13, 18, 0).getTime();
+    expect(finishText(new Date(2026, 9, 13, 20, 5).getTime(), now)).toBe('today 20:05');
+    expect(finishText(new Date(2026, 9, 14, 7, 30).getTime(), now)).toBe('tomorrow 07:30');
+    expect(finishText(new Date(2026, 9, 16, 9, 0).getTime(), now)).toMatch(/16 Oct 09:00$/);
+  });
+});

@@ -40,6 +40,10 @@ export function pageTitle(route: Route, toolName: string | null = null): string 
     // Team (D100) hook (docs/team-removal.md).
     case 'team':
       return 'Team';
+    // Plans (D99) hook (docs/plans-removal.md).
+    case 'plans':
+    case 'plan':
+      return 'Plans';
   }
 }
 

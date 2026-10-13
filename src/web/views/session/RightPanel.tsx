@@ -13,6 +13,8 @@ import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, te
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
 import { agentActivity, cappedCards, fewerCardsLine, moreCardsLine } from './workflow-agents.ts';
+// Plans (D99) hook: the session's Plan tab (docs/plans-removal.md).
+import { SessionPlanTab } from '../../plans/PlansNav.tsx';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
 const finishedExpanded = new Map<string, boolean>();
@@ -77,6 +79,8 @@ export function RightPanel({
       inert={hidden}
       aria-hidden={hidden || undefined}
     >
+      {/* Plans (D99) hook: the Plan tab, only while Plans is on and this session created a plan (nothing otherwise). */}
+      <SessionPlanTab sessionId={sessionId} />
       {session && panel && capped ? (
         <>
           <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />

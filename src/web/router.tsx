@@ -24,13 +24,15 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/tools/:id` | Embedded tool |
  * | `/settings[/:section]` | Settings |
  * | `/team` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md) |
+ * | `/plans`, `/plans/:id` | D99: the Plans list and a plan's page (only while Plans is on; Plans (D99) hook, docs/plans-removal.md) |
  *
  * Unknown paths show the Inbox.
  */
 
 /** The views of the sidebar nav (SPEC → Shell) plus the session, tool and settings views. */
 // Team (D100) hook: the `team` view (docs/team-removal.md).
-export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team';
+// Plans (D99) hook: the `plans` and `plan` views (docs/plans-removal.md).
+export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team' | 'plans' | 'plan';
 
 /** Session view tabs (SPEC → Session). */
 export const SESSION_TABS = ['chat', 'timeline', 'diff', 'artifacts'] as const;
@@ -39,7 +41,7 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'team' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'team' | 'plans' }
   | {
       readonly view: 'session';
       readonly id: string;
@@ -52,9 +54,12 @@ export type Route =
       readonly eventId?: number;
     }
   | { readonly view: 'tool'; readonly id: string }
+  // Plans (D99) hook: a plan's page (docs/plans-removal.md).
+  | { readonly view: 'plan'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
 
-const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team'] as const;
+// Plans (D99) hook: `plans` (docs/plans-removal.md).
+const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team', 'plans'] as const;
 
 function decode(segment: string): string {
   try {
@@ -89,6 +94,8 @@ export function parseRoute(pathname: string): Route {
     return { view: 'session', id: a, tab };
   }
   if (head === 'tools' && a) return { view: 'tool', id: a };
+  // Plans (D99) hook: `/plans/{id}` (docs/plans-removal.md).
+  if (head === 'plans' && a && parts.length === 2) return { view: 'plan', id: a };
   if (head === 'settings') return { view: 'settings', section: a ?? null };
   return { view: 'inbox' };
 }
@@ -103,6 +110,9 @@ export function routePath(route: Route): string {
       return `/sessions/${encodeURIComponent(route.id)}${route.tab === 'chat' ? '' : `/${route.tab}`}`;
     case 'tool':
       return `/tools/${encodeURIComponent(route.id)}`;
+    // Plans (D99) hook (docs/plans-removal.md).
+    case 'plan':
+      return `/plans/${encodeURIComponent(route.id)}`;
     case 'settings':
       return route.section ? `/settings/${encodeURIComponent(route.section)}` : '/settings';
     default:

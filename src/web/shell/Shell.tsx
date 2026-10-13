@@ -26,6 +26,9 @@ import { TouchTooltip } from './TouchTooltip.tsx';
 import { TourHost } from '../tutorial/TourHost.tsx';
 // Team (D100) hook: the Team page (docs/team-removal.md).
 import { TeamPage } from '../team/TeamPage.tsx';
+// Plans (D99) hook: the Plans pages (docs/plans-removal.md).
+import { PlanPage } from '../plans/PlanPage.tsx';
+import { PlansPage } from '../plans/PlansPage.tsx';
 import './shell.css';
 
 function View({ route }: { readonly route: Route }) {
@@ -56,6 +59,11 @@ function View({ route }: { readonly route: Route }) {
       return <SettingsView section={route.section} />;
     case 'team':
       return <TeamPage />;
+    // Plans (D99) hook (docs/plans-removal.md).
+    case 'plans':
+      return <PlansPage />;
+    case 'plan':
+      return <PlanPage key={route.id} planId={route.id} />;
   }
 }
 
