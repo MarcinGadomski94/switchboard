@@ -74,6 +74,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
     // Fix · peer reconnects: a paired machine that dropped is `reconnecting` for 3 s (not 20 s) before `offline`.
     SWITCHBOARD_PEER_GRACE_MS: '3000',
+    // D100-T2: a test server never reads or writes the OS keychain (Team access values go to an in-memory store).
+    SWITCHBOARD_TEST_SECRET_STORE: 'memory',
   };
 }
 

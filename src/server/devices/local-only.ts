@@ -133,6 +133,18 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
   ['DELETE', /^\/api\/plans\/[^/]+\/edges\/[^/]+\/[^/]+$/],
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
+  // Team (D100) hook (docs/team.md → Devices): read the team, answer (requests), pause / resume, give tasks (hand-offs),
+  // adopt / create, return and remove a member (the session itself is never lost). Settings edits, moves and the sync stay off phones.
+  ['GET', /^\/api\/team(?:\/(?:state|templates|suggestions|activity|needs-you))?$/],
+  ['GET', /^\/api\/team\/(?:members|moves)\/[^/]+$/],
+  ['POST', /^\/api\/team\/(?:members|handoffs)$/],
+  ['DELETE', /^\/api\/team\/members\/[^/]+$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return)$/],
+  ['PUT', /^\/api\/team\/handoffs\/[^/]+$/],
+  ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
+  // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
+  ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],
+  ['GET', /^\/api\/team\/access\/catalog$/],
 ];
 
 /**
@@ -181,6 +193,14 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/settings\/standing-instruction\/apply$/],
   // D79: a review's Discard (drops the changes) and Clean up (removes the worktree and its branch): desktop only.
   ['POST', /^\/api\/reviews\/[^/]+\/(?:discard|cleanup)$/],
+  // Team (D100) hook: renaming the team and editing a member's charter / rhythm / budget / gates (configuration: desktop),
+  // moving a member (a take-over, D65: desktop only) and the machines' sync exchange (peer API only).
+  ['PUT', /^\/api\/team(?:\/members\/[^/]+)?$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/move(?:\/check)?$/],
+  ['POST', /^\/api\/team\/sync$/],
+  // Team (D100) hook, D100-T2: entering, testing, revoking or timing out an access's values: "set this up on a computer".
+  ['POST', /^\/api\/team\/access\/[^/]+\/(?:setup|test|revoke)$/],
+  ['PUT', /^\/api\/team\/access\/[^/]+$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

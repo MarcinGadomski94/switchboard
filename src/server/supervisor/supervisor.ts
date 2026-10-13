@@ -37,6 +37,8 @@ import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { standingInstructionFor } from '../settings/settings.ts';
+// Team (D100) hook: a member session's charter rides on the standing instruction (docs/team-removal.md).
+import { teamAccessEnv, withTeamCharter } from '../team/hooks.ts';
 import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
@@ -1493,7 +1495,8 @@ export class SessionSupervisor {
       if (wasPending) await this.#emitSession(sessionId);
       return 'not-running';
     }
-    if (live.instruction === (await standingInstructionFor(this.#store.settings))) {
+    // Team (D100) hook: the charter is part of the instruction a process runs.
+    if (live.instruction === (await withTeamCharter(this.#store, sessionId, await standingInstructionFor(this.#store.settings)))) {
       if (wasPending) await this.#emitSession(sessionId);
       return 'current';
     }
@@ -2730,14 +2733,17 @@ export class SessionSupervisor {
       this.#onError(error);
     }
     // D91: kept on the live process, so a later change of the setting shows it runs an older one.
-    const instruction = await standingInstructionFor(this.#store.settings);
+    // Team (D100) hook: a member's charter is appended (docs/team-removal.md).
+    const instruction = await withTeamCharter(this.#store, session.id, await standingInstructionFor(this.#store.settings));
+    // Team (D100) hook (D100-T2): a member's approved access: its API keys in the environment, every value masked in what is recorded of it.
+    const teamAccess = await teamAccessEnv(this.#store, session.id);
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,
       nativeId,
       permissionMode,
       cwd,
-      env: { ...childEnv(this.#env), ...profileEnv },
+      env: { ...childEnv(this.#env), ...profileEnv, ...teamAccess.env },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.
@@ -2745,13 +2751,14 @@ export class SessionSupervisor {
       agentMcp,
       onLine: (line) => {
         const live = holder.live;
-        if (live) void this.#enqueue(live, () => this.#onLine(live, line));
+        if (live) void this.#enqueue(live, () => this.#onLine(live, teamAccess.mask(line)));
       },
       onNativeId: (id) => {
         void this.#store.providers.rememberNative(session.id, provider, id).catch((error: unknown) => this.#onError(error));
       },
-      onNotice: (text) => {
+      onNotice: (raw) => {
         const live = holder.live;
+        const text = teamAccess.mask(raw);
         if (live) {
           void this.#enqueue(live, async () => {
             await live.recorder.recordLifecycle('error', text, { type: 'lifecycle', action, message: text });

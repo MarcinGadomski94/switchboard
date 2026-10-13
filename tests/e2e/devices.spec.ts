@@ -119,21 +119,26 @@ async function pairPhone(context: BrowserContext, url: string, name?: string): P
  * re-pairing: the permission and the subscription (with the `applicationServerKey`
  * it was made with) are kept in the origin's localStorage. `fake-push-prompts`
  * counts the permission prompts; `fake-push-unsubscribe-fails` makes
- * `unsubscribe()` fail (the browser keeps its subscription).
+ * `unsubscribe()` fail (the browser keeps its subscription). Given several
+ * subscriptions, each `subscribe()` after an unsubscribe hands out the next one
+ * (`fake-push-index`), like a push service making a new endpoint.
  */
-async function fakeBrowserPush(context: BrowserContext, sub: { readonly endpoint: string; readonly keys: { readonly p256dh: string; readonly auth: string } }): Promise<void> {
-  await context.addInitScript((subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) => {
+type FakeSub = { readonly endpoint: string; readonly keys: { readonly p256dh: string; readonly auth: string } };
+async function fakeBrowserPush(context: BrowserContext, sub: FakeSub | readonly FakeSub[]): Promise<void> {
+  await context.addInitScript((subscriptions: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }>) => {
     const stored = (): number[] | null => {
       const raw = localStorage.getItem('fake-push-sub');
       return raw ? (JSON.parse(raw) as number[]) : null;
     };
+    const current = () => subscriptions[Math.min(Number(localStorage.getItem('fake-push-index') ?? '0'), subscriptions.length - 1)] as (typeof subscriptions)[number];
     const make = (key: number[]) => ({
-      endpoint: subscription.endpoint,
+      endpoint: current().endpoint,
       options: { applicationServerKey: new Uint8Array(key).buffer, userVisibleOnly: true },
-      toJSON: () => ({ endpoint: subscription.endpoint, keys: subscription.keys }),
+      toJSON: () => ({ endpoint: current().endpoint, keys: current().keys }),
       unsubscribe: async () => {
         if (localStorage.getItem('fake-push-unsubscribe-fails') === '1') throw new Error('unsubscribe failed');
         localStorage.removeItem('fake-push-sub');
+        localStorage.setItem('fake-push-index', String(Number(localStorage.getItem('fake-push-index') ?? '0') + 1));
         return true;
       },
     });
@@ -153,7 +158,7 @@ async function fakeBrowserPush(context: BrowserContext, sub: { readonly endpoint
       localStorage.setItem('fake-push-permission', 'granted');
       return 'granted';
     };
-  }, { endpoint: sub.endpoint, keys: sub.keys });
+  }, (Array.isArray(sub) ? sub : [sub]).map((one: FakeSub) => ({ endpoint: one.endpoint, keys: one.keys })));
 }
 
 /** A revoked phone's open page: once it is on the pairing page (by itself or by its next load), closed. */
@@ -408,6 +413,60 @@ test('D73 fix · re-pairing restores the notifications without asking; turned of
     const vapid = await mobile.evaluate(async () => ((await (await fetch('/api/device')).json()) as { vapidPublicKey: string }).vapidPublicKey);
     const key = await mobile.evaluate(() => localStorage.getItem('fake-push-sub'));
     expect(Buffer.from(JSON.parse(key as string) as number[]).toString('base64url')).toBe(vapid);
+  } finally {
+    await android.close();
+  }
+});
+
+test('D73 follow-up · a subscription the push service called gone is unsubscribed and never restored; Enable makes a fresh one', async ({ page, browser }) => {
+  await ensureAccess(page);
+  const android = await phone(browser, ANDROID_UA);
+  const saves: string[] = [];
+  android.on('request', (request) => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/device/push') saves.push(request.postData() ?? '');
+  });
+  try {
+    const dead = push.subscribe();
+    const fresh = push.subscribe();
+    await fakeBrowserPush(android, [dead, fresh]);
+    // Disable makes no new endpoint here; only a subscribe after an unsubscribe does.
+    const mobile = await pairPhone(android, await makeCode(page), 'Gone A');
+    await mobile.goto(`http://localhost:${devicePort}/settings/devices`);
+    await press(mobile.getByTestId('device-push-enable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+
+    // The push service drops it (410): the test push fails and Switchboard forgets the subscription.
+    push.expire(dead, 410);
+    await press(mobile.getByTestId('device-push-test'));
+    await expect(mobile.getByTestId('device-note')).toContainText('The test failed');
+    await expect.poll(() => devicePush('Gone A')).toBe(false);
+    // The browser still holds it: the next start sends it once, is refused (409 push-gone) and unsubscribes it.
+    const goneAt = saves.length;
+    const refused = mobile.waitForResponse((response) => response.request().method() === 'PUT' && new URL(response.url()).pathname === '/api/device/push');
+    await mobile.reload();
+    const answer = await refused;
+    expect(answer.status()).toBe(409);
+    expect(((await answer.json()) as { error: string }).error).toBe('push-gone');
+    await expect.poll(() => mobile.evaluate(() => localStorage.getItem('fake-push-sub'))).toBeNull();
+    expect(await mobile.evaluate(() => localStorage.getItem('switchboard.push.gone'))).toBe(dead.endpoint);
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'false');
+    // And stops: no more tries on reloads or visible events.
+    await mobile.reload();
+    await mobile.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(mobile.getByTestId('device-push-enable')).toBeVisible();
+    await mobile.waitForTimeout(1_000);
+    expect(saves.length).toBe(goneAt + 1);
+    expect(await devicePush('Gone A')).toBe(false);
+
+    // Enable makes a fresh subscription (a new endpoint), which is taken and works.
+    await press(mobile.getByTestId('device-push-enable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+    expect(JSON.parse(saves.at(-1) as string)).toMatchObject({ subscription: { endpoint: fresh.endpoint } });
+    expect(await mobile.evaluate(() => localStorage.getItem('switchboard.push.gone'))).toBeNull();
+    const received = push.received.length;
+    await press(mobile.getByTestId('device-push-test'));
+    await expect(mobile.getByTestId('device-note')).toHaveText('Test notification sent.');
+    await push.waitFor(received + 1);
   } finally {
     await android.close();
   }

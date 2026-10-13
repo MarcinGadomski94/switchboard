@@ -7,6 +7,8 @@ import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../d
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
 import type { Store } from '../db/store.ts';
 import { reviewItems } from '../reviews/wire.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { labelInboxItems } from '../team/hooks.ts';
 
 /**
  * API shapes of the Inbox (M3.1 + M3.2, `docs/questions.md`, `docs/inbox.md`):
@@ -311,7 +313,8 @@ export async function listInbox(store: Store): Promise<InboxItem[]> {
   for (const record of system) items.push(systemItem(record));
   // D79: the open review cards (pending, and merged / discarded ones still offering Clean up), oldest first.
   items.push(...(await reviewItems(store)));
-  return items;
+  // Team (D100) hook: member sessions' items carry the role name (docs/team-removal.md).
+  return labelInboxItems(store, items);
 }
 
 /**

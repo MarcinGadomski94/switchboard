@@ -23,12 +23,14 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/share` | D81: a share from the phone's share sheet: "Add to which session?" (the shared fields in the query) |
  * | `/tools/:id` | Embedded tool |
  * | `/settings[/:section]` | Settings |
+ * | `/team` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md) |
  *
  * Unknown paths show the Inbox.
  */
 
 /** The views of the sidebar nav (SPEC → Shell) plus the session, tool and settings views. */
-export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings';
+// Team (D100) hook: the `team` view (docs/team-removal.md).
+export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team';
 
 /** Session view tabs (SPEC → Session). */
 export const SESSION_TABS = ['chat', 'timeline', 'diff', 'artifacts'] as const;
@@ -37,7 +39,7 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'team' }
   | {
       readonly view: 'session';
       readonly id: string;
@@ -52,7 +54,7 @@ export type Route =
   | { readonly view: 'tool'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
 
-const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share'] as const;
+const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team'] as const;
 
 function decode(segment: string): string {
   try {

@@ -15,7 +15,8 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' }
+  // Team (D100) hook: `team` (docs/team-removal.md).
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -77,6 +78,15 @@ const V1_16 = '1.16.0';
 
 /** The version D98 (accounts shared across paired machines) ships in. */
 const V1_17 = '1.17.0';
+
+/** The version D100 (Team, experimental) ships in. */
+const V1_18 = '1.18.0';
+
+/** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
+const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
+
+/** Team (D100): the steps that need a member. */
+const TEAM_NO_MEMBER = 'This shows once Team is on (Settings → Experimental → Team) and has a member: adopt one with ＋ Member. ';
 
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
@@ -605,6 +615,42 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['accounts-shared', 'accounts-others', 'accounts-list'],
         route: { view: 'settings', section: 'accounts' },
         missing: null,
+      },
+    ],
+  },
+  // Team (D100) hook: its What's-new tour (docs/team-removal.md).
+  {
+    id: 'team',
+    decision: 'D100',
+    version: V1_18,
+    title: 'Team (experimental)',
+    steps: [
+      {
+        id: 'switch',
+        title: 'Team (experimental)',
+        what: 'Run a set of role agents ("members") from one page: each member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for. It is off by default; while off nothing changes.',
+        todo: ['Turn Team on here.', 'Open Team in the sidebar.'],
+        anchors: ['experimental-team'],
+        route: { view: 'settings', section: 'experimental' },
+        missing: 'Team lives in Settings → Experimental. ',
+      },
+      {
+        id: 'adopt',
+        title: 'Adopt a session as a member',
+        what: 'Switchboard suggests sessions that look like team members (recurring loops, mostly reading, mostly editing…) and drafts a charter for each. Adopting one moves it from your session list into Team, with its history, worktrees, todos and loops.',
+        todo: ['Press ＋ Member (or Review on the banner).', 'Pick a suggestion, check its charter and gates, and press Adopt into the team.', 'Or start a new member from a template.'],
+        anchors: ['team-add'],
+        route: { view: 'team' },
+        missing: TEAM_OFF,
+      },
+      {
+        id: 'needs-you',
+        title: 'Needs you, and Return to sessions',
+        what: "Needs you lists everything your members wait for: their questions, permission requests and review cards, and Team's own approvals (a gated merge, a budget); answer them in place. A member's ⋯ menu gives it a task, pauses it or moves it to your other machine, and ↩ Return to sessions puts its session back in its folder as a plain session. Switching Team off returns every member.",
+        todo: ['Tap an option to answer a question, Reply… to open the chat, or Approve / Decline a request.', "Open a member's ⋯ menu and pick ↩ Return to sessions when it is no longer needed."],
+        anchors: ['team-needs-you', 'team-member-menu'],
+        route: { view: 'team' },
+        missing: TEAM_NO_MEMBER,
       },
     ],
   },

@@ -31,7 +31,22 @@ export interface AgentMcpLaunch {
   readonly env: Readonly<Record<string, string>>;
   /** Claude Code: the `--mcp-config` file written for this spawn; `null` = pass the JSON inline (tests). */
   readonly claudeConfigFile: string | null;
+  /**
+   * Team (D100) hook (docs/team-removal.md): the MCP servers of a team member's
+   * approved access (D100-T2), next to `switchboard`; absent for every other session.
+   */
+  readonly extraServers?: readonly AgentMcpExtraServer[];
 }
+
+/**
+ * D100-T2: an MCP server of a member's access. stdio: the access helper
+ * (`src/hook/sb-access-mcp.ts`), which fetches its command and values from
+ * Switchboard when it starts (no value in any config); http: the URL with its
+ * headers (`${VAR}` references, the values in the CLI's environment; Claude Code only).
+ */
+export type AgentMcpExtraServer =
+  | { readonly name: string; readonly transport: 'stdio'; readonly command: string; readonly args: readonly string[]; readonly env: Readonly<Record<string, string>> }
+  | { readonly name: string; readonly transport: 'http'; readonly url: string; readonly headers: Readonly<Record<string, string>> };
 
 /** The helper script (next to the hook script). */
 export const AGENT_MCP_SCRIPT = path.resolve(import.meta.dirname, '..', '..', 'hook', 'sb-mcp.ts');
@@ -49,7 +64,11 @@ export function agentMcpLaunch(input: { readonly nodePath: string; readonly scri
 
 /** Claude Code's `--mcp-config` document (`mcpServers`, a stdio server). */
 export function claudeMcpConfig(launch: AgentMcpLaunch): { readonly mcpServers: Record<string, unknown> } {
-  return { mcpServers: { [launch.name]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env } } } };
+  const extra: Record<string, unknown> = {};
+  for (const server of launch.extraServers ?? []) {
+    extra[server.name] = server.transport === 'stdio' ? { type: 'stdio', command: server.command, args: [...server.args], env: { ...server.env } } : { type: 'http', url: server.url, headers: { ...server.headers } };
+  }
+  return { mcpServers: { ...extra, [launch.name]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env } } } };
 }
 
 /** Claude Code's extra argv: the config (file, else inline JSON) and the allow rule for the server's tools. */
@@ -64,20 +83,28 @@ function tomlString(value: string): string {
 
 /** Codex CLI's extra argv (before the subcommand): the server as `-c` config overrides; the token comes from the environment (`env_vars`). */
 export function codexMcpArgs(launch: AgentMcpLaunch): string[] {
-  const key = `mcp_servers.${launch.name}`;
-  return [
-    '-c',
-    `${key}.command=${tomlString(launch.command)}`,
-    '-c',
-    `${key}.args=[${launch.args.map(tomlString).join(', ')}]`,
-    '-c',
-    `${key}.env_vars=[${Object.keys(launch.env).map(tomlString).join(', ')}]`,
-  ];
+  const stdio = (name: string, command: string, args: readonly string[], env: Readonly<Record<string, string>>): string[] => {
+    const key = `mcp_servers.${name}`;
+    return ['-c', `${key}.command=${tomlString(command)}`, '-c', `${key}.args=[${args.map(tomlString).join(', ')}]`, '-c', `${key}.env_vars=[${Object.keys(env).map(tomlString).join(', ')}]`];
+  };
+  // D100-T2: an access's stdio server too (http access servers are Claude Code only).
+  const extra = (launch.extraServers ?? []).flatMap((server) => (server.transport === 'stdio' ? stdio(server.name, server.command, server.args, server.env) : []));
+  return [...stdio(launch.name, launch.command, launch.args, launch.env), ...extra];
 }
 
 /** OpenCode's `mcp` entry (merged into `OPENCODE_CONFIG_CONTENT`). */
 export function opencodeMcpEntry(launch: AgentMcpLaunch): Record<string, unknown> {
   return { type: 'local', command: [launch.command, ...launch.args], environment: { ...launch.env }, enabled: true };
+}
+
+/** OpenCode's `mcp` entries: `switchboard` and (D100-T2) a member's access stdio servers (http ones are Claude Code only). */
+export function opencodeMcpEntries(launch: AgentMcpLaunch): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const server of launch.extraServers ?? []) {
+    if (server.transport === 'stdio') out[server.name] = { type: 'local', command: [server.command, ...server.args], environment: { ...server.env }, enabled: true };
+  }
+  out[launch.name] = opencodeMcpEntry(launch);
+  return out;
 }
 
 /**
