@@ -35,6 +35,13 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL('./dist/web', import.meta.url)),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./src/web/index.html', import.meta.url)),
+        // D99-Jira: the import dialog's stand-alone dev mount (not linked from the app; tests/e2e/plans-jira.spec.ts).
+        plansJiraDev: fileURLToPath(new URL('./src/web/plans-jira-dev.html', import.meta.url)),
+      },
+    },
     // tools/dev.ts turns watching on; the exclusions apply whenever it is on.
     watch: process.env['SWITCHBOARD_VITE_WATCH'] === '1' ? { exclude: IGNORED } : null,
   },

@@ -1,0 +1,258 @@
+/* D99-Jira: the Import from Jira dialog, a plan's Jira section, the Jira credentials form (docs/plans.md -> Jira import and status sync). App tokens only (styles/tokens.css). */
+.sb-jira-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-jira-dialog {
+  box-sizing: border-box;
+  width: 760px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 40px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  color: var(--text);
+  font-size: var(--fs-body);
+  overflow: hidden;
+}
+
+.sb-jira-head,
+.sb-jira-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.sb-jira-head {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-jira-head h2 {
+  margin: 0;
+  font-size: var(--fs-modal-title);
+  color: var(--text-strong);
+}
+
+.sb-jira-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-divider);
+}
+
+.sb-jira-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.sb-jira-body h3 {
+  margin: 0 0 6px;
+  font-size: var(--fs-section-label);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-1);
+}
+
+.sb-jira-epic,
+.sb-jira-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sb-jira-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-jira-grow {
+  flex: 1 1 220px;
+}
+
+.sb-jira-field input,
+.sb-jira-inline select {
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+.sb-jira-btn {
+  height: 32px;
+  padding: 0 14px;
+  background: var(--bg-card-2);
+  color: var(--text);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sb-jira-btn-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: transparent;
+}
+
+.sb-jira-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-jira-close {
+  background: none;
+  border: 0;
+  color: var(--muted-1);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.sb-jira-preview,
+.sb-jira-form,
+.sb-jira-panel,
+.sb-jira-creds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sb-jira-items,
+.sb-jira-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-jira-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+}
+
+.sb-jira-items li[data-unlinked='true'] {
+  border-color: var(--status-need);
+}
+
+.sb-jira-key {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-meta);
+  color: var(--branch-fg);
+}
+
+.sb-jira-summary {
+  flex: 1 1 200px;
+  color: var(--text-strong);
+}
+
+.sb-jira-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sb-jira-chip {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--bg-card-2);
+  border-radius: var(--radius-chip);
+}
+
+.sb-jira-flag {
+  color: var(--status-need);
+}
+
+.sb-jira-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+}
+
+.sb-jira-sync legend {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-jira-sync label,
+.sb-jira-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-jira-muted {
+  color: var(--muted-1);
+  font-size: 12px;
+}
+
+.sb-jira-warn {
+  color: var(--status-need);
+}
+
+.sb-jira-error {
+  color: var(--status-fail);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.sb-jira-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+}
+
+.sb-jira-notice p {
+  margin: 0;
+}
+
+.sb-jira-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Phones: the dialog fills the screen. */
+@media (max-width: 640px) {
+  .sb-jira-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+}
