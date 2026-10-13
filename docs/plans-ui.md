@@ -68,7 +68,7 @@ Desktop (≥ 1280): as above. Tablet: the same, padding 16 px, the graph scrolls
 
 ## What's new
 
-`plans` (1.18.0, D99): two steps (the nav item; ＋ New plan). It is offered and listed only while Plans is on (`TourHost.tsx`, `TutorialSection.tsx` filter it); while off it stays pending and shows the first time the page loads with Plans on.
+`plans` (1.18.0, D99): three steps (the nav item; ＋ New plan; Import from Jira, on the Jira dialog's epic field `jira-epic`, else the Plans list's Import button `plans-import`). It is offered and listed only while Plans is on (`TourHost.tsx`, `TutorialSection.tsx` filter it); while off it stays pending and shows the first time the page loads with Plans on.
 
 ## Tests
 
