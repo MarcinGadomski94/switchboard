@@ -1,4 +1,5 @@
 import { isClock } from './hlc.ts';
+import { type TeamAccessRecord, readAccessRecord } from './team-access.ts';
 import {
   ACTIVITY_CAP,
   ACTIVITY_KINDS,
@@ -42,6 +43,8 @@ export interface TeamSnapshot {
   readonly requests: readonly TeamRequestRecord[];
   /** The newest {@link ACTIVITY_CAP} lines per team at most. */
   readonly activity: readonly TeamActivityRecord[];
+  /** D100-T2: the access records (names, hosts, fields, keychain references and where they are set up; never a value). An older peer sends none. */
+  readonly access: readonly TeamAccessRecord[];
 }
 
 /** One side of the exchange. */
@@ -52,7 +55,7 @@ export interface TeamSyncMessage {
 }
 
 /** An empty snapshot. */
-export const EMPTY_SNAPSHOT: TeamSnapshot = { teams: [], members: [], handoffs: [], requests: [], activity: [] };
+export const EMPTY_SNAPSHOT: TeamSnapshot = { teams: [], members: [], handoffs: [], requests: [], activity: [], access: [] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -230,6 +233,7 @@ export function readTeamSyncMessage(value: unknown): TeamSyncMessage | null {
       handoffs: list(s['handoffs'], readHandoffRecord, 5_000),
       requests: list(s['requests'], readRequestRecord, 2_000),
       activity: list(s['activity'], readActivityRecord, ACTIVITY_CAP * 20),
+      access: list(s['access'], readAccessRecord, 2_000),
     },
   };
 }

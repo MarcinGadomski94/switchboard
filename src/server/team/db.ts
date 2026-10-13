@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { ACTIVITY_CAP, type TeamActivityRecord, type TeamHandoffRecord, type TeamMemberRecord, type TeamRecord, type TeamRequestRecord } from '../../core/team.ts';
+import { type TeamAccessRecord, readAccessRecord } from '../../core/team-access.ts';
 import { readActivityRecord, readHandoffRecord, readMemberRecord, readRequestRecord, readTeamRecord } from '../../core/team-sync.ts';
 import { openDatabase, transaction } from '../db/database.ts';
 import { type Migration, makeMigration, migrate } from '../db/migrate.ts';
@@ -64,9 +65,23 @@ CREATE TABLE activity (
 CREATE INDEX activity_team_at ON activity (team_id, at);
 `,
   ),
+  makeMigration(
+    2,
+    'team_access',
+    `-- D100-T2: access requests (docs/team.md -> Access requests). Metadata only: names, hosts, fields, keychain references; never a secret value.
+CREATE TABLE access (
+  id       TEXT PRIMARY KEY,
+  team_id  TEXT NOT NULL,
+  clock    TEXT NOT NULL,
+  deleted  INTEGER NOT NULL DEFAULT 0,
+  data     TEXT NOT NULL CHECK (json_valid(data))
+) STRICT;
+CREATE INDEX access_team ON access (team_id);
+`,
+  ),
 ];
 
-type SyncedTable = 'members' | 'handoffs' | 'requests';
+type SyncedTable = 'members' | 'handoffs' | 'requests' | 'access';
 
 /** The Team database (one connection, synchronous `node:sqlite` behind async methods like the main store). */
 export class TeamDb {
@@ -89,7 +104,7 @@ export class TeamDb {
     try {
       migrate(db, migrations);
       // A quick read of every table: a file that is not a database (or lost a table) fails here, not later.
-      for (const table of ['teams', 'members', 'handoffs', 'requests', 'activity']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      for (const table of ['teams', 'members', 'handoffs', 'requests', 'activity', 'access']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;
@@ -161,6 +176,15 @@ export class TeamDb {
 
   putRequest(record: TeamRequestRecord): void {
     this.#put('requests', record);
+  }
+
+  /** D100-T2: every access record (tombstones too). */
+  access(): TeamAccessRecord[] {
+    return this.#rows('SELECT data FROM access ORDER BY rowid', [], readAccessRecord);
+  }
+
+  putAccess(record: TeamAccessRecord): void {
+    this.#put('access', record);
   }
 
   // ── activity ──────────────────────────────────────────────────────────

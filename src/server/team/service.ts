@@ -58,6 +58,8 @@ import type { ReviewService } from '../reviews/service.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
+import { TeamAccess, accessIdOfRef } from './access/service.ts';
+import { type SecretStore, defaultSecretStore } from './access/secret-store.ts';
 import { TeamDb } from './db.ts';
 import { registerTeamHooks } from './hooks.ts';
 import { peerCall } from './peer-call.ts';
@@ -96,6 +98,8 @@ export interface TeamServiceOptions {
   /** Starts a new session (`POST /api/sessions`'s logic) and runs `beforeSpawn` once it is stored, before its process starts. */
   readonly startSession?: (body: unknown, beforeSpawn: (sessionId: string) => Promise<void>) => Promise<{ readonly ok: true; readonly sessionId: string } | { readonly ok: false; readonly status: number; readonly body: unknown }>;
   readonly now?: () => number;
+  /** D100-T2: the keychain access values go to (default: this OS's, or the in-memory one under tests). */
+  readonly secretStore?: SecretStore;
   /** The Team tick (budgets, paused members' loops, hand-off delivery); default 60 s. */
   readonly tickMs?: number;
   /** The sync with paired machines; default 30 s. */
@@ -160,9 +164,38 @@ export class TeamService {
   readonly #moves = new Map<string, TeamMoveRun>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
   readonly #syncedWith = new Set<string>();
+  /** D100-T2: access requests (`access/service.ts`). */
+  readonly access: TeamAccess;
 
   constructor(options: TeamServiceOptions) {
     this.#o = options;
+    this.access = new TeamAccess({
+      store: options.store,
+      supervisor: options.supervisor,
+      secrets: options.secretStore ?? defaultSecretStore(),
+      db: () => this.#need(),
+      available: () => this.#enabled && this.#db !== null,
+      selfId: () => this.#selfId(),
+      stamp: () => this.#stamp(),
+      now: () => this.#now(),
+      serial: (work) => this.#serial(work),
+      changed: (what) => this.#changed(what),
+      activity: (kind, memberId, text) => this.#activity(kind, memberId, text),
+      members: () => this.#liveMembers(),
+      memberOfSession: (sessionId) => this.memberOfSession(sessionId),
+      requestGate: (input) => this.requestGate(input),
+      machineNames: () => this.#machineNames(),
+      reload: async (sessionId) => {
+        await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
+        try {
+          return await this.#o.supervisor.reloadInstruction(sessionId);
+        } catch (error) {
+          this.#error(error);
+          return 'failed';
+        }
+      },
+      error: (error) => this.#error(error),
+    });
   }
 
   #now(): number {
@@ -193,6 +226,10 @@ export class TeamService {
       roleOf: (sessionId) => this.#roles.get(sessionId) ?? null,
       reviewGate: (input) => this.#reviewGate(input),
       switchChanged: () => this.switchChanged(),
+      // D100-T2: a member's access at its spawn (servers, environment, masking).
+      accessServers: (sessionId) => this.access.serversFor(sessionId),
+      accessEnv: (sessionId) => this.access.envFor(sessionId),
+      mask: (sessionId) => this.access.maskerFor(sessionId),
     });
     await this.switchChanged();
   }
@@ -752,6 +789,8 @@ export class TeamService {
       this.#activity('return', id, `${current.name} returned to the sessions list`);
       return current;
     });
+    // D100-T2: its accesses end with it (this machine's values leave the keychain).
+    await this.access.memberRemoved(id).catch((error: unknown) => this.#error(error));
     this.#changed(['members', 'activity']);
     await this.#restorePlace(member);
     const session = await this.#o.store.sessions.get(member.sessionId);
@@ -1068,7 +1107,8 @@ export class TeamService {
     for (const request of this.#need().requests()) {
       const member = byId.get(request.memberId);
       if (request.deleted || request.state !== 'open' || !member) continue;
-      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), request: stripRequest(request) });
+      const access = request.kind === 'access' ? await this.access.entryForRequest(request) : null;
+      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), request: stripRequest(request), ...(access ? { access } : {}) });
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -1108,7 +1148,10 @@ export class TeamService {
     });
     this.#changed(['requests', 'activity']);
     let note: string | null = null;
-    if (decision === 'approve' && request.action) {
+    if (request.kind === 'access') {
+      // D100-T2: Deny / Not now / Approve of an access request (never a setup: the values are entered in the Access tab).
+      note = await this.access.decided(request, decision);
+    } else if (decision === 'approve' && request.action) {
       try {
         note = await this.#run(request, request.action);
       } catch (error) {
@@ -1138,7 +1181,7 @@ export class TeamService {
       await this.resume(request.memberId);
       return 'Resumed.';
     }
-    // T2 seam (external writes through the access mechanism): nothing runs here yet.
+    if (accessIdOfRef(action.ref)) return 'Approved: set it up in the member\'s Access tab.';
     return 'Approved: the member may go ahead.';
   }
 
@@ -1211,6 +1254,7 @@ export class TeamService {
       }
     }
     await this.#deliverHandoffs();
+    await this.access.tick();
   }
 
   // ── sync with paired machines ─────────────────────────────────────────
@@ -1219,7 +1263,7 @@ export class TeamService {
   async message(): Promise<TeamSyncMessage> {
     const db = this.#need();
     const self = this.#self ?? (await this.#o.peers.self());
-    const snapshot: TeamSnapshot = { teams: db.teams(), members: db.members(), handoffs: db.handoffs(), requests: db.requests(), activity: db.activity(DEFAULT_TEAM_ID) };
+    const snapshot: TeamSnapshot = { teams: db.teams(), members: db.members(), handoffs: db.handoffs(), requests: db.requests(), activity: db.activity(DEFAULT_TEAM_ID), access: db.access() };
     return { v: TEAM_SYNC_VERSION, machine: self, snapshot };
   }
 
@@ -1231,20 +1275,22 @@ export class TeamService {
       const db = this.#need();
       const clock = this.#clock as HybridClock;
       const s = message.snapshot;
-      for (const record of [...s.teams, ...s.members, ...s.handoffs, ...s.requests]) clock.observe(record.clock);
+      for (const record of [...s.teams, ...s.members, ...s.handoffs, ...s.requests, ...s.access]) clock.observe(record.clock);
       const teams = newerRecords(db.teams(), s.teams);
       const members = newerRecords(db.members(), s.members);
       const handoffs = newerRecords(db.handoffs(), s.handoffs);
       const requests = newerRecords(db.requests(), s.requests);
       const activity = newActivity(db.activity(DEFAULT_TEAM_ID), s.activity);
+      const access = newerRecords(db.access(), s.access);
       db.transaction(() => {
         for (const team of teams) db.putTeam(team);
         for (const member of members) db.putMember(member);
         for (const handoff of handoffs) db.putHandoff(handoff);
         for (const request of requests) db.putRequest(request);
+        for (const record of access) db.putAccess(record);
       });
       db.addActivity(activity);
-      return { any: teams.length + members.length + handoffs.length + requests.length + activity.length > 0, members };
+      return { any: teams.length + members.length + handoffs.length + requests.length + activity.length + access.length > 0, members, access };
     });
     this.#syncedWith.add(message.machine.id);
     if (changed.any) {
@@ -1254,6 +1300,8 @@ export class TeamService {
       for (const member of changed.members) {
         if (member.machineId === this.#selfId()) await this.#applyCharter(member.sessionId);
       }
+      // D100-T2: a revoked access's values leave this machine's keychain too; a member that runs here picks its access up.
+      for (const sessionId of await this.access.received(changed.access)) await this.#applyCharter(sessionId);
       await this.#republishMembers();
       await this.#deliverHandoffs();
     }
@@ -1435,7 +1483,8 @@ export class TeamService {
   async #charterFor(sessionId: string): Promise<string | null> {
     const member = this.memberOfSession(sessionId);
     if (!member) return null;
-    return charterInstruction(member.name, this.#team().name, member.charter, member.gates);
+    const access = this.access.charterLines(member);
+    return [charterInstruction(member.name, this.#team().name, member.charter, member.gates), access].filter(Boolean).join(' ');
   }
 
   // ── forwarding to the member's machine ────────────────────────────────

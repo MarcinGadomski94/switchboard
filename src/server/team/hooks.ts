@@ -1,5 +1,10 @@
+import path from 'node:path';
 import type { InboxItem } from '../../core/api.ts';
 import type { SearchAnswer } from '../../core/search.ts';
+import { ACCESS_MCP_MARKER } from '../../core/team-access.ts';
+import { AGENT_MCP_MARKER } from '../../core/todos.ts';
+import type { AgentMcpExtraServer, AgentMcpLaunch } from '../todos/agent-mcp.ts';
+import type { AccessEnv, AccessServerSpec } from './access/service.ts';
 
 /**
  * D100 · the seams Team plugs into the rest of Switchboard (`docs/team-removal.md`
@@ -21,7 +26,16 @@ export interface TeamHooks {
   reviewGate(input: { readonly reviewId: string; readonly sessionId: string; readonly action: string; readonly body: unknown; readonly bases: readonly (string | null)[] }): Promise<string | null>;
   /** Settings → Experimental → Team was switched (`PUT /api/settings`). */
   switchChanged(): Promise<void>;
+  /** D100-T2: the MCP servers of a member's ready access (no value in them). */
+  accessServers?(sessionId: string): readonly AccessServerSpec[];
+  /** D100-T2: the environment a member's spawn gets (its API keys) and the values to mask. */
+  accessEnv?(sessionId: string): Promise<AccessEnv>;
+  /** D100-T2: the masking pass of a session's recorded output (identity for a non-member). */
+  mask?(sessionId: string): (text: string) => string;
 }
+
+/** The access launcher (`src/hook/sb-access-mcp.ts`), next to the `switchboard` helper. */
+export const ACCESS_MCP_SCRIPT = path.resolve(import.meta.dirname, '..', '..', 'hook', 'sb-access-mcp.ts');
 
 const registry = new WeakMap<object, TeamHooks>();
 
@@ -76,4 +90,31 @@ export async function teamReviewGate(store: object, input: Parameters<TeamHooks[
 /** Settings seam: the Team switch changed. */
 export async function teamSwitchChanged(store: object): Promise<void> {
   await registry.get(store)?.switchChanged();
+}
+
+/**
+ * D68 seam (D100-T2): a member's access MCP servers are added to its `switchboard`
+ * launch (the same Node, port and agent token: the launcher fetches the server and
+ * its values from Switchboard when it starts). Unchanged for every other session.
+ */
+export function withTeamAccessServers(store: object, launch: AgentMcpLaunch, sessionId: string): AgentMcpLaunch {
+  const specs = registry.get(store)?.accessServers?.(sessionId) ?? [];
+  if (specs.length === 0) return launch;
+  const at = launch.args.indexOf(AGENT_MCP_MARKER);
+  const port = at >= 0 ? launch.args[at + 1] : undefined;
+  const extra: AgentMcpExtraServer[] = [];
+  for (const spec of specs) {
+    if (spec.kind === 'http') extra.push({ name: spec.name, transport: 'http', url: spec.url, headers: spec.headers });
+    else if (port) extra.push({ name: spec.name, transport: 'stdio', command: launch.command, args: [ACCESS_MCP_SCRIPT, ACCESS_MCP_MARKER, port, sessionId, spec.accessId], env: { ...launch.env } });
+  }
+  return { ...launch, extraServers: extra };
+}
+
+/** Supervisor seam (D100-T2): a member's API keys for its spawn's environment and the masking pass of its output (nothing / identity otherwise). */
+export async function teamAccessEnv(store: object, sessionId: string): Promise<{ readonly env: Readonly<Record<string, string>>; readonly mask: (text: string) => string }> {
+  const hooks = registry.get(store);
+  const identity = (text: string): string => text;
+  if (!hooks?.accessEnv) return { env: {}, mask: identity };
+  const access = await hooks.accessEnv(sessionId).catch(() => ({ env: {}, secrets: [] }));
+  return { env: access.env, mask: hooks.mask?.(sessionId) ?? identity };
 }

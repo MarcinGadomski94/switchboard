@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { HANDOFF_TEXT_MAX, REPORT_MAX } from './team.ts';
+import { registerAccessTool } from './team-access-tools.ts';
 
 /**
  * D100 · the Team tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`,
@@ -154,5 +155,7 @@ export async function registerTeamToolsIfMember(server: McpServer, api: TeamAgen
     return false;
   }
   registerTeamTools(server, api);
+  // D100-T2: request_access, likewise only in a member's session.
+  registerAccessTool(server, api);
   return true;
 }

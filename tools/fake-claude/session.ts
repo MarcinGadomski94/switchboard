@@ -32,6 +32,7 @@ import {
   resolveInside,
   sayLongToken,
   sayToken,
+  echoEnvToken,
   noteToken,
   scenarioToken,
   toolResultText,
@@ -750,10 +751,11 @@ export class Runner {
 
     const worktreeAdd = msg.fired ? null : worktreeAddToken(msg.text, this.o.cwd);
     const writePath = msg.fired || worktreeAdd !== null ? null : writeToken(msg.text);
-    const toolCall = msg.fired || writePath !== null || worktreeAdd !== null ? null : toolToken(msg.text);
+    const echoEnv = msg.fired || writePath !== null || worktreeAdd !== null ? null : echoEnvToken(msg.text);
+    const toolCall = msg.fired || writePath !== null || worktreeAdd !== null || echoEnv !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
-    const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null ? null : backgroundToken(msg.text);
-    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : (sayToken(msg.text) ?? sayLongToken(msg.text));
+    const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || echoEnv !== null ? null : backgroundToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null || echoEnv !== null ? null : (sayToken(msg.text) ?? sayLongToken(msg.text));
     /** D44: `[fake:hold <seconds>]`: the default turn, held before its reply. */
     const hold = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null || said !== null ? null : holdToken(msg.text);
     /** D57: a message that carries images / PDFs (and no other token, nor a scenario switch) is answered with what it carried. */
@@ -777,6 +779,12 @@ export class Runner {
       const result = await addWorktree(worktreeAdd, this.o.env);
       steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
       tool = { name: 'Bash', input: { command: worktreeAddCommand(worktreeAdd), description: 'Create the git worktree' }, result };
+      scenario = 'tx-main';
+      turnIndex = 0;
+    } else if (echoEnv !== null) {
+      // D100-T2: a Bash call that prints an environment variable (its value as the tool_result).
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: 'Bash', input: { command: `printenv ${echoEnv}`, description: 'Print an environment variable' }, result: { text: this.o.env[echoEnv] ?? '', isError: false } };
       scenario = 'tx-main';
       turnIndex = 0;
     } else if (toolCall !== null && 'error' in toolCall) {

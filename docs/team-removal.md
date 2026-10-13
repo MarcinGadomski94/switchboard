@@ -6,30 +6,36 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 
 - `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync)
 - `src/core/team.ts`, `src/core/team-templates.ts`, `src/core/team-budget.ts`, `src/core/team-sync.ts`, `src/core/team-tools.ts`
-- `src/web/team/` (the sidebar filter, Settings → Experimental; T3 adds the Team page here)
-- `tests/server/team/`
+- `src/web/team/` (the sidebar filter, Settings → Experimental, T2's Access tab in `src/web/team/access/`; T3 adds the Team page here)
+- `src/core/team-access.ts`, `src/core/team-access-catalog.ts`, `src/core/team-access-tools.ts` (T2: access requests)
+- `src/hook/sb-access-mcp.ts` (T2: the access MCP launcher) and `src/web/team-access-dev.html` (T2: the Access tab's dev mount)
+- `tests/server/team/`, `tests/e2e/team-access.spec.ts`
 - `docs/team.md`, this file
 
 ## 2. Revert the hooks
 
 | File | Hook | Revert to |
 |---|---|---|
-| `src/server/app.ts` | imports `installTeam`; builds `apiContext` once and calls `installTeam(app, apiContext)` after `registerApiRoutes` | drop the import and the call (the `apiContext` variable may stay, or inline it back) |
+| `src/server/app.ts` | imports `installTeam`; builds `apiContext` once and calls `installTeam(app, apiContext)` after `registerApiRoutes`; T2: imports `withTeamAccessServers` and wraps the `agentMcpLaunch(…)` of `useAgentMcp` with it | drop the imports, the call and the wrap (the `apiContext` variable may stay, or inline it back) |
 | `src/core/settings.ts` | `experimental.team` in `KnownSettings`, `EDITABLE_SETTINGS`, `SETTING_DEFAULTS` and `readKnownSettings` | remove the key in all four places |
 | `src/server/api/settings.ts` | imports `teamSwitchChanged`; calls it when `PUT /api/settings` changes `experimental.team` | drop both |
-| `src/server/supervisor/supervisor.ts` | imports `withTeamCharter`; wraps `standingInstructionFor(…)` at the spawn (`#spawn`) and in `#reloadInstructionNow` | `await standingInstructionFor(this.#store.settings)` in both places |
+| `src/server/supervisor/supervisor.ts` | imports `withTeamCharter` and `teamAccessEnv`; wraps `standingInstructionFor(…)` at the spawn (`#spawn`) and in `#reloadInstructionNow`; T2: `teamAccess` at the spawn (its `env` spread into the spawn's `env`, its `mask` applied in `onLine` and `onNotice`) | `await standingInstructionFor(this.#store.settings)` in both places; drop `teamAccess` (the spawn's `env` back to `{ ...childEnv(this.#env), ...profileEnv }`, `onLine` / `onNotice` without the mask) |
+| `src/server/todos/agent-mcp.ts` | T2: `AgentMcpLaunch.extraServers` (`AgentMcpExtraServer`), added by `claudeMcpConfig`, `codexMcpArgs` and `opencodeMcpEntries` | drop the field and the type; `claudeMcpConfig` / `codexMcpArgs` back to the `switchboard` server only; `opencodeMcpEntries` back to `opencodeMcpEntry` |
+| `src/server/cli/opencode/bridge.ts` | T2: `configContent` spreads `opencodeMcpEntries(agentMcp)` | `[agentMcp.name]: opencodeMcpEntry(agentMcp)` |
 | `src/server/sessions/wire.ts` | imports `withTeamCharter`; wraps `standingInstructionFor(store.settings)` in `instructionState` | `await standingInstructionFor(store.settings)` |
 | `src/server/inbox/wire.ts` | imports `labelInboxItems`; `listInbox` returns `labelInboxItems(store, items)` | `return items;` |
-| `src/server/peers/service.ts` | imports `labelInboxItems`; `remoteInbox()` returns `labelInboxItems(this.#store, out)`; the Team entries of `PEER_API_ALLOW` | `return out;`; remove the entries under the Team comment |
+| `src/server/peers/service.ts` | imports `labelInboxItems`; `remoteInbox()` returns `labelInboxItems(this.#store, out)`; the Team entries of `PEER_API_ALLOW` (T2: the access metadata reads) | `return out;`; remove the entries under the Team comment |
 | `src/server/api/search.ts` | imports `labelSearchAnswer`; wraps the answer of `context.search.search(…)` | return `context.search.search(…)` directly |
 | `src/server/reviews/service.ts` | imports `teamReviewGate`; the gate check in `#act` before the action runs | drop the import and the three lines |
-| `src/server/devices/local-only.ts` | the Team entries of `DEVICE_ALLOWED` and `DEVICE_REFUSED` | remove them |
+| `src/server/devices/local-only.ts` | the Team entries of `DEVICE_ALLOWED` and `DEVICE_REFUSED` (T2: the Access tab's reads; setup / test / revoke / expiry refused) | remove them |
 | `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
 | `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers`; `teamHidden`; the one filter on `sessionList` | `const sessionList = openSessions(sessions.data ?? []);` |
 | `src/web/views/settings/model.ts` | the `experimental` section | remove the entry |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` | remove both |
+
+Outside `src/` (not markers): `vite.config.ts` builds T2's dev mount as a second entry (`rollupOptions.input.teamAccessDev`: remove it; the `main` entry may stay or the whole `rollupOptions` go); `tools/fake-claude` has a generic `[fake:echo-env NAME]` token (T2's tests use it; it may stay).
 
 Tests that name Team's additions (revert with the code):
 
