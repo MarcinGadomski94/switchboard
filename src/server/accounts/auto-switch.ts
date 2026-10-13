@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
 import { CLI_LABELS } from '../../core/cli-providers.ts';
-import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText } from '../../core/credits.ts';
+import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText, creditsResetDay } from '../../core/credits.ts';
 import type { SessionEvent } from '../../core/api.ts';
 import type { CliStatusService } from '../cli/status.ts';
 import type { Store } from '../db/store.ts';
@@ -149,7 +149,7 @@ export class AutoSwitcher {
         await items.creditNotice({
           kind: 'account-credits-low',
           title: `${profile.name}: credits running low`,
-          detail: `${money ?? 'Less than 20 % of the credit limit is left'}${credits.resetsAt ? `; the credits reset on ${clock(credits.resetsAt, new Date(now))}` : ''}.`,
+          detail: `${money ?? 'Less than 20 % of the credit limit is left'}${credits.resetsAt ? `; the credits reset on ${creditsResetDay(credits.resetsAt)}` : ''}.`,
           dedupe: `credits-low:${key}:${period}`,
         });
       }

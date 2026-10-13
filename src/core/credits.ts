@@ -235,6 +235,11 @@ export function formatMoney(amount: number, currency: string | null): string {
   return amount.toFixed(whole ? 0 : 2);
 }
 
+/** D103: the credit period's reset as a day in this machine's zone: `1 Nov`. */
+export function creditsResetDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 /** D103: the symbol of a currency code (`€` for EUR), `¤` when the code is unknown or has none (the "on credits" badge's glyph). */
 export function currencyGlyph(currency: string | null): string {
   if (!currency) return '¤';

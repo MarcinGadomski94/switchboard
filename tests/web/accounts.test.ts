@@ -179,7 +179,7 @@ describe('D103 · credits (web)', () => {
   });
 
   it('Settings → Accounts: the credits line with the reset; nothing while credits are off or unknown', () => {
-    expect(creditsText(usage(credits(true)), NOW)).toMatchObject({ onCredits: true, text: expect.stringMatching(/^On credits until \d\d:\d\d · €12\.40 left of €50 · credits reset \d+ [a-z]{3} \d\d:\d\d$/) });
+    expect(creditsText(usage(credits(true)), NOW)).toMatchObject({ onCredits: true, text: expect.stringMatching(/^On credits until \d\d:\d\d · €12\.40 left of €50 · credits reset \d+ [A-Z][a-z]{2}$/) });
     expect(creditsText(usage(credits(false)), NOW)?.text).toMatch(/^Credits: €12\.40 left of €50 · credits reset /);
     expect(creditsText(usage(credits(false, { enabled: false })), NOW)).toBeNull();
     expect(creditsText(usage(null), NOW)).toBeNull();

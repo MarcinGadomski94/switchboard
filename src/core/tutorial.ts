@@ -672,6 +672,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'credits',
+    decision: 'D103',
+    version: V1_18,
+    title: 'Credits: see them, and save them',
+    steps: [
+      {
+        id: 'footer',
+        title: 'An amber badge when an account pays from credits',
+        what: 'An account past its 5-hour or weekly limit that keeps answering is paid from credits (extra usage). Its line in the usage grid then gets an amber "on credits" badge with what is left of its credit limit, like "€12.40 left of €50". The Inbox (and your phone, if it gets Inbox pushes) tells you once when it starts, and when less than 20 % is left.',
+        todo: ['Look at the usage grid at the bottom of the sidebar.', 'Hover an account\'s line for its credits and when its limit resets.'],
+        anchors: ['usage'],
+        drawer: true,
+        missing: 'The usage grid sits at the bottom of the sidebar.',
+      },
+      {
+        id: 'settings',
+        title: 'Allowance first, credits last',
+        what: 'New sessions and automatic switches always prefer an account with subscription allowance. When an account resets, sessions running on credits move back to it as soon as their turn ends. If no account has allowance, choose here: keep going on credits, or pause new turns until an account resets.',
+        todo: ['Open Settings → Accounts.', 'Pick what happens "When every account is out of allowance".'],
+        anchors: ['accounts-credits'],
+        route: { view: 'settings', section: 'accounts' },
+        missing: null,
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

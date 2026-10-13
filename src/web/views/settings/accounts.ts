@@ -2,7 +2,7 @@ import type { AccountProfile, ProfileUsage } from '../../../core/accounts.ts';
 import { clock } from '../../../core/accounts.ts';
 import type { AccountSignIn } from '../../api/client.ts';
 import { type PeerOnlyAccount, machinesLabel } from '../../../core/shared-accounts.ts';
-import { creditsInUse, creditsMoneyText } from '../../../core/credits.ts';
+import { creditsInUse, creditsMoneyText, creditsResetDay } from '../../../core/credits.ts';
 
 /**
  * D63 · Settings → Accounts (`docs/accounts.md`): the pure part. Nothing here is
@@ -38,7 +38,7 @@ export function creditsText(usage: Pick<ProfileUsage, 'credits'> | null, now: nu
   const on = creditsInUse(credits, now);
   if (!on && credits.enabled !== true) return null;
   const money = creditsMoneyText(credits);
-  const reset = credits.resetsAt && Date.parse(credits.resetsAt) > now ? `credits reset ${clock(credits.resetsAt, new Date(now))}` : null;
+  const reset = credits.resetsAt && Date.parse(credits.resetsAt) > now ? `credits reset ${creditsResetDay(credits.resetsAt)}` : null;
   if (on) return { onCredits: true, text: [`On credits until ${clock(credits.until as string, new Date(now))}`, money, reset].filter(Boolean).join(' · ') };
   return { onCredits: false, text: [`Credits: ${money ?? 'enabled'}`, reset].filter(Boolean).join(' · ') };
 }

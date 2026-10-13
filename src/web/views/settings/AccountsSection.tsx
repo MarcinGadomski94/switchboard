@@ -626,7 +626,7 @@ function Rules({ settings, profiles, save }: { readonly settings: AccountSetting
         label="When every account is out of allowance"
         description="An account past its plan limit can keep working on credits (paid extra usage). Switchboard always prefers an account with allowance, and moves sessions back to one when it has allowance again."
       >
-        <select className="sb-set-select" data-testid="accounts-out-of-allowance" aria-label="When every account is out of allowance" value={settings.outOfAllowance} onChange={(event) => save({ outOfAllowance: event.target.value })}>
+        <select className="sb-set-select" data-testid="accounts-out-of-allowance" data-tour="accounts-credits" aria-label="When every account is out of allowance" value={settings.outOfAllowance} onChange={(event) => save({ outOfAllowance: event.target.value })}>
           <option value="use-credits">Use credits</option>
           <option value="pause">Pause new turns until an account resets</option>
         </select>
