@@ -215,6 +215,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/plans\/[^/]+(?:\/items\/[^/]+|\/edges\/[^/]+\/[^/]+)?$/],
   ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
   ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
+  // Plans (D99) hook: Jira import and sync run on the machine that owns the plan (its credentials); the credential routes are never forwarded.
+  ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
+  ['GET', /^\/api\/plans\/[^/]+\/jira$/],
+  ['PUT', /^\/api\/plans\/[^/]+\/jira$/],
+  ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

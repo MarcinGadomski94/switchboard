@@ -335,6 +335,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   // D99: plans (the list; every other route answers the plan, an added item `{ plan, itemId }`; Delete answers 204).
   if (pathname === '/api/plans') return upper === 'GET' ? 'plans' : upper === 'POST' ? 'plan' : 'none';
   if (upper === 'POST' && /^\/api\/plans\/[^/]+\/items$/.test(pathname)) return 'plan-item';
+  // Plans (D99) hook: a Jira import answers `{ plan, jira, preview }` (the plan namespaced like an added item's); a plan's Jira state stays raw (item ids are raw).
+  if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/plans\/jira\/import$/.test(pathname)) return 'plan-item';
+  if (/^\/api\/plans\/[^/]+\/jira(?:\/refresh)?$/.test(pathname)) return 'none';
   if (/^\/api\/plans\/[^/]+(?:\/.*)?$/.test(pathname)) return upper === 'DELETE' && /^\/api\/plans\/[^/]+$/.test(pathname) ? 'none' : 'plan';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';

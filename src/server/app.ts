@@ -40,7 +40,7 @@ import { FreshPlaces } from './sessions/fresh-place.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
-import { registerApiRoutes } from './routes.ts';
+import { type ApiContext, registerApiRoutes } from './routes.ts';
 import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
@@ -59,6 +59,8 @@ import { WorktreeManager } from './worktrees/manager.ts';
 import { PlanGit } from './plans/git.ts';
 import { planEnvironment } from './plans/environment.ts';
 import { PlanService } from './plans/service.ts';
+// Plans (D99) hook: the Jira import and status sync (docs/plans-removal.md).
+import { type PlansJiraOptions, installPlansJira } from './plans/jira/install.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -191,6 +193,8 @@ export interface AppOptions {
   readonly plans?: PlanService;
   /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
   readonly peerSearchTimeoutMs?: number;
+  /** Plans (D99) hook: the Jira lane's options (tests: the fake Jira's `env`, a memory keychain, the refresh interval). */
+  readonly plansJira?: Partial<PlansJiraOptions>;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -568,7 +572,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     plans = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search, plans });
+  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search, plans };
+  await registerApiRoutes(app, apiContext);
+  // Plans (D99) hook: the Jira import and status sync (docs/plans-removal.md).
+  await installPlansJira(app, apiContext, { enabled: () => true, secretStore: null, ...options.plansJira });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

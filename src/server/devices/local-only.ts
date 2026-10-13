@@ -133,6 +133,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
   ['DELETE', /^\/api\/plans\/[^/]+\/edges\/[^/]+\/[^/]+$/],
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
+  // Plans (D99) hook: Jira import (preview, import) and a plan's Jira sync (read, settings, refresh); a phone may (developer ruling 2026-10-13).
+  ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
+  ['GET|PUT', /^\/api\/plans\/[^/]+\/jira$/],
+  ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
 ];
 
 /**
@@ -181,6 +185,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/settings\/standing-instruction\/apply$/],
   // D79: a review's Discard (drops the changes) and Clean up (removes the worktree and its branch): desktop only.
   ['POST', /^\/api\/reviews\/[^/]+\/(?:discard|cleanup)$/],
+  // Plans (D99) hook: Settings → Integrations → Jira (the credentials) stay on this computer.
+  ['*', /^\/api\/integrations\/jira$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

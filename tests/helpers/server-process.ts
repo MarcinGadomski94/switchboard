@@ -77,11 +77,12 @@ export function testServerDefaults(): Record<string, string> {
   };
 }
 
-/** Environment for a test server: the parent env without any SWITCHBOARD_*, the {@link testServerDefaults}, then `env`. */
+/** Environment for a test server: the parent env without any SWITCHBOARD_* or ATL_*, the {@link testServerDefaults}, then `env`. */
 export function testServerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith('SWITCHBOARD_')) clean[key] = value;
+    // D99-Jira: never the developer's own Jira credentials (ATL_*): a test server only talks to tests/helpers/fake-jira.ts.
+    if (!key.startsWith('SWITCHBOARD_') && !key.startsWith('ATL_')) clean[key] = value;
   }
   return { ...clean, ...testServerDefaults(), ...env };
 }
