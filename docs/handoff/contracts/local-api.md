@@ -1578,6 +1578,48 @@ GET /api/sessions/0b7c3e0a-…/events?around=4711&limit=1000   → ≤ 499 befor
 GET /api/sessions/0b7c3e0a-…/events?after=5211&limit=1000    → the 1,000 after event 5211
 ```
 
+## Plans (D99, 2026-10-13, additive, experimental)
+Developer decision D99 (`docs/decisions.md`; details `docs/plans.md`; removal `docs/plans-removal.md`). Types in `src/core/plans.ts` (`PlansState`, `Plan`, `PlanItem`, `PlanEdge`, `PlanAnswers`, `PlanChecks`, `PlanExternalRef`, `PlanChanged`). Data in the separate `<dataDir>/plans.db` (no migration in the main database). **Off by default** (setting `experimental.plans`, `PUT /api/settings`): while off only `GET /api/plans/state` answers; every other route below is 404 `plans-off`; with a broken `plans.db` they are 503 `plans-unavailable`. Errors are `{ error, message }` (+ `errors: [{ field, message }]` for a 422 on a field).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/plans/state | | 200 `PlansState` `{ enabled, available, problem }` (always) |
+| GET | /api/plans | | 200 `Plan[]` (this machine's, then the paired machines' as last known) |
+| POST | /api/plans | `{ sourceSessionId, title, targetBranch, baseBranch? ('dev'), repos?, maxConcurrency? (1–16, 3), usageThreshold? (1–100, 85), answers?: { workType, mode, phase, coordination, notes }, external?: { system: 'jira', key } }` | 201 `Plan` (a draft) · 404 · 409 `closed` / `not-a-repo` / `no-folder` · 422 |
+| GET · PUT · DELETE | /api/plans/{id} | PUT: any of the create fields but `sourceSessionId` (`targetBranch`, `repos` only in a draft) | 200 `Plan` · DELETE 204 · 404 · 409 `finished` / `started` / `running` · 422 |
+| POST | /api/plans/{id}/items | `{ todoId }` or `{ todo: { title, description?, plan?, priority?, estimateMinutes? } }`, plus `key?`, `hold?`, `solutions?`, `after?: [id or key]` | 201 `{ plan, itemId }` · 409 `too-many` / `finished` · 422 |
+| PUT · DELETE | /api/plans/{id}/items/{itemId} | PUT: `key?`, `solutions?` (before it starts), `hold?` | 200 `Plan` · 409 `started` / `merged` |
+| POST | /api/plans/{id}/items/{itemId}/retry · /done | | 200 `Plan` · 409 `not-failed` |
+| POST | /api/plans/{id}/edges | `{ from, to }` (ids or keys: `to` runs after `from`) | 200 `Plan` · 409 `cycle` · 422 |
+| DELETE | /api/plans/{id}/edges/{from}/{to} | | 200 `Plan` · 404 |
+| POST | /api/plans/{id}/start | `{ mergeMode: agents \| agents-with-holds \| developer }` (**required**, no default) | 200 `Plan` · 422 `merge-mode-required` / `target-forbidden` / `empty` · 409 `started` / `paused` / `no-target` |
+| POST | /api/plans/{id}/pause · /resume · /cancel | | 200 `Plan` · 409 `not-running` / `not-paused` / `finished` |
+| PUT | /api/plans/{id}/mode | `{ mergeMode }` | 200 `Plan` · 422 `target-forbidden` |
+| PUT | /api/plans/{id}/holds | `{ holds: { <itemId or key>: boolean } }` | 200 `Plan` · 409 `merged` |
+
+- **`Plan`**: `{ id, title, sourceSessionId, targetBranch, repos, baseBranch, mergeMode (null in a draft), maxConcurrency, usageThreshold, answers, state: draft | running | paused | done | cancelled, external, held (why new starts are held: usage, paused, "Plans was switched off"), pausedReason ("Plans was switched off" when Switchboard paused it, else null), items: PlanItem[], edges: [{ from, to }], criticalPath: { itemIds, minutes }, progress: { done, total, percent }, estimatedMinutesLeft, createdAt, updatedAt, startedAt, finishedAt, machine }`.
+- **`PlanItem`**: `{ id, todoId, key, title, hold, solutions, state: waiting | ready | running | question | review | done | blocked, reason, note, storedState, waitingOn: review | checks | question | conflict | null, dependsOn, runSessionId, branch, prUrl, checks: { state: pending | green | red | none, summary, sha } | null, developerMerges, estimateMinutes, actualMinutes, onCriticalPath, position, startedAt, waitingSince, mergedAt, doneAt }`.
+- **Agent routes** (the `switchboard` MCP helper, agent token; only plans whose source is the agent's session; 404 `plans-off` while off): `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`, `POST /agent/v1/plans/{planId}/items | edges | start`. MCP tools, registered only while Plans is on: `plan_create`, `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode` required; the description tells the agent to ask the developer).
+- **Additive fields:** settings key `experimental.plans` (boolean, default `false`); Inbox system items of `source: 'plans'` (`kind: plan-ready | plan-conflict`, dismiss-only).
+- **`/hub`:** `planChanged` `{ planId, state }` (`state: null` = deleted); forwarded between peers with the remote plan id.
+- **Peers (D48):** on `PEER_API_ALLOW`: every route above but the agent routes (a plan id `r~<machine>~<id>` is forwarded there; item ids stay raw). A machine with Plans off answers 404: its plans are not listed.
+- **Devices (D73):** every route above is allowed.
+
+```
+POST /api/plans/3f2a9c01b7/start { "mergeMode": "agents-with-holds" }
+→ 200 { "id": "3f2a9c01b7", "title": "PROJ-100 Acme checkout", "state": "running", "mergeMode": "agents-with-holds",
+        "targetBranch": "feature/PROJ-100-acme-checkout", "baseBranch": "dev", "held": null, "pausedReason": null,
+        "items": [ { "id": "a1b2c3d4e5", "key": "PROJ-101", "state": "running", "branch": "PROJ-101-cart-api", … },
+                   { "id": "b2c3d4e5f6", "key": "PROJ-102", "state": "waiting", "reason": "waiting on PROJ-101", … } ], … }
+
+POST /api/plans/3f2a9c01b7/start {}
+→ 422 { "error": "merge-mode-required", "message": "choose the merge mode: agents, agents-with-holds, developer (there is no default: ask the developer)",
+        "errors": [ { "field": "mergeMode", "message": "…" } ] }
+
+GET /api/plans (Plans off)
+→ 404 { "error": "plans-off", "message": "Plans is off: switch it on in Settings → Experimental" }
+```
+
 ## Team (D100, 2026-10-13, additive, experimental)
 Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `docs/team-removal.md`). Types in `src/core/team.ts` (`TeamState`, `TeamView`, `TeamMember`, `TeamHandoff`, `TeamRequest`, `TeamNeedsYouItem`, `TeamActivityRecord`, `TeamChanged`), `src/core/team-templates.ts` (`TeamTemplate`), `src/core/team-sync.ts` (`TeamSyncMessage`). Data in the separate `<dataDir>/team.db` (no migration in the main database). **Off by default** (setting `experimental.team`, `PUT /api/settings`): while off only `GET /api/team/state` answers; every other route below is 404 `team-off`; with a broken `team.db` they are 503 `team-unavailable`. Errors are `{ error, message }` (+ `errors` for 422 `invalid`, + `blockers` for 409 `blocked`).
 

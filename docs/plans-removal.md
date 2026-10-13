@@ -21,7 +21,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/hook/sb-mcp.ts` | imports `registerPlanToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
 | `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
 | `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer` | remove them |
-| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW`; the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call | remove them |
+| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW`; the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` and "(D99) plans" in the file comment | remove them |
 | `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |

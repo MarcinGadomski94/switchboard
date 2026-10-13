@@ -990,11 +990,13 @@ export class PeerService implements PeerHandlers {
         if (!(error instanceof PeerUnreachableError)) this.#onError(error);
         return false;
       }
-      if (answer.status !== 200 || !Array.isArray(answer.body) || !this.#records.has(id) || this.#closed) return false;
+      // Plans (D99) hook: a machine with Plans off answers 404 `plans-off`: it has no plans to show.
+      const body = kind === 'plans' && answer.status === 404 ? [] : answer.body;
+      if ((answer.status !== 200 && body === answer.body) || !Array.isArray(body) || !this.#records.has(id) || this.#closed) return false;
       const before = JSON.stringify(this.#lists.get(id)?.get(kind) ?? []);
-      this.#setList(id, kind, answer.body);
-      if (before === JSON.stringify(answer.body)) return false;
-      await this.#store.peerSnapshots.put(id, kind, '', answer.body).catch((error: unknown) => this.#onError(error));
+      this.#setList(id, kind, body);
+      if (before === JSON.stringify(body)) return false;
+      await this.#store.peerSnapshots.put(id, kind, '', body).catch((error: unknown) => this.#onError(error));
       return true;
     })().finally(() => this.#listRefresh.delete(key));
     this.#listRefresh.set(key, run);
