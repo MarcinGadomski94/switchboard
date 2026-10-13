@@ -2050,6 +2050,7 @@ Fix for "change tracking missed agent-made worktrees and repos outside the works
 - ASSUMED D101-storage · `ui.toolsCollapsed` is a server setting like D41's `ui.sidebarHidden` (per install, not synced), read with the pane state before the first paint.
 - ASSUMED D101-tour · the What's-new entry is a one-step tour (`sidebar-icons`, anchor `nav` on the grid, `drawer: true`) under `V1_18 = '1.18.0'`.
 - NOTE D101-sidebar-scroll · `tests/e2e/sidebar-scroll.spec.ts` › "a row menu opened near the bottom of the list…" fails at line 193 (the menu flips above its ⋯, so it does not reach below the list). It fails the same way on master f207f94 (checked in a scratch worktree), so it is not D101; left as it is.
+- NOTE D101-responsive-menu · `tests/e2e/responsive.spec.ts` › "phone landscape 640×360 › menus fit the window" fails (the sidebar ⋯ menu's bottom edge at 362 > 361: the menu is 354 px high in a 360 px window, top clamped at 8). It fails identically on master f207f94 (scratch worktree), so it is not D101; left as it is.
 - VERIFIED D101-removal · the Team / Plans hook locations are unchanged (`<TeamNavItem />` / `<PlansNavItem />` at the end of the nav); `docs/team-removal.md` and `docs/plans-removal.md` reworded for the grid; both removal tests green.
 
 ## Stabilize 1.4.0 (2026-10-01)
