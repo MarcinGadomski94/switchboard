@@ -63,6 +63,10 @@ An item's run is D76's todo run with the plan's overrides (`TodoRunOverrides` in
 
 The scheduler is event driven (run sessions' status, review resolutions, todo changes, usage updates), polls the checks of items waiting on them (60 s), and reads git / gh only for items whose session changed. On restart it resumes the running plans.
 
+## Continue in a fresh session (D83)
+
+When a plan's source session is continued in a fresh session, the plan follows it: its source becomes the fresh session (`plansFollowContinuation`, called by `POST /api/sessions/{id}/fresh` right after the todos, loops and worktrees move). The todos move with their ids, so every item keeps its todo and pending items still start (their runs are cut from the fresh session). An item whose **run** session is continued is run by the fresh session from then on. While Plans is off (or `plans.db` is broken) the hook does nothing and nothing is recorded: when Plans is switched on, the service follows the sessions' own links (`continuedTo`, or the fresh session's `continuedFrom` when the old one was deleted, along the whole chain) for every source and run session before anything else, and does the same at every scheduling cycle.
+
 ## Agents (MCP tools)
 
 While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) adds `plan_create`, `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (the helper asks `GET /agent/v1/plans` once at its start; 200 = on). They act only on plans whose source is the agent's own session. The helper's server instructions never name them (they exist only while on).

@@ -12,6 +12,7 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import type { PlanGitPort, PlanRepoInput, PlanRepoState } from '../../../src/server/plans/git.ts';
 import { type PlanEnvironment, PlanError, type PlanRunInput, PlanService } from '../../../src/server/plans/service.ts';
+import { plansFollowContinuation } from '../../../src/server/plans/hooks.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { FakeClock } from '../../helpers/clock.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -512,6 +513,45 @@ describe('D99 · plan scheduler', () => {
     r.plans.kick();
     await settle(r);
     expect(await r.plans.list()).toEqual([]);
+    expect(r.changed).toContain(plan.id);
+  });
+  it('continued in a fresh session while Plans is off: switched on, the plan follows the session links and its items still start', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    await r.store.settings.set(PLANS_SETTING, false);
+    await r.plans.switchChanged();
+    // D83 as the fresh-session flow does it: the todos move (ids kept), the old session names the fresh one; the hook is a no-op while off.
+    const fresh = await r.store.sessions.create({ name: 'source-2', claudeSessionId: 'c-source-2', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first', continuedFrom: r.sourceId });
+    await r.todos.moveAll(r.sourceId, fresh.id);
+    await r.store.sessions.update(r.sourceId, { continuedTo: fresh.id });
+    await plansFollowContinuation(r.store, r.sourceId, fresh.id);
+    await r.store.settings.set(PLANS_SETTING, true);
+    await r.plans.switchChanged();
+    await settle(r);
+    expect(await r.plans.get(plan.id)).toMatchObject({ sourceSessionId: fresh.id, state: 'paused' });
+    await r.plans.resume(plan.id);
+    await agentMerges(r, plan.id, ids.A);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    expect(r.runs[1]?.plan.sourceSessionId).toBe(fresh.id);
+    expect((await item(r, plan.id, ids.B)).state).toBe('running');
+    expect(r.errors).toEqual([]);
+  });
+
+  it('the hook while on: the plan and the items a continued run session ran follow at once', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const runOfA = (await item(r, plan.id, ids.A)).runSessionId as string;
+    const freshRun = await r.store.sessions.create({ name: 'run-1-2', claudeSessionId: 'c-run-2', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: true, continuedFrom: runOfA });
+    await plansFollowContinuation(r.store, runOfA, freshRun.id);
+    expect((await item(r, plan.id, ids.A)).runSessionId).toBe(freshRun.id);
+    const fresh = await r.store.sessions.create({ name: 'source-2', claudeSessionId: 'c-source-2', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, continuedFrom: r.sourceId });
+    await r.todos.moveAll(r.sourceId, fresh.id);
+    await plansFollowContinuation(r.store, r.sourceId, fresh.id);
+    expect((await r.plans.get(plan.id)).sourceSessionId).toBe(fresh.id);
     expect(r.changed).toContain(plan.id);
   });
 });

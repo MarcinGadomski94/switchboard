@@ -24,6 +24,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW`; the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` and "(D99) plans" in the file comment | remove them |
+| `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) | drop the import and the call |
 | `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |
 | `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `PlansSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Team) is left |

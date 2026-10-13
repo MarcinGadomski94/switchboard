@@ -384,4 +384,28 @@ describe('D99 · a plan on the real path', () => {
     await until(async () => ((await itemOf(created.id, 'PROJ-1')).state === 'done' ? true : undefined), 'PROJ-1 done after the restart');
     await settledItem(created.id, 'PROJ-2', 'running');
   }, 60_000);
+  it('continue the source in a fresh session (D83): the plan follows it, its pending items keep their todos and still start', async () => {
+    const r = await setup();
+    const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'] });
+    await startPlan(created.id, 'agents');
+    await settledItem(created.id, 'PROJ-1', 'running');
+    await until(async () => ((await r.s.store.sessions.get(r.source.id))?.status !== 'run' ? true : undefined), "the source's first turn");
+    const pending = await itemOf(created.id, 'PROJ-2');
+    const fresh = await call('POST', `/api/sessions/${r.source.id}/fresh`);
+    expect(fresh.statusCode, fresh.body).toBe(202);
+    const freshId = await until(async () => {
+      const old = await r.s.store.sessions.get(r.source.id);
+      return old?.continuedTo && old.closedAt !== null ? old.continuedTo : undefined;
+    }, 'the fresh session', 30_000);
+    const moved = await plan(created.id);
+    expect(moved.sourceSessionId).toBe(freshId);
+    expect((await r.s.store.todos.get(pending.todoId))?.sessionId).toBe(freshId);
+    expect(moved.items.find((item) => item.key === 'PROJ-2')).toMatchObject({ todoId: pending.todoId, state: 'waiting' });
+    await agentWorks(r, created.id, 'PROJ-1', { merge: true });
+    await settledItem(created.id, 'PROJ-1', 'done');
+    const second = await settledItem(created.id, 'PROJ-2', 'running');
+    expect(second.reason).toBeNull();
+    expect((await r.s.store.sessions.get(second.runSessionId as string))?.todoLink?.sourceSessionId).toBe(freshId);
+    expect(r.s.errors).toEqual([]);
+  }, 90_000);
 });

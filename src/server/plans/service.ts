@@ -230,7 +230,7 @@ export class PlanService {
    */
   async start(): Promise<void> {
     if (this.#closed) return;
-    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged() });
+    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged(), sessionContinued: (from, to) => this.sessionContinued(from, to) });
     await this.switchChanged();
   }
 
@@ -318,10 +318,55 @@ export class PlanService {
     for (const planId of paused) this.#bus.publish('planChanged', { planId, state: 'paused' });
   }
 
-  /** Deletes the plans of a source session that is gone (the main database's cascade cannot reach `plans.db`); at activation and with each scheduling cycle. */
+  /**
+   * D83 (`docs/plans.md` → *Continue in a fresh session*): the plans whose source is `from` move to
+   * the fresh session `to` (their items keep their todo ids: the todos moved with their ids), and
+   * items run by `from` are run by `to`. Nothing while Plans is off or `plans.db` is broken: the
+   * sweep at activation makes the move from the sessions' links.
+   */
+  async sessionContinued(from: string, to: string): Promise<void> {
+    if (!this.#db || from === to) return;
+    await this.#move(from, to);
+    this.kick();
+  }
+
+  async #move(from: string, to: string): Promise<void> {
+    const repo = (this.#db as PlansDb).plans;
+    const plans = await repo.list({ sourceSessionId: from });
+    await repo.moveSource(from, to);
+    const run = this.#runs.get(from);
+    if (await repo.moveRunSession(from, to)) {
+      this.#runs.delete(from);
+      if (run) this.#runs.set(to, { ...run, status: (await this.#store.sessions.get(to))?.status ?? null });
+    }
+    for (const plan of plans) this.#bus.publish('planChanged', { planId: plan.id, state: plan.state });
+    for (const item of await repo.itemsByRunSession(to)) if (!plans.some((plan) => plan.id === item.planId)) this.#bus.publish('planChanged', { planId: item.planId, state: (await repo.get(item.planId))?.state ?? null });
+  }
+
+  /** The session `sessionId` was continued into, following the chain (`null` = not continued, or the fresh one is gone). */
+  async #successor(sessionId: string): Promise<string | null> {
+    let at = sessionId;
+    const seen = new Set<string>([at]);
+    for (;;) {
+      const record = await this.#store.sessions.get(at);
+      let next = record?.continuedTo ?? null;
+      // The old session may have been deleted (Clean-up): the fresh one still names it.
+      if (!record) next = (await this.#store.sessions.list()).find((candidate) => candidate.continuedFrom === at)?.id ?? null;
+      if (next === null || seen.has(next) || !(await this.#store.sessions.get(next))) return at === sessionId ? null : at;
+      seen.add(next);
+      at = next;
+    }
+  }
+
+  /** Follows continued sessions, then deletes the plans of a source session that is gone (the main database's cascade cannot reach `plans.db`); at activation and with each scheduling cycle. */
   async #prune(): Promise<void> {
     const repo = this.#db?.plans;
     if (!repo) return;
+    // D83: a source or run session continued in a fresh one (also while Plans was off) is followed first.
+    for (const sessionId of new Set([...(await repo.sourceSessionIds()), ...(await repo.runSessionIds())])) {
+      const to = await this.#successor(sessionId);
+      if (to !== null) await this.#move(sessionId, to);
+    }
     for (const sessionId of await repo.sourceSessionIds()) {
       if (await this.#store.sessions.get(sessionId)) continue;
       for (const plan of await repo.list({ sourceSessionId: sessionId })) {

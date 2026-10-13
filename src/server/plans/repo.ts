@@ -283,6 +283,16 @@ export class PlanRepository {
     return Number(this.#statement('UPDATE plans SET source_session_id = ?, updated_at = ? WHERE source_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId).changes);
   }
 
+  /** D83: an item whose run session was continued in a fresh one is run by the fresh session from then on. */
+  async moveRunSession(fromSessionId: string, toSessionId: string): Promise<number> {
+    return Number(this.#statement('UPDATE plan_items SET run_session_id = ?, updated_at = ? WHERE run_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId).changes);
+  }
+
+  /** The distinct run sessions of the items (the service follows continued ones). */
+  async runSessionIds(): Promise<string[]> {
+    return (this.#statement('SELECT DISTINCT run_session_id AS s FROM plan_items WHERE run_session_id IS NOT NULL').all() as unknown as Row[]).map((row) => String(row['s']));
+  }
+
   // ── items ───────────────────────────────────────────────────────────────
 
   async items(planId: string): Promise<PlanItemRecord[]> {
