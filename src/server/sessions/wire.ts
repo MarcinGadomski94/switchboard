@@ -247,6 +247,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
 async function instructionState(store: Store, sessionId: string): Promise<{ instructionOutdated: boolean; instructionPending: boolean }> {
   const live = switchSources.get(store)?.instruction?.(sessionId) ?? null;
   if (live === null) return { instructionOutdated: false, instructionPending: false };
+  // Team (D100) hook: compared with the charter included.
   return { instructionOutdated: live.text !== (await withTeamCharter(store, sessionId, await standingInstructionFor(store.settings))), instructionPending: live.pending };
 }
 

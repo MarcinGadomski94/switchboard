@@ -1495,6 +1495,7 @@ export class SessionSupervisor {
       if (wasPending) await this.#emitSession(sessionId);
       return 'not-running';
     }
+    // Team (D100) hook: the charter is part of the instruction a process runs.
     if (live.instruction === (await withTeamCharter(this.#store, sessionId, await standingInstructionFor(this.#store.settings)))) {
       if (wasPending) await this.#emitSession(sessionId);
       return 'current';
@@ -2732,6 +2733,7 @@ export class SessionSupervisor {
       this.#onError(error);
     }
     // D91: kept on the live process, so a later change of the setting shows it runs an older one.
+    // Team (D100) hook: a member's charter is appended (docs/team-removal.md).
     const instruction = await withTeamCharter(this.#store, session.id, await standingInstructionFor(this.#store.settings));
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
