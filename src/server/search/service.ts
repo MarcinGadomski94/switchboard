@@ -206,7 +206,7 @@ export class SearchService {
       (await peers.machines())
         .filter((machine) => only === undefined || machine.id === only)
         .map(async (machine) => {
-          const query = new URLSearchParams({ q: params.q, scope: params.scope === 'all' ? 'all' : (asked[0] ?? 'sessions'), limit: String(limit), machine: 'local' });
+          const query = new URLSearchParams({ q: params.q, scope: params.scope === 'all' ? 'all' : (asked[0] ?? 'conversations'), limit: String(limit), machine: 'local' });
           if (cursor) query.set('cursor', encodeSearchCursor({ local: cursor.peers[machine.id] ?? 0, peers: {} }));
           if (session !== null) query.set('session', session);
           const [answer] = await peers.fanOutGet(`/api/search?${query.toString()}`, { timeoutMs: this.#peerTimeoutMs, only: machine.id });

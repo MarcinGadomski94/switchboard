@@ -93,7 +93,7 @@ describe('D97 · the index stays consistent on delete', () => {
     await store.events.append({ sessionId: s.id, kind: 'text', payload: { type: 'user', text: 'zebra stripes', origin: 'user', delivered: true } });
     await store.todos.add(s.id, { title: 'Count the giraffe', description: 'every okapi too', plan: 'No plan: test', priority: 'medium', estimateMinutes: null }, 'developer');
     await store.artifacts.create({ id: 'art1', sessionId: s.id, title: 'Walrus report', kind: 'markdown', language: null, version: { content: '# narwhal notes', file: null, mediaType: null, size: 15, createdBy: 'agent' } });
-    expect((await search('zebra')).groups.map((g) => [g.scope, g.count])).toEqual([['sessions', 2], ['artifacts', 0], ['todos', 0], ['history', 0]]);
+    expect((await search('zebra')).groups.map((g) => [g.scope, g.count])).toEqual([['conversations', 2], ['artifacts', 0], ['todos', 0], ['history', 0]]);
     const todo = (await store.todos.list(s.id))[0];
     expect(await ids('giraffe')).toEqual([`todo:${todo?.id}`]);
     const before = ftsRows();
@@ -158,10 +158,10 @@ describe('D97 · the index stays consistent on delete', () => {
 
   it('session titles: a rename re-indexes, a status change does not touch the index', async () => {
     const s = await session('zeta', { title: 'Zebra work' });
-    expect(await ids('zebra', { scope: 'sessions' })).toEqual([`session:${s.id}`]);
+    expect(await ids('zebra', { scope: 'conversations' })).toEqual([`session:${s.id}`]);
     await store.sessions.update(s.id, { title: 'Giraffe work' });
-    expect(await ids('zebra', { scope: 'sessions' })).toEqual([]);
-    expect(await ids('giraffe', { scope: 'sessions' })).toEqual([`session:${s.id}`]);
+    expect(await ids('zebra', { scope: 'conversations' })).toEqual([]);
+    expect(await ids('giraffe', { scope: 'conversations' })).toEqual([`session:${s.id}`]);
     const itemId = store.db.prepare("SELECT id FROM search_items WHERE kind = 'session'").get()?.['id'];
     await store.sessions.update(s.id, { status: 'run' });
     expect(store.db.prepare("SELECT id FROM search_items WHERE kind = 'session'").get()?.['id']).toBe(itemId);
@@ -174,11 +174,11 @@ describe('D97 · ranking and snippets', () => {
     const old = await store.events.append({ sessionId: s.id, kind: 'text', ts: '2026-01-01T00:00:00.000Z', payload: { type: 'assistant', text: 'the queue drains before the worker starts', messageId: null } });
     const fresh = await store.events.append({ sessionId: s.id, kind: 'text', ts: new Date().toISOString(), payload: { type: 'assistant', text: 'the queue drains before the worker starts', messageId: null } });
     await store.events.append({ sessionId: s.id, kind: 'text', payload: { type: 'assistant', text: 'before the queue, the worker drains', messageId: null } });
-    const answer = await search('"queue drains before"', { scope: 'sessions' });
+    const answer = await search('"queue drains before"', { scope: 'conversations' });
     expect(answer.groups[0]?.results.map((r) => r.id)).toEqual([`e:${fresh.id}`, `e:${old.id}`]);
     expect(text(answer.groups[0]?.results[0])).toBe('the [queue drains before] the worker starts');
     const titled = await session('theta', { title: 'Drains' });
-    const ranked = await search('drains', { scope: 'sessions' });
+    const ranked = await search('drains', { scope: 'conversations' });
     expect(ranked.groups[0]?.results[0]?.id).toBe(`session:${titled.id}`);
     expect(ranked.groups[0]?.count).toBe(4);
   });
@@ -186,14 +186,14 @@ describe('D97 · ranking and snippets', () => {
   it('pages a scope with a cursor; counts every match', async () => {
     const s = await session('iota');
     for (let i = 0; i < 7; i += 1) await store.events.append({ sessionId: s.id, kind: 'text', payload: { type: 'assistant', text: `zebra number ${i}`, messageId: null } });
-    const first = await search('zebra', { scope: 'sessions', limit: 3 });
+    const first = await search('zebra', { scope: 'conversations', limit: 3 });
     expect(first.groups[0]?.count).toBe(7);
     expect(first.groups[0]?.results.length).toBe(3);
     const seen = new Set(first.groups[0]?.results.map((r) => r.id));
     let cursor = first.groups[0]?.nextCursor ?? null;
     const { decodeSearchCursor } = await import('../../../src/core/search.ts');
     while (cursor !== null) {
-      const page = await search('zebra', { scope: 'sessions', limit: 3, cursor: decodeSearchCursor(cursor) });
+      const page = await search('zebra', { scope: 'conversations', limit: 3, cursor: decodeSearchCursor(cursor) });
       for (const r of page.groups[0]?.results ?? []) {
         expect(seen.has(r.id)).toBe(false);
         seen.add(r.id);

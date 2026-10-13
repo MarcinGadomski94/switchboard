@@ -14,7 +14,7 @@ interface SearchQueryString {
 
 /**
  * D97 (`docs/search.md`, contract → *Search (D97)*): `GET /api/search?q=&scope=&session=&machine=&limit=&cursor=`
- * → {@link SearchAnswer}. `scope` = `all` (default) or one of `sessions`, `artifacts`,
+ * → {@link SearchAnswer}. `scope` = `all` (default) or one of `conversations`, `artifacts`,
  * `todos`, `history`; `session` = only that session (a paired machine's remote id:
  * only there); `machine` = `all` (default), `local` or a paired machine's id; `limit`
  * 1–50 (default 5 per group for `all`, 20 for one scope); `cursor` = a group's
@@ -26,7 +26,7 @@ export async function registerSearchRoutes(app: FastifyInstance, context: ApiCon
     const { q = '', scope = 'all', session, machine = 'all', limit, cursor } = request.query;
     const errors: Array<{ field: string; message: string }> = [];
     if (typeof q !== 'string' || q.length > SEARCH_QUERY_MAX * 5) errors.push({ field: 'q', message: `q must be text of at most ${SEARCH_QUERY_MAX * 5} characters` });
-    if (scope !== 'all' && !isSearchScope(scope)) errors.push({ field: 'scope', message: 'scope must be all, sessions, artifacts, todos or history' });
+    if (scope !== 'all' && !isSearchScope(scope)) errors.push({ field: 'scope', message: 'scope must be all, conversations, artifacts, todos or history' });
     if (session !== undefined && (typeof session !== 'string' || session === '' || session.length > 200)) errors.push({ field: 'session', message: 'session must be a session id' });
     if (typeof machine !== 'string' || machine === '' || machine.length > 100) errors.push({ field: 'machine', message: 'machine must be all, local or a paired machine id' });
     if (limit !== undefined && !(/^[1-9][0-9]?$/.test(limit) && Number(limit) <= SEARCH_LIMIT_MAX)) errors.push({ field: 'limit', message: `limit must be a whole number from 1 to ${SEARCH_LIMIT_MAX}` });

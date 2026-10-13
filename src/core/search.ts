@@ -10,7 +10,7 @@ import type { SessionMachine } from './peers.ts';
 // ── wire types ───────────────────────────────────────────────────────────
 
 /** The result groups, in the order the page shows them. */
-export const SEARCH_SCOPES = ['sessions', 'artifacts', 'todos', 'history'] as const;
+export const SEARCH_SCOPES = ['conversations', 'artifacts', 'todos', 'history'] as const;
 /** One result group: a session's messages and titles, saved artifacts, todos, History rows. */
 export type SearchScope = (typeof SEARCH_SCOPES)[number];
 

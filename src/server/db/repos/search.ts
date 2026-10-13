@@ -71,8 +71,8 @@ export interface SearchItemRow {
   readonly sessionTitle: string | null;
 }
 
-/** The kinds of `search_items` each scope reads; `sessions` reads the events too. */
-const SCOPE_KINDS: Record<SearchScope, SearchItemKind> = { sessions: 'session', artifacts: 'artifact', todos: 'todo', history: 'history' };
+/** The kinds of `search_items` each scope reads; `conversations` reads the events too. */
+const SCOPE_KINDS: Record<SearchScope, SearchItemKind> = { conversations: 'session', artifacts: 'artifact', todos: 'todo', history: 'history' };
 
 /** History rows of conversations that became sessions here are not shown (the session is). */
 const HISTORY_NOT_A_SESSION = `(i.kind <> 'history' OR i.link IS NULL OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.claude_session_id = i.link))`;
@@ -213,7 +213,7 @@ export class SearchRepository {
   /** The filters of a query: `sessionId` = only that session's events and items. */
   #where(scope: SearchScope, sessionId: string | null): { readonly join: string; readonly where: string; readonly params: SQLInputValue[] } {
     const params: SQLInputValue[] = [];
-    if (scope === 'sessions') {
+    if (scope === 'conversations') {
       // Events (rowid > 0) and session rows; one FTS scan.
       let where = `((f.rowid > 0 AND e.id IS NOT NULL) OR (f.rowid < 0 AND i.kind = 'session'))`;
       if (sessionId !== null) {
@@ -245,7 +245,7 @@ export class SearchRepository {
   /** A page of a scope's hits, best first (score, then newest row). */
   hits(match: string, scope: SearchScope, sessionId: string | null, offset: number, limit: number): SearchHit[] {
     const { join, where, params } = this.#where(scope, sessionId);
-    const ts = scope === 'sessions' ? 'COALESCE(e.ts, i.ts)' : 'i.ts';
+    const ts = scope === 'conversations' ? 'COALESCE(e.ts, i.ts)' : 'i.ts';
     const rows = this.#statement(
       `SELECT f.rowid AS rid, ${boosted(ts)} AS score FROM search_fts f ${join} WHERE search_fts MATCH ? AND ${where} ORDER BY score, f.rowid DESC LIMIT ? OFFSET ?`,
     ).all(match, ...params, limit, offset);
