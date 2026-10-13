@@ -49,6 +49,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/reload-instruction$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
+  // D103: Edit / Remove of a message held for an account with allowance (normal use, like editing a queued message).
+  ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/withdraw$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],
   // D80: Undo a turn (the checkpoints, the confirm dialog's plan, revert, Redo): normal use, with the confirm.
   ['GET', /^\/api\/sessions\/[^/]+\/checkpoints(?:\/[^/]+)?$/],

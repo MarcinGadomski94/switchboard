@@ -118,6 +118,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.
   ['POST', /^\/api\/sessions\/[^/]+\/continue-in-switchboard$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
+  // D103: Edit / Remove of a message held on that machine (its supervisor holds it; a peer before D103 answers 404).
+  ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/withdraw$/],
   // D80: Undo a turn of that machine's session (its checkpoints live in its repos; the revert runs there).
   ['GET', /^\/api\/sessions\/[^/]+\/checkpoints(?:\/[^/]+)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/checkpoints\/(?:redo|[^/]+\/revert)$/],
