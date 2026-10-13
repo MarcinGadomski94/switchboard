@@ -38,6 +38,10 @@ Tables: `plans` (title, source session, target / base branch, repos, merge mode,
 - A dependency that would close a **cycle** is refused (409 `cycle`, naming the loop).
 - View states: `waiting`, `ready`, `running`, `question` (its session waits in the Inbox), `review` (waits for the developer's Merge), `done`, `blocked` (failed, discarded, could not start, its session stopped with an error, a second conflict; and every dependent of a blocked item, with the reason "waiting on PROJ-12, which was discarded"). The view also carries the critical path, progress and the estimated time left.
 
+## Item history (the Timeline)
+
+Each item keeps its history as **spans** (`plan_item_spans` in `plans.db`, migration 2): `running` (its agent works, also while its PR's checks run), `waiting-you` (a question, its Review card, a second conflict or a stopped session), `waiting-dependency` (an item it runs after is not done or is blocked), `paused-usage` (ready, but the usage threshold holds new starts) and `paused-plan` (the plan is paused, by the developer or because Plans was switched off). Every plan change publishes `planChanged`, and with it the service compares each item's kind now with its open span: a changed kind closes the open span and opens the new one (at most one open per item). A draft has none; a done, failed or about-to-start item has none open; a finished or cancelled plan has every span closed. At activation (a restart, Plans switched on) every plan is brought up to date the same way, so nothing doubles up. While Plans is off nothing changes: open spans stay open (the time off counts in them). `GET /api/plans/{id}` answers each item's newest 200 spans, oldest first (`PlanItem.spans`); "Waiting on you: X h" is the sum of its `waiting-you` spans.
+
 ## Merge modes (required at start, no default)
 
 `POST /api/plans/{id}/start` requires `mergeMode` (422 `merge-mode-required`); the UI pre-selects `agents-with-holds` as the recommendation, the server never picks one. The `plan_start` tool's description tells the agent to ASK the developer and never choose.

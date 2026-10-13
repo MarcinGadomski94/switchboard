@@ -104,6 +104,25 @@ CREATE TABLE plan_edges (
 ) STRICT;
 `,
   ),
+  makeMigration(
+    2,
+    'plan_item_spans',
+    `-- D99 (the Plans page's Timeline): each item's history as spans of one kind, start to end.
+-- kind: running (its agent works) | waiting-you (a question, its Review card, a second conflict, a stopped session)
+--       | waiting-dependency (an item it runs after is not done) | paused-usage (ready, held by the usage threshold)
+--       | paused-plan (the plan is paused, also by the switch). ended_at NULL = open (one open span per item at most).
+CREATE TABLE plan_item_spans (
+  id INTEGER PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('running', 'waiting-you', 'waiting-dependency', 'paused-usage', 'paused-plan')),
+  started_at TEXT NOT NULL,
+  ended_at TEXT
+) STRICT;
+CREATE INDEX plan_item_spans_item ON plan_item_spans (item_id, started_at);
+CREATE INDEX plan_item_spans_plan_open ON plan_item_spans (plan_id) WHERE ended_at IS NULL;
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */
@@ -129,7 +148,7 @@ export class PlansDb {
     try {
       migrate(db, migrations);
       // A quick read of every table: a file that is not a database (or lost a table) fails here, not later.
-      for (const table of ['plans', 'plan_items', 'plan_edges']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      for (const table of ['plans', 'plan_items', 'plan_edges', 'plan_item_spans']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;

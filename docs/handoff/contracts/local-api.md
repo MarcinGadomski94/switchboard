@@ -1598,7 +1598,8 @@ Developer decision D99 (`docs/decisions.md`; details `docs/plans.md`; removal `d
 | PUT | /api/plans/{id}/holds | `{ holds: { <itemId or key>: boolean } }` | 200 `Plan` · 409 `merged` |
 
 - **`Plan`**: `{ id, title, sourceSessionId, targetBranch, repos, baseBranch, mergeMode (null in a draft), maxConcurrency, usageThreshold, answers, state: draft | running | paused | done | cancelled, external, held (why new starts are held: usage, paused, "Plans was switched off"), pausedReason ("Plans was switched off" when Switchboard paused it, else null), items: PlanItem[], edges: [{ from, to }], criticalPath: { itemIds, minutes }, progress: { done, total, percent }, estimatedMinutesLeft, createdAt, updatedAt, startedAt, finishedAt, machine }`.
-- **`PlanItem`**: `{ id, todoId, key, title, hold, solutions, state: waiting | ready | running | question | review | done | blocked, reason, note, storedState, waitingOn: review | checks | question | conflict | null, dependsOn, runSessionId, branch, prUrl, checks: { state: pending | green | red | none, summary, sha } | null, developerMerges, estimateMinutes, actualMinutes, onCriticalPath, position, startedAt, waitingSince, mergedAt, doneAt }`.
+- **`PlanItem`**: `{ id, todoId, key, title, hold, solutions, state: waiting | ready | running | question | review | done | blocked, reason, note, storedState, waitingOn: review | checks | question | conflict | null, dependsOn, runSessionId, branch, prUrl, checks: { state: pending | green | red | none, summary, sha } | null, developerMerges, estimateMinutes, actualMinutes, onCriticalPath, position, startedAt, waitingSince, mergedAt, doneAt, spans }`.
+- **`PlanItem.spans`** (additive): the item's history for the Timeline, oldest first, at most the newest 200: `[{ kind: running | waiting-you | waiting-dependency | paused-usage | paused-plan, startedAt, endedAt (null = open) }]`. At most one span per item is open; none while the plan is a draft, and every one is closed when the plan is done or cancelled. Older machines omit it.
 - **Agent routes** (the `switchboard` MCP helper, agent token; only plans whose source is the agent's session; 404 `plans-off` while off): `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`, `POST /agent/v1/plans/{planId}/items | edges | start`. MCP tools, registered only while Plans is on: `plan_create`, `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode` required; the description tells the agent to ask the developer).
 - **Additive fields:** settings key `experimental.plans` (boolean, default `false`); Inbox system items of `source: 'plans'` (`kind: plan-ready | plan-conflict`, dismiss-only).
 - **`/hub`:** `planChanged` `{ planId, state }` (`state: null` = deleted); forwarded between peers with the remote plan id.
@@ -1615,6 +1616,12 @@ POST /api/plans/3f2a9c01b7/start { "mergeMode": "agents-with-holds" }
 POST /api/plans/3f2a9c01b7/start {}
 → 422 { "error": "merge-mode-required", "message": "choose the merge mode: agents, agents-with-holds, developer (there is no default: ask the developer)",
         "errors": [ { "field": "mergeMode", "message": "…" } ] }
+
+GET /api/plans/3f2a9c01b7 (an item's history)
+→ 200 { …, "items": [ { "key": "PROJ-101", "state": "running", "spans": [
+          { "kind": "paused-usage", "startedAt": "2026-10-13T09:00:00.000Z", "endedAt": "2026-10-13T09:20:00.000Z" },
+          { "kind": "running", "startedAt": "2026-10-13T09:20:00.000Z", "endedAt": "2026-10-13T09:45:00.000Z" },
+          { "kind": "waiting-you", "startedAt": "2026-10-13T09:45:00.000Z", "endedAt": null } ], … } ] }
 
 GET /api/plans (Plans off)
 → 404 { "error": "plans-off", "message": "Plans is off: switch it on in Settings → Experimental" }

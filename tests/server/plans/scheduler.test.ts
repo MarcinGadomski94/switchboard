@@ -554,4 +554,75 @@ describe('D99 · plan scheduler', () => {
     expect((await r.plans.get(plan.id)).sourceSessionId).toBe(fresh.id);
     expect(r.changed).toContain(plan.id);
   });
+  it('item spans (the Timeline): running → waiting-you (question) → running → waiting-you (review) → done; dependents wait; all closed when the plan ends', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'History', targetBranch: 'feature/PROJ-700-history' });
+    const a = await r.plans.addItem(plan.id, { key: 'PROJ-701', todo: { title: 'First' } });
+    const b = await r.plans.addItem(plan.id, { key: 'PROJ-702', todo: { title: 'Second' }, after: ['PROJ-701'] });
+    expect((await item(r, plan.id, a.itemId)).spans).toEqual([]);
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    const at = (minutes: number): Promise<void> => r.clock.advanceTo(new Date(r.clock.now().getTime() + minutes * 60_000), () => settle(r));
+    const kinds = async (itemId: string) => (await item(r, plan.id, itemId)).spans.map((span) => [span.kind, span.endedAt === null ? 'open' : 'closed']);
+    expect(await kinds(a.itemId)).toEqual([['running', 'open']]);
+    expect(await kinds(b.itemId)).toEqual([['waiting-dependency', 'open']]);
+    const run = (await item(r, plan.id, a.itemId)).runSessionId as string;
+    await at(5);
+    await status(r, run, 'need');
+    await at(10);
+    await status(r, run, 'run');
+    await at(5);
+    const todoId = (await item(r, plan.id, a.itemId)).todoId;
+    await r.store.todos.setRun(todoId, run, 'active');
+    await r.store.todos.setState(todoId, 'review');
+    await status(r, run, 'idle');
+    expect((await item(r, plan.id, a.itemId)).state).toBe('review');
+    await at(30);
+    r.bus.publish('reviewResolved', { sessionId: run, outcome: 'merged' });
+    await settle(r);
+    const spans = (await item(r, plan.id, a.itemId)).spans;
+    expect(spans.map((span) => span.kind)).toEqual(['running', 'waiting-you', 'running', 'waiting-you']);
+    expect(spans.every((span) => span.endedAt !== null)).toBe(true);
+    expect(spans.map((span) => (Date.parse(span.endedAt as string) - Date.parse(span.startedAt)) / 60_000)).toEqual([5, 10, 5, 30]);
+    expect(await kinds(b.itemId)).toEqual([['waiting-dependency', 'closed'], ['running', 'open']]);
+    await r.plans.cancel(plan.id);
+    expect(await kinds(b.itemId)).toEqual([['waiting-dependency', 'closed'], ['running', 'closed']]);
+  });
+
+  it('item spans: paused-usage while the usage threshold holds starts; paused-plan when paused, also by the switch; a restart keeps one open span per item', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    r.held = 'the account Default is at 91% of its 5-hour limit (the plan starts items below 85%)';
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const open = async (itemId: string) => (await item(r, plan.id, itemId)).spans.filter((span) => span.endedAt === null).map((span) => span.kind);
+    expect(await open(ids.A)).toEqual(['paused-usage']);
+    expect(await open(ids.B)).toEqual(['waiting-dependency']);
+    r.held = null;
+    r.bus.publish('system', {} as never);
+    await settle(r);
+    expect((await item(r, plan.id, ids.A)).spans.map((span) => span.kind)).toEqual(['paused-usage', 'running']);
+    expect(await open(ids.A)).toEqual(['running']);
+
+    // Switched off: the plan pauses; the waiting items' spans become paused-plan, A's running span stays open.
+    await r.store.settings.set(PLANS_SETTING, false);
+    await r.plans.switchChanged();
+    await r.store.settings.set(PLANS_SETTING, true);
+    await r.plans.switchChanged();
+    await settle(r);
+    expect(await open(ids.A)).toEqual(['running']);
+    expect(await open(ids.B)).toEqual(['paused-plan']);
+    expect((await item(r, plan.id, ids.B)).spans.map((span) => span.kind)).toEqual(['waiting-dependency', 'paused-plan']);
+
+    // A restart: a new service over the same plans.db; nothing doubles up.
+    await r.plans.close();
+    r.plans = new PlanService({ dataDir: r.dir, store: r.store, bus: r.bus, todos: r.todos, git: r.git, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    await r.plans.start();
+    await settle(r);
+    for (const id of [ids.A, ids.B, ids.C, ids.D]) expect(await open(id)).toHaveLength(1);
+    await r.plans.resume(plan.id);
+    await settle(r);
+    expect(await open(ids.B)).toEqual(['waiting-dependency']);
+    expect(r.errors).toEqual([]);
+  });
 });
