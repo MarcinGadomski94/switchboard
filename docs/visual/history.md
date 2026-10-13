@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.60%**, main area (256,0 1184×900) **0.00%**, main area searched ("speaking") **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **2.05%**, main area (256,0 1184×900) **0.14%**, main area searched ("speaking") **0.14%**.
 
 Side by side (prototype left, app right): `history-side-by-side.png`, `history-main-side-by-side.png`, `history-search-side-by-side.png`.
 
@@ -20,7 +20,6 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | subtitle | box | 352.1,27 273.6×16 | 352.1,27 273.6×16 | ok | "past sessions · searchable transcripts" |
 | search | box | 1074,18 344×33 | 1074,18 344×33 | ok |  |
 | rows | box | 256,66 1184×834 | 256,66 1184×834 | ok |  |
-| sideHistory | box | 10,223 235×31 | 10,223 235×31 | ok |  |
 | row0 | box | 278,74 1140×64.8 | 278,74 1140×64.8 | ok |  |
 | row0Date | box | 278,89 110×15 | 278,89 110×15 | ok | "09-26 16:40" |
 | row0NameCol | box | 404,87 220×34 | 404,87 220×34 | ok |  |

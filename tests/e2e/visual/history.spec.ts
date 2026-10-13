@@ -35,8 +35,7 @@ const HEAD: Readonly<Record<string, PartSpec>> = {
   subtitle: { path: [1, 0, 0, 1], geometry: 'box', copy: true },
   search: { path: [1, 0, 0, 2], geometry: 'box', copy: false },
   rows: { path: [1, 0, 1], geometry: 'box', copy: false },
-  // D61: the app's nav has MCP after Schedules & loops: this item is one further on and one row lower (compared by size).
-  sideHistory: { path: [0, 2, 4], geometry: 'size', copy: false },
+  // D101: the sidebar's History item is an icon cell (not the prototype's row): gated by visual/shell.spec.ts → navGridChecks.
 };
 
 /** The parts of row `i`. */
@@ -74,8 +73,8 @@ const COMPARED_STYLES = [
   'padding-left',
 ] as const;
 
-/** The sidebar nav item: compared by box only (its selected style is the shell's, checked in shell.spec). */
-const STYLE_EXEMPT = new Set(['sideHistory']);
+/** Parts left out of the style diff (D101: none since the sidebar nav item left the comparison). */
+const STYLE_EXEMPT = new Set<string>();
 
 let app: DemoApp;
 
@@ -90,7 +89,7 @@ test.afterAll(async () => {
 async function compare(protoPage: Page, appPage: Page, parts: Readonly<Record<string, PartSpec>>, failures: string[], rows: string[]): Promise<void> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.path]));
   const proto = await measure(protoPage, paths);
-  const view = await measure(appPage, { ...paths, sideHistory: [0, 2, 5] });
+  const view = await measure(appPage, paths);
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
     const a = view[name];

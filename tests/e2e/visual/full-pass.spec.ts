@@ -51,6 +51,13 @@ import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
  *   prototype's place), and the item itself is gated against its neighbour
  *   Schedules & loops (same height, x, width and label styles). D68: the seventh,
  *   Todos (after History), likewise, gated against History.
+ * - D101 (deliberate deviation, `docs/visual/README.md`): the nav is an icon grid. Its
+ *   cells are no longer compared with the prototype's rows; on every surface the grid
+ *   is gated on its own rules (`navGridIssues`: 5 columns of 40 px, one cell per view,
+ *   the selected cell is the prototype's selected item, in its colours). The TOOLS
+ *   label keeps the prototype's x, width and height (its y follows the grid) and the
+ *   tool rows and SESSIONS are compared with y relative to it; D61 / D68's hiding of
+ *   the MCP and Todos items is gone with the rows.
  *
  * The per-view detail (every row, card and state) is gated by the view's own spec
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
@@ -128,9 +135,8 @@ const SESSIONS = [...SIDEBAR, 6];
 const SETTINGS = [...SIDEBAR, 7];
 const FOOTER = [...SIDEBAR, 8];
 
-const NAV_LABELS = ['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History'] as const;
-/** Nav badges whose data is not served by sessions / inbox / solutions. */
-const NAV_BADGE_AREA: Readonly<Record<number, Area>> = { 2: 'schedules', 3: 'artifacts' };
+/** D101: the TOOLS label (the same path on both pages): the parts under the grid are compared with y relative to it. */
+const TOOLS_LABEL = [...SIDEBAR, 3];
 
 /** The demo seed's sessions, in the prototype's order (`S`). */
 const SESSION_COUNT = 6;
@@ -446,7 +452,7 @@ interface Row {
   /** Which part of the page (the report prints the sidebar once in full). */
   readonly group?: 'sidebar' | 'content';
   readonly part: string;
-  readonly geometry: Geometry | 'relative' | 'listed' | 'D66 rules';
+  readonly geometry: Geometry | 'relative' | 'listed' | 'D66 rules' | 'D101 rules';
   readonly proto: string;
   readonly app: string;
   readonly result: 'ok' | 'FAIL' | 'pending' | 'listed';
@@ -495,7 +501,7 @@ async function servedAreas(page: Page): Promise<Served> {
 async function waitForSidebar(page: Page): Promise<void> {
   await expect(page.getByTestId('sidebar-sessions').locator(':scope > *')).toHaveCount(SESSION_COUNT);
   await expect(page.getByTestId('nav-inbox').locator('.sb-badge')).toHaveText('5');
-  await expect(page.getByTestId('nav-solutions').locator('.sb-badge')).toHaveText('1 conflict');
+  await expect(page.getByTestId('nav-solutions').locator('.sb-badge')).toHaveText('!'); // D101: the conflict as an amber "!" ("1 conflict" in the tooltip)
 }
 
 /** `true` while the app shows the surface's M1.4 placeholder. */
@@ -538,20 +544,14 @@ function sidebarChecks(served: Served): PartCheck[] {
     { name: 'paletteKey', path: [...SIDEBAR, 0, 2], geometry: 'box', copy: true, styles: text },
     { name: 'newSession', path: [...SIDEBAR, 1, 0], geometry: 'box', copy: true, styles: text },
   ];
-  NAV_LABELS.forEach((label, i) => {
-    out.push({ name: `nav:${label}`, path: [...NAV, i], geometry: 'box', copy: false, styles: text });
-    out.push({ name: `nav:${label}:label`, path: [...NAV, i, 0], geometry: 'box', copy: true, styles: text });
-    const area = NAV_BADGE_AREA[i];
-    const pending = area && !served[area] ? `${AREAS[area].url} answers 501 (${AREAS[area].item})` : undefined;
-    // The prototype hard-codes the Artifacts badge "14" over its 13 `ART.slice(1)` rows; the app counts the API (D13; D89: the saved artifacts).
-    const copyNote = label === 'Artifacts' ? 'the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13; D89: the 13 saved demo artifacts)' : undefined;
-    out.push({ name: `nav:${label}:badge`, path: [...NAV, i, 1], geometry: 'box', copy: copyNote === undefined, styles: text, pending, copyNote });
-  });
-  out.push({ name: 'toolsLabel', path: [...SIDEBAR, 3], geometry: 'box', copy: true, styles: text });
+  // D101: the nav rows are not compared with the prototype (the grid: navGridIssues). The TOOLS label keeps its x, width
+  // and height; its copy gains the toggle's chevron ("▾Tools+ Add"), so only its styles are compared with the prototype's.
+  out.push({ name: 'toolsLabel', path: TOOLS_LABEL, geometry: 'size', copy: false, styles: text });
   const toolsPending = served.tools ? undefined : `${AREAS.tools.url} answers 501 (${AREAS.tools.item})`;
+  const underTools = { geometry: 'relative' as const, anchor: TOOLS_LABEL, anchorName: 'the TOOLS label (D101)' };
   for (let i = 0; i < TOOL_COUNT; i++) {
     const row = [...TOOLS, i];
-    out.push({ name: `tool${i}`, path: row, geometry: 'box', copy: false, styles: text, pending: toolsPending });
+    out.push({ name: `tool${i}`, path: row, ...underTools, copy: false, styles: text, pending: toolsPending });
     // Developer ruling 2026-09-28: the name stays whole on the first line and a URL that does not fit moves
     // to its own line (cut with …), where the prototype wraps the name next to the URL. The row keeps the
     // prototype's box (checked above); the name and URL boxes inside it differ by design, so only their copy
@@ -560,11 +560,11 @@ function sidebarChecks(served: Served): PartCheck[] {
     out.push({ name: `tool${i}:host`, path: [...row, 2], geometry: 'none', copy: true, styles: text, pending: toolsPending });
   }
   // Without tool rows everything from SESSIONS down sits higher: compared by size / relative to the label.
-  const sessionsGeometry: Geometry = served.tools ? 'box' : 'size';
-  out.push({ name: 'sessionsLabel', path: SESSIONS_LABEL, geometry: sessionsGeometry, copy: true, styles: text });
+  // D101: with them, the SESSIONS label is compared with y relative to the TOOLS label, and its rows relative to it.
+  out.push({ name: 'sessionsLabel', path: SESSIONS_LABEL, ...(served.tools ? underTools : { geometry: 'size' as const }), copy: true, styles: text });
   for (let i = 0; i < SESSION_COUNT; i++) {
     const row = [...SESSIONS, i];
-    const rel = { geometry: served.tools ? ('box' as const) : ('relative' as const), anchor: SESSIONS_LABEL };
+    const rel = { geometry: 'relative' as const, anchor: SESSIONS_LABEL };
     out.push({ name: `session${i}`, path: row, ...rel, copy: false, styles: ['background-color', 'border-radius'] });
     out.push({ name: `session${i}:dot`, path: [...row, 0], ...rel, copy: false, styles: ['background-color', 'border-radius'] });
     out.push({ name: `session${i}:name`, path: [...row, 1, 0, 0], ...rel, copy: true, styles: text });
@@ -657,65 +657,39 @@ function compare(surface: string, checks: readonly PartCheck[], proto: Record<st
   return { rows, failures };
 }
 
-/** D61: the app's MCP nav item is its 4th: the app's later nav items are one child further on. */
-const MCP_NAV_INDEX = 3;
-
-/** D61: `paths` for the app: a nav item from the 4th on is one index later (the hidden MCP item keeps its place in the DOM). */
-function appNavPaths(paths: Record<string, readonly number[]>): Record<string, readonly number[]> {
-  const shift = (p: readonly number[]): readonly number[] =>
-    p.length > NAV.length && NAV.every((n, i) => p[i] === n) && (p[NAV.length] as number) >= MCP_NAV_INDEX ? [...NAV, (p[NAV.length] as number) + 1, ...p.slice(NAV.length + 1)] : p;
-  return Object.fromEntries(Object.entries(paths).map(([name, p]) => [name, shift(p)]));
-}
-
-/** D61 / D68: hides (or shows again) the app's MCP and Todos nav items, which the prototype does not have. */
-async function setMcpNavHidden(page: Page, hidden: boolean): Promise<void> {
-  await page.evaluate((hide) => {
-    for (const id of ['nav-mcp', 'nav-todos']) {
-      const item = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
-      if (item) item.style.display = hide ? 'none' : '';
-    }
-  }, hidden);
-}
-
 /**
- * D61: the MCP nav item against Schedules & loops; D68: the Todos item against History. Same x, width,
- * height; directly below it; label styles as an unselected neighbour's.
+ * D101: the nav grid on its own rules on a surface: 5 columns of 40 px, one 40 × 40 cell per
+ * view (7 with Team / Plans off), and the selected cell is the prototype's selected nav item
+ * (by its label; none on a surface where the prototype selects none) in its colours.
  */
-async function extraNavIssues(page: Page, item: { readonly id: string; readonly label: string; readonly above: string; readonly aboveName: string }): Promise<string[]> {
-  return page.evaluate(
-    ({ props, item }) => {
-      const mine = document.querySelector<HTMLElement>(`[data-testid="${item.id}"]`);
-      const above = document.querySelector<HTMLElement>(`[data-testid="${item.above}"]`);
-      const tag = `nav:${item.label}`;
-      if (!mine || !above) return [`${tag}: missing`];
-      const issues: string[] = [];
-      const a = mine.getBoundingClientRect();
-      const b = above.getBoundingClientRect();
-      for (const edge of ['x', 'width', 'height'] as const) if (Math.abs(a[edge] - b[edge]) > 0.5) issues.push(`${tag}.${edge}: ${a[edge]} vs ${item.aboveName} ${b[edge]}`);
-      if (Math.abs(a.y - (b.y + b.height)) > 3) issues.push(`${tag}.y: ${a.y}, not under ${item.aboveName} (${b.y + b.height})`);
-      // Label styles against a neighbour that is not the selected item (the selected one is brighter).
-      const reference = ['nav-schedules', 'nav-artifacts', 'nav-history'].map((id) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)).find((el) => el && el.getAttribute('aria-current') !== 'page');
-      const la = mine.children[0];
-      const lb = reference?.children[0];
-      if (!la || !lb) return [...issues, `${tag}: label missing`];
-      if (la.textContent !== item.label) issues.push(`${tag}.text: ${JSON.stringify(la.textContent)}`);
-      const sa = getComputedStyle(la);
-      const sb = getComputedStyle(lb);
-      for (const prop of props) if (sa.getPropertyValue(prop) !== sb.getPropertyValue(prop)) issues.push(`${tag}:label.${prop}: ${sa.getPropertyValue(prop)} vs ${sb.getPropertyValue(prop)}`);
-      return issues;
-    },
-    { props: ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing'], item },
-  );
-}
-
-/** D61: the MCP nav item against Schedules & loops. */
-function mcpNavIssues(page: Page): Promise<string[]> {
-  return extraNavIssues(page, { id: 'nav-mcp', label: 'MCP', above: 'nav-schedules', aboveName: 'Schedules' });
-}
-
-/** D68: the Todos nav item against History (the item above it). */
-function todosNavIssues(page: Page): Promise<string[]> {
-  return extraNavIssues(page, { id: 'nav-todos', label: 'Todos', above: 'nav-history', aboveName: 'History' });
+async function navGridIssues(protoPage: Page, appPage: Page): Promise<string[]> {
+  const proto = await protoPage.evaluate(() => {
+    const grid = [...document.querySelectorAll<HTMLElement>('body *')].find((el) => {
+      const style = getComputedStyle(el);
+      return style.display === 'grid' && style.gridTemplateColumns.startsWith('256px');
+    });
+    const items = [...(grid?.children[0]?.children[2]?.children ?? [])] as HTMLElement[];
+    const selected = items.find((item) => getComputedStyle(item).backgroundColor !== 'rgba(0, 0, 0, 0)');
+    return selected ? { label: selected.children[0]?.textContent ?? '', bg: getComputedStyle(selected).backgroundColor, fg: getComputedStyle(selected).color } : null;
+  });
+  const app = await appPage.evaluate(() => {
+    const nav = document.querySelector<HTMLElement>('[data-testid="nav-grid"]');
+    if (!nav) return null;
+    const cells = [...nav.querySelectorAll<HTMLElement>('.sb-nav-item')];
+    const selected = cells.find((cell) => cell.getAttribute('aria-current') === 'page');
+    return {
+      columns: getComputedStyle(nav).gridTemplateColumns,
+      sizes: cells.map((cell) => `${cell.getBoundingClientRect().width}×${cell.getBoundingClientRect().height}`),
+      selected: selected ? { label: selected.getAttribute('aria-label') ?? '', bg: getComputedStyle(selected).backgroundColor, fg: getComputedStyle(selected).color } : null,
+    };
+  });
+  if (!app) return ['nav grid (D101): missing'];
+  const issues: string[] = [];
+  if (app.columns !== '40px 40px 40px 40px 40px') issues.push(`nav grid (D101): columns ${app.columns}`);
+  if (app.sizes.length !== 7 || app.sizes.some((size) => size !== '40×40')) issues.push(`nav grid (D101): cells ${app.sizes.join(' ')}`);
+  if ((proto?.label ?? null) !== (app.selected?.label ?? null)) issues.push(`nav grid (D101): selected ${JSON.stringify(app.selected?.label ?? null)}, prototype ${JSON.stringify(proto?.label ?? null)}`);
+  else if (proto && app.selected && (proto.bg !== app.selected.bg || proto.fg !== app.selected.fg)) issues.push(`nav grid (D101): selected colours ${app.selected.bg} / ${app.selected.fg}, prototype ${proto.bg} / ${proto.fg}`);
+  return issues;
 }
 
 /** Paths to measure for `checks`, anchors included (`@<path>`). */
@@ -806,23 +780,15 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       const sidebar = sidebarChecks(served);
       const paths = pathsOf(sidebar);
       sidebarTally = { checks: 0, failures: 0 };
-      // D61: the MCP nav item (not in the prototype) is checked against its neighbour, then hidden while the rest is measured.
-      const mcpIssues = await mcpNavIssues(appPage);
-      failures.push(...mcpIssues.map((issue) => `${surface.id} · ${issue}`));
+      // D101: the nav grid on its own rules (its selected cell follows the view as the prototype's item does).
+      const gridIssues = await navGridIssues(protoPage, appPage);
+      failures.push(...gridIssues.map((issue) => `${surface.id} · ${issue}`));
       sidebarTally.checks += 1;
-      sidebarTally.failures += mcpIssues.length;
-      rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:MCP (D61)', geometry: 'relative', proto: '—', app: 'vs nav:Schedules & loops', result: mcpIssues.length ? 'FAIL' : 'ok', note: mcpIssues.join('; ') });
-      // D68: likewise the Todos nav item, against History.
-      const todosIssues = await todosNavIssues(appPage);
-      failures.push(...todosIssues.map((issue) => `${surface.id} · ${issue}`));
-      sidebarTally.checks += 1;
-      sidebarTally.failures += todosIssues.length;
-      rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:Todos (D68)', geometry: 'relative', proto: '—', app: 'vs nav:History', result: todosIssues.length ? 'FAIL' : 'ok', note: todosIssues.join('; ') });
-      await setMcpNavHidden(appPage, true);
-      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, appNavPaths(paths))), sidebarTally, 'sidebar');
+      sidebarTally.failures += gridIssues.length;
+      rows.push({ surface: surface.id, group: 'sidebar', part: 'nav grid (D101)', geometry: 'D101 rules', proto: '—', app: '5 × 40 px, selected cell', result: gridIssues.length ? 'FAIL' : 'ok', note: gridIssues.join('; ') });
+      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, paths)), sidebarTally, 'sidebar');
       // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.
       const usage = await usageRowChecks(protoPage, appPage, surface.id);
-      await setMcpNavHidden(appPage, false);
       track(
         {
           rows: usage.checks.map((c) => ({ surface: surface.id, part: c.part, geometry: c.result === 'listed' ? 'listed' : 'D66 rules', proto: c.proto, app: c.app, result: c.result, note: c.note })),
