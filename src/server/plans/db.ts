@@ -108,7 +108,7 @@ CREATE TABLE plan_edges (
     2,
     'plan_item_spans',
     `-- D99 (the Plans page's Timeline): each item's history as spans of one kind, start to end.
--- kind: running (its agent works) | waiting-you (a question, its merge (D102), a second conflict, a stopped session)
+-- kind: running (its agent works) | waiting-you (a question, its Review card, a second conflict, a stopped session)
 --       | waiting-dependency (an item it runs after is not done) | paused-usage (ready, held by the usage threshold)
 --       | paused-plan (the plan is paused, also by the switch). ended_at NULL = open (one open span per item at most).
 CREATE TABLE plan_item_spans (
