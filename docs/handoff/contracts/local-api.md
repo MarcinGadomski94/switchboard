@@ -1629,3 +1629,37 @@ GET /api/team/needs-you
 POST /api/team/members/5f0c…/move { "targetMachineId": "m-pc-0002" }
 → 202 { "id": "7a9e…", "memberId": "5f0c…", "state": "running", "takeoverRunId": "c3d1…", "error": null, "targetMachineId": "m-pc-0002" }
 ```
+
+## Team access (D100-T2, 2026-10-13, additive, experimental)
+Access requests of Team members (`docs/team.md` → *Access requests*; decision D100 → *Access requests*). Types in `src/core/team-access.ts` (`TeamAccessRecord`, `TeamAccessEntryView`, `TeamAccessView`, `AccessField`, `AccessMcpServer`, `AccessKeyTest`, `AccessTestResult`) and `src/core/team-access-catalog.ts` (`AccessCatalogEntry`). Records in `team.db` (`access` table, Team migration 2); **values only in the OS keychain** of the machine they were entered on (service `Switchboard Team`, account `<memberId>/<accessId>/<FIELD>`), never in an answer, the sync or a log. Like every Team route: 404 `team-off` while Team is off, 503 `team-unavailable` with a broken `team.db`; errors `{ error, message }` (+ `errors: [{ field, message }]` for 422 `invalid`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/team/members/{id}/access | | 200 `TeamAccessView` `{ member: { id, name, machineId, machineName, local }, self: { id, name }, device, keychain: { name, available, problem }, entries: TeamAccessEntryView[] }` (newest first) · 404 |
+| GET | /api/team/members/{id}/access/shareable | | 200 `[{ name, scope, transport, command, url }]`: the MCP page's servers for the member's folder (this machine's member only, else `[]`) |
+| GET | /api/team/access/catalog | | 200 `AccessCatalogEntry[]` `{ id, name, summary, host, server, fields, custom, note }` |
+| POST | /api/team/access/{id}/setup | `{ values: { FIELD: value }, server?: { transport: stdio, command, args } \| { transport: http, url, headers }, shared?: { name, scope }, expiresAt?: iso \| null }` | 200 `TeamAccessEntryView` (no value) · 403 `local-only` (a phone: "Set this up on a computer…", or a peer request) · 409 `closed` (denied / revoked) · 422 (`values` per field; `server` for a custom server; `shared` for a shared one, stdio only) · 503 `keychain-unavailable` |
+| POST | /api/team/access/{id}/test | | 200 `AccessTestResult` `{ ok, detail, tools }` · 403 · 409 `not-set-up` (not on this machine) |
+| POST | /api/team/access/{id}/revoke | | 200 `TeamAccessEntryView` (`status: revoked`) · 403 |
+| PUT | /api/team/access/{id} | `{ expiresAt: iso \| null }` | 200 `TeamAccessEntryView` · 403 · 422 (past / malformed) |
+
+- **`TeamAccessEntryView`**: `{ id, teamId, memberId, requestId, kind: mcp | api-key, source: catalog | custom | shared | null, catalogId, service, host, why, scope, fields: [{ name, label, secret, help, helpUrl, pattern }], mcp: { transport, command, args, url, headers } | null, shared: { name, scope } | null, test: { url, header } | null, warning, state: requested | approved | active | denied | deferred | revoked | expired, setUpOn: [machineId], setUpAt, secretRefs: [{ field, service, account }], expiresAt, lastUsedAt, lastUsedOn, audit: [{ at, what: asked | approved | denied | deferred | set-up | replaced | used | tested | revoked | expired, machineId, text }], createdAt, updatedAt }` plus `status` (`requested` · `ready` · `needs-setup` · `denied` · `not-now` · `revoked` · `expired`), `statusText` ("Ready on Mac", "Set up on Mac only", "Set up on Mac only: needs setup on PC"), `here`, `setUpOnNames`, `ready` (the member's machine has it, active, not expired), `canSetUp`, `delivers` (the variables, or `MCP server access-<service>-<id>`).
+- **Needs you**: a request is a `TeamRequest` with `kind: access`, `action: { type: external, ref: "access:<accessId>" }`; its `TeamNeedsYouItem` carries `access: TeamAccessEntryView`. **Set up…** = the Access tab's setup (`focusAccessId`), **Deny** = `POST /api/team/requests/{id}/decline` (state `denied`), **Not now** = `…/dismiss` (`deferred`); `…/approve` alone = `approved` (waiting for setup; `note` says so). A setup settles the open request (`approved`, note "Set up on <machine>").
+- **Agent routes** (agent token; the member's own session, Team on; else 404 `not-a-member`): `POST /agent/v1/team/access` (the `request_access` tool) `{ kind, service, host, why, scope, fields?, source?, catalogId?, server?, sharedServer?, testUrl?, testHeader? }` → 201 `{ text, access: { id, service, host, status } }` (the same open request is reused) · 422 `invalid` + `errors` · 429 `rate-limited` (5 new per member per hour); `GET /agent/v1/team/access/{id}/launch` (the access launcher `sb-access-mcp.ts`) → 200 `{ command, args, env }` (values read now) · 404 `not-available` (another session, not ready here, revoked, expired).
+- **MCP tool**: `request_access` (with `team_handoff`, `team_members`, `team_report`; member sessions only, Team on).
+- **Spawn** (no route): a member's ready API keys are environment variables of its process; its MCP accesses join its MCP config (`access-<service>-<id>`: stdio through `node src/hook/sb-access-mcp.ts --switchboard-access <port> <sessionId> <accessId>`, http with `${FIELD}` header references, Claude Code only); its recorded output masks every value as `•••• (FIELD)`.
+- **Sync (D48)**: `TeamSyncMessage.snapshot.access: TeamAccessRecord[]` (an older peer sends none); last writer wins per record; never a value.
+- **Peers (D48)**: on `PEER_API_ALLOW`: `GET /api/team/members/{id}/access`, `GET /api/team/access/catalog`. Setup, test, revoke and the expiry are not (a peer request to them answers 403).
+- **Devices (D73)**: allowed: `GET /api/team/members/{id}/access(/shareable)`, `GET /api/team/access/catalog` (and the request decisions above). Refused: `POST /api/team/access/{id}/(setup|test|revoke)`, `PUT /api/team/access/{id}`.
+- **Web (for T3)**: `src/web/team/access/index.ts` exports `AccessTab { memberId, focusAccessId?, loopLabels?, onChanged? }`, `AccessRequestActions { item, onSetUp(memberId, accessId), onDecided? }` and `accessApi`; dev mount `/team-access-dev.html?member=<id>`.
+
+```
+POST /agent/v1/team/access { "kind": "api-key", "service": "Acme Analytics", "host": "api.acme.example",
+  "why": "Fetch the weekly traffic report.", "scope": "read-only, reports",
+  "fields": [{ "name": "ACME_ANALYTICS_KEY", "label": "API key", "secret": true, "help": "Settings → API keys" }] }
+→ 201 { "text": "Asked the developer for Acme Analytics on api.acme.example (read-only, reports). …", "access": { "id": "9c1e…", "service": "Acme Analytics", "host": "api.acme.example", "status": "requested" } }
+
+POST /api/team/access/9c1e…/setup { "values": { "ACME_ANALYTICS_KEY": "…" } }
+→ 200 { "id": "9c1e…", "status": "ready", "statusText": "Ready on Mac", "here": true, "setUpOn": ["m-mac-0001"],
+        "secretRefs": [{ "field": "ACME_ANALYTICS_KEY", "service": "Switchboard Team", "account": "5f0c…/9c1e…/ACME_ANALYTICS_KEY" }], … }
+```

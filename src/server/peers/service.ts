@@ -217,6 +217,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/team\/members\/[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return|move|move\/check)$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
+  // D100-T2: access metadata only (a member's Access tab, the catalog); setup / test / revoke never travel (values stay on their machine).
+  ['GET', /^\/api\/team\/members\/[^/]+\/access$/],
+  ['GET', /^\/api\/team\/access\/catalog$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

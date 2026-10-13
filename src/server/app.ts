@@ -43,6 +43,7 @@ import type { Providers } from './providers.ts';
 import { type ApiContext, registerApiRoutes } from './routes.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { installTeam } from './team/install.ts';
+import { withTeamAccessServers } from './team/hooks.ts';
 import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
@@ -478,7 +479,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       withClaudeConfigFile(
         config.dataDir,
         session.id,
-        agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }),
+        // Team (D100) hook (D100-T2): a member's access MCP servers join its launch (docs/team-removal.md).
+        withTeamAccessServers(options.store, agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }), session.id),
       ),
     );
   }

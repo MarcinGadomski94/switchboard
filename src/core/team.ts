@@ -10,6 +10,8 @@
  * `src/web/team/`; `docs/team-removal.md` lists the hooks into the rest.
  */
 
+import type { TeamAccessEntryView } from './team-access.ts';
+
 /** The Settings → Experimental switch (a row of the main `settings` table; default off). */
 export const TEAM_SETTING = 'experimental.team';
 
@@ -246,7 +248,7 @@ export interface TeamRequestRecord extends TeamSynced {
 export type TeamRequestAction = { readonly type: 'review-merge'; readonly reviewId: string } | { readonly type: 'resume-member' } | { readonly type: 'external'; readonly ref: string };
 
 /** Activity kinds. */
-export const ACTIVITY_KINDS = ['handoff', 'adopt', 'create', 'return', 'pause', 'resume', 'report', 'approval', 'budget', 'move', 'update', 'team'] as const;
+export const ACTIVITY_KINDS = ['handoff', 'adopt', 'create', 'return', 'pause', 'resume', 'report', 'approval', 'budget', 'move', 'update', 'team', 'access'] as const;
 
 /** An activity kind. */
 export type TeamActivityKind = (typeof ACTIVITY_KINDS)[number];
@@ -331,6 +333,8 @@ export interface TeamNeedsYouItem {
   readonly inbox?: unknown;
   /** `source: team`: the request (approve / decline through `/api/team/requests/{id}/…`). */
   readonly request?: TeamRequest;
+  /** D100-T2, `kind: access`: the access asked for (service, host, why, scope, fields, warning); "Set up…" opens the member's Access tab. */
+  readonly access?: TeamAccessEntryView;
 }
 
 /** What a suggestion is based on (cheap counts over the last 7 days; `src/server/team/suggestions.ts`). */

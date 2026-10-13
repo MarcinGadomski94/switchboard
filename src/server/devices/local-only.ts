@@ -132,6 +132,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return)$/],
   ['PUT', /^\/api\/team\/handoffs\/[^/]+$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
+  // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
+  ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],
+  ['GET', /^\/api\/team\/access\/catalog$/],
 ];
 
 /**
@@ -185,6 +188,9 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/team(?:\/members\/[^/]+)?$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/move(?:\/check)?$/],
   ['POST', /^\/api\/team\/sync$/],
+  // Team (D100) hook, D100-T2: entering, testing, revoking or timing out an access's values: "set this up on a computer".
+  ['POST', /^\/api\/team\/access\/[^/]+\/(?:setup|test|revoke)$/],
+  ['PUT', /^\/api\/team\/access\/[^/]+$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */
