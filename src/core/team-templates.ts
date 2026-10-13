@@ -49,9 +49,9 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
     name: 'Planner',
     summary: 'Turns requests into small, ordered work items and hands them out.',
     charter: {
-      owns: 'The backlog of incoming requests and how they are broken down.',
+      owns: 'Incoming requests: what each one means, how it breaks down and in which order.',
       produces: 'Hand-offs with a clear brief and expected result; a short plan per request.',
-      neverDoes: 'Writes code, merges, or changes anything outside its notes.',
+      neverDoes: 'Writes code, merges, or changes anything outside its own notes.',
     },
     rhythm: { loops: [{ label: 'Morning planning', prompt: 'Review new requests and open hand-offs; plan the day and hand out work.', cron: '0 9 * * 1-5' }], onHandoff: true },
     gates: ['external-write'],
@@ -63,8 +63,8 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
     name: 'Developer',
     summary: 'Implements hand-offs in its repositories, with tests.',
     charter: {
-      owns: 'Implementation in its workplace repositories.',
-      produces: 'Commits on a work branch with tests, and a review card when done.',
+      owns: 'Implementing its hand-offs in its workplace repositories.',
+      produces: 'Commits on a work branch, with tests, and a review card when done.',
       neverDoes: 'Merges into the default branch or pushes without approval.',
     },
     rhythm: { loops: [], onHandoff: true },
@@ -79,7 +79,7 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
     charter: {
       owns: 'Reviews of finished work and the test evidence.',
       produces: 'Findings as hand-offs back to the author; a pass / fail line per change.',
-      neverDoes: 'Fixes the code it reviews or approves its own work.',
+      neverDoes: 'Fixes the code it reviews, or approves work it wrote itself.',
     },
     rhythm: { loops: [], onHandoff: true },
     gates: ['merge-default-branch'],
