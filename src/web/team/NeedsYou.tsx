@@ -12,8 +12,8 @@ import { activityTime, needsYouShape } from './model.ts';
  * D100 · the Team page's left column: **Needs you (N)** (`GET /api/team/needs-you`),
  * answered in place: a question with its options (one question: a tap answers it;
  * several: the shared question card) plus **Reply…** (focuses the member's chat), a
- * permission request with its Inbox actions, a review card with **Merge**, **Send
- * back** and **Open diff**, a gate or budget request with **Approve** / **Decline**.
+ * permission request with its Inbox actions, (D102) a plan's "Ready to merge" item with
+ * **Merge** and **Open plan**, a gate or budget request with **Approve** / **Decline**.
  * Then **Activity**: time, actor, text.
  */
 export function NeedsYouList({
@@ -51,7 +51,6 @@ function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonl
   const { navigate } = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [comment, setComment] = useState<string | null>(null);
   const shape = needsYouShape(item);
   const inbox = (item.inbox ?? null) as InboxItem | null;
   const run = async (work: () => Promise<unknown>): Promise<void> => {
@@ -69,7 +68,6 @@ function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonl
   const questions = inbox?.questions ?? [];
   const single = questions.length === 1 && !questions[0]?.multiSelect ? questions[0] : null;
   const answer = (body: AnswerBatch): Promise<void> => run(() => api.answerBatch(item.id, body));
-  const review = inbox?.review ?? null;
   return (
     <div className="sb-team-need" data-testid="team-need" data-kind={item.kind} data-source={item.source} data-item-id={item.id}>
       <div className="sb-team-need__label">
@@ -85,7 +83,7 @@ function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonl
           {single ? single.text : item.title}
         </div>
       )}
-      {item.detail && shape !== 'question' && shape !== 'review' && shape !== 'access' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
+      {item.detail && shape !== 'question' && shape !== 'access' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
       {shape === 'access' ? <AccessRequestActions item={item} onSetUp={onSetUp} onDecided={onChanged} /> : null}
       {shape === 'question' && single ? (
         <div className="sb-team-need__actions">
@@ -134,47 +132,17 @@ function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonl
           ))}
         </div>
       ) : null}
-      {shape === 'review' && review ? (
-        <>
-          {comment === null ? (
-            <div className="sb-team-need__actions">
-              {review.actions.includes('merge') ? (
-                <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-need-merge" disabled={busy} onClick={() => void run(() => api.reviewAction(review.id, 'merge'))}>
-                  Merge
-                </button>
-              ) : null}
-              {review.actions.includes('send-back') ? (
-                <button type="button" className="sb-button sb-team-btn" data-testid="team-need-send-back" disabled={busy} onClick={() => setComment('')}>
-                  Send back
-                </button>
-              ) : null}
-              <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" data-testid="team-need-diff" onClick={() => navigate({ view: 'session', id: review.sessionId, tab: 'diff' })}>
-                Open diff
-              </button>
-            </div>
-          ) : (
-            <div className="sb-team-need__form">
-              <textarea className="sb-team-input" data-testid="team-need-comment" rows={2} placeholder="What should change?" value={comment} onChange={(event) => setComment(event.target.value)} />
-              <div className="sb-team-need__actions">
-                <button
-                  type="button"
-                  className="sb-button sb-team-btn sb-team-btn--primary"
-                  data-testid="team-need-send-back-confirm"
-                  disabled={busy || comment.trim() === ''}
-                  onClick={() => void run(async () => {
-                    await api.reviewAction(review.id, 'send-back', { comment: comment.trim() });
-                    setComment(null);
-                  })}
-                >
-                  Send back
-                </button>
-                <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" onClick={() => setComment(null)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+      {shape === 'merge' && inbox ? (
+        <div className="sb-team-need__actions">
+          <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-need-merge" disabled={busy} onClick={() => void run(() => api.inboxAction(item.id, 'plan-merge'))}>
+            Merge
+          </button>
+          {inbox.route ? (
+            <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" data-testid="team-need-open-plan" onClick={() => navigate(inbox.route as string)}>
+              Open plan
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {shape === 'request' ? (
         <div className="sb-team-need__actions">

@@ -17,8 +17,11 @@ import { todoFinishLine, todoHasPlan, type TodoToolDefinition } from './todos.ts
  * is no default):
  * - `agents`: the item's agent merges its PR into the target branch once the checks are green;
  * - `agents-with-holds`: the same, except items flagged `hold` wait for the developer's Merge
- *   on their Review card (the recommended option; the UI pre-selects it);
- * - `developer`: every item waits for the developer's Merge on its Review card.
+ *   (the recommended option; the UI pre-selects it);
+ * - `developer`: every item waits for the developer's Merge.
+ *
+ * D102: the developer's Merge is Plans' own step (it was a Review card, D79, until those were
+ * removed): a finished item waits `ready-to-merge` on the Plans page and in the Inbox.
  */
 export const PLAN_MERGE_MODES = ['agents', 'agents-with-holds', 'developer'] as const;
 /** One of {@link PLAN_MERGE_MODES}. */
@@ -43,17 +46,22 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  * - `ready`: every dependency is done; it starts when a slot is free (and the plan runs);
  * - `running`: its run session works on it (including while its PR's checks run);
  * - `question`: its session waits for the developer (a question or a permission request, in the Inbox);
- * - `review`: its work waits for the developer's Merge on its Review card;
+ * - `ready-to-merge` (D102): its run finished (its todo is done, or its PR is open with green
+ *   checks) and it waits for the developer's Merge ("Waiting for your merge");
  * - `done`: merged into the target branch (and the checks are green, in agent modes);
  * - `blocked`: it failed (discarded, could not start), its session stopped with an error, a
  *   conflict went to the developer, or a dependency is blocked; {@link PlanItem.reason} says why.
  */
-export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'review', 'done', 'blocked'] as const;
+export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'ready-to-merge', 'done', 'blocked'] as const;
 /** One of {@link PLAN_ITEM_STATES}. */
 export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
 
-/** What a running item waits on (stored, with `waitingSince`): its review, its PR's checks, the developer's answer, a conflict. */
-export type PlanWaitingOn = 'review' | 'checks' | 'question' | 'conflict';
+/**
+ * What a running item waits on (stored, with `waitingSince`): the developer's Merge (D102;
+ * stored as `review` in `plans.db`, the name its CHECK has), its PR's checks, the developer's
+ * answer, a conflict.
+ */
+export type PlanWaitingOn = 'merge' | 'checks' | 'question' | 'conflict';
 
 /** The state of an item's PR checks: `pending` (running), `green`, `red`, `none` (no checks configured: counts as green). */
 export type PlanChecksState = 'pending' | 'green' | 'red' | 'none';
@@ -144,7 +152,7 @@ export interface PlanItem {
 /**
  * What an item was doing over a span of time (the Plans page's Timeline; `docs/plans.md` → *Item history*):
  * - `running`: its agent works (including while its PR's checks run);
- * - `waiting-you`: a question, its Review card, a second conflict or a stopped session waits for the developer;
+ * - `waiting-you`: a question, its merge (`ready-to-merge`), a second conflict or a stopped session waits for the developer;
  * - `waiting-dependency`: an item it runs after is not done (or is blocked);
  * - `paused-usage`: it is ready, but new starts are held by the usage threshold;
  * - `paused-plan`: the plan is paused (by the developer, or because Plans was switched off).
@@ -173,7 +181,7 @@ export function planItemSpanKind(plan: { readonly state: PlanState; readonly hel
     case 'running':
       return 'running';
     case 'question':
-    case 'review':
+    case 'ready-to-merge':
       return 'waiting-you';
     case 'blocked':
       return item.storedState === 'running' ? 'waiting-you' : item.storedState === 'pending' ? 'waiting-dependency' : null;
@@ -345,8 +353,6 @@ export interface PlanItemFacts {
   readonly doneAt: string | null;
   /** The run session's status now (`null` = no run session, or it is gone). */
   readonly sessionStatus: SessionStatus | null;
-  /** The run session has a pending Review card. */
-  readonly reviewPending: boolean;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -375,7 +381,7 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
       if (item.sessionStatus === 'fail') return { state: 'blocked', reason: 'its session stopped with an error' };
       if (item.waitingOn === 'conflict' && item.conflicts >= 2) return { state: 'blocked', reason: `its branch conflicts with ${targetBranch} again: waiting for you in the Inbox` };
       if (item.sessionStatus === 'need') return { state: 'question', reason: 'its session waits for your answer in the Inbox' };
-      if (developerMerges(mode, item) && (item.waitingOn === 'review' || item.reviewPending)) return { state: 'review', reason: 'waiting for your Merge on its Review card' };
+      if (developerMerges(mode, item) && item.waitingOn === 'merge') return { state: 'ready-to-merge', reason: 'waiting for your merge' };
       return { state: 'running', reason: null };
     case 'pending':
       return null;
@@ -627,7 +633,7 @@ export interface PlanItemBriefInput {
 /** The merge rule lines of a brief (also sent again when the plan's mode or the item's hold changes). */
 export function planMergeRule(input: { readonly targetBranch: string; readonly branch: string; readonly developerMerges: boolean }): string {
   return input.developerMerges
-    ? `Do not merge it yourself: the developer merges it into ${input.targetBranch} from its Review card in Switchboard.`
+    ? `Do not merge it yourself: the developer merges it into ${input.targetBranch} from the Plans page in Switchboard once you mark the todo done.`
     : `Once its checks are green, merge the pull request into ${input.targetBranch} yourself (gh pr merge). Never merge into dev, master, main or any branch other than ${input.targetBranch}. If a check fails, fix it and push again first. If the repository has no remote or gh is not available, merge ${input.branch} into ${input.targetBranch} locally instead.`;
 }
 
@@ -716,7 +722,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
         priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'], description: 'A new todo: its priority (default medium).' },
         estimate_minutes: { type: 'integer', minimum: 1, maximum: 10_080, description: 'A new todo: minutes an AI agent would take (used for the critical path and the time left).' },
         key: { type: 'string', description: 'Optional ticket key, e.g. PROJ-123: the item branch becomes PROJ-123-<slug>.' },
-        hold: { type: 'boolean', description: 'In the agents-with-holds mode, the developer merges this item from its Review card (default false).' },
+        hold: { type: 'boolean', description: 'In the agents-with-holds mode, the developer merges this item from the Plans page (default false).' },
         solutions: { type: 'array', items: { type: 'string' }, description: "The plan repos this item works in (default all of the plan's)." },
         after: { type: 'array', items: { type: 'string' }, description: 'Ids or keys of the items this one runs after.' },
       },
@@ -743,14 +749,14 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_status',
     description:
-      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, review, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
+      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
     inputSchema: { type: 'object', properties: { plan_id: PLAN_ID }, additionalProperties: false },
     annotations: { title: 'Plan status', ...READS },
   },
   {
     name: 'plan_start',
     description:
-      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is required and is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended) and developer (the developer merges every item from its Review card).",
+      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is required and is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended) and developer (the developer merges every item from the Plans page).",
     inputSchema: {
       type: 'object',
       properties: {

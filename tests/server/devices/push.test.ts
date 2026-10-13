@@ -159,7 +159,7 @@ describe('D73 push delivery', () => {
     // D73 fix: the device sees its stored endpoint (to restore a lost subscription).
     expect(saved.body.pushEndpoint).toBe(subscription.endpoint);
     expect((await w.device('GET', '/api/device', { cookie })).body.pushEndpoint).toBe(subscription.endpoint);
-    expect(saved.body.events).toEqual({ permission: true, questions: true, turnFinished: true, errors: true, inbox: true, review: true });
+    expect(saved.body.events).toEqual({ permission: true, questions: true, turnFinished: true, errors: true, inbox: true });
 
     // Test notification.
     expect((await w.device('POST', '/api/device/push/test', { cookie })).body).toEqual({ ok: true });

@@ -129,3 +129,9 @@ export function useProbeOnLoad(tools: readonly ProbeTarget[] | null): void {
     }
   }, [tools]);
 }
+
+/** D101: re-renders on every probe change and returns the states of `tools` (the collapsed TOOLS header reads them). */
+export function useToolStates(tools: readonly ProbeTarget[]): readonly ToolState[] {
+  const key = useSyncExternalStore(subscribe, () => tools.map((tool) => toolState(tool)).join(','));
+  return key ? (key.split(',') as ToolState[]) : [];
+}

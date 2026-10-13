@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionTodo, SessionTodoList, TodoGroup } from '../../../src/core/api.ts';
 import { peerAnswerKind, peerSession, peerTodo } from '../../../src/core/peer-wire.ts';
 import { formatTokens, resultTurnTokens, todoActualsLabel, todoActualsTotal, todoActualsTotalLabel, todoCalibration } from '../../../src/core/todo-actuals.ts';
-import { splitTodos, todoCountsLabel, todoIsOpen, todoLine, todoListText } from '../../../src/core/todos.ts';
+import { isTodoState, splitTodos, todoCountsLabel, todoIsOpen, todoStateOf } from '../../../src/core/todos.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
@@ -14,7 +14,6 @@ import { DEVICE_ALLOWED } from '../../../src/server/devices/local-only.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
-import { TodoReviewLink } from '../../../src/server/todos/review-link.ts';
 import { todoRunOptions } from '../../../src/server/todos/run-options.ts';
 import { runSlug, runTitle } from '../../../src/server/todos/run.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
@@ -23,9 +22,9 @@ import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * D76 / D77 / D78 oracle (`docs/todos.md` → *Run in a new session*, *Review*, *Board*,
- * *Actual vs. estimate*): migration 0032, the review state (done of an item with an active
- * run is review; the board's drag skips it; `reviewResolved` moves it on), the run
+ * D76 / D77 / D78 oracle (`docs/todos.md` → *Run in a new session*, *Board*,
+ * *Actual vs. estimate*): migration 0032, done of a run item is done (D102: D76's review
+ * state is gone), the run
  * session's scope on its one linked item, the actuals (time in progress only, the turns'
  * tokens, the history that outlives the done hour) and the agents' calibration line.
  */
@@ -121,13 +120,13 @@ describe('the rules (D76 / D78)', () => {
     ...extra,
   });
 
-  it('review is neither open nor done; the counts, the split and the tools show it', () => {
-    const todos = [item('a', 'open', { estimateMinutes: 30 }), item('b', 'review', { estimateMinutes: 600, position: 1 }), item('c', 'done', { position: 2 })];
-    expect(todos.map(todoIsOpen)).toEqual([true, false, false]);
-    expect(splitTodos(todos)).toMatchObject({ open: [{ id: 'a' }], review: [{ id: 'b' }], done: [{ id: 'c' }] });
-    expect(todoCountsLabel(todos)).toBe('1 open · ~30m · 1 in review · 1 done');
-    expect(todoLine(item('b', 'review'))).toBe('[b] ◑ IN REVIEW MEDIUM ~? b');
-    expect(todoListText({ sessionId: 's', todos, openCount: 1, doneCount: 1 })).toContain('In review (1):\n[b] ◑ IN REVIEW MEDIUM ~10h b');
+  it('D102: no review state: a stored review reads as done; the counts, the split and the tools know open, in progress and done', () => {
+    const todos = [item('a', 'open', { estimateMinutes: 30 }), item('b', 'in_progress', { estimateMinutes: 600, position: 1 }), item('c', 'done', { position: 2 })];
+    expect(todos.map(todoIsOpen)).toEqual([true, true, false]);
+    expect(splitTodos(todos)).toEqual({ open: [todos[0], todos[1]], done: [todos[2]] });
+    expect(todoCountsLabel(todos)).toBe('1 in progress · 1 open · ~10h 30m · 1 done');
+    expect(todoStateOf('review')).toBe('done');
+    expect(isTodoState('review')).toBe(false);
   });
 
   it('actuals: tokens of a result line, the labels, the totals and the calibration line', () => {
@@ -136,7 +135,7 @@ describe('the rules (D76 / D78)', () => {
     expect(resultTurnTokens({ modelUsage: {} })).toBeNull();
     expect([formatTokens(850), formatTokens(1_250), formatTokens(41_200), formatTokens(1_250_000)]).toEqual(['850', '1.3k', '41k', '1.3M']);
     expect(todoActualsLabel(item('a', 'done', { actualMs: 32 * MIN, actualTokens: 41_000 }))).toBe('took 32m · 41k tokens');
-    expect(todoActualsLabel(item('a', 'review', { actualMs: 20_000, actualTokens: null }))).toBe('took <1m');
+    expect(todoActualsLabel(item('a', 'done', { actualMs: 20_000, actualTokens: null }))).toBe('took <1m');
     expect(todoActualsLabel(item('a', 'in_progress', { actualMs: 32 * MIN }))).toBe('');
     const total = todoActualsTotal([
       { estimateMinutes: 60, actualMs: 90 * MIN, actualTokens: 100_000 },
@@ -169,14 +168,15 @@ describe('the rules (D76 / D78)', () => {
     expect(peerApiAllowed('POST', '/api/sessions/s1/todos/t1/run')).toBe(true);
     expect(DEVICE_ALLOWED.some(([methods, pattern]) => methods.split('|').includes('POST') && pattern.test('/api/sessions/s1/todos/t1/run'))).toBe(true);
     expect(peerAnswerKind('POST', '/api/sessions/s1/todos/t1/run')).toBe('todo-run');
-    expect(peerTodo(machine, item('a', 'review', { runSessionId: 'run1' }))).toMatchObject({ state: 'review', runSessionId: 'r~m1~run1', sessionId: 'r~m1~s' });
+    // D102: an older peer's review arrives done.
+    expect(peerTodo(machine, item('a', 'review' as never, { runSessionId: 'run1' }))).toMatchObject({ state: 'done', runSessionId: 'r~m1~run1', sessionId: 'r~m1~s' });
     const session = peerSession(machine, { id: 'run1', todoLink: { sourceSessionId: 's', todoId: 'a' } } as never);
     expect(session.todoLink).toEqual({ sourceSessionId: 'r~m1~s', todoId: 'a' });
   });
 });
 
-describe('TodoService: review and the run scope (D76)', () => {
-  it('done of an item with an active run is review (not open, not removed); the board drag skips it; review needs a run', async () => {
+describe('TodoService: the run scope (D76; D102: done is done)', () => {
+  it('done of an item with an active run is done (D102: no review state); review is refused', async () => {
     const todos = service();
     const id = await session('source');
     const run = await session('run');
@@ -184,48 +184,14 @@ describe('TodoService: review and the run scope (D76)', () => {
     await expect(todos.update(id, todo.id, { state: 'review' })).rejects.toMatchObject({ status: 422 });
     await todos.beginRun(id, todo.id, run);
     expect((await todos.get(id, todo.id))).toMatchObject({ state: 'in_progress', startedBy: 'run', runSessionId: run, runState: 'active' });
-    const reviewed = await todos.update(id, todo.id, { state: 'done' });
-    expect(reviewed.todo).toMatchObject({ state: 'review', doneAt: null, removeAt: null });
-    expect(reviewed.list).toMatchObject({ openCount: 0, doneCount: 0, reviewCount: 1 });
-    // Done from review is done (the developer approves); back to review by hand; the board's drag to Done skips review.
-    expect((await todos.update(id, todo.id, { state: 'done' })).todo.state).toBe('done');
-    expect((await todos.update(id, todo.id, { state: 'review' })).todo.state).toBe('review');
-    expect((await todos.update(id, todo.id, { state: 'in_progress' })).todo.state).toBe('in_progress');
-    expect((await todos.update(id, todo.id, { state: 'done', skipReview: true })).todo.state).toBe('done');
+    const finished = await todos.update(id, todo.id, { state: 'done' }, 'agent');
+    expect(finished.todo).toMatchObject({ state: 'done', runState: 'active' });
+    expect(finished.todo.doneAt).not.toBeNull();
+    expect(finished.list).toMatchObject({ openCount: 0, doneCount: 1 });
+    expect(finished.list).not.toHaveProperty('reviewCount');
   });
 
-  it('reviewResolved: merged / committed / dismissed → done, discarded → open (run discarded, link kept), sent back → in progress', async () => {
-    const bus = new HubBus();
-    const todos = service(bus);
-    const link = new TodoReviewLink({ bus, todos });
-    link.start();
-    const id = await session('source');
-    const outcomes = ['merged', 'committed', 'dismissed', 'discarded', 'sent-back'] as const;
-    const items: Record<string, string> = {};
-    for (const outcome of outcomes) {
-      const run = await session(`run-${outcome}`);
-      const { todo } = await todos.add(id, { title: outcome }, 'developer');
-      await todos.beginRun(id, todo.id, run);
-      await todos.update(id, todo.id, { state: 'done' }, 'agent');
-      items[outcome] = todo.id;
-      bus.publish('reviewResolved', { sessionId: run, outcome });
-    }
-    // A resolution for a session without items in review changes nothing.
-    bus.publish('reviewResolved', { sessionId: 'unknown', outcome: 'merged' });
-    await link.idle();
-    const byId = new Map((await todos.list(id)).todos.map((t) => [t.id, t]));
-    expect(byId.get(items['merged']!)?.state).toBe('done');
-    expect(byId.get(items['committed']!)?.state).toBe('done');
-    expect(byId.get(items['dismissed']!)?.state).toBe('done');
-    expect(byId.get(items['discarded']!)).toMatchObject({ state: 'open', runState: 'discarded' });
-    expect(byId.get(items['discarded']!)?.runSessionId).toMatch(/.+/);
-    expect(byId.get(items['sent-back']!)).toMatchObject({ state: 'in_progress', startedBy: 'run', runState: 'active' });
-    // A discarded run's item done again is done (no active run).
-    expect((await todos.update(id, items['discarded']!, { state: 'done' })).todo.state).toBe('done');
-    await link.stop();
-  });
-
-  it("a run session's agent reaches its one linked item (get, start, done → review), nothing else of the source's list", async () => {
+  it("a run session's agent reaches its one linked item (get, start, done), nothing else of the source's list", async () => {
     const todos = service();
     const id = await session('source');
     const { todo } = await todos.add(id, { title: 'Linked' }, 'developer');
@@ -290,8 +256,8 @@ describe('actuals (D78)', () => {
     // ▶ Start of an item already in progress keeps its span.
     await store.todos.start(todo.id, 'start');
     clock += 5 * MIN;
-    const reviewed = (await todos.update(id, todo.id, { state: 'done' }, 'agent')).todo;
-    expect(reviewed).toMatchObject({ state: 'review', actualMs: 10 * MIN, actualTokens: 7_000 });
+    const finished = (await todos.update(id, todo.id, { state: 'done' }, 'agent')).todo;
+    expect(finished).toMatchObject({ state: 'done', actualMs: 10 * MIN, actualTokens: 7_000 });
     expect((await store.todos.actualsFor([id])).get(id)).toHaveLength(1);
     await todos.update(id, todo.id, { state: 'open' });
     expect((await store.todos.actualsFor([id])).get(id)).toBeUndefined();
@@ -345,7 +311,7 @@ describe('the agent routes (D76 / D78)', () => {
     });
   }
 
-  it("the run session's token: its linked item (get, start, done → review), its own list in the answers; the rest of the source's list stays out of reach", async () => {
+  it("the run session's token: its linked item (get, start, done), its own list in the answers; the rest of the source's list stays out of reach", async () => {
     const id = await session('source');
     const list = (await ui('POST', `/api/sessions/${id}/todos`, { title: 'Linked', plan: '1. Do it' })).json() as SessionTodoList;
     const linked = list.todos[0]!.id;
@@ -363,10 +329,10 @@ describe('the agent routes (D76 / D78)', () => {
     expect((await agent(run, 'DELETE', `/agent/v1/todos/${linked}`)).statusCode).toBe(404);
     const done = await agent(run, 'PUT', `/agent/v1/todos/${linked}`, { state: 'done' });
     expect(done.statusCode, done.body).toBe(200);
-    expect(done.json()).toMatchObject({ todo: { id: linked, state: 'review' }, list: { sessionId: run, todos: [] }, linked: true });
+    expect(done.json()).toMatchObject({ todo: { id: linked, state: 'done' }, list: { sessionId: run, todos: [] }, linked: true });
     expect(done.body).not.toContain('Secret');
-    // The source's list: in review; the UI's drag to Done (skipReview) makes it done.
-    const after = (await ui('PUT', `/api/sessions/${id}/todos/${linked}`, { state: 'done', skipReview: true })).json() as SessionTodoList;
+    // The source's list: done (D102: no review state).
+    const after = (await ui('GET', `/api/sessions/${id}/todos`)).json() as SessionTodoList;
     expect(after.todos.find((t) => t.id === linked)?.state).toBe('done');
     // The session carries its link.
     expect((await ui('GET', `/api/sessions/${run}`)).json()).toMatchObject({ todoLink: { sourceSessionId: id, todoId: linked } });

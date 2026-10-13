@@ -5,7 +5,6 @@ import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
-import { ReviewCard } from '../components/ReviewCard.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
@@ -21,6 +20,7 @@ import {
   formatToolInput,
   linksSession,
   newSessionAfter,
+  openRoute,
   routeAfter,
   refusalText,
   selectedItem,
@@ -120,11 +120,9 @@ interface DetailProps {
   readonly onAnswers: (body: AnswerBatch) => void;
   /** D48 P4: `message` = a hooked session's Deny message (empty = the fixed text). */
   readonly onAction: (action: InboxAction, message?: string) => void;
-  /** D79: a review card's action ran (the list reloads). */
-  readonly onReviewChanged: () => void;
 }
 
-function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAction, onReviewChanged }: DetailProps) {
+function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAction }: DetailProps) {
   const body = detailBody(item);
   // D48 P4: a hooked terminal session's Deny can tell Claude why.
   const [denyText, setDenyText] = useState('');
@@ -151,8 +149,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
         {item.title}
       </div>
       <div className="sb-inbox__branches" data-testid="inbox-branches">
-        {/* D79: a review card names its repos and branches itself. */}
-        {(body === 'review' ? [] : item.branches).map((ref) => (
+        {item.branches.map((ref) => (
           <span key={`${ref.solution}\u0000${ref.branch}`} className="sb-inbox__branch" data-testid="inbox-branch">
             <span>{ref.solution}</span>
             <span className="sb-inbox__branch-name">⎇ {ref.branch}</span>
@@ -165,7 +162,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
           {item.context}
         </div>
       ) : null}
-      {item.detail && body !== 'review' ? (
+      {item.detail ? (
         // D96: a question's context (the agent's message right above it) keeps its line breaks.
         <div className={body === 'questions' ? 'sb-inbox__text sb-inbox__text--context' : 'sb-inbox__text'} data-testid="inbox-text">
           {item.detail}
@@ -198,11 +195,10 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
           onChange={(event) => setDenyText(event.target.value)}
         />
       ) : null}
-      {body === 'review' && item.review ? <ReviewCard key={item.id} review={item.review} variant="inbox" onChanged={onReviewChanged} /> : null}
-      {body !== 'questions' && body !== 'review' ? (
+      {body !== 'questions' ? (
         <Actions item={item} busy={busy} onAction={(action) => onAction(action, action.id === 'deny' && denyMessage && denyText.trim() !== '' ? denyText.trim() : undefined)} />
       ) : null}
-      {body !== 'questions' && body !== 'review' && error ? (
+      {body !== 'questions' && error ? (
         <div className="sb-inbox__error" data-testid="inbox-error">
           {error}
         </div>
@@ -248,11 +244,6 @@ export function InboxView() {
   // D33: a system item may belong to a closed session; its folder tag is found all the same.
   const sessions = useApi((): Promise<SessionListItem[]> => (currentSessionId ? api.listSessions({ closed: 'include' }) : Promise.resolve([])), [currentSessionId]);
   const currentSession = currentSessionId ? ((sessions.data ?? []).find((session) => session.id === currentSessionId) ?? null) : null;
-  // D79: a picked review card is read from git again (the server refreshes it; a change reloads the list through inboxChanged).
-  const reviewPicked = current?.kind === 'review' ? current.id : null;
-  useEffect(() => {
-    if (reviewPicked) void api.reviews().catch(() => undefined);
-  }, [reviewPicked]);
 
   const run = async (item: InboxItem, call: () => Promise<unknown>, after?: () => void): Promise<void> => {
     setBusyId(item.id);
@@ -308,8 +299,13 @@ export function InboxView() {
             busy={busyId === current.id}
             error={errors[current.id] ?? null}
             onAnswers={(body) => void run(current, () => api.answerBatch(current.id, body))}
-            onReviewChanged={() => inbox.reload()}
             onAction={(action, message) => {
+              // D102: Open plan of a plan's "Ready to merge" item is a link: the item stays open.
+              const link = openRoute(current, action.id);
+              if (link) {
+                navigate(link);
+                return;
+              }
               // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.
               // D52: a peer's failed run opens the form on that machine (the prefill's folder is its folder).
               const prefill = newSessionAfter(current, action.id);

@@ -10,7 +10,6 @@
  */
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, OwnedLoop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
-import type { Review } from './reviews.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import type { Plan } from './plans.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
@@ -109,16 +108,16 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
     id: ns(machine, item.id),
     sessionId: nsMaybe(machine, item.sessionId),
     ...(item.questions ? { questions: item.questions.map((question) => peerQuestion(machine, question)) } : {}),
-    // D79: a review item's card is acted on through its (remote) id.
-    ...(item.review ? { review: peerReview(machine, item.review) } : {}),
+    // Plans (D99) hook (D102): a plan's "Ready to merge" item opens that machine's plan (its remote id).
+    ...(item.route ? { route: peerRoute(machine, item.route) } : {}),
     machine: { id: machine.id, name: machine.name, state: machine.state },
   };
 }
 
-/** D79: a peer's review card: its id and session id namespaced, `machine` added. */
-export function peerReview(machine: PeerMachineRef, review: Review): Review {
-  // A peer before the D79 ruling sends no `handledByAgent`: false.
-  return { ...review, id: ns(machine, review.id), sessionId: ns(machine, review.sessionId), handledByAgent: review.handledByAgent === true, machine: { id: machine.id, name: machine.name, state: machine.state } };
+/** D102: a peer's Inbox item route: a plan page (`/plans/<id>`) names the plan by its remote id; any other route is dropped. */
+export function peerRoute(machine: PeerMachineRef, route: string): string {
+  const plan = /^\/plans\/([^/?#]+)$/.exec(route);
+  return plan ? `/plans/${ns(machine, decodeURIComponent(plan[1] as string))}` : '/inbox';
 }
 
 /**
@@ -202,7 +201,7 @@ export function peerPlan(machine: PeerMachineRef, plan: Plan): Plan {
  * a paired machine refreshes the peer's schedules when one changes there.
  * Plans (D99) hook: `planChanged`.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'artifactsChanged', 'draftChanged', 'planChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'artifactsChanged', 'draftChanged', 'planChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -234,11 +233,6 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     }
     case 'inboxChanged':
       return payload;
-    case 'reviewsChanged': {
-      // D79: a peer's review card changed: its session id namespaced.
-      const changed = value as unknown as HubEvents['reviewsChanged'];
-      return typeof changed.sessionId === 'string' ? ({ sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
-    }
     case 'artifactsChanged': {
       // D89: a peer's artifact was saved or deleted: its session id namespaced.
       const changed = value as unknown as HubEvents['artifactsChanged'];
@@ -275,7 +269,7 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
 /** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
 /** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
-/** D76: `todo-run` (a todo run's answer). D79: `review` (a review action's answer), `reviews` (`GET /api/reviews`). */
+/** D76: `todo-run` (a todo run's answer). */
 /** D89: `artifacts` (a session's artifacts), `artifact` (one with its versions), `artifact-save` (a save's answer). */
 /** D94: `owned-loops` (a session's Switchboard loops), `owned-loop` (one, the answer of a create / change / action). */
 export type PeerAnswerKind =
@@ -297,8 +291,6 @@ export type PeerAnswerKind =
   | 'todo-list'
   | 'todo-run'
   | 'todo-groups'
-  | 'review'
-  | 'reviews'
   | 'artifacts'
   | 'artifact'
   | 'artifact-save'
@@ -325,9 +317,6 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/run$/.test(pathname)) return 'todo-run';
   if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done|\/start)?)?$/.test(pathname)) return 'todo-list';
   if (pathname === '/api/todos') return upper === 'GET' ? 'todo-groups' : 'none';
-  // D79: the review cards and their actions (each answers the card).
-  if (pathname === '/api/reviews') return upper === 'GET' ? 'reviews' : 'none';
-  if (upper === 'POST' && /^\/api\/reviews\/[^/]+\/[a-z-]+$/.test(pathname)) return 'review';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D89: a session's saved artifacts (the list, one artifact, a save).
   if (/^\/api\/sessions\/[^/]+\/artifacts$/.test(pathname)) return upper === 'GET' ? 'artifacts' : upper === 'POST' ? 'artifact-save' : 'none';
@@ -399,10 +388,6 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
         : body;
     case 'todo-groups':
       return Array.isArray(body) ? body.filter(isRecord).map((group) => peerTodoGroup(machine, group as unknown as TodoGroup)) : body;
-    case 'review':
-      return isRecord(body) && typeof body['id'] === 'string' && typeof body['sessionId'] === 'string' ? peerReview(machine, body as unknown as Review) : body;
-    case 'reviews':
-      return Array.isArray(body) ? body.filter((entry) => isRecord(entry) && typeof entry['id'] === 'string').map((review) => peerReview(machine, review as unknown as Review)) : body;
     case 'artifacts':
       return Array.isArray(body) ? body.filter(isSavedArtifact).map((artifact) => peerArtifact(machine, artifact)) : body;
     case 'artifact':

@@ -43,8 +43,7 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   rows: { path: [1, 0, 2], geometry: 'box', copy: false },
   row0: { path: [1, 0, 2, 0], geometry: 'box', copy: false },
   ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`row${i}Box`, { path: [1, 0, 2, i], geometry: 'box' as Geometry, copy: false }])),
-  // D61: the app's nav has MCP after Schedules & loops: this item is one further on and one row lower (compared by size).
-  sideArtifacts: { path: [0, 2, 3], geometry: 'size', copy: false },
+  // D101: the sidebar's Artifacts item is an icon cell (not the prototype's row): gated by visual/shell.spec.ts → navGridChecks.
 };
 
 /** Computed styles compared between the two pages for every part. */
@@ -65,7 +64,7 @@ const COMPARED_STYLES = [
 ] as const;
 
 /** Parts whose styles are not compared (the row name cell inherits a link's color in neither page; see findings). */
-const STYLE_EXEMPT = new Set(['sideArtifacts']);
+const STYLE_EXEMPT = new Set<string>();
 
 let app: DemoApp;
 
@@ -80,7 +79,7 @@ test.afterAll(async () => {
 async function compare(protoPage: Page, appPage: Page, parts: typeof PARTS, failures: string[], rows: string[]): Promise<void> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.path]));
   const proto = await measure(protoPage, paths);
-  const view = await measure(appPage, { ...paths, sideArtifacts: [0, 2, 4] });
+  const view = await measure(appPage, paths);
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
     const a = view[name];

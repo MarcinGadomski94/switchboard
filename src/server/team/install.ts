@@ -6,7 +6,7 @@ import { registerTeamRoutes } from './routes.ts';
 import { TeamService } from './service.ts';
 
 /** What {@link installTeam} needs from the app (the route context it already built). */
-export type TeamAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'supervisor' | 'loops' | 'todos' | 'peers' | 'reviews' | 'takeoverRunner' | 'hooks' | 'providers' | 'worktrees' | 'folders' | 'attachments' | 'clis'>;
+export type TeamAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'supervisor' | 'loops' | 'todos' | 'peers' | 'takeoverRunner' | 'hooks' | 'providers' | 'worktrees' | 'folders' | 'attachments' | 'clis'>;
 
 /** The Team service of an app (tests: its access part's in-memory keychain, `receive`). */
 const services = new WeakMap<FastifyInstance, TeamService>();
@@ -30,7 +30,6 @@ export async function installTeam(app: FastifyInstance, context: TeamAppContext)
     loops: context.loops,
     todos: context.todos,
     peers: context.peers,
-    reviews: context.reviews,
     takeover: context.takeoverRunner,
     isHooked: (sessionId) => context.hooks.isHooked(sessionId),
     startSession: async (body, beforeSpawn) => {

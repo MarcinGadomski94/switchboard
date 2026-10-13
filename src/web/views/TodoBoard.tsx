@@ -43,11 +43,10 @@ interface Drag {
 
 /**
  * D77 · the Todos page's **Board** (`docs/todos.md` → *Board*): columns **Open · In progress ·
- * Review · Done** across every session (this machine's and the paired machines'), the cards as on
+ * Done** (D102: the Review column went with review cards) across every session (this machine's and the paired machines'), the cards as on
  * the list (compact) and labelled with their session; filters (priority, machine, folder, session)
  * and a search. **Dragging** a card into another column changes its state (`boardDrop`): Open ↔ In
- * progress without sending anything, Done means done (the review is skipped), Review only for an
- * item run in its own session; within a column the order is priority, then session, then position.
+ * progress without sending anything, Done means done; within a column the order is priority, then session, then position.
  * The mouse drags after a few pixels; a touch screen lifts the card after a long press (D74, the
  * sidebar's rule); the card's ⋯ → **Move to** does the same without dragging. On phones (ruling
  * 2026-10-08) the columns are **swipeable**: one column per screen width (scroll snap), with a tab
@@ -334,7 +333,7 @@ export function TodoBoard({
               </span>
             </div>
             <ul className="sb-todos-list sb-board-cards">
-              {columns[state].length === 0 ? <li className="sb-board-empty">{state === 'review' ? 'Items run in their own session wait here' : 'Nothing here'}</li> : null}
+              {columns[state].length === 0 ? <li className="sb-board-empty">Nothing here</li> : null}
               {columns[state].map((card) => {
                 const { todo, group } = card;
                 const sessionId = group.sessionId;

@@ -170,6 +170,46 @@
     margin-top: 6px;
   }
 
+  /*
+   * D101 · the nav grid in the drawer: 4 columns over the drawer's width, each cell its
+   * icon with the name under it (NavCell mounts the name only here), at least 56 px high.
+   */
+  .sb-shell > .sb-sidebar .sb-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 6px;
+  }
+
+  .sb-shell > .sb-sidebar .sb-nav-item {
+    width: auto;
+    height: auto;
+    min-height: 56px;
+    padding: 8px 4px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+
+  .sb-shell > .sb-sidebar .sb-nav-item .sb-badge {
+    top: 3px;
+    right: calc(50% - 22px);
+  }
+
+  .sb-nav-name {
+    max-width: 100%;
+    font-size: 11px;
+    line-height: 1.25;
+    text-align: center;
+    color: inherit;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   .sb-shell > .sb-sidebar .sb-footer {
     margin-top: auto;
   }

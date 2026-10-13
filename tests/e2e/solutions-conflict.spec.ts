@@ -91,8 +91,10 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   const statusBefore = await world.git(world.mobile, 'status', '--porcelain');
 
   // The sidebar badge and the row flag follow through /hub (sessionUpdated), without a reload.
-  await expect(badge).toHaveText('1 conflict', { timeout: 15_000 });
+  // D101: the icon's badge is an amber "!", the cell's tooltip says "1 conflict".
+  await expect(badge).toHaveText('!', { timeout: 15_000 });
   await expect(badge).toHaveAttribute('data-kind', 'warn');
+  await expect(page.getByTestId('nav-solutions')).toHaveAttribute('title', 'Solutions · 1 conflict');
   const flag = row(page, 'mobile').locator('.sb-sol-flag');
   await expect(flag).toHaveText('⚠ shared working tree', { timeout: 15_000 });
   await expect(flag).toHaveAttribute('data-kind', 'warn');
@@ -138,7 +140,8 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   );
   expect(await exists(mobileWt('second-writer'))).toBe(true);
   expect(await world.git(mobileWt('second-writer'), 'branch', '--show-current')).toBe('PROJ-2-second-writer');
-  await expect(badge).toHaveText('1 conflict');
+  await expect(badge).toHaveText('!');
+  await expect(page.getByTestId('nav-solutions')).toHaveAttribute('title', 'Solutions · 1 conflict');
 
   // A branch the repo has already is refused with the server's message; the confirm step stays open.
   await world.git(world.mobile, 'branch', 'PROJ-9-taken');

@@ -9,7 +9,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/core/plans-jira.ts` (the Jira lane's shapes and rules; its server code is `src/server/plans/jira/`, its UI `src/web/plans/jira/`, both inside the folders above)
 - `src/web/plans-jira-dev.html` (the Jira import dialog's dev mount)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
-- `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav item and the session's Plan tab, the Jira lane's `jira/` folder)
+- `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav grid's cell (D101: through the shell's `NavCell`; the `plans` icon in `src/web/shell/nav-icon-glyphs.ts` and `plansBadge` in `nav-grid.ts` may stay) and the session's Plan tab, the Jira lane's `jira/` folder)
 - `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/e2e/plans-switch.spec.ts`, `tests/core/plans-jira.test.ts`, `tests/helpers/fake-jira.ts`, `tests/e2e/plans-jira.spec.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
 - `docs/plans.md`, `docs/plans-ui.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
 
@@ -22,24 +22,26 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/server/api/settings.ts` | imports `plansSwitchChanged`; calls it when `PUT /api/settings` changes `experimental.plans` | drop both |
 | `src/hook/sb-mcp.ts` | imports `registerPlanToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
 | `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
-| `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state and proposals `none`) | remove them |
-| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
+| `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state and proposals `none`); D102: `peerRoute` and its use in `peerInboxItem` (a "Ready to merge" item's plan route) | remove them (`InboxItem.route` may stay: generic) |
+| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order; D102: an item's merge / open-pr / send-back); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order) and of `DEVICE_REFUSED` (`/api/integrations/jira`), and "(D99) plans" in the file comment | remove them |
 | `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) | drop the import and the call |
-| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |
+| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items); D102: imports `plansInboxMerge`; `PLAN_READY_TO_MERGE` / `PLAN_MERGE` / `OPEN_PLAN` / `PLAN_READY_TO_MERGE_ACTIONS`, `planMergeNotice`, `closePlanMergeNotices` and the `plan-merge` / `open-plan` branch of `#perform` (the "Ready to merge" item) | remove them (the `refused` error code and the closed-by-the-action check in `act` may stay) |
 | `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
 | `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) | remove both |
 | `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table | remove them |
 | `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` | drop the imports and the cases |
 | `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` | drop them |
-| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (renders nothing while Plans is off) | drop the import and the element |
+| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is off) | drop the import and the element |
 | `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while off) | drop the import and the element |
 | `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_ID`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tour while Plans is off | `const tours = pendingTours(state);` |
 | `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while off | `state.data?.whatsNew` in its two places |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `PlansSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Team) is left |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Team, D100) | keep while Team is there; otherwise remove both |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Team, D100) | keep while Team is there; otherwise remove the entry |
+
+Not markers (Plans' D102 Merge step, shared code): `src/server/worktrees/branch-merge.ts` (`BranchMergeGit`, the safe local merge and Open PR) may stay or go; the `plan-ready-to-merge` label in `SYSTEM_ITEM_LABELS` (`src/server/inbox/wire.ts`) and the web's `openRoute` / `OPEN_PLAN` (`src/web/views/inbox.ts`) and the Needs-you `merge` shape (`src/web/team/`) are harmless without Plans.
 
 Outside `src/` (not markers): `vite.config.ts` builds the Jira dialog's dev mount as an entry (`rollupOptions.input.plansJiraDev`: remove it); `tests/helpers/server-process.ts` drops `ATL_*` from test servers' environment (the Jira lane's guard; harmless without Plans, may stay).
 
@@ -60,10 +62,10 @@ If Jira was connected in Settings → Integrations → Jira, remove it there fir
 `<dataDir>/plans.db` (and `plans.db-wal` / `plans.db-shm` if present). Nothing of Plans' own state is in `switchboard.db`. Three kinds of rows there mention it, all harmless to a build without Plans:
 
 - the `experimental.plans` setting (an unknown settings key is never read): `DELETE FROM settings WHERE key = 'experimental.plans'`;
-- the Inbox items it raised ("Plan ready", a second conflict; dismiss-only): `DELETE FROM system_items WHERE source = 'plans'`;
+- the Inbox items it raised ("Plan ready", a second conflict, D102's "Ready to merge"): `DELETE FROM system_items WHERE source = 'plans'`;
 - a paired machine's last known plans: `DELETE FROM peer_snapshots WHERE kind = 'plans'`.
 
-Plan items are ordinary todos and their runs ordinary sessions (D76 todo runs) throughout: the todos, the run sessions, their worktrees, branches, pull requests and review cards are untouched by removal. Sessions that were working on an item keep their branch; nothing merges or starts any more.
+Plan items are ordinary todos and their runs ordinary sessions (D76 todo runs) throughout: the todos, the run sessions, their worktrees, branches, pull requests are untouched by removal (D102: there are no review cards any more; an item waiting for your merge keeps its branch for you to merge by hand). Sessions that were working on an item keep their branch; nothing merges or starts any more.
 
 ## Checked
 

@@ -18,12 +18,6 @@ export interface TeamHooks {
   charterFor(sessionId: string): Promise<string | null>;
   /** The role name of a session (this machine's id or `r~<machine>~<id>`), `null` when it is not a member's. */
   roleOf(sessionId: string): string | null;
-  /**
-   * A review card action on a member's session that its gates hold for the
-   * developer's approval: the refusal's message (a Needs-you request was raised),
-   * else `null` (go ahead).
-   */
-  reviewGate(input: { readonly reviewId: string; readonly sessionId: string; readonly action: string; readonly body: unknown; readonly bases: readonly (string | null)[] }): Promise<string | null>;
   /** Settings → Experimental → Team was switched (`PUT /api/settings`). */
   switchChanged(): Promise<void>;
   /** D100-T2: the MCP servers of a member's ready access (no value in them). */
@@ -79,12 +73,6 @@ export function labelSearchAnswer(store: object, answer: SearchAnswer): SearchAn
       }),
     })),
   };
-}
-
-/** D79 seam: `null` = the review action may run; else the refusal's message (Team raised a gate request). */
-export async function teamReviewGate(store: object, input: Parameters<TeamHooks['reviewGate']>[0]): Promise<string | null> {
-  const hooks = registry.get(store);
-  return hooks ? hooks.reviewGate(input) : null;
 }
 
 /** Settings seam: the Team switch changed. */

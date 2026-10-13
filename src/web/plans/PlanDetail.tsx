@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AnswerBatch, InboxItem, SessionEvent } from '../../core/api.ts';
 import type { Plan, PlanItem } from '../../core/plans.ts';
-import type { Review } from '../../core/reviews.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
@@ -49,7 +48,7 @@ function useLatestMessage(sessionId: string | null): string | null {
  * D99 · the detail of the selected item (`docs/plans-ui.md` → *Detail*), under every view (full
  * screen on a phone): the state icon, key, title and status; its worktree, Open session, the
  * Jira ↗ link when the plan is external, the "⚑ I merge this one" hold; then by state: the
- * real QuestionCard with Reply… (a question), Merge / Send back / Open diff (a review), the
+ * real QuestionCard with Reply… (a question), Merge / Open PR / Send back / Open diff (ready to merge, D102), the
  * reason on a red rule (blocked, with Retry for a failed item), the agent's latest message
  * (running), "Starts by itself when …" (waiting), "Merged into <target> · checks ✔" (done).
  */
@@ -57,14 +56,12 @@ export function PlanDetail({
   plan,
   item,
   inbox,
-  reviews,
   onChanged,
   onBack,
 }: {
   readonly plan: Plan;
   readonly item: PlanItem;
   readonly inbox: readonly InboxItem[];
-  readonly reviews: readonly Review[];
   readonly onChanged: (plan?: Plan) => void;
   readonly onBack: (() => void) | null;
 }) {
@@ -72,10 +69,9 @@ export function PlanDetail({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [comment, setComment] = useState<string | null>(null);
-  const latest = useLatestMessage(item.state === 'running' ? item.runSessionId : null);
+  const latest = useLatestMessage(item.state === 'running' || item.state === 'ready-to-merge' ? item.runSessionId : null);
   const question = item.runSessionId ? inbox.find((entry) => entry.kind === 'questions' && entry.sessionId === item.runSessionId) : undefined;
   const permission = item.runSessionId ? inbox.find((entry) => entry.kind === 'permission' && entry.sessionId === item.runSessionId) : undefined;
-  const review = item.runSessionId ? reviews.find((entry) => entry.sessionId === item.runSessionId && entry.state === 'pending') : undefined;
   const jira = jiraLink(plan, item);
   const remote = plan.machine !== null;
 
@@ -168,18 +164,23 @@ export function PlanDetail({
         </div>
       ) : null}
 
-      {item.state === 'review' ? (
-        <div className="sb-plan-detail__body" data-testid="plan-detail-review">
-          {review?.summary ? <div className="sb-plan-detail__message">{review.summary}</div> : null}
+      {item.state === 'ready-to-merge' ? (
+        <div className="sb-plan-detail__body" data-testid="plan-detail-merge-step">
+          {latest ? <div className="sb-plan-detail__message">{latest}</div> : null}
           {comment === null ? (
             <div className="sb-plan-detail__actions">
-              <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-merge" disabled={busy || !review || !review.actions.includes('merge')} onClick={() => review && void run(() => api.reviewAction(review.id, 'merge'))}>
+              <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-merge" disabled={busy} onClick={() => void run(() => plansApi.mergeItem(plan.id, item.id))}>
                 Merge
               </button>
-              <button type="button" className="sb-button sb-plan-btn" data-testid="plan-detail-send-back" disabled={busy || !review || !review.actions.includes('send-back')} onClick={() => setComment('')}>
+              {!item.prUrl ? (
+                <button type="button" className="sb-button sb-plan-btn" data-testid="plan-detail-open-pr" disabled={busy} onClick={() => void run(() => plansApi.openItemPr(plan.id, item.id))}>
+                  Open PR
+                </button>
+              ) : null}
+              <button type="button" className="sb-button sb-plan-btn" data-testid="plan-detail-send-back" disabled={busy} onClick={() => setComment('')}>
                 Send back
               </button>
-              {item.runSessionId ? (
+              {item.runSessionId && !remote ? (
                 <Link to={{ view: 'session', id: item.runSessionId, tab: 'diff' }} className="sb-button sb-plan-btn sb-plan-btn--ghost" data-testid="plan-detail-diff">
                   Open diff
                 </Link>
@@ -189,7 +190,10 @@ export function PlanDetail({
             <div className="sb-plan-detail__sendback">
               <textarea className="sb-plan-input" data-testid="plan-detail-comment" rows={3} placeholder="What should the agent change?" value={comment} onChange={(event) => setComment(event.target.value)} />
               <div className="sb-plan-detail__actions">
-                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-send" disabled={busy || comment.trim() === '' || !review} onClick={() => review && void run(() => api.reviewAction(review.id, 'send-back', { comment }).then(() => setComment(null)))}>
+                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-send" disabled={busy || comment.trim() === ''} onClick={() => void run(() => plansApi.sendBackItem(plan.id, item.id, comment.trim()).then((answer) => {
+                  setComment(null);
+                  return answer;
+                }))}>
                   Send back
                 </button>
                 <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={() => setComment(null)}>
@@ -198,8 +202,6 @@ export function PlanDetail({
               </div>
             </div>
           )}
-          {!review ? <div className="sb-plan-detail__text">Its Review card is being read…</div> : null}
-          {review?.note ? <div className="sb-plan-detail__text">{review.note}</div> : null}
         </div>
       ) : null}
 

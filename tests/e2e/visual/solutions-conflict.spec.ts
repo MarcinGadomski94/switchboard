@@ -22,7 +22,8 @@ import {
  * against the prototype at 1440×900, both with `mobile` selected (the prototype's
  * default selection, whose detail panel opens with the conflict card
  * `sd.warn` + "Move button-rollout to worktree"), plus the row flag and the
- * sidebar's "1 conflict" badge. Gate: boxes ±2 px, exact copy, computed styles
+ * sidebar's conflict badge (D101: the Solutions icon cell's amber "!", "1 conflict" in its
+ * tooltip; checked on the grid's own rules, not against the prototype's text row). Gate: boxes ±2 px, exact copy, computed styles
  * equal to the prototype's and to the SPEC tokens. The pixel diff is advisory
  * (`docs/visual/solutions-conflict.md`).
  */
@@ -40,9 +41,7 @@ const MOBILE_ROW = [...SCROLL, 6];
 
 function parts(): Record<string, PartSpec> {
   const out: Record<string, PartSpec> = {
-    // Sidebar: the Solutions nav item and its badge ("1 conflict").
-    navSolutions: { path: [0, 2, 1], geometry: 'box', copy: true },
-    navSolutionsBadge: { path: [0, 2, 1, 1], geometry: 'box', copy: true },
+    // D101: the sidebar's Solutions item is an icon cell now: its badge is checked below (computed), not against the prototype's row.
     // The mobile row and its flag.
     mobileRow: { path: MOBILE_ROW, geometry: 'box', copy: true },
     mobileName: { path: [...MOBILE_ROW, 0, 1, 0], geometry: 'box', copy: true },
@@ -114,7 +113,8 @@ test('Solutions conflict card, row flag and nav badge match the prototype (token
   await selectRow(protoPage, 'mobile');
   await selectRow(appPage, 'mobile');
   await expect(appPage.getByTestId('conflict-card')).toBeVisible();
-  await expect(appPage.getByTestId('nav-solutions').locator('.sb-badge')).toHaveText('1 conflict');
+  await expect(appPage.getByTestId('nav-solutions').locator('.sb-badge')).toHaveText('!');
+  await expect(appPage.getByTestId('nav-solutions')).toHaveAttribute('title', 'Solutions · 1 conflict');
   await expect(protoPage.getByText('Move button-rollout to worktree', { exact: true })).toBeVisible();
 
   const spec = parts();
@@ -183,8 +183,9 @@ test('Solutions conflict card, row flag and nav badge match the prototype (token
     buttonFont: '500 12px',
     buttonPadding: '5px 10px',
     buttonCursor: 'pointer',
-    badgeColor: needColor ?? '',
-    badgeBg: 'rgba(0, 0, 0, 0)',
+    // D101: the "!" in the primary foreground on the amber of the prototype's "1 conflict" text.
+    badgeColor: 'rgb(17, 18, 20)',
+    badgeBg: needColor ?? '',
     flagColor: needColor ?? '',
     flagFont: '10.5px "Geist Mono", monospace',
   };

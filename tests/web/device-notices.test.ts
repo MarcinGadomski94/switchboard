@@ -15,13 +15,13 @@ const DEVICE: NoticeContext = { device: true, events: DEFAULT_PUSH_EVENTS, viewi
 
 describe('D87 notice toasts', () => {
   it('a toast for every push-worthy kind on a paired device, the peers’ too', () => {
-    for (const kind of ['permission', 'turnFinished', 'errors', 'inbox', 'review'] as const) {
+    for (const kind of ['permission', 'turnFinished', 'errors', 'inbox'] as const) {
       expect(shouldToast({ ...NOTICE, kind }, DEVICE), kind).toBe(true);
     }
     expect(shouldToast({ ...NOTICE, url: '/sessions/r~abcdefghijkl~s9' }, DEVICE)).toBe(true);
     expect(noticeToast(NOTICE)).toEqual({ id: 'session-s1:abc:1', title: 'web finished', sub: 'finished · now', branch: '', text: 'The turn is done; the session is waiting for you.', sessionId: 's1' });
     expect(noticeToast({ ...NOTICE, kind: 'permission', url: '/sessions/r~abcdefghijkl~s9' }).sessionId).toBe('r~abcdefghijkl~s9');
-    expect(noticeToast({ ...NOTICE, kind: 'review', url: '/inbox' })).toMatchObject({ sub: 'ready for review · now', sessionId: null });
+    expect(noticeToast({ ...NOTICE, kind: 'inbox', url: '/inbox' })).toMatchObject({ sub: 'inbox · now', sessionId: null });
   });
 
   it('none on this machine’s UI, for a kind switched off, twice, for question batches (the question toast has them), or for the session on screen', () => {

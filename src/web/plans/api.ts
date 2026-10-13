@@ -77,6 +77,10 @@ export const plansApi = {
   updateItem: (id: string, itemId: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/items/${enc(itemId)}`, body),
   removeItem: (id: string, itemId: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/items/${enc(itemId)}`),
   retryItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/retry`),
+  /** D102: the Merge step of a ready-to-merge item (merge locally into the target; open its PR; send it back with a comment). */
+  mergeItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/merge`),
+  openItemPr: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/open-pr`),
+  sendBackItem: (id: string, itemId: string, comment: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/send-back`, { comment }),
   addEdge: (id: string, from: string, to: string) => call<Plan>('POST', `/api/plans/${enc(id)}/edges`, { from, to }),
   removeEdge: (id: string, from: string, to: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/edges/${enc(from)}/${enc(to)}`),
   start: (id: string, mergeMode: PlanMergeMode) => call<Plan>('POST', `/api/plans/${enc(id)}/start`, { mergeMode }),

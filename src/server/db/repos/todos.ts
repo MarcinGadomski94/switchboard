@@ -83,7 +83,7 @@ const SPEC: TableSpec<TodoRecord> = {
   },
 };
 
-/** The states in which an item is not finished (the open count): D76's review is neither open nor done. */
+/** The states in which an item is not finished (the open count). */
 const OPEN_STATES = `state IN ('open', 'in_progress')`;
 
 /** D69 / D70: an item's fields (title 1–120 characters; description `null` when none; the plan; priority; estimate). */
@@ -192,8 +192,7 @@ export class TodoRepository {
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
       let position = Number(row?.['next'] ?? 0);
       for (const item of items) {
-        // D76: a run's review does not travel (the run session stays on the old machine): it arrives done.
-        const state: TodoState = item.state === 'review' ? 'done' : item.state;
+        const state: TodoState = item.state;
         const doneAt = state === 'done' ? (item.doneAt ?? now) : null;
         // D75: an in-progress item always has its start (an older source's has none: now, by the developer).
         const started = state === 'open' ? null : (item.startedAt ?? (state === 'in_progress' ? now : null));
@@ -234,7 +233,7 @@ export class TodoRepository {
     const now = this.#ctx.now();
     const updated = this.#table.update(id, { ...fields, updatedAt: now });
     // D78: a completed item's record follows its title and estimate.
-    if (updated && (updated.state === 'done' || updated.state === 'review') && (fields.title !== undefined || fields.estimateMinutes !== undefined)) this.#recordActuals(updated, now);
+    if (updated && updated.state === 'done' && (fields.title !== undefined || fields.estimateMinutes !== undefined)) this.#recordActuals(updated, now);
     return updated;
   }
 
@@ -257,8 +256,7 @@ export class TodoRepository {
       } else if (state === 'open') {
         updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now, spanStartedAt: null });
       } else {
-        // D76: review has no done time (it is never removed by the done hour).
-        updated = this.#table.update(id, { ...closed, state, doneAt: state === 'done' ? now : null, updatedAt: now, spanStartedAt: null });
+        updated = this.#table.update(id, { ...closed, state, doneAt: now, updatedAt: now, spanStartedAt: null });
       }
       if (updated) this.#recordActuals(updated, now);
       return updated;
@@ -343,9 +341,9 @@ export class TodoRepository {
     };
   }
 
-  /** D78: keeps `todo_actuals` in step: a completed (done / review) item that was started has its row; any other has none. */
+  /** D78: keeps `todo_actuals` in step: a completed (done) item that was started has its row; any other has none. */
   #recordActuals(record: TodoRecord, now: string): void {
-    const completed = (record.state === 'done' || record.state === 'review') && record.actualMs !== null;
+    const completed = record.state === 'done' && record.actualMs !== null;
     if (!completed) {
       this.#ctx.db.prepare('DELETE FROM todo_actuals WHERE todo_id = ?').run(record.id);
       return;

@@ -267,8 +267,7 @@ export async function todoDone(api: AgentApi, input: ToolInput): Promise<CallToo
   return request(api, 'PUT', itemRoute(id), { state: input['done'] === false ? 'open' : 'done' }, (body) => {
     const todo = todoOf(body);
     const summary = summaryOf(body);
-    // D76: an item run in its own session goes to the developer's review instead of done.
-    const word = todo?.state === 'done' ? 'Done' : todo?.state === 'review' ? "Done (in review: the developer reviews the run's work)" : 'Reopened';
+    const word = todo?.state === 'done' ? 'Done' : 'Reopened';
     return textResult(todo ? `${word}: ${todoLine(todo)}\n\n${summary}` : summary);
   });
 }

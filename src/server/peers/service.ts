@@ -3,10 +3,9 @@ import os from 'node:os';
 import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 import type { FastifyInstance } from 'fastify';
 import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
-import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
 // Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
-import type { Review } from '../../core/reviews.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -87,9 +86,8 @@ export const PEER_HOLD_MS = 10_000;
 export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
-/** D79: its review cards (`GET /api/reviews`). */
 /** Plans (D99) hook: its plans (`GET /api/plans`). */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews', artifacts: '/api/artifacts', plans: '/api/plans' } as const;
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -191,9 +189,6 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/takeover\/leftovers\/[^/]+\/delete$/],
-  // D79: the review cards (list) and their actions, run on the machine whose session it is.
-  ['GET', /^\/api\/reviews$/],
-  ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|discard|cleanup|dismiss)$/],
   // D89: that machine's saved artifacts (the Artifacts page's list; a session's list, one artifact, a version's bytes, Save as artifact, Delete).
   ['GET', /^\/api\/artifacts$/],
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
@@ -217,7 +212,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['PUT', /^\/api\/plans\/[^/]+(?:\/(?:mode|holds|items\/[^/]+))?$/],
   ['DELETE', /^\/api\/plans\/[^/]+(?:\/items\/[^/]+|\/edges\/[^/]+\/[^/]+)?$/],
   ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
-  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
+  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|merge|open-pr|send-back)$/],
   // Team (D100) hook (docs/team.md → Sync): the team exchange, and acting on a member on the machine that runs it
   // (adopt one of its sessions, edit, pause / resume, return, remove, move, approve its requests, hand-offs).
   ['POST', /^\/api\/team\/sync$/],
@@ -836,15 +831,6 @@ export class PeerService implements PeerHandlers {
       void this.#publishInboxCount();
       return;
     }
-    if (name === 'reviewsChanged') {
-      // D79: the peer's review cards are fetched again first, so a header that reloads on the event sees the change.
-      void this.refreshList(id, 'reviews').then(() => {
-        const current = this.#ref(id);
-        const mapped = current ? peerHubEvent(current, name, payload) : null;
-        if (mapped !== null) this.#publishFromPeer(name, mapped);
-      });
-      return;
-    }
     if (name === 'artifactsChanged') {
       // D89: the peer's artifacts are fetched again first, so the Artifacts page that reloads on the event sees the change.
       void this.refreshList(id, 'artifacts').then(() => {
@@ -944,11 +930,6 @@ export class PeerService implements PeerHandlers {
   /** Plans (D99) hook: the paired machines' plans (`GET /api/plans` there) as last known; see {@link remoteSchedules}. */
   remotePlans(): Plan[] {
     return this.#remoteList('plans', (ref, item) => (typeof item === 'object' && item !== null && Array.isArray((item as Record<string, unknown>)['items']) ? peerPlan(ref, item as unknown as Plan) : null)).filter((plan): plan is Plan => plan !== null);
-  }
-
-  /** D79: the paired machines' review cards (`GET /api/reviews` there) as last known; see {@link remoteSchedules}. */
-  remoteReviews(): Review[] {
-    return this.#remoteList('reviews', (ref, item) => peerReview(ref, item as Review));
   }
 
   /** D89: the paired machines' saved artifacts (`GET /api/artifacts` there) as last known, namespaced and tagged; see {@link remoteSchedules}. */
@@ -1072,8 +1053,6 @@ export class PeerService implements PeerHandlers {
       if (method.toUpperCase() !== 'GET' && path.split('?')[0]?.startsWith('/api/schedules')) await this.refreshList(machineId, 'schedules');
       // D68: a todo list changed there: the Todos page's groups are fetched again too.
       if (method.toUpperCase() !== 'GET' && /\/todos(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'todos');
-      // D79: a review card was acted on there: the review list is fetched again too.
-      if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/reviews/')) await this.refreshList(machineId, 'reviews');
       // D89: an artifact was saved or deleted there: the Artifacts page's list is fetched again too.
       if (method.toUpperCase() !== 'GET' && /\/artifacts(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'artifacts');
       // Plans (D99) hook: a plan changed there: the plans are fetched again too.

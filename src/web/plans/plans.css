@@ -2,17 +2,19 @@
  * D99 · the Plans pages, their dialogs, the nav's Plans badge and the session's Plan tab
  * (docs/plans-ui.md → *The Plans page*). Only `.sb-plan*` classes and the Plans nav item's
  * badge: nothing here touches the rest of Switchboard, so with Plans off every page is as
- * before. Colours from styles/tokens.css, plus the review violet of the approved design.
+ * before. Colours from styles/tokens.css, plus the ready-to-merge violet of the approved design.
  */
 :root {
-  --plan-review: oklch(0.75 0.12 310);
+  --plan-merge: oklch(0.75 0.12 310);
   --plan-tl-label: 230px;
 }
 
 /* ── nav and session panel ───────────────────────────────────────────── */
 
-[data-testid='nav-plans'] .sb-badge[data-kind='run'] {
-  color: var(--status-run);
+/* D101: the nav grid cell's badge counts the running plans, in the run colour. */
+.sb-nav-item[data-testid='nav-plans'] .sb-badge[data-kind='run'] {
+  background: var(--status-run);
+  color: var(--primary-fg);
 }
 
 .sb-plan-tab {

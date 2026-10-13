@@ -1327,38 +1327,6 @@ a.sb-agent--link:focus-visible {
   gap: 6px;
 }
 
-/* D79: the session's open Review card: a badge at the start of the chips row, its card under the top row. */
-.sb-sv-chips .sb-sv-review-badge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--question-border);
-  background: var(--question-bg);
-  color: var(--question-label);
-  border-radius: var(--radius-chip-lg);
-  padding: 2px 8px;
-  font: 500 11px var(--font-mono);
-  cursor: pointer;
-}
-
-.sb-sv-chips .sb-sv-review-badge[data-state='cleanup'] {
-  border-color: var(--border-control);
-  background: transparent;
-  color: var(--muted-1);
-}
-
-.sb-sv-review-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.sb-sv-review-panel {
-  padding: 0 0 4px;
-}
-
 /* D74 follow-up: a session column too narrow for the header's actions (the right panel / the sidebar open at a
    desktop width) moves the ones that do not fit into this ⋯ menu (`header-overflow.ts`); nothing runs past the column. */
 .sb-sv-overflow-holder {

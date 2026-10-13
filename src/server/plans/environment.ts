@@ -102,5 +102,14 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     async notice(input) {
       await systemItems.planNotice(input);
     },
+
+    // D102: the "Ready to merge" Inbox item (Merge runs through the Plans hook, `plansInboxMerge`).
+    async mergeNotice(input) {
+      await systemItems.planMergeNotice(input);
+    },
+
+    async closeMergeNotice(itemId, outcome) {
+      await systemItems.closePlanMergeNotices(itemId, outcome);
+    },
   };
 }

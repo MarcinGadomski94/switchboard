@@ -38,7 +38,7 @@ Left to right; layers by the **longest path** (an item one layer right of its fu
 | ready | ◌ | `--muted-1` #a9a8a3 | ready |
 | running | ● | `--status-run` | running (· checks) |
 | question | ? | `--status-need` | needs your answer |
-| in review | ◐ | `oklch(0.75 0.12 310)` | in review |
+| ready to merge (D102) | ◐ | `oklch(0.75 0.12 310)` | waiting for your merge |
 | done | ✔ | `--status-done` | done · merged |
 | blocked | ✖ | `--status-fail` | blocked (the reason in the detail) |
 
@@ -48,15 +48,15 @@ Keys shorten to their number when every keyed item shares one project prefix (`P
 
 ### Timeline
 
-One bar per item, grouped by repository (its first solution, else the plan's one repo, else "all repos"), on a time axis from the plan's start to the last projected end, a **now** line across. Segments come from the core's history `PlanItem.spans` (`plan_item_spans`; an open span is drawn to now): `running` → agent working (run blue), `waiting-you` → waiting on you (amber), `waiting-dependency` → waiting on a dependency (hatched grey), `paused-usage` → paused for usage (red 60 %), `paused-plan` → the same look, titled with the plan's reason ("Plans was switched off") while open, else "plan paused"; then **projected** (dashed): each open item after its dependencies' projected ends, for its estimate, or what is left of it. Summary: "Waiting on you: 8.6 h of 24 · longest: 3165 review (3 h) · Projected finish: tomorrow 07:30" — the sum of every `waiting-you` span over the sum of working and waiting-on-you time, the longest single `waiting-you` span (named after what the item waits on while open, "review" for a developer-merged item's last one, else "wait"). Without spans (older data) the segments are derived from `startedAt` / `waitingSince` / `mergedAt` / `doneAt`.
+One bar per item, grouped by repository (its first solution, else the plan's one repo, else "all repos"), on a time axis from the plan's start to the last projected end, a **now** line across. Segments come from the core's history `PlanItem.spans` (`plan_item_spans`; an open span is drawn to now): `running` → agent working (run blue), `waiting-you` → waiting on you (amber), `waiting-dependency` → waiting on a dependency (hatched grey), `paused-usage` → paused for usage (red 60 %), `paused-plan` → the same look, titled with the plan's reason ("Plans was switched off") while open, else "plan paused"; then **projected** (dashed): each open item after its dependencies' projected ends, for its estimate, or what is left of it. Summary: "Waiting on you: 8.6 h of 24 · longest: 3165 merge (3 h) · Projected finish: tomorrow 07:30" — the sum of every `waiting-you` span over the sum of working and waiting-on-you time, the longest single `waiting-you` span (named after what the item waits on while open, "merge" for a developer-merged item's last one, else "wait"). Without spans (older data) the segments are derived from `startedAt` / `waitingSince` / `mergedAt` / `doneAt`.
 
 ### List
 
-Compact rows (state icon, key, title, status, repo · estimate) with an inline **Answer** (selects the item: its question card is in the detail) or **Merge** (the item's Review card's merge). It is the phone's layout.
+Compact rows (state icon, key, title, status, repo · estimate) with an inline **Answer** (selects the item: its question card is in the detail) or **Merge** (a ready-to-merge item: the plan's Merge, `POST …/items/{itemId}/merge`, D102; a refusal shows above the rows). It is the phone's layout.
 
 ### Detail
 
-The state icon, key, title, status; its worktree branch, **Open session**, **Jira ↗** (only when the plan's external ref carries a `baseUrl` / `url`; the core's ref has only `system` and `key` today), **PR ↗**, and **⚑ I merge this one** (`PUT …/holds`). Then by state: the real **QuestionCard** with **Reply…** (or a permission request's actions), **Merge / Send back / Open diff** (the Review card's actions; Send back asks for a comment), the reason on a red rule (with **Retry** for a failed item), the agent's latest message (running), "Starts by itself when X and Y are done." (waiting), "Merged into <target> · checks ✔" (done).
+The state icon, key, title, status; its worktree branch, **Open session**, **Jira ↗** (only when the plan's external ref carries a `baseUrl` / `url`; the core's ref has only `system` and `key` today), **PR ↗**, and **⚑ I merge this one** (`PUT …/holds`). Then by state: the real **QuestionCard** with **Reply…** (or a permission request's actions), **Merge / Open PR / Send back / Open diff** (D102: a ready-to-merge item, with the agent's latest message; the plan's own Merge step, `docs/plans.md` → *Merge step*; Send back asks for a comment; Open PR until the item has a PR), the reason on a red rule (with **Retry** for a failed item), the agent's latest message (running), "Starts by itself when X and Y are done." (waiting), "Merged into <target> · checks ✔" (done).
 
 ### The merge-mode dialog
 
@@ -73,5 +73,5 @@ Desktop (≥ 1280): as above. Tablet: the same, padding 16 px, the graph scrolls
 ## Tests
 
 - `tests/web/plans.test.ts`: state look, status lines, chips, graph layers (longest path, barycentre order), critical path edges, loop refusal texts, timeline segments from spans and from timestamps, and the summary.
-- `tests/e2e/plans.spec.ts` (real path, fake claude / temp git / fake gh / fake Jira): off by default; import from Jira via the list → the draft opens → a proposal ✓ adds an edge; create from todos; a dependency and a refused loop; Start needs a merge mode; a question answered in the detail; running → review → merged → the dependent starts; pause / resume; the timeline; the phone list; the session's Plan tab; the What's-new entry; switched off → paused with the reason.
+- `tests/e2e/plans.spec.ts` (real path, fake claude / temp git / fake gh / fake Jira): off by default; import from Jira via the list → the draft opens → a proposal ✓ adds an edge; create from todos; a dependency and a refused loop; Start needs a merge mode; a question answered in the detail; running → ready to merge → merged → the dependent starts; pause / resume; the timeline; the phone list; the session's Plan tab; the What's-new entry; switched off → paused with the reason.
 - `tests/e2e/visual/plans.spec.ts`: a plan in every state at desktop / tablet / phone; screenshots and `docs/visual/plans.md`.

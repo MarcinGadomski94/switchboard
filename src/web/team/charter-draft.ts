@@ -5,7 +5,7 @@ import type { TeamTemplate } from '../../core/team-templates.ts';
  * D100 · drafting a suggestion's charter (`docs/team.md` → *Suggestions*). The core
  * leaves `charterDraft` empty; the review drafts one on demand when it opens, for
  * every suggestion without one. Switchboard has no model call for summaries (History
- * and review-card summaries are the agent's own last message, not a model's), so the
+ * and summaries are the agent's own last message, not a model's), so the
  * draft is built here, deterministically, from the template the heuristic picked and
  * the session's evidence: instant, free, and never blocking the dialog. Drafts are
  * cached per session, template and evidence for the page's lifetime.

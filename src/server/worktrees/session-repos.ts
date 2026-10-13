@@ -11,8 +11,9 @@ import type { SessionTouchedFiles } from './touched.ts';
 
 /**
  * The repositories a session works in (D79 / D80 / D90 follow-up 2026-10-13,
- * `docs/reviews.md` → *Which repositories*): the ONE answer review cards, turn
- * checkpoints and the Diff tab all read, so the three never disagree.
+ * `docs/worktrees.md` → *Which repositories*): the ONE answer turn checkpoints and
+ * the Diff tab both read, so they never disagree (D102: review cards, its first
+ * reader, were removed).
  *
  * - **worktrees**: the session's registered worktrees (`worktrees` rows);
  * - **in place**, deduplicated by real path, in this order:

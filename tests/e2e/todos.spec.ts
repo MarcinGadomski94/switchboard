@@ -600,7 +600,7 @@ async function runIdOf(card: import('@playwright/test').Locator): Promise<string
   return decodeURIComponent(href.split('/').pop() ?? '');
 }
 
-test('D76 · ⋯ Run in new session: a new session titled like the item gets its start message; the card links it live; its agent marks it done → In review; Select → Run 2', async ({ page }) => {
+test('D76 · ⋯ Run in new session: a new session titled like the item gets its start message; the card links it live; its agent marks it done → done (D102: no review); Select → Run 2', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto(world.baseUrl);
   const { id } = await world.startSession(page, 'todo-run-source', 'Reply with just OK.');
@@ -636,13 +636,14 @@ test('D76 · ⋯ Run in new session: a new session titled like the item gets its
   await expect(notes.getByTestId('todo-menu-run')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // The run session's agent marks the item done (its own token) once its first turn ended: it is in review, not done.
+  // The run session's agent marks the item done (its own token) once its first turn ended: it is done (D102: no review state).
   await expect(notes.getByTestId('todo-run-status')).toHaveText(/^(idle|done)$/, { timeout: 15_000 });
   expect(await agentPuts(runId, todoId, { state: 'done' })).toBe(200);
-  await expect(notes).toHaveAttribute('data-state', 'review');
-  await expect(notes.getByTestId('todo-in-review')).toBeVisible();
-  await expect(notes.getByTestId('todo-actuals')).toHaveText(/^est ~30m · took (<1m|\d+m) · \d+k tokens$/);
-  await expect(page.getByTestId('todo-count')).toHaveText('2 open · ~1h · 1 in review · 0 done');
+  await expect(page.getByTestId('todo-count')).toHaveText('2 open · ~1h · 1 done');
+  // It sits with the done items (shown on demand), still linking its run.
+  await strip.getByTestId('todo-done-toggle').click();
+  await expect(notes).toHaveAttribute('data-state', 'done');
+  await expect(notes.getByTestId('todo-in-review')).toHaveCount(0);
 
   // The run session opens from the card; its first message is the item's start message.
   await notes.getByTestId('todo-run-link').click();
@@ -655,17 +656,17 @@ test('D76 · ⋯ Run in new session: a new session titled like the item gets its
   await strip.getByTestId('todo-select-toggle').click();
   await expect(strip.getByTestId('todo-run-selected')).toBeDisabled();
   for (const title of ['Rename the config keys', 'Bump the fake CLI']) await items.filter({ hasText: title }).getByTestId('todo-select').check();
-  // An item already running cannot be picked.
-  await expect(notes.getByTestId('todo-select')).toBeDisabled();
+  // A done item cannot be picked (the done list offers no box).
+  await expect(notes.getByTestId('todo-select')).toHaveCount(0);
   await expect(strip.getByTestId('todo-run-selected')).toHaveText('Run 2 in new sessions');
   await strip.getByTestId('todo-run-selected').click();
   await expect(strip.getByTestId('todo-selection')).toHaveCount(0);
   await expect(items.filter({ hasText: 'Rename the config keys' }).getByTestId('todo-run-link')).toBeVisible();
   await expect(items.filter({ hasText: 'Bump the fake CLI' }).getByTestId('todo-run-link')).toBeVisible();
-  await expect(page.getByTestId('todo-count')).toHaveText('2 in progress · 0 open · ~1h · 1 in review · 0 done');
+  await expect(page.getByTestId('todo-count')).toHaveText('2 in progress · 0 open · ~1h · 1 done');
 });
 
-test('D77 · the board: List | Board (kept), four columns across sessions, filters and search, drag between columns, Review only with a run, ⋯ Move to; D78 actuals', async ({ page }) => {
+test('D77 · the board: List | Board (kept), three columns across sessions (D102: no Review), filters and search, drag between columns, ⋯ Move to; D78 actuals', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto(world.baseUrl);
   const { id } = await world.startSession(page, 'todo-board', 'Reply with just OK.');
@@ -723,9 +724,8 @@ test('D77 · the board: List | Board (kept), four columns across sessions, filte
   await dragTo('Board one', 'in_progress');
   await expect(column('in_progress').getByTestId('todo-item').filter({ hasText: 'Board one' })).toHaveCount(1);
   await expect(card('Board one')).toHaveAttribute('data-state', 'in_progress');
-  // Review needs a run: the drop is refused (the card stays).
-  await dragTo('Board one', 'review');
-  await expect(card('Board one')).toHaveAttribute('data-state', 'in_progress');
+  // D102: no Review column.
+  await expect(column('review')).toHaveCount(0);
   // In progress → Done: done (the actuals show).
   await dragTo('Board one', 'done');
   await expect(column('done').getByTestId('todo-item').filter({ hasText: 'Board one' })).toHaveCount(1);
@@ -733,20 +733,18 @@ test('D77 · the board: List | Board (kept), four columns across sessions, filte
   // D78: the session's totals under the board.
   await expect(board.getByTestId('board-actuals-row').filter({ hasText: 'todo-board' })).toContainText(/est ~20m · took (<1m|\d+m) \(1 done\)/);
 
-  // ⋯ → Move to (the keyboard alternative): no Review entry without a run; Done → Open reopens.
+  // ⋯ → Move to (the keyboard alternative): no Review entry; Done → Open reopens.
   await card('Board three').getByTestId('todo-menu-button').click();
   await card('Board three').getByTestId('todo-menu-move').click();
   await expect(card('Board three').getByTestId('todo-menu-move-review')).toHaveCount(0);
   await card('Board three').getByTestId('todo-menu-move-in_progress').click();
   await expect(card('Board three')).toHaveAttribute('data-state', 'in_progress');
 
-  // A run item can go to Review by drag, and Done from there means done.
+  // A run item dragged to Done is done.
   await card('Board two').getByTestId('todo-menu-button').click();
   await card('Board two').getByTestId('todo-menu-run').click();
   await expect(card('Board two').getByTestId('todo-run-link')).toBeVisible();
   await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
-  await dragTo('Board two', 'review');
-  await expect(card('Board two')).toHaveAttribute('data-state', 'review');
   await dragTo('Board two', 'done');
   await expect(card('Board two')).toHaveAttribute('data-state', 'done');
 

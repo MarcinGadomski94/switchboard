@@ -23,6 +23,8 @@ export interface KnownSettings {
   readonly 'ui.sidebarHidden': boolean;
   /** D41: the session view's right panel is slid out, in every session. Editable, default `false`. */
   readonly 'ui.rightPanelHidden': boolean;
+  /** D101: the sidebar's TOOLS section is collapsed to its header (`docs/sidebar.md` → *TOOLS*). Editable, default `false`. */
+  readonly 'ui.toolsCollapsed': boolean;
   /**
    * D56: the New-session dialog's last used mode (`simple`: folder, message,
    * title, model, own worktree; `full`: the router form). Editable, default
@@ -39,11 +41,6 @@ export interface KnownSettings {
    * agent one reminder to finish it (`docs/todos.md` → *In progress (D75)*). Editable, default `true`.
    */
   readonly 'sessions.todoReminder': boolean;
-  /**
-   * D79: raise a Review card when a session with changes goes idle (`docs/reviews.md`).
-   * Editable, default `true`.
-   */
-  readonly 'sessions.reviewCards': boolean;
   /**
    * D80: before each turn of a supervised session, save a checkpoint of its git working trees
    * (hidden refs), so a turn can be reverted (`docs/undo.md`). Editable, default `true`.
@@ -162,7 +159,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -177,11 +174,11 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'usage.warnAtPct': 90,
   'ui.sidebarHidden': false,
   'ui.rightPanelHidden': false,
+  'ui.toolsCollapsed': false,
   'newSession.mode': 'simple',
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
   'sessions.todoReminder': true,
-  'sessions.reviewCards': true,
   'sessions.checkpoints': true,
   'sessions.todoEnrich': true,
   'sessions.modelRules': [],
@@ -214,11 +211,11 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'usage.warnAtPct': num('usage.warnAtPct', SETTING_DEFAULTS['usage.warnAtPct']),
     'ui.sidebarHidden': bool('ui.sidebarHidden', SETTING_DEFAULTS['ui.sidebarHidden']),
     'ui.rightPanelHidden': bool('ui.rightPanelHidden', SETTING_DEFAULTS['ui.rightPanelHidden']),
+    'ui.toolsCollapsed': bool('ui.toolsCollapsed', SETTING_DEFAULTS['ui.toolsCollapsed']),
     'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
-    'sessions.reviewCards': bool('sessions.reviewCards', SETTING_DEFAULTS['sessions.reviewCards']),
     'sessions.checkpoints': bool('sessions.checkpoints', SETTING_DEFAULTS['sessions.checkpoints']),
     'sessions.todoEnrich': bool('sessions.todoEnrich', SETTING_DEFAULTS['sessions.todoEnrich']),
     'sessions.modelRules': readModelRules(value['sessions.modelRules']),

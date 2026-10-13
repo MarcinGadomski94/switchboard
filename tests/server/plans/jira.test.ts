@@ -118,6 +118,8 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
     },
     async send() {},
     async notice() {},
+    async mergeNotice() {},
+    async closeMergeNotice() {},
   };
   const errors: unknown[] = [];
   await store.settings.set(PLANS_SETTING, true);

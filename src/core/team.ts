@@ -254,7 +254,7 @@ export interface TeamRequestRecord extends TeamSynced {
   readonly title: string;
   readonly detail: string;
   readonly state: TeamRequestState;
-  /** What runs on approval (the machine of the member runs it), e.g. `{ type: 'review-merge', reviewId }`. */
+  /** What runs on approval (the machine of the member runs it), e.g. `{ type: 'resume-member' }`. */
   readonly action: TeamRequestAction | null;
   /** The result of the approved action, or the reason it failed. */
   readonly note: string | null;
@@ -263,7 +263,7 @@ export interface TeamRequestRecord extends TeamSynced {
 }
 
 /** What an approved request runs. */
-export type TeamRequestAction = { readonly type: 'review-merge'; readonly reviewId: string } | { readonly type: 'resume-member' } | { readonly type: 'external'; readonly ref: string };
+export type TeamRequestAction = { readonly type: 'resume-member' } | { readonly type: 'external'; readonly ref: string };
 
 /** Activity kinds. */
 export const ACTIVITY_KINDS = ['handoff', 'adopt', 'create', 'return', 'pause', 'resume', 'report', 'approval', 'budget', 'move', 'update', 'team', 'access'] as const;
@@ -347,7 +347,7 @@ export interface TeamNeedsYouItem {
   /** The Inbox item's id (`source: inbox`) or the request's (`source: team`). */
   readonly id: string;
   readonly source: 'inbox' | 'team';
-  /** `questions` / `permission` / `review` / `system` (from the Inbox), `gate` / `budget` / `access` (Team's). */
+  /** `questions` / `permission` / `system` (from the Inbox), `gate` / `budget` / `access` (Team's). */
   readonly kind: string;
   readonly memberId: string;
   readonly memberName: string;
@@ -525,7 +525,7 @@ export function returnNote(role: string, team: string): string {
 
 /** "Tracker · question". */
 export function needsYouLabel(memberName: string, kind: string): string {
-  const what: Record<string, string> = { questions: 'question', permission: 'permission', review: 'review', system: 'system', gate: 'approval', budget: 'budget', access: 'access' };
+  const what: Record<string, string> = { questions: 'question', permission: 'permission', system: 'system', gate: 'approval', budget: 'budget', access: 'access' };
   return `${memberName} · ${what[kind] ?? kind}`;
 }
 

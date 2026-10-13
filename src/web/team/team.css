@@ -12,6 +12,11 @@
 
 /* ── sidebar ─────────────────────────────────────────────────────────── */
 
+/* D101: the nav grid's Team cell: a neutral ⚑ at rest, in the role colour while the Team page is open. */
+.sb-nav-item[data-testid='nav-team'][aria-current='page'] {
+  color: var(--team-role-fg);
+}
+
 .sb-team-entry {
   margin: 10px 10px 0;
   padding: 7px 10px;

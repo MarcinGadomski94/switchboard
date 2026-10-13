@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { InboxItem } from '../../core/api.ts';
 import type { Plan, PlanItem } from '../../core/plans.ts';
-import type { Review } from '../../core/reviews.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -48,7 +47,7 @@ const TABS: readonly { readonly id: PlanTab; readonly label: string }[] = [
 type Open = 'start' | 'mode' | 'limits' | 'add' | null;
 
 /** The List view (also the phone's layout): compact rows with an inline Answer / Merge. */
-function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly plan: Plan; readonly selectedId: string | null; readonly reviews: readonly Review[]; readonly onSelect: (itemId: string) => void; readonly onMerged: () => void }) {
+function PlanList({ plan, selectedId, onSelect, onMerged }: { readonly plan: Plan; readonly selectedId: string | null; readonly onSelect: (itemId: string) => void; readonly onMerged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -57,7 +56,6 @@ function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly 
       {plan.items.map((item) => {
         const look = STATE_LOOK[item.state];
         const action = inlineAction(item);
-        const review = action === 'merge' && item.runSessionId ? reviews.find((entry) => entry.sessionId === item.runSessionId && entry.state === 'pending') : undefined;
         return (
           <div key={item.id} className="sb-plan-row" data-testid="plan-row" data-item-id={item.id} data-state={item.state} aria-selected={selectedId === item.id}>
             <button type="button" className="sb-button sb-plan-row__main" onClick={() => onSelect(item.id)}>
@@ -81,13 +79,12 @@ function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly 
                 type="button"
                 className="sb-button sb-plan-btn sb-plan-btn--primary"
                 data-testid="plan-row-merge"
-                disabled={busy !== null || !review || !review.actions.includes('merge')}
+                disabled={busy !== null}
                 onClick={() => {
-                  if (!review) return;
                   setBusy(item.id);
                   setError(null);
-                  api
-                    .reviewAction(review.id, 'merge')
+                  plansApi
+                    .mergeItem(plan.id, item.id)
                     .then(onMerged, (caught: unknown) => setError(refusalText(caught)))
                     .finally(() => setBusy(null));
                 }}
@@ -108,7 +105,7 @@ function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly 
  * limits and critical-path chips; ✎ Edit dependencies, ⏸ Pause / ▶ Resume, ▶ Start plan), the
  * Graph / Timeline / List tabs, the dependency editor and the selected item's detail under
  * them. Phone: the List with the detail full screen ("‹ <plan>"); tablet: the Graph scrolls
- * sideways. Live on `planChanged` (the shared store), the Inbox and the review cards.
+ * sideways. Live on `planChanged` (the shared store) and the Inbox.
  */
 export function PlanPage({ planId }: { readonly planId: string }) {
   const { on, plans, loaded } = usePlans();
@@ -127,13 +124,10 @@ export function PlanPage({ planId }: { readonly planId: string }) {
   const [jiraOpen, setJiraOpen] = useState(true);
   const sessions = useSessionListOf();
   const inbox = useApi(api.inbox);
-  const reviews = useApi(api.reviews);
   useHubEvent('inboxChanged', () => inbox.reload());
-  useHubEvent('reviewsChanged', () => reviews.reload());
   useHubEvent('planChanged', (payload) => {
     if (payload.planId === planId) {
       inbox.reload();
-      reviews.reload();
     }
   });
   useEffect(() => {
@@ -163,7 +157,6 @@ export function PlanPage({ planId }: { readonly planId: string }) {
     if (answer) putPlan(answer);
     else void reloadPlans();
     inbox.reload();
-    reviews.reload();
   };
   const act = async (action: () => Promise<Plan>): Promise<void> => {
     setBusy(true);
@@ -218,7 +211,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
   const first = editFirst ? (plan.items.find((item) => item.id === editFirst) ?? null) : null;
   const finished = plan.state === 'done' || plan.state === 'cancelled';
   const showDetail = selected !== null;
-  const detail = selected ? <PlanDetail plan={plan} item={selected} inbox={inbox.data ?? ([] as InboxItem[])} reviews={reviews.data ?? []} onChanged={changed} onBack={phone ? () => setSelectedId(null) : null} /> : null;
+  const detail = selected ? <PlanDetail plan={plan} item={selected} inbox={inbox.data ?? ([] as InboxItem[])} onChanged={changed} onBack={phone ? () => setSelectedId(null) : null} /> : null;
 
   if (phone && showDetail) {
     return (
@@ -358,7 +351,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           </>
         ) : null}
         {view === 'timeline' ? <PlanTimeline plan={plan} now={now} selectedId={selectedId} onSelect={setSelectedId} /> : null}
-        {view === 'list' ? <PlanList plan={plan} selectedId={selectedId} reviews={reviews.data ?? []} onSelect={setSelectedId} onMerged={() => changed()} /> : null}
+        {view === 'list' ? <PlanList plan={plan} selectedId={selectedId} onSelect={setSelectedId} onMerged={() => changed()} /> : null}
         {detail ??
           (phone ? null : (
             <div className="sb-plan-detail sb-plan-detail--empty" data-testid="plan-detail-empty">

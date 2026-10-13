@@ -23,7 +23,6 @@ import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
-import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
@@ -1448,8 +1447,8 @@ export interface InboxAction {
 /** `GET /api/inbox` item. Provisional: M3.1 / M3.2 / M3.3. */
 export interface InboxItem {
   readonly id: string;
-  /** A question batch, a permission request (D6), a system item (M3.3) or (D79) a review card. */
-  readonly kind: 'questions' | 'permission' | 'system' | 'review';
+  /** A question batch, a permission request (D6) or a system item (M3.3). */
+  readonly kind: 'questions' | 'permission' | 'system';
   readonly sessionId: string | null;
   /** Session name, schedule name or `worktrees`. */
   readonly source: string;
@@ -1481,8 +1480,11 @@ export interface InboxItem {
   readonly prefill?: NewSessionPrefill;
   /** Additive (D48): the paired machine the item comes from (a peer's item; its ids are remote ids); absent for this machine's own. */
   readonly machine?: SessionMachine | null;
-  /** Additive (D79): a review item's card (`kind: 'review'`; its actions are `POST /api/reviews/{id}/<action>`). */
-  readonly review?: Review;
+  /**
+   * Additive (D102): the page a system item's "open" action goes to (`/plans/<id>` for a plan's
+   * "Ready to merge" item's **Open plan**); the action navigates there and leaves the item open.
+   */
+  readonly route?: string;
   /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
   readonly teamRole?: string;
 }
@@ -2415,20 +2417,8 @@ export interface HubEvents {
    */
   readonly artifactsChanged: ArtifactsChanged;
   /**
-   * Additive (D79, `docs/reviews.md`; D76 subscribes): a review was resolved (Merge, Commit, Discard,
-   * Send back, Dismiss). The shared contract with the todo lane: exactly
-   * `{ sessionId, outcome }`. This machine's only: never forwarded between peers.
-   */
-  readonly reviewResolved: ReviewResolvedEvent;
-  /**
-   * Additive (D79): a session's review card was raised, refreshed or acted on; the
-   * session header's badge reloads. Forwarded between peers (a peer's with its remote
-   * session id).
-   */
-  readonly reviewsChanged: { readonly sessionId: string };
-  /**
    * Additive (D87, `docs/devices.md`): a push-worthy happening (a permission
-   * request, a question batch, a finished turn, a session error, a review card,
+   * request, a question batch, a finished turn, a session error,
    * another Inbox item; this machine's and the paired machines'), the same one the
    * devices' web push carries. A paired device's open pages show it as a toast
    * (a device with Switchboard open in front gets no system notification). This
@@ -2482,8 +2472,6 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'machineState',
   'todosChanged',
   'artifactsChanged',
-  'reviewResolved',
-  'reviewsChanged',
   'notice',
   'draftChanged',
   // Plans (D99) hook.
@@ -2629,11 +2617,10 @@ export interface ProfilePinInput {
 /**
  * D68 (`docs/todos.md`): an item's state. D75: `in_progress` between open and done
  * (several items may be in progress at once; they keep their place in the priority order).
- * D76: `review` between in progress and done for an item run in its own session (▸ Run in
- * new session): its run marked it done and it waits for the developer's review (lane B's
- * review queue resolves it: `reviewResolved`).
+ * D102: D76's `review` state is gone (review cards were removed): an item run in its own session
+ * goes straight to done; a stored `review` (an older install, a peer) reads as done.
  */
-export type TodoState = 'open' | 'in_progress' | 'review' | 'done';
+export type TodoState = 'open' | 'in_progress' | 'done';
 
 /**
  * D75: how an item went in progress: `start` = the developer's ▶ Start (which sends the
@@ -2699,7 +2686,7 @@ export interface SessionTodo {
    * peer's carries its remote id); kept after the run, `null` = never run.
    */
   readonly runSessionId?: string | null;
-  /** D76: `active` (done → review) or `discarded` (its review was discarded; the link is history); `null` = never run. */
+  /** D76: `active` (its run session works on it) or `discarded` (an older install's discarded review; the link is history); `null` = never run. */
   readonly runState?: TodoRunState | null;
   /** D78 (additive): when it first went in progress; `null` = never. */
   readonly startedFirstAt?: string | null;
@@ -2740,7 +2727,7 @@ export interface TodoRunResult {
 
 /** D78: one session's actual vs. estimate of its completed items (`TodoGroup.actuals`). */
 export interface TodoActualsTotal {
-  /** Completed items (done or in review) with recorded actuals. */
+  /** Completed (done) items with recorded actuals. */
   readonly count: number;
   /** How many of them had an estimate (the comparison uses only those). */
   readonly estimated: number;
@@ -2763,8 +2750,6 @@ export interface SessionTodoList {
   readonly doneCount: number;
   /** D75 (additive): the items in progress (part of {@link openCount}); absent from an older peer. */
   readonly inProgressCount?: number;
-  /** D76 (additive): the items in review (not part of {@link openCount} or {@link doneCount}). */
-  readonly reviewCount?: number;
 }
 
 /** D68: one session's group on the Todos page (`GET /api/todos`): its open items, and its done ones (still shown until removed). */
@@ -2814,12 +2799,8 @@ export interface TodoPatchInput {
   readonly estimateMinutes?: number | null;
   /**
    * Tick (`done`), untick (`open`); D75: `in_progress` (⋯ → Mark in progress; the agent's `todo_start`).
-   * D76: `done` of an item with an active run is `review` instead (unless {@link skipReview});
-   * `review` only for an item with a run.
    */
   readonly state?: TodoState;
-  /** D77: the board's drag to Done: done means done, also for an item with an active run. */
-  readonly skipReview?: boolean;
 }
 
 /** D69 / D70: an item's fields as the UI's form gives them (`null` = none). */

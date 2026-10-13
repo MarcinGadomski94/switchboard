@@ -1,7 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import type { SessionDetail } from '../../src/core/api.ts';
 import type { SessionDraft } from '../../src/core/drafts.ts';
-import type { Review } from '../../src/core/reviews.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
@@ -9,8 +8,8 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * What is typed and not sent stays with the session on the server: the composer
  * survives switching sessions, a reload and another device (a second browser
  * context); the focus rule keeps a field being typed in from being overwritten;
- * sending clears it; a question's "Other…" answer and picked option, a review
- * card's Send-back comment and the todo + Add form come back too.
+ * sending clears it; a question's "Other…" answer and picked option and the
+ * todo + Add form come back too.
  */
 
 let world: QuestionWorld;
@@ -150,13 +149,10 @@ test('a question card\'s "Other…" answer and picked option come back after a s
   await expect.poll(() => drafts(page, id)).toEqual([]);
 });
 
-test('the review card\'s Send-back comment and the todo + Add form come back after a reload; Cancel clears them', async ({ page }) => {
+test('the todo + Add form comes back after a reload; Cancel clears it (D102: no review card drafts)', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'drafts-review', '[fake:write microfrontends/acme-app-front/notes.md]');
-  await expect
-    .poll(async () => (await page.evaluate(async () => (await fetch('/api/reviews')).json() as Promise<Review[]>)).filter((r) => r.sessionId === id && r.state === 'pending').length, { timeout: 30_000 })
-    .toBe(1);
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
 
   // + Add (the composer's "+ Todo" while the list is empty): a title and an estimate.
@@ -165,25 +161,14 @@ test('the review card\'s Send-back comment and the todo + Add form come back aft
   await page.getByTestId('todo-form-estimate').fill('45m');
   await expect.poll(() => draftValue(page, id, 'todo-add')).toMatchObject({ title: 'Write the release notes', estimate: '45m', plan: 'No plan', priority: 'medium' });
 
-  // Send back: a comment.
-  await page.getByTestId('session-review-badge').click();
-  const card = page.getByTestId('session-review-panel').getByTestId('review-card');
-  await card.locator('[data-action="send-back"]').click();
-  await card.getByTestId('review-comment').pressSequentially('Please add a changelog line');
-  const reviewId = (await card.getAttribute('data-review-id')) ?? '';
-  await expect.poll(() => draftValue(page, id, `review:${reviewId}`)).toEqual({ comment: 'Please add a changelog line' });
-
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
   await expect(page.getByTestId('todo-form')).toBeVisible();
   await expect(page.getByTestId('todo-form-title')).toHaveValue('Write the release notes');
   await expect(page.getByTestId('todo-form-estimate')).toHaveValue('45m');
-  await page.getByTestId('session-review-badge').click();
-  await expect(card.getByTestId('review-send-back-form')).toBeVisible();
-  await expect(card.getByTestId('review-comment')).toHaveValue('Please add a changelog line');
+  // D102: no review badge on the header any more.
+  await expect(page.getByTestId('session-review-badge')).toHaveCount(0);
 
-  // Cancel drops each draft.
-  await card.getByTestId('review-form-cancel').click();
-  await expect.poll(() => draftValue(page, id, `review:${reviewId}`)).toBeNull();
+  // Cancel drops the draft.
   await page.getByTestId('todo-form-cancel').click();
   await expect.poll(() => drafts(page, id)).toEqual([]);
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
@@ -256,34 +241,11 @@ test('ruling 2026-10-09: the New-session form is kept per machine; Cancel keeps 
   await expect(message).toHaveValue('');
 });
 
-test('ruling 2026-10-09: the Commit message as edited comes back; a review resolved elsewhere and a deleted todo take their drafts with them', async ({ page }) => {
+test('ruling 2026-10-09: a deleted todo takes its Edit draft with it', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'drafts-commit', '[fake:write microfrontends/acme-app-front/commit-notes.md]');
-  await expect
-    .poll(async () => (await page.evaluate(async () => (await fetch('/api/reviews')).json() as Promise<Review[]>)).filter((r) => r.sessionId === id && r.state === 'pending').length, { timeout: 30_000 })
-    .toBe(1);
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
-  await page.getByTestId('session-review-badge').click();
-  const card = page.getByTestId('session-review-panel').getByTestId('review-card');
-  const reviewId = (await card.getAttribute('data-review-id')) ?? '';
-  await card.locator('[data-action="commit"]').click();
-  const box = card.getByTestId('review-commit-message');
-  const drafted = await box.inputValue();
-  await box.fill('docs: commit notes, reworded');
-  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toEqual({ message: 'docs: commit notes, reworded' });
-
-  // A reload: the Commit form opens with the edited message.
-  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
-  await page.getByTestId('session-review-badge').click();
-  await expect(card.getByTestId('review-commit-form')).toBeVisible();
-  await expect(box).toHaveValue('docs: commit notes, reworded');
-  // Back to the drafted message: no draft.
-  await box.fill(drafted);
-  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toBeNull();
-  await box.fill('docs: reworded again');
-  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toEqual({ message: 'docs: reworded again' });
-  await box.blur();
 
   // A todo with an open Edit form, then deleted from another device (a direct API call).
   const added = await page.evaluate(async (sid) => {
@@ -300,8 +262,5 @@ test('ruling 2026-10-09: the Commit message as edited comes back; a review resol
   await page.evaluate(async ({ sid, tid }) => fetch(`/api/sessions/${encodeURIComponent(sid)}/todos/${encodeURIComponent(tid)}`, { method: 'DELETE' }), { sid: id, tid: todoId });
   await expect.poll(() => draftValue(page, id, `todo-edit:${todoId}`)).toBeNull();
 
-  // The review is resolved elsewhere (Dismiss from another device): its drafts go at once, and the card's text with them.
-  await page.evaluate(async (rid) => fetch(`/api/reviews/${encodeURIComponent(rid)}/dismiss`, { method: 'POST' }), reviewId);
-  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toBeNull();
   await expect.poll(() => drafts(page, id)).toEqual([]);
 });

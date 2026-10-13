@@ -21,7 +21,6 @@ const SUB: { readonly [K in PushEventKind]: string } = {
   turnFinished: 'finished · now',
   errors: 'error · now',
   inbox: 'inbox · now',
-  review: 'ready for review · now',
 };
 
 /** A notice from the hub or a service-worker message, `null` when it is not one. */

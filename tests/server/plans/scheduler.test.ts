@@ -1,8 +1,8 @@
 /**
  * D99 · the plan scheduler (unit, fake clock and fakes): a real store and TodoService, a
  * fake git / gh ({@link FakeGit}) and a fake environment that "starts" runs by storing a
- * session and its worktree. Session status changes and review resolutions arrive on the bus
- * as the real services publish them.
+ * session and its worktree, and (D102) a fake Merge step ({@link FakeMerger}). Session status
+ * changes arrive on the bus as the real services publish them.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
@@ -11,7 +11,8 @@ import type { SessionStatus } from '../../../src/core/model.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import type { PlanGitPort, PlanRepoInput, PlanRepoState } from '../../../src/server/plans/git.ts';
-import { type PlanEnvironment, PlanError, type PlanRunInput, PlanService } from '../../../src/server/plans/service.ts';
+import { type PlanEnvironment, PlanError, type PlanMergePort, type PlanRunInput, PlanService } from '../../../src/server/plans/service.ts';
+import { BranchMergeError, type BranchMergeInput, type BranchMergePlan } from '../../../src/server/worktrees/branch-merge.ts';
 import { plansFollowContinuation } from '../../../src/server/plans/hooks.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { FakeClock } from '../../helpers/clock.ts';
@@ -53,16 +54,47 @@ class FakeGit implements PlanGitPort {
   }
 }
 
+/** D102: the Merge step's git as the test says: a branch listed in `conflicts` is refused with its files; a merge marks it merged. */
+class FakeMerger implements PlanMergePort {
+  readonly conflicts = new Map<string, string[]>();
+  readonly merged: string[] = [];
+  readonly prs: string[] = [];
+  readonly git: FakeGit;
+  constructor(git: FakeGit) {
+    this.git = git;
+  }
+
+  async check(input: BranchMergeInput): Promise<BranchMergePlan> {
+    const files = this.conflicts.get(input.branch);
+    if (files) throw new BranchMergeError('conflicts', `${input.repo}: ${input.branch} conflicts with ${input.target}`, files);
+    return { input, head: 'beef', targetTip: 'cafe', targetLocal: true, checkedOutAt: null, kind: 'fast-forward', tree: null };
+  }
+
+  async merge(plan: BranchMergePlan): Promise<string> {
+    this.merged.push(`${plan.input.branch} → ${plan.input.target}`);
+    this.git.branches.set(plan.input.branch, { ...(this.git.branches.get(plan.input.branch) ?? {}), hasWork: true, merged: true });
+    return `${plan.input.repo}: merged`;
+  }
+
+  async openPullRequest(input: BranchMergeInput): Promise<string> {
+    this.prs.push(input.branch);
+    return `https://example.test/pr/${input.branch}`;
+  }
+}
+
 interface Rig {
   readonly dir: string;
   readonly store: Store;
   readonly bus: HubBus;
   readonly clock: FakeClock;
   readonly git: FakeGit;
+  readonly merger: FakeMerger;
   readonly todos: TodoService;
   readonly runs: PlanRunInput[];
   readonly sent: Array<{ sessionId: string; text: string }>;
   readonly notices: Array<{ kind: string; title: string }>;
+  /** D102: the Inbox's "Ready to merge" items raised (`+ title`) and closed (`- itemId outcome`). */
+  readonly mergeNotices: string[];
   readonly changed: string[];
   readonly errors: unknown[];
   held: string | null;
@@ -105,6 +137,12 @@ function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
     async notice(input) {
       r.notices.push({ kind: input.kind, title: input.title });
     },
+    async mergeNotice(input) {
+      r.mergeNotices.push(`+ ${input.title}`);
+    },
+    async closeMergeNotice(itemId, outcome) {
+      r.mergeNotices.push(`- ${itemId} ${outcome}`);
+    },
   };
 }
 
@@ -116,12 +154,13 @@ async function setup(options: { pollMs?: number } = {}): Promise<Rig> {
   const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
   await store.settings.set(PLANS_SETTING, true);
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
-  const base = { dir, store, bus, clock, git: new FakeGit(), todos, runs: [] as PlanRunInput[], sent: [], notices: [], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
+  const git = new FakeGit();
+  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
   bus.subscribe((message) => {
     if (message.name === 'planChanged') base.changed.push(message.payload.planId);
   });
   const partial = base as unknown as Rig;
-  partial.plans = new PlanService({ dataDir: dir, store, bus, todos, git: base.git, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
+  partial.plans = new PlanService({ dataDir: dir, store, bus, todos, git: base.git, merger: base.merger, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
   await partial.plans.start();
   rig = partial;
   return partial;
@@ -168,6 +207,14 @@ async function agentMerges(r: Rig, planId: string, itemId: string, state: Branch
   await status(r, current.runSessionId as string, 'idle');
 }
 
+/** D102: the item's agent marks its todo done (the brief's last step) and its turn ends with work on its branch. */
+async function agentFinishes(r: Rig, planId: string, itemId: string, state: BranchState = { hasWork: true }): Promise<void> {
+  const current = await item(r, planId, itemId);
+  r.git.branches.set(current.branch as string, state);
+  await r.todos.update(r.sourceId, current.todoId, { state: 'done' }, 'agent');
+  await status(r, current.runSessionId as string, 'idle');
+}
+
 function started(r: Rig): string[] {
   return r.runs.map((run) => run.item.key ?? run.item.title);
 }
@@ -206,52 +253,90 @@ describe('D99 · plan scheduler', () => {
     expect(r.errors).toEqual([]);
   });
 
-  it('agents-with-holds: a held item waits for the developer’s Merge even when its agent merged; the others do not', async () => {
+  it('agents-with-holds: a held item waits for the developer’s Merge (ready-to-merge, an Inbox item); Merge merges it and the plan ends', async () => {
     const r = await setup();
     const { plan, ids } = await diamond(r, { holdD: true });
     await r.plans.startPlan(plan.id, { mergeMode: 'agents-with-holds' });
     await settle(r);
     for (const key of ['A', 'B', 'C'] as const) await agentMerges(r, plan.id, ids[key]);
     expect(r.runs[3]?.task('PROJ-4-item-d')).toContain('Do not merge it yourself');
+    expect(r.mergeNotices).toEqual([]);
+    await agentFinishes(r, plan.id, ids.D);
     const d = await item(r, plan.id, ids.D);
-    r.git.branches.set(d.branch as string, { hasWork: true, merged: false });
-    await r.store.reviews.raise(d.runSessionId as string, 'fp', {});
-    await status(r, d.runSessionId as string, 'idle');
-    expect(await item(r, plan.id, ids.D)).toMatchObject({ state: 'review', waitingOn: 'review', developerMerges: true });
+    expect(d).toMatchObject({ state: 'ready-to-merge', waitingOn: 'merge', developerMerges: true, reason: 'waiting for your merge' });
+    // The todo went straight to done (no review state any more).
+    expect((await r.store.todos.get(d.todoId))?.state).toBe('done');
+    expect(r.mergeNotices).toEqual(['+ Ready to merge: Item D (Acme epic)']);
     expect((await r.plans.get(plan.id)).state).toBe('running');
-    // The developer's Merge on its card.
-    r.git.branches.set(d.branch as string, { hasWork: true, merged: true });
-    r.bus.publish('reviewResolved', { sessionId: d.runSessionId as string, outcome: 'merged' });
+    // The developer's Merge.
+    const answer = await r.plans.mergeItem(plan.id, ids.D);
+    expect(answer.items.find((entry) => entry.id === ids.D)).toMatchObject({ state: 'done', note: 'merged by you into feature/PROJ-100-acme' });
+    expect(r.merger.merged).toEqual(['PROJ-4-item-d → feature/PROJ-100-acme']);
+    expect(r.mergeNotices.at(-1)).toBe(`- ${ids.D} merged`);
     await settle(r);
-    expect((await item(r, plan.id, ids.D)).state).toBe('done');
     expect((await r.plans.get(plan.id)).state).toBe('done');
+    expect(r.errors).toEqual([]);
   });
 
-  it('developer mode: every item waits for the Merge; a discard blocks its dependents with a reason', async () => {
+  it('developer mode: Merge starts the dependents; a conflict is refused with the files; Send back sends the comment and the item runs again; the agent merging itself counts', async () => {
     const r = await setup();
     const { plan, ids } = await diamond(r);
     await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
     await settle(r);
-    const a = await item(r, plan.id, ids.A);
-    r.git.branches.set(a.branch as string, { hasWork: true, merged: true });
-    await status(r, a.runSessionId as string, 'idle');
-    // Merged by the agent, but the developer merges in this mode: still running.
-    expect((await item(r, plan.id, ids.A)).storedState).toBe('running');
-    r.bus.publish('reviewResolved', { sessionId: a.runSessionId as string, outcome: 'merged' });
+    // Not ready while its run has not finished: Merge is refused.
+    await expect(r.plans.mergeItem(plan.id, ids.A)).rejects.toMatchObject({ status: 409, code: 'not-ready' });
+    await agentFinishes(r, plan.id, ids.A);
+    expect((await item(r, plan.id, ids.A)).state).toBe('ready-to-merge');
+    await r.plans.mergeItem(plan.id, ids.A);
     await settle(r);
     expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+
+    // B conflicts with the target: refused with the files, still ready to merge.
+    await agentFinishes(r, plan.id, ids.B);
     const b = await item(r, plan.id, ids.B);
-    r.bus.publish('reviewResolved', { sessionId: b.runSessionId as string, outcome: 'discarded' });
+    r.merger.conflicts.set(b.branch as string, ['src/app.ts', 'README.md']);
+    const refused = await r.plans.mergeItem(plan.id, ids.B).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(PlanError);
+    expect((refused as PlanError).body()).toEqual({ error: 'conflicts', message: 'acme-front: PROJ-2-item-b conflicts with feature/PROJ-100-acme', conflicts: ['src/app.ts', 'README.md'] });
+    expect((await item(r, plan.id, ids.B)).state).toBe('ready-to-merge');
+
+    // Send back: the comment goes to its session, its todo is in progress again, the Inbox item closes.
+    await expect(r.plans.sendBackItem(plan.id, ids.B, { comment: '' })).rejects.toMatchObject({ status: 422 });
+    const back = await r.plans.sendBackItem(plan.id, ids.B, { comment: 'Rebase onto the target first.' });
+    expect(back.items.find((entry) => entry.id === ids.B)).toMatchObject({ state: 'running', waitingOn: null });
+    expect(r.sent.at(-1)).toEqual({ sessionId: b.runSessionId, text: 'Plans: your work on "Item B" was sent back with this comment:\n\nRebase onto the target first.' });
+    expect((await r.store.todos.get(b.todoId))?.state).toBe('in_progress');
+    expect(r.mergeNotices).toContain(`- ${ids.B} sent-back`);
+    // Its next finish makes it ready again (a new Inbox item).
+    r.merger.conflicts.delete(b.branch as string);
+    await status(r, b.runSessionId as string, 'run');
+    await agentFinishes(r, plan.id, ids.B);
+    expect((await item(r, plan.id, ids.B)).state).toBe('ready-to-merge');
+    expect(r.mergeNotices.filter((line) => line === '+ Ready to merge: Item B (Acme epic)')).toHaveLength(2);
+    await r.plans.mergeItem(plan.id, ids.B);
+
+    // C: its agent merged it into the target itself (against the rule): detected, done with a note.
+    await agentMerges(r, plan.id, ids.C);
+    expect(await item(r, plan.id, ids.C)).toMatchObject({ state: 'done', note: 'merged into feature/PROJ-100-acme without your Merge' });
     await settle(r);
-    expect(await item(r, plan.id, ids.B)).toMatchObject({ state: 'blocked', reason: 'was discarded' });
-    expect(await item(r, plan.id, ids.D)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-2, which was discarded' });
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-4']);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('developer mode: a run closed without work blocks its dependents with a reason; Retry runs it again', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    await agentFinishes(r, plan.id, ids.A);
+    await r.plans.mergeItem(plan.id, ids.A);
+    await settle(r);
+    const b = await item(r, plan.id, ids.B);
+    await r.store.sessions.update(b.runSessionId as string, { closedAt: '2026-10-13T10:05:00Z' });
+    await status(r, b.runSessionId as string, 'done');
+    expect(await item(r, plan.id, ids.B)).toMatchObject({ state: 'blocked', reason: 'was closed without any work to merge' });
+    expect(await item(r, plan.id, ids.D)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-2, which was closed without any work to merge' });
     expect((await r.plans.get(plan.id)).estimatedMinutesLeft).toBeNull();
-    // C finishes; D still never starts.
-    const c = await item(r, plan.id, ids.C);
-    r.bus.publish('reviewResolved', { sessionId: c.runSessionId as string, outcome: 'merged' });
-    await settle(r);
-    expect(started(r)).toHaveLength(3);
-    // Retry B: it runs again.
     await r.plans.retryItem(plan.id, ids.B);
     await settle(r);
     expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-2']);
@@ -554,7 +639,7 @@ describe('D99 · plan scheduler', () => {
     expect((await r.plans.get(plan.id)).sourceSessionId).toBe(fresh.id);
     expect(r.changed).toContain(plan.id);
   });
-  it('item spans (the Timeline): running → waiting-you (question) → running → waiting-you (review) → done; dependents wait; all closed when the plan ends', async () => {
+  it('item spans (the Timeline): running → waiting-you (question) → running → waiting-you (ready to merge) → done; dependents wait; all closed when the plan ends', async () => {
     const r = await setup();
     const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'History', targetBranch: 'feature/PROJ-700-history' });
     const a = await r.plans.addItem(plan.id, { key: 'PROJ-701', todo: { title: 'First' } });
@@ -572,13 +657,10 @@ describe('D99 · plan scheduler', () => {
     await at(10);
     await status(r, run, 'run');
     await at(5);
-    const todoId = (await item(r, plan.id, a.itemId)).todoId;
-    await r.store.todos.setRun(todoId, run, 'active');
-    await r.store.todos.setState(todoId, 'review');
-    await status(r, run, 'idle');
-    expect((await item(r, plan.id, a.itemId)).state).toBe('review');
+    await agentFinishes(r, plan.id, a.itemId);
+    expect((await item(r, plan.id, a.itemId)).state).toBe('ready-to-merge');
     await at(30);
-    r.bus.publish('reviewResolved', { sessionId: run, outcome: 'merged' });
+    await r.plans.mergeItem(plan.id, a.itemId);
     await settle(r);
     const spans = (await item(r, plan.id, a.itemId)).spans;
     expect(spans.map((span) => span.kind)).toEqual(['running', 'waiting-you', 'running', 'waiting-you']);

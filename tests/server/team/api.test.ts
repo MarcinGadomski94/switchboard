@@ -16,7 +16,6 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { TEAM_DB_FILE } from '../../../src/server/team/db.ts';
-import { teamReviewGate } from '../../../src/server/team/hooks.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -186,28 +185,41 @@ describe('D100 · the routes', () => {
     for (const result of titles) expect([result.teamRole, result.sessionTitle]).toEqual(['Tracker', 'Tracker']);
   });
 
-  it('a member\'s review-card merge into the default branch waits for the developer (a Needs-you request)', async () => {
+  it('D102: a plan\'s "Ready to merge" item of a member\'s session shows in Needs you with Merge / Open plan; no review-merge gate is raised', async () => {
     const r = await setup();
     await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const dev = await session(r, 'dev-session');
     const member = (await ui(r, 'POST', '/api/team/members', { sessionId: dev, name: 'Developer', gates: ['merge-default-branch'] })).json() as TeamMember;
     expect(member.gates).toEqual(['outward-facing', 'merge-default-branch']);
-    // A work branch merges freely; main waits.
-    expect(await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'merge', body: {}, bases: ['feature/x'] })).toBeNull();
-    const refusal = await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'merge', body: {}, bases: ['main'] });
-    expect(refusal).toMatch(/Developer needs your approval to merge into main/);
+    await r.store.systemItems.createOnceByPayload(
+      {
+        kind: 'plan-ready-to-merge',
+        source: 'plans',
+        status: 'need',
+        title: 'Ready to merge: Fix the login (Acme epic)',
+        detail: 'PROJ-1-fix → feature/PROJ-100',
+        branches: [],
+        actions: [
+          { id: 'plan-merge', label: 'Merge' },
+          { id: 'open-plan', label: 'Open plan' },
+        ],
+        sessionId: dev,
+        payload: { dedupe: 'plan-merge:i1:t', planId: 'p1', itemId: 'i1', route: '/plans/p1' },
+      },
+      'dedupe',
+      'plan-merge:i1:t',
+    );
     const needs = (await ui(r, 'GET', '/api/team/needs-you')).json() as TeamNeedsYouItem[];
-    expect(needs.map((item) => [item.kind, item.title, item.request?.action])).toEqual([['gate', "Merge Developer's changes into main", { type: 'review-merge', reviewId: 'rev-1' }]]);
-    // Asking again reuses the open request; Open PR or a plain session is never held.
-    await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'merge', body: {}, bases: ['main'] });
-    expect(((await ui(r, 'GET', '/api/team/needs-you')).json() as unknown[]).length).toBe(1);
-    expect(await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'open-pr', body: {}, bases: ['main'] })).toBeNull();
-    // Declined: closed, and the member is told.
-    const declined = await ui(r, 'POST', `/api/team/requests/${needs[0]?.id}/decline`);
-    expect(declined.json().state).toBe('declined');
-    // Without the gate (removed), the merge goes ahead.
-    await ui(r, 'PUT', `/api/team/members/${member.id}`, { gates: [] });
-    expect(await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'merge', body: {}, bases: ['main'] })).toBeNull();
+    expect(needs.map((item) => [item.source, item.kind, item.title])).toEqual([['inbox', 'system', 'Ready to merge: Fix the login (Acme epic)']]);
+    expect((needs[0]?.inbox as { route?: string }).route).toBe('/plans/p1');
+    // D100 follow-up 2026-10-14: a member of another team: its plan item shows in that team's Needs you and in All teams, labelled.
+    const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
+    expect((await ui(r, 'POST', `/api/team/members/${member.id}/team`, { teamId: growth.id })).statusCode).toBe(200);
+    expect((await ui(r, 'GET', '/api/team/needs-you')).json()).toEqual([]);
+    const ofGrowth = (await ui(r, 'GET', `/api/team/needs-you?teamId=${growth.id}`)).json() as TeamNeedsYouItem[];
+    expect(ofGrowth.map((item) => [item.kind, item.title, item.teamName])).toEqual([['system', 'Ready to merge: Fix the login (Acme epic)', 'Growth']]);
+    const all = (await ui(r, 'GET', '/api/team/needs-you?teamId=all')).json() as TeamNeedsYouItem[];
+    expect(all.map((item) => [item.kind, item.title, item.teamName])).toEqual([['system', 'Ready to merge: Fix the login (Acme epic)', 'Growth']]);
   });
 
   it('D100 follow-up 2026-10-14: the members\' order is stored, a new member goes last, PUT /api/team/order reorders and survives a reopen', async () => {

@@ -20,7 +20,7 @@ import { type SupervisorWorld, isHandshake, makeSupervisorWorld, readFakeLog, un
  * worktree on a free `todo/<slug>` branch cut from the branch the source session has
  * checked out; its title is the item's, its first message the item's start message;
  * the item is in progress, linked both ways; the run's agent token marks the item
- * (done → review). In a workspace folder the run works in the same folder without a
+ * (done). In a workspace folder the run works in the same folder without a
  * worktree and the answer says so. A running item, a done one and an unknown one are refused.
  */
 const PORT = 4877; // inject() opens no socket; the port feeds the Host check only
@@ -131,12 +131,12 @@ describe('POST /api/sessions/{id}/todos/{todoId}/run (D76)', () => {
     expect(first.startsWith(`${startMessage}\n\n${REPO_WORKTREE_NOTE_HEADER}`)).toBe(true);
     expect(first).toContain('(branch todo/fix-the-login-flake, from feature/source)');
 
-    // The run's agent marks the source's item done: it goes to review.
+    // The run's agent marks the source's item done: it is done (D102: no review state).
     const done = await agent(run.id, 'PUT', `/agent/v1/todos/${todoId}`, { state: 'done' });
     expect(done.statusCode, done.body).toBe(200);
-    expect(((await call('GET', `/api/sessions/${source.id}/todos`)).json() as SessionTodoList).todos.find((t) => t.id === todoId)).toMatchObject({ state: 'review', runSessionId: run.id });
+    expect(((await call('GET', `/api/sessions/${source.id}/todos`)).json() as SessionTodoList).todos.find((t) => t.id === todoId)).toMatchObject({ state: 'done', runSessionId: run.id });
 
-    // In review it cannot run again; a second item with the same title gets todo/<slug>-2.
+    // Done, it cannot run again; a second item with the same title gets todo/<slug>-2.
     expect((await call('POST', `/api/sessions/${source.id}/todos/${todoId}/run`)).statusCode).toBe(422);
     const second = await addTodo(source.id, 'Fix the login flake!');
     const again = await call('POST', `/api/sessions/${source.id}/todos/${second}/run`);

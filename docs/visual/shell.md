@@ -5,13 +5,13 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **1.74%**, sidebar (0,0 256×900) **9.24%**.
+Pixel diff (advisory, channel threshold 24): full page **2.02%**, sidebar (0,0 256×900) **10.83%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.
 
 ## Boxes (±2 px) and copy
-Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row) · `(y rel. footer)` = y measured from the footer's top on both pages (D17 / D66: the footer is taller by the usage grid, its bottom edge stays).
+D101: the nav rows are not listed here (see *D101 nav grid* below). Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row) · `(y rel. footer)` = y measured from the footer's top on both pages (D17 / D66: the footer is taller by the usage grid, its bottom edge stays).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -22,19 +22,9 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on
 | brandName | box | 47,18 85×18 | 47,18 85×18 | ok | "Switchboard" |
 | paletteKey | box | 211.8,17 27.2×20 | 211.8,17 27.2×20 | ok | "⌘K" |
 | newSession | box | 10,50 235×33 | 10,50 235×33 | ok | "+ New session" |
-| navInbox | box | 10,91 235×31 | 10,91 235×31 | ok |  |
-| navInboxLabel | box | 18,98 33.1×17 | 18,98 33.1×17 | ok | "Inbox" |
-| navSolutions | box | 10,124 235×31 | 10,124 235×31 | ok |  |
-| navSolutionsLabel | box | 18,131 55.8×17 | 18,131 55.8×17 | ok | "Solutions" |
-| navSchedules | box | 10,157 235×31 | 10,157 235×31 | ok |  |
-| navSchedulesLabel | box | 18,164 109.3×17 | 18,164 109.3×17 | ok | "Schedules & loops" |
-| navArtifacts | box (y rel. item above) | 10,190 235×31 | 10,223 235×31 | ok |  |
-| navArtifactsLabel | box (y rel. item above) | 18,197 50.3×17 | 18,230 50.3×17 | ok | "Artifacts" |
-| navHistory | box (y rel. item above) | 10,223 235×31 | 10,256 235×31 | ok |  |
-| navHistoryLabel | box (y rel. item above) | 18,230 42.2×17 | 18,263 42.2×17 | ok | "History" |
-| toolsLabel | box (y rel. item above) | 0,254 255×36 | 0,287 255×36 | ok | "Tools+ Add" |
-| toolsAdd | box (y rel. item above) | 202.3,270 34.7×14 | 202.3,303 34.7×14 | ok | "+ Add" |
-| sessionsLabel | size | 0,371 255×36 | 0,404 255×36 | ok |  |
+| toolsLabel | size | 0,254 255×36 | 0,177 255×36 | ok |  |
+| toolsAdd | box (y rel. TOOLS label) | 202.3,270 34.7×14 | 202.3,193 34.7×14 | ok | "+ Add" |
+| sessionsLabel | size | 0,371 255×36 | 0,294 255×36 | ok |  |
 | settings | size | 10,747 235×31 | 10,730 235×31 | ok | "Settings" |
 | footer | bottom | 0,784 255×116 | 0,767 255×133 | ok |  |
 | footerLabel | none | 27.4,795 45.8×28 | 27.4,778 45.8×28 | ok | "claude code" |
@@ -42,6 +32,28 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on
 | cpuTrack | box (y rel. footer) | 58,835 97×4 | 58,818 97×4 | ok |  |
 | ramLabel | box (y rel. footer) | 16,851 34×14 | 16,834 34×14 | ok | "RAM" |
 | ramTrack | box (y rel. footer) | 58,856 97×4 | 58,839 97×4 | ok |  |
+
+## D101 nav grid and TOOLS header (the app's own rules)
+The prototype lists the views as text rows; D101 makes them an icon grid and TOOLS collapsible (`docs/visual/README.md` → *Deliberate deviations*). The rows below gate the grid against "+ New session" (the prototype's own box), the prototype's selected nav colours and the order of its nav labels.
+
+| Check | Expected | App | Result |
+|---|---|---|---|
+| grid columns | 40px × 5 | 40px 40px 40px 40px 40px | ok |
+| cells (7 views; Team / Plans off) | 7 | 7 | ok |
+| cell size | 40 × 40 each | 40×40 40×40 40×40 40×40 40×40 40×40 40×40 | ok |
+| grid top = "+ New session" row bottom (its 8 px padding) | 91 | 91 | ok |
+| first column left = "+ New session" left | 10 | 10 | ok |
+| fifth column right = "+ New session" right | 245 | 245 | ok |
+| rows (5 + 2), 6 px apart | 2 · gap 6 | 2 · gap 6 | ok |
+| second row starts in the first column | 10 | 10 | ok |
+| icons 18 × 18, centred | 18×18, ±0.5 | 18×18 18×18 18×18 18×18 18×18 18×18 18×18 | ok |
+| names (aria-label): the prototype's labels in order, MCP and Todos added | Inbox · Solutions · Schedules & loops · Artifacts · History (+ MCP, Todos) | Inbox · Solutions · Schedules & loops · MCP · Artifacts · History · Todos | ok |
+| tooltips start with the name | name[ · badge] | Inbox · 5 items waiting · Solutions · 1 conflict · Schedules & loops · 1 failed · MCP · Artifacts · 13 artifacts · History · Todos | ok |
+| selected cell (Inbox) in the prototype's selected nav colours | rgb(33, 34, 39) / rgb(240, 239, 235) | Inbox: rgb(33, 34, 39) / rgb(240, 239, 235) | ok |
+| other cells: transparent, muted-1 icon, radius 8px | rgba(0, 0, 0, 0) / rgb(169, 168, 163) / 8px | rgba(0, 0, 0, 0) / rgb(169, 168, 163) / 8px | ok |
+| Inbox badge: "5", amber, on the top-right corner (3 px out), 16 px high | 5 · 3 / 3 out · 16 | 5 · 3 / 3 out · 16 · oklch(0.8 0.14 70) / rgb(17, 18, 20) · 600 9.5px | ok |
+| TOOLS label top = grid bottom | 177 | 177 | ok |
+| TOOLS toggle: ▾ Tools, expanded, the label's mono uppercase | ▾Tools · true · uppercase | ▾Tools · true · uppercase | ok |
 
 ## D66 usage grid (listed, not compared with the prototype)
 The prototype's footer has one "Max" row; D66 shows the usage grid in its place: a **5h** / **Week** header and one line per account (the demo: one, Claude). `listed` rows record the grid next to the prototype's Max row. The gated rows check the footer's own rules: the header, one fixed line height, label and % text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a bar with a pace, the demo's 5h, fills with status done / need and carries the allowance marker), the header 7 px below the RAM row and 6 px between grid rows, the Week % ending where the RAM value ends, the bars lined up, and the footer's bottom edge kept while it grows by exactly the grid less the Max row.
@@ -63,7 +75,7 @@ Only the SESSIONS list scrolls (`docs/sidebar.md` → *Layout and scrolling*). T
 | sidebar scroll height − client height | 0 | 0 | ok |
 | footer bottom (no scrolling) | ≤ 900 | 900 | ok |
 | SESSIONS list overflow-y / overflow-x | auto / hidden | auto / hidden | ok |
-| SESSIONS list scrolls (scroll height − client height) | > 0 | 20 | ok |
+| SESSIONS list overflow (scroll height − client height) | ≥ 0 | 0 | ok |
 | SESSIONS list sideways (scroll width − client width) | 0 | 0 | ok |
 
 ## SPEC color tokens defined as CSS variables

@@ -52,7 +52,7 @@ export async function isWorkingTreeTop(dir: string): Promise<boolean> {
 
 /**
  * The git working tree a solution folder stands for when Switchboard only
- * **watches** it (review cards, turn checkpoints, the Diff tab; `docs/reviews.md`
+ * **watches** it (turn checkpoints, the Diff tab; `docs/worktrees.md`
  * → *Which repositories*): the folder itself when it is a main checkout **or a
  * linked worktree** (an agent-made `…-wt-…` folder), else its one nested main
  * checkout ({@link checkoutOf}). Never used to pick where a worktree is created:

@@ -79,6 +79,9 @@ const V1_16 = '1.16.0';
 /** The version D98 (accounts shared across paired machines), D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
 const V1_17 = '1.17.0';
 
+/** The version D101 (the sidebar's navigation as an icon grid, collapsible TOOLS) ships in. */
+const V1_18 = '1.18.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -120,7 +123,7 @@ export const MAIN_TOUR: readonly TourStep[] = [
   {
     id: 'inbox',
     title: 'The Inbox',
-    what: "Everything waiting for you: agents' questions and permission requests, failed scheduled runs, merged worktrees to remove, review cards and updates.",
+    what: "Everything waiting for you: agents' questions and permission requests, failed scheduled runs, merged worktrees to remove, plan items ready to merge and updates.",
     todo: ['Open the Inbox when its count shows up.', 'Answer a question or approve a request right in the card.', 'Jump to the session from a card when you need more context.'],
     anchors: ['inbox'],
     route: { view: 'inbox' },
@@ -139,7 +142,7 @@ export const MAIN_TOUR: readonly TourStep[] = [
     id: 'run-in-new-session',
     title: 'Run an item in its own session',
     what: 'An item can be handed to a fresh session of its own (its own worktree in a git repo), so the current session keeps going.',
-    todo: ["Open an item's ⋯ menu.", 'Choose Run in new session.', 'The item shows its run; review the work and tick it when it is done.'],
+    todo: ["Open an item's ⋯ menu.", 'Choose Run in new session.', 'The item shows its run; it is done when the run marks it done.'],
     anchors: ['todo-actions', 'todo-strip', 'todo-add'],
     route: SESSION,
     missing: `${NO_SESSION}Each todo's ⋯ menu offers Run in new session.`,
@@ -147,20 +150,11 @@ export const MAIN_TOUR: readonly TourStep[] = [
   {
     id: 'todos-board',
     title: 'Todos page and board',
-    what: "Every session's todo list in one place, as a list or as a board with Open, In progress, Review and Done columns, with estimates against actual time.",
+    what: "Every session's todo list in one place, as a list or as a board with Open, In progress and Done columns, with estimates against actual time.",
     todo: ['Open Todos in the sidebar.', 'Switch between List and Board.', 'Drag a card between columns, or filter by priority, folder or session.'],
     anchors: ['todos-mode', 'todos-page'],
     route: { view: 'todos' },
     missing: 'Todos sits in the sidebar.',
-  },
-  {
-    id: 'review-cards',
-    title: 'Review cards',
-    what: 'When a session with changes goes idle, a Review card shows what changed, with Merge, Open PR, Commit, Send back and Dismiss.',
-    todo: ['Open the card in the Inbox or on the session header.', 'Look through the files and commits.', 'Merge, open a PR, commit, or send it back to the agent with a comment.'],
-    anchors: ['review-card'],
-    route: { view: 'inbox' },
-    missing: 'No review cards yet: one shows up in the Inbox when a session with changes goes idle.',
   },
   {
     id: 'undo-turn',
@@ -286,32 +280,6 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['todos-actuals', 'todos-page'],
         route: { view: 'todos' },
         missing: 'Todos sits in the sidebar.',
-      },
-    ],
-  },
-  {
-    id: 'review-cards',
-    decision: 'D79',
-    version: V1_13,
-    title: 'Review cards',
-    steps: [
-      {
-        id: 'card',
-        title: 'Review when a session goes idle',
-        what: 'A session with changes that goes idle raises a Review card: the files, the commits and Merge, Open PR, Commit, Send back or Dismiss.',
-        todo: ['Open the card in the Inbox or on the session header.', 'Pick what happens to the changes.'],
-        anchors: ['review-card'],
-        route: { view: 'inbox' },
-        missing: 'No review cards yet: one shows up in the Inbox when a session with changes goes idle.',
-      },
-      {
-        id: 'setting',
-        title: 'On or off',
-        what: 'Review cards are advisory and never block the agent. Turn them off here if you do not want them.',
-        todo: ['Settings → Sessions & worktrees → Raise review cards.'],
-        anchors: ['setting-review-cards'],
-        route: { view: 'settings', section: 'sessions' },
-        missing: null,
       },
     ],
   },
@@ -679,11 +647,28 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'needs-you',
         title: 'Needs you, and Return to sessions',
-        what: "Needs you lists everything your members wait for: their questions, permission requests and review cards, and Team's own approvals (a gated merge, a budget); answer them in place. A member's ⋯ menu gives it a task, pauses it or moves it to your other machine, and ↩ Return to sessions puts its session back in its folder as a plain session. Switching Team off returns every member.",
+        what: "Needs you lists everything your members wait for: their questions, permission requests and plan items ready to merge, and Team's own approvals (a budget); answer them in place. A member's ⋯ menu gives it a task, pauses it or moves it to your other machine, and ↩ Return to sessions puts its session back in its folder as a plain session. Switching Team off returns every member.",
         todo: ['Tap an option to answer a question, Reply… to open the chat, or Approve / Decline a request.', "Open a member's ⋯ menu and pick ↩ Return to sessions when it is no longer needed."],
         anchors: ['team-needs-you', 'team-member-menu'],
         route: { view: 'team' },
         missing: TEAM_NO_MEMBER,
+      },
+    ],
+  },
+  {
+    id: 'sidebar-icons',
+    decision: 'D101',
+    version: V1_18,
+    title: 'Navigation as icons',
+    steps: [
+      {
+        id: 'grid',
+        title: 'Navigation is now icons: hover for names',
+        what: 'Inbox, Solutions, Schedules & loops, MCP, Artifacts, History and Todos (and Team and Plans when they are on) are a grid of icons under + New session, so the sessions get more room. Each icon keeps its count or warning as a badge; hover an icon (or long-press it on a touch screen) for its name. TOOLS folds away from its header too.',
+        todo: ['Hover an icon to see its name, click it to open the page.', 'Click the TOOLS header to fold the tools away; it stays folded after a reload.'],
+        anchors: ['nav'],
+        drawer: true,
+        missing: 'The icons sit in the sidebar, under + New session.',
       },
     ],
   },

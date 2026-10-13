@@ -785,31 +785,7 @@
   color: var(--text);
 }
 
-/* ── D76: review, the run session, multi-select; D78: actuals ── */
-.sb-todo-card[data-state='review'][data-priority] {
-  border-left: 3px solid var(--status-need);
-  padding-left: 10px;
-  background: var(--bg-card-2);
-}
-
-.sb-todo-in-review {
-  font: 500 10px var(--font-mono);
-  letter-spacing: var(--ls-section-label);
-  text-transform: uppercase;
-  color: var(--status-need);
-  border: 1px solid color-mix(in oklch, var(--status-need), transparent 45%);
-  border-radius: var(--radius-chip);
-  padding: 0 5px;
-  line-height: 16px;
-  white-space: nowrap;
-}
-
-/* The box of an item in review: three quarters filled (its run finished it; a tick approves it). */
-.sb-todo-check[data-review='true'] {
-  border-color: var(--status-need);
-  background: conic-gradient(var(--status-need) 0 75%, transparent 75% 100%);
-}
-
+/* ── D76: the run session, multi-select; D78: actuals ── */
 .sb-todo-actuals {
   font: 400 var(--fs-mono-meta) var(--font-mono);
   color: var(--muted-1);

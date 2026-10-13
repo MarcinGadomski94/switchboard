@@ -39,7 +39,6 @@ function fact(id: string, patch: Partial<PlanItemFacts> = {}): PlanItemFacts {
     mergedAt: null,
     doneAt: null,
     sessionStatus: null,
-    reviewPending: false,
     ...patch,
   };
 }
@@ -77,14 +76,14 @@ describe('D99 · plan graph rules', () => {
       items: [
         fact('1', { state: 'done', startedAt: '2026-10-13T10:00:00Z', doneAt: '2026-10-13T11:00:00Z' }),
         fact('2', { state: 'running', startedAt: '2026-10-13T11:50:00Z', estimateMinutes: 45, sessionStatus: 'need' }),
-        fact('3', { state: 'running', startedAt: '2026-10-13T11:00:00Z', hold: true, reviewPending: true, sessionStatus: 'idle' }),
+        fact('3', { state: 'running', startedAt: '2026-10-13T11:00:00Z', hold: true, waitingOn: 'merge', sessionStatus: 'idle' }),
         fact('4', { estimateMinutes: null }),
       ],
     });
     expect(view.items.map((item) => [item.id, item.state])).toEqual([
       ['1', 'done'],
       ['2', 'question'],
-      ['3', 'review'],
+      ['3', 'ready-to-merge'],
       ['4', 'waiting'],
     ]);
     expect(view.items[3]?.reason).toBe('waiting on PROJ-2, PROJ-3');

@@ -1,5 +1,4 @@
 import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoStartSource, TodoState } from '../../core/api.ts';
-import type { ReviewOutcome } from '../../core/reviews.ts';
 import { CALIBRATION_WINDOW, todoActualsTotal, todoCalibration } from '../../core/todo-actuals.ts';
 import { isTodoCaptureSource } from '../../core/todo-capture.ts';
 import {
@@ -184,14 +183,12 @@ export class TodoService {
   async #listOf(sessionId: string): Promise<SessionTodoList> {
     const todos = (await this.#store.todos.list(sessionId)).map((record) => toTodo(record, this.#ttl));
     // D75: open = not done (open and in progress: the sidebar's count); inProgressCount says how many of them are started.
-    // D76: an item in review is neither open nor done (reviewCount).
     return {
       sessionId,
       todos,
       openCount: todos.filter(todoIsOpen).length,
       doneCount: todos.filter((t) => t.state === 'done').length,
       inProgressCount: todos.filter((t) => t.state === 'in_progress').length,
-      reviewCount: todos.filter((t) => t.state === 'review').length,
     };
   }
 
@@ -234,13 +231,9 @@ export class TodoService {
     if (!fields.ok) throw new TodoError(422, 'invalid', fields.message);
     let state: TodoState | null = null;
     if (patch['state'] !== undefined) {
-      if (!isTodoState(patch['state'])) throw new TodoError(422, 'invalid', 'state must be open, in_progress, review or done');
+      if (!isTodoState(patch['state'])) throw new TodoError(422, 'invalid', 'state must be open, in_progress or done');
       state = patch['state'];
     }
-    const before = await this.#item(sessionId, todoId);
-    if (state === 'review' && before.runSessionId === null) throw new TodoError(422, 'invalid', 'only an item run in its own session can be in review');
-    // D76: done of an item whose run is active is review (its run's work waits for the developer); D77: the board's drag to Done skips it.
-    if (state === 'done' && before.runState === 'active' && before.state !== 'review' && patch['skipReview'] !== true) state = 'review';
     if (Object.keys(fields.value).length > 0) await this.#store.todos.setFields(todoId, fields.value);
     if (state !== null) {
       const current = await this.#item(sessionId, todoId);
@@ -389,11 +382,11 @@ export class TodoService {
     await this.#changed(before.sessionId);
   }
 
-  /** D76: the run's item can run (not done / in review, no active run), else why not. */
+  /** D76: the run's item can run (not done, no active run), else why not. */
   async checkRunnable(sessionId: string, todoId: string): Promise<SessionTodo> {
     await this.#session(sessionId);
     const item = await this.#item(sessionId, todoId);
-    if (item.state === 'done' || item.state === 'review') throw new TodoError(422, 'invalid', `a ${item.state === 'done' ? 'done' : 'reviewed'} item cannot be run: reopen it first`);
+    if (item.state === 'done') throw new TodoError(422, 'invalid', 'a done item cannot be run: reopen it first');
     if (item.runState === 'active' && item.runSessionId !== null && (await this.#store.sessions.get(item.runSessionId))?.closedAt === null) {
       throw new TodoError(409, 'already-running', 'this item already runs in its own session');
     }
@@ -403,29 +396,6 @@ export class TodoService {
   /** D76: publishes the source session's change after a run began; answers its list. */
   async announceRun(sessionId: string): Promise<SessionTodoList> {
     return this.#changed(sessionId);
-  }
-
-  /**
-   * D76 · `reviewResolved` (lane B's review queue): the items in review whose run session is
-   * `sessionId` leave it: merged / committed / dismissed → done; discarded → open (the run is
-   * marked discarded, its link kept as history); sent back → in progress again (the run's).
-   */
-  async resolveReview(sessionId: string, outcome: ReviewOutcome): Promise<number> {
-    const items = (await this.#store.todos.listByRunSession(sessionId)).filter((record) => record.state === 'review');
-    const touched = new Set<string>();
-    for (const record of items) {
-      if (outcome === 'discarded') {
-        await this.#store.todos.setRun(record.id, sessionId, 'discarded');
-        await this.#store.todos.setState(record.id, 'open');
-      } else if (outcome === 'sent-back') {
-        await this.#store.todos.setState(record.id, 'in_progress', 'run');
-      } else {
-        await this.#store.todos.setState(record.id, 'done');
-      }
-      touched.add(record.sessionId);
-    }
-    for (const id of touched) await this.#changed(id);
-    return items.length;
   }
 
   /**

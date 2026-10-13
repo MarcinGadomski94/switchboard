@@ -43,8 +43,7 @@ function readMode(): TodosMode {
  * **Open session**); the done ones behind **Show done**. D75: **▶ Start** sends the item's
  * start message to its session (no need to open it) and marks it in progress; a small
  * toast offers **Open**. An in-progress card's edge pulses while its session works.
- * D76: ⋯ → **Run in new session** and **Select** → **Run N in new sessions**; the items in
- * review follow the open ones. D77: **List | Board** (remembered), the board in {@link TodoBoard}.
+ * D76: ⋯ → **Run in new session** and **Select** → **Run N in new sessions**. D77: **List | Board** (remembered), the board in {@link TodoBoard}.
  */
 export function TodosView() {
   const groups = useApi(api.todos);
@@ -125,11 +124,7 @@ export function TodosView() {
   const all = groups.data ?? [];
   const open = all.reduce((sum, group) => sum + splitTodos(group.todos).open.length, 0);
   const done = all.reduce((sum, group) => sum + splitTodos(group.todos).done.length, 0);
-  const inReview = all.reduce((sum, group) => sum + splitTodos(group.todos).review.length, 0);
-  const pending = (group: TodoGroup): number => {
-    const split = splitTodos(group.todos);
-    return split.open.length + split.review.length;
-  };
+  const pending = (group: TodoGroup): number => splitTodos(group.todos).open.length;
   const visible = all.filter((group) => showDone || pending(group) > 0);
   const withOpen = all.filter((group) => splitTodos(group.todos).open.length > 0).length;
 
@@ -139,7 +134,6 @@ export function TodosView() {
         <div className="sb-todos-page-title">Todos</div>
         <div className="sb-todos-page-summary" data-testid="todos-summary">
           {open} open in {withOpen} session{withOpen === 1 ? '' : 's'}
-          {inReview > 0 ? ` · ${inReview} in review` : ''}
         </div>
         <div className="sb-todos-mode" role="group" aria-label="View" data-testid="todos-mode" data-tour="todos-mode">
           <button type="button" className="sb-todos-mode-button" data-testid="todos-mode-list" aria-pressed={mode === 'list'} onClick={() => pickMode('list')}>
@@ -185,7 +179,7 @@ export function TodosView() {
             </div>
           ) : null}
           {visible.map((group) => {
-            const { open: openItems, review: reviewItems, done: doneItems } = splitTodos(group.todos);
+            const { open: openItems, done: doneItems } = splitTodos(group.todos);
             const disabled = group.machine !== null && group.machine.state !== 'online';
             const session = { view: 'session', id: group.sessionId, tab: 'chat' } as const;
             const actuals = todoActualsTotalLabel(group.actuals);
@@ -216,11 +210,11 @@ export function TodosView() {
                     Open session
                   </Link>
                 </div>
-                {openItems.length + reviewItems.length > 0 ? (
+                {openItems.length > 0 ? (
                   <TodoCards
                     sessionId={group.sessionId}
                     all={group.todos}
-                    items={[...openItems, ...reviewItems]}
+                    items={openItems}
                     disabled={disabled}
                     run={run}
                     now={now}

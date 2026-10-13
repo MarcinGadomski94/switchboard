@@ -17,20 +17,20 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (74) | green (3) | 1.73% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (74) | green (5) | 11.14% | 11.56% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field's row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype's boxes and checks the 📎 on its own · D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (74) | green (3) | 10.92% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (74) | green (3) | 8.15% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (74) | green (5) | 5.73% | 4.99% | session-artifacts.spec.ts (e2e; D89 retired its visual oracle) | `full-pass-session-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent's artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md) · D89: the demo session's saved artifacts (the same count per session as the prototype's tab) |
-| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (74) | green (3) | 1.63% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (74) | green (3) | 1.92% | 0.35% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (74) | green (5) | 4.79% | 3.85% | artifacts.spec.ts (lane w1-tools); D89: visual/artifacts.spec.ts compares the page chrome only | `full-pass-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): the page lists the artifacts saved on purpose: kind · title · session · versions · saved by · age, filtered by kind and session (docs/artifacts.md) · D89: the Artifacts page's columns |
-| History | History | M7.4 | gated | green (74) | green (3) | 1.74% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (74) | green (3) | 1.65% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (74) | green (3) | 1.89% | 0.32% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (74) | green (3) | 7.02% | 8.88% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (74) | green (3) | 1.28% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
-| Palette | Modals → Palette | M8.3 | gated | green (74) | green (3) | 1.65% | 1.24% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (58) | green (3) | 2.02% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (58) | green (5) | 11.45% | 11.56% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field's row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype's boxes and checks the 📎 on its own · D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (58) | green (3) | 11.23% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (58) | green (3) | 8.23% | 7.65% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (58) | green (5) | 6.04% | 4.99% | session-artifacts.spec.ts (e2e; D89 retired its visual oracle) | `full-pass-session-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent's artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md) · D89: the demo session's saved artifacts (the same count per session as the prototype's tab) |
+| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (58) | green (3) | 1.95% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (58) | green (3) | 5.21% | 3.97% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (58) | green (5) | 5.10% | 3.85% | artifacts.spec.ts (lane w1-tools); D89: visual/artifacts.spec.ts compares the page chrome only | `full-pass-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): the page lists the artifacts saved on purpose: kind · title · session · versions · saved by · age, filtered by kind and session (docs/artifacts.md) · D89: the Artifacts page's columns |
+| History | History | M7.4 | gated | green (58) | green (3) | 2.05% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (58) | green (3) | 1.95% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (58) | green (3) | 2.23% | 0.36% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (58) | green (3) | 7.22% | 8.88% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (58) | green (3) | 1.51% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Palette | Modals → Palette | M8.3 | gated | green (58) | green (3) | 1.90% | 1.24% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on `inbox`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
@@ -38,65 +38,49 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|
-| inbox | nav:MCP (D61) | relative | — | vs nav:Schedules & loops | ok |  |
-| inbox | nav:Todos (D68) | relative | — | vs nav:History | ok |  |
+| inbox | nav grid (D101) | D101 rules | — | 5 × 40 px, selected cell | ok |  |
 | inbox | sidebar | box | 0,0 256×900 | 0,0 256×900 | ok |  |
 | inbox | brand | box | 0,0 255×50 | 0,0 255×50 | ok | copy "SSwitchboard⌘K" |
 | inbox | paletteKey | box | 211.8,17 27.2×20 | 211.8,17 27.2×20 | ok | copy "⌘K" |
 | inbox | newSession | box | 10,50 235×33 | 10,50 235×33 | ok | copy "+ New session" |
-| inbox | nav:Inbox | box | 10,91 235×31 | 10,91 235×31 | ok |  |
-| inbox | nav:Inbox:label | box | 18,98 33.1×17 | 18,98 33.1×17 | ok | copy "Inbox" |
-| inbox | nav:Inbox:badge | box | 216.4,98.5 20.6×16 | 216.4,98.5 20.6×16 | ok | copy "5" |
-| inbox | nav:Solutions | box | 10,124 235×31 | 10,124 235×31 | ok |  |
-| inbox | nav:Solutions:label | box | 18,131 55.8×17 | 18,131 55.8×17 | ok | copy "Solutions" |
-| inbox | nav:Solutions:badge | box | 157,131.5 80×16 | 157,131.5 80×16 | ok | copy "1 conflict" |
-| inbox | nav:Schedules & loops | box | 10,157 235×31 | 10,157 235×31 | ok |  |
-| inbox | nav:Schedules & loops:label | box | 18,164 109.3×17 | 18,164 109.3×17 | ok | copy "Schedules & loops" |
-| inbox | nav:Schedules & loops:badge | box | 170.2,164.5 66.8×16 | 170.2,164.5 66.8×16 | ok | copy "1 failed" |
-| inbox | nav:Artifacts | box | 10,190 235×31 | 10,190 235×31 | ok |  |
-| inbox | nav:Artifacts:label | box | 18,197 50.3×17 | 18,197 50.3×17 | ok | copy "Artifacts" |
-| inbox | nav:Artifacts:badge | box | 209.8,197.5 27.2×16 | 209.8,197.5 27.2×16 | ok | copy listed: prototype "14" · app "13" (the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13; D89: the 13 saved demo artifacts)) |
-| inbox | nav:History | box | 10,223 235×31 | 10,223 235×31 | ok |  |
-| inbox | nav:History:label | box | 18,230 42.2×17 | 18,230 42.2×17 | ok | copy "History" |
-| inbox | nav:History:badge | box | 223,237.5 14×2 | 223,237.5 14×2 | ok | copy "" |
-| inbox | toolsLabel | box | 0,254 255×36 | 0,254 255×36 | ok | copy "Tools+ Add" |
-| inbox | tool0 | box | 10,290 235×48 | 10,290 235×48 | ok |  |
-| inbox | tool0:name | none | 35,297 93×34 | 35,297 111.8×17 | ok | copy "Codebase Memory" |
-| inbox | tool0:host | none | 138,307 99×14 | 138,317 99×14 | ok | copy "localhost:13000" |
-| inbox | tool1 | box | 10,340 235×31 | 10,340 235×31 | ok |  |
-| inbox | tool1:name | none | 35,347 61.5×17 | 35,347 61.5×17 | ok | copy "Acme Tool" |
-| inbox | tool1:host | none | 190.8,348.5 46.2×14 | 190.8,348.5 46.2×14 | ok | copy "set URL" |
-| inbox | sessionsLabel | box | 0,371 255×36 | 0,371 255×36 | ok | copy "Sessions6" |
-| inbox | session0 | box | 10,407 235×49 | 10,407 235×49 | ok |  |
-| inbox | session0:dot | box | 18,420 8×8 | 18,420 8×8 | ok |  |
-| inbox | session0:name | box | 36,415 102.3×17 | 36,415 102.3×17 | ok | copy "free-talk-feature" |
-| inbox | session0:age | box | 223.8,415 13.2×17 | 223.8,415 13.2×17 | ok | copy "1m" |
-| inbox | session0:mode | box | 36,434 201×14 | 36,434 201×14 | ok |  |
-| inbox | session1 | box | 10,458 235×49 | 10,458 235×49 | ok |  |
-| inbox | session1:dot | box | 18,471 8×8 | 18,471 8×8 | ok |  |
-| inbox | session1:name | box | 36,466 146.5×17 | 36,466 146.5×17 | ok | copy "notifications-integration" |
-| inbox | session1:age | box | 223.8,466 13.2×17 | 223.8,466 13.2×17 | ok | copy "3m" |
-| inbox | session1:mode | box | 36,485 201×14 | 36,485 201×14 | ok | copy listed: prototype "orch · integration · Tier A 3/6" · app "orch · feature · integration" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | session2 | box | 10,509 235×49 | 10,509 235×49 | ok |  |
-| inbox | session2:dot | box | 18,522 8×8 | 18,522 8×8 | ok |  |
-| inbox | session2:name | box | 36,517 74.3×17 | 36,517 74.3×17 | ok | copy "qa-free-talk" |
-| inbox | session2:age | box | 223.8,517 13.2×17 | 223.8,517 13.2×17 | ok | copy "9m" |
-| inbox | session2:mode | box | 36,536 201×14 | 36,536 201×14 | ok | copy listed: prototype "orch · QA · 14/18 covered" · app "orch · QA · UI-first" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | session3 | box | 10,560 235×49 | 10,560 235×49 | ok |  |
-| inbox | session3:dot | box | 18,573 8×8 | 18,573 8×8 | ok |  |
-| inbox | session3:name | box | 36,568 84.4×17 | 36,568 84.4×17 | ok | copy "button-rollout" |
-| inbox | session3:age | box | 217.2,568 19.8×17 | 217.2,568 19.8×17 | ok | copy "12m" |
-| inbox | session3:mode | box | 36,587 201×14 | 36,587 201×14 | ok | copy listed: prototype "loop-until-dry · 7/12 · breaker" · app "orch · feature" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | session4 | box | 10,611 235×49 | 10,611 235×49 | ok |  |
-| inbox | session4:dot | box | 18,624 8×8 | 18,624 8×8 | ok |  |
-| inbox | session4:name | box | 36,619 106.6×17 | 36,619 106.6×17 | ok | copy "calendar-func-fix" |
-| inbox | session4:age | box | 217.2,619 19.8×17 | 217.2,619 19.8×17 | ok | copy "20m" |
-| inbox | session4:mode | box | 36,638 201×14 | 36,638 201×14 | ok | copy listed: prototype "single · calendar-func" · app "single · feature · integration" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | session5 | box | 10,662 235×49 | 10,662 235×49 | ok |  |
-| inbox | session5:dot | box | 18,675 8×8 | 18,675 8×8 | ok |  |
-| inbox | session5:name | box | 36,670 98.8×17 | 36,670 98.8×17 | ok | copy "prod-monitoring" |
-| inbox | session5:age | box | 217.2,670 19.8×17 | 217.2,670 19.8×17 | ok | copy "41m" |
-| inbox | session5:mode | box | 36,689 201×14 | 36,689 201×14 | ok | copy listed: prototype "/loop 1h · expires in 6d" · app "" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
+| inbox | toolsLabel | size | 0,254 255×36 | 0,177 255×36 | ok |  |
+| inbox | tool0 | relative | 10,290 235×48 | 10,213 235×48 | ok |  |
+| inbox | tool0:name | none | 35,297 93×34 | 35,220 111.8×17 | ok | copy "Codebase Memory" |
+| inbox | tool0:host | none | 138,307 99×14 | 138,240 99×14 | ok | copy "localhost:13000" |
+| inbox | tool1 | relative | 10,340 235×31 | 10,263 235×31 | ok |  |
+| inbox | tool1:name | none | 35,347 61.5×17 | 35,270 61.5×17 | ok | copy "Acme Tool" |
+| inbox | tool1:host | none | 190.8,348.5 46.2×14 | 190.8,271.5 46.2×14 | ok | copy "set URL" |
+| inbox | sessionsLabel | relative | 0,371 255×36 | 0,294 255×36 | ok | copy "Sessions6" |
+| inbox | session0 | relative | 10,407 235×49 | 10,330 235×49 | ok |  |
+| inbox | session0:dot | relative | 18,420 8×8 | 18,343 8×8 | ok |  |
+| inbox | session0:name | relative | 36,415 102.3×17 | 36,338 102.3×17 | ok | copy "free-talk-feature" |
+| inbox | session0:age | relative | 223.8,415 13.2×17 | 223.8,338 13.2×17 | ok | copy "1m" |
+| inbox | session0:mode | relative | 36,434 201×14 | 36,357 201×14 | ok |  |
+| inbox | session1 | relative | 10,458 235×49 | 10,381 235×49 | ok |  |
+| inbox | session1:dot | relative | 18,471 8×8 | 18,394 8×8 | ok |  |
+| inbox | session1:name | relative | 36,466 146.5×17 | 36,389 146.5×17 | ok | copy "notifications-integration" |
+| inbox | session1:age | relative | 223.8,466 13.2×17 | 223.8,389 13.2×17 | ok | copy "3m" |
+| inbox | session1:mode | relative | 36,485 201×14 | 36,408 201×14 | ok | copy listed: prototype "orch · integration · Tier A 3/6" · app "orch · feature · integration" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
+| inbox | session2 | relative | 10,509 235×49 | 10,432 235×49 | ok |  |
+| inbox | session2:dot | relative | 18,522 8×8 | 18,445 8×8 | ok |  |
+| inbox | session2:name | relative | 36,517 74.3×17 | 36,440 74.3×17 | ok | copy "qa-free-talk" |
+| inbox | session2:age | relative | 223.8,517 13.2×17 | 223.8,440 13.2×17 | ok | copy "9m" |
+| inbox | session2:mode | relative | 36,536 201×14 | 36,459 201×14 | ok | copy listed: prototype "orch · QA · 14/18 covered" · app "orch · QA · UI-first" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
+| inbox | session3 | relative | 10,560 235×49 | 10,483 235×49 | ok |  |
+| inbox | session3:dot | relative | 18,573 8×8 | 18,496 8×8 | ok |  |
+| inbox | session3:name | relative | 36,568 84.4×17 | 36,491 84.4×17 | ok | copy "button-rollout" |
+| inbox | session3:age | relative | 217.2,568 19.8×17 | 217.2,491 19.8×17 | ok | copy "12m" |
+| inbox | session3:mode | relative | 36,587 201×14 | 36,510 201×14 | ok | copy listed: prototype "loop-until-dry · 7/12 · breaker" · app "orch · feature" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
+| inbox | session4 | relative | 10,611 235×49 | 10,534 235×49 | ok |  |
+| inbox | session4:dot | relative | 18,624 8×8 | 18,547 8×8 | ok |  |
+| inbox | session4:name | relative | 36,619 106.6×17 | 36,542 106.6×17 | ok | copy "calendar-func-fix" |
+| inbox | session4:age | relative | 217.2,619 19.8×17 | 217.2,542 19.8×17 | ok | copy "20m" |
+| inbox | session4:mode | relative | 36,638 201×14 | 36,561 201×14 | ok | copy listed: prototype "single · calendar-func" · app "single · feature · integration" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
+| inbox | session5 | relative | 10,662 235×49 | 10,585 235×49 | ok |  |
+| inbox | session5:dot | relative | 18,675 8×8 | 18,598 8×8 | ok |  |
+| inbox | session5:name | relative | 36,670 98.8×17 | 36,593 98.8×17 | ok | copy "prod-monitoring" |
+| inbox | session5:age | relative | 217.2,670 19.8×17 | 217.2,593 19.8×17 | ok | copy "41m" |
+| inbox | session5:mode | relative | 36,689 201×14 | 36,612 201×14 | ok | copy listed: prototype "/loop 1h · expires in 6d" · app "" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
 | inbox | settings | relative | 10,747 235×31 | 10,730 235×31 | ok | copy "Settings" |
 | inbox | footer | bottom | 0,784 255×116 | 0,767 255×133 | ok |  |
 | inbox | footer:service | relative | 16,795 223×28 | 16,778 223×28 | ok |  |
