@@ -1,0 +1,467 @@
+/**
+ * D99 · the plan scheduler (unit, fake clock and fakes): a real store and TodoService, a
+ * fake git / gh ({@link FakeGit}) and a fake environment that "starts" runs by storing a
+ * session and its worktree. Session status changes and review resolutions arrive on the bus
+ * as the real services publish them.
+ */
+import { afterEach, describe, expect, it } from 'vitest';
+import type { Session } from '../../../src/core/api.ts';
+import type { Plan, PlanChecks } from '../../../src/core/plans.ts';
+import type { SessionStatus } from '../../../src/core/model.ts';
+import type { Store } from '../../../src/server/db/store.ts';
+import { HubBus } from '../../../src/server/hub/bus.ts';
+import type { PlanGitPort, PlanRepoInput, PlanRepoState } from '../../../src/server/plans/git.ts';
+import { type PlanEnvironment, PlanError, type PlanRunInput, PlanService } from '../../../src/server/plans/service.ts';
+import { TodoService } from '../../../src/server/todos/service.ts';
+import { FakeClock } from '../../helpers/clock.ts';
+import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
+import { openTempStore } from '../../helpers/store.ts';
+
+interface BranchState {
+  hasWork?: boolean;
+  merged?: boolean;
+  pr?: { state: string; checks: PlanChecks; mergeable?: string | null; url?: string } | null;
+  ghAvailable?: boolean;
+  conflict?: boolean;
+}
+
+/** Git / gh as the test says, per item branch. */
+class FakeGit implements PlanGitPort {
+  readonly branches = new Map<string, BranchState>();
+  defaultBranches: string[] = ['main'];
+  protectedBranches: string[] = [];
+  readonly inspected: Array<{ branch: string; conflicts: boolean }> = [];
+
+  async prepareTarget(_repoPath: string, target: string): Promise<{ ok: true; ref: string; created: boolean }> {
+    return { ok: true, ref: target, created: false };
+  }
+
+  async targetFacts(): Promise<{ defaultBranches: string[]; protectedBranches: string[] }> {
+    return { defaultBranches: this.defaultBranches, protectedBranches: this.protectedBranches };
+  }
+
+  async tip(): Promise<string> {
+    return 'cafe000';
+  }
+
+  async inspect(input: PlanRepoInput, options: { conflicts?: boolean } = {}): Promise<PlanRepoState> {
+    this.inspected.push({ branch: input.branch, conflicts: options.conflicts === true });
+    const state = this.branches.get(input.branch) ?? {};
+    const pr = state.pr ? { url: state.pr.url ?? `https://example.test/pr/${input.branch}`, state: state.pr.state, baseRefName: input.target, checks: state.pr.checks, mergeable: state.pr.mergeable ?? null } : null;
+    return { repo: input.repo, hasWork: state.hasWork ?? state.merged ?? false, merged: state.merged ?? false, pr, ghAvailable: state.ghAvailable ?? true, conflict: options.conflicts === true && state.conflict === true };
+  }
+}
+
+interface Rig {
+  readonly dir: string;
+  readonly store: Store;
+  readonly bus: HubBus;
+  readonly clock: FakeClock;
+  readonly git: FakeGit;
+  readonly todos: TodoService;
+  readonly runs: PlanRunInput[];
+  readonly sent: Array<{ sessionId: string; text: string }>;
+  readonly notices: Array<{ kind: string; title: string }>;
+  readonly changed: string[];
+  readonly errors: unknown[];
+  held: string | null;
+  failRun: string | null;
+  plans: PlanService;
+  sourceId: string;
+}
+
+let rig: Rig | undefined;
+
+afterEach(async () => {
+  await rig?.plans.close();
+  await rig?.store.close();
+  if (rig) await removeTempDir(rig.dir);
+  rig = undefined;
+});
+
+function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
+  return {
+    async repos(sourceSessionId, names) {
+      if (!(await r.store.sessions.get(sourceSessionId))) throw new PlanError(404, 'not-found', 'no session');
+      const all = ['acme-front', 'acme-api'];
+      const wanted = names ?? ['acme-front'];
+      for (const name of wanted) if (!all.includes(name)) throw new PlanError(422, 'invalid', `${name} is not a solution`, 'repos');
+      return { kind: 'workspace', repos: wanted.map((name) => ({ name, repoPath: `/repos/${name}` })) };
+    },
+    async run(input) {
+      r.runs.push(input);
+      if (r.failRun !== null) return { ok: false, message: r.failRun };
+      const session = await r.store.sessions.create({ name: `run-${r.runs.length}`, claudeSessionId: `c-${r.runs.length}`, status: 'run', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: Object.keys(input.from), worktrees: true });
+      for (const [repo] of Object.entries(input.from)) await r.store.worktrees.create({ repo, repoPath: `/repos/${repo}`, branch: input.branch, path: `/wt/${input.branch}/${repo}`, sessionId: session.id });
+      return { ok: true, sessionId: session.id, branch: input.branch };
+    },
+    async usageHeld() {
+      return r.held;
+    },
+    async send(sessionId, text) {
+      r.sent.push({ sessionId, text });
+    },
+    async notice(input) {
+      r.notices.push({ kind: input.kind, title: input.title });
+    },
+  };
+}
+
+async function setup(options: { pollMs?: number } = {}): Promise<Rig> {
+  const dir = await makeTempDir('plans');
+  const clock = new FakeClock(new Date('2026-10-13T10:00:00Z'));
+  const store = await openTempStore(dir, { now: () => clock.now() });
+  const bus = new HubBus();
+  const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
+  const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
+  const base = { dir, store, bus, clock, git: new FakeGit(), todos, runs: [] as PlanRunInput[], sent: [], notices: [], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
+  bus.subscribe((message) => {
+    if (message.name === 'planChanged') base.changed.push(message.payload.planId);
+  });
+  const partial = base as unknown as Rig;
+  partial.plans = new PlanService({ store, bus, todos, git: base.git, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
+  await partial.plans.start();
+  rig = partial;
+  return partial;
+}
+
+async function settle(r: Rig): Promise<void> {
+  await r.plans.idle();
+  await r.plans.idle();
+}
+
+/** A draft plan with items A, B, C, D (keys PROJ-1…4) and A → B, A → C, B + C → D. */
+async function diamond(r: Rig, options: { holdD?: boolean; maxConcurrency?: number } = {}): Promise<{ plan: Plan; ids: Record<'A' | 'B' | 'C' | 'D', string> }> {
+  const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Acme epic', targetBranch: 'feature/PROJ-100-acme', ...(options.maxConcurrency ? { maxConcurrency: options.maxConcurrency } : {}) });
+  const ids = {} as Record<'A' | 'B' | 'C' | 'D', string>;
+  for (const [index, name] of (['A', 'B', 'C', 'D'] as const).entries()) {
+    const added = await r.plans.addItem(plan.id, { key: `PROJ-${index + 1}`, todo: { title: `Item ${name}`, plan: `Do ${name}. Acceptance: ${name} works.`, estimateMinutes: 30 }, hold: name === 'D' && options.holdD === true });
+    ids[name] = added.itemId;
+  }
+  await r.plans.addEdge(plan.id, { from: 'PROJ-1', to: 'PROJ-2' });
+  await r.plans.addEdge(plan.id, { from: 'PROJ-1', to: 'PROJ-3' });
+  await r.plans.addEdge(plan.id, { from: ids.B, to: ids.D });
+  await r.plans.addEdge(plan.id, { from: ids.C, to: ids.D });
+  return { plan: await r.plans.get(plan.id), ids };
+}
+
+async function item(r: Rig, planId: string, itemId: string) {
+  const plan = await r.plans.get(planId);
+  const found = plan.items.find((candidate) => candidate.id === itemId);
+  if (!found) throw new Error('no item');
+  return found;
+}
+
+/** Publishes a session status change as the supervisor does. */
+async function status(r: Rig, sessionId: string, next: SessionStatus): Promise<void> {
+  await r.store.sessions.update(sessionId, { status: next });
+  r.bus.publish('sessionUpdated', { ...(await r.store.sessions.get(sessionId)), id: sessionId, status: next } as unknown as Session);
+  await settle(r);
+}
+
+/** The agent merged the item's work and its turn ended. */
+async function agentMerges(r: Rig, planId: string, itemId: string, state: BranchState = {}): Promise<void> {
+  const current = await item(r, planId, itemId);
+  r.git.branches.set(current.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'green', summary: null, sha: 'abc' } }, ...state });
+  await status(r, current.runSessionId as string, 'idle');
+}
+
+function started(r: Rig): string[] {
+  return r.runs.map((run) => run.item.key ?? run.item.title);
+}
+
+describe('D99 · plan scheduler', () => {
+  it('runs A, then B ∥ C, then D (agents mode); the plan ends done with "Plan ready"', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    expect(plan.items.map((entry) => entry.state)).toEqual(['ready', 'waiting', 'waiting', 'waiting']);
+    expect(plan.items[3]?.reason).toBe('waiting on PROJ-2, PROJ-3');
+    expect(plan.criticalPath).toEqual({ itemIds: [ids.A, ids.B, ids.D], minutes: 90 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1']);
+    // The brief: title, description / plan, the PR into the target, the merge rule, the finish line; the branch is KEY-slug, cut from the target.
+    const brief = r.runs[0]?.task('PROJ-1-item-a') ?? '';
+    expect(r.runs[0]).toMatchObject({ branch: 'PROJ-1-item-a', from: { 'acme-front': 'feature/PROJ-100-acme' }, answers: { workType: 'feature', mode: 'single', phase: 'ui-first' } });
+    for (const words of ['Work on todo [', 'Item A', 'Acceptance: A works.', 'gh pr create --base feature/PROJ-100-acme', 'merge the pull request into feature/PROJ-100-acme yourself', 'todo_done']) expect(brief).toContain(words);
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+
+    await agentMerges(r, plan.id, ids.A);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect((await r.store.todos.get((await item(r, plan.id, ids.A)).todoId))?.state).toBe('done');
+    expect((await item(r, plan.id, ids.D)).state).toBe('waiting');
+
+    await agentMerges(r, plan.id, ids.B);
+    expect(started(r)).toHaveLength(3);
+    await agentMerges(r, plan.id, ids.C);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-4']);
+    await agentMerges(r, plan.id, ids.D);
+    const done = await r.plans.get(plan.id);
+    expect(done.state).toBe('done');
+    expect(done.progress).toEqual({ done: 4, total: 4, percent: 100 });
+    expect(r.notices).toEqual([{ kind: 'plan-ready', title: 'Plan ready: feature/PROJ-100-acme → dev' }]);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('agents-with-holds: a held item waits for the developer’s Merge even when its agent merged; the others do not', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { holdD: true });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents-with-holds' });
+    await settle(r);
+    for (const key of ['A', 'B', 'C'] as const) await agentMerges(r, plan.id, ids[key]);
+    expect(r.runs[3]?.task('PROJ-4-item-d')).toContain('Do not merge it yourself');
+    const d = await item(r, plan.id, ids.D);
+    r.git.branches.set(d.branch as string, { hasWork: true, merged: false });
+    await r.store.reviews.raise(d.runSessionId as string, 'fp', {});
+    await status(r, d.runSessionId as string, 'idle');
+    expect(await item(r, plan.id, ids.D)).toMatchObject({ state: 'review', waitingOn: 'review', developerMerges: true });
+    expect((await r.plans.get(plan.id)).state).toBe('running');
+    // The developer's Merge on its card.
+    r.git.branches.set(d.branch as string, { hasWork: true, merged: true });
+    r.bus.publish('reviewResolved', { sessionId: d.runSessionId as string, outcome: 'merged' });
+    await settle(r);
+    expect((await item(r, plan.id, ids.D)).state).toBe('done');
+    expect((await r.plans.get(plan.id)).state).toBe('done');
+  });
+
+  it('developer mode: every item waits for the Merge; a discard blocks its dependents with a reason', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    const a = await item(r, plan.id, ids.A);
+    r.git.branches.set(a.branch as string, { hasWork: true, merged: true });
+    await status(r, a.runSessionId as string, 'idle');
+    // Merged by the agent, but the developer merges in this mode: still running.
+    expect((await item(r, plan.id, ids.A)).storedState).toBe('running');
+    r.bus.publish('reviewResolved', { sessionId: a.runSessionId as string, outcome: 'merged' });
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    const b = await item(r, plan.id, ids.B);
+    r.bus.publish('reviewResolved', { sessionId: b.runSessionId as string, outcome: 'discarded' });
+    await settle(r);
+    expect(await item(r, plan.id, ids.B)).toMatchObject({ state: 'blocked', reason: 'was discarded' });
+    expect(await item(r, plan.id, ids.D)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-2, which was discarded' });
+    expect((await r.plans.get(plan.id)).estimatedMinutesLeft).toBeNull();
+    // C finishes; D still never starts.
+    const c = await item(r, plan.id, ids.C);
+    r.bus.publish('reviewResolved', { sessionId: c.runSessionId as string, outcome: 'merged' });
+    await settle(r);
+    expect(started(r)).toHaveLength(3);
+    // Retry B: it runs again.
+    await r.plans.retryItem(plan.id, ids.B);
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-2']);
+  });
+
+  it('keeps to the concurrency limit', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Wide', targetBranch: 'feature/PROJ-200-wide', maxConcurrency: 2 });
+    for (const n of [1, 2, 3, 4]) await r.plans.addItem(plan.id, { todo: { title: `Task ${n}` } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    expect(r.runs).toHaveLength(2);
+    const view = await r.plans.get(plan.id);
+    expect(view.items.map((entry) => entry.state)).toEqual(['running', 'running', 'ready', 'ready']);
+    await agentMerges(r, plan.id, view.items[0]?.id as string);
+    expect(r.runs).toHaveLength(3);
+    // Raising the limit starts the next one at once.
+    await r.plans.update(plan.id, { maxConcurrency: 3 });
+    await settle(r);
+    expect(r.runs).toHaveLength(4);
+    expect(r.runs.map((run) => run.branch)).toEqual(['todo/task-1', 'todo/task-2', 'todo/task-3', 'todo/task-4']);
+  });
+
+  it('holds new starts while the account is above the usage threshold; running items go on; a usage update releases it', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Busy', targetBranch: 'feature/PROJ-300-busy' });
+    for (const n of [1, 2]) await r.plans.addItem(plan.id, { todo: { title: `Job ${n}` } });
+    r.held = 'the account Default is at 91% of its 5-hour limit (the plan starts items below 85%)';
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    expect(r.runs).toHaveLength(0);
+    expect((await r.plans.get(plan.id)).held).toBe(r.held);
+    r.held = null;
+    r.bus.publish('system', {} as never);
+    await settle(r);
+    expect(r.runs).toHaveLength(2);
+    expect((await r.plans.get(plan.id)).held).toBeNull();
+  });
+
+  it('red checks: the session is told once, the item stays running and its dependents wait; green → done', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const a = await item(r, plan.id, ids.A);
+    r.git.branches.set(a.branch as string, { hasWork: true, merged: false, pr: { state: 'OPEN', checks: { state: 'red', summary: 'failed: unit-tests, lint', sha: 'aaa' } } });
+    await status(r, a.runSessionId as string, 'idle');
+    expect(r.sent).toEqual([{ sessionId: a.runSessionId, text: expect.stringContaining('failed: unit-tests, lint') }]);
+    expect(await item(r, plan.id, ids.A)).toMatchObject({ state: 'running', waitingOn: 'checks', note: 'checks failed: unit-tests, lint' });
+    expect(started(r)).toEqual(['PROJ-1']);
+    // The same failure polled again: not repeated.
+    r.plans.pollChecks();
+    await settle(r);
+    expect(r.sent).toHaveLength(1);
+    // The agent merged anyway with red checks: still not done.
+    r.git.branches.set(a.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'red', summary: 'failed: unit-tests, lint', sha: 'aaa' } } });
+    await r.clock.advanceTo(new Date('2026-10-13T10:01:01Z'), () => settle(r));
+    expect((await item(r, plan.id, ids.A)).storedState).toBe('running');
+    expect(started(r)).toEqual(['PROJ-1']);
+    // Fixed: green.
+    r.git.branches.set(a.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'green', summary: null, sha: 'bbb' } } });
+    await r.clock.advanceTo(new Date('2026-10-13T10:02:02Z'), () => settle(r));
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+  });
+
+  it('no remote / no gh: merged into the target counts, with a note', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Local', targetBranch: 'feature/PROJ-400-local' });
+    const { itemId } = await r.plans.addItem(plan.id, { todo: { title: 'Local work' } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges(r, plan.id, itemId, { pr: null, ghAvailable: false });
+    expect(await item(r, plan.id, itemId)).toMatchObject({ state: 'done', note: 'no remote or gh: counted as merged into feature/PROJ-400-local without reading checks' });
+  });
+
+  it('a conflict: the agent is asked to rebase; a second one becomes an Inbox item', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Clash', targetBranch: 'feature/PROJ-500-clash' });
+    const { itemId } = await r.plans.addItem(plan.id, { key: 'PROJ-501', todo: { title: 'Clashing work' } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const running = await item(r, plan.id, itemId);
+    r.git.branches.set(running.branch as string, { hasWork: true, merged: false, conflict: true });
+    await status(r, running.runSessionId as string, 'idle');
+    expect(r.sent.map((entry) => entry.text)).toEqual([expect.stringContaining('Rebase onto feature/PROJ-500-clash')]);
+    expect(await item(r, plan.id, itemId)).toMatchObject({ state: 'running', waitingOn: 'conflict' });
+    expect(r.notices).toEqual([]);
+    // Its next turn ends still conflicting.
+    await status(r, running.runSessionId as string, 'run');
+    await status(r, running.runSessionId as string, 'idle');
+    expect(r.notices).toEqual([{ kind: 'plan-conflict', title: 'Plan "Clash": PROJ-501 conflicts with feature/PROJ-500-clash again' }]);
+    expect(await item(r, plan.id, itemId)).toMatchObject({ state: 'blocked' });
+    expect(r.sent).toHaveLength(1);
+  });
+
+  it('a question stops only that item; the others go on', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Asks', targetBranch: 'feature/PROJ-600-asks' });
+    const first = await r.plans.addItem(plan.id, { todo: { title: 'Asker' } });
+    const second = await r.plans.addItem(plan.id, { todo: { title: 'Worker' } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const asker = await item(r, plan.id, first.itemId);
+    await status(r, asker.runSessionId as string, 'need');
+    expect(await item(r, plan.id, first.itemId)).toMatchObject({ state: 'question', waitingOn: 'question' });
+    await agentMerges(r, plan.id, second.itemId);
+    expect(await item(r, plan.id, second.itemId)).toMatchObject({ state: 'done' });
+    expect(await item(r, plan.id, first.itemId)).toMatchObject({ state: 'question' });
+  });
+
+  it('refuses a cycle, a start without the merge mode, and an agent mode into master / the default branch; developer mode may target them', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await expect(r.plans.addEdge(plan.id, { from: ids.D, to: ids.A })).rejects.toMatchObject({ status: 409, code: 'cycle', message: 'that dependency would make a cycle: PROJ-4 → PROJ-1 → PROJ-2 → PROJ-4 (each waits for the next)' });
+    await expect(r.plans.addEdge(plan.id, { from: ids.A, to: ids.A })).rejects.toMatchObject({ code: 'cycle' });
+    await expect(r.plans.startPlan(plan.id, {})).rejects.toMatchObject({ status: 422, code: 'merge-mode-required' });
+    await expect(r.plans.startPlan(plan.id, { mergeMode: 'yolo' })).rejects.toMatchObject({ status: 422, code: 'invalid' });
+
+    const master = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Into master', targetBranch: 'master' });
+    await r.plans.addItem(master.id, { todo: { title: 'x' } });
+    for (const mode of ['agents', 'agents-with-holds']) await expect(r.plans.startPlan(master.id, { mergeMode: mode })).rejects.toMatchObject({ status: 422, code: 'target-forbidden' });
+    const defaulted = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Into default', targetBranch: 'trunk' });
+    await r.plans.addItem(defaulted.id, { todo: { title: 'y' } });
+    r.git.defaultBranches = ['trunk'];
+    await expect(r.plans.startPlan(defaulted.id, { mergeMode: 'agents' })).rejects.toMatchObject({ code: 'target-forbidden', message: expect.stringContaining("trunk is the repository's default branch") });
+    r.git.defaultBranches = [];
+    r.git.protectedBranches = ['trunk'];
+    await expect(r.plans.startPlan(defaulted.id, { mergeMode: 'agents' })).rejects.toMatchObject({ code: 'target-forbidden', message: expect.stringContaining('protected') });
+    expect((await r.plans.startPlan(master.id, { mergeMode: 'developer' })).state).toBe('running');
+    // …and switching that plan to an agent mode is refused too.
+    await expect(r.plans.setMode(master.id, { mergeMode: 'agents' })).rejects.toMatchObject({ code: 'target-forbidden' });
+  });
+
+  it('a mode change while running applies to items not merged yet and tells their sessions', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Switch', targetBranch: 'feature/PROJ-700-switch' });
+    const { itemId } = await r.plans.addItem(plan.id, { todo: { title: 'Switch me' } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    const running = await item(r, plan.id, itemId);
+    await r.plans.setMode(plan.id, { mergeMode: 'agents' });
+    expect(r.sent).toEqual([{ sessionId: running.runSessionId, text: expect.stringContaining('merge the pull request into feature/PROJ-700-switch yourself') }]);
+    await r.plans.setHolds(plan.id, { holds: { [itemId]: true } });
+    // agents (no holds mode): a hold changes nothing; agents-with-holds: it does.
+    expect(r.sent).toHaveLength(1);
+    await r.plans.setMode(plan.id, { mergeMode: 'agents-with-holds' });
+    expect(r.sent.at(-1)?.text).toContain('Do not merge it yourself');
+  });
+
+  it('pause stops new starts; resume goes on; restart resumes a running plan', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    await r.plans.pause(plan.id);
+    await agentMerges(r, plan.id, ids.A);
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(started(r)).toEqual(['PROJ-1']);
+    expect((await r.plans.get(plan.id)).held).toBe('the plan is paused');
+    await r.plans.resume(plan.id);
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+
+    // A restart: a new service over the same store; B was merged while it was down.
+    await r.plans.close();
+    const b = await item(r, plan.id, ids.B);
+    r.git.branches.set(b.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'none', summary: null, sha: null } } });
+    r.plans = new PlanService({ store: r.store, bus: r.bus, todos: r.todos, git: r.git, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    await r.plans.start();
+    await settle(r);
+    expect((await item(r, plan.id, ids.B)).state).toBe('done');
+    await agentMerges(r, plan.id, ids.C);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-4']);
+  });
+
+  it('createFromExternal (the Jira seam): todos, items and edges in one go; a cycle is refused before anything is written', async () => {
+    const r = await setup();
+    await expect(
+      r.plans.createFromExternal({ sourceSessionId: r.sourceId, title: 'PROJ-900', targetBranch: 'feature/PROJ-900-x', external: { system: 'jira', key: 'PROJ-900' }, items: [{ ref: 'PROJ-901', key: 'PROJ-901', title: 'a' }, { ref: 'PROJ-902', key: 'PROJ-902', title: 'b' }], edges: [{ from: 'PROJ-901', to: 'PROJ-902' }, { from: 'PROJ-902', to: 'PROJ-901' }] }),
+    ).rejects.toMatchObject({ code: 'cycle' });
+    expect(await r.store.plans.list()).toEqual([]);
+    const made = await r.plans.createFromExternal({
+      sourceSessionId: r.sourceId,
+      title: 'PROJ-900 Acme import',
+      targetBranch: 'feature/PROJ-900-acme',
+      external: { system: 'jira', key: 'PROJ-900' },
+      items: [
+        { ref: 'PROJ-901', key: 'PROJ-901', title: 'First', plan: 'AC: first', estimateMinutes: 20 },
+        { ref: 'PROJ-902', key: 'proj-902', title: 'Second', hold: true },
+      ],
+      edges: [{ from: 'PROJ-901', to: 'PROJ-902' }],
+    });
+    expect(made.plan).toMatchObject({ state: 'draft', external: { system: 'jira', key: 'PROJ-900' }, mergeMode: null });
+    expect(made.plan.items.map((entry) => [entry.key, entry.state, entry.hold])).toEqual([
+      ['PROJ-901', 'ready', false],
+      ['PROJ-902', 'waiting', true],
+    ]);
+    expect(made.plan.edges).toEqual([{ from: made.itemIds['PROJ-901'], to: made.itemIds['PROJ-902'] }]);
+    expect((await r.store.plans.findByExternal('jira', 'PROJ-900')).map((plan) => plan.id)).toEqual([made.plan.id]);
+    expect((await r.todos.list(r.sourceId)).todos.map((todo) => todo.title)).toEqual(['First', 'Second']);
+  });
+
+  it('a run that cannot start fails the item with the reason', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Broken', targetBranch: 'feature/PROJ-800-broken' });
+    const first = await r.plans.addItem(plan.id, { key: 'PROJ-801', todo: { title: 'Cannot start' } });
+    const second = await r.plans.addItem(plan.id, { todo: { title: 'After it' }, after: ['PROJ-801'] });
+    r.failRun = 'the CLI is not available';
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    expect(await item(r, plan.id, first.itemId)).toMatchObject({ state: 'blocked', reason: 'could not start: the CLI is not available' });
+    expect(await item(r, plan.id, second.itemId)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-801, which could not start: the CLI is not available' });
+  });
+});

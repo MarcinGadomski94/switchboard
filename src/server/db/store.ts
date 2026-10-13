@@ -32,6 +32,7 @@ import { WorktreeRepository } from './repos/worktrees.ts';
 import { TutorialRepository } from './repos/tutorial.ts';
 import { DraftRepository } from './repos/drafts.ts';
 import { SessionLoopRepository } from './repos/session-loops.ts';
+import { PlanRepository } from './repos/plans.ts';
 import { SearchRepository } from './repos/search.ts';
 
 /**
@@ -89,6 +90,8 @@ export interface Store {
   readonly sessionLoops: SessionLoopRepository;
   /** D97 (0042): the full-text search index (`docs/search.md`); the events repository writes to it. */
   readonly search: SearchRepository;
+  /** D99 (0043): plans, their items and dependency edges (`docs/plans.md`). */
+  readonly plans: PlanRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -160,6 +163,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     drafts: new DraftRepository(ctx),
     sessionLoops: new SessionLoopRepository(ctx),
     search,
+    plans: new PlanRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

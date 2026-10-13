@@ -56,6 +56,9 @@ import { registerWeb } from './web.ts';
 import { DeviceService } from './devices/service.ts';
 import { WorktreeAdoption } from './worktrees/adopt.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
+import { PlanGit } from './plans/git.ts';
+import { planEnvironment } from './plans/environment.ts';
+import { PlanService } from './plans/service.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -181,6 +184,11 @@ export interface AppOptions {
    * when the app is ready and stopped with it.
    */
   readonly searchBackfill?: SearchBackfill;
+  /**
+   * D99: plans and their scheduler (`docs/plans.md`). Without one the app makes its own (git
+   * from PATH, the configured gh), started when the app is ready and closed with it.
+   */
+  readonly plans?: PlanService;
   /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
   readonly peerSearchTimeoutMs?: number;
   /** Fastify logger; off by default (tests). */
@@ -534,7 +542,33 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search });
+  // D99: plans: the scheduler starts ready items as todo runs (D76) and follows them to their merge.
+  let plans = options.plans;
+  if (!plans) {
+    const own = new PlanService({
+      store: options.store,
+      bus,
+      todos,
+      git: new PlanGit({ gh: config.ghCommand }),
+      env: planEnvironment({
+        context: { store: options.store, providers, supervisor, worktrees, folders, todos, attachments, clis },
+        accounts,
+        systemItems,
+        send: async (sessionId, text) => {
+          if (await hooks.isHooked(sessionId)) await hooks.sendMessage(sessionId, text);
+          else await supervisor.sendMessage(sessionId, text, 'service');
+        },
+      }),
+    });
+    app.addHook('onReady', async () => {
+      if (!config.demo) await own.start();
+    });
+    app.addHook('preClose', async () => {
+      await own.close();
+    });
+    plans = own;
+  }
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search, plans });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

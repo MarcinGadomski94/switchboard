@@ -16,12 +16,34 @@ import { CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
 import { routingModelOptions } from '../../core/model-routing.ts';
 import type { SessionModelOption } from '../../core/api.ts';
 import { TodoError } from './service.ts';
+import type { Coordination, Phase, SessionMode, WorkType } from '../../core/model.ts';
 
 /** The prefix of a todo run's branch (`todo/<slug>`). */
 export const TODO_RUN_BRANCH_PREFIX = 'todo/';
 
 /** What {@link runTodo} needs (a subset of the route context). */
 export type TodoRunContext = SessionStartContext & Pick<ApiContext, 'todos'>;
+
+/**
+ * D99 (a plan item's run, `docs/plans.md` → *Item runs*): what a plan changes in a todo's run.
+ * The run gets these worktrees, branch and first message instead of the ones computed from the
+ * source session, and these start answers instead of the source's.
+ */
+export interface TodoRunOverrides {
+  /** The branch's base name (made unique across `repoPaths` with `-2`, `-3`, … like D76's). */
+  readonly branch: string;
+  /** Solution / repo name → the ref each worktree is cut from (the plan's target branch). */
+  readonly from: Readonly<Record<string, string>>;
+  /** The main checkouts of the repos in {@link from} (where the branch must be free). */
+  readonly repoPaths: readonly string[];
+  /** The first message (the plan item's brief), given the run's final branch (`null` = no worktree). */
+  readonly task: (branch: string | null) => string;
+  /**
+   * The start answers of a workspace run (a Full start with worktrees per solution); `null` =
+   * a simple start. Ignored outside a workspace folder.
+   */
+  readonly answers: { readonly workType: WorkType; readonly mode: SessionMode; readonly phase: Phase; readonly coordination: Coordination | null } | null;
+}
 
 /** The answer of {@link runTodo}: the run, or a refusal to send as it is. */
 export type TodoRunOutcome = { readonly ok: true; readonly result: TodoRunResult } | { readonly ok: false; readonly status: number; readonly body: RefusalBody };
@@ -59,7 +81,7 @@ export function runSlug(title: string): string {
  * unavailable) is answered as `POST /api/sessions` answers it, and the item is put back.
  * @throws {TodoError} 404 (no session / item), 422 (done or in review), 409 (`already-running`, `no-folder`).
  */
-export async function runTodo(context: TodoRunContext, sessionId: string, todoId: string): Promise<TodoRunOutcome> {
+export async function runTodo(context: TodoRunContext, sessionId: string, todoId: string, overrides?: TodoRunOverrides): Promise<TodoRunOutcome> {
   const { store, todos, worktrees, folders, supervisor } = context;
   const todo = await todos.checkRunnable(sessionId, todoId);
   const source = await store.sessions.get(sessionId);
@@ -91,10 +113,15 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   const name = shortNameFromTitle(todo.title, names);
 
   // The source's branch in each repo the run gets a worktree in (D76; ruling D76-workspace: a workspace's solution repos).
+  // D99: a plan item's run is cut from the plan's target branch instead.
   const from: Record<string, string> = {};
   const repoPaths: string[] = [];
   let note: string | null = null;
-  if (folder.kind === 'repo') {
+  if (overrides) {
+    Object.assign(from, overrides.from);
+    repoPaths.push(...overrides.repoPaths);
+    if (folder.kind === 'plain') note = "The source session's folder is not a git repository: the run works in the same folder, without a worktree.";
+  } else if (folder.kind === 'repo') {
     const cwd = source.cwd ?? folder.root;
     const ref = (await worktrees.checkedOutBranch(cwd)) ?? (await worktrees.headCommit(cwd));
     if (ref === null) note = "The source session's branch could not be read: the run works in the same folder, without a worktree.";
@@ -126,20 +153,20 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   let ownWorktree: { branch: string; from: Readonly<Record<string, string>> } | undefined;
   if (repoPaths.length > 0) {
     // One branch name, free in every repo.
-    const slug = runSlug(todo.title);
-    let branch = `${TODO_RUN_BRANCH_PREFIX}${slug}`;
+    const stem = overrides ? overrides.branch : `${TODO_RUN_BRANCH_PREFIX}${runSlug(todo.title)}`;
+    let branch = stem;
     const taken = async (candidate: string): Promise<boolean> => {
       for (const repoPath of repoPaths) if (await worktrees.hasLocalBranch(repoPath, candidate)) return true;
       return false;
     };
-    for (let n = 2; await taken(branch); n++) branch = `${TODO_RUN_BRANCH_PREFIX}${slug}-${n}`;
+    for (let n = 2; await taken(branch); n++) branch = `${stem}-${n}`;
     ownWorktree = { branch, from };
   }
 
   const common = {
     name,
     title: runTitle(todo.title),
-    task: todoStartMessage({ id: todo.id, title: todo.title, description: todo.description, plan: todo.plan }),
+    task: overrides ? overrides.task(ownWorktree?.branch ?? null) : todoStartMessage({ id: todo.id, title: todo.title, description: todo.description, plan: todo.plan }),
     folder: folder.id,
     provider: launch.provider,
     model: launch.model,
@@ -149,15 +176,17 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   };
   // A workspace source with the router's answers starts the run as a Full start with the same answers (its first message carries
   // the session-start block with the worktrees, like a Full start with worktrees per solution); every other one as a simple start.
-  const full = folder.kind === 'workspace' && source.workType !== null && source.mode !== null && source.phase !== null;
+  // D99: a plan item's run takes the plan's answers (given once on the plan) instead of the source's.
+  const answers = overrides ? overrides.answers : source.workType !== null && source.mode !== null && source.phase !== null ? { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination } : null;
+  const full = folder.kind === 'workspace' && answers !== null;
   const body = full
     ? {
         ...common,
-        workType: source.workType,
-        mode: source.mode,
-        phase: source.phase,
-        coordination: source.coordination,
-        qa: source.workType === 'qa' && source.qaStack ? { stack: source.qaStack, confluenceUrl: source.qaConfluenceUrl ?? '', figmaUrls: source.qaFigmaUrls } : null,
+        workType: answers.workType,
+        mode: answers.mode,
+        phase: answers.phase,
+        coordination: answers.coordination,
+        qa: answers.workType === 'qa' && source.qaStack ? { stack: source.qaStack, confluenceUrl: source.qaConfluenceUrl ?? '', figmaUrls: source.qaFigmaUrls } : null,
         solutions: Object.keys(from),
         ultracode: source.ultracode,
       }

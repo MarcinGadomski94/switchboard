@@ -268,6 +268,32 @@ export class SystemItemService {
   }
 
   /**
+   * D99 (`docs/plans.md`): an Inbox item about a plan: every item is done ("Plan ready: <target>
+   * → <base>", the developer merges the epic), or an item's branch conflicts with the target a
+   * second time (a question to the developer). Once per `dedupe` key (open or closed); dismiss-only.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async planNotice(input: { readonly kind: 'plan-ready' | 'plan-conflict'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: input.kind,
+        source: 'plans',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: [{ id: 'dismiss', label: 'Dismiss' }],
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /**
    * D55: closes the open "Update available" items of versions at or below
    * `current` (closed with `updated`: this Switchboard runs that version or a
    * newer one). The updater calls it at start.

@@ -11,6 +11,7 @@
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, OwnedLoop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 import type { Review } from './reviews.ts';
+import type { Plan } from './plans.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
 
 /** The machine whose answers are mapped. */
@@ -180,11 +181,26 @@ export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGr
 }
 
 /**
+ * D99: a peer's {@link Plan}: its id, its source session and its items' run sessions
+ * namespaced, `machine` added. Item ids, todo ids and edges stay raw (the item routes take the
+ * plan's remote id and a raw item id).
+ */
+export function peerPlan(machine: PeerMachineRef, plan: Plan): Plan {
+  return {
+    ...plan,
+    id: ns(machine, plan.id),
+    sourceSessionId: ns(machine, plan.sourceSessionId),
+    items: (plan.items ?? []).map((item) => ({ ...item, runSessionId: nsMaybe(machine, item.runSessionId) })),
+    machine: { id: machine.id, name: machine.name, state: machine.state },
+  };
+}
+
+/**
  * The `/hub` events a peer's stream forwards (the rest are the peer's own
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'artifactsChanged', 'draftChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'artifactsChanged', 'draftChanged', 'planChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -233,6 +249,11 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
         ? ({ sessionId: ns(machine, changed.sessionId), field: changed.field, client: typeof changed.client === 'string' ? changed.client : null } as HubEvents[K])
         : null;
     }
+    case 'planChanged': {
+      // D99: a peer's plan changed: its plan id namespaced.
+      const changed = value as unknown as HubEvents['planChanged'];
+      return typeof changed.planId === 'string' ? ({ ...changed, planId: ns(machine, changed.planId) } as HubEvents[K]) : null;
+    }
     case 'todosChanged': {
       const changed = value as unknown as HubEvents['todosChanged'];
       return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
@@ -256,6 +277,9 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D89: `artifacts` (a session's artifacts), `artifact` (one with its versions), `artifact-save` (a save's answer). */
 /** D94: `owned-loops` (a session's Switchboard loops), `owned-loop` (one, the answer of a create / change / action). */
 export type PeerAnswerKind =
+  | 'plan'
+  | 'plans'
+  | 'plan-item'
   | 'session'
   | 'sessions'
   | 'detail'
@@ -308,6 +332,10 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   // D94: a session's Switchboard loops (the list; a create, a change and an action answer the loop; Cancel answers 204).
   if (/^\/api\/sessions\/[^/]+\/loops$/.test(pathname)) return upper === 'GET' ? 'owned-loops' : upper === 'POST' ? 'owned-loop' : 'none';
   if (/^\/api\/sessions\/[^/]+\/loops\/[^/]+(?:\/(?:pause|resume|run))?$/.test(pathname)) return upper === 'PUT' || upper === 'POST' ? 'owned-loop' : 'none';
+  // D99: plans (the list; every other route answers the plan, an added item `{ plan, itemId }`; Delete answers 204).
+  if (pathname === '/api/plans') return upper === 'GET' ? 'plans' : upper === 'POST' ? 'plan' : 'none';
+  if (upper === 'POST' && /^\/api\/plans\/[^/]+\/items$/.test(pathname)) return 'plan-item';
+  if (/^\/api\/plans\/[^/]+(?:\/.*)?$/.test(pathname)) return upper === 'DELETE' && /^\/api\/plans\/[^/]+$/.test(pathname) ? 'none' : 'plan';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
   // Fix · long messages: a cut event's whole text carries the event under `event`.
@@ -379,6 +407,12 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return Array.isArray(body) ? body.filter((loop) => isRecord(loop) && typeof loop['sessionId'] === 'string').map((loop) => peerOwnedLoop(machine, loop as unknown as OwnedLoop)) : body;
     case 'owned-loop':
       return isRecord(body) && typeof body['sessionId'] === 'string' ? peerOwnedLoop(machine, body as unknown as OwnedLoop) : body;
+    case 'plan':
+      return isRecord(body) && typeof body['id'] === 'string' && Array.isArray(body['items']) ? peerPlan(machine, body as unknown as Plan) : body;
+    case 'plans':
+      return Array.isArray(body) ? body.filter((plan) => isRecord(plan) && typeof plan['id'] === 'string' && Array.isArray(plan['items'])).map((plan) => peerPlan(machine, plan as unknown as Plan)) : body;
+    case 'plan-item':
+      return isRecord(body) && isRecord(body['plan']) ? { ...body, plan: peerPlan(machine, body['plan'] as unknown as Plan) } : body;
     case 'none':
       return body;
   }

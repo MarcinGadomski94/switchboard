@@ -1,3 +1,4 @@
+import { PLAN_TOOLS } from '../../../src/core/plans.ts';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -52,8 +53,8 @@ async function connect(api: AgentApi, version?: string) {
   return { rpc, call, notify: (method: string) => client.send({ jsonrpc: '2.0', method } as JSONRPCMessage) };
 }
 
-/** `tools/list` as the SDK renders TODO_TOOLS, (D89) ARTIFACT_TOOLS and (D94) LOOP_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
-const LISTED_TOOLS = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS].map((tool) => ({
+/** `tools/list` as the SDK renders TODO_TOOLS, (D89) ARTIFACT_TOOLS, (D94) LOOP_TOOLS and (D99) PLAN_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
+const LISTED_TOOLS = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, ...PLAN_TOOLS].map((tool) => ({
   name: tool.name,
   title: tool.annotations.title,
   description: tool.description,
