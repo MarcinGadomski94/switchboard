@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.18.0 (2026-10-14)
+
+### Credits
+- **See when an account is paying from credits.** An account that keeps working past its 5-hour or weekly limit shows an amber "€ on credits" row in the usage footer, with what is left of your monthly credit limit (e.g. "€12.40 left of €50") and when credits reset. You get one Inbox notice when an account starts using credits, and one when less than 20 % is left.
+- **Plan allowance first.** New sessions and automatic switches prefer an account that still has allowance; sessions running on credits move back between turns as soon as an account resets ("moved off credits: … has allowance again").
+- **When every account is out:** Settings → Accounts lets you keep using credits (default) or pause new turns. Paused messages wait in the session (editable, removable) and go out by themselves, in order, when an account has allowance again.
+
+### Team (experimental)
+- **Better charters:** each member's own agent can draft a specific charter from its session: what it owns, what it produces, how it works today and what it never does. You accept, edit or dismiss each one in Needs you. Use "Draft better charters" for all members, or ⋯ → Redraft charter; newly adopted members are asked automatically. Charters gain a "How it works" field.
+- **Several teams:** create, rename, reorder and delete teams, each with its own members, Needs you and activity, plus an All teams view. Move a member to another team from its ⋯ menu.
+- **Reorder members** by dragging their cards (long press on touch, ⋯ → Move left/right, or Alt+arrows); the cards sit in one row that scrolls sideways.
+- **Choose a member's model and effort from a dropdown**; a model picked in the session header is kept for the member too.
+
+### Changed
+- **The sidebar navigation is a compact grid of icons** (names on hover, badges kept), so more room is left for your sessions. The Tools section can be collapsed.
+- **The session title stays on one line**, and long rows of repository chips fold to one line with "+N more".
+
+### Removed
+- **Review cards** (Inbox, session header, the "Raise review cards" setting and the "Ready for review" phone notification). A finished todo run is now simply done. Plans have their own Merge step instead: items you merge yourself wait as "Ready to merge" with Merge, Open PR, Send back and Open diff, and appear in the Inbox.
+
+### Fixed
+- Phones can withdraw a message that is waiting for an account.
+
 ## 1.17.0 (2026-10-14)
 
 ### Team (experimental)
