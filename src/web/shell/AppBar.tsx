@@ -27,6 +27,8 @@ export function pageTitle(route: Route, toolName: string | null = null): string 
       return 'History';
     case 'todos':
       return 'Todos';
+    case 'search':
+      return 'Search';
     case 'share':
       return 'Add to todos';
     case 'settings':
@@ -49,6 +51,15 @@ function MenuGlyph() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
       <path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle cx="7.5" cy="7.5" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M11.3 11.3 15.5 15.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -109,6 +120,10 @@ export function AppBar() {
       <h1 className="sb-appbar-title" data-testid="app-bar-title">
         {pageTitle(route, toolName)}
       </h1>
+      {/* D97: Search (the desktop opens it with ⌘⇧F / Ctrl+Shift+F or the palette's `?`). */}
+      <Link to={{ view: 'search' }} className="sb-appbar-search" data-testid="app-bar-search" aria-label="Search" title="Search" aria-current={route.view === 'search' ? 'page' : undefined}>
+        <SearchGlyph />
+      </Link>
       <Link to={{ view: 'inbox' }} className="sb-appbar-inbox" data-testid="app-bar-inbox" data-tour="inbox" aria-current={route.view === 'inbox' ? 'page' : undefined}>
         Inbox
         {inbox > 0 ? (

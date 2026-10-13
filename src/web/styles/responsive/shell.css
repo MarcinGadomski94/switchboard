@@ -49,6 +49,26 @@
     text-overflow: ellipsis;
   }
 
+  /* D97: the Search page's button (before the Inbox). */
+  .sb-appbar-search {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--text-2);
+  }
+
+  .sb-appbar-search:hover {
+    color: var(--text-2);
+  }
+
+  .sb-appbar-search[aria-current='page'] {
+    background: var(--bg-selected-nav);
+    color: var(--text-strong);
+  }
+
   .sb-appbar-inbox {
     flex: none;
     display: inline-flex;

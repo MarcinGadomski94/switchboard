@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { FirstRunGate } from '../modals/FirstRunGate.tsx';
 import { ModalHost } from '../modals/ModalHost.tsx';
 import { type Route, useRouter } from '../router.tsx';
@@ -14,6 +15,7 @@ import { SchedulesView } from '../views/SchedulesView.tsx';
 import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
 import { TodosView } from '../views/TodosView.tsx';
+import { SearchView } from '../views/SearchView.tsx';
 import { SharePage } from '../capture/SharePage.tsx';
 import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
@@ -29,7 +31,7 @@ function View({ route }: { readonly route: Route }) {
     case 'inbox':
       return <InboxView />;
     case 'session':
-      return <SessionView key={route.id} sessionId={route.id} tab={route.tab} agentId={route.agentId ?? null} artifactId={route.artifactId ?? null} />;
+      return <SessionView key={route.id} sessionId={route.id} tab={route.tab} agentId={route.agentId ?? null} artifactId={route.artifactId ?? null} eventId={route.eventId ?? null} />;
     case 'solutions':
       return <SolutionsView />;
     case 'schedules':
@@ -42,6 +44,8 @@ function View({ route }: { readonly route: Route }) {
       return <HistoryView />;
     case 'todos':
       return <TodosView />;
+    case 'search':
+      return <SearchView />;
     case 'share':
       return <SharePage />;
     case 'tool':
@@ -59,7 +63,19 @@ function View({ route }: { readonly route: Route }) {
  * and the main area takes the freed width (`docs/panes.md`).
  */
 export function Shell() {
-  const { route } = useRouter();
+  const { route, navigate } = useRouter();
+  // D97: ⌘⇧F / Ctrl+Shift+F opens the Search page (its field focused; on the page: the field again).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== 'f') return;
+      event.preventDefault();
+      const field = document.querySelector<HTMLInputElement>('[data-testid="search-input"]');
+      if (field) field.focus();
+      else navigate({ view: 'search' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navigate]);
   const { state, layout, compact, setHidden } = usePanes();
   // D74 (docs/responsive.md): on tablets and phones the sidebar is a drawer over the page, opened from the app bar
   // (the session view's header holds the menu button instead); desktop renders exactly what it did before.

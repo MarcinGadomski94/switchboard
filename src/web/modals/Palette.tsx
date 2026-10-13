@@ -12,6 +12,8 @@ import { useModals } from './ModalHost.tsx';
 import { startTours } from '../tutorial/tour.ts';
 import { MAIN_TOUR_ID } from '../../core/tutorial.ts';
 import { ADD_TODO_QUERY, PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries, paletteTodoEntries } from './palette.ts';
+import type { SearchAnswer } from '../../core/search.ts';
+import { SEARCH_DEBOUNCE_MS, paletteSearchEntries, paletteSearchText, searchPath } from '../views/search-view.ts';
 import './palette.css';
 
 /** Id of the results list (the input's `aria-controls`). */
@@ -51,9 +53,31 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
   );
   // D81: `todo <text>` lists where to add it (this session first); anything else filters as before.
   const currentSessionId = route.view === 'session' ? route.id : null;
+  // D97: `?text` searches everything (`GET /api/search`, its best results here; the last row opens the Search page).
+  const searchText = paletteSearchText(query);
+  const [found, setFound] = useState<{ readonly text: string; readonly answer: SearchAnswer } | null>(null);
+  useEffect(() => {
+    if (searchText === null || searchText === '') return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      api.search({ q: searchText }).then(
+        (answer) => {
+          if (live) setFound({ text: searchText, answer });
+        },
+        () => undefined,
+      );
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [searchText]);
   const results = useMemo(
-    () => paletteTodoEntries(query, sessions.data, currentSessionId) ?? filterPalette(entries, query),
-    [entries, query, sessions.data, currentSessionId],
+    () =>
+      searchText !== null
+        ? paletteSearchEntries(searchText, found?.text === searchText ? found.answer : null)
+        : (paletteTodoEntries(query, sessions.data, currentSessionId) ?? filterPalette(entries, query)),
+    [entries, query, sessions.data, currentSessionId, searchText, found],
   );
   const selected = clampIndex(index, results.length);
 
@@ -116,6 +140,14 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
       return;
     }
     onClose();
+    if (target.type === 'search-result') {
+      navigate(target.route);
+      return;
+    }
+    if (target.type === 'search-page') {
+      navigate(searchPath(target.q));
+      return;
+    }
     if (target.type === 'solution') {
       requestSolutionFocus(target.path);
       navigate({ view: 'solutions' });

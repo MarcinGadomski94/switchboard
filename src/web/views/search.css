@@ -1,0 +1,283 @@
+/*
+ * D97 · the Search page (docs/search.md → Search page). Not in the prototype: it follows the
+ * Artifacts page (head, filter chips, rows) and the design tokens. Phones and tablets: below.
+ */
+.sb-search-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-search-head {
+  padding: 18px 22px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-search-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sb-search-title {
+  margin: 0;
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+}
+
+.sb-search-indexing {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-search-input {
+  width: 100%;
+  max-width: 720px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  padding: 9px 12px;
+  font-size: 14px;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-search-input:focus {
+  border-color: var(--muted-3);
+}
+
+.sb-search-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-button.sb-search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--bg-selected-row);
+  color: var(--text-2);
+}
+
+.sb-button.sb-search-chip[aria-pressed='true'] {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+}
+
+.sb-search-chip-count {
+  font: 400 11px var(--font-mono);
+  opacity: 0.75;
+}
+
+.sb-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 22px 24px;
+}
+
+.sb-search-note {
+  margin: 10px 0 0;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-search-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted-3);
+  font-size: var(--fs-body);
+}
+
+.sb-search-group {
+  margin-top: 16px;
+}
+
+.sb-search-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-search-group-label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-4);
+}
+
+.sb-search-group-count {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-button.sb-search-all,
+.sb-button.sb-search-more {
+  margin-left: auto;
+  font: 400 11.5px var(--font-mono);
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  color: var(--muted-1);
+  cursor: pointer;
+}
+
+.sb-button.sb-search-more {
+  display: block;
+  margin: 8px auto 0;
+}
+
+.sb-search-machine-head {
+  padding: 8px 0 2px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-search-this-machine {
+  color: var(--muted-2);
+}
+
+.sb-search-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 48px;
+  gap: 14px;
+  align-items: start;
+  padding: 9px 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
+  border-bottom: 1px solid var(--border-row);
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--fs-body);
+}
+
+.sb-search-row:hover,
+.sb-search-row[data-selected] {
+  background: var(--bg-selected-row);
+  color: var(--text);
+}
+
+.sb-search-kind {
+  justify-self: start;
+  margin-top: 1px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--radius-chip);
+  background: var(--border-card);
+  color: var(--text-2);
+  font: 500 10px var(--font-mono);
+}
+
+.sb-search-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sb-search-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.sb-search-snippet {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.sb-search-where {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-search-age {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  text-align: right;
+}
+
+.sb-search-mark {
+  background: color-mix(in srgb, var(--status-need) 26%, transparent);
+  color: var(--text-strong);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Tablets and phones (docs/responsive.md): tighter edges, chips scroll, the age goes under the kind. */
+@media (max-width: 1023px) {
+  .sb-search-head {
+    padding: 14px 14px 10px;
+  }
+
+  .sb-search-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sb-button.sb-search-chip {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .sb-search-results {
+    padding: 4px max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-search-input {
+    max-width: none;
+    font-size: 16px;
+  }
+
+  /* The app bar carries the page's title. */
+  .sb-search-title {
+    display: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .sb-search-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'kind age'
+      'main main';
+    row-gap: 4px;
+  }
+
+  .sb-search-kind {
+    grid-area: kind;
+  }
+
+  .sb-search-main {
+    grid-area: main;
+  }
+
+  .sb-search-age {
+    grid-area: age;
+  }
+}

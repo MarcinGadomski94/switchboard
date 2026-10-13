@@ -47,6 +47,7 @@ function ChatStepLine({ sessionId, step }: { readonly sessionId: string; readonl
         className="sb-chat-step sb-chat-step--link"
         data-testid="chat-step"
         data-mark={step.mark}
+        data-event-id={step.id}
         data-subagent-id={step.subagentId}
         title={OPEN_SUBAGENT_CHAT}
       >
@@ -55,7 +56,7 @@ function ChatStepLine({ sessionId, step }: { readonly sessionId: string; readonl
     );
   }
   return (
-    <div className="sb-chat-step" data-testid="chat-step" data-mark={step.mark}>
+    <div className="sb-chat-step" data-testid="chat-step" data-mark={step.mark} data-event-id={step.id}>
       {text}
     </div>
   );
@@ -144,6 +145,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         className="sb-chat-message"
         data-testid="chat-message"
         data-role="user"
+        data-event-id={item.id}
         data-origin={item.origin}
         data-delivered={item.delivered ? 'true' : 'false'}
         data-queued={item.queued ?? undefined}
@@ -181,7 +183,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
   if (item.kind === 'agent') {
     const text = item.text;
     return (
-      <div className="sb-chat-message" data-testid="chat-message" data-role="agent" data-note={item.note ? 'true' : undefined}>
+      <div className="sb-chat-message" data-testid="chat-message" data-role="agent" data-event-id={item.id} data-note={item.note ? 'true' : undefined}>
         {text ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
             <ChatMarkdown text={text} onSaveCode={onSaveArtifact ? (code, language) => onSaveArtifact(codeDraft(code, language, text)) : null} />

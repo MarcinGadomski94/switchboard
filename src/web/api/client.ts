@@ -1,4 +1,5 @@
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
+import type { SearchAnswer } from '../../core/search.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { Review, ReviewActionId } from '../../core/reviews.ts';
@@ -305,11 +306,21 @@ export const api = {
    * D95: a page of the session's events, oldest first: the newest `limit` (older than event `before` when given), or
    * (`agent`) every event of that subagent plus the call that started it. A machine without paging answers every event.
    */
-  sessionEventsPage: (id: string, page: { readonly limit?: number; readonly before?: number; readonly agent?: string }) =>
+  sessionEventsPage: (id: string, page: { readonly limit?: number; readonly before?: number; readonly agent?: string; readonly around?: number; readonly after?: number }) =>
     request<SessionEvent[]>(
       'GET',
-      `/api/sessions/${enc(id)}/events${query({ limit: page.limit === undefined ? undefined : String(page.limit), before: page.before === undefined ? undefined : String(page.before), agent: page.agent })}`,
+      `/api/sessions/${enc(id)}/events${query({
+        limit: page.limit === undefined ? undefined : String(page.limit),
+        before: page.before === undefined ? undefined : String(page.before),
+        agent: page.agent,
+        // D97: a page centred on an event (a search result), and the pages after it.
+        around: page.around === undefined ? undefined : String(page.around),
+        after: page.after === undefined ? undefined : String(page.after),
+      })}`,
     ),
+  /** D97: search across everything (`docs/search.md`): this machine's index and the paired machines'. */
+  search: (params: { readonly q: string; readonly scope?: string; readonly session?: string; readonly limit?: number; readonly cursor?: string }) =>
+    request<SearchAnswer>('GET', `/api/search${query({ q: params.q, scope: params.scope, session: params.session, limit: params.limit === undefined ? undefined : String(params.limit), cursor: params.cursor })}`),
   /** Fix · long messages: a cut event's whole text from the session's CLI transcript (message text is written back). */
   fullEvent: (id: string, eventId: number) => request<FullEventAnswer>('GET', `/api/sessions/${enc(id)}/events/${eventId}/full`),
   /** D51: a Workflow agent's conversation (from its transcript). */

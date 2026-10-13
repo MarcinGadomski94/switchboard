@@ -1,5 +1,6 @@
 import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { OlderEvents } from './useSessionData.ts';
+import type { NewerEvents, OlderEvents } from './useSessionData.ts';
+import { revealEvent } from './reveal-event.ts';
 import { useReleaseFocus } from '../../components/release-focus.ts';
 import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
@@ -57,10 +58,17 @@ export interface ChatTabProps {
   readonly agentId?: string | null;
   /** D95: the earlier events not loaded yet (loaded when the conversation is scrolled to its top); absent = none. */
   readonly older?: OlderEvents;
+  /** D97: the later events not loaded yet (a chat opened at an older search result; loaded when scrolled to its end); absent = none. */
+  readonly newer?: NewerEvents;
+  /** D97: the event the chat opens at (a search result): scrolled into view and highlighted once shown. */
+  readonly focusEventId?: number | null;
 }
 
 /** D95: no older events (a complete list). */
 const NO_OLDER: OlderEvents = { available: false, loading: false, failed: false, load: () => undefined };
+
+/** D97: no newer events (the window reaches the end). */
+const NO_NEWER: NewerEvents = { available: false, loading: false, failed: false, load: () => undefined, latest: () => undefined };
 
 /** D95: within this many px of the top, the next older page loads. */
 const OLDER_PX = 600;
@@ -80,10 +88,10 @@ const OLDER_PX = 600;
  * events come from the session view (held per session, cached per tab); while
  * they or the detail are late, bubble placeholders stand in (`ChatSkeleton`).
  */
-export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null, older = NO_OLDER }: ChatTabProps) {
+export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null, older = NO_OLDER, newer = NO_NEWER, focusEventId = null }: ChatTabProps) {
   const activity = useLiveActivity(sessionId, session);
   if (agentId !== null) {
-    return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} placeholder={placeholder} />;
+    return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} placeholder={placeholder} focusEventId={focusEventId} />;
   }
   return (
     <MainChat
@@ -95,6 +103,8 @@ export function ChatTab({ sessionId, session, events, eventsState, placeholder =
       activity={activity}
       onChanged={onChanged}
       older={older}
+      newer={newer}
+      focusEventId={focusEventId}
     />
   );
 }
@@ -117,6 +127,10 @@ interface MainChatProps {
   readonly onChanged: () => void;
   /** D95: the earlier events not loaded yet. */
   readonly older: OlderEvents;
+  /** D97: the later events not loaded yet (opened at an older search result). */
+  readonly newer: NewerEvents;
+  /** D97: the event to bring into view and highlight once shown. */
+  readonly focusEventId: number | null;
 }
 
 /**
@@ -125,7 +139,7 @@ interface MainChatProps {
  * coming back from a subagent's chat shows it where it was left; a subagent's
  * question card can ask to bring its batch into view instead.
  */
-function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged, older }: MainChatProps) {
+function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged, older, newer, focusEventId }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
   // D89: the Save as artifact dialog's draft while it is open.
   const [saving, setSaving] = useState<ArtifactDraft | null>(null);
@@ -175,6 +189,10 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const anchor = useRef<{ readonly node: Element; readonly top: number } | null>(null);
   const olderRef = useRef(older);
   olderRef.current = older;
+  const newerRef = useRef(newer);
+  newerRef.current = newer;
+  // D97: the search result this chat was opened at, once it was brought into view (a new one is revealed again).
+  const revealed = useRef<number | null>(null);
   // D80: the session's checkpoints (the turn actions, Redo), read again when a turn starts or the status changes (D95: not on every event).
   const status = session?.status ?? '';
   const checkpointsAt = useMemo(() => checkpointsKey(events, status), [events, status]);
@@ -195,6 +213,21 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     if (!stick.current) anchor.current = anchorItem(el);
     // D95: a window too short to scroll cannot be scrolled to its top: the next page loads by itself.
     if (items.length > 0 && older.available && !older.loading && !older.failed && el.scrollHeight <= el.clientHeight) older.load();
+    // D97: nor to its end (a window opened around an older event).
+    if (items.length > 0 && newer.available && !newer.loading && !newer.failed && el.scrollHeight <= el.clientHeight) newer.load();
+    // D97: a window that does not reach the end never follows the newest item.
+    if (newer.available) stick.current = false;
+    // D97: opened at a search result: that event comes into view (centred, highlighted) once it is shown.
+    if (focusEventId !== null && revealed.current !== focusEventId && loaded && session) {
+      if (revealEvent(el, focusEventId)) {
+        revealed.current = focusEventId;
+        restored.current = true;
+        stick.current = atBottom(el) && !newer.available;
+        rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
+        anchor.current = stick.current ? null : anchorItem(el);
+      }
+      return;
+    }
     if (!restored.current && loaded && session) {
       restored.current = true;
       const place = mainChatPlace(sessionId);
@@ -216,13 +249,17 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const onScroll = (): void => {
     const el = scroller.current;
     if (!el) return;
-    stick.current = atBottom(el);
+    // D97: a window that does not reach the end is never "at the bottom" (the newest items are not there).
+    stick.current = atBottom(el) && !newerRef.current.available;
     rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
     // D95: the item in view now is the one that stays put when older items come in front.
     anchor.current = stick.current ? null : anchorItem(el);
     // D95: near the top, the page before the loaded events.
     const more = olderRef.current;
     if (el.scrollTop < OLDER_PX && more.available && !more.loading && !more.failed) more.load();
+    // D97: near the end, the page after them.
+    const later = newerRef.current;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < OLDER_PX && later.available && !later.loading && !later.failed) later.load();
   };
 
   // D48 ruling D48-cache-persist: an unreachable machine's session is readable (its last known state), nothing more.
@@ -271,6 +308,15 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             onSaveArtifact={blocked === null ? setSaving : null}
           />
         ))}
+        {loaded && newer.available && !placeholder ? (
+          <NewerRow
+            newer={newer}
+            onLatest={() => {
+              stick.current = true;
+              newer.latest();
+            }}
+          />
+        ) : null}
       </div>
       {saving ? <SaveArtifactDialog sessionId={sessionId} draft={saving} onClose={() => setSaving(null)} /> : null}
       {/* D81: a selection in the conversation offers "Add to todo". */}
@@ -349,6 +395,29 @@ function OlderRow({ older }: { readonly older: OlderEvents }) {
           {older.failed ? 'Could not load earlier messages · Retry' : 'Show earlier messages'}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * D97 (`docs/search.md` → *Opening a result*): the row under the loaded messages
+ * while later ones exist (the chat was opened at an older search result).
+ * Scrolling to the end loads them; Show later messages does the same, and Jump
+ * to latest reads the newest page, as when the session opens.
+ */
+function NewerRow({ newer, onLatest }: { readonly newer: NewerEvents; readonly onLatest: () => void }) {
+  return (
+    <div className="sb-chat-older sb-chat-newer" data-testid="chat-newer" data-state={newer.loading ? 'loading' : newer.failed ? 'failed' : 'idle'}>
+      {newer.loading ? (
+        <span role="status">Loading later messages…</span>
+      ) : (
+        <button type="button" className="sb-button sb-chat-older-button" data-testid="chat-newer-load" onClick={newer.load}>
+          {newer.failed ? 'Could not load later messages · Retry' : 'Show later messages'}
+        </button>
+      )}
+      <button type="button" className="sb-button sb-chat-older-button" data-testid="chat-newer-latest" onClick={onLatest}>
+        Jump to latest
+      </button>
     </div>
   );
 }

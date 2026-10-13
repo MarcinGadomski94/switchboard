@@ -54,6 +54,11 @@ export function byTime(a: Pick<SessionEvent, 'ts' | 'id'>, b: Pick<SessionEvent,
 export interface EventWindow {
   readonly list: readonly SessionEvent[];
   readonly cursor: SessionEvent | null;
+  /**
+   * D97: the newest loaded event while newer ones exist (a window opened around an
+   * older event: a search result), `null` / absent once the list reaches the end.
+   */
+  readonly newer?: SessionEvent | null;
 }
 
 /** The oldest of `events` in time order, `null` for none. */
@@ -72,11 +77,51 @@ export function pageCursor(page: readonly SessionEvent[], limit: number): Sessio
   return page.length === limit ? oldest(page) : null;
 }
 
-/** D95: `true` when `event` belongs in the window: it is complete, the event is already in it, or it is not older than the cursor. */
+/**
+ * D95: `true` when `event` belongs in the window: it is complete, the event is already in it, or it is not older than the cursor.
+ * D97: nor newer than its newest event while newer ones were not loaded (they come with their page).
+ */
 export function inWindow(window: EventWindow, event: SessionEvent): boolean {
+  if (window.list.some((e) => e.id === event.id)) return true;
+  if (window.newer && byTime(event, window.newer) > 0) return false;
   if (window.cursor === null) return true;
-  if (byTime(event, window.cursor) >= 0) return true;
-  return window.list.some((e) => e.id === event.id);
+  return byTime(event, window.cursor) >= 0;
+}
+
+/**
+ * D97 (`docs/search.md` → *Opening a result*): the window of a page read `around`
+ * event `anchorId` with `limit`: the server puts ⌊(limit − 1) / 2⌋ events before it
+ * and the rest after it, so a full side leaves a cursor (older ones may exist) and
+ * a full newer side leaves `newer` (the window does not reach the end). A page
+ * without the anchor (a machine without `around` answers its newest page or every
+ * event) is taken as the newest page.
+ */
+export function aroundWindow(page: readonly SessionEvent[], anchorId: number, limit: number): Required<EventWindow> {
+  const index = page.findIndex((event) => event.id === anchorId);
+  if (index < 0) return { list: page, cursor: pageCursor(page, limit), newer: null };
+  const olderShare = Math.floor((limit - 1) / 2);
+  const newerShare = limit - 1 - olderShare;
+  const newerCount = page.length - 1 - index;
+  return {
+    list: page,
+    cursor: index >= olderShare && index > 0 ? (page[0] ?? null) : null,
+    newer: newerCount >= newerShare && newerCount > 0 ? (page[page.length - 1] ?? null) : null,
+  };
+}
+
+/**
+ * D97: the window with a newer page (`limit` asked, read `after` its newest event)
+ * added at its end; a page shorter than `limit` reaches the end, and then the `/hub`
+ * events `held` while the window did not reach it are added too (by id).
+ */
+export function withNewerPage(window: EventWindow, page: readonly SessionEvent[], limit: number, held: readonly SessionEvent[] = []): Required<EventWindow> {
+  const known = new Set(window.list.map((event) => event.id));
+  const added = page.filter((event) => !known.has(event.id));
+  const end = page.length < limit || added.length === 0;
+  const list = [...window.list, ...added];
+  if (!end) return { list, cursor: window.cursor, newer: list[list.length - 1] ?? null };
+  const seen = new Set(list.map((event) => event.id));
+  return { list: [...list, ...held.filter((event) => !seen.has(event.id))], cursor: window.cursor, newer: null };
 }
 
 /** D95: the window with an older page (`limit` asked) added in front; events already in it stay as they are. */

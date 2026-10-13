@@ -15,7 +15,7 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' }
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -71,6 +71,9 @@ const V1_13 = '1.13.0';
 /** The version D88, D89, D90 and D91 ship in. */
 const V1_14 = '1.14.0';
 const V1_15 = '1.15.0';
+
+/** The version D97 (search across everything) ships in. */
+const V1_16 = '1.16.0';
 
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
@@ -546,6 +549,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Click + New loop.', 'Pick the session, write the prompt and the schedule, then Create loop.'],
         anchors: ['loop-new', 'schedules'],
         route: { view: 'schedules' },
+        missing: null,
+      },
+    ],
+  },
+  {
+    id: 'search',
+    decision: 'D97',
+    version: V1_16,
+    title: 'Search across everything',
+    steps: [
+      {
+        id: 'page',
+        title: 'Search across everything',
+        what: 'One field searches every conversation (your messages, the agents\' text and progress notes, tool calls, session titles), the saved artifacts, the todos and History, here and on your paired machines. Results come grouped by type and machine, the matching words highlighted.',
+        todo: ['Press ⌘⇧F (Ctrl+Shift+F), or the search button in the app bar on a phone or tablet.', 'Type a few words; "quotes" find a phrase, a trailing * a prefix.', 'Click a message: its chat opens scrolled to it, highlighted, even when it is far back.'],
+        anchors: ['search-input'],
+        route: { view: 'search' },
+        missing: 'Open Search with ⌘⇧F (Ctrl+Shift+F).',
+      },
+      {
+        id: 'scopes',
+        title: 'Narrow it down, or search from ⌘K',
+        what: 'The chips keep one kind of result (Conversations, Artifacts, Todos or History) and page through all of it. In the ⌘K palette, start with ? to search from anywhere: ?invoice lists the best matches.',
+        todo: ['Pick a chip to see only that kind of result.', 'Press ⌘K and type ? and a few words.'],
+        anchors: ['search-chips'],
+        route: { view: 'search' },
         missing: null,
       },
     ],

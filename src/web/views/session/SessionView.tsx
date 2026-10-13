@@ -43,8 +43,22 @@ const RELOAD_MS = 500;
  * prototype's children keep their places), and the header and tab take the
  * freed width (`docs/panes.md`).
  */
-export function SessionView({ sessionId, tab, agentId = null, artifactId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null; readonly artifactId?: string | null }) {
-  const data = useSessionData(sessionId, tab === 'chat');
+export function SessionView({
+  sessionId,
+  tab,
+  agentId = null,
+  artifactId = null,
+  eventId = null,
+}: {
+  readonly sessionId: string;
+  readonly tab: SessionTab;
+  readonly agentId?: string | null;
+  readonly artifactId?: string | null;
+  /** D97: the chat opens at this event (a search result), scrolled to it and highlighted. */
+  readonly eventId?: number | null;
+}) {
+  // D97: the main chat's window loads around the event when it does not hold it (a subagent's chat reads its events whole).
+  const data = useSessionData(sessionId, tab === 'chat', agentId === null ? eventId : null);
   const reload = useThrottled(data.reload, RELOAD_MS);
   useHubEvent('sessionUpdated', (session) => {
     if (session.id === sessionId) reload();
@@ -104,6 +118,8 @@ export function SessionView({ sessionId, tab, agentId = null, artifactId = null 
             onChanged={data.reload}
             agentId={agentId}
             older={data.older}
+            newer={data.newer}
+            focusEventId={eventId}
           />
         ) : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}

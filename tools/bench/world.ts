@@ -188,14 +188,17 @@ function buildSession(
  * prepared statements (the repositories' one-row-per-call path would take minutes
  * for 30k events). Works on a store another process has open too (SQLite WAL): the
  * streaming scenario grows a live session this way. Returns the events and bytes.
+ * D97: `index` also puts them in the search index (as the server does when it writes
+ * events); without it they are left to the server's startup backfill.
  */
 export function appendHistory(
   store: Store,
   sessionId: string,
   mainAgentId: string,
   target: number,
-  options: { readonly seed: number | (() => number); readonly startMs: number; readonly endMs: number; readonly liveCron: boolean },
+  options: { readonly seed: number | (() => number); readonly startMs: number; readonly endMs: number; readonly liveCron: boolean; readonly index?: boolean },
 ): { events: number; payloadBytes: number } {
+  const firstNew = options.index ? store.search.maxEventId() : 0;
   const r = typeof options.seed === 'number' ? rng(options.seed) : options.seed;
   const insertEvent = store.db.prepare(
     'INSERT INTO events (session_id, agent_id, ts, end_ts, kind, label, payload, uuid, message_id, tool_use_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -226,6 +229,14 @@ export function appendHistory(
       { liveCron: options.liveCron },
     );
   });
+  if (options.index && store.search.enabled) {
+    const last = store.search.maxEventId();
+    for (let at = firstNew; at < last; ) {
+      const step = store.search.backfillEvents(at, last, 2_000);
+      if (step.read === 0) break;
+      at = step.last;
+    }
+  }
   return { events: count, payloadBytes: bytes };
 }
 

@@ -1,4 +1,5 @@
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { revealEvent } from './reveal-event.ts';
 import type { Agent, SessionActivity, SessionDetail, SessionEvent, WorkflowAgentChat } from '../../../core/api.ts';
 import { api } from '../../api/client.ts';
 import { AgentActivityText, SubagentActivityLine } from '../../activity/ActivityViews.tsx';
@@ -43,6 +44,8 @@ export interface SubagentChatViewProps {
   readonly agentId: string;
   /** D45: the session's data is late: bubble placeholders stand in for the conversation. */
   readonly placeholder?: boolean;
+  /** D97: the event the chat opens at (a search result): scrolled into view and highlighted once shown. */
+  readonly focusEventId?: number | null;
 }
 
 /** `true` while focus is in a text field, where Esc belongs to the field (D50: the composer's Esc reads it too). */
@@ -124,7 +127,7 @@ function useWorkflowChat(sessionId: string, agent: Agent | null): WorkflowChatSt
  * activity line; and, in the composer's place, a note that subagents take no
  * messages. The bar's link, Esc and the browser's Back return to the main chat.
  */
-export function SubagentChatView({ sessionId, session, events, activity, agentId, placeholder = false }: SubagentChatViewProps) {
+export function SubagentChatView({ sessionId, session, events, activity, agentId, placeholder = false, focusEventId = null }: SubagentChatViewProps) {
   const { backTo } = useRouter();
   const main: Route = { view: 'session', id: sessionId, tab: 'chat' };
   const mainHref = routePath(main);
@@ -134,8 +137,17 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
   // Like the main chat: stays at the newest item while at the bottom.
   const scroller = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
+  // D97: the search result this chat was opened at, once it was brought into view.
+  const revealed = useRef<number | null>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
+    if (el && focusEventId !== null && revealed.current !== focusEventId) {
+      if (revealEvent(el, focusEventId)) {
+        revealed.current = focusEventId;
+        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+      }
+      return;
+    }
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   });
   const onScroll = (): void => {

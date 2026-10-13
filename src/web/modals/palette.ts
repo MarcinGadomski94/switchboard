@@ -4,6 +4,7 @@ import { displayTitle } from '../../core/session-title.ts';
 import { captureTargets, captureTitle, paletteTodoText } from '../../core/todo-capture.ts';
 import { TODO_TITLE_MAX } from '../../core/todos.ts';
 import { modeLine, urlHost } from '../shell/format.ts';
+import type { SearchRoute } from '../views/search-view.ts';
 
 /**
  * The ⌘K / Ctrl+K palette's model (SPEC → Modals → Palette, M8.3), pure so the
@@ -15,7 +16,7 @@ import { modeLine, urlHost } from '../shell/format.ts';
  */
 
 /** Kind label of a result (shown upper-cased). */
-export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'solution' | 'todo';
+export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'solution' | 'todo' | 'search';
 
 /**
  * The routes the palette navigates to: a structural subset of the router's
@@ -42,7 +43,11 @@ export type PaletteTarget =
   /** D81: `todo ` without a title yet: nothing to pick. */
   | { readonly type: 'none' }
   /** D85: replay the tutorial's main tour. */
-  | { readonly type: 'tutorial' };
+  | { readonly type: 'tutorial' }
+  /** D97: open a search result (`?text`): its chat at the message, its artifact, … (`search-view.ts` → `resultRoute`). */
+  | { readonly type: 'search-result'; readonly route: SearchRoute }
+  /** D97: the Search page with this query. */
+  | { readonly type: 'search-page'; readonly q: string };
 
 /** One palette result: a kind label, the label and a mono hint (may be empty). */
 export interface PaletteEntry {

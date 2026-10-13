@@ -775,6 +775,45 @@ a.sb-agent--link:focus-visible {
   color: var(--muted-2);
 }
 
+/* D97: the row under the loaded messages while later ones exist (a chat opened at an older search result). */
+.sb-chat-newer {
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* D97: the search result the chat opened at (docs/search.md → Opening a result): a ring that fades out. */
+.sb-chat-message[data-search-hit] > .sb-chat-bubble,
+.sb-chat-message[data-search-hit]:not(:has(> .sb-chat-bubble)),
+.sb-chat-step[data-search-hit] {
+  animation: sb-search-hit 2.6s ease-out both;
+  border-radius: 8px;
+}
+
+.sb-chat-message[data-search-hit] > .sb-chat-bubble {
+  border-radius: 12px;
+}
+
+@keyframes sb-search-hit {
+  0%,
+  45% {
+    box-shadow: 0 0 0 2px var(--status-need);
+    background-color: color-mix(in srgb, var(--status-need) 12%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-chat-message[data-search-hit] > .sb-chat-bubble,
+  .sb-chat-message[data-search-hit]:not(:has(> .sb-chat-bubble)),
+  .sb-chat-step[data-search-hit] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--status-need);
+  }
+}
+
 .sb-chat-message {
   display: flex;
   flex-direction: column;
