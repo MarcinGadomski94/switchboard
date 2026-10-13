@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.15.5 (2026-10-13)
+
+### Changed
+- **Permission requests show the agent's message too.** In the Inbox, a permission request now shows the agent's message right above it as context, above the tool's description and the request.
+
+### Fixed
+- Questions from hooked terminal sessions got no context in 1.15.4 (the hook doesn't say which call it belongs to); Switchboard now matches the open call and syncs the transcript first, so their questions and permission requests show the agent's message.
+
 ## 1.15.4 (2026-10-13)
 
 ### Fixed
