@@ -287,6 +287,8 @@ export const api = {
     request<Session>('POST', `/api/sessions/${enc(id)}/continue-in-switchboard`, confirmStopTerminal ? { confirmStopTerminal: true } : {}),
   /** D72: Resend of a message marked not sent (its terminal ended before taking it up). */
   resendMessage: (id: string, eventId: number) => request<void>('POST', `/api/sessions/${enc(id)}/events/${eventId}/resend`, {}),
+  /** D103: Edit / Remove of a message held for an account with allowance: it never goes out; answers its text and attachments. */
+  withdrawHeld: (id: string, eventId: number) => request<{ text: string; attachments: Attachment[] }>('POST', `/api/sessions/${enc(id)}/events/${eventId}/withdraw`, {}),
   /** D80: the session's turns with a checkpoint, why there are none, Redo (docs/undo.md). */
   checkpoints: (id: string) => request<SessionCheckpoints>('GET', `/api/sessions/${enc(id)}/checkpoints`),
   /** D80: what a revert to before turn `turn` changes (the confirm dialog). */

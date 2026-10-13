@@ -88,6 +88,9 @@ const OLDER_PX = 600;
  * events come from the session view (held per session, cached per tab); while
  * they or the detail are late, bubble placeholders stand in (`ChatSkeleton`).
  */
+/** D103: the window event that puts a held message's text back into the session's composer (Edit). */
+const COMPOSER_INSERT_EVENT = 'switchboard:composer-insert';
+
 export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null, older = NO_OLDER, newer = NO_NEWER, focusEventId = null }: ChatTabProps) {
   const activity = useLiveActivity(sessionId, session);
   if (agentId !== null) {
@@ -148,6 +151,13 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const machine = useLiveMachine(session?.machine);
   const blockedEarly = offlineReason(machine);
   const attachments = useAttachmentDraft(blockedEarly === null ? (body) => api.uploadAttachment(sessionId, body) : undefined);
+  // D103: a held message taken back: Edit puts its text (and attachments) into the composer, Remove drops it.
+  const onHeld = async (eventId: number, action: 'edit' | 'remove'): Promise<void> => {
+    const taken = await api.withdrawHeld(sessionId, eventId);
+    if (action !== 'edit') return;
+    if (taken.attachments.length > 0) attachments.restore(taken.attachments, sessionId);
+    window.dispatchEvent(new CustomEvent(COMPOSER_INSERT_EVENT, { detail: { sessionId, text: taken.text } }));
+  };
   const drop = useFileDrop(attachments.add, blockedEarly === null);
   const clearAttachments = attachments.clear;
   useEffect(() => {
@@ -305,6 +315,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             redo={item.kind === 'divider' && blocked === null && checkpoints?.redo?.eventId === item.id}
             // D89: Save as artifact (not for an unreachable machine's session).
             onSaveArtifact={blocked === null ? setSaving : null}
+            // D103: Edit / Remove of a message held for an account with allowance.
+            onHeld={blocked === null ? onHeld : null}
           />
         ))}
         {loaded && newer.available && !placeholder ? (
@@ -495,6 +507,17 @@ function Composer({
   // the text stays this component's own state, so typing renders nothing above it (the typing-lag guard).
   const [draft, setDraft] = useState(() => initialDraft<ComposerDraft>(sessionId, draftField.composer)?.text ?? '');
   const [sending, setSending] = useState(false);
+  // D103: Edit on a held message brings its text back here, before what is typed (as a Stop's withdrawn messages do).
+  useEffect(() => {
+    const insert = (event: Event): void => {
+      const detail = (event as CustomEvent<{ sessionId: string; text: string }>).detail;
+      if (detail.sessionId !== sessionId) return;
+      setDraft((current) => withdrawnDraft([detail.text], current));
+      input.current?.focus();
+    };
+    window.addEventListener(COMPOSER_INSERT_EVENT, insert);
+    return () => window.removeEventListener(COMPOSER_INSERT_EVENT, insert);
+  }, [sessionId]);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const draftValue = useMemo<ComposerDraft>(
     () => ({

@@ -58,8 +58,8 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'turn-running': 409,
   // D91: the restart with the current standing instruction failed.
   'reload-failed': 502,
-  // D103: every account is out of allowance and new turns pause until one resets (Settings → Accounts).
-  'credits-paused': 409,
+  // D103: Edit / Remove of a message that no longer waits for an account with allowance.
+  'not-held': 409,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,
@@ -427,6 +427,16 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const outcome = await continuer.resend(request.params.id, request.params.eventId);
     if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
     return reply.code(202).send();
+  });
+
+  // D103 (additive): Edit / Remove of a message held for an account with allowance (`queued: "credits"`) → { text, attachments };
+  // it gets `withdrawn` and never goes out. 404 `not-found`, 409 `not-held` (sent or withdrawn already).
+  app.post<{ Params: IdParams & { eventId: string } }>('/api/sessions/:id/events/:eventId/withdraw', async (request, reply) => {
+    try {
+      return await supervisor.withdrawHeld(request.params.id, Number(request.params.eventId));
+    } catch (error) {
+      return sendError(reply, error);
+    }
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/detach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {

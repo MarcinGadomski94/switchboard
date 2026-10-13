@@ -50,8 +50,11 @@ export type UserMessageOrigin =
  * - `resume`: it was sent while the session had no live process, so it goes to
  *   the agent when the session's resumed process takes it up (a chat message
  *   resumes the session; answers wait in the outbox until the next run).
+ * - `credits` (D103): every account of the session's CLI is out of allowance and
+ *   Settings → Accounts says to pause new turns: Switchboard holds it (nothing is
+ *   written to the CLI) and sends it, in order, once an account has allowance.
  */
-export type QueuedReason = 'turn' | 'resume';
+export type QueuedReason = 'turn' | 'resume' | 'credits';
 
 /**
  * A user message Switchboard wrote to stdin (`delivered` flips when the CLI's
@@ -75,6 +78,12 @@ export interface UserPayload {
    * back into the composer, and the chat no longer shows it. Absent otherwise.
    */
   readonly withdrawn?: true;
+  /**
+   * Additive (D103): with `queued: "credits"`, the message waits in Switchboard (it
+   * was never written to the CLI) because every account is out of allowance and
+   * new turns pause: "Waiting for an account with allowance — Private back at 23:30".
+   */
+  readonly heldNote?: string;
   /**
    * Additive (D72): the message was handed to a hooked session's terminal, which
    * ended before taking it up (the transcript never had it); after **Continue in

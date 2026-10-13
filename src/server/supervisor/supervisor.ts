@@ -5,12 +5,12 @@ import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConf
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, SessionFreshContinue, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
-import { textLabel } from '../../core/derive/event-kind.ts';
+import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserLoopMark, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
 import { type Withdrawn, withoutQueued } from '../../core/derive/queued.ts';
-import { type Attachment, messageWithFiles } from '../../core/attachments.ts';
+import { type Attachment, attachmentsLabel, messageWithFiles } from '../../core/attachments.ts';
 import { DEFAULT_MODEL_VALUE, type ModelChoice, checkModelChoice, modelStepLabel, normalizeEffort, normalizeModel, parseInitializeModels } from '../../core/model-choice.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import {
@@ -371,8 +371,8 @@ export type SupervisorErrorCode =
   | 'turn-running'
   /** D91: the process could not be restarted with the current standing instruction. */
   | 'reload-failed'
-  /** D103: every account of the CLI is out of allowance and Settings → Accounts says to pause new turns until one resets. */
-  | 'credits-paused';
+  /** D103: the message is not held for an account with allowance (sent or withdrawn already). */
+  | 'not-held';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -607,6 +607,12 @@ export class SessionSupervisor {
   readonly #accounts: AccountService | null;
   /** D63: the sessions an account switch runs for. */
   readonly #accountSwitches = new Set<string>();
+  /** D103: sessions with messages held for an account with allowance (`queued: "credits"`), loaded once from the events. */
+  #heldSessions: Set<string> | null = null;
+  /** D103: a held message's attachments (in memory: after a restart a held message goes out with its text only). */
+  readonly #heldAttachments = new Map<number, PreparedAttachments>();
+  /** D103: sessions whose held messages are being sent. */
+  readonly #releasing = new Set<string>();
   /** D83: the continuations in a fresh session in progress, by (old) session. */
   readonly #freshRuns = new Map<string, RunningFresh>();
   /** D63: when each session last switched account (epoch ms): the automatic switcher's cooldown. */
@@ -789,8 +795,8 @@ export class SessionSupervisor {
    */
   async start(input: SessionStartInput, place: SessionPlace, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
     this.#assertOpen();
-    // D103: a first message is a new turn: refused while new turns pause (every account out of allowance, "pause" chosen).
-    if (firstMessage.trim() !== '') await this.#assertNotCreditsPaused(input.provider ?? 'claude');
+    // D103: while new turns pause, the session starts idle and its first message waits for an account with allowance.
+    const paused = firstMessage.trim() !== '' ? await this.#creditsPaused(input.provider ?? 'claude') : false;
     const cwd = await canonicalFolder(place.cwd);
     const session = await this.#store.sessions.create({
       name: input.name,
@@ -832,8 +838,9 @@ export class SessionSupervisor {
     if (options.beforeSpawn) await options.beforeSpawn(session);
     const live = await this.#spawn(session, { kind: 'new', claudeSessionId: session.claudeSessionId }, 'started');
     const attachments = options.attachments?.() ?? NO_ATTACHMENTS;
-    if (firstMessage.trim() !== '') await this.#send(live, firstMessage, 'task', { attachments });
+    if (firstMessage.trim() !== '' && !paused) await this.#send(live, firstMessage, 'task', { attachments });
     else await this.#enqueue(live, () => this.#refreshStatus(live));
+    if (firstMessage.trim() !== '' && paused) await this.#hold(await this.#get(session.id), firstMessage, 'task', attachments, null, paused);
     return this.#get(session.id);
   }
 
@@ -848,7 +855,7 @@ export class SessionSupervisor {
     text: string,
     origin: UserMessageOrigin = 'user',
     attachments: PreparedAttachments = NO_ATTACHMENTS,
-    marks: { readonly loop?: UserLoopMark } = {},
+    marks: { readonly loop?: UserLoopMark; readonly heldEventId?: number } = {},
   ): Promise<SessionRecord> {
     await this.#gate;
     this.#assertOpen();
@@ -856,7 +863,14 @@ export class SessionSupervisor {
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     this.#assertNotSwitching(session);
-    await this.#assertNotCreditsPaused(session.provider);
+    // D103: while new turns pause (every account out of allowance), or while earlier messages still wait for one, it waits too (in order).
+    if (marks.heldEventId === undefined) {
+      const paused = await this.#creditsPaused(session.provider);
+      if (paused || (await this.#hasHeld(sessionId))) {
+        await this.#hold(session, text, origin, attachments, marks.loop ?? null, paused);
+        return this.#get(sessionId);
+      }
+    }
     // D91: a message sent while the instruction reload restarts the process goes to the new process.
     await this.#instructionReloads.get(sessionId)?.catch(() => undefined);
     let live = this.#live.get(sessionId);
@@ -870,7 +884,7 @@ export class SessionSupervisor {
     }
     const resuming = !live;
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
-    await this.#send(live, text, origin, { resuming, attachments, ...(marks.loop ? { loop: marks.loop } : {}) });
+    await this.#send(live, text, origin, { resuming, attachments, ...(marks.loop ? { loop: marks.loop } : {}), ...(marks.heldEventId !== undefined ? { heldEventId: marks.heldEventId } : {}) });
     return this.#get(sessionId);
   }
 
@@ -1107,17 +1121,120 @@ export class SessionSupervisor {
     return this.#providerUsage.get(provider) ?? null;
   }
 
+  /** D103: new turns of `cli` pause (every account out of allowance, "pause" chosen): who is back first and when; else `false`. */
+  async #creditsPaused(cli: CliProviderId): Promise<{ readonly until: string | null; readonly name: string | null } | false> {
+    return (await this.#accounts?.creditsPause(cli)) ?? false;
+  }
+
+  /** D103: the sessions with held messages (one scan of the events at first use). */
+  async #held(): Promise<Set<string>> {
+    if (this.#heldSessions) return this.#heldSessions;
+    const rows = this.#store.db
+      .prepare("SELECT DISTINCT session_id AS s FROM events WHERE json_extract(payload, '$.type') = 'user' AND json_extract(payload, '$.queued') = 'credits' AND json_extract(payload, '$.withdrawn') IS NULL")
+      .all();
+    this.#heldSessions ??= new Set(rows.map((row) => String(row['s'])));
+    return this.#heldSessions;
+  }
+
+  async #hasHeld(sessionId: string): Promise<boolean> {
+    return (await this.#held()).has(sessionId);
+  }
+
+  /** D103: the session's held messages, oldest first. */
+  async heldMessages(sessionId: string): Promise<EventRecord[]> {
+    if (!(await this.#hasHeld(sessionId))) return [];
+    const ids = this.#store.db
+      .prepare("SELECT id FROM events WHERE session_id = ? AND json_extract(payload, '$.type') = 'user' AND json_extract(payload, '$.queued') = 'credits' AND json_extract(payload, '$.withdrawn') IS NULL ORDER BY id")
+      .all(sessionId)
+      .map((row) => Number(row['id']));
+    const out: EventRecord[] = [];
+    for (const id of ids) {
+      const event = await this.#store.events.get(id);
+      if (event) out.push(event);
+    }
+    if (out.length === 0) (await this.#held()).delete(sessionId);
+    return out;
+  }
+
+  /** D103: the sessions that have held messages now. */
+  async heldSessionIds(): Promise<string[]> {
+    return [...(await this.#held())];
+  }
+
   /**
    * D103 (`docs/accounts.md` → *Credits*): with "When every account is out of
-   * allowance: pause new turns until an account resets", a new turn is refused
-   * (409 `credits-paused`) while no account of the CLI has allowance, rather than
-   * paid from credits.
+   * allowance: pause new turns until an account resets", a new turn is not written
+   * to the CLI: the message is recorded as a user message `queued: "credits"` with
+   * the note "Waiting for an account with allowance — Private back at 23:30" and
+   * sent by {@link sendHeld} once an account has allowance. A loop's firing (D94)
+   * or a service message with the same text that already waits is not held twice.
    */
-  async #assertNotCreditsPaused(cli: CliProviderId): Promise<void> {
-    const paused = await this.#accounts?.creditsPause(cli);
-    if (!paused) return;
-    const back = paused.until ? ` ${paused.name ?? 'The first account'} has allowance again at ${clock(paused.until)}.` : '';
-    throw new SupervisorError('credits-paused', `Every ${CLI_LABELS[cli]} account is out of allowance and Settings → Accounts says to pause new turns rather than use credits.${back}`);
+  async #hold(session: SessionRecord, text: string, origin: UserMessageOrigin, attachments: PreparedAttachments, loop: UserLoopMark | null, paused: { readonly until: string | null; readonly name: string | null } | false): Promise<void> {
+    const waiting = (await this.heldMessages(session.id)).map((event) => event.payload as UserPayload);
+    if (loop && waiting.some((p) => p.loop?.id === loop.id)) return;
+    if (origin !== 'user' && waiting.some((p) => p.origin === origin && p.text === text)) return;
+    const back = paused && paused.until ? ` — ${paused.name ?? 'an account'} back at ${clock(paused.until)}` : '';
+    const refs = attachments.refs;
+    const payload: UserPayload = {
+      type: 'user',
+      text,
+      origin,
+      delivered: false,
+      queued: 'credits',
+      heldNote: `Waiting for an account with allowance${back}`,
+      ...(refs.length > 0 ? { attachments: refs } : {}),
+      ...(loop ? { loop } : {}),
+    };
+    const label = text.trim() === '' && refs.length > 0 ? attachmentsLabel(refs) : textLabel(text);
+    const event = await this.#store.events.append({ sessionId: session.id, kind: userMessageKind(text), label, payload });
+    if (refs.length > 0) this.#heldAttachments.set(event.id, attachments);
+    (await this.#held()).add(session.id);
+    this.#emitEvent(event);
+  }
+
+  /**
+   * D103: sends the session's held messages, oldest first, through the normal path
+   * (the first resumes the session or starts a turn; the next ones queue behind it,
+   * D44), each in its own bubble. Nothing while new turns still pause. Returns how
+   * many went out; one that fails stays held.
+   */
+  async sendHeld(sessionId: string): Promise<number> {
+    if (this.#releasing.has(sessionId)) return 0;
+    this.#releasing.add(sessionId);
+    let sent = 0;
+    try {
+      const session = await this.#store.sessions.get(sessionId);
+      if (!session || session.closedAt !== null || !session.attached) return 0;
+      if (await this.#creditsPaused(session.provider)) return 0;
+      for (const event of await this.heldMessages(sessionId)) {
+        const payload = event.payload as UserPayload;
+        await this.sendMessage(sessionId, payload.text, payload.origin, this.#heldAttachments.get(event.id) ?? NO_ATTACHMENTS, { ...(payload.loop ? { loop: payload.loop } : {}), heldEventId: event.id });
+        this.#heldAttachments.delete(event.id);
+        sent++;
+      }
+      await this.heldMessages(sessionId);
+      return sent;
+    } finally {
+      this.#releasing.delete(sessionId);
+    }
+  }
+
+  /**
+   * D103: takes a held message back (Edit puts its text into the composer, Remove
+   * drops it): it gets `withdrawn` like a D50 Stop's and never goes out. Returns
+   * its text and attachments; 404 / 409 `not-held` otherwise.
+   */
+  async withdrawHeld(sessionId: string, eventId: number): Promise<{ readonly text: string; readonly attachments: readonly Attachment[] }> {
+    const event = await this.#store.events.get(eventId);
+    const payload = event?.payload as UserPayload | null | undefined;
+    if (!event || event.sessionId !== sessionId) throw new SupervisorError('not-found', `no message ${eventId} in this session`);
+    if (payload?.type !== 'user' || payload.queued !== 'credits' || payload.withdrawn) throw new SupervisorError('not-held', 'the message is not waiting for an account any more');
+    const { queued: _queued, heldNote: _note, ...rest } = payload;
+    const updated = await this.#store.events.update(eventId, { payload: { ...rest, withdrawn: true } });
+    if (updated) this.#emitEvent(updated);
+    this.#heldAttachments.delete(eventId);
+    await this.heldMessages(sessionId);
+    return { text: payload.text, attachments: payload.attachments ?? [] };
   }
 
   /** D62 P5: messages, Resume and Attach wait for nothing while a switch runs: they are refused (the switch sends the first message itself). */
@@ -2581,7 +2698,7 @@ export class SessionSupervisor {
       } else if (payload?.type === 'request' && payload.state === 'open' && payload.requestId) {
         stale.push(payload.requestId);
         next = { ...payload, state: 'stale' };
-      } else if (payload?.type === 'user' && (event.payload as UserPayload).queued !== undefined) {
+      } else if (payload?.type === 'user' && (event.payload as UserPayload).queued !== undefined && (event.payload as UserPayload).queued !== 'credits') {
         // D44: the dead process never took it up and nothing sends it again: no clock stays behind.
         next = withoutQueued(event.payload as UserPayload);
       }
@@ -2860,7 +2977,7 @@ export class SessionSupervisor {
     live: Live,
     text: string,
     origin: UserMessageOrigin,
-    options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments; readonly loop?: UserLoopMark } = {},
+    options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments; readonly loop?: UserLoopMark; readonly heldEventId?: number } = {},
   ): Promise<void> {
     const attachments = options.attachments ?? NO_ATTACHMENTS;
     // D80: the working trees as they are before this message's turn (never blocks the message: a failure is no checkpoint).
@@ -2876,6 +2993,8 @@ export class SessionSupervisor {
         attachments: attachments.refs,
         sentText: sent,
         ...(options.loop ? { loop: options.loop } : {}),
+        // D103: a held message goes out in its own bubble (the event is reused, not a new one).
+        ...(options.heldEventId !== undefined ? { eventId: options.heldEventId } : {}),
       });
       eventId = event.id;
       if (live.proc.write(userMessageLine(sent, attachments.blocks))) {

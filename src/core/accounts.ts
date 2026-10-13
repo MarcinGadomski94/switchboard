@@ -351,6 +351,11 @@ function firstWithAllowance(profiles: readonly ProfileSnapshot[], settings: Acco
   return ordered.find((p) => hasAllowance(p, settings, 'threshold', now)) ?? ordered.find((p) => hasAllowance(p, settings, 'hard', now)) ?? null;
 }
 
+/** D103: the first profile (priority order, not `skip`) with allowance: under the thresholds, else just under 100 %; `null` when none has. */
+export function firstProfileWithAllowance(profiles: readonly ProfileSnapshot[], settings: AccountSettings, now: number, skip: string | null = null): ProfileSnapshot | null {
+  return firstWithAllowance(profiles, settings, now, skip);
+}
+
 /** D103: the profile runs on credits now (a plan window at its limit, requests paid from credits). */
 export function onCredits(profile: Pick<ProfileSnapshot, 'usage'>, now: number): boolean {
   return creditsInUse(profile.usage?.credits, now);

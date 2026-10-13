@@ -165,6 +165,8 @@ describe('D44 · queued messages', () => {
     expect(QUEUED_TOOLTIPS).toEqual({
       turn: 'Queued: the agent reads it after its current turn',
       resume: 'Queued: sent when the session resumes',
+      // D103: held by Switchboard while new turns pause.
+      credits: 'Waiting for an account with allowance',
     });
   });
 });

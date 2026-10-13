@@ -118,6 +118,8 @@ export type ChatItem =
       readonly notSent?: boolean;
       /** D94: a Switchboard loop's firing (the chip "⟳ <label> · run <n>" above it). */
       readonly loop?: UserLoopMark;
+      /** D103: held for an account with allowance (`queued: "credits"`): what it waits for (the line under it, with Edit / Remove). */
+      readonly heldNote?: string;
     }
   /**
    * Agent text (left) with the step lines that followed it; `text` is empty when
@@ -150,6 +152,8 @@ export type ChatItem =
 export const QUEUED_TOOLTIPS: Readonly<Record<QueuedReason, string>> = {
   turn: 'Queued: the agent reads it after its current turn',
   resume: 'Queued: sent when the session resumes',
+  // D103: held by Switchboard until an account has allowance (the bubble's note says which and when).
+  credits: 'Waiting for an account with allowance',
 };
 
 /**
@@ -331,6 +335,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         ...(user.notSent ? { notSent: true } : {}),
         // D94: a Switchboard loop's firing.
         ...(user.loop ? { loop: user.loop } : {}),
+        // D103: held for an account with allowance.
+        ...(user.queued === 'credits' ? { heldNote: user.heldNote ?? QUEUED_TOOLTIPS.credits } : {}),
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {

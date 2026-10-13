@@ -7,7 +7,8 @@ import { AutoSwitcher } from '../../../src/server/accounts/auto-switch.ts';
 import { SharedAccounts, type SharedAccountsPeers } from '../../../src/server/accounts/shared.ts';
 import type { Providers } from '../../../src/server/providers.ts';
 import { withAccountUsage } from '../../../src/server/usage/wire.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
+import type { UserPayload } from '../../../src/core/event-payload.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, stdinOf, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * D103 (`docs/accounts.md` → *Credits*): an account at its plan limit that still
@@ -92,6 +93,21 @@ async function reading(w: SupervisorWorld, profileId: string, five: number, week
   await w.store.usage.add({ source: 'get_usage', sessionId: null, profileId, fiveHourPct: five, fiveHourResetsAt: soon(resetIn), sevenDayPct: week, sevenDayResetsAt: soon(48 * HOUR), raw: getUsageRaw(five, week, { enabled: false }) });
 }
 
+async function turnsOf(w: SupervisorWorld, sessionId: string) {
+  return (await w.store.events.list(sessionId)).filter((e) => (e.payload as { type?: string } | null)?.type === 'result');
+}
+
+async function claudeSpawns(w: SupervisorWorld) {
+  return (await spawnedArgv(w.logFile)).filter((line) => line.argv?.[0] !== 'agents' && line.argv?.[0] !== 'auth');
+}
+
+/** Every user line any fake-claude process got on stdin. */
+async function claudeStdinTexts(w: SupervisorWorld): Promise<string[]> {
+  const out: string[] = [];
+  for (const spawn of await claudeSpawns(w)) for (const line of await stdinOf(w.logFile, spawn.pid ?? -1)) if (line['type'] === 'user') out.push(JSON.stringify(line));
+  return out;
+}
+
 const base: Providers = { system: { system: async () => ({ cli: 'claude' }) as unknown as SystemInfo } };
 const system = async (w: SupervisorWorld): Promise<SystemInfo> => (await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo;
 
@@ -145,7 +161,7 @@ describe('D103 · credits per account', () => {
     expect(divider.label).toBe('Switched account: Default → Private (moved off credits: Private has allowance again)');
   });
 
-  it('all out: stays on credits by default; "pause" refuses new turns until an account resets', async () => {
+  it('all out: stays on credits by default; "pause" holds new turns (queued, not refused) and sends them in order on the account that resets', async () => {
     const { w } = await make();
     const b = await w.accounts.create({ cli: 'claude', name: 'Private' });
     await workOnCredits(w);
@@ -155,15 +171,72 @@ describe('D103 · credits per account', () => {
     // "use credits" (default): the turn runs on the account on credits.
     await workOnCredits(w);
     await w.supervisor.sendMessage(session.id, 'on credits');
-    await until(async () => ((await w.store.events.list(session.id)).filter((e) => (e.payload as { type?: string } | null)?.type === 'result').length >= 2 ? true : undefined), 'the second turn');
+    await until(async () => ((await turnsOf(w, session.id)).length >= 2 ? true : undefined), 'the second turn');
     await workOnCredits(w);
     await w.accounts.setSettings({ outOfAllowance: 'pause' });
-    await expect(w.supervisor.sendMessage(session.id, 'paused')).rejects.toMatchObject({ code: 'credits-paused', message: expect.stringContaining('Private has allowance again at') });
-    await expect(w.supervisor.start(newSession({ task: 'a new one' }), w.place)).rejects.toMatchObject({ code: 'credits-paused' });
-    // Private resets: turns run again.
+    // Paused: two messages wait in the session (queued "credits", with the note), nothing reaches the CLI.
+    await w.supervisor.sendMessage(session.id, 'held one');
+    await w.supervisor.sendMessage(session.id, 'held two');
+    const held = await w.supervisor.heldMessages(session.id);
+    expect(held.map((e) => (e.payload as UserPayload).text)).toEqual(['held one', 'held two']);
+    expect(held[0]?.payload).toMatchObject({ queued: 'credits', delivered: false, heldNote: expect.stringMatching(/^Waiting for an account with allowance — Private back at \d\d:\d\d$/) });
+    const before = await claudeStdinTexts(w);
+    expect(before.some((t) => t.includes('held one'))).toBe(false);
+    // The 30-second check while still paused: nothing goes out.
+    await switcher?.releaseHeld();
+    expect(await w.supervisor.heldMessages(session.id)).toHaveLength(2);
+    // Private resets: the session moves to it and the two go out, in order, in their own bubbles.
     await reading(w, b.id, 1, 40);
-    await w.supervisor.sendMessage(session.id, 'after the reset');
-    expect((await w.accounts.settings()).outOfAllowance).toBe('pause');
+    await switcher?.releaseHeld();
+    expect((await w.store.sessions.get(session.id))?.profileId).toBe(b.id);
+    expect(await w.supervisor.heldMessages(session.id)).toEqual([]);
+    await until(async () => ((await turnsOf(w, session.id)).length >= 4 ? true : undefined), 'the two held turns', 20_000);
+    const spawns = await claudeSpawns(w);
+    expect(spawns.at(-1)?.env?.['CLAUDE_CONFIG_DIR']).toBe(b.dir);
+    const texts = (await stdinOf(w.logFile, spawns.at(-1)?.pid ?? -1)).filter((l) => l['type'] === 'user').map((l) => JSON.stringify(l));
+    const one = texts.findIndex((t) => t.includes('held one'));
+    const two = texts.findIndex((t) => t.includes('held two'));
+    expect(one).toBeGreaterThanOrEqual(0);
+    expect(two).toBeGreaterThan(one);
+    // The same events, no longer held.
+    const after = await Promise.all(held.map((e) => w.store.events.get(e.id)));
+    expect(after.map((e) => (e?.payload as UserPayload).queued === 'credits')).toEqual([false, false]);
+  });
+
+  it('a held message can be taken back (Edit / Remove); a new session, a loop firing and a repeated service message wait without duplicates', async () => {
+    const { w } = await make();
+    const b = await w.accounts.create({ cli: 'claude', name: 'Private' });
+    await workOnCredits(w);
+    await reading(w, b.id, 100, 40);
+    await w.accounts.setSettings({ outOfAllowance: 'pause' });
+    // A new session (a plan / todo-run start): it starts idle and its first message waits.
+    const session = await w.supervisor.start({ ...newSession({ task: 'plan item' }), profileId: 'default-claude' }, w.place);
+    expect((await w.supervisor.heldMessages(session.id)).map((e) => (e.payload as UserPayload).origin)).toEqual(['task']);
+    // A loop's firings (D94): one waits, the next ones of the same loop do not pile up; a service message once.
+    const loop = { id: 'loop-1', label: 'Check CI', run: 1 };
+    await w.supervisor.sendMessage(session.id, 'check CI', 'service', undefined, { loop });
+    await w.supervisor.sendMessage(session.id, 'check CI', 'service', undefined, { loop: { ...loop, run: 2 } });
+    await w.supervisor.sendMessage(session.id, 'start todo 3', 'service');
+    await w.supervisor.sendMessage(session.id, 'start todo 3', 'service');
+    await w.supervisor.sendMessage(session.id, 'mine', 'user');
+    const held = await w.supervisor.heldMessages(session.id);
+    expect(held.map((e) => (e.payload as UserPayload).text)).toEqual(['plan item', 'check CI', 'start todo 3', 'mine']);
+    // Remove one, Edit another (its text comes back): both never go out.
+    const mine = held[3] as (typeof held)[number];
+    expect(await w.supervisor.withdrawHeld(session.id, mine.id)).toMatchObject({ text: 'mine' });
+    await expect(w.supervisor.withdrawHeld(session.id, mine.id)).rejects.toMatchObject({ code: 'not-held' });
+    await w.supervisor.withdrawHeld(session.id, (held[2] as (typeof held)[number]).id);
+    expect((await w.store.events.get(mine.id))?.payload).toMatchObject({ withdrawn: true });
+    expect((await w.supervisor.heldMessages(session.id)).map((e) => (e.payload as UserPayload).text)).toEqual(['plan item', 'check CI']);
+    // The setting back to "use credits": the rest goes out by itself (nothing pauses any more).
+    await w.accounts.setSettings({ outOfAllowance: 'use-credits' });
+    await switcher?.releaseHeld();
+    expect(await w.supervisor.heldMessages(session.id)).toEqual([]);
+    await until(async () => ((await turnsOf(w, session.id)).length >= 2 ? true : undefined), 'the two turns', 20_000);
+    const texts = (await claudeStdinTexts(w)).join('\n');
+    expect(texts).toContain('plan item');
+    expect(texts).not.toContain('start todo 3');
+    expect(texts).not.toContain('mine');
   });
 
   it('the notices fire once: on credits, and credits below 20 % of the limit', async () => {

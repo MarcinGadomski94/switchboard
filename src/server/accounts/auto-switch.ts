@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
+import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, firstProfileWithAllowance, hasAllowance, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
 import { CLI_LABELS } from '../../core/cli-providers.ts';
 import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText, creditsResetDay } from '../../core/credits.ts';
 import type { SessionEvent } from '../../core/api.ts';
@@ -108,6 +108,8 @@ export class AutoSwitcher {
   async #tick(): Promise<void> {
     // D103: the credit notices do not depend on automatic switching being on.
     await this.#watchCredits().catch((error: unknown) => this.#error(error));
+    // D103: messages held while new turns paused go out once an account has allowance (also with switching off: then nothing pauses).
+    await this.releaseHeld().catch((error: unknown) => this.#error(error));
     const settings = await this.#o.accounts.settings();
     if (!settings.enabled) return;
     for (const live of this.#o.supervisor.liveSessions()) {
@@ -152,6 +154,41 @@ export class AutoSwitcher {
           detail: `${money ?? 'Less than 20 % of the credit limit is left'}${credits.resetsAt ? `; the credits reset on ${creditsResetDay(credits.resetsAt)}` : ''}.`,
           dedupe: `credits-low:${key}:${period}`,
         });
+      }
+    }
+  }
+
+  /**
+   * D103 (`docs/accounts.md` → *Credits*): every session with messages held for an
+   * account with allowance (`queued: "credits"`), once new turns no longer pause
+   * (an account reset, here or by a paired machine's reading; or the setting
+   * changed): an unpinned session on an account without allowance first switches to
+   * the first one that has it ("moved off credits: Private has allowance again"),
+   * then its held messages go out in order on that account.
+   */
+  async releaseHeld(): Promise<void> {
+    const { supervisor, accounts, store } = this.#o;
+    for (const sessionId of await supervisor.heldSessionIds()) {
+      const session = await store.sessions.get(sessionId);
+      if (!session || session.closedAt !== null || !session.attached || session.hooked) continue;
+      if (await accounts.creditsPause(session.provider)) continue;
+      if (this.#busy.has(sessionId)) continue;
+      this.#busy.add(sessionId);
+      try {
+        const settings = await accounts.settings();
+        const now = this.#now();
+        if (settings.enabled && settings.perCli[session.provider] && !session.profilePinned) {
+          const profiles = await accounts.snapshots(session.provider, { check: true });
+          const current = profiles.find((p) => p.id === sessionProfileId(session));
+          const target = current && !hasAllowance(current, settings, 'hard', now) ? firstProfileWithAllowance(profiles, settings, now, current.id) : null;
+          if (target) {
+            await supervisor.switchAccount(sessionId, target.id, { reason: `moved off credits: ${target.name} has allowance again`, handoverDir: path.join(this.#o.dataDir, 'handovers') });
+          }
+        }
+        const sent = await supervisor.sendHeld(sessionId);
+        if (sent > 0) (this.#o.log ?? ((line: string) => console.info(`switchboard accounts: ${line}`)))(`${sessionId}: ${sent} held message(s) sent`);
+      } finally {
+        this.#busy.delete(sessionId);
       }
     }
   }

@@ -135,11 +135,55 @@ export interface ChatItemViewProps {
   readonly redo?: boolean;
   /** D89: an agent message's ⋯ → Save as artifact, and each of its code blocks' Save as artifact (the main chat only; absent = none). */
   readonly onSaveArtifact?: ((draft: ArtifactDraft) => void) | null;
+  /** D103: Edit (back into the composer) / Remove of a message held for an account with allowance (the main chat only; absent = no buttons). */
+  readonly onHeld?: ((eventId: number, action: 'edit' | 'remove') => Promise<void>) | null;
+}
+
+/** D103: under a message held for an account with allowance: what it waits for, **Edit** and **Remove**. */
+function HeldNote({ note, eventId, onHeld }: { readonly note: string; readonly eventId: number; readonly onHeld: ((eventId: number, action: 'edit' | 'remove') => Promise<void>) | null }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const act = (action: 'edit' | 'remove'): void => {
+    if (busy || !onHeld) return;
+    setBusy(true);
+    setError(null);
+    onHeld(eventId, action).then(
+      () => setBusy(false),
+      (caught: unknown) => {
+        setBusy(false);
+        setError(caught instanceof ApiError ? actionErrorText(caught.status, caught.body) : actionErrorText(0, null));
+      },
+    );
+  };
+  return (
+    <div className="sb-chat-queued-note sb-chat-held" data-testid="chat-held-note">
+      {note}
+      {onHeld ? (
+        <>
+          {' '}
+          <button type="button" className="sb-chat-resend" data-testid="chat-held-edit" disabled={busy} onClick={() => act('edit')}>
+            Edit
+          </button>{' '}
+          <button type="button" className="sb-chat-resend" data-testid="chat-held-remove" disabled={busy} onClick={() => act('remove')}>
+            Remove
+          </button>
+        </>
+      ) : null}
+      {error ? (
+        <span role="alert" data-testid="chat-held-error">
+          {' '}
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 /** One chat item (a user bubble, an agent block with its step lines, a question batch); shared by the main and subagent chats. */
-export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText, revert = null, redo = false, onSaveArtifact = null }: ChatItemViewProps) {
+export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote: hookedNote = null, fullText, revert = null, redo = false, onSaveArtifact = null, onHeld = null }: ChatItemViewProps) {
   if (item.kind === 'user') {
+    // D103: a held message's own note wins (it waits for an account, not for the terminal).
+    const queuedNote = item.heldNote ? null : hookedNote;
     return (
       <div
         className="sb-chat-message"
@@ -168,7 +212,8 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         {item.cut ? <CutNote cut={item.cut} control={fullText} /> : null}
         {/* D57: the images and files it carried, under the bubble. */}
         <MessageAttachments sessionId={sessionId} attachments={item.attachments} />
-        {item.queued ? <QueuedClock reason={item.queued} note={queuedNote} /> : null}
+        {item.queued ? <QueuedClock reason={item.queued} note={item.heldNote ?? queuedNote} /> : null}
+        {item.heldNote ? <HeldNote note={item.heldNote} eventId={item.id} onHeld={onHeld} /> : null}
         {item.queued && queuedNote ? (
           <div className="sb-chat-queued-note" data-testid="chat-queued-note">
             {queuedNote}

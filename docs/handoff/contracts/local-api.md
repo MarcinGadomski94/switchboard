@@ -915,7 +915,8 @@ Developer request D103 (`docs/decisions.md` → *Credits: on credits, and allowa
 
 - `ProfileUsage.credits` (so `AccountProfile.usage`, `PeerOnlyAccount.usage` and the D98 `SharedAccount.usage` carry it), `AccountUsageRow.credits` and `ActiveAccount.credits`: the account's credit state, omitted while nothing is known about its credits.
 - `AccountSettings.outOfAllowance` (`PUT /api/accounts/settings`): `"use-credits"` (default) or `"pause"`.
-- `POST /api/sessions/{id}/messages`, and `POST /api/sessions` with a first message: **409 `credits-paused`** while `outOfAllowance` is `"pause"` and no enabled account of the session's CLI has allowance; the message names the account that is back first and when.
+- `POST /api/sessions/{id}/messages`, and `POST /api/sessions` with a first message, while `outOfAllowance` is `"pause"` and no enabled account of the session's CLI has allowance (or earlier messages of the session still wait): answered as usual (no refusal; there is no `credits-paused` error), but the message is **held**: a user event with `queued: "credits"` and `heldNote` ("Waiting for an account with allowance — Private back at 23:30"), not written to the CLI. A new session starts idle with its first message held. Switchboard sends held messages itself, oldest first, once an account has allowance (switching the session to it first); the event is reused, so the bubble stays where it is.
+- `POST /api/sessions/{id}/events/{eventId}/withdraw` → `{ text, attachments }`: Edit / Remove of a held message (it gets `withdrawn: true` and never goes out); 404 `not-found`, 409 `not-held` (sent or withdrawn already).
 - Inbox: system items of kind `account-credits` ("Work is using credits") and `account-credits-low` ("Work: credits running low"), source `accounts`, no session, dismiss-only.
 - The chat divider of a move off credits: `LifecyclePayload` action `account-switched` with `reason: "moved off credits: Private has allowance again"`.
 
@@ -926,6 +927,8 @@ AccountCredits { onCredits: boolean, until: string | null /* when "on credits" e
 ProfileUsage.credits?: AccountCredits | null
 AccountUsageRow.credits?: AccountCredits, ActiveAccount.credits?: AccountCredits
 AccountSettings.outOfAllowance: "use-credits" | "pause"
+QueuedReason: "turn" | "resume" | "credits"   // D103: held by Switchboard until an account has allowance
+UserPayload.heldNote?: string                 // with queued "credits": what it waits for
 ```
 
 ## Standing instruction for agents (D64, 2026-10-02, additive)

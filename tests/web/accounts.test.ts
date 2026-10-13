@@ -186,3 +186,21 @@ describe('D103 · credits (web)', () => {
     expect(creditsText(null, NOW)).toBeNull();
   });
 });
+
+describe('D103 · messages held for an account with allowance (web)', () => {
+  it('a held message is a queued bubble with its note; a withdrawn one has no bubble', () => {
+    const event = (id: number, payload: unknown): SessionEvent => ({ id, sessionId: 's', agentId: null, ts: `2026-10-01T00:00:0${id}.000Z`, endTs: null, kind: 'text', label: 'x', payload });
+    const items = chatItems(
+      [
+        event(1, { type: 'user', text: 'held', origin: 'user', delivered: false, queued: 'credits', heldNote: 'Waiting for an account with allowance — Private back at 23:30' }),
+        event(2, { type: 'user', text: 'no note', origin: 'service', delivered: false, queued: 'credits' }),
+        event(3, { type: 'user', text: 'removed', origin: 'user', delivered: false, withdrawn: true }),
+      ],
+      [],
+      null,
+    );
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ kind: 'user', queued: 'credits', heldNote: 'Waiting for an account with allowance — Private back at 23:30' });
+    expect(items[1]).toMatchObject({ heldNote: 'Waiting for an account with allowance' });
+  });
+});

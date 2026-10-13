@@ -414,7 +414,7 @@ export class StreamRecorder {
   async recordUserMessage(
     text: string,
     origin: UserMessageOrigin,
-    options: { readonly resuming?: boolean; readonly attachments?: readonly Attachment[]; readonly sentText?: string; readonly loop?: UserLoopMark } = {},
+    options: { readonly resuming?: boolean; readonly attachments?: readonly Attachment[]; readonly sentText?: string; readonly loop?: UserLoopMark; readonly eventId?: number } = {},
   ): Promise<EventRecord> {
     const queued = queuedReason({ turnRunning: this.#pendingTurns > 0 || this.#turnOpen, resuming: options.resuming === true });
     // D50: a new message ends the stop: a later interrupted result is a failure again.
@@ -435,7 +435,9 @@ export class StreamRecorder {
       ...(options.loop ? { loop: options.loop } : {}),
     };
     const label = text.trim() === '' && attachments.length > 0 ? attachmentsLabel(attachments) : textLabel(text);
-    const event = await this.#append(userMessageKind(text), label, payload);
+    // D103: a message held for an account with allowance keeps its event (and its place in the chat).
+    const adopted = options.eventId !== undefined ? await this.#update(options.eventId, { payload }) : null;
+    const event = adopted ?? (await this.#append(userMessageKind(text), label, payload));
     this.#queue.sent(event.id, text, queued, { ...(sentText !== undefined ? { match: sentText } : {}), attachments });
     return event;
   }
