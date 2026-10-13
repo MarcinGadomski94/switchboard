@@ -751,6 +751,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // Team (D100) hook: D105, the members' own agents draft their charters (docs/team-removal.md).
+  {
+    id: 'better-charters',
+    decision: 'D105',
+    version: V1_18,
+    title: 'Charters your members write themselves',
+    steps: [
+      {
+        id: 'draft',
+        title: 'Draft better charters',
+        what: "Each member's own agent can now propose a specific charter from its session: the feature it owns, what it delivers, how it works today (its rounds and who gives it feedback) and what it never does. A proposal waits in Needs you with a before → after; nothing changes until you accept it.",
+        todo: ['Press Draft better charters to ask every member of the team (or one member: ⋯ → Redraft charter).', 'In Needs you, Accept a proposal, Edit… it in the member\'s Settings, or Dismiss it.'],
+        anchors: ['team-draft-charters'],
+        route: { view: 'team' },
+        missing: `${TEAM_NO_MEMBER}Draft better charters then sits in the Team page's header.`,
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

@@ -32,7 +32,7 @@ import { useTeamSwitch } from './hidden.ts';
 import { bannerLaterIds, highlightReturnedRow, lastTeam, setBannerLater, setLastTeam } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, adoptedToast, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
 import { DeleteTeamDialog, NewTeamDialog, TeamTabs } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
@@ -112,6 +112,9 @@ export function TeamPage() {
   const [now, setNow] = useState(() => Date.now());
   /** D100 follow-up 2026-10-14: the order just chosen, shown until the server's answer is read back. */
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
+  /** D105: the one-time offer was just answered here (hidden before the next read). */
+  const [offerAnswered, setOfferAnswered] = useState(false);
+  const [drafting, setDrafting] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -221,6 +224,16 @@ export function TeamPage() {
       case 'task':
         setOpen({ kind: 'task', memberId: member.id });
         return;
+      case 'redraft':
+        setActionError(null);
+        void teamApi.askCharter(member.id).then(
+          () => {
+            toast(`Asked ${member.name} to draft a specific charter from its own session. Its proposal shows in Needs you.`);
+            refresh();
+          },
+          (caught: unknown) => setActionError(refusalText(caught)),
+        );
+        return;
       case 'charter':
       case 'model':
       case 'budget':
@@ -260,6 +273,23 @@ export function TeamPage() {
     }
   };
   const openTeam = (id: string): void => navigate({ view: 'team', teamId: id });
+  /** D105 · Draft better charters: asks the members of this team (`all`: every team) for specific charters; `templateOnly` from the one-time offer. */
+  const draftCharters = (scope: string, templateOnly = false): void => {
+    setActionError(null);
+    setDrafting(true);
+    setOfferAnswered(true);
+    teamApi
+      .askCharters(scope, templateOnly)
+      .then(
+        (answer) => {
+          toast(charterAskedToast(answer));
+          refresh();
+        },
+        (caught: unknown) => setActionError(refusalText(caught)),
+      )
+      .finally(() => setDrafting(false));
+  };
+  const offer = offerAnswered ? 0 : (view?.charterOffer ?? 0);
   /** All teams tab: Reply… / Set up… open the member in its team. */
   const inItsTeam = (memberId: string): void => {
     const item = allItems.find((i) => i.memberId === memberId);
@@ -376,6 +406,12 @@ export function TeamPage() {
               {teams.length} team{teams.length === 1 ? '' : 's'} · {allItems.length} waiting for you
             </span>
           </div>
+          <div className="sb-team-header__actions">
+            {/* D105: every team's members. */}
+            <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-charters" data-tour="team-draft-charters" disabled={drafting} onClick={() => draftCharters(ALL_TEAMS)}>
+              Draft better charters
+            </button>
+          </div>
         </header>
         {error ? (
           <div className="sb-team-error" role="alert" data-testid="team-load-error">
@@ -393,6 +429,10 @@ export function TeamPage() {
             onSetUp={(memberId, accessId) => {
               inItsTeam(memberId);
               setUpAccess(memberId, accessId);
+            }}
+            onEditCharter={(memberId) => {
+              inItsTeam(memberId);
+              editCharter(memberId);
             }}
             onChanged={refresh}
           />
@@ -425,6 +465,12 @@ export function TeamPage() {
                 Delete team…
               </button>
             ) : null}
+            {/* D105: this team's members' own agents propose specific charters (Needs you). */}
+            {members.length > 0 ? (
+              <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-charters" data-tour="team-draft-charters" disabled={drafting} onClick={() => draftCharters(teamId)}>
+                Draft better charters
+              </button>
+            ) : null}
             <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-add" data-tour="team-add" onClick={() => setOpen({ kind: 'add' })}>
               ＋ Member
             </button>
@@ -447,6 +493,25 @@ export function TeamPage() {
             }}
           >
             Later
+          </button>
+        </div>
+      ) : null}
+      {!detail && offer > 0 ? (
+        <div className="sb-team-banner" data-testid="team-charter-offer" role="status">
+          <span>{charterOfferText(offer)}</span>
+          <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-charter-offer-draft" disabled={drafting} onClick={() => draftCharters(ALL_TEAMS, true)}>
+            Draft better charters
+          </button>
+          <button
+            type="button"
+            className="sb-button sb-team-btn sb-team-btn--ghost"
+            data-testid="team-charter-offer-later"
+            onClick={() => {
+              setOfferAnswered(true);
+              teamApi.dismissCharterOffer().then(refresh, (caught: unknown) => setActionError(refusalText(caught)));
+            }}
+          >
+            Not now
           </button>
         </div>
       ) : null}
@@ -500,7 +565,7 @@ export function TeamPage() {
         <div className="sb-team-body" data-testid="team-body">
           {phone ? (
             <>
-              <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onChanged={refresh} />
+              <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onEditCharter={editCharter} onChanged={refresh} />
               {cards}
               <ActivityFeed activity={view?.activity ?? []} members={members} />
             </>
@@ -509,7 +574,7 @@ export function TeamPage() {
               <div className="sb-team-top">{cards}</div>
               <div className="sb-team-split" data-testid="team-split">
                 <div className="sb-team-left">
-                  <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onChanged={refresh} />
+                  <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onEditCharter={editCharter} onChanged={refresh} />
                   <ActivityFeed activity={view?.activity ?? []} members={members} />
                 </div>
                 {selected ? (
@@ -621,6 +686,14 @@ export function TeamPage() {
     setPanelShown(true);
     setAccessFocus(accessId);
     setTab('access');
+  }
+
+  /** D105 Edit… of a charter proposal: the member's Settings with the proposal filled in. */
+  function editCharter(memberId: string): void {
+    setSelectedId(memberId);
+    setPanelShown(true);
+    setTab('settings');
+    setFocus('proposal');
   }
 
   function replyTo(memberId: string): void {

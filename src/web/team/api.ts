@@ -1,4 +1,4 @@
-import type { TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
+import type { TeamCharter, TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { ApiError } from '../api/client.ts';
 
@@ -42,8 +42,10 @@ export interface MemberBody {
   /** D100 follow-up 2026-10-14: the team it joins (none = the first team). */
   readonly teamId?: string;
   readonly name: string;
-  readonly charter: { readonly owns: string; readonly produces: string; readonly neverDoes: string };
-  readonly charterDraft?: { readonly owns: string; readonly produces: string; readonly neverDoes: string } | null;
+  readonly charter: TeamCharter;
+  readonly charterDraft?: TeamCharter | null;
+  /** D105: after adopting, ask the new member's agent for a specific charter. */
+  readonly askCharter?: boolean;
   readonly templateId?: string | null;
   readonly rhythm?: { readonly loopIds: readonly string[]; readonly onHandoff: boolean };
   readonly budget?: { readonly dailyPct: number | null; readonly profileId: string | null };
@@ -57,6 +59,12 @@ export interface MoveCheck {
   readonly ok: boolean;
   readonly blockers: readonly string[];
   readonly preview: unknown;
+}
+
+/** `POST /api/team/charters/ask` (D105). */
+export interface CharterAskAnswer {
+  readonly asked: readonly { readonly memberId: string; readonly name: string }[];
+  readonly skipped: readonly { readonly memberId: string; readonly name: string; readonly reason: string }[];
 }
 
 /** The Team routes. */
@@ -83,7 +91,11 @@ export const teamApi = {
   move: (id: string, targetMachineId: string) => call<TeamMoveRun>('POST', `/api/team/members/${enc(id)}/move`, { targetMachineId }),
   moveRun: (runId: string) => call<TeamMoveRun>('GET', `/api/team/moves/${enc(runId)}`),
   handoff: (to: string, brief: string, expected: string) => call<TeamHandoff>('POST', '/api/team/handoffs', { to, brief, expected }),
-  decide: (requestId: string, decision: 'approve' | 'decline' | 'dismiss') => call<TeamRequest>('POST', `/api/team/requests/${enc(requestId)}/${decision}`),
+  decide: (requestId: string, decision: 'approve' | 'decline' | 'dismiss', body?: { readonly charter?: TeamCharter }) => call<TeamRequest>('POST', `/api/team/requests/${enc(requestId)}/${decision}`, body),
+  // D105: better charters.
+  askCharter: (memberId: string) => call<{ readonly asked: true; readonly requestId: string }>('POST', `/api/team/members/${enc(memberId)}/charter/ask`),
+  askCharters: (teamId: string, templateOnly = false) => call<CharterAskAnswer>('POST', '/api/team/charters/ask', { teamId, ...(templateOnly ? { templateOnly } : {}) }),
+  dismissCharterOffer: () => call<{ readonly ok: true }>('POST', '/api/team/charters/offer/dismiss'),
 };
 
 /** A readable line for a refused call (`message` of the error body, else the status). */

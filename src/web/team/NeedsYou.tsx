@@ -6,6 +6,7 @@ import { QuestionCard } from '../components/QuestionCard.tsx';
 import { useRouter } from '../router.tsx';
 import { AccessRequestActions } from './access/index.ts';
 import { refusalText, teamApi } from './api.ts';
+import { CharterProposal } from './CharterProposal.tsx';
 import { activityTime, needsYouShape } from './model.ts';
 
 /**
@@ -13,13 +14,15 @@ import { activityTime, needsYouShape } from './model.ts';
  * answered in place: a question with its options (one question: a tap answers it;
  * several: the shared question card) plus **Reply…** (focuses the member's chat), a
  * permission request with its Inbox actions, (D102) a plan's "Ready to merge" item with
- * **Merge** and **Open plan**, a gate or budget request with **Approve** / **Decline**.
+ * **Merge** and **Open plan**, a gate or budget request with **Approve** / **Decline**,
+ * (D105) a charter proposal with its before → after and **Accept** / **Edit…** / **Dismiss**.
  * Then **Activity**: time, actor, text.
  */
 export function NeedsYouList({
   items,
   onReply,
   onSetUp,
+  onEditCharter,
   onChanged,
   showTeam = false,
 }: {
@@ -30,6 +33,8 @@ export function NeedsYouList({
   readonly onReply: (memberId: string) => void;
   /** T2's Set up… on an access request: select the member and open its Access tab at that access. */
   readonly onSetUp: (memberId: string, accessId: string) => void;
+  /** D105 Edit… on a charter proposal: select the member and open its Settings with the proposal filled in. */
+  readonly onEditCharter: (memberId: string) => void;
   readonly onChanged: () => void;
 }) {
   return (
@@ -41,13 +46,27 @@ export function NeedsYouList({
         </div>
       ) : null}
       {items.map((item) => (
-        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} showTeam={showTeam} onReply={() => onReply(item.memberId)} onSetUp={onSetUp} onChanged={onChanged} />
+        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} showTeam={showTeam} onReply={() => onReply(item.memberId)} onSetUp={onSetUp} onEditCharter={() => onEditCharter(item.memberId)} onChanged={onChanged} />
       ))}
     </section>
   );
 }
 
-function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonly item: TeamNeedsYouItem; readonly showTeam: boolean; readonly onReply: () => void; readonly onSetUp: (memberId: string, accessId: string) => void; readonly onChanged: () => void }) {
+function NeedsYouCard({
+  item,
+  showTeam,
+  onReply,
+  onSetUp,
+  onEditCharter,
+  onChanged,
+}: {
+  readonly item: TeamNeedsYouItem;
+  readonly showTeam: boolean;
+  readonly onReply: () => void;
+  readonly onSetUp: (memberId: string, accessId: string) => void;
+  readonly onEditCharter: () => void;
+  readonly onChanged: () => void;
+}) {
   const { navigate } = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +102,8 @@ function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonl
           {single ? single.text : item.title}
         </div>
       )}
-      {item.detail && shape !== 'question' && shape !== 'access' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
+      {item.detail && shape !== 'question' && shape !== 'access' && shape !== 'charter' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
+      {shape === 'charter' && item.charter ? <CharterProposal requestId={item.id} before={item.charter.before} after={item.charter.after} notes={item.charter.notes} onEdit={onEditCharter} onDecided={onChanged} /> : null}
       {shape === 'access' ? <AccessRequestActions item={item} onSetUp={onSetUp} onDecided={onChanged} /> : null}
       {shape === 'question' && single ? (
         <div className="sb-team-need__actions">

@@ -12,15 +12,16 @@ import { NOTHING_LOADING, anyLoading, loadingParts } from '../views/session/sess
 import '../views/session/session.css';
 import { AccessTab } from './access/index.ts';
 import { refusalText, teamApi } from './api.ts';
+import { CharterProposal } from './CharterProposal.tsx';
 import { MemberFormFields } from './MemberFormFields.tsx';
 import { useFitMemberModel, useMemberModels } from './MemberModel.tsx';
-import { STATUS_META, type MemberForm, fitMemberModel, formBody, formFromMember, gatesLine, rhythmLine } from './model.ts';
+import { STATUS_META, type MemberForm, fitMemberModel, formBody, formCharter, formFromMember, gatesLine, rhythmLine, withCharter } from './model.ts';
 
 /** The member panel's tabs: Chat (default), Access (T2's slot), Settings. */
 export type PanelTab = 'chat' | 'access' | 'settings';
 
-/** A section of Settings the member menu points at (Edit charter…, Model & effort…, Budget…). */
-export type SettingsFocus = 'charter' | 'model' | 'budget' | null;
+/** A section of Settings the member menu points at (Edit charter…, Model & effort…, Budget…); D105 `proposal`: Edit… of a charter proposal (the form filled with it). */
+export type SettingsFocus = 'charter' | 'model' | 'budget' | 'proposal' | null;
 
 /** `sessionUpdated` / `event` come in bursts; the chat's data reloads at most this often (like the session view). */
 const RELOAD_MS = 500;
@@ -145,7 +146,8 @@ export function MemberPanel({
             <AccessTab key={`${member.id}:${accessFocus ?? ''}`} memberId={member.id} focusAccessId={accessFocus} loopLabels={member.rhythm.loops.map((loop) => loop.label ?? loop.prompt)} onChanged={onChanged} />
           </div>
         ) : null}
-        {tab === 'settings' ? <MemberSettings key={member.id} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
+        {/* D105: Edit… of a proposal mounts the form anew, filled with it. */}
+        {tab === 'settings' ? <MemberSettings key={`${member.id}:${focus === 'proposal' ? (member.charterRequest?.requestId ?? '') : ''}`} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
       </div>
     </section>
   );
@@ -195,7 +197,11 @@ function MemberSettings({
   readonly onMove: (targetMachineId: string) => void;
   readonly onChanged: () => void;
 }) {
-  const [form, setForm] = useState<MemberForm>(() => formFromMember(member));
+  // D105: the open charter ask / proposal; `editing` = the proposal being edited (Save accepts it with the edits).
+  const request = member.charterRequest ?? null;
+  const [editing, setEditing] = useState<string | null>(() => (focus === 'proposal' && request?.state === 'proposed' ? request.requestId : null));
+  const [form, setForm] = useState<MemberForm>(() => (focus === 'proposal' && request?.proposal ? withCharter(formFromMember(member), request.proposal) : formFromMember(member)));
+  const [asking, setAsking] = useState(false);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -220,7 +226,7 @@ function MemberSettings({
   }, [member.sessionRef]);
   useEffect(() => {
     if (!focus) return;
-    const section = root.current?.querySelector<HTMLElement>(`[data-section="${focus}"]`);
+    const section = root.current?.querySelector<HTMLElement>(`[data-section="${focus === 'proposal' ? 'charter' : focus}"]`);
     section?.scrollIntoView({ block: 'start' });
     section?.querySelector<HTMLElement>('input, textarea, select')?.focus();
   }, [focus]);
@@ -234,8 +240,19 @@ function MemberSettings({
     setBusy(true);
     setNote(null);
     try {
-      await teamApi.updateMember(member.id, checked.body);
-      setNote('Saved. A changed charter or model reaches the agent with its next message.');
+      if (editing && request?.requestId === editing) {
+        // D105: Save of an edited proposal accepts it with the edits; the other fields are saved when they changed.
+        await teamApi.decide(editing, 'approve', { charter: formCharter(form) });
+        const base = formBody(formFromMember(member));
+        const { charter: _charter, ...rest } = checked.body;
+        const restBefore = base.ok ? (({ charter: _c, ...others }) => others)(base.body) : null;
+        if (JSON.stringify(rest) !== JSON.stringify(restBefore)) await teamApi.updateMember(member.id, rest);
+        setEditing(null);
+        setNote('Accepted with your edits. The new charter reaches the agent with its next message.');
+      } else {
+        await teamApi.updateMember(member.id, checked.body);
+        setNote('Saved. A changed charter or model reaches the agent with its next message.');
+      }
       onChanged();
     } catch (caught) {
       setNote(refusalText(caught));
@@ -243,8 +260,84 @@ function MemberSettings({
       setBusy(false);
     }
   };
+  const redraft = async (): Promise<void> => {
+    setAsking(true);
+    setNote(null);
+    try {
+      await teamApi.askCharter(member.id);
+      setNote(`Asked ${member.name} to propose a specific charter from its own session.`);
+      onChanged();
+    } catch (caught) {
+      setNote(refusalText(caught));
+    } finally {
+      setAsking(false);
+    }
+  };
+  const cancelAsk = async (requestId: string): Promise<void> => {
+    setAsking(true);
+    try {
+      await teamApi.decide(requestId, 'dismiss');
+      onChanged();
+    } catch (caught) {
+      setNote(refusalText(caught));
+    } finally {
+      setAsking(false);
+    }
+  };
   return (
     <div ref={root} className="sb-team-settings" data-testid="team-settings">
+      {/* D105: the charter's own agent drafts a better one; its proposal waits here (and in Needs you). */}
+      <div className="sb-team-proposal" data-testid="team-settings-charter-state" data-state={request ? (editing ? 'editing' : request.state) : 'none'} data-tour="team-redraft">
+        {request?.state === 'proposed' && request.proposal && !editing ? (
+          <>
+            <div className="sb-team-field__label">{member.name} proposes a new charter</div>
+            <CharterProposal
+              requestId={request.requestId}
+              before={member.charter}
+              after={request.proposal}
+              notes={request.notes}
+              onEdit={() => {
+                setForm((current) => withCharter(current, request.proposal ?? member.charter));
+                setEditing(request.requestId);
+                root.current?.querySelector<HTMLElement>('[data-section="charter"]')?.scrollIntoView({ block: 'start' });
+              }}
+              onDecided={onChanged}
+            />
+          </>
+        ) : null}
+        {request?.state === 'proposed' && editing ? (
+          <div className="sb-team-note" data-testid="team-settings-editing-proposal">
+            Editing {member.name}’s proposal: Save accepts it with your edits.{' '}
+            <button
+              type="button"
+              className="sb-button sb-team-btn sb-team-btn--ghost"
+              data-testid="team-settings-discard-edit"
+              onClick={() => {
+                setForm((current) => withCharter(current, member.charter));
+                setEditing(null);
+              }}
+            >
+              Discard edits
+            </button>
+          </div>
+        ) : null}
+        {request?.state === 'asked' ? (
+          <div className="sb-team-note" data-testid="team-settings-asked">
+            {member.name} was asked to propose a specific charter from its own session; it shows here and in Needs you when it does.{' '}
+            <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" data-testid="team-settings-cancel-ask" disabled={asking} onClick={() => void cancelAsk(request.requestId)}>
+              Cancel the ask
+            </button>
+          </div>
+        ) : null}
+        {request === null ? (
+          <div className="sb-team-proposal__redraft">
+            <button type="button" className="sb-button sb-team-btn" data-testid="team-settings-redraft" disabled={asking || busy || member.status === 'offline' || member.paused} onClick={() => void redraft()}>
+              Redraft charter
+            </button>
+            <span className="sb-team-muted">Its agent proposes a specific charter from its own session; you accept, edit or dismiss it.</span>
+          </div>
+        ) : null}
+      </div>
       <MemberFormFields form={form} onChange={setForm} errors={errors} parts={{ sessionLoops: loops, models: models.options }} disabled={busy} />
       <div className="sb-team-field" data-section="machine">
         <span className="sb-team-field__label">Runs on</span>

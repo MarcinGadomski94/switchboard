@@ -10,6 +10,10 @@ import {
   bannerVisible,
   budgetLine,
   cardStatus,
+  charterAskedToast,
+  charterOfferText,
+  formCharter,
+  withCharter,
   confidenceOf,
   dropOrder,
   fitMemberModel,
@@ -264,7 +268,7 @@ describe('D100 · Team page: the member form and menu', () => {
 
   it('builds the ⋯ menu with Move to each other machine and Return last', () => {
     const items = memberMenu(member({ id: 'a' }), [{ id: 'm-pc', name: 'Windows PC', state: 'online' }, { id: 'm-old', name: 'Laptop', state: 'offline' }], 'm-self', 'Work');
-    expect(items.map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move to Windows PC…', 'Move to Laptop…', '↩ Return to sessions (back to “Work”)']);
+    expect(items.map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Redraft charter', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move to Windows PC…', 'Move to Laptop…', '↩ Return to sessions (back to “Work”)']);
     expect(items.find((i) => i.label === 'Move to Laptop…')?.disabled).toBe(true);
     expect(items[items.length - 1]?.separator).toBe(true);
     const remote = memberMenu(member({ id: 'b', machineId: 'm-pc', paused: true }), [{ id: 'm-pc', name: 'Windows PC', state: 'online' }], 'm-self', 'Sessions');
@@ -279,7 +283,7 @@ describe('D100 · Team page: the member form and menu', () => {
     expect(labels(at(1))).toEqual([['Move left', false], ['Move right', false]]);
     expect(labels(at(2, true))).toEqual([['Move up', false], ['Move down', true]]);
     // Placed after Pause, before Return; a team of one has nothing to move.
-    expect(at(1).map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move left', 'Move right', '↩ Return to sessions (back to “Work”)']);
+    expect(at(1).map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Redraft charter', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move left', 'Move right', '↩ Return to sessions (back to “Work”)']);
     expect(labels(memberMenu(member({ id: 'a' }), [], 'm-self', 'Work', { index: 0, count: 1, vertical: false }))).toEqual([]);
   });
 
@@ -362,5 +366,35 @@ describe('D100 · Team page: the member form and menu', () => {
     // D102: a plan's "Ready to merge" item (its Merge action) is answered in place.
     expect(needsYouShape({ source: 'inbox', kind: 'system', inbox: { actions: [{ id: 'plan-merge', label: 'Merge' }] } })).toBe('merge');
     expect(needsYouShape({ source: 'inbox', kind: 'system' })).toBe('other');
+    // D105: a charter proposal (Accept / Edit… / Dismiss).
+    expect(needsYouShape({ source: 'team', kind: 'charter' })).toBe('charter');
+  });
+});
+
+describe('D105 · better charters (Team page rules)', () => {
+  it('the form carries howItWorks only when filled in; Edit… fills the form with a proposal', () => {
+    expect(formCharter({ owns: ' a ', produces: 'b', howItWorks: '  ', neverDoes: 'c' })).toEqual({ owns: 'a', produces: 'b', neverDoes: 'c' });
+    expect(formCharter({ owns: 'a', produces: 'b', howItWorks: ' Rounds. ', neverDoes: 'c' })).toEqual({ owns: 'a', produces: 'b', howItWorks: 'Rounds.', neverDoes: 'c' });
+    const ok = formBody({ ...EMPTY_FORM, name: 'Studio', howItWorks: 'Feedback rounds.' });
+    expect(ok.ok && ok.body.charter).toEqual({ owns: '', produces: '', howItWorks: 'Feedback rounds.', neverDoes: '' });
+    const filled = withCharter({ ...EMPTY_FORM, name: 'Studio', budget: '10' }, { owns: 'o', produces: 'p', howItWorks: 'h', neverDoes: 'n' });
+    expect([filled.owns, filled.produces, filled.howItWorks, filled.neverDoes, filled.budget]).toEqual(['o', 'p', 'h', 'n', '10']);
+    expect(formFromMember(member({ id: 'a', charter: { owns: 'o', produces: 'p', howItWorks: 'h', neverDoes: 'n' } })).howItWorks).toBe('h');
+  });
+
+  it('Redraft charter in the menu is disabled while an ask or a proposal is open, or the member is paused / offline', () => {
+    const redraft = (extra: Partial<TeamMember>) => memberMenu(member({ id: 'a', ...extra }), [], 'm-self', 'Work').find((i) => i.id === 'redraft');
+    expect(redraft({})?.disabled).toBe(false);
+    expect(redraft({ charterRequest: { requestId: 'r', state: 'asked', proposal: null, notes: '', at: '' } })?.disabled).toBe(true);
+    expect(redraft({ paused: true })?.disabled).toBe(true);
+    expect(redraft({ status: 'offline' })?.disabled).toBe(true);
+  });
+
+  it('the offer and the toast say what happened', () => {
+    expect(charterOfferText(3)).toBe("Switchboard can draft specific charters for your 3 members from their own sessions. Each member's agent proposes one; nothing changes until you accept it.");
+    expect(charterOfferText(1)).toContain('your 1 member from');
+    expect(charterAskedToast({ asked: [{ name: 'Studio' }], skipped: [] })).toBe('Asked Studio to draft a specific charter. Their proposals show in Needs you.');
+    expect(charterAskedToast({ asked: [{ name: 'A' }, { name: 'B' }], skipped: [{ name: 'C', reason: 'asked already' }] })).toBe('Asked 2 members to draft a specific charter (skipped: C, asked already). Their proposals show in Needs you.');
+    expect(charterAskedToast({ asked: [], skipped: [] })).toBe('No member was asked.');
   });
 });

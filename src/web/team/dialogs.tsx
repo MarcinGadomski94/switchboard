@@ -358,7 +358,8 @@ export function MemberFormDialog({
     setError(null);
     try {
       if (target.kind === 'adopt') {
-        onDone(await teamApi.addMember({ ...checked.body, ...inTeam, sessionId: target.sessionId }));
+        // D105: its own agent is asked for a specific charter right after (the developer approves it).
+        onDone(await teamApi.addMember({ ...checked.body, ...inTeam, sessionId: target.sessionId, askCharter: true }));
         return;
       }
       const created = await teamApi.addMember({ ...checked.body, ...inTeam, rhythm: { loopIds: [], onHandoff: form.onHandoff }, session: newMemberSession(form) });
@@ -385,6 +386,9 @@ export function MemberFormDialog({
       {target.kind === 'adopt' ? (
         <div className="sb-team-note" data-testid="team-adopt-note">
           {adoptNote(target.title, target.place)}
+          <div className="sb-team-muted" data-testid="team-adopt-charter-note">
+            Once adopted, its agent is asked to propose a specific charter from its own session; you accept, edit or dismiss it in Needs you.
+          </div>
         </div>
       ) : null}
       {teams.length > 1 ? (

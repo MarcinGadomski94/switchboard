@@ -16,7 +16,7 @@ export interface FormParts {
 
 /**
  * D100 · the member form's fields (`docs/team.md` → *The Team page*): role name,
- * charter (owns / produces / never does), rhythm (the session's loops, or a
+ * charter (owns / produces / how it works (D105) / never does), rhythm (the session's loops, or a
  * template's suggested loops to create, and "on hand-off"), model / effort, budget
  * and "needs you for" (Anything outward-facing is always on). Errors come from
  * `formBody` (model.ts).
@@ -52,6 +52,10 @@ export function MemberFormFields({
         <label className="sb-team-field">
           <span className="sb-team-field__sub">Produces</span>
           <textarea className="sb-team-input" data-testid="team-form-produces" rows={2} value={form.produces} disabled={disabled} onChange={(event) => set('produces', event.target.value)} />
+        </label>
+        <label className="sb-team-field">
+          <span className="sb-team-field__sub">How it works</span>
+          <textarea className="sb-team-input" data-testid="team-form-how" rows={2} value={form.howItWorks} disabled={disabled} placeholder="e.g. runs feedback rounds on input from you and your team, then adjusts the feature" onChange={(event) => set('howItWorks', event.target.value)} />
         </label>
         <label className="sb-team-field">
           <span className="sb-team-field__sub">Never does</span>

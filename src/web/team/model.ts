@@ -296,6 +296,8 @@ export interface MemberForm {
   readonly name: string;
   readonly owns: string;
   readonly produces: string;
+  /** D105: how it works today (optional). */
+  readonly howItWorks: string;
   readonly neverDoes: string;
   readonly templateId: string | null;
   readonly onHandoff: boolean;
@@ -317,6 +319,7 @@ export const EMPTY_FORM: MemberForm = {
   name: '',
   owns: '',
   produces: '',
+  howItWorks: '',
   neverDoes: '',
   templateId: null,
   onHandoff: true,
@@ -337,6 +340,7 @@ export function formFromTemplate(template: TeamTemplate | null, name?: string): 
     name: name ?? template.name,
     owns: template.charter.owns,
     produces: template.charter.produces,
+    howItWorks: template.charter.howItWorks ?? '',
     neverDoes: template.charter.neverDoes,
     templateId: template.id,
     onHandoff: template.rhythm.onHandoff,
@@ -350,7 +354,7 @@ export function formFromTemplate(template: TeamTemplate | null, name?: string): 
 /** A form filled from a suggestion: its template's defaults, the role named after the template, the drafted charter, its live loops in the rhythm. */
 export function formFromSuggestion(suggestion: Pick<TeamSuggestion, 'templateId'>, template: TeamTemplate | null, draft: TeamCharter | null, loopIds: readonly string[]): MemberForm {
   const base = formFromTemplate(template);
-  return { ...base, ...(draft ? { owns: draft.owns, produces: draft.produces, neverDoes: draft.neverDoes } : {}), templateId: template?.id ?? suggestion.templateId, templateLoops: [], loopIds };
+  return { ...base, ...(draft ? { owns: draft.owns, produces: draft.produces, howItWorks: draft.howItWorks ?? '', neverDoes: draft.neverDoes } : {}), templateId: template?.id ?? suggestion.templateId, templateLoops: [], loopIds };
 }
 
 /** A form showing a member's settings. */
@@ -360,6 +364,7 @@ export function formFromMember(member: TeamMember): MemberForm {
     name: member.name,
     owns: member.charter.owns,
     produces: member.charter.produces,
+    howItWorks: member.charter.howItWorks ?? '',
     neverDoes: member.charter.neverDoes,
     templateId: member.templateId,
     onHandoff: member.rhythm.onHandoff,
@@ -369,6 +374,17 @@ export function formFromMember(member: TeamMember): MemberForm {
     budget: member.budget.dailyPct === null ? '' : String(member.budget.dailyPct),
     gates: [...member.gates],
   };
+}
+
+/** D105 · the form's charter (`howItWorks` only when filled in). */
+export function formCharter(form: Pick<MemberForm, 'owns' | 'produces' | 'howItWorks' | 'neverDoes'>): TeamCharter {
+  const how = form.howItWorks.trim();
+  return { owns: form.owns.trim(), produces: form.produces.trim(), ...(how === '' ? {} : { howItWorks: how }), neverDoes: form.neverDoes.trim() };
+}
+
+/** D105 · the form with a charter's fields (Edit… of a proposal). */
+export function withCharter(form: MemberForm, charter: TeamCharter): MemberForm {
+  return { ...form, owns: charter.owns, produces: charter.produces, howItWorks: charter.howItWorks ?? '', neverDoes: charter.neverDoes };
 }
 
 /** Toggles a gate (the always-on one stays). */
@@ -405,7 +421,7 @@ export function formBody(form: MemberForm): FormCheck {
     ok: true,
     body: {
       name,
-      charter: { owns: form.owns.trim(), produces: form.produces.trim(), neverDoes: form.neverDoes.trim() },
+      charter: formCharter(form),
       templateId: form.templateId,
       rhythm: { loopIds: [...form.loopIds], onHandoff: form.onHandoff },
       budget: { dailyPct, profileId: null },
@@ -485,7 +501,7 @@ export interface MenuPosition {
  * then Return to sessions.
  */
 export function memberMenu(
-  member: Pick<TeamMember, 'paused' | 'status' | 'machineId'> & { readonly teamId?: string },
+  member: Pick<TeamMember, 'paused' | 'status' | 'machineId'> & { readonly teamId?: string; readonly charterRequest?: TeamMember['charterRequest'] },
   machines: readonly Pick<Machine, 'id' | 'name' | 'state'>[],
   selfId: string,
   returnPlace: string,
@@ -496,6 +512,8 @@ export function memberMenu(
   const items: MenuItem[] = [
     { id: 'task', label: 'Give a task…', disabled: offline },
     { id: 'charter', label: 'Edit charter…' },
+    // D105: ask its own agent for a specific charter (disabled while an ask or a proposal is open).
+    { id: 'redraft', label: 'Redraft charter', disabled: offline || member.paused || (member.charterRequest ?? null) !== null },
     { id: 'model', label: 'Model & effort…' },
     { id: 'budget', label: 'Budget…' },
     { id: 'schedule', label: 'Schedule…', disabled: offline },
@@ -560,12 +578,14 @@ export function inOrder<T extends { readonly id: string }>(items: readonly T[], 
 // ── Needs you ────────────────────────────────────────────────────────────
 
 /** How a Needs-you item is answered in place. */
-export type NeedsYouShape = 'question' | 'permission' | 'merge' | 'request' | 'access' | 'other';
+export type NeedsYouShape = 'question' | 'permission' | 'merge' | 'request' | 'access' | 'charter' | 'other';
 
 /** The answer shape of an item. */
 export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind' | 'access'> & { readonly inbox?: unknown }): NeedsYouShape {
   // T2: an access request carries its access entry (answered with T2's AccessRequestActions).
   if (item.source === 'team' && item.kind === 'access' && item.access) return 'access';
+  // D105: a charter proposal (Accept / Edit… / Dismiss).
+  if (item.source === 'team' && item.kind === 'charter') return 'charter';
   if (item.source === 'team') return 'request';
   if (item.kind === 'questions') return 'question';
   if (item.kind === 'permission') return 'permission';
@@ -583,3 +603,26 @@ export function activityTime(iso: string, now: Date): string {
   if (sameDay) return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   return at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
+
+// ── better charters (D105) ───────────────────────────────────────────────
+
+/** The one-time offer's text. */
+export function charterOfferText(count: number): string {
+  return `Switchboard can draft specific charters for your ${count} member${count === 1 ? '' : 's'} from their own sessions. Each member's agent proposes one; nothing changes until you accept it.`;
+}
+
+/** The toast after "Draft better charters". */
+export function charterAskedToast(answer: { readonly asked: readonly { readonly name: string }[]; readonly skipped: readonly { readonly name: string; readonly reason: string }[] }): string {
+  const asked = answer.asked.length;
+  const head = asked === 0 ? 'No member was asked' : `Asked ${asked === 1 ? (answer.asked[0]?.name ?? 'a member') : `${asked} members`} to draft a specific charter`;
+  const skipped = answer.skipped.length > 0 ? ` (skipped: ${answer.skipped.map((s) => `${s.name}, ${s.reason}`).join('; ')})` : '';
+  return asked === 0 ? `${head}${skipped}.` : `${head}${skipped}. Their proposals show in Needs you.`;
+}
+
+/** The fields of a charter as the before → after rows list them. */
+export const CHARTER_ROWS: readonly { readonly key: 'owns' | 'produces' | 'howItWorks' | 'neverDoes'; readonly label: string }[] = [
+  { key: 'owns', label: 'Owns' },
+  { key: 'produces', label: 'Produces' },
+  { key: 'howItWorks', label: 'How it works' },
+  { key: 'neverDoes', label: 'Never does' },
+];
