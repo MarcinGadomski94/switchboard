@@ -210,6 +210,41 @@ describe('D100 · the routes', () => {
     expect(await teamReviewGate(r.store, { reviewId: 'rev-1', sessionId: dev, action: 'merge', body: {}, bases: ['main'] })).toBeNull();
   });
 
+  it('D100 follow-up 2026-10-14: the members\' order is stored, a new member goes last, PUT /api/team/order reorders and survives a reopen', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const ids: string[] = [];
+    for (const name of ['Alpha', 'Bravo', 'Charlie']) {
+      const answer = await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, `${name.toLowerCase()}-session`), name });
+      expect(answer.statusCode, answer.body).toBe(201);
+      ids.push((answer.json() as TeamMember).id);
+    }
+    const names = async (): Promise<string[]> => ((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.name);
+    expect(await names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.order)).toEqual([0, 1, 2]);
+
+    // Charlie first; the ids left out keep their relative order after it.
+    const reordered = await ui(r, 'PUT', '/api/team/order', { memberIds: [ids[2]] });
+    expect(reordered.statusCode, reordered.body).toBe(200);
+    expect((reordered.json() as TeamView).members.map((m) => m.name)).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    // Unknown or repeated ids are refused, nothing changes.
+    expect((await ui(r, 'PUT', '/api/team/order', { memberIds: ['nope'] })).statusCode).toBe(422);
+    expect((await ui(r, 'PUT', '/api/team/order', { memberIds: [ids[0], ids[0]] })).statusCode).toBe(422);
+    expect(await names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+
+    // A new member goes to the end.
+    expect((await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, 'delta-session'), name: 'Delta' })).statusCode).toBe(201);
+    expect(await names()).toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta']);
+
+    // Stored in team.db: switching Team off closes the file, on again reads the same order.
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    expect(await names()).toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta']);
+    // The sync message carries it (part of the team definition).
+    const message = (await ui(r, 'POST', '/api/team/sync', {})).json() as { snapshot: { members: Array<{ name: string; order: number | null }> } };
+    expect(message.snapshot.members.map((m) => [m.name, m.order]).sort()).toEqual([['Alpha', 1], ['Bravo', 2], ['Charlie', 0], ['Delta', 3]]);
+  });
+
   it('every Team route is classified for devices; the peer API serves what a paired machine needs', () => {
     // Phones read, answer, pause / resume, give tasks, adopt / return / remove.
     for (const [method, url] of [
@@ -223,6 +258,8 @@ describe('D100 · the routes', () => {
       ['DELETE', '/api/team/members/m1'],
       ['POST', '/api/team/handoffs'],
       ['POST', '/api/team/requests/q1/approve'],
+      // D100 follow-up 2026-10-14: phones may reorder.
+      ['PUT', '/api/team/order'],
     ] as const) {
       expect(isLocalOnly(method, url), `${method} ${url}`).toBe(false);
     }
@@ -242,6 +279,7 @@ describe('D100 · the routes', () => {
       ['POST', '/api/team/members/m1/move'],
       ['POST', '/api/team/requests/q1/approve'],
       ['GET', '/api/team/moves/r1'],
+      ['PUT', '/api/team/order'],
     ] as const) {
       expect(peerApiAllowed(method, url), `${method} ${url}`).toBe(true);
     }

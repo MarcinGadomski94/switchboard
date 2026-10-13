@@ -141,6 +141,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['DELETE', /^\/api\/team\/members\/[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return)$/],
   ['PUT', /^\/api\/team\/handoffs\/[^/]+$/],
+  // D100 follow-up 2026-10-14: reordering the members (organising, not configuration).
+  ['PUT', /^\/api\/team\/order$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
   // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
   ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],

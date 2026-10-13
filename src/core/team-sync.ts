@@ -89,7 +89,7 @@ export function readTeamRecord(value: unknown): TeamRecord | null {
   if (!b) return null;
   const name = str(b.raw['name'], 100);
   if (!name) return null;
-  return { id: b.id, name, clock: b.clock, deleted: b.deleted, createdAt: str(b.raw['createdAt'], 40) ?? '', updatedAt: str(b.raw['updatedAt'], 40) ?? '' };
+  return { id: b.id, name, clock: b.clock, deleted: b.deleted, order: readOrder(b.raw['order']), createdAt: str(b.raw['createdAt'], 40) ?? '', updatedAt: str(b.raw['updatedAt'], 40) ?? '' };
 }
 
 /** A member from a peer (`null` when malformed; unknown fields dropped, missing ones defaulted). */
@@ -137,9 +137,25 @@ export function readMemberRecord(value: unknown): TeamMemberRecord | null {
     access: Array.isArray(r['access'])
       ? r['access'].filter(isRecord).map((a) => ({ id: str(a['id'], 100) ?? '', name: str(a['name'], 200) ?? '', setUpOn: strings(a['setUpOn']) })).filter((a) => a.id !== '')
       : [],
+    order: readOrder(r['order']),
     createdAt: str(r['createdAt'], 40) ?? '',
     updatedAt: str(r['updatedAt'], 40) ?? '',
   };
+}
+
+/** D100 follow-up 2026-10-14: a record's `order` (`null` when missing: an older peer's record). */
+function readOrder(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * D100 follow-up 2026-10-14: a newer record from an older peer has no `order` (its
+ * reader drops the field): the local copy's order is kept, so an edit made on an
+ * older machine never loses the order set here.
+ */
+export function keepOrder<T extends { readonly id: string; readonly order: number | null }>(local: readonly T[], incoming: readonly T[]): T[] {
+  const mine = new Map(local.map((record) => [record.id, record.order]));
+  return incoming.map((record) => (record.order === null && (mine.get(record.id) ?? null) !== null ? { ...record, order: mine.get(record.id) as number } : record));
 }
 
 /** A hand-off from a peer (`null` when malformed). */

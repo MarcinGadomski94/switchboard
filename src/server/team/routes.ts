@@ -45,6 +45,8 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
 
   app.get('/api/team', (request, reply) => run(request, reply, () => team.view()));
   app.put('/api/team', (request, reply) => run(request, reply, () => team.rename(request.body)));
+  // D100 follow-up 2026-10-14: the members' order (synced; phones may reorder).
+  app.put('/api/team/order', (request, reply) => run(request, reply, () => team.reorder(fields(request.body))));
   app.get('/api/team/templates', (request, reply) => run(request, reply, async () => team.templates()));
   app.get('/api/team/suggestions', (request, reply) => run(request, reply, () => team.suggestions()));
   app.get<{ Querystring: { before?: string; limit?: string } }>('/api/team/activity', (request, reply) =>

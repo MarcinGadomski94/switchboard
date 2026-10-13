@@ -226,6 +226,87 @@ test('Needs you: an access request (T2); Set up… opens the member\'s Access ta
   await page.screenshot({ path: test.info().outputPath('team-access-setup.png') });
 });
 
+async function roles(page: Page): Promise<string[]> {
+  return page.getByTestId('team-cards').getByTestId('team-card-role').allTextContents();
+}
+
+test('D100 follow-up: a drag reorders the cards and survives a reload; ⋯ Move left / right and Alt+← / → move one place', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  await removeAllMembers(page);
+  for (const name of ['Alpha', 'Bravo', 'Charlie']) {
+    const session = await world.startSession(page, `order-${name.toLowerCase()}`, 'Reply with just OK.');
+    await world.settle(page, session.id);
+    await world.adopt(page, session.id, name);
+  }
+  await expect.poll(() => roles(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+  // Mouse: Alpha dropped on Charlie's right half goes after it; the line shows while dragging.
+  const box = await card(page, 'Charlie').boundingBox();
+  await card(page, 'Alpha').dragTo(card(page, 'Charlie'), { targetPosition: { x: (box?.width ?? 180) - 12, y: 30 } });
+  await expect.poll(() => roles(page)).toEqual(['Bravo', 'Charlie', 'Alpha']);
+  // A click without moving still selects.
+  await card(page, 'Bravo').click();
+  await expect(page.getByTestId('team-panel')).toContainText('Bravo');
+  await page.reload();
+  await expect.poll(() => roles(page)).toEqual(['Bravo', 'Charlie', 'Alpha']);
+
+  // ⋯ → Move right / Move left (disabled at the ends).
+  await card(page, 'Bravo').getByTestId('team-card-menu').click();
+  await expect(page.getByTestId('team-menu-order-back')).toHaveText('Move left');
+  await expect(page.getByTestId('team-menu-order-back')).toBeDisabled();
+  await page.getByTestId('team-menu-order-forward').click();
+  await expect.poll(() => roles(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
+  await card(page, 'Alpha').getByTestId('team-card-menu').click();
+  await expect(page.getByTestId('team-menu-order-forward')).toBeDisabled();
+  await page.getByTestId('team-menu-order-back').click();
+  await expect.poll(() => roles(page)).toEqual(['Charlie', 'Alpha', 'Bravo']);
+
+  // Keyboard: Alt+← on the focused card; focus stays on it.
+  await card(page, 'Bravo').focus();
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect.poll(() => roles(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
+  await expect(card(page, 'Bravo')).toBeFocused();
+  await page.reload();
+  await expect.poll(() => roles(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
+});
+
+test('D100 follow-up: many members sit in one row that scrolls sideways; a member selected from Needs you is scrolled into view', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  await removeAllMembers(page);
+  const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  let last = '';
+  for (const name of names) {
+    const session = await world.startSession(page, `strip-${name.toLowerCase()}`, 'Reply with just OK.');
+    await world.settle(page, session.id);
+    await world.adopt(page, session.id, name);
+    last = session.id;
+  }
+  await expect.poll(() => roles(page)).toEqual(names);
+  const strip = page.getByTestId('team-cards');
+  // One row: every card on the same line, at its own width (not shrunk), and the row is wider than the page.
+  const boxes = await page.getByTestId('team-card').evaluateAll((cards) => cards.map((c) => c.getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), width: Math.round(r.width) })));
+  expect(new Set(boxes.map((b) => b.top)).size).toBe(1);
+  for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(180);
+  expect(await strip.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  await expect(page.locator('.sb-team-strip-frame')).toHaveAttribute('data-fade-right', 'true');
+  await expect(card(page, 'Nine')).not.toBeInViewport();
+  const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(pageOverflow).toBeLessThanOrEqual(0);
+
+  // Nine asks a question; Reply… in Needs you selects it and the strip brings its card into view.
+  await world.call(page, 'POST', `/api/sessions/${last}/messages`, { text: '[fake:ask-delay] Ask me.' });
+  const need = page.locator('[data-testid="team-need"][data-kind="questions"]');
+  await expect(need).toBeVisible({ timeout: 20_000 });
+  await need.getByRole('button', { name: 'Reply…' }).click();
+  await expect(page.getByTestId('team-panel')).toContainText('Nine');
+  await expect(card(page, 'Nine')).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('.sb-team-strip-frame')).toHaveAttribute('data-fade-left', 'true');
+  await expect(page.locator('.sb-team-strip-frame')).not.toHaveAttribute('data-fade-right', /.*/);
+  await page.screenshot({ path: test.info().outputPath('team-strip-scrolled.png') });
+});
+
 test('phone: cards in a list with Needs you first; the member opens full screen with ‹ Team', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWithHub(page, `${world.baseUrl}/team`);
@@ -241,11 +322,16 @@ test('phone: cards in a list with Needs you first; the member opens full screen 
   // (Both may also get a review card for the repo's changes; the question is Asker's.)
   await expect(page.locator('[data-testid="team-need"][data-kind="questions"]')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.getByTestId('view-team')).toHaveAttribute('data-pane', 'list');
-  // Needs you comes first, then the cards with the member that needs you on top.
+  // Needs you comes first, then the cards in the team's order (D100 follow-up 2026-10-14: reorderable on the phone too).
   const order = await page.getByTestId('team-body').evaluate((body) => [...body.children].map((child) => child.getAttribute('data-testid')));
   expect(order).toEqual(['team-needs-you', 'team-cards', 'team-activity']);
   await expect(page.getByTestId('team-card').first()).toHaveAttribute('data-member-id', /.+/);
-  await expect(page.getByTestId('team-card').first().getByTestId('team-card-role')).toHaveText('Asker');
+  await expect.poll(() => roles(page)).toEqual(['Quiet', 'Asker']);
+  // ⋯ → Move up puts Asker first.
+  await card(page, 'Asker').getByTestId('team-card-menu').click();
+  await expect(page.getByTestId('team-menu-order-forward')).toHaveText('Move down');
+  await page.getByTestId('team-menu-order-back').click();
+  await expect.poll(() => roles(page)).toEqual(['Asker', 'Quiet']);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 

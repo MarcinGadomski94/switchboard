@@ -1,7 +1,7 @@
 import type { SessionModelOption } from '../../core/api.ts';
 import { modelLabel } from '../../core/model-choice.ts';
 import type { Machine } from '../../core/peers.ts';
-import type { SidebarLayout } from '../../core/sidebar-layout.ts';
+import { type SidebarLayout, dropPosition } from '../../core/sidebar-layout.ts';
 import {
   ALWAYS_ON_GATE,
   DEFAULT_TEAM_NAME,
@@ -433,8 +433,20 @@ export interface MenuItem {
   readonly machineId?: string;
 }
 
-/** The member menu: Give a task…, Edit charter…, Model & effort…, Budget…, Schedule…, Pause / Resume, Move to <PC>…, then Return to sessions. */
-export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machineId'>, machines: readonly Pick<Machine, 'id' | 'name' | 'state'>[], selfId: string, returnPlace: string): MenuItem[] {
+/** Where a member sits in the team's order, for the menu's Move left / right (up / down on a phone). */
+export interface MenuPosition {
+  readonly index: number;
+  readonly count: number;
+  /** The phone's vertical list: "Move up" / "Move down". */
+  readonly vertical: boolean;
+}
+
+/**
+ * The member menu: Give a task…, Edit charter…, Model & effort…, Budget…, Schedule…,
+ * Pause / Resume, Move left / right (up / down on a phone; with `position`), Move to <PC>…,
+ * then Return to sessions.
+ */
+export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machineId'>, machines: readonly Pick<Machine, 'id' | 'name' | 'state'>[], selfId: string, returnPlace: string, position?: MenuPosition): MenuItem[] {
   const offline = member.status === 'offline';
   const items: MenuItem[] = [
     { id: 'task', label: 'Give a task…', disabled: offline },
@@ -444,11 +456,56 @@ export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machi
     { id: 'schedule', label: 'Schedule…', disabled: offline },
     member.paused ? { id: 'resume', label: '▶ Resume', disabled: offline } : { id: 'pause', label: '⏸ Pause', disabled: offline },
   ];
+  // D100 follow-up 2026-10-14: the order (works offline too: it is the team's definition, synced).
+  if (position && position.count > 1) {
+    items.push({ id: 'order-back', label: position.vertical ? 'Move up' : 'Move left', separator: true, disabled: position.index <= 0 });
+    items.push({ id: 'order-forward', label: position.vertical ? 'Move down' : 'Move right', disabled: position.index >= position.count - 1 });
+  }
   // Every machine the member can move to: this one (when it runs elsewhere) and the paired ones it does not run on.
   const targets = [{ id: selfId, name: 'this machine', state: 'online' as const }, ...machines].filter((machine) => machine.id !== member.machineId);
   for (const target of targets) items.push({ id: 'move', label: `Move to ${target.name}…`, machineId: target.id, disabled: offline || target.state !== 'online' });
   items.push({ id: 'return', label: returnLabel(returnPlace), separator: true, disabled: offline });
   return items;
+}
+
+// ── the order (D100 follow-up 2026-10-14) ─────────────────────────────────
+
+/** Which half of a card the pointer is over along the strip's axis (left / top = before). */
+export function sideAlong(axis: 'x' | 'y', point: { readonly x: number; readonly y: number }, rect: { readonly left: number; readonly top: number; readonly width: number; readonly height: number }): 'before' | 'after' {
+  return axis === 'x' ? (point.x < rect.left + rect.width / 2 ? 'before' : 'after') : point.y < rect.top + rect.height / 2 ? 'before' : 'after';
+}
+
+/**
+ * The order after dropping `dragged` before / after `anchor` (the sidebar's
+ * `dropPosition`), or `null` when nothing changes (dropped on itself or where it is).
+ */
+export function dropOrder(ids: readonly string[], dragged: string, anchor: string, side: 'before' | 'after'): string[] | null {
+  if (!ids.includes(dragged) || !ids.includes(anchor) || dragged === anchor) return null;
+  const index = dropPosition(ids, dragged, anchor, side);
+  const rest = ids.filter((id) => id !== dragged);
+  const next = [...rest.slice(0, index), dragged, ...rest.slice(index)];
+  return next.every((id, i) => id === ids[i]) ? null : next;
+}
+
+/** The order after moving `id` one place back (-1: left / up) or forward (+1: right / down); `null` at the end it moves towards. */
+export function moveInOrder(ids: readonly string[], id: string, delta: -1 | 1): string[] | null {
+  const at = ids.indexOf(id);
+  const to = at + delta;
+  if (at < 0 || to < 0 || to >= ids.length) return null;
+  const next = [...ids];
+  next[at] = ids[to] as string;
+  next[to] = id;
+  return next;
+}
+
+/** `items` in the order of `ids` (an optimistic order while the server saves it); items not named keep their place after them. */
+export function inOrder<T extends { readonly id: string }>(items: readonly T[], ids: readonly string[] | null): T[] {
+  if (!ids) return [...items];
+  const at = new Map(ids.map((id, index) => [id, index]));
+  return items
+    .map((item, index) => ({ item, index, at: at.get(item.id) ?? ids.length + index }))
+    .sort((a, b) => a.at - b.at)
+    .map((entry) => entry.item);
 }
 
 // ── Needs you ────────────────────────────────────────────────────────────

@@ -79,6 +79,17 @@ CREATE TABLE access (
 CREATE INDEX access_team ON access (team_id);
 `,
   ),
+  makeMigration(
+    3,
+    'team_order',
+    `-- D100 follow-up 2026-10-14: an explicit order of the members in a team (and of the teams), kept in each record's JSON.
+-- Existing members get their creation order (rowid) within their team; the clocks are not touched (nothing to sync until a reorder).
+UPDATE members SET data = json_set(data, '$.order', (SELECT COUNT(*) FROM members AS earlier WHERE earlier.team_id = members.team_id AND earlier.rowid < members.rowid))
+  WHERE json_type(data, '$.order') IS NULL;
+UPDATE teams SET data = json_set(data, '$.order', (SELECT COUNT(*) FROM teams AS earlier WHERE earlier.rowid < teams.rowid))
+  WHERE json_type(data, '$.order') IS NULL;
+`,
+  ),
 ];
 
 type SyncedTable = 'members' | 'handoffs' | 'requests' | 'access';

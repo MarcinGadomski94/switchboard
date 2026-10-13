@@ -32,7 +32,8 @@ import { useTeamSwitch } from './hidden.ts';
 import { bannerLaterIds, highlightReturnedRow, setBannerLater } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, memberMenu, needsYouCounts, phoneOrder, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, adoptedToast, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { ReorderStrip } from './ReorderStrip.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
 import { reloadTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
@@ -80,6 +81,8 @@ export function TeamPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [layoutSidebar, setLayoutSidebar] = useState<SidebarLayout | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  /** D100 follow-up 2026-10-14: the order just chosen, shown until the server's answer is read back. */
+  const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -98,7 +101,7 @@ export function TeamPage() {
     api.sidebarLayout().then(setLayoutSidebar, () => setLayoutSidebar(null));
   }, [on, loadSuggestions]);
 
-  const members = view?.members ?? [];
+  const members = inOrder(view?.members ?? [], pendingOrder as string[] | null);
   const counts = useMemo(() => needsYouCounts(items), [items]);
   const selected = members.find((member) => member.id === selectedId) ?? (phone ? null : (members[0] ?? null));
   const selfId = view?.self.id ?? machines.data?.self.id ?? '';
@@ -163,9 +166,29 @@ export function TeamPage() {
       setActionError(refusalText(caught));
     }
   };
+  /** Saves a new order at once (shown before the answer; `teamChanged` shows it on the other machines). */
+  const reorder = (ids: readonly string[]): void => {
+    setPendingOrder(ids);
+    setActionError(null);
+    teamApi
+      .reorder(ids)
+      .then(() => reloadTeam())
+      .catch((caught: unknown) => setActionError(refusalText(caught)))
+      .finally(() => setPendingOrder((current) => (current === ids ? null : current)));
+  };
   const pickMenu = (member: TeamMember, item: MenuItem): void => {
     setMenu(null);
     switch (item.id) {
+      case 'order-back':
+      case 'order-forward': {
+        const next = moveInOrder(
+          members.map((m) => m.id),
+          member.id,
+          item.id === 'order-back' ? -1 : 1,
+        );
+        if (next) reorder(next);
+        return;
+      }
       case 'task':
         setOpen({ kind: 'task', memberId: member.id });
         return;
@@ -211,7 +234,8 @@ export function TeamPage() {
     );
   }
 
-  const ordered = phone ? phoneOrder(members, counts) : members;
+  // D100 follow-up 2026-10-14: the phone's list follows the team's order too (it is reorderable there); Needs you sits above it.
+  const ordered = members;
   const firstNeedOf = (memberId: string) => items.find((item) => item.memberId === memberId) ?? null;
   const empty = loaded && members.length === 0;
   const detail = phone && panelShown && selected !== null;
@@ -219,10 +243,18 @@ export function TeamPage() {
   const openMember = (id: string): TeamMember | undefined => members.find((member) => member.id === id);
 
   const cards = (
-    <div className="sb-team-cards" data-testid="team-cards">
-      {ordered.map((member) => (
+    <ReorderStrip
+      items={ordered}
+      idOf={(member) => member.id}
+      labelOf={(member) => member.name}
+      axis={phone ? 'y' : 'x'}
+      revealId={selected?.id ?? null}
+      onReorder={(ids) => reorder(ids)}
+      className="sb-team-cards"
+      testId="team-cards"
+    >
+      {(member) => (
         <MemberCard
-          key={member.id}
           member={member}
           status={cardStatus(member, counts)}
           needs={counts.get(member.id) ?? 0}
@@ -234,8 +266,8 @@ export function TeamPage() {
           onSelect={() => select(member)}
           onMenu={(at) => setMenu({ memberId: member.id, at })}
         />
-      ))}
-    </div>
+      )}
+    </ReorderStrip>
   );
 
   return (
@@ -366,7 +398,7 @@ export function TeamPage() {
       ) : null}
 
       {menu && menuMember ? (
-        <MemberMenu items={memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember))} at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
+        <MemberMenu items={memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember), { index: ordered.indexOf(menuMember), count: ordered.length, vertical: phone })} at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
       ) : null}
       {open?.kind === 'add' ? (
         <AddMemberDialog

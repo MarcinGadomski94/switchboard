@@ -316,3 +316,36 @@ describe('D100 · pause, hand-offs, budgets', () => {
     expect((await r.loops.get(session.id, loop.id)).state).toBe('active');
   });
 });
+
+describe('D100 follow-up 2026-10-14 · the members\' order', () => {
+  it('syncs as part of the team definition: a peer\'s newer order wins; an older peer\'s record without one keeps ours', async () => {
+    const r = await setup();
+    await r.team.init();
+    await switchOn(r);
+    const ids: string[] = [];
+    for (const [index, name] of ['Alpha', 'Bravo', 'Charlie'].entries()) {
+      const session = await r.world.store.sessions.create({ name: name.toLowerCase(), claudeSessionId: `0000000${index}-2222-4333-8444-955566667777`, attached: true });
+      ids.push((await r.team.adopt({ sessionId: session.id, name })).id);
+    }
+    const names = async (): Promise<string[]> => (await r.team.view()).members.map((m) => m.name);
+    expect(await names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+    // A paired machine reordered later (newer clocks): Charlie, Bravo, Alpha.
+    const mine = await r.team.message();
+    const later = (index: number): string => `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.${index.toString(36).padStart(4, '0')}.m-pc-0002`;
+    const wanted = [ids[2], ids[1], ids[0]];
+    const theirs = mine.snapshot.members.map((m) => ({ ...m, order: wanted.indexOf(m.id), clock: later(wanted.indexOf(m.id)) }));
+    expect(await r.team.receive({ v: 1, machine: { id: 'm-pc-0002', name: 'PC' }, snapshot: { ...mine.snapshot, members: theirs } })).toBe(true);
+    expect(await names()).toEqual(['Charlie', 'Bravo', 'Alpha']);
+
+    // An older peer edits Alpha (an even newer clock) but its record has no order: the order here stays.
+    const older = theirs.map((m) => {
+      if (m.id !== ids[0]) return m;
+      const { order: _order, ...rest } = m;
+      return { ...rest, name: 'Alpha renamed', clock: later(99) };
+    });
+    expect(await r.team.receive({ v: 1, machine: { id: 'm-old-0003', name: 'Old' }, snapshot: { ...mine.snapshot, members: older } })).toBe(true);
+    expect(await names()).toEqual(['Charlie', 'Bravo', 'Alpha renamed']);
+    expect((await r.team.view()).members.map((m) => m.order)).toEqual([0, 1, 2]);
+  });
+});

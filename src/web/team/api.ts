@@ -62,6 +62,7 @@ export const teamApi = {
   state: () => call<TeamState>('GET', '/api/team/state'),
   view: () => call<TeamView>('GET', '/api/team'),
   rename: (name: string) => call<TeamView>('PUT', '/api/team', { name }),
+  reorder: (memberIds: readonly string[]) => call<TeamView>('PUT', '/api/team/order', { memberIds }),
   templates: () => call<TeamTemplate[]>('GET', '/api/team/templates'),
   suggestions: () => call<TeamSuggestion[]>('GET', '/api/team/suggestions'),
   needsYou: () => call<TeamNeedsYouItem[]>('GET', '/api/team/needs-you'),

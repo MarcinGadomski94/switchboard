@@ -35,8 +35,11 @@ import {
   type TeamState,
   type TeamView,
   type TeamWorkplace,
+  byOrder,
   charterInstruction,
   checkTeamName,
+  nextOrder,
+  reorderIds,
   memberStatus,
   needsYouLabel,
   normalizeGates,
@@ -49,7 +52,7 @@ import {
 } from '../../core/team.ts';
 import { TEAM_TEMPLATES, templateById } from '../../core/team-templates.ts';
 import { dayStart, overBudget, pointsUsedSince, shareOfDaily } from '../../core/team-budget.ts';
-import { type TeamSnapshot, type TeamSyncMessage, TEAM_SYNC_PATH, TEAM_SYNC_VERSION, newActivity, newerRecords, readTeamSyncMessage } from '../../core/team-sync.ts';
+import { type TeamSnapshot, type TeamSyncMessage, TEAM_SYNC_PATH, TEAM_SYNC_VERSION, keepOrder, newActivity, newerRecords, readTeamSyncMessage } from '../../core/team-sync.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { listInbox } from '../inbox/wire.ts';
@@ -349,15 +352,16 @@ export class TeamService {
     const db = this.#db as TeamDb;
     if (db.teams().some((team) => team.id === DEFAULT_TEAM_ID)) return;
     const now = this.#iso();
-    db.putTeam({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, createdAt: now, updatedAt: now });
+    db.putTeam({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: now, updatedAt: now });
   }
 
   #team(): TeamRecord {
-    return this.#need().teams().find((team) => team.id === DEFAULT_TEAM_ID) ?? { id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, createdAt: '', updatedAt: '' };
+    return this.#need().teams().find((team) => team.id === DEFAULT_TEAM_ID) ?? { id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: '', updatedAt: '' };
   }
 
+  /** The team's members (not deleted) in the team's order (D100 follow-up 2026-10-14). */
   #liveMembers(): TeamMemberRecord[] {
-    return this.#need().members().filter((member) => !member.deleted && member.teamId === DEFAULT_TEAM_ID);
+    return byOrder(this.#need().members().filter((member) => !member.deleted && member.teamId === DEFAULT_TEAM_ID));
   }
 
   #sessionRef(member: Pick<TeamMemberRecord, 'machineId' | 'sessionId'>): string {
@@ -638,6 +642,8 @@ export class TeamService {
         cliLoops: await this.#cliLoops(sessionId),
         originalPlace: await this.#placeNow(sessionId),
         access: [],
+        // New members go to the end of the team's order.
+        order: nextOrder(this.#liveMembers()),
         createdAt: now,
         updatedAt: now,
       };
@@ -696,11 +702,13 @@ export class TeamService {
         cliLoops: [],
         originalPlace: { place: 'none', folderId: null, index: null },
         access: [],
+        order: 0,
         createdAt: now,
         updatedAt: now,
       };
       await this.#serial(async () => {
-        this.#need().putMember(member);
+        // New members go to the end of the team's order.
+        this.#need().putMember({ ...member, order: nextOrder(this.#liveMembers()) });
         this.#activity('create', member.id, `Started ${member.name}`);
       });
       memberId = member.id;
@@ -748,6 +756,38 @@ export class TeamService {
     const charterChanged = fields.charter !== undefined || fields.name !== undefined || fields.gates !== undefined;
     if (charterChanged && local) await this.#applyCharter(after.sessionId);
     return this.member(id);
+  }
+
+  /**
+   * `PUT /api/team/order` `{ memberIds }` (D100 follow-up 2026-10-14): the members'
+   * order in the team (cards strip, phone list, `team_members`). Ids the body leaves
+   * out keep their relative order after the given ones; an unknown id is refused.
+   * Part of the synced definition: only the members whose place changed get a new
+   * clock (last writer wins per member), so it shows on the paired machines too.
+   */
+  async reorder(body: Record<string, unknown>): Promise<TeamView> {
+    this.#need();
+    const changed = await this.#serial(async () => {
+      const members = this.#liveMembers();
+      const ids = reorderIds(
+        members.map((member) => member.id),
+        body['memberIds'],
+      );
+      if (!ids) throw new TeamError(422, 'invalid', 'memberIds must list members of the team, each once', { errors: [{ field: 'memberIds', message: 'unknown or repeated member id' }] });
+      const byId = new Map(members.map((member) => [member.id, member]));
+      let any = false;
+      this.#need().transaction(() => {
+        ids.forEach((id, index) => {
+          const member = byId.get(id) as TeamMemberRecord;
+          if (member.order === index) return;
+          this.#need().putMember({ ...member, order: index, clock: this.#stamp(), updatedAt: this.#iso() });
+          any = true;
+        });
+      });
+      return any;
+    });
+    if (changed) this.#changed(['members', 'order']);
+    return this.view();
   }
 
   /** D64 / D91: the session's process picks the (new / withdrawn) charter up: idle → restarted now, busy → after its turn, not running → its next start. */
@@ -1269,8 +1309,9 @@ export class TeamService {
       const clock = this.#clock as HybridClock;
       const s = message.snapshot;
       for (const record of [...s.teams, ...s.members, ...s.handoffs, ...s.requests, ...s.access]) clock.observe(record.clock);
-      const teams = newerRecords(db.teams(), s.teams);
-      const members = newerRecords(db.members(), s.members);
+      const teams = keepOrder(db.teams(), newerRecords(db.teams(), s.teams));
+      // An older peer's records carry no order: the local one is kept (D100 follow-up 2026-10-14).
+      const members = keepOrder(db.members(), newerRecords(db.members(), s.members));
       const handoffs = newerRecords(db.handoffs(), s.handoffs);
       const requests = newerRecords(db.requests(), s.requests);
       const activity = newActivity(db.activity(DEFAULT_TEAM_ID), s.activity);

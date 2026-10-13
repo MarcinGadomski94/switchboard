@@ -172,6 +172,12 @@ export interface TeamMemberRecord extends TeamSynced {
   readonly originalPlace: TeamOriginalPlace;
   /** T2 seam. */
   readonly access: readonly TeamAccessEntry[];
+  /**
+   * D100 follow-up 2026-10-14: its place in the team's order (cards strip, sidebar
+   * lists, `team_members`), ascending; `null` = not known (an older peer's record),
+   * sorted after the ordered ones by creation ({@link byOrder}).
+   */
+  readonly order: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -188,6 +194,8 @@ export interface TeamSynced {
 export interface TeamRecord extends TeamSynced {
   readonly id: string;
   readonly name: string;
+  /** D100 follow-up 2026-10-14: its place among the teams (ascending); `null` = not known (an older peer's record). */
+  readonly order: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -397,6 +405,44 @@ export interface TeamChanged {
 }
 
 // ── rules ────────────────────────────────────────────────────────────────
+
+/**
+ * D100 follow-up 2026-10-14 · the stored order of members (or teams): by `order`
+ * ascending, records without one (`null`: an older peer's) after them by creation,
+ * then by id (stable on every machine). Returns a new array.
+ */
+export function byOrder<T extends { readonly id: string; readonly order: number | null; readonly createdAt: string }>(records: readonly T[]): T[] {
+  return [...records].sort((a, b) => {
+    if (a.order !== b.order) {
+      if (a.order === null) return 1;
+      if (b.order === null) return -1;
+      return a.order - b.order;
+    }
+    return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+  });
+}
+
+/**
+ * A new order from a body's ids (`PUT /api/team/order`, `PUT /api/team/teams/order`):
+ * the given ids first, in their order, then the current ones the body left out (one
+ * added meanwhile) in their current order. `null` when the body names an unknown id
+ * or one twice.
+ */
+export function reorderIds(current: readonly string[], wanted: unknown): string[] | null {
+  if (!Array.isArray(wanted) || wanted.length > 1_000 || !wanted.every((id) => typeof id === 'string')) return null;
+  const known = new Set(current);
+  const seen = new Set<string>();
+  for (const id of wanted as string[]) {
+    if (!known.has(id) || seen.has(id)) return null;
+    seen.add(id);
+  }
+  return [...(wanted as string[]), ...current.filter((id) => !seen.has(id))];
+}
+
+/** The next `order` at the end of `records` (max + 1, `0` for none). */
+export function nextOrder(records: readonly { readonly order: number | null }[]): number {
+  return records.reduce((max, record) => (record.order !== null && record.order >= max ? record.order + 1 : max), 0);
+}
 
 /** The session statuses (`SessionStatus`) a status is derived from. */
 export type SessionStatusLike = 'need' | 'run' | 'done' | 'fail' | 'idle' | 'paused';

@@ -11,6 +11,10 @@ import {
   budgetLine,
   cardStatus,
   confidenceOf,
+  dropOrder,
+  inOrder,
+  moveInOrder,
+  sideAlong,
   formBody,
   formFromMember,
   formFromSuggestion,
@@ -60,6 +64,7 @@ function member(patch: Partial<TeamMember> & { id: string }): TeamMember {
     cliLoops: [],
     originalPlace: { place: 'none', folderId: null, index: null },
     access: [],
+    order: null,
     createdAt: '2026-10-13T09:00:00.000Z',
     updatedAt: '2026-10-13T09:00:00.000Z',
     status: 'idle',
@@ -261,6 +266,38 @@ describe('D100 · Team page: the member form and menu', () => {
     const remote = memberMenu(member({ id: 'b', machineId: 'm-pc', paused: true }), [{ id: 'm-pc', name: 'Windows PC', state: 'online' }], 'm-self', 'Sessions');
     expect(remote.map((i) => i.label)).toContain('Move to this machine…');
     expect(remote.map((i) => i.label)).toContain('▶ Resume');
+  });
+
+  it('D100 follow-up 2026-10-14: the menu moves a member left / right (up / down on a phone), disabled at the ends', () => {
+    const at = (index: number, vertical = false) => memberMenu(member({ id: 'a' }), [], 'm-self', 'Work', { index, count: 3, vertical });
+    const labels = (items: ReturnType<typeof memberMenu>) => items.filter((i) => i.id.startsWith('order-')).map((i) => [i.label, i.disabled === true]);
+    expect(labels(at(0))).toEqual([['Move left', true], ['Move right', false]]);
+    expect(labels(at(1))).toEqual([['Move left', false], ['Move right', false]]);
+    expect(labels(at(2, true))).toEqual([['Move up', false], ['Move down', true]]);
+    // Placed after Pause, before Return; a team of one has nothing to move.
+    expect(at(1).map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move left', 'Move right', '↩ Return to sessions (back to “Work”)']);
+    expect(labels(memberMenu(member({ id: 'a' }), [], 'm-self', 'Work', { index: 0, count: 1, vertical: false }))).toEqual([]);
+  });
+
+  it('D100 follow-up 2026-10-14: the order model: drop before / after, move one place, an optimistic order', () => {
+    const ids = ['a', 'b', 'c', 'd'];
+    expect(dropOrder(ids, 'a', 'c', 'after')).toEqual(['b', 'c', 'a', 'd']);
+    expect(dropOrder(ids, 'd', 'a', 'before')).toEqual(['d', 'a', 'b', 'c']);
+    expect(dropOrder(ids, 'b', 'c', 'before')).toBeNull();
+    expect(dropOrder(ids, 'b', 'a', 'after')).toBeNull();
+    expect(dropOrder(ids, 'b', 'b', 'after')).toBeNull();
+    expect(dropOrder(ids, 'x', 'b', 'after')).toBeNull();
+    expect(moveInOrder(ids, 'b', -1)).toEqual(['b', 'a', 'c', 'd']);
+    expect(moveInOrder(ids, 'b', 1)).toEqual(['a', 'c', 'b', 'd']);
+    expect(moveInOrder(ids, 'a', -1)).toBeNull();
+    expect(moveInOrder(ids, 'd', 1)).toBeNull();
+    const rect = { left: 100, top: 10, width: 200, height: 40 };
+    expect(sideAlong('x', { x: 150, y: 0 }, rect)).toBe('before');
+    expect(sideAlong('x', { x: 250, y: 0 }, rect)).toBe('after');
+    expect(sideAlong('y', { x: 0, y: 40 }, rect)).toBe('after');
+    const items = ids.map((id) => ({ id }));
+    expect(inOrder(items, ['c', 'a']).map((i) => i.id)).toEqual(['c', 'a', 'b', 'd']);
+    expect(inOrder(items, null).map((i) => i.id)).toEqual(ids);
   });
 
   it('answers each Needs-you shape its own way', () => {

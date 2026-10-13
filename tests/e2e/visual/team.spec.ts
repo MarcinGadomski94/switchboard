@@ -9,9 +9,11 @@ import { canonicalColors, writeReport } from './harness.ts';
  * spec checks the design's rules rather than a pixel diff: the role colour of the
  * sidebar entry, each card's top border by status (working = run blue, needs you =
  * amber, idle = grey, paused / offline dimmed), the layout per size (desktop: three
- * cards across the full width at the top, then Needs you + Activity (330 px) | the
- * member panel; tablet: the same with a narrower left; phone: one column, Needs you
- * first, the member full screen with
+ * cards in ONE row across the full width at the top (D100 follow-up 2026-10-14: it
+ * scrolls sideways, the cards keep their width; a deliberate change of the approved
+ * mockup's wrapping grid), then Needs you + Activity (330 px) | the member panel;
+ * tablet: the same with a narrower left; phone: one column, Needs you first, the
+ * cards in the team's order, the member full screen with
  * "‹ Team"), the empty state, and no sideways overflow. It runs on the fake world
  * (demo mode never starts Team) and writes `team.md` plus a screenshot per state and
  * size to `test-results/visual/` (and `docs/visual/` with SWITCHBOARD_VISUAL_REPORT=1).
@@ -161,11 +163,16 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   expect(desk.cards!.bottom).toBeLessThanOrEqual(desk.split!.top + 1);
   expect(desk.needs!.left).toBeLessThan(desk.panel!.left);
   expect(Math.round(desk.panel!.bottom)).toBe(Math.round(desk.split!.bottom));
-  const cardCols = await page.getByTestId('team-cards').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-  expect(cardCols).toBeGreaterThanOrEqual(4);
+  // D100 follow-up 2026-10-14: one row (every card on the same line, ~196 px each, never shrunk), no wrapping.
+  const row = async () =>
+    page.getByTestId('team-card').evaluateAll((cards) => cards.map((c) => c.getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), width: Math.round(r.width) })));
+  const deskRow = await row();
+  expect(new Set(deskRow.map((c) => c.top)).size).toBe(1);
+  for (const c of deskRow) expect(c.width).toBeGreaterThanOrEqual(180);
+  const cardCols = deskRow.length;
   expect(await color(page, '[data-testid="team-panel-sub"]', 'color')).toBeTruthy();
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
-  lines.push(`- desktop: the cards across the full width (${cardCols} per row), then Needs you + Activity (${desk.columns[0]}) | the member panel to the bottom`);
+  lines.push(`- desktop: the cards in one row across the full width (${cardCols} cards, ${deskRow[0]?.width} px each; the row scrolls sideways when they do not fit), then Needs you + Activity (${desk.columns[0]}) | the member panel to the bottom`);
   await shoot(page, 'team-populated-desktop.png');
 
   await page.setViewportSize(SIZES.tablet);
@@ -174,8 +181,11 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   expect(tab.columns.length).toBe(2);
   expect(tab.columns[0]).toBe('260px');
   expect(tab.cards!.bottom).toBeLessThanOrEqual(tab.split!.top + 1);
+  const tabRow = await row();
+  expect(new Set(tabRow.map((c) => c.top)).size).toBe(1);
+  for (const c of tabRow) expect(c.width).toBeGreaterThanOrEqual(180);
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
-  lines.push(`- tablet: the cards wrap across the top, then Needs you + Activity (${tab.columns[0]}) | the member panel`);
+  lines.push(`- tablet: the cards in one row across the top (scrolling sideways when they do not fit), then Needs you + Activity (${tab.columns[0]}) | the member panel`);
   await shoot(page, 'team-populated-tablet.png');
 
   await page.setViewportSize(SIZES.phone);
@@ -184,9 +194,10 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   await expect(page.getByTestId('view-team')).toHaveAttribute('data-pane', 'list');
   const order = await page.getByTestId('team-body').evaluate((body) => [...body.children].map((child) => child.getAttribute('data-testid')));
   expect(order).toEqual(['team-needs-you', 'team-cards', 'team-activity']);
-  await expect(page.getByTestId('team-card').first()).toHaveAttribute('data-status', 'needs-you');
+  // D100 follow-up 2026-10-14: the phone's list keeps the team's order (reorderable there too).
+  await expect(page.getByTestId('team-card-role')).toHaveText(['Tracker', 'Release manager', 'Developer', 'On-call']);
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
-  lines.push('- phone: one column, Needs you first, then the cards (the members that need you on top), then Activity');
+  lines.push('- phone: one column, Needs you first, then the cards in the team\'s order, then Activity');
   await shoot(page, 'team-populated-phone.png');
   if (await page.getByTestId('toast').isVisible()) await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
   await page.locator('[data-testid="team-card"]').filter({ hasText: 'Tracker' }).click();
