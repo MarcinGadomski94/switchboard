@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.3 (2026-10-13)
+
+### Fixed
+- **Loops wait for your answer.** A Switchboard loop no longer fires while its session is waiting for you (an open question or permission request): that due time is skipped and counted ("the session is waiting for your answer"), Run now is refused, and the next due time after you answered fires as usual. Loops the CLI runs itself (`/loop`, `CronCreate`) aren't affected; create the loop with `loop_create` or + New loop to get this.
+
 ## 1.15.2 (2026-10-10)
 
 ### Faster while sessions are working
