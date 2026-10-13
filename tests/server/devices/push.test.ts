@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { InboxItem, Session } from '../../../src/core/api.ts';
 import { encryptPayload, generateVapidKeys, validVapidKeys, vapidAuthorization } from '../../../src/server/devices/push/crypto.ts';
 import { isAllowedPushEndpoint, validSubscription } from '../../../src/server/devices/push/sender.ts';
+import { PUSH_GONE_MAX, PUSH_GONE_SETTING, PUSH_GONE_TTL_MS, addGoneEndpoint, hashEndpoint, isGoneEndpoint, readGoneEndpoints } from '../../../src/server/devices/push/gone.ts';
 import { VAPID_FILE, loadOrCreateVapidKeys } from '../../../src/server/devices/service.ts';
 import { type DeviceWorld, startDeviceWorld } from '../../helpers/devices.ts';
 import { type FakePushService, decryptPush, startFakePush, verifyVapid } from '../../helpers/fake-push.ts';
@@ -240,5 +241,70 @@ describe('D73 push delivery', () => {
     expect(off.status, off.text).toBe(200);
     expect(off.body.device.push).toBe(false);
     expect(off.body.pushEndpoint).toBeNull();
+  });
+});
+
+describe('D73 follow-up · gone endpoints are never stored again', () => {
+  it('refuses a gone endpoint (409 push-gone) on restore and on enable, remembers it hashed, and takes a fresh subscription', async () => {
+    const { w, fake } = await pushWorld();
+    const a = await w.pair('A');
+    const sub = fake.subscribe();
+    const body = { subscription: { endpoint: sub.endpoint, keys: sub.keys } };
+    expect((await w.device('PUT', '/api/device/push', { cookie: a.cookie, body })).status).toBe(200);
+    fake.expire(sub, 410);
+    w.bus.publish('sessionUpdated', session('g1', 'run'));
+    w.bus.publish('sessionUpdated', session('g1', 'idle'));
+    const deadline = Date.now() + 5_000;
+    while ((await w.store.devices.pushList()).length > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await w.store.devices.pushList()).toEqual([]);
+    while ((await w.store.settings.get(PUSH_GONE_SETTING)) === undefined && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Remembered as its sha256 only.
+    const stored = await w.store.settings.get(PUSH_GONE_SETTING);
+    expect(stored).toEqual([{ hash: hashEndpoint(sub.endpoint), at: expect.any(String) }]);
+    expect(JSON.stringify(stored)).not.toContain(sub.endpoint);
+
+    // The restore (subscription only) and an enable (with toggles) of the same endpoint: refused.
+    const restore = await w.device('PUT', '/api/device/push', { cookie: a.cookie, body });
+    expect(restore.status, restore.text).toBe(409);
+    expect(restore.body.error).toBe('push-gone');
+    const enable = await w.device('PUT', '/api/device/push', { cookie: a.cookie, body: { ...body, events: { errors: false } } });
+    expect(enable.status).toBe(409);
+    expect(enable.body.error).toBe('push-gone');
+    // Re-paired (a new device record): still refused.
+    const b = await w.pair('B');
+    expect((await w.device('PUT', '/api/device/push', { cookie: b.cookie, body })).body.error).toBe('push-gone');
+    expect(await w.store.devices.pushList()).toEqual([]);
+
+    // A fresh subscription (a new endpoint) always works.
+    const fresh = fake.subscribe();
+    const ok = await w.device('PUT', '/api/device/push', { cookie: b.cookie, body: { subscription: { endpoint: fresh.endpoint, keys: fresh.keys }, events: { errors: false } } });
+    expect(ok.status, ok.text).toBe(200);
+    expect(ok.body.pushEndpoint).toBe(fresh.endpoint);
+    expect(ok.body.device.push).toBe(true);
+  });
+
+  it('keeps at most PUSH_GONE_MAX endpoints (the newest) and forgets each after 90 days', () => {
+    const t0 = Date.parse('2026-10-13T12:00:00Z');
+    let list: unknown = undefined;
+    for (let i = 0; i < PUSH_GONE_MAX + 5; i += 1) list = addGoneEndpoint(list, `https://fcm.googleapis.com/fcm/send/${i}`, t0 + i);
+    const kept = readGoneEndpoints(list, t0 + 1_000);
+    expect(kept).toHaveLength(PUSH_GONE_MAX);
+    expect(isGoneEndpoint(list, 'https://fcm.googleapis.com/fcm/send/0', t0 + 1_000)).toBe(false);
+    expect(isGoneEndpoint(list, 'https://fcm.googleapis.com/fcm/send/4', t0 + 1_000)).toBe(false);
+    expect(isGoneEndpoint(list, 'https://fcm.googleapis.com/fcm/send/5', t0 + 1_000)).toBe(true);
+    expect(isGoneEndpoint(list, `https://fcm.googleapis.com/fcm/send/${PUSH_GONE_MAX + 4}`, t0 + 1_000)).toBe(true);
+
+    // Expiry: 90 days after it was reported, an endpoint is forgotten (and pruned on the next write).
+    const one = addGoneEndpoint(undefined, 'https://web.push.apple.com/x', t0);
+    expect(isGoneEndpoint(one, 'https://web.push.apple.com/x', t0 + PUSH_GONE_TTL_MS - 1)).toBe(true);
+    expect(isGoneEndpoint(one, 'https://web.push.apple.com/x', t0 + PUSH_GONE_TTL_MS)).toBe(false);
+    expect(addGoneEndpoint(one, 'https://web.push.apple.com/y', t0 + PUSH_GONE_TTL_MS).map((entry) => entry.hash)).toEqual([hashEndpoint('https://web.push.apple.com/y')]);
+    // Reported again: one entry, its time renewed.
+    const twice = addGoneEndpoint(addGoneEndpoint(undefined, 'https://web.push.apple.com/x', t0), 'https://web.push.apple.com/x', t0 + 10);
+    expect(twice).toEqual([{ hash: hashEndpoint('https://web.push.apple.com/x'), at: new Date(t0 + 10).toISOString() }]);
+    // Anything malformed reads as nothing.
+    expect(readGoneEndpoints({ hash: 'x' }, t0)).toEqual([]);
+    expect(readGoneEndpoints([{ hash: 'nothex', at: new Date(t0).toISOString() }, null], t0)).toEqual([]);
   });
 });

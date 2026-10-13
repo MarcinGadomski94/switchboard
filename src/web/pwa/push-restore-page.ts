@@ -1,7 +1,7 @@
 import type { DeviceSelfView } from '../../core/devices.ts';
 import { api, onDeviceOrigin } from '../api/client.ts';
-import { subscriptionInput } from './push.ts';
-import { type BrowserSubscription, PUSH_OFF_KEY, type PushRestoreResult, restorePush } from './push-restore.ts';
+import { subscriptionInput, unsubscribePush } from './push.ts';
+import { type BrowserSubscription, PUSH_GONE_KEY, PUSH_OFF_KEY, type PushRestoreResult, restorePush } from './push-restore.ts';
 
 /**
  * D73 fix, 2026-10-13: wires {@link restorePush} to this page (`push-restore.ts`
@@ -31,6 +31,24 @@ export function markPushTurnedOff(off: boolean): void {
     else storage()?.removeItem(PUSH_OFF_KEY);
   } catch {
     // Storage full or blocked: Disable still unsubscribes the browser, which is what keeps it off.
+  }
+}
+
+/** Notes the endpoint Switchboard refused as gone (`null`: clears it; Enable does). */
+export function markPushGone(endpoint: string | null): void {
+  try {
+    if (endpoint) storage()?.setItem(PUSH_GONE_KEY, endpoint);
+    else storage()?.removeItem(PUSH_GONE_KEY);
+  } catch {
+    // Storage full or blocked: unsubscribing the dead subscription is what keeps it from coming back.
+  }
+}
+
+function goneEndpoint(): string | null {
+  try {
+    return storage()?.getItem(PUSH_GONE_KEY) ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -73,6 +91,9 @@ export function restorePushNow(): Promise<PushRestoreResult | null> {
   running ??= restorePush({
     permission: () => Notification.permission,
     turnedOff,
+    goneEndpoint,
+    markGone: (endpoint) => markPushGone(endpoint),
+    unsubscribe: unsubscribePush,
     subscription: browserSubscription,
     deviceSelf: api.deviceSelf,
     save: (subscription) => api.saveDevicePush({ subscription }),
