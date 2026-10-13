@@ -25,7 +25,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/server/reviews/service.ts` | imports `teamReviewGate`; the gate check in `#act` before the action runs | drop the import and the three lines |
 | `src/server/devices/local-only.ts` | the Team entries of `DEVICE_ALLOWED` and `DEVICE_REFUSED` | remove them |
 | `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
-| `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged`; `InboxItem.teamRole` | remove all three |
+| `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
 | `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers`; `teamHidden`; the one filter on `sessionList` | `const sessionList = openSessions(sessions.data ?? []);` |
 | `src/web/views/settings/model.ts` | the `experimental` section | remove the entry |

@@ -2476,6 +2476,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'reviewsChanged',
   'notice',
   'draftChanged',
+  // Team (D100) hook.
+  'teamChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */
