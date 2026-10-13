@@ -24,6 +24,8 @@ import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorE
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { plansFollowContinuation } from '../plans/hooks.ts';
+// Team (D100) hook (docs/team-removal.md): a member's saved model follows a choice made in its session header.
+import { teamSessionModelChanged } from '../team/hooks.ts';
 
 /** Session routes (contract → REST, `/api/sessions*`) not implemented yet. */
 export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -252,6 +254,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (!parsed.ok) return reply.code(422).send({ error: 'invalid', errors: parsed.errors });
     try {
       const updated = await supervisor.setModel(record.id, parsed.input);
+      // Team (D100) hook: the developer's choice here is the member's too (it syncs to the paired machine).
+      await teamSessionModelChanged(store, updated.id, updated.model, updated.effort);
       return await toSession(store, updated, supervisor.activity(updated.id));
     } catch (error) {
       return sendError(reply, error);

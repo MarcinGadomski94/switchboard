@@ -290,8 +290,7 @@ describe('D100 · the routes', () => {
 
     // Every member's session is hidden, whatever its team.
     expect([...((await ui(r, 'GET', '/api/team/state')).json() as TeamState).hiddenSessionIds].sort()).toEqual([seo.sessionId, ads.sessionId, dev.sessionId].sort());
-    // The first team cannot be deleted; Growth can: its members go back to the list, no session is deleted.
-    expect((await ui(r, 'DELETE', '/api/team/teams/team')).json().error).toBe('default-team');
+    // Growth is deleted: its members go back to the list, no session is deleted.
     const deleted = await ui(r, 'DELETE', `/api/team/teams/${growth.id}`);
     expect(deleted.statusCode, deleted.body).toBe(200);
     expect(deleted.json()).toEqual({ ok: true, returned: 2 });
@@ -299,6 +298,59 @@ describe('D100 · the routes', () => {
     expect(((await ui(r, 'GET', '/api/team/state')).json() as TeamState).hiddenSessionIds).toEqual([dev.sessionId]);
     for (const id of [seo.sessionId, ads.sessionId]) expect((await r.store.sessions.get(id))?.closedAt).toBeNull();
     expect((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).statusCode).toBe(404);
+    // The last team cannot be deleted.
+    expect((await ui(r, 'DELETE', '/api/team/teams/team')).json().error).toBe('last-team');
+  });
+
+  it('D100 follow-up 2026-10-14 · the first team is deletable once another exists; the old routes then act on the first remaining team', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const devSession = await session(r, 'dev-session');
+    const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
+    const ops = (await ui(r, 'POST', '/api/team/teams', { name: 'Ops' })).json() as TeamSummary;
+    const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
+    // Growth before Ops: the first remaining team after `team` is Growth.
+    await ui(r, 'PUT', '/api/team/teams/order', { teamIds: ['team', growth.id, ops.id] });
+
+    const deleted = await ui(r, 'DELETE', '/api/team/teams/team');
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toEqual({ ok: true, returned: 1 });
+    expect(((await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[]).map((t) => t.name)).toEqual(['Growth', 'Ops']);
+    // Its member is back in the session list (not hidden, the session kept).
+    expect(((await ui(r, 'GET', '/api/team/state')).json() as TeamState).hiddenSessionIds).toEqual([]);
+    expect((await r.store.sessions.get(dev.sessionId))?.closedAt).toBeNull();
+    // The old single-team routes: the first remaining team.
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).team).toEqual({ id: growth.id, name: 'Growth' });
+    expect((await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json().teamId).toBe(growth.id);
+    expect(((await ui(r, 'PUT', '/api/team', { name: 'Growth squad' })).json() as TeamView).team).toEqual({ id: growth.id, name: 'Growth squad' });
+    expect(((await ui(r, 'GET', '/api/team/needs-you')).json() as unknown[]).length).toBe(0);
+    expect((await ui(r, 'GET', '/api/team?teamId=team')).statusCode).toBe(404);
+    // Reordered, the old routes follow the order.
+    await ui(r, 'PUT', '/api/team/teams/order', { teamIds: [ops.id] });
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).team.id).toBe(ops.id);
+    // Switching Team off and on again does not bring the deleted first team back.
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    expect(((await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[]).map((t) => t.name)).toEqual(['Ops', 'Growth squad']);
+  });
+
+  it('D100 follow-up 2026-10-14 · a model chosen in a member\'s session header becomes the member\'s saved model (and syncs); a plain session\'s does nothing', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const devSession = await session(r, 'dev-session');
+    const plain = await session(r, 'plain-session');
+    const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
+    const changed = await ui(r, 'PUT', `/api/sessions/${devSession}/model`, { model: 'opus', effort: 'high' });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect((await ui(r, 'GET', `/api/team/members/${dev.id}`)).json()).toMatchObject({ model: 'opus', effort: 'high' });
+    // Back to the CLI's default: saved as `default`.
+    await ui(r, 'PUT', `/api/sessions/${devSession}/model`, { model: 'default', effort: null });
+    expect((await ui(r, 'GET', `/api/team/members/${dev.id}`)).json()).toMatchObject({ model: 'default', effort: null });
+    // It is the synced record (the paired machine gets it with the next exchange).
+    const message = (await ui(r, 'POST', '/api/team/sync', {})).json() as { snapshot: { members: Array<{ id: string; model: string | null }> } };
+    expect(message.snapshot.members.find((m) => m.id === dev.id)?.model).toBe('default');
+    expect((await ui(r, 'PUT', `/api/sessions/${plain}/model`, { model: 'opus' })).statusCode).toBe(200);
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.model)).toEqual(['default']);
   });
 
   it('D100 follow-up 2026-10-14 · one team per session; a member moves to another team keeping its setup; Needs you per team and for all', async () => {

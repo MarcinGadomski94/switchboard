@@ -134,6 +134,17 @@
     align-items: center;
   }
 
+  /* D104: the chip row's "+N more ▾" / "▴ less" keeps the chips' height; its touch area reaches 44 px around it. */
+  .sb-sv-chip-more {
+    position: relative;
+  }
+
+  .sb-sv-chip-more::after {
+    content: '';
+    position: absolute;
+    inset: -12px -4px;
+  }
+
   .sb-sv-action,
   .sb-sv-primary,
   .sb-sv-outlined,

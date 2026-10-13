@@ -34,6 +34,7 @@ export function ReorderStrip<T>({
   onReorder,
   className,
   testId,
+  tour,
   children,
 }: {
   readonly items: readonly T[];
@@ -46,6 +47,8 @@ export function ReorderStrip<T>({
   readonly onReorder: (ids: string[], movedId: string) => void;
   readonly className: string;
   readonly testId: string;
+  /** The strip's `data-tour` anchor (What's new). */
+  readonly tour?: string;
   readonly children: (item: T) => ReactNode;
 }) {
   const ids = items.map(idOf);
@@ -295,6 +298,7 @@ export function ReorderStrip<T>({
       ref={strip}
       className={className}
       data-testid={testId}
+      data-tour={tour}
       data-axis={axis}
       data-dragging={drag ? '' : undefined}
       onDragOver={(event) => {

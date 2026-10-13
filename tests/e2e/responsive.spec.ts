@@ -138,7 +138,7 @@ for (const size of SIZES) {
       await context.close();
     });
 
-    test('D77 · the Todos board: four columns side by side (tablet), swipeable columns with tabs (phone); nothing past the window', async ({ browser }) => {
+    test('D77 · the Todos board: three columns side by side (tablet), swipeable columns with tabs (phone); nothing past the window', async ({ browser }) => {
       const context = await touchContext(browser, size);
       const page = await newTouchPage(context);
       await openPage(page, app.baseUrl, '/todos');
@@ -161,7 +161,8 @@ for (const size of SIZES) {
         // Swipeable columns, one per screen width; the tab strip (with counts) follows the swipe and scrolls when tapped.
         const tabs = board.getByTestId('board-column-picker');
         await expect(tabs).toBeVisible();
-        await expect(board.locator('[data-board-column]')).toHaveCount(4);
+        // D102 removed the Review column: Open, In progress, Done.
+        await expect(board.locator('[data-board-column]')).toHaveCount(3);
         const wide = { ...size, height: 100_000 };
         await expectInsideWindow(board.getByTestId('board-column-open'), wide, 'the Open column');
         await expect(board.getByTestId('board-column-open').getByTestId('todo-item')).toHaveCount(2);
@@ -183,7 +184,8 @@ for (const size of SIZES) {
         await expect.poll(async () => (await board.getByTestId('board-column-open').boundingBox())?.x ?? -1).toBeLessThan(40);
       } else {
         await expect(board.getByTestId('board-column-picker')).toHaveCount(0);
-        await expect(board.locator('[data-board-column]')).toHaveCount(4);
+        // D102 removed the Review column: Open, In progress, Done.
+        await expect(board.locator('[data-board-column]')).toHaveCount(3);
       }
       await expectNoOverflow(page, size.width, 'Todos board');
       // The card's ⋯ menu (Move to) fits the window's width (and its height, where it is tall enough for the menu's eight entries).

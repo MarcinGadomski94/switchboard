@@ -52,9 +52,11 @@
     gap: 7px;
   }
 
+  /* D104: the top row stays one line at every width (the title is cut with …; from 1024 px the actions that do not
+     fit move into ⋯, useHeaderOverflow.ts; below 1024 px they are all in D74's ⋯ menu). */
   .sb-sv-top {
     position: relative;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     row-gap: 6px;
     gap: 8px;
   }

@@ -138,7 +138,7 @@ test('teams: ＋ New team, one sidebar entry per team, the Adopt form\'s Team pi
   await expect(page).toHaveURL(/\/team\/team$/);
   await expect.poll(() => sidebarTeams(page)).toEqual(['Team · 1 member']);
   await expect(page.getByTestId('sidebar-sessions').locator(`a.sb-session[data-session-id="${asker.id}"]`)).toBeVisible();
-  // The first team has no Delete team….
+  // The last team has no Delete team….
   await expect(page.getByTestId('team-delete')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('team-teams.png') });
 });
@@ -159,4 +159,26 @@ test('old routes keep working for the first team; a second team shows in the swi
   expect(overflow).toBeLessThanOrEqual(0);
   await page.screenshot({ path: test.info().outputPath('team-teams-phone.png') });
   expect((await world.call(page, 'DELETE', `/api/team/teams/${ops.body.id}`)).status).toBe(200);
+});
+
+test('the first team is deletable once another exists: its member returns, the page and the old routes go to the first remaining team', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  const lone = await world.startSession(page, 'teams-lone', 'Reply with just OK.');
+  await world.settle(page, lone.id);
+  await world.adopt(page, lone.id, 'Lone');
+  const ops = await world.call(page, 'POST', '/api/team/teams', { name: 'Ops' });
+  expect(ops.status).toBe(201);
+  await page.goto(`${world.baseUrl}/team/team`);
+  await expect(page.getByTestId('team-card').filter({ hasText: 'Lone' })).toBeVisible();
+  await closeToasts(page);
+  await page.getByTestId('team-delete').click();
+  await page.getByTestId('team-delete-confirm').click();
+  await expect(page).toHaveURL(new RegExp(`/team/${ops.body.id}$`));
+  await expect.poll(() => sidebarTeams(page)).toEqual(['Ops · 0 members']);
+  await expect(page.getByTestId('sidebar-sessions').locator(`a.sb-session[data-session-id="${lone.id}"]`)).toBeVisible();
+  expect((await world.call(page, 'GET', '/api/team')).body.team.id).toBe(ops.body.id);
+  await page.goto(`${world.baseUrl}/team`);
+  await expect(page).toHaveURL(new RegExp(`/team/${ops.body.id}$`));
+  await expect(page.getByTestId('team-delete')).toHaveCount(0);
 });

@@ -1,6 +1,9 @@
 import { useLayoutEffect, useState } from 'react';
 import { type HeaderOverflow, NO_OVERFLOW, type OverflowKey, headerOverflow } from './header-overflow.ts';
 
+/** D104: the session title shrinks (cut with …) down to this width (or its own, when shorter) before an action moves into ⋯ (px). */
+export const TITLE_FLOOR = 160;
+
 const MATCHERS: ReadonlyArray<readonly [OverflowKey, string]> = [
   ['cli', '[data-testid="session-cli"]'],
   ['account', '[data-testid="session-account"]'],
@@ -78,7 +81,8 @@ export function useHeaderOverflow(
     let count = 0;
     for (const child of top.children) {
       if (child === actions || child.classList.contains('sb-sv-root') || child.classList.contains('sb-sv-overflow-holder')) continue;
-      others += child.getBoundingClientRect().width;
+      // D104: the title (one line, cut with …) gives way before the actions do, down to TITLE_FLOOR.
+      others += child.classList.contains('sb-sv-name') ? Math.min(child.scrollWidth, TITLE_FLOOR) : child.getBoundingClientRect().width;
       count += 1;
     }
     // The gaps: between the others, the root path and the actions.

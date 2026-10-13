@@ -88,7 +88,7 @@ export function TeamPage() {
   const allTab = routeTeam === ALL_TEAMS;
   // The view of the route's team (a moment after switching, the previous team's is still there: not shown).
   const view = data.view && (routeTeam === null || data.view.team.id === routeTeam) ? data.view : null;
-  const teamId = view?.team.id ?? (routeTeam !== null && routeTeam !== ALL_TEAMS ? routeTeam : DEFAULT_TEAM_ID);
+  const teamId = view?.team.id ?? (routeTeam !== null && routeTeam !== ALL_TEAMS ? routeTeam : (teams[0]?.id ?? DEFAULT_TEAM_ID));
   const items = useMemo(() => allItems.filter((item) => (item.teamId ?? DEFAULT_TEAM_ID) === teamId), [allItems, teamId]);
   const sessions = useSessionListOf();
   const activityOf = useLiveActivities(sessions.data);
@@ -303,6 +303,7 @@ export function TeamPage() {
       onReorder={(ids) => reorder(ids)}
       className="sb-team-cards"
       testId="team-cards"
+      tour="team-cards"
     >
       {(member) => (
         <MemberCard
@@ -355,7 +356,8 @@ export function TeamPage() {
           onDone={(returned) => {
             setOpen(null);
             toast(returned === 0 ? `Team ${view.team.name} deleted` : `Team ${view.team.name} deleted: ${returned === 1 ? 'its member is' : `${returned} members are`} back in your session list`);
-            navigate({ view: 'team', teamId: DEFAULT_TEAM_ID }, { replace: true });
+            // The first remaining team (the first team itself may be the one deleted, D100 follow-up 2026-10-14).
+            navigate({ view: 'team', teamId: teams.find((team) => team.id !== view.team.id)?.id ?? DEFAULT_TEAM_ID }, { replace: true });
             refresh();
           }}
         />
@@ -417,7 +419,8 @@ export function TeamPage() {
             </span>
           </div>
           <div className="sb-team-header__actions">
-            {teamId !== DEFAULT_TEAM_ID && view ? (
+            {/* Any team while another one remains (the first team too). */}
+            {teams.length > 1 && view ? (
               <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" data-testid="team-delete" onClick={() => setOpen({ kind: 'delete-team' })}>
                 Delete team…
               </button>
@@ -643,7 +646,7 @@ function TeamTitle({ teamId, name, onRenamed }: { readonly teamId: string; reado
     if (next === name) return;
     try {
       // D100 follow-up 2026-10-14: the shown team.
-      await teamApi.rename(next, teamId === DEFAULT_TEAM_ID ? undefined : teamId);
+      await teamApi.rename(next, teamId);
       setError(null);
       onRenamed();
     } catch (caught) {

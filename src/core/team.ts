@@ -18,7 +18,9 @@ export const TEAM_SETTING = 'experimental.team';
 /**
  * The team every install has, the first team. D100 follow-up 2026-10-14 (multiple
  * teams): it keeps this id and its data; the routes without a team id act on it
- * (compatibility), an older peer sees only it, and it cannot be deleted.
+ * (compatibility) while it exists, an older peer sees only it. It can be deleted
+ * while another team remains (ruling 2026-10-14); the routes then act on the first
+ * remaining team in order, and it is only made again on a fresh `team.db`.
  */
 export const DEFAULT_TEAM_ID = 'team';
 
