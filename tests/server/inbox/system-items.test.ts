@@ -274,7 +274,7 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
     const session = await r.w.store.sessions.create({ name: 'speaking-page', claudeSessionId: randomUUID(), solutions: ['web-front'], worktrees: true });
     const [record] = await r.m.createForSession('speaking-page', ['web-front'], r.w.folder, session.id);
     if (!record) throw new Error('no worktree');
-    await r.w.setPullRequests({ 'session/speaking-page': { number: 231, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/231' } });
+    await r.w.setPullRequests({ 'session/speaking-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } });
 
     await r.m.checkPullRequests();
     const [item] = await until(async () => {

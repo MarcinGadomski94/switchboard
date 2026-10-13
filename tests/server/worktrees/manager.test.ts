@@ -219,7 +219,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     if (!record) throw new Error('no worktree');
     const events: Worktree[] = [];
     m.on('worktreeRemovable', (worktree) => events.push(worktree));
-    const url = 'https://github.com/acme/web-front/pull/231';
+    const url = 'https://git.acme.example/acme/web-front/pull/231';
 
     expect(await m.checkPullRequests()).toEqual([{ worktreeId: record.id, prState: null, removable: false, error: null }]);
     const checked = await w.store.worktrees.get(record.id);
@@ -251,7 +251,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     const { w, m } = await setup();
     const [record] = await m.createForSession('closed', ['mobile'], w.folder);
     if (!record) throw new Error('no worktree');
-    await w.setPullRequests({ 'session/closed': { number: 3, state: 'CLOSED', url: 'https://github.com/acme/mobile/pull/3' } });
+    await w.setPullRequests({ 'session/closed': { number: 3, state: 'CLOSED', url: 'https://git.acme.example/acme/mobile/pull/3' } });
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'CLOSED', removable: false, error: null });
     const before = await w.store.worktrees.get(record.id);
     const failing = w.manager({ ghCommand: [process.execPath, '-e', 'process.stderr.write("error connecting to api.github.com\\n"); process.exit(1)'] });
@@ -271,7 +271,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     await w.git(record.path, 'push', '-q', 'origin', '--delete', 'session/squash');
     await w.git(record.path, 'fetch', '-q', '--prune', 'origin');
     expect((await m.inspect(record.id)).unpushed).toBe(1);
-    await w.setPullRequests({ 'session/squash': { number: 9, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/9', headRefOid: head } });
+    await w.setPullRequests({ 'session/squash': { number: 9, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/9', headRefOid: head } });
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'MERGED', removable: true });
     expect((await m.remove(record.id)).removedAt).not.toBeNull();
     expect((await w.ghCalls()).at(-1)?.argv).toEqual(['pr', 'view', '9', '--json', 'number,state,url,headRefOid']);

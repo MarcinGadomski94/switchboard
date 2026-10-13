@@ -45,7 +45,7 @@ class FakeGit implements PlanGitPort {
   }
   async inspect(input: PlanRepoInput): Promise<PlanRepoState> {
     const state = this.branches.get(input.branch) ?? {};
-    const pr = state.pr ? { url: state.pr.url ?? `https://github.com/acme/acme-front/pull/${input.branch.length}`, state: state.pr.state, baseRefName: input.target, checks: state.pr.checks, mergeable: null } : null;
+    const pr = state.pr ? { url: state.pr.url ?? `https://git.acme.example/acme/acme-front/pull/${input.branch.length}`, state: state.pr.state, baseRefName: input.target, checks: state.pr.checks, mergeable: null } : null;
     return { repo: input.repo, hasWork: state.hasWork ?? state.merged ?? false, merged: state.merged ?? false, pr, ghAvailable: true, conflict: false };
   }
 }
@@ -366,10 +366,10 @@ describe('D99-Jira · write mode', () => {
 
     // PROJ-11's PR opens (checks running): "In Review" + a comment with the link. The comment's first answer is lost (stored, then 500).
     const p11 = await item(r, planId, 'PROJ-11');
-    r.git.branches.set(p11.branch as string, { hasWork: true, pr: { state: 'OPEN', url: 'https://github.com/acme/acme-front/pull/7', checks: { state: 'pending', summary: 'running: build', sha: 'abc' } } });
+    r.git.branches.set(p11.branch as string, { hasWork: true, pr: { state: 'OPEN', url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'pending', summary: 'running: build', sha: 'abc' } } });
     r.fake.failNext(/^POST \/rest\/api\/3\/issue\/PROJ-11\/comment$/, 500, { commit: true });
     await status(r, p11.runSessionId as string, 'idle');
-    expect((await item(r, planId, 'PROJ-11')).prUrl).toBe('https://github.com/acme/acme-front/pull/7');
+    expect((await item(r, planId, 'PROJ-11')).prUrl).toBe('https://git.acme.example/acme/acme-front/pull/7');
     expect(r.fake.issues.get('PROJ-11')?.status).toBe('In Review');
     expect(commentsOf(r, 'PROJ-11')).toHaveLength(1);
     // Retries (any later planChanged) find the marker: no second comment, no second transition.
@@ -378,7 +378,7 @@ describe('D99-Jira · write mode', () => {
       await settle(r);
     }
     expect(commentsOf(r, 'PROJ-11')).toHaveLength(1);
-    expect(commentsOf(r, 'PROJ-11')[0]).toMatch(/^Pull request opened: https:\/\/github\.com\/acme\/acme-front\/pull\/7 \[switchboard:[0-9a-f]+:[0-9a-f]+:pr-comment:https:\/\/github\.com\/acme\/acme-front\/pull\/7\]$/);
+    expect(commentsOf(r, 'PROJ-11')[0]).toMatch(/^Pull request opened: https:\/\/git\.acme\.example\/acme\/acme-front\/pull\/7 \[switchboard:[0-9a-f]+:[0-9a-f]+:pr-comment:https:\/\/git\.acme\.example\/acme\/acme-front\/pull\/7\]$/);
     expect(r.fake.calls(/^POST \/rest\/api\/3\/issue\/PROJ-11\/transitions$/)).toHaveLength(2);
 
     // PROJ-15's agent asks the developer: one comment per question episode.
@@ -393,7 +393,7 @@ describe('D99-Jira · write mode', () => {
     expect(commentsOf(r, 'PROJ-15').filter((text) => text.startsWith('The agent working on this ticket is waiting'))).toHaveLength(2);
 
     // PROJ-11 merges: a comment "Merged into <target>", the ticket stays In Review (Done is the team's).
-    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://github.com/acme/acme-front/pull/7', checks: { state: 'green', summary: null, sha: 'abc' } } });
+    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'green', summary: null, sha: 'abc' } } });
     await status(r, p11.runSessionId as string, 'run');
     await status(r, p11.runSessionId as string, 'idle');
     expect((await item(r, planId, 'PROJ-11')).state).toBe('done');
@@ -418,18 +418,18 @@ describe('D99-Jira · write mode', () => {
     await settle(r);
     // PROJ-12 starts once PROJ-11 is merged; its workflow has no "In Review".
     const p11 = await item(r, planId, 'PROJ-11');
-    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://github.com/acme/acme-front/pull/1', checks: { state: 'green', summary: null, sha: 'a' } } });
+    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://git.acme.example/acme/acme-front/pull/1', checks: { state: 'green', summary: null, sha: 'a' } } });
     await status(r, p11.runSessionId as string, 'idle');
     const p12 = await item(r, planId, 'PROJ-12');
     expect(p12.state).toBe('running');
-    r.git.branches.set(p12.branch as string, { hasWork: true, pr: { state: 'OPEN', url: 'https://github.com/acme/acme-front/pull/2', checks: { state: 'pending', summary: 'running: build', sha: 'b' } } });
+    r.git.branches.set(p12.branch as string, { hasWork: true, pr: { state: 'OPEN', url: 'https://git.acme.example/acme/acme-front/pull/2', checks: { state: 'pending', summary: 'running: build', sha: 'b' } } });
     await status(r, p12.runSessionId as string, 'idle');
     const jira = (await call(r, 'GET', `/api/plans/${planId}/jira`)).body as PlanJiraState;
     const row = jira.items.find((entry) => entry.key === 'PROJ-12');
     expect(row?.syncNote).toBe('no "In Review" transition for PROJ-12 (available: To Do, Done)');
     expect(jira.activity.some((entry) => entry.kind === 'soft-failure' && entry.key === 'PROJ-12')).toBe(true);
     // The rest went on: the comment with the link is there, the item still runs.
-    expect(commentsOf(r, 'PROJ-12').some((text) => text.startsWith('Pull request opened: https://github.com/acme/acme-front/pull/2'))).toBe(true);
+    expect(commentsOf(r, 'PROJ-12').some((text) => text.startsWith('Pull request opened: https://git.acme.example/acme/acme-front/pull/2'))).toBe(true);
     expect((await item(r, planId, 'PROJ-12')).state).toBe('running');
     // Not retried.
     const asked = r.fake.calls(/^GET \/rest\/api\/3\/issue\/PROJ-12\/transitions$/).length;

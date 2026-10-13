@@ -88,7 +88,7 @@ export function JiraCredentialsForm({ onChanged }: JiraCredentialsFormProps) {
           </label>
           <label className="sb-jira-field">
             <span>API token</span>
-            <input data-testid="jira-credentials-token" type="password" autoComplete="off" value={token} placeholder={status.source === 'settings' ? '•••••• (saved; enter a new one to replace it)' : 'id.atlassian.com → Security → API tokens'} onChange={(event) => setToken(event.target.value)} />
+            <input data-testid="jira-credentials-token" type="password" autoComplete="off" value={token} placeholder={status.source === 'settings' ? '•••••• (saved; enter a new one to replace it)' : 'your Atlassian account → Security → API tokens'} onChange={(event) => setToken(event.target.value)} />
             {error?.fields['token'] ? <em className="sb-jira-error">{error.fields['token']}</em> : null}
           </label>
           <div className="sb-jira-actions">

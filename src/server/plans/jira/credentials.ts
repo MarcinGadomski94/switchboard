@@ -109,7 +109,7 @@ export class JiraCredentialSource {
     const email = typeof input['email'] === 'string' ? input['email'].trim() : '';
     if (!/^[^\s@]+@[^\s@]+$/.test(email)) throw new JiraCredentialError(422, 'invalid', 'give the email of the Jira account', 'email');
     const token = typeof input['token'] === 'string' ? input['token'].trim() : '';
-    if (token === '' || token.length > 1_000) throw new JiraCredentialError(422, 'invalid', 'give an API token (id.atlassian.com → Security → API tokens)', 'token');
+    if (token === '' || token.length > 1_000) throw new JiraCredentialError(422, 'invalid', 'give an API token (your Atlassian account → Security → API tokens)', 'token');
     await this.#store.set(JIRA_SECRET_REF, JSON.stringify({ baseUrl, email, token }));
     return this.status();
   }
