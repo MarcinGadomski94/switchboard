@@ -347,9 +347,11 @@ export interface SuggestionEvidence {
   readonly reads: number;
   /** edits / (edits + reads), `null` without either. */
   readonly editRatio: number | null;
+  /** Planning calls (todo lists, plan mode, Switchboard todos and hand-offs); additive, absent from older machines. */
+  readonly planning?: number;
 }
 
-/** One candidate member (`GET /api/team/suggestions`). */
+/** One candidate member (`GET /api/team/suggestions`): only sessions whose evidence matches a template's pattern. */
 export interface TeamSuggestion {
   readonly sessionId: string;
   readonly title: string;

@@ -33,6 +33,7 @@ const RELOAD_MS = 500;
 export function MemberPanel({
   member,
   status,
+  modelText,
   tab,
   onTab,
   focus,
@@ -46,6 +47,8 @@ export function MemberPanel({
 }: {
   readonly member: TeamMember;
   readonly status: TeamMemberStatus;
+  /** The model line ("Sonnet 5.5 · high"; `modelLine` in model.ts). */
+  readonly modelText: string;
   readonly tab: PanelTab;
   readonly onTab: (tab: PanelTab) => void;
   readonly focus: SettingsFocus;
@@ -77,7 +80,7 @@ export function MemberPanel({
   };
   const offline = status === 'offline';
   const meta = STATUS_META[status];
-  const sub = [`from “${member.sessionTitle ?? member.sessionId}”`, member.model ?? 'the session’s model', `runs on ${member.machineName}`, rhythmLine(member), gatesLine(member.gates)];
+  const sub = [`from “${member.sessionTitle ?? member.sessionId}”`, modelText, `runs on ${member.machineName}`, rhythmLine(member), gatesLine(member.gates)];
   return (
     <section className="sb-team-panel" data-testid="team-panel" data-member-id={member.id} data-status={status} aria-label={member.name}>
       {phone ? <BackButton label="Team" testId="team-back" onBack={onBack} /> : null}

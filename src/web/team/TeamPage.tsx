@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SidebarLayout } from '../../core/sidebar-layout.ts';
-import type { TeamMember, TeamSuggestion } from '../../core/team.ts';
+import { DEFAULT_TEAM_NAME, TEAM_NAME_MAX, type TeamMember, type TeamSuggestion } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { openSessions } from '../../core/session-close.ts';
@@ -32,7 +32,7 @@ import { useTeamSwitch } from './hidden.ts';
 import { bannerLaterIds, highlightReturnedRow, setBannerLater } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, memberMenu, needsYouCounts, phoneOrder, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, adoptedToast, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, memberMenu, needsYouCounts, phoneOrder, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
 import { reloadTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
@@ -51,9 +51,9 @@ type Open =
 /**
  * D100 · the Team page (`/team`, `docs/team.md` → *The Team page*): the header (name,
  * "⇄ synced with <PC>", the counts, ＋ Member), the suggestions banner, the member
- * cards, Needs you and Activity on the left, the selected member's panel on the
- * right (tablet: two columns; phone: a list with Needs you first and the panel full
- * screen with "‹ Team"). Shown only while Team is on; otherwise it points to the switch.
+ * cards across the full width, then Needs you and Activity (left) | the selected
+ * member's panel (right); the same on a tablet with a narrower left; a phone shows a
+ * list with Needs you first and the panel full screen with "‹ Team". Shown only while Team is on; otherwise it points to the switch.
  */
 export function TeamPage() {
   const { on } = useTeamSwitch();
@@ -191,6 +191,7 @@ export function TeamPage() {
         return;
     }
   };
+  const modelOf = (member: TeamMember): string => modelLine(sessions.data?.find((session) => session.id === member.sessionRef)?.model, member);
   const moveTargetsOf = (member: TeamMember): { id: string; name: string; online: boolean }[] =>
     [{ id: selfId, name: view?.self.name ?? 'this machine', online: true }, ...peerMachines.map((machine) => ({ id: machine.id, name: machine.name, online: machine.state === 'online' }))].filter((target) => target.id !== member.machineId);
 
@@ -240,9 +241,7 @@ export function TeamPage() {
       {detail ? null : (
         <header className="sb-team-header" data-testid="team-header">
           <div className="sb-team-header__main">
-            <h1 className="sb-team-title" data-testid="team-title">
-              Team · {view?.team.name ?? 'Team'}
-            </h1>
+            <TeamTitle name={view?.team.name ?? DEFAULT_TEAM_NAME} onRenamed={refresh} />
             {peers.length > 0 ? (
               <span className="sb-team-synced" data-testid="team-synced">
                 ⇄ synced with {peers.join(', ')}
@@ -304,6 +303,7 @@ export function TeamPage() {
         <MemberPanel
           member={selected}
           status={cardStatus(selected, counts)}
+          modelText={modelOf(selected)}
           tab={tab}
           onTab={setTab}
           focus={focus}
@@ -329,31 +329,33 @@ export function TeamPage() {
             </>
           ) : (
             <>
-              <div className="sb-team-left">
-                {layout === 'tablet' ? cards : null}
-                <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onChanged={refresh} />
-                <ActivityFeed activity={view?.activity ?? []} members={members} />
+              <div className="sb-team-top">{cards}</div>
+              <div className="sb-team-split" data-testid="team-split">
+                <div className="sb-team-left">
+                  <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onChanged={refresh} />
+                  <ActivityFeed activity={view?.activity ?? []} members={members} />
+                </div>
+                {selected ? (
+                  <MemberPanel
+                    member={selected}
+                    status={cardStatus(selected, counts)}
+                    modelText={modelOf(selected)}
+                    tab={tab}
+                    onTab={setTab}
+                    focus={focus}
+                    composerFocus={composerFocus}
+                    phone={false}
+                    moveTargets={moveTargetsOf(selected)}
+                    onBack={() => setPanelShown(false)}
+                    onMenu={(at) => setMenu({ memberId: selected.id, at })}
+                    onMove={(id) => {
+                      const target = moveTargetsOf(selected).find((t) => t.id === id);
+                      if (target) setOpen({ kind: 'move', memberId: selected.id, target });
+                    }}
+                    onChanged={refresh}
+                  />
+                ) : null}
               </div>
-              {layout === 'desktop' ? <div className="sb-team-middle">{cards}</div> : null}
-              {selected ? (
-                <MemberPanel
-                  member={selected}
-                  status={cardStatus(selected, counts)}
-                  tab={tab}
-                  onTab={setTab}
-                  focus={focus}
-                  composerFocus={composerFocus}
-                  phone={false}
-                  moveTargets={moveTargetsOf(selected)}
-                  onBack={() => setPanelShown(false)}
-                  onMenu={(at) => setMenu({ memberId: selected.id, at })}
-                  onMove={(id) => {
-                    const target = moveTargetsOf(selected).find((t) => t.id === id);
-                    if (target) setOpen({ kind: 'move', memberId: selected.id, target });
-                  }}
-                  onChanged={refresh}
-                />
-              ) : null}
             </>
           )}
         </div>
@@ -434,4 +436,61 @@ export function TeamPage() {
     setTab('chat');
     setComposerFocus((n) => n + 1);
   }
+}
+
+/**
+ * The page title: "Team", or "Team · <name>" once renamed. A click edits the name in
+ * place (`PUT /api/team`); Enter or leaving the field saves, Escape cancels, an empty
+ * name goes back to the default.
+ */
+function TeamTitle({ name, onRenamed }: { readonly name: string; readonly onRenamed: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (value: string): Promise<void> => {
+    const next = value.replace(/\s+/g, ' ').trim() || DEFAULT_TEAM_NAME;
+    setEditing(null);
+    if (next === name) return;
+    try {
+      await teamApi.rename(next);
+      setError(null);
+      onRenamed();
+    } catch (caught) {
+      setError(refusalText(caught));
+    }
+  };
+  if (editing !== null) {
+    return (
+      <span className="sb-team-title-edit">
+        <span className="sb-team-title">Team ·</span>
+        <input
+          className="sb-team-input sb-team-title-input"
+          data-testid="team-title-input"
+          aria-label="Team name"
+          autoFocus
+          maxLength={TEAM_NAME_MAX}
+          value={editing}
+          onChange={(event) => setEditing(event.target.value)}
+          onBlur={() => void save(editing)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') void save(editing);
+            if (event.key === 'Escape') setEditing(null);
+          }}
+        />
+      </span>
+    );
+  }
+  return (
+    <>
+      <h1 className="sb-team-title">
+        <button type="button" className="sb-button sb-team-title-button" data-testid="team-title" title="Rename the team" onClick={() => setEditing(name === DEFAULT_TEAM_NAME ? '' : name)}>
+          {teamTitle(name)}
+        </button>
+      </h1>
+      {error ? (
+        <span className="sb-team-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </>
+  );
 }

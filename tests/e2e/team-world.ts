@@ -25,6 +25,12 @@ export interface TeamWorld extends QuestionWorld {
   adopt(page: Page, sessionId: string, name: string, extra?: Record<string, unknown>): Promise<TeamMember>;
   /** Waits until the session's first turn is over (its status is no longer starting / running). */
   settle(page: Page, sessionId: string): Promise<void>;
+  /**
+   * Gives a session the evidence of a pattern, so the suggestions see it: `turns`
+   * fake-claude turns that each call `tool` (e.g. `Edit` for a developer, `Read`
+   * for a reviewer), one after the other.
+   */
+  pump(page: Page, sessionId: string, tool: string, turns: number): Promise<void>;
 }
 
 /**
@@ -106,6 +112,15 @@ export async function startTeamWorld(label: string, options: { readonly env?: Re
       const answer = await call(page, 'POST', '/api/team/members', { sessionId, name, ...extra });
       expect(answer.status, JSON.stringify(answer.body)).toBe(201);
       return answer.body as TeamMember;
+    },
+    async pump(page: Page, sessionId: string, tool: string, turns: number) {
+      for (let i = 0; i < turns; i++) {
+        const sent = await call(page, 'POST', `/api/sessions/${sessionId}/messages`, { text: `[fake:tool ${tool} {"file_path":"src/f${i}.ts"}] step ${i}` });
+        expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
+        await expect
+          .poll(async () => (await call(page, 'GET', `/api/sessions/${sessionId}`)).body?.status as string, { timeout: 20_000 })
+          .toMatch(/^(idle|done|need)$/);
+      }
     },
     async settle(page: Page, sessionId: string) {
       await expect

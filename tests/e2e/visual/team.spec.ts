@@ -9,7 +9,9 @@ import { canonicalColors, writeReport } from './harness.ts';
  * spec checks the design's rules rather than a pixel diff: the role colour of the
  * sidebar entry, each card's top border by status (working = run blue, needs you =
  * amber, idle = grey, paused / offline dimmed), the layout per size (desktop: three
- * columns; tablet: two; phone: one, Needs you first, the member full screen with
+ * cards across the full width at the top, then Needs you + Activity (330 px) | the
+ * member panel; tablet: the same with a narrower left; phone: one column, Needs you
+ * first, the member full screen with
  * "‹ Team"), the empty state, and no sideways overflow. It runs on the fake world
  * (demo mode never starts Team) and writes `team.md` plus a screenshot per state and
  * size to `test-results/visual/` (and `docs/visual/` with SWITCHBOARD_VISUAL_REPORT=1).
@@ -73,7 +75,7 @@ test('empty state at desktop, tablet and phone', async ({ page }) => {
   lines.push('');
 });
 
-test('populated: desktop three columns, tablet two, phone one with Needs you first', async ({ page }) => {
+test('populated: cards across the top, then Needs you | panel; phone one column with Needs you first', async ({ page }) => {
   await page.setViewportSize(SIZES.desktop);
   await openWithHub(page, `${world.baseUrl}/inbox`);
   await world.setTeam(page, true);
@@ -83,13 +85,21 @@ test('populated: desktop three columns, tablet two, phone one with Needs you fir
   const monitor = await world.startSession(page, 'prod-sweep', 'Reply with just OK.');
   for (const s of [tracker, asker, builder, monitor]) await world.settle(page, s.id);
   await world.call(page, 'PUT', `/api/sessions/${tracker.id}/title`, { title: 'PROJ-123 board' });
+  // Two sessions with a pattern (edit-heavy; a loop and reading); the other two have too little signal.
+  test.setTimeout(120_000);
+  await world.pump(page, builder.id, 'Edit', 14);
+  expect((await world.call(page, 'POST', `/api/sessions/${monitor.id}/loops`, { prompt: 'Sweep production logs.', everyMinutes: 60, label: 'Production sweep' })).status).toBe(201);
+  await world.pump(page, monitor.id, 'Read', 14);
 
   // The review and the Adopt form, before anything is adopted.
   await page.goto(`${world.baseUrl}/team`);
-  await expect(page.getByTestId('team-banner')).toContainText('Switchboard found 4 sessions that look like team members.');
+  await expect(page.getByTestId('team-banner')).toContainText('Switchboard found 2 sessions that look like team members.');
   await page.getByTestId('team-banner-review').click();
   const review = page.getByTestId('team-review-dialog');
-  await expect(review.getByTestId('team-suggestion')).toHaveCount(4);
+  await expect(review.getByTestId('team-suggestion')).toHaveCount(2);
+  await expect(review.locator(`[data-testid="team-suggestion"][data-session-id="${builder.id}"]`)).toContainText('Developer');
+  await expect(review.locator(`[data-testid="team-suggestion"][data-session-id="${monitor.id}"]`)).toContainText('On-call / Production monitoring');
+  for (const quiet of [tracker, asker]) await expect(review.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity to tell');
   await expect(review.getByTestId('team-suggestion-draft').first()).toContainText('Draft charter · owns');
   await expect(review.locator('[data-testid="team-confidence"][data-confidence="new"]').first()).toHaveText('new member');
   expect(await color(page, '[data-testid="team-confidence"][data-confidence="new"]', 'color')).toBe((await canonicalColors(page, ['oklch(0.78 0.09 300)']))[0]);
@@ -131,23 +141,41 @@ test('populated: desktop three columns, tablet two, phone one with Needs you fir
   expect(await color(page, '[data-testid="team-card"][data-status="working"]', 'border-top-width')).toBe('3px');
   lines.push(`- card top borders: working ${run}, needs you ${need}, idle ${idle}, paused / offline ${control} dimmed`);
 
-  // Desktop: header, banner-free (all adopted), three columns.
-  await expect(page.getByTestId('team-title')).toHaveText('Team · Team');
+  // Desktop: header, banner-free (all adopted); the cards across the full width, then Needs you | panel.
+  await expect(page.getByTestId('team-title')).toHaveText('Team');
+  await expect(page.getByTestId('sidebar-team').locator('.sb-team-entry__text')).toHaveText('Team · 4 members');
   await expect(page.getByTestId('team-counts')).toContainText('4 members · 1 working');
   await page.locator('[data-testid="team-card"]').filter({ hasText: 'Release manager' }).click();
   await expect(page.getByTestId('team-chat').getByTestId('chat-message').first()).toBeVisible({ timeout: 20_000 });
-  const columns = await page.getByTestId('team-body').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-  expect(columns).toBe(3);
+  const geometry = async () =>
+    page.evaluate(() => {
+      const box = (id: string) => document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect() ?? null;
+      const split = document.querySelector('[data-testid="team-split"]') as HTMLElement;
+      return { main: box('team-body'), cards: box('team-cards'), split: box('team-split'), panel: box('team-panel'), needs: box('team-needs-you'), columns: getComputedStyle(split).gridTemplateColumns.split(' ') };
+    });
+  const desk = await geometry();
+  expect(desk.columns.length).toBe(2);
+  expect(desk.columns[0]).toBe('330px');
+  // The cards span the page's width above the split (the grid's own padding aside).
+  expect(desk.cards!.width).toBeGreaterThan(desk.main!.width - 60);
+  expect(desk.cards!.bottom).toBeLessThanOrEqual(desk.split!.top + 1);
+  expect(desk.needs!.left).toBeLessThan(desk.panel!.left);
+  expect(Math.round(desk.panel!.bottom)).toBe(Math.round(desk.split!.bottom));
+  const cardCols = await page.getByTestId('team-cards').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  expect(cardCols).toBeGreaterThanOrEqual(4);
+  expect(await color(page, '[data-testid="team-panel-sub"]', 'color')).toBeTruthy();
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
-  lines.push(`- desktop: ${columns} columns (Needs you + Activity | cards | member panel)`);
+  lines.push(`- desktop: the cards across the full width (${cardCols} per row), then Needs you + Activity (${desk.columns[0]}) | the member panel to the bottom`);
   await shoot(page, 'team-populated-desktop.png');
 
   await page.setViewportSize(SIZES.tablet);
   await expect(page.getByTestId('view-team')).toHaveAttribute('data-layout', 'tablet');
-  const tabletColumns = await page.getByTestId('team-body').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-  expect(tabletColumns).toBe(2);
+  const tab = await geometry();
+  expect(tab.columns.length).toBe(2);
+  expect(tab.columns[0]).toBe('260px');
+  expect(tab.cards!.bottom).toBeLessThanOrEqual(tab.split!.top + 1);
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
-  lines.push(`- tablet: ${tabletColumns} columns (cards, Needs you, Activity | member panel)`);
+  lines.push(`- tablet: the cards wrap across the top, then Needs you + Activity (${tab.columns[0]}) | the member panel`);
   await shoot(page, 'team-populated-tablet.png');
 
   await page.setViewportSize(SIZES.phone);

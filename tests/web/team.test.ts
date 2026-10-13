@@ -19,6 +19,9 @@ import {
   headerCounts,
   idleLine,
   memberMenu,
+  modelLine,
+  sidebarTeamText,
+  teamTitle,
   needsYouCounts,
   needsYouShape,
   newMemberSession,
@@ -109,6 +112,19 @@ describe('D100 · Team page: status and counts', () => {
     expect(phoneOrder(members, needsYouCounts([need('items')])).map((m) => m.id)).toEqual(['wait', 'items', 'work', 'idle', 'paused', 'off']);
   });
 
+  it('titles the team "Team" until it is renamed, and names the model when known', () => {
+    expect(teamTitle('Team')).toBe('Team');
+    expect(teamTitle('Acme')).toBe('Team · Acme');
+    expect(sidebarTeamText('Team', 4)).toBe('Team · 4 members');
+    expect(sidebarTeamText('Acme', 1)).toBe('Team · Acme · 1 member');
+    const available = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'default', label: 'Default (recommended)' }];
+    expect(modelLine({ current: 'sonnet', effort: 'high', available }, member({ id: 'a' }))).toBe('Sonnet 5.5 · high');
+    expect(modelLine({ current: 'claude-x', effort: null, available }, member({ id: 'a' }))).toBe('claude-x');
+    expect(modelLine({ current: null, effort: null, available }, member({ id: 'a', model: 'sonnet', effort: 'low' }))).toBe('Sonnet 5.5 · low');
+    expect(modelLine(null, member({ id: 'a' }))).toBe('the session’s model');
+    expect(modelLine({ current: 'default', effort: null, available }, member({ id: 'a' }))).toBe('the session’s model');
+  });
+
   it('writes the work line, budget and rhythm', () => {
     expect(idleLine(member({ id: 'a', status: 'offline', machineName: 'Windows PC' }), null)).toBe('Windows PC is not reachable');
     expect(idleLine(member({ id: 'a', status: 'paused', pausedBy: 'budget' }), null)).toBe('Paused: over its daily budget');
@@ -150,9 +166,10 @@ describe('D100 · Team page: suggestions', () => {
   });
 
   it('splits suggestions from the not-suggested sessions with their reasons', () => {
-    const list = [suggestion({ sessionId: 'a' }), suggestion({ sessionId: 'quiet', evidence: { repos: 1, loops: 0, cliLoops: 0, events7d: 0, edits: 0, reads: 0, editRatio: null } }), suggestion({ sessionId: 'gone' }), suggestion({ sessionId: 'm' })];
+    const list = [suggestion({ sessionId: 'a' }), suggestion({ sessionId: 'gone' }), suggestion({ sessionId: 'm' })];
     const sessions = [
       { id: 'a', title: 'A', hooked: false, attached: true, machineName: null },
+      { id: 'quiet', title: 'Quiet', hooked: false, attached: true, machineName: null },
       { id: 'hooked', title: 'Hooked', hooked: true, attached: true, machineName: null },
       { id: 'term', title: 'Term', hooked: false, attached: false, machineName: null },
       { id: 'r~pc~1', title: 'Remote', hooked: false, attached: true, machineName: 'Windows PC' },
@@ -160,8 +177,8 @@ describe('D100 · Team page: suggestions', () => {
     const split = splitSuggestions(list, sessions, { dismissed: new Set(['gone']), members: new Set(['m']) });
     expect(split.suggested.map((s) => s.sessionId)).toEqual(['a']);
     expect(split.notSuggested.map((n) => [n.sessionId, n.reason, n.adoptable])).toEqual([
-      ['quiet', 'No activity in the last 7 days', true],
       ['gone', 'Dismissed', true],
+      ['quiet', 'too little activity to tell', true],
       ['hooked', 'A hooked terminal session: continue it in Switchboard first', false],
       ['term', 'It continues in a terminal: attach it here first', false],
       ['r~pc~1', 'Runs on Windows PC: its own machine suggests it', true],

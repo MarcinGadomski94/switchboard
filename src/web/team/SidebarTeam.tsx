@@ -1,6 +1,6 @@
 import { Link, useRouter } from '../router.tsx';
 import { useTeamSwitch } from './hidden.ts';
-import { membersLabel, needsYouCounts, needsYou } from './model.ts';
+import { needsYouCounts, needsYou, sidebarTeamText } from './model.ts';
 import { useTeamData } from './useTeamData.ts';
 import './team.css';
 
@@ -34,7 +34,7 @@ export function TeamNavItem() {
   );
 }
 
-/** "⚑ Team · <name> · N members" above SESSIONS (only while Team is on). */
+/** "⚑ Team · N members" (with the name once renamed: "⚑ Team · <name> · N members") above SESSIONS, only while Team is on. */
 export function TeamSidebarEntry() {
   const { on } = useTeamSwitch();
   const { route } = useRouter();
@@ -49,7 +49,7 @@ export function TeamSidebarEntry() {
         ⚑
       </span>
       <span className="sb-team-entry__text">
-        Team · <span data-testid="sidebar-team-name">{name}</span> · <span data-testid="sidebar-team-members">{membersLabel(members)}</span>
+        {sidebarTeamText(name, members)}
       </span>
       {count ? (
         <span className="sb-team-entry__need" data-testid="sidebar-team-need" title={`${count} need${count === 1 ? 's' : ''} you`}>

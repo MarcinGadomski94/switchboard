@@ -1,7 +1,10 @@
+import type { SessionModelOption } from '../../core/api.ts';
+import { modelLabel } from '../../core/model-choice.ts';
 import type { Machine } from '../../core/peers.ts';
 import type { SidebarLayout } from '../../core/sidebar-layout.ts';
 import {
   ALWAYS_ON_GATE,
+  DEFAULT_TEAM_NAME,
   GATE_KINDS,
   GATE_LABELS,
   TEAM_NAME_MAX,
@@ -33,6 +36,28 @@ export const STATUS_META: Readonly<Record<TeamMemberStatus, { readonly icon: str
   paused: { icon: '⏸', label: 'Paused' },
   offline: { icon: '⌁', label: 'Offline' },
 };
+
+/** The page's title: "Team", or "Team · <name>" once the developer renamed it. */
+export function teamTitle(name: string): string {
+  return name === DEFAULT_TEAM_NAME ? 'Team' : `Team · ${name}`;
+}
+
+/** The sidebar entry: "Team · 4 members", or "Team · <name> · 4 members" once renamed. */
+export function sidebarTeamText(name: string, members: number): string {
+  return `${teamTitle(name)} · ${membersLabel(members)}`;
+}
+
+/**
+ * The member panel's model: the session's model and effort as the CLI names them
+ * ("Sonnet 5.5 · high"), else the model recorded on the member, else "the session's model".
+ */
+export function modelLine(session: { readonly current: string | null; readonly effort: string | null; readonly available: readonly SessionModelOption[] | null } | null | undefined, member: Pick<TeamMember, 'model' | 'effort'>): string {
+  const value = session?.current ?? member.model;
+  if (!value || value === 'default') return 'the session’s model';
+  const label = modelLabel(session?.available ?? null, value).replace(/\s*\([^)]*\)\s*$/, '').trim() || value;
+  const effort = session?.effort ?? member.effort;
+  return effort ? `${label} · ${effort}` : label;
+}
 
 /** "1 member" / "3 members". */
 export function membersLabel(count: number): string {
@@ -175,6 +200,9 @@ export function evidenceLine(suggestion: Pick<TeamSuggestion, 'reason' | 'eviden
   return `${suggestion.reason} (${counts.join(', ')})`;
 }
 
+/** Why an ordinary session is not suggested. */
+export const TOO_LITTLE = 'too little activity to tell';
+
 /** A session that is not suggested, and why. */
 export interface NotSuggested {
   readonly sessionId: string;
@@ -195,10 +223,10 @@ export interface SessionLike {
 }
 
 /**
- * The review's two lists: the suggestions worth showing (in the server's order, the
- * dismissed ones left out), and "Not suggested": the dismissed ones, the ones with no
- * activity at all, and the open sessions the server left out (hooked, in a terminal,
- * on another machine). Members are in neither.
+ * The review's two lists: the suggestions (in the server's order, the dismissed ones
+ * left out), and "Not suggested": the dismissed ones and the open sessions the server
+ * left out: hooked, in a terminal, on another machine, or with too little activity to
+ * tell (the server suggests only evidence that matches a template). Members are in neither.
  */
 export function splitSuggestions(
   suggestions: readonly TeamSuggestion[],
@@ -211,9 +239,7 @@ export function splitSuggestions(
   for (const suggestion of suggestions) {
     seen.add(suggestion.sessionId);
     if (options.members.has(suggestion.sessionId)) continue;
-    const quiet = suggestion.evidence.events7d === 0 && suggestion.evidence.loops === 0 && suggestion.evidence.cliLoops === 0;
     if (options.dismissed.has(suggestion.sessionId)) notSuggested.push({ sessionId: suggestion.sessionId, title: suggestion.title, reason: 'Dismissed', adoptable: true });
-    else if (quiet) notSuggested.push({ sessionId: suggestion.sessionId, title: suggestion.title, reason: 'No activity in the last 7 days', adoptable: true });
     else suggested.push(suggestion);
   }
   for (const session of sessions) {
@@ -221,6 +247,8 @@ export function splitSuggestions(
     if (session.hooked) notSuggested.push({ sessionId: session.id, title: session.title, reason: 'A hooked terminal session: continue it in Switchboard first', adoptable: false });
     else if (!session.attached) notSuggested.push({ sessionId: session.id, title: session.title, reason: 'It continues in a terminal: attach it here first', adoptable: false });
     else if (session.machineName) notSuggested.push({ sessionId: session.id, title: session.title, reason: `Runs on ${session.machineName}: its own machine suggests it`, adoptable: true });
+    // The server suggests only sessions whose evidence matches a template's pattern; the rest carry too little signal.
+    else notSuggested.push({ sessionId: session.id, title: session.title, reason: TOO_LITTLE, adoptable: true });
   }
   return { suggested, notSuggested };
 }

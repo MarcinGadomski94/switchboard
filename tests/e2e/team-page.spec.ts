@@ -49,12 +49,24 @@ test('the switch: off = no Team nav or sidebar entry; on = both appear', async (
   await toggle.click();
   await expect(toggle).toHaveText('on');
   await expect(page.getByTestId('nav-team')).toBeVisible();
-  await expect(page.getByTestId('sidebar-team')).toContainText('Team · Team · 0 members');
+  await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Team · 0 members');
 
   await page.getByTestId('nav-team').click();
   await expect(page).toHaveURL(/\/team$/);
   await expect(page.getByTestId('team-empty')).toContainText('No team members yet');
   await expect(page.getByTestId('team-empty')).toContainText('Adopt one of your sessions, or start a new member from a template.');
+
+  // The default name shows once ("Team"); a rename shows "Team · <name>" here and in the sidebar.
+  await expect(page.getByTestId('team-title')).toHaveText('Team');
+  await page.getByTestId('team-title').click();
+  await page.getByTestId('team-title-input').fill('Acme');
+  await page.getByTestId('team-title-input').press('Enter');
+  await expect(page.getByTestId('team-title')).toHaveText('Team · Acme');
+  await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Team · Acme · 0 members');
+  await page.getByTestId('team-title').click();
+  await page.getByTestId('team-title-input').fill('');
+  await page.getByTestId('team-title-input').press('Enter');
+  await expect(page.getByTestId('team-title')).toHaveText('Team');
 });
 
 test('review → adopt: the session leaves the list, its card appears, the chat works; Return puts it back in its folder', async ({ page }) => {
@@ -63,6 +75,10 @@ test('review → adopt: the session leaves the list, its card appears, the chat 
   const session = await world.startSession(page, 'board-watch', 'Reply with just OK.');
   await world.settle(page, session.id);
   await world.call(page, 'PUT', `/api/sessions/${session.id}/title`, { title: 'Board watch' });
+  // Edit-heavy work, so the suggestions see a developer; a quiet session is not suggested.
+  await world.pump(page, session.id, 'Edit', 14);
+  const quiet = await world.startSession(page, 'quiet-chat', 'Reply with just OK.');
+  await world.settle(page, quiet.id);
   const folderId = await world.placeInFolder(page, session.id, 'Work');
   await expect(row(page, session.id)).toBeVisible();
 
@@ -74,6 +90,10 @@ test('review → adopt: the session leaves the list, its card appears, the chat 
   await expect(suggestion).toContainText('← “Board watch”');
   await expect(suggestion.getByTestId('team-confidence')).toBeVisible();
   await expect(suggestion.getByTestId('team-suggestion-draft')).toContainText('Draft charter · owns');
+  await expect(suggestion).toContainText('Developer');
+  await expect(suggestion).toContainText('file tool calls edit: looks like implementation.');
+  await expect(dialog.getByTestId('team-suggestion')).toHaveCount(1);
+  await expect(dialog.locator(`[data-testid="team-not-suggested-row"][data-session-id="${quiet.id}"]`)).toContainText('too little activity to tell');
   await suggestion.getByTestId('team-suggestion-adopt').click();
 
   const form = page.getByTestId('team-form-dialog');
