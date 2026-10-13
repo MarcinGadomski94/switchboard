@@ -4,6 +4,9 @@ import {
   DEFAULT_ACCOUNT_SETTINGS,
   type ProfileSnapshot,
   accountSwitchLabel,
+  allowanceBackAt,
+  canUseCredits,
+  creditsPause,
   decideAccountSwitch,
   defaultProfileId,
   exhaustedUntil,
@@ -192,5 +195,72 @@ describe('D63 · new sessions and settings', () => {
     expect(sessionProfileId({ provider: 'claude', profileId: 'x' })).toBe('x');
     expect(defaultProfileId('opencode')).toBe('default-opencode');
     expect(accountSwitchLabel('Work', 'Private', 'session limit, resets 14:05')).toBe('Switched account: Work → Private (session limit, resets 14:05)');
+  });
+});
+
+describe('D103 · prefer subscription allowance over credits', () => {
+  const credits = (on: boolean, resetsIn = 2 * HOUR): NonNullable<ProfileSnapshot['usage']>['credits'] => ({
+    onCredits: on,
+    until: on ? new Date(now + resetsIn).toISOString() : null,
+    enabled: true,
+    currency: 'EUR',
+    limit: 50,
+    used: 37.6,
+    left: 12.4,
+    resetsAt: null,
+    limitReached: false,
+    at: new Date(now).toISOString(),
+  });
+  // Acme Work: weekly at 100 % and still answering, paid from credits. Acme Private: its 5-hour window at 100 %, no credits.
+  const work = profile('work', 0, { usage: { ...(usage(20, 100) as object), credits: credits(true) } as ProfileSnapshot['usage'] });
+  const privateOut = profile('private', 1, { usage: usage(100, 40) });
+  const privateBack = profile('private', 1, { usage: usage(3, 40) });
+
+  it('an account on credits has no allowance; it can take work at cost', () => {
+    expect(canUseCredits(work, now)).toBe(true);
+    expect(canUseCredits(privateOut, now)).toBe(false);
+    expect(canUseCredits({ ...work, exhaustedUntil: new Date(now + HOUR).toISOString() }, now)).toBe(false);
+    expect(allowanceBackAt(work, now)).toBe(new Date(now + 2 * HOUR).toISOString());
+    expect(allowanceBackAt(privateBack, now)).toBeNull();
+  });
+
+  it('new sessions prefer any account with allowance; none: the one on credits ("use credits"), or none ("pause")', () => {
+    expect(pickProfileForNewSession(settings(), 'claude', [work, privateBack], now)).toBe('private');
+    expect(pickProfileForNewSession(settings(), 'claude', [privateOut, { ...work, position: 1 }], now)).toBe('work');
+    expect(pickProfileForNewSession(settings({ outOfAllowance: 'pause' }), 'claude', [work, privateOut], now)).toBeNull();
+  });
+
+  it('the switcher prefers allowance over credits: a limit error goes to an account with allowance, else to one on credits', () => {
+    const hit = { ...base, currentId: 'private', trigger: limit, settings: settings() };
+    expect(decideAccountSwitch({ ...hit, profiles: [work, privateOut, profile('spare', 2, { usage: usage(10, 10) })] })).toMatchObject({ action: 'switch', to: 'spare' });
+    const paid = decideAccountSwitch({ ...hit, profiles: [work, privateOut] });
+    expect(paid).toMatchObject({ action: 'switch', to: 'work', mark: { profileId: 'private' } });
+    expect(paid.reason).toContain('using credits on WORK');
+    // "pause": no switch to credits; the every-account rule as before.
+    expect(decideAccountSwitch({ ...hit, profiles: [work, privateOut], settings: settings({ outOfAllowance: 'pause' }) })).toMatchObject({ action: 'exhausted' });
+  });
+
+  it('a reset moves a session on credits back to an account with allowance at the turn boundary, never mid-turn', () => {
+    const input = { ...base, currentId: 'work', trigger: { kind: 'threshold' as const }, settings: settings({ thresholds: { enabled: false, fiveHourPct: 98, weeklyPct: 98 } }) };
+    expect(decideAccountSwitch({ ...input, profiles: [work, privateBack], idle: false })).toMatchObject({ action: 'none', reason: 'a turn is running: moving off credits when it ends' });
+    expect(decideAccountSwitch({ ...input, profiles: [work, privateBack], idle: true })).toEqual({ action: 'switch', to: 'private', reason: 'moved off credits: PRIVATE has allowance again' });
+    // Pinned, or within the cooldown: stays.
+    expect(decideAccountSwitch({ ...input, profiles: [work, privateBack], pinned: true })).toMatchObject({ action: 'none' });
+    expect(decideAccountSwitch({ ...input, profiles: [work, privateBack], lastSwitchAt: now - 1000 })).toMatchObject({ action: 'none', reason: 'cooldown after the last switch' });
+  });
+
+  it('all out: a session stays on credits by default', () => {
+    const input = { ...base, currentId: 'work', trigger: { kind: 'threshold' as const }, settings: settings() };
+    expect(decideAccountSwitch({ ...input, profiles: [work, privateOut] })).toMatchObject({ action: 'none', reason: 'no account has allowance: staying on credits' });
+    expect(creditsPause(settings(), 'claude', [work, privateOut], now)).toBe(false);
+  });
+
+  it('"pause new turns": paused while no account has allowance, until the first one is back; not with one that has allowance', () => {
+    const pause = settings({ outOfAllowance: 'pause' });
+    expect(creditsPause(pause, 'claude', [work, profile('private', 1, { usage: usage(100, 40, HOUR) })], now)).toEqual({ until: new Date(now + HOUR).toISOString(), name: 'PRIVATE' });
+    expect(creditsPause(pause, 'claude', [work, privateBack], now)).toBe(false);
+    expect(creditsPause({ ...pause, enabled: false }, 'claude', [work, privateOut], now)).toBe(false);
+    expect(readAccountSettings({ outOfAllowance: 'pause' }).outOfAllowance).toBe('pause');
+    expect(readAccountSettings({ outOfAllowance: 'x' }).outOfAllowance).toBe('use-credits');
   });
 });

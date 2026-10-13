@@ -16,6 +16,7 @@ import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AccountProfile, AccountSettings } from './accounts.ts';
 import type { PeerOnlyAccount } from './shared-accounts.ts';
+import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { UpdateStatus } from './updates.ts';
@@ -2133,6 +2134,8 @@ export interface ActiveAccount {
   readonly profileId: string;
   /** The profile's name (`Default`, `Work`). */
   readonly name: string;
+  /** Additive (D103): its credit state (the footer grid's single line), omitted while nothing is known. */
+  readonly credits?: AccountCredits;
 }
 
 /** Additive (D63): one profile's usage in `SystemInfo.accountUsage`. */
@@ -2161,6 +2164,12 @@ export interface AccountUsageRow {
   readonly machines?: readonly string[];
   /** Additive (D98): `windows` are a paired machine's newer reading (its name): the footer shows them, not `usageWindows`. */
   readonly windowsFrom?: string;
+  /**
+   * Additive (D103, `docs/usage.md` → *Credits*): the account's credit state (on
+   * credits, limit / used / left in its currency, the period's reset); omitted
+   * while nothing is known about its credits.
+   */
+  readonly credits?: AccountCredits;
 }
 
 /** Additive (D66): one usage window of a profile in {@link AccountUsageRow.windows}. */

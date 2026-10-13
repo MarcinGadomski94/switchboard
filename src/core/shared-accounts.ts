@@ -14,6 +14,7 @@
  */
 import type { ProfileExhausted, ProfileSignIn, ProfileUsage } from './accounts.ts';
 import { type CliProviderId, isCliProviderId } from './cli-providers.ts';
+import { readAccountCredits } from './credits.ts';
 
 /** The version of {@link SharedAccountsMessage}. */
 export const SHARED_ACCOUNTS_VERSION = 1;
@@ -99,6 +100,8 @@ function readUsage(value: unknown): ProfileUsage | null {
     sevenDayPct: num(o['sevenDayPct']),
     sevenDayResetsAt: str(o['sevenDayResetsAt']),
     receivedAt: str(o['receivedAt']),
+    // D103: the credit state travels with the reading (the newest reading wins, so its credits do too).
+    ...(o['credits'] !== undefined ? { credits: readAccountCredits(o['credits']) } : {}),
   };
 }
 

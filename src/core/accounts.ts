@@ -5,6 +5,7 @@
  * switch decision. No I/O; the clock is passed in.
  */
 import { type CliProviderId, isCliProviderId } from './cli-providers.ts';
+import { type AccountCredits, creditsInUse, creditsUsable } from './credits.ts';
 
 /** The id of a CLI's built-in "Default" profile (the developer's own login, no config-dir override). */
 export function defaultProfileId(cli: CliProviderId): string {
@@ -27,6 +28,12 @@ export interface ProfileUsage {
   readonly sevenDayResetsAt: string | null;
   /** When the reading was taken (ISO). */
   readonly receivedAt: string | null;
+  /**
+   * Additive (D103, `docs/accounts.md` → *Credits*): the account's credit state
+   * (on credits, credit limit / used / left, the period's reset), read from the
+   * same readings; omitted / `null` while nothing is known about credits.
+   */
+  readonly credits?: AccountCredits | null;
 }
 
 /** Why a profile is out of allowance (until `until`). */
@@ -94,6 +101,13 @@ export type NewSessionRule = 'first-with-allowance' | 'fixed';
 /** After a reset: go back to the first profile, or stay where the session is. */
 export type AfterReset = 'back-to-first' | 'stay';
 
+/**
+ * D103: when no account of a CLI has subscription allowance left: keep working on
+ * an account that pays from credits (default), or pause new turns until an
+ * account resets.
+ */
+export type OutOfAllowance = 'use-credits' | 'pause';
+
 /** Settings → Accounts → rules (`GET/PUT /api/accounts/settings`). */
 export interface AccountSettings {
   /** Master toggle. */
@@ -107,6 +121,8 @@ export interface AccountSettings {
   readonly exhausted: { readonly action: ExhaustedAction; readonly cli: CliProviderId | null };
   /** No threshold / reset switch of a session within this many seconds of its last switch. */
   readonly cooldownSeconds: number;
+  /** D103: "When every account is out of allowance" (Settings → Accounts). */
+  readonly outOfAllowance: OutOfAllowance;
 }
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
@@ -117,6 +133,7 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   newSessions: { rule: 'first-with-allowance', fixed: {} },
   exhausted: { action: 'notify', cli: null },
   cooldownSeconds: 120,
+  outOfAllowance: 'use-credits',
 };
 
 function pct(value: unknown, fallback: number): number {
@@ -155,6 +172,7 @@ export function readAccountSettings(value: unknown): AccountSettings {
       cli: isCliProviderId(exhausted['cli']) ? exhausted['cli'] : null,
     },
     cooldownSeconds: typeof cooldown === 'number' && Number.isFinite(cooldown) ? Math.max(0, Math.min(3600, Math.round(cooldown))) : d.cooldownSeconds,
+    outOfAllowance: o['outOfAllowance'] === 'pause' || o['outOfAllowance'] === 'use-credits' ? o['outOfAllowance'] : d.outOfAllowance,
   };
 }
 
@@ -333,6 +351,63 @@ function firstWithAllowance(profiles: readonly ProfileSnapshot[], settings: Acco
   return ordered.find((p) => hasAllowance(p, settings, 'threshold', now)) ?? ordered.find((p) => hasAllowance(p, settings, 'hard', now)) ?? null;
 }
 
+/** D103: the profile runs on credits now (a plan window at its limit, requests paid from credits). */
+export function onCredits(profile: Pick<ProfileSnapshot, 'usage'>, now: number): boolean {
+  return creditsInUse(profile.usage?.credits, now);
+}
+
+/**
+ * D103: `true` when the profile can take work **at cost**: enabled, not signed
+ * out, not known spent, and paying from credits (or able to: credits on, their
+ * limit not reached). An account with allowance is always preferred to one of these.
+ */
+export function canUseCredits(profile: ProfileSnapshot, now: number): boolean {
+  if (!profile.enabled || profile.signedIn === false) return false;
+  if (profile.exhaustedUntil && Date.parse(profile.exhaustedUntil) > now) return false;
+  return creditsUsable(profile.usage?.credits, now);
+}
+
+/** D103: the first profile (priority order) that can take work from credits. */
+function firstOnCredits(profiles: readonly ProfileSnapshot[], now: number, skip: string | null): ProfileSnapshot | null {
+  return [...profiles].filter((p) => p.id !== skip).sort((a, b) => a.position - b.position).find((p) => canUseCredits(p, now)) ?? null;
+}
+
+/**
+ * D103: when a profile has allowance again at the earliest (ISO): `null` when it
+ * has allowance now. The later of its spent mark and its full windows' resets;
+ * `null` too when that is not known.
+ */
+export function allowanceBackAt(profile: ProfileSnapshot, now: number): string | null {
+  const ahead = (iso: string | null | undefined): number | null => {
+    const ms = iso ? Date.parse(iso) : Number.NaN;
+    return Number.isFinite(ms) && ms > now ? ms : null;
+  };
+  const times = [ahead(profile.exhaustedUntil)];
+  const usage = profile.usage;
+  if (usage?.fiveHourPct !== null && usage?.fiveHourPct !== undefined && usage.fiveHourPct >= 100) times.push(ahead(usage.fiveHourResetsAt));
+  if (usage?.sevenDayPct !== null && usage?.sevenDayPct !== undefined && usage.sevenDayPct >= 100) times.push(ahead(usage.sevenDayResetsAt));
+  const known = times.filter((t): t is number => t !== null);
+  return known.length > 0 ? new Date(Math.max(...known)).toISOString() : null;
+}
+
+/**
+ * D103 "pause new turns": the setting is `pause`, automatic switching is on for
+ * the CLI and no enabled profile of it has allowance (here or, D98, by a paired
+ * machine's reading). Returns the earliest time one is back (`null` when unknown),
+ * or `false` when new turns may run.
+ */
+export function creditsPause(settings: AccountSettings, cli: CliProviderId, profiles: readonly ProfileSnapshot[], now: number): { readonly until: string | null; readonly name: string | null } | false {
+  if (settings.outOfAllowance !== 'pause' || !settings.enabled || !settings.perCli[cli]) return false;
+  const enabled = profiles.filter((p) => p.enabled && p.signedIn !== false);
+  if (enabled.length === 0 || enabled.some((p) => hasAllowance(p, settings, 'hard', now))) return false;
+  let best: { until: string | null; name: string | null } = { until: null, name: null };
+  for (const p of enabled) {
+    const back = allowanceBackAt(p, now);
+    if (back !== null && (best.until === null || Date.parse(back) < Date.parse(best.until))) best = { until: back, name: p.name };
+  }
+  return best;
+}
+
 /** The profile a new session of `cli` starts on (`null` = none has allowance: the caller uses the Default / first enabled). */
 export function pickProfileForNewSession(settings: AccountSettings, cli: CliProviderId, profiles: readonly ProfileSnapshot[], now: number): string | null {
   const fixed = settings.newSessions.rule === 'fixed' ? settings.newSessions.fixed[cli] : undefined;
@@ -341,7 +416,8 @@ export function pickProfileForNewSession(settings: AccountSettings, cli: CliProv
     if (chosen) return chosen.id;
   }
   if (!settings.enabled || !settings.perCli[cli]) return null;
-  return firstWithAllowance(profiles, settings, now, null)?.id ?? null;
+  // D103: an account with allowance first; none: one that pays from credits (unless new turns pause instead).
+  return firstWithAllowance(profiles, settings, now, null)?.id ?? (settings.outOfAllowance === 'use-credits' ? firstOnCredits(profiles, now, null)?.id ?? null : null);
 }
 
 /**
@@ -380,6 +456,9 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
     if (settings.exhausted.action === 'switch-cli' && settings.exhausted.cli && settings.exhausted.cli !== cli) {
       return { action: 'switch-cli', toCli: settings.exhausted.cli, reason: `every ${cli} account is out of usage (${label})`, ...(mark ? { mark } : {}) };
     }
+    // D103: no account has allowance: one that pays from credits takes the session ("use credits", the default).
+    const paid = settings.outOfAllowance === 'use-credits' ? firstOnCredits(view, now, input.currentId) : null;
+    if (paid) return { action: 'switch', to: paid.id, reason: `${label}; no account has allowance, using credits on ${paid.name}`, ...(mark ? { mark } : {}) };
     return { action: 'exhausted', reason: `every account is out of usage (${label})`, ...(mark ? { mark } : {}) };
   }
 
@@ -392,6 +471,14 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
       const target = firstWithAllowance(view, settings, now, current.id);
       if (!target) return none('no other account has allowance');
       return { action: 'switch', to: target.id, reason: `out of usage until ${clock(current.exhaustedUntil, new Date(now))}` };
+    }
+    // D103: the current account pays from credits: back to an account with allowance as soon as one has it,
+    // at a turn boundary only (never mid-turn), also with early switching off; none: stay on credits.
+    if (onCredits(current, now)) {
+      const target = firstWithAllowance(view, settings, now, current.id);
+      if (!target) return none('no account has allowance: staying on credits');
+      if (!input.idle) return none('a turn is running: moving off credits when it ends');
+      return { action: 'switch', to: target.id, reason: `moved off credits: ${target.name} has allowance again` };
     }
     if (!settings.thresholds.enabled) return none('early switching is off');
     if (hasAllowance(current, settings, 'threshold', now)) return none('under the thresholds');
