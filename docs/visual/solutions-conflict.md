@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.61%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.95%**.
 Known data differences: the header meta (see `solutions.md`) and the sidebar's other badges, rows and footer (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-conflict-side-by-side.png` (view), `solutions-conflict-page-side-by-side.png` (page).
@@ -15,8 +15,6 @@ Geometry: `box` = x, y, width, height. Styles compared: color, background-color,
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
-| navSolutions | box | 10,124 235×31 | 10,124 235×31 | ok | "Solutions1 conflict" |
-| navSolutionsBadge | box | 157,131.5 80×16 | 157,131.5 80×16 | ok | "1 conflict" |
 | mobileRow | box | 268,348 819×86 | 268,348 819×86 | ok | "mobile⚠ shared working tree⎇ feature/free-talk-360mobile-wt-free-talk-featurefree-talk-fe |
 | mobileName | box | 293,375.5 132.3×17 | 293,375.5 132.3×17 | ok | "mobile" |
 | mobileFlag | box | 293,392.5 132.3×14 | 293,392.5 132.3×14 | ok | "⚠ shared working tree" |
@@ -58,8 +56,8 @@ Geometry: `box` = x, y, width, height. Styles compared: color, background-color,
 | buttonFont | 500 12px | 500 12px | ok |
 | buttonPadding | 5px 10px | 5px 10px | ok |
 | buttonCursor | pointer | pointer | ok |
-| badgeColor | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |
-| badgeBg | rgba(0, 0, 0, 0) | rgba(0, 0, 0, 0) | ok |
+| badgeColor | rgb(17, 18, 20) | rgb(17, 18, 20) | ok |
+| badgeBg | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |
 | flagColor | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |
 | flagFont | 10.5px "Geist Mono", monospace | 10.5px "Geist Mono", monospace | ok |
 

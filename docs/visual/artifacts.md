@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **4.79%**, main area (256,0 1184×900) **3.85%**.
+Pixel diff (advisory, channel threshold 24): full page **5.10%**, main area (256,0 1184×900) **3.85%**.
 
 Side by side (prototype left, app right): `artifacts-side-by-side.png`, `artifacts-main-side-by-side.png`.
 
@@ -37,7 +37,6 @@ D89 (developer request 2026-10-09, `docs/visual/README.md` → *Deliberate devia
 | row10Box | box | 278,511 1140×38 | 278,511 1140×38 | ok |  |
 | row11Box | box | 278,549 1140×38 | 278,549 1140×38 | ok |  |
 | row12Box | box | 278,587 1140×38 | 278,587 1140×38 | ok |  |
-| sideArtifacts | size | 10,190 235×31 | 10,223 235×31 | ok |  |
 
 ## Computed styles (SPEC tokens)
 | Check | Expected | App | Result |

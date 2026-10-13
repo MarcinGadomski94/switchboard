@@ -11,8 +11,10 @@
 
 /* ── nav and session panel ───────────────────────────────────────────── */
 
-[data-testid='nav-plans'] .sb-badge[data-kind='run'] {
-  color: var(--status-run);
+/* D101: the nav grid cell's badge counts the running plans, in the run colour. */
+.sb-nav-item[data-testid='nav-plans'] .sb-badge[data-kind='run'] {
+  background: var(--status-run);
+  color: var(--primary-fg);
 }
 
 .sb-plan-tab {

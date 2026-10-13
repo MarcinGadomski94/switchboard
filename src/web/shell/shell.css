@@ -93,32 +93,84 @@
   cursor: pointer;
 }
 
+/*
+ * D101 · the navigation as an icon grid (docs/sidebar.md → *Navigation grid*): 5 columns
+ * of 40 px square icon cells under "+ New session", spread over its width (the first
+ * cell's left and the last column's right edge are the button's), as many rows as needed.
+ * Each cell: an 18 px icon, its badge on the top-right corner, the prototype's selected
+ * nav style for the current page. The drawer layout (D74) is in styles/responsive/shell.css.
+ */
 .sb-nav {
   padding: 0 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(5, 40px);
+  justify-content: space-between;
+  row-gap: 6px;
   font-size: 13px;
 }
 
 .sb-nav-item {
-  display: flex;
-  align-items: center;
-  padding: 7px 8px;
-  border-radius: 7px;
+  position: relative;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
   cursor: pointer;
   background: transparent;
-  color: var(--text-2);
+  color: var(--muted-1);
   text-decoration: none;
 }
 
 .sb-nav-item:hover {
   color: var(--text-2);
+  background: var(--bg-selected-card);
 }
 
 .sb-nav-item[aria-current='page'] {
   background: var(--bg-selected-nav);
   color: var(--text-strong);
+}
+
+.sb-nav-item:focus-visible {
+  outline: 2px solid var(--muted-2);
+  outline-offset: 1px;
+}
+
+/* The badge on the icon's top-right corner; empty (no count) draws nothing. */
+.sb-nav-item .sb-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  margin: 0;
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font: 600 9.5px/16px var(--font-mono);
+  text-align: center;
+  background: var(--border-control);
+  color: var(--text-2);
+  /* A ring in the sidebar's colour keeps the badge apart from the icon and the cell. */
+  box-shadow: 0 0 0 2px var(--bg-sidebar);
+  pointer-events: none;
+}
+
+.sb-nav-item .sb-badge:empty {
+  display: none;
+}
+
+.sb-nav-item .sb-badge[data-kind='need'],
+.sb-nav-item .sb-badge[data-kind='warn'] {
+  background: var(--status-need);
+  color: var(--primary-fg);
+}
+
+.sb-nav-item .sb-badge[data-kind='fail'] {
+  background: var(--status-fail);
+  color: var(--primary-fg);
 }
 
 .sb-badge {
@@ -166,6 +218,62 @@
 .sb-section-count {
   margin-left: auto;
   color: var(--muted-4);
+}
+
+/*
+ * D101 · TOOLS collapses: the header's label is a toggle (▾ / ▸, the tools' count and a
+ * stopped tool's dot while collapsed); "+ Add" keeps its place at the right.
+ */
+.sb-tools-head {
+  align-items: center;
+}
+
+.sb-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  line-height: inherit;
+}
+
+.sb-section-toggle:hover {
+  color: var(--text-2);
+}
+
+.sb-section-toggle:focus-visible {
+  outline: 1px solid var(--muted-3);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.sb-section-chevron {
+  width: 8px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted-3);
+}
+
+.sb-section-collapsed-count {
+  color: var(--muted-4);
+}
+
+.sb-tools-attention {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-fail);
+}
+
+.sb-tools[hidden] {
+  display: none;
 }
 
 .sb-tools {

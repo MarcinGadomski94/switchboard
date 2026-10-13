@@ -238,7 +238,10 @@ test('a failing run turns the row red live, badges the sidebar and raises "Sched
   await expect(crashing.getByTestId('schedule-last')).toHaveText(/^Failed just now · claude/, { timeout: 15_000 });
   await expect(crashing.getByTestId('schedule-dot')).toHaveAttribute('data-tone', 'fail');
   await expect(crashing.getByTestId('schedule-cell').last()).toHaveAttribute('data-tone', 'fail');
-  await expect(page.getByTestId('nav-schedules').locator('.sb-badge')).toHaveText('1 failed');
+  // D101: the icon's badge shows the count (red), the cell's tooltip the full text.
+  await expect(page.getByTestId('nav-schedules').locator('.sb-badge')).toHaveText('1');
+  await expect(page.getByTestId('nav-schedules').locator('.sb-badge')).toHaveAttribute('data-kind', 'fail');
+  await expect(page.getByTestId('nav-schedules')).toHaveAttribute('title', 'Schedules & loops · 1 failed');
 
   const inbox = (await api<InboxItem[]>(page, 'GET', '/api/inbox')).body;
   const item = inbox.find((i) => i.kind === 'system' && i.source === 'crashing-build');

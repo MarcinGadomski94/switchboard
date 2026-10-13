@@ -1,4 +1,6 @@
 import { Link, useRouter } from '../router.tsx';
+import { teamBadge } from '../shell/nav-grid.ts';
+import { NavCell } from '../shell/NavCell.tsx';
 import { useTeamSwitch } from './hidden.ts';
 import { needsYouCounts, needsYou, sidebarTeamText } from './model.ts';
 import { useTeamData } from './useTeamData.ts';
@@ -6,8 +8,8 @@ import './team.css';
 
 /**
  * D100 · the sidebar's two Team entries, rendered only while Team is on (nothing at
- * all while it is off, so the sidebar's DOM is the prototype's): the nav's **Team**
- * item (after the others) and, above the SESSIONS list, **⚑ Team · <name> · N
+ * all while it is off, so the sidebar's DOM is the prototype's): the nav grid's **Team**
+ * cell (after the others, D101) and, above the SESSIONS list, **⚑ Team · <name> · N
  * members** in the role colour with the needs-you count.
  */
 
@@ -18,20 +20,13 @@ function useNeedsYouCount(): number {
   return view.members.filter((member) => needsYou(member, counts)).length;
 }
 
-/** The nav's Team item (only while Team is on). */
+/** The nav grid's Team cell (D101: a ⚑ icon, the needs-you count as its badge; only while Team is on). */
 export function TeamNavItem() {
   const { on } = useTeamSwitch();
   const { route } = useRouter();
   const count = useNeedsYouCount();
   if (!on) return null;
-  return (
-    <Link to={{ view: 'team' }} className="sb-nav-item" data-testid="nav-team" data-tour="team" aria-current={route.view === 'team' ? 'page' : undefined}>
-      <span>Team</span>
-      <span className="sb-badge" data-kind={count ? 'need' : undefined}>
-        {count ? String(count) : ''}
-      </span>
-    </Link>
-  );
+  return <NavCell to={{ view: 'team' }} label="Team" icon="team" badge={teamBadge(count)} active={route.view === 'team'} testId="nav-team" tour="team" />;
 }
 
 /** "⚑ Team · N members" (with the name once renamed: "⚑ Team · <name> · N members") above SESSIONS, only while Team is on. */

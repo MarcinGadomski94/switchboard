@@ -12,10 +12,23 @@ import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
 import { useToolsChanged } from '../tools/events.ts';
-import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
+import { TOOL_DOT, useProbeOnLoad, useToolState, useToolStates } from '../tools/probe.ts';
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { PANE_ID, PaneHideButton, usePanes } from './Panes.tsx';
 import { SidebarSessions } from './SidebarSessions.tsx';
+import { NavCell } from './NavCell.tsx';
+import {
+  type NavBadge,
+  artifactsBadge,
+  inboxBadge,
+  schedulesBadge,
+  solutionsBadge,
+  todosBadge,
+  toolsHeadCount,
+  toolsNeedAttention,
+} from './nav-grid.ts';
+import type { NavIconName } from './nav-icons.tsx';
+import { useToolsCollapsed } from './useToolsCollapsed.ts';
 import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
 // Team (D100) hook (docs/team-removal.md).
@@ -39,15 +52,16 @@ import {
 /** `sessionUpdated` comes in bursts; the Solutions badge source reloads at most this often (M6.3). */
 const SOLUTIONS_RELOAD_MS = 1_000;
 
-/** Badge style of a nav item (prototype navDef kinds). */
-type BadgeKind = 'need' | 'warn' | 'fail' | null;
-
+/** D101: one cell of the navigation grid (its view, name, icon and badge). */
 interface NavEntry {
   readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos';
   readonly label: string;
-  readonly badge: string;
-  readonly kind: BadgeKind;
+  readonly icon: NavIconName;
+  readonly badge: NavBadge | null;
 }
+
+/** The id of the TOOLS list (the header's toggle controls it). */
+const TOOLS_LIST_ID = 'sb-tools-list';
 
 /** `true` on macOS / iOS, where the palette shortcut reads ⌘K. */
 function isApplePlatform(): boolean {
@@ -154,7 +168,8 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
 
 /**
  * The sidebar (SPEC → Shell), top to bottom: logo + ⌘K badge · "+ New session" ·
- * nav with badges · TOOLS · SESSIONS · Settings · machine footer. Everything it
+ * nav (D101: an icon grid, each icon with its badge) · TOOLS (D101: collapsible) ·
+ * SESSIONS · Settings · machine footer. Everything it
  * lists comes from the API (sessions, tools, inbox, solutions, schedules,
  * artifacts, system) and the `/hub` stream; while a route is not implemented yet
  * (501) or unreachable, its part stays empty and the meters read "—". D14: a
@@ -217,19 +232,24 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
 
   // D68: every open session's open todos (this machine's and the paired machines'), from the session list.
   const openTodos = openSessions(sessions.data ?? []).reduce((sum, session) => sum + (session.openTodoCount ?? 0), 0);
+  // D101: the cells of the navigation grid, with the counts and indicators the text items showed.
   const nav: readonly NavEntry[] = [
-    { view: 'inbox', label: 'Inbox', badge: inboxCount ? String(inboxCount) : '', kind: inboxCount ? 'need' : null },
-    { view: 'solutions', label: 'Solutions', badge: conflicts ? `${conflicts} conflict${conflicts === 1 ? '' : 's'}` : '', kind: conflicts ? 'warn' : null },
-    { view: 'schedules', label: 'Schedules & loops', badge: failed ? `${failed} failed` : '', kind: failed ? 'fail' : null },
+    { view: 'inbox', label: 'Inbox', icon: 'inbox', badge: inboxBadge(inboxCount) },
+    { view: 'solutions', label: 'Solutions', icon: 'solutions', badge: solutionsBadge(conflicts) },
+    { view: 'schedules', label: 'Schedules & loops', icon: 'schedules', badge: schedulesBadge(failed) },
     // D61: the MCP servers page.
-    { view: 'mcp', label: 'MCP', badge: '', kind: null },
-    { view: 'artifacts', label: 'Artifacts', badge: artifacts.data?.length ? String(artifacts.data.length) : '', kind: null },
-    { view: 'history', label: 'History', badge: '', kind: null },
+    { view: 'mcp', label: 'MCP', icon: 'mcp', badge: null },
+    { view: 'artifacts', label: 'Artifacts', icon: 'artifacts', badge: artifactsBadge(artifacts.data?.length ?? 0) },
+    { view: 'history', label: 'History', icon: 'history', badge: null },
     // D68: the Todos page (after the prototype's items, like D61's MCP: the others keep their places).
-    { view: 'todos', label: 'Todos', badge: openTodos ? String(openTodos) : '', kind: null },
+    { view: 'todos', label: 'Todos', icon: 'todos', badge: todosBadge(openTodos) },
   ];
 
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);
+  // D101: TOOLS collapses to its header (stored per install); a stopped tool shows a dot on the collapsed header.
+  const [toolsCollapsed, toggleTools] = useToolsCollapsed();
+  const toolsAttention = toolsNeedAttention(useToolStates(sidebarTools));
+  const toolsCount = toolsHeadCount(toolsCollapsed, sidebarTools.length);
   useProbeOnLoad(tools.data);
   useFrameHelperSites(tools.data); // D28 ruling: the saved site tools' hosts, for the frame helper's rules in this tab
   // D33: the list is already open sessions only; a closed one never shows even from a stale payload.
@@ -255,35 +275,45 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         </button>
       </div>
 
-      <nav className="sb-nav" aria-label="Views">
+      {/* D101: the views as an icon grid (5 columns; 4 with names in the D74 drawer): NavCell.tsx, nav-grid.ts. */}
+      <nav className="sb-nav" aria-label="Views" data-testid="nav-grid" data-tour="nav">
         {nav.map((item) => (
-          <Link
+          <NavCell
             key={item.view}
             to={{ view: item.view }}
-            className="sb-nav-item"
-            data-testid={`nav-${item.view}`}
-            data-tour={item.view}
-            aria-current={isActive(route, item.view) ? 'page' : undefined}
-          >
-            <span>{item.label}</span>
-            <span className="sb-badge" data-kind={item.kind ?? undefined}>
-              {item.badge}
-            </span>
-          </Link>
+            label={item.label}
+            icon={item.icon}
+            badge={item.badge}
+            active={isActive(route, item.view)}
+            testId={`nav-${item.view}`}
+            tour={item.view}
+          />
         ))}
-        {/* Team (D100) hook: the Team item, only while Team is on (nothing while off). */}
+        {/* Team (D100) hook: the Team cell, only while Team is on (nothing while off). */}
         <TeamNavItem />
-        {/* Plans (D99) hook: the Plans item, only while Plans is on (nothing while off). */}
+        {/* Plans (D99) hook: the Plans cell, only while Plans is on (nothing while off). */}
         <PlansNavItem />
       </nav>
 
-      <div className="sb-section-label">
-        Tools
+      {/* D101: the header toggles the list (▾ / ▸, the count and a stopped tool's dot while collapsed); + Add does not. */}
+      <div className="sb-section-label sb-tools-head" data-testid="tools-head" data-collapsed={toolsCollapsed ? 'true' : undefined}>
+        <button type="button" className="sb-section-toggle" data-testid="tools-toggle" aria-expanded={!toolsCollapsed} aria-controls={TOOLS_LIST_ID} onClick={toggleTools}>
+          <span className="sb-section-chevron" aria-hidden="true">
+            {toolsCollapsed ? '▸' : '▾'}
+          </span>
+          Tools
+          {toolsCount ? (
+            <span className="sb-section-collapsed-count" data-testid="tools-count">
+              {toolsCount}
+            </span>
+          ) : null}
+          {toolsCollapsed && toolsAttention ? <span className="sb-tools-attention" data-testid="tools-attention" title="A tool is not reachable" /> : null}
+        </button>
         <Link to={{ view: 'settings', section: 'tools' }} className="sb-section-action" data-testid="add-tool">
           + Add
         </Link>
       </div>
-      <div className="sb-tools" data-testid="sidebar-tools">
+      <div className="sb-tools" data-testid="sidebar-tools" id={TOOLS_LIST_ID} hidden={toolsCollapsed}>
         {sidebarTools.map((tool) => (
           <SidebarTool key={tool.id} tool={tool} active={isActive(route, 'tool', tool.id)} />
         ))}

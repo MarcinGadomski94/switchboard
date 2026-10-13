@@ -6,7 +6,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 
 - `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync, T2's `access/`)
 - `src/core/team.ts`, `src/core/team-templates.ts`, `src/core/team-budget.ts`, `src/core/team-sync.ts`, `src/core/team-tools.ts`
-- `src/web/team/` (the sidebar filter and the sidebar's Team entries, Settings → Experimental's Team row (`TeamSwitchRow.tsx`), the Team page, its dialogs and styles, T2's Access tab in `src/web/team/access/`)
+- `src/web/team/` (the sidebar filter and the sidebar's Team entries (D101: the nav grid's Team cell renders through the shell's `NavCell`, with the `team` icon of `src/web/shell/nav-icon-glyphs.ts` and `teamBadge` of `nav-grid.ts`, which may stay), Settings → Experimental's Team row (`TeamSwitchRow.tsx`), the Team page, its dialogs and styles, T2's Access tab in `src/web/team/access/`)
 - `src/core/team-access.ts`, `src/core/team-access-catalog.ts`, `src/core/team-access-tools.ts` (T2: access requests)
 - `src/hook/sb-access-mcp.ts` (T2: the access MCP launcher) and `src/web/team-access-dev.html` (T2: the Access tab's dev mount)
 - `tests/server/team/`, `tests/web/team.test.ts`, `tests/e2e/team-*.spec.ts`, `tests/e2e/team-world.ts`, `tests/e2e/visual/team.spec.ts`
@@ -30,7 +30,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
-| `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers` and `TeamNavItem` / `TeamSidebarEntry`; `teamHidden`; the one filter on `sessionList`; `<TeamNavItem />` at the end of the nav and `<TeamSidebarEntry />` above `<SidebarSessions>` (both render nothing while Team is off) | `const sessionList = openSessions(sessions.data ?? []);`; drop the two elements |
+| `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers` and `TeamNavItem` / `TeamSidebarEntry`; `teamHidden`; the one filter on `sessionList`; `<TeamNavItem />` at the end of the nav (D101: the nav grid, so it is the grid's last-but-Plans cell) and `<TeamSidebarEntry />` above `<SidebarSessions>` (both render nothing while Team is off) | `const sessionList = openSessions(sessions.data ?? []);`; drop the two elements |
 | `src/web/router.tsx` | `team` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/team` row of the header table | remove `team` in the three places and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |

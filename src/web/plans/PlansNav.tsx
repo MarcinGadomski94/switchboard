@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link, useRouter } from '../router.tsx';
+import { plansBadge } from '../shell/nav-grid.ts';
+import { NavCell } from '../shell/NavCell.tsx';
 import { ImportJiraDialog } from './jira/index.ts';
 import { runningCount } from './model.ts';
 import { putPlan, usePlans } from './store.ts';
@@ -7,24 +9,27 @@ import './plans.css';
 
 /**
  * D99 · the entry points to Plans outside its pages, rendered only while Plans is on
- * (nothing at all while it is off, so those pages' DOM is as it was): the nav's **Plans**
- * item (after the others, with the number of running plans) and the session's **Plan** tab
+ * (nothing at all while it is off, so those pages' DOM is as it was): the nav grid's **Plans**
+ * cell (after the others, D101; with the number of running plans) and the session's **Plan** tab
  * in its right panel (the session that created a plan links to it).
  */
 
-/** The nav's Plans item (only while Plans is on). */
+/** The nav grid's Plans cell (D101: a graph icon, the running plans as its badge; only while Plans is on). */
 export function PlansNavItem() {
   const { on, plans } = usePlans();
   const { route } = useRouter();
   if (!on) return null;
-  const running = runningCount(plans);
   return (
-    <Link to={{ view: 'plans' }} className="sb-nav-item" data-testid="nav-plans" data-tour="plans" aria-current={route.view === 'plans' || route.view === 'plan' ? 'page' : undefined}>
-      <span>Plans</span>
-      <span className="sb-badge" data-kind={running ? 'run' : undefined} data-testid="nav-plans-count" title={running ? `${running} running` : undefined}>
-        {running ? String(running) : ''}
-      </span>
-    </Link>
+    <NavCell
+      to={{ view: 'plans' }}
+      label="Plans"
+      icon="plans"
+      badge={plansBadge(runningCount(plans))}
+      active={route.view === 'plans' || route.view === 'plan'}
+      testId="nav-plans"
+      tour="plans"
+      badgeTestId="nav-plans-count"
+    />
   );
 }
 
