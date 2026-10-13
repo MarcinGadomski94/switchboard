@@ -26,6 +26,19 @@
   min-width: 0;
 }
 
+/* D100 follow-up 2026-10-14: one entry per team, stacked. */
+.sb-team-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.sb-team-entries > .sb-team-entry {
+  margin-top: 0;
+}
+
 .sb-team-entry[aria-current='page'] {
   box-shadow: inset 0 0 0 1px var(--team-role-border);
 }
@@ -567,6 +580,108 @@
 .sb-team-btn--ghost {
   border-color: transparent;
   color: var(--muted-1);
+}
+
+.sb-team-btn--danger {
+  border-color: var(--status-fail);
+  color: var(--status-fail);
+}
+
+/* ── teams (D100 follow-up 2026-10-14): the switcher row ─────────────────── */
+
+.sb-team-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 22px 0 0;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-team-tabs-row > .sb-team-strip-frame {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.sb-team-tabs[data-axis='x'] {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 0 0 0 22px;
+  scroll-padding: 0 0 0 22px;
+}
+
+.sb-team-tabs[data-axis='x'] > .sb-team-reorder-item {
+  flex: 0 0 auto;
+}
+
+.sb-team-teamtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 8px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted-1);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  flex: 0 0 auto;
+}
+
+.sb-team-teamtab:hover {
+  color: var(--text);
+}
+
+.sb-team-teamtab[aria-selected='true'] {
+  color: var(--text-strong);
+  border-bottom-color: var(--team-role-fg);
+}
+
+.sb-team-teamtab:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--team-role-border);
+  border-radius: 6px 6px 0 0;
+}
+
+.sb-team-teamtab__name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-team-teamtab__need {
+  font: 500 11px var(--font-mono);
+  border-radius: 10px;
+  padding: 0 6px;
+  background: var(--status-need);
+  color: var(--primary-fg);
+}
+
+.sb-team-tabs-new {
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+
+.sb-team-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The All teams tab: every team's Needs you, full width. */
+.sb-team-all {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 22px 24px;
+  max-width: 760px;
+}
+
+.sb-team-need__team {
+  color: var(--team-role-fg);
 }
 
 .sb-team-link {

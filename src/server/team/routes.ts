@@ -43,16 +43,22 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
   // The switch (always answered: the sidebar's filter reads it).
   app.get('/api/team/state', async () => team.state());
 
-  app.get('/api/team', (request, reply) => run(request, reply, () => team.view()));
+  // D100 follow-up 2026-10-14 (multiple teams): `?teamId=` picks the team; without it, the first team (the routes before it keep working).
+  app.get<{ Querystring: { teamId?: string } }>('/api/team', (request, reply) => run(request, reply, () => team.view(request.query.teamId)));
   app.put('/api/team', (request, reply) => run(request, reply, () => team.rename(request.body)));
+  app.get('/api/team/teams', (request, reply) => run(request, reply, () => team.teamList()));
+  app.post('/api/team/teams', (request, reply) => run(request, reply, () => team.createTeam(fields(request.body)), 201));
+  app.put('/api/team/teams/order', (request, reply) => run(request, reply, () => team.reorderTeams(fields(request.body))));
+  app.put<{ Params: { teamId: string } }>('/api/team/teams/:teamId', (request, reply) => run(request, reply, () => team.rename(request.body, request.params.teamId)));
+  app.delete<{ Params: { teamId: string } }>('/api/team/teams/:teamId', (request, reply) => run(request, reply, () => team.deleteTeam(request.params.teamId)));
   // D100 follow-up 2026-10-14: the members' order (synced; phones may reorder).
   app.put('/api/team/order', (request, reply) => run(request, reply, () => team.reorder(fields(request.body))));
   app.get('/api/team/templates', (request, reply) => run(request, reply, async () => team.templates()));
   app.get('/api/team/suggestions', (request, reply) => run(request, reply, () => team.suggestions()));
-  app.get<{ Querystring: { before?: string; limit?: string } }>('/api/team/activity', (request, reply) =>
-    run(request, reply, async () => team.activity(request.query.before, request.query.limit ? Number(request.query.limit) || 100 : 100)),
+  app.get<{ Querystring: { before?: string; limit?: string; teamId?: string } }>('/api/team/activity', (request, reply) =>
+    run(request, reply, async () => team.activity(request.query.before, request.query.limit ? Number(request.query.limit) || 100 : 100, request.query.teamId)),
   );
-  app.get('/api/team/needs-you', (request, reply) => run(request, reply, () => team.needsYou()));
+  app.get<{ Querystring: { teamId?: string } }>('/api/team/needs-you', (request, reply) => run(request, reply, () => team.needsYou(request.query.teamId)));
 
   // Members: adopt (`sessionId`) or create (`session`: a NewSession body).
   app.post('/api/team/members', (request, reply) =>
@@ -70,6 +76,8 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
       return { ok: true };
     }),
   );
+  // D100 follow-up 2026-10-14: to another team.
+  app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/team', (request, reply) => run(request, reply, () => team.moveToTeam(request.params.memberId, fields(request.body))));
   app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/pause', (request, reply) => run(request, reply, () => team.pause(request.params.memberId)));
   app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/resume', (request, reply) => run(request, reply, () => team.resume(request.params.memberId)));
   app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/return', (request, reply) => run(request, reply, () => team.returnMember(request.params.memberId)));
@@ -82,7 +90,7 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
     run(request, reply, () => {
       const body = fields(request.body);
       const from = typeof body['from'] === 'string' && body['from'] !== '' ? body['from'] : null;
-      return team.createHandoff({ from, to: String(body['to'] ?? ''), brief: body['brief'], expected: body['expected'], links: body['links'], planRef: body['planRef'] });
+      return team.createHandoff({ from, to: String(body['to'] ?? ''), brief: body['brief'], expected: body['expected'], links: body['links'], planRef: body['planRef'], team: body['team'], teamId: body['teamId'] });
     }, 201),
   );
   app.put<{ Params: { handoffId: string } }>('/api/team/handoffs/:handoffId', (request, reply) => run(request, reply, () => team.setHandoffState(request.params.handoffId, fields(request.body))));
@@ -114,13 +122,13 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
       return { member: member ? { id: member.id, name: member.name } : null };
     }),
   );
-  app.get('/agent/v1/team/members', (request, reply) => run(request, reply, async () => ({ text: await team.membersText(memberOnly(request)) })));
+  app.get<{ Querystring: { team?: string } }>('/agent/v1/team/members', (request, reply) => run(request, reply, async () => ({ text: await team.membersText(memberOnly(request), request.query.team) })));
   app.post('/agent/v1/team/handoffs', (request, reply) =>
     run(request, reply, async () => {
       const session = memberOnly(request);
       const me = team.memberOfSession(session);
       const body = fields(request.body);
-      return team.createHandoff({ from: me?.id ?? null, to: String(body['to'] ?? ''), brief: body['brief'], expected: body['expected'], links: body['links'] });
+      return team.createHandoff({ from: me?.id ?? null, to: String(body['to'] ?? ''), brief: body['brief'], expected: body['expected'], links: body['links'], team: body['team'] });
     }, 201),
   );
   app.post('/agent/v1/team/reports', (request, reply) =>

@@ -5,6 +5,7 @@ import { remoteId, parseRemoteId } from '../../core/peers.ts';
 import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-layout.ts';
 import {
   type TeamMoveRun,
+  ALL_TEAMS,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_NAME,
   EMPTY_CHARTER,
@@ -13,6 +14,7 @@ import {
   NO_BUDGET,
   PROTECTED_BRANCH,
   REPORT_MAX,
+  TEAMS_MAX,
   TEAM_SETTING,
   type HandoffState,
   type SessionStatusLike,
@@ -33,6 +35,7 @@ import {
   type TeamRequestRecord,
   type TeamRhythmLoop,
   type TeamState,
+  type TeamSummary,
   type TeamView,
   type TeamWorkplace,
   byOrder,
@@ -43,6 +46,7 @@ import {
   memberStatus,
   needsYouLabel,
   normalizeGates,
+  parseHandoffTarget,
   readBudget,
   readCharter,
   readLinks,
@@ -344,8 +348,8 @@ export class TeamService {
     return (this.#clock as HybridClock).next();
   }
 
-  #publish(what: readonly string[]): void {
-    this.#o.bus.publish('teamChanged', { teamId: DEFAULT_TEAM_ID, what });
+  #publish(what: readonly string[], teamId: string = DEFAULT_TEAM_ID): void {
+    this.#o.bus.publish('teamChanged', { teamId, what });
   }
 
   #ensureTeam(): void {
@@ -355,13 +359,37 @@ export class TeamService {
     db.putTeam({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: now, updatedAt: now });
   }
 
-  #team(): TeamRecord {
-    return this.#need().teams().find((team) => team.id === DEFAULT_TEAM_ID) ?? { id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: '', updatedAt: '' };
+  /** The teams (not deleted) in their order (D100 follow-up 2026-10-14: multiple teams; the first one always exists). */
+  #teams(): TeamRecord[] {
+    const live = this.#need().teams().filter((team) => !team.deleted);
+    if (!live.some((team) => team.id === DEFAULT_TEAM_ID)) live.push({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: '', updatedAt: '' });
+    return byOrder(live);
   }
 
-  /** The team's members (not deleted) in the team's order (D100 follow-up 2026-10-14). */
+  /** A team by id (`undefined` / `''` = the first team, `team`). @throws {TeamError} 404 for an unknown or deleted team. */
+  #team(teamId?: string | null): TeamRecord {
+    const id = teamId === undefined || teamId === null || teamId === '' ? DEFAULT_TEAM_ID : teamId;
+    const team = this.#teams().find((t) => t.id === id);
+    if (!team) throw new TeamError(404, 'not-found', `no team ${id}`);
+    return team;
+  }
+
+  /** A team's name for texts (a deleted or unknown team: the first team's). */
+  #teamName(teamId: string): string {
+    return (this.#teams().find((team) => team.id === teamId) ?? this.#team()).name;
+  }
+
+  /** Every team's members (not deleted), by the teams' order, then each team's order (D100 follow-ups 2026-10-14). */
   #liveMembers(): TeamMemberRecord[] {
-    return byOrder(this.#need().members().filter((member) => !member.deleted && member.teamId === DEFAULT_TEAM_ID));
+    const teams = this.#teams();
+    const rank = new Map(teams.map((team, index) => [team.id, index]));
+    const live = this.#need().members().filter((member) => !member.deleted && rank.has(member.teamId));
+    return teams.flatMap((team) => byOrder(live.filter((member) => member.teamId === team.id)));
+  }
+
+  /** One team's members (not deleted) in its order. */
+  #teamMembers(teamId: string): TeamMemberRecord[] {
+    return byOrder(this.#need().members().filter((member) => !member.deleted && member.teamId === teamId));
   }
 
   #sessionRef(member: Pick<TeamMemberRecord, 'machineId' | 'sessionId'>): string {
@@ -379,14 +407,16 @@ export class TeamService {
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
   }
 
-  #changed(what: readonly string[]): void {
+  #changed(what: readonly string[], teamId?: string): void {
     this.#refreshRoles();
-    this.#publish(what);
+    this.#publish(what, teamId);
     this.#syncSoon();
   }
 
-  #activity(kind: TeamActivityKind, memberId: string | null, text: string): void {
-    this.#need().addActivity([{ id: randomUUID(), teamId: DEFAULT_TEAM_ID, at: this.#iso(), kind, memberId, text }]);
+  /** An activity line in `teamId` (default: the member's team, else the first team). */
+  #activity(kind: TeamActivityKind, memberId: string | null, text: string, teamId?: string): void {
+    const team = teamId ?? (memberId ? this.#need().members().find((member) => member.id === memberId)?.teamId : undefined) ?? DEFAULT_TEAM_ID;
+    this.#need().addActivity([{ id: randomUUID(), teamId: team, at: this.#iso(), kind, memberId, text }]);
   }
 
   // ── reads ─────────────────────────────────────────────────────────────
@@ -443,20 +473,43 @@ export class TeamService {
     });
   }
 
-  /** `GET /api/team`. */
-  async view(): Promise<TeamView> {
+  /** `GET /api/team[?teamId=]` (without one: the first team). */
+  async view(teamId?: string | null): Promise<TeamView> {
     const db = this.#need();
-    const team = this.#team();
+    const team = this.#team(teamId);
     const machines = await this.#machineNames();
-    const members = await Promise.all(this.#liveMembers().map((member) => this.#toMember(member, machines)));
+    const records = this.#teamMembers(team.id);
+    const members = await Promise.all(records.map((member) => this.#toMember(member, machines)));
     const self = this.#self ?? (await this.#o.peers.self());
+    // The hand-offs to the team's members (a cross-team hand-off shows in the receiver's team).
+    const ids = new Set(records.map((member) => member.id));
     return {
       team: { id: team.id, name: team.name },
       self,
       members,
-      handoffs: db.handoffs().filter((h) => !h.deleted).map(stripHandoff).reverse(),
-      activity: db.activity(DEFAULT_TEAM_ID, 100),
+      handoffs: db.handoffs().filter((h) => !h.deleted && (h.teamId === team.id || ids.has(h.toMemberId))).map(stripHandoff).reverse(),
+      activity: db.activity(team.id, 100),
     };
+  }
+
+  /** `GET /api/team/teams` (D100 follow-up 2026-10-14): every team in order, with its members and how many need the developer. */
+  async teamList(): Promise<TeamSummary[]> {
+    this.#need();
+    const machines = await this.#machineNames();
+    const items = await this.needsYou(ALL_TEAMS);
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.memberId, (counts.get(item.memberId) ?? 0) + 1);
+    const out: TeamSummary[] = [];
+    for (const team of this.#teams()) {
+      const members = this.#teamMembers(team.id);
+      let needsYou = 0;
+      for (const member of members) {
+        if ((counts.get(member.id) ?? 0) > 0) needsYou += 1;
+        else if ((await this.#sessionFacts(member, machines)).status === 'need') needsYou += 1;
+      }
+      out.push({ id: team.id, name: team.name, order: team.order, members: members.length, needsYou });
+    }
+    return out;
   }
 
   /** `GET /api/team/members/{id}`. @throws {TeamError} 404. */
@@ -471,9 +524,9 @@ export class TeamService {
     return record;
   }
 
-  /** `GET /api/team/activity?before=&limit=`. */
-  activity(before?: string, limit = 100): TeamActivityRecord[] {
-    return this.#need().activity(DEFAULT_TEAM_ID, Math.max(1, Math.min(limit, 500)), before);
+  /** `GET /api/team/activity?before=&limit=&teamId=`. */
+  activity(before?: string, limit = 100, teamId?: string | null): TeamActivityRecord[] {
+    return this.#need().activity(this.#team(teamId).id, Math.max(1, Math.min(limit, 500)), before);
   }
 
   /** `GET /api/team/templates`. */
@@ -482,24 +535,135 @@ export class TeamService {
     return TEAM_TEMPLATES;
   }
 
-  /** `PUT /api/team` `{ name }`. */
-  async rename(body: unknown): Promise<TeamView> {
+  /** `PUT /api/team` `{ name }` (the first team), `PUT /api/team/teams/{id}` `{ name }` (D100 follow-up 2026-10-14). */
+  async rename(body: unknown, teamId?: string | null): Promise<TeamView> {
     const name = checkTeamName((body as { name?: unknown } | null)?.name);
     if (!name) throw new TeamError(422, 'invalid', 'name must be 1–40 characters on one line');
+    const id = this.#team(teamId).id;
     await this.#serial(async () => {
-      const team = this.#team();
+      const team = this.#team(id);
+      if (this.#teams().some((t) => t.id !== id && t.name.toLowerCase() === name.toLowerCase())) throw new TeamError(409, 'name-taken', `a team is called ${name} already`);
       this.#need().putTeam({ ...team, name, clock: this.#stamp(), updatedAt: this.#iso() });
-      this.#activity('team', null, `The team is now called ${name}`);
+      this.#activity('team', null, `The team is now called ${name}`, id);
     });
-    this.#changed(['team']);
+    this.#changed(['team'], id);
     await this.#republishMembers();
-    return this.view();
+    return this.view(id);
+  }
+
+  /** `POST /api/team/teams` `{ name }` (D100 follow-up 2026-10-14): a new, empty team at the end. */
+  async createTeam(body: Record<string, unknown>): Promise<TeamSummary> {
+    this.#need();
+    const name = checkTeamName(body['name']);
+    if (!name) throw new TeamError(422, 'invalid', 'name must be 1–40 characters on one line', { errors: [{ field: 'name', message: 'name must be 1–40 characters on one line' }] });
+    const team = await this.#serial(async () => {
+      const teams = this.#teams();
+      if (teams.length >= TEAMS_MAX) throw new TeamError(409, 'too-many', `at most ${TEAMS_MAX} teams`);
+      if (teams.some((t) => t.name.toLowerCase() === name.toLowerCase())) throw new TeamError(409, 'name-taken', `a team is called ${name} already`);
+      const now = this.#iso();
+      const record: TeamRecord = { id: randomUUID(), name, clock: this.#stamp(), deleted: false, order: nextOrder(teams), createdAt: now, updatedAt: now };
+      this.#need().putTeam(record);
+      this.#activity('team', null, `Team ${name} was created`, record.id);
+      return record;
+    });
+    this.#changed(['teams'], team.id);
+    return { id: team.id, name: team.name, order: team.order, members: 0, needsYou: 0 };
+  }
+
+  /**
+   * `DELETE /api/team/teams/{id}` (D100 follow-up 2026-10-14): every member returns to
+   * the sessions list as with ↩ Return to sessions (folder and position restored; a
+   * paired machine's member on its machine), then the team is removed (a tombstone,
+   * synced). Never deletes a session. The first team cannot be deleted; a member whose
+   * machine is offline keeps the team until it is back (502, nothing changed).
+   */
+  async deleteTeam(id: string): Promise<{ readonly ok: true; readonly returned: number }> {
+    const team = this.#team(id);
+    if (team.id === DEFAULT_TEAM_ID) throw new TeamError(409, 'default-team', 'the first team cannot be deleted: rename it, or return its members');
+    const members = this.#teamMembers(team.id);
+    const machines = await this.#machineNames();
+    const away = members.filter((member) => member.machineId !== this.#selfId() && machines.get(member.machineId)?.online !== true);
+    if (away.length > 0) {
+      const names = [...new Set(away.map((member) => machines.get(member.machineId)?.name ?? member.machineId))].join(', ');
+      throw new TeamError(502, 'peer-unreachable', `${names} is offline: ${away.map((m) => m.name).join(', ')} cannot return to its session list now. Delete the team when it is back.`);
+    }
+    for (const member of members) await this.returnMember(member.id);
+    await this.#serial(async () => {
+      const current = this.#team(team.id);
+      this.#need().putTeam({ ...current, deleted: true, clock: this.#stamp(), updatedAt: this.#iso() });
+    });
+    this.#changed(['teams', 'members'], team.id);
+    await this.#republishMembers();
+    return { ok: true, returned: members.length };
+  }
+
+  /** `PUT /api/team/teams/order` `{ teamIds }` (D100 follow-up 2026-10-14): the teams' order (synced like the members'). */
+  async reorderTeams(body: Record<string, unknown>): Promise<TeamSummary[]> {
+    this.#need();
+    const changed = await this.#serial(async () => {
+      const teams = this.#teams();
+      const ids = reorderIds(
+        teams.map((team) => team.id),
+        body['teamIds'],
+      );
+      if (!ids) throw new TeamError(422, 'invalid', 'teamIds must list teams, each once', { errors: [{ field: 'teamIds', message: 'unknown or repeated team id' }] });
+      const byId = new Map(teams.map((team) => [team.id, team]));
+      let any = false;
+      this.#need().transaction(() => {
+        ids.forEach((id, index) => {
+          const team = byId.get(id) as TeamRecord;
+          if (team.order === index && team.clock !== '') return;
+          this.#need().putTeam({ ...team, order: index, clock: this.#stamp(), updatedAt: this.#iso() });
+          any = true;
+        });
+      });
+      return any;
+    });
+    if (changed) this.#changed(['teams']);
+    return this.teamList();
+  }
+
+  /**
+   * `POST /api/team/members/{id}/team` `{ teamId }` (D100 follow-up 2026-10-14): the
+   * member moves to another team, at its end. Charter, rhythm, budget, gates and access
+   * are kept; hand-offs stay as they are. Its agent gets the new team's name with its
+   * next message (the charter names the team).
+   */
+  async moveToTeam(id: string, body: Record<string, unknown>): Promise<TeamMember> {
+    this.#need();
+    if (typeof body['teamId'] !== 'string' || body['teamId'] === '') throw new TeamError(422, 'invalid', 'teamId is required', { errors: [{ field: 'teamId', message: 'teamId is required' }] });
+    const target = this.#team(body['teamId']);
+    const before = this.#memberRecord(id);
+    if (before.teamId === target.id) return this.member(id);
+    const moved = await this.#serial(async () => {
+      if (this.#teamMembers(target.id).length >= MEMBERS_MAX) throw new TeamError(409, 'too-many', `a team has at most ${MEMBERS_MAX} members`);
+      const current = this.#memberRecord(id);
+      const next: TeamMemberRecord = { ...current, teamId: target.id, order: nextOrder(this.#teamMembers(target.id)), clock: this.#stamp(), updatedAt: this.#iso() };
+      this.#need().putMember(next);
+      const from = this.#teamName(current.teamId);
+      this.#activity('update', id, `${current.name} moved to team ${target.name}`, current.teamId);
+      this.#activity('update', id, `${current.name} joined from team ${from}`, target.id);
+      return next;
+    });
+    this.#changed(['members', 'activity'], before.teamId);
+    this.#publish(['members', 'activity'], target.id);
+    if (moved.machineId === this.#selfId()) await this.#applyCharter(moved.sessionId);
+    return this.member(id);
   }
 
   // ── adopt, create, update, return ─────────────────────────────────────
 
-  #assertCapacity(): void {
-    if (this.#liveMembers().length >= MEMBERS_MAX) throw new TeamError(409, 'too-many', `a team has at most ${MEMBERS_MAX} members`);
+  #assertCapacity(teamId: string): void {
+    if (this.#teamMembers(teamId).length >= MEMBERS_MAX) throw new TeamError(409, 'too-many', `a team has at most ${MEMBERS_MAX} members`);
+  }
+
+  /** The team a body names (`teamId`; none = the first team). @throws {TeamError} 422 for an unknown one. */
+  #bodyTeam(body: Record<string, unknown>): TeamRecord {
+    const raw = body['teamId'];
+    if (raw === undefined || raw === null || raw === '') return this.#team();
+    const team = typeof raw === 'string' ? this.#teams().find((t) => t.id === raw) : undefined;
+    if (!team) throw new TeamError(422, 'invalid', 'no such team', { errors: [{ field: 'teamId', message: 'no such team' }] });
+    return team;
   }
 
   /** The fields a member's body sets (adopt, create, update). */
@@ -605,6 +769,7 @@ export class TeamService {
       return this.member(member.id);
     }
     const fields = this.#fields(body, false);
+    const team = this.#bodyTeam(body);
     const session = await this.#o.store.sessions.get(sessionId);
     if (!session) throw new TeamError(404, 'not-found', `no session ${sessionId}`);
     if (session.closedAt !== null) throw new TeamError(409, 'closed', 'the session is closed: reopen it first');
@@ -613,14 +778,16 @@ export class TeamService {
     }
     if (!session.attached) throw new TeamError(409, 'detached', 'the session continues in a terminal: attach it here first');
     const record = await this.#serial(async () => {
-      this.#assertCapacity();
-      if (this.#liveMembers().some((member) => member.machineId === this.#selfId() && member.sessionId === sessionId)) {
-        throw new TeamError(409, 'already-member', 'this session is already a member of the team');
+      this.#assertCapacity(team.id);
+      // One team per session (D100 follow-up 2026-10-14): any team counts.
+      const already = this.#liveMembers().find((member) => member.machineId === this.#selfId() && member.sessionId === sessionId);
+      if (already) {
+        throw new TeamError(409, 'already-member', already.teamId === team.id ? 'this session is already a member of the team' : `this session is already a member of team ${this.#teamName(already.teamId)} (a session can be in one team only)`);
       }
       const now = this.#iso();
       const member: TeamMemberRecord = {
         id: randomUUID(),
-        teamId: DEFAULT_TEAM_ID,
+        teamId: team.id,
         clock: this.#stamp(),
         deleted: false,
         name: fields.name as string,
@@ -643,7 +810,7 @@ export class TeamService {
         originalPlace: await this.#placeNow(sessionId),
         access: [],
         // New members go to the end of the team's order.
-        order: nextOrder(this.#liveMembers()),
+        order: nextOrder(this.#teamMembers(team.id)),
         createdAt: now,
         updatedAt: now,
       };
@@ -665,7 +832,8 @@ export class TeamService {
     this.#need();
     const fields = this.#fields(body, false);
     if (!this.#o.startSession) throw new TeamError(501, 'not-available', 'new sessions cannot be started here');
-    this.#assertCapacity();
+    const team = this.#bodyTeam(body);
+    this.#assertCapacity(team.id);
     const template = templateById(fields.templateId ?? null);
     const sessionBody = { ...((body['session'] ?? {}) as Record<string, unknown>) };
     // A session name of its own (kebab-case, unique): the role's slug and a short suffix.
@@ -680,7 +848,7 @@ export class TeamService {
       const now = this.#iso();
       const member: TeamMemberRecord = {
         id: randomUUID(),
-        teamId: DEFAULT_TEAM_ID,
+        teamId: team.id,
         clock: this.#stamp(),
         deleted: false,
         name: fields.name as string,
@@ -708,7 +876,7 @@ export class TeamService {
       };
       await this.#serial(async () => {
         // New members go to the end of the team's order.
-        this.#need().putMember({ ...member, order: nextOrder(this.#liveMembers()) });
+        this.#need().putMember({ ...member, order: nextOrder(this.#teamMembers(team.id)) });
         this.#activity('create', member.id, `Started ${member.name}`);
       });
       memberId = member.id;
@@ -767,8 +935,11 @@ export class TeamService {
    */
   async reorder(body: Record<string, unknown>): Promise<TeamView> {
     this.#need();
+    // The team: the body's `teamId`, else the first listed member's, else the first team.
+    const firstId = Array.isArray(body['memberIds']) ? body['memberIds'][0] : undefined;
+    const teamId = typeof body['teamId'] === 'string' && body['teamId'] !== '' ? this.#team(body['teamId']).id : (this.#liveMembers().find((m) => m.id === firstId)?.teamId ?? DEFAULT_TEAM_ID);
     const changed = await this.#serial(async () => {
-      const members = this.#liveMembers();
+      const members = this.#teamMembers(teamId);
       const ids = reorderIds(
         members.map((member) => member.id),
         body['memberIds'],
@@ -786,8 +957,8 @@ export class TeamService {
       });
       return any;
     });
-    if (changed) this.#changed(['members', 'order']);
-    return this.view();
+    if (changed) this.#changed(['members', 'order'], teamId);
+    return this.view(teamId);
   }
 
   /** D64 / D91: the session's process picks the (new / withdrawn) charter up: idle → restarted now, busy → after its turn, not running → its next start. */
@@ -813,7 +984,7 @@ export class TeamService {
       await this.syncNow();
       return { sessionId: remoteId(before.machineId, answer.sessionId) };
     }
-    const team = this.#team();
+    const teamName = this.#teamName(before.teamId);
     const member = await this.#serial(async () => {
       const current = this.#memberRecord(id);
       // Its Team pause ends with it: the loops Team paused run again as the session's own.
@@ -830,7 +1001,7 @@ export class TeamService {
     if (session && session.closedAt === null) {
       await this.#applyCharter(member.sessionId);
       if (options.note !== false && this.#o.supervisor.isLive(member.sessionId)) {
-        await this.#o.supervisor.sendMessage(member.sessionId, returnNote(member.name, team.name), 'service').catch((error: unknown) => this.#error(error));
+        await this.#o.supervisor.sendMessage(member.sessionId, returnNote(member.name, teamName), 'service').catch((error: unknown) => this.#error(error));
       }
     }
     return { sessionId: member.sessionId };
@@ -941,10 +1112,36 @@ export class TeamService {
 
   // ── hand-offs ─────────────────────────────────────────────────────────
 
-  /** A member by role name (case-insensitive) or id. */
-  #memberByName(name: string): TeamMemberRecord | null {
-    const wanted = name.trim().toLowerCase();
-    return this.#liveMembers().find((member) => member.id === name || member.name.toLowerCase() === wanted) ?? null;
+  /**
+   * A hand-off's receiver (D100 follow-up 2026-10-14: multiple teams): a member id (any
+   * team), else a role name in `team` (an explicit team argument, by name or id), in the
+   * team written as "Name (Team)", or in `scope` (the caller's own team by default).
+   * @throws {TeamError} 404 naming where it looked (and the team to name, when only another team has that role).
+   */
+  #receiver(to: string, team: unknown, scope: string): TeamMemberRecord {
+    const byId = this.#liveMembers().find((member) => member.id === to);
+    if (byId) return byId;
+    const teams = this.#teams();
+    let target: TeamRecord | undefined;
+    let name = to.trim();
+    if (typeof team === 'string' && team.trim() !== '') {
+      const wanted = team.trim().toLowerCase();
+      target = teams.find((t) => t.id === team || t.name.toLowerCase() === wanted);
+      if (!target) throw new TeamError(404, 'not-found', `no team called "${team}"`);
+    } else {
+      const parsed = parseHandoffTarget(to, teams.map((t) => t.name));
+      if (parsed.team) {
+        target = teams.find((t) => t.name.toLowerCase() === (parsed.team as string).toLowerCase());
+        name = parsed.name;
+      }
+    }
+    const inTeam = target ?? teams.find((t) => t.id === scope) ?? this.#team();
+    const wanted = name.toLowerCase();
+    const found = this.#teamMembers(inTeam.id).find((member) => member.name.toLowerCase() === wanted);
+    if (found) return found;
+    const elsewhere = this.#liveMembers().filter((member) => member.name.toLowerCase() === wanted && member.teamId !== inTeam.id);
+    const hint = elsewhere.length > 0 ? `; ${elsewhere.map((m) => `"${m.name} (${this.#teamName(m.teamId)})"`).join(' or ')} is in another team: name it with its team` : '';
+    throw new TeamError(404, 'not-found', `no member called "${name}" in team ${inTeam.name}: team_members lists them${hint}`);
   }
 
   /**
@@ -952,10 +1149,12 @@ export class TeamService {
    * from a member). The receiver's machine turns it into a todo in the receiver's
    * session (D68) and, with rhythm "on hand-off", tells its agent.
    */
-  async createHandoff(input: { readonly from: string | null; readonly to: string; readonly brief: unknown; readonly expected: unknown; readonly links: unknown; readonly planRef?: unknown }): Promise<TeamHandoff> {
+  async createHandoff(input: { readonly from: string | null; readonly to: string; readonly brief: unknown; readonly expected: unknown; readonly links: unknown; readonly planRef?: unknown; readonly team?: unknown; readonly teamId?: unknown }): Promise<TeamHandoff> {
     this.#need();
-    const to = this.#memberByName(input.to);
-    if (!to) throw new TeamError(404, 'not-found', `no member called "${input.to}": team_members lists them`);
+    // Within the sender's team by default (the developer's: the body's `teamId`, else the first team).
+    const sender = input.from ? (this.#liveMembers().find((member) => member.id === input.from) ?? null) : null;
+    const scope = sender?.teamId ?? (typeof input.teamId === 'string' && input.teamId !== '' ? input.teamId : DEFAULT_TEAM_ID);
+    const to = this.#receiver(input.to, input.team, scope);
     const brief = typeof input.brief === 'string' ? input.brief.trim() : '';
     const expected = typeof input.expected === 'string' ? input.expected.trim() : '';
     if (brief === '' || brief.length > HANDOFF_TEXT_MAX) throw new TeamError(422, 'invalid', `brief is required (at most ${HANDOFF_TEXT_MAX} characters)`);
@@ -969,7 +1168,8 @@ export class TeamService {
       const now = this.#iso();
       const record: TeamHandoffRecord = {
         id: randomUUID(),
-        teamId: DEFAULT_TEAM_ID,
+        // The receiver's team (a cross-team hand-off shows there).
+        teamId: to.teamId,
         clock: this.#stamp(),
         deleted: false,
         fromMemberId: from?.id ?? null,
@@ -985,10 +1185,12 @@ export class TeamService {
         updatedAt: now,
       };
       this.#need().putHandoff(record);
-      this.#activity('handoff', to.id, `${from?.name ?? 'You'} handed off to ${to.name}: ${firstLine(brief, 120)}`);
+      const across = from && from.teamId !== to.teamId;
+      this.#activity('handoff', to.id, `${from ? (across ? `${from.name} (${this.#teamName(from.teamId)})` : from.name) : 'You'} handed off to ${to.name}: ${firstLine(brief, 120)}`, to.teamId);
+      if (across) this.#activity('handoff', from.id, `${from.name} handed off to ${to.name} (${this.#teamName(to.teamId)}): ${firstLine(brief, 120)}`, from.teamId);
       return record;
     });
-    this.#changed(['handoffs', 'activity']);
+    this.#changed(['handoffs', 'activity'], to.teamId);
     await this.#deliverHandoffs();
     if (to.machineId !== this.#selfId()) await this.syncNow();
     return stripHandoff(this.#need().handoffs().find((h) => h.id === handoff.id) ?? handoff);
@@ -1027,7 +1229,7 @@ export class TeamService {
             {
               title: firstLine(`Hand-off from ${fromName}: ${current.brief}`, 120),
               description: [current.brief, current.expected ? `Expected result: ${current.expected}` : '', current.links.length > 0 ? `Links: ${current.links.join(' ')}` : ''].filter(Boolean).join('\n\n').slice(0, 4_000),
-              plan: [`Hand-off ${current.id} from ${fromName} in team ${this.#team().name}.`, `Brief: ${current.brief}`, current.expected ? `Expected result: ${current.expected}` : '', 'Mark this todo in progress when you start it and done when the expected result is delivered: the hand-off follows it.'].filter(Boolean).join('\n').slice(0, 8_000),
+              plan: [`Hand-off ${current.id} from ${fromName} in team ${this.#teamName(to.teamId)}.`, `Brief: ${current.brief}`, current.expected ? `Expected result: ${current.expected}` : '', 'Mark this todo in progress when you start it and done when the expected result is delivered: the hand-off follows it.'].filter(Boolean).join('\n').slice(0, 8_000),
               priority: 'medium',
             },
             current.fromMemberId ? 'agent' : 'developer',
@@ -1045,7 +1247,7 @@ export class TeamService {
       }
       if (current.notifiedAt === null && to.rhythm.onHandoff && !to.paused) {
         try {
-          await this.#o.supervisor.sendMessage(to.sessionId, `New hand-off from ${fromName} (team ${this.#team().name}): ${current.brief}${current.expected ? `\nExpected result: ${current.expected}` : ''}\nIt is todo [${current.todoId}] in your list: start it with todo_start and mark it done with todo_done when finished.`, 'service');
+          await this.#o.supervisor.sendMessage(to.sessionId, `New hand-off from ${fromName} (team ${this.#teamName(to.teamId)}): ${current.brief}${current.expected ? `\nExpected result: ${current.expected}` : ''}\nIt is todo [${current.todoId}] in your list: start it with todo_start and mark it done with todo_done when finished.`, 'service');
           await this.#serial(async () => {
             this.#need().putHandoff({ ...current, notifiedAt: this.#iso(), clock: this.#stamp(), updatedAt: this.#iso() });
           });
@@ -1094,16 +1296,29 @@ export class TeamService {
   }
 
   /** `team_members`: the members, their charters and status, as text. */
-  async membersText(asSessionId: string): Promise<string> {
+  async membersText(asSessionId: string, team?: unknown): Promise<string> {
     const me = this.memberOfSession(asSessionId);
     if (!me) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
-    const view = await this.view();
+    // Its own team by default; `team` (a name or id) lists another (D100 follow-up 2026-10-14).
+    let teamId = me.teamId;
+    if (typeof team === 'string' && team.trim() !== '') {
+      const wanted = team.trim().toLowerCase();
+      const found = this.#teams().find((t) => t.id === team || t.name.toLowerCase() === wanted);
+      if (!found) throw new TeamError(404, 'not-found', `no team called "${team}"`);
+      teamId = found.id;
+    }
+    const view = await this.view(teamId);
+    const others = this.#teams().filter((t) => t.id !== teamId);
     const lines = view.members.map((member) => {
       const you = member.id === me.id ? ' (you)' : '';
       return `- ${member.name}${you} · ${member.status}${member.local ? '' : ` · on ${member.machineName}`}\n  owns: ${member.charter.owns || '—'}\n  produces: ${member.charter.produces || '—'}\n  never does: ${member.charter.neverDoes || '—'}`;
     });
     const open = view.handoffs.filter((h) => h.toMemberId === me.id && (h.state === 'open' || h.state === 'accepted'));
-    return [`Team ${view.team.name}: ${view.members.length} member${view.members.length === 1 ? '' : 's'}.`, ...lines, open.length > 0 ? `\nYour open hand-offs: ${open.map((h) => `[todo ${h.todoId ?? 'pending'}] ${firstLine(h.brief, 80)}`).join('; ')}` : ''].filter(Boolean).join('\n');
+    const otherLine =
+      others.length > 0
+        ? `\nOther teams: ${others.map((t) => `${t.name} (${this.#teamMembers(t.id).length})`).join(', ')}. To hand off across teams, name the receiver as "Role (Team)" or pass team; team_members with team lists one.`
+        : '';
+    return [`Team ${view.team.name}: ${view.members.length} member${view.members.length === 1 ? '' : 's'}.`, ...lines, open.length > 0 ? `\nYour open hand-offs: ${open.map((h) => `[todo ${h.todoId ?? 'pending'}] ${firstLine(h.brief, 80)}`).join('; ')}` : '', otherLine].filter(Boolean).join('\n');
   }
 
   /** `team_report`: a short status line in the activity feed. */
@@ -1125,23 +1340,27 @@ export class TeamService {
    * review cards (derived from the Inbox, this machine's and the paired machines'; not
    * stored again) plus Team's own open requests (gates, budgets; T2 adds access).
    */
-  async needsYou(): Promise<TeamNeedsYouItem[]> {
+  async needsYou(teamId?: string | null): Promise<TeamNeedsYouItem[]> {
     this.#need();
-    const members = this.#liveMembers();
+    // One team's (without one: the first team's), or every team's with `all` (D100 follow-up 2026-10-14).
+    const all = teamId === ALL_TEAMS;
+    const members = all ? this.#liveMembers() : this.#teamMembers(this.#team(teamId).id);
+    const names = new Map(this.#teams().map((team) => [team.id, team.name]));
+    const teamOf = (member: TeamMemberRecord) => ({ teamId: member.teamId, teamName: names.get(member.teamId) ?? '' });
     const bySession = new Map(members.map((member) => [this.#sessionRef(member), member]));
     const inbox: InboxItem[] = [...(await listInbox(this.#o.store)), ...this.#o.peers.remoteInbox()];
     const out: TeamNeedsYouItem[] = [];
     for (const item of inbox) {
       const member = item.sessionId ? bySession.get(item.sessionId) : undefined;
       if (!member) continue;
-      out.push({ id: item.id, source: 'inbox', kind: item.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, item.kind), title: item.title, detail: item.detail, createdAt: item.createdAt, sessionRef: this.#sessionRef(member), inbox: item });
+      out.push({ id: item.id, source: 'inbox', kind: item.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, item.kind), title: item.title, detail: item.detail, createdAt: item.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), inbox: item });
     }
     const byId = new Map(members.map((member) => [member.id, member]));
     for (const request of this.#need().requests()) {
       const member = byId.get(request.memberId);
       if (request.deleted || request.state !== 'open' || !member) continue;
       const access = request.kind === 'access' ? await this.access.entryForRequest(request) : null;
-      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), request: stripRequest(request), ...(access ? { access } : {}) });
+      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), request: stripRequest(request), ...(access ? { access } : {}) });
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -1155,7 +1374,7 @@ export class TeamService {
       const existing = this.#need().requests().find((r) => !r.deleted && r.state === 'open' && r.memberId === input.memberId && r.kind === input.kind && JSON.stringify(r.action) === JSON.stringify(input.action));
       if (existing) return existing;
       const now = this.#iso();
-      const created: TeamRequestRecord = { id: randomUUID(), teamId: DEFAULT_TEAM_ID, clock: this.#stamp(), deleted: false, memberId: input.memberId, kind: input.kind, gate: input.gate, title: input.title, detail: input.detail, state: 'open', action: input.action, note: null, createdAt: now, updatedAt: now };
+      const created: TeamRequestRecord = { id: randomUUID(), teamId: this.#need().members().find((m) => m.id === input.memberId)?.teamId ?? DEFAULT_TEAM_ID, clock: this.#stamp(), deleted: false, memberId: input.memberId, kind: input.kind, gate: input.gate, title: input.title, detail: input.detail, state: 'open', action: input.action, note: null, createdAt: now, updatedAt: now };
       this.#need().putRequest(created);
       return created;
     });
@@ -1296,7 +1515,7 @@ export class TeamService {
   async message(): Promise<TeamSyncMessage> {
     const db = this.#need();
     const self = this.#self ?? (await this.#o.peers.self());
-    const snapshot: TeamSnapshot = { teams: db.teams(), members: db.members(), handoffs: db.handoffs(), requests: db.requests(), activity: db.activity(DEFAULT_TEAM_ID), access: db.access() };
+    const snapshot: TeamSnapshot = { teams: db.teams(), members: db.members(), handoffs: db.handoffs(), requests: db.requests(), activity: db.activityAll(), access: db.access() };
     return { v: TEAM_SYNC_VERSION, machine: self, snapshot };
   }
 
@@ -1314,7 +1533,7 @@ export class TeamService {
       const members = keepOrder(db.members(), newerRecords(db.members(), s.members));
       const handoffs = newerRecords(db.handoffs(), s.handoffs);
       const requests = newerRecords(db.requests(), s.requests);
-      const activity = newActivity(db.activity(DEFAULT_TEAM_ID), s.activity);
+      const activity = newActivity(db.activityAll(), s.activity);
       const access = newerRecords(db.access(), s.access);
       db.transaction(() => {
         for (const team of teams) db.putTeam(team);
@@ -1329,7 +1548,7 @@ export class TeamService {
     this.#syncedWith.add(message.machine.id);
     if (changed.any) {
       this.#refreshRoles();
-      this.#publish(['members', 'handoffs', 'requests', 'activity']);
+      this.#publish(['teams', 'members', 'handoffs', 'requests', 'activity']);
       // A member that now runs here (a move) or whose charter changed elsewhere: its process picks it up.
       for (const member of changed.members) {
         if (member.machineId === this.#selfId()) await this.#applyCharter(member.sessionId);
@@ -1518,7 +1737,7 @@ export class TeamService {
     const member = this.memberOfSession(sessionId);
     if (!member) return null;
     const access = this.access.charterLines(member);
-    return [charterInstruction(member.name, this.#team().name, member.charter, member.gates), access].filter(Boolean).join(' ');
+    return [charterInstruction(member.name, this.#teamName(member.teamId), member.charter, member.gates), access].filter(Boolean).join(' ');
   }
 
   // ── forwarding to the member's machine ────────────────────────────────

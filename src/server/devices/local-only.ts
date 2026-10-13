@@ -143,6 +143,11 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/team\/handoffs\/[^/]+$/],
   // D100 follow-up 2026-10-14: reordering the members (organising, not configuration).
   ['PUT', /^\/api\/team\/order$/],
+  // D100 follow-up 2026-10-14 (multiple teams): list, create, order and delete teams, move a member to another team (renaming stays a desktop setting).
+  ['GET|POST', /^\/api\/team\/teams$/],
+  ['PUT', /^\/api\/team\/teams\/order$/],
+  ['DELETE', /^\/api\/team\/teams\/[^/]+$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/team$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
   // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
   ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],
@@ -205,6 +210,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   // Team (D100) hook: renaming the team and editing a member's charter / rhythm / budget / gates (configuration: desktop),
   // moving a member (a take-over, D65: desktop only) and the machines' sync exchange (peer API only).
   ['PUT', /^\/api\/team(?:\/members\/[^/]+)?$/],
+  // D100 follow-up 2026-10-14: renaming another team, as renaming the first one.
+  ['PUT', /^\/api\/team\/teams\/(?!order$)[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/move(?:\/check)?$/],
   ['POST', /^\/api\/team\/sync$/],
   // Team (D100) hook, D100-T2: entering, testing, revoking or timing out an access's values: "set this up on a computer".

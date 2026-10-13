@@ -42,9 +42,9 @@ export function teamTitle(name: string): string {
   return name === DEFAULT_TEAM_NAME ? 'Team' : `Team · ${name}`;
 }
 
-/** The sidebar entry: "Team · 4 members", or "Team · <name> · 4 members" once renamed. */
+/** A team's sidebar entry: "<team name> · 4 members" (D100 follow-up 2026-10-14: one per team; the first team is "Team" until renamed). */
 export function sidebarTeamText(name: string, members: number): string {
-  return `${teamTitle(name)} · ${membersLabel(members)}`;
+  return `${name} · ${membersLabel(members)}`;
 }
 
 /**
@@ -431,6 +431,8 @@ export interface MenuItem {
   readonly disabled?: boolean;
   /** `move`: the target machine. */
   readonly machineId?: string;
+  /** `team` (D100 follow-up 2026-10-14): the team it moves to. */
+  readonly teamId?: string;
 }
 
 /** Where a member sits in the team's order, for the menu's Move left / right (up / down on a phone). */
@@ -446,7 +448,14 @@ export interface MenuPosition {
  * Pause / Resume, Move left / right (up / down on a phone; with `position`), Move to <PC>…,
  * then Return to sessions.
  */
-export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machineId'>, machines: readonly Pick<Machine, 'id' | 'name' | 'state'>[], selfId: string, returnPlace: string, position?: MenuPosition): MenuItem[] {
+export function memberMenu(
+  member: Pick<TeamMember, 'paused' | 'status' | 'machineId'> & { readonly teamId?: string },
+  machines: readonly Pick<Machine, 'id' | 'name' | 'state'>[],
+  selfId: string,
+  returnPlace: string,
+  position?: MenuPosition,
+  teams: readonly { readonly id: string; readonly name: string }[] = [],
+): MenuItem[] {
   const offline = member.status === 'offline';
   const items: MenuItem[] = [
     { id: 'task', label: 'Give a task…', disabled: offline },
@@ -464,6 +473,10 @@ export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machi
   // Every machine the member can move to: this one (when it runs elsewhere) and the paired ones it does not run on.
   const targets = [{ id: selfId, name: 'this machine', state: 'online' as const }, ...machines].filter((machine) => machine.id !== member.machineId);
   for (const target of targets) items.push({ id: 'move', label: `Move to ${target.name}…`, machineId: target.id, disabled: offline || target.state !== 'online' });
+  // D100 follow-up 2026-10-14: to another team (it keeps its charter, rhythm, budget and access).
+  teams
+    .filter((team) => team.id !== member.teamId)
+    .forEach((team, index) => items.push({ id: 'team', label: `Move to team ▸ ${team.name}`, teamId: team.id, ...(index === 0 ? { separator: true } : {}) }));
   items.push({ id: 'return', label: returnLabel(returnPlace), separator: true, disabled: offline });
   return items;
 }

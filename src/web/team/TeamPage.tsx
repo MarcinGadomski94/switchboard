@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarLayout } from '../../core/sidebar-layout.ts';
-import { DEFAULT_TEAM_NAME, TEAM_NAME_MAX, type TeamMember, type TeamSuggestion } from '../../core/team.ts';
+import { ALL_TEAMS, DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, TEAM_NAME_MAX, type TeamMember, type TeamSuggestion } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { openSessions } from '../../core/session-close.ts';
@@ -10,7 +10,7 @@ import { useApi } from '../api/useApi.ts';
 import { useSessionListOf } from '../api/session-list.ts';
 import { useSavedFolders } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
-import { Link } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { useLayout } from '../shell/useLayout.ts';
 import { useToasts } from '../toast/ToastHost.tsx';
 import { refusalText, teamApi } from './api.ts';
@@ -29,13 +29,14 @@ import {
   sessionsForReview,
 } from './dialogs.tsx';
 import { useTeamSwitch } from './hidden.ts';
-import { bannerLaterIds, highlightReturnedRow, setBannerLater } from './local.ts';
+import { bannerLaterIds, highlightReturnedRow, lastTeam, setBannerLater, setLastTeam } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
 import { type MenuItem, adoptedToast, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
+import { DeleteTeamDialog, NewTeamDialog, TeamTabs } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
-import { reloadTeam, useTeamData } from './useTeamData.ts';
+import { reloadTeam, showTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
 
 /** The dialog open on the page (one at a time). */
@@ -47,6 +48,8 @@ type Open =
   | { readonly kind: 'form'; readonly target: FormTarget }
   | { readonly kind: 'task'; readonly memberId: string }
   | { readonly kind: 'move'; readonly memberId: string; readonly target: { readonly id: string; readonly name: string } }
+  | { readonly kind: 'new-team' }
+  | { readonly kind: 'delete-team' }
   | null;
 
 /**
@@ -60,7 +63,33 @@ export function TeamPage() {
   const { on } = useTeamSwitch();
   const layout = useLayout();
   const phone = layout === 'phone';
-  const { view, needsYou: items, error, loaded } = useTeamData();
+  const { route, navigate } = useRouter();
+  // D100 follow-up 2026-10-14 (multiple teams): `/team/{teamId}`; `/team` opens the last-used team; `/team/all` the All teams tab.
+  const routeTeam = route.view === 'team' ? (route.teamId ?? null) : null;
+  const data = useTeamData();
+  const { teams, needsYou: allItems, error, loaded } = data;
+  useEffect(() => {
+    showTeam(routeTeam);
+  }, [routeTeam]);
+  /** A team just created here: shown before the next read lists it (no redirect meanwhile). */
+  const created = useRef<string | null>(null);
+  useEffect(() => {
+    if (!on || !loaded || teams.length === 0 || routeTeam === ALL_TEAMS) return;
+    if (routeTeam !== null && teams.some((team) => team.id === routeTeam)) {
+      setLastTeam(routeTeam);
+      if (created.current === routeTeam) created.current = null;
+      return;
+    }
+    if (routeTeam !== null && created.current === routeTeam) return;
+    const last = lastTeam();
+    const id = last !== null && teams.some((team) => team.id === last) ? last : (teams[0]?.id ?? DEFAULT_TEAM_ID);
+    navigate({ view: 'team', teamId: id }, { replace: true });
+  }, [on, loaded, teams, routeTeam, navigate]);
+  const allTab = routeTeam === ALL_TEAMS;
+  // The view of the route's team (a moment after switching, the previous team's is still there: not shown).
+  const view = data.view && (routeTeam === null || data.view.team.id === routeTeam) ? data.view : null;
+  const teamId = view?.team.id ?? (routeTeam !== null && routeTeam !== ALL_TEAMS ? routeTeam : DEFAULT_TEAM_ID);
+  const items = useMemo(() => allItems.filter((item) => (item.teamId ?? DEFAULT_TEAM_ID) === teamId), [allItems, teamId]);
   const sessions = useSessionListOf();
   const activityOf = useLiveActivities(sessions.data);
   const machines = useApi(api.machines);
@@ -171,7 +200,7 @@ export function TeamPage() {
     setPendingOrder(ids);
     setActionError(null);
     teamApi
-      .reorder(ids)
+      .reorder(ids, teamId)
       .then(() => reloadTeam())
       .catch((caught: unknown) => setActionError(refusalText(caught)))
       .finally(() => setPendingOrder((current) => (current === ids ? null : current)));
@@ -214,7 +243,27 @@ export function TeamPage() {
       case 'return':
         void doReturn(member);
         return;
+      case 'team': {
+        const to = teams.find((team) => team.id === item.teamId);
+        if (!to) return;
+        setActionError(null);
+        void teamApi.moveToTeam(member.id, to.id).then(
+          () => {
+            toast(`${member.name} moved to team ${to.name}`);
+            if (selectedId === member.id) setSelectedId(null);
+            refresh();
+          },
+          (caught: unknown) => setActionError(refusalText(caught)),
+        );
+        return;
+      }
     }
+  };
+  const openTeam = (id: string): void => navigate({ view: 'team', teamId: id });
+  /** All teams tab: Reply… / Set up… open the member in its team. */
+  const inItsTeam = (memberId: string): void => {
+    const item = allItems.find((i) => i.memberId === memberId);
+    if (item?.teamId) openTeam(item.teamId);
   };
   const modelOf = (member: TeamMember): string => modelLine(sessions.data?.find((session) => session.id === member.sessionRef)?.model, member);
   const moveTargetsOf = (member: TeamMember): { id: string; name: string; online: boolean }[] =>
@@ -237,7 +286,7 @@ export function TeamPage() {
   // D100 follow-up 2026-10-14: the phone's list follows the team's order too (it is reorderable there); Needs you sits above it.
   const ordered = members;
   const firstNeedOf = (memberId: string) => items.find((item) => item.memberId === memberId) ?? null;
-  const empty = loaded && members.length === 0;
+  const empty = loaded && view !== null && members.length === 0;
   const detail = phone && panelShown && selected !== null;
   const menuMember = menu ? members.find((member) => member.id === menu.memberId) : undefined;
   const openMember = (id: string): TeamMember | undefined => members.find((member) => member.id === id);
@@ -270,12 +319,92 @@ export function TeamPage() {
     </ReorderStrip>
   );
 
+  const tabs = detail ? null : (
+    <TeamTabs
+      teams={teams}
+      current={allTab ? ALL_TEAMS : teamId}
+      onPick={openTeam}
+      onReorder={(ids) => {
+        setActionError(null);
+        teamApi.reorderTeams(ids).then(() => reloadTeam(), (caught: unknown) => setActionError(refusalText(caught)));
+      }}
+      onNew={() => setOpen({ kind: 'new-team' })}
+    />
+  );
+  const teamDialogs = (
+    <>
+      {open?.kind === 'new-team' ? (
+        <NewTeamDialog
+          onClose={() => setOpen(null)}
+          onDone={(team) => {
+            setOpen(null);
+            toast(`Team ${team.name} created`);
+            created.current = team.id;
+            openTeam(team.id);
+            refresh();
+          }}
+        />
+      ) : null}
+      {open?.kind === 'delete-team' && view ? (
+        <DeleteTeamDialog
+          team={view.team}
+          members={members.length}
+          onClose={() => setOpen(null)}
+          onDone={(returned) => {
+            setOpen(null);
+            toast(returned === 0 ? `Team ${view.team.name} deleted` : `Team ${view.team.name} deleted: ${returned === 1 ? 'its member is' : `${returned} members are`} back in your session list`);
+            navigate({ view: 'team', teamId: DEFAULT_TEAM_ID }, { replace: true });
+            refresh();
+          }}
+        />
+      ) : null}
+    </>
+  );
+
+  if (allTab) {
+    return (
+      <section className="sb-view sb-team" data-view="team" data-testid="view-team" data-layout={layout} data-team-id={ALL_TEAMS} data-state="all">
+        {tabs}
+        <header className="sb-team-header" data-testid="team-header">
+          <div className="sb-team-header__main">
+            <h1 className="sb-team-title">All teams</h1>
+            <span className="sb-team-counts" data-testid="team-counts">
+              {teams.length} team{teams.length === 1 ? '' : 's'} · {allItems.length} waiting for you
+            </span>
+          </div>
+        </header>
+        {error ? (
+          <div className="sb-team-error" role="alert" data-testid="team-load-error">
+            {error}
+          </div>
+        ) : null}
+        <div className="sb-team-all" data-testid="team-all">
+          <NeedsYouList
+            items={allItems}
+            showTeam
+            onReply={(memberId) => {
+              inItsTeam(memberId);
+              replyTo(memberId);
+            }}
+            onSetUp={(memberId, accessId) => {
+              inItsTeam(memberId);
+              setUpAccess(memberId, accessId);
+            }}
+            onChanged={refresh}
+          />
+        </div>
+        {teamDialogs}
+      </section>
+    );
+  }
+
   return (
-    <section className="sb-view sb-team" data-view="team" data-testid="view-team" data-layout={layout} data-pane={phone ? (detail ? 'detail' : 'list') : undefined} data-state={empty ? 'empty' : 'populated'}>
+    <section className="sb-view sb-team" data-view="team" data-testid="view-team" data-layout={layout} data-team-id={teamId} data-pane={phone ? (detail ? 'detail' : 'list') : undefined} data-state={empty ? 'empty' : 'populated'}>
+      {tabs}
       {detail ? null : (
         <header className="sb-team-header" data-testid="team-header">
           <div className="sb-team-header__main">
-            <TeamTitle name={view?.team.name ?? DEFAULT_TEAM_NAME} onRenamed={refresh} />
+            <TeamTitle key={teamId} teamId={teamId} name={view?.team.name ?? teams.find((team) => team.id === teamId)?.name ?? DEFAULT_TEAM_NAME} onRenamed={refresh} />
             {peers.length > 0 ? (
               <span className="sb-team-synced" data-testid="team-synced">
                 ⇄ synced with {peers.join(', ')}
@@ -285,9 +414,16 @@ export function TeamPage() {
               {headerCounts(members, items)}
             </span>
           </div>
-          <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-add" data-tour="team-add" onClick={() => setOpen({ kind: 'add' })}>
-            ＋ Member
-          </button>
+          <div className="sb-team-header__actions">
+            {teamId !== DEFAULT_TEAM_ID && view ? (
+              <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost" data-testid="team-delete" onClick={() => setOpen({ kind: 'delete-team' })}>
+                Delete team…
+              </button>
+            ) : null}
+            <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-add" data-tour="team-add" onClick={() => setOpen({ kind: 'add' })}>
+              ＋ Member
+            </button>
+          </div>
         </header>
       )}
       {!detail && banner ? (
@@ -398,7 +534,7 @@ export function TeamPage() {
       ) : null}
 
       {menu && menuMember ? (
-        <MemberMenu items={memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember), { index: ordered.indexOf(menuMember), count: ordered.length, vertical: phone })} at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
+        <MemberMenu items={memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember), { index: ordered.indexOf(menuMember), count: ordered.length, vertical: phone }, teams)} at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
       ) : null}
       {open?.kind === 'add' ? (
         <AddMemberDialog
@@ -428,8 +564,12 @@ export function TeamPage() {
         <MemberFormDialog
           target={open.target}
           folders={folders.data}
+          teams={teams}
+          teamId={teamId}
           onClose={() => setOpen(null)}
           onDone={(member) => {
+            // It may have joined another team (the form's Team picker): show that team.
+            if (member.teamId !== teamId) openTeam(member.teamId);
             if (open.target.kind === 'adopt') onAdopted(member, open.target.title);
             else {
               setOpen(null);
@@ -463,6 +603,7 @@ export function TeamPage() {
           onDone={refresh}
         />
       ) : null}
+      {teamDialogs}
     </section>
   );
 
@@ -486,15 +627,17 @@ export function TeamPage() {
  * place (`PUT /api/team`); Enter or leaving the field saves, Escape cancels, an empty
  * name goes back to the default.
  */
-function TeamTitle({ name, onRenamed }: { readonly name: string; readonly onRenamed: () => void }) {
+function TeamTitle({ teamId, name, onRenamed }: { readonly teamId: string; readonly name: string; readonly onRenamed: () => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const save = async (value: string): Promise<void> => {
-    const next = value.replace(/\s+/g, ' ').trim() || DEFAULT_TEAM_NAME;
+    // An empty name: the first team goes back to "Team"; another team keeps its name.
+    const next = value.replace(/\s+/g, ' ').trim() || (teamId === DEFAULT_TEAM_ID ? DEFAULT_TEAM_NAME : name);
     setEditing(null);
     if (next === name) return;
     try {
-      await teamApi.rename(next);
+      // D100 follow-up 2026-10-14: the shown team.
+      await teamApi.rename(next, teamId === DEFAULT_TEAM_ID ? undefined : teamId);
       setError(null);
       onRenamed();
     } catch (caught) {

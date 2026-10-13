@@ -349,3 +349,35 @@ describe('D100 follow-up 2026-10-14 · the members\' order', () => {
     expect((await r.team.view()).members.map((m) => m.order)).toEqual([0, 1, 2]);
   });
 });
+
+describe('D100 follow-up 2026-10-14 · multiple teams between paired machines', () => {
+  it('teams sync as part of the definition: a peer\'s new team, its rename, order and deletion arrive; ours go out with their activity', async () => {
+    const r = await setup();
+    await r.team.init();
+    await switchOn(r);
+    const ours = await r.team.createTeam({ name: 'Growth' });
+    const s1 = await r.world.store.sessions.create({ name: 'seo', claudeSessionId: '10000000-2222-4333-8444-955566667777', attached: true });
+    await r.team.adopt({ sessionId: s1.id, name: 'SEO', teamId: ours.id });
+    const out = await r.team.message();
+    expect(out.snapshot.teams.map((t) => [t.id, t.name, t.order])).toEqual(expect.arrayContaining([['team', 'Team', 0], [ours.id, 'Growth', 1]]));
+    expect(out.snapshot.activity.map((a) => [a.teamId, a.text])).toEqual(expect.arrayContaining([[ours.id, 'Team Growth was created'], [ours.id, 'Adopted seo as SEO']]));
+
+    // The paired machine made a team "Ops" (first in the order) with a member running there.
+    const later = (n: number): string => `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.${n.toString(36).padStart(4, '0')}.m-pc-0002`;
+    const at = new Date().toISOString();
+    const ops = { id: 'ops-team', name: 'Ops', clock: later(1), deleted: false, order: -1, createdAt: at, updatedAt: at };
+    const member = { ...out.snapshot.members[0], id: 'm-remote', teamId: 'ops-team', machineId: 'm-pc-0002', sessionId: 'pc-session', name: 'On-call', order: 0, clock: later(2) };
+    const message = (teams: unknown[], members: unknown[]) => ({ v: 1, machine: { id: 'm-pc-0002', name: 'PC' }, snapshot: { ...out.snapshot, teams, members, activity: [] } });
+    expect(await r.team.receive(message([ops], [member]))).toBe(true);
+    expect((await r.team.teamList()).map((t) => [t.name, t.members])).toEqual([['Ops', 1], ['Team', 0], ['Growth', 1]]);
+    expect((await r.team.view('ops-team')).members.map((m) => [m.name, m.local])).toEqual([['On-call', false]]);
+    expect(r.team.state().hiddenSessionIds).toContain('r~m-pc-0002~pc-session');
+
+    // Renamed there, then deleted there (its member returned there first): both arrive.
+    expect(await r.team.receive(message([{ ...ops, name: 'Operations', clock: later(3) }], []))).toBe(true);
+    expect((await r.team.teamList()).map((t) => t.name)).toEqual(['Operations', 'Team', 'Growth']);
+    expect(await r.team.receive(message([{ ...ops, name: 'Operations', deleted: true, clock: later(5) }], [{ ...member, deleted: true, clock: later(4) }]))).toBe(true);
+    expect((await r.team.teamList()).map((t) => t.name)).toEqual(['Team', 'Growth']);
+    expect(r.team.state().hiddenSessionIds).toEqual([s1.id]);
+  });
+});

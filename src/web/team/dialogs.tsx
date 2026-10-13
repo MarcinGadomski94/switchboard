@@ -304,15 +304,23 @@ export type FormTarget =
 export function MemberFormDialog({
   target,
   folders,
+  teams = [],
+  teamId,
   onDone,
   onClose,
 }: {
   readonly target: FormTarget;
   readonly folders: readonly Folder[] | null;
+  /** D100 follow-up 2026-10-14: the teams to pick from (the picker shows with two or more). */
+  readonly teams?: readonly { readonly id: string; readonly name: string }[];
+  /** The team the member joins by default (the shown team). */
+  readonly teamId?: string;
   readonly onDone: (member: TeamMember) => void;
   readonly onClose: () => void;
 }) {
   const [form, setForm] = useState<MemberForm>(target.form);
+  const [team, setTeam] = useState<string>(teamId ?? teams[0]?.id ?? '');
+  const inTeam = team ? { teamId: team } : {};
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -339,10 +347,10 @@ export function MemberFormDialog({
     setError(null);
     try {
       if (target.kind === 'adopt') {
-        onDone(await teamApi.addMember({ ...checked.body, sessionId: target.sessionId }));
+        onDone(await teamApi.addMember({ ...checked.body, ...inTeam, sessionId: target.sessionId }));
         return;
       }
-      const created = await teamApi.addMember({ ...checked.body, rhythm: { loopIds: [], onHandoff: form.onHandoff }, session: newMemberSession(form) });
+      const created = await teamApi.addMember({ ...checked.body, ...inTeam, rhythm: { loopIds: [], onHandoff: form.onHandoff }, session: newMemberSession(form) });
       // A template's suggested loops the developer kept become Switchboard loops (D94) of the new session, in its rhythm.
       const kept = form.templateLoops.filter((loop) => loop.kept);
       if (kept.length > 0) {
@@ -367,6 +375,18 @@ export function MemberFormDialog({
         <div className="sb-team-note" data-testid="team-adopt-note">
           {adoptNote(target.title, target.place)}
         </div>
+      ) : null}
+      {teams.length > 1 ? (
+        <label className="sb-team-field" data-section="team">
+          <span className="sb-team-field__label">Team</span>
+          <select className="sb-team-input" data-testid="team-form-team" value={team} disabled={busy} onChange={(event) => setTeam(event.target.value)}>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
       ) : null}
       <MemberFormFields form={form} onChange={setForm} errors={errors} parts={target.kind === 'adopt' ? { sessionLoops: loops } : { folder: folders ?? [] }} disabled={busy} />
       {error ? (
@@ -560,9 +580,9 @@ export function MemberMenu({ items, at, onPick, onClose }: { readonly items: rea
     }}>
       <div ref={ref} className="sb-team-menu" role="menu" data-testid="team-member-menu" style={{ left: pos.left, top: pos.top }} onClick={(event) => event.stopPropagation()}>
         {items.map((item, index) => (
-          <div key={`${item.id}:${item.machineId ?? index}`}>
+          <div key={`${item.id}:${item.machineId ?? item.teamId ?? index}`}>
             {item.separator ? <div className="sb-team-menu__sep" role="separator" /> : null}
-            <button type="button" role="menuitem" className="sb-button sb-team-menu__item" data-testid={`team-menu-${item.id}`} data-machine-id={item.machineId} disabled={item.disabled} onClick={() => onPick(item)}>
+            <button type="button" role="menuitem" className="sb-button sb-team-menu__item" data-testid={`team-menu-${item.id}`} data-machine-id={item.machineId} data-team-id={item.teamId} disabled={item.disabled} onClick={() => onPick(item)}>
               {item.label}
             </button>
           </div>

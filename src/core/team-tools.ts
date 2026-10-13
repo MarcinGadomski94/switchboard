@@ -30,13 +30,13 @@ export const TEAM_TOOLS: readonly TeamToolDefinition[] = [
     name: 'team_handoff',
     title: 'Hand work to another team member',
     description:
-      'Give another member of your team a written work item (a hand-off). Name the receiver by its role name (team_members lists them), write a brief (what to do and why, with the context the receiver needs: it has not seen this conversation) and the expected result (what "done" looks like). It lands as a todo in the receiver\'s list and, if the receiver works on hand-offs, the receiver is told. Use it only for work inside the receiver\'s charter; it is not a chat: do not use it to ask questions or to reply.',
+      'Give another member of your team a written work item (a hand-off). Name the receiver by its role name (team_members lists them); a member of another team as "Role (Team)" or with team. Write a brief (what to do and why, with the context the receiver needs: it has not seen this conversation) and the expected result (what "done" looks like). It lands as a todo in the receiver\'s list and, if the receiver works on hand-offs, the receiver is told. Use it only for work inside the receiver\'s charter; it is not a chat: do not use it to ask questions or to reply.',
     readOnly: false,
   },
   {
     name: 'team_members',
     title: 'List the team',
-    description: "List your team's members: role name, status (working, needs-you, idle, paused, offline), the machine it runs on and its charter (owns, produces, never does), plus your own open hand-offs. Read it before handing off, to pick the right receiver.",
+    description: "List your team's members: role name, status (working, needs-you, idle, paused, offline), the machine it runs on and its charter (owns, produces, never does), plus your own open hand-offs and the other teams. Pass team to list another team. Read it before handing off, to pick the right receiver.",
     readOnly: true,
   },
   {
@@ -73,7 +73,8 @@ function isResult(value: unknown): value is CallToolResult {
 export async function teamHandoff(api: TeamAgentApi, input: Readonly<Record<string, unknown>>): Promise<CallToolResult> {
   if (typeof input['to'] !== 'string' || input['to'].trim() === '') return text('team_handoff needs "to": the receiver\'s role name (see team_members).', true);
   if (typeof input['brief'] !== 'string' || input['brief'].trim() === '') return text('team_handoff needs a "brief": what to do and why.', true);
-  const answer = await call(api, 'POST', '/agent/v1/team/handoffs', { to: input['to'], brief: input['brief'], expected: input['expected'] ?? '', links: input['links'] ?? [] });
+  const team = typeof input['team'] === 'string' && input['team'].trim() !== '' ? { team: input['team'] } : {};
+  const answer = await call(api, 'POST', '/agent/v1/team/handoffs', { to: input['to'], brief: input['brief'], expected: input['expected'] ?? '', links: input['links'] ?? [], ...team });
   if (isResult(answer)) return answer;
   if (answer.status !== 201) return failure(answer);
   const handoff = answer.body as { id?: string };
@@ -81,8 +82,9 @@ export async function teamHandoff(api: TeamAgentApi, input: Readonly<Record<stri
 }
 
 /** `team_members`. */
-export async function teamMembers(api: TeamAgentApi): Promise<CallToolResult> {
-  const answer = await call(api, 'GET', '/agent/v1/team/members');
+export async function teamMembers(api: TeamAgentApi, input: Readonly<Record<string, unknown>> = {}): Promise<CallToolResult> {
+  const team = typeof input['team'] === 'string' && input['team'].trim() !== '' ? `?team=${encodeURIComponent(input['team'])}` : '';
+  const answer = await call(api, 'GET', `/agent/v1/team/members${team}`);
   if (isResult(answer)) return answer;
   if (answer.status !== 200) return failure(answer);
   return text(String((answer.body as { text?: unknown } | null)?.text ?? ''));
@@ -119,6 +121,7 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
           brief: z.string().max(HANDOFF_TEXT_MAX).describe('What to do and why, with the context the receiver needs (it has not seen this conversation).').optional(),
           expected: z.string().max(HANDOFF_TEXT_MAX).describe('The expected result: what "done" looks like.').optional(),
           links: z.array(z.string()).max(20).describe('Optional links or paths that help (tickets as PROJ-123, files, URLs).').optional(),
+          team: z.string().max(100).describe("Optional: the receiver's team (name), when it is not your own team. \"Role (Team)\" in to works too.").optional(),
         })
         .meta({ required: ['to', 'brief', 'expected'], additionalProperties: false }),
       annotations: annotations(handoff),
@@ -126,7 +129,16 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
     (input) => teamHandoff(api, input),
   );
   const members = definition('team_members');
-  server.registerTool(members.name, { title: members.title, description: members.description, inputSchema: z.looseObject({}).meta({ additionalProperties: false }), annotations: annotations(members) }, () => teamMembers(api));
+  server.registerTool(
+    members.name,
+    {
+      title: members.title,
+      description: members.description,
+      inputSchema: z.looseObject({ team: z.string().max(100).describe('Optional: another team to list (its name); your own team by default.').optional() }).meta({ additionalProperties: false }),
+      annotations: annotations(members),
+    },
+    (input) => teamMembers(api, input),
+  );
   const report = definition('team_report');
   server.registerTool(
     report.name,

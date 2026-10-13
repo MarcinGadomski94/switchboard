@@ -32,7 +32,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
 | `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers` and `TeamNavItem` / `TeamSidebarEntry`; `teamHidden`; the one filter on `sessionList`; `<TeamNavItem />` at the end of the nav and `<TeamSidebarEntry />` above `<SidebarSessions>` (both render nothing while Team is off) | `const sessionList = openSessions(sessions.data ?? []);`; drop the two elements |
-| `src/web/router.tsx` | `team` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/team` row of the header table | remove `team` in the three places and the row |
+| `src/web/router.tsx` | `team` in `ViewName` and `SIMPLE_VIEWS`; the `{ view: 'team'; teamId? }` member of the `Route` union; the `/team/{teamId}` branch of `parseRoute` and the `case 'team'` of `routePath` (multiple teams, 2026-10-14); the `/team` row of the header table | remove `team` in `ViewName` and `SIMPLE_VIEWS`, the union member, the branch, the case and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
 | `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them |

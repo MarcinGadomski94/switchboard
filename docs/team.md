@@ -19,7 +19,7 @@ All Team data lives in a separate SQLite file, `<dataDir>/team.db`, with its own
 
 A missing file is created when Team is switched on. A file that cannot be opened or migrated (a broken `team.db`) leaves Team **unavailable**: `GET /api/team/state` reports `available: false` with the problem, **nothing is hidden**, and the other routes answer 503 `team-unavailable`. Hiding never loses a session: it only filters the sidebar list.
 
-One team for now (`id: "team"`, default name **Team**, renamable); everything is keyed by team id so more teams can come later.
+**Teams** (D100 follow-up 2026-10-14, "I also need to be able to create multiple teams"): the first team keeps `id: "team"` (default name **Team**, renamable) and all its data; more teams are created, renamed, reordered and deleted on the Team page (*Teams* below). Each team has its own name, members, order, hand-offs, activity and Needs you. A session can be a member of **one** team only. At most 20 teams, 30 members per team.
 
 ## Members
 
@@ -57,15 +57,15 @@ The sidebar's SESSIONS list leaves member sessions out through **one filter** (`
 
 A written work item between members: from (a member or the developer), to, brief, expected result, state (`open` → `accepted` → `done`, or `declined`), links, the receiver's todo id, and `planRef`, the **seam for Plans (D99)** (null until Plans uses it).
 
-- Created by the developer (`POST /api/team/handoffs`) or a member (`team_handoff`). The **receiver's machine** turns it into a todo (D68) in the receiver's session (title "Hand-off from <sender>: …", the brief and expected result in the description, a plan for an agent), so the existing todo machinery runs it. With rhythm "on hand-off" (and not paused) the agent also gets a service message naming the todo.
+- Created by the developer (`POST /api/team/handoffs`; the page names the receiver by id, a role name is looked up in `teamId`, else the first team) or a member (`team_handoff`). Multiple teams: the receiver is looked up in the sender's team unless the hand-off names another (see *The agent's tools*); the hand-off belongs to the receiver's team (its activity line too, plus one in the sender's team for a cross-team hand-off). Moving a member to another team leaves its hand-offs as they are. The **receiver's machine** turns it into a todo (D68) in the receiver's session (title "Hand-off from <sender>: …", the brief and expected result in the description, a plan for an agent), so the existing todo machinery runs it. With rhythm "on hand-off" (and not paused) the agent also gets a service message naming the todo.
 - The hand-off follows its todo: in progress → `accepted`, done → `done`. The developer can set the state (`PUT /api/team/handoffs/{id}`).
 
 ## The agent's tools
 
 In the `switchboard` MCP server (`src/hook/sb-mcp.ts`), **only in member sessions and only while Team is on**: at start the helper asks `GET /agent/v1/team` (404 = not a member / Team off) and registers the tools only on 200; every call is checked again. Definitions: `src/core/team-tools.ts`.
 
-- `team_handoff { to, brief, expected, links? }`: give another member a written work item.
-- `team_members {}`: the members, their charters, status and machine, and your open hand-offs.
+- `team_handoff { to, brief, expected, links?, team? }`: give another member a written work item. `to` names a role **in the caller's own team**; a member of another team is named **"Role (Team)"** (the part in parentheses counts as a team only when a team has that name, so a role like "QA (nightly)" still works) or with the explicit `team` argument (a team name or id), which wins. A member id works in any team. An unknown name in the own team is refused with the other teams' matches ("name it with its team").
+- `team_members { team? }`: the caller's team (or the named one): the members, their charters, status and machine, your open hand-offs, and a line listing the other teams.
 - `team_report { text }`: one short status line to the activity feed. Deliverables stay `artifact_save`.
 
 There is no free-form agent-to-agent chat.
@@ -106,6 +106,9 @@ Like D48 / D71 / D98: `POST /api/team/sync` (on `PEER_API_ALLOW`) exchanges `{ v
 - A machine that is offline shows its members as **offline** (the last known records stay); actions on them answer 502 `peer-unreachable`.
 - **Older peers** (no Team: 403 on the exchange) and machines with Team off (404) are simply not synced; nothing breaks.
 
+- **Teams (D100 follow-up 2026-10-14)** are part of the synced definition: created, renamed, reordered and deleted (a tombstone) teams are last writer wins per team record, like members; each team's activity travels in the same union. An **older peer** (no multi-team support) reads only the first team (`team`) and its members: other teams' members are not shown or hidden there, and it does not apply their charters if they run on it; update both machines.
+- Deleting a team with a member on a paired machine returns that member on its machine (forwarded); while that machine is offline the team cannot be deleted (502 `peer-unreachable`, nothing changes).
+
 ## Moving a member to another machine
 
 Built on the **D65 take-over**; no new transfer mechanism.
@@ -118,7 +121,7 @@ Built on the **D65 take-over**; no new transfer mechanism.
 
 ## Devices (D73)
 
-Phones may read the team (state, members, templates, suggestions, activity, Needs you, move runs), answer (approve / decline / dismiss requests; Inbox answers as before), pause / resume, give tasks (hand-offs and their state), reorder the members (`PUT /api/team/order`, D100 follow-up 2026-10-14), adopt / create, return and remove a member (the session is never lost by any of them). Refused (`DEVICE_REFUSED`): renaming the team and editing a member's charter / rhythm / budget / gates (configuration), moving a member (a take-over, desktop only like D65) and the machines' sync exchange.
+Phones may read the team (state, members, templates, suggestions, activity, Needs you, move runs), answer (approve / decline / dismiss requests; Inbox answers as before), pause / resume, give tasks (hand-offs and their state), reorder the members (`PUT /api/team/order`, D100 follow-up 2026-10-14), list / create / reorder / delete teams and move a member to another team (multiple teams, same day; renaming a team stays on the desktop like renaming the first one), adopt / create, return and remove a member (the session is never lost by any of them). Refused (`DEVICE_REFUSED`): renaming the team and editing a member's charter / rhythm / budget / gates (configuration), moving a member (a take-over, desktop only like D65) and the machines' sync exchange.
 
 ## Templates and suggestions
 
@@ -171,7 +174,17 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
 
 **What's new**: the `team` mini-tour (V1_17 = 1.17.0): the switch, adopting, Needs you and Return to sessions (`data-tour`: `experimental-team`, `team-add`, `team-needs-you`, `team-member-menu`); on an install with Team off its later steps show a card pointing to the switch.
 
-**Tests**: `tests/web/team.test.ts` (the rules; the order model and Move left / right), `tests/server/team/api.test.ts` (the order stored, a new member last, `PUT /api/team/order`, the sync message, the routes' classification), `tests/server/team/team.test.ts` (the order synced; an older peer's record keeps ours), `tests/e2e/team-page.spec.ts` (switch, review → adopt → chat → Return, template, Needs you, pause, drag / menu / Alt+arrow reorder surviving a reload, the strip scrolling and revealing the selected card, phone), `tests/e2e/team-move.spec.ts` (two machines), `tests/e2e/visual/team.spec.ts` (desktop, tablet, phone; empty and populated; report `docs/visual/team.md`).
+**Teams (D100 follow-up 2026-10-14).** "I also need to be able to create multiple teams."
+
+- *Switcher:* above the header, one tab per team in the teams' order, each with its name and needs-you count (its members that need you), in a row that scrolls sideways and reorders like the cards strip (drag, long press, Alt+← / →; `PUT /api/team/teams/order`); then **All teams** and **＋ New team** (a name; the new team opens). The tab row is on the phone too.
+- *Address:* `/team/{teamId}`; `/team` opens the **last-used** team (kept in this browser, `sb.team.last`; else the first); `/team/all` is the All teams tab; an unknown team opens the first one.
+- *All teams* (the last tab): every team's Needs you, each item labelled with its team; Reply… / Set up… open the member in its team.
+- *Header:* the title edits the shown team's name in place (`PUT /api/team/teams/{id}`; empty: the first team goes back to "Team", another keeps its name; a name another team has is refused). **Delete team…** (not on the first team) asks first, then returns every member to the session list exactly like ↩ Return to sessions (folder and position restored), never deleting a session, and opens the first team.
+- *Members:* ⋯ → **Move to team ▸ <name>** (one per other team): the member goes to the end of that team, keeping its charter, rhythm, budget, gates and access; its hand-offs stay; both teams' activity say so; its agent gets the new team's name with its next message. The Adopt / Create form gets a **Team** picker (shown with two or more teams), defaulting to the shown team.
+- *Sidebar:* one **⚑ <team name> · N members** per team above SESSIONS (the first team reads "Team" until renamed), in the teams' order, each with its needs-you count, each opening its team. The nav's Team item opens the last-used team; its badge counts every team.
+- *Suggestions* leave out sessions in any team.
+
+**Tests**: `tests/web/team.test.ts` (the rules; the order model and Move left / right; Move to team ▸; "Role (Team)"; the `/team/{id}` address), `tests/server/team/api.test.ts` (teams: create / rename / reorder / delete with members returned, the first team kept, the old routes; one team per session; moving a member between teams; Needs you per team and `all`; cross-team hand-offs and `team_members`), `tests/server/team/team.test.ts` (teams synced with a paired machine), `tests/e2e/team-teams.spec.ts` (＋ New team, sidebar entries per team, the form's Team picker, Move to team ▸, Needs you per team and All teams with Reply…, reordering the tabs, `/team` → the last-used team, Delete team returning its member; the phone), `tests/server/team/api.test.ts` (the order stored, a new member last, `PUT /api/team/order`, the sync message, the routes' classification), `tests/server/team/team.test.ts` (the order synced; an older peer's record keeps ours), `tests/e2e/team-page.spec.ts` (switch, review → adopt → chat → Return, template, Needs you, pause, drag / menu / Alt+arrow reorder surviving a reload, the strip scrolling and revealing the selected card, phone), `tests/e2e/team-move.spec.ts` (two machines), `tests/e2e/visual/team.spec.ts` (desktop, tablet, phone; empty and populated; report `docs/visual/team.md`).
 
 ## Access requests (D100-T2)
 

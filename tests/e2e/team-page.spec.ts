@@ -54,17 +54,18 @@ test('the switch: off = no Team nav or sidebar entry; on = both appear', async (
   await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Team · 0 members');
 
   await page.getByTestId('nav-team').click();
-  await expect(page).toHaveURL(/\/team$/);
+  // D100 follow-up 2026-10-14: /team opens the last-used team (the first one here).
+  await expect(page).toHaveURL(/\/team\/team$/);
   await expect(page.getByTestId('team-empty')).toContainText('No team members yet');
   await expect(page.getByTestId('team-empty')).toContainText('Adopt one of your sessions, or start a new member from a template.');
 
-  // The default name shows once ("Team"); a rename shows "Team · <name>" here and in the sidebar.
+  // The default name shows once ("Team"); a rename shows "Team · <name>" here and "<name>" in the sidebar (one entry per team).
   await expect(page.getByTestId('team-title')).toHaveText('Team');
   await page.getByTestId('team-title').click();
   await page.getByTestId('team-title-input').fill('Acme');
   await page.getByTestId('team-title-input').press('Enter');
   await expect(page.getByTestId('team-title')).toHaveText('Team · Acme');
-  await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Team · Acme · 0 members');
+  await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Acme · 0 members');
   await page.getByTestId('team-title').click();
   await page.getByTestId('team-title-input').fill('');
   await page.getByTestId('team-title-input').press('Enter');
@@ -290,7 +291,7 @@ test('D100 follow-up: many members sit in one row that scrolls sideways; a membe
   expect(new Set(boxes.map((b) => b.top)).size).toBe(1);
   for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(180);
   expect(await strip.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-  await expect(page.locator('.sb-team-strip-frame')).toHaveAttribute('data-fade-right', 'true');
+  await expect(page.locator('.sb-team-top .sb-team-strip-frame')).toHaveAttribute('data-fade-right', 'true');
   await expect(card(page, 'Nine')).not.toBeInViewport();
   const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(pageOverflow).toBeLessThanOrEqual(0);
@@ -302,8 +303,8 @@ test('D100 follow-up: many members sit in one row that scrolls sideways; a membe
   await need.getByRole('button', { name: 'Reply…' }).click();
   await expect(page.getByTestId('team-panel')).toContainText('Nine');
   await expect(card(page, 'Nine')).toBeInViewport({ ratio: 1 });
-  await expect(page.locator('.sb-team-strip-frame')).toHaveAttribute('data-fade-left', 'true');
-  await expect(page.locator('.sb-team-strip-frame')).not.toHaveAttribute('data-fade-right', /.*/);
+  await expect(page.locator('.sb-team-top .sb-team-strip-frame')).toHaveAttribute('data-fade-left', 'true');
+  await expect(page.locator('.sb-team-top .sb-team-strip-frame')).not.toHaveAttribute('data-fade-right', /.*/);
   await page.screenshot({ path: test.info().outputPath('team-strip-scrolled.png') });
 });
 

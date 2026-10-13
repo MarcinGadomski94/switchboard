@@ -225,6 +225,12 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/team\/(?:members|handoffs)$/],
   ['PUT', /^\/api\/team\/(?:members|handoffs)\/[^/]+$/],
   ['PUT', /^\/api\/team\/order$/],
+  // D100 follow-up 2026-10-14 (multiple teams): the teams (list, create, rename, order, delete) and moving a member to another team.
+  ['GET', /^\/api\/team\/teams$/],
+  ['POST', /^\/api\/team\/teams$/],
+  ['PUT', /^\/api\/team\/teams\/[^/]+$/],
+  ['DELETE', /^\/api\/team\/teams\/[^/]+$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/team$/],
   ['DELETE', /^\/api\/team\/members\/[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return|move|move\/check)$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],

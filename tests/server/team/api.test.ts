@@ -7,7 +7,7 @@ import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fas
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InboxItem } from '../../../src/core/api.ts';
 import type { SearchAnswer } from '../../../src/core/search.ts';
-import type { TeamMember, TeamNeedsYouItem, TeamState, TeamView } from '../../../src/core/team.ts';
+import type { TeamMember, TeamNeedsYouItem, TeamState, TeamSummary, TeamView } from '../../../src/core/team.ts';
 import { TEAM_TOOLS, registerTeamToolsIfMember } from '../../../src/core/team-tools.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -245,6 +245,102 @@ describe('D100 · the routes', () => {
     expect(message.snapshot.members.map((m) => [m.name, m.order]).sort()).toEqual([['Alpha', 1], ['Bravo', 2], ['Charlie', 0], ['Delta', 3]]);
   });
 
+  it('D100 follow-up 2026-10-14 · teams: create, rename, reorder, delete (its members return); the first team stays and the old routes act on it', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const teams = async (): Promise<TeamSummary[]> => (await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[];
+    expect((await teams()).map((t) => [t.id, t.name, t.members])).toEqual([['team', 'Team', 0]]);
+
+    const made = await ui(r, 'POST', '/api/team/teams', { name: 'Growth' });
+    expect(made.statusCode, made.body).toBe(201);
+    const growth = made.json() as TeamSummary;
+    expect((await ui(r, 'POST', '/api/team/teams', { name: 'growth' })).json().error).toBe('name-taken');
+    expect((await ui(r, 'POST', '/api/team/teams', { name: '' })).statusCode).toBe(422);
+
+    // Members join a team by id; without one, the first team (the old body).
+    const seo = (await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, 'seo-session'), name: 'SEO', teamId: growth.id })).json() as TeamMember;
+    const ads = (await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, 'ads-session'), name: 'Ads', teamId: growth.id })).json() as TeamMember;
+    const devSession = await session(r, 'dev-session');
+    const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
+    expect([seo.teamId, ads.teamId, dev.teamId]).toEqual([growth.id, growth.id, 'team']);
+    expect((await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, 'x'), name: 'X', teamId: 'nope' })).statusCode).toBe(422);
+    expect((await teams()).map((t) => [t.name, t.members])).toEqual([['Team', 1], ['Growth', 2]]);
+
+    // The old routes: the first team.
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.name)).toEqual(['Developer']);
+    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).members.map((m) => m.name)).toEqual(['SEO', 'Ads']);
+    expect((await ui(r, 'PUT', '/api/team', { name: 'Core' })).json().team).toEqual({ id: 'team', name: 'Core' });
+    expect((await ui(r, 'PUT', `/api/team/teams/${growth.id}`, { name: 'Growth squad' })).json().team).toEqual({ id: growth.id, name: 'Growth squad' });
+    expect((await ui(r, 'GET', '/api/team?teamId=nope')).statusCode).toBe(404);
+    // Reorder the members within Growth, and the teams.
+    expect(((await ui(r, 'PUT', '/api/team/order', { teamId: growth.id, memberIds: [ads.id, seo.id] })).json() as TeamView).members.map((m) => m.name)).toEqual(['Ads', 'SEO']);
+    expect(((await ui(r, 'PUT', '/api/team/teams/order', { teamIds: [growth.id] })).json() as TeamSummary[]).map((t) => t.name)).toEqual(['Growth squad', 'Core']);
+
+    // Every member's session is hidden, whatever its team.
+    expect([...((await ui(r, 'GET', '/api/team/state')).json() as TeamState).hiddenSessionIds].sort()).toEqual([seo.sessionId, ads.sessionId, dev.sessionId].sort());
+    // The first team cannot be deleted; Growth can: its members go back to the list, no session is deleted.
+    expect((await ui(r, 'DELETE', '/api/team/teams/team')).json().error).toBe('default-team');
+    const deleted = await ui(r, 'DELETE', `/api/team/teams/${growth.id}`);
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toEqual({ ok: true, returned: 2 });
+    expect((await teams()).map((t) => t.name)).toEqual(['Core']);
+    expect(((await ui(r, 'GET', '/api/team/state')).json() as TeamState).hiddenSessionIds).toEqual([dev.sessionId]);
+    for (const id of [seo.sessionId, ads.sessionId]) expect((await r.store.sessions.get(id))?.closedAt).toBeNull();
+    expect((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).statusCode).toBe(404);
+  });
+
+  it('D100 follow-up 2026-10-14 · one team per session; a member moves to another team keeping its setup; Needs you per team and for all', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
+    const trackerSession = await session(r, 'tracker-session');
+    const tracker = (await ui(r, 'POST', '/api/team/members', { sessionId: trackerSession, name: 'Tracker', charter: { owns: 'the board' }, budget: { dailyPct: 20, profileId: null } })).json() as TeamMember;
+    const again = await ui(r, 'POST', '/api/team/members', { sessionId: trackerSession, name: 'Tracker 2', teamId: growth.id });
+    expect([again.statusCode, again.json().error]).toEqual([409, 'already-member']);
+    expect(again.json().message).toContain('team Team');
+
+    // Move to Growth: the end of its order, charter and budget kept, the activity in both teams.
+    const ads = (await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, 'ads-session'), name: 'Ads', teamId: growth.id })).json() as TeamMember;
+    const moved = await ui(r, 'POST', `/api/team/members/${tracker.id}/team`, { teamId: growth.id });
+    expect(moved.statusCode, moved.body).toBe(200);
+    expect(moved.json()).toMatchObject({ teamId: growth.id, order: 1, charter: { owns: 'the board' }, budget: { dailyPct: 20 } });
+    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).members.map((m) => m.name)).toEqual(['Ads', 'Tracker']);
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members).toEqual([]);
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).activity.map((a) => a.text)).toContain('Tracker moved to team Growth');
+    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).activity.map((a) => a.text)).toContain('Tracker joined from team Team');
+    expect((await ui(r, 'POST', `/api/team/members/${tracker.id}/team`, { teamId: 'nope' })).statusCode).toBe(404);
+
+    // Needs you: per team, and every team's with `all` (labelled with the team).
+    const devSession = await session(r, 'dev-session');
+    const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
+    for (const sessionId of [trackerSession, devSession]) {
+      await r.store.permissions.create({ sessionId, requestId: `req-${sessionId}`, toolUseId: null, toolName: 'Bash', input: { command: 'ls' }, description: 'List files', decisionReason: null, agentId: null });
+    }
+    const of = async (query: string) => ((await ui(r, 'GET', `/api/team/needs-you${query}`)).json() as TeamNeedsYouItem[]).map((item) => [item.memberName, item.teamName]);
+    expect(await of('')).toEqual([['Developer', 'Team']]);
+    expect(await of(`?teamId=${growth.id}`)).toEqual([['Tracker', 'Growth']]);
+    expect((await of('?teamId=all')).sort()).toEqual([['Developer', 'Team'], ['Tracker', 'Growth']]);
+    expect(((await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[]).map((t) => [t.name, t.needsYou])).toEqual([['Team', 1], ['Growth', 1]]);
+
+    // Hand-offs: within the sender's team by default; another team's member as "Role (Team)" or with `team`.
+    const api = helperApi(r, devSession);
+    const own = await api('POST', '/agent/v1/team/handoffs', { to: 'Ads', brief: 'Check the campaign.' });
+    expect(own.status).toBe(404);
+    expect(String((own.body as { message: string }).message)).toContain('"Ads (Growth)"');
+    expect((await api('POST', '/agent/v1/team/handoffs', { to: 'Ads (Growth)', brief: 'Check the campaign.', expected: 'Numbers.' })).status).toBe(201);
+    expect((await api('POST', '/agent/v1/team/handoffs', { to: 'Tracker', team: 'growth', brief: 'Track it.', expected: '' })).status).toBe(201);
+    const growthView = (await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView;
+    expect(growthView.handoffs.map((h) => [h.fromMemberId, h.toMemberId, h.teamId]).sort()).toEqual([[dev.id, ads.id, growth.id], [dev.id, tracker.id, growth.id]].sort());
+    expect(growthView.activity.map((a) => a.text)).toContain('Developer (Team) handed off to Ads: Check the campaign.');
+    const listed = String(((await api('GET', '/agent/v1/team/members')).body as { text: string }).text);
+    expect(listed).toContain('Team Team: 1 member.');
+    expect(listed).toContain('Other teams: Growth (2)');
+    expect(String(((await api('GET', '/agent/v1/team/members?team=Growth')).body as { text: string }).text)).toContain('Team Growth: 2 members.');
+    // Suggestions leave out every team's sessions.
+    const suggested = ((await ui(r, 'GET', '/api/team/suggestions')).json() as Array<{ sessionId: string }>).map((s) => s.sessionId);
+    for (const id of [trackerSession, devSession, ads.sessionId]) expect(suggested).not.toContain(id);
+  });
+
   it('every Team route is classified for devices; the peer API serves what a paired machine needs', () => {
     // Phones read, answer, pause / resume, give tasks, adopt / return / remove.
     for (const [method, url] of [
@@ -258,8 +354,14 @@ describe('D100 · the routes', () => {
       ['DELETE', '/api/team/members/m1'],
       ['POST', '/api/team/handoffs'],
       ['POST', '/api/team/requests/q1/approve'],
-      // D100 follow-up 2026-10-14: phones may reorder.
+      // D100 follow-up 2026-10-14: phones may reorder, and list / create / order / delete teams and move a member between them.
       ['PUT', '/api/team/order'],
+      ['GET', '/api/team/teams'],
+      ['POST', '/api/team/teams'],
+      ['PUT', '/api/team/teams/order'],
+      ['DELETE', '/api/team/teams/t1'],
+      ['POST', '/api/team/members/m1/team'],
+      ['GET', '/api/team/needs-you?teamId=all'],
     ] as const) {
       expect(isLocalOnly(method, url), `${method} ${url}`).toBe(false);
     }
@@ -270,6 +372,8 @@ describe('D100 · the routes', () => {
       ['POST', '/api/team/members/m1/move'],
       ['POST', '/api/team/members/m1/move/check'],
       ['POST', '/api/team/sync'],
+      // Renaming a team stays a desktop setting, like renaming the first one.
+      ['PUT', '/api/team/teams/t1'],
     ] as const) {
       expect(isLocalOnly(method, url), `${method} ${url}`).toBe(true);
     }
@@ -280,6 +384,11 @@ describe('D100 · the routes', () => {
       ['POST', '/api/team/requests/q1/approve'],
       ['GET', '/api/team/moves/r1'],
       ['PUT', '/api/team/order'],
+      ['GET', '/api/team/teams'],
+      ['POST', '/api/team/teams'],
+      ['PUT', '/api/team/teams/t1'],
+      ['DELETE', '/api/team/teams/t1'],
+      ['POST', '/api/team/members/m1/team'],
     ] as const) {
       expect(peerApiAllowed(method, url), `${method} ${url}`).toBe(true);
     }

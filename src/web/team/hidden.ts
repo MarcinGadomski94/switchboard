@@ -88,6 +88,11 @@ export function useTeamHiddenSessions(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, () => current.hidden, () => EMPTY);
 }
 
+/** D100 follow-up 2026-10-14: `true` when `sessionId` is a member's session of any team (outside React). */
+export function isTeamMemberSession(sessionId: string): boolean {
+  return current.hidden.has(sessionId);
+}
+
 /** The switch as the page knows it (`on` = Team is on and available). */
 export function useTeamSwitch(): TeamSwitch {
   return useSyncExternalStore(subscribe, () => current, () => OFF);

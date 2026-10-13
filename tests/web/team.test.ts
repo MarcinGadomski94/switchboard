@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TeamMember, TeamNeedsYouItem, TeamSuggestion } from '../../src/core/team.ts';
+import { type TeamMember, type TeamNeedsYouItem, type TeamSuggestion, parseHandoffTarget } from '../../src/core/team.ts';
 import { TEAM_TEMPLATES, templateById } from '../../src/core/team-templates.ts';
 import { clearDraftCache, draftAll, draftCharter } from '../../src/web/team/charter-draft.ts';
 import {
@@ -121,7 +121,8 @@ describe('D100 · Team page: status and counts', () => {
     expect(teamTitle('Team')).toBe('Team');
     expect(teamTitle('Acme')).toBe('Team · Acme');
     expect(sidebarTeamText('Team', 4)).toBe('Team · 4 members');
-    expect(sidebarTeamText('Acme', 1)).toBe('Team · Acme · 1 member');
+    // D100 follow-up 2026-10-14: one entry per team, "<team name> · N members".
+    expect(sidebarTeamText('Acme', 1)).toBe('Acme · 1 member');
     const available = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'default', label: 'Default (recommended)' }];
     expect(modelLine({ current: 'sonnet', effort: 'high', available }, member({ id: 'a' }))).toBe('Sonnet 5.5 · high');
     expect(modelLine({ current: 'claude-x', effort: null, available }, member({ id: 'a' }))).toBe('claude-x');
@@ -277,6 +278,30 @@ describe('D100 · Team page: the member form and menu', () => {
     // Placed after Pause, before Return; a team of one has nothing to move.
     expect(at(1).map((i) => i.label)).toEqual(['Give a task…', 'Edit charter…', 'Model & effort…', 'Budget…', 'Schedule…', '⏸ Pause', 'Move left', 'Move right', '↩ Return to sessions (back to “Work”)']);
     expect(labels(memberMenu(member({ id: 'a' }), [], 'm-self', 'Work', { index: 0, count: 1, vertical: false }))).toEqual([]);
+  });
+
+  it('D100 follow-up 2026-10-14: the Team page\'s address names the team (/team = the last-used one, /team/all = All teams)', async () => {
+    // A .tsx module: loaded at run time (the tests' tsconfig has no JSX), as tests/web/search.test.ts does.
+    const ROUTER = '../../src/web/router.tsx';
+    type RouteLike = { readonly view: string; readonly teamId?: string };
+    const { parseRoute, routePath } = (await import(/* @vite-ignore */ ROUTER)) as { parseRoute: (path: string) => RouteLike; routePath: (route: RouteLike) => string };
+    expect(parseRoute('/team')).toEqual({ view: 'team' });
+    expect(parseRoute('/team/abc-1')).toEqual({ view: 'team', teamId: 'abc-1' });
+    expect(parseRoute('/team/all')).toEqual({ view: 'team', teamId: 'all' });
+    expect(routePath({ view: 'team' })).toBe('/team');
+    expect(routePath({ view: 'team', teamId: 'a b' })).toBe('/team/a%20b');
+  });
+
+  it('D100 follow-up 2026-10-14: ⋯ Move to team ▸ <name> lists the other teams; a team name in parentheses names the receiver\'s team', () => {
+    const teams = [{ id: 'team', name: 'Team' }, { id: 'g', name: 'Growth' }, { id: 'o', name: 'Ops' }];
+    const items = memberMenu({ ...member({ id: 'a' }), teamId: 'g' }, [], 'm-self', 'Work', undefined, teams).filter((i) => i.id === 'team');
+    expect(items.map((i) => [i.label, i.teamId])).toEqual([['Move to team ▸ Team', 'team'], ['Move to team ▸ Ops', 'o']]);
+    expect(items[0]?.separator).toBe(true);
+    expect(parseHandoffTarget('Developer (Growth)', ['Team', 'Growth'])).toEqual({ name: 'Developer', team: 'Growth' });
+    expect(parseHandoffTarget('Developer (growth)', ['Team', 'Growth'])).toEqual({ name: 'Developer', team: 'growth' });
+    // Not a team: the whole text is the role name.
+    expect(parseHandoffTarget('QA (nightly)', ['Team', 'Growth'])).toEqual({ name: 'QA (nightly)', team: null });
+    expect(parseHandoffTarget('Developer', ['Team'])).toEqual({ name: 'Developer', team: null });
   });
 
   it('D100 follow-up 2026-10-14: the order model: drop before / after, move one place, an optimistic order', () => {

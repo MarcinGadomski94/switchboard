@@ -23,7 +23,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/share` | D81: a share from the phone's share sheet: "Add to which session?" (the shared fields in the query) |
  * | `/tools/:id` | Embedded tool |
  * | `/settings[/:section]` | Settings |
- * | `/team` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md) |
+ * | `/team`, `/team/:teamId` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md); `/team` opens the last-used team, `/team/all` the All teams tab |
  * | `/plans`, `/plans/:id` | D99: the Plans list and a plan's page (only while Plans is on; Plans (D99) hook, docs/plans-removal.md) |
  *
  * Unknown paths show the Inbox.
@@ -41,7 +41,9 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'team' | 'plans' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'plans' }
+  // Team (D100) hook: the Team page, at a team (`/team/{teamId}`; none = the last-used one) (docs/team-removal.md).
+  | { readonly view: 'team'; readonly teamId?: string }
   | {
       readonly view: 'session';
       readonly id: string;
@@ -94,6 +96,8 @@ export function parseRoute(pathname: string): Route {
     return { view: 'session', id: a, tab };
   }
   if (head === 'tools' && a) return { view: 'tool', id: a };
+  // Team (D100) hook: `/team/{teamId}` (docs/team-removal.md).
+  if (head === 'team' && a && parts.length === 2) return { view: 'team', teamId: a };
   // Plans (D99) hook: `/plans/{id}` (docs/plans-removal.md).
   if (head === 'plans' && a && parts.length === 2) return { view: 'plan', id: a };
   if (head === 'settings') return { view: 'settings', section: a ?? null };
@@ -115,6 +119,9 @@ export function routePath(route: Route): string {
       return `/plans/${encodeURIComponent(route.id)}`;
     case 'settings':
       return route.section ? `/settings/${encodeURIComponent(route.section)}` : '/settings';
+    // Team (D100) hook (docs/team-removal.md).
+    case 'team':
+      return route.teamId ? `/team/${encodeURIComponent(route.teamId)}` : '/team';
     default:
       return `/${route.view}`;
   }

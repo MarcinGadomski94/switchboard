@@ -74,3 +74,23 @@ export function highlightReturnedRow(sessionId: string): void {
   };
   find();
 }
+
+const LAST_TEAM = 'sb.team.last';
+
+/** D100 follow-up 2026-10-14: the team last shown on the Team page (`/team` opens it), `null` when none. */
+export function lastTeam(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(LAST_TEAM) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers the team shown on the Team page. */
+export function setLastTeam(teamId: string): void {
+  try {
+    globalThis.localStorage?.setItem(LAST_TEAM, teamId);
+  } catch {
+    // Private mode / full storage: `/team` opens the first team.
+  }
+}

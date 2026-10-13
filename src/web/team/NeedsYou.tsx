@@ -21,8 +21,11 @@ export function NeedsYouList({
   onReply,
   onSetUp,
   onChanged,
+  showTeam = false,
 }: {
   readonly items: readonly TeamNeedsYouItem[];
+  /** D100 follow-up 2026-10-14: the All teams tab labels every item with its team. */
+  readonly showTeam?: boolean;
   /** Reply…: select the member and focus its chat's composer. */
   readonly onReply: (memberId: string) => void;
   /** T2's Set up… on an access request: select the member and open its Access tab at that access. */
@@ -38,13 +41,13 @@ export function NeedsYouList({
         </div>
       ) : null}
       {items.map((item) => (
-        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} onReply={() => onReply(item.memberId)} onSetUp={onSetUp} onChanged={onChanged} />
+        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} showTeam={showTeam} onReply={() => onReply(item.memberId)} onSetUp={onSetUp} onChanged={onChanged} />
       ))}
     </section>
   );
 }
 
-function NeedsYouCard({ item, onReply, onSetUp, onChanged }: { readonly item: TeamNeedsYouItem; readonly onReply: () => void; readonly onSetUp: (memberId: string, accessId: string) => void; readonly onChanged: () => void }) {
+function NeedsYouCard({ item, showTeam, onReply, onSetUp, onChanged }: { readonly item: TeamNeedsYouItem; readonly showTeam: boolean; readonly onReply: () => void; readonly onSetUp: (memberId: string, accessId: string) => void; readonly onChanged: () => void }) {
   const { navigate } = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +72,14 @@ function NeedsYouCard({ item, onReply, onSetUp, onChanged }: { readonly item: Te
   const review = inbox?.review ?? null;
   return (
     <div className="sb-team-need" data-testid="team-need" data-kind={item.kind} data-source={item.source} data-item-id={item.id}>
-      <div className="sb-team-need__label">{item.label}</div>
+      <div className="sb-team-need__label">
+        {showTeam && item.teamName ? (
+          <span className="sb-team-need__team" data-testid="team-need-team">
+            {item.teamName} ·{' '}
+          </span>
+        ) : null}
+        {item.label}
+      </div>
       {shape === 'access' ? null : (
         <div className="sb-team-need__title" data-testid="team-need-title">
           {single ? single.text : item.title}

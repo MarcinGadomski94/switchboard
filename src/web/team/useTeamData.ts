@@ -1,8 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { TeamNeedsYouItem, TeamView } from '../../core/team.ts';
+import { ALL_TEAMS, type TeamNeedsYouItem, type TeamSummary, type TeamView } from '../../core/team.ts';
 import { onHubEvent, onHubStatus } from '../api/useHub.ts';
 import { teamApi } from './api.ts';
-import { useTeamSwitch } from './hidden.ts';
+import { isTeamMemberSession, useTeamSwitch } from './hidden.ts';
+import { lastTeam } from './local.ts';
 
 /**
  * D100 · the team as the page shows it: `GET /api/team` (members, hand-offs,
@@ -15,19 +16,25 @@ import { useTeamSwitch } from './hidden.ts';
 
 /** The shared data. */
 export interface TeamData {
+  /** D100 follow-up 2026-10-14: every team, in order, with its members and needs-you counts (the sidebar's entries, the page's tabs). */
+  readonly teams: readonly TeamSummary[];
+  /** The shown team (`null` on the All teams tab and before the first read). */
   readonly view: TeamView | null;
+  /** Every team's Needs-you items (each carries its `teamId`); the page filters the shown team's. */
   readonly needsYou: readonly TeamNeedsYouItem[];
   /** The last read failed (the Team page shows it); `null` after a success. */
   readonly error: string | null;
   readonly loaded: boolean;
 }
 
-const EMPTY: TeamData = { view: null, needsYou: [], error: null, loaded: false };
+const EMPTY: TeamData = { teams: [], view: null, needsYou: [], error: null, loaded: false };
 
 /** Session events reload the team at most this often. */
 const SESSION_RELOAD_MS = 1_000;
 
 let data: TeamData = EMPTY;
+/** The team the page shows (`all` = the All teams tab); `null` = the last-used one. */
+let wanted: string | null = null;
 let users = 0;
 let wired = false;
 let inFlight: Promise<void> | null = null;
@@ -49,8 +56,10 @@ export function reloadTeam(): Promise<void> {
   }
   inFlight = (async () => {
     try {
-      const [view, needsYou] = await Promise.all([teamApi.view(), teamApi.needsYou()]);
-      publish({ view, needsYou, error: null, loaded: true });
+      const [teams, needsYou] = await Promise.all([teamApi.teams(), teamApi.needsYou(ALL_TEAMS)]);
+      const id = shownTeam(teams);
+      const view = id === ALL_TEAMS ? null : await teamApi.view(id);
+      publish({ teams, view, needsYou, error: null, loaded: true });
     } catch (error) {
       const status = (error as { status?: number }).status;
       // 404 team-off: Team was switched off meanwhile; nothing to show.
@@ -66,13 +75,31 @@ export function reloadTeam(): Promise<void> {
   return inFlight;
 }
 
+/** The team to show of `teams`: the wanted one, else the last-used one, else the first (`all` stays `all`). */
+function shownTeam(teams: readonly TeamSummary[]): string {
+  if (wanted === ALL_TEAMS) return ALL_TEAMS;
+  const known = (id: string | null): id is string => id !== null && teams.some((team) => team.id === id);
+  if (known(wanted)) return wanted;
+  const last = lastTeam();
+  if (known(last)) return last;
+  return teams[0]?.id ?? 'team';
+}
+
+/** D100 follow-up 2026-10-14: the page shows `teamId` (`all` = the All teams tab; `null` = the last-used team); read again when it changes. */
+export function showTeam(teamId: string | null): void {
+  if (wanted === teamId) return;
+  wanted = teamId;
+  void reloadTeam();
+}
+
 function wire(): void {
   if (wired) return;
   wired = true;
   onHubEvent('teamChanged', () => void reloadTeam());
   onHubEvent('inboxChanged', () => void reloadTeam());
   onHubEvent('sessionUpdated', (session) => {
-    if (!data.view?.members.some((member) => member.sessionRef === session.id)) return;
+    // Any team's member (the sidebar's needs-you counts cover every team).
+    if (!isTeamMemberSession(session.id) && !data.view?.members.some((member) => member.sessionRef === session.id)) return;
     if (sessionTimer) return;
     sessionTimer = setTimeout(() => {
       sessionTimer = null;

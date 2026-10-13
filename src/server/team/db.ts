@@ -207,6 +207,12 @@ export class TeamDb {
       : this.#rows('SELECT data FROM activity WHERE team_id = ? AND at < ? ORDER BY at DESC, id DESC LIMIT ?', [teamId, before, limit], readActivityRecord);
   }
 
+  /** D100 follow-up 2026-10-14: every team's newest {@link ACTIVITY_CAP} lines (the sync's activity). */
+  activityAll(limit = ACTIVITY_CAP): TeamActivityRecord[] {
+    const teams = this.#db.prepare('SELECT DISTINCT team_id FROM activity').all().map((row) => String(row['team_id']));
+    return teams.flatMap((teamId) => this.activity(teamId, limit));
+  }
+
   /** Adds lines (an id already here is skipped) and drops the team's oldest beyond {@link ACTIVITY_CAP}. */
   addActivity(lines: readonly TeamActivityRecord[]): void {
     if (lines.length === 0) return;

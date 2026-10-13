@@ -1,4 +1,4 @@
-import type { TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamView } from '../../core/team.ts';
+import type { TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { ApiError } from '../api/client.ts';
 
@@ -39,6 +39,8 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, 
 export interface MemberBody {
   readonly sessionId?: string;
   readonly session?: Readonly<Record<string, unknown>>;
+  /** D100 follow-up 2026-10-14: the team it joins (none = the first team). */
+  readonly teamId?: string;
   readonly name: string;
   readonly charter: { readonly owns: string; readonly produces: string; readonly neverDoes: string };
   readonly charterDraft?: { readonly owns: string; readonly produces: string; readonly neverDoes: string } | null;
@@ -60,12 +62,18 @@ export interface MoveCheck {
 /** The Team routes. */
 export const teamApi = {
   state: () => call<TeamState>('GET', '/api/team/state'),
-  view: () => call<TeamView>('GET', '/api/team'),
-  rename: (name: string) => call<TeamView>('PUT', '/api/team', { name }),
-  reorder: (memberIds: readonly string[]) => call<TeamView>('PUT', '/api/team/order', { memberIds }),
+  view: (teamId?: string) => call<TeamView>('GET', teamId ? `/api/team?teamId=${enc(teamId)}` : '/api/team'),
+  rename: (name: string, teamId?: string) => (teamId ? call<TeamView>('PUT', `/api/team/teams/${enc(teamId)}`, { name }) : call<TeamView>('PUT', '/api/team', { name })),
+  reorder: (memberIds: readonly string[], teamId?: string) => call<TeamView>('PUT', '/api/team/order', { memberIds, ...(teamId ? { teamId } : {}) }),
+  // D100 follow-up 2026-10-14: multiple teams.
+  teams: () => call<TeamSummary[]>('GET', '/api/team/teams'),
+  createTeam: (name: string) => call<TeamSummary>('POST', '/api/team/teams', { name }),
+  deleteTeam: (teamId: string) => call<{ readonly ok: true; readonly returned: number }>('DELETE', `/api/team/teams/${enc(teamId)}`),
+  reorderTeams: (teamIds: readonly string[]) => call<TeamSummary[]>('PUT', '/api/team/teams/order', { teamIds }),
+  moveToTeam: (memberId: string, teamId: string) => call<TeamMember>('POST', `/api/team/members/${enc(memberId)}/team`, { teamId }),
   templates: () => call<TeamTemplate[]>('GET', '/api/team/templates'),
   suggestions: () => call<TeamSuggestion[]>('GET', '/api/team/suggestions'),
-  needsYou: () => call<TeamNeedsYouItem[]>('GET', '/api/team/needs-you'),
+  needsYou: (teamId?: string) => call<TeamNeedsYouItem[]>('GET', teamId ? `/api/team/needs-you?teamId=${enc(teamId)}` : '/api/team/needs-you'),
   addMember: (body: MemberBody) => call<TeamMember>('POST', '/api/team/members', body),
   updateMember: (id: string, body: Partial<Omit<MemberBody, 'sessionId' | 'session'>>) => call<TeamMember>('PUT', `/api/team/members/${enc(id)}`, body),
   pause: (id: string) => call<TeamMember>('POST', `/api/team/members/${enc(id)}/pause`),

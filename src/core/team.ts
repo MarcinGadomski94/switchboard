@@ -15,8 +15,18 @@ import type { TeamAccessEntryView } from './team-access.ts';
 /** The Settings → Experimental switch (a row of the main `settings` table; default off). */
 export const TEAM_SETTING = 'experimental.team';
 
-/** The team every install has (one team for now; data is keyed by team id so more can come). */
+/**
+ * The team every install has, the first team. D100 follow-up 2026-10-14 (multiple
+ * teams): it keeps this id and its data; the routes without a team id act on it
+ * (compatibility), an older peer sees only it, and it cannot be deleted.
+ */
 export const DEFAULT_TEAM_ID = 'team';
+
+/** D100 follow-up 2026-10-14: the Team page's "All teams" tab (`/team/all`, `GET /api/team/needs-you?teamId=all`); never a team's id. */
+export const ALL_TEAMS = 'all';
+
+/** D100 follow-up 2026-10-14: at most this many teams (the sync reads 20). */
+export const TEAMS_MAX = 20;
 
 /** Its default name. */
 export const DEFAULT_TEAM_NAME = 'Team';
@@ -305,6 +315,17 @@ export interface TeamState {
   readonly roles: Readonly<Record<string, string>>;
 }
 
+/** D100 follow-up 2026-10-14 · one team in `GET /api/team/teams` (in the teams' order). */
+export interface TeamSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly order: number | null;
+  /** Its members. */
+  readonly members: number;
+  /** Its members that need the developer (the session waits, or Needs-you items are open). */
+  readonly needsYou: number;
+}
+
 /** `GET /api/team`. */
 export interface TeamView {
   readonly team: { readonly id: string; readonly name: string };
@@ -339,6 +360,9 @@ export interface TeamNeedsYouItem {
   readonly sessionRef: string;
   /** `source: inbox`: the Inbox item as `GET /api/inbox` lists it (answer it through the Inbox routes). */
   readonly inbox?: unknown;
+  /** D100 follow-up 2026-10-14: the member's team (the All tab labels the item with it); additive. */
+  readonly teamId?: string;
+  readonly teamName?: string;
   /** `source: team`: the request (approve / decline through `/api/team/requests/{id}/…`). */
   readonly request?: TeamRequest;
   /** D100-T2, `kind: access`: the access asked for (service, host, why, scope, fields, warning); "Set up…" opens the member's Access tab. */
@@ -458,6 +482,21 @@ export function memberStatus(input: { readonly reachable: boolean; readonly sess
   if (input.paused) return 'paused';
   if (input.sessionStatus === 'run') return 'working';
   return 'idle';
+}
+
+/**
+ * D100 follow-up 2026-10-14 · a hand-off's receiver as written: "Developer" (in the
+ * caller's own team) or "Developer (Growth)" (that team, by name). The team in
+ * parentheses is only taken as one when `teams` has it, so a role name that itself
+ * ends in parentheses still works.
+ */
+export function parseHandoffTarget(to: string, teams: readonly string[]): { readonly name: string; readonly team: string | null } {
+  const match = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(to.trim());
+  if (match) {
+    const team = (match[2] as string).trim();
+    if (teams.some((name) => name.toLowerCase() === team.toLowerCase())) return { name: (match[1] as string).trim(), team };
+  }
+  return { name: to.trim(), team: null };
 }
 
 /** One charter field, or `—` when empty. */
