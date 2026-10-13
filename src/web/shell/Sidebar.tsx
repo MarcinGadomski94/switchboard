@@ -106,10 +106,19 @@ function UsageLine({ line }: { readonly line: UsageGridLine }) {
       data-account={line.key}
       data-active={String(line.active)}
       data-spent={String(line.spent)}
+      data-machines={line.machines}
       title={line.title}
     >
       <span className="sb-usage-dot">{line.active ? '●' : ''}</span>
-      <span className="sb-usage-label">{line.label}</span>
+      <span className="sb-usage-label">
+        {line.label}
+        {/* D98: the machines a shared account is on (only while a paired machine's accounts show). */}
+        {line.machines ? (
+          <span className="sb-usage-machines" data-testid="usage-machines">
+            {` · ${line.machines}`}
+          </span>
+        ) : null}
+      </span>
       {line.outUntil ? (
         <span className="sb-usage-out" data-testid="usage-out">
           {line.outUntil}

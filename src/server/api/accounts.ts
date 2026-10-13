@@ -1,7 +1,9 @@
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AccountsOverview, Session } from '../../core/api.ts';
-import { isCliProviderId } from '../../core/cli-providers.ts';
+import { CLI_PROVIDERS, isCliProviderId } from '../../core/cli-providers.ts';
+import { peerOnlyAccounts } from '../../core/shared-accounts.ts';
+import { PEER_REQUEST_HEADER } from '../peers/service.ts';
 import { AccountError } from '../accounts/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { toSession } from '../sessions/wire.ts';
@@ -29,10 +31,35 @@ function record(value: unknown): Record<string, unknown> {
  */
 export async function registerAccountRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { accounts, signIn, store, supervisor } = context;
+  const sharedAccounts = context.sharedAccounts ?? null;
 
-  const overview = async (refresh: boolean): Promise<AccountsOverview> => ({ profiles: await accounts.list({ refresh }), settings: await accounts.settings() });
+  // D98: this machine's accounts merged with the same ones on the paired machines, plus theirs that are not here;
+  // a paired machine's request gets this machine's own facts only (it merges them itself; no chains).
+  const overview = async (refresh: boolean, fromPeer = false): Promise<AccountsOverview> => {
+    const profiles = await accounts.list({ refresh, ...(fromPeer ? { local: true } : {}) });
+    const settings = await accounts.settings();
+    const shared = fromPeer ? null : accounts.shared;
+    if (!shared) return { profiles, settings };
+    const peers = await shared.peers();
+    const now = Date.now();
+    const others = CLI_PROVIDERS.flatMap((cli) => peerOnlyAccounts(peers, cli, new Set(profiles.filter((p) => p.cli === cli && p.identity).map((p) => p.identity as string)), now));
+    return { profiles, settings, ...(others.length > 0 ? { others } : {}) };
+  };
 
-  app.get<{ Querystring: { refresh?: string } }>('/api/accounts', async (request) => overview(request.query.refresh === '1'));
+  app.get<{ Querystring: { refresh?: string } }>('/api/accounts', async (request) => overview(request.query.refresh === '1', request.headers[PEER_REQUEST_HEADER] !== undefined));
+
+  // D98 (`docs/accounts.md` → *Shared across paired machines*): the exchange of a paired machine (its accounts and
+  // shared names / order in, this machine's out). Without the peer header (this machine's own UI) it only answers.
+  app.post('/api/accounts/shared', async (request, reply) => {
+    const shared = sharedAccounts;
+    if (!shared) return reply.code(404).send({ error: 'not-found', message: 'accounts are not shared in this Switchboard' });
+    const from = request.headers[PEER_REQUEST_HEADER];
+    if (typeof from === 'string' && from !== '') {
+      const machine = (await context.peers.machines()).find((m) => m.id === from);
+      if (!(await shared.receive(from, machine?.name ?? from, request.body))) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'body', message: 'not a shared-accounts message' }] });
+    }
+    return shared.message();
+  });
 
   app.put('/api/accounts/settings', async (request, reply) => {
     try {

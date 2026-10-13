@@ -869,6 +869,43 @@ POST /api/sessions/s1/account { "profileId": "8d3f…" }
 200 { "id": "s1", "profileId": "8d3f…", "profileName": "Private", "accountSwitching": false, … }
 ```
 
+## Accounts shared across paired machines (D98, 2026-10-13, additive)
+
+Developer request D98 (`docs/decisions.md` → *Accounts shared across paired machines*): the accounts of every connected paired machine (D48) show here too, and the same login on two machines is one account. Details: `docs/accounts.md` → *Shared across paired machines*. Every field is additive; nothing changes without a paired machine. **No credential, token or credential file ever travels:** each machine signs in on its own.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/accounts/shared | SharedAccountsMessage (the caller's) | SharedAccountsMessage (this machine's, after merging the caller's prefs); 422 not a message. On the peer allow-list (a paired machine's exchange: the caller's accounts are kept and its prefs merged, by the injected peer header's machine id); without that header (this machine's own UI) it only answers. Refused to devices (D73: `/api/accounts/…`). A Switchboard before D98 answers 403 `peer-forbidden`: the caller reads its `GET /api/accounts` instead and shows those accounts unmerged |
+
+- `GET /api/accounts` (this machine's UI) merges each profile with the same account on the paired machines and adds `others`; a paired machine's request (the Machine picker) gets this machine's own facts only (no `elsewhere`, no `others`, no merged reading).
+- `SystemInfo.accountUsage` rows (the footer grid) gain `machines` on every row once a paired machine's account shows (this machine's name first on its own rows) and `windowsFrom` when a row's windows are a paired machine's newer reading (the footer then shows them for the active account instead of `usageWindows`). A paired machine's account that is not here is a row of its own (`profileId` = `r~<machine id>~<its profile id>`, `active: false`), only when it is signed in there (and, for Codex, has a known window). Rows are sent also when a CLI has one enabled account here but a paired machine adds or shares one.
+
+```ts
+AccountProfile.identity?: string            // "claude:<email>" from the CLI's status; Codex / OpenCode: never set (no identity to merge by)
+AccountProfile.elsewhere?: [{ machineId, machineName, profileId, name }]   // the same account on the connected paired machines
+AccountProfile.usageFrom?: string           // `usage` is that paired machine's newer reading
+AccountProfile.exhausted.machine?: string   // the paired machine that found it spent
+AccountsOverview.others?: PeerOnlyAccount[] // the connected paired machines' accounts that are not here
+PeerOnlyAccount { key: "r~<machine id>~<profile id>", cli, name, identity: string | null, account: string | null, signIn,
+  machines: [{ id, name, profileId }], usage: ProfileUsage | null, exhausted: { until, window, text } | null }
+AccountUsageRow.machines?: string[], AccountUsageRow.windowsFrom?: string
+SharedAccountsMessage { v: 1, machine: { id, name }, accounts: SharedAccount[], prefs: AccountPrefs }
+SharedAccount { profileId, cli, name, identity: string | null, account: string | null, enabled, position, signIn, usage: ProfileUsage | null,
+  exhausted: { until, window, text } | null }   // this machine's own facts only
+AccountPrefs { names: { [identity]: { name, at /* epoch ms */ } }, order: { [cli]?: { identities: string[], at } } }   // last writer wins
+```
+
+```json
+POST /peer/v1/api/accounts/shared   (the peer API; injected as POST /api/accounts/shared)
+{ "v": 1, "machine": { "id": "abcdefgh2345", "name": "Desk" },
+  "accounts": [{ "profileId": "default-claude", "cli": "claude", "name": "Work", "identity": "claude:dev@example.com", "account": "dev@example.com · max",
+    "enabled": true, "position": 0, "signIn": "signed-in",
+    "usage": { "fiveHourPct": 62, "fiveHourResetsAt": "2026-10-13T14:05:00.000Z", "sevenDayPct": 18, "sevenDayResetsAt": "2026-10-17T09:00:00.000Z", "receivedAt": "2026-10-13T12:00:00.000Z" },
+    "exhausted": null }],
+  "prefs": { "names": { "claude:dev@example.com": { "name": "Work", "at": 1791892800000 } }, "order": { "claude": { "identities": ["claude:dev@example.com"], "at": 1791892800000 } } } }
+200 { "v": 1, "machine": { "id": "stuv67wxyz23", "name": "Studio" }, "accounts": [ … ], "prefs": { … } }
+```
+
 ## Standing instruction for agents (D64, 2026-10-02, additive)
 
 Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*): one instruction every session's agent gets. Additive; no new route, no `/hub` event, no migration (two rows of the existing `settings` table). Details: `docs/settings.md`, `docs/supervisor.md` → *Spawning*, `docs/providers.md` → *Standing instruction (D64)*.

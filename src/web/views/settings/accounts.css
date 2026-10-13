@@ -177,3 +177,16 @@
   gap: 10px;
   margin-top: 10px;
 }
+
+/* D98: the accounts only a paired machine has (read-only, with their machines). */
+.sb-acc-others {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sb-acc-peer-name {
+  font-weight: 500;
+  color: var(--text-strong);
+}

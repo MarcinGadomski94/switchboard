@@ -15,6 +15,7 @@ import {
   readAccountSettings,
 } from '../../core/accounts.ts';
 import { CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
+import { ACCOUNT_IDENTITIES_KEY, type PeerAccounts, type RemoteCopy, accountIdentity, newestUsage, spentAcross } from '../../core/shared-accounts.ts';
 import type { ProfileRecord } from '../db/repos/profiles.ts';
 import type { Store } from '../db/store.ts';
 import { type RunResult, runCommand, succeeded } from '../exec.ts';
@@ -59,6 +60,29 @@ interface Checked {
   readonly account: string | null;
 }
 
+/** D98: a change of this machine's accounts the paired machines should hear about. */
+export type LocalAccountChange =
+  | { readonly kind: 'name'; readonly profileId: string; readonly name: string }
+  | { readonly kind: 'order'; readonly cli: CliProviderId }
+  | { readonly kind: 'spent' }
+  /** A profile was added, removed, enabled / disabled or its account changed. */
+  | { readonly kind: 'list' };
+
+/**
+ * D98 (`docs/accounts.md` → *Shared across paired machines*): what the paired
+ * machines' accounts tell this machine's (`SharedAccounts`).
+ */
+export interface SharedAccountsSource {
+  /** Every copy of `identity` on the paired machines: the connected ones' and the last known of the others. */
+  copies(identity: string): readonly RemoteCopy[];
+  /** Each paired machine's accounts as last known (`online` = connected now). */
+  peers(): Promise<readonly PeerAccounts[]>;
+  /** This machine's name (the label of its own accounts once others are shown). */
+  selfName(): Promise<string>;
+  /** Records and sends a local change (never throws). */
+  changed(change: LocalAccountChange): Promise<void>;
+}
+
 /** The environment variable that points each CLI at a profile's folder. */
 export const PROFILE_ENV: Readonly<Record<CliProviderId, string>> = { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME', opencode: 'XDG_DATA_HOME' };
 
@@ -77,9 +101,79 @@ export class AccountService {
   readonly #options: AccountServiceOptions;
   readonly #checks = new Map<string, Checked>();
   readonly #providerUsage = new Map<string, ProviderUsage>();
+  /** D98: each profile's last known identity (setting `accounts.identities`), loaded on first use. */
+  #identities: Map<string, { readonly identity: string; readonly account: string | null }> | null = null;
+  #shared: SharedAccountsSource | null = null;
 
   constructor(options: AccountServiceOptions) {
     this.#options = options;
+  }
+
+  /** D98: the paired machines' accounts (set once the peer service exists). */
+  useShared(shared: SharedAccountsSource | null): void {
+    this.#shared = shared;
+  }
+
+  /** D98: the paired machines' accounts, `null` when not shared. */
+  get shared(): SharedAccountsSource | null {
+    return this.#shared;
+  }
+
+  async #identityMap(): Promise<Map<string, { readonly identity: string; readonly account: string | null }>> {
+    if (this.#identities) return this.#identities;
+    const stored = await this.#store.settings.get(ACCOUNT_IDENTITIES_KEY);
+    const map = new Map<string, { identity: string; account: string | null }>();
+    if (typeof stored === 'object' && stored !== null && !Array.isArray(stored)) {
+      for (const [id, value] of Object.entries(stored as Record<string, unknown>)) {
+        const v = value as { identity?: unknown; account?: unknown } | null;
+        if (v && typeof v.identity === 'string') map.set(id, { identity: v.identity, account: typeof v.account === 'string' ? v.account : null });
+      }
+    }
+    this.#identities ??= map;
+    return this.#identities;
+  }
+
+  async #saveIdentities(): Promise<void> {
+    const map = await this.#identityMap();
+    await this.#store.settings.set(ACCOUNT_IDENTITIES_KEY, Object.fromEntries(map));
+  }
+
+  /** D98: the identity of the account a profile was last seen signed in to (`null` = unknown / signed out / never merged). */
+  async identityOf(id: string): Promise<string | null> {
+    return (await this.#identityMap()).get(id)?.identity ?? null;
+  }
+
+  /** D98: remembers what a status check said about the profile's account (a sign-out forgets it; an unknown answer keeps it). */
+  async #rememberIdentity(id: string, cli: CliProviderId, signIn: ProfileSignIn, account: string | null): Promise<void> {
+    const map = await this.#identityMap();
+    const before = map.get(id);
+    if (signIn === 'signed-out') {
+      if (!before) return;
+      map.delete(id);
+    } else if (signIn === 'signed-in') {
+      const identity = accountIdentity(cli, account);
+      if (identity === null) {
+        if (account === null || !before) return;
+        map.delete(id);
+      } else {
+        if (before?.identity === identity && before.account === account) return;
+        map.set(id, { identity, account });
+      }
+    } else {
+      return;
+    }
+    await this.#saveIdentities();
+    await this.#changed({ kind: 'list' });
+  }
+
+  /** D98: the copies of a profile's account on paired machines. */
+  async #copies(id: string): Promise<{ readonly identity: string | null; readonly copies: readonly RemoteCopy[] }> {
+    const identity = await this.identityOf(id);
+    return { identity, copies: identity !== null && this.#shared ? this.#shared.copies(identity) : [] };
+  }
+
+  async #changed(change: LocalAccountChange): Promise<void> {
+    await this.#shared?.changed(change).catch(() => undefined);
   }
 
   get #store(): Store {
@@ -150,6 +244,7 @@ export class AccountService {
     const share = input.shareSettings !== false;
     const record = await this.#store.profiles.create({ id, cli: input.cli, name, dir, shareSettings: share });
     if (share) await this.syncShared(record.id).catch(() => undefined);
+    await this.#changed({ kind: 'list' });
     return record;
   }
 
@@ -181,6 +276,9 @@ export class AccountService {
     }
     const updated = (await this.#store.profiles.update(id, next)) ?? record;
     if (next.shareSettings === true) await this.syncShared(id).catch(() => undefined);
+    // D98: a name given here is the account's name on the paired machines too.
+    if (next.name !== undefined && next.name !== record.name) await this.#changed({ kind: 'name', profileId: id, name: next.name });
+    else if (next.enabled !== undefined && next.enabled !== record.enabled) await this.#changed({ kind: 'list' });
     return updated;
   }
 
@@ -191,6 +289,8 @@ export class AccountService {
       throw new AccountError(422, 'invalid', 'order must list profile ids of this CLI, each once', 'order');
     }
     await this.#store.profiles.reorder(cli, ids as string[]);
+    // D98: the order is shared with the paired machines too.
+    await this.#changed({ kind: 'order', cli });
   }
 
   /**
@@ -206,6 +306,8 @@ export class AccountService {
     this.#store.db.prepare("UPDATE sessions SET profile_id = NULL WHERE profile_id = ?").run(id);
     await this.#store.profiles.delete(id);
     this.#checks.delete(id);
+    if ((await this.#identityMap()).delete(id)) await this.#saveIdentities();
+    await this.#changed({ kind: 'list' });
     if (options.removeFiles === true && record.dir !== null && this.#inside(record.dir)) await rm(record.dir, { recursive: true, force: true });
   }
 
@@ -269,7 +371,13 @@ export class AccountService {
     }
     const checked = { at: this.#now(), signIn, account };
     this.#checks.set(id, checked);
+    await this.#rememberIdentity(id, record.cli, signIn, account).catch(() => undefined);
     return { signIn, account };
+  }
+
+  /** D98: `true` once a status check of the profile ran in this process. */
+  checked(id: string): boolean {
+    return this.#checks.has(id);
   }
 
   /** Forget a profile's cached status (after a sign-in or sign-out). */
@@ -301,6 +409,8 @@ export class AccountService {
   /** Remembers that a profile is spent until its reset. */
   async markExhausted(mark: ExhaustedMark): Promise<void> {
     await this.#store.profiles.update(mark.profileId, { exhaustedUntil: mark.until, exhaustedWindow: mark.window, exhaustedText: mark.text });
+    // D98: the paired machines skip this account until its reset too.
+    await this.#changed({ kind: 'spent' });
   }
 
   async clearExhausted(profileId: string): Promise<void> {
@@ -317,16 +427,21 @@ export class AccountService {
     const out: ProfileSnapshot[] = [];
     const records = await this.#store.profiles.list(cli);
     if (options.check === true) await Promise.all(records.filter((r) => r.enabled).map((r) => this.check(r.id).catch(() => null)));
+    const now = this.#now();
     for (const record of records) {
       const checked = this.#checks.get(record.id);
+      // D98: the same account on a paired machine: its newest reading and a spent mark found there count here too.
+      const { copies } = await this.#copies(record.id);
+      const own = record.exhaustedUntil !== null ? { until: record.exhaustedUntil, window: 'unknown' as const, text: null } : null;
+      const spent = spentAcross(own, copies, now);
       out.push({
         id: record.id,
         name: record.name,
         enabled: record.enabled,
         position: record.position,
         signedIn: checked ? (checked.signIn === 'signed-in' ? true : checked.signIn === 'signed-out' ? false : null) : null,
-        exhaustedUntil: record.exhaustedUntil,
-        usage: await this.usageOf(record),
+        exhaustedUntil: spent.from !== null && spent.exhausted ? spent.exhausted.until : record.exhaustedUntil,
+        usage: newestUsage(await this.usageOf(record), copies).usage,
       });
     }
     return out;
@@ -342,8 +457,13 @@ export class AccountService {
 
   // ── the API's view ──────────────────────────────────────────────────────────
 
-  /** Every profile with its status (`refresh` runs each CLI's status command again). */
-  async list(options: { readonly refresh?: boolean; readonly check?: boolean } = {}): Promise<AccountProfile[]> {
+  /**
+   * Every profile with its status (`refresh` runs each CLI's status command again).
+   * D98: merged with the same accounts on paired machines (their newest reading,
+   * their spent marks, where else each is) unless `local` (this machine's own facts:
+   * the exchange, a paired machine's request).
+   */
+  async list(options: { readonly refresh?: boolean; readonly check?: boolean; readonly local?: boolean } = {}): Promise<AccountProfile[]> {
     const records = await this.#store.profiles.list();
     const counts = new Map<string, number>();
     for (const row of this.#store.db.prepare("SELECT COALESCE(profile_id, 'default-' || provider) AS p, COUNT(*) AS n FROM sessions WHERE closed_at IS NULL GROUP BY p").all()) {
@@ -355,6 +475,12 @@ export class AccountService {
     for (const [index, record] of records.entries()) {
       const checked = checks?.[index] ?? this.#checks.get(record.id) ?? { signIn: 'unknown' as const, account: null };
       const spent = record.exhaustedUntil !== null && Date.parse(record.exhaustedUntil) > now;
+      const ownUsage = await this.usageOf(record);
+      const ownSpent = spent ? { until: record.exhaustedUntil as string, window: (record.exhaustedWindow as LimitWindow | null) ?? 'unknown', text: record.exhaustedText } : null;
+      const { identity, copies } = options.local === true ? { identity: await this.identityOf(record.id), copies: [] } : await this.#copies(record.id);
+      const newest = newestUsage(ownUsage, copies);
+      const across = spentAcross(ownSpent, copies, now);
+      const elsewhere = copies.filter((c) => c.online).map((c) => ({ machineId: c.machineId, machineName: c.machineName, profileId: c.account.profileId, name: c.account.name }));
       out.push({
         id: record.id,
         cli: record.cli,
@@ -366,10 +492,13 @@ export class AccountService {
         shareSettings: record.shareSettings,
         signIn: checked.signIn,
         account: checked.account,
-        usage: await this.usageOf(record),
-        exhausted: spent ? { until: record.exhaustedUntil as string, window: (record.exhaustedWindow as LimitWindow | null) ?? 'unknown', text: record.exhaustedText } : null,
+        usage: newest.usage,
+        exhausted: across.exhausted ? { ...across.exhausted, ...(across.from !== null ? { machine: across.from } : {}) } : null,
         signInCommand: signInCommand(record),
         sessions: counts.get(record.id) ?? 0,
+        ...(identity !== null ? { identity } : {}),
+        ...(elsewhere.length > 0 ? { elsewhere } : {}),
+        ...(newest.from !== null ? { usageFrom: newest.from } : {}),
       });
     }
     return out;

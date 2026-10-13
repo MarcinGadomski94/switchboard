@@ -15,6 +15,7 @@ import type { FreshStep } from './fresh-session.ts';
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AccountProfile, AccountSettings } from './accounts.ts';
+import type { PeerOnlyAccount } from './shared-accounts.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { UpdateStatus } from './updates.ts';
@@ -2143,6 +2144,14 @@ export interface AccountUsageRow {
    * A window that is unknown is left out (never guessed).
    */
   readonly windows?: readonly AccountUsageWindow[];
+  /**
+   * Additive (D98, `docs/accounts.md` → *Shared across paired machines*): the
+   * machines the account is on (this machine's name first when it is here), set
+   * on every row while a paired machine's accounts are shown; omitted otherwise.
+   */
+  readonly machines?: readonly string[];
+  /** Additive (D98): `windows` are a paired machine's newer reading (its name): the footer shows them, not `usageWindows`. */
+  readonly windowsFrom?: string;
 }
 
 /** Additive (D66): one usage window of a profile in {@link AccountUsageRow.windows}. */
@@ -2570,6 +2579,13 @@ export interface CliMcpServerInput {
 export interface AccountsOverview {
   readonly profiles: readonly AccountProfile[];
   readonly settings: AccountSettings;
+  /**
+   * Additive (D98, `docs/accounts.md` → *Shared across paired machines*): the
+   * accounts of the connected paired machines that are not on this machine (the
+   * same identity on several of them merged), with the machines they are on.
+   * Omitted when there are none, and in the answer to a paired machine.
+   */
+  readonly others?: readonly PeerOnlyAccount[];
 }
 
 /** Additive (D63): body of `POST /api/accounts/profiles`. */

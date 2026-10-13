@@ -1,6 +1,7 @@
 import type { CliStatusService } from './cli/status.ts';
 import { registerCliRoutes } from './api/clis.ts';
 import { registerAccountRoutes } from './api/accounts.ts';
+import type { SharedAccounts } from './accounts/shared.ts';
 import type { AccountService } from './accounts/service.ts';
 import type { SignInManager } from './accounts/signin.ts';
 import type { FastifyInstance } from 'fastify';
@@ -68,6 +69,8 @@ export interface ApiContext {
   readonly config: ServerConfig;
   /** D63: the account profiles of each CLI and the rules (docs/accounts.md). */
   readonly accounts: AccountService;
+  /** D98: the paired machines' accounts, shared and merged by identity (absent in demo mode). */
+  readonly sharedAccounts?: SharedAccounts;
   /** D63: signing profiles in and out. */
   readonly signIn: SignInManager;
   /** D62: the CLIs sessions run on: status, default, command overrides (docs/providers.md). */

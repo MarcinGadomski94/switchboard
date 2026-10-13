@@ -136,6 +136,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/accounts\/signin\/[^/]+$/],
   ['POST', /^\/api\/accounts\/signin\/[^/]+\/paste$/],
   ['DELETE', /^\/api\/accounts\/signin\/[^/]+$/],
+  // D98: the shared accounts' exchange (this machine's accounts, names and order for the caller's; never a credential).
+  ['POST', /^\/api\/accounts\/shared$/],
   ['POST', /^\/api\/sessions\/[^/]+\/account$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/profile-pin$/],
   ['GET', /^\/api\/solutions$/],
@@ -1054,6 +1056,25 @@ export class PeerService implements PeerHandlers {
         }
       }),
     );
+  }
+
+  /**
+   * D98 (`docs/accounts.md` → *Shared across paired machines*): one call to the
+   * peer API of machine `machineId` when it is online (`path` is the peer's own
+   * path), bounded by `timeoutMs`. The answer as the peer sent it (not
+   * namespaced), or `status: null` and why it was not asked or did not answer.
+   */
+  async ask(machineId: string, method: string, path: string, body: unknown, options: { readonly timeoutMs: number }): Promise<{ readonly status: number; readonly body: unknown } | { readonly status: null; readonly reason: string }> {
+    const connection = this.#connections.get(machineId);
+    if (!connection || connection.state !== 'online') return { status: null, reason: connection?.state ?? 'offline' };
+    try {
+      const answer = await connection.request(method, `/peer/v1${path}`, body ?? undefined, { timeoutMs: options.timeoutMs });
+      if (answer.status === 401) connection.kick();
+      return answer;
+    } catch (error) {
+      if (error instanceof PeerUnreachableError) return { status: null, reason: error.message };
+      throw error;
+    }
   }
 
   /**

@@ -6,6 +6,7 @@ import type { Providers, SystemProvider } from '../providers.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { type ProfileUsage, defaultProfileId } from '../../core/accounts.ts';
 import { USAGE_ROW_LABELS } from '../../core/usage.ts';
+import { type PeerOnlyAccount, peerOnlyAccounts } from '../../core/shared-accounts.ts';
 import { UsageMeter, type UsageProfiles, type UsageSessions } from './meter.ts';
 import { UsagePoller } from './poller.ts';
 
@@ -152,26 +153,59 @@ export function withAccountUsage(
       const info = await base.system(...args);
       const rows: AccountUsageRow[] = [];
       const actives: ActiveAccount[] = [];
+      const at = now();
+      // D98: the paired machines' accounts (the connected ones): the same identity is one row with the newest reading.
+      const shared = accounts.shared;
+      const peers = shared ? await shared.peers() : [];
+      const all = await accounts.list({ check: false });
+      const extra = new Map<'claude' | 'codex', PeerOnlyAccount[]>();
       for (const cli of ['claude', 'codex'] as const) {
-        const list = (await accounts.list({ check: false })).filter((p) => p.cli === cli && p.enabled);
-        if (list.length === 0) continue;
-        const active = await accounts.pick(cli, { check: false });
+        const identities = new Set(all.filter((p) => p.cli === cli && p.enabled && p.identity).map((p) => p.identity as string));
+        // A footer line only for an account in use there: signed in, and (another CLI than Claude Code) with a known window.
+        extra.set(cli, peerOnlyAccounts(peers, cli, identities, at).filter((o) => o.signIn === 'signed-in' && (cli === 'claude' || profileUsageWindows(o.usage, at).length > 0)));
+      }
+      // Once a paired machine's account shows, every row says which machines it is on.
+      const labelled = [...extra.values()].some((list) => list.length > 0) || all.some((p) => p.enabled && (p.cli === 'claude' || p.cli === 'codex') && (p.elsewhere?.length ?? 0) > 0);
+      const self = labelled && shared ? await shared.selfName() : null;
+      const live = (iso: string | null): boolean => iso !== null && Date.parse(iso) > at;
+      const peak = (usage: ProfileUsage | null): number | null => {
+        const values = [live(usage?.fiveHourResetsAt ?? null) ? usage?.fiveHourPct : null, live(usage?.sevenDayResetsAt ?? null) ? usage?.sevenDayPct : null].filter((v): v is number => typeof v === 'number');
+        return values.length > 0 ? Math.round(Math.max(...values)) : null;
+      };
+      for (const cli of ['claude', 'codex'] as const) {
+        const list = all.filter((p) => p.cli === cli && p.enabled);
+        const others = extra.get(cli) ?? [];
+        if (list.length === 0 && others.length === 0) continue;
+        const active = list.length > 0 ? await accounts.pick(cli, { check: false }) : null;
         // D66: the active account's name, also with a single one (the footer grid's line label).
         const current = list.find((p) => p.id === active) ?? list[0];
         if (current) actives.push({ cli, profileId: current.id, name: current.name });
-        if (list.length < 2) continue;
+        if (list.length < 2 && others.length === 0 && !list.some((p) => (p.elsewhere?.length ?? 0) > 0)) continue;
         for (const profile of list) {
           const usage = profile.usage;
-          const live = (iso: string | null): boolean => iso !== null && Date.parse(iso) > now();
-          const values = [live(usage?.fiveHourResetsAt ?? null) ? usage?.fiveHourPct : null, live(usage?.sevenDayResetsAt ?? null) ? usage?.sevenDayPct : null].filter((v): v is number => typeof v === 'number');
+          const fromPeer = profile.usageFrom ?? null;
           rows.push({
             profileId: profile.id,
             cli,
             name: profile.name,
             active: (active ?? list[0]?.id) === profile.id,
-            pct: values.length > 0 ? Math.round(Math.max(...values)) : null,
+            pct: peak(usage),
             exhaustedUntil: profile.exhausted?.until ?? null,
-            windows: cli === 'claude' && windowsOf ? await windowsOf(profile.id) : profileUsageWindows(usage, now()),
+            windows: cli === 'claude' && windowsOf && fromPeer === null ? await windowsOf(profile.id) : profileUsageWindows(usage, at),
+            ...(self !== null ? { machines: [self, ...(profile.elsewhere ?? []).map((e) => e.machineName)] } : {}),
+            ...(fromPeer !== null ? { windowsFrom: fromPeer } : {}),
+          });
+        }
+        for (const other of others) {
+          rows.push({
+            profileId: other.key,
+            cli,
+            name: other.name,
+            active: false,
+            pct: peak(other.usage),
+            exhaustedUntil: other.exhausted?.until ?? null,
+            windows: profileUsageWindows(other.usage, at),
+            machines: other.machines.map((m) => m.name),
           });
         }
       }
