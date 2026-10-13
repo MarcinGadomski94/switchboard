@@ -11,29 +11,54 @@ import { onHubEvent, onHubStatus } from '../api/useHub.ts';
  * and everything else stay as they are, so switching Team off (or a broken
  * `team.db`, which the server reports as nothing hidden) shows every session again
  * in its place. Search, the Inbox and notifications still find member sessions.
+ *
+ * T3: the same read also tells the nav and the sidebar's Team entry whether Team is
+ * on ({@link useTeamSwitch}); nothing of Team shows while it is off.
  */
 
 const EMPTY: ReadonlySet<string> = new Set();
 
-let hidden: ReadonlySet<string> = EMPTY;
+/** What the page knows of the switch. */
+export interface TeamSwitch {
+  /** The switch is on and `team.db` is open (the Team page, its nav entry and the sidebar entry show). */
+  readonly on: boolean;
+  readonly hidden: ReadonlySet<string>;
+  /** Role name per hidden session id. */
+  readonly roles: Readonly<Record<string, string>>;
+}
+
+const OFF: TeamSwitch = { on: false, hidden: EMPTY, roles: {} };
+
+let current: TeamSwitch = OFF;
 let started = false;
 const listeners = new Set<() => void>();
 
 async function load(): Promise<void> {
   try {
     const response = await fetch('/api/team/state', { credentials: 'same-origin', headers: { accept: 'application/json' } });
-    if (!response.ok) return set(EMPTY);
+    if (!response.ok) return set(OFF);
     const state = (await response.json()) as Partial<TeamState>;
-    set(state.available === true && Array.isArray(state.hiddenSessionIds) ? new Set(state.hiddenSessionIds) : EMPTY);
+    const available = state.available === true && state.enabled === true;
+    set({
+      on: available,
+      hidden: available && Array.isArray(state.hiddenSessionIds) ? new Set(state.hiddenSessionIds) : EMPTY,
+      roles: available && state.roles && typeof state.roles === 'object' ? state.roles : {},
+    });
   } catch {
     // Unreachable: keep what was known (nothing hidden on a first failure).
   }
 }
 
-function set(next: ReadonlySet<string>): void {
-  const same = next.size === hidden.size && [...next].every((id) => hidden.has(id));
-  if (same) return;
-  hidden = next;
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
+}
+
+function set(next: TeamSwitch): void {
+  const rolesSame = JSON.stringify(next.roles) === JSON.stringify(current.roles);
+  const hiddenSame = sameSet(next.hidden, current.hidden);
+  if (next.on === current.on && hiddenSame && rolesSame) return;
+  // Keep the hidden set's identity when only the switch or the roles changed (the sidebar re-renders only for the set).
+  current = { on: next.on, hidden: hiddenSame ? current.hidden : next.hidden, roles: rolesSame ? current.roles : next.roles };
   for (const listener of [...listeners]) listener();
 }
 
@@ -53,9 +78,19 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Reads the switch again now (after Settings changed it on this page). */
+export function reloadTeamSwitch(): Promise<void> {
+  return load();
+}
+
 /** The session ids the sidebar leaves out (team members' sessions while Team is on). */
 export function useTeamHiddenSessions(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribe, () => hidden, () => EMPTY);
+  return useSyncExternalStore(subscribe, () => current.hidden, () => EMPTY);
+}
+
+/** The switch as the page knows it (`on` = Team is on and available). */
+export function useTeamSwitch(): TeamSwitch {
+  return useSyncExternalStore(subscribe, () => current, () => OFF);
 }
 
 /** `sessions` without the hidden ones (the same array when nothing is hidden, so nothing re-renders). */

@@ -20,6 +20,7 @@ import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { useTeamHiddenSessions, withoutTeamMembers } from '../team/hidden.ts';
+import { TeamNavItem, TeamSidebarEntry } from '../team/SidebarTeam.tsx';
 import {
   type Meter,
   type UsageCell,
@@ -268,6 +269,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
             </span>
           </Link>
         ))}
+        {/* Team (D100) hook: the Team item, only while Team is on (nothing while off). */}
+        <TeamNavItem />
       </nav>
 
       <div className="sb-section-label">
@@ -282,6 +285,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         ))}
       </div>
 
+      {/* Team (D100) hook: ⚑ Team · <name> · N members above SESSIONS, only while Team is on. */}
+      <TeamSidebarEntry />
       {/* D54: the SESSIONS label and list (Pinned, folders, loose sessions): SidebarSessions.tsx. */}
       <SidebarSessions
         sessions={sessionList}

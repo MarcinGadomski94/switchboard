@@ -6,9 +6,9 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 
 - `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync)
 - `src/core/team.ts`, `src/core/team-templates.ts`, `src/core/team-budget.ts`, `src/core/team-sync.ts`, `src/core/team-tools.ts`
-- `src/web/team/` (the sidebar filter, Settings → Experimental; T3 adds the Team page here)
-- `tests/server/team/`
-- `docs/team.md`, this file
+- `src/web/team/` (the sidebar filter and the sidebar's Team entries, Settings → Experimental, the Team page, its dialogs and styles)
+- `tests/server/team/`, `tests/web/team.test.ts`, `tests/e2e/team-*.spec.ts`, `tests/e2e/team-world.ts`, `tests/e2e/visual/team.spec.ts`
+- `docs/team.md`, this file, `docs/visual/team.md` and its `docs/visual/team-*.png`
 
 ## 2. Revert the hooks
 
@@ -27,7 +27,11 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
-| `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers`; `teamHidden`; the one filter on `sessionList` | `const sessionList = openSessions(sessions.data ?? []);` |
+| `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers` and `TeamNavItem` / `TeamSidebarEntry`; `teamHidden`; the one filter on `sessionList`; `<TeamNavItem />` at the end of the nav and `<TeamSidebarEntry />` above `<SidebarSessions>` (both render nothing while Team is off) | `const sessionList = openSessions(sessions.data ?? []);`; drop the two elements |
+| `src/web/router.tsx` | `team` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/team` row of the header table | remove `team` in the three places and the row |
+| `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
+| `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
+| `src/core/tutorial.ts` | `team` in `TourRoute`; `V1_18`, `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them (and `V1_18` if nothing else ships in it) |
 | `src/web/views/settings/model.ts` | the `experimental` section | remove the entry |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` | remove both |
 
@@ -36,6 +40,8 @@ Tests that name Team's additions (revert with the code):
 - `tests/server/api/settings.test.ts`: the `'experimental.team': false` line of the fresh-install answer.
 - `tests/web/updates.test.ts`: the last six sections (back to the last five, without `experimental`).
 - `tests/e2e/settings.spec.ts`: the `'Experimental'` nav label.
+- `tests/server/tutorial/tutorial.test.ts`: `'D100'` at the end of the What's-new decisions.
+- `tests/e2e/shell.spec.ts`: the `/api/team/state` branch of the shell's API calls.
 
 Docs: the *Team (D100)* section of `docs/handoff/contracts/local-api.md`, D100 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D100* section of `.loop/questions.md`.
 

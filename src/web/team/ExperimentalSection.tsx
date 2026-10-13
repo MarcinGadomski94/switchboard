@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { KnownSettings } from '../../core/settings.ts';
 import { Row, SectionTitle, ToggleValue } from '../views/settings/rows.tsx';
 import type { SaveSettings } from '../views/settings/sections.tsx';
+import { reloadTeamSwitch } from './hidden.ts';
 
 /**
  * D100 · Settings → Experimental (`docs/team.md` → *The switch*): features that can be
@@ -18,7 +19,8 @@ export function ExperimentalSection({ settings, save }: { readonly settings: Kno
       <Row
         id="experimental-team"
         label="Team"
-        description="Run a set of role agents (members) from one page. Members' sessions leave the sessions list while this is on; switching it off puts them all back."
+        tour="experimental-team"
+        description="Run a set of role agents (members) from one page. Off: no Team page, no background work, and every team member goes back to the session list."
       >
         <ToggleValue
           label="Team"
@@ -26,7 +28,9 @@ export function ExperimentalSection({ settings, save }: { readonly settings: Kno
           disabled={busy}
           onToggle={() => {
             setBusy(true);
-            void save({ 'experimental.team': !on }).finally(() => setBusy(false));
+            void save({ 'experimental.team': !on })
+              .then(() => reloadTeamSwitch())
+              .finally(() => setBusy(false));
           }}
         />
       </Row>

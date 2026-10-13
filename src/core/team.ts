@@ -333,6 +333,49 @@ export interface TeamNeedsYouItem {
   readonly request?: TeamRequest;
 }
 
+/** What a suggestion is based on (cheap counts over the last 7 days; `src/server/team/suggestions.ts`). */
+export interface SuggestionEvidence {
+  /** Repositories the session works in (its solutions, else its folder). */
+  readonly repos: number;
+  /** Its Switchboard loops (D94) that have not ended. */
+  readonly loops: number;
+  /** Its CLI-run loops (`/loop`, CronCreate…), which Switchboard cannot manage. */
+  readonly cliLoops: number;
+  /** Events in the last 7 days. */
+  readonly events7d: number;
+  readonly edits: number;
+  readonly reads: number;
+  /** edits / (edits + reads), `null` without either. */
+  readonly editRatio: number | null;
+}
+
+/** One candidate member (`GET /api/team/suggestions`). */
+export interface TeamSuggestion {
+  readonly sessionId: string;
+  readonly title: string;
+  readonly folder: string | null;
+  readonly evidence: SuggestionEvidence;
+  /** The template it looks like (a heuristic). */
+  readonly templateId: string;
+  /** Why, in one line. */
+  readonly reason: string;
+  /** Higher = a better candidate (events, loops). */
+  readonly score: number;
+  /** A drafted charter; always `null` from the server: the Team page drafts one on demand (`src/web/team/charter-draft.ts`). */
+  readonly charterDraft: TeamCharter | null;
+}
+
+/** A move of a member to another machine (`POST /api/team/members/{id}/move`, `GET /api/team/moves/{runId}`). */
+export interface TeamMoveRun {
+  readonly id: string;
+  readonly memberId: string;
+  readonly state: 'running' | 'done' | 'failed';
+  /** The take-over run (D65) behind it. */
+  readonly takeoverRunId: string | null;
+  readonly error: string | null;
+  readonly targetMachineId: string;
+}
+
 /** `teamChanged` (`/hub`): something of the team changed; the page reads `GET /api/team` again. */
 export interface TeamChanged {
   readonly teamId: string;

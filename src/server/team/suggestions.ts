@@ -1,4 +1,4 @@
-import type { TeamCharter } from '../../core/team.ts';
+import type { SuggestionEvidence, TeamSuggestion } from '../../core/team.ts';
 import type { Store } from '../db/store.ts';
 import type { LoopService } from '../loops/owned.ts';
 
@@ -8,37 +8,7 @@ export const EDIT_TOOLS: readonly string[] = ['Edit', 'MultiEdit', 'Write', 'Not
 /** Tool calls that only read (the "read" side). */
 export const READ_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'NotebookRead'];
 
-/** What a suggestion is based on (cheap counts over the last 7 days). */
-export interface SuggestionEvidence {
-  /** Repositories the session works in (its solutions, else its folder). */
-  readonly repos: number;
-  /** Its Switchboard loops (D94) that have not ended. */
-  readonly loops: number;
-  /** Its CLI-run loops (`/loop`, CronCreate…), which Switchboard cannot manage. */
-  readonly cliLoops: number;
-  /** Events in the last 7 days. */
-  readonly events7d: number;
-  readonly edits: number;
-  readonly reads: number;
-  /** edits / (edits + reads), `null` without either. */
-  readonly editRatio: number | null;
-}
-
-/** One candidate member (`GET /api/team/suggestions`). */
-export interface TeamSuggestion {
-  readonly sessionId: string;
-  readonly title: string;
-  readonly folder: string | null;
-  readonly evidence: SuggestionEvidence;
-  /** The template it looks like, by the heuristic below. */
-  readonly templateId: string;
-  /** Why, in one line. */
-  readonly reason: string;
-  /** Higher = a better candidate (events, loops). */
-  readonly score: number;
-  /** T3: a charter an agent drafted from the session; always `null` here. */
-  readonly charterDraft: TeamCharter | null;
-}
+export type { SuggestionEvidence, TeamSuggestion } from '../../core/team.ts';
 
 /**
  * D100 · candidate members from the existing sessions (`docs/team.md` → *Suggestions*):

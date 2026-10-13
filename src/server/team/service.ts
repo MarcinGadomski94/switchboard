@@ -4,6 +4,7 @@ import { HybridClock } from '../../core/hlc.ts';
 import { remoteId, parseRemoteId } from '../../core/peers.ts';
 import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-layout.ts';
 import {
+  type TeamMoveRun,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_NAME,
   EMPTY_CHARTER,
@@ -123,15 +124,7 @@ interface MemberFields {
 const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'idle', 'paused']);
 
 /** A running move (`POST /api/team/members/{id}/move`). */
-export interface TeamMoveRun {
-  readonly id: string;
-  readonly memberId: string;
-  readonly state: 'running' | 'done' | 'failed';
-  /** The take-over run (D65) behind it. */
-  readonly takeoverRunId: string | null;
-  readonly error: string | null;
-  readonly targetMachineId: string;
-}
+export type { TeamMoveRun } from '../../core/team.ts';
 
 /**
  * D100 · Team (`docs/team.md`). Owns `team.db` (opened only while Team is on), the

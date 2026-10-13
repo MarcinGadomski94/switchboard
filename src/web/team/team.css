@@ -1,0 +1,912 @@
+/*
+ * D100 · the Team page, its dialogs and the sidebar's Team entries (docs/team.md →
+ * *The Team page*). Only `.sb-team*` classes and `[data-team-returned]`: nothing here
+ * touches the rest of Switchboard, so with Team off every page is as before.
+ * Colours from styles/tokens.css, plus Team's role colour (a soft violet).
+ */
+:root {
+  --team-role-fg: oklch(0.78 0.09 300);
+  --team-role-bg: oklch(0.25 0.04 300);
+  --team-role-border: oklch(0.45 0.07 300);
+}
+
+/* ── sidebar ─────────────────────────────────────────────────────────── */
+
+.sb-team-entry {
+  margin: 10px 10px 0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 7px;
+  background: var(--team-role-bg);
+  color: var(--team-role-fg);
+  font-size: 12.5px;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.sb-team-entry[aria-current='page'] {
+  box-shadow: inset 0 0 0 1px var(--team-role-border);
+}
+
+.sb-team-entry__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-team-entry__need {
+  margin-left: auto;
+  font: 500 11px var(--font-mono);
+  border-radius: 10px;
+  padding: 1px 7px;
+  background: var(--status-need);
+  color: var(--primary-fg);
+}
+
+.sb-session[data-team-returned='true'] {
+  background: color-mix(in srgb, var(--bg-selected-row), var(--team-role-fg) 18%);
+  transition: background 0.4s ease;
+}
+
+/* ── page ────────────────────────────────────────────────────────────── */
+
+.sb-team {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.sb-team-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-team-header__main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sb-team-title {
+  margin: 0;
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-team-synced {
+  font: 12px var(--font-mono);
+  color: var(--team-role-fg);
+}
+
+.sb-team-counts {
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-team-banner {
+  margin: 12px 22px 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--team-role-border);
+  background: var(--team-role-bg);
+  border-radius: var(--radius-card);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-team-banner > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-team-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) minmax(380px, 460px);
+}
+
+.sb-team-left,
+.sb-team-middle {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 20px;
+}
+
+.sb-team-left {
+  border-right: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sb-team-section-label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+  margin-bottom: 8px;
+}
+
+.sb-team-muted {
+  color: var(--muted-2);
+  font-size: 12.5px;
+}
+
+.sb-team-error {
+  color: var(--status-fail);
+  font-size: 12.5px;
+  margin: 6px 22px 0;
+}
+
+.sb-team-need .sb-team-error,
+.sb-team-panel .sb-team-error,
+.sb-team-dialog .sb-team-error,
+.sb-team-field .sb-team-error {
+  margin: 4px 0 0;
+}
+
+/* ── cards ───────────────────────────────────────────────────────────── */
+
+.sb-team-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.sb-team-card {
+  --card-status: var(--status-idle);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px 10px;
+  border: 1px solid var(--border-card);
+  border-top: 3px solid var(--card-status);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  cursor: pointer;
+  min-width: 0;
+  outline: none;
+}
+
+.sb-team-card[data-status='working'] {
+  --card-status: var(--status-run);
+}
+
+.sb-team-card[data-status='needs-you'] {
+  --card-status: var(--status-need);
+}
+
+.sb-team-card[data-status='paused'],
+.sb-team-card[data-status='offline'] {
+  --card-status: var(--border-control);
+  opacity: 0.62;
+}
+
+.sb-team-card[aria-pressed='true'] {
+  background: var(--bg-selected-card);
+  border-left-color: var(--team-role-border);
+  border-right-color: var(--team-role-border);
+  border-bottom-color: var(--team-role-border);
+}
+
+.sb-team-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--team-role-border);
+}
+
+.sb-team-card__head,
+.sb-team-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sb-team-card__icon {
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--card-status, var(--muted-2));
+}
+
+.sb-team-card[data-status='needs-you'] .sb-team-card__icon {
+  font-weight: 700;
+}
+
+.sb-team-card__role {
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb-team-card__need {
+  font: 500 10.5px var(--font-mono);
+  border-radius: 10px;
+  padding: 1px 7px;
+  background: var(--status-need);
+  color: var(--primary-fg);
+  white-space: nowrap;
+}
+
+.sb-team-card__more {
+  margin-left: auto;
+  color: var(--muted-2);
+  padding: 0 4px;
+  border-radius: 5px;
+}
+
+.sb-team-card__more:hover {
+  background: var(--bg-selected-nav);
+  color: var(--text);
+}
+
+.sb-team-card__from {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-team-card__work {
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-team-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+
+.sb-team-card__budget {
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-team-chip {
+  display: inline-block;
+  font: 10.5px var(--font-mono);
+  padding: 1px 6px;
+  border-radius: var(--radius-chip);
+  background: var(--bg-selected-nav);
+  color: var(--muted-1);
+  margin-left: 6px;
+}
+
+.sb-team-card__foot .sb-team-chip,
+.sb-team-runs-on .sb-team-chip {
+  margin-left: 0;
+}
+
+/* ── Needs you, Activity ─────────────────────────────────────────────── */
+
+.sb-team-need {
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: var(--radius-card);
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-team-need[data-source='team'] {
+  border-color: var(--team-role-border);
+  background: var(--team-role-bg);
+}
+
+.sb-team-need__label {
+  font: 500 10.5px var(--font-mono);
+  color: var(--question-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sb-team-need[data-source='team'] .sb-team-need__label {
+  color: var(--team-role-fg);
+}
+
+.sb-team-need__title {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.sb-team-need__detail {
+  font-size: 12px;
+  color: var(--muted-1);
+  white-space: pre-wrap;
+  max-height: 6em;
+  overflow: auto;
+}
+
+.sb-team-need__actions,
+.sb-team-dialog__actions,
+.sb-team-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-team-need__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-team-activity__row {
+  display: grid;
+  grid-template-columns: 44px auto 1fr;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-team-activity__time {
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-team-activity__actor {
+  color: var(--team-role-fg);
+  white-space: nowrap;
+}
+
+.sb-team-activity__text {
+  color: var(--text-2);
+  min-width: 0;
+}
+
+/* ── buttons, fields ─────────────────────────────────────────────────── */
+
+.sb-team-btn {
+  font-size: 12px;
+  line-height: normal;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 10px;
+  color: var(--text-2);
+  background: transparent;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sb-team-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-team-btn--primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sb-team-btn--ghost {
+  border-color: transparent;
+  color: var(--muted-1);
+}
+
+.sb-team-link {
+  color: var(--team-role-fg);
+  padding: 0;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.sb-team-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb-team-form__row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sb-team-field,
+.sb-team-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sb-team-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.sb-team-field__label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.sb-team-field__sub {
+  font-size: 11.5px;
+  color: var(--muted-1);
+}
+
+.sb-team-input {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-code);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+  min-width: 0;
+  resize: vertical;
+}
+
+.sb-team-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-team-check input {
+  margin-top: 2px;
+  accent-color: var(--team-role-fg);
+}
+
+.sb-team-note {
+  font-size: 12.5px;
+  color: var(--text-2);
+  padding: 9px 11px;
+  border-left: 3px solid var(--team-role-fg);
+  background: var(--team-role-bg);
+  border-radius: 0 var(--radius-button) var(--radius-button) 0;
+}
+
+/* ── the member panel ────────────────────────────────────────────────── */
+
+.sb-team-panel {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-divider);
+  background: var(--bg-main);
+}
+
+.sb-team-panel__head {
+  padding: 14px 16px 2px;
+}
+
+.sb-team-panel__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.sb-team-panel .sb-team-card__icon[data-status='working'] {
+  color: var(--status-run);
+}
+
+.sb-team-panel .sb-team-card__icon[data-status='needs-you'] {
+  color: var(--status-need);
+}
+
+.sb-team-panel__sub {
+  padding: 2px 16px 8px;
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-team-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-team-tab {
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--muted-1);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.sb-team-tab[aria-selected='true'] {
+  color: var(--text-strong);
+  border-bottom-color: var(--team-role-fg);
+}
+
+.sb-team-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-team-panel__body[data-tab='settings'],
+.sb-team-panel__body[data-tab='access'] {
+  overflow: auto;
+}
+
+.sb-team-chat {
+  flex: 1;
+  min-height: 0;
+}
+
+.sb-team-chat .sb-chat {
+  padding: 14px 16px;
+}
+
+.sb-team-settings,
+.sb-team-access-slot {
+  padding: 14px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sb-team-runs-on {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── empty state ─────────────────────────────────────────────────────── */
+
+.sb-team-empty {
+  margin: 60px auto;
+  max-width: 440px;
+  padding: 0 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.sb-team-empty__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+/* ── dialogs and the menu ────────────────────────────────────────────── */
+
+.sb-team-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-team-dialog {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(var(--app-height, 100dvh) - 40px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+}
+
+.sb-team-dialog--wide {
+  width: 720px;
+}
+
+.sb-team-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-team-dialog__actions {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.sb-team-choices,
+.sb-team-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-team-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+}
+
+.sb-team-choice:hover:not(:disabled) {
+  border-color: var(--team-role-border);
+}
+
+.sb-team-choice:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sb-team-choice__title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-team-choice__text {
+  font-size: 12px;
+  color: var(--muted-1);
+}
+
+.sb-team-suggestion {
+  padding: 11px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-team-suggestion__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sb-team-suggestion__role {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-team-suggestion__from {
+  font-size: 12.5px;
+  color: var(--muted-1);
+}
+
+.sb-team-suggestion__why,
+.sb-team-suggestion__draft {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-team-suggestion__draft {
+  color: var(--muted-1);
+}
+
+.sb-team-pill {
+  font: 500 10.5px var(--font-mono);
+  border-radius: 10px;
+  padding: 1px 8px;
+  background: var(--bg-selected-nav);
+  color: var(--muted-1);
+}
+
+.sb-team-pill[data-confidence='high'] {
+  background: oklch(0.26 0.05 150);
+  color: var(--status-done);
+}
+
+.sb-team-pill[data-confidence='medium'] {
+  background: var(--question-bg);
+  color: var(--status-need);
+}
+
+.sb-team-pill[data-confidence='new'] {
+  background: var(--team-role-bg);
+  color: var(--team-role-fg);
+}
+
+.sb-team-not-suggested__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12.5px;
+}
+
+.sb-team-not-suggested__title {
+  color: var(--text-2);
+}
+
+.sb-team-undo {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-team-move-blockers {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--status-need);
+  font-size: 12.5px;
+}
+
+.sb-team-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+}
+
+.sb-team-menu {
+  position: fixed;
+  min-width: 230px;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-toast);
+}
+
+.sb-team-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-team-menu__item:hover:not(:disabled) {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-team-menu__item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-team-menu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border-divider);
+}
+
+/* ── tablet: two columns (the cards over Needs you and Activity | the panel) ── */
+
+@media (max-width: 1279px) {
+  .sb-team-body {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 46%);
+  }
+
+  .sb-team-header {
+    padding: 14px 16px 10px;
+  }
+
+  .sb-team-banner {
+    margin: 10px 16px 0;
+  }
+}
+
+/* ── phone: one column, Needs you first; the panel full screen with ‹ Team ── */
+
+@media (max-width: 767px) {
+  .sb-team {
+    overflow: auto;
+  }
+
+  .sb-team[data-pane='detail'] {
+    overflow: hidden;
+  }
+
+  .sb-team-header {
+    flex-wrap: wrap;
+  }
+
+  .sb-team-banner {
+    flex-wrap: wrap;
+  }
+
+  .sb-team-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 12px 14px 24px;
+    overflow: visible;
+  }
+
+  .sb-team-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-team[data-pane='detail'] > .sb-team-panel {
+    flex: 1;
+    border-left: 0;
+  }
+
+  .sb-team[data-pane='detail'] > .sb-team-panel > .sb-back {
+    margin: 10px 12px 0;
+    align-self: flex-start;
+  }
+
+  .sb-team-panel__actions {
+    flex-wrap: nowrap;
+  }
+
+  .sb-team-form__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-team-overlay {
+    place-items: stretch;
+  }
+
+  .sb-team-dialog,
+  .sb-team-dialog--wide {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: var(--app-height, 100dvh);
+    border-radius: 0;
+    padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (pointer: coarse) {
+  .sb-team-btn,
+  .sb-team-menu__item,
+  .sb-team-tab {
+    min-height: 44px;
+  }
+
+  .sb-team-card__more {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
