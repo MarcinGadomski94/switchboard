@@ -22,10 +22,21 @@ event exists (the event's place among the session's user messages is the **turn
 number**). A failing checkpoint never blocks the message: the session's last
 problem is remembered and shown where a turn has no checkpoint.
 
-Which working trees: the session's cwd (when it is in a git working tree), its
-worktrees, and — like the session diff — the solutions of a workspace session
-that it works on in place. Each is reduced to its top-level folder and taken once.
-A folder that is no git repository gets no checkpoint; the turn action says why.
+Which working trees (follow-up 2026-10-13, "change tracking missed agent-made
+worktrees and repos outside the workspace"): the same set review cards and the Diff
+tab read, `WorktreeManager.repos` (`docs/reviews.md` → *Which repositories*): its
+worktrees; its solutions in place, a main checkout **or a linked worktree** (the
+`…-wt-…` folders agents make themselves); the working trees of the files it
+**edited** with Write / Edit / MultiEdit / NotebookEdit, outside the workspace too
+(never `deprecated/` or `infrastructure/`); else its cwd's repo (always for a
+session that is not in a workspace folder). Each is reduced to its top-level folder
+and taken once. A workspace session's cwd (the workspace root) is not checkpointed
+unless it edited files there or nothing else applies. A folder that is no git
+repository gets no checkpoint; the turn action says why.
+
+Checkpoints are taken **before** a turn, so the edited-repos part covers the repos
+edited in earlier turns: a repo the session first edits during a turn gets its
+first checkpoint at the **next** turn (that first turn cannot be reverted there).
 
 **Off switch:** Settings → Sessions → **Save a checkpoint before each turn**
 (`sessions.checkpoints`, default on), read at every turn.
@@ -136,7 +147,7 @@ tablets (D73) may use all of it (normal use, with the confirm).
 
 ## Tests
 
-`tests/server/checkpoints/service.test.ts` (the git side and the service: byte-identical index / HEAD / files after a checkpoint, tracked + untracked restored, later files removed, ignored files untouched, commits taken off the branch, pushed commits refused, files only, several turns back, Redo, retention, the 5,000-file timing), `tests/server/checkpoints/api.test.ts` (the real supervisor with fake-claude: the checkpoint before each turn, the routes, `turn-running`, the note on the next message's stdin, the allow-lists), `tests/server/peers/undo.test.ts` (through the proxy), `tests/web/undo.test.ts` (the dividers and the actions), `tests/e2e/undo.spec.ts` (the action, the confirmation, the divider and Redo, *Undo last turn* in the header and the sidebar row's ⋯ menu, a non-git folder (disabled, saying why), a phone).
+`tests/server/checkpoints/service.test.ts` (the git side and the service: byte-identical index / HEAD / files after a checkpoint, tracked + untracked restored, later files removed, ignored files untouched, commits taken off the branch, pushed commits refused, files only, several turns back, Redo, retention, the 5,000-file timing), `tests/server/checkpoints/api.test.ts` (the real supervisor with fake-claude: the checkpoint before each turn, the routes, `turn-running`, the note on the next message's stdin, the allow-lists), `tests/server/worktrees/session-repos.test.ts` (which working trees: a linked-worktree solution, a repo outside the workspace that the session edited, declared + edited deduplicated, read-only layout folders never), `tests/server/peers/undo.test.ts` (through the proxy), `tests/web/undo.test.ts` (the dividers and the actions), `tests/e2e/undo.spec.ts` (the action, the confirmation, the divider and Redo, *Undo last turn* in the header and the sidebar row's ⋯ menu, a non-git folder (disabled, saying why), a phone).
 
 ## Known limits
 

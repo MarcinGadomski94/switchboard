@@ -313,6 +313,19 @@ export function reviewTitle(review: Pick<Review, 'state' | 'outcome' | 'fileCoun
   return `${review.commitCount} commit${review.commitCount === 1 ? '' : 's'} to review`;
 }
 
+/**
+ * The Inbox title of a review (D79 follow-up 2026-10-13): {@link reviewTitle}, then which
+ * repositories a pending card covers (`1 file changed (+2 −0) · web-front`; more than two:
+ * `· a, b +1`), so a card is recognizable in the list before it is opened.
+ */
+export function reviewInboxTitle(review: Pick<Review, 'state' | 'outcome' | 'fileCount' | 'added' | 'removed' | 'commitCount' | 'repos'>): string {
+  const title = reviewTitle(review);
+  const names = [...new Set(review.repos.map((repo) => repo.repo))];
+  if (review.state !== 'pending' || names.length === 0) return title;
+  const shown = names.slice(0, 2).join(', ');
+  return `${title} · ${names.length > 2 ? `${shown} +${names.length - 2}` : shown}`;
+}
+
 /** The header badge's words for a session's open review. */
 export function reviewBadgeText(review: Pick<Review, 'state'>): string {
   return review.state === 'cleanup' ? 'Clean up' : 'Review';

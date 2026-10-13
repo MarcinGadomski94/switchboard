@@ -35,7 +35,6 @@ import { ReviewGit } from './reviews/git.ts';
 import { ReviewService } from './reviews/service.ts';
 import { sessionMessageSender } from './api/todos.ts';
 import { CheckpointService } from './checkpoints/service.ts';
-import { folderOfSession } from './folders/ref.ts';
 import { TodoEnricher } from './todos/enricher.ts';
 import { FreshPlaces } from './sessions/fresh-place.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
@@ -408,7 +407,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       store: options.store,
       bus,
       git: new ReviewGit({ gh: config.ghCommand }),
-      resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+      repos: (session) => worktrees.repos.of(session),
       enabled: () => reviewCardsEnabled(options.store.settings),
       send: sessionMessageSender({ store: options.store, supervisor, hooks }),
     });
@@ -426,20 +425,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     sessions: supervisor,
     env: supervisor.environment,
     enabled: () => checkpointsEnabled(options.store.settings),
-    // Its worktrees and, like the session diff, the solutions it works on in place.
+    // The repositories the session works in, as review cards and the Diff read them (one shared answer):
+    // its worktrees, its solutions in place (linked worktrees too), the repos it edited, else its cwd's.
+    includeCwd: false,
     foldersOf: async (session) => {
-      const own = (await options.store.worktrees.list({ sessionId: session.id })).map((worktree) => worktree.path);
-      const folder = folderOfSession(session);
-      if (!folder || folder.kind !== 'workspace') return own;
-      const inPlace: string[] = [];
-      for (const solution of session.solutions) {
-        try {
-          inPlace.push((await worktrees.resolveRepo(solution, folder)).repoPath);
-        } catch {
-          // Not a solution of this folder (any more): nothing to checkpoint there.
-        }
-      }
-      return [...own, ...inPlace];
+      const { worktrees: own, inPlace } = await worktrees.repos.of(session);
+      return [...own.map((worktree) => worktree.path), ...inPlace.map((repo) => repo.top)];
     },
   });
   supervisor.useCheckpoints(checkpoints);

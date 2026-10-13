@@ -6,7 +6,7 @@ import {
   type ReviewTests,
   draftCommitMessage,
   reviewActions,
-  reviewTitle,
+  reviewInboxTitle,
   testsLine,
 } from '../../core/reviews.ts';
 import type { ReviewRecord } from '../db/repos/reviews.ts';
@@ -79,8 +79,9 @@ export function toReview(record: ReviewRecord, session: Pick<SessionRecord, 'tit
 /**
  * The Inbox item of an open review: kind `review`, the session as its source, status
  * `need` while pending (`done` while only Clean up is offered), the title from the
- * diff stats, the tests line as its detail, one branch chip per repo
- * (`<repo> ⎇ <branch> → <base>`), and the card itself (`review`).
+ * diff stats and the repositories it covers ({@link reviewInboxTitle}), the tests line as
+ * its detail, one branch chip per repo (`<repo> ⎇ <branch> → <base>`; a detached HEAD says
+ * so), and the card itself (`review`).
  */
 export function reviewItem(review: Review, sessionName: string): InboxItem {
   return {
@@ -90,11 +91,15 @@ export function reviewItem(review: Review, sessionName: string): InboxItem {
     source: sessionName,
     sourceTitle: review.sessionTitle,
     status: review.state === 'pending' ? 'need' : 'done',
-    title: reviewTitle(review),
+    title: reviewInboxTitle(review),
     label: review.state === 'pending' ? 'Review' : 'Clean up',
     detail: review.state === 'pending' ? testsLine(review.tests) : (review.note ?? ''),
     createdAt: review.createdAt,
-    branches: review.repos.filter((repo) => repo.branch !== null).map((repo) => ({ solution: repo.repo, branch: repo.base ? `${repo.branch} → ${repo.base}` : (repo.branch as string) })),
+    // Every repo of the card gets a chip (a detached HEAD too), so the Inbox says which repositories it covers.
+    branches: review.repos.map((repo) => {
+      const branch = repo.branch ?? 'detached HEAD';
+      return { solution: repo.repo, branch: repo.base ? `${branch} → ${repo.base}` : branch };
+    }),
     review,
   };
 }

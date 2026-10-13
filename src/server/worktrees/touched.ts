@@ -174,7 +174,7 @@ export class SessionTouchedFiles {
     const repo = await canonicalPath(top);
     const out = new Set<string>();
     for (const written of await this.#store.events.editedFilePaths(session.id, EDIT_TOOLS)) {
-      const absolute = path.isAbsolute(written) ? written : session.cwd ? path.resolve(session.cwd, written) : null;
+      const absolute = editedAbsolute(session, written);
       if (absolute === null) continue;
       const relative = insideRelative(repo, await canonicalPath(absolute));
       if (relative !== null) out.add(relative);
@@ -193,6 +193,22 @@ export class SessionTouchedFiles {
       }
     }
     return out;
+  }
+
+  /**
+   * The files the session's edit tools named in the events stored after `afterId`
+   * (absolute, canonical), and the newest such event's id: the same source as
+   * {@link paths}, read incrementally (the shared "repositories a session works in",
+   * `session-repos.ts`, remembers `lastId`).
+   */
+  async editedFilesAfter(session: Pick<SessionRecord, 'id' | 'cwd'>, afterId: number): Promise<{ readonly files: string[]; readonly lastId: number }> {
+    const { paths, lastId } = await this.#store.events.editedFilePathsAfter(session.id, EDIT_TOOLS, afterId);
+    const files: string[] = [];
+    for (const written of paths) {
+      const absolute = editedAbsolute(session, written);
+      if (absolute !== null) files.push(await canonicalPath(absolute));
+    }
+    return { files, lastId };
   }
 
   /** The session's turn checkpoints in `repo` (one per turn, oldest first). */
@@ -242,6 +258,11 @@ export class SessionTouchedFiles {
     this.#ends.set(key, tree);
     if (this.#ends.size > MAX_ENDS) this.#ends.delete(this.#ends.keys().next().value as string);
   }
+}
+
+/** An edit tool's path made absolute (a relative one is the session's cwd's); `null` when it cannot be. */
+function editedAbsolute(session: Pick<SessionRecord, 'cwd'>, written: string): string | null {
+  return path.isAbsolute(written) ? written : session.cwd ? path.resolve(session.cwd, written) : null;
 }
 
 function endKey(sessionId: string, turn: number, repo: string): string {

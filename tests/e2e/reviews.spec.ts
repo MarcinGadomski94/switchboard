@@ -92,7 +92,7 @@ test('a worktree session: the card in the Inbox, Merge refused while uncommitted
   await item.click();
   const card = page.getByTestId('review-card');
   await expect(card).toHaveAttribute('data-mode', 'branch');
-  await expect(page.getByTestId('inbox-title')).toHaveText('1 file changed (+1 −0)');
+  await expect(page.getByTestId('inbox-title')).toHaveText('1 file changed (+1 −0) · web-front');
   await expect(card.getByTestId('review-repo')).toContainText('web-front');
   await expect(card.getByTestId('review-repo')).toContainText('⎇ PROJ-79-release-notes → main');
   await expect(card.getByTestId('review-file')).toHaveText(['notes/release.md']);

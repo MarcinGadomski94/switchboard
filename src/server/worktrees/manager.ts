@@ -44,6 +44,7 @@ import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/re
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
+import { SessionRepos } from './session-repos.ts';
 import { SessionTouchedFiles } from './touched.ts';
 import { toWorktree } from './wire.ts';
 import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
@@ -359,6 +360,8 @@ export class WorktreeManager implements DiffProvider {
   #checking: Promise<PullRequestCheck[]> | null = null;
   /** D90: the files a session touched in a working tree it uses in place (the Diff's default view). */
   readonly touched: SessionTouchedFiles;
+  /** The repositories a session works in: the one answer of review cards, turn checkpoints and the Diff (`session-repos.ts`). */
+  readonly repos: SessionRepos;
   /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
   #adopting: Promise<unknown> = Promise.resolve();
   #timer: NodeJS.Timeout | undefined;
@@ -375,6 +378,7 @@ export class WorktreeManager implements DiffProvider {
     this.#fetchTimeout = options.timeouts?.fetch ?? 60_000;
     this.#onError = options.onError ?? ((error) => console.error('switchboard worktrees:', error));
     this.touched = new SessionTouchedFiles({ store: this.#store, env: this.#env, onError: this.#onError });
+    this.repos = new SessionRepos({ store: this.#store, touched: this.touched });
   }
 
   /** Subscribes to `worktreeRemovable`; returns the unsubscribe function. */
@@ -1473,22 +1477,15 @@ export class WorktreeManager implements DiffProvider {
     return new Set([...splitNulList(names.stdout), ...splitNulList(untracked.stdout)].filter(keep)).size;
   }
 
-  /** The session's diff targets: its worktrees, then its in-place solutions (D14: resolved in its folder). */
+  /**
+   * The session's diff targets: its worktrees, then the working trees it uses in place
+   * (its solutions resolved for watching, linked worktrees included, and the repositories
+   * it edited: {@link SessionRepos}, shared with review cards and checkpoints).
+   */
   async #diffTargets(session: SessionRecord): Promise<DiffTarget[]> {
-    const worktrees = await this.#store.worktrees.list({ sessionId: session.id });
+    const { worktrees, inPlace } = await this.repos.of(session);
     const targets: DiffTarget[] = worktrees.map((w) => ({ solution: w.repo, dir: w.path, branch: w.branch, baseRef: w.baseRef ?? null, worktree: true }));
-    const folder = folderOfSession(session);
-    for (const solution of folder ? session.solutions : []) {
-      if (worktrees.some((w) => w.repo === solution)) continue;
-      let repo: RepoLocation;
-      try {
-        repo = await this.resolveRepo(solution, folder as FolderRef);
-      } catch {
-        continue;
-      }
-      if (worktrees.some((w) => w.repoPath === repo.repoPath)) continue;
-      targets.push({ solution, dir: repo.repoPath, branch: null, baseRef: null, worktree: false });
-    }
+    for (const repo of inPlace) targets.push({ solution: repo.name, dir: repo.top, branch: null, baseRef: null, worktree: false });
     return targets;
   }
 

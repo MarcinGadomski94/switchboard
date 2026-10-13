@@ -74,6 +74,12 @@ export interface CheckpointServiceOptions {
    * default: its worktrees. Each is reduced to its working tree's top level (duplicates go).
    */
   readonly foldersOf?: (session: SessionRecord) => Promise<readonly string[]>;
+  /**
+   * `false` when {@link foldersOf} already decides about the cwd (the app's shared
+   * "repositories a session works in", `worktrees/session-repos.ts`); default `true`:
+   * the cwd's working tree comes first.
+   */
+  readonly includeCwd?: boolean;
   readonly git?: CheckpointGit;
   readonly env?: NodeJS.ProcessEnv;
   /** Epoch ms (tests pass a fake clock). */
@@ -104,6 +110,7 @@ export class CheckpointService {
   readonly #sessions: CheckpointSessions;
   readonly #enabled: () => Promise<boolean>;
   readonly #foldersOf: (session: SessionRecord) => Promise<readonly string[]>;
+  readonly #includeCwd: boolean;
   readonly #git: CheckpointGit;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
@@ -123,6 +130,7 @@ export class CheckpointService {
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? ((error) => console.error('switchboard checkpoints:', error));
     this.#pruneIntervalMs = options.pruneIntervalMs ?? CHECKPOINT_PRUNE_INTERVAL_MS;
+    this.#includeCwd = options.includeCwd ?? true;
     this.#foldersOf = options.foldersOf ?? (async (session) => (await this.#store.worktrees.list({ sessionId: session.id })).map((worktree) => worktree.path));
   }
 
@@ -161,10 +169,10 @@ export class CheckpointService {
 
   // ── before a turn ───────────────────────────────────────────────────
 
-  /** The top-level folders of the git working trees the session uses (its cwd's first), without duplicates. */
+  /** The top-level folders of the git working trees the session uses (its cwd's first, unless `includeCwd` is off), without duplicates. */
   async treesOf(session: SessionRecord): Promise<string[]> {
     const tops: string[] = [];
-    for (const dir of [...(session.cwd ? [session.cwd] : []), ...(await this.#foldersOf(session))]) {
+    for (const dir of [...(this.#includeCwd && session.cwd ? [session.cwd] : []), ...(await this.#foldersOf(session))]) {
       const top = await this.#git.toplevel(dir).catch(() => null);
       if (top !== null && !tops.includes(top)) tops.push(top);
     }

@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import path from 'node:path';
 import type { Session } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { isRemoteId } from '../../core/peers.ts';
@@ -23,7 +22,7 @@ import type { ReviewRecord } from '../db/repos/reviews.ts';
 import { type ReviewData, dataOf, toReview } from './wire.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
-import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
+import type { SessionRepoSet } from '../worktrees/session-repos.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { type MergePlan, type RepoReading, ReviewGit, ReviewGitError, type ReviewTarget } from './git.ts';
@@ -60,8 +59,11 @@ export interface ReviewServiceOptions {
   readonly store: Store;
   readonly bus: HubBus;
   readonly git: ReviewGit;
-  /** The main checkout a solution name means in a folder (the worktree manager's `resolveRepo`). */
-  readonly resolveRepo: (solution: string, folder: FolderRef) => Promise<{ readonly repoPath: string }>;
+  /**
+   * The repositories the session works in: its worktrees and the working trees it uses in
+   * place (the worktree manager's `repos.of`, shared with checkpoints and the Diff).
+   */
+  readonly repos: (session: SessionRecord) => Promise<SessionRepoSet>;
   /** Settings → Sessions → *Raise review cards when a session with changes goes idle* (read at every turn's end). */
   readonly enabled: () => Promise<boolean>;
   /** Sends a text to the session as the developer's message (Send back); throws when it cannot be sent. */
@@ -76,9 +78,13 @@ export class ReviewService {
   readonly #git: ReviewGit;
   readonly #onError: (error: unknown) => void;
   readonly #status = new Map<string, SessionStatus>();
+  /** The sessions last seen closed (a session being closed re-checks its card). */
+  readonly #closed = new Set<string>();
   /** One evaluation or action at a time per session. */
   readonly #runs = new Map<string, Promise<unknown>>();
   #unsubscribe: (() => void) | null = null;
+  /** The startup re-check of the open cards, while it runs. */
+  #startup: Promise<void> | null = null;
 
   constructor(options: ReviewServiceOptions) {
     this.#options = options;
@@ -87,10 +93,36 @@ export class ReviewService {
     this.#onError = options.onError ?? ((error) => console.error('switchboard reviews:', error));
   }
 
-  /** Starts listening to the sessions' updates. */
+  /** Starts listening to the sessions' updates, and re-checks the open cards once (in the background). */
   start(): void {
     if (this.#unsubscribe) return;
     this.#unsubscribe = this.#options.bus.subscribe((message) => this.#onMessage(message));
+    const startup = this.recheckOpen().catch((error: unknown) => this.#onError(error));
+    this.#startup = startup;
+    void startup.finally(() => {
+      if (this.#startup === startup) this.#startup = null;
+    });
+  }
+
+  /**
+   * Re-reads the pending cards (all, or `sessionId`'s) from git, so one whose changes are
+   * gone closes as "Handled by the agent" without the developer opening it. At startup,
+   * and when a session goes idle / done / closed. Serialized per session like every
+   * evaluation; a card that cannot be read stays as it is.
+   */
+  async recheckOpen(sessionId?: string): Promise<void> {
+    if (sessionId !== undefined) {
+      // Registered at once (a caller's `idle()` waits for it).
+      await this.#serial(sessionId, async () => {
+        const record = await this.#store.reviews.openOf(sessionId);
+        if (record?.state === 'pending') await this.#refreshed(record.id);
+      }).catch((error: unknown) => this.#onError(error));
+      return;
+    }
+    for (const record of await this.#store.reviews.listOpen()) {
+      if (record.state !== 'pending') continue;
+      await this.#serial(record.sessionId, () => this.#refreshed(record.id)).catch((error: unknown) => this.#onError(error));
+    }
   }
 
   /** Stops listening; waits for the work in flight. */
@@ -102,6 +134,7 @@ export class ReviewService {
 
   /** Resolves once the work in flight is done (tests). */
   async idle(): Promise<void> {
+    await this.#startup;
     while (this.#runs.size > 0) await Promise.all([...this.#runs.values()].map((run) => run.catch(() => undefined)));
   }
 
@@ -111,12 +144,22 @@ export class ReviewService {
     // A paired machine's session is its own machine's to review.
     if (isRemoteId(session.id)) return;
     const before = this.#status.get(session.id);
+    const wasClosed = this.#closed.has(session.id);
+    const closed = session.closedAt != null;
     this.#status.set(session.id, session.status);
-    if (before !== 'run' || (session.status !== 'idle' && session.status !== 'done') || session.closedAt != null) return;
-    void this.#serial(session.id, async () => {
-      if (!(await this.#options.enabled())) return;
-      await this.evaluate(session.id);
-    }).catch((error: unknown) => this.#onError(error));
+    if (closed) this.#closed.add(session.id);
+    else this.#closed.delete(session.id);
+    const settled = session.status === 'idle' || session.status === 'done';
+    if (before === 'run' && settled && !closed) {
+      void this.#serial(session.id, async () => {
+        if (!(await this.#options.enabled())) return;
+        await this.evaluate(session.id);
+      }).catch((error: unknown) => this.#onError(error));
+      return;
+    }
+    // Going idle / done another way, or being closed: its pending card (if any) is read again,
+    // so changes the agent pushed or reverted meanwhile close it as handled.
+    if ((settled && before !== session.status) || (closed && !wasClosed)) void this.recheckOpen(session.id).catch((error: unknown) => this.#onError(error));
   }
 
   /** Runs `work` after the session's earlier work (evaluations and actions never overlap per session). */
@@ -146,16 +189,25 @@ export class ReviewService {
     const latest = await this.#store.reviews.latestOf(sessionId);
     // A pending card keeps what the developer did on it (an opened PR, the last note) when its data is refreshed.
     const read = await this.#read(session, latest?.state === 'pending' ? dataOf(latest) : null);
-    if (read === null) return null;
+    if (read === null) {
+      // No changes any more: a pending card closes as handled by the agent.
+      if (latest?.state === 'pending') await this.#refreshed(latest.id);
+      return null;
+    }
     const result = await this.#store.reviews.raise(sessionId, read.fingerprint, read.data);
     if (result.kind !== 'unchanged') await this.#changed(sessionId);
     const open = await this.#store.reviews.openOf(sessionId);
     return open ? this.#toReview(open, session) : null;
   }
 
-  /** The session's targets read now: `null` when nothing has changes. */
+  /**
+   * The session's targets read now: `null` when nothing has changes. With `previous`
+   * (a pending card's data), the card's own folder-mode repositories are read too, so
+   * a card is never closed as handled only because its repository left the session's
+   * set (its changes must really be gone).
+   */
   async #read(session: SessionRecord, previous: ReviewData | null = null): Promise<{ readonly fingerprint: string; readonly data: ReviewData; readonly readings: RepoReading[] } | null> {
-    const { mode, targets } = await this.#targets(session);
+    const { mode, targets } = await this.#targets(session, previous);
     const readings: RepoReading[] = [];
     for (const target of targets) {
       try {
@@ -170,39 +222,28 @@ export class ReviewService {
   }
 
   /**
-   * The session's repositories: its live worktrees (`branch` mode), else the
-   * repositories of its folder (`folder` mode): its solutions resolved in its folder
-   * (a repo folder's one solution), else the repository its working folder is in.
+   * The session's repositories (`docs/reviews.md` → *Which repositories*): its live
+   * worktrees (`branch` mode), else the working trees it uses in place (`folder` mode):
+   * its solutions (a main checkout or a linked worktree), the repositories it edited
+   * (inside its folder or not), else the one its working folder is in. Plus, in folder
+   * mode, the repositories `previous` lists (a pending card being re-read).
    */
-  async #targets(session: SessionRecord): Promise<{ readonly mode: ReviewMode; readonly targets: ReviewTarget[] }> {
-    const worktrees = await this.#store.worktrees.list({ sessionId: session.id });
+  async #targets(session: SessionRecord, previous: ReviewData | null = null): Promise<{ readonly mode: ReviewMode; readonly targets: ReviewTarget[] }> {
+    const { worktrees, inPlace } = await this.#options.repos(session);
     if (worktrees.length > 0) {
       return {
         mode: 'branch',
         targets: worktrees.map((worktree) => ({ repo: worktree.repo, dir: worktree.path, mode: 'branch', worktreeId: worktree.id, repoPath: worktree.repoPath, baseRef: worktree.baseRef })),
       };
     }
-    const repos = new Map<string, string>();
-    const folder = folderOfSession(session);
-    if (folder) {
-      const names = session.solutions.length > 0 ? session.solutions : folder.kind === 'repo' ? [repoSolutionName(folder)] : [];
-      for (const name of names) {
-        try {
-          const location = await this.#options.resolveRepo(name, folder);
-          if (!repos.has(location.repoPath)) repos.set(location.repoPath, name);
-        } catch {
-          // Not a repository (any more): nothing to review there.
-        }
+    const targets: ReviewTarget[] = inPlace.map((repo) => ({ repo: repo.name, dir: repo.top, mode: 'folder', worktreeId: null, repoPath: repo.top, baseRef: null }));
+    if (previous?.mode === 'folder') {
+      for (const repo of previous.repos) {
+        if (repo.worktreeId !== null || targets.some((target) => target.dir === repo.dir)) continue;
+        targets.push({ repo: repo.repo, dir: repo.dir, mode: 'folder', worktreeId: null, repoPath: repo.dir, baseRef: null });
       }
     }
-    if (repos.size === 0 && session.cwd) {
-      const top = await this.#git.topLevel(session.cwd);
-      if (top) repos.set(top, path.basename(top));
-    }
-    return {
-      mode: 'folder',
-      targets: [...repos].map(([repoPath, repo]) => ({ repo, dir: repoPath, mode: 'folder', worktreeId: null, repoPath, baseRef: null })),
-    };
+    return { mode: 'folder', targets };
   }
 
   async #data(session: SessionRecord, mode: ReviewMode, readings: readonly RepoReading[], previous: ReviewData | null): Promise<ReviewData> {
@@ -388,7 +429,7 @@ export class ReviewService {
 
   /** Re-reads the session's targets with the card's mode (each repo of the card). */
   async #readAll(session: SessionRecord, data: ReviewData): Promise<RepoReading[]> {
-    const { targets } = await this.#targets(session);
+    const { targets } = await this.#targets(session, data);
     const readings: RepoReading[] = [];
     for (const target of targets) {
       if (!data.repos.some((repo) => repo.repo === target.repo && repo.dir === target.dir)) continue;
