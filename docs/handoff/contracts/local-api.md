@@ -1577,3 +1577,55 @@ GET /api/search?q=invoice%20parser&scope=conversations&limit=1
 GET /api/sessions/0b7c3e0a-…/events?around=4711&limit=1000   → ≤ 499 before, event 4711, ≤ 500 after
 GET /api/sessions/0b7c3e0a-…/events?after=5211&limit=1000    → the 1,000 after event 5211
 ```
+
+## Team (D100, 2026-10-13, additive, experimental)
+Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `docs/team-removal.md`). Types in `src/core/team.ts` (`TeamState`, `TeamView`, `TeamMember`, `TeamHandoff`, `TeamRequest`, `TeamNeedsYouItem`, `TeamActivityRecord`, `TeamChanged`), `src/core/team-templates.ts` (`TeamTemplate`), `src/core/team-sync.ts` (`TeamSyncMessage`). Data in the separate `<dataDir>/team.db` (no migration in the main database). **Off by default** (setting `experimental.team`, `PUT /api/settings`): while off only `GET /api/team/state` answers; every other route below is 404 `team-off`; with a broken `team.db` they are 503 `team-unavailable`. Errors are `{ error, message }` (+ `errors` for 422 `invalid`, + `blockers` for 409 `blocked`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/team/state | | 200 `TeamState` `{ enabled, available, problem, hiddenSessionIds, roles }` (always) |
+| GET | /api/team | | 200 `TeamView` `{ team, self, members, handoffs, activity }` (activity: newest 100) |
+| PUT | /api/team | `{ name }` | 200 `TeamView` · 422 |
+| GET | /api/team/templates | | 200 `TeamTemplate[]` |
+| GET | /api/team/suggestions | | 200 `TeamSuggestion[]` `{ sessionId, title, folder, evidence: { repos, loops, cliLoops, events7d, edits, reads, editRatio }, templateId, reason, score, charterDraft: null }` |
+| GET | /api/team/activity | `?before=<iso>&limit=1–500` | 200 `TeamActivityRecord[]` (newest first) |
+| GET | /api/team/needs-you | | 200 `TeamNeedsYouItem[]` |
+| POST | /api/team/members | adopt: `{ sessionId, name, charter?, templateId?, rhythm?: { loopIds, onHandoff }, budget?: { dailyPct, profileId }, gates?, workplace?: { folders }, model?, effort?, charterDraft? }` · create: the same without `sessionId`, with `session: NewSession` | 201 `TeamMember` · 404 · 409 `hooked` / `detached` / `closed` / `already-member` / `too-many` · 422 (create: `POST /api/sessions`' refusals in the body) |
+| GET | /api/team/members/{id} | | 200 `TeamMember` · 404 |
+| PUT | /api/team/members/{id} | any of the adopt fields but `sessionId` | 200 `TeamMember` · 404 · 422 |
+| DELETE | /api/team/members/{id} | | 200 `{ ok: true }` (the session returns to the list, no note) · 502 `peer-unreachable` |
+| POST | /api/team/members/{id}/pause · /resume | | 200 `TeamMember` |
+| POST | /api/team/members/{id}/return | | 200 `{ sessionId }` (how this machine addresses it) |
+| POST | /api/team/members/{id}/move/check | `{ targetMachineId }` | 200 `{ ok, blockers, preview }` (`preview`: the take-over's `TakeoverPreview`) · 422 |
+| POST | /api/team/members/{id}/move | `{ targetMachineId }` | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId }` · 409 `blocked` + `blockers` |
+| GET | /api/team/moves/{runId} | | 200 `TeamMoveRun` (`state`: `running` · `done` · `failed`) · 404 |
+| POST | /api/team/handoffs | `{ to: <role name or member id>, brief, expected?, links?, from?: <member id>, planRef? }` | 201 `TeamHandoff` · 404 (no such member) · 422 |
+| PUT | /api/team/handoffs/{id} | `{ state: open \| accepted \| done \| declined }` | 200 `TeamHandoff` |
+| POST | /api/team/requests/{id}/approve · /decline · /dismiss | | 200 `TeamRequest` (`note`: the approved action's result) · 409 `decided` |
+| POST | /api/team/sync | `TeamSyncMessage` (from a paired machine) | 200 `TeamSyncMessage` (this machine's) · 422 |
+
+- **`TeamMember`**: the record (`id, teamId, name, charter: { owns, produces, neverDoes }, charterDraft, templateId, machineId, sessionId, workplace, provider, model, effort, rhythm: { loops: [{ loopId, label, prompt, scheduleText }], onHandoff }, budget, gates, paused, pausedLoops, pausedBy, cliLoops, originalPlace: { place, folderId, index }, access: [{ id, name, setUpOn }], createdAt, updatedAt`) plus `status` (`working` · `needs-you` · `idle` · `paused` · `offline`), `sessionRef` (this machine's id, or `r~<machine>~<id>`), `sessionTitle`, `machineName`, `local`, `cliLoopsUnmanaged`, `usedTodayPct`.
+- **`gates`**: any of `outward-facing` (always on, always first), `merge-default-branch`, `external-write`, `delete-data`, `release`, `spend`.
+- **`TeamNeedsYouItem`**: `{ id, source: inbox | team, kind, memberId, memberName, label ("Tracker · question"), title, detail, createdAt, sessionRef, inbox?: InboxItem, request?: TeamRequest }`. `TeamRequest`: `{ id, teamId, memberId, kind: gate | budget | access, gate, title, detail, state: open | approved | declined | dismissed, action: { type: review-merge, reviewId } | { type: resume-member } | { type: external, ref } | null, note, createdAt, updatedAt }`.
+- **Agent routes** (the `switchboard` MCP helper, agent token; only a member's session, only while Team is on, else 404 `not-a-member`): `GET /agent/v1/team` → `{ member: { id, name } }`, `GET /agent/v1/team/members` → `{ text }`, `POST /agent/v1/team/handoffs` `{ to, brief, expected, links? }` → 201 `TeamHandoff`, `POST /agent/v1/team/reports` `{ text }` → 201. MCP tools: `team_handoff`, `team_members`, `team_report`.
+- **Additive fields:** `InboxItem.teamRole` and `SearchResult.teamRole` (the role name; then also `sourceTitle` / `sessionTitle`); settings key `experimental.team` (boolean, default `false`).
+- **Review cards (D79):** a member's `POST /api/reviews/{id}/merge` into a protected / default branch with its `merge-default-branch` gate on answers 409 `refused` and raises a `gate` request; the approval runs the merge.
+- **`/hub`:** `teamChanged` `{ teamId, what: string[] }`.
+- **Peers (D48):** on `PEER_API_ALLOW`: `POST /api/team/sync`, `GET /api/team`, `GET /api/team/members/{id}`, `GET /api/team/moves/{id}`, `POST /api/team/members`, `POST /api/team/handoffs`, `PUT /api/team/members/{id}`, `PUT /api/team/handoffs/{id}`, `DELETE /api/team/members/{id}`, `POST /api/team/members/{id}/(pause|resume|return|move|move/check)`, `POST /api/team/requests/{id}/(approve|decline|dismiss)`. A member on a paired machine is acted on there (forwarded); a request that came through the peer API is never forwarded again (409 `not-here`). An older peer answers 403 to the sync and is left out.
+- **Devices (D73):** allowed: the reads, `POST /api/team/members`, `DELETE /api/team/members/{id}`, `POST …/(pause|resume|return)`, hand-offs (create, state) and request decisions. Refused: `PUT /api/team`, `PUT /api/team/members/{id}`, the move routes, `POST /api/team/sync`.
+
+```
+POST /api/team/members { "sessionId": "0b7c3e0a-…", "name": "Tracker",
+  "charter": { "owns": "The PROJ board", "produces": "A daily status note", "neverDoes": "Merges or writes to the tracker" },
+  "rhythm": { "loopIds": ["a1b2c3d4e5"], "onHandoff": true }, "budget": { "dailyPct": 20, "profileId": null } }
+→ 201 { "id": "5f0c…", "name": "Tracker", "status": "idle", "sessionRef": "0b7c3e0a-…", "local": true,
+        "gates": ["outward-facing", "merge-default-branch"], "originalPlace": { "place": "folder", "folderId": "f-1", "index": 1 }, … }
+
+GET /api/team/needs-you
+→ 200 [ { "id": "q-1", "source": "inbox", "kind": "questions", "memberId": "5f0c…", "memberName": "Tracker",
+          "label": "Tracker · question", "title": "Which board?", "detail": "…", "createdAt": "2026-10-13T09:12:00.000Z",
+          "sessionRef": "0b7c3e0a-…", "inbox": { … } } ]
+
+POST /api/team/members/5f0c…/move { "targetMachineId": "m-pc-0002" }
+→ 202 { "id": "7a9e…", "memberId": "5f0c…", "state": "running", "takeoverRunId": "c3d1…", "error": null, "targetMachineId": "m-pc-0002" }
+```
