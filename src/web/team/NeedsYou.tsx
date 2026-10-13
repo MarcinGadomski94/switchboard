@@ -4,6 +4,7 @@ import type { TeamActivityRecord, TeamMember, TeamNeedsYouItem } from '../../cor
 import { api } from '../api/client.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { useRouter } from '../router.tsx';
+import { AccessRequestActions } from './access/index.ts';
 import { refusalText, teamApi } from './api.ts';
 import { activityTime, needsYouShape } from './model.ts';
 
@@ -18,11 +19,14 @@ import { activityTime, needsYouShape } from './model.ts';
 export function NeedsYouList({
   items,
   onReply,
+  onSetUp,
   onChanged,
 }: {
   readonly items: readonly TeamNeedsYouItem[];
   /** Reply…: select the member and focus its chat's composer. */
   readonly onReply: (memberId: string) => void;
+  /** T2's Set up… on an access request: select the member and open its Access tab at that access. */
+  readonly onSetUp: (memberId: string, accessId: string) => void;
   readonly onChanged: () => void;
 }) {
   return (
@@ -34,13 +38,13 @@ export function NeedsYouList({
         </div>
       ) : null}
       {items.map((item) => (
-        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} onReply={() => onReply(item.memberId)} onChanged={onChanged} />
+        <NeedsYouCard key={`${item.source}:${item.id}`} item={item} onReply={() => onReply(item.memberId)} onSetUp={onSetUp} onChanged={onChanged} />
       ))}
     </section>
   );
 }
 
-function NeedsYouCard({ item, onReply, onChanged }: { readonly item: TeamNeedsYouItem; readonly onReply: () => void; readonly onChanged: () => void }) {
+function NeedsYouCard({ item, onReply, onSetUp, onChanged }: { readonly item: TeamNeedsYouItem; readonly onReply: () => void; readonly onSetUp: (memberId: string, accessId: string) => void; readonly onChanged: () => void }) {
   const { navigate } = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,10 +70,13 @@ function NeedsYouCard({ item, onReply, onChanged }: { readonly item: TeamNeedsYo
   return (
     <div className="sb-team-need" data-testid="team-need" data-kind={item.kind} data-source={item.source} data-item-id={item.id}>
       <div className="sb-team-need__label">{item.label}</div>
-      <div className="sb-team-need__title" data-testid="team-need-title">
-        {single ? single.text : item.title}
-      </div>
-      {item.detail && shape !== 'question' && shape !== 'review' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
+      {shape === 'access' ? null : (
+        <div className="sb-team-need__title" data-testid="team-need-title">
+          {single ? single.text : item.title}
+        </div>
+      )}
+      {item.detail && shape !== 'question' && shape !== 'review' && shape !== 'access' ? <div className="sb-team-need__detail">{item.detail}</div> : null}
+      {shape === 'access' ? <AccessRequestActions item={item} onSetUp={onSetUp} onDecided={onChanged} /> : null}
       {shape === 'question' && single ? (
         <div className="sb-team-need__actions">
           {single.options.map((option, index) => (

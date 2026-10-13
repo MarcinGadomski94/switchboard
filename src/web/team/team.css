@@ -617,7 +617,7 @@
 }
 
 .sb-team-settings,
-.sb-team-access-slot {
+.sb-team-access {
   padding: 14px 16px 20px;
   display: flex;
   flex-direction: column;

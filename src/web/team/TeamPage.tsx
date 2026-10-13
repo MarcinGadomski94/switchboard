@@ -74,6 +74,7 @@ export function TeamPage() {
   const [tab, setTab] = useState<PanelTab>('chat');
   const [focus, setFocus] = useState<SettingsFocus>(null);
   const [composerFocus, setComposerFocus] = useState(0);
+  const [accessFocus, setAccessFocus] = useState<string | null>(null);
   const [open, setOpen] = useState<Open>(null);
   const [menu, setMenu] = useState<{ readonly memberId: string; readonly at: { readonly x: number; readonly y: number } } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -118,6 +119,7 @@ export function TeamPage() {
     setSelectedId(member.id);
     setPanelShown(true);
     setFocus(null);
+    setAccessFocus(null);
   };
   const toast = (text: string): void => show({ id: `team-${Date.now()}`, title: 'Team', sub: 'now', branch: '', text, sessionId: null });
 
@@ -307,6 +309,7 @@ export function TeamPage() {
           tab={tab}
           onTab={setTab}
           focus={focus}
+          accessFocus={accessFocus}
           composerFocus={composerFocus}
           phone
           moveTargets={moveTargetsOf(selected)}
@@ -323,7 +326,7 @@ export function TeamPage() {
         <div className="sb-team-body" data-testid="team-body">
           {phone ? (
             <>
-              <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onChanged={refresh} />
+              <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onChanged={refresh} />
               {cards}
               <ActivityFeed activity={view?.activity ?? []} members={members} />
             </>
@@ -332,7 +335,7 @@ export function TeamPage() {
               <div className="sb-team-top">{cards}</div>
               <div className="sb-team-split" data-testid="team-split">
                 <div className="sb-team-left">
-                  <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onChanged={refresh} />
+                  <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onChanged={refresh} />
                   <ActivityFeed activity={view?.activity ?? []} members={members} />
                 </div>
                 {selected ? (
@@ -343,6 +346,7 @@ export function TeamPage() {
                     tab={tab}
                     onTab={setTab}
                     focus={focus}
+                    accessFocus={accessFocus}
                     composerFocus={composerFocus}
                     phone={false}
                     moveTargets={moveTargetsOf(selected)}
@@ -429,6 +433,13 @@ export function TeamPage() {
       ) : null}
     </section>
   );
+
+  function setUpAccess(memberId: string, accessId: string): void {
+    setSelectedId(memberId);
+    setPanelShown(true);
+    setAccessFocus(accessId);
+    setTab('access');
+  }
 
   function replyTo(memberId: string): void {
     setSelectedId(memberId);

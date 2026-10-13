@@ -447,10 +447,12 @@ export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machi
 // ── Needs you ────────────────────────────────────────────────────────────
 
 /** How a Needs-you item is answered in place. */
-export type NeedsYouShape = 'question' | 'permission' | 'review' | 'request' | 'other';
+export type NeedsYouShape = 'question' | 'permission' | 'review' | 'request' | 'access' | 'other';
 
 /** The answer shape of an item. */
-export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind'>): NeedsYouShape {
+export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind' | 'access'>): NeedsYouShape {
+  // T2: an access request carries its access entry (answered with T2's AccessRequestActions).
+  if (item.source === 'team' && item.kind === 'access' && item.access) return 'access';
   if (item.source === 'team') return 'request';
   if (item.kind === 'questions') return 'question';
   if (item.kind === 'permission') return 'permission';

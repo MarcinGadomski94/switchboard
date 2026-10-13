@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { type Page, expect, test } from '@playwright/test';
 import { openWithHub } from './question-world.ts';
 import { type TeamWorld, startTeamWorld } from './team-world.ts';
@@ -182,6 +184,46 @@ test('Needs you: a member\'s question is answered in place; Pause / Resume', asy
   await panel.getByTestId('team-panel-pause').click();
   await expect(panel.getByTestId('team-panel-pause')).toHaveText('⏸ Pause');
   await expect(card(page, 'Deployer')).not.toHaveAttribute('data-status', 'paused');
+});
+
+test('Needs you: an access request (T2); Set up… opens the member\'s Access tab at it', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  await removeAllMembers(page);
+  const session = await world.startSession(page, 'traffic-report', 'Reply with just OK.');
+  await world.settle(page, session.id);
+  const member = await world.adopt(page, session.id, 'Marketing monitoring');
+  await world.settle(page, session.id);
+  // The agent's side: the session's own agent token, from the MCP config Switchboard wrote for its spawn (as tests/e2e/team-access.spec.ts).
+  const config = JSON.parse(await readFile(path.join(world.dataDir, 'agent-mcp', `${session.id}.json`), 'utf8')) as { mcpServers: { switchboard: { env: Record<string, string> } } };
+  const asked = await fetch(`${world.baseUrl}/agent/v1/team/access`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${config.mcpServers.switchboard.env['SWITCHBOARD_TODO_TOKEN']}`, 'x-switchboard-session': session.id },
+    body: JSON.stringify({
+      kind: 'api-key',
+      service: 'Acme Analytics',
+      host: 'api.acme.example',
+      why: 'Fetch the weekly traffic report for the summary.',
+      scope: 'read-only, reports',
+      fields: [{ name: 'ACME_ANALYTICS_KEY', label: 'API key', secret: true }],
+    }),
+  });
+  expect(asked.status).toBe(201);
+  const accessId = ((await asked.json()) as { access: { id: string } }).access.id;
+
+  const need = page.locator('[data-testid="team-need"][data-kind="access"]');
+  await expect(need).toBeVisible({ timeout: 20_000 });
+  await expect(need).toContainText('Marketing monitoring · access');
+  await expect(need.getByTestId('access-request-host')).toHaveText('api.acme.example');
+  await need.getByTestId('access-request-setup').click();
+  const panel = page.getByTestId('team-panel');
+  await expect(panel).toHaveAttribute('data-member-id', member.id);
+  await expect(panel.getByTestId('team-tab-access')).toHaveAttribute('aria-selected', 'true');
+  const entry = panel.getByTestId(`access-entry-${accessId}`);
+  await expect(entry).toHaveAttribute('data-status', 'requested');
+  await expect(entry.getByTestId('access-form')).toBeVisible();
+  await expect(entry.getByTestId('access-input-ACME_ANALYTICS_KEY')).toHaveAttribute('type', 'password');
+  await page.screenshot({ path: test.info().outputPath('team-access-setup.png') });
 });
 
 test('phone: cards in a list with Needs you first; the member opens full screen with ‹ Team', async ({ page }) => {

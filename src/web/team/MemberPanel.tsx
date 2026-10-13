@@ -9,6 +9,7 @@ import { ChatTab } from '../views/session/ChatTab.tsx';
 import { usePlaceholderDelay, useSessionData } from '../views/session/useSessionData.ts';
 import { NOTHING_LOADING, anyLoading, loadingParts } from '../views/session/session-loading.ts';
 import '../views/session/session.css';
+import { AccessTab } from './access/index.ts';
 import { refusalText, teamApi } from './api.ts';
 import { MemberFormFields } from './MemberFormFields.tsx';
 import { STATUS_META, type MemberForm, formBody, formFromMember, gatesLine, rhythmLine } from './model.ts';
@@ -27,7 +28,7 @@ const RELOAD_MS = 500;
  * phone): its name, ⏸ Pause / ▶ Resume, Open session and ⋯; a subline (from session,
  * model, machine, rhythm, needs-you-for); the tabs **Chat** (the real session chat
  * with its composer: the developer talks to the member here, and its draft is the
- * session's own D88 draft), **Access** (T2's slot) and **Settings** (the member form,
+ * session's own D88 draft), **Access** (T2's `AccessTab`) and **Settings** (the member form,
  * and where it runs with "Move to <PC>…").
  */
 export function MemberPanel({
@@ -37,6 +38,7 @@ export function MemberPanel({
   tab,
   onTab,
   focus,
+  accessFocus,
   composerFocus,
   phone,
   moveTargets,
@@ -52,6 +54,8 @@ export function MemberPanel({
   readonly tab: PanelTab;
   readonly onTab: (tab: PanelTab) => void;
   readonly focus: SettingsFocus;
+  /** The access the Access tab opens at (T2's `focusAccessId`; Set up… in Needs you). */
+  readonly accessFocus: string | null;
   /** Bumped by Reply…: the chat's composer takes the focus. */
   readonly composerFocus: number;
   readonly phone: boolean;
@@ -130,8 +134,12 @@ export function MemberPanel({
       </div>
       <div className="sb-team-panel__body" data-tab={tab}>
         {tab === 'chat' ? <MemberChat key={member.sessionRef} sessionId={member.sessionRef} composerFocus={composerFocus} /> : null}
-        {/* T2 slot (D100 access requests): the Access tab is wired at merge; keep this placeholder until then. */}
-        {tab === 'access' ? <AccessSlot member={member} /> : null}
+        {/* T2's Access tab (D100 access requests); Set up… in Needs you opens it at that access. */}
+        {tab === 'access' ? (
+          <div className="sb-team-access" data-testid="team-access">
+            <AccessTab key={`${member.id}:${accessFocus ?? ''}`} memberId={member.id} focusAccessId={accessFocus} loopLabels={member.rhythm.loops.map((loop) => loop.label ?? loop.prompt)} onChanged={onChanged} />
+          </div>
+        ) : null}
         {tab === 'settings' ? <MemberSettings key={member.id} member={member} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
       </div>
     </section>
@@ -162,16 +170,6 @@ function MemberChat({ sessionId, composerFocus }: { readonly sessionId: string; 
   return (
     <div ref={root} className="sb-sv-main sb-team-chat" data-testid="team-chat" data-session-id={sessionId}>
       <ChatTab sessionId={sessionId} session={data.detail} events={data.events} eventsState={data.eventsState} placeholder={placeholders.chat} onChanged={data.reload} older={data.older} newer={data.newer} />
-    </div>
-  );
-}
-
-/** T2 slot: the Access tab's placeholder (access requests are built in lane T2 and wired at merge). */
-function AccessSlot({ member }: { readonly member: TeamMember }) {
-  return (
-    <div className="sb-team-access-slot" data-testid="team-access-slot" data-slot="access">
-      <div className="sb-team-section-label">Access</div>
-      <div className="sb-team-muted">Access requests for {member.name} arrive here (tokens, logins and tools it may use). Not available yet.</div>
     </div>
   );
 }

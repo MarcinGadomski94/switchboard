@@ -259,6 +259,8 @@ describe('D100 · Team page: the member form and menu', () => {
 
   it('answers each Needs-you shape its own way', () => {
     expect(needsYouShape({ source: 'team', kind: 'gate' })).toBe('request');
+    expect(needsYouShape({ source: 'team', kind: 'access' })).toBe('request');
+    expect(needsYouShape({ source: 'team', kind: 'access', access: {} as never })).toBe('access');
     expect(needsYouShape({ source: 'inbox', kind: 'questions' })).toBe('question');
     expect(needsYouShape({ source: 'inbox', kind: 'permission' })).toBe('permission');
     expect(needsYouShape({ source: 'inbox', kind: 'review' })).toBe('review');
