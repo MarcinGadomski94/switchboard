@@ -83,6 +83,24 @@ test('populated: desktop three columns, tablet two, phone one with Needs you fir
   const monitor = await world.startSession(page, 'prod-sweep', 'Reply with just OK.');
   for (const s of [tracker, asker, builder, monitor]) await world.settle(page, s.id);
   await world.call(page, 'PUT', `/api/sessions/${tracker.id}/title`, { title: 'PROJ-123 board' });
+
+  // The review and the Adopt form, before anything is adopted.
+  await page.goto(`${world.baseUrl}/team`);
+  await expect(page.getByTestId('team-banner')).toContainText('Switchboard found 4 sessions that look like team members.');
+  await page.getByTestId('team-banner-review').click();
+  const review = page.getByTestId('team-review-dialog');
+  await expect(review.getByTestId('team-suggestion')).toHaveCount(4);
+  await expect(review.getByTestId('team-suggestion-draft').first()).toContainText('Draft charter · owns');
+  await expect(review.locator('[data-testid="team-confidence"][data-confidence="new"]').first()).toHaveText('new member');
+  expect(await color(page, '[data-testid="team-confidence"][data-confidence="new"]', 'color')).toBe((await canonicalColors(page, ['oklch(0.78 0.09 300)']))[0]);
+  lines.push('## Review and Adopt', '');
+  await shoot(page, 'team-review-desktop.png');
+  await review.getByTestId('team-suggestion-adopt').first().click();
+  await expect(page.getByTestId('team-adopt-note')).toContainText('leaves your session list and lives in Team from now on');
+  await shoot(page, 'team-adopt-desktop.png');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('team-form-dialog')).toHaveCount(0);
+  lines.push('');
   await world.adopt(page, tracker.id, 'Tracker', { templateId: 'delivery-tracking', budget: { dailyPct: 20, profileId: null } });
   await world.adopt(page, asker.id, 'Release manager', { templateId: 'release-manager' });
   await world.adopt(page, builder.id, 'Developer', { templateId: 'developer' });

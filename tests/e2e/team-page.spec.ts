@@ -73,7 +73,7 @@ test('review → adopt: the session leaves the list, its card appears, the chat 
   const suggestion = dialog.locator(`[data-testid="team-suggestion"][data-session-id="${session.id}"]`);
   await expect(suggestion).toContainText('← “Board watch”');
   await expect(suggestion.getByTestId('team-confidence')).toBeVisible();
-  await expect(suggestion.getByTestId('team-suggestion-draft')).toContainText('Draft charter:');
+  await expect(suggestion.getByTestId('team-suggestion-draft')).toContainText('Draft charter · owns');
   await suggestion.getByTestId('team-suggestion-adopt').click();
 
   const form = page.getByTestId('team-form-dialog');

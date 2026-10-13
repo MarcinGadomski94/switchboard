@@ -625,12 +625,13 @@
 .sb-team-dialog {
   width: 560px;
   max-width: calc(100vw - 32px);
-  max-height: calc(var(--app-height, 100dvh) - 40px);
+  max-height: calc(100vh - 40px);
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 20px 22px;
+  box-sizing: border-box;
   background: var(--bg-main);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-modal);
@@ -639,6 +640,10 @@
 
 .sb-team-dialog--wide {
   width: 720px;
+}
+
+.sb-team-dialog > * {
+  flex-shrink: 0;
 }
 
 .sb-team-dialog__title {
@@ -725,6 +730,23 @@
 
 .sb-team-suggestion__draft {
   color: var(--muted-1);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.sb-team-suggestion__draft dt {
+  color: var(--muted-2);
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+
+.sb-team-suggestion__draft dd {
+  margin: 0;
+  color: var(--text-2);
 }
 
 .sb-team-pill {

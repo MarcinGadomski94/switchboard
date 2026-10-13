@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Folder, OwnedLoop, SessionListItem } from '../../core/api.ts';
-import type { TeamMember, TeamMoveRun, TeamSuggestion } from '../../core/team.ts';
+import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { api } from '../api/client.ts';
@@ -204,11 +204,7 @@ export function ReviewDialog({
                 {remote ? <span className="sb-team-chip">{suggestion.sessionId.split('~')[1]}</span> : null}
               </div>
               <div className="sb-team-suggestion__why">Why: {evidenceLine(suggestion)}</div>
-              {draft ? (
-                <div className="sb-team-suggestion__draft" data-testid="team-suggestion-draft">
-                  Draft charter: owns {draft.owns} Produces {draft.produces} Never does {draft.neverDoes}
-                </div>
-              ) : null}
+              {draft ? <CharterDraft charter={draft} /> : null}
               <div className="sb-team-need__actions">
                 <button
                   type="button"
@@ -237,9 +233,7 @@ export function ReviewDialog({
               <ConfidencePill value="new" />
             </div>
             <div className="sb-team-suggestion__why">Why: no session does this yet. {template.summary}</div>
-            <div className="sb-team-suggestion__draft">
-              Draft charter: owns {template.charter.owns} Produces {template.charter.produces} Never does {template.charter.neverDoes}
-            </div>
+            <CharterDraft charter={template.charter} />
             <div className="sb-team-need__actions">
               <button type="button" className="sb-button sb-team-btn" data-testid="team-suggestion-create" onClick={() => onPick({ kind: 'create', template })}>
                 Create…
@@ -274,6 +268,20 @@ export function ReviewDialog({
         </button>
       </div>
     </Dialog>
+  );
+}
+
+/** "Draft charter": owns / produces / never does. */
+function CharterDraft({ charter }: { readonly charter: TeamCharter }) {
+  return (
+    <dl className="sb-team-suggestion__draft" data-testid="team-suggestion-draft" aria-label="Draft charter">
+      <dt>Draft charter · owns</dt>
+      <dd>{charter.owns}</dd>
+      <dt>produces</dt>
+      <dd>{charter.produces}</dd>
+      <dt>never does</dt>
+      <dd>{charter.neverDoes}</dd>
+    </dl>
   );
 }
 
