@@ -359,6 +359,43 @@ describe('D48 P4 permissions and questions', () => {
       hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedInput: { questions, answers: { 'Which color do you prefer?': 'Blue' } } } },
     });
   });
+
+  it('D96-q1: the agent\'s message right above the call (a progress note) is the item\'s context, for a permission and a question; none without one', async () => {
+    const r = await setup();
+    await hookIn(r);
+    const NOTE = "I've checked the build output; the cache folder is stale.";
+    const env = { isSidechain: false, userType: 'external', entrypoint: 'cli', cwd: r.cwd, sessionId: CS, version: '2.1.296', gitBranch: 'HEAD' };
+    const line = (uuid: string, parentUuid: string, id: string, content: unknown[], ts: string) => ({
+      ...env, parentUuid, uuid, type: 'assistant', timestamp: ts,
+      message: { model: 'claude-opus-5-5', id, type: 'message', role: 'assistant', content, stop_reason: 'tool_use' },
+    });
+    const parent = lastUuid(r.lines) as string;
+    // The newest models' shape: empty thinking, the note as thinking, the call; the hook names no tool_use id.
+    await append(
+      r,
+      line('pc-1', parent, 'msg_pc1', [{ type: 'thinking', thinking: '', signature: 's' }], '2026-09-29T10:01:00.000Z'),
+      line('pc-2', 'pc-1', 'msg_pc1', [{ type: 'thinking', thinking: NOTE, signature: 's' }], '2026-09-29T10:01:00.100Z'),
+      line('pc-3', 'pc-2', 'msg_pc1', [{ type: 'tool_use', id: 'toolu_pc', name: 'Bash', input: { command: 'rm -rf .cache' } }], '2026-09-29T10:01:00.200Z'),
+    );
+    const asked = hookCall(r, 'permission', { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf .cache' } });
+    const item = await until('the Inbox item', async () => ((await api(r, 'GET', '/api/inbox')).json() as InboxItem[]).find((entry) => entry.kind === 'permission') ?? null);
+    expect(item.context).toBe(NOTE);
+    expect(item.detail).toBe('The terminal asks for permission (its own dialog is open too: whichever answers first wins)');
+    expect((await api(r, 'POST', `/api/inbox/${item.id}/actions/allow-once`)).statusCode).toBe(204);
+    await asked;
+    await append(r, { ...env, parentUuid: 'pc-3', uuid: 'pc-4', type: 'user', timestamp: '2026-09-29T10:01:01.000Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_pc', content: '' }] } });
+
+    // A question right after a tool step (no agent text between): no context.
+    const questions = [{ question: 'Which folder next?', header: 'Folder', options: [{ label: 'dist' }, { label: 'build' }], multiSelect: false }];
+    await append(r, line('pc-5', 'pc-4', 'msg_pc2', [{ type: 'tool_use', id: 'toolu_pq', name: 'AskUserQuestion', input: { questions } }], '2026-09-29T10:01:02.000Z'));
+    const asking = hookCall(r, 'permission', { hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } });
+    const batch = await until('the question batch', async () => ((await api(r, 'GET', '/api/inbox')).json() as InboxItem[]).find((entry) => entry.kind === 'questions') ?? null);
+    expect(batch.detail).toBe('');
+    expect(batch.context).toBeUndefined();
+    const questionId = batch.questions?.[0]?.id as string;
+    expect((await api(r, 'POST', `/api/questions/batch/${batch.id}/answers`, { answers: [{ questionId, answerIndex: 0 }] })).statusCode).toBe(204);
+    await asking;
+  });
 });
 
 describe('D48 P4 hook endpoint guard', () => {

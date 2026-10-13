@@ -1,6 +1,7 @@
 import type { BranchRef, InboxAction, InboxItem, NewSessionPrefill, Question } from '../../core/api.ts';
 import { toolLabel } from '../../core/derive/event-kind.ts';
-import type { QueuedReason } from '../../core/event-payload.ts';
+import { type QueuedReason, clipInput } from '../../core/event-payload.ts';
+import type { EventRecord } from '../db/repos/events.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
 import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../db/repos/questions.ts';
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
@@ -112,18 +113,37 @@ export async function sessionBranches(store: Store, sessionId: string): Promise<
 /** D96: the longest question context an Inbox item carries (characters). */
 export const QUESTION_CONTEXT_LIMIT = 2000;
 
+/** What {@link callContext} needs of a waiting tool call. */
+export interface WaitingCall {
+  readonly sessionId: string;
+  /** The call's `tool_use` id; `null` for a hooked terminal session's request (the hook does not name it). */
+  readonly toolUseId: string | null;
+  readonly toolName: string;
+  readonly input: unknown;
+}
+
+/** The stored event of a waiting call: by its `tool_use` id, else (a hooked request) the newest open call of that tool, its input first. */
+async function waitingCallEvent(store: Store, call: WaitingCall): Promise<EventRecord | null> {
+  if (call.toolUseId) return store.events.findToolCall(call.sessionId, call.toolUseId);
+  const open = (await store.events.toolCallsNewestFirst(call.sessionId, call.toolName, 10)).filter((event) => event.endTs === null);
+  const input = JSON.stringify(clipInput(isRecord(call.input) ? call.input : {}).input);
+  return open.find((event) => JSON.stringify((event.payload as { input?: unknown } | null)?.input ?? {}) === input) ?? open[0] ?? null;
+}
+
 /**
- * D96 (`docs/chat.md` → *Progress notes*): a question batch's context: the text of
- * the agent's message directly above its AskUserQuestion call in the chat (the
- * same agent's event right before the call, when it is agent text: a progress
- * note or ordinary text), cut at {@link QUESTION_CONTEXT_LIMIT}; `''` when the call
- * is not stored or something else came right before it.
+ * D96 (`docs/chat.md` → *Progress notes*): the context of a waiting call (an
+ * AskUserQuestion batch, D96-q1 a permission request): the text of the agent's
+ * message directly above the call in the chat (the same agent's event right before
+ * the call, when it is agent text: a progress note or ordinary text), cut at
+ * {@link QUESTION_CONTEXT_LIMIT}; `''` when the call is not stored (yet) or
+ * something else came right before it. A hooked terminal session's request names
+ * no `tool_use` id: its call is the newest still-open call of that tool (the one
+ * with the same input first), once the transcript sync stored it.
  */
-export async function questionContext(store: Store, batch: QuestionBatchRecord): Promise<string> {
-  if (!batch.toolUseId) return '';
-  const call = await store.events.findByToolUseId(batch.sessionId, batch.toolUseId);
+export async function callContext(store: Store, waiting: WaitingCall): Promise<string> {
+  const call = await waitingCallEvent(store, waiting);
   if (!call) return '';
-  const [before] = await store.events.page(batch.sessionId, {
+  const [before] = await store.events.page(waiting.sessionId, {
     limit: 1,
     before: call,
     ...(call.agentId ? { agent: { id: call.agentId, toolUseId: null } } : {}),
@@ -132,6 +152,16 @@ export async function questionContext(store: Store, batch: QuestionBatchRecord):
   if (!payload || payload.type !== 'assistant' || typeof payload.text !== 'string') return '';
   const text = payload.text.trim();
   return text.length > QUESTION_CONTEXT_LIMIT ? `${text.slice(0, QUESTION_CONTEXT_LIMIT - 1)}…` : text;
+}
+
+/** D96: a question batch's context ({@link callContext} of its AskUserQuestion call). */
+export function questionContext(store: Store, batch: QuestionBatchRecord): Promise<string> {
+  return callContext(store, { sessionId: batch.sessionId, toolUseId: batch.toolUseId, toolName: 'AskUserQuestion', input: batch.input });
+}
+
+/** D96-q1: a permission request's context ({@link callContext} of the call it asks about). */
+export function permissionContext(store: Store, record: PermissionRequestRecord): Promise<string> {
+  return callContext(store, { sessionId: record.sessionId, toolUseId: record.toolUseId, toolName: record.toolName, input: record.input });
 }
 
 /**
@@ -176,6 +206,7 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
   const agent = record.agentId
     ? (agents.find((a) => a.taskId === record.agentId) ?? null)
     : (agents.find((a) => a.kind === 'main') ?? null);
+  const context = await permissionContext(store, record);
   return {
     id: record.id,
     kind: 'permission',
@@ -188,6 +219,8 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
     detail: record.description ?? record.decisionReason ?? '',
     createdAt: record.createdAt,
     branches: await sessionBranches(store, record.sessionId),
+    // D96-q1: the agent's message right above the call, shown above the description.
+    ...(context ? { context } : {}),
     actions: record.hookSuggestions === null ? PERMISSION_ACTIONS : hookPermissionActions(record.hookSuggestions.length > 0),
     permission: {
       requestId: record.requestId,

@@ -10,13 +10,14 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AssistantPayload, ToolPayload } from '../../../src/core/event-payload.ts';
 import { transcriptTurn } from '../../../src/core/derive/hooked-activity.ts';
+import { peerInboxItem } from '../../../src/core/peer-wire.ts';
 import { parseStreamLine, progressNoteText } from '../../../src/core/stream-json.ts';
 import { parseTranscript as parseHistoryTranscript } from '../../../src/core/transcript.ts';
 import { transcriptItems } from '../../../src/core/transcript-sync.ts';
 import type { EventRecord } from '../../../src/server/db/repos/events.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { QuestionPipeline } from '../../../src/server/inbox/pipeline.ts';
-import { questionBatchItem, questionContext } from '../../../src/server/inbox/wire.ts';
+import { permissionItem, questionBatchItem, questionContext } from '../../../src/server/inbox/wire.ts';
 import { importTerminalTurns } from '../../../src/server/supervisor/attach.ts';
 import type { ControlRequestHandler } from '../../../src/server/supervisor/supervisor.ts';
 import { noteToken } from '../../../tools/fake-claude/scenarios.ts';
@@ -121,6 +122,29 @@ describe('D96 · progress notes (supervised session, fake-claude)', () => {
 
     expect(await questionContext(w.store, batch!)).toBe(NOTE);
     expect(await questionBatchItem(w.store, batch!)).toMatchObject({ kind: 'questions', detail: NOTE });
+  }, 30_000);
+
+  it('D96-q1: a permission request carries the note right above its call as `context`, above the description; none without one', async () => {
+    const w = await setup();
+    const session = await w.supervisor.start(newSession({ task: `[fake:perm-allow] [fake:note ${JSON.stringify(NOTE)}] Run it.` }), w.place);
+    await waitForStatus(w.store, session.id, ['need']);
+    const [record] = await until(async () => {
+      const list = await w.store.permissions.list({ sessionId: session.id });
+      return list.length > 0 ? list : undefined;
+    }, 'a permission request');
+    const item = await permissionItem(w.store, record!);
+    expect(item).toMatchObject({ kind: 'permission', context: NOTE });
+    expect(item.detail).toBe(record!.description ?? record!.decisionReason ?? '');
+
+    const plain = await w.supervisor.start(newSession({ name: 'plain', task: '[fake:perm-allow] Run it.' }), w.place);
+    await waitForStatus(w.store, plain.id, ['need']);
+    const [bare] = await until(async () => {
+      const list = await w.store.permissions.list({ sessionId: plain.id });
+      return list.length > 0 ? list : undefined;
+    }, 'a permission request');
+    expect('context' in (await permissionItem(w.store, bare!))).toBe(false);
+    // A peer's item keeps its context through the proxy (`peerInboxItem`).
+    expect(peerInboxItem({ id: 'peer-1', name: 'Studio', state: 'online' }, item)).toMatchObject({ context: NOTE, machine: { id: 'peer-1' } });
   }, 30_000);
 
   it('a question without agent text right above it has no context', async () => {

@@ -159,6 +159,12 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
           </span>
         ))}
       </div>
+      {item.context && body === 'permission' ? (
+        // D96-q1: the agent's message right above the call, above the model's description.
+        <div className="sb-inbox__text sb-inbox__text--context" data-testid="inbox-context">
+          {item.context}
+        </div>
+      ) : null}
       {item.detail && body !== 'review' ? (
         // D96: a question's context (the agent's message right above it) keeps its line breaks.
         <div className={body === 'questions' ? 'sb-inbox__text sb-inbox__text--context' : 'sb-inbox__text'} data-testid="inbox-text">
