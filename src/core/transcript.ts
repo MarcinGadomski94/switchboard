@@ -10,7 +10,8 @@
  *   tool_result, not a system / task-notification turn, and whose text is not a
  *   slash command, local-command output or an interrupt marker;
  * - a **slash command** is a main-chain `user` line carrying `<command-name>`;
- * - the **last text** is the newest assistant text on the chain of the newest
+ * - the **last text** is the newest assistant text (D96: or progress note, a
+ *   non-empty thinking block's text) on the chain of the newest
  *   leaf (the last chain entry in the file, as the CLI continues from it), skipping
  *   `model:"<synthetic>"` lines; a `parentUuid` that points at a line the file does
  *   not have falls back to the previous chain entry in file order.
@@ -18,8 +19,8 @@
 
 import { transcriptImages } from './attachments.ts';
 
-/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed (2: D24 `remoteControl`; 3: D57 an image-only prompt reads `[image]`). */
-export const TRANSCRIPT_FACTS_VERSION = 3;
+/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed (2: D24 `remoteControl`; 3: D57 an image-only prompt reads `[image]`; 4: D96 a progress note counts as the last text). */
+export const TRANSCRIPT_FACTS_VERSION = 4;
 
 /** Longest stored first / last prompt and command (characters). */
 const PROMPT_CAP = 500;
@@ -95,6 +96,15 @@ export function contentText(content: unknown): string {
   return content
     .filter((block): block is Entry => isEntry(block) && block['type'] === 'text' && typeof block['text'] === 'string')
     .map((block) => block['text'] as string)
+    .join('\n');
+}
+
+/** D96: the progress notes of a message `content` (non-empty `thinking` blocks' text) joined with `\n`. */
+function noteText(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((block): block is Entry => isEntry(block) && block['type'] === 'thinking' && typeof block['thinking'] === 'string' && block['thinking'].trim() !== '')
+    .map((block) => block['thinking'] as string)
     .join('\n');
 }
 
@@ -274,7 +284,8 @@ export class TranscriptParser {
     if (sidechain || !uuid || !isEntry(entry['message'])) return;
     const message = entry['message'];
     if (message['model'] === '<synthetic>') return;
-    const text = contentText(message['content']).trim();
+    // D96: a progress note (a non-empty thinking block's text) is agent text too.
+    const text = (contentText(message['content']) || noteText(message['content'])).trim();
     if (!text) return;
     const messageId = str(message['id']) ?? uuid;
     const before = this.#messageText.get(messageId);

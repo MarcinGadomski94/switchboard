@@ -12,7 +12,7 @@ One stored event per thing the developer can see. `kind` is the timeline color (
 | a prompt a terminal sent while the session was detached (transcript, on Attach, M4.1) | one event, with the transcript's timestamp (`docs/supervisor.md` → *Attach here*) | `text` (`loop` for `/loop …`) | `user` (`origin: terminal`, `delivered: true`) |
 | a prompt of the remote session a teleported session is a local copy of (D25; its transcript, after `system/init`) | one event, with the transcript's (the remote) timestamp (`docs/supervisor.md` → *Teleport*) | `text` (`loop` for `/loop …`) | `user` (`origin: remote`, `delivered: true`) |
 | `assistant` `text` blocks | the blocks of one `message.id` merge into **one** event (joined with a blank line) | `text` | `assistant` |
-| `assistant` `thinking` blocks | nothing (the CLI sends them empty) | — | — |
+| `assistant` `thinking` blocks | nothing when empty (older models); D96: a non-empty one is a progress note → `assistant` event with `note: true`, one per message, apart from its text (`docs/chat.md` → *Progress notes*) | — | — |
 | `assistant` `tool_use` | one event per call; its `tool_result` sets `endTs`, `result`, `isError` | by tool (gap #7) | `tool` |
 | `user` text with `parent_tool_use_id` | a subagent's prompt | `text` | `agent-prompt` |
 | `user` interrupt markers | nothing (they follow a pause) | — | — |

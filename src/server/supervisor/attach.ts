@@ -28,6 +28,11 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { LiveProcessLister } from './recovery.ts';
 
+/** D96: `part` is one of the blank-line-joined parts of `whole` (a merged message's text). */
+function hasPart(whole: string, part: string): boolean {
+  return `\n\n${whole}\n\n`.includes(`\n\n${part}\n\n`);
+}
+
 /** A transcript written to less than this long ago may belong to an open terminal (gap #5). */
 export const ATTACH_RECENT_MS = 2 * 60_000;
 
@@ -231,15 +236,28 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
         break;
       }
       case 'text': {
-        const key = item.messageId ?? item.uuid;
-        const merged = texts.get(key);
+        // D96: a message's progress notes are one event, apart from its text.
+        const key = item.note ? `note:${item.messageId ?? item.uuid}` : (item.messageId ?? item.uuid);
+        const flag = item.note ? { note: true as const } : {};
+        let merged = texts.get(key);
+        if (!merged && item.note && item.messageId) {
+          // D96: a note of a message an earlier sync already stored (a duplicated line): merge into that event.
+          const stored = await store.events.findNoteByMessageId(session.id, item.messageId);
+          const text = (stored?.payload as { text?: unknown } | null)?.text;
+          if (stored && typeof text === 'string') {
+            merged = { eventId: stored.id, text };
+            texts.set(key, merged);
+          }
+        }
         if (merged) {
+          // D96: the same note twice (a duplicated transcript line) adds nothing.
+          if (item.note && hasPart(merged.text, item.text)) break;
           merged.text = `${merged.text}\n\n${item.text}`;
           // Fix · long messages: stored in full (up to the safety cap), not cut at the tool limit.
           const cut = clipMessage(merged.text);
           const updated = await store.events.update(merged.eventId, {
             label: textLabel(merged.text),
-            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) },
+            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag },
           });
           if (updated) onEvent(updated);
         } else {
@@ -250,7 +268,7 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
             ts,
             kind: 'text',
             label: textLabel(item.text),
-            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) },
+            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag },
             uuid: item.uuid,
             messageId: item.messageId,
           });

@@ -259,6 +259,15 @@ export class EventRepository {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId], 'id DESC');
   }
 
+  /**
+   * D96: the session's newest progress-note event of assistant message `messageId`
+   * (`payload.type` = `assistant` with `note: true`); `null` when none. A transcript
+   * sync that meets a duplicated note line merges into it instead of adding one.
+   */
+  async findNoteByMessageId(sessionId: string, messageId: string): Promise<EventRecord | null> {
+    return this.#table.first("session_id = ? AND message_id = ? AND json_extract(payload, '$.type') = 'assistant' AND json_extract(payload, '$.note') = 1", [sessionId, messageId], 'id DESC');
+  }
+
   /** `true` if the session already has an event for this stream/transcript uuid. */
   async hasUuid(sessionId: string, uuid: string): Promise<boolean> {
     return this.#table.first('session_id = ? AND uuid = ?', [sessionId, uuid]) !== null;

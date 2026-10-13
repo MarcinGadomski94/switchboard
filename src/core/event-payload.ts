@@ -121,6 +121,13 @@ export interface AssistantPayload {
    * cut at {@link PAYLOAD_TEXT_LIMIT} when longer ({@link textCutAt}).
    */
   readonly truncated?: boolean;
+  /**
+   * Additive (D96): `true` = a progress note: the text of a non-empty `thinking`
+   * block (the newest models write their between-tool-calls text that way). Shown
+   * and read like any agent text; a message's notes are one event, apart from its
+   * `text` blocks. Absent on ordinary text.
+   */
+  readonly note?: true;
 }
 
 /** A subagent's prompt (a `user` text line carrying `parent_tool_use_id`). */

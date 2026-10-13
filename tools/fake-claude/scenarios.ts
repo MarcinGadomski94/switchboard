@@ -122,6 +122,27 @@ export function sayToken(text: string): { text: string } | { error: string } | n
   }
 }
 
+/**
+ * D96 `[fake:note "<json string>"]` in a stdin user message: the turn's first
+ * main-agent assistant line with an empty `thinking` block is followed by a line
+ * of the same message (same `message.id`, a fresh `uuid`) whose `thinking` block
+ * carries the JSON string's value: a progress note, as the newest models (Claude
+ * Code CLI 2.1.296) write the text they put between tool calls, e.g. right before
+ * an AskUserQuestion. Orthogonal: it does not change the scenario or its turn
+ * counter, and it combines with a scenario token (`[fake:ask-2q] [fake:note "…"]`).
+ * @returns the note text, `{ error }` for a token whose argument is not one JSON string, `null` without a token.
+ */
+export function noteToken(text: string): { text: string } | { error: string } | null {
+  const match = /\[fake:note\s+("(?:[^"\\]|\\.)*")\]/.exec(text);
+  if (!match) return /\[fake:note(?:\s|\])/.test(text) ? { error: 'expected [fake:note "<json string>"]' } : null;
+  try {
+    const value: unknown = JSON.parse(match[1] ?? '');
+    return typeof value === 'string' && value.trim() !== '' ? { text: value } : { error: 'the argument is not a non-empty JSON string' };
+  } catch (error) {
+    return { error: `the argument is not JSON (${error instanceof Error ? error.message : String(error)})` };
+  }
+}
+
 /** Longest reply `[fake:say-long]` writes (characters). */
 export const SAY_LONG_MAX = 2_000_000;
 

@@ -18,7 +18,7 @@
  */
 import type { AgentActivity, SessionActivity } from '../api.ts';
 import { switchboardMessageText } from '../hooks.ts';
-import { INTERRUPT_MARKERS, parseStreamObject } from '../stream-json.ts';
+import { INTERRUPT_MARKERS, parseStreamObject, progressNoteText } from '../stream-json.ts';
 import { SYNTHETIC_MODEL, type TranscriptEntry } from '../transcript-sync.ts';
 import { toolSummary } from './activity.ts';
 
@@ -158,7 +158,8 @@ export function transcriptTurn(entries: readonly TranscriptEntry[], options: { r
       if (!running && reason === 'end_turn') continue;
       open(at);
       for (const block of message.blocks) {
-        if (block.type === 'thinking') phase('thinking', at);
+        // D96: a progress note (non-empty thinking text) is the agent writing to the developer.
+        if (block.type === 'thinking') phase(progressNoteText(block) === null ? 'thinking' : 'writing', at);
         else if (block.type === 'text' && block.text.trim() !== '') phase('writing', at);
         else if (block.type === 'tool_use' && block.id) {
           tools.delete(block.id);

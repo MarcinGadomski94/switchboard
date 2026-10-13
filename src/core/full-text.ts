@@ -46,14 +46,16 @@ function assistantMessages(entries: readonly TranscriptEntry[]): Candidate[] {
   const groups = new Map<string, { texts: string[]; seen: Set<string>; uuids: Set<string>; messageId: string | null; ts: string | null }>();
   for (const item of transcriptItems(asChain(entries))) {
     if (item.kind !== 'text') continue;
-    const key = item.messageId ?? item.uuid;
+    // D96: a message's progress notes were stored as their own event, apart from its text.
+    const key = `${item.note ? 'note:' : ''}${item.messageId ?? item.uuid}`;
     let group = groups.get(key);
     if (!group) {
       group = { texts: [], seen: new Set(), uuids: new Set(), messageId: item.messageId, ts: item.ts };
       groups.set(key, group);
     }
     // The same line twice (a copied branch) adds nothing.
-    const mark = `${item.uuid}\u0000${item.text}`;
+    // D96: a note line twice (the CLI repeats a message's lines) adds nothing either.
+    const mark = item.note ? item.text : `${item.uuid}\u0000${item.text}`;
     if (group.seen.has(mark)) continue;
     group.seen.add(mark);
     group.uuids.add(item.uuid);

@@ -32,6 +32,7 @@ import {
   resolveInside,
   sayLongToken,
   sayToken,
+  noteToken,
   scenarioToken,
   toolResultText,
   toolToken,
@@ -53,6 +54,14 @@ import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFr
 import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts';
 import { FakeWorkflow, type WorkflowGrid } from './workflow.ts';
 import { FakeMcp } from './mcp.ts';
+
+/** D96: a main-agent assistant line whose only block is an empty `thinking` block. */
+function isEmptyThinkingLine(line: JsonObject): boolean {
+  if (line['type'] !== 'assistant' || line['parent_tool_use_id'] !== null) return false;
+  const content = asArray(asObject(line['message'])?.['content']);
+  const block = content[0];
+  return content.length === 1 && isObject(block) && block['type'] === 'thinking' && String(block['thinking'] ?? '').trim() === '';
+}
 
 /** How a turn playback ended. */
 type Outcome = 'done' | 'sigint' | 'crash';
@@ -144,6 +153,8 @@ interface TurnState {
   readonly usage?: UsageSpec | null;
   /** D49 `[fake:compact]`: a compaction written right after the turn's `init` (once). */
   compact?: CompactSpec | null;
+  /** D96 `[fake:note]`: the progress note written after the turn's first empty thinking line (once). */
+  note?: string | null;
   open: OpenRequest | null;
 }
 
@@ -891,7 +902,12 @@ export class Runner {
       await this.crash(`fake-claude: [fake:compact]: ${compact.error}`);
       return 'crash';
     }
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, usage, compact, open: null };
+    const note = msg.fired ? null : noteToken(msg.text);
+    if (note !== null && 'error' in note) {
+      await this.crash(`fake-claude: [fake:note]: ${note.error}`);
+      return 'crash';
+    }
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, usage, compact, note: note?.text ?? null, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
@@ -1382,6 +1398,15 @@ export class Runner {
       };
       this.writeJson(boundary);
       this.transcript?.onCompact(boundary, spec);
+    }
+    if (turn.note && isEmptyThinkingLine(line)) {
+      // D96: the progress note: the same message's next line, a thinking block that carries text.
+      const text = turn.note;
+      turn.note = null;
+      const message = { ...(asObject(line['message']) ?? {}), content: [{ type: 'thinking', thinking: text, signature: 'fake-claude-note' }] };
+      const noteLine: JsonObject = { ...line, message, uuid: randomUUID() };
+      this.writeJson(noteLine);
+      this.transcript?.onStdout(noteLine);
     }
     if (line['type'] === 'result') this.onResult(line);
     return line;

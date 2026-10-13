@@ -181,7 +181,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
   if (item.kind === 'agent') {
     const text = item.text;
     return (
-      <div className="sb-chat-message" data-testid="chat-message" data-role="agent">
+      <div className="sb-chat-message" data-testid="chat-message" data-role="agent" data-note={item.note ? 'true' : undefined}>
         {text ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
             <ChatMarkdown text={text} onSaveCode={onSaveArtifact ? (code, language) => onSaveArtifact(codeDraft(code, language, text)) : null} />

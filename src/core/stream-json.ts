@@ -16,7 +16,13 @@ export type JsonRecord = Record<string, unknown>;
 /** One content block of an `assistant` line (the CLI writes one block per line). */
 export type AssistantBlock =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'thinking' }
+  /**
+   * D96: `text` = the block's `thinking` field (`''` for a redacted block and for
+   * the empty blocks older models write). On the newest models the text a model
+   * writes between tool calls arrives as a non-empty thinking block (a progress
+   * note meant for the developer, {@link progressNoteText}).
+   */
+  | { readonly type: 'thinking'; readonly text: string }
   | { readonly type: 'tool_use'; readonly id: string; readonly name: string; readonly input: JsonRecord }
   | { readonly type: 'other'; readonly blockType: string };
 
@@ -344,11 +350,23 @@ function assistantBlock(block: unknown): AssistantBlock {
   if (!isRecord(block)) return { type: 'other', blockType: typeof block };
   const type = str(block['type']) ?? '';
   if (type === 'text') return { type: 'text', text: str(block['text']) ?? '' };
-  if (type === 'thinking' || type === 'redacted_thinking') return { type: 'thinking' };
+  if (type === 'thinking') return { type: 'thinking', text: str(block['thinking']) ?? '' };
+  if (type === 'redacted_thinking') return { type: 'thinking', text: '' };
   if (type === 'tool_use') {
     return { type: 'tool_use', id: str(block['id']) ?? '', name: str(block['name']) ?? '', input: rec(block['input']) ?? {} };
   }
   return { type: 'other', blockType: type };
+}
+
+/**
+ * D96 (`docs/chat.md` → *Progress notes*): the progress note of a content block,
+ * else `null`. On the newest models (CLI 2.1.296) the text a model writes between
+ * tool calls (often the message right before an AskUserQuestion) comes back as a
+ * `thinking` block whose `thinking` field holds the text; that text is meant for
+ * the developer, so it is shown as agent text. Empty / blank thinking stays hidden.
+ */
+export function progressNoteText(block: AssistantBlock): string | null {
+  return block.type === 'thinking' && block.text.trim() !== '' ? block.text : null;
 }
 
 function toolResultBlock(block: JsonRecord): ToolResultBlock {

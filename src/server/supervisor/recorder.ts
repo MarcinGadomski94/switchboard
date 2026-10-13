@@ -35,7 +35,7 @@ import {
 import type { LiveStatusInput, TurnOutcome } from '../../core/derive/status.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { writtenSolution } from '../../core/session-solutions.ts';
-import type { StreamMessage } from '../../core/stream-json.ts';
+import { type StreamMessage, progressNoteText } from '../../core/stream-json.ts';
 import { readingFromRateLimit } from '../../core/usage.ts';
 import { type WorkflowLaunch, workflowLaunch } from '../../core/derive/workflows.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -170,7 +170,7 @@ export class StreamRecorder {
   #stopLineWritten = false;
   readonly #openRequests = new Map<string, OpenRequest>();
   readonly #runningAgents = new Set<string>();
-  readonly #textByMessage = new Map<string, { eventId: number; text: string }>();
+  readonly #textByMessage = new Map<string, { eventId: number; text: string; parts: string[] }>();
   readonly #tools = new Map<string, ToolEntry>();
   readonly #agentByToolUse = new Map<string, string>();
   /** The stdin messages the CLI has not echoed yet, and which of them wait (D44). */
@@ -714,29 +714,16 @@ export class StreamRecorder {
   async #onAssistant(message: Extract<StreamMessage, { kind: 'assistant' }>): Promise<void> {
     const agentId = await this.#agentFor(message.parentToolUseId);
     for (const block of message.blocks) {
-      if (block.type === 'thinking') this.#activity.thinking(agentId);
-      if (block.type === 'text') {
+      const note = progressNoteText(block);
+      if (block.type === 'thinking' && note === null) this.#activity.thinking(agentId);
+      if (note !== null) {
+        // D96: a progress note (non-empty thinking text on the newest models): agent text, shown in the chat.
+        this.#activity.writing(agentId);
+        await this.#recordText(agentId, message, note, true);
+      } else if (block.type === 'text') {
         if (block.text.trim() === '') continue;
         this.#activity.writing(agentId);
-        const key = message.messageId ?? message.uuid ?? '';
-        const merged = key ? this.#textByMessage.get(key) : undefined;
-        if (merged) {
-          merged.text = `${merged.text}\n\n${block.text}`;
-          // Fix · long messages: the text is stored in full (up to the safety cap), not cut at the tool limit.
-          const cut = clipMessage(merged.text);
-          await this.#update(merged.eventId, {
-            label: textLabel(merged.text),
-            payload: { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}) },
-          });
-        } else {
-          const cut = clipMessage(block.text);
-          const event = await this.#append('text', textLabel(block.text), { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}) }, {
-            agentId,
-            uuid: message.uuid,
-            messageId: message.messageId,
-          });
-          if (key) this.#textByMessage.set(key, { eventId: event.id, text: block.text });
-        }
+        await this.#recordText(agentId, message, block.text, false);
       } else if (block.type === 'tool_use') {
         const command = block.name === 'Bash' ? bashCommand(block.input) : null;
         const kind = toolEventKind(block.name, { rerunAfterError: command !== null && this.#failedCommands.has(command) });
@@ -756,6 +743,38 @@ export class StreamRecorder {
       }
     }
     await this.#setTranscriptUuid(message.uuid, message.parentToolUseId);
+  }
+
+  /**
+   * One text block (or D96 progress note) of an assistant message: the blocks of
+   * one message are merged into one event (notes into their own, apart from the
+   * text). D96: a note whose text the message already has is not added again (a
+   * duplicated line: a retry, a resume, a copied branch).
+   */
+  async #recordText(agentId: string, message: Extract<StreamMessage, { kind: 'assistant' }>, text: string, note: boolean): Promise<void> {
+    const id = message.messageId ?? message.uuid ?? '';
+    const key = id ? (note ? `note:${id}` : id) : '';
+    const merged = key ? this.#textByMessage.get(key) : undefined;
+    const flag = note ? { note: true as const } : {};
+    if (merged) {
+      if (note && merged.parts.includes(text)) return;
+      merged.parts.push(text);
+      merged.text = `${merged.text}\n\n${text}`;
+      // Fix · long messages: the text is stored in full (up to the safety cap), not cut at the tool limit.
+      const cut = clipMessage(merged.text);
+      await this.#update(merged.eventId, {
+        label: textLabel(merged.text),
+        payload: { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag },
+      });
+      return;
+    }
+    const cut = clipMessage(text);
+    const event = await this.#append('text', textLabel(text), { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag }, {
+      agentId,
+      uuid: message.uuid,
+      messageId: message.messageId,
+    });
+    if (key) this.#textByMessage.set(key, { eventId: event.id, text, parts: [text] });
   }
 
   async #createSubagent(toolUseId: string, input: Readonly<Record<string, unknown>>): Promise<void> {

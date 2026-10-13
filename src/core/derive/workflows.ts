@@ -767,16 +767,20 @@ export function workflowAgentEvents(entries: readonly Json[], sessionId: string,
         break;
       }
       case 'text': {
-        const key = item.messageId ?? item.uuid;
+        // D96: a message's progress notes are one event, apart from its text; a note twice adds nothing.
+        const key = item.note ? `note:${item.messageId ?? item.uuid}` : (item.messageId ?? item.uuid);
+        const flag = item.note ? { note: true as const } : {};
         const at = texts.get(key);
         const before = at !== undefined ? events[at] : undefined;
         if (at !== undefined && before) {
-          const text = `${(before.payload as { text: string }).text}\n\n${item.text}`;
+          const previous = (before.payload as { text: string }).text;
+          if (item.note && `\n\n${previous}\n\n`.includes(`\n\n${item.text}\n\n`)) break;
+          const text = `${previous}\n\n${item.text}`;
           const cut = clipMessage(text);
-          events[at] = { ...before, label: textLabel(text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) } };
+          events[at] = { ...before, label: textLabel(text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag } };
         } else {
           const cut = clipMessage(item.text);
-          texts.set(key, push({ ts, endTs: null, kind: 'text', label: textLabel(item.text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) } }));
+          texts.set(key, push({ ts, endTs: null, kind: 'text', label: textLabel(item.text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}), ...flag } }));
         }
         break;
       }

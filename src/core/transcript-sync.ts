@@ -22,13 +22,14 @@
  *   is no sync point yet, the whole chain is new. When the sync point is not in the
  *   file at all, nothing is imported (never guessed).
  * - Skipped: `model:"<synthetic>"` assistant lines (`No response requested.` after
- *   an interrupted turn), `isMeta` user lines, interrupt markers, thinking blocks,
+ *   an interrupted turn), `isMeta` user lines, interrupt markers, empty thinking
+ *   blocks (D96: a non-empty one is a progress note, shown as agent text),
  *   `attachment` / `system` entries (D48 P4: except a `queued_command` attachment
  *   carrying a message Switchboard woke a hooked session with).
  */
 import { type TranscriptImage, transcriptImages } from './attachments.ts';
 import { switchboardMessageText } from './hooks.ts';
-import { type JsonRecord, parseStreamObject } from './stream-json.ts';
+import { type JsonRecord, parseStreamObject, progressNoteText } from './stream-json.ts';
 
 /** One parsed transcript line. */
 export type TranscriptEntry = Readonly<JsonRecord>;
@@ -165,8 +166,12 @@ export type TranscriptItem =
       /** D57: the prompt's image blocks, with their bytes when the transcript has them (absent: none). */
       readonly images?: readonly TranscriptImage[];
     }
-  /** Assistant text; blocks of one `messageId` belong to one message. */
-  | { readonly kind: 'text'; readonly uuid: string; readonly ts: string | null; readonly messageId: string | null; readonly text: string }
+  /**
+   * Assistant text; blocks of one `messageId` belong to one message. D96: `note`
+   * = a progress note (a non-empty thinking block's text; a message's notes form
+   * their own event, apart from its text).
+   */
+  | { readonly kind: 'text'; readonly uuid: string; readonly ts: string | null; readonly messageId: string | null; readonly text: string; readonly note?: true }
   | {
       readonly kind: 'tool-use';
       readonly uuid: string;
@@ -239,7 +244,11 @@ export function transcriptItems(entries: readonly TranscriptEntry[]): Transcript
       const message = parseStreamObject({ ...entry });
       if (message.kind !== 'assistant' || message.model === SYNTHETIC_MODEL) continue;
       for (const block of message.blocks) {
-        if (block.type === 'text' && block.text.trim() !== '') {
+        const note = progressNoteText(block);
+        if (note !== null) {
+          // D96: a progress note (non-empty thinking text): agent text.
+          items.push({ kind: 'text', uuid, ts, messageId: message.messageId, text: note, note: true });
+        } else if (block.type === 'text' && block.text.trim() !== '') {
           items.push({ kind: 'text', uuid, ts, messageId: message.messageId, text: block.text });
         } else if (block.type === 'tool_use' && block.id) {
           items.push({ kind: 'tool-use', uuid, ts, messageId: message.messageId, toolUseId: block.id, name: block.name, input: block.input });

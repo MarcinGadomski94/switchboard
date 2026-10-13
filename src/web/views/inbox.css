@@ -188,6 +188,14 @@
   max-width: 720px;
 }
 
+/* D96: a question's context (the agent's message right above it): line breaks kept, long ones scroll. */
+.sb-inbox__text--context {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 /* System / permission actions: the first is primary, the rest outlined. */
 .sb-inbox__actions {
   display: flex;

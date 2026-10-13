@@ -124,7 +124,8 @@ export type ChatItem =
    * the turn started with a tool. Fix · long messages: `cut` = its text was stored
    * cut (the bubble offers the whole text), else `null`.
    */
-  | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly cut: CutRef | null; readonly steps: readonly ChatStep[] }
+  /** D96: `note` = the text is a progress note (a non-empty thinking block's text), shown like any agent text. */
+  | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly cut: CutRef | null; readonly steps: readonly ChatStep[]; readonly note?: true }
   /** A question batch: the inline card while it waits, else the answers bubble. */
   | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean }
   /** D62 P5: the session switched to another CLI: a divider ("Switched from Claude Code to Codex CLI · handover by …"). */
@@ -291,7 +292,7 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
   const grouped = batches(questions);
   const placed = new Set<string>();
   const out: ChatItem[] = [];
-  let block: { kind: 'agent'; key: string; id: number; text: string; cut: CutRef | null; steps: ChatStep[] } | null = null;
+  let block: { kind: 'agent'; key: string; id: number; text: string; cut: CutRef | null; steps: ChatStep[]; note?: true } | null = null;
   const cutOf = (event: SessionEvent): CutRef | null => (options.restorable ? messageCut(event) : null);
 
   const pushBatch = (batchId: string, list: readonly Question[]): void => {
@@ -346,7 +347,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       });
       block = null;
     } else if (type === 'assistant') {
-      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, cut: cutOf(event), steps: [] };
+      const assistant = payload as AssistantPayload;
+      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: assistant.text, cut: cutOf(event), steps: [], ...(assistant.note ? { note: true as const } : {}) };
       out.push(block);
     } else if (type === 'tool' && (payload as ToolPayload).name === 'AskUserQuestion') {
       const requestId = (payload as ToolPayload).requestId;

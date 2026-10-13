@@ -109,6 +109,31 @@ export async function sessionBranches(store: Store, sessionId: string): Promise<
   return out;
 }
 
+/** D96: the longest question context an Inbox item carries (characters). */
+export const QUESTION_CONTEXT_LIMIT = 2000;
+
+/**
+ * D96 (`docs/chat.md` → *Progress notes*): a question batch's context: the text of
+ * the agent's message directly above its AskUserQuestion call in the chat (the
+ * same agent's event right before the call, when it is agent text: a progress
+ * note or ordinary text), cut at {@link QUESTION_CONTEXT_LIMIT}; `''` when the call
+ * is not stored or something else came right before it.
+ */
+export async function questionContext(store: Store, batch: QuestionBatchRecord): Promise<string> {
+  if (!batch.toolUseId) return '';
+  const call = await store.events.findByToolUseId(batch.sessionId, batch.toolUseId);
+  if (!call) return '';
+  const [before] = await store.events.page(batch.sessionId, {
+    limit: 1,
+    before: call,
+    ...(call.agentId ? { agent: { id: call.agentId, toolUseId: null } } : {}),
+  });
+  const payload = before?.payload as { type?: unknown; text?: unknown } | null | undefined;
+  if (!payload || payload.type !== 'assistant' || typeof payload.text !== 'string') return '';
+  const text = payload.text.trim();
+  return text.length > QUESTION_CONTEXT_LIMIT ? `${text.slice(0, QUESTION_CONTEXT_LIMIT - 1)}…` : text;
+}
+
 /**
  * The Inbox item of a question batch (prototype copy): kind label `Question` or
  * `n questions`; title = the question verbatim, or `n questions from <sources>`
@@ -130,7 +155,8 @@ export async function questionBatchItem(store: Store, batch: QuestionBatchRecord
     status: 'need',
     title: many ? `${rows.length} questions from ${sources.join(', ')}` : (rows[0]?.text ?? ''),
     label: many ? `${rows.length} questions` : 'Question',
-    detail: '',
+    // D96: the agent's message right above the question (often a progress note) is its context.
+    detail: await questionContext(store, batch),
     createdAt: batch.createdAt,
     branches: await sessionBranches(store, batch.sessionId),
     questions: rows.map((row) => toQuestion(row, batch)),
