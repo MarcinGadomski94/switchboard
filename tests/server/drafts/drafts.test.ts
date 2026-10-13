@@ -284,21 +284,21 @@ describe('orphaned drafts are cleaned up at once (ruling 2026-10-09)', () => {
     for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
   }
 
-  it('an answered or stopped batch, a resolved review (its comment and commit message), a deleted or done todo; the rest stays', async () => {
+  it('an answered or stopped batch, a deleted or done todo; the rest stays (D102: review:/commit: keys are refused)', async () => {
     const id = await session('orphans');
     const question = { source: 'web', text: 'Which?', options: [{ label: 'A', description: '' }, { label: 'B', description: '' }] };
     await store.questions.createBatch({ id: 'b-answered', sessionId: id, input: { questions: [] } }, [question]);
     await store.questions.createBatch({ id: 'b-stopped', sessionId: id, input: { questions: [] } }, [question]);
     await store.questions.createBatch({ id: 'b-open', sessionId: id, input: { questions: [] } }, [question]);
     await store.questions.createBatch({ id: 'b-stale', sessionId: id, input: { questions: [] } }, [question]);
-    const review = (await store.reviews.raise(id, 'fp1', {})).record;
     const done = await store.todos.add(id, { title: 'done one', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null }, 'developer');
     const deleted = await store.todos.add(id, { title: 'deleted one', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null }, 'developer');
     const open = await store.todos.add(id, { title: 'open one', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null }, 'developer');
     const form = { title: 't', description: '', plan: 'No plan', priority: 'medium', estimate: '' };
     for (const batch of ['b-answered', 'b-stopped', 'b-open', 'b-stale', 'b-missing']) await ui('PUT', `/api/sessions/${id}/drafts/question:${batch}`, { value: { picks: { q: 1 } } });
-    await ui('PUT', `/api/sessions/${id}/drafts/review:${review.id}`, { value: { comment: 'please' } });
-    await ui('PUT', `/api/sessions/${id}/drafts/commit:${review.id}`, { value: { message: 'feat: x' } });
+    // D102: the review cards' draft keys are no longer valid fields.
+    expect((await ui('PUT', `/api/sessions/${id}/drafts/review:abc`, { value: { comment: 'please' } })).statusCode).toBe(422);
+    expect((await ui('PUT', `/api/sessions/${id}/drafts/commit:abc`, { value: { message: 'feat: x' } })).statusCode).toBe(422);
     for (const todo of [done, deleted, open]) await ui('PUT', `/api/sessions/${id}/drafts/todo-edit:${todo.id}`, { value: form });
     await ui('PUT', `/api/sessions/${id}/drafts/composer`, { value: { text: 'unsent', attachments: [] } });
     await ui('PUT', `/api/sessions/${id}/drafts/todo-add`, { value: form });
@@ -313,16 +313,14 @@ describe('orphaned drafts are cleaned up at once (ruling 2026-10-09)', () => {
     await store.questions.answer('b-answered', [{ questionId: (await store.questions.questionsOf('b-answered'))[0]!.id, answerIndex: 0 }]);
     await store.questions.closeUnanswered('b-stopped', 'turn stopped');
     await store.questions.markStale('b-stale');
-    // A review resolved (any device), a todo done and one deleted.
-    await store.reviews.resolve(review.id, 'committed');
+    // A todo done and one deleted.
     await store.todos.setState(done.id, 'done');
     await store.todos.delete(deleted.id);
     published.length = 0;
     bus.publish('sessionUpdated', { id } as never);
-    bus.publish('reviewsChanged', { sessionId: id });
     bus.publish('todosChanged', { sessionId: id, openCount: 1, doneCount: 1 });
     await settle();
-    expect(drafted().map((d) => d.field).sort()).toEqual([`commit:${review.id}`, 'question:b-answered', 'question:b-stopped', `review:${review.id}`, `todo-edit:${deleted.id}`, `todo-edit:${done.id}`].sort());
+    expect(drafted().map((d) => d.field).sort()).toEqual(['question:b-answered', 'question:b-stopped', `todo-edit:${deleted.id}`, `todo-edit:${done.id}`].sort());
     expect(drafted().every((d) => d.sessionId === id && d.client === null)).toBe(true);
     expect(await fields(id)).toEqual(['composer', 'question:b-open', 'question:b-stale', 'todo-add', `todo-edit:${open.id}`]);
   });

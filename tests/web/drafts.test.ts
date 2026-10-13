@@ -68,16 +68,16 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('field keys and values (src/core/drafts.ts)', () => {
   it('names fields with the session machine\'s own ids; validates and normalizes values; knows empty', () => {
     expect(draftField.question('r~abcdefghijkl~b1')).toBe('question:b1');
-    expect(draftField.review('rev-1')).toBe('review:rev-1');
     expect(draftField.todoEdit('r~abcdefghijkl~t9')).toBe('todo-edit:t9');
     expect(rawDraftId('plain')).toBe('plain');
-    expect(['composer', 'todo-add', 'question:b1', 'review:x.y_z-1', 'todo-edit:t'].every(isDraftField)).toBe(true);
-    expect(['', 'composer:1', 'question:', 'question:r~m~b', 'other', 'todo-edit:a/b'].some(isDraftField)).toBe(false);
+    expect(['composer', 'todo-add', 'question:b1', 'question:x.y_z-1', 'todo-edit:t'].every(isDraftField)).toBe(true);
+    expect(['', 'composer:1', 'question:', 'question:r~m~b', 'other', 'todo-edit:a/b', 'review:rev-1', 'commit:rev-1'].some(isDraftField)).toBe(false);
 
     expect(parseDraftValue('composer', { text: 'hi', extra: 1 })).toEqual({ text: 'hi', attachments: [] });
     expect(parseDraftValue('todo-add', { title: 't', priority: 'nonsense' })).toEqual({ title: 't', description: '', plan: '', priority: 'medium', estimate: '' });
     expect(parseDraftValue('question:b', { picks: { q: { text: 'x' } } })).toEqual({ picks: { q: { text: 'x', editing: false } } });
-    expect(parseDraftValue('review:r', { comment: 5 })).toBeNull();
+    // D102: the review cards' keys are gone.
+    expect(parseDraftValue('review:r', { comment: 'x' })).toBeNull();
 
     expect(draftIsEmpty('composer', text('  \n'))).toBe(true);
     expect(draftIsEmpty('composer', { text: '', attachments: [{ id: 'a', name: 'n', size: 1, kind: 'file' }] })).toBe(false);
@@ -89,15 +89,6 @@ describe('field keys and values (src/core/drafts.ts)', () => {
 });
 
 describe('the ruling of 2026-10-09: Commit message and New-session drafts', () => {
-  it('commit:<reviewId> holds the edited message; empty when blank', () => {
-    expect(draftField.commit('r~abcdefghijkl~rev-1')).toBe('commit:rev-1');
-    expect(isDraftField('commit:rev-1')).toBe(true);
-    expect(parseDraftValue('commit:r', { message: 'feat: x', other: 1 })).toEqual({ message: 'feat: x' });
-    expect(parseDraftValue('commit:r', { message: 1 })).toBeNull();
-    expect(draftIsEmpty('commit:r', { message: ' \n' })).toBe(true);
-    expect(draftIsEmpty('commit:r', { message: 'feat: x' })).toBe(false);
-  });
-
   it('new-session is a machine field (never a session\'s); kept only with typed text; restored with every value checked again', () => {
     expect(draftField.newSession).toBe('new-session');
     expect(isMachineDraftField('new-session')).toBe(true);

@@ -77,7 +77,6 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.worktrees': true,
       'sessions.ultracode': false,
       'sessions.todoReminder': true,
-      'sessions.reviewCards': true,
       'sessions.checkpoints': true,
       'sessions.todoEnrich': true,
       'usage.warnAtPct': 90,

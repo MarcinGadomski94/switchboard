@@ -65,7 +65,6 @@ async function setup(options: { readonly hooked?: (id: string) => Promise<boolea
     loops,
     todos,
     peers,
-    reviews: null,
     takeover: null,
     isHooked: options.hooked ?? (async () => false),
     // As install.ts wires it (POST /api/sessions' logic), reduced to the supervisor's start in the world's folder.

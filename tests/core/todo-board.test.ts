@@ -13,7 +13,7 @@ function group(sessionId: string, title: string, todos: SessionTodo[], extra: Pa
 }
 
 const groups: TodoGroup[] = [
-  group('a', 'Alpha', [todo('a-low', 'open', { priority: 'low', position: 0 }), todo('a-high', 'open', { priority: 'high', position: 1 }), todo('a-run', 'review', { runSessionId: 'r1' })]),
+  group('a', 'Alpha', [todo('a-low', 'open', { priority: 'low', position: 0 }), todo('a-high', 'open', { priority: 'high', position: 1 }), todo('a-run', 'in_progress', { runSessionId: 'r1', startedAt: '2026-10-13T10:00:00Z' })]),
   group('b', 'Beta', [todo('b-high', 'open', { priority: 'high', position: 0, description: 'needle here' }), todo('b-done', 'done')], { folderPath: '/repos/two', machine: { id: 'm1', name: 'Office', state: 'online' } }),
 ];
 
@@ -21,9 +21,10 @@ describe('the board (D77)', () => {
   it('columns by state; within one: priority, then the sessions in page order, then position', () => {
     const columns = boardColumns(groups, NO_BOARD_FILTERS);
     expect(columns.open.map((card) => card.todo.id)).toEqual(['a-high', 'b-high', 'a-low']);
-    expect(columns.review.map((card) => card.todo.id)).toEqual(['a-run']);
+    expect(columns.in_progress.map((card) => card.todo.id)).toEqual(['a-run']);
     expect(columns.done.map((card) => card.todo.id)).toEqual(['b-done']);
-    expect(columns.in_progress).toEqual([]);
+    // D102: no Review column.
+    expect(Object.keys(columns).sort()).toEqual(['done', 'in_progress', 'open']);
   });
 
   it('filters: priority, machine (this one / a paired one), folder, session, search (title, description, session title)', () => {
@@ -37,11 +38,9 @@ describe('the board (D77)', () => {
     expect(ids({ search: 'alpha' })).toEqual(['a-high', 'a-low', 'a-run']);
   });
 
-  it('drops: in progress without a message, Done skips review, Review only with a run, the same column nothing', () => {
+  it('drops: in progress without a message, Done means done, the same column nothing', () => {
     expect(boardDrop({ state: 'open', runSessionId: null }, 'in_progress')).toEqual({ state: 'in_progress' });
-    expect(boardDrop({ state: 'in_progress', runSessionId: 'r' }, 'done')).toEqual({ state: 'done', skipReview: true });
-    expect(boardDrop({ state: 'open', runSessionId: null }, 'review')).toBeNull();
-    expect(boardDrop({ state: 'done', runSessionId: 'r' }, 'review')).toEqual({ state: 'review' });
+    expect(boardDrop({ state: 'in_progress', runSessionId: 'r' }, 'done')).toEqual({ state: 'done' });
     expect(boardDrop({ state: 'done', runSessionId: null }, 'open')).toEqual({ state: 'open' });
     expect(boardCanDrop({ state: 'open', runSessionId: null }, 'open')).toBe(false);
   });

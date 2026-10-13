@@ -1,6 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
 import type { Plan, PlanItem } from '../../../src/core/plans.ts';
-import type { Review } from '../../../src/core/reviews.ts';
 import { openWithHub } from '../question-world.ts';
 import { type PlansWorld, startPlansWorld } from '../plans-world.ts';
 import { canonicalColors, writeReport } from './harness.ts';
@@ -9,7 +8,7 @@ import { canonicalColors, writeReport } from './harness.ts';
  * D99 · the Plans page's visual check. Not in the prototype: the design is the developer's
  * approved clickable mockup (`docs/plans-ui.md` → *The Plans page*), so this spec checks the
  * design's rules rather than a pixel diff: each card's left border colour and icon by state
- * (waiting grey, running blue, question amber, in review violet, done green, blocked red),
+ * (waiting grey, running blue, question amber, ready to merge violet, done green, blocked red),
  * the ⚑ you flag of hold items, the critical path (amber 2 px edges, dashed card outlines),
  * the final dashed ◇ node, the Timeline's segment colours, the layout per size (desktop:
  * graph and detail; tablet: the graph scrolls sideways inside its box, the page does not;
@@ -84,32 +83,22 @@ test('a plan in every state', async ({ page }) => {
   const started = await world.call(page, 'POST', `/api/plans/${id}/start`, { mergeMode: 'agents-with-holds' });
   expect(started.status, JSON.stringify(started.body)).toBe(200);
 
-  // 3170: its review discarded → blocked. 3151: merged by me → done; then 3152 (in review), 3157 (asks), 3160 (works on).
-  await world.agentWorks(page, id, 'PROJ-3170');
+  // 3170: its session closed without any work → blocked. 3151: merged by me → done; then 3152 (ready to merge), 3157 (asks), 3160 (works on).
+  const closing = (await world.itemIn(page, id, 'PROJ-3170', 'running')) as PlanItem;
+  await expect.poll(async () => (await world.call(page, 'GET', `/api/sessions/${closing.runSessionId}`)).body.status, { timeout: 20_000 }).not.toBe('run');
+  expect((await world.call(page, 'POST', `/api/sessions/${closing.runSessionId}/close`, { confirm: true })).status).toBe(200);
   await world.agentWorks(page, id, 'PROJ-3151');
-  const reviewOf = async (key: string): Promise<Review> => {
-    const item = (await world.itemIn(page, id, key, 'review')) as PlanItem;
-    let found: Review | undefined;
-    await expect
-      .poll(async () => {
-        found = ((await world.call(page, 'GET', '/api/reviews')).body as Review[]).find((review) => review.sessionId === item.runSessionId && review.state === 'pending');
-        return found !== undefined;
-      })
-      .toBe(true);
-    return found as Review;
-  };
-  const discard = await reviewOf('PROJ-3170');
-  expect((await world.call(page, 'POST', `/api/reviews/${discard.id}/discard`, { confirm: true })).status).toBe(200);
-  const merge = await reviewOf('PROJ-3151');
-  expect((await world.call(page, 'POST', `/api/reviews/${merge.id}/merge`, {})).status).toBe(200);
+  const ready = (await world.itemIn(page, id, 'PROJ-3151', 'ready-to-merge')) as PlanItem;
+  const merged = await world.call(page, 'POST', `/api/plans/${id}/items/${ready.id}/merge`, {});
+  expect(merged.status, JSON.stringify(merged.body)).toBe(200);
   await world.itemIn(page, id, 'PROJ-3151', 'done');
   await world.itemIn(page, id, 'PROJ-3170', 'blocked');
   await world.agentWorks(page, id, 'PROJ-3152');
-  await world.itemIn(page, id, 'PROJ-3152', 'review');
+  await world.itemIn(page, id, 'PROJ-3152', 'ready-to-merge');
   await world.itemIn(page, id, 'PROJ-3157', 'question');
   await world.itemIn(page, id, 'PROJ-3160', 'running');
   plan = await world.plan(page, id);
-  expect(plan.items.map((item) => `${item.key}:${item.state}`)).toEqual(['PROJ-3151:done', 'PROJ-3170:blocked', 'PROJ-3152:review', 'PROJ-3157:question', 'PROJ-3160:running', 'PROJ-3165:waiting', 'PROJ-3172:waiting']);
+  expect(plan.items.map((item) => `${item.key}:${item.state}`)).toEqual(['PROJ-3151:done', 'PROJ-3170:blocked', 'PROJ-3152:ready-to-merge', 'PROJ-3157:question', 'PROJ-3160:running', 'PROJ-3165:waiting', 'PROJ-3172:waiting']);
 });
 
 test('desktop: the graph, its colours and the critical path; the detail; the timeline; the list; the dialog', async ({ page }) => {
@@ -123,11 +112,11 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await expect(page.getByTestId('plan-card')).toHaveCount(7);
   await expect(page.getByTestId('plan-mode-chip')).toHaveText('Merge: agents · hold ⚑ 3151, 3170, 3152');
   await expect(page.getByTestId('plan-progress')).toContainText('1/7 done');
-  const [idle, run, need, done, fail, review] = await canonicalColors(page, ['#5a5955', 'oklch(0.72 0.12 250)', 'oklch(0.8 0.14 70)', 'oklch(0.74 0.13 150)', 'oklch(0.68 0.17 25)', 'oklch(0.75 0.12 310)']);
+  const [idle, run, need, done, fail, merge] = await canonicalColors(page, ['#5a5955', 'oklch(0.72 0.12 250)', 'oklch(0.8 0.14 70)', 'oklch(0.74 0.13 150)', 'oklch(0.68 0.17 25)', 'oklch(0.75 0.12 310)']);
   const expected: Record<string, [string | null | undefined, string]> = {
     'PROJ-3151': [done, '✔'],
     'PROJ-3170': [fail, '✖'],
-    'PROJ-3152': [review, '◐'],
+    'PROJ-3152': [merge, '◐'],
     'PROJ-3157': [need, '?'],
     'PROJ-3160': [run, '●'],
     'PROJ-3165': [idle, '○'],
@@ -141,7 +130,7 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await expect(page.locator(card('PROJ-3151')).getByTestId('plan-card-hold')).toHaveText('⚑ you');
   await expect(page.locator(card('PROJ-3157')).getByTestId('plan-card-status')).toHaveText('needs your answer');
   await expect(page.locator(card('PROJ-3165')).getByTestId('plan-card-status')).toHaveText('waiting on 3152, 3157');
-  lines.push(`- card left borders: done ${done}, blocked ${fail}, review ${review}, question ${need}, running ${run}, waiting ${idle}`);
+  lines.push(`- card left borders: done ${done}, blocked ${fail}, ready to merge ${merge}, question ${need}, running ${run}, waiting ${idle}`);
 
   // The critical path: amber 2 px edges and dashed outlines.
   const onPath = plan.criticalPath.itemIds;
@@ -177,11 +166,11 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await scroller.evaluate((el) => el.scrollTo({ left: 0 }));
 
   await page.locator(card('PROJ-3152')).click();
-  await expect(page.getByTestId('plan-detail-review')).toBeVisible();
+  await expect(page.getByTestId('plan-detail-merge-step')).toBeVisible();
   await page.getByTestId('plan-graph').scrollIntoViewIfNeeded();
   await shoot(page, 'plans-graph-desktop.png');
   await page.getByTestId('plan-detail').scrollIntoViewIfNeeded();
-  await shoot(page, 'plans-detail-review-desktop.png');
+  await shoot(page, 'plans-detail-merge-desktop.png');
   await page.locator(card('PROJ-3157')).click();
   await expect(page.getByTestId('plan-detail').getByTestId('question-card')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('plan-detail').scrollIntoViewIfNeeded();

@@ -6,7 +6,7 @@ import { type PlansWorld, startPlansWorld } from './plans-world.ts';
  * D99 · the Plans page on the real path (`docs/plans-ui.md` → *The Plans page*): fake-claude
  * runs, temp git, fake gh. One plan goes through the whole design: made from todos with
  * ＋ New plan, a dependency added and a loop refused, Start refused until a merge mode is
- * chosen, an item's question answered in the detail, an item running → in review → merged
+ * chosen, an item's question answered in the detail, an item running → ready to merge → merged
  * from the detail → its dependent starting, Pause / Resume, the Timeline, and the phone's
  * List with the full-screen detail. With Plans off nothing of it shows.
  */
@@ -114,7 +114,7 @@ test('create a plan from todos, add a dependency (a loop refused), Start needs a
   await expect(page.getByTestId('nav-plans-count')).toHaveText('1');
 });
 
-test('answer a question in the detail; running → review → merged → its dependent starts', async ({ page }) => {
+test('answer a question in the detail; running → ready to merge → merged → its dependent starts', async ({ page }) => {
   test.setTimeout(120_000);
   await openWithHub(page, `${world.baseUrl}/plans/${planId}`);
   const card = (key: string) => page.locator(`[data-testid="plan-card"][data-key="${key}"]`);
@@ -135,11 +135,12 @@ test('answer a question in the detail; running → review → merged → its dep
 
   // PROJ-1: its agent commits and ends its turn; in "I merge each one" it waits for my Merge.
   await world.agentWorks(page, planId, 'PROJ-1');
-  await world.itemIn(page, planId, 'PROJ-1', 'review');
-  await expect(card('PROJ-1')).toHaveAttribute('data-state', 'review');
+  await world.itemIn(page, planId, 'PROJ-1', 'ready-to-merge');
+  await expect(card('PROJ-1')).toHaveAttribute('data-state', 'ready-to-merge');
   await expect(card('PROJ-2')).toHaveAttribute('data-state', 'waiting');
   await card('PROJ-1').click();
-  await expect(detail.getByTestId('plan-detail-review')).toBeVisible();
+  await expect(detail.getByTestId('plan-detail-merge-step')).toBeVisible();
+  await expect(card('PROJ-1').getByTestId('plan-card-status')).toHaveText('waiting for your merge');
   await expect(detail.getByTestId('plan-detail-merge')).toBeEnabled({ timeout: 15_000 });
   await expect(detail.getByTestId('plan-detail-diff')).toBeVisible();
   await detail.getByTestId('plan-detail-merge').click();

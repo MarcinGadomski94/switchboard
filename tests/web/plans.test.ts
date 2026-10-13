@@ -98,7 +98,7 @@ describe('the state look', () => {
     expect(STATE_LOOK.ready.color).toBe('var(--muted-1)');
     expect(STATE_LOOK.running).toMatchObject({ icon: '●', color: 'var(--status-run)' });
     expect(STATE_LOOK.question).toMatchObject({ icon: '?', color: 'var(--status-need)' });
-    expect(STATE_LOOK.review).toMatchObject({ icon: '◐', color: 'oklch(0.75 0.12 310)' });
+    expect(STATE_LOOK['ready-to-merge']).toMatchObject({ icon: '◐', color: 'oklch(0.75 0.12 310)' });
     expect(STATE_LOOK.done).toMatchObject({ icon: '✔', color: 'var(--status-done)' });
     expect(STATE_LOOK.blocked).toMatchObject({ icon: '✖', color: 'var(--status-fail)' });
   });
@@ -116,7 +116,7 @@ describe('the state look', () => {
     expect(statusLine(pa, p.items)).toBe('running');
     expect(statusLine(pb, p.items)).toBe('done · merged');
     expect(statusLine({ ...pa, state: 'question' }, p.items)).toBe('needs your answer');
-    expect(statusLine({ ...pa, state: 'review' }, p.items)).toBe('in review');
+    expect(statusLine({ ...pa, state: 'ready-to-merge' }, p.items)).toBe('waiting for your merge');
     expect(statusLine({ ...pa, state: 'blocked' }, p.items)).toBe('blocked');
     expect(waitingText(pc, p.items)).toBe('Starts by itself when 3157 is done.');
     expect(waitingText({ ...pc }, p.items.map((entry) => (entry.id === '3160' ? { ...entry, state: 'running' as const } : entry)))).toBe('Starts by itself when 3157 and 3160 are done.');
@@ -156,7 +156,7 @@ describe('header texts', () => {
     expect(doneText({ checks: { state: 'green', summary: null, sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✔');
     expect(doneText({ checks: { state: 'red', summary: 'failed: ci', sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✖');
     expect(inlineAction({ state: 'question' })).toBe('answer');
-    expect(inlineAction({ state: 'review' })).toBe('merge');
+    expect(inlineAction({ state: 'ready-to-merge' })).toBe('merge');
     expect(inlineAction({ state: 'running' })).toBeNull();
   });
 });
@@ -235,7 +235,7 @@ describe('timeline', () => {
   it('builds the segments from the timestamps and projects the rest', () => {
     const now = T0 + 5 * 3_600_000;
     const a = item('1', { state: 'done', storedState: 'done', startedAt: iso(0), mergedAt: iso(2), doneAt: iso(2), solutions: ['acme'] });
-    const b = item('2', { state: 'review', storedState: 'running', startedAt: iso(2), waitingOn: 'review', waitingSince: iso(3), solutions: ['acme'], estimateMinutes: 120 });
+    const b = item('2', { state: 'ready-to-merge', storedState: 'running', startedAt: iso(2), waitingOn: 'merge', waitingSince: iso(3), solutions: ['acme'], estimateMinutes: 120 });
     const c = item('3', { state: 'waiting', solutions: ['billing'], estimateMinutes: 60 });
     const p = plan([a, b, c], [
       { from: '1', to: '2' },
@@ -247,16 +247,16 @@ describe('timeline', () => {
     expect(rowOf('1')?.segments).toEqual([{ kind: 'working', from: T0, to: T0 + 2 * 3_600_000 }]);
     const second = rowOf('2')?.segments ?? [];
     expect(second.map((segment) => segment.kind)).toEqual(['dependency', 'working', 'you', 'projected']);
-    expect(second[2]).toMatchObject({ from: T0 + 3 * 3_600_000, to: now, on: 'review' });
+    expect(second[2]).toMatchObject({ from: T0 + 3 * 3_600_000, to: now, on: 'merge' });
     const third = rowOf('3')?.segments ?? [];
     expect(third.map((segment) => segment.kind)).toEqual(['dependency', 'projected']);
     // 2's estimate (2 h) ran out: at least a minute is left; 3 is projected after it for its hour.
     expect(third[1]?.from).toBe(second[3]?.to);
     expect(view.youHours).toBe(2);
     expect(view.totalHours).toBe(5);
-    expect(view.longest).toMatchObject({ itemId: '2', on: 'review', hours: 2 });
+    expect(view.longest).toMatchObject({ itemId: '2', on: 'merge', hours: 2 });
     expect(view.projectedFinish).toBe((third[1]?.from ?? 0) + 3_600_000);
-    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 2 h of 5 · longest: 2 review \(2 h\) · Projected finish: /);
+    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 2 h of 5 · longest: 2 merge \(2 h\) · Projected finish: /);
   });
 
   it('shows a ready item held for usage in red', () => {
@@ -320,11 +320,11 @@ describe('timeline from the history (PlanItem.spans)', () => {
     expect(rows[1]?.segments.map((segment) => segment.kind)).toEqual(['dependency', 'usage', 'paused', 'working', 'you', 'projected']);
     expect(rows[1]?.segments[2]?.note).toBe('plan paused');
     expect(rows[1]?.segments[4]).toMatchObject({ from: T0 + 8 * 3_600_000, to: now, on: 'question' });
-    // 1 + 3 + 2 hours waiting on you; the longest single wait is 1's review (3 h).
+    // 1 + 3 + 2 hours waiting on you; the longest single wait is 1's merge (3 h).
     expect(view.youHours).toBe(6);
     expect(view.totalHours).toBe(10);
-    expect(view.longest).toMatchObject({ itemId: '1', on: 'review', hours: 3 });
-    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 6 h of 10 · longest: 1 review \(3 h\) · Projected finish: /);
+    expect(view.longest).toMatchObject({ itemId: '1', on: 'merge', hours: 3 });
+    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 6 h of 10 · longest: 1 merge \(3 h\) · Projected finish: /);
   });
 
   it('names an open paused-plan span after the plan\'s reason', () => {

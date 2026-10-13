@@ -1287,7 +1287,8 @@ export class PlanService {
     const finished = developer && todo?.state === 'done' && session.status !== 'run' && session.status !== 'need';
     // The rule changed (agents merge now) while it waited for the developer's Merge.
     const ruleChanged = !developer && item.waitingOn === 'merge';
-    const dirty = this.#dirty.has(item.id) || (finished && item.waitingOn !== 'merge') || ruleChanged;
+    // A closed run session is looked at again (closed without work: the item fails).
+    const dirty = this.#dirty.has(item.id) || (finished && item.waitingOn !== 'merge') || ruleChanged || (session.closedAt !== null && item.waitingOn !== 'merge');
     const conflicts = this.#dirty.get(item.id) === true;
     this.#dirty.delete(item.id);
     if (!dirty) return this.#setWaiting(plan, item, session.status === 'need' ? 'question' : item.waitingOn === 'question' ? null : item.waitingOn);
@@ -1420,7 +1421,7 @@ export class PlanService {
     const now = this.#nowIso();
     await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: item.mergedAt ?? now, doneAt: now, reason: null });
     // D102: its "Ready to merge" Inbox item (if any) is closed.
-    await this.#env.closeMergeNotice(item.id, 'merged').catch((error: unknown) => this.#onError(error));
+    if (item.waitingOn === 'merge') await this.#env.closeMergeNotice(item.id, 'merged').catch((error: unknown) => this.#onError(error));
     // The todo is done too.
     const todo = await this.#store.todos.get(item.todoId);
     if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done' }, 'developer').catch((error: unknown) => this.#onError(error));

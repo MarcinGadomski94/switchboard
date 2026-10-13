@@ -1,9 +1,10 @@
 /**
  * D99 · Plans on the real path: fake-claude sessions, temp git repos, the real worktree
- * manager, TodoService, ReviewService, SystemItemService and PlanService (its real git / gh
- * adapter with the fake gh), driven through the REST API. The test plays the agents: it
- * commits in an item's worktree, merges into the target branch (agent modes) or Merges the
- * Review card (the developer), then sends the session a message so its turn ends.
+ * manager, TodoService, SystemItemService and PlanService (its real git / gh adapter and,
+ * D102, its real Merge step with the fake gh), driven through the REST API. The test plays the
+ * agents: it commits in an item's worktree, merges into the target branch (agent modes), marks
+ * the todo done and sends the session a message so its turn ends; the developer Merges a
+ * ready-to-merge item through the plan's route or its Inbox item.
  */
 import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -19,8 +20,7 @@ import { SystemItemService } from '../../../src/server/inbox/system-items.ts';
 import { planEnvironment } from '../../../src/server/plans/environment.ts';
 import { PlanGit } from '../../../src/server/plans/git.ts';
 import { PlanService } from '../../../src/server/plans/service.ts';
-import { ReviewGit } from '../../../src/server/reviews/git.ts';
-import { ReviewService } from '../../../src/server/reviews/service.ts';
+import { BranchMergeGit } from '../../../src/server/worktrees/branch-merge.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
@@ -39,7 +39,6 @@ interface Rig {
   readonly repoPath: string;
   readonly folder: Folder;
   readonly source: Session;
-  readonly reviews: ReviewService;
   readonly systemItems: SystemItemService;
   readonly todos: TodoService;
   readonly worktrees: WorktreeManager;
@@ -54,7 +53,6 @@ let token = '';
 afterEach(async () => {
   await app?.close();
   await rig?.plans.close();
-  await rig?.reviews.stop();
   await rig?.systemItems.close();
   await rig?.s.cleanup();
   app = undefined;
@@ -68,6 +66,7 @@ function makePlans(r: Omit<Rig, 'plans'>): PlanService {
     bus: r.bus,
     todos: r.todos,
     git: new PlanGit({ gh: fakeGhCommand(), env: r.g.env }),
+    merger: new BranchMergeGit({ gh: fakeGhCommand(), env: r.g.env }),
     env: planEnvironment({
       context: { store: r.s.store, providers: { diff: r.worktrees }, supervisor: r.s.supervisor, worktrees: r.worktrees, folders: r.folders, todos: r.todos },
       accounts: r.s.accounts,
@@ -92,17 +91,7 @@ async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
   const folders = await FolderService.open({ store: s.store });
   const todos = new TodoService({ store: s.store, bus });
   const systemItems = new SystemItemService({ store: s.store, bus });
-  const reviews = new ReviewService({
-    store: s.store,
-    bus,
-    git: new ReviewGit({ gh: fakeGhCommand(), env: g.env }),
-    repos: (session) => worktrees.repos.of(session),
-    enabled: async () => true,
-    send: async () => undefined,
-    onError: (error) => s.errors.push(error),
-  });
-  reviews.start();
-  const partial = { s, g, bus, repoPath, reviews, systemItems, todos, worktrees, folders } as unknown as Rig;
+  const partial = { s, g, bus, repoPath, systemItems, todos, worktrees, folders } as unknown as Rig;
   partial.plans = makePlans(partial);
   token = generateToken();
   await openApp(partial);
@@ -119,7 +108,7 @@ async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
 async function openApp(r: Rig): Promise<void> {
   await app?.close();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: r.s.root }, platform: 'linux', home: r.s.root, cwd: r.s.root });
-  app = await buildApp({ config: { ...base, port: PORT }, token, store: r.s.store, webRoot: r.s.root, supervisor: r.s.supervisor, worktrees: r.worktrees, providers: { diff: r.worktrees }, bus: r.bus, reviews: r.reviews, folders: r.folders, todos: r.todos, systemItems: r.systemItems, plans: r.plans });
+  app = await buildApp({ config: { ...base, port: PORT }, token, store: r.s.store, webRoot: r.s.root, supervisor: r.s.supervisor, worktrees: r.worktrees, providers: { diff: r.worktrees }, bus: r.bus, folders: r.folders, todos: r.todos, systemItems: r.systemItems, plans: r.plans });
   await app.ready();
 }
 
@@ -193,7 +182,7 @@ async function targetCheckout(r: Rig): Promise<string> {
   return dir;
 }
 
-/** The item's agent: a commit in its worktree; in agent modes it merges into the target; its turn ends. */
+/** The item's agent: a commit in its worktree; in agent modes it merges into the target; it marks its todo done (the brief's last step); its turn ends. */
 async function agentWorks(r: Rig, planId: string, key: string, options: { merge: boolean; file?: string; content?: string }): Promise<void> {
   const item = await settledItem(planId, key, 'running');
   const run = await runSession(item);
@@ -201,20 +190,23 @@ async function agentWorks(r: Rig, planId: string, key: string, options: { merge:
   await until(async () => ((await r.s.store.sessions.get(run.id))?.status !== 'run' ? true : undefined), `${key}'s first turn`);
   await r.g.commit(run.cwd, options.file ?? `${key}.txt`, options.content ?? `${key}\n`, `${key}: work`);
   if (options.merge) await r.g.git(await targetCheckout(r), 'merge', '-q', '--no-edit', item.branch as string);
+  const todo = await r.s.store.todos.get(item.todoId);
+  await r.todos.update(todo?.sessionId ?? r.source.id, item.todoId, { state: 'done' }, 'agent');
   const sent = await call('POST', `/api/sessions/${run.id}/messages`, { text: 'Finished.' });
   expect(sent.statusCode, sent.body).toBeLessThan(300);
+  // That turn is over before the developer acts (a Merge is refused while the item's session works).
+  await until(async () => ((await r.s.store.sessions.get(run.id))?.status !== 'run' ? true : undefined), `${key}'s last turn`);
 }
 
-/** The developer Merges the item's Review card. */
-async function developerMerges(r: Rig, planId: string, key: string): Promise<void> {
+/** D102: the developer Merges a ready-to-merge item (`POST /api/plans/{id}/items/{itemId}/merge`). */
+async function developerMerges(_r: Rig, planId: string, key: string): Promise<void> {
   const item = await itemOf(planId, key);
-  const card = await r.reviews.evaluate(item.runSessionId as string);
-  expect(card, `${key}'s review card`).toMatchObject({ state: 'pending' });
-  await r.reviews.act(card!.id, 'merge', {});
+  const merged = await call('POST', `/api/plans/${planId}/items/${item.id}/merge`);
+  expect(merged.statusCode, merged.body).toBe(200);
 }
 
 async function runningKeys(planId: string): Promise<string[]> {
-  return (await plan(planId)).items.filter((item) => item.state === 'running' || item.state === 'review').map((item) => item.key as string);
+  return (await plan(planId)).items.filter((item) => item.state === 'running' || item.state === 'ready-to-merge').map((item) => item.key as string);
 }
 
 describe('D99 · a plan on the real path', () => {
@@ -226,7 +218,7 @@ describe('D99 · a plan on the real path', () => {
       const finish = async (key: string): Promise<void> => {
         await agentWorks(r, created.id, key, { merge: mode !== 'developer' });
         if (mode === 'developer') {
-          await settledItem(created.id, key, 'review');
+          await settledItem(created.id, key, 'ready-to-merge');
           await developerMerges(r, created.id, key);
         }
         await settledItem(created.id, key, 'done');
@@ -258,7 +250,7 @@ describe('D99 · a plan on the real path', () => {
     const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'] }, {}, ['PROJ-1']);
     await startPlan(created.id, 'agents-with-holds');
     await agentWorks(r, created.id, 'PROJ-1', { merge: false });
-    await settledItem(created.id, 'PROJ-1', 'review');
+    await settledItem(created.id, 'PROJ-1', 'ready-to-merge');
     expect((await itemOf(created.id, 'PROJ-2')).state).toBe('waiting');
     await developerMerges(r, created.id, 'PROJ-1');
     await settledItem(created.id, 'PROJ-1', 'done');
@@ -287,16 +279,42 @@ describe('D99 · a plan on the real path', () => {
     await settledItem(created.id, 'PROJ-3', 'running');
   }, 60_000);
 
-  it('a discarded item blocks its dependents with a reason', async () => {
+  it('D102 developer mode: the "Ready to merge" Inbox item appears and its Merge resolves it; a conflicting Merge is refused with the files; Send back', async () => {
     const r = await setup();
-    const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'] });
+    const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': [] });
     await startPlan(created.id, 'developer');
-    await agentWorks(r, created.id, 'PROJ-1', { merge: false });
-    const item = await settledItem(created.id, 'PROJ-1', 'review');
-    const card = await r.reviews.evaluate(item.runSessionId as string);
-    await r.reviews.act(card!.id, 'discard', { confirm: true });
-    await settledItem(created.id, 'PROJ-1', 'blocked');
-    expect(await itemOf(created.id, 'PROJ-2')).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-1, which was discarded' });
+    await settledItem(created.id, 'PROJ-2', 'running');
+    // Both change the same line.
+    await agentWorks(r, created.id, 'PROJ-1', { merge: false, file: 'src/app.txt', content: 'one\nTWO from PROJ-1\nthree\n' });
+    const one = await settledItem(created.id, 'PROJ-1', 'ready-to-merge');
+    // The Inbox item, with Merge / Open plan.
+    const inboxItem = await until(async () => ((await call('GET', '/api/inbox')).json() as Array<{ id: string; title: string; label: string; route?: string; actions?: Array<{ id: string }> }>).find((entry) => entry.title === 'Ready to merge: Work PROJ-1 (Acme epic)'), 'the Ready-to-merge item');
+    expect(inboxItem).toMatchObject({ label: 'Ready to merge', route: `/plans/${created.id}`, actions: [{ id: 'plan-merge', label: 'Merge' }, { id: 'open-plan', label: 'Open plan' }] });
+    // Merge from the Inbox: merged into the target (update-ref: the target is checked out nowhere), the item closes.
+    const acted = await call('POST', `/api/inbox/${inboxItem.id}/actions/plan-merge`);
+    expect(acted.statusCode, acted.body).toBe(204);
+    expect((await itemOf(created.id, 'PROJ-1')).state).toBe('done');
+    expect(await r.g.git(r.repoPath, 'show', `${TARGET}:src/app.txt`)).toBe('one\nTWO from PROJ-1\nthree');
+    expect((await r.s.store.systemItems.get(inboxItem.id))?.state).toBe('closed');
+    expect(one.branch).toBe('PROJ-1-work-proj-1');
+
+    // PROJ-2 now conflicts with the target: Merge is refused with the file, nothing moves.
+    await agentWorks(r, created.id, 'PROJ-2', { merge: false, file: 'src/app.txt', content: 'one\nTWO from PROJ-2\nthree\n' });
+    const two = await settledItem(created.id, 'PROJ-2', 'ready-to-merge');
+    const tip = await r.g.git(r.repoPath, 'rev-parse', TARGET);
+    const refused = await call('POST', `/api/plans/${created.id}/items/${two.id}/merge`);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ error: 'conflicts', conflicts: ['src/app.txt'] });
+    expect(await r.g.git(r.repoPath, 'rev-parse', TARGET)).toBe(tip);
+    // Send back: the comment reaches the session, the item runs again, its Inbox item closes.
+    const back = await call('POST', `/api/plans/${created.id}/items/${two.id}/send-back`, { comment: 'Rebase onto the target, please.' });
+    expect(back.statusCode, back.body).toBe(200);
+    expect((back.json() as Plan).items.find((entry) => entry.id === two.id)?.state).not.toBe('ready-to-merge');
+    const run = await runSession(two);
+    await until(async () => ((await r.s.store.events.list(run.id)).some((event) => JSON.stringify(event.payload).includes('Rebase onto the target, please.')) ? true : undefined), 'the comment sent to the session');
+    const open = (await r.s.store.systemItems.list(['open'])).filter((entry) => entry.kind === 'plan-ready-to-merge');
+    expect(open).toEqual([]);
+    expect(r.s.errors).toEqual([]);
   }, 60_000);
 
   it('red checks (fake gh): the session is told, its dependents wait; green and merged → done', async () => {

@@ -39,7 +39,7 @@ export interface PlansWorld {
   plan(page: Page, planId: string): Promise<Plan>;
   /** Waits for item `key` of `planId` to be in `state`. */
   itemIn(page: Page, planId: string, key: string, state: PlanItemState, timeoutMs?: number): Promise<PlanItem>;
-  /** Plays item `key`'s agent: waits for its first turn, commits a file in its worktree, sends "Finished." (its turn ends; a Review card follows). */
+  /** Plays item `key`'s agent: waits for its first turn, commits a file in its worktree, marks its todo done and sends "Finished." (its turn ends; D102: in a developer-merged mode it is then ready to merge). */
   agentWorks(page: Page, planId: string, key: string): Promise<void>;
   stop(): Promise<void>;
 }
@@ -133,6 +133,10 @@ export async function startPlansWorld(): Promise<PlansWorld> {
       await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${runId}`)).body.status, { timeout: 20_000, message: `${key}'s first turn` }).not.toBe('run');
       const cwd = (await call(page, 'GET', `/api/sessions/${runId}`)).body.cwd as string;
       await git.commit(cwd, `${key}.txt`, `${key}\n`, `${key}: work`);
+      // The brief's last step: mark the todo done (as the agent's todo_done would).
+      const source = (await plan(page, planId)).sourceSessionId;
+      const done = await call(page, 'PUT', `/api/sessions/${source}/todos/${item.todoId}`, { state: 'done' });
+      expect(done.status, JSON.stringify(done.body)).toBeLessThan(300);
       const sent = await call(page, 'POST', `/api/sessions/${runId}/messages`, { text: 'Finished.' });
       expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
     },

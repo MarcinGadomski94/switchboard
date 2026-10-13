@@ -1,36 +1,28 @@
 /**
  * D79 / D80 / D90 follow-up (2026-10-13): "change tracking missed agent-made worktrees
  * and repos outside the workspace". Real temp git repos (`tests/helpers/git.ts`). The
- * shared answer (`WorktreeManager.repos`) is what review cards, turn checkpoints and
- * the Diff tab read: a workspace session whose solution is a linked worktree (no
- * `worktrees` row) gets a card, a checkpoint and a diff; a repo outside the workspace
- * that the session edited is watched; a declared-but-untouched solution and an edited
- * repo are both watched, deduplicated; read-only layout folders never are; creating
- * worktrees still refuses a linked worktree; and a pending card whose changes are gone
- * closes as handled by the agent when the session goes idle / done / closed and at startup.
+ * shared answer (`WorktreeManager.repos`) is what turn checkpoints and the Diff tab read
+ * (D102: review cards, its first reader, were removed): a workspace session whose solution
+ * is a linked worktree (no `worktrees` row) gets a checkpoint and a diff; a repo outside
+ * the workspace that the session edited is watched; a declared-but-untouched solution and
+ * an edited repo are both watched, deduplicated; read-only layout folders never are;
+ * creating worktrees still refuses a linked worktree.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Session } from '../../../src/core/api.ts';
 import { CheckpointService } from '../../../src/server/checkpoints/service.ts';
 import type { SessionRecord } from '../../../src/server/db/repos/sessions.ts';
 import { runCommand } from '../../../src/server/exec.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
-import { listInbox } from '../../../src/server/inbox/wire.ts';
-import { ReviewGit } from '../../../src/server/reviews/git.ts';
-import { ReviewService } from '../../../src/server/reviews/service.ts';
 import { checkoutOf, watchedCheckoutOf } from '../../../src/server/solutions/checkout.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
-import { fakeGhCommand } from '../../../tools/fake-gh/command.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 
 let world: GitWorld | null = null;
-const services: ReviewService[] = [];
 
 afterEach(async () => {
-  for (const service of services.splice(0)) await service.stop();
   await world?.cleanup();
   world = null;
 });
@@ -39,7 +31,6 @@ interface Setup {
   readonly w: GitWorld;
   readonly m: WorktreeManager;
   readonly bus: HubBus;
-  reviews(): ReviewService;
   checkpoints(): CheckpointService;
 }
 
@@ -52,20 +43,6 @@ async function setup(): Promise<Setup> {
     w,
     m,
     bus,
-    reviews() {
-      const service = new ReviewService({
-        store: w.store,
-        bus,
-        git: new ReviewGit({ gh: fakeGhCommand(), env: w.env }),
-        repos: (session) => m.repos.of(session),
-        enabled: async () => true,
-        send: async () => undefined,
-        onError: (error) => w.errors.push(error),
-      });
-      services.push(service);
-      service.start();
-      return service;
-    },
     checkpoints() {
       // As the app wires it: the shared set decides, the cwd included.
       return new CheckpointService({
@@ -118,13 +95,8 @@ async function agentWorktree(w: GitWorld, name = 'web-front-wt-proj-123'): Promi
   return dir;
 }
 
-function turn(bus: HubBus, sessionId: string): void {
-  bus.publish('sessionUpdated', { id: sessionId, status: 'run', closedAt: null } as unknown as Session);
-  bus.publish('sessionUpdated', { id: sessionId, status: 'idle', closedAt: null } as unknown as Session);
-}
-
-describe('the repositories a session works in (shared by reviews, checkpoints and the Diff)', () => {
-  it('a workspace solution that is a linked worktree: a card is raised, a checkpoint is taken, the diff shows it', async () => {
+describe('the repositories a session works in (shared by checkpoints and the Diff)', () => {
+  it('a workspace solution that is a linked worktree: a checkpoint is taken, the diff shows it', async () => {
     const s = await setup();
     const dir = await agentWorktree(s.w);
     const session = await workspaceSession(s.w, ['microfrontends/web-front-wt-proj-123']);
@@ -142,18 +114,8 @@ describe('the repositories a session works in (shared by reviews, checkpoints an
     expect(capture?.items.map((item) => item.snapshot.top)).toEqual([dir]);
     await checkpoints.stop();
 
-    // The agent edits a file in it; the turn ends: a folder-mode card.
+    // The agent edits a file in it.
     await write(s.w, session.id, path.join(dir, 'src', 'feature.txt'), 'new\n');
-    const reviews = s.reviews();
-    turn(s.bus, session.id);
-    await reviews.idle();
-    const [card] = (await reviews.list()).filter((review) => review.state === 'pending');
-    expect(card).toMatchObject({ mode: 'folder', repos: [{ repo: 'microfrontends/web-front-wt-proj-123', dir, branch: 'feature/web-front-wt-proj-123', uncommitted: 1 }] });
-    expect(card?.actions).toEqual(['commit', 'send-back', 'discard', 'dismiss']);
-    // The Inbox names the repository.
-    const item = (await listInbox(s.w.store)).find((entry) => entry.id === card?.id);
-    expect(item?.title).toBe('1 file changed (+1 −0) · microfrontends/web-front-wt-proj-123');
-    expect(item?.branches).toEqual([{ solution: 'microfrontends/web-front-wt-proj-123', branch: 'feature/web-front-wt-proj-123' }]);
 
     // The Diff tab: since the last commit, only the session's files.
     expect((await s.m.diff(session.id, undefined, 'head')).map((file) => `${file.solution}:${file.path}`)).toEqual(['microfrontends/web-front-wt-proj-123:src/feature.txt']);
@@ -161,7 +123,7 @@ describe('the repositories a session works in (shared by reviews, checkpoints an
     expect(await s.m.count(session.id, 'head')).toEqual({ scope: 'head', files: 1 });
   });
 
-  it('a repo outside the workspace edited via Write / Edit is watched (card, checkpoint, diff)', async () => {
+  it('a repo outside the workspace edited via Write / Edit is watched (checkpoint, diff)', async () => {
     const s = await setup();
     const outside = await oldRepo(s.w, path.join(s.w.root, 'elsewhere', 'acme-tools'));
     const session = await workspaceSession(s.w, []);
@@ -175,11 +137,6 @@ describe('the repositories a session works in (shared by reviews, checkpoints an
     expect(await checkpoints.treesOf(session)).toEqual([outside]);
     await checkpoints.stop();
 
-    const reviews = s.reviews();
-    turn(s.bus, session.id);
-    await reviews.idle();
-    const [card] = (await reviews.list()).filter((review) => review.state === 'pending');
-    expect(card?.repos.map((repo) => [repo.repo, repo.dir, repo.uncommitted])).toEqual([['acme-tools', outside, 1]]);
     expect((await s.m.diff(session.id, undefined, 'head')).map((file) => `${file.solution}:${file.path}`)).toEqual(['acme-tools:README.md']);
   });
 
@@ -240,69 +197,5 @@ describe('the repositories a session works in (shared by reviews, checkpoints an
     // A workspace session working inside a solution folder with nothing declared or edited: its cwd's repo.
     const inside = await s.w.store.sessions.create({ name: 'acme-inside', claudeSessionId: randomUUID(), solutions: [], worktrees: false, root: s.w.workspace, rootKind: 'workspace', cwd: s.w.web });
     expect((await s.m.repos.of(inside)).inPlace).toEqual([{ name: 'web-front', top: s.w.web, source: 'cwd' }]);
-  });
-});
-
-describe('stale pending cards close as handled by the agent without being opened', () => {
-  async function pendingCard(s: Setup): Promise<{ session: SessionRecord; file: string; reviews: ReviewService }> {
-    // The mobile repo's first commit predates the session (else it would stay the session's unpushed commit).
-    const old = { ...s.w.env, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' };
-    expect((await runCommand(['git'], ['commit', '-q', '--amend', '--no-edit', '--reset-author'], { cwd: s.w.mobile, env: old })).code).toBe(0);
-    const session = await workspaceSession(s.w, ['mobile']);
-    const file = path.join(s.w.mobile, 'notes.md');
-    await write(s.w, session.id, file, 'draft\n');
-    const reviews = s.reviews();
-    turn(s.bus, session.id);
-    await reviews.idle();
-    expect((await s.w.store.reviews.openOf(session.id))?.state).toBe('pending');
-    return { session, file, reviews };
-  }
-
-  async function expectHandled(s: Setup, sessionId: string): Promise<void> {
-    expect(await s.w.store.reviews.openOf(sessionId)).toBeNull();
-    const latest = await s.w.store.reviews.latestOf(sessionId);
-    expect(latest).toMatchObject({ state: 'resolved', outcome: 'dismissed' });
-    expect((latest?.data as { handledByAgent?: boolean }).handledByAgent).toBe(true);
-  }
-
-  it('at a turn end with no changes left', async () => {
-    const s = await setup();
-    const { session, file, reviews } = await pendingCard(s);
-    await rm(file);
-    turn(s.bus, session.id);
-    await reviews.idle();
-    await expectHandled(s, session.id);
-  });
-
-  it('when the session goes done (no turn), and when it is closed', async () => {
-    const s = await setup();
-    const { session, file, reviews } = await pendingCard(s);
-    await rm(file);
-    s.bus.publish('sessionUpdated', { id: session.id, status: 'done', closedAt: null } as unknown as Session);
-    await reviews.idle();
-    await expectHandled(s, session.id);
-
-    // A closed session's open card is re-checked too (evaluate() skips closed sessions).
-    const other = await workspaceSession(s.w, ['mobile'], 'acme-closed');
-    await write(s.w, other.id, file, 'again\n');
-    turn(s.bus, other.id);
-    await reviews.idle();
-    expect((await s.w.store.reviews.openOf(other.id))?.state).toBe('pending');
-    await rm(file);
-    await s.w.store.sessions.update(other.id, { closedAt: new Date().toISOString(), status: 'done' });
-    s.bus.publish('sessionUpdated', { id: other.id, status: 'done', closedAt: new Date().toISOString() } as unknown as Session);
-    await reviews.idle();
-    await expectHandled(s, other.id);
-  });
-
-  it('once at startup', async () => {
-    const s = await setup();
-    const { session, file, reviews } = await pendingCard(s);
-    await reviews.stop();
-    await rm(file);
-    // A restart: a new service re-checks the open cards once, nobody opens the Inbox.
-    const restarted = s.reviews();
-    await restarted.idle();
-    await expectHandled(s, session.id);
   });
 });
