@@ -16,7 +16,7 @@ function clock(at: number): string {
 }
 
 /**
- * D99 · the plan's Timeline view (`docs/plans.md` → *Timeline*): one bar per item, grouped by
+ * D99 · the plan's Timeline view (`docs/plans-ui.md` → *Timeline*): one bar per item, grouped by
  * repository, on a time axis from the plan's start to its projected end; segments for the
  * agent working (run blue), waiting on you (amber), waiting on a dependency (hatched grey),
  * paused for usage (red, 60 %) and projected (dashed outline); the "now" line; the summary

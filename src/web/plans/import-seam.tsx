@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { Plan } from '../../core/plans.ts';
 
 /**
- * D99 · the seam the Jira lane plugs its import into (`docs/plans.md` → *Import from Jira*).
+ * D99 · the seam the Jira lane plugs its import into (`docs/plans-ui.md` → *Import from Jira*).
  * The Plans list shows **Import from Jira…** while Plans is on; with no importer registered it
  * says "coming soon". The Jira lane registers one (`registerPlanImporter` from its own module,
  * imported once by `PlansPage.tsx`) whose `render` draws its dialog; `onImported` opens the

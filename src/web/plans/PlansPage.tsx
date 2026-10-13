@@ -21,7 +21,7 @@ export function PlansOff() {
 }
 
 /**
- * D99 · the Plans list (`/plans`, `docs/plans.md` → *The Plans page*): a card per plan with
+ * D99 · the Plans list (`/plans`, `docs/plans-ui.md` → *The Plans page*): a card per plan with
  * its state, progress and merge mode, newest first; **＋ New plan** (a session, title, target
  * branch, base, items from its todos) and **Import from Jira…** (the Jira lane's seam:
  * "coming soon" until it registers its importer).

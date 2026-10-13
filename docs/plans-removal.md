@@ -9,7 +9,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
 - `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav item and the session's Plan tab, the Jira import seam)
 - `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
-- `docs/plans.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
+- `docs/plans.md`, `docs/plans-ui.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
 
 ## 2. Revert the hooks
 
@@ -44,8 +44,9 @@ Tests that name Plans' additions (revert with the code):
 - `tests/e2e/visual/settings.spec.ts` / `tests/e2e/settings.spec.ts`: nothing Plans-specific beyond the Experimental section's second row (its screenshot changes back).
 - `tests/server/tutorial/tutorial.test.ts`: `'D99'` in the What's-new decisions.
 - `tests/e2e/shell.spec.ts`: the `/api/plans/state` branch of the shell's API calls.
+- `tests/e2e/tutorial.spec.ts`: the `WHATS_NEW` filter without `plans` and the `status['plans']` line.
 
-Docs: the *Plans (D99)* section of `docs/handoff/contracts/local-api.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* section of `.loop/questions.md`.
+Docs: the *Plans (D99)* section of `docs/handoff/contracts/local-api.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* and *D99-UI* sections of `.loop/questions.md`.
 
 ## 3. Delete the data
 

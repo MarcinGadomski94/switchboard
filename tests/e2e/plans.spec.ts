@@ -3,7 +3,7 @@ import { openWithHub } from './question-world.ts';
 import { type PlansWorld, startPlansWorld } from './plans-world.ts';
 
 /**
- * D99 · the Plans page on the real path (`docs/plans.md` → *The Plans page*): fake-claude
+ * D99 · the Plans page on the real path (`docs/plans-ui.md` → *The Plans page*): fake-claude
  * runs, temp git, fake gh. One plan goes through the whole design: made from todos with
  * ＋ New plan, a dependency added and a loop refused, Start refused until a merge mode is
  * chosen, an item's question answered in the detail, an item running → in review → merged
@@ -207,6 +207,19 @@ test("the session's Plan tab links to its plan", async ({ page }) => {
   await expect(tab).toBeVisible();
   await tab.getByTestId('session-plan-link').click();
   await expect(page).toHaveURL(new RegExp(`/plans/${planId}$`));
+});
+
+test("What's new: the Plans tour is listed while Plans is on, and replays", async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/settings/tutorial`);
+  const row = page.locator('.sb-set-row[data-row="whats-new-plans"]');
+  await expect(row).toContainText('Plans (experimental)');
+  await expect(row).toContainText('1.18.0');
+  await page.getByTestId('whats-new-replay-plans').click();
+  await expect(page.getByTestId('tour-card').getByTestId('tour-kicker')).toHaveText("What's new · Plans (experimental)");
+  await page.getByTestId('tour-next').click();
+  await expect(page).toHaveURL(/\/plans$/);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('tour')).toHaveCount(0);
 });
 
 test('switched off while running: nothing of Plans shows; on again, the plan is paused with the reason', async ({ page }) => {

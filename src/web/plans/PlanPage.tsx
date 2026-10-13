@@ -100,7 +100,7 @@ function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly 
 }
 
 /**
- * D99 · a plan's page (`/plans/{id}`, `docs/plans.md` → *The plan page*): the header (title,
+ * D99 · a plan's page (`/plans/{id}`, `docs/plans-ui.md` → *The plan page*): the header (title,
  * the external key, ⎇ target → base; progress "4/7 done", its bar, "~3h left"; the merge-mode,
  * limits and critical-path chips; ✎ Edit dependencies, ⏸ Pause / ▶ Resume, ▶ Start plan), the
  * Graph / Timeline / List tabs, the dependency editor and the selected item's detail under

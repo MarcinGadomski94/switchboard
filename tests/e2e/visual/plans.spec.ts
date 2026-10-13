@@ -7,7 +7,7 @@ import { canonicalColors, writeReport } from './harness.ts';
 
 /**
  * D99 · the Plans page's visual check. Not in the prototype: the design is the developer's
- * approved clickable mockup (`docs/plans.md` → *The Plans page*), so this spec checks the
+ * approved clickable mockup (`docs/plans-ui.md` → *The Plans page*), so this spec checks the
  * design's rules rather than a pixel diff: each card's left border colour and icon by state
  * (waiting grey, running blue, question amber, in review violet, done green, blocked red),
  * the ⚑ you flag of hold items, the critical path (amber 2 px edges, dashed card outlines),
@@ -30,7 +30,7 @@ const SIZES = {
 
 let world: PlansWorld;
 let plan: Plan;
-const lines: string[] = ['# Plans page (D99) · visual check', '', 'The Plans page is not in the prototype; its reference is the approved mockup described in `docs/plans.md` → *The Plans page*. Checked: state colours and icons, hold flags, the critical path, the final node, timeline segments, layout per size, no sideways overflow.', ''];
+const lines: string[] = ['# Plans page (D99) · visual check', '', 'The Plans page is not in the prototype; its reference is the approved mockup described in `docs/plans-ui.md` → *The Plans page*. Checked: state colours and icons, hold flags, the critical path, the final node, timeline segments, layout per size, no sideways overflow.', ''];
 const shots: Record<string, Buffer> = {};
 
 test.describe.configure({ mode: 'serial' });

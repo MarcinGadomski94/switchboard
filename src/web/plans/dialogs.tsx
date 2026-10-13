@@ -9,7 +9,7 @@ import { plansApi, refusalText } from './api.ts';
 import { MERGE_MODE_OPTIONS, alwaysOnNote, shortLabel } from './model.ts';
 
 /**
- * D99 · the Plans page's dialogs (`docs/plans.md`): the merge-mode dialog (Start and "Change
+ * D99 · the Plans page's dialogs (`docs/plans-ui.md`): the merge-mode dialog (Start and "Change
  * the merge mode"), ＋ New plan, Add items from todos and the limits.
  */
 

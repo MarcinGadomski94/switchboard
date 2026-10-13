@@ -2,7 +2,7 @@ import type { Plan, PlanItem } from '../../core/plans.ts';
 import { GRAPH, STATE_LOOK, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, repoLine, statusLine } from './model.ts';
 
 /**
- * D99 · the plan's Graph view (`docs/plans.md` → *Graph*): a left-to-right DAG, layers by the
+ * D99 · the plan's Graph view (`docs/plans-ui.md` → *Graph*): a left-to-right DAG, layers by the
  * longest path (`graphLayout`), ~190 px cards with a coloured left border by state (icon, key,
  * title, status line, mono "repo · ~estimate"), SVG curves with arrowheads, the critical path
  * in amber (2 px edges, dashed card outlines) when shown, a final dashed ◇ node

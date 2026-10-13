@@ -46,7 +46,7 @@ function useLatestMessage(sessionId: string | null): string | null {
 }
 
 /**
- * D99 · the detail of the selected item (`docs/plans.md` → *Detail*), under every view (full
+ * D99 · the detail of the selected item (`docs/plans-ui.md` → *Detail*), under every view (full
  * screen on a phone): the state icon, key, title and status; its worktree, Open session, the
  * Jira ↗ link when the plan is external, the "⚑ I merge this one" hold; then by state: the
  * real QuestionCard with Reply… (a question), Merge / Send back / Open diff (a review), the

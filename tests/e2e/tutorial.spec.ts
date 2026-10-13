@@ -1,7 +1,10 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type APIRequestContext, type Locator, type Page, expect, request as playwrightRequest, test } from '@playwright/test';
-import { MAIN_TOUR, type TutorialState, WHATS_NEW } from '../../src/core/tutorial.ts';
+import { MAIN_TOUR, type TutorialState, WHATS_NEW as ALL_WHATS_NEW } from '../../src/core/tutorial.ts';
+
+/** Plans (D99) hook: its tour exists only while Plans is on (off on these test servers; docs/plans-removal.md). */
+const WHATS_NEW = ALL_WHATS_NEW.filter((feature) => feature.id !== 'plans');
 import { loadMigrations } from '../../src/server/db/migrate.ts';
 import { openTempStore } from '../helpers/store.ts';
 import { seedFolder } from '../helpers/folders.ts';
@@ -272,7 +275,9 @@ test.describe('an install from before the tutorial', () => {
     const after = await tutorialState(api);
     const status = Object.fromEntries(after.whatsNew.map((entry) => [entry.id, entry.status]));
     expect(status['run-in-new-session']).toBe('completed');
-    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session').every(([, value]) => value === 'skipped')).toBe(true);
+    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session' && id !== 'plans').every(([, value]) => value === 'skipped')).toBe(true);
+    // Plans (D99) hook: its tour was never offered (Plans is off), so it waits for the day Plans is switched on.
+    expect(status['plans']).toBe('pending');
     expect(after.main.status).toBeNull();
     await page.reload();
     await expect(page.getByTestId('sidebar')).toBeVisible();

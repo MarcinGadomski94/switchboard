@@ -1,7 +1,7 @@
 import { type Plan, type PlanEdge, type PlanItem, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, findCycle } from '../../core/plans.ts';
 
 /**
- * D99 · the Plans page's pure rules (`docs/plans.md` → *The Plans page*), kept free of React
+ * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
  * so `tests/web/plans.test.ts` checks them: the look of an item's state, its status line, the
  * graph's layout (layers by the longest path, no layout dependency), the critical path's
  * edges, the header chips, the timeline's segments and summary, the detail's texts and the
@@ -365,7 +365,7 @@ function waitsOnYou(item: PlanItem): string | null {
 }
 
 /**
- * The timeline (`docs/plans.md` → *Timeline*), from the items' timestamps (`startedAt`,
+ * The timeline (`docs/plans-ui.md` → *Timeline*), from the items' timestamps (`startedAt`,
  * `waitingSince`, `mergedAt`, `doneAt`) and the plan's: before an item starts it waits on a
  * dependency (hatched; from the plan's start); from its start the agent works (run blue) until
  * it waits on the developer (`waitingSince` of a question, review or conflict: amber) or is

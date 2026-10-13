@@ -1,6 +1,6 @@
 /*
  * D99 · the Plans pages, their dialogs, the nav's Plans badge and the session's Plan tab
- * (docs/plans.md → *The Plans page*). Only `.sb-plan*` classes and the Plans nav item's
+ * (docs/plans-ui.md → *The Plans page*). Only `.sb-plan*` classes and the Plans nav item's
  * badge: nothing here touches the rest of Switchboard, so with Plans off every page is as
  * before. Colours from styles/tokens.css, plus the review violet of the approved design.
  */
