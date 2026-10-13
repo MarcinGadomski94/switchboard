@@ -2,7 +2,7 @@
 
 Team lets the developer run a set of role agents ("members") from one page instead of switching sessions. A member wraps an ordinary Switchboard session: it keeps its conversation, worktrees, todos and loops, and gains a role, a charter, a rhythm, a budget and gates. Generic (any organisation) and single-user. Decision: `docs/decisions.md` → D100; API: `docs/handoff/contracts/local-api.md` → *Team (D100)*; removing it: `docs/team-removal.md`.
 
-This document covers the core (lane T1). Access requests (T2) and the UI, suggestions analysis and templates UI (T3) build on it; their seams are named below.
+This document covers the core (lane T1) and access requests (lane T2, *Access requests* below). The UI, suggestions analysis and templates UI (T3) build on them; their seams are named below.
 
 ## The switch
 
@@ -79,7 +79,7 @@ Hand-offs (created, finished), adopt / create / return, pauses and resumes (also
 `GET /api/team/needs-you` aggregates, newest first:
 
 - the members' open **questions, permission requests and review cards** from the Inbox (this machine's and the paired machines'), **derived** from `listInbox` / the peers' Inbox caches and filtered to member sessions (nothing is stored twice; answer them through the Inbox routes);
-- Team's own open **requests** from `team.db`: `gate` (a gated action), `budget` (over its daily share), and `access` (T2, not built yet).
+- Team's own open **requests** from `team.db`: `gate` (a gated action), `budget` (over its daily share), and `access` (T2: a member asks for data access; the item carries `access`, see *Access requests*).
 
 Item shape: `{ id, source: inbox | team, kind, memberId, memberName, label: "Tracker · question", title, detail, createdAt, sessionRef, inbox?, request? }`. Requests are decided with `POST /api/team/requests/{id}/approve | decline | dismiss`; an approval runs the request's action on the member's machine.
 
@@ -114,7 +114,7 @@ Built on the **D65 take-over**; no new transfer mechanism.
 2. `POST /api/team/members/{id}/move { targetMachineId }` → 202 `TeamMoveRun`; poll `GET /api/team/moves/{runId}`. It runs on the member's machine (forwarded from the other one; the run id is then `<machine>~<id>`) and refuses with 409 `blocked` and the blockers.
 3. The take-over moves the session with its repos, conversation, queued messages, todos and loops (re-created on the target, ended on the source: no double firing).
 4. On success the member's machine id and session id change; charter, rhythm (loop ids remapped by prompt and schedule), budget, gates, pause, hand-offs and activity are kept. The activity says "Moved <role> from <source> to <target>".
-5. **Access (T2 seam):** secrets are not moved. Every access entry loses its machines except the target, so it reads "needs setup on <target>", and the member's agent is told which accesses are missing (none exist until T2).
+5. **Access (T2):** secrets are not moved. Every access entry loses its machines except the target, so it reads "needs setup on <target>", and the member's agent is told which accesses are missing (see *Access requests*).
 
 ## Devices (D73)
 
@@ -125,7 +125,62 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
 - `GET /api/team/templates`: Planner, Developer, Reviewer / QA, Release manager, On-call / Production monitoring, Delivery tracking, Marketing monitoring (read-only), each with a charter, rhythm (suggested loops and on hand-off), gates and model defaults (`src/core/team-templates.ts`).
 - `GET /api/team/suggestions`: candidate members from this machine's open, non-member, non-hooked sessions, with evidence over the last 7 days from the database only: repos, Switchboard and CLI loops, events, edit vs read tool calls; a heuristic template and reason, a score, and `charterDraft: null` (an agent drafts it in T3).
 
+## Access requests (D100-T2)
+
+"For each team member, a dynamic settings page where the agent can request either MCPs or API keys in order to fetch the data for analysis." Code: `src/core/team-access*.ts`, `src/server/team/access/`, `src/hook/sb-access-mcp.ts`, `src/web/team/access/`. Contract: `docs/handoff/contracts/local-api.md` → *Team access (D100-T2)*. Security: `docs/security.md` → *Team access (D100-T2)*.
+
+### The agent asks
+
+`request_access` is a Team tool of the built-in `switchboard` MCP server, so it exists **only in a member's session and only while Team is on** (registered with `team_handoff` & co. by `registerTeamToolsIfMember`; `POST /agent/v1/team/access` checks again). Its description tells the agent to ask only when it is actually blocked, to ask for the minimum (one service, the one host, the smallest read-only scope, only the fields it needs) and never to ask for credentials in chat. A request carries:
+
+- `kind`: `mcp` (`source`: `catalog` + `catalogId`, `custom` + an optional `server` suggestion, or `shared` + `sharedServer` from the MCP page) or `api-key`;
+- `service` and `host` (normalized: a URL is reduced to its host);
+- `why` and the smallest `scope`;
+- `fields`: what the developer fills, each `{ name, label, secret, help, helpUrl?, pattern? }`. `name` is the environment variable (`ACME_ANALYTICS_KEY`); names that change how a program runs (`PATH`, `NODE_OPTIONS`, `LD_*`, `DYLD_*`, proxies, CA bundles, `GIT_*`, `SSH_*`, `CLAUDE*`, `ANTHROPIC_*`, `SWITCHBOARD_*`, …) are refused;
+- `api-key`: an optional `testUrl` **on the declared host** (https; http only on loopback) and `testHeader` (`{FIELD}` placeholders).
+
+A catalog request runs **exactly the catalog's command with the catalog's fields** (the agent cannot change what it runs); a custom server's command is only a suggestion the developer confirms or edits at setup. The answer tells the agent to carry on without it meanwhile.
+
+### Needs you
+
+Each new request becomes a `requests` row of kind `access` with `action: { type: 'external', ref: 'access:<id>' }` (the core's seam), titled "Marketing monitoring asks for Acme Analytics (read-only, reports)" with the why, the **exact service and host** and the scope in its detail. `GET /api/team/needs-you` adds `access` (the entry) to the item. Actions: **Set up…** (opens the member's Access tab at that access; only typing the values sets it up), **Deny** (`decline`: denied, the agent is told not to ask again unless things change) and **Not now** (`dismiss`: deferred, the agent is told; it can still be set up later from the tab). A plain Approve marks it approved, waiting for setup.
+
+Prompt-injection safety: never auto-approved; the card always shows service and host; a catalog request whose host differs from the entry's known host carries a **warning** (on the card and in its detail); the same open request is reused; **at most 5 new requests per member per hour** (429 `rate-limited`).
+
+### The Access tab
+
+`AccessTab` (`src/web/team/access/`, mounted by T3 in the member's panel; dev mount `/team-access-dev.html?member=<id>`) is built from the member's requests: one section per data source with **exactly the declared fields** (secret ones as password fields), the service, host, scope and what it gives (the variables, or the MCP server's name), the warning, the status ("Ready on Mac", "Set up on Mac only", "Needs setup on PC", Denied, Not now, Revoked, Expired), last used (and on which machine), used by (the member's session and its loops), **Set up** / **Set up here too** / **Replace**, **Test connection**, **Revoke**, an optional **expiry**, and the **audit trail** (asked, approved, denied, not now, set up, replaced, used, tested, revoked, expired). `AccessRequestActions` is the Needs-you card's part (service + host, warning, Set up… / Deny / Not now).
+
+- **Test connection** (this machine, its values): an MCP server is started (stdio with `spawn(…, { shell: false })`, http with its headers) and its tools listed within 20 s, then stopped; an API key gets one `HEAD` (then `GET` on 405 / 501) to the declared test URL, only on the declared host, redirects not followed, 10 s. No test URL: nothing is sent. Anything that comes back is masked.
+- **Revoke** removes this machine's values from its keychain, marks the access revoked everywhere (the other machines remove theirs when the record reaches them) and restarts the member without it.
+- **Expiry**: past it the access is no longer given (the minute tick marks it expired and restarts the member); Replace or a new expiry gives it back.
+
+### Where the values live
+
+**The OS keychain only** (`src/server/team/access/secret-store.ts`, a pluggable `SecretStore`): service **`Switchboard Team`**, account `<member id>/<access id>/<FIELD>`.
+
+- **macOS**: the login keychain through `/usr/bin/security`: stored with `add-generic-password -U … -X <hex>` written to `security -i`'s stdin (never on an argv), read with `find-generic-password -w`, removed with `delete-generic-password`.
+- **Windows**: Credential Manager (`CredWrite` / `CredRead` / `CredDelete` of `advapi32` through PowerShell `Add-Type`; the script goes encoded on the argv, the value on stdin). The fallback named in the brief (DPAPI-protected storage under the data folder) is **documented, not built**: without PowerShell, setup is refused with the reason.
+- **Linux**: the Secret Service through `secret-tool` (value on stdin). Without it, setup is refused ("install libsecret-tools"); the same file fallback is documented, not built.
+
+`team.db` keeps only the references (`secretRefs`) and metadata; the settings, logs, API answers, events and the sync never hold a value. Tests use `MemorySecretStore`: under Vitest and in every test server (`SWITCHBOARD_TEST_SECRET_STORE=memory`) the OS keychain is never touched.
+
+### Delivery to that member only
+
+- **API keys** (and the values an http MCP server's headers reference) are **environment variables of the member's process**, added at its spawn (supervisor hook `teamAccessEnv`); no other session gets them.
+- **MCP servers** join **that session's** MCP config at spawn (D68's launch gains `extraServers`, hook `withTeamAccessServers`): a stdio server is started through **`src/hook/sb-access-mcp.ts`**, which asks Switchboard (`GET /agent/v1/team/access/{id}/launch`, the session's agent token) for the command, arguments and values when it starts and runs the server with `shell: false`, so no value is in any config file. An http server is written with `${FIELD}` header references and the values in the CLI's environment (Claude Code only; Codex CLI and OpenCode get stdio servers only). Server names are `access-<service>-<id>`.
+- After a setup (or Replace, Revoke, expiry), the member's charter lines change ("Access the developer set up for you (as of …): Acme Analytics (ACME_ANALYTICS_KEY)…", names only), so D91 restarts its idle process once with `--resume` (a running turn finishes first); when it restarted, the agent also gets a short service message naming the access. Its last use is recorded at each spawn (and each launch of its MCP server).
+- **Masking**: every value given to a session is replaced by `•••• (ACME_ANALYTICS_KEY)` in each line of that session's output before the recorder stores or sends it (events, transcript rows, the hub, peers, notifications) and in the CLI's notices (supervisor hook `mask`). A value once given stays masked for that session until Switchboard restarts. The CLI's own transcript files (e.g. `~/.claude/projects/…`) are written by the CLI and are **not** masked.
+
+### Paired machines and moves
+
+Access records sync with the team (`snapshot.access`, last writer wins per record); **values never do**. Another machine shows "Set up on Mac only" with **Set up here too** (the values entered again, into that machine's keychain). After a member **move**, the access is "needs setup" on the target until it is set up there (readiness is "set up on the member's machine"; the core's move also trims the member's `access` summary), and the agent's charter lists it as needing setup. Revoking on any machine removes the values everywhere as the record arrives. Returning or removing a member revokes its accesses on its machine.
+
+### Devices (D73) and peers (D48)
+
+Phones read the tab (`device: true`: read-only, "Set this up on a computer") and may Deny / Not now (the request routes); **setup, test, revoke and expiry are refused** (`DEVICE_REFUSED`, and the routes refuse a device request themselves). The peer API carries the metadata reads only; every route that touches a value refuses a peer request.
+
 ## Not in v1
 
 - A coordinator / team-lead agent (ASSUMED, `.loop/questions.md` → *D100*).
-- The Team page, its nav entry and the What's-new entry (T3), access requests (T2).
+- The Team page, its nav entry and the What's-new entry (T3; T3 mounts T2's `AccessTab` and `AccessRequestActions`).

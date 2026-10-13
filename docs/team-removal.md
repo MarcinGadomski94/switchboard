@@ -4,7 +4,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 
 ## 1. Delete Team's folders and files
 
-- `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync)
+- `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync, T2's `access/`)
 - `src/core/team.ts`, `src/core/team-templates.ts`, `src/core/team-budget.ts`, `src/core/team-sync.ts`, `src/core/team-tools.ts`
 - `src/web/team/` (the sidebar filter, Settings → Experimental, T2's Access tab in `src/web/team/access/`; T3 adds the Team page here)
 - `src/core/team-access.ts`, `src/core/team-access-catalog.ts`, `src/core/team-access-tools.ts` (T2: access requests)
@@ -42,10 +42,13 @@ Tests that name Team's additions (revert with the code):
 - `tests/server/api/settings.test.ts`: the `'experimental.team': false` line of the fresh-install answer.
 - `tests/web/updates.test.ts`: the last six sections (back to the last five, without `experimental`).
 - `tests/e2e/settings.spec.ts`: the `'Experimental'` nav label.
+- `tests/helpers/server-process.ts`: T2's `SWITCHBOARD_TEST_SECRET_STORE: 'memory'` default (harmless without Team; may stay).
 
 Docs: the *Team (D100)* section of `docs/handoff/contracts/local-api.md`, D100 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D100* section of `.loop/questions.md`.
 
 ## 3. Delete the data
+
+Before deleting the code, **Revoke** every member's access (or remove the members): that removes their values from the OS keychain. Otherwise delete the keychain items named `Switchboard Team` by hand (Keychain Access on macOS, Credential Manager entries `Switchboard Team:…` on Windows, `secret-tool clear service "Switchboard Team" account …` on Linux).
 
 `<dataDir>/team.db` (and `team.db-wal` / `team.db-shm` if present). Nothing of Team is in `switchboard.db`: the only row Team ever wrote there is the `experimental.team` setting, which an older or Team-less build ignores (an unknown settings key is never read); delete it with `DELETE FROM settings WHERE key = 'experimental.team'` if you want it gone.
 

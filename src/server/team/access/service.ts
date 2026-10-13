@@ -3,7 +3,6 @@ import { DEFAULT_TEAM_ID, type TeamActivityKind, type TeamMemberRecord, type Tea
 import {
   ACCESS_RATE_LIMIT,
   ACCESS_RATE_WINDOW_MS,
-  type AccessField,
   type AccessMcpServer,
   type AccessSharedServer,
   type AccessTestResult,
@@ -21,7 +20,6 @@ import {
   accessStatus,
   checkSetupValues,
   fillTemplate,
-  hostName,
   hostWarning,
   maskSecrets,
   readAccessMcpServer,
@@ -728,16 +726,6 @@ export class TeamAccess {
     const missing = mine.filter((r) => r.state === 'active' && !accessExpired(r, now) && !r.setUpOn.includes(member.machineId));
     if (ready.length === 0 && missing.length === 0) return 'If you are blocked without data access you need (an MCP server or an API key), use request_access; never ask for credentials in chat.';
     return accessCharterLines(ready, missing);
-  }
-
-  /** The host name a record talks to (cards). */
-  static hostOf(record: Pick<TeamAccessRecord, 'host'>): string {
-    return hostName(record.host);
-  }
-
-  /** The field definitions of a record (the Access tab builds its form from exactly these). */
-  static fieldsOf(record: Pick<TeamAccessRecord, 'fields'>): readonly AccessField[] {
-    return record.fields;
   }
 }
 
