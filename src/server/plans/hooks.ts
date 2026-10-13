@@ -8,6 +8,8 @@ export interface PlanHooks {
   switchChanged(): Promise<void>;
   /** D83: session `from` was continued in the fresh session `to` (its todos, ids kept, moved there). */
   sessionContinued(from: string, to: string): Promise<void>;
+  /** D102: the Inbox's "Ready to merge" item's Merge: answers `null` when merged, else why not. */
+  inboxMerge(planId: string, itemId: string): Promise<string | null>;
 }
 
 const registry = new WeakMap<object, PlanHooks>();
@@ -27,6 +29,15 @@ export function registerPlanHooks(store: object, hooks: PlanHooks): () => void {
  */
 export async function plansFollowContinuation(store: object, from: string, to: string): Promise<void> {
   await registry.get(store)?.sessionContinued(from, to);
+}
+
+/**
+ * D102 seam (the Inbox's "Ready to merge" item, `system-items.ts`): merges plan item `itemId`
+ * of plan `planId`. Answers `null` when merged, else the refusal's message (Plans off included).
+ */
+export async function plansInboxMerge(store: object, planId: string, itemId: string): Promise<string | null> {
+  const hooks = registry.get(store);
+  return hooks ? hooks.inboxMerge(planId, itemId) : 'Plans is off: switch it on in Settings → Experimental';
 }
 
 /** Settings seam: the Plans switch changed. */

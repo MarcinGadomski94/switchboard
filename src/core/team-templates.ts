@@ -64,7 +64,7 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
     summary: 'Implements hand-offs in its repositories, with tests.',
     charter: {
       owns: 'Implementing its hand-offs in its workplace repositories.',
-      produces: 'Commits on a work branch, with tests, and a review card when done.',
+      produces: 'Commits on a work branch, with tests, and a pull request when done.',
       neverDoes: 'Merges into the default branch or pushes without approval.',
     },
     rhythm: { loops: [], onHandoff: true },

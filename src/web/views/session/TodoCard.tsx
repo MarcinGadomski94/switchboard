@@ -323,7 +323,7 @@ export interface TodoRunSession {
 const STATUS_WORDS: Readonly<Record<SessionStatus, string>> = { run: 'working', need: 'needs you', done: 'done', fail: 'failed', idle: 'idle', paused: 'paused' };
 
 /** D77: the board's columns as ⋯ → Move to names them. */
-export const TODO_STATE_LABELS: Readonly<Record<TodoState, string>> = { open: 'Open', in_progress: 'In progress', review: 'Review', done: 'Done' };
+export const TODO_STATE_LABELS: Readonly<Record<TodoState, string>> = { open: 'Open', in_progress: 'In progress', done: 'Done' };
 
 /** D78: a finished card's estimate and actuals: `est ~45m · took 32m · 41k tokens`; `''` when it has none. */
 export function todoActualsLine(todo: SessionTodo): string {
@@ -592,8 +592,6 @@ export function TodoCard({
   const isDone = todo.state === 'done';
   // D75: started (◐, IN PROGRESS); a tick marks it done.
   const inProgress = todo.state === 'in_progress';
-  // D76: its run finished it; a tick approves it (done).
-  const inReview = todo.state === 'review';
   const runActive = todo.runState === 'active' && Boolean(todo.runSessionId);
   const actualsLine = todoActualsLine(todo);
   const title = todo.title ?? todo.text;
@@ -669,7 +667,7 @@ export function TodoCard({
           },
         ]),
     // D75: by hand, without sending anything (▶ Start sends the message too).
-    ...(isDone || inReview
+    ...(isDone
       ? []
       : [
           inProgress
@@ -679,8 +677,8 @@ export function TodoCard({
     { id: 'up', label: 'Move up', disabled: disabled || index <= 0, run: () => actions.onMove(-1) },
     { id: 'down', label: 'Move down', disabled: disabled || index >= count - 1, run: () => actions.onMove(1) },
     // D76: a new session works on it (its own worktree in a git repo).
-    ...(actions.onRun && !isDone && !inReview && !runActive ? [{ id: 'run', label: 'Run in new session', disabled, run: actions.onRun }] : []),
-    // D77: the board's columns without dragging (Review only for an item with a run).
+    ...(actions.onRun && !isDone && !runActive ? [{ id: 'run', label: 'Run in new session', disabled, run: actions.onRun }] : []),
+    // D77: the board's columns without dragging.
     ...(actions.onMoveTo
       ? [
           {
@@ -688,9 +686,7 @@ export function TodoCard({
             label: 'Move to',
             disabled,
             run: () => undefined,
-            submenu: (['open', 'in_progress', 'review', 'done'] as const)
-              .filter((state) => state !== 'review' || Boolean(todo.runSessionId))
-              .map((state) => ({ id: state, label: TODO_STATE_LABELS[state], checked: state === todo.state, run: () => actions.onMoveTo?.(state) })),
+            submenu: (['open', 'in_progress', 'done'] as const).map((state) => ({ id: state, label: TODO_STATE_LABELS[state], checked: state === todo.state, run: () => actions.onMoveTo?.(state) })),
           },
         ]
       : []),
@@ -724,7 +720,7 @@ export function TodoCard({
             data-testid="todo-select"
             aria-label={`Select ${title}`}
             checked={selected}
-            disabled={disabled || isDone || inReview || runActive}
+            disabled={disabled || isDone || runActive}
             onChange={(event) => onSelect(event.target.checked)}
           />
         ) : null}
@@ -732,9 +728,8 @@ export function TodoCard({
           type="checkbox"
           className="sb-todo-check"
           data-testid="todo-check"
-          aria-label={isDone ? `Reopen ${title}` : inReview ? `Approve ${title} (mark it done)` : `Mark ${title} done${inProgress ? ' (in progress)' : ''}`}
+          aria-label={isDone ? `Reopen ${title}` : `Mark ${title} done${inProgress ? ' (in progress)' : ''}`}
           data-progress={inProgress ? 'true' : undefined}
-          data-review={inReview ? 'true' : undefined}
           checked={isDone}
           disabled={disabled}
           onChange={actions.onToggleDone}
@@ -760,17 +755,7 @@ export function TodoCard({
                 In progress
               </span>
             ) : null}
-            {inReview ? (
-              <span className="sb-todo-in-review" data-testid="todo-in-review" title="Its run session finished it: review the work, then tick it (or drag it to Done)">
-                In review
-              </span>
-            ) : null}
-            {inReview && actualsLine ? (
-              <span className="sb-todo-actuals" data-testid="todo-actuals" title="Estimate, the time it spent in progress, and the tokens of the turns that worked on it (approximate)">
-                {actualsLine}
-              </span>
-            ) : null}
-            {estimate && !(inReview && actualsLine) ? (
+            {estimate ? (
               <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
                 {estimate}
               </span>
@@ -821,7 +806,7 @@ export function TodoCard({
       </div>
       {todo.runSessionId ? (
         <div className="sb-todo-run" data-testid="todo-run-session" data-run-state={todo.runState ?? undefined}>
-          <span className="sb-todo-run-label">{todo.runState === 'discarded' ? 'Run (discarded)' : 'Run'}</span>
+          <span className="sb-todo-run-label">Run</span>
           <Link to={{ view: 'session', id: todo.runSessionId, tab: 'chat' }} className="sb-todo-run-link" data-testid="todo-run-link">
             {runSession && runSession.status ? <span className="sb-todo-run-dot" aria-hidden="true" style={{ background: statusColor(runSession.status) }} /> : null}
             {runSession?.title ?? 'its session'}

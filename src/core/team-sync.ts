@@ -180,8 +180,7 @@ export function readRequestRecord(value: unknown): TeamRequestRecord | null {
   if (!memberId || (kind !== 'gate' && kind !== 'budget' && kind !== 'access') || !['open', 'approved', 'declined', 'dismissed'].includes(state as string)) return null;
   const action = isRecord(r['action']) ? r['action'] : null;
   let parsedAction: TeamRequestRecord['action'] = null;
-  if (action?.['type'] === 'review-merge' && typeof action['reviewId'] === 'string') parsedAction = { type: 'review-merge', reviewId: action['reviewId'] };
-  else if (action?.['type'] === 'resume-member') parsedAction = { type: 'resume-member' };
+  if (action?.['type'] === 'resume-member') parsedAction = { type: 'resume-member' };
   else if (action?.['type'] === 'external' && typeof action['ref'] === 'string') parsedAction = { type: 'external', ref: action['ref'] };
   return {
     id: b.id,

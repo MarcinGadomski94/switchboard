@@ -51,8 +51,6 @@ import { registerTodoRoutes } from './api/todos.ts';
 import { registerDeviceRoutes } from './api/devices.ts';
 import { registerCleanupRoutes } from './api/cleanup.ts';
 import type { DeviceService } from './devices/service.ts';
-import type { ReviewService } from './reviews/service.ts';
-import { registerReviewRoutes } from './api/reviews.ts';
 import { registerCheckpointRoutes } from './api/checkpoints.ts';
 import type { CheckpointService } from './checkpoints/service.ts';
 import type { TutorialService } from './tutorial/service.ts';
@@ -115,8 +113,6 @@ export interface ApiContext {
   readonly todos: TodoService;
   /** D73: paired devices, the device listener and web push (docs/devices.md). */
   readonly devices: DeviceService;
-  /** D79: the review cards (docs/reviews.md). */
-  readonly reviews: ReviewService;
   /** D80: checkpoints before each turn, revert and Redo (docs/undo.md). */
   readonly checkpoints: CheckpointService;
   /** D85: the tutorial's state on this machine (docs/tutorial.md). */
@@ -161,7 +157,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerTodoRoutes(app, context);
-  await registerReviewRoutes(app, context);
   await registerCheckpointRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);

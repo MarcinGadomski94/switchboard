@@ -31,7 +31,8 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * - `GET /api/plans` → `Plan[]` (this machine's, then the paired machines' as last known);
  *   `POST /api/plans` → 201 `Plan` (a draft); `GET|PUT|DELETE /api/plans/{id}`;
  * - `POST /api/plans/{id}/items` → 201 `{ plan, itemId }`; `PUT|DELETE /api/plans/{id}/items/{itemId}`;
- *   `POST /api/plans/{id}/items/{itemId}/retry | done`;
+ *   `POST /api/plans/{id}/items/{itemId}/retry | done`; D102, the Merge step of a ready-to-merge item:
+ *   `POST /api/plans/{id}/items/{itemId}/merge | open-pr | send-back` (`{ comment }`);
  * - `POST /api/plans/{id}/edges` `{ from, to }`; `DELETE /api/plans/{id}/edges/{from}/{to}`;
  * - `POST /api/plans/{id}/start` `{ mergeMode }` (required), `…/pause`, `…/resume`, `…/cancel`;
  *   `PUT /api/plans/{id}/mode` `{ mergeMode }`, `PUT /api/plans/{id}/holds` `{ holds }`.
@@ -118,6 +119,20 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     app.post<{ Params: { id: string; itemId: string } }>(`/api/plans/:id/items/:itemId/${action}`, async (request, reply) => {
       try {
         return action === 'retry' ? await plans.retryItem(request.params.id, request.params.itemId) : await plans.markItemDone(request.params.id, request.params.itemId);
+      } catch (error) {
+        return sendPlanError(reply, error);
+      }
+    });
+  }
+
+  // D102: the developer's Merge step (merge locally into the target, open a PR, send it back).
+  for (const action of ['merge', 'open-pr', 'send-back'] as const) {
+    app.post<{ Params: { id: string; itemId: string } }>(`/api/plans/:id/items/:itemId/${action}`, async (request, reply) => {
+      const { id, itemId } = request.params;
+      try {
+        if (action === 'merge') return await plans.mergeItem(id, itemId);
+        if (action === 'open-pr') return await plans.openItemPullRequest(id, itemId);
+        return await plans.sendBackItem(id, itemId, body(request));
       } catch (error) {
         return sendPlanError(reply, error);
       }

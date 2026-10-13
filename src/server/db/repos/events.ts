@@ -258,7 +258,7 @@ export class EventRepository {
 
   /**
    * D79: the session's newest calls of tool `name` (`payload.type` = `tool`), newest
-   * first (ts, then id), at most `limit` (the review card's test status).
+   * first (ts, then id), at most `limit`.
    */
   async toolCallsNewestFirst(sessionId: string, name: string, limit: number): Promise<EventRecord[]> {
     return this.#table.select("session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') = ?", [sessionId, name], 'ts DESC, id DESC', limit);

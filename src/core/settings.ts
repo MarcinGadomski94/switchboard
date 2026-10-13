@@ -40,11 +40,6 @@ export interface KnownSettings {
    */
   readonly 'sessions.todoReminder': boolean;
   /**
-   * D79: raise a Review card when a session with changes goes idle (`docs/reviews.md`).
-   * Editable, default `true`.
-   */
-  readonly 'sessions.reviewCards': boolean;
-  /**
    * D80: before each turn of a supervised session, save a checkpoint of its git working trees
    * (hidden refs), so a turn can be reverted (`docs/undo.md`). Editable, default `true`.
    */
@@ -162,7 +157,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -181,7 +176,6 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
   'sessions.todoReminder': true,
-  'sessions.reviewCards': true,
   'sessions.checkpoints': true,
   'sessions.todoEnrich': true,
   'sessions.modelRules': [],
@@ -218,7 +212,6 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
-    'sessions.reviewCards': bool('sessions.reviewCards', SETTING_DEFAULTS['sessions.reviewCards']),
     'sessions.checkpoints': bool('sessions.checkpoints', SETTING_DEFAULTS['sessions.checkpoints']),
     'sessions.todoEnrich': bool('sessions.todoEnrich', SETTING_DEFAULTS['sessions.todoEnrich']),
     'sessions.modelRules': readModelRules(value['sessions.modelRules']),

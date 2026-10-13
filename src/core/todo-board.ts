@@ -6,11 +6,11 @@
 import type { SessionTodo, TodoGroup, TodoPatchInput, TodoPriority, TodoState } from './api.ts';
 import { isTodoPriority, todoPriorityRank } from './todos.ts';
 
-/** The board's columns, left to right. */
-export const BOARD_COLUMNS: readonly TodoState[] = ['open', 'in_progress', 'review', 'done'];
+/** The board's columns, left to right (D102: D77's Review column went with review cards). */
+export const BOARD_COLUMNS: readonly TodoState[] = ['open', 'in_progress', 'done'];
 
 /** A column's heading. */
-export const BOARD_COLUMN_LABELS: Readonly<Record<TodoState, string>> = { open: 'Open', in_progress: 'In progress', review: 'Review', done: 'Done' };
+export const BOARD_COLUMN_LABELS: Readonly<Record<TodoState, string>> = { open: 'Open', in_progress: 'In progress', done: 'Done' };
 
 /** One card on the board: the item and its session's group. */
 export interface BoardCard {
@@ -56,7 +56,7 @@ export function boardCardMatches(card: BoardCard, filters: BoardFilters): boolea
  * then the session's own order (position).
  */
 export function boardColumns(groups: readonly TodoGroup[], filters: BoardFilters): Readonly<Record<TodoState, BoardCard[]>> {
-  const out: Record<TodoState, BoardCard[]> = { open: [], in_progress: [], review: [], done: [] };
+  const out: Record<TodoState, BoardCard[]> = { open: [], in_progress: [], done: [] };
   const rank = new Map(groups.map((group, index) => [group.sessionId, index]));
   for (const group of groups) {
     for (const todo of group.todos) {
@@ -78,13 +78,10 @@ export function boardColumns(groups: readonly TodoGroup[], filters: BoardFilters
 
 /**
  * What a drop of `todo` into column `to` changes (`PUT …/todos/{id}`), `null` when it changes
- * nothing or is not allowed: Review only for an item with a run session; Done means done (the
- * review is skipped); In progress marks it in progress without sending anything.
+ * nothing; In progress marks it in progress without sending anything.
  */
 export function boardDrop(todo: Pick<SessionTodo, 'state' | 'runSessionId'>, to: TodoState): TodoPatchInput | null {
   if (todo.state === to) return null;
-  if (to === 'review') return todo.runSessionId ? { state: 'review' } : null;
-  if (to === 'done') return { state: 'done', skipReview: true };
   return { state: to };
 }
 

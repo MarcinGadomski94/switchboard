@@ -34,7 +34,7 @@ export class DraftError extends Error {
 const CLIENT_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** The kinds whose draft names something that can be answered, resolved or removed (the clean-up looks at these). */
-const TIED_PREFIXES = ['question:', 'review:', 'commit:', 'todo-edit:'] as const;
+const TIED_PREFIXES = ['question:', 'todo-edit:'] as const;
 
 /**
  * D88 · drafts follow you (`docs/chat.md` → *Drafts*): this machine's sessions'
@@ -45,10 +45,10 @@ const TIED_PREFIXES = ['question:', 'review:', 'commit:', 'todo-edit:'] as const
  * attachment chips are answered only while their upload still exists in the session.
  *
  * **Clean-up (ruling 2026-10-09):** a draft whose question batch was answered or
- * closed (here, on claude.ai, by a stopped turn), whose review was resolved, or
+ * closed (here, on claude.ai, by a stopped turn), or
  * whose todo was deleted or done is deleted at once, with `draftChanged` (`client`
  * `null`), wherever that happened: the service listens to the session's
- * `sessionUpdated`, `reviewsChanged` and `todosChanged` and looks at that session's
+ * `sessionUpdated` and `todosChanged` and looks at that session's
  * tied drafts ({@link prune}). Closing a session removes none (its drafts stay until
  * the session is deleted; a batch closed with the session keeps its picks).
  */
@@ -66,7 +66,7 @@ export class DraftService {
     this.#onError = options.onError ?? ((error) => console.error('switchboard drafts:', error));
     this.#unsubscribe = this.#bus.subscribe((message) => {
       if (message.name === 'sessionUpdated') this.#schedule(message.payload.id);
-      else if (message.name === 'reviewsChanged' || message.name === 'todosChanged') this.#schedule(message.payload.sessionId);
+      else if (message.name === 'todosChanged') this.#schedule(message.payload.sessionId);
     });
   }
 
@@ -130,11 +130,6 @@ export class DraftService {
         if (!batch || batch.sessionId !== sessionId) return true;
         // Closed with its session: kept (closed sessions keep their drafts until deleted).
         return !isBatchWaiting(batch) && batch.closedReason !== SESSION_CLOSED_REASON;
-      }
-      case 'review':
-      case 'commit': {
-        const review = await this.#store.reviews.get(id);
-        return !review || review.sessionId !== sessionId || review.state !== 'pending';
       }
       case 'todo-edit': {
         const todo = await this.#store.todos.get(id);

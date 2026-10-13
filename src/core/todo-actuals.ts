@@ -2,8 +2,8 @@
  * D78 (`docs/todos.md` → *Actual vs. estimate*): what an item took against its estimate,
  * the shared rules of the server, the UI and the agent's tools. Pure: no I/O.
  *
- * - **Time**: the item's in-progress spans from its first `in_progress` to `done` / `review`;
- *   time back in open (and in review or done) does not count.
+ * - **Time**: the item's in-progress spans from its first `in_progress` to `done`;
+ *   time back in open (and done) does not count.
  * - **Tokens** (approximate): the turns of the session working on it (its run session's, else
  *   its own session's) that ended during those spans, each turn's
  *   `input + cache creation + output` tokens from its `result` line's `usage`
@@ -58,9 +58,9 @@ export function formatActual(ms: number): string {
   return minutes < 1 ? '<1m' : formatTodoMinutes(minutes);
 }
 
-/** `true` when the item has finished (done or in review) and recorded its time. */
+/** `true` when the item has finished (done) and recorded its time. */
 export function todoHasActuals(todo: Pick<SessionTodo, 'state' | 'actualMs'>): boolean {
-  return (todo.state === 'done' || todo.state === 'review') && typeof todo.actualMs === 'number';
+  return todo.state === 'done' && typeof todo.actualMs === 'number';
 }
 
 /** The card's actuals: `took 32m · 41k tokens` (the tokens only when known); `''` when it has none. */

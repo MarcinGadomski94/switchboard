@@ -6,7 +6,6 @@ import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
 import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../db/repos/questions.ts';
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
 import type { Store } from '../db/store.ts';
-import { reviewItems } from '../reviews/wire.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { labelInboxItems } from '../team/hooks.ts';
 
@@ -251,6 +250,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'parent-closed': 'Parent closed',
   // D55: a newer Switchboard release.
   'update-available': 'Update available',
+  // D102: a plan item waits for the developer's Merge.
+  'plan-ready-to-merge': 'Ready to merge',
 };
 
 /**
@@ -271,6 +272,8 @@ export function systemItemPrefill(record: SystemItemRecord): NewSessionPrefill |
  */
 export function systemItem(record: SystemItemRecord): InboxItem {
   const prefill = systemItemPrefill(record);
+  // D102: the page an "open" action goes to (a plan's Ready-to-merge item: Open plan).
+  const route = isRecord(record.payload) && typeof record.payload['route'] === 'string' ? record.payload['route'] : null;
   return {
     id: record.id,
     kind: 'system',
@@ -284,6 +287,7 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     branches: record.branches.map((branch) => ({ solution: branch.solution, branch: branch.branch })),
     actions: record.actions.map((action) => ({ id: action.id, label: action.label })),
     ...(prefill ? { prefill } : {}),
+    ...(route ? { route } : {}),
   };
 }
 
@@ -297,7 +301,7 @@ function newestFirst<T extends { readonly createdAt: string }>(rows: readonly T[
  * first, newest first (the sidebar's session order): question batches that wait
  * for the developer (open, or stale and unanswered) and open permission requests.
  * Open system items follow in the order they were raised, oldest first (the
- * prototype's order), then (D79) the open review cards, oldest first. The same
+ * prototype's order). The same
  * items {@link inboxCount} counts.
  */
 export async function listInbox(store: Store): Promise<InboxItem[]> {
@@ -311,8 +315,6 @@ export async function listInbox(store: Store): Promise<InboxItem[]> {
   for (const entry of waiting) items.push(await entry.item());
   const system = (await store.systemItems.list(['open'])).reverse();
   for (const record of system) items.push(systemItem(record));
-  // D79: the open review cards (pending, and merged / discarded ones still offering Clean up), oldest first.
-  items.push(...(await reviewItems(store)));
   // Team (D100) hook: member sessions' items carry the role name (docs/team-removal.md).
   return labelInboxItems(store, items);
 }
@@ -326,9 +328,7 @@ export async function inboxCount(store: Store): Promise<number> {
   const batches = (await store.questions.listBatches({ states: ['open', 'stale'] })).filter(isBatchWaiting).length;
   const permissions = (await store.permissions.list({ states: ['open'] })).length;
   const system = (await store.systemItems.list(['open'])).length;
-  // D79: open review cards.
-  const reviews = await store.reviews.countOpen();
-  return batches + permissions + system + reviews;
+  return batches + permissions + system;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

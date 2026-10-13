@@ -7,10 +7,11 @@
  * One draft per session and **field key**:
  * - `composer`: the message field's text and the attachments already uploaded to the session.
  * - `question:<batchId>`: a question card's picks not yet sent (options, D39 own answers).
- * - `review:<reviewId>`: a review card's Send-back comment (D79).
  * - `todo-add`: the todo strip's + Add form (D69–D70).
  * - `todo-edit:<todoId>`: an item's open Edit form.
- * - `commit:<reviewId>`: a review card's Commit message as edited (ruling 2026-10-09).
+ *
+ * D102: the review card's `review:<id>` and `commit:<id>` keys are gone with the cards (an
+ * older install's stored ones are no longer valid keys: never answered, deleted by 0043).
  *
  * D88 ruling (2026-10-09): the **New-session** form (Simple and Full share one form
  * state) is no session's: it is kept **per machine** (`new-session`, this machine's
@@ -38,10 +39,10 @@ export const DRAFT_SAVE_MS = 400;
 export const DRAFT_TEXT_MAX = 50_000;
 
 /** The field kinds; the ones with `:` take an id. */
-export type DraftKind = 'composer' | 'question' | 'review' | 'todo-add' | 'todo-edit' | 'commit' | 'new-session';
+export type DraftKind = 'composer' | 'question' | 'todo-add' | 'todo-edit' | 'new-session';
 
 /** A session's field key: `composer`, `todo-add`, or `<kind>:<raw id>` (see the module comment). */
-const FIELD_PATTERN = /^(?:composer|todo-add|(?:question|review|todo-edit|commit):[A-Za-z0-9._-]{1,128})$/;
+const FIELD_PATTERN = /^(?:composer|todo-add|(?:question|todo-edit):[A-Za-z0-9._-]{1,128})$/;
 
 /** A machine's field key (no session): `new-session`. */
 const MACHINE_FIELD_PATTERN = /^new-session$/;
@@ -75,9 +76,7 @@ export const draftField = {
   composer: 'composer',
   todoAdd: 'todo-add',
   question: (batchId: string): string => `question:${rawDraftId(batchId)}`,
-  review: (reviewId: string): string => `review:${rawDraftId(reviewId)}`,
   todoEdit: (todoId: string): string => `todo-edit:${rawDraftId(todoId)}`,
-  commit: (reviewId: string): string => `commit:${rawDraftId(reviewId)}`,
   /** A machine draft (no session): the New-session form. */
   newSession: 'new-session',
 } as const;
@@ -107,11 +106,6 @@ export interface QuestionDraft {
   readonly picks: Readonly<Record<string, QuestionDraftPick>>;
 }
 
-/** `review:<reviewId>`: the Send-back comment. */
-export interface ReviewDraft {
-  readonly comment: string;
-}
-
 /** `todo-add` / `todo-edit:<todoId>`: the form's fields as typed (the estimate as text, e.g. `1h 30m`). */
 export interface TodoFormDraft {
   readonly title: string;
@@ -119,11 +113,6 @@ export interface TodoFormDraft {
   readonly plan: string;
   readonly priority: string;
   readonly estimate: string;
-}
-
-/** `commit:<reviewId>`: the Commit message as edited (the card sends `''` while it is the drafted one). */
-export interface CommitDraft {
-  readonly message: string;
 }
 
 /**
@@ -140,10 +129,8 @@ export interface NewSessionDraft {
 export interface DraftValues {
   readonly composer: ComposerDraft;
   readonly question: QuestionDraft;
-  readonly review: ReviewDraft;
   readonly 'todo-add': TodoFormDraft;
   readonly 'todo-edit': TodoFormDraft;
-  readonly commit: CommitDraft;
   readonly 'new-session': NewSessionDraft;
 }
 
@@ -284,17 +271,9 @@ export function parseDraftValue(field: string, value: unknown): DraftValues[Draf
       }
       return { picks };
     }
-    case 'review': {
-      const comment = text(value['comment'] ?? '', 4000);
-      return comment === null ? null : { comment };
-    }
     case 'todo-add':
     case 'todo-edit':
       return todoForm(value);
-    case 'commit': {
-      const message = text(value['message'] ?? '', 4000);
-      return message === null ? null : { message };
-    }
     case 'new-session': {
       const raw = value['form'] ?? {};
       const branch = value['simpleBranch'] ?? null;
@@ -307,7 +286,7 @@ export function parseDraftValue(field: string, value: unknown): DraftValues[Draf
 
 /**
  * `true` when the value holds nothing worth keeping: an empty composer (no text,
- * no chips), no picks, an empty comment or commit message, a + Add form as it opens
+ * no chips), no picks, a + Add form as it opens
  * (D70: plan `No plan`, medium), a New-session form without typed text. Saving an empty value clears the draft. An Edit form is
  * kept while it is open, so it is never empty here (Save or Cancel clears it).
  */
@@ -321,16 +300,12 @@ export function draftIsEmpty(field: string, value: unknown): boolean {
     }
     case 'question':
       return Object.keys((parsed as QuestionDraft).picks).length === 0;
-    case 'review':
-      return (parsed as ReviewDraft).comment.trim() === '';
     case 'todo-add': {
       const form = parsed as TodoFormDraft;
       return form.title.trim() === '' && form.description.trim() === '' && (form.plan.trim() === '' || form.plan === TODO_NO_PLAN) && form.priority === DEFAULT_TODO_PRIORITY && form.estimate.trim() === '';
     }
     case 'todo-edit':
       return false;
-    case 'commit':
-      return (parsed as CommitDraft).message.trim() === '';
     case 'new-session': {
       // Only typed text is worth keeping (the picks alone are not: they reopen as they were set).
       const draft = parsed as NewSessionDraft;

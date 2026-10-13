@@ -36,13 +36,11 @@ export function visibleItems(items: readonly InboxItem[], done: ReadonlySet<stri
 }
 
 /** What the detail renders under the text: the question card, a permission request, or system actions. */
-export type DetailBody = 'questions' | 'permission' | 'system' | 'review';
+export type DetailBody = 'questions' | 'permission' | 'system';
 
 /** The detail body of an item. */
 export function detailBody(item: InboxItem): DetailBody {
   if (item.kind === 'questions') return 'questions';
-  // D79: a review item shows its card (with its own actions).
-  if (item.kind === 'review' && item.review) return 'review';
   return item.kind === 'permission' ? 'permission' : 'system';
 }
 
@@ -85,6 +83,14 @@ export const OPEN_FIX_SESSION = 'open-fix-session';
 export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPrefill | null {
   if (item.kind !== 'system' || actionId !== OPEN_FIX_SESSION) return null;
   return item.prefill ?? {};
+}
+
+/** D102: a plan's "Ready to merge" item's Open plan: goes to the plan (`item.route`) without closing the item. */
+export const OPEN_PLAN = 'open-plan';
+
+/** D102: the route an action goes to without calling the server (Open plan), else `null`. */
+export function openRoute(item: InboxItem, actionId: string): string | null {
+  return item.kind === 'system' && actionId === OPEN_PLAN ? (item.route ?? null) : null;
 }
 
 /** D55: the update item's action that closes it and opens Settings → Updates (the notes and the Update button). */

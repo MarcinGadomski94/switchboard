@@ -14,9 +14,8 @@
  * the UI needs (system / usage, settings, CLIs, accounts, machines, tools and
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
- * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
- * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D99) plans (all of their routes), and (D91) a
+ * and notifications (D87: and its pages' presence), and (D85) the
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -60,9 +59,6 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   // D75: ▶ Start (normal use: in progress + the start message); D76: ▸ Run in new session (normal use: a new session for the item).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/(?:start|run)$/],
-  // D79: review cards: the list, Merge (local only), Open PR, Commit, Send back, Dismiss (normal use from the phone).
-  ['GET', /^\/api\/reviews$/],
-  ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|dismiss)$/],
   // D89: saved artifacts: read them (list, one artifact, a version's bytes), Save as artifact from a message, Delete (normal use).
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
@@ -130,7 +126,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET|PUT|DELETE', /^\/api\/plans\/[^/]+$/],
   ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
   ['PUT|DELETE', /^\/api\/plans\/[^/]+\/items\/[^/]+$/],
-  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
+  // D102: a ready-to-merge item's Merge (local only), Open PR and Send back, as the review cards' were.
+  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|merge|open-pr|send-back)$/],
   ['DELETE', /^\/api\/plans\/[^/]+\/edges\/[^/]+\/[^/]+$/],
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
   // Team (D100) hook (docs/team.md → Devices): read the team, answer (requests), pause / resume, give tasks (hand-offs),
@@ -198,8 +195,6 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['*', /^\/api\/test(?:\/.*)?$/],
   // D91: Settings → Apply the standing instruction to open sessions (a settings action: desktop only).
   ['POST', /^\/api\/settings\/standing-instruction\/apply$/],
-  // D79: a review's Discard (drops the changes) and Clean up (removes the worktree and its branch): desktop only.
-  ['POST', /^\/api\/reviews\/[^/]+\/(?:discard|cleanup)$/],
   // Team (D100) hook: renaming the team and editing a member's charter / rhythm / budget / gates (configuration: desktop),
   // moving a member (a take-over, D65: desktop only) and the machines' sync exchange (peer API only).
   ['PUT', /^\/api\/team(?:\/members\/[^/]+)?$/],

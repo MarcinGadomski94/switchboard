@@ -289,7 +289,7 @@ export function TodoStrip({
   const [showDone, setShowDone] = useState(false);
   const now = useMinuteClock();
   const all = list?.todos ?? [];
-  const { open, review, done } = splitTodos(all);
+  const { open, done } = splitTodos(all);
   const disabled = blocked !== null;
   const { show } = useToasts();
   const runSessionOf = useRunSessions();
@@ -418,12 +418,11 @@ export function TodoStrip({
             />
           ) : null}
           {selection.selecting ? <TodoSelectionBar selection={selection} busy={running} onRun={runSelected} /> : null}
-          {open.length + review.length > 0 ? (
+          {open.length > 0 ? (
             <TodoCards
               sessionId={sessionId}
               all={all}
-              // D76: the items in review after the open ones.
-              items={[...open, ...review]}
+              items={open}
               disabled={disabled}
               run={run}
               now={now}

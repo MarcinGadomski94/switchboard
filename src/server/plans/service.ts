@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { SessionStatus } from '../../core/model.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES, WORK_TYPES } from '../../core/model.ts';
-import type { ReviewOutcome } from '../../core/reviews.ts';
 import { shortNameFromTitle } from '../../core/session-title.ts';
 import {
   DEFAULT_PLAN_BASE,
@@ -48,6 +47,7 @@ import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../schedules/scheduler.ts';
 import { TodoError, type TodoService } from '../todos/service.ts';
 import type { PlanGitPort, PlanRepoState } from './git.ts';
+import { BranchMergeError, BranchMergeGit, type BranchMergeInput, type BranchMergePlan } from '../worktrees/branch-merge.ts';
 
 /** Why the service refused a call: maps to the HTTP answer of the route. */
 export class PlanError extends Error {
@@ -55,16 +55,20 @@ export class PlanError extends Error {
   readonly status: number;
   readonly code: string;
   readonly field: string | null;
-  constructor(status: number, code: string, message: string, field: string | null = null) {
+  /** D102: a refused Merge's conflicting files (`conflicts`), else empty. */
+  readonly conflicts: readonly string[];
+  constructor(status: number, code: string, message: string, field: string | null = null, conflicts: readonly string[] = []) {
     super(message);
     this.status = status;
     this.code = code;
     this.field = field;
+    this.conflicts = conflicts;
   }
 
-  /** The answer body: `{ error, message }`, with `errors: [{ field, message }]` for a 422 on a field. */
+  /** The answer body: `{ error, message }`, with `errors: [{ field, message }]` for a 422 on a field (D102: `conflicts` for a refused Merge). */
   body(): Record<string, unknown> {
-    return this.field !== null ? { error: this.code, message: this.message, errors: [{ field: this.field, message: this.message }] } : { error: this.code, message: this.message };
+    if (this.field !== null) return { error: this.code, message: this.message, errors: [{ field: this.field, message: this.message }] };
+    return this.conflicts.length > 0 ? { error: this.code, message: this.message, conflicts: this.conflicts } : { error: this.code, message: this.message };
   }
 }
 
@@ -107,6 +111,27 @@ export interface PlanEnvironment {
   send(sessionId: string, text: string): Promise<void>;
   /** Raises an Inbox system item (once per `dedupe`). */
   notice(input: { readonly kind: 'plan-ready' | 'plan-conflict'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
+  /** D102: raises the Inbox's "Ready to merge: <item> (<plan>)" item (Merge / Open plan; once per `dedupe`). */
+  mergeNotice(input: PlanMergeNotice): Promise<void>;
+  /** D102: closes the open "Ready to merge" items of plan item `itemId` (merged, sent back, failed, …) with `outcome`. */
+  closeMergeNotice(itemId: string, outcome: string): Promise<void>;
+}
+
+/** D102: what the Inbox's "Ready to merge" item says and acts on. */
+export interface PlanMergeNotice {
+  readonly sessionId: string;
+  readonly planId: string;
+  readonly itemId: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly dedupe: string;
+}
+
+/** D102: the git / gh steps of a plan item's Merge and Open PR (the real one is {@link BranchMergeGit}; tests may pass their own). */
+export interface PlanMergePort {
+  check(input: BranchMergeInput): Promise<BranchMergePlan>;
+  merge(plan: BranchMergePlan): Promise<string>;
+  openPullRequest(input: BranchMergeInput, title: string, body: string): Promise<string>;
 }
 
 /** Options for {@link PlanService}. */
@@ -117,6 +142,8 @@ export interface PlanServiceOptions {
   readonly bus: HubBus;
   readonly todos: TodoService;
   readonly git: PlanGitPort;
+  /** D102: the Merge step's git / gh (default {@link BranchMergeGit} with `gh` from PATH). */
+  readonly merger?: PlanMergePort;
   readonly env: PlanEnvironment;
   readonly clock?: SchedulerClock;
   /** How often the checks of items waiting on them are read again (default 60 s). */
@@ -165,13 +192,10 @@ function invalid(field: string, message: string): PlanError {
   return new PlanError(422, 'invalid', message, field);
 }
 
-/** The developer-facing reason of a failed item, phrased to follow "which …" in a dependent's reason. */
-const DISCARDED = 'was discarded';
-
 /**
  * D99 · Plans (`docs/plans.md`): the plans' store, validation and view model, and the
  * scheduler that starts ready items as todo runs and moves them to done. Event driven: a run
- * session's status (`sessionUpdated`), `reviewResolved`, the source sessions' todo changes
+ * session's status (`sessionUpdated`), the source sessions' todo changes
  * (`todosChanged`), usage updates (`system`), a poll of the PR checks of the items waiting on
  * them, and once at start (plans that were running before a restart resume). Every change
  * publishes `planChanged`. One scheduling cycle at a time.
@@ -187,6 +211,7 @@ export class PlanService {
   readonly #bus: HubBus;
   readonly #todos: TodoService;
   readonly #git: PlanGitPort;
+  readonly #merger: PlanMergePort;
   readonly #env: PlanEnvironment;
   readonly #clock: SchedulerClock;
   readonly #pollMs: number;
@@ -195,8 +220,8 @@ export class PlanService {
   readonly #runs = new Map<string, { itemId: string; status: SessionStatus | null }>();
   /** Items to read from git at the next cycle; `true` = also check for a conflict (a turn ended). */
   readonly #dirty = new Map<string, boolean>();
-  /** A review outcome waiting for its item's next evaluation. */
-  readonly #resolved = new Map<string, ReviewOutcome>();
+  /** D102: items whose Merge / Open PR / Send back runs now (a second click is refused). */
+  readonly #acting = new Set<string>();
   #tail: Promise<void> = Promise.resolve();
   #queued = false;
   #unsubscribe: (() => void) | null = null;
@@ -218,6 +243,7 @@ export class PlanService {
     this.#bus = options.bus;
     this.#todos = options.todos;
     this.#git = options.git;
+    this.#merger = options.merger ?? new BranchMergeGit({ gh: ['gh'] });
     this.#env = options.env;
     this.#clock = options.clock ?? SYSTEM_CLOCK;
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS;
@@ -232,7 +258,19 @@ export class PlanService {
    */
   async start(): Promise<void> {
     if (this.#closed) return;
-    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged(), sessionContinued: (from, to) => this.sessionContinued(from, to) });
+    this.#offHooks ??= registerPlanHooks(this.#store, {
+      switchChanged: () => this.switchChanged(),
+      sessionContinued: (from, to) => this.sessionContinued(from, to),
+      inboxMerge: async (planId, itemId) => {
+        try {
+          await this.mergeItem(planId, itemId);
+          return null;
+        } catch (error) {
+          if (error instanceof PlanError) return error.conflicts.length > 0 ? `${error.message}: ${error.conflicts.join(', ')}` : error.message;
+          throw error;
+        }
+      },
+    });
     await this.switchChanged();
   }
 
@@ -307,7 +345,6 @@ export class PlanService {
     this.#problem = null;
     this.#runs.clear();
     this.#dirty.clear();
-    this.#resolved.clear();
     if (!db) return;
     const paused: string[] = [];
     try {
@@ -471,19 +508,6 @@ export class PlanService {
         this.kick();
         return;
       }
-      case 'reviewResolved': {
-        const run = this.#runs.get(message.payload.sessionId);
-        if (!run) return;
-        this.#resolved.set(run.itemId, message.payload.outcome);
-        this.#dirty.set(run.itemId, this.#dirty.get(run.itemId) === true);
-        this.kick();
-        return;
-      }
-      case 'reviewsChanged': {
-        const run = this.#runs.get(message.payload.sessionId);
-        if (run) this.#publishOfItem(run.itemId);
-        return;
-      }
       case 'todosChanged':
       case 'system':
         // A source's todo changed (an item's title / estimate, a todo removed), or usage readings moved.
@@ -543,13 +567,11 @@ export class PlanService {
     for (const item of items) {
       const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
       const todo = await this.#store.todos.get(item.todoId);
-      const reviewPending = item.runSessionId ? (await this.#store.reviews.openOf(item.runSessionId)) !== null : false;
       facts.push({
         ...item,
         title: todo?.title ?? item.title,
         estimateMinutes: todo ? todo.estimateMinutes : item.estimateMinutes,
         sessionStatus: session ? session.status : null,
-        reviewPending: reviewPending || todo?.state === 'review',
       });
     }
     const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime() });
@@ -691,7 +713,7 @@ export class PlanService {
     if (typeof input['todoId'] === 'string' && input['todoId'] !== '') {
       const found = await this.#store.todos.get(input['todoId']);
       if (!found || found.sessionId !== plan.sourceSessionId) throw invalid('todoId', `no todo ${input['todoId']} in the plan's session`);
-      if (found.state === 'done' || found.state === 'review') throw invalid('todoId', 'a done or reviewed todo cannot be planned: reopen it first');
+      if (found.state === 'done') throw invalid('todoId', 'a done todo cannot be planned: reopen it first');
       if (items.some((item) => item.todoId === found.id)) throw invalid('todoId', 'that todo is in the plan already');
       todo = found;
     } else if (isRecord(input['todo'])) {
@@ -958,6 +980,106 @@ export class PlanService {
     return this.get(planId);
   }
 
+  // ── the Merge step (D102) ───────────────────────────────────────────────
+
+  /**
+   * D102 · `POST /api/plans/{id}/items/{itemId}/merge`: the developer's Merge of a
+   * `ready-to-merge` item. Every repo of the item's branch is checked before any is merged
+   * (`BranchMergeGit.check`: refused 409 `uncommitted`, `target-dirty`, `target-missing`,
+   * `no-branch` or `conflicts` with the files), then merged into the plan's target locally,
+   * never pushed, never forced. The item is done and its dependents may start.
+   */
+  async mergeItem(planId: string, itemId: string): Promise<Plan> {
+    return this.#act(planId, itemId, async (plan, item, inputs) => {
+      const checked: BranchMergePlan[] = [];
+      for (const input of inputs) checked.push(await this.#merger.check(input));
+      const notes: string[] = [];
+      for (const ready of checked) notes.push(await this.#merger.merge(ready));
+      await this.#done(plan, item, `merged by you into ${plan.targetBranch}`);
+      return notes;
+    });
+  }
+
+  /**
+   * D102 · `POST /api/plans/{id}/items/{itemId}/open-pr`: pushes the item's branch (never
+   * forced) and opens (or reuses) its pull request into the target; the item stays ready to merge.
+   */
+  async openItemPullRequest(planId: string, itemId: string): Promise<Plan> {
+    return this.#act(planId, itemId, async (plan, item, inputs) => {
+      const todo = await this.#store.todos.get(item.todoId);
+      const title = todo?.title ?? item.title;
+      let url: string | null = null;
+      for (const input of inputs) url = await this.#merger.openPullRequest(input, title, `${item.key ? `${item.key}: ` : ''}${title}\n\nAn item of the plan "${plan.title}". Opened from Switchboard's Plans page.`);
+      if (url !== null) await this.#repo().updateItem(item.id, { prUrl: url });
+      return [];
+    });
+  }
+
+  /**
+   * D102 · `POST /api/plans/{id}/items/{itemId}/send-back` `{ comment }` (1–4,000 characters):
+   * the comment goes to the item's session as the developer's message, its todo goes back in
+   * progress and the item runs again (it is ready to merge again once its run finishes).
+   */
+  async sendBackItem(planId: string, itemId: string, body: Readonly<Record<string, unknown>>): Promise<Plan> {
+    const comment = typeof body['comment'] === 'string' ? body['comment'].trim() : '';
+    if (comment === '' || comment.length > 4_000) throw invalid('comment', 'give a comment of 1 to 4,000 characters');
+    return this.#act(planId, itemId, async (_plan, item) => {
+      const todo = await this.#store.todos.get(item.todoId);
+      if (todo && todo.state === 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'in_progress' }, 'developer').catch((error: unknown) => this.#onError(error));
+      try {
+        await this.#env.send(item.runSessionId as string, `Plans: your work on "${todo?.title ?? item.title}" was sent back with this comment:\n\n${comment}`);
+      } catch (error) {
+        throw new PlanError(409, 'send-failed', `the comment could not be sent: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      await this.#repo().updateItem(item.id, { waitingOn: null, waitingSince: null });
+      await this.#env.closeMergeNotice(item.id, 'sent-back').catch((error: unknown) => this.#onError(error));
+      return [];
+    });
+  }
+
+  /**
+   * The shared frame of the Merge step's actions: one action per item at a time, run between
+   * scheduling cycles; the item must be ready to merge (409 `not-ready`); a git refusal is a 409
+   * with its code (and `conflicts`). Publishes and answers the plan.
+   */
+  async #act(planId: string, itemId: string, run: (plan: PlanRecord, item: PlanItemRecord, inputs: BranchMergeInput[]) => Promise<readonly string[]>): Promise<Plan> {
+    const plan = await this.#plan(planId);
+    const item = await this.#item(planId, itemId);
+    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
+    if (item.state !== 'running' || item.waitingOn !== 'merge' || item.runSessionId === null) throw new PlanError(409, 'not-ready', `${itemLabel(item)} is not waiting for your merge`);
+    if (this.#acting.has(item.id)) throw new PlanError(409, 'busy', 'an action on this item is still running');
+    const session = await this.#store.sessions.get(item.runSessionId);
+    if (session?.status === 'run') throw new PlanError(409, 'busy', "the item's session is working: wait for its turn to end");
+    this.#acting.add(item.id);
+    try {
+      const inputs: BranchMergeInput[] = [];
+      if (item.branch !== null) {
+        for (const record of await this.#store.worktrees.list({ sessionId: item.runSessionId })) {
+          if (record.branch !== item.branch) continue;
+          inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch });
+        }
+      }
+      if (inputs.length === 0) throw new PlanError(409, 'no-branch', `${itemLabel(item)} has no worktree branch to merge (it ran in the source folder): merge it yourself, then Mark done`);
+      // Run between scheduling cycles, so the scheduler never reads the item half-merged.
+      const work = this.#tail.then(() => run(plan, item, inputs));
+      this.#tail = work.then(
+        () => undefined,
+        () => undefined,
+      );
+      try {
+        await work;
+      } catch (error) {
+        if (error instanceof BranchMergeError) throw new PlanError(409, error.code, error.message, null, error.conflicts);
+        throw error;
+      }
+    } finally {
+      this.#acting.delete(item.id);
+    }
+    await this.#publish(planId);
+    this.kick();
+    return this.get(planId);
+  }
+
   // ── the Jira seam ───────────────────────────────────────────────────────
 
   /**
@@ -1148,8 +1270,9 @@ export class PlanService {
 
   /**
    * Brings a running item up to date: its session's status (a question), and, when the item is
-   * dirty (its session's status changed, its review resolved, its checks are polled), what git
-   * and gh say: merged, the checks, a conflict. Answers whether anything changed.
+   * dirty (its session's status changed, its checks are polled, D102: its todo was marked done
+   * while the developer merges it), what git and gh say: merged, the checks, a conflict, and
+   * (D102) whether it is ready for the developer's Merge. Answers whether anything changed.
    */
   async #refresh(plan: PlanRecord, item: PlanItemRecord): Promise<boolean> {
     const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
@@ -1158,17 +1281,16 @@ export class PlanService {
       return true;
     }
     if (item.runSessionId && !this.#runs.has(item.runSessionId)) this.#runs.set(item.runSessionId, { itemId: item.id, status: session.status });
-    const resolved = this.#resolved.get(item.id) ?? null;
-    this.#resolved.delete(item.id);
-    const dirty = this.#dirty.has(item.id) || resolved !== null;
+    const developer = developerMerges(plan.mergeMode, item);
+    const todo = await this.#store.todos.get(item.todoId);
+    // D102: a run finished (its todo done, its turn over) while the developer merges: ready to merge.
+    const finished = developer && todo?.state === 'done' && session.status !== 'run' && session.status !== 'need';
+    // The rule changed (agents merge now) while it waited for the developer's Merge.
+    const ruleChanged = !developer && item.waitingOn === 'merge';
+    const dirty = this.#dirty.has(item.id) || (finished && item.waitingOn !== 'merge') || ruleChanged;
     const conflicts = this.#dirty.get(item.id) === true;
     this.#dirty.delete(item.id);
-    if (resolved === 'discarded') {
-      await this.#fail(item, DISCARDED);
-      return true;
-    }
-    if (!dirty) return this.#setWaiting(item, session.status === 'need' ? 'question' : item.waitingOn === 'question' ? null : item.waitingOn);
-    const developer = developerMerges(plan.mergeMode, item);
+    if (!dirty) return this.#setWaiting(plan, item, session.status === 'need' ? 'question' : item.waitingOn === 'question' ? null : item.waitingOn);
     const repos = await this.#inspect(plan, item, conflicts);
     const worked = repos.filter((repo) => repo.hasWork);
     const merged = worked.length > 0 && worked.every((repo) => repo.merged);
@@ -1178,11 +1300,14 @@ export class PlanService {
     const prUrl = repos.find((repo) => repo.pr?.url)?.pr?.url ?? item.prUrl;
 
     if (developer) {
-      if (resolved === 'merged') return this.#done(plan, item, null, prUrl);
-      if (merged && (resolved === 'dismissed' || resolved === 'committed')) return this.#done(plan, item, `merged into ${plan.targetBranch} without your Merge (the review card was ${resolved === 'dismissed' ? 'handled by the agent' : 'committed'})`, prUrl);
-      if (resolved === 'dismissed' || resolved === 'committed') note = `its review card was ${resolved === 'dismissed' ? 'dismissed' : 'committed'} without a merge into ${plan.targetBranch}`;
-      const todo = await this.#store.todos.get(item.todoId);
-      if (waiting === null && ((await this.#store.reviews.openOf(session.id)) !== null || todo?.state === 'review')) waiting = 'review';
+      // D102: merged without the developer's Merge (the agent merged it, or someone else did): done.
+      if (merged) return this.#done(plan, item, `merged into ${plan.targetBranch} without your Merge`, prUrl);
+      const withPr = worked.filter((repo) => repo.pr !== null);
+      if (withPr.length > 0) checks = withPr.find((repo) => repo.pr?.checks.state === 'red')?.pr?.checks ?? withPr[0]?.pr?.checks ?? null;
+      // D102: ready for the developer's Merge once its run finished: its todo is done, or every PR is open with green checks; it stays ready until merged or sent back.
+      const greenPrs = withPr.length > 0 && withPr.every((repo) => repo.pr?.state === 'OPEN' && (repo.pr.checks.state === 'green' || repo.pr.checks.state === 'none'));
+      const idle = session.status !== 'run' && session.status !== 'need';
+      if (waiting === null && (item.waitingOn === 'merge' || (idle && (finished || greenPrs)))) waiting = 'merge';
     } else {
       const withPr = worked.filter((repo) => repo.pr !== null);
       const offline = worked.some((repo) => !repo.ghAvailable);
@@ -1235,7 +1360,7 @@ export class PlanService {
       waiting = 'conflict';
     }
     if (session.closedAt !== null && worked.length === 0) {
-      // Closed with nothing to merge; closed with work, it may still be merged (its card, its PR).
+      // Closed with nothing to merge; closed with work, it may still be merged (the developer's Merge, its PR).
       await this.#fail(item, 'was closed without any work to merge');
       return true;
     }
@@ -1249,7 +1374,7 @@ export class PlanService {
       await this.#repo().updateItem(item.id, patch);
       changed = true;
     }
-    if (await this.#setWaiting({ ...item, ...patch } as PlanItemRecord, waiting)) changed = true;
+    if (await this.#setWaiting(plan, { ...item, ...patch } as PlanItemRecord, waiting)) changed = true;
     return changed;
   }
 
@@ -1264,19 +1389,41 @@ export class PlanService {
     return out;
   }
 
-  /** Sets what the item waits on (and since when); answers whether it changed. */
-  async #setWaiting(item: PlanItemRecord, on: PlanWaitingOn | null): Promise<boolean> {
+  /**
+   * Sets what the item waits on (and since when); answers whether it changed. D102: entering
+   * `merge` raises the Inbox's "Ready to merge" item; leaving it closes it.
+   */
+  async #setWaiting(plan: PlanRecord, item: PlanItemRecord, on: PlanWaitingOn | null): Promise<boolean> {
     if (item.waitingOn === on) return false;
-    await this.#repo().updateItem(item.id, { waitingOn: on, waitingSince: on === null ? null : this.#nowIso() });
+    const since = on === null ? null : this.#nowIso();
+    await this.#repo().updateItem(item.id, { waitingOn: on, waitingSince: since });
+    if (on === 'merge' && item.runSessionId) {
+      const todo = await this.#store.todos.get(item.todoId);
+      const title = todo?.title ?? item.title;
+      await this.#env
+        .mergeNotice({
+          sessionId: item.runSessionId,
+          planId: plan.id,
+          itemId: item.id,
+          title: `Ready to merge: ${title} (${plan.title})`,
+          detail: `${item.branch ?? 'Its branch'} → ${plan.targetBranch}. Merge it into ${plan.targetBranch}, or open the plan to send it back.`,
+          dedupe: `plan-merge:${item.id}:${since ?? ''}`,
+        })
+        .catch((error: unknown) => this.#onError(error));
+    } else if (item.waitingOn === 'merge') {
+      await this.#env.closeMergeNotice(item.id, on === 'question' ? 'question' : 'not-ready').catch((error: unknown) => this.#onError(error));
+    }
     return true;
   }
 
   async #done(plan: PlanRecord, item: PlanItemRecord, note: string | null, prUrl: string | null = item.prUrl, checks: PlanChecks | null = item.checks): Promise<true> {
     const now = this.#nowIso();
     await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: item.mergedAt ?? now, doneAt: now, reason: null });
-    // The todo is done too (a run item in review skips it: the plan's rule decided).
+    // D102: its "Ready to merge" Inbox item (if any) is closed.
+    await this.#env.closeMergeNotice(item.id, 'merged').catch((error: unknown) => this.#onError(error));
+    // The todo is done too.
     const todo = await this.#store.todos.get(item.todoId);
-    if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done', skipReview: true }, 'developer').catch((error: unknown) => this.#onError(error));
+    if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done' }, 'developer').catch((error: unknown) => this.#onError(error));
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
     await this.#publish(plan.id);
     this.kick();
@@ -1285,15 +1432,8 @@ export class PlanService {
 
   async #fail(item: PlanItemRecord, reason: string): Promise<void> {
     await this.#repo().updateItem(item.id, { state: 'failed', reason, waitingOn: null, waitingSince: null });
+    if (item.waitingOn === 'merge') await this.#env.closeMergeNotice(item.id, 'failed').catch((error: unknown) => this.#onError(error));
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
-  }
-
-  #publishOfItem(itemId: string): void {
-    if (!this.#db) return;
-    void this.#repo()
-      .item(itemId)
-      .then((item) => (item ? this.#publish(item.planId) : undefined))
-      .catch((error: unknown) => this.#onError(error));
   }
 
   async #publish(planId: string): Promise<void> {

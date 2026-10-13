@@ -80,22 +80,25 @@ export function checkTodoNote(value: unknown, field: 'description' | 'plan'): To
   return { ok: true, value: trimmed === '' ? null : trimmed };
 }
 
-/** D75: the states, in their order (open → in progress → done); D76: review between in progress and done. */
-export const TODO_STATES: readonly TodoState[] = ['open', 'in_progress', 'review', 'done'];
+/** D75: the states, in their order (open → in progress → done). D102: D76's `review` is gone. */
+export const TODO_STATES: readonly TodoState[] = ['open', 'in_progress', 'done'];
 
 /** D75: `true` for one of {@link TODO_STATES}. */
 export function isTodoState(value: unknown): value is TodoState {
   return typeof value === 'string' && (TODO_STATES as readonly string[]).includes(value);
 }
 
-/** D75: a state as given (an older peer's unknown one, or none) read safely: anything but `in_progress` / `review` / `done` is `open`. */
+/**
+ * D75: a state as given (an older peer's unknown one, or none) read safely: anything but `in_progress` / `done` is `open`.
+ * D102: D76's `review` (an older install or peer; review cards were removed) reads as `done`.
+ */
 export function todoStateOf(value: unknown): TodoState {
-  return value === 'in_progress' || value === 'done' || value === 'review' ? value : 'open';
+  if (value === 'review') return 'done';
+  return value === 'in_progress' || value === 'done' ? value : 'open';
 }
 
 /**
  * D75: `true` for an item not done yet (open or in progress): it counts as open, sorts with the open ones and has an estimate.
- * D76: an item in review is neither open nor done (its run finished it; the developer reviews it).
  */
 export function todoIsOpen(todo: Pick<SessionTodo, 'state'>): boolean {
   return todo.state === 'open' || todo.state === 'in_progress';
@@ -250,11 +253,9 @@ export function todoEstimateTotal(todos: readonly Pick<SessionTodo, 'state' | 'e
 export function todoCountsLabel(todos: readonly Pick<SessionTodo, 'state' | 'estimateMinutes'>[]): string {
   const inProgress = todos.filter((todo) => todo.state === 'in_progress').length;
   const open = todos.filter((todo) => todo.state === 'open').length;
-  // D76: the items in review, only when some are.
-  const review = todos.filter((todo) => todo.state === 'review').length;
   const done = todos.filter((todo) => todo.state === 'done').length;
   const estimate = todoEstimateTotal(todos);
-  return [inProgress > 0 ? `${inProgress} in progress` : null, `${open} open`, estimate || null, review > 0 ? `${review} in review` : null, `${done} done`].filter((part) => part !== null).join(' · ');
+  return [inProgress > 0 ? `${inProgress} in progress` : null, `${open} open`, estimate || null, `${done} done`].filter((part) => part !== null).join(' · ');
 }
 
 /**
@@ -323,13 +324,11 @@ export function todoRemovalLabel(removeAt: string | null, now: number): string {
  * the manual order (position) within a level; the done ones in list order. D75: the
  * in-progress ones are open ones (they keep their place by priority, not moved to the top).
  */
-export function splitTodos(todos: readonly SessionTodo[]): { readonly open: SessionTodo[]; readonly review: SessionTodo[]; readonly done: SessionTodo[] } {
+export function splitTodos(todos: readonly SessionTodo[]): { readonly open: SessionTodo[]; readonly done: SessionTodo[] } {
   const sorted = [...todos].sort((a, b) => a.position - b.position);
   const byPriority = (a: SessionTodo, b: SessionTodo): number => todoPriorityRank(a.priority) - todoPriorityRank(b.priority) || a.position - b.position;
   const open = sorted.filter(todoIsOpen).sort(byPriority);
-  // D76: the items in review, by priority too (the strip shows them after the open ones, the board in their column).
-  const review = sorted.filter((t) => t.state === 'review').sort(byPriority);
-  return { open, review, done: sorted.filter((t) => t.state === 'done') };
+  return { open, done: sorted.filter((t) => t.state === 'done') };
 }
 
 /**
@@ -338,9 +337,8 @@ export function splitTodos(todos: readonly SessionTodo[]): { readonly open: Sess
  * done ones; in the order shown.
  */
 export function todoMoveScope(all: readonly SessionTodo[], todo: Pick<SessionTodo, 'state' | 'priority'>): SessionTodo[] {
-  const { open, review, done } = splitTodos(all);
+  const { open, done } = splitTodos(all);
   if (todo.state === 'done') return done;
-  if (todo.state === 'review') return review.filter((t) => todoPriorityRank(t.priority) === todoPriorityRank(todo.priority));
   const rank = todoPriorityRank(todo.priority);
   return open.filter((t) => todoPriorityRank(t.priority) === rank);
 }
@@ -369,7 +367,7 @@ export function moveTodo(all: readonly SessionTodo[], id: string, step: -1 | 1):
 
 /** D75: an item's state mark in the agent's tools: `☐` open, `◐ IN PROGRESS`, `☑` done. */
 function stateMark(state: TodoState): string {
-  return state === 'done' ? '☑' : state === 'in_progress' ? '◐ IN PROGRESS' : state === 'review' ? '◑ IN REVIEW' : '☐';
+  return state === 'done' ? '☑' : state === 'in_progress' ? '◐ IN PROGRESS' : '☐';
 }
 
 /**
@@ -389,13 +387,11 @@ export function todoLine(todo: SessionTodo): string {
 
 /** The list as the agent's tools print it (open items first, by priority (D70; D75 the in-progress ones among them), then done ones). */
 export function todoListText(list: SessionTodoList): string {
-  const { open, review, done } = splitTodos(list.todos);
-  if (open.length === 0 && review.length === 0 && done.length === 0) return 'The todo list is empty.';
+  const { open, done } = splitTodos(list.todos);
+  if (open.length === 0 && done.length === 0) return 'The todo list is empty.';
   const lines = [`Open (${open.length}):`, ...(open.length ? open.map(todoLine) : ['(none)'])];
-  // D76: finished by their run session, waiting for the developer's review.
-  if (review.length) lines.push(`In review (${review.length}):`, ...review.map(todoLine));
   if (done.length) lines.push(`Done (${done.length}, removed an hour after done):`, ...done.map(todoLine));
-  if ([...open, ...review, ...done].some((todo) => todo.description || todo.plan)) lines.push('(todo_get shows an item\'s description and plan.)');
+  if ([...open, ...done].some((todo) => todo.description || todo.plan)) lines.push('(todo_get shows an item\'s description and plan.)');
   return lines.join('\n');
 }
 
@@ -404,7 +400,7 @@ export function todoDetailText(todo: SessionTodo): string {
   const title = todo.title ?? todo.text;
   const estimate = todoEstimateLabel(todo.estimateMinutes);
   const lines = [
-    `[${todo.id}] ${todo.state === 'done' ? '☑ done' : todo.state === 'in_progress' ? '◐ in progress' : todo.state === 'review' ? '◑ in review' : '☐ open'} · added by the ${todo.addedBy === 'agent' ? 'agent' : 'developer'}`,
+    `[${todo.id}] ${todo.state === 'done' ? '☑ done' : todo.state === 'in_progress' ? '◐ in progress' : '☐ open'} · added by the ${todo.addedBy === 'agent' ? 'agent' : 'developer'}`,
     `Title: ${title}`,
     `Priority: ${TODO_PRIORITY_LABELS[isTodoPriority(todo.priority) ? todo.priority : DEFAULT_TODO_PRIORITY]}`,
     `Estimate: ${estimate ? `${estimate} (${todo.estimateMinutes} minutes for an AI agent)` : '(none)'}`,

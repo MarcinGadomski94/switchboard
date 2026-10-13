@@ -542,7 +542,7 @@ export function jiraDrift(input: { readonly itemState: string; readonly status: 
   if (status === null) return null;
   const done = input.itemState === 'done';
   if (statusCategory === 'done' && !done) return `Jira says ${status}; the plan item is ${input.itemState}`;
-  const working = ['running', 'question', 'review'].includes(input.itemState);
+  const working = ['running', 'question', 'ready-to-merge'].includes(input.itemState);
   if (working && statusCategory === 'new') return `Jira still says ${status} while the item's run works`;
   if (input.statusAtImport !== null && status !== input.statusAtImport) return `Jira status changed: ${input.statusAtImport} → ${status}`;
   return null;

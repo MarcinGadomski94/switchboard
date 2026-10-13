@@ -110,9 +110,9 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
 
 // ── todos ─────────────────────────────────────────────────────────────────
 
-/** A session's todos that may be planned (not done, not in review; not in the plan yet). */
+/** A session's todos that may be planned (not done; not in the plan yet). */
 function plannable(todos: readonly SessionTodo[], taken: ReadonlySet<string>): SessionTodo[] {
-  return todos.filter((todo) => todo.state !== 'done' && todo.state !== 'review' && !taken.has(todo.id));
+  return todos.filter((todo) => todo.state !== 'done' && !taken.has(todo.id));
 }
 
 /** The todo checkboxes of a session (the New-plan dialog and Add items). */

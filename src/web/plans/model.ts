@@ -17,8 +17,8 @@ export interface StateLook {
   readonly word: string;
 }
 
-/** The violet of an item in review (the approved design; not a SPEC token). */
-export const REVIEW_COLOR = 'oklch(0.75 0.12 310)';
+/** The violet of an item ready to merge (the approved design; not a SPEC token). D102: was the review violet. */
+export const MERGE_COLOR = 'oklch(0.75 0.12 310)';
 
 /** Per state: icon, colour, word (the approved design's table). */
 export const STATE_LOOK: Readonly<Record<PlanItemState, StateLook>> = {
@@ -26,7 +26,7 @@ export const STATE_LOOK: Readonly<Record<PlanItemState, StateLook>> = {
   ready: { icon: '◌', color: 'var(--muted-1)', word: 'ready' },
   running: { icon: '●', color: 'var(--status-run)', word: 'running' },
   question: { icon: '?', color: 'var(--status-need)', word: 'question' },
-  review: { icon: '◐', color: REVIEW_COLOR, word: 'in review' },
+  'ready-to-merge': { icon: '◐', color: MERGE_COLOR, word: 'ready to merge' },
   done: { icon: '✔', color: 'var(--status-done)', word: 'done' },
   blocked: { icon: '✖', color: 'var(--status-fail)', word: 'blocked' },
 };
@@ -57,8 +57,8 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
       return item.waitingOn === 'checks' ? 'running · checks' : 'running';
     case 'question':
       return 'needs your answer';
-    case 'review':
-      return 'in review';
+    case 'ready-to-merge':
+      return 'waiting for your merge';
     case 'done':
       return 'done · merged';
     case 'blocked':
@@ -302,9 +302,9 @@ export interface MergeModeOption {
 
 /** The dialog's three options, in the design's order. */
 export const MERGE_MODE_OPTIONS: readonly MergeModeOption[] = [
-  { mode: 'agents', title: 'Agents merge', text: "A ticket counts as done when its agent has merged it with green checks. Review cards don't block.", recommended: false },
-  { mode: 'agents-with-holds', title: 'Agents merge, with hold points', text: 'The same, except the tickets you tick below wait for your Merge on their Review card.', recommended: true },
-  { mode: 'developer', title: 'I merge each one', text: 'Every ticket waits for your Merge on its Review card.', recommended: false },
+  { mode: 'agents', title: 'Agents merge', text: "A ticket counts as done when its agent has merged it with green checks.", recommended: false },
+  { mode: 'agents-with-holds', title: 'Agents merge, with hold points', text: 'The same, except the tickets you tick below wait for your Merge here.', recommended: true },
+  { mode: 'developer', title: 'I merge each one', text: 'Every ticket waits for your Merge here once its agent is done.', recommended: false },
 ];
 
 /** The dialog's footer note. */
@@ -322,7 +322,7 @@ export interface Segment {
   readonly kind: SegmentKind;
   readonly from: number;
   readonly to: number;
-  /** What the developer waited on (`you` segments): `review`, `question`, `conflict`, `wait` (an earlier wait whose cause is not recorded). */
+  /** What the developer waited on (`you` segments): `merge`, `question`, `conflict`, `wait` (an earlier wait whose cause is not recorded). */
   readonly on?: string;
   /** Why the plan was paused (`paused` segments): "Plans was switched off", "plan paused". */
   readonly note?: string;
@@ -367,11 +367,11 @@ function parse(value: string | null): number | null {
   return Number.isNaN(at) ? null : at;
 }
 
-/** What a running item waits on that is the developer's: a question, a review, a conflict sent to the Inbox. */
+/** What a running item waits on that is the developer's: a question, its merge, a conflict sent to the Inbox. */
 function waitsOnYou(item: PlanItem): string | null {
   if (item.state === 'question') return 'question';
-  if (item.state === 'review') return 'review';
-  if (item.waitingOn === 'question' || item.waitingOn === 'review' || item.waitingOn === 'conflict') return item.waitingOn;
+  if (item.state === 'ready-to-merge') return 'merge';
+  if (item.waitingOn === 'question' || item.waitingOn === 'merge' || item.waitingOn === 'conflict') return item.waitingOn;
   return null;
 }
 
@@ -382,7 +382,7 @@ function waitsOnYou(item: PlanItem): string | null {
  * data) it is derived from the items' timestamps (`startedAt`,
  * `waitingSince`, `mergedAt`, `doneAt`) and the plan's: before an item starts it waits on a
  * dependency (hatched; from the plan's start); from its start the agent works (run blue) until
- * it waits on the developer (`waitingSince` of a question, review or conflict: amber) or is
+ * it waits on the developer (`waitingSince` of a question, merge or conflict: amber) or is
  * done; while the plan is held for usage a ready item's wait shows red from the hold's best
  * known start (the latest of the plan's start and its dependencies' ends); what is left is
  * projected (dashed): each open item after the projected end of its dependencies, for its
@@ -413,7 +413,7 @@ export function timeline(plan: Plan, now: number): Timeline {
         if (to <= from) continue;
         const kind = SPAN_SEGMENT[span.kind];
         if (span.kind === 'waiting-you') {
-          const on = span.endedAt === null ? (waitsOnYou(item) ?? 'wait') : span === lastYou && item.state === 'done' && item.developerMerges ? 'review' : 'wait';
+          const on = span.endedAt === null ? (waitsOnYou(item) ?? 'wait') : span === lastYou && item.state === 'done' && item.developerMerges ? 'merge' : 'wait';
           segments.push({ kind, from, to, on });
           youMs += to - from;
           if (!longest || (to - from) / 3_600_000 > longest.hours) longest = { itemId: item.id, on, hours: (to - from) / 3_600_000 };
@@ -546,7 +546,7 @@ export function finishText(at: number, now: number): string {
   return `${when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`;
 }
 
-/** The summary line: "Waiting on you: 8.6 h of 24 · longest: 3165 review (3 h) · Projected finish: tomorrow 07:30". */
+/** The summary line: "Waiting on you: 8.6 h of 24 · longest: 3165 merge (3 h) · Projected finish: tomorrow 07:30". */
 export function timelineSummary(view: Timeline, plan: Pick<Plan, 'items'>): string {
   const parts = [`Waiting on you: ${hoursText(view.youHours)} h of ${hoursText(view.totalHours)}`];
   if (view.longest) {
@@ -573,7 +573,7 @@ export function axisTicks(view: Pick<Timeline, 'start' | 'end'>): number[] {
   return ticks;
 }
 
-/** Whether an item offers an inline action in the List view: `answer` (a question), `merge` (a review), else none. */
+/** Whether an item offers an inline action in the List view: `answer` (a question), `merge` (ready to merge), else none. */
 export function inlineAction(item: Pick<PlanItem, 'state'>): 'answer' | 'merge' | null {
-  return item.state === 'question' ? 'answer' : item.state === 'review' ? 'merge' : null;
+  return item.state === 'question' ? 'answer' : item.state === 'ready-to-merge' ? 'merge' : null;
 }

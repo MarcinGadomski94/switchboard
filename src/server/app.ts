@@ -29,11 +29,7 @@ import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
-import { TodoReviewLink } from './todos/review-link.ts';
-import { checkpointsEnabled, reviewCardsEnabled, todoEnrichEnabled, todoReminderEnabled } from './settings/settings.ts';
-import { ReviewGit } from './reviews/git.ts';
-import { ReviewService } from './reviews/service.ts';
-import { sessionMessageSender } from './api/todos.ts';
+import { checkpointsEnabled, todoEnrichEnabled, todoReminderEnabled } from './settings/settings.ts';
 import { CheckpointService } from './checkpoints/service.ts';
 import { TodoEnricher } from './todos/enricher.ts';
 import { FreshPlaces } from './sessions/fresh-place.ts';
@@ -164,11 +160,6 @@ export interface AppOptions {
    * device listener, no push: the routes still answer) and closes with the app.
    */
   readonly devices?: DeviceService;
-  /**
-   * D79: the review cards (`docs/reviews.md`). Without one the app makes its own (git
-   * from PATH, the configured gh), started when the app is ready and stopped with it.
-   */
-  readonly reviews?: ReviewService;
   /**
    * D85: the tutorial's state (`docs/tutorial.md`). Without one the app makes its own
    * over the store (this checkout's version; opens by itself unless demo mode or
@@ -403,40 +394,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     await reminder.stop();
   });
-  // D76: a resolved review card (lane B's `reviewResolved`) moves its run's item out of review.
-  const reviewLink = new TodoReviewLink({ bus, todos });
-  app.addHook('onReady', async () => {
-    reviewLink.start();
-  });
-  app.addHook('onClose', async () => {
-    await reviewLink.stop();
-  });
-  // D79: a Review card when a session with changes goes idle (Settings → Sessions), and its actions.
-  let reviews = options.reviews;
-  if (!reviews) {
-    const own = new ReviewService({
-      store: options.store,
-      bus,
-      git: new ReviewGit({ gh: config.ghCommand }),
-      repos: (session) => worktrees.repos.of(session),
-      enabled: () => reviewCardsEnabled(options.store.settings),
-      send: sessionMessageSender({ store: options.store, supervisor, hooks }),
-    });
-    app.addHook('onReady', async () => {
-      own.start();
-    });
-    app.addHook('onClose', async () => {
-      await own.stop();
-    });
-    reviews = own;
-  }
   // D80: a checkpoint of the session's working trees before each turn (Settings → Sessions), the revert and Redo, the retention.
   const checkpoints = new CheckpointService({
     store: options.store,
     sessions: supervisor,
     env: supervisor.environment,
     enabled: () => checkpointsEnabled(options.store.settings),
-    // The repositories the session works in, as review cards and the Diff read them (one shared answer):
+    // The repositories the session works in, as the Diff reads them (one shared answer):
     // its worktrees, its solutions in place (linked worktrees too), the repos it edited, else its cwd's.
     includeCwd: false,
     foldersOf: async (session) => {
@@ -527,7 +491,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
   // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
-  // Ruling 2026-10-09: it also cleans up drafts whose batch / review / todo is gone (listening to the bus).
+  // Ruling 2026-10-09: it also cleans up drafts whose batch / todo is gone (listening to the bus).
   const drafts = new DraftService({ store: options.store, bus });
   app.addHook('onClose', async () => {
     drafts.dispose();
@@ -546,7 +510,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search };
+  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search };
   await registerApiRoutes(app, apiContext);
   // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
   await installTeam(app, apiContext);

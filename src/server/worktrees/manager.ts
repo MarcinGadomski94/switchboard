@@ -360,7 +360,7 @@ export class WorktreeManager implements DiffProvider {
   #checking: Promise<PullRequestCheck[]> | null = null;
   /** D90: the files a session touched in a working tree it uses in place (the Diff's default view). */
   readonly touched: SessionTouchedFiles;
-  /** The repositories a session works in: the one answer of review cards, turn checkpoints and the Diff (`session-repos.ts`). */
+  /** The repositories a session works in: the one answer of turn checkpoints and the Diff (`session-repos.ts`). */
   readonly repos: SessionRepos;
   /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
   #adopting: Promise<unknown> = Promise.resolve();
@@ -1480,7 +1480,7 @@ export class WorktreeManager implements DiffProvider {
   /**
    * The session's diff targets: its worktrees, then the working trees it uses in place
    * (its solutions resolved for watching, linked worktrees included, and the repositories
-   * it edited: {@link SessionRepos}, shared with review cards and checkpoints).
+   * it edited: {@link SessionRepos}, shared with checkpoints).
    */
   async #diffTargets(session: SessionRecord): Promise<DiffTarget[]> {
     const { worktrees, inPlace } = await this.repos.of(session);

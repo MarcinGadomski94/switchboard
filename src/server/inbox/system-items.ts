@@ -12,6 +12,8 @@ import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { inboxCount, sessionBranches } from './wire.ts';
+// Plans (D99) hook (D102): the "Ready to merge" item's Merge.
+import { plansInboxMerge } from '../plans/hooks.ts';
 
 /**
  * System Inbox items (M3.3, `docs/system-items.md`): the items the service raises
@@ -22,6 +24,19 @@ import { inboxCount, sessionBranches } from './wire.ts';
  * "Parent … merged — retarget and rebase …" (a stacked worktree whose parent's PR
  * merged), which also sends its session the rule-5 message.
  */
+
+/** Plans (D99) hook (D102): kind of a plan item's "Ready to merge" item, its actions and their ids. */
+export const PLAN_READY_TO_MERGE = 'plan-ready-to-merge';
+export const PLAN_MERGE = 'plan-merge';
+export const OPEN_PLAN = 'open-plan';
+export const PLAN_READY_TO_MERGE_ACTIONS: readonly InboxAction[] = [
+  { id: PLAN_MERGE, label: 'Merge' },
+  { id: OPEN_PLAN, label: 'Open plan' },
+];
+
+function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /** Kind of the item a failed scheduled run raises. */
 export const SCHEDULE_RUN_FAILED = 'schedule-run-failed';
@@ -74,7 +89,7 @@ export const DEFAULT_SYNC_MS = 30_000;
 const STREAK_WINDOW = 200;
 
 /** Why an action on a system item was refused. `code` maps to an HTTP status in the route. */
-export type SystemItemErrorCode = 'not-found' | 'unknown-action' | 'not-open' | 'busy' | 'gone' | 'unavailable';
+export type SystemItemErrorCode = 'not-found' | 'unknown-action' | 'not-open' | 'busy' | 'gone' | 'refused' | 'unavailable';
 
 /** A refusal of {@link SystemItemService.act}; the item stays open. */
 export class SystemItemError extends Error {
@@ -294,6 +309,49 @@ export class SystemItemService {
   }
 
   /**
+   * Plans (D99) hook (D102, `docs/plans.md` → *Merge step*): the "Ready to merge: <item> (<plan>)"
+   * item of a plan item waiting for the developer's Merge: **Merge** (runs the plan's Merge
+   * through {@link plansInboxMerge}) and **Open plan** (the UI goes to `payload.route` and leaves
+   * the item open). Once per `dedupe`; Plans closes it when the item is merged, sent back or fails.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async planMergeNotice(input: { readonly sessionId: string; readonly planId: string; readonly itemId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: PLAN_READY_TO_MERGE,
+        source: 'plans',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: PLAN_READY_TO_MERGE_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, planId: input.planId, itemId: input.itemId, route: `/plans/${encodeURIComponent(input.planId)}` },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** Plans (D99) hook (D102): closes the open "Ready to merge" items of plan item `itemId` with `outcome`; answers how many. */
+  async closePlanMergeNotices(itemId: string, outcome: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== PLAN_READY_TO_MERGE || !isPayload(item.payload) || item.payload['itemId'] !== itemId) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  /**
    * D55: closes the open "Update available" items of versions at or below
    * `current` (closed with `updated`: this Switchboard runs that version or a
    * newer one). The updater calls it at start.
@@ -476,6 +534,12 @@ export class SystemItemService {
     this.#busy.add(id);
     try {
       await this.#perform(item, action);
+      // D102: the action may have closed the item itself (a plan's Merge closes its "Ready to merge" item).
+      const after = await this.#store.systemItems.get(id);
+      if (after && after.state !== 'open') {
+        await this.#publishInbox();
+        return after;
+      }
       let closed: SystemItemRecord;
       try {
         closed = await this.#store.systemItems.close(id, action);
@@ -491,6 +555,16 @@ export class SystemItemService {
   }
 
   async #perform(item: SystemItemRecord, action: string): Promise<void> {
+    // Plans (D99) hook (D102): a plan item's Merge from its "Ready to merge" item.
+    if (action === PLAN_MERGE) {
+      const planId = isPayload(item.payload) ? item.payload['planId'] : null;
+      const itemId = isPayload(item.payload) ? item.payload['itemId'] : null;
+      if (typeof planId !== 'string' || typeof itemId !== 'string') throw new SystemItemError('gone', 'the plan item is no longer known');
+      const refused = await plansInboxMerge(this.#store, planId, itemId);
+      if (refused !== null) throw new SystemItemError('refused', refused);
+      return;
+    }
+    if (action === OPEN_PLAN) throw new SystemItemError('refused', 'Open plan is a link: open the plan page');
     if (action === RETRY_RUN) {
       if (!item.scheduleId || !(await this.#store.schedules.get(item.scheduleId))) {
         throw new SystemItemError('gone', 'the schedule no longer exists');

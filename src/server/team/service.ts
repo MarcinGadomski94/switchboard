@@ -11,7 +11,6 @@ import {
   HANDOFF_TEXT_MAX,
   MEMBERS_MAX,
   NO_BUDGET,
-  PROTECTED_BRANCH,
   REPORT_MAX,
   TEAM_SETTING,
   type HandoffState,
@@ -55,7 +54,6 @@ import type { HubBus } from '../hub/bus.ts';
 import { listInbox } from '../inbox/wire.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
-import type { ReviewService } from '../reviews/service.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
@@ -92,7 +90,6 @@ export interface TeamServiceOptions {
   readonly loops: LoopService;
   readonly todos: TodoService;
   readonly peers: TeamPeers;
-  readonly reviews: ReviewService | null;
   readonly takeover: TakeoverRunner | null;
   /** `true` for a hooked terminal session (D48 P4; refused for adoption). */
   readonly isHooked: (sessionId: string) => Promise<boolean>;
@@ -217,7 +214,6 @@ export class TeamService {
     this.#offHooks = registerTeamHooks(this.#o.store, {
       charterFor: (sessionId) => this.#charterFor(sessionId),
       roleOf: (sessionId) => this.#roles.get(sessionId) ?? null,
-      reviewGate: (input) => this.#reviewGate(input),
       switchChanged: () => this.switchChanged(),
       // D100-T2: a member's access at its spawn (servers, environment, masking).
       accessServers: (sessionId) => this.access.serversFor(sessionId),
@@ -1034,7 +1030,7 @@ export class TeamService {
     let changed = false;
     for (const handoff of handoffs) {
       const todo = todos.find((t) => t.id === handoff.todoId);
-      const next: HandoffState | null = todo?.state === 'done' ? 'done' : todo?.state === 'in_progress' || todo?.state === 'review' ? 'accepted' : null;
+      const next: HandoffState | null = todo?.state === 'done' ? 'done' : todo?.state === 'in_progress' ? 'accepted' : null;
       if (!next || next === handoff.state) continue;
       await this.#serial(async () => {
         this.#need().putHandoff({ ...handoff, state: next, clock: this.#stamp(), updatedAt: this.#iso() });
@@ -1082,7 +1078,7 @@ export class TeamService {
 
   /**
    * `GET /api/team/needs-you`: the members' open questions, permission requests and
-   * review cards (derived from the Inbox, this machine's and the paired machines'; not
+   * system items (D102: a plan's "Ready to merge" item of a member's session too; derived from the Inbox, this machine's and the paired machines'; not
    * stored again) plus Team's own open requests (gates, budgets; T2 adds access).
    */
   async needsYou(): Promise<TeamNeedsYouItem[]> {
@@ -1165,41 +1161,12 @@ export class TeamService {
   }
 
   async #run(request: TeamRequestRecord, action: TeamRequestAction): Promise<string> {
-    if (action.type === 'review-merge') {
-      if (!this.#o.reviews) throw new Error('review cards are not available here');
-      const review = await this.#o.reviews.act(action.reviewId, 'merge', { teamGate: request.id });
-      return review.note ?? 'Merged.';
-    }
     if (action.type === 'resume-member') {
       await this.resume(request.memberId);
       return 'Resumed.';
     }
     if (accessIdOfRef(action.ref)) return 'Approved: set it up in the member\'s Access tab.';
     return 'Approved: the member may go ahead.';
-  }
-
-  /**
-   * D79 seam: a member's review-card Merge into a protected / default branch, with the
-   * `merge-default-branch` gate on, needs the developer's approval as a Needs-you
-   * request first; the approval runs the merge (`{ teamGate: <request id> }`).
-   */
-  async #reviewGate(input: { readonly reviewId: string; readonly sessionId: string; readonly action: string; readonly body: unknown; readonly bases: readonly (string | null)[] }): Promise<string | null> {
-    if (input.action !== 'merge') return null;
-    const member = this.memberOfSession(input.sessionId);
-    if (!member || !member.gates.includes('merge-default-branch')) return null;
-    const into = input.bases.filter((base): base is string => base !== null && PROTECTED_BRANCH.test(base));
-    if (into.length === 0) return null;
-    const approvedId = (input.body as { teamGate?: unknown } | null)?.teamGate;
-    if (typeof approvedId === 'string' && this.#need().requests().some((r) => r.id === approvedId && r.state === 'approved' && r.memberId === member.id)) return null;
-    const request = await this.requestGate({
-      memberId: member.id,
-      kind: 'gate',
-      gate: 'merge-default-branch',
-      title: `Merge ${member.name}'s changes into ${[...new Set(into)].join(', ')}`,
-      detail: `${member.name} has a review card ready to merge into a protected branch. Approve to run the merge.`,
-      action: { type: 'review-merge', reviewId: input.reviewId },
-    });
-    return `${member.name} needs your approval to merge into ${[...new Set(into)].join(', ')}: approve it in Needs you (request ${request.id}).`;
   }
 
   // ── the tick: budgets, paused members, hand-offs ──────────────────────

@@ -454,16 +454,18 @@ export function memberMenu(member: Pick<TeamMember, 'paused' | 'status' | 'machi
 // ── Needs you ────────────────────────────────────────────────────────────
 
 /** How a Needs-you item is answered in place. */
-export type NeedsYouShape = 'question' | 'permission' | 'review' | 'request' | 'access' | 'other';
+export type NeedsYouShape = 'question' | 'permission' | 'merge' | 'request' | 'access' | 'other';
 
 /** The answer shape of an item. */
-export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind' | 'access'>): NeedsYouShape {
+export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind' | 'access'> & { readonly inbox?: unknown }): NeedsYouShape {
   // T2: an access request carries its access entry (answered with T2's AccessRequestActions).
   if (item.source === 'team' && item.kind === 'access' && item.access) return 'access';
   if (item.source === 'team') return 'request';
   if (item.kind === 'questions') return 'question';
   if (item.kind === 'permission') return 'permission';
-  if (item.kind === 'review') return 'review';
+  // D102: a plan's "Ready to merge" item (Merge / Open plan).
+  const actions = (item.inbox as { readonly actions?: readonly { readonly id: string }[] } | undefined)?.actions ?? [];
+  if (item.kind === 'system' && actions.some((action) => action.id === 'plan-merge')) return 'merge';
   return 'other';
 }
 

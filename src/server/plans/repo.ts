@@ -106,6 +106,21 @@ function planOf(row: Row): PlanRecord {
   };
 }
 
+/**
+ * D102: `waiting_on` as stored → {@link PlanWaitingOn}. Waiting for the developer's Merge is
+ * stored as `review` (the value migration 1's CHECK allows; D79's review cards are gone, the
+ * meaning is now Plans' own Merge step) and answered as `merge`.
+ */
+function waitingOnOf(value: unknown): PlanWaitingOn | null {
+  const raw = typeof value === 'string' && value !== '' ? value : null;
+  return raw === 'review' ? 'merge' : (raw as PlanWaitingOn | null);
+}
+
+/** D102: {@link PlanWaitingOn} → the stored `waiting_on` (`merge` is stored as `review`, see {@link waitingOnOf}). */
+function storedWaitingOn(value: unknown): string | null {
+  return value === 'merge' ? 'review' : value === null || value === undefined ? null : String(value);
+}
+
 function itemOf(row: Row): PlanItemRecord {
   return {
     id: String(row['id']),
@@ -119,7 +134,7 @@ function itemOf(row: Row): PlanItemRecord {
     state: String(row['state']) as PlanItemStoredState,
     reason: text(row['reason'] ?? null),
     note: text(row['note'] ?? null),
-    waitingOn: text(row['waiting_on'] ?? null) as PlanWaitingOn | null,
+    waitingOn: waitingOnOf(row['waiting_on']),
     runSessionId: text(row['run_session_id'] ?? null),
     branch: text(row['branch'] ?? null),
     cut: json<Record<string, string>>(row['cut'] ?? null, {}),
@@ -328,7 +343,7 @@ export class PlanRepository {
       const spec = ITEM_COLUMNS[key];
       if (!spec || value === undefined) continue;
       sets.push(`${spec[0]} = ?`);
-      values.push(stored(value, spec[1]));
+      values.push(key === 'waitingOn' ? storedWaitingOn(value) : stored(value, spec[1]));
     }
     sets.push('updated_at = ?');
     values.push(this.#ctx.now());
