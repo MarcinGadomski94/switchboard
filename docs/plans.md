@@ -101,7 +101,14 @@ A plan can be made from a Jira epic: its child issues become the items, their "b
 
    The plan is a **draft**; its merge mode is chosen at Start (the core requires it). A failure of the core (no target branch, a forbidden branch, too many items) creates nothing.
 
-**Propose missing order** is not built: Switchboard has no sanctioned one-shot agent run (the usage poller and the MCP helper run the CLI without a model call; todo enrichment asks an existing session). `JiraPreview.proposeAvailable` is `false`; `.loop/questions.md` → *D99-Jira*.
+### Proposed order (ruling D99-Jira-q1 (b))
+
+The missing order is proposed on the plan, not in the dialog:
+
+- **Asking.** After an import whose epic has items without links (`askedForOrder: true` in the answer), and on **Propose order** for any draft plan (`POST /api/plans/{id}/proposals/ask`), Switchboard sends the plan's **source session** a message the normal way (queued while it works; a hooked session's mailbox): the plan, its items with the unlinked ones marked, its dependencies, and the ask to call `plan_propose_dependencies` once. A failed ask after an import is a line of the plan's Jira activity; the import still succeeds.
+- **The tool.** `plan_propose_dependencies { plan_id, proposals: [{ from, to, reason }] }` (from = the item that goes first, to = the one that waits; keys or item ids; at most 50) is registered with the other plan tools, only while Plans is on, and only for the plan's own source session. Its description says these are proposals for the developer, not changes. Skipped, with the reason: an unknown item, the same item twice, a dependency the plan has, a pair proposed before.
+- **Deciding.** Proposals live in `plans.db` (`plan_edge_proposals`), `pending` / `accepted` / `rejected`. **Accept** adds the dependency through the core's edge API, so a cycle is refused there: the proposal stays pending with the reason (`note`), and a single Accept answers 409 `cycle`. **Reject** records it. Accept all / Reject all act on every pending one. Each decision publishes `planChanged`.
+- **UI.** `PlanEdgeProposals { planId }` (the page mounts it on the plan): rows "PROJ-15 should wait on PROJ-14 — <reason>" with ✓ / ✕ and Accept all; nothing when no proposal is pending. Phones may accept and reject; a paired machine's plan is decided on its machine.
 
 ### Status sync
 
@@ -121,11 +128,11 @@ A per-plan setting, chosen in the dialog (default **off**) and changeable on the
 
 ### Credentials
 
-Jira Cloud REST API v3 with basic auth (the account's email and an API token): from **Settings → Integrations → Jira** (`JiraCredentialsForm`, stored as one value in the OS keychain through the Team access lane's `SecretStore`, item "Switchboard Jira" / "default"), else from the environment `ATL_BASE_URL`, `ATL_USER`, `ATL_TOKEN`. Settings win when both are set. Requests go only to that base URL (`https://`, or `http://` on loopback for the tests' fake); redirects are refused. See `docs/security.md` → *Jira credentials (D99)*.
+Jira Cloud REST API v3 with basic auth (the account's email and an API token): from **Settings → Experimental → Plans → Jira connection** (ruling D99-Jira-q3: `JiraCredentialsForm`, part of the Plans row and shown only while Plans is on; stored as one value in the OS keychain through the Team access lane's `SecretStore`, item "Switchboard Jira" / "default"), else from the environment `ATL_BASE_URL`, `ATL_USER`, `ATL_TOKEN`. Settings win when both are set. Requests go only to that base URL (`https://`, or `http://` on loopback for the tests' fake); redirects are refused. See `docs/security.md` → *Jira credentials (D99)*.
 
 ### Storage
 
-Plans' `plans.db` (its own connection, opened on first use while Plans is on and closed when it is seen off), tables created when missing (`CREATE TABLE IF NOT EXISTS`, outside the core's migration list): `plan_jira` (epic, base URL, sync, transition names, last refresh), `plan_jira_items` (issue key, status at import and as last read, drift, last soft failure, question episodes), `plan_jira_writes`, `plan_jira_activity`. No secret. A deleted plan's rows go with its `planChanged` (`state: null`).
+Plans' `plans.db` (its own connection, opened on first use while Plans is on and closed when it is seen off), tables created when missing (`CREATE TABLE IF NOT EXISTS`, outside the core's migration list): `plan_jira` (epic, base URL, sync, transition names, last refresh), `plan_jira_items` (issue key, status at import and as last read, drift, last soft failure, question episodes), `plan_jira_writes`, `plan_jira_activity`, and `plan_edge_proposals` (the proposed order, for any plan). No secret. A deleted plan's rows go with its `planChanged` (`state: null`).
 
 ### Machines and devices
 
@@ -133,4 +140,4 @@ Import and sync run on the machine that owns the plan (the source session's mach
 
 ### Tests
 
-`tests/server/plans/jira.test.ts` (the fake Jira `tests/helpers/fake-jira.ts`: an epic with five children, blocks links with a cycle and a link outside the epic, a workflow without "In Review" for one issue, comments, injected failures), `tests/core/plans-jira.test.ts` (rules, route classification), `tests/e2e/plans-jira.spec.ts` (the dialog's dev mount against the fake Jira, desktop and 360 px). Tests never call the real Jira and never read the developer's `ATL_*` (test servers drop them; in-process tests read no environment).
+`tests/server/plans/jira.test.ts` (the fake Jira `tests/helpers/fake-jira.ts`: an epic with five children, blocks links with a cycle and a link outside the epic, a workflow without "In Review" for one issue, comments, injected failures), `tests/server/plans/jira-proposals.test.ts` (the proposed order on the real path: a fake-claude source session gets the ask, the MCP tool proposes, accept / cycle / reject, the tool only while Plans is on), `tests/core/plans-jira.test.ts` (rules, route classification), `tests/e2e/plans-jira.spec.ts` (the dialog's dev mount against the fake Jira, desktop and 360 px; the proposals rows; the Jira connection under Settings → Experimental → Plans). Tests never call the real Jira and never read the developer's `ATL_*` (test servers drop them; in-process tests read no environment).

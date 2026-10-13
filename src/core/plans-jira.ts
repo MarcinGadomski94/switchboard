@@ -110,8 +110,9 @@ export interface JiraPreview {
   /** `feature/PROJ-10-acme-checkout` (the dialog pre-fills the target branch). */
   readonly suggestedTargetBranch: string;
   /**
-   * Whether "Propose missing order" is offered: always `false` in this build. Switchboard has no
-   * sanctioned one-shot agent run (`.loop/questions.md` → *D99-Jira*).
+   * Whether the dialog itself proposes an order: always `false`. The missing order is proposed
+   * after the import, on the plan: the source session's agent is asked (`plan_propose_dependencies`)
+   * and the developer ticks its proposals (`PlanEdgeProposals`; ruling D99-Jira-q1 (b)).
    */
   readonly proposeAvailable: boolean;
 }
