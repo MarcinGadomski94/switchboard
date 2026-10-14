@@ -36,7 +36,7 @@ async function repo(dir: string, remote: string | null = null): Promise<string> 
 }
 
 describe('D110 findCheckouts: bounded, main checkouts only', () => {
-  it('finds the root itself, its children, a workspace group folder and a nested clone; never hidden, linked, worktree, archived or deeper folders', async () => {
+  it('finds the root itself and checkouts up to three levels down (a group folder, a nested clone, <org>/<group>/<repo>); never hidden, linked, worktree, archived or deeper folders', async () => {
     const ws = path.join(tmp, 'ws');
     await mkdir(ws, { recursive: true });
     await writeFile(path.join(ws, 'AGENTS.md'), '# AGENTS.md (Workspace Router)\n');
@@ -46,10 +46,12 @@ describe('D110 findCheckouts: bounded, main checkouts only', () => {
     await repo(path.join(ws, '.hidden', 'secret'));
     await repo(path.join(ws, 'deprecated', 'old-app'));
     await repo(path.join(ws, 'node_modules', 'dep'));
-    await repo(path.join(ws, 'a', 'b', 'too-deep'));
+    // Three levels down is searched (developer ruling 2026-10-14), four is not.
+    const threeDown = await repo(path.join(ws, 'acme', 'platform', 'three-down'));
+    await repo(path.join(ws, 'acme', 'platform', 'legacy', 'four-down'));
     await gitIn(tmp, app, 'worktree', 'add', '-q', '-b', 'wt', path.join(ws, 'app-wt-x'));
     await symlink(app, path.join(ws, 'linked'));
-    expect((await findCheckouts(ws)).sort()).toEqual([app, mobile, front].sort());
+    expect((await findCheckouts(ws)).sort()).toEqual([app, mobile, front, threeDown].sort());
     // A root that is a checkout is the one match; nothing under it is searched.
     expect(await findCheckouts(app)).toEqual([app]);
     expect(await findCheckouts(path.join(tmp, 'nothing-here'))).toEqual([]);

@@ -15,8 +15,11 @@ import type { TakeoverGit } from './git.ts';
  * remotes, branch and uncommitted count. Nothing here writes anything.
  */
 
+/** How many levels below a chosen folder are searched (developer ruling 2026-10-14: three). */
+export const LOCATE_MAX_DEPTH = 3;
+
 /** Most folders one search visits (a home folder chosen as a root stays cheap). */
-export const LOCATE_MAX_DIRS = 2_000;
+export const LOCATE_MAX_DIRS = 10_000;
 
 /** Most entries one listing returns. */
 export const LIST_MAX_ENTRIES = 500;
@@ -112,27 +115,33 @@ export async function listFolders(dir: string): Promise<TargetDirEntry[]> {
 
 /**
  * The git main checkouts under `root`, bounded: `root` itself when it is one
- * (nothing under a checkout is searched), else its direct subfolders and their
- * subfolders (a workspace's group folders `microfrontends/…`, the nested mobile
- * clone `mobile/<repo>/`). Hidden folders, links, worktrees (`.git` is a file),
- * dependencies and a workspace's read-only archives are never matches; at most
- * {@link LOCATE_MAX_DIRS} folders are visited.
+ * (nothing under a checkout is searched), else the folders up to
+ * {@link LOCATE_MAX_DEPTH} levels below it (a workspace's group folders
+ * `microfrontends/…`, the nested mobile clone `mobile/<repo>/`, a code folder's
+ * `<org>/<group>/<repo>`). Breadth first, one level at a time, so a crowded deep
+ * level never hides a shallow checkout. Hidden folders, links, worktrees (`.git`
+ * is a file), dependencies and a workspace's read-only archives are never
+ * matches; at most {@link LOCATE_MAX_DIRS} folders are visited.
  */
 export async function findCheckouts(root: string): Promise<string[]> {
   if (await isMainCheckout(root)) return [root];
   const out: string[] = [];
   let visited = 0;
-  const walk = async (dir: string, depth: number): Promise<void> => {
-    for (const entry of await dirsOf(dir)) {
-      if (visited >= LOCATE_MAX_DIRS) return;
-      if (SKIPPED.has(entry.name)) continue;
-      visited++;
-      const child = path.join(dir, entry.name);
-      if (await isMainCheckout(child)) out.push(child);
-      else if (depth < 2) await walk(child, depth + 1);
+  let level = [root];
+  for (let depth = 1; depth <= LOCATE_MAX_DEPTH && level.length > 0; depth++) {
+    const next: string[] = [];
+    for (const dir of level) {
+      for (const entry of await dirsOf(dir)) {
+        if (visited >= LOCATE_MAX_DIRS) return out;
+        if (SKIPPED.has(entry.name)) continue;
+        visited++;
+        const child = path.join(dir, entry.name);
+        if (await isMainCheckout(child)) out.push(child);
+        else if (depth < LOCATE_MAX_DEPTH) next.push(child);
+      }
     }
-  };
-  await walk(root, 1);
+    level = next;
+  }
   return out;
 }
 
