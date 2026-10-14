@@ -564,7 +564,7 @@ export class TeamService {
       const team = this.#team(id);
       if (this.#teams().some((t) => t.id !== id && t.name.toLowerCase() === name.toLowerCase())) throw new TeamError(409, 'name-taken', `a team is called ${name} already`);
       this.#need().putTeam({ ...team, name, clock: this.#stamp(), updatedAt: this.#iso() });
-      this.#activity('team', null, `The team is now called ${name}`, id);
+      this.#activity('team', null, `renamed to ${name}`, id);
     });
     this.#changed(['team'], id);
     await this.#republishMembers();
@@ -583,7 +583,7 @@ export class TeamService {
       const now = this.#iso();
       const record: TeamRecord = { id: randomUUID(), name, clock: this.#stamp(), deleted: false, order: nextOrder(teams), createdAt: now, updatedAt: now };
       this.#need().putTeam(record);
-      this.#activity('team', null, `Team ${name} was created`, record.id);
+      this.#activity('team', null, `team ${name} created`, record.id);
       return record;
     });
     this.#changed(['teams'], team.id);
@@ -663,8 +663,8 @@ export class TeamService {
       const next: TeamMemberRecord = { ...current, teamId: target.id, order: nextOrder(this.#teamMembers(target.id)), clock: this.#stamp(), updatedAt: this.#iso() };
       this.#need().putMember(next);
       const from = this.#teamName(current.teamId);
-      this.#activity('update', id, `${current.name} moved to team ${target.name}`, current.teamId);
-      this.#activity('update', id, `${current.name} joined from team ${from}`, target.id);
+      this.#activity('update', id, `moved to team ${target.name}`, current.teamId);
+      this.#activity('update', id, `joined from team ${from}`, target.id);
       return next;
     });
     this.#changed(['members', 'activity'], before.teamId);
@@ -840,7 +840,7 @@ export class TeamService {
         updatedAt: now,
       };
       this.#need().putMember(member);
-      this.#activity('adopt', member.id, `Adopted ${session.title ?? session.name} as ${member.name}`);
+      this.#activity('adopt', member.id, `adopted from session ${session.title ?? session.name}`);
       return member;
     });
     this.#changed(['members', 'activity']);
@@ -904,7 +904,7 @@ export class TeamService {
       await this.#serial(async () => {
         // New members go to the end of the team's order.
         this.#need().putMember({ ...member, order: nextOrder(this.#teamMembers(team.id)) });
-        this.#activity('create', member.id, `Started ${member.name}`);
+        this.#activity('create', member.id, 'started as a new member');
       });
       memberId = member.id;
       this.#changed(['members', 'activity']);
@@ -948,7 +948,7 @@ export class TeamService {
         updatedAt: this.#iso(),
       };
       this.#need().putMember(next);
-      this.#activity('update', id, `${next.name}'s settings changed`);
+      this.#activity('update', id, 'settings changed');
       return next;
     });
     this.#changed(['members', 'activity']);
@@ -1056,7 +1056,7 @@ export class TeamService {
       // Its Team pause ends with it: the loops Team paused run again as the session's own.
       await this.#resumeLoops(current);
       this.#need().putMember({ ...current, deleted: true, paused: false, pausedLoops: [], pausedBy: null, clock: this.#stamp(), updatedAt: this.#iso() });
-      this.#activity('return', id, `${current.name} returned to the sessions list`);
+      this.#activity('return', id, 'returned to the sessions list');
       return current;
     });
     // D100-T2: its accesses end with it (this machine's values leave the keychain).
@@ -1145,7 +1145,7 @@ export class TeamService {
       const current = this.#memberRecord(id);
       const paused = await this.#pauseLoops(current);
       this.#need().putMember({ ...current, paused: true, pausedBy: current.paused ? current.pausedBy : by, pausedLoops: [...new Set([...current.pausedLoops, ...paused])], clock: this.#stamp(), updatedAt: this.#iso() });
-      if (!current.paused) this.#activity('pause', id, by === 'budget' ? `${current.name} is over its daily budget: its loops are paused` : `${current.name} paused`);
+      if (!current.paused) this.#activity('pause', id, by === 'budget' ? 'over its daily budget — loops paused' : 'paused');
     });
     this.#changed(['members', 'activity']);
     return this.member(id);
@@ -1163,7 +1163,7 @@ export class TeamService {
       const current = this.#memberRecord(id);
       await this.#resumeLoops(current);
       this.#need().putMember({ ...current, paused: false, pausedBy: null, pausedLoops: [], clock: this.#stamp(), updatedAt: this.#iso() });
-      if (current.paused) this.#activity('resume', id, `${current.name} resumed`);
+      if (current.paused) this.#activity('resume', id, 'resumed');
       // An open budget request is settled by the resume.
       for (const request of this.#need().requests()) {
         if (request.memberId === id && request.kind === 'budget' && request.state === 'open') {
@@ -1252,8 +1252,12 @@ export class TeamService {
       };
       this.#need().putHandoff(record);
       const across = from && from.teamId !== to.teamId;
-      this.#activity('handoff', to.id, `${from ? (across ? `${from.name} (${this.#teamName(from.teamId)})` : from.name) : 'You'} handed off to ${to.name}: ${firstLine(brief, 120)}`, to.teamId);
-      if (across) this.#activity('handoff', from.id, `${from.name} handed off to ${to.name} (${this.#teamName(to.teamId)}): ${firstLine(brief, 120)}`, from.teamId);
+      // 2026-10-14 (D100 follow-up): actor-less texts; the sender is the actor where it is in this team.
+      if (!from) this.#activity('handoff', to.id, `got a hand-off from you: ${firstLine(brief, 120)}`, to.teamId);
+      else if (across) {
+        this.#activity('handoff', to.id, `got a hand-off from ${from.name} (${this.#teamName(from.teamId)}): ${firstLine(brief, 120)}`, to.teamId);
+        this.#activity('handoff', from.id, `handed off to ${to.name} (${this.#teamName(to.teamId)}): ${firstLine(brief, 120)}`, from.teamId);
+      } else this.#activity('handoff', from.id, `handed off to ${to.name}: ${firstLine(brief, 120)}`, to.teamId);
       return record;
     });
     this.#changed(['handoffs', 'activity'], to.teamId);
@@ -1346,7 +1350,7 @@ export class TeamService {
       if (!next || next === handoff.state) continue;
       await this.#serial(async () => {
         this.#need().putHandoff({ ...handoff, state: next, clock: this.#stamp(), updatedAt: this.#iso() });
-        if (next === 'done') this.#activity('handoff', member.id, `${member.name} finished: ${firstLine(handoff.brief, 120)}`);
+        if (next === 'done') this.#activity('handoff', member.id, `finished: ${firstLine(handoff.brief, 120)}`);
       });
       changed = true;
     }
@@ -1395,7 +1399,7 @@ export class TeamService {
     const line = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
     if (line === '' || line.length > REPORT_MAX) throw new TeamError(422, 'invalid', `text is required (one line, at most ${REPORT_MAX} characters)`);
     await this.#serial(async () => {
-      this.#activity('report', me.id, `${me.name}: ${line}`);
+      this.#activity('report', me.id, line);
     });
     this.#changed(['activity']);
   }
@@ -1468,7 +1472,7 @@ export class TeamService {
     const state = decision === 'approve' ? 'approved' : decision === 'decline' ? 'declined' : 'dismissed';
     await this.#serial(async () => {
       this.#need().putRequest({ ...request, state, clock: this.#stamp(), updatedAt: this.#iso() });
-      this.#activity('approval', request.memberId, `${decision === 'approve' ? 'Approved' : decision === 'decline' ? 'Declined' : 'Dismissed'}: ${request.title}`);
+      this.#activity('approval', request.memberId, `request ${state}: ${request.title}`);
     });
     this.#changed(['requests', 'activity']);
     let note: string | null = null;
@@ -1564,7 +1568,7 @@ export class TeamService {
       const now = this.#iso();
       const created: TeamRequestRecord = { id: randomUUID(), teamId: member.teamId, clock: this.#stamp(), deleted: false, memberId: id, kind: 'charter', gate: null, title: `${member.name} was asked to draft its charter`, detail: '', state: 'open', action: null, note: null, proposal: null, createdAt: now, updatedAt: now };
       this.#need().putRequest(created);
-      this.#activity('update', id, `${member.name} was asked to draft a specific charter from its own session`);
+      this.#activity('update', id, 'asked to draft a specific charter from its own session');
       return created;
     });
     this.#changed(['requests', 'activity', 'members']);
@@ -1643,7 +1647,7 @@ export class TeamService {
         ? { ...open, title, detail: notes, proposal, clock: this.#stamp(), createdAt: now, updatedAt: now }
         : { id: randomUUID(), teamId: me.teamId, clock: this.#stamp(), deleted: false, memberId: me.id, kind: 'charter', gate: null, title, detail: notes, state: 'open', action: null, note: null, proposal, createdAt: now, updatedAt: now };
       this.#need().putRequest(next);
-      this.#activity('update', me.id, `${me.name} proposed a new charter: it waits in Needs you`);
+      this.#activity('update', me.id, 'proposed a new charter — waiting in Needs you');
       return next;
     });
     this.#changed(['requests', 'activity', 'members']);
@@ -1670,15 +1674,14 @@ export class TeamService {
     await this.#serial(async () => {
       const current = this.#need().requests().find((r) => r.id === request.id) ?? request;
       if (current.state !== 'open') throw new TeamError(409, 'decided', `the request is ${current.state} already`);
-      const name = member?.name ?? 'The member';
       if (charter && member) {
         const now = this.#memberRecord(member.id);
         this.#need().putMember({ ...now, charter, clock: this.#stamp(), updatedAt: this.#iso() });
         this.#need().putRequest({ ...current, state: 'approved', note: edited ? 'accepted with your edits' : 'accepted', clock: this.#stamp(), updatedAt: this.#iso() });
-        this.#activity('update', member.id, `${name}'s new charter was accepted${edited ? ' (with your edits)' : ''}`);
+        this.#activity('update', member.id, `new charter accepted${edited ? ' (with your edits)' : ''}`);
       } else {
         this.#need().putRequest({ ...current, state: 'dismissed', note: current.proposal ? 'dismissed' : 'ask cancelled', clock: this.#stamp(), updatedAt: this.#iso() });
-        this.#activity('update', request.memberId, current.proposal ? `${name}'s charter proposal was dismissed` : `The charter ask to ${name} was cancelled`);
+        this.#activity('update', request.memberId, current.proposal ? 'charter proposal dismissed' : 'charter ask cancelled');
       }
     });
     this.#changed(['requests', 'activity', 'members']);
@@ -1951,7 +1954,7 @@ export class TeamService {
           clock: this.#stamp(),
           updatedAt: this.#iso(),
         });
-        this.#activity('move', run.memberId, `Moved ${before.name} from ${machines.get(this.#selfId())?.name ?? 'this machine'} to ${machines.get(result.machineId)?.name ?? result.machineName}`);
+        this.#activity('move', run.memberId, `moved from ${machines.get(this.#selfId())?.name ?? 'this machine'} to ${machines.get(result.machineId)?.name ?? result.machineName}`);
       });
       this.#changed(['members', 'activity']);
       await this.syncNow();

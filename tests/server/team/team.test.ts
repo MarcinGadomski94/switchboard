@@ -179,7 +179,7 @@ describe('D100 · adopt and return', () => {
     expect((await r.team.view()).members).toEqual([]);
     // The charter is withdrawn: the next process runs without it.
     expect(await instructionAfterRestart(r, session.id, adoptedPid)).toBeNull();
-    expect((await r.team.view()).activity.map((a) => a.text)).toEqual(expect.arrayContaining(['Adopted tracker-one as Tracker', 'Tracker returned to the sessions list']));
+    expect((await r.team.view()).activity.map((a) => a.text)).toEqual(expect.arrayContaining(['adopted from session tracker-one', 'returned to the sessions list']));
   });
 
   it('create starts a new session whose very first process already carries the charter', async () => {
@@ -359,7 +359,7 @@ describe('D100 follow-up 2026-10-14 · multiple teams between paired machines', 
     await r.team.adopt({ sessionId: s1.id, name: 'SEO', teamId: ours.id });
     const out = await r.team.message();
     expect(out.snapshot.teams.map((t) => [t.id, t.name, t.order])).toEqual(expect.arrayContaining([['team', 'Team', 0], [ours.id, 'Growth', 1]]));
-    expect(out.snapshot.activity.map((a) => [a.teamId, a.text])).toEqual(expect.arrayContaining([[ours.id, 'Team Growth was created'], [ours.id, 'Adopted seo as SEO']]));
+    expect(out.snapshot.activity.map((a) => [a.teamId, a.text])).toEqual(expect.arrayContaining([[ours.id, 'team Growth created'], [ours.id, 'adopted from session seo']]));
 
     // The paired machine made a team "Ops" (first in the order) with a member running there.
     const later = (n: number): string => `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.${n.toString(36).padStart(4, '0')}.m-pc-0002`;

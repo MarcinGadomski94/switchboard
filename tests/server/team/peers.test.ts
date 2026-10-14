@@ -94,7 +94,7 @@ describe('D100 · Team between paired machines', () => {
     expect(moved.paused).toBe(true);
     // The source's loop ended with the move (no double firing).
     expect(((await w.b.call('GET', `/api/sessions/${tracker.id}/loops`)).body as OwnedLoop[]).map((l) => l.state)).toEqual(['ended']);
-    expect((await team(w.a)).activity.map((a) => a.text)).toEqual(expect.arrayContaining([expect.stringMatching(/^Moved Tracker from .+ to .+$/)]));
+    expect((await team(w.a)).activity.map((a) => a.text)).toEqual(expect.arrayContaining([expect.stringMatching(/^moved from .+ to .+$/)]));
     await waitFor('B sees Tracker on A', async () => (await memberOn(w.b, 'Tracker'))?.machineId === w.aId);
     // Resume on A (where it runs now): its loop runs again.
     expect((await w.a.call('POST', `/api/team/members/${moved.id}/resume`)).status).toBe(200);

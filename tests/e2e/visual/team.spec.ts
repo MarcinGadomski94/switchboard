@@ -14,7 +14,9 @@ import { canonicalColors, writeReport } from './harness.ts';
  * mockup's wrapping grid), then Needs you + Activity (330 px) | the member panel;
  * tablet: the same with a narrower left; phone: one column, Needs you first, the
  * cards in the team's order, the member full screen with
- * "‹ Team"), the empty state, and no sideways overflow. It runs on the fake world
+ * "‹ Team"), the empty state, and no sideways overflow. D100 follow-up 2026-10-14
+ * (activity redesign): the left column's heads collapse and an activity entry is two
+ * lines whose text uses the column's full width. It runs on the fake world
  * (demo mode never starts Team) and writes `team.md` plus a screenshot per state and
  * size to `test-results/visual/` (and `docs/visual/` with SWITCHBOARD_VISUAL_REPORT=1).
  *
@@ -173,6 +175,28 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   expect(await color(page, '[data-testid="team-panel-sub"]', 'color')).toBeTruthy();
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
   lines.push(`- desktop: the cards in one row across the full width (${cardCols} cards, ${deskRow[0]?.width} px each; the row scrolls sideways when they do not fit), then Needs you + Activity (${desk.columns[0]}) | the member panel to the bottom`);
+  // D100 follow-up 2026-10-14 (activity redesign, a deliberate change of the approved
+  // mockup's three-column rows): both heads collapse (▾ / ▸, open by default); each entry
+  // is two lines, icon · actor · time over the text, which uses the column's full width.
+  await expect(page.getByTestId('team-activity-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('team-needs-toggle')).toHaveAttribute('aria-expanded', 'true');
+  const entry = await page
+    .getByTestId('team-activity-row')
+    .first()
+    .evaluate((row) => {
+      const box = (selector: string) => row.querySelector(selector)?.getBoundingClientRect() ?? null;
+      return { row: row.getBoundingClientRect(), head: box('.sb-team-act__head'), text: box('.sb-team-act__text'), time: box('.sb-team-act__time'), actorColor: getComputedStyle(row.querySelector('.sb-team-act__actor') as Element).color };
+    });
+  expect(entry.text!.top).toBeGreaterThanOrEqual(entry.head!.bottom - 1);
+  expect(entry.text!.right).toBeGreaterThan(entry.row.right - 2);
+  expect(entry.text!.width).toBeGreaterThan(entry.row.width - 24);
+  expect(Math.round(entry.time!.right)).toBe(Math.round(entry.row.right));
+  expect(entry.actorColor).toBe(roleFg);
+  lines.push(`- desktop: Needs you and Activity collapse (▾ / ▸, open by default); an activity entry is two lines (icon · actor in ${roleFg} · time right-aligned, then the text across ${Math.round(entry.text!.width)} of the column's ${Math.round(entry.row.width)} px)`);
+  await page.getByTestId('team-split').locator('.sb-team-left').screenshot().then((png) => {
+    shots['team-left-column-desktop.png'] = png;
+    lines.push('- `team-left-column-desktop.png`');
+  });
   await shoot(page, 'team-populated-desktop.png');
 
   await page.setViewportSize(SIZES.tablet);

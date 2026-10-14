@@ -595,15 +595,6 @@ export function needsYouShape(item: Pick<TeamNeedsYouItem, 'source' | 'kind' | '
   return 'other';
 }
 
-/** "09:12" for today, else "13 Oct" (the activity feed's time column). */
-export function activityTime(iso: string, now: Date): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return '';
-  const sameDay = at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth() && at.getDate() === now.getDate();
-  if (sameDay) return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  return at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
-
 // ── better charters (D105) ───────────────────────────────────────────────
 
 /** The one-time offer's text. */

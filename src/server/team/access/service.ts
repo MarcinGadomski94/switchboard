@@ -307,7 +307,7 @@ export class TeamAccess {
         updatedAt: now,
       };
       this.#put(record);
-      this.#h.activity('access', member.id, `${member.name} asked for ${input.service} (${input.host})`);
+      this.#h.activity('access', member.id, `asked for ${input.service} (${input.host})`);
       return { record, reused: false };
     });
     if (!outcome.reused) {
@@ -444,7 +444,7 @@ export class TeamAccess {
       for (const request of db.requests()) {
         if (request.id === after.requestId && request.state === 'open') db.putRequest({ ...request, state: 'approved', note: `Set up on ${names2(self)}`, clock: this.#h.stamp(), updatedAt: at });
       }
-      this.#h.activity('access', member.id, `${replaced ? 'Replaced' : 'Set up'} ${after.service} for ${member.name} on ${names2(self)}`);
+      this.#h.activity('access', member.id, `${after.service} ${replaced ? 'replaced' : 'set up'} on ${names2(self)}`);
     });
     this.#h.changed(['access', 'requests', 'activity', 'members']);
     if (member.machineId === self) await this.#reloadAndTell(member, `Access set up: ${after.service} is now available to you (${accessDelivers(after)}). Never print or ask for its values.`);
@@ -492,7 +492,7 @@ export class TeamAccess {
       for (const request of db.requests()) {
         if (request.id === after.requestId && request.state === 'open') db.putRequest({ ...request, state: 'dismissed', note: 'Revoked', clock: this.#h.stamp(), updatedAt: at });
       }
-      this.#h.activity('access', member.id, `Revoked ${after.service} for ${member.name}`);
+      this.#h.activity('access', member.id, `${after.service} revoked`);
     });
     this.#h.changed(['access', 'requests', 'activity', 'members']);
     if (member.machineId === self) await this.#reloadAndTell(member, `Access revoked: ${after.service} is no longer available to you. Do not try to use it.`);

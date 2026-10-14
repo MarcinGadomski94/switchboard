@@ -533,28 +533,226 @@
   gap: 6px;
 }
 
-.sb-team-activity__row {
-  display: grid;
-  grid-template-columns: 44px auto 1fr;
+/*
+ * D100 follow-up 2026-10-14 (activity redesign): the left column's section heads
+ * collapse (▾ / ▸); an empty Needs you is one muted line on its head; each activity
+ * entry is two lines (icon · actor · time, then the text across the full width); a
+ * run of the same event is one group row with the members as chips.
+ */
+.sb-team-section-head {
+  display: flex;
+  align-items: baseline;
   gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.sb-team-section-head .sb-team-section-label {
+  margin-bottom: 0;
+  flex: none;
+}
+
+.sb-team-section-head--inline {
+  margin-bottom: 0;
+}
+
+.sb-team-needs-none {
   font-size: 12px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border-row);
-}
-
-.sb-team-activity__time {
-  font: var(--fs-mono-meta) var(--font-mono);
-  color: var(--muted-3);
-}
-
-.sb-team-activity__actor {
-  color: var(--team-role-fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sb-team-activity__text {
+.sb-team-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-team-section-toggle:hover {
   color: var(--text-2);
+}
+
+.sb-team-section-toggle:focus-visible,
+.sb-team-act__group-toggle:focus-visible {
+  outline: 1px solid var(--muted-3);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.sb-team-section-chevron {
+  width: 8px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted-3);
+}
+
+.sb-team-section-new {
+  color: var(--team-role-fg);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sb-team-activity__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-team-act {
+  padding: 9px 0;
+  border-top: 1px solid var(--border-row);
+  font-size: 12.5px;
+  line-height: 1.4;
   min-width: 0;
+}
+
+.sb-team-activity__list > .sb-team-act:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.sb-team-act__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sb-team-act__icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.sb-team-act[data-variant='charter-accepted'] .sb-team-act__icon,
+.sb-team-act[data-variant='finished'] .sb-team-act__icon,
+.sb-team-act[data-variant='approved'] .sb-team-act__icon {
+  color: var(--status-done);
+}
+
+.sb-team-act[data-variant='charter-dismissed'] .sb-team-act__icon,
+.sb-team-act[data-variant='declined'] .sb-team-act__icon,
+.sb-team-act[data-variant='access-revoked'] .sb-team-act__icon {
+  color: var(--status-fail);
+}
+
+.sb-team-act__actor {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-team-act__label {
+  min-width: 0;
+}
+
+.sb-team-act__actor {
+  color: var(--team-role-fg);
+  font-weight: 500;
+}
+
+.sb-team-act__label {
+  color: var(--text-2b);
+}
+
+.sb-team-act__time {
+  margin-left: auto;
+  flex: none;
+  padding-left: 8px;
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+  white-space: nowrap;
+}
+
+.sb-team-act__text {
+  margin-top: 2px;
+  padding-left: 20px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-team-act__group-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb-team-act__group-toggle:hover .sb-team-act__label {
+  color: var(--text-strong);
+}
+
+.sb-team-act__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-left: 20px;
+  min-width: 0;
+}
+
+.sb-team-act__chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: var(--radius-chip);
+  background: var(--team-role-bg);
+  color: var(--team-role-fg);
+  font-size: 11.5px;
+}
+
+.sb-team-act__chip--more {
+  background: none;
+  color: var(--muted-2);
+  padding: 1px 2px;
+}
+
+.sb-team-act__chevron {
+  font-size: 10px;
+  color: var(--muted-2);
+  margin-left: 4px;
+}
+
+.sb-team-act__children {
+  margin: 6px 0 0 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-divider);
+}
+
+.sb-team-act__children > .sb-team-act {
+  padding: 6px 0;
+}
+
+.sb-team-act__children > .sb-team-act:first-child {
+  border-top: 0;
+}
+
+.sb-team-activity__more {
+  align-self: flex-start;
+  margin-top: 8px;
 }
 
 /* ── buttons, fields ─────────────────────────────────────────────────── */

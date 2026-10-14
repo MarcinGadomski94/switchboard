@@ -156,7 +156,7 @@ describe('D100 · the routes', () => {
     expect(todos.todos.map((t) => t.title)).toEqual(['Hand-off from Tracker: Fix the flaky test.']);
     expect((await api('POST', '/agent/v1/team/reports', { text: 'Board triaged: 3 new.' })).status).toBe(201);
     const view = (await ui(r, 'GET', '/api/team')).json() as TeamView;
-    expect(view.activity.map((a) => a.text)).toEqual(expect.arrayContaining(['Tracker: Board triaged: 3 new.', 'Tracker handed off to Builder: Fix the flaky test.']));
+    expect(view.activity.map((a) => a.text)).toEqual(expect.arrayContaining(['Board triaged: 3 new.', 'handed off to Builder: Fix the flaky test.']));
 
     // Off again: the tools go (the next start of the helper registers none) and the routes refuse.
     await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
@@ -370,8 +370,8 @@ describe('D100 · the routes', () => {
     expect(moved.json()).toMatchObject({ teamId: growth.id, order: 1, charter: { owns: 'the board' }, budget: { dailyPct: 20 } });
     expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).members.map((m) => m.name)).toEqual(['Ads', 'Tracker']);
     expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members).toEqual([]);
-    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).activity.map((a) => a.text)).toContain('Tracker moved to team Growth');
-    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).activity.map((a) => a.text)).toContain('Tracker joined from team Team');
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).activity.map((a) => a.text)).toContain('moved to team Growth');
+    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).activity.map((a) => a.text)).toContain('joined from team Team');
     expect((await ui(r, 'POST', `/api/team/members/${tracker.id}/team`, { teamId: 'nope' })).statusCode).toBe(404);
 
     // Needs you: per team, and every team's with `all` (labelled with the team).
@@ -395,7 +395,7 @@ describe('D100 · the routes', () => {
     expect((await api('POST', '/agent/v1/team/handoffs', { to: 'Tracker', team: 'growth', brief: 'Track it.', expected: '' })).status).toBe(201);
     const growthView = (await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView;
     expect(growthView.handoffs.map((h) => [h.fromMemberId, h.toMemberId, h.teamId]).sort()).toEqual([[dev.id, ads.id, growth.id], [dev.id, tracker.id, growth.id]].sort());
-    expect(growthView.activity.map((a) => a.text)).toContain('Developer (Team) handed off to Ads: Check the campaign.');
+    expect(growthView.activity.map((a) => a.text)).toContain('got a hand-off from Developer (Team): Check the campaign.');
     const listed = String(((await api('GET', '/agent/v1/team/members')).body as { text: string }).text);
     expect(listed).toContain('Team Team: 1 member.');
     expect(listed).toContain('Other teams: Growth (2)');

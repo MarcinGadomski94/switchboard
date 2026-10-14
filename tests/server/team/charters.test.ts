@@ -149,7 +149,7 @@ describe('D105 · the charter ask and the proposal', () => {
     const instruction = spawn.argv?.[(spawn.argv?.indexOf('--append-system-prompt') ?? -2) + 1] ?? '';
     expect(instruction).toContain(`How it works: ${PROPOSAL.howItWorks}`);
     expect(instruction).toContain(`owns: ${PROPOSAL.owns}`);
-    expect((await r.team.view()).activity.map((a) => a.text)).toEqual(expect.arrayContaining(["Studio maintainer's new charter was accepted", 'Studio maintainer proposed a new charter: it waits in Needs you']));
+    expect((await r.team.view()).activity.map((a) => a.text)).toEqual(expect.arrayContaining(['new charter accepted', 'proposed a new charter — waiting in Needs you']));
   });
 
   it('Accept with the developer\'s edits; Dismiss records it; one ask per member; an ask can be cancelled', async () => {
@@ -164,7 +164,7 @@ describe('D105 · the charter ask and the proposal', () => {
     const dismissed = await r.team.decide(first.requestId, 'dismiss');
     expect(dismissed.state).toBe('dismissed');
     expect((await r.team.member(member.id)).charter).toEqual(DEVELOPER);
-    expect((await r.team.view()).activity.map((a) => a.text)).toContain("Tracker's charter proposal was dismissed");
+    expect((await r.team.view()).activity.map((a) => a.text)).toContain('charter proposal dismissed');
 
     // A new ask; the developer edits the proposal (Edit… → Save).
     const second = await r.team.askCharter(member.id);

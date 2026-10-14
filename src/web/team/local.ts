@@ -94,3 +94,59 @@ export function setLastTeam(teamId: string): void {
     // Private mode / full storage: `/team` opens the first team.
   }
 }
+
+// ── left column (D100 follow-up 2026-10-14, activity redesign) ─────────────
+
+const ACTIVITY_COLLAPSED = 'sb.team.activityCollapsed';
+const NEEDS_COLLAPSED = 'sb.team.needsCollapsed';
+const ACTIVITY_SEEN = 'sb.team.activitySeenAt';
+const NEEDS_SEEN = 'sb.team.needsSeen';
+
+function readText(key: string): string | null {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeText(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Private mode / full storage: kept for this page only.
+  }
+}
+
+/** Which of the left column's sections is collapsed (default: both expanded). */
+export function sectionCollapsed(section: 'activity' | 'needs'): boolean {
+  return readText(section === 'activity' ? ACTIVITY_COLLAPSED : NEEDS_COLLAPSED) === 'true';
+}
+
+/** Remembers a section's collapsed state (per install, this browser). */
+export function setSectionCollapsed(section: 'activity' | 'needs', collapsed: boolean): void {
+  writeText(section === 'activity' ? ACTIVITY_COLLAPSED : NEEDS_COLLAPSED, collapsed ? 'true' : 'false');
+}
+
+/** The newest activity time the developer had in view (the collapsed header's "· N new" counts from it). */
+export function activitySeenAt(): string | null {
+  return readText(ACTIVITY_SEEN);
+}
+
+/** Moves the seen mark forward (never back). */
+export function setActivitySeenAt(at: string): void {
+  const current = activitySeenAt();
+  if (current === null || at > current) writeText(ACTIVITY_SEEN, at);
+}
+
+/** The Needs-you items already known (a new one auto-expands a collapsed Needs you). */
+export function knownNeeds(): Set<string> {
+  return new Set(read(NEEDS_SEEN) ?? []);
+}
+
+/** Adds items to the known ones (the newest 200 kept). */
+export function addKnownNeeds(keys: readonly string[]): void {
+  const known = [...knownNeeds()];
+  const next = [...known.filter((key) => !keys.includes(key)), ...keys].slice(-200);
+  write(NEEDS_SEEN, next);
+}
