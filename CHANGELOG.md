@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.0 (2026-10-14)
+
+### Chats
+- **Start a chat instead of a session** to think and plan with an agent. A chat reads files, searches and browses the web, reads pasted screenshots and files, and can save artifacts, todos and plans, but it never edits files or runs commands: Claude Code runs it in a locked plan mode without shell tools, Codex read-only with its shell switched off, OpenCode with its plan agent. It runs in its own scratch folder, without workspace rules or start-up questions; you can let it read folders you choose.
+- **A CHATS section** above SESSIONS with "+ New chat" (and ⌘K → New chat / Chats); both sections now fold, remembered. Search finds chats; chats stay out of Team, Plans and Solutions. Delete a chat from its ⋯ menu.
+- **Continue as session…** carries the whole conversation into a new development session when it's time to code; the chat and the session link to each other.
+
 ## 1.18.2 (2026-10-14)
 
 ### Changed
