@@ -116,11 +116,12 @@ Like D48 / D71 / D98: `POST /api/team/sync` (on `PEER_API_ALLOW`) exchanges `{ v
 
 Built on the **D65 take-over**; no new transfer mechanism.
 
-1. `POST /api/team/members/{id}/move/check { targetMachineId }` runs the take-over's checks on both machines (`TakeoverRunner.preview`) plus Team's: **refused while a turn is running**. Nothing changes; the blockers are listed.
-2. `POST /api/team/members/{id}/move { targetMachineId }` → 202 `TeamMoveRun`; poll `GET /api/team/moves/{runId}`. It runs on the member's machine (forwarded from the other one; the run id is then `<machine>~<id>`) and refuses with 409 `blocked` and the blockers.
+1. `POST /api/team/members/{id}/move/check { targetMachineId, placement?, clonePaths? }` runs the take-over's checks on both machines (`TakeoverRunner.preview`) plus Team's: **refused while a turn is running**. Nothing changes; the blockers are listed.
+2. `POST /api/team/members/{id}/move { targetMachineId, placement?, clonePaths? }` → 202 `TeamMoveRun`; poll `GET /api/team/moves/{runId}`. It runs on the member's machine (forwarded from the other one; the run id is then `<machine>~<id>`) and refuses with 409 `blocked` and the blockers.
 3. The take-over moves the session with its repos, conversation, queued messages, todos and loops (re-created on the target, ended on the source: no double firing).
 4. On success the member's machine id and session id change; charter, rhythm (loop ids remapped by prompt and schedule), budget, gates, pause, hand-offs and activity are kept. The activity says "moved from <source> to <target>" (the member is the actor; before 2026-10-14: "Moved <role> from <source> to <target>").
-5. **Access (T2):** secrets are not moved. Every access entry loses its machines except the target, so it reads "needs setup on <target>", and the member's agent is told which accesses are missing (see *Access requests*).
+5. **Target folders (D110):** the move dialog has the take-over's folder picker and ✓ / ⚠ / ✖ table (`src/web/takeover/TargetFolders.tsx`, shared): the developer chooses folders on the target, the check verifies the member's repos there by remote, and **Move** is enabled only when every repo is found or will be cloned; the move uses exactly those paths. `placement` has the take-over's meaning (absent: the remembered folders, if any; `null`: the target's saved folders). See `docs/peers.md` → *Target folders and verification (D110)*.
+6. **Access (T2):** secrets are not moved. Every access entry loses its machines except the target, so it reads "needs setup on <target>", and the member's agent is told which accesses are missing (see *Access requests*).
 
 ## Devices (D73)
 
@@ -162,7 +163,7 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
 
 **⋯ menu**: Give a task… (a hand-off from the developer: brief, expected result), Edit charter… / Model & effort… / Budget… (open Settings at that part), Schedule… (the D94 loop dialog for the member's session), Pause / Resume, Move to <PC>… (one per other machine; offline ones disabled), then **↩ Return to sessions (back to “<folder>”)**: the toast "“X” is back in your session list (Work) as a plain session" and its row is highlighted in the sidebar for a moment (`data-team-returned`, DOM only).
 
-**Move dialog**: `POST …/move/check` first (the take-over's blockers of both machines, nothing changes), **Move** only when it is clear, then the run is polled until done or failed.
+**Move dialog**: `POST …/move/check` first (the take-over's blockers of both machines, nothing changes), then (D110) the folders on the target and the ✓ / ⚠ / ✖ table of the member's repos (each change checks again), **Move** only when it is clear, then the run is polled until done or failed.
 
 **Empty state**: "No team members yet — Adopt one of your sessions, or start a new member from a template." with **Review suggestions** and **＋ Member**. **＋ Member**: Adopt one of your sessions (the review when there are suggestions, else a session picker) / From a template (the registry) / From scratch.
 

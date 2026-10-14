@@ -956,8 +956,9 @@ Local only (a peer's request gets 403 `peer-forbidden`):
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
-| POST | /api/takeover/preview | { sessionId, targetMachine?, clonePaths? } | TakeoverPreview `{ source, target, stopsTerminal, ok, blockers }`; `sessionId` is a local id (needs `targetMachine`: a paired machine's id) or a peer's remote id (comes here); 404 unknown machine, 422 |
-| POST | /api/takeover | { sessionId, targetMachine?, clonePaths?, confirmStopTerminal? } | 202 TakeoverRun; 409 `in-progress` |
+| POST | /api/takeover/preview | { sessionId, targetMachine?, clonePaths?, placement? } | TakeoverPreview `{ source, target, stopsTerminal, ok, blockers, placement, remembered }` (D110: `placement` absent = the remembered folders of this folder → that machine, if any; `null` = the target's saved folders); `sessionId` is a local id (needs `targetMachine`: a paired machine's id) or a peer's remote id (comes here); 404 unknown machine, 422 |
+| POST | /api/takeover | { sessionId, targetMachine?, clonePaths?, placement?, confirmStopTerminal? } | 202 TakeoverRun; 409 `in-progress` (D110: a run that resumes on the target remembers `placement`) |
+| POST | /api/takeover/folders | { machine?, path? } | D110: TargetDirListing of that machine (absent = this one; a paired machine through the peer API): the starting places without `path`, else that folder's subfolders; 403 `outside`, 422 `invalid`, 404 unknown machine |
 | GET | /api/takeover/runs/{id} | | TakeoverRun `{ id, state: running \| done \| failed, steps[{ id, label, status, detail }], error?, rolledBack, rollbackNotes, result?, leftovers, log }`; the step ids are `checks, stop, capture, transfer, apply, resume, finish` |
 
 On the peer allow-list (each end's operations; the initiating machine's runner calls them, locally or through the peer API; every answer is `{ result, log }` unless noted; failures are `{ error, message }`):
@@ -972,9 +973,11 @@ On the peer allow-list (each end's operations; the initiating machine's runner c
 | POST | /api/takeover/source/chunk | { opId, name, offset } | `{ name, size, offset, length, data (base64), eof }` (no log) |
 | POST | /api/takeover/source/finish | { opId, move, stillThere } | { leftovers, closeError } |
 | POST | /api/takeover/source/rollback | { opId } | { notes } |
-| POST | /api/takeover/target/plan | { source, clonePaths? } | TargetPlan (a resolution per repo: `use` / `clone` / `blocked`) |
+| POST | /api/takeover/target/plan | { source, clonePaths?, placement? } | TargetPlan (a resolution per repo: `use` / `clone` / `blocked`; D110: with `placement`, `placement` and `verification`) |
+| POST | /api/takeover/target/folders | { path? } | D110, read-only: TargetDirListing (not wrapped in `{ result, log }`); 403 `outside` |
+| POST | /api/takeover/target/verify | { source, placement, clonePaths? } | D110, read-only: `{ verification: TargetVerification, blockers }` |
 | POST | /api/takeover/target/chunk | { opId, name, size, sha256, offset, data } | `{ received, done }` (no log); 422 `checksum` / `invalid`, 409 `out-of-order`, 413 over 200 MB |
-| POST | /api/takeover/target/apply | { opId, source, captured, clonePaths? } | { place, changes, applied } (409 `diverged` and the like) |
+| POST | /api/takeover/target/apply | { opId, source, captured, clonePaths?, placement? } | { place, changes, applied } (409 `diverged` and the like; D110: the paths of the plan with that `placement`) |
 | POST | /api/takeover/target/abort | { opId } | { notes } |
 | POST | /api/takeover/target/resume | { opId, source, files, from } | { sessionId, name, note } |
 | POST | /api/takeover/target/close | { opId } | { ok: true } |
@@ -992,6 +995,27 @@ On the peer allow-list (each end's operations; the initiating machine's runner c
   "result": { "sessionId": "r~abcdefghijkl~0b7c3e0a-…", "machineName": "office-pc", "machineId": "abcdefghijkl", "local": false },
   "leftovers": [],
   "log": ["[office-pc] git -C /work/app push origin +17868e7…:refs/heads/switchboard/takeover/0b7c3e0a/feature/login"]
+}
+```
+
+### Target folders and verification (D110, 2026-10-14, additive)
+
+Where the session's repos are, or go, on the target is chosen in the dialog instead of assumed (`docs/peers.md` → *Target folders and verification (D110)*). Additive: new optional fields, three routes, no migration (the remembered folders are the setting `takeover.targetFolders` on the initiating machine), no `/hub` event. An older target ignores `placement` (the saved folders, as before) and answers 404 to the new routes.
+
+- **`TargetPlacement`** `{ roots: string[], repoPaths?: { <repo key>: path } }`: folders **on the target** (at most 8), and per repo the exact checkout (a pick among several, or one outside the roots). Paths are the target's own.
+- **`TargetVerification`** `{ roots (real paths), repos: RepoCheck[], problems: string[] }`; **`RepoCheck`** `{ key, name, branch, state: found | differs | missing | ambiguous, matches: [{ path, branch, dirty }], path, hints: [{ path, remote }], cloneTo, ok, note }`. `ok` = the take-over can go ahead for that repo by D65's rules; the dialog shows ✓ (`found`), ⚠ (`differs` / `missing` with a clone / `ambiguous`), ✖ (not `ok`).
+- **`TargetDirListing`** `{ machine, platform, path, parent, entries: [{ name, path, repo, workspace }], places: [{ label, path, kind: workspace | repo | plain | home }] }`: folders only.
+- **`TargetPlan`** adds `placement` and `verification` (both `null` without a placement); **`TakeoverPreview`** adds `placement` and `remembered`.
+- Team (D100): `POST /api/team/members/{id}/move/check` and `…/move` also take `placement` and `clonePaths` (the same meaning; `placement: null` = the saved folders).
+
+```json
+{
+  "roots": ["D:\\code\\acme-ws"],
+  "problems": [],
+  "repos": [
+    { "key": "web-front", "name": "web-front", "branch": "feature/login", "state": "differs", "matches": [{ "path": "D:\\code\\acme-ws\\microfrontends\\web-front", "branch": "main", "dirty": 0 }], "path": "D:\\code\\acme-ws\\microfrontends\\web-front", "hints": [], "cloneTo": null, "ok": true, "note": "on main, not feature/login. Use D:\\code\\acme-ws\\microfrontends\\web-front; check out feature/login" },
+    { "key": "api", "name": "api", "branch": "feature/login", "state": "missing", "matches": [], "path": null, "hints": [], "cloneTo": "D:\\code\\acme-ws\\microservices\\api", "ok": true, "note": "Not on this machine: clone git@git.acme.example:acme/api.git into D:\\code\\acme-ws\\microservices\\api" }
+  ]
 }
 ```
 
@@ -1666,8 +1690,8 @@ Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `d
 | POST | /api/team/members/{id}/team | `{ teamId }` (2026-10-14) | 200 `TeamMember` (at the end of that team; charter, rhythm, budget, gates, access and hand-offs kept) · 404 · 409 `too-many` · 422 |
 | POST | /api/team/members/{id}/pause · /resume | | 200 `TeamMember` |
 | POST | /api/team/members/{id}/return | | 200 `{ sessionId }` (how this machine addresses it) |
-| POST | /api/team/members/{id}/move/check | `{ targetMachineId }` | 200 `{ ok, blockers, preview }` (`preview`: the take-over's `TakeoverPreview`) · 422 |
-| POST | /api/team/members/{id}/move | `{ targetMachineId }` | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId }` · 409 `blocked` + `blockers` |
+| POST | /api/team/members/{id}/move/check | `{ targetMachineId, placement?, clonePaths? }` (D110) | 200 `{ ok, blockers, preview }` (`preview`: the take-over's `TakeoverPreview`) · 422 |
+| POST | /api/team/members/{id}/move | `{ targetMachineId, placement?, clonePaths? }` (D110) | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId }` · 409 `blocked` + `blockers` |
 | GET | /api/team/moves/{runId} | | 200 `TeamMoveRun` (`state`: `running` · `done` · `failed`) · 404 |
 | POST | /api/team/handoffs | `{ to: <role name, "Role (Team)" or member id>, brief, expected?, links?, from?: <member id>, planRef?, team?: <team name or id>, teamId?: <the team the name is looked up in, when no sender; none = the first team> }` | 201 `TeamHandoff` · 404 (no such member) · 422 |
 | PUT | /api/team/handoffs/{id} | `{ state: open \| accepted \| done \| declined }` | 200 `TeamHandoff` |
