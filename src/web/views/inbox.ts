@@ -88,9 +88,21 @@ export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPr
 /** D102: a plan's "Ready to merge" item's Open plan: goes to the plan (`item.route`) without closing the item. */
 export const OPEN_PLAN = 'open-plan';
 
-/** D102: the route an action goes to without calling the server (Open plan), else `null`. */
+/** D109: the PR watcher's items' links: Open session (the item's session) and Open PR (the PR on GitHub). */
+export const OPEN_SESSION_ACTION = 'open-session';
+export const OPEN_PR_ACTION = 'open-pr';
+
+/** D102: the route an action goes to without calling the server (Open plan; D109: Open session), else `null`. */
 export function openRoute(item: InboxItem, actionId: string): string | null {
-  return item.kind === 'system' && actionId === OPEN_PLAN ? (item.route ?? null) : null;
+  if (item.kind !== 'system') return null;
+  if (actionId === OPEN_PLAN) return item.route ?? null;
+  if (actionId === OPEN_SESSION_ACTION && item.sessionId) return `/sessions/${encodeURIComponent(item.sessionId)}`;
+  return null;
+}
+
+/** D109: the external page an action opens in a new tab without calling the server (Open PR), else `null`. */
+export function openUrl(item: InboxItem, actionId: string): string | null {
+  return item.kind === 'system' && actionId === OPEN_PR_ACTION && item.url && /^https:\/\//.test(item.url) ? item.url : null;
 }
 
 /** D55: the update item's action that closes it and opens Settings → Updates (the notes and the Update button). */

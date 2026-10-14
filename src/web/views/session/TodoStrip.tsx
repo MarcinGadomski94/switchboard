@@ -8,6 +8,7 @@ import { useSessionList } from '../../folders/useFolders.ts';
 import { type Toast, useToasts } from '../../toast/ToastHost.tsx';
 import { TodoCard, TodoForm, type TodoRunSession } from './TodoCard.tsx';
 import { draftField } from '../../../core/drafts.ts';
+import { useModals } from '../../modals/ModalHost.tsx';
 import './todos.css';
 
 export { authorLabel } from './TodoCard.tsx';
@@ -292,6 +293,7 @@ export function TodoStrip({
   const { open, done } = splitTodos(all);
   const disabled = blocked !== null;
   const { show } = useToasts();
+  const { open: openModal } = useModals();
   const runSessionOf = useRunSessions();
   const selection = useTodoSelection();
   const [running, setRunning] = useState(false);
@@ -389,6 +391,18 @@ export function TodoStrip({
             Select
           </button>
         ) : null}
+        {/* D109: Import issues… (GitHub / Jira) into this session's todos. */}
+        <button
+          type="button"
+          className="sb-todos-add-button"
+          data-testid="todo-import"
+          data-tour="todo-import"
+          disabled={disabled}
+          title="Import GitHub or Jira issues as todos"
+          onClick={() => openModal('import-issues', { importTarget: { sessionId } })}
+        >
+          Import…
+        </button>
         <button
           type="button"
           className="sb-todos-add-button"

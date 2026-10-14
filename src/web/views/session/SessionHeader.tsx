@@ -46,6 +46,7 @@ import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
 import { RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
 import { SessionChips } from './SessionChips.tsx';
+import { CiChip } from '../../ci/CiChip.tsx';
 import { usePanes } from '../../shell/Panes.tsx';
 import { DrawerButton, useInboxCount } from '../../shell/AppBar.tsx';
 import { useHeaderMenu } from '../../shell/useLayout.ts';
@@ -390,6 +391,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         ) : null}
         {/* D48: a peer's session names its machine. */}
         {session?.machine ? <MachineTag machine={session.machine} testId="session-machine" /> : null}
+        {/* D109: the session's PR (CI running / failed / green / merged); nothing without one. */}
+        {session && !chat ? <CiChip sessionId={sessionId} /> : null}
         <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>

@@ -20,6 +20,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'schedules', label: 'Schedules' },
   { key: 'tools', label: 'Embedded tools' },
   { key: 'github', label: 'GitHub' },
+  // D109 (docs/ci.md): the CI / pull-request feedback loop; after GitHub.
+  { key: 'ci', label: 'CI & pull requests' },
   // D62 (docs/providers.md): the CLIs sessions run on; after the prototype's seven.
   { key: 'clis', label: 'CLIs' },
   // D63 (docs/accounts.md): more than one login per CLI, switched automatically on usage limits.

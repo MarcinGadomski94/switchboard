@@ -85,6 +85,9 @@ const V1_18 = '1.18.0';
 /** The version D106 (chats) ships in. */
 const V1_19 = '1.19.0';
 
+/** The version D109 (the CI / pull-request feedback loop, importing issues as todos) ships in. */
+const V1_20 = '1.20.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -786,6 +789,41 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['new-chat'],
         drawer: true,
         missing: 'Start one from ⌘K → New chat, or + New chat on the CHATS header in the sidebar.',
+      },
+    ],
+  },
+  {
+    id: 'ci-loop',
+    decision: 'D109',
+    version: V1_20,
+    title: 'CI back to the session, Merge PR, issues as todos',
+    steps: [
+      {
+        id: 'chip',
+        title: "The session's pull request, at a glance",
+        what: "When a session's branch has an open pull request, its header shows a chip: CI running, failed, green (or ready to merge) and merged. A failed check sends the end of the failing job's log to the session, which fixes it and pushes; after a few tries (or the same failure twice) Switchboard stops and asks you in the Inbox. Green and approved, the Inbox offers Merge PR: nothing merges without your click.",
+        todo: ['Look at the chip next to the session\'s title; click it to open the pull request.', 'In the Inbox, press Merge PR on a "ready to merge" item, then Remove worktree once it is merged.'],
+        anchors: ['session-ci-chip'],
+        route: { view: 'session' },
+        missing: "The chip shows next to a session's title once its branch has an open pull request (CI running, failed, green, merged). Failed checks go back to the session with their log; green and approved PRs get Merge PR in the Inbox.",
+      },
+      {
+        id: 'settings',
+        title: 'Tune the loop',
+        what: 'Choose whether failures go to the session, how many fixes per pull request, how much of the log is sent, how often pull requests are read, and how Merge PR merges (the repository\'s default, squash, merge or rebase).',
+        todo: ['Open Settings → CI & pull requests.', 'Change what you need; it applies from the next read.'],
+        anchors: ['settings-ci'],
+        route: { view: 'settings', section: 'ci' },
+        missing: null,
+      },
+      {
+        id: 'import',
+        title: 'Import issues as todos',
+        what: "Bring GitHub issues (a repository's open issues, by label or assigned to you) or Jira issues (a project key or JQL, through the Jira connection of Settings → Experimental → Plans) into a session's todo list, with a link back. Issues imported before are skipped.",
+        todo: ['Press Import issues… on the Todos page (or Import… on a session\'s todo strip).', 'Pick the source, Preview, tick the issues and Import.'],
+        anchors: ['todos-import', 'todo-import'],
+        route: { view: 'todos' },
+        missing: null,
       },
     ],
   },
