@@ -2,17 +2,23 @@ import { describe, expect, it } from 'vitest';
 import {
   type SourceRepo,
   type TargetCandidate,
+  checkMark,
+  checkStateOf,
   isCloneableUrl,
   isCommitId,
   isSafeBranchName,
   isSafeRepoKey,
   isTempBranch,
+  layoutInside,
   matchingCandidates,
   moveLinkId,
   normalizeRemoteUrl,
+  placementKey,
+  placementOf,
   planBlockers,
   planRepos,
   redactUrl,
+  remoteKeyOf,
   rollbackActions,
   sessionShortId,
   takeoverMessage,
@@ -65,13 +71,47 @@ const PLAN = { sessionName: 'fix-login', defaultCloneParent: '/Users/me/code', w
 describe('D65 remote URLs', () => {
   it('gives two clones of one repo the same key whatever the URL shape', () => {
     const urls = [
-      'git@github.com:acme/app.git',
+      'git@git.acme.example:acme/app.git',
       'https://git.acme.example/acme/app',
-      'https://user:secret@GitHub.com/acme/app.git/',
-      'ssh://git@github.com:22/acme/app.git',
-      'https://github.com:443/acme/app.git',
+      'https://user:secret@Git.Acme.Example/acme/app.git/',
+      'ssh://git@git.acme.example:22/acme/app.git',
+      'https://git.acme.example:443/acme/app.git',
     ];
-    expect(new Set(urls.map(normalizeRemoteUrl))).toEqual(new Set(['github.com/acme/app']));
+    expect(new Set(urls.map(normalizeRemoteUrl))).toEqual(new Set(['git.acme.example/acme/app']));
+  });
+
+  it('D110: one key for every URL shape of one repo (https / ssh / scp-like / .git / case / credentials / doubled slashes)', () => {
+    const urls = [
+      'git@git.acme.example:Acme/App.git',
+      'git@git.acme.example:/acme/app.git',
+      'https://git.acme.example/ACME/app',
+      'http://git.acme.example:80/acme/app.git',
+      'https://token@git.acme.example/acme/App.git',
+      'https://user:secret@git.acme.example//acme//app.git//',
+      'ssh://git@Git.Acme.Example/acme/app.git',
+      'git+ssh://git@git.acme.example:22/acme/app',
+      'git://git.acme.example:9418/acme/app.git',
+      '  https://git.acme.example/acme/app.git  ',
+    ];
+    expect(new Set(urls.map(normalizeRemoteUrl))).toEqual(new Set(['git.acme.example/acme/app']));
+  });
+
+  it('D110: folds the Azure DevOps https, ssh and visualstudio.com forms into one key', () => {
+    const urls = [
+      'https://acme@dev.azure.com/acme/Platform/_git/App',
+      'https://dev.azure.com/acme/platform/_git/app',
+      'git@ssh.dev.azure.com:v3/acme/Platform/App',
+      'ssh://git@ssh.dev.azure.com/v3/acme/platform/app',
+      'https://acme.visualstudio.com/Platform/_git/App',
+      'https://acme.visualstudio.com/DefaultCollection/Platform/_git/App',
+      'acme@vs-ssh.visualstudio.com:v3/acme/Platform/App',
+    ];
+    expect(new Set(urls.map(normalizeRemoteUrl))).toEqual(new Set(['dev.azure.com/acme/platform/app']));
+  });
+
+  it('D110: matches by the URL recomputed here, so an older source\'s case-keeping key still matches', () => {
+    expect(remoteKeyOf({ remoteUrl: 'git@git.acme.example:Acme/App.git', remoteKey: 'git.acme.example/Acme/App' })).toBe('git.acme.example/acme/app');
+    expect(remoteKeyOf({ remoteUrl: '', remoteKey: 'git.acme.example/acme/app' })).toBe('git.acme.example/acme/app');
   });
 
   it('keeps different repos, hosts and non-default ports apart', () => {
@@ -234,5 +274,47 @@ describe('D65: nothing the other machine sends reaches git unchecked', () => {
     expect(planRepos([repo({ branch: '--delete' })], [candidate()], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('not one this machine will pass to git') });
     expect(planRepos([repo({ key: '../x' })], [candidate()], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('repo key') });
     expect(planRepos([repo({ remoteUrl: 'ext::sh -c x' })], [], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('not a URL this machine will clone') });
+  });
+});
+
+describe('D110 target folders (pure parts)', () => {
+  const at = (path: string, branch: string | null = 'feature/x', dirty = 0) => ({ path, branch, dirty });
+
+  it('judges a repo found / differs / missing / ambiguous', () => {
+    expect(checkStateOf([], null, 'feature/x')).toEqual({ state: 'missing', path: null });
+    expect(checkStateOf([at('/c/app')], null, 'feature/x')).toEqual({ state: 'found', path: '/c/app' });
+    expect(checkStateOf([at('/c/app', 'main')], null, 'feature/x')).toEqual({ state: 'differs', path: '/c/app' });
+    expect(checkStateOf([at('/c/app', 'feature/x', 2)], null, 'feature/x')).toEqual({ state: 'differs', path: '/c/app' });
+    expect(checkStateOf([at('/c/app', null)], null, 'feature/x').state).toBe('differs');
+    expect(checkStateOf([at('/c/app'), at('/d/app')], null, 'feature/x')).toEqual({ state: 'ambiguous', path: null });
+    expect(checkStateOf([at('/c/app'), at('/d/app', 'main')], '/d/app', 'feature/x')).toEqual({ state: 'differs', path: '/d/app' });
+    // A pick that is not one of the matches decides nothing.
+    expect(checkStateOf([at('/c/app'), at('/d/app')], '/e/app', 'feature/x').state).toBe('ambiguous');
+  });
+
+  it('shows ✓ / ⚠ / ✖', () => {
+    expect(checkMark({ state: 'found', ok: true })).toBe('✓');
+    expect(checkMark({ state: 'differs', ok: true })).toBe('⚠');
+    expect(checkMark({ state: 'missing', ok: true })).toBe('⚠');
+    expect(checkMark({ state: 'ambiguous', ok: false })).toBe('⚠');
+    expect(checkMark({ state: 'differs', ok: false })).toBe('✖');
+    expect(checkMark({ state: 'missing', ok: false })).toBe('✖');
+  });
+
+  it('keeps a workspace layout across machines (either separator, any case)', () => {
+    expect(layoutInside('C:\\Code\\Workspace', 'c:\\code\\workspace\\microfrontends\\web-front')).toEqual(['microfrontends', 'web-front']);
+    expect(layoutInside('/Users/dev/ws', '/Users/dev/ws/mobile/acme-app-mobile')).toEqual(['mobile', 'acme-app-mobile']);
+    expect(layoutInside('/Users/dev/ws', '/Users/dev/other/app')).toBeNull();
+    expect(layoutInside('/Users/dev/ws', '/Users/dev/ws')).toBeNull();
+  });
+
+  it('reads a placement from a request body and keys the remembered ones', () => {
+    expect(placementOf(undefined)).toBeUndefined();
+    expect(placementOf({ roots: 'x' })).toBeNull();
+    expect(placementOf({ roots: [1] })).toBeNull();
+    expect(placementOf({ roots: ['/a', ' ', '/a', '/b'], repoPaths: { app: '/c/app', api: '' } })).toEqual({ roots: ['/a', '/b'], repoPaths: { app: '/c/app' } });
+    expect(placementOf({ roots: ['/a'], repoPaths: { app: 3 } })).toBeNull();
+    expect(placementKey('pc', 'D:\\code\\ws\\', 'mac')).toBe(placementKey('pc', 'D:\\code\\ws', 'mac'));
+    expect(placementKey('pc', '/ws', 'mac')).not.toBe(placementKey('pc', '/ws', 'other'));
   });
 });

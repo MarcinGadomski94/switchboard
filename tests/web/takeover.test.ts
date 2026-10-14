@@ -24,6 +24,8 @@ function preview(extra: Partial<TakeoverPreview> = {}, repos: RepoResolution[] =
     stopsTerminal: false,
     ok: true,
     blockers: [],
+    placement: null,
+    remembered: false,
     ...extra,
   };
 }

@@ -16,8 +16,13 @@ import {
   type RepoResolution,
   type SourceInspect,
   type SourceRepo,
+  type RepoCheck,
   type TargetCandidate,
+  type TargetDirListing,
+  type TargetPlacement,
   type TargetPlan,
+  type TargetVerification,
+  TARGET_FOLDERS_SETTING,
   TAKEOVER_CHUNK_BYTES,
   TAKEOVER_FILE_MAX_BYTES,
   isCloneableUrl,
@@ -25,12 +30,15 @@ import {
   isSafeBranchName,
   isSafeRepoKey,
   isTempBranch,
+  layoutInside,
+  checkStateOf,
   matchingCandidates,
   normalizeRemoteUrl,
   movedToLabel,
   planBlockers,
   planRepos,
   redactUrl,
+  remoteKeyOf,
   sessionShortId,
   takenOverLabel,
   takeoverMessage,
@@ -48,6 +56,8 @@ import type { HookService } from '../hooks/service.ts';
 import type { QuestionPipeline } from '../inbox/pipeline.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import { TakeoverGit, TakeoverGitError, pathExists } from './git.ts';
+import { isMainCheckout } from '../solutions/checkout.ts';
+import { type CheckoutFacts, LocateRefusal, allowedPlaces, checkoutFacts, findCheckouts, listFolders, resolveAllowed } from './locate.ts';
 import type { TodoService } from '../todos/service.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
@@ -122,6 +132,8 @@ interface TargetOp {
   place: { readonly folder: FolderRef; readonly cwd: string; readonly changes: readonly PathChange[] } | null;
   /** The session was created by this op (the id). */
   sessionId: string | null;
+  /** D110: the chosen folder this op saved (a workspace root or a checkout that was not saved yet); removed by the undo. */
+  addedFolderId: string | null;
 }
 
 /** One transferred chunk. */
@@ -140,6 +152,8 @@ export interface TargetBody {
   readonly opId: string;
   readonly source: SourceInspect;
   readonly clonePaths?: Readonly<Record<string, string>>;
+  /** D110: the target folders the developer chose (absent: the saved folders, as before D110). */
+  readonly placement?: TargetPlacement;
 }
 
 /** The target's resume request. */
@@ -710,49 +724,194 @@ export class TakeoverService {
     return out;
   }
 
+  /** D110: the places a listing or a search may look into on this machine (home, saved folders and their parents). */
+  async #places(): Promise<string[]> {
+    return allowedPlaces(this.#folders.expand('~'), (await this.#store.folders.list()).map((record) => record.canonicalPath));
+  }
+
+  /**
+   * D110 `POST /api/takeover/target/folders` `{ path? }` (peer-callable, read-only):
+   * the folder picker's listing of this machine: the folders inside `path` (never
+   * a file), or with no path the starting places (the saved folders and the home
+   * folder). A path outside the home folder and the saved folders (and their
+   * parents) is refused (403); links are resolved first.
+   */
+  async listTargetFolders(input: string | null): Promise<TargetDirListing> {
+    const self = await this.#self();
+    const places = await this.#places();
+    const records = await this.#store.folders.list();
+    const home = this.#folders.expand('~');
+    const starting: TargetDirListing['places'] = [
+      ...records.map((record) => ({ label: record.label ?? path.basename(record.canonicalPath), path: record.canonicalPath, kind: record.kind })),
+      { label: 'Home', path: home, kind: 'home' as const },
+    ];
+    if (input === null || input.trim() === '') return { machine: self, platform: process.platform, path: null, parent: null, entries: [], places: starting };
+    let dir: string;
+    try {
+      dir = await resolveAllowed(this.#folders.expand(input.trim()), places);
+    } catch (error) {
+      if (error instanceof LocateRefusal) throw new TakeoverError(error.status, error.status === 403 ? 'outside' : 'invalid', error.message);
+      throw error;
+    }
+    const up = path.dirname(dir);
+    const parent = up !== dir && (await resolveAllowed(up, places).then(() => true, () => false)) ? up : null;
+    return { machine: self, platform: process.platform, path: dir, parent, entries: await listFolders(dir), places: starting };
+  }
+
+  /**
+   * D110: finds the session's repos under the chosen folders. Every checkout under
+   * a root (bounded depth, `findCheckouts`) and every per-repo override is read
+   * (remotes, branch, uncommitted count); a repo matches a checkout that has a
+   * remote with the same normalised key, never by its folder's name (a checkout
+   * named like it without that remote is only a hint). One match (or the
+   * developer's pick among several) is the candidate the plan uses.
+   */
+  async #locate(repos: readonly SourceRepo[], placement: TargetPlacement, sourceFolder: string | null, git: TakeoverGit): Promise<{
+    readonly roots: string[];
+    readonly problems: string[];
+    readonly perRepo: Array<{ readonly matches: CheckoutFacts[]; readonly hints: Array<{ path: string; remote: string | null }>; readonly state: RepoCheck['state']; readonly path: string | null }>;
+    readonly candidates: TargetCandidate[];
+    readonly matches: Array<TargetCandidate | null>;
+    readonly workspace: { readonly path: string; readonly folderId: string | null } | null;
+    readonly defaults: Record<string, string>;
+  }> {
+    const places = await this.#places();
+    const records = await this.#store.folders.list();
+    const problems: string[] = [];
+    const roots: string[] = [];
+    for (const root of placement.roots) {
+      try {
+        const real = await resolveAllowed(this.#folders.expand(root), places);
+        if (!roots.includes(real)) roots.push(real);
+      } catch (error) {
+        problems.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    if (placement.roots.length === 0) problems.push('choose at least one folder on this machine');
+    // Every checkout under the roots, then the overrides.
+    const facts = new Map<string, CheckoutFacts>();
+    for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir)) facts.set(dir, await checkoutFacts(dir, git));
+    const overrides: Record<string, string> = {};
+    for (const [key, typed] of Object.entries(placement.repoPaths ?? {})) {
+      try {
+        const real = await resolveAllowed(this.#folders.expand(typed), places);
+        if (!(await isMainCheckout(real))) {
+          problems.push(`${typed} is not a git checkout (a repo's own folder, not a worktree)`);
+          continue;
+        }
+        overrides[key] = real;
+        if (!facts.has(real)) facts.set(real, await checkoutFacts(real, git));
+      } catch (error) {
+        problems.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    const folderOf = (dir: string): { id: string | null; kind: 'workspace' | 'repo'; path: string } => {
+      const repoFolder = records.find((record) => record.kind === 'repo' && record.canonicalPath === dir);
+      if (repoFolder) return { id: repoFolder.id, kind: 'repo', path: repoFolder.canonicalPath };
+      const holder = records.find((record) => record.kind === 'workspace' && dir.startsWith(`${record.canonicalPath}${path.sep}`));
+      return holder ? { id: holder.id, kind: 'workspace', path: holder.canonicalPath } : { id: null, kind: 'repo', path: dir };
+    };
+    const all = [...facts.values()];
+    const perRepo = [];
+    const candidates: TargetCandidate[] = [];
+    const matches: Array<TargetCandidate | null> = [];
+    for (const repo of repos) {
+      const key = repo.remoteKey;
+      const found = key === '' ? [] : all.filter((entry) => entry.remotes.some((remote) => remote.key === key));
+      const chosen = overrides[repo.key] ?? null;
+      const overrideFacts = chosen !== null ? facts.get(chosen) : undefined;
+      if (chosen !== null && overrideFacts && !found.includes(overrideFacts)) {
+        problems.push(`${chosen} is not a checkout of ${repo.name}: its remote is ${overrideFacts.remotes[0]?.url ?? 'missing'}, the session's is ${repo.remoteUrl}`);
+      }
+      const hints = all
+        .filter((entry) => !found.includes(entry) && path.basename(entry.path).toLowerCase() === repo.name.toLowerCase())
+        .map((entry) => ({ path: entry.path, remote: entry.remotes[0]?.url ?? null }));
+      const judged = checkStateOf(found, chosen !== null && found.includes(overrideFacts as CheckoutFacts) ? chosen : null, repo.branch);
+      perRepo.push({ matches: found, hints, state: judged.state, path: judged.path });
+      if (judged.path !== null) {
+        const folder = folderOf(judged.path);
+        const remote = (found.find((entry) => entry.path === judged.path) as CheckoutFacts).remotes.find((entry) => entry.key === key);
+        const candidate: TargetCandidate = { path: judged.path, folderId: folder.id, folderKind: folder.kind, folderPath: folder.path, name: path.basename(judged.path), remoteKey: key, remoteName: remote?.name ?? null };
+        candidates.push(candidate);
+        matches.push(candidate);
+      } else {
+        matches.push(null);
+      }
+    }
+    // Where a workspace session lives: the first root that is a workspace (saved or not).
+    let workspace: { path: string; folderId: string | null } | null = null;
+    for (const root of roots) {
+      if ((await this.#folders.check(root)).kind !== 'workspace') continue;
+      workspace = { path: root, folderId: records.find((record) => record.canonicalPath === root)?.id ?? null };
+      break;
+    }
+    // Where a missing repo is cloned: the workspace's layout (as on the source), else the first root.
+    const defaults: Record<string, string> = {};
+    const first = roots[0];
+    for (const repo of repos) {
+      const layout = workspace && sourceFolder ? layoutInside(sourceFolder, repo.mainPath) : null;
+      if (workspace && layout) defaults[repo.key] = path.join(workspace.path, ...layout);
+      else if (first) defaults[repo.key] = path.join(workspace?.path ?? first, repo.name);
+    }
+    return { roots, problems, perRepo, candidates, matches, workspace, defaults };
+  }
+
   /**
    * The target's view: which repos are used, cloned or blocked, whether the CLI
    * runs here and on which account. Read-only (it may fetch nothing and change
-   * nothing).
+   * nothing). D110: with a `placement` the repos are looked for under the chosen
+   * folders (`#locate`) instead of among the saved folders, and the plan carries
+   * the verification table the dialog shows; the apply then uses exactly these
+   * paths.
    */
-  async plan(body: Pick<TargetBody, 'source' | 'clonePaths'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     const log: string[] = [];
     const git = this.#git(log);
     const source = body.source;
+    // D110: matched by this machine's normalisation of the URL (an older source's key may differ in case).
+    const sourceRepos: SourceRepo[] = source.repos.map((repo) => ({ ...repo, remoteKey: remoteKeyOf(repo) }));
+    const placement = body.placement ?? null;
     const self = await this.#self();
     const blockers: string[] = [];
-    const names = [...new Set([...source.repos.map((repo) => repo.name), ...source.solutions])];
-    const candidates = await this.#candidates(names, git);
-    // The default clone folder: next to the default saved folder.
     const records = await this.#store.folders.list();
+    const located = placement ? await this.#locate(sourceRepos, placement, source.folder?.path ?? null, git) : null;
+    const names = [...new Set([...sourceRepos.map((repo) => repo.name), ...source.solutions])];
+    const candidates = located ? located.candidates : await this.#candidates(names, git);
+    // The default clone folder: next to the default saved folder (D110: the first chosen folder).
     const defaultFolder = records.find((record) => record.isDefault) ?? records[0] ?? null;
-    const defaultCloneParent = defaultFolder ? path.dirname(defaultFolder.canonicalPath) : null;
+    const defaultCloneParent = located ? (located.workspace?.path ?? located.roots[0] ?? null) : defaultFolder ? path.dirname(defaultFolder.canonicalPath) : null;
+    if (located) blockers.push(...located.problems);
     // Facts the pure planner needs.
     const exists = new Set<string>();
     const checkedOut = new Set<string>();
     const dirtyTargets = new Set<string>();
     const typed = body.clonePaths ?? {};
-    const workspaceDefaults: Record<string, string> = {};
-    const matches = source.repos.map((repo) => matchingCandidates(repo, candidates)[0] ?? null);
+    const workspaceDefaults: Record<string, string> = located ? { ...located.defaults } : {};
+    const matches = located ? located.matches : sourceRepos.map((repo) => matchingCandidates(repo, candidates)[0] ?? null);
     // A workspace session clones into the workspace's own layout.
     let workspace: TargetCandidate | null = null;
     if (source.folder?.kind === 'workspace' && !source.hooked) {
-      const counts = new Map<string, number>();
-      for (const match of matches) if (match && match.folderKind === 'workspace' && match.folderId) counts.set(match.folderId, (counts.get(match.folderId) ?? 0) + 1);
-      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-      workspace = matches.find((match) => match?.folderId === best?.[0]) ?? null;
-      if (workspace === null) {
-        // No repo matched at all: picking some saved workspace would be a guess, so the take-over stops here.
-        blockers.push('no saved workspace folder on this machine holds any of this session\'s repos: add the workspace folder here first (Settings → Folders)');
+      if (located) {
+        if (located.workspace) workspace = { path: located.workspace.path, folderId: located.workspace.folderId, folderKind: 'workspace', folderPath: located.workspace.path, name: path.basename(located.workspace.path), remoteKey: null, remoteName: null };
+        else blockers.push('none of the chosen folders is a workspace (a folder with the router AGENTS.md): choose the workspace root on this machine');
       } else {
-        for (const repo of source.repos) {
-          const candidate = solutionCandidates(workspace.folderPath, repo.name)?.[0];
-          if (candidate) workspaceDefaults[repo.key] = candidate;
+        const counts = new Map<string, number>();
+        for (const match of matches) if (match && match.folderKind === 'workspace' && match.folderId) counts.set(match.folderId, (counts.get(match.folderId) ?? 0) + 1);
+        const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+        workspace = matches.find((match) => match?.folderId === best?.[0]) ?? null;
+        if (workspace === null) {
+          // No repo matched at all: picking some saved workspace would be a guess, so the take-over stops here.
+          blockers.push('no saved workspace folder on this machine holds any of this session\'s repos: add the workspace folder here first (Settings → Folders), or choose the target folders');
+        } else {
+          for (const repo of sourceRepos) {
+            const candidate = solutionCandidates(workspace.folderPath, repo.name)?.[0];
+            if (candidate) workspaceDefaults[repo.key] = candidate;
+          }
         }
       }
     }
-    for (let index = 0; index < source.repos.length; index++) {
-      const repo = source.repos[index] as SourceRepo;
+    for (let index = 0; index < sourceRepos.length; index++) {
+      const repo = sourceRepos[index] as SourceRepo;
       const match = matches[index];
       if (match) {
         const worktree = repo.kind === 'worktree' ? worktreePathOf(match.path, source.name) : null;
@@ -772,7 +931,7 @@ export class TakeoverService {
         }
       }
     }
-    const repos: RepoResolution[] = planRepos(source.repos, candidates, {
+    let repos: RepoResolution[] = planRepos(sourceRepos, candidates, {
       clonePaths: { ...workspaceDefaults, ...typed },
       sessionName: source.name,
       defaultCloneParent,
@@ -781,6 +940,15 @@ export class TakeoverService {
       dirtyTargets,
       worktreePathOf,
     });
+    // D110: several checkouts of one repo under the chosen folders and no pick: the developer chooses (never a guess).
+    if (located) {
+      repos = repos.map((resolution, index) => {
+        const found = located.perRepo[index];
+        if (found?.state !== 'ambiguous') return resolution;
+        const reason = `${resolution.name} has ${found.matches.length} checkouts under the chosen folders: choose which one to use`;
+        return { ...resolution, action: 'blocked', matchedPath: null, folderId: null, worktreePath: null, cloneTo: null, cloneUrl: null, reason, summary: reason };
+      });
+    }
     blockers.push(...planBlockers(repos));
     // The CLI and the account.
     const refusal = await this.#clis.refusal(source.provider).catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
@@ -809,6 +977,32 @@ export class TakeoverService {
         cwd = first.worktreePath ?? first.matchedPath ?? first.cloneTo;
       }
     }
+    const verification: TargetVerification | null = located
+      ? {
+          roots: located.roots,
+          problems: located.problems,
+          repos: repos.map((resolution, index): RepoCheck => {
+            const found = located.perRepo[index] as (typeof located.perRepo)[number];
+            const pick = found.matches.find((entry) => entry.path === found.path) ?? null;
+            const differences: string[] = [];
+            if (pick && pick.branch !== resolution.branch) differences.push(`on ${pick.branch ?? 'a detached HEAD'}, not ${resolution.branch}`);
+            if (pick && pick.dirty > 0) differences.push(`${pick.dirty} uncommitted file${pick.dirty === 1 ? '' : 's'} there`);
+            const hint = found.state === 'missing' && found.hints.length > 0 ? ` (${found.hints.map((entry) => `${entry.path} is named like it but its remote is ${entry.remote ?? 'missing'}`).join('; ')})` : '';
+            return {
+              key: resolution.key,
+              name: resolution.name,
+              branch: resolution.branch,
+              state: found.state,
+              matches: found.matches.map((entry) => ({ path: entry.path, branch: entry.branch, dirty: entry.dirty })),
+              path: found.path,
+              hints: found.hints,
+              cloneTo: resolution.action === 'clone' ? resolution.cloneTo : null,
+              ok: resolution.action !== 'blocked',
+              note: `${differences.length > 0 ? `${differences.join(', ')}. ` : ''}${resolution.summary}${hint}`,
+            };
+          }),
+        }
+      : null;
     return {
       result: {
         machine: self,
@@ -820,9 +1014,34 @@ export class TakeoverService {
         cwd,
         blockers,
         defaultCloneParent,
+        placement,
+        verification,
       },
       log,
     };
+  }
+
+  /** D110: the remembered target folders of a (source machine, source folder, target machine), on the initiating machine. */
+  async rememberedPlacement(key: string): Promise<TargetPlacement | null> {
+    const stored = await this.#store.settings.get(TARGET_FOLDERS_SETTING);
+    if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return null;
+    const entry = (stored as Record<string, unknown>)[key];
+    if (typeof entry !== 'object' || entry === null) return null;
+    const roots = (entry as { roots?: unknown }).roots;
+    const repoPaths = (entry as { repoPaths?: unknown }).repoPaths;
+    if (!Array.isArray(roots) || roots.some((root) => typeof root !== 'string')) return null;
+    return { roots: roots as string[], ...(typeof repoPaths === 'object' && repoPaths !== null && !Array.isArray(repoPaths) ? { repoPaths: repoPaths as Record<string, string> } : {}) };
+  }
+
+  /** D110: remembers `placement` for the next move of that folder to that machine (the last 50 kept). */
+  async rememberPlacement(key: string, placement: TargetPlacement): Promise<void> {
+    const stored = await this.#store.settings.get(TARGET_FOLDERS_SETTING);
+    const current = typeof stored === 'object' && stored !== null && !Array.isArray(stored) ? { ...(stored as Record<string, unknown>) } : {};
+    delete current[key];
+    current[key] = { roots: [...placement.roots], ...(placement.repoPaths ? { repoPaths: { ...placement.repoPaths } } : {}), at: new Date().toISOString() };
+    const keys = Object.keys(current);
+    for (const old of keys.slice(0, Math.max(0, keys.length - 50))) delete current[old];
+    await this.#store.settings.set(TARGET_FOLDERS_SETTING, current);
   }
 
   /** The staging folder of an operation. */
@@ -833,7 +1052,7 @@ export class TakeoverService {
   #target(opId: string): TargetOp {
     let op = this.#targets.get(opId);
     if (!op) {
-      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null };
+      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null };
       this.#targets.set(opId, op);
     }
     return op;
@@ -885,7 +1104,7 @@ export class TakeoverService {
   async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[] }>> {
     const log: string[] = [];
     const git = this.#git(log);
-    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}) })).result;
+    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}) })).result;
     if (planned.blockers.length > 0 || planned.folder === null || planned.cwd === null) throw new TakeoverError(409, 'blocked', planned.blockers.join('; ') || 'the session cannot be placed on this machine');
     const op = this.#target(body.opId);
     const changes: PathChange[] = [];
@@ -928,7 +1147,7 @@ export class TakeoverService {
           if (added.created) applied.addedFolderId = added.folder.id;
         }
       }
-      const remote = (await git.remoteByKey(main, repo.remoteKey)) ?? null;
+      const remote = (await git.remoteByKey(main, remoteKeyOf(repo))) ?? null;
       if (remote === null) throw new TakeoverError(409, 'no-remote', `${main} has no remote for ${repo.remoteUrl}`);
       const privateRef = `refs/switchboard/takeover/${sessionShortId(body.source.sessionId)}/${repo.key}`;
       applied.privateRef = privateRef;
@@ -986,10 +1205,19 @@ export class TakeoverService {
         applied.tempDeleteError = error instanceof Error ? error.message : String(error);
       }
     }
-    if (planned.folder.kind === 'workspace') {
+    // D110: a chosen folder that is not saved here yet (a workspace root, a checkout found under a chosen folder) is saved now; the undo removes it.
+    if (planned.folder.id === null && planned.folder.kind === 'workspace') {
+      const added = await this.#folders.add(planned.folder.path);
+      if (added.created) op.addedFolderId = added.folder.id;
+      folderRef = { id: added.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'workspace' };
+    } else if (planned.folder.kind === 'workspace') {
       folderRef = { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'workspace' };
     } else {
       const first = op.applied[0] as AppliedRepo;
+      if (planned.folder.id === null && !first.cloned && !(await this.#store.folders.getByCanonicalPath(first.path))) {
+        const added = await this.#folders.add(first.path);
+        if (added.created) op.addedFolderId = added.folder.id;
+      }
       const record = (await this.#store.folders.list()).find((entry) => entry.canonicalPath === first.path || entry.id === (first.addedFolderId ?? planned.folder?.id));
       folderRef = record ? folderRefOf(record) : { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'repo' };
     }
@@ -1041,6 +1269,7 @@ export class TakeoverService {
       if (applied.addedFolderId) await attempt('could not remove the saved folder', () => this.#folders.remove(applied.addedFolderId as string));
       if (applied.cloned) await attempt(`could not remove the clone ${applied.path}`, () => rm(applied.path, { recursive: true, force: true }));
     }
+    if (op.addedFolderId) await attempt('could not remove the saved folder', () => this.#folders.remove(op.addedFolderId as string));
     await rm(op.dir, { recursive: true, force: true }).catch(() => undefined);
     this.#targets.delete(opId);
     return { result: { notes }, log };

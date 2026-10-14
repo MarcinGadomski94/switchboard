@@ -4,6 +4,7 @@ import type { ApiContext } from '../routes.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TakeoverGitError } from '../takeover/git.ts';
 import { TakeoverError } from '../takeover/service.ts';
+import { placementOf } from '../../core/takeover.ts';
 import { isPeerRequest } from './machines.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,10 +48,13 @@ function clonePathsOf(value: unknown): Record<string, string> | undefined | null
  * - `POST /api/takeover/preview` `{ sessionId, targetMachine?, clonePaths? }` → `TakeoverPreview`.
  * - `POST /api/takeover` `{ sessionId, targetMachine?, clonePaths?, confirmStopTerminal? }` → 202 `TakeoverRun` (poll it).
  * - `GET /api/takeover/runs/{id}` → `TakeoverRun`.
+ * - D110 `POST /api/takeover/folders` `{ sessionId, targetMachine?, path? }` → `TargetDirListing` (the target's folder picker).
+ * `preview` and the start also take `placement` (`TargetPlacement`: the chosen target folders).
  *
  * Peer API (the other machine's runner calls these; also callable locally):
  * `source/{inspect,stop,capture,stop-terminal,files,chunk,finish,rollback}`,
- * `target/{plan,chunk,apply,abort,resume,close}`, `GET leftovers`, `POST leftovers/{id}/delete`.
+ * `target/{plan,chunk,apply,abort,resume,close}`, `GET leftovers`, `POST leftovers/{id}/delete`;
+ * D110 (read-only): `target/folders` `{ path? }`, `target/verify` `{ source, placement, clonePaths? }`.
  */
 export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { takeover, takeoverRunner } = context;
@@ -66,7 +70,9 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if (clonePaths === null) return invalid(reply, 'clonePaths', 'clonePaths must map repo keys to paths');
     const targetMachine = body['targetMachine'] === undefined || body['targetMachine'] === null ? null : text(body['targetMachine']);
     if (body['targetMachine'] !== undefined && body['targetMachine'] !== null && targetMachine === null) return invalid(reply, 'targetMachine', 'targetMachine must be a machine id');
-    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    const placement = placementOf(body['placement']);
+    if (placement === null) return invalid(reply, 'placement', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -88,6 +94,20 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if ('send' in parsed) return parsed;
     try {
       return reply.code(202).send(await takeoverRunner.start(parsed));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D110: the target machine's folder picker (through the peer API when the target is the other machine).
+  app.post('/api/takeover/folders', async (request, reply) => {
+    const refused = localOnly(request, reply);
+    if (refused) return refused;
+    const parsed = requestOf(request.body, reply);
+    if ('send' in parsed) return parsed;
+    const path = isRecord(request.body) ? text(request.body['path']) : null;
+    try {
+      return await takeoverRunner.listTargetFolders(parsed, path);
     } catch (error) {
       return sendError(reply, error);
     }
@@ -138,10 +158,25 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     );
   });
   op('source/rollback', (body) => takeover.rollbackSource(need(body, 'opId')));
+  const placementIn = (body: Record<string, unknown>) => {
+    const placement = placementOf(body['placement']);
+    if (placement === null) throw new TakeoverError(422, 'invalid', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+    return placement ? { placement } : {};
+  };
   op('target/plan', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);
     if (clonePaths === null) throw new TakeoverError(422, 'invalid', 'clonePaths must map repo keys to paths');
-    return takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}) });
+    return takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}), ...placementIn(body) });
+  });
+  // D110 (read-only): the folder picker's listing of this machine, and the verification of the chosen folders.
+  op('target/folders', (body) => takeover.listTargetFolders(text(body['path'])));
+  op('target/verify', async (body) => {
+    const clonePaths = clonePathsOf(body['clonePaths']);
+    if (clonePaths === null) throw new TakeoverError(422, 'invalid', 'clonePaths must map repo keys to paths');
+    const placement = placementIn(body);
+    if (!('placement' in placement)) throw new TakeoverError(422, 'invalid', 'placement is required');
+    const planned = await takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}), ...placement });
+    return { result: { verification: planned.result.verification ?? null, blockers: planned.result.blockers }, log: planned.log };
   });
   op('target/chunk', (body) =>
     takeover.receiveChunk({
@@ -156,7 +191,7 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
   op('target/apply', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);
     if (clonePaths === null) throw new TakeoverError(422, 'invalid', 'clonePaths must map repo keys to paths');
-    return takeover.apply({ opId: need(body, 'opId'), source: objectOf(body, 'source') as never, captured: (Array.isArray(body['captured']) ? body['captured'] : []) as never, ...(clonePaths ? { clonePaths } : {}) });
+    return takeover.apply({ opId: need(body, 'opId'), source: objectOf(body, 'source') as never, captured: (Array.isArray(body['captured']) ? body['captured'] : []) as never, ...(clonePaths ? { clonePaths } : {}), ...placementIn(body) });
   });
   op('target/abort', (body) => takeover.abort(need(body, 'opId')));
   op('target/resume', (body) =>

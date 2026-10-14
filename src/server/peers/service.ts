@@ -183,6 +183,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D65: taking a session over: each end's operations (the initiating machine's runner drives them) and the leftover temp branches.
   ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback)$/],
   ['POST', /^\/api\/takeover\/target\/(?:plan|chunk|apply|abort|resume|close)$/],
+  // D110: the target's folder picker and the verification of the chosen folders (read-only; folders only, inside the home / saved folders).
+  ['POST', /^\/api\/takeover\/target\/(?:folders|verify)$/],
   ['GET', /^\/api\/takeover\/leftovers$/],
   // D68: a session's todo list (read, add, edit / tick, reorder, delete, clear done) and every session's (the Todos page).
   ['GET', /^\/api\/sessions\/[^/]+\/todos$/],

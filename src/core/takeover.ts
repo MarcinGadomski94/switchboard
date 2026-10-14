@@ -225,6 +225,158 @@ export interface TargetPlan {
   readonly blockers: readonly string[];
   /** Where clones go by default (next to the target's default folder). */
   readonly defaultCloneParent: string | null;
+  /** D110: the placement the plan used (`null`: the target's saved folders, as before D110). Absent from an older target. */
+  readonly placement?: TargetPlacement | null;
+  /** D110: what the target found under the chosen folders (`null` without a placement). Absent from an older target. */
+  readonly verification?: TargetVerification | null;
+}
+
+/**
+ * D110 (`docs/peers.md` → *Target folders and verification*): where the developer
+ * says the session's repos are, or go, on the target. Paths are the target's own
+ * (a Mac's `/Users/…` and a PC's `D:\code\…` differ: nothing is assumed).
+ */
+export interface TargetPlacement {
+  /**
+   * Folders on the target the repos are looked for in (a workspace root, a code
+   * folder), searched to a bounded depth. The first one is where a missing repo
+   * is cloned (a workspace session: into its layout) and, when it is a workspace,
+   * where a workspace session lives.
+   */
+  readonly roots: readonly string[];
+  /** Per repo key: the exact checkout to use (a repo outside the roots, or the pick among several). */
+  readonly repoPaths?: Readonly<Record<string, string>>;
+}
+
+/** What the verification found for one repo: ✓ found, ⚠ found on another branch / dirty, ✖ missing, ? several. */
+export type RepoCheckState = 'found' | 'differs' | 'missing' | 'ambiguous';
+
+/** A checkout on the target that has the repo's remote. */
+export interface FoundCheckout {
+  readonly path: string;
+  /** The branch it has checked out; `null` when detached. */
+  readonly branch: string | null;
+  /** Uncommitted files (untracked included). */
+  readonly dirty: number;
+}
+
+/** D110: the verification of one of the session's repos on the target (before anything moves). */
+export interface RepoCheck {
+  readonly key: string;
+  readonly name: string;
+  /** The session's branch (what the target checks out). */
+  readonly branch: string;
+  readonly state: RepoCheckState;
+  /** Checkouts under the chosen folders whose remote is the repo's (matched by the normalised remote, never by the folder's name). */
+  readonly matches: readonly FoundCheckout[];
+  /** The checkout the take-over uses (`found` / `differs`); `null` when missing or not chosen yet. */
+  readonly path: string | null;
+  /** Checkouts named like the repo that do not have its remote: shown as a hint, never used. */
+  readonly hints: ReadonlyArray<{ readonly path: string; readonly remote: string | null }>;
+  /** Where a missing repo is cloned (`null`: not cloned). */
+  readonly cloneTo: string | null;
+  /** The take-over can go ahead for this repo (D65's rules: a dirty checkout a main-checkout session needs, a branch checked out elsewhere, … block). */
+  readonly ok: boolean;
+  /** One line for the table: what happens, or why it cannot. */
+  readonly note: string;
+}
+
+/** D110: what the target found under the chosen folders. */
+export interface TargetVerification {
+  /** The roots as the target resolved them (real paths). */
+  readonly roots: readonly string[];
+  readonly repos: readonly RepoCheck[];
+  /** Roots or overrides the target refused (missing, not a folder, outside the allowed places). */
+  readonly problems: readonly string[];
+}
+
+/** D110: one folder of the target the dialog's picker browses. */
+export interface TargetDirEntry {
+  readonly name: string;
+  readonly path: string;
+  /** A git main checkout (`.git` is a folder). */
+  readonly repo: boolean;
+  /** A workspace (a router `AGENTS.md`, not a checkout). */
+  readonly workspace: boolean;
+}
+
+/** D110: a directory listing of the target (folders only, never a file's name or contents). */
+export interface TargetDirListing {
+  readonly machine: { readonly id: string; readonly name: string };
+  readonly platform: string;
+  /** The folder listed; `null` for the starting places. */
+  readonly path: string | null;
+  /** Its parent when that is still inside an allowed place; `null` otherwise. */
+  readonly parent: string | null;
+  readonly entries: readonly TargetDirEntry[];
+  /** The starting places: the saved folders (workspaces and repos) and the home folder. */
+  readonly places: ReadonlyArray<{ readonly label: string; readonly path: string; readonly kind: 'workspace' | 'repo' | 'plain' | 'home' }>;
+}
+
+/** The glyph of a repo's check in the dialog's table. */
+export function checkMark(check: Pick<RepoCheck, 'state' | 'ok'>): '✓' | '⚠' | '✖' {
+  if (!check.ok || check.state === 'ambiguous') return check.state === 'ambiguous' ? '⚠' : '✖';
+  if (check.state === 'found') return '✓';
+  return '⚠';
+}
+
+/**
+ * The path of `mainPath` inside the source's workspace `root`, as segments
+ * (`microfrontends/web-front` → `['microfrontends', 'web-front']`), so a missing
+ * repo is cloned into the same layout of the target's workspace. Either
+ * separator, case-insensitive prefix (the two machines may differ in both);
+ * `null` when it is not inside.
+ */
+export function layoutInside(root: string, mainPath: string): string[] | null {
+  const split = (value: string): string[] => value.split(/[\\/]+/).filter((part) => part !== '' && part !== '.');
+  const base = split(root);
+  const full = split(mainPath);
+  if (full.length <= base.length) return null;
+  for (let i = 0; i < base.length; i++) if ((base[i] as string).toLowerCase() !== (full[i] as string).toLowerCase()) return null;
+  const rest = full.slice(base.length);
+  return rest.includes('..') ? null : rest;
+}
+
+/**
+ * The state of one repo from what the search found (pure): several matches and
+ * no pick → `ambiguous`; one (or the pick) on the session's branch and clean →
+ * `found`, on another branch or with uncommitted files → `differs`; none →
+ * `missing`.
+ */
+export function checkStateOf(matches: readonly FoundCheckout[], chosen: string | null, branch: string): { readonly state: RepoCheckState; readonly path: string | null } {
+  if (matches.length === 0) return { state: 'missing', path: null };
+  const pick = chosen !== null ? (matches.find((match) => match.path === chosen) ?? null) : matches.length === 1 ? (matches[0] as FoundCheckout) : null;
+  if (pick === null) return { state: 'ambiguous', path: null };
+  return { state: pick.branch === branch && pick.dirty === 0 ? 'found' : 'differs', path: pick.path };
+}
+
+/** The settings key of the remembered target folders (D110, on the machine whose screen the move starts from). */
+export const TARGET_FOLDERS_SETTING = 'takeover.targetFolders';
+
+/** The key a remembered placement is kept under: the source machine, the session's folder there, the target machine. */
+export function placementKey(sourceMachineId: string, sourceFolder: string, targetMachineId: string): string {
+  return `${sourceMachineId}\n${sourceFolder.replace(/[\\/]+$/, '')}\n${targetMachineId}`;
+}
+
+/** A placement from a request body (strings only; empty roots dropped); `null` when malformed, `undefined` when absent. */
+export function placementOf(value: unknown): TargetPlacement | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const rootsIn = record['roots'];
+  if (!Array.isArray(rootsIn) || rootsIn.some((root) => typeof root !== 'string')) return null;
+  const roots = [...new Set((rootsIn as string[]).map((root) => root.trim()).filter((root) => root !== ''))].slice(0, 8);
+  const pathsIn = record['repoPaths'];
+  let repoPaths: Record<string, string> | undefined;
+  if (pathsIn !== undefined && pathsIn !== null) {
+    if (typeof pathsIn !== 'object' || Array.isArray(pathsIn)) return null;
+    repoPaths = {};
+    for (const [key, entry] of Object.entries(pathsIn as Record<string, unknown>)) {
+      if (typeof entry !== 'string') return null;
+      if (entry.trim() !== '') repoPaths[key] = entry.trim();
+    }
+  }
+  return { roots, ...(repoPaths && Object.keys(repoPaths).length > 0 ? { repoPaths } : {}) };
 }
 
 /** The preview the dialog shows: both sides' view before anything changes. */
@@ -236,6 +388,10 @@ export interface TakeoverPreview {
   readonly ok: boolean;
   /** Everything that stops it, from both sides. */
   readonly blockers: readonly string[];
+  /** D110: the target folders the preview used (the request's, else the remembered ones; `null` = the target's saved folders). */
+  readonly placement: TargetPlacement | null;
+  /** D110: {@link placement} came from the last move of this folder to that machine. */
+  readonly remembered: boolean;
 }
 
 /** One repo after the source pushed its work in progress. */
@@ -397,11 +553,20 @@ export function redactUrl(url: string): string {
 }
 
 /**
- * What two clones of one repo have in common: the remote URL without scheme,
- * credentials, default port, `.git` and a trailing slash, the host lower-cased
- * (`git@github.com:acme/app.git`, `https://user@GitHub.com/acme/app` and
- * `ssh://git@github.com:22/acme/app.git/` all give `github.com/acme/app`). A local
- * path or `file://` URL (a bare repo on disk) gives its path with forward slashes.
+ * What two clones of one repo have in common (D65; D110 made it case- and
+ * host-alias-proof): the remote URL without scheme, credentials, default port,
+ * `.git` and a trailing slash, **lower-cased** (`git@github.com:Acme/App.git`,
+ * `https://user@GitHub.com/acme/app` and `ssh://git@github.com:22/acme/app.git/`
+ * all give `github.com/acme/app`: the hosting services treat owner and repo
+ * names case-insensitively, and a clone made on another machine is often typed
+ * in another case). Azure DevOps' https, ssh and legacy `visualstudio.com` forms
+ * all give `dev.azure.com/<org>/<project>/<repo>`. A local path or `file://` URL
+ * (a bare repo on disk) gives its path with forward slashes, its case kept
+ * (a POSIX path is case-sensitive).
+ *
+ * Keys are never stored (the take-over records keep the redacted URL), so a
+ * changed key is compatible with what is on disk; between an older and a newer
+ * Switchboard the target recomputes the key from the URL ({@link remoteKeyOf}).
  */
 export function normalizeRemoteUrl(url: string): string {
   let text = url.trim();
@@ -428,14 +593,42 @@ export function normalizeRemoteUrl(url: string): string {
     host = host.toLowerCase();
     const port = /:(\d+)$/.exec(host);
     if (port && defaults[kind] === port[1]) host = host.slice(0, host.length - (port[0] as string).length);
-    return strip(`${host}${tail}`);
+    return hostedKey(strip(`${host}${tail.replace(/\/{2,}/g, '/')}`));
   }
   // scp-like `user@host:owner/repo.git`.
   const scp = /^(?:[^@/\s]+@)?([^:/\s]+):(?!\/\/)(.*)$/.exec(text);
-  if (scp) return strip(`${(scp[1] as string).toLowerCase()}/${(scp[2] as string).replace(/^\/+/, '')}`);
+  if (scp) return hostedKey(strip(`${(scp[1] as string).toLowerCase()}/${(scp[2] as string).replace(/^\/+/, '').replace(/\/{2,}/g, '/')}`));
   // A POSIX path.
   text = text.replace(/\\/g, '/');
   return strip(text);
+}
+
+/** A hosted remote's key (`host/path`, `.git` gone): lower-cased, Azure DevOps' forms folded into one. */
+function hostedKey(key: string): string {
+  const lower = key.toLowerCase();
+  const parts = lower.split('/');
+  const host = parts[0] ?? '';
+  // https://dev.azure.com/<org>/<project>/_git/<repo>
+  if (host === 'dev.azure.com' && parts[3] === '_git' && parts.length === 5) return ['dev.azure.com', parts[1], parts[2], parts[4]].join('/');
+  // git@ssh.dev.azure.com:v3/<org>/<project>/<repo> (and the legacy vs-ssh.visualstudio.com)
+  if ((host === 'ssh.dev.azure.com' || host === 'vs-ssh.visualstudio.com') && parts[1] === 'v3' && parts.length === 5) return ['dev.azure.com', parts[2], parts[3], parts[4]].join('/');
+  // https://<org>.visualstudio.com/[DefaultCollection/]<project>/_git/<repo>
+  const legacy = /^([a-z0-9-]+)\.visualstudio\.com$/.exec(host);
+  if (legacy && host !== 'vs-ssh.visualstudio.com') {
+    const rest = parts[1] === 'defaultcollection' ? parts.slice(2) : parts.slice(1);
+    if (rest.length === 3 && rest[1] === '_git') return ['dev.azure.com', legacy[1], rest[0], rest[2]].join('/');
+  }
+  return lower;
+}
+
+/**
+ * The key a source repo is matched by on the target: recomputed from its
+ * (redacted) URL with this machine's {@link normalizeRemoteUrl}, so an older
+ * source's differently normalised `remoteKey` still matches; the sent key when
+ * there is no URL.
+ */
+export function remoteKeyOf(repo: Pick<SourceRepo, 'remoteUrl' | 'remoteKey'>): string {
+  return normalizeRemoteUrl(repo.remoteUrl) || repo.remoteKey;
 }
 
 // ── planning ─────────────────────────────────────────────────────────────

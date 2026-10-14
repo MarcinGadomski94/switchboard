@@ -6,12 +6,15 @@ import {
   type Leftover,
   type SourceInspect,
   type TakeoverPreview,
+  type TargetDirListing,
+  type TargetPlacement,
   type TakeoverRun,
   type TakeoverStepId,
   type TakeoverStepState,
   type TargetPlan,
   TAKEOVER_STEPS,
   TAKEOVER_STEP_LABELS,
+  placementKey,
   rollbackActions,
 } from '../../core/takeover.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
@@ -41,9 +44,11 @@ export interface TakeoverEndpoint {
   readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer>;
   finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
-  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>> }): Promise<OpAnswer<TargetPlan>>;
+  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement }): Promise<OpAnswer<TargetPlan>>;
+  /** D110: the target's folder picker listing (`null` = the starting places). */
+  listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
-  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }> }>>;
+  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }> }>>;
   abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
   resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>>;
   closeTarget(opId: string): Promise<void>;
@@ -62,6 +67,7 @@ export function localEndpoint(service: TakeoverService): TakeoverEndpoint {
     finish: (opId, move, stillThere) => service.finish(opId, move, stillThere),
     rollbackSource: (opId) => service.rollbackSource(opId),
     plan: (body) => service.plan(body),
+    listFolders: (path) => service.listTargetFolders(path),
     receiveChunk: (input) => service.receiveChunk(input),
     apply: (body) => service.apply(body),
     abort: (opId) => service.abort(opId),
@@ -91,6 +97,7 @@ export function peerEndpoint(peers: PeerService, machineId: string): TakeoverEnd
     finish: (opId, move, stillThere) => call('POST', '/source/finish', { opId, move, stillThere }),
     rollbackSource: (opId) => call('POST', '/source/rollback', { opId }),
     plan: (body) => call('POST', '/target/plan', body),
+    listFolders: (path) => call('POST', '/target/folders', path === null ? {} : { path }),
     receiveChunk: (input) => call('POST', '/target/chunk', input),
     apply: (body) => call('POST', '/target/apply', body),
     abort: (opId) => call('POST', '/target/abort', { opId }),
@@ -108,6 +115,8 @@ export interface TakeoverRequest {
   /** The paired machine a local session goes to; absent for a peer's session (it comes here). */
   readonly targetMachine?: string | null;
   readonly clonePaths?: Readonly<Record<string, string>>;
+  /** D110: the target folders the developer chose; absent = the remembered ones, else the target's saved folders. */
+  readonly placement?: TargetPlacement;
   /** The developer confirmed that a hooked terminal's `claude` is stopped. */
   readonly confirmStopTerminal?: boolean;
 }
@@ -171,13 +180,36 @@ export class TakeoverRunner {
     return { source: localEndpoint(this.#service), target: peerEndpoint(this.#peers, to), rawSessionId: request.sessionId, peerId: to };
   }
 
-  /** What the dialog shows before anything changes: both machines' view of the take-over. */
+  /** D110: the key the target folders of a move are remembered under (on this, the initiating, machine). */
+  async #placementKey(ends: Ends, source: SourceInspect): Promise<string> {
+    const self = await this.#peers.self();
+    const targetId = ends.target.machineId ?? self.id;
+    return placementKey(source.machine.id, source.folder?.path ?? source.cwd ?? '', targetId);
+  }
+
+  /**
+   * What the dialog shows before anything changes: both machines' view of the
+   * take-over. D110: with no `placement` in the request, the one remembered from
+   * the last move of this folder to that machine is used (and said so).
+   */
   async preview(request: TakeoverRequest): Promise<TakeoverPreview> {
     const ends = await this.#ends(request);
     const source = (await ends.source.inspect(ends.rawSessionId)).result;
-    const target = (await ends.target.plan({ source, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}) })).result;
+    let placement = request.placement ?? null;
+    let remembered = false;
+    if (placement === null) {
+      placement = await this.#service.rememberedPlacement(await this.#placementKey(ends, source));
+      remembered = placement !== null;
+    }
+    const target = (await ends.target.plan({ source, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}) })).result;
     const blockers = [...source.blockers, ...target.blockers];
-    return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers };
+    return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered };
+  }
+
+  /** D110: the target machine's folder listing for the dialog's picker (`docs/peers.md` → *Target folders and verification*). */
+  async listTargetFolders(request: Pick<TakeoverRequest, 'sessionId' | 'targetMachine'>, path: string | null): Promise<TargetDirListing> {
+    const ends = await this.#ends(request);
+    return ends.target.listFolders(path);
   }
 
   /** Starts a take-over and returns its run at once; the dialog polls {@link get}. */
@@ -254,7 +286,7 @@ export class TakeoverRunner {
       failedAt = 'checks';
       set('checks', 'running');
       sourceInfo = (await source.inspect(ends.rawSessionId)).result;
-      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}) })).result;
+      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}) })).result;
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
@@ -306,7 +338,7 @@ export class TakeoverRunner {
       // 5 · the working tree on the target.
       failedAt = 'apply';
       set('apply', 'running');
-      const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), captured });
+      const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), captured });
       logOf(plan.machine.name, applied.log);
       set('apply', 'done', `${applied.result.applied.length} repo${applied.result.applied.length === 1 ? '' : 's'} restored`);
       done.push('apply');
@@ -321,6 +353,8 @@ export class TakeoverRunner {
       const key = ends.target.machineId === null ? resumed.result.sessionId : remoteId(plan.machine.id, resumed.result.sessionId);
       run.result = { sessionId: key, machineName: targetMachine.name, machineId: targetMachine.id, local: ends.target.machineId === null };
       set('resume', 'done', resumed.result.note);
+      // D110: the folders this move used are offered the next time this folder moves to that machine.
+      if (request.placement) await this.#service.rememberPlacement(await this.#placementKey(ends, sourceInfo), request.placement).catch((error: unknown) => this.#onError(error));
       // 7 · the old session is marked moved; the temp branches are cleaned up. Failures from here keep the take-over.
       set('finish', 'running');
       try {
