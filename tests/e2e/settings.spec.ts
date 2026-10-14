@@ -346,7 +346,7 @@ test('Notifications & usage: Send test fires the toast, the chime and the OS not
     Object.defineProperty(window, 'AudioContext', { value: FakeAudioContext, configurable: true });
   });
   await page.goto(`${server.baseUrl}/settings/notify`);
-  await expect(page.locator('.sb-set-row .sb-set-row-label')).toHaveText(['In-app toast + sound', 'OS notifications', 'Warn at Max usage', 'Near the limit']);
+  await expect(page.locator('.sb-set-row .sb-set-row-label')).toHaveText(['In-app toast + sound', 'OS notifications', 'Warn at Max usage', 'Near the limit', 'Prices (Insights)']); // D108: the prices last
   const osState = row(page, 'os-notifications').getByTestId('setting-value');
   await expect(osState).toHaveText('not asked yet');
 
