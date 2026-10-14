@@ -10,6 +10,17 @@ export interface PlanHooks {
   sessionContinued(from: string, to: string): Promise<void>;
   /** D102: the Inbox's "Ready to merge" item's Merge: answers `null` when merged, else why not. */
   inboxMerge(planId: string, itemId: string): Promise<string | null>;
+  /** D108: every plan item that ended (merged, failed, blocked), for Insights; `null` while Plans is off or `plans.db` is unavailable. */
+  outcomes(): Promise<PlanItemOutcome[] | null>;
+}
+
+/** D108: a plan item's outcome as Insights reads it (`docs/insights.md` → *Outcomes and rework*). */
+export interface PlanItemOutcome {
+  readonly itemId: string;
+  readonly runSessionId: string | null;
+  readonly outcome: 'merged' | 'failed' | 'blocked';
+  /** When it ended: merged / done / last change (ISO). */
+  readonly at: string;
 }
 
 const registry = new WeakMap<object, PlanHooks>();
@@ -43,4 +54,13 @@ export async function plansInboxMerge(store: object, planId: string, itemId: str
 /** Settings seam: the Plans switch changed. */
 export async function plansSwitchChanged(store: object): Promise<void> {
   await registry.get(store)?.switchChanged();
+}
+
+/**
+ * D108 seam (Insights, `src/server/insights/service.ts`): the plan items' outcomes; `null`
+ * while Plans is off (no hooks registered) or its database is unavailable.
+ */
+export async function plansInsightOutcomes(store: object): Promise<PlanItemOutcome[] | null> {
+  const hooks = registry.get(store);
+  return hooks ? hooks.outcomes() : null;
 }

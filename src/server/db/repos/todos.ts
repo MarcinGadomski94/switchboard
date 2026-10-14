@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import type { TodoAuthor, TodoCaptureSource, TodoPriority, TodoRunState, TodoStartSource, TodoState } from '../../../core/api.ts';
 import type { TodoActualSample } from '../../../core/todo-actuals.ts';
+import { type TokenUsage, addUsage, EMPTY_USAGE, modelKey, readTokenUsage } from '../../../core/insights.ts';
 import type { RepoContext } from '../context.ts';
 import { placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
@@ -43,6 +44,8 @@ export interface TodoRecord {
   readonly actualMs: number | null;
   /** D78: the tokens of the closed spans' turns; `null` = none known. */
   readonly actualTokens: number | null;
+  /** D108 (0045): those turns' tokens by kind (`unsplit` = turns without a split); `null` = none known. */
+  readonly actualUsage?: TokenUsage | null;
   /** D81 (0035): a captured item still waits for its agent to fill it in. */
   readonly needsEnrichment: boolean;
   /** D81 (0035): how it was captured; `null` for an item added any other way. */
@@ -77,6 +80,7 @@ const SPEC: TableSpec<TodoRecord> = {
     spanStartedAt: ['span_started_at', 'text'],
     actualMs: ['actual_ms', 'int'],
     actualTokens: ['actual_tokens', 'int'],
+    actualUsage: ['actual_usage', 'json'],
     needsEnrichment: ['needs_enrichment', 'bool'],
     capturedFrom: ['captured_from', 'text'],
     enrichAskedAt: ['enrich_asked_at', 'text'],
@@ -248,6 +252,7 @@ export class TodoRepository {
       if (!current) return null;
       if (current.state === state) return current;
       const now = this.#ctx.now();
+      this.#recordReopen(current, state, now);
       // D78: leaving in progress closes the span (its time and its turns' tokens are added).
       const closed = current.state === 'in_progress' ? this.#closeSpan(current, now) : {};
       let updated: TodoRecord | null;
@@ -269,6 +274,7 @@ export class TodoRepository {
       const current = this.#table.get(id);
       if (!current) return null;
       const now = this.#ctx.now();
+      this.#recordReopen(current, 'in_progress', now);
       const updated = this.#table.update(id, {
         state: 'in_progress',
         doneAt: null,
@@ -328,17 +334,53 @@ export class TodoRepository {
     return Number(row?.['c'] ?? 0) > 0 ? Number(row?.['n'] ?? 0) : null;
   }
 
+  /**
+   * D108: the token split of session `sessionId`'s turns that ended after `from`, up to `to`
+   * (each result event's `usage`; a result without one adds its `tokens` as `unsplit`); `null`
+   * when none of them carried any tokens.
+   */
+  turnUsage(sessionId: string, from: string, to: string): TokenUsage | null {
+    const row = this.#ctx.db
+      .prepare(
+        `SELECT SUM(json_extract(payload, '$.usage.input')) AS i, SUM(json_extract(payload, '$.usage.output')) AS o,
+           SUM(json_extract(payload, '$.usage.cacheWrite')) AS w, SUM(json_extract(payload, '$.usage.cacheRead')) AS r,
+           SUM(CASE WHEN json_extract(payload, '$.usage') IS NULL THEN json_extract(payload, '$.tokens') END) AS u,
+           COUNT(json_extract(payload, '$.usage')) + COUNT(json_extract(payload, '$.tokens')) AS c
+         FROM events WHERE session_id = ? AND ts > ? AND ts <= ? AND json_valid(payload) AND json_extract(payload, '$.type') = 'result'`,
+      )
+      .get(sessionId, from, to);
+    if (Number(row?.['c'] ?? 0) === 0) return null;
+    return { input: Number(row?.['i'] ?? 0), output: Number(row?.['o'] ?? 0), cacheWrite: Number(row?.['w'] ?? 0), cacheRead: Number(row?.['r'] ?? 0), unsplit: Number(row?.['u'] ?? 0) };
+  }
+
+  /** D108: the model the CLI reported for session `sessionId`'s newest turn that ended up to `to`; `null` when none did. */
+  #reportedModel(sessionId: string, to: string): string | null {
+    const row = this.#ctx.db
+      .prepare(`SELECT json_extract(payload, '$.model') AS m FROM events WHERE session_id = ? AND ts <= ? AND json_valid(payload) AND json_extract(payload, '$.type') = 'result' AND json_extract(payload, '$.model') IS NOT NULL ORDER BY ts DESC, id DESC LIMIT 1`)
+      .get(sessionId, to);
+    return typeof row?.['m'] === 'string' ? row['m'] : null;
+  }
+
   /** D78: the actuals of a span from `spanStartedAt` to `now` added to the item's. */
   #closeSpan(record: TodoRecord, now: string): Partial<TodoRecord> {
     const from = record.spanStartedAt ?? record.startedAt;
     if (!from) return { spanStartedAt: null };
     const ms = Math.max(0, Date.parse(now) - Date.parse(from));
     const tokens = this.turnTokens(this.#workingSession(record), from, now);
+    // D108: the same turns' split, accumulated like the tokens.
+    const usage = this.turnUsage(this.#workingSession(record), from, now);
     return {
       actualMs: (record.actualMs ?? 0) + (Number.isFinite(ms) ? ms : 0),
       actualTokens: tokens === null ? record.actualTokens : (record.actualTokens ?? 0) + tokens,
+      ...(usage === null ? {} : { actualUsage: addUsage(readTokenUsage(record.actualUsage) ?? EMPTY_USAGE, usage) }),
       spanStartedAt: null,
     };
+  }
+
+  /** D108: records that an item went from done back to open / in progress (a reopen: Insights' rework signal). */
+  #recordReopen(current: TodoRecord, state: TodoState, now: string): void {
+    if (current.state !== 'done' || state === 'done') return;
+    this.#ctx.db.prepare('INSERT INTO todo_reopens (todo_id, session_id, reopened_at) VALUES (?, ?, ?)').run(current.id, current.sessionId, now);
   }
 
   /** D78: keeps `todo_actuals` in step: a completed (done) item that was started has its row; any other has none. */
@@ -349,12 +391,32 @@ export class TodoRepository {
       return;
     }
     const folder = this.#ctx.db.prepare('SELECT root FROM sessions WHERE id = ?').get(record.sessionId)?.['root'];
+    // D108: the session that worked on it (its run's, else its own): CLI, model (the one its CLI reported last, else its choice) and account.
+    const working = this.#workingSession(record);
+    const session = this.#ctx.db.prepare("SELECT provider, model, COALESCE(profile_id, 'default-' || provider) AS profile_id FROM sessions WHERE id = ?").get(working);
+    const model = modelKey(this.#reportedModel(working, now), typeof session?.['model'] === 'string' ? session['model'] : null);
+    const usage = readTokenUsage(record.actualUsage) ?? (record.actualTokens === null ? null : { ...EMPTY_USAGE, unsplit: record.actualTokens });
     this.#ctx.db
       .prepare(
-        `INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (todo_id) DO UPDATE SET title = excluded.title, estimate_minutes = excluded.estimate_minutes, actual_ms = excluded.actual_ms, actual_tokens = excluded.actual_tokens`,
+        `INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, run_session_id, priority, provider, model, profile_id, usage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (todo_id) DO UPDATE SET title = excluded.title, estimate_minutes = excluded.estimate_minutes, actual_ms = excluded.actual_ms, actual_tokens = excluded.actual_tokens, priority = excluded.priority`,
       )
-      .run(record.id, record.sessionId, typeof folder === 'string' ? folder : null, record.title, record.estimateMinutes, record.actualMs ?? 0, record.actualTokens, now);
+      .run(
+        record.id,
+        record.sessionId,
+        typeof folder === 'string' ? folder : null,
+        record.title,
+        record.estimateMinutes,
+        record.actualMs ?? 0,
+        record.actualTokens,
+        now,
+        record.runSessionId,
+        record.priority,
+        typeof session?.['provider'] === 'string' ? session['provider'] : null,
+        model,
+        typeof session?.['profile_id'] === 'string' ? session['profile_id'] : null,
+        usage === null ? null : JSON.stringify(usage),
+      );
   }
 
   /** D78: the completed items' records of these sessions (also the ones removed after their done hour), by session. */

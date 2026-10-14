@@ -16,6 +16,7 @@ import {
 } from '../../core/settings.ts';
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
+import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
 import type { ServerConfig } from '../config.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
 import type { SettingRepository } from '../db/repos/settings.ts';
@@ -87,6 +88,15 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
         errors.push({ field: key, message: `${key} must be text of at most ${STANDING_INSTRUCTION_MAX} characters` });
         continue;
       }
+    } else if (key === 'insights.prices') {
+      // D108: the price table (Insights' cost).
+      const parsed = parsePriceTable(raw);
+      if (!parsed.ok) {
+        errors.push(...parsed.errors);
+        continue;
+      }
+      value[key] = parsed.table;
+      continue;
     } else if (key === 'sessions.modelRules') {
       // D82: the rules' shape here; whether each model / profile exists is the route's async check (`checkModelRules`).
       const parsed = parseModelRules(raw);
@@ -160,6 +170,8 @@ export async function readSettings(
       if (key === 'agents.standingInstruction') return [key, typeof value === 'string' ? currentStandingInstruction(value) : fallback];
       // D82: rules stored by an older or broken write read as none (routing off) rather than half a list.
       if (key === 'sessions.modelRules') return [key, readModelRules(value)];
+      // D108: a broken stored table reads as the example prices.
+      if (key === 'insights.prices') return [key, readPriceTable(value)];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
@@ -210,4 +222,9 @@ export async function todoEnrichEnabled(repo: SettingRepository): Promise<boolea
 /** D82: the stored *Model by task* rules (Settings → Sessions), in order; `[]` = off. */
 export async function modelRulesOf(repo: SettingRepository): Promise<ModelRule[]> {
   return readModelRules((await repo.getAll())['sessions.modelRules']);
+}
+
+/** D108: the stored price table (Settings → Notifications & usage → Prices), else the example prices. */
+export async function priceTableOf(repo: SettingRepository): Promise<PriceTable> {
+  return readPriceTable((await repo.getAll())['insights.prices']);
 }

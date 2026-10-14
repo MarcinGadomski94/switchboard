@@ -10,6 +10,7 @@
  */
 import { FRESH_OFFER_DEFAULT_PCT } from './fresh-session.ts';
 import { type ModelRule, readModelRules } from './model-routing.ts';
+import { EXAMPLE_PRICES, type PriceTable, readPriceTable } from './insights.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
 export interface KnownSettings {
@@ -70,6 +71,13 @@ export interface KnownSettings {
   readonly 'sessions.freshOffer': boolean;
   /** D83: the offer's threshold, % of the context window (whole, 50–95). Editable, default 80. */
   readonly 'sessions.freshOfferPct': number;
+  /**
+   * D108: Settings → Notifications & usage → *Prices*: the per-model prices per 1M tokens (input,
+   * output, cache write, cache read) and the currency Insights turns tokens into cost with
+   * (`docs/insights.md` → *Cost per todo run*). Editable, default {@link EXAMPLE_PRICES} (marked as
+   * examples until saved).
+   */
+  readonly 'insights.prices': PriceTable;
   /**
    * Team (D100) hook: Settings → Experimental → **Team** (`docs/team.md`). Off by default; while
    * off Team opens nothing, runs nothing and hides nothing. Editable, default `false`.
@@ -163,7 +171,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -190,6 +198,7 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.modelRules': [],
   'sessions.freshOffer': true,
   'sessions.freshOfferPct': FRESH_OFFER_DEFAULT_PCT,
+  'insights.prices': EXAMPLE_PRICES,
   // Team (D100) hook: off by default.
   'experimental.team': false,
   // Plans (D99) hook: off by default.
@@ -229,6 +238,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.modelRules': readModelRules(value['sessions.modelRules']),
     'sessions.freshOffer': bool('sessions.freshOffer', SETTING_DEFAULTS['sessions.freshOffer']),
     'sessions.freshOfferPct': num('sessions.freshOfferPct', SETTING_DEFAULTS['sessions.freshOfferPct']),
+    'insights.prices': readPriceTable(value['insights.prices']),
     'experimental.team': bool('experimental.team', SETTING_DEFAULTS['experimental.team']),
     'experimental.plans': bool('experimental.plans', SETTING_DEFAULTS['experimental.plans']),
     'service.startAtLogin': bool('service.startAtLogin', false),

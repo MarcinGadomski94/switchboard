@@ -3,6 +3,7 @@ import type { CreateInput, Patch, RepoContext } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 import { EventMemo, payloadType } from '../event-memo.ts';
 import type { SearchRepository } from './search.ts';
+import type { InsightsRepository } from './insights.ts';
 
 /** One event of a session: drives the chat, the timeline and the terminal tail. */
 export interface EventRecord {
@@ -71,10 +72,14 @@ export class EventRepository {
   /** D97: the search index each write updates (`docs/search.md`); absent in stores built without it. */
   readonly #search: SearchRepository | null;
 
-  constructor(ctx: RepoContext, search: SearchRepository | null = null) {
+  /** D108: the Insights rollup each new event updates (`docs/insights.md`); absent in stores built without it. */
+  readonly #insights: InsightsRepository | null;
+
+  constructor(ctx: RepoContext, search: SearchRepository | null = null, insights: InsightsRepository | null = null) {
     this.#ctx = ctx;
     this.#table = new Table(ctx.db, SPEC);
     this.#search = search;
+    this.#insights = insights;
   }
 
   /** Appends an event and returns it with its id (D97: and indexes its text). */
@@ -82,6 +87,8 @@ export class EventRepository {
     const record = this.#table.insert({ ...defined(input), ts: input.ts ?? this.#ctx.now() });
     this.#changed(record);
     this.#search?.indexEvent(record, true);
+    // D108: a result or a D80 revert adds to the day's rollup.
+    this.#insights?.recordEvent(record);
     return record;
   }
 

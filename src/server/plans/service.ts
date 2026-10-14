@@ -39,7 +39,7 @@ import {
   readyItems,
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
-import { registerPlanHooks } from './hooks.ts';
+import { type PlanItemOutcome, registerPlanHooks } from './hooks.ts';
 import type { PlanItemPatch, PlanItemRecord, PlanRecord, PlanRepository } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
@@ -270,8 +270,34 @@ export class PlanService {
           throw error;
         }
       },
+      outcomes: () => this.insightOutcomes(),
     });
     await this.switchChanged();
+  }
+
+  /**
+   * D108 (Insights, `docs/insights.md` → *Outcomes and rework*): every item that ended:
+   * `merged` (stored `done`: its work is in the target), `failed` (stored `failed`: discarded,
+   * could not start), `blocked` (any other item whose view state is `blocked`: a dependency
+   * failed, its session stopped with an error, a repeated conflict); `null` while Plans is off
+   * or `plans.db` is unavailable. Read-only.
+   */
+  async insightOutcomes(): Promise<PlanItemOutcome[] | null> {
+    if (!this.#enabled || this.#db === null) return null;
+    const repo = this.#repo();
+    const out: PlanItemOutcome[] = [];
+    for (const plan of await repo.list()) {
+      const records = new Map((await repo.items(plan.id)).map((item) => [item.id, item]));
+      // The view states (D99's planView): `blocked` covers dependents of a failed item and stopped sessions.
+      for (const view of (await this.#view(plan, repo)).items) {
+        const item = records.get(view.id);
+        if (!item) continue;
+        if (item.state === 'done') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'merged', at: item.mergedAt ?? item.doneAt ?? item.updatedAt });
+        else if (item.state === 'failed') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'failed', at: item.doneAt ?? item.updatedAt });
+        else if (view.state === 'blocked') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'blocked', at: item.updatedAt });
+      }
+    }
+    return out;
   }
 
   /** Stops listening and polling, waits for the cycle in flight and closes `plans.db` (the app closes). */

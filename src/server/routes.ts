@@ -61,6 +61,8 @@ import type { LoopService } from './loops/owned.ts';
 import { registerLoopRoutes } from './api/loops.ts';
 import { registerSearchRoutes } from './api/search.ts';
 import type { SearchService } from './search/service.ts';
+import { registerInsightsRoutes } from './api/insights.ts';
+import type { InsightsService } from './insights/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -123,6 +125,8 @@ export interface ApiContext {
   readonly loops: LoopService;
   /** D97: search across everything (docs/search.md). */
   readonly search: SearchService;
+  /** D108: the Insights page (docs/insights.md). */
+  readonly insights: InsightsService;
 }
 
 /**
@@ -166,5 +170,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);
   await registerSearchRoutes(app, context);
+  await registerInsightsRoutes(app, context);
   await registerHubRoutes(app, context);
 }

@@ -42,6 +42,8 @@ import { installTeam } from './team/install.ts';
 import { withTeamAccessServers } from './team/hooks.ts';
 import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
+import { InsightsBackfill } from './insights/backfill.ts';
+import { InsightsService } from './insights/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
 import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
@@ -178,6 +180,8 @@ export interface AppOptions {
    * when the app is ready and stopped with it.
    */
   readonly searchBackfill?: SearchBackfill;
+  /** D108: the Insights rollup's startup backfill (`docs/insights.md`); like `searchBackfill`, a caller that passes one starts it. */
+  readonly insightsBackfill?: InsightsBackfill;
   /**
    * Plans (D99) hook: plans and their scheduler (`docs/plans.md`). Without one the app makes its
    * own (git from PATH, the configured gh), started when the app is ready and closed with it.
@@ -510,7 +514,20 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search };
+  // D108: Insights: the rollup's backfill runs in the background like search's.
+  let insightsBackfill = options.insightsBackfill;
+  if (!insightsBackfill) {
+    const own = new InsightsBackfill(options.store);
+    app.addHook('onReady', async () => {
+      own.start();
+    });
+    app.addHook('onClose', async () => {
+      own.stop();
+    });
+    insightsBackfill = own;
+  }
+  const insights = new InsightsService({ store: options.store, backfill: insightsBackfill, accounts });
+  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights };
   await registerApiRoutes(app, apiContext);
   // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
   await installTeam(app, apiContext);

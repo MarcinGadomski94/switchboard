@@ -1,6 +1,7 @@
 import { CHAT_PERMISSION_MODE } from '../../core/chats.ts';
 import path from 'node:path';
 import { resultTurnTokens } from '../../core/todo-actuals.ts';
+import { resultInsightFields } from '../../core/insights.ts';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
 import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
 import type { EventKind, SessionStatus } from '../../core/model.ts';
@@ -904,6 +905,8 @@ export class StreamRecorder {
         costUsd: message.totalCostUsd,
         // D78: the turn's tokens (a todo's actuals add them up).
         tokens: resultTurnTokens(message.raw),
+        // D108: the split and the model the CLI reported (Insights).
+        ...resultInsightFields(message.raw),
         stopped: true,
       }, { uuid: message.uuid });
       return;
@@ -926,6 +929,8 @@ export class StreamRecorder {
       costUsd: message.totalCostUsd,
       // D78: the turn's tokens (a todo's actuals add them up).
       tokens: resultTurnTokens(message.raw),
+      // D108: the split and the model the CLI reported (Insights).
+      ...resultInsightFields(message.raw),
     }, { uuid: message.uuid });
   }
 

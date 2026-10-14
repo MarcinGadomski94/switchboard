@@ -32,6 +32,7 @@ import { TutorialRepository } from './repos/tutorial.ts';
 import { DraftRepository } from './repos/drafts.ts';
 import { SessionLoopRepository } from './repos/session-loops.ts';
 import { SearchRepository } from './repos/search.ts';
+import { InsightsRepository } from './repos/insights.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -86,6 +87,8 @@ export interface Store {
   readonly sessionLoops: SessionLoopRepository;
   /** D97 (0042): the full-text search index (`docs/search.md`); the events repository writes to it. */
   readonly search: SearchRepository;
+  /** D108 (0045): the Insights page's daily turn rollup and reads (`docs/insights.md`); the events repository writes to it. */
+  readonly insights: InsightsRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -124,12 +127,13 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
   const ctx: RepoContext = { db, now: () => clock().toISOString() };
   let closed = false;
   const search = new SearchRepository(ctx);
+  const insights = new InsightsRepository(ctx);
   return {
     file,
     migrations: result,
     sessions: new SessionRepository(ctx),
     agents: new AgentRepository(ctx),
-    events: new EventRepository(ctx, search),
+    events: new EventRepository(ctx, search, insights),
     questions: new QuestionRepository(ctx),
     permissions: new PermissionRepository(ctx),
     systemItems: new SystemItemRepository(ctx),
@@ -156,6 +160,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     drafts: new DraftRepository(ctx),
     sessionLoops: new SessionLoopRepository(ctx),
     search,
+    insights,
     db,
     async close(): Promise<void> {
       if (closed) return;

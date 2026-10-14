@@ -1,3 +1,4 @@
+import { EXAMPLE_PRICES } from '../../../src/core/insights.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -92,6 +93,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.modelRules': [],
       'sessions.freshOffer': true,
       'sessions.freshOfferPct': 80,
+      // D108: Insights' prices, Switchboard's examples until saved.
+      'insights.prices': EXAMPLE_PRICES,
       // Team (D100): Settings → Experimental → Team, off by default.
       'experimental.team': false,
       'experimental.plans': false,

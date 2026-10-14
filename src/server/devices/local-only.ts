@@ -15,7 +15,7 @@
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), and (D91) a
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -125,6 +125,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/device\/presence$/],
   // D97: search across everything (a read; normal use, on the phone too).
   ['GET', /^\/api\/search$/],
+  // D108: the Insights page (a read; phones may look at it too).
+  ['GET', /^\/api\/insights$/],
   // Plans (D99) hook: plans, all of it (ruling recorded in docs/plans.md → *Phones and paired machines*): reads, create / edit / delete,
   // items and dependencies, start / pause / resume / cancel, mode and holds, retry / mark done. A start is no more than the
   // phone's ▸ Run in new session (D76) many times; its safeguards (target branch, merge mode, green checks) hold on any device.
