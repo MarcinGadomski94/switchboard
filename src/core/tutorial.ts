@@ -89,6 +89,9 @@ const V1_19 = '1.19.0';
 /** The version D107 (project memory, experimental), D108 (Insights) and D109 (the CI / pull-request feedback loop, importing issues as todos) ship in. */
 const V1_20 = '1.20.0';
 
+/** The version D110 (choosing the target folders of a move, and their verification) ships in. */
+const V1_21 = '1.21.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -878,6 +881,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['todos-import', 'todo-import'],
         route: { view: 'todos' },
         missing: null,
+      },
+    ],
+  },
+  {
+    id: 'move-target',
+    decision: 'D110',
+    version: V1_21,
+    title: 'Choose where a moved session lands',
+    steps: [
+      {
+        id: 'folders',
+        title: 'Choose the folders on the other machine',
+        what: "Moving a session (or a Team member) to a paired machine no longer assumes its repos sit at the same paths. Choose folders on that machine (its saved folders, a typed path, or Browse its folders); it looks for each repo by its remote and shows ✓ found, ⚠ on another branch / with changes / to be cloned / several to choose from, ✖ blocked. Move is enabled only when every repo is found or will be cloned, and the next move of that folder remembers your choice.",
+        todo: ['Open a session that runs on this machine and press Move to <machine> ▸ (or Take over to this machine on a paired one).', 'Press Choose folders… and pick the workspace or code folder on that machine.', 'Check the table, pick a checkout where there are several, then Move.'],
+        anchors: ['session-takeover'],
+        route: { view: 'session' },
+        missing: 'Move to <machine> ▸ sits in the header of a session once a paired machine is online (Settings → Machines). In its dialog, Choose folders… picks where the repos are on that machine.',
       },
     ],
   },

@@ -35,6 +35,7 @@ export function TakeoverAction({ session, sessionId, short = false }: { readonly
         type="button"
         className="sb-button sb-sv-action"
         data-testid="session-takeover"
+        data-tour="session-takeover"
         data-direction="take-over"
         title={short ? TAKE_OVER_LABEL : undefined}
         onClick={() => openTakeover({ sessionId, targetMachine: null, machineName: peer.name, title })}
@@ -52,6 +53,7 @@ export function TakeoverAction({ session, sessionId, short = false }: { readonly
         type="button"
         className="sb-button sb-sv-action"
         data-testid="session-takeover"
+        data-tour="session-takeover"
         data-direction="move"
         title={short ? moveLabel(only ? only.name : 'another machine') : undefined}
         aria-haspopup={only ? undefined : 'menu'}

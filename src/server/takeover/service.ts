@@ -787,7 +787,7 @@ export class TakeoverService {
         problems.push(error instanceof Error ? error.message : String(error));
       }
     }
-    if (placement.roots.length === 0) problems.push('choose at least one folder on this machine');
+    if (placement.roots.length === 0 && Object.keys(placement.repoPaths ?? {}).length === 0) problems.push('choose at least one folder on this machine');
     // Every checkout under the roots, then the overrides.
     const facts = new Map<string, CheckoutFacts>();
     for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir)) facts.set(dir, await checkoutFacts(dir, git));

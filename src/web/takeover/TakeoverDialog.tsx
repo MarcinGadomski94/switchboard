@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { ApiError, api } from '../api/client.ts';
-import { type TakeoverPreview, type TakeoverRun, HOOKED_STOP_WARNING } from '../../core/takeover.ts';
+import { type TakeoverPreview, type TakeoverRun, type TargetPlacement, HOOKED_STOP_WARNING } from '../../core/takeover.ts';
 import { useRouter } from '../router.tsx';
 import { closeTakeover, useTakeoverRequest } from './store.ts';
-import { actionLabel, canStart, clonePathsOf, dialogTitle, runHeadline, stepMark, workLine } from './takeover.ts';
+import { canStart, clonePathsOf, dialogTitle, runHeadline, stepMark, withRepoPath } from './takeover.ts';
+import { RepoTable, TargetFolderPicker } from './TargetFolders.tsx';
 import type { TakeoverRequest } from './takeover.ts';
 import './takeover.css';
 
@@ -40,6 +41,8 @@ export function TakeoverDialog({ request }: { readonly request: TakeoverRequest 
   const [preview, setPreview] = useState<TakeoverPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [typed, setTyped] = useState<Record<string, string>>({});
+  // D110: the folders chosen on the target (`null` = its saved folders); the preview says which it used.
+  const [placement, setPlacement] = useState<TargetPlacement | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [run, setRun] = useState<TakeoverRun | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -49,12 +52,13 @@ export function TakeoverDialog({ request }: { readonly request: TakeoverRequest 
   const timer = useRef<number | undefined>(undefined);
   const running = starting || (run !== null && run.state === 'running');
 
-  const loadPreview = (paths: Record<string, string> = {}): void => {
+  const loadPreview = (paths: Record<string, string> = {}, chosen: TargetPlacement | null | undefined = undefined): void => {
     setPreviewError(null);
     api
-      .takeoverPreview({ sessionId: request.sessionId, targetMachine: request.targetMachine, ...(Object.keys(paths).length > 0 ? { clonePaths: paths } : {}) })
+      .takeoverPreview({ sessionId: request.sessionId, targetMachine: request.targetMachine, ...(Object.keys(paths).length > 0 ? { clonePaths: paths } : {}), ...(chosen !== undefined ? { placement: chosen } : {}) })
       .then((next) => {
         setPreview(next);
+        setPlacement(next.placement);
         setTyped((current) => {
           const out = { ...current };
           for (const repo of next.target.repos) if (repo.cloneTo && out[repo.key] === undefined) out[repo.key] = repo.cloneTo;
@@ -99,6 +103,7 @@ export function TakeoverDialog({ request }: { readonly request: TakeoverRequest 
         sessionId: request.sessionId,
         targetMachine: request.targetMachine,
         clonePaths: clonePathsOf(preview, typed),
+        ...(placement ? { placement } : {}),
         confirmStopTerminal: confirmed,
       })
       .then((next) => {
@@ -155,48 +160,30 @@ export function TakeoverDialog({ request }: { readonly request: TakeoverRequest 
                   ? `The conversation is copied (${preview.source.conversation.files.length} file${preview.source.conversation.files.length === 1 ? '' : 's'}) and resumed with --resume.`
                   : (preview.source.conversation.note ?? 'The conversation is handed over.')}
               </div>
-              <div className="sb-takeover-repos" data-testid="takeover-repos">
-                {preview.target.repos.map((repo) => {
-                  const source = preview.source.repos.find((entry) => entry.key === repo.key);
-                  return (
-                    <div key={repo.key} className="sb-takeover-repo" data-testid="takeover-repo" data-key={repo.key} data-action={repo.action}>
-                      <div className="sb-takeover-repo-head">
-                        <span className="sb-takeover-repo-name">{repo.name}</span>
-                        <span className="sb-takeover-branch" data-testid="takeover-repo-branch">
-                          {repo.branch}
-                        </span>
-                        <span className="sb-takeover-action" data-testid="takeover-repo-action">
-                          {actionLabel(repo)}
-                        </span>
-                      </div>
-                      <div className="sb-takeover-repo-line" data-testid="takeover-repo-work">
-                        {workLine(repo)} · carried through a temporary branch
-                      </div>
-                      <div className="sb-takeover-repo-line" data-testid="takeover-repo-summary">
-                        {repo.summary}
-                      </div>
-                      {source && source.path !== (repo.worktreePath ?? repo.matchedPath ?? repo.cloneTo) ? (
-                        <div className="sb-takeover-repo-line sb-takeover-muted">
-                          {source.path} → {repo.worktreePath ?? repo.matchedPath ?? repo.cloneTo ?? '?'}
-                        </div>
-                      ) : null}
-                      {repo.action === 'clone' || (repo.action === 'blocked' && repo.cloneTo !== null) ? (
-                        <label className="sb-takeover-clone">
-                          Clone into
-                          <input
-                            className="sb-takeover-input"
-                            data-testid="takeover-clone-path"
-                            value={typed[repo.key] ?? repo.cloneTo ?? ''}
-                            spellCheck={false}
-                            onChange={(event) => setTyped((current) => ({ ...current, [repo.key]: event.target.value }))}
-                            onBlur={() => loadPreview(clonePathsOf(preview, typed))}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+              <TargetFolderPicker
+                machine={direction === 'move' ? request.targetMachine : null}
+                machineName={targetName}
+                placement={placement}
+                remembered={preview.remembered}
+                onChange={(next) => {
+                  setPlacement(next);
+                  // `null` = the saved folders again (the remembered ones are not re-applied).
+                  loadPreview(clonePathsOf(preview, typed), next);
+                }}
+              />
+              <RepoTable
+                preview={preview}
+                sourceName={sourceName}
+                targetName={targetName}
+                clonePaths={typed}
+                onClonePath={(key, value) => setTyped((current) => ({ ...current, [key]: value }))}
+                onCloneDone={() => loadPreview(clonePathsOf(preview, typed), placement)}
+                onPick={(key, value) => {
+                  const next = withRepoPath(placement, key, value);
+                  setPlacement(next);
+                  loadPreview(clonePathsOf(preview, typed), next);
+                }}
+              />
               {preview.stopsTerminal ? (
                 <label className="sb-takeover-warning" data-testid="takeover-hooked-warning">
                   <span>{HOOKED_STOP_WARNING}</span>

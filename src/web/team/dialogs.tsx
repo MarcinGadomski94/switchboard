@@ -5,7 +5,10 @@ import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion } from '../..
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { api } from '../api/client.ts';
-import { type MoveCheck, refusalText, teamApi } from './api.ts';
+import { type MoveCheck, type MoveTarget, refusalText, teamApi } from './api.ts';
+import type { TargetPlacement } from '../../core/takeover.ts';
+import { RepoTable, TargetFolderPicker } from '../takeover/TargetFolders.tsx';
+import { withRepoPath } from '../takeover/takeover.ts';
 import { draftAll } from './charter-draft.ts';
 import { dismissedSuggestions, setDismissed } from './local.ts';
 import { MemberFormFields } from './MemberFormFields.tsx';
@@ -488,17 +491,33 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
   const [check, setCheck] = useState<MoveCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<TeamMoveRun | null>(null);
+  // D110: the folders chosen on the target (`null` = its saved folders) and typed clone paths; each change checks again.
+  const [placement, setPlacement] = useState<TargetPlacement | null>(null);
+  const [clonePaths, setClonePaths] = useState<Record<string, string>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    let live = true;
+  const asked = useRef(0);
+  const choiceOf = (chosen: TargetPlacement | null, paths: Record<string, string>): MoveTarget => ({ ...(chosen ? { placement: chosen } : {}), ...(Object.keys(paths).length > 0 ? { clonePaths: paths } : {}) });
+  const recheck = (chosen: TargetPlacement | null | undefined, paths: Record<string, string>): void => {
+    const ask = ++asked.current;
+    setError(null);
+    // `undefined` = the first check (the remembered folders apply); `null` = the saved folders.
+    const choice: MoveTarget = chosen === undefined ? choiceOf(null, paths) : { ...choiceOf(chosen, paths), ...(chosen === null ? { placement: null } : {}) };
     teamApi
-      .moveCheck(member.id, target.id)
-      .then((result) => live && setCheck(result))
-      .catch((caught: unknown) => live && setError(refusalText(caught)));
+      .moveCheck(member.id, target.id, choice)
+      .then((result) => {
+        if (ask !== asked.current) return;
+        setCheck(result);
+        setPlacement(result.preview?.placement ?? null);
+      })
+      .catch((caught: unknown) => ask === asked.current && setError(refusalText(caught)));
+  };
+  useEffect(() => {
+    recheck(undefined, {});
     return () => {
-      live = false;
+      asked.current++;
       if (timer.current) clearTimeout(timer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.id, target.id]);
   const follow = (id: string): void => {
     timer.current = setTimeout(() => {
@@ -515,7 +534,7 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
   const start = async (): Promise<void> => {
     setError(null);
     try {
-      const started = await teamApi.move(member.id, target.id);
+      const started = await teamApi.move(member.id, target.id, choiceOf(placement, clonePaths));
       setRun(started);
       follow(started.id);
     } catch (caught) {
@@ -529,6 +548,33 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
         <div className="sb-team-muted" data-testid="team-move-checking">
           Checking both machines…
         </div>
+      ) : null}
+      {check?.preview && run === null ? (
+        <>
+          <TargetFolderPicker
+            machine={target.id}
+            machineName={target.name}
+            placement={placement}
+            remembered={check.preview.remembered}
+            onChange={(next) => {
+              setPlacement(next);
+              recheck(next, clonePaths);
+            }}
+          />
+          <RepoTable
+            preview={check.preview}
+            sourceName={check.preview.source.machine.name}
+            targetName={target.name}
+            clonePaths={clonePaths}
+            onClonePath={(key, value) => setClonePaths((current) => ({ ...current, [key]: value }))}
+            onCloneDone={() => recheck(placement, clonePaths)}
+            onPick={(key, value) => {
+              const next = withRepoPath(placement, key, value);
+              setPlacement(next);
+              recheck(next, clonePaths);
+            }}
+          />
+        </>
       ) : null}
       {check ? (
         <div className="sb-team-move-check" data-testid="team-move-check" data-ok={String(check.ok)}>

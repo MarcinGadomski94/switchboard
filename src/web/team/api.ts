@@ -1,5 +1,6 @@
 import type { TeamCharter, TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
+import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
 import { ApiError } from '../api/client.ts';
 
 /**
@@ -58,7 +59,15 @@ export interface MemberBody {
 export interface MoveCheck {
   readonly ok: boolean;
   readonly blockers: readonly string[];
-  readonly preview: unknown;
+  /** The take-over's preview (`TakeoverPreview`; `null` when it could not be made). */
+  readonly preview: TakeoverPreview | null;
+}
+
+/** D110: the target folders (and clone paths) a member's move uses. */
+export interface MoveTarget {
+  /** `null` = the target's saved folders (the remembered folders are not used); absent = the remembered ones, if any. */
+  readonly placement?: TargetPlacement | null;
+  readonly clonePaths?: Readonly<Record<string, string>>;
 }
 
 /** `POST /api/team/charters/ask` (D105). */
@@ -87,8 +96,9 @@ export const teamApi = {
   pause: (id: string) => call<TeamMember>('POST', `/api/team/members/${enc(id)}/pause`),
   resume: (id: string) => call<TeamMember>('POST', `/api/team/members/${enc(id)}/resume`),
   returnMember: (id: string) => call<{ readonly sessionId: string }>('POST', `/api/team/members/${enc(id)}/return`),
-  moveCheck: (id: string, targetMachineId: string) => call<MoveCheck>('POST', `/api/team/members/${enc(id)}/move/check`, { targetMachineId }),
-  move: (id: string, targetMachineId: string) => call<TeamMoveRun>('POST', `/api/team/members/${enc(id)}/move`, { targetMachineId }),
+  /** D110: `choice` carries the chosen target folders (and clone paths) of the move. */
+  moveCheck: (id: string, targetMachineId: string, choice: MoveTarget = {}) => call<MoveCheck>('POST', `/api/team/members/${enc(id)}/move/check`, { targetMachineId, ...choice }),
+  move: (id: string, targetMachineId: string, choice: MoveTarget = {}) => call<TeamMoveRun>('POST', `/api/team/members/${enc(id)}/move`, { targetMachineId, ...choice }),
   moveRun: (runId: string) => call<TeamMoveRun>('GET', `/api/team/moves/${enc(runId)}`),
   handoff: (to: string, brief: string, expected: string) => call<TeamHandoff>('POST', '/api/team/handoffs', { to, brief, expected }),
   decide: (requestId: string, decision: 'approve' | 'decline' | 'dismiss', body?: { readonly charter?: TeamCharter }) => call<TeamRequest>('POST', `/api/team/requests/${enc(requestId)}/${decision}`, body),

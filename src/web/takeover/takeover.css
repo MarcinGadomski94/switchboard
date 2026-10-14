@@ -7,7 +7,7 @@
   background: rgba(0, 0, 0, 0.6);
 }
 .sb-takeover {
-  width: 640px;
+  width: 720px;
   max-width: calc(100% - 60px);
   max-height: calc(100% - 60px);
   display: flex;
@@ -268,4 +268,128 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* D110: the target folders and the ✓ / ⚠ / ✖ table (shared with the Team member move). */
+.sb-takeover-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+.sb-takeover-folders-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.sb-takeover-folders-label {
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-right: 2px;
+}
+.sb-takeover-root {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 11.5px var(--font-mono, monospace);
+  color: var(--text-2);
+  background: var(--bg-code);
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.sb-takeover-root-remove {
+  background: none;
+  border: none;
+  color: var(--muted-1);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+}
+.sb-takeover-small {
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+.sb-takeover-folders-head .sb-takeover-small {
+  margin-left: auto;
+}
+.sb-takeover-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sb-takeover-places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sb-takeover-place {
+  font: 11.5px var(--font-mono, monospace);
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 2px 9px;
+  background: transparent;
+}
+.sb-takeover-place[data-kind='home'] {
+  color: var(--muted-1);
+}
+.sb-takeover-mark-cell {
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+}
+.sb-takeover-mark-cell[data-mark='✓'] {
+  color: var(--status-done);
+}
+.sb-takeover-mark-cell[data-mark='⚠'] {
+  color: var(--status-need);
+}
+.sb-takeover-mark-cell[data-mark='✖'] {
+  color: var(--status-fail);
+}
+.sb-takeover-repo[data-mark='⚠'] {
+  border-color: var(--question-border);
+}
+.sb-takeover-repo-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 12px;
+  margin-top: 2px;
+}
+.sb-takeover-repo-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sb-takeover-col-label {
+  font: 10.5px var(--font-mono, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+}
+.sb-takeover-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.sb-takeover-choice {
+  text-align: left;
+  font: 11.5px var(--font-mono, monospace);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .sb-takeover-repo-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

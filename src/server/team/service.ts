@@ -68,6 +68,7 @@ import { listInbox } from '../inbox/wire.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
 import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
+import { type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -1858,7 +1859,7 @@ export class TeamService {
   // ── move (D65 take-over) ──────────────────────────────────────────────
 
   /**
-   * `POST /api/team/members/{id}/move/check` `{ targetMachineId }`: the take-over's
+   * `POST /api/team/members/{id}/move/check` `{ targetMachineId, placement?, clonePaths? }`: the take-over's
    * checks (both machines) plus Team's own (a running turn), before anything changes.
    */
   async moveCheck(id: string, body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly blockers: readonly string[]; readonly preview: unknown }> {
@@ -1868,12 +1869,13 @@ export class TeamService {
     if (member.machineId !== this.#selfId()) return this.#forward(member.machineId, 'POST', `/api/team/members/${encodeURIComponent(id)}/move/check`, body);
     if (target === member.machineId) throw new TeamError(422, 'invalid', `${member.name} runs on that machine already`);
     if (!this.#o.takeover) throw new TeamError(501, 'not-available', 'take-over is not available here');
+    const choice = moveTargetOf(body);
     const blockers: string[] = [];
     const session = await this.#o.store.sessions.get(member.sessionId);
     if (session?.status === 'run' || this.#o.supervisor.turnRunning(member.sessionId)) blockers.push(`${member.name} is working (a turn is running): move it when the turn has ended`);
     let preview: unknown = null;
     try {
-      const answer = await this.#o.takeover.preview({ sessionId: member.sessionId, targetMachine: target });
+      const answer = await this.#o.takeover.preview({ sessionId: member.sessionId, targetMachine: target, ...choice });
       preview = answer;
       blockers.push(...answer.blockers);
     } catch (error) {
@@ -1882,7 +1884,7 @@ export class TeamService {
     return { ok: blockers.length === 0, blockers, preview };
   }
 
-  /** `POST /api/team/members/{id}/move` `{ targetMachineId }` → 202 {@link TeamMoveRun} (poll `GET /api/team/moves/{runId}`). */
+  /** `POST /api/team/members/{id}/move` `{ targetMachineId, placement?, clonePaths? }` (D110: the chosen target folders) → 202 {@link TeamMoveRun} (poll `GET /api/team/moves/{runId}`). */
   async move(id: string, body: Record<string, unknown>): Promise<TeamMoveRun> {
     const member = this.#memberRecord(id);
     const target = typeof body['targetMachineId'] === 'string' ? body['targetMachineId'] : '';
@@ -1894,7 +1896,7 @@ export class TeamService {
     if (!check.ok) throw new TeamError(409, 'blocked', check.blockers.join('; '), { blockers: check.blockers });
     const takeover = this.#o.takeover as TakeoverRunner;
     const sourceLoops = await this.#o.loops.list(member.sessionId).catch(() => [] as OwnedLoop[]);
-    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target });
+    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target, ...moveTargetOf(body) });
     const moveRun: TeamMoveRun = { id: randomUUID(), memberId: id, state: 'running', takeoverRunId: run.id, error: null, targetMachineId: target };
     this.#moves.set(moveRun.id, moveRun);
     void this.#followMove(moveRun, sourceLoops).catch((error: unknown) => this.#error(error));
@@ -2018,4 +2020,21 @@ function stripHandoff(record: TeamHandoffRecord): TeamHandoff {
 function stripRequest(record: TeamRequestRecord): TeamRequest {
   const { clock: _clock, deleted: _deleted, ...rest } = record;
   return rest;
+}
+
+/**
+ * D110: the target folders (and clone paths) of a member's move, from the request
+ * body, in the take-over's shape; a malformed value is refused (422).
+ */
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string> } {
+  const placement = placementOf(body['placement']);
+  if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+  // `placement: null` = the target's saved folders (not the remembered ones).
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string> } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const paths = body['clonePaths'];
+  if (paths !== undefined && paths !== null) {
+    if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');
+    out.clonePaths = paths as Record<string, string>;
+  }
+  return out;
 }

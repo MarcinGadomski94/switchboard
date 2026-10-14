@@ -117,6 +117,8 @@ export interface TakeoverRequest {
   readonly clonePaths?: Readonly<Record<string, string>>;
   /** D110: the target folders the developer chose; absent = the remembered ones, else the target's saved folders. */
   readonly placement?: TargetPlacement;
+  /** D110: the developer cleared the chosen folders: the target's saved folders, not the remembered ones. */
+  readonly savedFolders?: boolean;
   /** The developer confirmed that a hooked terminal's `claude` is stopped. */
   readonly confirmStopTerminal?: boolean;
 }
@@ -197,7 +199,7 @@ export class TakeoverRunner {
     const source = (await ends.source.inspect(ends.rawSessionId)).result;
     let placement = request.placement ?? null;
     let remembered = false;
-    if (placement === null) {
+    if (placement === null && request.savedFolders !== true) {
       placement = await this.#service.rememberedPlacement(await this.#placementKey(ends, source));
       remembered = placement !== null;
     }
@@ -207,9 +209,11 @@ export class TakeoverRunner {
   }
 
   /** D110: the target machine's folder listing for the dialog's picker (`docs/peers.md` → *Target folders and verification*). */
-  async listTargetFolders(request: Pick<TakeoverRequest, 'sessionId' | 'targetMachine'>, path: string | null): Promise<TargetDirListing> {
-    const ends = await this.#ends(request);
-    return ends.target.listFolders(path);
+  async listTargetFolders(machine: string | null, path: string | null): Promise<TargetDirListing> {
+    const self = await this.#peers.self();
+    if (machine === null || machine === self.id) return localEndpoint(this.#service).listFolders(path);
+    if (!this.#peers.hasMachine(machine)) throw new TakeoverError(404, 'not-found', `no paired machine ${machine}`);
+    return peerEndpoint(this.#peers, machine).listFolders(path);
   }
 
   /** Starts a take-over and returns its run at once; the dialog polls {@link get}. */

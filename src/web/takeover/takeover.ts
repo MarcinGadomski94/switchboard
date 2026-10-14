@@ -1,11 +1,15 @@
 import type { Session } from '../../core/api.ts';
 import { offlineReason } from '../../core/peers.ts';
 import {
+  type FoundCheckout,
+  type RepoCheckState,
   type RepoResolution,
   type TakeoverPreview,
+  type TargetPlacement,
   type TakeoverRun,
   type TakeoverStepState,
   type TakeoverStepStatus,
+  checkMark,
 } from '../../core/takeover.ts';
 
 /**
@@ -129,4 +133,78 @@ export function runHeadline(run: TakeoverRun, machineName: string): string {
 /** The running step (the first that is running), for the aria-live line. */
 export function runningStep(steps: readonly TakeoverStepState[]): TakeoverStepState | null {
   return steps.find((step) => step.status === 'running') ?? null;
+}
+
+// ── D110: the target folders and the verification table ──────────────────
+
+/** One row of the dialog's repo table: the source's side and what the target found. */
+export interface RepoRow {
+  readonly key: string;
+  readonly name: string;
+  /** The source's remote (credentials removed). */
+  readonly remoteUrl: string | null;
+  readonly branch: string;
+  /** "3 uncommitted files · 2 unpushed commits". */
+  readonly work: string;
+  readonly action: RepoResolution['action'];
+  /** ✓ found, ⚠ found on another branch / dirty / to be cloned / several to choose from, ✖ blocked. */
+  readonly mark: '✓' | '⚠' | '✖';
+  /** The verification's state; `null` without target folders (the saved folders decided). */
+  readonly state: RepoCheckState | null;
+  /** What happens on the target, or why it cannot. */
+  readonly target: string;
+  /** Several checkouts to choose from (ambiguous), else empty. */
+  readonly choices: readonly FoundCheckout[];
+  /** The checkout used on the target. */
+  readonly path: string | null;
+  readonly cloneTo: string | null;
+}
+
+/** The table's rows: the plan's resolutions, with the verification when target folders were chosen. */
+export function repoRows(preview: TakeoverPreview): RepoRow[] {
+  const checks = preview.target.verification?.repos ?? null;
+  return preview.target.repos.map((resolution): RepoRow => {
+    const source = preview.source.repos?.find((entry) => entry.key === resolution.key) ?? null;
+    const check = checks?.find((entry) => entry.key === resolution.key) ?? null;
+    const mark = check ? checkMark(check) : resolution.action === 'use' ? '✓' : resolution.action === 'clone' ? '⚠' : '✖';
+    return {
+      key: resolution.key,
+      name: resolution.name,
+      remoteUrl: source?.remoteUrl ?? null,
+      branch: resolution.branch,
+      work: workLine(resolution),
+      action: resolution.action,
+      mark,
+      state: check?.state ?? null,
+      target: check?.note ?? resolution.summary,
+      choices: check?.state === 'ambiguous' ? check.matches : [],
+      path: check?.path ?? resolution.worktreePath ?? resolution.matchedPath,
+      cloneTo: resolution.cloneTo,
+    };
+  });
+}
+
+/** `placement` with `root` added (once); a new placement when there was none. */
+export function withRoot(placement: TargetPlacement | null, root: string): TargetPlacement {
+  const value = root.trim();
+  const roots = placement?.roots ?? [];
+  return { ...(placement ?? {}), roots: value === '' || roots.includes(value) ? [...roots] : [...roots, value] };
+}
+
+/** `placement` without `root`; `null` (the saved folders again) when nothing is left. */
+export function withoutRoot(placement: TargetPlacement | null, root: string): TargetPlacement | null {
+  if (!placement) return null;
+  const roots = placement.roots.filter((entry) => entry !== root);
+  const paths = placement.repoPaths ?? {};
+  return roots.length === 0 && Object.keys(paths).length === 0 ? null : { ...placement, roots };
+}
+
+/** `placement` with the checkout of repo `key` set (`null` clears the choice). */
+export function withRepoPath(placement: TargetPlacement | null, key: string, value: string | null): TargetPlacement | null {
+  const paths: Record<string, string> = { ...(placement?.repoPaths ?? {}) };
+  if (value === null || value.trim() === '') delete paths[key];
+  else paths[key] = value.trim();
+  const roots = placement?.roots ?? [];
+  if (roots.length === 0 && Object.keys(paths).length === 0) return null;
+  return { roots: [...roots], ...(Object.keys(paths).length > 0 ? { repoPaths: paths } : {}) };
 }

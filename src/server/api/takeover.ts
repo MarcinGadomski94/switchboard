@@ -48,7 +48,7 @@ function clonePathsOf(value: unknown): Record<string, string> | undefined | null
  * - `POST /api/takeover/preview` `{ sessionId, targetMachine?, clonePaths? }` → `TakeoverPreview`.
  * - `POST /api/takeover` `{ sessionId, targetMachine?, clonePaths?, confirmStopTerminal? }` → 202 `TakeoverRun` (poll it).
  * - `GET /api/takeover/runs/{id}` → `TakeoverRun`.
- * - D110 `POST /api/takeover/folders` `{ sessionId, targetMachine?, path? }` → `TargetDirListing` (the target's folder picker).
+ * - D110 `POST /api/takeover/folders` `{ machine?, path? }` → `TargetDirListing` (the target's folder picker; `machine` absent = this one).
  * `preview` and the start also take `placement` (`TargetPlacement`: the chosen target folders).
  *
  * Peer API (the other machine's runner calls these; also callable locally):
@@ -72,7 +72,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if (body['targetMachine'] !== undefined && body['targetMachine'] !== null && targetMachine === null) return invalid(reply, 'targetMachine', 'targetMachine must be a machine id');
     const placement = placementOf(body['placement']);
     if (placement === null) return invalid(reply, 'placement', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
-    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
+    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -103,11 +104,12 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
   app.post('/api/takeover/folders', async (request, reply) => {
     const refused = localOnly(request, reply);
     if (refused) return refused;
-    const parsed = requestOf(request.body, reply);
-    if ('send' in parsed) return parsed;
-    const path = isRecord(request.body) ? text(request.body['path']) : null;
+    if (!isRecord(request.body)) return invalid(reply, 'body', 'the body must be an object');
+    const machine = request.body['machine'] === undefined || request.body['machine'] === null ? null : text(request.body['machine']);
+    if (request.body['machine'] !== undefined && request.body['machine'] !== null && machine === null) return invalid(reply, 'machine', 'machine must be a machine id');
+    const path = text(request.body['path']);
     try {
-      return await takeoverRunner.listTargetFolders(parsed, path);
+      return await takeoverRunner.listTargetFolders(machine, path);
     } catch (error) {
       return sendError(reply, error);
     }

@@ -2,7 +2,7 @@ import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.
 import type { SearchAnswer } from '../../core/search.ts';
 import type { InsightsAnswer } from '../../core/insights.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
-import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
+import type { TakeoverPreview, TakeoverRun, TargetDirListing, TargetPlacement } from '../../core/takeover.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type { IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi } from '../../core/ci.ts';
@@ -460,11 +460,13 @@ export const api = {
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),
   /** D65: what a take-over would do (both machines' view), before anything changes. */
-  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>> }) =>
+  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null }) =>
     request<TakeoverPreview>('POST', '/api/takeover/preview', body),
   /** D65: starts the take-over (202; poll {@link takeoverRun}). */
-  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly confirmStopTerminal?: boolean }) =>
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean }) =>
     request<TakeoverRun>('POST', '/api/takeover', body),
+  /** D110: the target machine's folder picker (`machine` = `null` for this one): the starting places, or one folder's subfolders. */
+  takeoverFolders: (machine: string | null, path?: string | null) => request<TargetDirListing>('POST', '/api/takeover/folders', { ...(machine ? { machine } : {}), ...(path ? { path } : {}) }),
   takeoverRun: (id: string) => request<TakeoverRun>('GET', `/api/takeover/runs/${enc(id)}`),
   /** D65: the one-click delete of a temporary branch left on a remote; `machineId` = the machine that pushed it (`null` = this one). */
   takeoverDeleteLeftover: (machineId: string | null, leftoverId: string) =>
