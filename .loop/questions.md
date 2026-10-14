@@ -2191,6 +2191,7 @@ Sources: the parsers, Claude Code 2.1.296's binary strings (read-only: its SDK s
 - ASSUMED memory-tour · the What's-new tour is listed whether the feature is on or off (Team's pattern, with a "switch it on" card), not filtered like Plans'.
 - OPEN memory-q1 · "Should approving reload the folder's idle sessions at once (as built, a one-time `--resume` restart each), or only flag them as using an older instruction for you to Apply / Reload?"
 - OPEN memory-q2 · "Should a rejected entry keep blocking near-identical proposals forever, or only for a while (say 30 days)?"
+- OPEN memory-q4 · "The gate is enforced by Switchboard's API: an agent with shell access running as you could read the UI token from the data folder and approve its own proposal through `/api`. Should approvals also need something an agent cannot reach (for example a confirmation in the page that the API alone cannot give), or is the API boundary enough here, as for every other developer route?"
 - OPEN memory-q3 · "Should phones also add and delete entries (built: they read, approve, reject, edit and pin only)?"
 
 ## Stabilize 1.4.0 (2026-10-01)

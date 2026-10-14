@@ -27,6 +27,8 @@ Nothing an agent writes reaches any session's system prompt / instruction unrevi
 3. Only the developer's routes (the `sb_token` cookie; phones with their device credential; a paired machine through its peer token) can approve. An approval writes the **approved title and text into the same row** the block reads; when the developer edited them (Edit… then Approve, or `approve` with fields), the edit is what is stored and injected, and the agent's own words are kept only as `proposedTitle` / `proposedText` (a record, never read for the block).
 4. Rejected entries are kept (to block a re-proposal) and never injected; deleting removes the row.
 
+**Limit (same as every developer route):** the gate is Switchboard's own API. An agent that can run shell commands as the developer's user could in principle read the UI token from the data folder and call the developer's routes itself; that is outside what this feature can prevent (the agent token only reaches `/agent/v1`), and it is recorded as a question in `.loop/questions.md` → *D107*.
+
 Tests: `tests/server/memory/injection.test.ts` (fake-claude's argv, fake-codex's `developerInstructions`, fake-opencode's `system`), `tests/server/memory/switch.test.ts`, `tests/e2e/memory.spec.ts`.
 
 ## Agents' tools
