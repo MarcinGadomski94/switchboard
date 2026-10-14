@@ -4,14 +4,16 @@ import { MEMORY_BLOCK_END, MEMORY_BLOCK_START, MEMORY_SETTING, type MemoryEntry 
 import { DEFAULT_STANDING_INSTRUCTION } from '../../../src/core/settings.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { MemoryService } from '../../../src/server/memory/service.ts';
+import { toSession } from '../../../src/server/sessions/wire.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * D107 · the review gate end to end against the fake CLIs: a proposal never reaches a session;
  * an approved entry reaches the next session of its folder (fake-claude's `--append-system-prompt`,
- * fake-codex's `developerInstructions`, fake-opencode's `system`), a resumed one, and an open idle
- * one (D91's `--resume` restart); an edit made while approving is what arrives; a rejected entry
- * never does; with the switch off nothing does.
+ * fake-codex's `developerInstructions`, fake-opencode's `system`) and a resumed one; an open idle
+ * one is only flagged (D91's `instructionOutdated`, ruling 2026-10-14) until the developer reloads
+ * it; an edit made while approving is what arrives; a rejected entry never does (and blocks a
+ * near-identical proposal for 30 days); with the switch off nothing does.
  */
 
 const FLAG = '--append-system-prompt';
@@ -29,13 +31,19 @@ afterEach(async () => {
   rig = undefined;
 });
 
-async function setup(options: { readonly on?: boolean; readonly standingInstruction?: boolean } = {}): Promise<Rig> {
+async function setup(options: { readonly on?: boolean; readonly standingInstruction?: boolean; readonly now?: () => Date } = {}): Promise<Rig> {
   const world = await makeSupervisorWorld({ standingInstruction: options.standingInstruction ?? false });
-  const memory = new MemoryService({ dataDir: world.root, store: world.store, bus: new HubBus(), supervisor: world.supervisor, reloadDelayMs: 10 });
+  const memory = new MemoryService({ dataDir: world.root, store: world.store, bus: new HubBus(), supervisor: world.supervisor, ...(options.now ? { now: options.now } : {}) });
   if (options.on !== false) await world.store.settings.set(MEMORY_SETTING, true);
   await memory.start();
   rig = { world, memory };
   return rig;
+}
+
+async function outdated(w: SupervisorWorld, id: string): Promise<boolean> {
+  const record = await w.store.sessions.get(id);
+  if (!record) throw new Error('gone');
+  return (await toSession(w.store, record, null)).instructionOutdated === true;
 }
 
 async function claudeSpawns(w: SupervisorWorld) {
@@ -87,7 +95,6 @@ describe('D107 · the review gate at the spawn (Claude Code)', () => {
     await r.memory.approve(a.id, {});
     await r.memory.reject(b.id);
     await r.memory.approve(c.id, { text: 'DEVELOPER-EDIT: migrations are in src/server/db/migrations; never edit an applied one.' });
-    await r.memory.settled();
 
     await startDone(r, 'after-approval');
     spawns = await until(async () => {
@@ -117,27 +124,34 @@ describe('D107 · the review gate at the spawn (Claude Code)', () => {
     expect(spawns[0]?.argv?.filter((arg) => arg === FLAG)).toHaveLength(1);
   });
 
-  it('a resumed session gets it; an open idle session is reloaded once (D91 --resume) after an approval', async () => {
+  it('an approval only flags the open idle session (no restart); D91 Reload applies it; a resumed session gets it', async () => {
     const r = await setup();
     const w = r.world;
     const paused = await startDone(r, 'paused-one');
     await w.supervisor.pause(paused.id);
     const idle = await startDone(r, 'idle-one');
     await until(async () => (w.supervisor.isLive(idle.id) && !w.supervisor.turnRunning(idle.id)) || undefined, 'idle');
+    const pid = w.supervisor.pid(idle.id);
     const proposal = await propose(r, idle.id, 'Acme lint rule', 'Run npm run lint before a commit.');
-    await r.memory.settled();
-    // A proposal changes nothing for the open session.
-    expect((await claudeSpawns(w)).length).toBe(2);
+    // A proposal changes nothing for the open session: not outdated.
+    expect(await outdated(w, idle.id)).toBe(false);
 
     await r.memory.approve(proposal.id, {});
-    await r.memory.settled();
-    // The idle session restarted with --resume, carrying the block.
+    // Ruling 2026-10-14: flagged as on an older instruction, never restarted.
+    expect(await outdated(w, idle.id)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect((await claudeSpawns(w)).length).toBe(2);
+    expect(w.supervisor.pid(idle.id)).toBe(pid);
+    expect((await w.store.events.list(idle.id)).some((event) => JSON.stringify(event).includes('Standing instruction updated'))).toBe(false);
+
+    // The developer reloads when they choose (D91 ⋯ → Reload instruction): one --resume restart with the block.
+    expect(await w.supervisor.reloadInstruction(idle.id)).toBe('restarted');
     const reloaded = await until(async () => {
       const found = (await claudeSpawns(w)).filter((spawn) => spawn.argv?.includes('--resume') && instructionOf(spawn.argv)?.includes('Acme lint rule'));
       return found.length >= 1 ? found : undefined;
     }, 'the idle session reloaded');
     expect(reloaded).toHaveLength(1);
-    expect((await w.store.events.list(idle.id)).some((event) => JSON.stringify(event).includes('Standing instruction updated'))).toBe(true);
+    expect(await outdated(w, idle.id)).toBe(false);
 
     // The paused one gets it when it resumes.
     await w.supervisor.resume(paused.id);
@@ -145,6 +159,21 @@ describe('D107 · the review gate at the spawn (Claude Code)', () => {
     const resumed = (await claudeSpawns(w)).filter((spawn) => spawn.argv?.includes('--resume'));
     expect(resumed.length).toBe(2);
     for (const spawn of resumed) expect(instructionOf(spawn.argv)).toContain('Run npm run lint before a commit.');
+  });
+
+  it('a rejected entry blocks a near-identical proposal for 30 days, then the queue takes it again (fake clock)', async () => {
+    let now = new Date('2026-10-14T12:00:00.000Z');
+    const r = await setup({ now: () => now });
+    const s = await startDone(r, 'rejecter');
+    const first = await propose(r, s.id, 'Acme deploy shortcut', 'skip the checks');
+    await r.memory.reject(first.id);
+    now = new Date('2026-11-12T11:59:00.000Z'); // 29 days 23:59 later
+    await expect(r.memory.propose(s.id, { title: 'Acme deploy shortcuts', text: 'again' })).rejects.toMatchObject({ status: 409, code: 'duplicate' });
+    now = new Date('2026-11-13T12:00:01.000Z'); // just over 30 days
+    const again = await r.memory.propose(s.id, { title: 'Acme deploy shortcuts', text: 'again, a month later' });
+    expect(again.status).toBe('proposed');
+    // Proposed and approved entries still block without a time limit.
+    await expect(r.memory.propose(s.id, { title: 'Acme deploy shortcut!', text: 'twin' })).rejects.toMatchObject({ status: 409, code: 'duplicate' });
   });
 
   it('off: approved entries are not injected (and the sessions are given back their plain instruction)', async () => {

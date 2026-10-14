@@ -119,6 +119,11 @@ test('the switch, an agent proposal → Inbox → Review → Edit… → Approve
   await expect(approved).toHaveCount(1);
   await expect(approved.getByTestId('memory-entry-text')).toHaveText('DEVELOPER-EDIT: run npm test with the test ports.');
   await expect(approved.getByTestId('memory-entry-meta')).toContainText('edited by you');
+  // Ruling 2026-10-14: the open proposer session is only flagged (D91's older instruction), not restarted.
+  await expect
+    .poll(async () => page.evaluate(async (id) => ((await (await fetch(`/api/sessions/${id}`)).json()) as { instructionOutdated?: boolean }).instructionOutdated, proposer.id))
+    .toBe(true);
+  expect((await instructions()).length).toBe(1);
   // Reject the other: the queue empties and the Inbox item resolves.
   await queue.getByTestId('memory-proposal').filter({ hasText: 'Acme deploy secret' }).getByTestId('memory-reject').click();
   await expect(queue.getByTestId('memory-proposal')).toHaveCount(0);

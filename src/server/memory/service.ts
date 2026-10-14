@@ -48,26 +48,26 @@ export const MEMORY_PROPOSALS_ITEM = 'memory-proposals';
 /** Its Review action (a link to the Memory page: the web goes to `payload.route`, the item stays open). */
 export const OPEN_MEMORY = 'open-memory';
 
-/** What the service needs of the supervisor (D91's reload, reused as it is). */
+/** What the service needs of the supervisor: D91's "older instruction" flag (republishes the live sessions). */
 export interface MemorySupervisor {
   instructionSettingChanged(): Promise<void>;
-  reloadInstruction(sessionId: string): Promise<unknown>;
 }
 
 export interface MemoryServiceOptions {
   readonly dataDir: string;
   readonly store: Store;
   readonly bus: HubBus;
-  /** D91: open idle sessions of a folder are restarted with `--resume` when its approved memory changes (busy: after the turn). */
+  /** D91: open sessions of a folder are flagged as on an older instruction when its approved memory changes (never restarted). */
   readonly supervisor: MemorySupervisor;
   readonly now?: () => Date;
-  /** The pause before the folder's sessions are reloaded (approvals in a row restart them once). */
-  readonly reloadDelayMs?: number;
   readonly onError?: (error: unknown) => void;
 }
 
 const CAP_KEY = 'cap';
 const HOUR_MS = 60 * 60 * 1000;
+/** D107 ruling 2026-10-14: a rejected entry blocks near-identical proposals for this long. */
+export const MEMORY_REJECTED_BLOCK_DAYS = 30;
+const REJECTED_BLOCK_MS = MEMORY_REJECTED_BLOCK_DAYS * 24 * HOUR_MS;
 
 /**
  * D107 · Project memory (`docs/memory.md`). Agents propose entries for their session's folder
@@ -77,8 +77,9 @@ const HOUR_MS = 60 * 60 * 1000;
  * the approved title and text in the same row it reads from, so what is injected is exactly what
  * the developer approved (their edit included); proposed and rejected rows are never read for it.
  *
- * When a folder's approved memory changes, its open sessions get it the D91 way
- * (`reloadInstruction`: idle → restarted with `--resume`, busy → after its turn). A folder with
+ * When a folder's approved memory changes, its open sessions are only **flagged** (D91's
+ * `instructionOutdated`: the developer applies or reloads when they choose; ruling 2026-10-14);
+ * new and resumed sessions get the current approved memory at their spawn. A folder with
  * open proposals has one Inbox item ("3 memory proposals for Acme app · Review"), closed when its
  * queue is empty.
  *
@@ -96,10 +97,6 @@ export class MemoryService {
   #closed = false;
   #offHooks: (() => void) | null = null;
   #switching: Promise<void> = Promise.resolve();
-  /** Folders whose sessions wait for a reload, and the timer. */
-  readonly #reloadScopes = new Set<string>();
-  #reloadTimer: ReturnType<typeof setTimeout> | null = null;
-  #reloading: Promise<void> = Promise.resolve();
 
   constructor(options: MemoryServiceOptions) {
     this.#o = options;
@@ -123,11 +120,7 @@ export class MemoryService {
     this.#closed = true;
     this.#offHooks?.();
     this.#offHooks = null;
-    if (this.#reloadTimer) clearTimeout(this.#reloadTimer);
-    this.#reloadTimer = null;
-    this.#reloadScopes.clear();
     await this.#switching.catch(() => undefined);
-    await this.#reloading.catch(() => undefined);
     this.#db?.close();
     this.#db = null;
   }
@@ -144,9 +137,7 @@ export class MemoryService {
     const on = (await this.#o.store.settings.get(MEMORY_SETTING)) === true;
     if (on === this.#enabled) return;
     this.#enabled = on;
-    const scopes = new Set<string>();
     if (!on) {
-      for (const entry of this.#db?.list({ statuses: ['approved'] }) ?? []) scopes.add(entry.scope);
       this.#db?.close();
       this.#db = null;
       this.#problem = null;
@@ -159,11 +150,9 @@ export class MemoryService {
         this.#problem = `memory.db could not be opened: ${error instanceof Error ? error.message : String(error)}`;
         this.#onError(error);
       }
-      for (const entry of this.#db?.list({ statuses: ['approved'] }) ?? []) scopes.add(entry.scope);
     }
-    // The blocks appear / disappear: the open sessions' `instructionOutdated` follows, and their processes get it (D91).
+    // The blocks appear / disappear: the open sessions' `instructionOutdated` follows (D91; no restart).
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
-    for (const scope of scopes) this.#scheduleReload(scope);
     await this.#syncAllInbox();
     this.#o.bus.publish('memoryChanged', { scope: null });
   }
@@ -173,9 +162,9 @@ export class MemoryService {
     return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null };
   }
 
-  /** Timers running (tests: none while off). */
+  /** Timers running (tests): Project memory runs none. */
   activeTimers(): number {
-    return this.#reloadTimer ? 1 : 0;
+    return 0;
   }
 
   #need(): MemoryDb {
@@ -281,7 +270,7 @@ export class MemoryService {
    * `memory_propose`: a **proposed** entry for the caller's folder (never injected until the
    * developer approves it). Refused: more than {@link MEMORY_PROPOSE_PER_HOUR} proposals of this
    * session in the last hour (429 `rate-limited`), a title near-identical to a proposed, approved
-   * or rejected entry of the folder (409 `duplicate`).
+   * entry of the folder or one it rejected in the last 30 days (409 `duplicate`).
    */
   async propose(sessionId: string, body: unknown): Promise<MemoryEntry> {
     const { session, scope } = await this.#agentScope(sessionId);
@@ -293,9 +282,14 @@ export class MemoryService {
       throw new MemoryError(429, 'rate-limited', `at most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour from one session: propose only durable facts, and try again later`);
     }
     const title = input.value.title as string;
-    const twin = db.list({ scope }).find((entry) => nearDuplicateTitle(entry.title, title) || (entry.proposedTitle !== null && nearDuplicateTitle(entry.proposedTitle, title)));
+    // Ruling 2026-10-14: a rejected entry blocks near-identical proposals for 30 days only.
+    const blockedSince = new Date(this.#now().getTime() - REJECTED_BLOCK_MS).toISOString();
+    const twin = db
+      .list({ scope })
+      .filter((entry) => entry.status !== 'rejected' || (entry.decidedAt ?? entry.updatedAt) >= blockedSince)
+      .find((entry) => nearDuplicateTitle(entry.title, title) || (entry.proposedTitle !== null && nearDuplicateTitle(entry.proposedTitle, title)));
     if (twin) {
-      const state = twin.status === 'approved' ? 'already approved' : twin.status === 'proposed' ? 'already waiting for review' : 'rejected by the developer';
+      const state = twin.status === 'approved' ? 'already approved' : twin.status === 'proposed' ? 'already waiting for review' : 'rejected by the developer in the last 30 days';
       throw new MemoryError(409, 'duplicate', `a near-identical entry is ${state}: "${twin.title}". Do not propose it again${twin.status === 'approved' ? '; read it with memory_list' : ''}.`, 'title');
     }
     const now = this.#iso();
@@ -439,48 +433,15 @@ export class MemoryService {
 
   // ── after a change ──────────────────────────────────────────────────────
 
-  /** The approved set (or the cap) of `scope` changed: the page reloads, open sessions are flagged now and reloaded shortly. */
+  /**
+   * The approved set (or the cap) of `scope` changed: the page reloads and open sessions are
+   * flagged as on an older instruction (D91's `instructionOutdated`, republished now). Nothing is
+   * restarted (ruling 2026-10-14): the developer applies or reloads when they choose; new and
+   * resumed sessions get the current approved memory at their spawn.
+   */
   async #approvedChanged(scope: string): Promise<void> {
     this.#o.bus.publish('memoryChanged', { scope });
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
-    this.#scheduleReload(scope);
-  }
-
-  #scheduleReload(scope: string): void {
-    if (this.#closed) return;
-    this.#reloadScopes.add(scope);
-    if (this.#reloadTimer) return;
-    this.#reloadTimer = setTimeout(() => {
-      this.#reloadTimer = null;
-      const scopes = [...this.#reloadScopes];
-      this.#reloadScopes.clear();
-      this.#reloading = this.#reloading.then(() => this.#reloadScopesNow(scopes)).catch((error: unknown) => this.#onError(error));
-    }, this.#o.reloadDelayMs ?? 400);
-    (this.#reloadTimer as { unref?: () => void }).unref?.();
-  }
-
-  /**
-   * D91, reused as it is: every open session of these folders that Switchboard runs gets the
-   * current instruction (`reloadInstruction`: idle → `--resume` restart, busy or waiting → after
-   * its turn, no process → its next start, already current → nothing). Hooked and detached
-   * sessions are skipped (Switchboard does not run their process); a failure stays in that
-   * session's chat (D91) and is not retried.
-   */
-  async #reloadScopesNow(scopes: readonly string[]): Promise<void> {
-    if (this.#closed) return;
-    const wanted = new Set(scopes);
-    for (const session of await this.#o.store.sessions.list({ closed: false })) {
-      if (session.hooked || !session.attached) continue;
-      const scope = MemoryService.scopeOf(session);
-      if (scope === null || !wanted.has(scope)) continue;
-      await this.#o.supervisor.reloadInstruction(session.id).catch(() => undefined);
-    }
-  }
-
-  /** Waits for scheduled reloads (tests). */
-  async settled(): Promise<void> {
-    while (this.#reloadTimer) await new Promise((resolve) => setTimeout(resolve, 20));
-    await this.#reloading.catch(() => undefined);
   }
 
   // ── the Inbox item per folder with proposals ───────────────────────────
