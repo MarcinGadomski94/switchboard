@@ -13,7 +13,7 @@ Settings → Experimental → **Plans** (`experimental.plans`), **off by default
 - **Switched off while plans run:** every running plan is **paused** with the reason "Plans was switched off" (`pausedReason`, also shown as `held`). Running items are not stopped: their sessions finish their current turn; nothing new starts and nothing is merged or followed. The file is closed and stays on disk.
 - **Switched on again:** those plans show **paused** with the reason; the developer resumes each one (`POST /api/plans/{id}/resume`), which clears the reason and starts ready items again.
 - **A broken `plans.db`** (not a database, a failed migration) breaks nothing else: `GET /api/plans/state` reports `{ enabled: true, available: false, problem }`, the plan routes answer 503 `plans-unavailable`, the scheduler does not run, the plan tools are not registered, and every other route works.
-- Demo mode never starts Plans (it answers "off").
+- Demo mode never starts Plans (it answers "off"), except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
 
 ## Storage
 

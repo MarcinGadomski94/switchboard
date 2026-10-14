@@ -6,18 +6,20 @@
 
 Switchboard is a local web app for running many coding-agent sessions at once: **Claude Code**, **Codex CLI** and **OpenCode**. From one window you can:
 
-- start sessions in any folder, workspace or repo, each in its own git worktree if you want;
-- watch every agent work live, subagents and workflow agents included;
-- answer their questions and permission prompts from a single Inbox;
-- paste screenshots and files into the chat;
-- switch a session to another CLI or another account mid-way, automatically when a usage limit is hit;
+- start sessions in any folder, workspace or repo, each in its own git worktree if you want, and watch every agent work live (subagents and workflow agents included);
+- answer their questions and permission prompts from a single Inbox, and paste screenshots and files into the chat;
+- **search** everything that was said or saved, on every machine, and jump to the exact message;
+- keep a **todo list** per session and save **artifacts** (reports, plans, diagrams) on purpose;
+- run todos as a **plan**: a dependency graph that starts each item in its own worktree and merges it into the epic branch, imported from a **Jira** epic if you like (experimental);
+- run a **team** of role agents from one page: their questions, hand-offs and activity in one place (experimental);
+- switch a session to another CLI or another account mid-way, automatically when a usage limit is hit, preferring subscription allowance over paid **credits**;
 - manage MCP servers, schedules and loops;
-- connect Switchboards on several machines over Tailscale and drive their sessions from one place;
+- connect Switchboards on several machines over **Tailscale**, and use it from your **phone or tablet** with notifications;
 - move sessions between Switchboard and a terminal, and back.
 
 It runs on your machine only (`127.0.0.1`). It drives the unmodified CLIs with your own logins, and updates itself from GitHub releases.
 
-<img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with pinned sessions and a folder">
+<img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with its icon navigation, pinned sessions and a folder, and the usage footer with an account on credits">
 
 - [Requirements](#requirements)
 - [Install and run](#install-and-run)
@@ -25,11 +27,19 @@ It runs on your machine only (`127.0.0.1`). It drives the unmodified CLIs with y
 - [Start at login](#start-at-login)
 - [Configuration](#configuration)
 - [Features](#features)
+  - [Accounts](#accounts) and [credits](#credits)
+  - [New session](#new-session) · [The session view](#the-session-view) · [The sidebar](#the-sidebar)
+  - [Search](#search)
+  - [Todo lists](#todo-lists) · [Plans (experimental)](#plans-experimental) · [Team (experimental)](#team-experimental)
+  - [Inbox and notifications](#inbox-and-notifications) · [Schedules and loops](#schedules-and-loops) · [MCP servers](#mcp-servers)
+  - [Machines (peers)](#machines-peers) · [Devices (phones and tablets)](#devices-phones-and-tablets)
+  - [Usage and footer](#usage-and-footer)
 - [Security model](#security-model)
 - [For developers](#for-developers)
 - [Troubleshooting](#troubleshooting)
 
 ---
+
 
 ## Requirements
 
@@ -43,6 +53,7 @@ Install these **before** Switchboard:
 | **A browser**: Chrome (recommended), Edge, Firefox or Safari | The UI. Embedding signed-in sites such as Jira needs Chrome ([Embedded tools](#embedded-tools)). | |
 | **Codex CLI** (`codex`) and / or **OpenCode** (`opencode`), signed in (optional) | Sessions on those CLIs instead of Claude Code ([CLIs](#clis)). Without them, they just can't be chosen. | `codex --version`, `codex login status`; `opencode --version`, `opencode auth list` |
 | **GitHub CLI** (`gh`), signed in (optional) | Detects merged pull requests of session worktrees. | `gh auth status` |
+| **Jira Cloud** API token (optional) | Importing a Jira epic into a plan, and its status sync ([Plans](#plans-experimental)). | |
 | **Tailscale** (optional) | Connecting Switchboards on several machines ([Machines (peers)](#machines-peers)). | `tailscale status` |
 
 <details>
@@ -220,11 +231,7 @@ Everything else, such as saved folders, tools, notification and usage settings, 
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/07-mcp-dark.png" alt="The MCP servers page with a stdio and an HTTP server in the user scope"><br><sub>MCP servers: check, reconnect, sign in, add and edit</sub></td>
-    <td width="50%"><img src="docs/screenshots/08-accounts-dark.png" alt="Settings, Accounts: automatic switching rules and two Claude Code accounts"><br><sub>Settings → Accounts: several logins per CLI, switched on usage limits</sub></td>
-  </tr>
-  <tr>
     <td width="50%"><img src="docs/screenshots/05-machines-dark.png" alt="Settings, Machines: this machine, the peer listener and pairing"><br><sub>Settings → Machines: pair other Switchboards on your tailnet</sub></td>
-    <td width="50%"></td>
   </tr>
 </table>
 
@@ -246,17 +253,44 @@ Every session runs on **Claude Code**, **Codex CLI** or **OpenCode**:
 - **Sidebar:** the footer's CLI label sets the default CLI for new sessions and offers **Switch running sessions…** for all live sessions at once; session rows show a small CLI badge.
 - **The same features where the CLI has them:** chat and tool steps, images, permission requests and questions in the Inbox (with the CLI's own "always"), Stop, pause / resume, model and effort, the context meter, Codex's usage limits in the footer, subagents, History moves (on request), the MCP page (Codex: add / remove), schedules, peers. Claude Code-only features (Remote Control, teleport, Workflow agents, background tasks, hooked terminal sessions) stay visible and say why they are not available.
 
+Neither Codex nor OpenCode was run while this was built: their protocols come from their source, pinned in [`docs/providers.md`](docs/providers.md); [`docs/spike-providers.md`](docs/spike-providers.md) lists the checks to run once they are installed.
+
 ### Standing instruction for agents
-**Settings → Sessions & worktrees → Standing instruction for agents:** one short instruction given to the agent of every session, on every CLI. It is on by default and asks agents to write out any proposal, table, list, plan or comparison before asking about it, and never to refer to content "above" that they did not write. Edit the text, switch it off, or **Reset to default**; a change applies to sessions started or resumed afterwards. **Apply to open sessions** gives a changed instruction to the sessions already running: an idle one restarts its CLI on the same conversation (no message is sent), a busy one right after its turn; a session's ⋯ → **Reload instruction** does it for one. Sessions you run yourself in a terminal are not affected. [`docs/settings.md`](docs/settings.md)
+**Settings → Sessions & worktrees → Standing instruction for agents:** one short instruction given to the agent of every session, on every CLI.
+- **The default** (on) asks agents to write out any proposal, table, list, plan or comparison before asking about it, and never to refer to content "above" that they did not write. Edit the text, switch it off, or **Reset to default**.
+- **When it applies:** to sessions started or resumed after a change. **Apply to open sessions** gives it to the sessions already running: an idle one restarts its CLI on the same conversation (no message is sent), a busy one right after its turn; a session's ⋯ → **Reload instruction** does it for one.
+- Sessions you run yourself in a terminal are not affected.
+
+[`docs/settings.md`](docs/settings.md)
 
 ### Accounts
-Each CLI can have more than one subscription login. **Settings → Accounts** lists them per CLI in priority order (**Default** is your own login; every account, Default included, can be renamed), signs them in and out (the CLI's own login: the page opens in a new tab, with a copyable terminal command as the fallback and a paste-back for a paired machine's), and holds the rules: switch automatically when a session hits its session or weekly limit (or earlier at a percentage), switch back after a reset or stay, which account new sessions start on, and what to do when every account is spent (notify, or hand over to another CLI). A session moves to the next account that has allowance, in the same chat and folder (its conversation is copied to that account), with a divider in the chat; the New-session forms and the session header show the account, **Switch account** and a **pin** stop or steer it, and the footer shows each account's usage. Switchboard never reads or stores a token. [`docs/accounts.md`](docs/accounts.md)
+Each CLI can have more than one subscription login, in **Settings → Accounts**:
+- **The list:** per CLI, in priority order. **Default** is your own login; every account, Default included, can be renamed.
+- **Sign in and out** with the CLI's own login: the page opens in a new tab, with a copyable terminal command as the fallback and a paste-back for a paired machine's. Switchboard never reads or stores a token.
+- **The rules:** switch automatically when a session hits its session or weekly limit (or earlier at a percentage), switch back after a reset or stay, which account new sessions start on, and what to do when every account is spent (notify, or hand over to another CLI).
+- **Switching:** a session moves to the next account that has allowance, in the same chat and folder (its conversation is copied to that account), with a divider in the chat. The New-session forms and the session header show the account; **Switch account** and a **pin** stop or steer it.
+- **Paired machines** share the list: the same Claude Code account (by its email) is one row with the newest reading from any machine, and an account one machine finds spent is skipped by all of them. Logins never travel; each machine signs in on its own.
 
-Neither Codex nor OpenCode was run while this was built: their protocols come from their source, pinned in [`docs/providers.md`](docs/providers.md); [`docs/spike-providers.md`](docs/spike-providers.md) lists the checks to run once they are installed.
+#### Credits
+When an account's 5-hour or weekly window is at 100 % and it keeps answering, it is running on **credits** (paid extra usage):
+- **The footer** shows an amber **€ on credits** badge under that account's line, with what is left ("€12.40 left of €50"); its tooltip says until when.
+- **Settings → Accounts** shows the account's credits line ("On credits until 13:00 · €12.40 left of €50 · credits reset 1 Nov").
+- **Allowance first:** new sessions and limit switches take an account with allowance before one that pays from credits, and a live session on credits moves to an account with allowance as soon as one has it, only between turns.
+- **When every account is out of allowance:** **Use credits** (the default) or **Pause new turns until an account resets**. Paused, a new message waits in the session ("Waiting for an account with allowance — Private back at 23:30", with Edit / Remove) and goes out by itself once an account has allowance; new sessions, loop firings and todo / plan starts wait the same way.
+- **Inbox notices** when an account starts using credits, and when less than 20 % of its credit limit is left.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/08-accounts-dark.png" alt="Settings, Accounts: switching rules, the out-of-allowance rule and two Claude Code accounts, one on credits"><br><sub>Settings → Accounts: several logins per CLI, switched on usage limits</sub></td>
+    <td width="50%"><img src="docs/screenshots/09-credits-footer-dark.png" alt="The sidebar footer: CPU, RAM and the usage grid, with an amber on-credits badge and the credits left under the Work account"><br><sub>The footer: an account on credits, and what is left</sub></td>
+  </tr>
+</table>
+
+[`docs/accounts.md`](docs/accounts.md) · [`docs/usage.md`](docs/usage.md)
 
 ### New session
 - **Simple / Full:** a switch at the top of the dialog. **Simple** (the default) starts in any folder (a workspace, a git repo or any plain folder) and asks only for the folder, the message, an optional title (taken from the message when empty), the model and whether to work in its own git worktree (git repo folders; the branch is derived from the title, e.g. `sb/fix-login`, and can be edited). **Full** is the form below. The dialog remembers the last one used, and what you typed carries over when you switch.
-- **Title:** free text, e.g. "JIRA Ticket handling". A kebab-case short name is derived from it for the branch and worktree folder.
+- **Title:** free text, e.g. "Fix the login redirect". A kebab-case short name is derived from it for the branch and worktree folder.
 - **Task:** what the agent should do.
 - **Session-start answers:** work type, mode, solutions in scope, phase, mobile coordination, ultracode.
 - **No solutions picked:** you can leave the solutions empty and let the agent decide. It creates the worktrees it needs, Switchboard adopts them, and the session's solutions fill in from what the agent touches.
@@ -286,6 +320,8 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - **Long messages** are shown in full. A message stored cut by an older version shows **Show full message**, which restores it from the CLI's transcript; tool output is kept short (4,000 characters) with **Show full output**.
 
 **Header**
+- **One line:** the title never wraps (it is cut with …; the tooltip and the rename field carry it in full), so the top bar stays one line at every width.
+- **Chips:** the status chips (work, mode, phase, stack, ultracode, runs / loops) come first, then one chip per solution. When they need more than one line, the row shows those that fit plus **+N more ▾**; the choice is remembered per session.
 - **Rename:** click the title.
 - **Model and effort picker:** changes the running session from its next turn.
 - **Close:** the session leaves the sidebar and can be reopened from History.
@@ -304,37 +340,116 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - **Get back:** **← Main chat**, **Esc** or the browser's Back returns you to the same spot.
 - **No composer:** subagents take no messages; reply in the main chat.
 
-**Tabs:** Timeline, Diff, Artifacts. The **Diff** opens on the work **since the last commit** (in a folder the session works in place, only the files it touched); switch to **Whole branch** (a worktree's commits too) or **All uncommitted changes in this repo** (everyone's edits); the tab remembers the choice per session. [`docs/worktrees.md`](docs/worktrees.md) → *Diff*
+**Tabs:** Timeline, Diff, Artifacts.
+- **Diff** opens on the work **since the last commit** (in a folder the session works in place, only the files it touched).
+- Switch to **Whole branch** (a worktree's commits too) or **All uncommitted changes in this repo** (everyone's edits); the tab remembers the choice per session. [`docs/worktrees.md`](docs/worktrees.md) → *Diff*
 
-**Switching sessions:** a session you visited recently opens instantly; one still loading shows placeholders instead of a blank or stale view.
-
-**Organize the sidebar:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels): drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder, collapse a folder to its name and count. Loose sessions can be dragged into an order too; new ones and the ones you never placed show at the top, newest first. A paired machine's sessions go into folders like your own. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard. The layout is kept by Switchboard, the same in every tab and after a restart, and can be **shared with a paired machine** (Settings → Machines → *Share sidebar layout*, on both machines): the same pins, folders and order on both, live, merged the first time. With many sessions only the session list scrolls; the navigation, Tools and the footer stay in place. [`docs/sidebar.md`](docs/sidebar.md)
-
-**Command palette:** **⌘K** / **Ctrl+K**. In the Simple New-session form, **⌘↩** / **Ctrl+↩** starts the session.
-
-**More room:** slide the sidebar (**⌘B** / **Ctrl+B**) or the right panel (**⌥⌘B** / **Ctrl+Alt+B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
-
-**Phones and tablets:** every page, dialog and menu adapts below 1280 px: a top app bar with the sidebar as a drawer, the right panel as a drawer or bottom sheet, the session's actions in a ⋯ menu, dialogs as full-screen sheets on phones. On a touch screen the controls are finger-sized, and a long press on a sidebar row or folder lifts it to drag it into a folder or re-order it. [`docs/responsive.md`](docs/responsive.md)
+**Moving around**
+- **Switching sessions:** a session you visited recently opens instantly; one still loading shows placeholders instead of a blank or stale view.
+- **Command palette:** **⌘K** / **Ctrl+K**. In the Simple New-session form, **⌘↩** / **Ctrl+↩** starts the session.
+- **More room:** slide the sidebar (**⌘B** / **Ctrl+B**) or the right panel (**⌥⌘B** / **Ctrl+Alt+B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
+- **Phones and tablets:** every page, dialog and menu adapts below 1280 px: a top app bar with the sidebar as a drawer, the right panel as a drawer or bottom sheet, the session's actions in a ⋯ menu, dialogs as full-screen sheets on phones. On a touch screen the controls are finger-sized. [`docs/responsive.md`](docs/responsive.md)
 
 [`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md) · [`docs/panes.md`](docs/panes.md) · [`docs/responsive.md`](docs/responsive.md)
 
+### The sidebar
+- **Navigation:** the views (Inbox, Solutions, Schedules & loops, MCP, Artifacts, History, Todos, and Team and Plans while they are on) are a grid of icons under **+ New session**. Each icon has its name on hover (a long press on a touch screen) and a badge: the Inbox count, Solutions' conflicts, failed schedules, artifacts, open todos, Team's needs-you, running plans. In the phone / tablet drawer the grid shows the names under the icons.
+- **TOOLS** collapse from their header (▾ / ▸, with the count, and a red dot when a tool is down); **+ Add** opens Settings → Embedded tools.
+- **Pins and folders:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels).
+- **Drag and drop:** drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder; collapse a folder to its name and count. Loose sessions can be dragged into an order too; new ones and the ones you never placed show at the top, newest first. On a touch screen a long press lifts a row or folder. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard.
+- **Kept and shared:** the layout is kept by Switchboard, the same in every tab and after a restart. A paired machine's sessions go into folders like your own, and the layout can be **shared with a paired machine** (Settings → Machines → *Share sidebar layout*, on both machines): the same pins, folders and order on both, live, merged the first time.
+- With many sessions only the session list scrolls; the navigation, Tools and the footer stay in place.
+
+[`docs/sidebar.md`](docs/sidebar.md)
+
+### Search
+- **One search over everything:** every session's messages (yours, the agents', subagent prompts and tool calls), session titles, saved artifacts, todos and History's terminal conversations, on this machine and every online paired machine (results are tagged with the machine; History stays on its own machine).
+- **Open it** with **⌘⇧F** / **Ctrl+Shift+F**, the app bar's search button on tablets and phones, or `?text` in the ⌘K palette (the best results, then *All results*).
+- **The page** groups results by type (chips: All · Conversations · Artifacts · Todos · History) with highlighted snippets; ↑ ↓ and Enter work, and the query stays in the address.
+- **Opening a message** opens its chat at that exact message, highlighted, however far back it is (a subagent's message opens its chat).
+- Words, `"phrases"` and `prefix*`. Older history is indexed in the background after an update ("Indexing older history… n%").
+
+<img src="docs/screenshots/10-search-dark.png" alt="The Search page with the query contract: two conversation results and three artifacts, the matches highlighted">
+
+[`docs/search.md`](docs/search.md)
+
 ### Todo lists
-Each session has a todo list for things that still need doing. Say "add that to the todo list" and the agent adds it through Switchboard's built-in `switchboard` MCP tools, which every session Switchboard runs gets by itself (nothing to configure): a title, a short description for you, a handover plan (context, files, steps, acceptance criteria) for whichever agent picks it up later (or "No plan" and why), a priority (Urgent, High, Medium, Low) and its estimate of how long an AI agent would take. It ticks items off when they're done and checks the list when you ask what's left. The **Todo** strip above the message box shows the items as cards, most urgent first and lightly tinted by priority, with their estimates and the open total; you can open, edit (priority and estimate too), reorder within a priority, tick and delete them; **▶ Start** sends an item and its plan to the agent and marks it **in progress** (◐; several can be, the order stays by priority), the agent marks it done when finished (and gets one reminder if a turn ends with it still in progress; Settings → Sessions); done items are removed an hour after they're ticked (or at once with **Clear done**). The sidebar shows each session's open count, and the **Todos** page lists every session's open items, as a list or a **Board** (Open · In progress · Done across sessions and machines, with filters and search; drag a card to change its state; swipe between columns on a phone). **⋯ → Run in new session** (or **Select** several → **Run N in new sessions**) starts a new session for an item, on its own `todo/<slug>` worktree (one per solution repo in a workspace) cut from the source session's branch, with the same CLI, model and account; the card links it live, and when its agent finishes, the item is done. Finished items show what they took against the estimate (`est ~45m · took 32m · 41k tokens`), with per-session totals, and agents get a short line on how accurate their recent estimates were. Hand-started terminal sessions keep a list too, edited from the UI only. **Quick capture:** type `todo <text>` in ⌘K, select text in the chat and press **Add to todo**, or share a link from your phone to the installed app (Android); the item is saved with just a title and the session's agent is asked once, when it's idle, to fill in the rest (Settings → Sessions). [`docs/todos.md`](docs/todos.md)
+Each session has a todo list for things that still need doing.
+- **The agent keeps it:** say "add that to the todo list" and the agent adds it through Switchboard's built-in `switchboard` MCP tools, which every session Switchboard runs gets by itself (nothing to configure). An item has a title, a short description for you, a handover plan (context, files, steps, acceptance criteria) for whichever agent picks it up later (or "No plan" and why), a priority (Urgent, High, Medium, Low) and the agent's estimate of how long an AI agent would take. It ticks items off when they're done and checks the list when you ask what's left.
+- **The Todo strip** above the message box shows the items as cards, most urgent first and lightly tinted by priority, with their estimates and the open total. Open, edit (priority and estimate too), reorder within a priority, tick and delete them.
+- **▶ Start** sends an item and its plan to the agent and marks it **in progress** (◐; several can be, the order stays by priority). The agent marks it done when finished (and gets one reminder if a turn ends with it still in progress; Settings → Sessions). Done items are removed an hour after they're ticked (or at once with **Clear done**).
+- **The Todos page** lists every session's open items, as a list or a **Board** (Open · In progress · Done across sessions and machines, with filters and search; drag a card to change its state; swipe between columns on a phone). The sidebar shows each session's open count.
+- **Run in a new session:** **⋯ → Run in new session** (or **Select** several → **Run N in new sessions**) starts a new session for an item, on its own `todo/<slug>` worktree (one per solution repo in a workspace) cut from the source session's branch, with the same CLI, model and account. The card links it live; when its agent marks the item done, it is done.
+- **Estimates vs actuals:** finished items show what they took against the estimate (`est ~45m · took 32m · 41k tokens`), with per-session totals, and agents get a short line on how accurate their recent estimates were.
+- **Quick capture:** type `todo <text>` in ⌘K, select text in the chat and press **Add to todo**, or share a link from your phone to the installed app (Android). The item is saved with just a title and the session's agent is asked once, when it's idle, to fill in the rest (Settings → Sessions).
+- Hand-started terminal sessions keep a list too, edited from the UI only.
+
+[`docs/todos.md`](docs/todos.md)
+
+### Plans (experimental)
+> Off by default: **Settings → Experimental → Plans**. Its data lives in its own file, and switching it off pauses running plans and leaves everything else as before.
+
+- **A plan** groups a session's todos into a dependency graph ("B after A") and runs them by itself: each ready item starts as a todo run in its own session and worktree, cut from the plan's **target branch** (the epic's feature branch), at most *N* at once (default 3) and only while the account's usage is below a threshold (default 85 %).
+- **Graph, Timeline, List:** cards coloured by state (waiting, running, question, ready to merge, done, blocked), the critical path, progress and the time left; the Timeline shows each item's history (working, waiting on you, waiting on a dependency, paused) and a projected finish.
+- **Merge modes,** chosen when you start it (there is no default): agents merge, agents merge **with hold points** (⚑ you merge the flagged items), or you merge each one. Agents merge only into the plan's target (never `dev`, `master`, `main` or a protected branch), checks must be green, and a second conflict comes to your Inbox.
+- **The Merge step:** an item you merge waits as **Ready to merge** with **Merge** (locally, never pushed or forced), **Open PR**, **Send back** (with a comment) and **Open diff**, also as an Inbox item.
+- **Jira:** **Import from Jira…** reads an epic's child issues, turns "blocks / is blocked by" links into dependencies and shows a preview before anything is created. Missing order can be **proposed** by the session's agent, for you to accept or reject. Optional status sync per plan: off, read-only, or write (In Progress, In Review with the PR link, comments; never Done). The Jira connection is set in Settings → Experimental → Plans (kept in the OS keychain), or read from `ATL_BASE_URL` / `ATL_USER` / `ATL_TOKEN`.
+- **Agents** can build plans too, with the `plan_*` tools of the `switchboard` MCP server; starting one always asks you for the merge mode.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/11-plans-graph-dark.png" alt="A plan's graph: seven items coloured by state, the critical path in amber, and the detail of an item waiting for your merge with Merge, Open PR, Send back and Open diff"><br><sub>Plans: the graph, with an item waiting for your merge</sub></td>
+    <td width="50%"><img src="docs/screenshots/12-plans-timeline-dark.png" alt="A plan's timeline: each item's working and waiting spans and the projected finish"><br><sub>The Timeline: where the time went, and the projected finish</sub></td>
+  </tr>
+</table>
+
+[`docs/plans.md`](docs/plans.md) · [`docs/plans-ui.md`](docs/plans-ui.md)
+
+### Team (experimental)
+> Off by default: **Settings → Experimental → Team**. Its data lives in its own file; switched off, every member's session is back in your session list.
+
+- **Members are your sessions:** adopt a session (it keeps its chat, worktrees, todos and loops) or start a new one from a template, and give it a role, a charter (owns / produces / never does), a rhythm, a budget and "needs you for" gates. Member sessions leave the sidebar; **↩ Return to sessions** puts one back.
+- **The Team page:** a sideways-scrolling strip of member cards (reorder by drag, long press or ⋯), **Needs you** (their questions, permission requests and Team requests, answered in place), a readable, collapsible **Activity** feed, and the selected member's own chat, Access and Settings.
+- **Several teams,** each with its own members, hand-offs and activity; a switcher with needs-you counts, **All teams**, and ⋯ → **Move to team ▸** for a member.
+- **Hand-offs** between members become todos in the receiver's session (`team_handoff`, `team_members`, `team_report` tools); there is no agent-to-agent chat.
+- **Better charters:** each member's own agent can draft a specific charter from its session's history (**Draft better charters**); nothing changes until you accept it.
+- **Model dropdown:** pick the model and effort a member runs with, from its CLI's models.
+- **Access requests:** a member's agent can ask for an MCP server or an API key with a reason; you set it up (or deny) from Needs you, secrets go only into the OS keychain and only to that member.
+- **Paired machines:** the team definition syncs; a member runs on its session's machine and can be moved to another one.
+
+<img src="docs/screenshots/13-team-dark.png" alt="The Team page: two teams, a strip of four member cards, Needs you with a question, the Activity feed and the selected member's chat">
+
+[`docs/team.md`](docs/team.md)
 
 ### Undo a turn
-Before each turn Switchboard saves a checkpoint of the session's git working trees (hidden refs; your index, branch and files are never touched; about 0.15 s on a 5,000-file repo). **↶ Revert to before this turn** on any of your messages (or **Undo last turn** in the session's ⋯ menu) shows every file that changes and puts them back as they were: files made since are removed, ignored files are left alone, and the agent's commits are taken off the branch when they are not pushed (otherwise only the files are reverted). The chat keeps going with a "Reverted to before turn N" divider, the agent is told with your next message, and **Redo** undoes the revert. Kept 7 days or 100 turns (closed sessions too, so Reopen + revert works); off in Settings → Sessions. [`docs/undo.md`](docs/undo.md)
+- **Checkpoints:** before each turn Switchboard saves a checkpoint of the session's git working trees (hidden refs; your index, branch and files are never touched; about 0.15 s on a 5,000-file repo).
+- **↶ Revert to before this turn** on any of your messages (or **Undo last turn** in the session's ⋯ menu) shows every file that changes and puts them back as they were: files made since are removed, ignored files are left alone, and the agent's commits are taken off the branch when they are not pushed (otherwise only the files are reverted).
+- **After a revert** the chat keeps going with a "Reverted to before turn N" divider, the agent is told with your next message, and **Redo** undoes the revert.
+- Kept 7 days or 100 turns (closed sessions too, so Reopen + revert works); off in Settings → Sessions.
+
+[`docs/undo.md`](docs/undo.md)
 
 ### Model by task
-Settings → Sessions → **Model by task** routes a todo to a CLI, model, effort and account by its priority and estimate: an ordered list of rules (e.g. *low, ≤ 30 min → Sonnet*; *urgent → Opus, effort max*; *> 2 h → Codex CLI*), the first match wins, no match keeps the normal choice. Off until you add a rule; a rule's model must exist for its CLI and its account be enabled. A routed run says which rule picked it ("Routed by rule: low ≤30 min → Sonnet"). [`docs/model-routing.md`](docs/model-routing.md)
+Settings → Sessions → **Model by task** routes a todo to a CLI, model, effort and account by its priority and estimate:
+- an ordered list of rules (e.g. *low, ≤ 30 min → Sonnet*; *urgent → Opus, effort max*; *> 2 h → Codex CLI*); the first match wins, no match keeps the normal choice;
+- off until you add a rule; a rule's model must exist for its CLI and its account be enabled;
+- a routed run says which rule picked it ("Routed by rule: low ≤30 min → Sonnet").
+
+[`docs/model-routing.md`](docs/model-routing.md)
 
 ### Fresh session when the context fills
-When a session's context reaches 80 % (Settings → Sessions, 50–95 %, on by default), a bar above the message box offers **Continue in a fresh session**: the agent writes a handover (goal, state, decisions, files touched, open questions, next steps), a new session starts in the same folder / worktree / branch on the same CLI, model and account with that handover as its first message, takes over the sidebar place, todo list and pin, and the old session is closed; each links the other. **Not now** waits until the context is 10 points fuller. Also in a session's ⋯ menu, at any time; not for hooked terminal sessions. Works for a paired machine's sessions too. [`docs/fresh-session.md`](docs/fresh-session.md)
+- **The offer:** when a session's context reaches 80 % (Settings → Sessions, 50–95 %, on by default), a bar above the message box offers **Continue in a fresh session**. **Not now** waits until the context is 10 points fuller. It is also in a session's ⋯ menu, at any time.
+- **What happens:** the agent writes a handover (goal, state, decisions, files touched, open questions, next steps), and a new session starts in the same folder / worktree / branch on the same CLI, model and account with that handover as its first message. It takes over the sidebar place, todo list and pin; the old session is closed, and each links the other.
+- Works for a paired machine's sessions too; not for hooked terminal sessions.
+
+[`docs/fresh-session.md`](docs/fresh-session.md)
 
 ### Inbox and notifications
 - Every question batch and permission request from every session lands in the **Inbox**. Answer it there or in the session's chat.
 - A new question also raises a **toast**, a chime and an OS notification (when allowed).
 - A notification closes by itself once you open that session or the question is answered.
-- **System items** also appear there: a pull request was merged and its worktree can be removed; a scheduled run failed; a newer Switchboard release is available ([Updating](#updating)); with Plans on, an item waiting for your merge (**Merge** / **Open plan**).
+- **System items** also appear there: a pull request was merged and its worktree can be removed; a scheduled run failed; a newer Switchboard release is available ([Updating](#updating)); an account started using credits or is low on them; with Plans on, an item waiting for your merge (**Merge** / **Open plan**).
+- Review cards were removed in 1.18.0: agents commit and merge themselves, and Plans have their own Merge step.
 
 [`docs/inbox.md`](docs/inbox.md) · [`docs/notifications.md`](docs/notifications.md)
 
@@ -388,6 +503,7 @@ Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Mac
 - **Remote sessions:** a paired machine's sessions appear in the sidebar with a **machine tag** and open in the normal session view: chat, question cards, queued messages, pause / resume, model and effort, close / reopen, Diff, Artifacts, Timeline, subagent chats. Its questions and permission requests land in your **Inbox** (tagged; toasts and notifications too), and answering here answers there. When the machine is offline its sessions stay listed as **unreachable** (also after a restart of your Switchboard) and readable as last seen, but nothing can be sent or answered until it is back; it keeps running them.
 - **Start a session on a peer:** the New-session form's **Machine** row picks the machine; its folders, models and the branching check come from there, and the session runs there.
 - **A peer's schedules and loops:** Schedules & loops lists every paired machine's schedules and loops with its tag. Schedules can be created there (the Machine row of **+ New scheduled run**), edited, deleted, run now, paused and resumed from here; they run on that machine. Loops include terminal sessions nobody hooked (read from their transcripts; **Hook into…** opens one). An offline machine's rows stay, with their actions disabled.
+- **Shared across machines:** search covers every online machine, accounts are merged by identity, the sidebar layout can be shared, and Team's definition syncs.
 - **Hook into a terminal session:** `claude` sessions you started by hand in a terminal (on this machine or a paired one) can be followed from Switchboard. **Install hooks** once per machine (Switchboard adds only its own entries to that machine's `~/.claude/settings.json`, after a backup), then **Hook into…** picks a session: its chat, permission prompts (Allow once / Always allow / Deny with a message), plan approval and question cards work from here, its subagents and their chats show too, and your messages reach it at its next step or wake it when idle (exactly once, at most 3 a minute). Interrupt, slash commands and model changes stay in the terminal. A checklist for the first run on Windows is in `docs/peers.md`. **Continue in Switchboard** (its header, its ⋯ menu, its History row) turns a hooked session into a normal Switchboard session in place, on its own machine: same chat and todos, resumed with `--resume`; if its terminal's `claude` still runs, it is stopped first after a confirmation.
 - **Take over a session:** a session running on one machine can be stopped there and resumed on another, with its conversation and its uncommitted work. **Take over to this machine** (a peer's session) and **Move to <machine> ▸** (this machine's) are in the session header and the sidebar row's ⋯ menu. The dialog shows each repo (branch, uncommitted files, unpushed commits), clones a repo the other machine does not have (you pick the folder), asks for a confirmation when the session runs in a hand-started terminal (its `claude` is stopped there), then runs the steps. The code travels through git: your uncommitted and untracked files are pushed to a temporary branch on the shared remote, restored exactly on the other machine (the real branch is never pushed) and the temporary branch is deleted; the conversation is copied and resumed. If anything fails the old session is left as it was; afterwards it shows **Moved to <machine>** and the new chat starts with **Taken over from <machine>**.
 - **Connection drops:** a dropped connection shows **Reconnecting to <machine>…** (attempt and countdown) for 20 seconds; reads keep working and what you send waits until it is back. After that the machine is **unreachable · retrying in N s** with **Reconnect now** (also in Settings → Machines); it keeps retrying every 15 s by itself, and connection changes are written to the service log.
@@ -399,7 +515,7 @@ Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Mac
 Use Switchboard from your phone or tablet over **Tailscale**, in **Settings → Devices**:
 - **Device access** (off by default): Switchboard publishes a second, device-only listener on `127.0.0.1` to your tailnet with `tailscale serve`, so devices open `https://<machine>.<tailnet>.ts.net:8443` with a real HTTPS certificate. Nothing is opened to your LAN or the internet. Your tailnet needs **MagicDNS** and **HTTPS certificates** turned on (Settings tells you what is missing).
 - **Pair a device** shows a **QR code** and a one-time code (10 minutes, single use). Scan it on the phone, confirm the name, **Pair**: the phone gets its own credential and sees everything you see here. Each device is listed with when it was last seen and can be renamed or **revoked** (it loses access at once).
-- **What stays on the computer:** a device may only call the routes on an allow-list (the work); refused are pairing devices, machines, hooks, MCP server edits, updates, Start at login, CLI commands, accounts, tools, folders and take-overs. The work itself (sessions, answers, Inbox, schedules, todos) all works from the phone.
+- **What stays on the computer:** a device may only call the routes on an allow-list (the work); refused are pairing devices, machines, hooks, MCP server edits, updates, Start at login, CLI commands, accounts, tools, folders and take-overs. The work itself (sessions, answers, Inbox, schedules, todos, search) all works from the phone.
 - **Notifications:** on the phone, Settings → Devices → **Enable notifications**: permission requests, questions, finished turns, session errors and other Inbox items, each switchable, also from your paired machines' sessions; a tap opens the session. On iPhone and iPad add Switchboard to the Home Screen first (and pair it there). While Switchboard is open on the device, nothing lands in the phone's notification shade: the same events show as toasts in the app.
 
 [`docs/devices.md`](docs/devices.md)
@@ -418,6 +534,7 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line per account** (every Claude Code account and every Codex account), each with a **5h** and a **Week** mini-bar.
 - **Pace.** Claude Code bars are colored by pace, read at most once a minute (every 5 minutes while no session is live): green while you're under the elapsed share of the window, yellow once you're ahead of it.
 - **Accounts.** Lines are named after the account; ● marks the one new sessions start on, and a spent account shows when it's usable again. Hover a line for reset times, pace and model-specific weekly limits; click it to open **Settings → Accounts**.
+- **Credits.** An account on credits gets an amber **€ on credits** row with what is left ([Credits](#credits)).
 
 [`docs/usage.md`](docs/usage.md)
 
@@ -425,21 +542,27 @@ The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line pe
 When Switchboard starts, sessions that were live are resumed (Claude Code: `claude --resume`) and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
 
 ### Tutorial
-The first time Switchboard opens it shows a short tour: each step dims the page except one part (the sessions, + New session, the chat, the Inbox, the todo list, the Todos board, Undo a turn, the usage grid, ⌘K, schedules, MCP, machines and devices, Settings) and says what it is and what to do. **Back · Next · Skip tour**, or → ← Esc. After an update, each new feature gets a 1–3 step **What's new** tour instead, once. Seen once per machine (stored in its database); replay any of them from **Settings → Tutorial** or **⌘K → Tutorial**. On a phone the card is a bottom sheet. [`docs/tutorial.md`](docs/tutorial.md)
+- **First run:** a short tour; each step dims the page except one part (the sessions, + New session, the chat, the Inbox, the todo list, the Todos board, Undo a turn, the usage grid, ⌘K, schedules, MCP, machines and devices, Settings) and says what it is and what to do. **Back · Next · Skip tour**, or → ← Esc.
+- **What's new:** after an update, each new feature gets a 1–3 step tour instead, once.
+- Seen once per machine (stored in its database); replay any of them from **Settings → Tutorial** or **⌘K → Tutorial**. On a phone the card is a bottom sheet.
+
+[`docs/tutorial.md`](docs/tutorial.md)
 
 ### Clean-up
-**Settings → Clean-up** lists what Switchboard created and no longer needs, grouped, with sizes and ages: worktrees whose branch is merged or whose closed session saw no change for 14 days (or whose folder is gone), its own `session/…` / `todo/…` and recorded branches that are merged or orphaned, branches it pushed (take-over leftovers, merged session branches), closed sessions older than 30 days (configurable) and old attachments and data files. It is a dry run: each item shows exactly what goes. **Clean up selected** asks for an extra confirmation for uncommitted changes, unmerged branches and remote branches (never ticked for you), then shows the progress and a result; a failure affects nothing else. Nothing that Switchboard did not create is ever listed, and it never runs `git gc`. This machine only, desktop only. Details: `docs/cleanup.md`.
+**Settings → Clean-up** lists what Switchboard created and no longer needs, grouped, with sizes and ages:
+- worktrees whose branch is merged or whose closed session saw no change for 14 days (or whose folder is gone);
+- its own `session/…` / `todo/…` and recorded branches that are merged or orphaned, and branches it pushed (take-over leftovers, merged session branches);
+- closed sessions older than 30 days (configurable), and old attachments and data files.
+
+It is a dry run: each item shows exactly what goes. **Clean up selected** asks for an extra confirmation for uncommitted changes, unmerged branches and remote branches (never ticked for you), then shows the progress and a result; a failure affects nothing else. Nothing that Switchboard did not create is ever listed, and it never runs `git gc`. This machine only, desktop only. [`docs/cleanup.md`](docs/cleanup.md)
 
 ### Install as an app
 Switchboard can run in its own app window with a Dock icon (a PWA):
 - **Chrome:** Settings → Claude Code → **Install as app**, or the install icon in the address bar.
 - **Safari:** **File → Add to Dock…**.
+- **On a phone or tablet** (a paired device, *Devices* above): Android Chrome offers **Install app** from its menu; on iPhone / iPad use Safari's Share → **Add to Home Screen**, open Switchboard from the Home Screen and pair it there (it keeps its own sign-in). The Home Screen app is what gets notifications on iOS.
 
-If the service isn't running, the app window shows "Switchboard isn't running" with **Retry**. Nothing else is cached, so after an update just reload the app.
-
-Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
-
-**On a phone or tablet** (a paired device, *Devices* above): Android Chrome offers **Install app** from its menu; on iPhone / iPad use Safari's Share → **Add to Home Screen**, open Switchboard from the Home Screen and pair it there (it keeps its own sign-in). The Home Screen app is what gets notifications on iOS.
+If the service isn't running, the app window shows "Switchboard isn't running" with **Retry**. Nothing else is cached, so after an update just reload the app. Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
 
 ---
@@ -454,6 +577,7 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 - Switchboard never reads or passes on your claude.ai credentials, or any other CLI's (Codex, OpenCode) or account's: sign-in and sign-out are each CLI's own commands, and it only runs the CLIs you signed in to. Account profile folders and handover exports stay in the data folder (mode 0700 / 0600).
 - **Attachments** are stored only in the data folder (never in a repo or the database), typed by their bytes, and never rendered inline unless they are PNG, JPEG, GIF, WebP or PDF.
 - **No telemetry.** Switchboard sends nothing to its author; the only network calls it makes itself are GitHub update checks and, only once you enable them on a paired device, encrypted push notifications through that device's browser vendor. See the [privacy policy](PRIVACY.md).
+- **Team access and the Jira connection** (experimental): their secrets are kept in the OS keychain and never sent to paired machines; a Team member's keys go only to that member, and the Jira credentials are never logged or answered by the API.
 - **MCP servers:** secrets never reach the browser; env and header values are masked, and servers are changed only through the CLI's own commands.
 - **Updates** come only from the configured GitHub repository's releases, over HTTPS, and are installed only after their SHA-256 checksum matches; the archive is unpacked by Node itself (no links, no paths outside its folder), and nothing from it runs except `npm ci --omit=dev` and the new server.
 
@@ -510,10 +634,10 @@ docs/         one doc per area, the decisions log, the handoff spec
 [`docs/visual/README.md`](docs/visual/README.md)
 
 ### Demo mode
-`SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. [`docs/demo.md`](docs/demo.md)
+`SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. `npm run screenshots` also sets `SWITCHBOARD_DEMO_EXTRAS=1`, so Team, Plans and the credits footer can be shown. [`docs/demo.md`](docs/demo.md)
 
 ### How changes are made
-- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D63). The developer's rulings win where the two differ.
+- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D105). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
 - **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `master` with their tests green (the full suites run before a release).
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.
