@@ -790,6 +790,12 @@ export class Runner {
     } else if (toolCall !== null && 'error' in toolCall) {
       await this.crash(`fake-claude: [fake:tool]: ${toolCall.error}`);
       return 'crash';
+    } else if (toolCall !== null && this.args.disallowedTools.includes(toolCall.name)) {
+      // D106: a tool the CLI does not offer (`--disallowedTools`) is never called: the reply says so.
+      steps = this.core.base.turns[0] ?? [];
+      say = `fake-claude: ${toolCall.name} is not available (--disallowedTools)`;
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
     } else if (toolCall !== null) {
       steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
       tool = { name: toolCall.name, input: toolCall.input };

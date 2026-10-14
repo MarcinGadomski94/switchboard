@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { codexMcpArgs } from '../../todos/agent-mcp.ts';
+import { CODEX_CHAT_CONFIG } from '../../../core/chats.ts';
 import { LineSplitter } from '../../../core/stream-json.ts';
 import type { AgentProcess, ProcessExit } from '../agent-process.ts';
 import { type BridgeCommon, type JsonRecord, type ProviderUsage, contentBlocks, controlError, controlSuccess, isRecord, mapAnswers, num, str, toolInputFor } from '../bridge-common.ts';
@@ -62,7 +63,8 @@ export class CodexBridge implements AgentProcess {
     // D68: the session's todo tools as config overrides; the token reaches the server through `env_vars` (UNVERIFIED, docs/todos.md).
     const mcp = options.agentMcp ?? null;
     const env = mcp ? { ...options.env, ...mcp.env } : options.env;
-    const child = spawn(cmd, [...prefix, ...(mcp ? codexMcpArgs(mcp) : []), 'app-server'], { cwd: options.cwd, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    // D106 ruling: a chat's app-server has no shell tools (and runs in the read-only sandbox, approvals never).
+    const child = spawn(cmd, [...prefix, ...(mcp ? codexMcpArgs(mcp) : []), ...(options.readOnly ? CODEX_CHAT_CONFIG : []), 'app-server'], { cwd: options.cwd, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     this.#child = child;
     const splitter = new LineSplitter((line) => this.#fromServer(line));
     child.stdout?.setEncoding('utf8');

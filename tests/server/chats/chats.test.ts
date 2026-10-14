@@ -90,7 +90,7 @@ describe('D106 · chats', () => {
     const argv = spawn?.argv ?? [];
     expect(flag(argv, '--permission-mode')).toEqual(['plan']);
     expect(flag(argv, '--disallowedTools')).toEqual([CHAT_DISALLOWED_TOOLS.join(',')]);
-    expect(flag(argv, '--disallowedTools')[0]?.split(',')).toEqual(expect.arrayContaining(['Edit', 'Write', 'NotebookEdit', 'ExitPlanMode']));
+    expect(flag(argv, '--disallowedTools')[0]?.split(',')).toEqual(expect.arrayContaining(['Edit', 'Write', 'NotebookEdit', 'ExitPlanMode', 'Bash', 'BashOutput', 'KillShell', 'PowerShell', 'REPL']));
     expect(flag(argv, '--add-dir')).toEqual([]);
     // The switchboard MCP server stays (todos, artifacts, plans when on), with the web tools allowed next to it.
     expect(flag(argv, '--mcp-config')).toHaveLength(1);
@@ -101,6 +101,7 @@ describe('D106 · chats', () => {
     expect(instruction).toContain('You run in plan mode and stay there');
     expect(instruction).toContain('artifact_save');
     expect(instruction).not.toContain('loop_create');
+    expect(instruction).toContain('You have no shell');
     expect(instruction).not.toContain('session-start questions');
     // The first message is the developer's text only (no router answers block, no worktree note).
     const first = (await stdinOf(w.logFile, spawn?.pid ?? -1)).find((line) => line['type'] === 'user');
@@ -114,7 +115,12 @@ describe('D106 · chats', () => {
     await waitForStatus(w.store, chat.id, ['done']);
     // The fake honours --disallowedTools Write: nothing is written in the scratch folder.
     await expect(stat(path.join(chatScratchDir(w.root, chat.id), 'notes.md'))).rejects.toThrow();
-    // A Bash permission request: Switchboard denies it with the chat's reason; the fake plays the denied turn.
+    // D106 ruling: no Bash at all: the CLI is not offered it (fake-claude honours --disallowedTools Bash), so no Bash step is recorded.
+    await call('POST', `/api/sessions/${chat.id}/messages`, { text: '[fake:tool Bash {"command":"ls"}] List the files.' });
+    await waitForEvent(w.store, chat.id, (event) => event.label.includes('Bash is not available'));
+    expect((await w.store.events.list(chat.id)).some((event) => (event.payload as { type?: string; name?: string }).type === 'tool' && (event.payload as { name?: string }).name === 'Bash')).toBe(false);
+    await waitForStatus(w.store, chat.id, ['done']);
+    // A Bash permission request (should one still come): Switchboard denies it with the chat's reason; the fake plays the denied turn.
     await call('POST', `/api/sessions/${chat.id}/messages`, { text: '[fake:perm-allow] Run the tests.' });
     const refused = await waitForEvent(w.store, chat.id, (event) => event.label.startsWith('Refused in a chat: Bash'));
     expect(refused.kind).toBe('text');
@@ -297,6 +303,9 @@ describe('D106 · chats on Codex CLI and OpenCode (their read-only modes)', () =
     const sent = (await readLog(w.codexLog)).filter((line) => line['kind'] === 'stdin' && typeof line['line'] === 'string').map((line) => JSON.parse(line['line'] as string) as Record<string, unknown>);
     const start = sent.find((message) => message['method'] === 'thread/start');
     expect(start?.['params']).toMatchObject({ approvalPolicy: 'never', sandbox: 'read-only' });
+    // D106 ruling: no shell tools in a chat's app-server.
+    const argv = (await readLog(w.codexLog)).find((line) => line['kind'] === 'argv')?.['argv'] as string[] | undefined;
+    expect(argv).toEqual(['-c', 'features.shell_tool=false', '-c', 'features.unified_exec=false', 'app-server']);
     expect((start?.['params'] as Record<string, unknown>)['developerInstructions']).toContain('This is a Switchboard chat');
   });
 
@@ -307,6 +316,7 @@ describe('D106 · chats on Codex CLI and OpenCode (their read-only modes)', () =
     await waitForStatus(w.store, chat.id, ['done']);
     const log = await readLog(w.opencodeLog);
     const env = (log.find((line) => line['kind'] === 'argv')?.['env'] ?? {}) as Record<string, string>;
+    // D106 ruling: no shell (bash denied), no edits.
     expect(JSON.parse(env['OPENCODE_CONFIG_CONTENT'] ?? '{}')['permission']).toEqual({ edit: 'deny', bash: 'deny', webfetch: 'allow', external_directory: 'allow' });
     const prompt = log.find((line) => line['kind'] === 'prompt')?.['body'] as Record<string, unknown> | undefined;
     expect(prompt?.['agent']).toBe('plan');

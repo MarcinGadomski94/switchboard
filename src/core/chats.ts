@@ -34,9 +34,20 @@ export const CHAT_PERMISSION_MODE = 'plan';
 
 /**
  * The Claude Code tools a chat's process never gets (`--disallowedTools`): the file
- * editors, and `ExitPlanMode`, the tool that would take the CLI out of plan mode.
+ * editors; `ExitPlanMode`, the tool that would take the CLI out of plan mode; and
+ * (D106 ruling 2026-10-14, "no Bash at all in chats") every tool that runs a shell or
+ * code: `Bash` with its background-shell companions `BashOutput` / `KillShell`
+ * (`KillBash`, their older name), `PowerShell` and `REPL` (the code-running tools
+ * `claude --help` names). A name the CLI does not have is ignored by it.
  */
-export const CHAT_DISALLOWED_TOOLS: readonly string[] = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'ExitPlanMode'];
+export const CHAT_DISALLOWED_TOOLS: readonly string[] = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'ExitPlanMode', 'Bash', 'BashOutput', 'KillShell', 'KillBash', 'PowerShell', 'REPL'];
+
+/**
+ * D106 ruling (2026-10-14): Codex CLI's config overrides that remove its shell tools
+ * from a chat's app-server (`-c features.<name>=false`, the same as `--disable <name>`;
+ * the features `shell_tool` and `unified_exec` as `codex features list` 0.160.0 lists them).
+ */
+export const CODEX_CHAT_CONFIG: readonly string[] = ['-c', 'features.shell_tool=false', '-c', 'features.unified_exec=false'];
 
 /** The hint where the permission-mode picker would be, and on the locked chip. */
 export const CHAT_LOCKED_HINT = 'Chats can plan but not edit. Continue as session to code.';
@@ -149,7 +160,7 @@ export function chatInstruction(lookAt: readonly string[]): string {
       : `You may read these folders for planning (read-only): ${lookAt.join(', ')}.`;
   return [
     'This is a Switchboard chat: a conversation to think and plan in, not a development session.',
-    'You run in plan mode and stay there: read files, search, browse the web and look at what the developer attaches, but never edit or write files, never run commands that change anything, and never try to leave plan mode.',
+    'You run in plan mode and stay there: read files with the read tools, search with Grep and Glob, browse the web and look at what the developer attaches. You have no shell: never run commands, never edit or write files, and never try to leave plan mode.',
     'When the developer wants something built, describe the plan; they continue the chat as a session to code it.',
     folders,
     "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.",
