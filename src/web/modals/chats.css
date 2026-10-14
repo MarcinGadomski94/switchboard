@@ -72,3 +72,12 @@
   font-size: 12px;
   color: var(--muted-1);
 }
+
+/* The simple form's container has no padding of its own (its form has): the note lines up with the form's fields. */
+.sb-modal-simple > .sb-ns-carry {
+  margin: 22px 28px 0;
+}
+
+.sb-ns-form > .sb-ns-carry {
+  margin: 0;
+}
