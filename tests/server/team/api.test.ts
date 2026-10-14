@@ -405,6 +405,33 @@ describe('D100 · the routes', () => {
     for (const id of [trackerSession, devSession, ads.sessionId]) expect(suggested).not.toContain(id);
   });
 
+  it('D100 follow-up 2026-10-14 · drag to move between teams: Undo (move back, then the old order) restores the team and the place; its own team is a no-op', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
+    const ids: string[] = [];
+    for (const name of ['Alpha', 'Bravo', 'Charlie']) ids.push(((await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, `${name.toLowerCase()}-move`), name })).json() as TeamMember).id);
+    const names = async (teamId?: string): Promise<string[]> => ((await ui(r, 'GET', teamId ? `/api/team?teamId=${teamId}` : '/api/team')).json() as TeamView).members.map((m) => m.name);
+    const before = [...ids];
+
+    // Bravo dropped on Growth's tab; its own team is no move (nothing changes, no activity line).
+    expect((await ui(r, 'POST', `/api/team/members/${ids[1]}/team`, { teamId: growth.id })).statusCode).toBe(200);
+    expect(await names()).toEqual(['Alpha', 'Charlie']);
+    expect(await names(growth.id)).toEqual(['Bravo']);
+    const lines = ((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).activity.length;
+    const same = await ui(r, 'POST', `/api/team/members/${ids[1]}/team`, { teamId: growth.id });
+    expect(same.json()).toMatchObject({ teamId: growth.id });
+    expect(((await ui(r, 'GET', `/api/team?teamId=${growth.id}`)).json() as TeamView).activity.length).toBe(lines);
+
+    // Undo: back to Team (at its end), then Team's order as it was.
+    expect((await ui(r, 'POST', `/api/team/members/${ids[1]}/team`, { teamId: 'team' })).statusCode).toBe(200);
+    expect(await names()).toEqual(['Alpha', 'Charlie', 'Bravo']);
+    expect((await ui(r, 'PUT', '/api/team/order', { memberIds: before, teamId: 'team' })).statusCode).toBe(200);
+    expect(await names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(await names(growth.id)).toEqual([]);
+    expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.order)).toEqual([0, 1, 2]);
+  });
+
   it('every Team route is classified for devices; the peer API serves what a paired machine needs', () => {
     // Phones read, answer, pause / resume, give tasks, adopt / return / remove.
     for (const [method, url] of [

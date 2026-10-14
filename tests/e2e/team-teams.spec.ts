@@ -182,3 +182,109 @@ test('the first team is deletable once another exists: its member returns, the p
   await expect(page).toHaveURL(new RegExp(`/team/${ops.body.id}$`));
   await expect(page.getByTestId('team-delete')).toHaveCount(0);
 });
+
+test('drag to move between teams (D100 follow-up 2026-10-14): a card dropped on another team\'s tab moves there, Undo puts it back in its place; Settings → Team moves it; ⋯ by keyboard', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  const home = (await world.call(page, 'GET', '/api/team/teams')).body[0] as { id: string; name: string };
+  const growth = await world.call(page, 'POST', '/api/team/teams', { name: 'Growth' });
+  expect(growth.status).toBe(201);
+  for (const role of ['Alpha', 'Bravo', 'Charlie']) {
+    const s = await world.startSession(page, `drag-${role.toLowerCase()}`, 'Reply with just OK.');
+    await world.settle(page, s.id);
+    await world.adopt(page, s.id, role, { teamId: home.id });
+  }
+  await page.goto(`${world.baseUrl}/team/${home.id}`);
+  const roles = () => page.getByTestId('team-card-role').allTextContents();
+  await expect.poll(roles).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  await closeToasts(page);
+
+  // While Bravo's card is held, Growth's tab is a drop target; its own team's tab and All teams are not.
+  const box = async (name: string) => (await tab(page, name).boundingBox()) as { x: number; y: number; width: number; height: number };
+  const from = (await card(page, 'Bravo').boundingBox()) as { x: number; y: number; width: number; height: number };
+  await page.mouse.move(from.x + from.width / 2, from.y + 20);
+  await page.mouse.down();
+  const to = await box('Growth');
+  await page.mouse.move(from.x + from.width / 2 + 10, from.y + 30, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+  await expect(tab(page, 'Growth')).toHaveAttribute('data-member-drop', '');
+  await page.mouse.move(to.x + to.width / 2 + 2, to.y + to.height / 2, { steps: 2 });
+  await expect(tab(page, 'Growth')).toHaveAttribute('data-drop-over', '');
+  await expect(tab(page, home.name)).not.toHaveAttribute('data-member-drop', '');
+  await expect(tab(page, 'All teams')).not.toHaveAttribute('data-member-drop', '');
+  await page.mouse.up();
+
+  // Moved: the toast says so, the card left this team and shows in Growth.
+  await expect(page.getByTestId('toast')).toContainText('Moved Bravo to Growth');
+  await expect.poll(roles).toEqual(['Alpha', 'Charlie']);
+  await expect(page.locator('[data-member-drop]')).toHaveCount(0);
+  expect(((await world.call(page, 'GET', `/api/team?teamId=${growth.body.id}`)).body.members as Array<{ name: string }>).map((m) => m.name)).toEqual(['Bravo']);
+
+  // Undo: back in its old team, in its old place.
+  await page.getByTestId('toast-action').click();
+  await expect.poll(roles).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  expect((await world.call(page, 'GET', `/api/team?teamId=${growth.body.id}`)).body.members).toEqual([]);
+
+  // A drop on the strip still reorders (Charlie before Alpha).
+  const alpha = (await card(page, 'Alpha').boundingBox()) as { x: number; y: number; width: number; height: number };
+  await card(page, 'Charlie').dragTo(card(page, 'Alpha'), { targetPosition: { x: 4, y: alpha.height / 2 } });
+  await expect.poll(roles).toEqual(['Charlie', 'Alpha', 'Bravo']);
+
+  // Settings → Team: shows the current team; another pick moves it (same toast, with Undo).
+  await card(page, 'Alpha').click();
+  await page.getByTestId('team-tab-settings').click();
+  await expect(page.getByTestId('team-settings-team')).toHaveValue(home.id);
+  await page.getByTestId('team-settings-team').selectOption(growth.body.id);
+  await expect(page.getByTestId('toast')).toContainText('Moved Alpha to Growth');
+  await expect.poll(roles).toEqual(['Charlie', 'Bravo']);
+  await tab(page, 'Growth').click();
+  await expect.poll(roles).toEqual(['Alpha']);
+
+  // Touch: a long press lifts Alpha's card; the finger over the home team's tab lights it up, releasing there moves it.
+  await closeToasts(page);
+  const fromTouch = (await card(page, 'Alpha').boundingBox()) as { x: number; y: number; width: number; height: number };
+  const homeTab = await box(home.name);
+  const lit = await page.evaluate(
+    async ({ start, end }) => {
+      const fire = (type: string, at: { x: number; y: number }): void => {
+        const target = document.elementFromPoint(at.x, at.y) ?? document.body;
+        target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: at.x, clientY: at.y }));
+      };
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      fire('pointerdown', start);
+      await wait(550);
+      for (let i = 1; i <= 10; i += 1) {
+        fire('pointermove', { x: start.x + ((end.x - start.x) * i) / 10, y: start.y + ((end.y - start.y) * i) / 10 });
+        await wait(20);
+      }
+      await wait(50);
+      const over = document.querySelector('[data-drop-over]')?.getAttribute('data-team-id') ?? null;
+      fire('pointerup', end);
+      return over;
+    },
+    { start: { x: fromTouch.x + fromTouch.width / 2, y: fromTouch.y + 20 }, end: { x: homeTab.x + homeTab.width / 2, y: homeTab.y + homeTab.height / 2 } },
+  );
+  expect(lit).toBe(home.id);
+  await expect(page.getByTestId('toast')).toContainText(`Moved Alpha to ${home.name}`);
+  await expect.poll(roles).toEqual([]);
+
+  // Keyboard: ⋯ opens with the focus on its first entry; the team entries name the teams.
+  await tab(page, home.name).click();
+  await expect.poll(roles).toEqual(['Charlie', 'Bravo', 'Alpha']);
+  await closeToasts(page);
+  await card(page, 'Alpha').getByTestId('team-card-menu').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('team-member-menu')).toBeVisible();
+  await expect(page.locator('[role="menuitem"]:focus')).toHaveCount(1);
+  const toGrowth = page.locator(`[data-testid="team-menu-team"][data-team-id="${growth.body.id}"]`);
+  await expect(toGrowth).toHaveText('Move to team ▸ Growth');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowUp');
+  await expect(toGrowth).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('toast')).toContainText('Moved Alpha to Growth');
+  await expect.poll(roles).toEqual(['Charlie', 'Bravo']);
+  await page.screenshot({ path: test.info().outputPath('team-teams-drag.png') });
+  expect((await world.call(page, 'DELETE', `/api/team/teams/${growth.body.id}`)).status).toBe(200);
+});

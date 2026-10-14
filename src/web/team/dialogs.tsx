@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Folder, OwnedLoop, SessionListItem, SessionModel } from '../../core/api.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion } from '../../core/team.ts';
@@ -588,12 +588,31 @@ export function MemberMenu({ items, at, onPick, onClose }: { readonly items: rea
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  // D100 follow-up 2026-10-14 (keyboard): the first enabled entry takes the focus, ↑ / ↓ / Home / End move it, and closing gives it back to the ⋯.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true });
+    return () => {
+      // Only when the focus went nowhere (a dialog the entry opened keeps its own).
+      const now = document.activeElement;
+      if (opener?.isConnected && (now === null || now === document.body)) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  const onMenuKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const entries = [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+    if (entries.length === 0) return;
+    const at = entries.indexOf(document.activeElement as HTMLElement);
+    const to = event.key === 'ArrowDown' ? (at + 1) % entries.length : event.key === 'ArrowUp' ? (at - 1 + entries.length) % entries.length : event.key === 'Home' ? 0 : event.key === 'End' ? entries.length - 1 : null;
+    if (to === null) return;
+    event.preventDefault();
+    entries[to]?.focus();
+  };
   return (
     <div className="sb-team-menu-scrim" onClick={onClose} onContextMenu={(event) => {
       event.preventDefault();
       onClose();
     }}>
-      <div ref={ref} className="sb-team-menu" role="menu" data-testid="team-member-menu" style={{ left: pos.left, top: pos.top }} onClick={(event) => event.stopPropagation()}>
+      <div ref={ref} className="sb-team-menu" role="menu" data-testid="team-member-menu" style={{ left: pos.left, top: pos.top }} onClick={(event) => event.stopPropagation()} onKeyDown={onMenuKey}>
         {items.map((item, index) => (
           <div key={`${item.id}:${item.machineId ?? item.teamId ?? index}`}>
             {item.separator ? <div className="sb-team-menu__sep" role="separator" /> : null}

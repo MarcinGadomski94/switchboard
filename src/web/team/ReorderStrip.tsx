@@ -3,6 +3,9 @@ import { dragScrollStep } from '../shell/sidebar-menu.ts';
 import { LONG_PRESS_MS, type Press, pressHeld, pressMove, pressStart } from '../shell/touch-drag.ts';
 import { dropOrder, moveInOrder, sideAlong } from './model.ts';
 
+/** How far (px) above / below a strip another strip's held finger still scrolls it. */
+const EXTERNAL_BAND = 40;
+
 /**
  * D100 follow-up 2026-10-14 · a reorderable strip (`docs/team.md` → *The Team page*
  * → *Order*): the member cards (one horizontally scrolling row on a desktop or a
@@ -24,6 +27,13 @@ import { dropOrder, moveInOrder, sideAlong } from './model.ts';
  *   view when it changes (an item selected from elsewhere).
  *
  * `onReorder` gets the whole new order; the parent shows it at once and saves it.
+ *
+ * D100 follow-up 2026-10-14 (moving a member to another team by dragging its card
+ * onto a team tab): `onLift` tells the parent which item is held (mouse and touch),
+ * `onTouchDrag` / `onTouchDropOutside` hand it a held finger's point outside the
+ * strip's own items (the mouse gets the targets' own drag events), and a strip that
+ * receives such a drag (the team tabs) scrolls at its edges with `externalDrag`
+ * (mouse) / `externalPoint` (touch).
  */
 export function ReorderStrip<T>({
   items,
@@ -35,6 +45,11 @@ export function ReorderStrip<T>({
   className,
   testId,
   tour,
+  onLift,
+  onTouchDrag,
+  onTouchDropOutside,
+  externalDrag = false,
+  externalPoint = null,
   children,
 }: {
   readonly items: readonly T[];
@@ -49,6 +64,16 @@ export function ReorderStrip<T>({
   readonly testId: string;
   /** The strip's `data-tour` anchor (What's new). */
   readonly tour?: string;
+  /** The item lifted (mouse or touch), then `null` when the drag ends. */
+  readonly onLift?: (id: string | null) => void;
+  /** A lifted item's finger moved (touch). */
+  readonly onTouchDrag?: (id: string, point: { readonly x: number; readonly y: number }) => void;
+  /** A lifted item's finger was released away from the strip's items (touch); no reorder then. */
+  readonly onTouchDropOutside?: (id: string, point: { readonly x: number; readonly y: number }) => void;
+  /** Another strip's item is being dragged with the mouse (edge auto-scroll while it is over this strip). */
+  readonly externalDrag?: boolean;
+  /** Another strip's item held by a finger, at this point (edge auto-scroll when it is near this strip). */
+  readonly externalPoint?: { readonly x: number; readonly y: number } | null;
   readonly children: (item: T) => ReactNode;
 }) {
   const ids = items.map(idOf);
@@ -57,8 +82,13 @@ export function ReorderStrip<T>({
   const [over, setOver] = useState<{ readonly id: string; readonly side: 'before' | 'after' } | null>(null);
   const [fade, setFade] = useState<{ readonly start: boolean; readonly end: boolean }>({ start: false, end: false });
   const focusAfter = useRef<string | null>(null);
-  const latest = useRef({ ids, drag, over, onReorder });
-  latest.current = { ids, drag, over, onReorder };
+  const latest = useRef({ ids, drag, over, onReorder, onTouchDrag, onTouchDropOutside, externalDrag });
+  latest.current = { ids, drag, over, onReorder, onTouchDrag, onTouchDropOutside, externalDrag };
+  const lift = useRef(onLift);
+  lift.current = onLift;
+  useEffect(() => {
+    lift.current?.(drag);
+  }, [drag]);
 
   /** What a held drag scrolls: the strip (horizontal), else the nearest scrolling ancestor (the phone's page). */
   const scroller = useCallback((): HTMLElement | null => {
@@ -103,6 +133,21 @@ export function ReorderStrip<T>({
     return axis === 'x' ? dragScrollStep(point.x, { top: box.left, bottom: box.right }) : dragScrollStep(point.y, { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, window.innerHeight) });
   };
   useEffect(() => () => edgeScroll(0), [edgeScroll]);
+  // Another strip's drag: scroll while the mouse is over this one (see the frame's onDragOver), stop when it ends.
+  useEffect(() => {
+    if (!externalDrag) edgeScroll(0);
+  }, [externalDrag, edgeScroll]);
+  // Another strip's finger: scroll while it is near this strip (a band around it), else stop.
+  useEffect(() => {
+    if (!externalPoint) {
+      if (!latest.current.drag) edgeScroll(0);
+      return;
+    }
+    const box = scroller()?.getBoundingClientRect();
+    const near = box && externalPoint.y >= box.top - EXTERNAL_BAND && externalPoint.y <= box.bottom + EXTERNAL_BAND;
+    edgeScroll(near ? edgeStep(externalPoint) : 0);
+    // `edgeStep` reads the scroller only.
+  }, [externalPoint, edgeScroll, scroller]);
 
   const end = (): void => {
     setDrag(null);
@@ -215,6 +260,7 @@ export function ReorderStrip<T>({
         return;
       }
       if (current.press.phase !== 'dragging') return;
+      latest.current.onTouchDrag?.(current.id, { x: event.clientX, y: event.clientY });
       const at = targetAt(event.clientX, event.clientY);
       const valid = at && dropOrder(latest.current.ids, current.id, at.id, at.side) ? at : null;
       const was = latest.current.over;
@@ -228,7 +274,14 @@ export function ReorderStrip<T>({
       cancelTouch();
       if (!dragging) return;
       swallowClick.current = Date.now() + 600;
-      drop(current.id, event.type === 'pointerup' ? targetAt(event.clientX, event.clientY) : null);
+      const at = event.type === 'pointerup' ? targetAt(event.clientX, event.clientY) : null;
+      const outside = latest.current.onTouchDropOutside;
+      if (!at && event.type === 'pointerup' && outside) {
+        end();
+        outside(current.id, { x: event.clientX, y: event.clientY });
+        return;
+      }
+      drop(current.id, at);
     };
     // A lifted item's finger never scrolls; only a non-passive listener may say so.
     const hold = (event: TouchEvent): void => {
@@ -302,7 +355,7 @@ export function ReorderStrip<T>({
       data-axis={axis}
       data-dragging={drag ? '' : undefined}
       onDragOver={(event) => {
-        if (latest.current.drag) edgeScroll(edgeStep({ x: event.clientX, y: event.clientY }));
+        if (latest.current.drag || latest.current.externalDrag) edgeScroll(edgeStep({ x: event.clientX, y: event.clientY }));
       }}
       onDragLeave={(event) => {
         if (event.currentTarget === event.target) edgeScroll(0);

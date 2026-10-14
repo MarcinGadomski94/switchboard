@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { type DragEvent, type MutableRefObject, useEffect, useState } from 'react';
 import { ALL_TEAMS, TEAM_NAME_MAX, type TeamSummary } from '../../core/team.ts';
 import { refusalText, teamApi } from './api.ts';
 import { Dialog } from './dialogs.tsx';
+import { canDropOnTeam } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
 
 /**
@@ -10,6 +11,12 @@ import { ReorderStrip } from './ReorderStrip.tsx';
  * and needs-you count, in a row that scrolls sideways and reorders like the cards
  * strip (`ReorderStrip`: drag, long press, Alt+← / →); then **All teams** (every
  * team's Needs you) and **＋ New team**.
+ *
+ * D100 follow-up 2026-10-14 (drag to move between teams): while a member card is
+ * held (`memberDrag`), every other team's tab is a drop target (highlighted; never
+ * the member's own team nor All teams); dropping calls `onMemberDrop`. A held finger
+ * is fed through `touchRef` (its point: the tab under it lights up, and the row
+ * scrolls at its edges); the parent asks {@link teamTabAt} where it was released.
  */
 export function TeamTabs({
   teams,
@@ -17,6 +24,9 @@ export function TeamTabs({
   onPick,
   onReorder,
   onNew,
+  memberDrag = null,
+  onMemberDrop,
+  touchRef,
 }: {
   readonly teams: readonly TeamSummary[];
   /** The shown team's id, or `all`. */
@@ -24,14 +34,65 @@ export function TeamTabs({
   readonly onPick: (teamId: string) => void;
   readonly onReorder: (teamIds: string[]) => void;
   readonly onNew: () => void;
+  /** The member card being dragged (its id and team), or `null`. */
+  readonly memberDrag?: { readonly memberId: string; readonly teamId: string } | null;
+  /** A member card was dropped on this team's tab. */
+  readonly onMemberDrop?: (teamId: string) => void;
+  /** Set here: the parent feeds a held finger's point (or `null`) through it. */
+  readonly touchRef?: MutableRefObject<((point: { readonly x: number; readonly y: number } | null) => void) | null>;
 }) {
   const allNeeds = teams.reduce((sum, team) => sum + team.needsYou, 0);
+  const [mouseOver, setMouseOver] = useState<string | null>(null);
+  const [touch, setTouch] = useState<{ readonly point: { readonly x: number; readonly y: number }; readonly over: string | null } | null>(null);
+  useEffect(() => {
+    if (!touchRef) return undefined;
+    touchRef.current = (point) => setTouch(point ? { point, over: teamTabAt(point.x, point.y) } : null);
+    return () => {
+      touchRef.current = null;
+    };
+  }, [touchRef]);
+  useEffect(() => {
+    if (!memberDrag) {
+      setMouseOver(null);
+      setTouch(null);
+    }
+  }, [memberDrag]);
+  const over = mouseOver ?? touch?.over ?? null;
+  const dropProps = (teamId: string): TabDrop | undefined => {
+    if (!memberDrag || !onMemberDrop || !canDropOnTeam(teams, memberDrag.teamId, teamId)) return undefined;
+    return {
+      over: over === teamId,
+      onDragOver: (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (mouseOver !== teamId) setMouseOver(teamId);
+      },
+      onDragLeave: (event) => {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setMouseOver((current) => (current === teamId ? null : current));
+      },
+      onDrop: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setMouseOver(null);
+        onMemberDrop(teamId);
+      },
+    };
+  };
   return (
-    <nav className="sb-team-tabs-row" data-testid="team-tabs" data-tour="team-switcher" aria-label="Teams">
-      <ReorderStrip items={teams} idOf={(team) => team.id} labelOf={(team) => team.name} axis="x" revealId={current} onReorder={onReorder} className="sb-team-tabs" testId="team-tab-strip">
-        {(team) => (
-          <TeamTab id={team.id} name={team.name} needs={team.needsYou} selected={team.id === current} onPick={onPick} />
-        )}
+    <nav className="sb-team-tabs-row" data-testid="team-tabs" data-tour="team-switcher" aria-label="Teams" data-member-drag={memberDrag ? '' : undefined}>
+      <ReorderStrip
+        items={teams}
+        idOf={(team) => team.id}
+        labelOf={(team) => team.name}
+        axis="x"
+        revealId={current}
+        onReorder={onReorder}
+        className="sb-team-tabs"
+        testId="team-tab-strip"
+        externalDrag={memberDrag !== null}
+        externalPoint={touch?.point ?? null}
+      >
+        {(team) => <TeamTab id={team.id} name={team.name} needs={team.needsYou} selected={team.id === current} onPick={onPick} drop={dropProps(team.id)} />}
       </ReorderStrip>
       <TeamTab id={ALL_TEAMS} name="All teams" needs={allNeeds} selected={current === ALL_TEAMS} onPick={onPick} />
       <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost sb-team-tabs-new" data-testid="team-new" data-tour="team-new" onClick={onNew}>
@@ -41,7 +102,21 @@ export function TeamTabs({
   );
 }
 
-function TeamTab({ id, name, needs, selected, onPick }: { readonly id: string; readonly name: string; readonly needs: number; readonly selected: boolean; readonly onPick: (teamId: string) => void }) {
+/** A team tab as a drop target for a dragged member card. */
+interface TabDrop {
+  readonly over: boolean;
+  readonly onDragOver: (event: DragEvent<HTMLElement>) => void;
+  readonly onDragLeave: (event: DragEvent<HTMLElement>) => void;
+  readonly onDrop: (event: DragEvent<HTMLElement>) => void;
+}
+
+/** The team whose tab (a drop target for the held member card) is at this point, if any. */
+export function teamTabAt(x: number, y: number): string | null {
+  const tab = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-member-drop]');
+  return tab?.dataset['teamId'] ?? null;
+}
+
+function TeamTab({ id, name, needs, selected, onPick, drop }: { readonly id: string; readonly name: string; readonly needs: number; readonly selected: boolean; readonly onPick: (teamId: string) => void; readonly drop?: TabDrop | undefined }) {
   return (
     <div
       role="tab"
@@ -49,7 +124,12 @@ function TeamTab({ id, name, needs, selected, onPick }: { readonly id: string; r
       className="sb-team-teamtab"
       data-testid="team-tab-team"
       data-team-id={id}
+      data-member-drop={drop ? '' : undefined}
+      data-drop-over={drop?.over ? '' : undefined}
       aria-selected={selected}
+      onDragOver={drop?.onDragOver}
+      onDragLeave={drop?.onDragLeave}
+      onDrop={drop?.onDrop}
       onClick={() => onPick(id)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {

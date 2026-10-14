@@ -32,7 +32,7 @@ const RELOAD_MS = 500;
  * model, machine, rhythm, needs-you-for); the tabs **Chat** (the real session chat
  * with its composer: the developer talks to the member here, and its draft is the
  * session's own D88 draft), **Access** (T2's `AccessTab`) and **Settings** (the member form,
- * and where it runs with "Move to <PC>…").
+ * its **Team** (D100 follow-up 2026-10-14: a pick moves it) and where it runs with "Move to <PC>…").
  */
 export function MemberPanel({
   member,
@@ -46,6 +46,8 @@ export function MemberPanel({
   composerFocus,
   phone,
   moveTargets,
+  teams = [],
+  onMoveTeam,
   onBack,
   onMenu,
   onMove,
@@ -67,6 +69,10 @@ export function MemberPanel({
   readonly phone: boolean;
   /** The machines it can move to (Settings → Runs on). */
   readonly moveTargets: readonly { readonly id: string; readonly name: string; readonly online: boolean }[];
+  /** D100 follow-up 2026-10-14: the teams (Settings → Team, shown with two or more). */
+  readonly teams?: readonly { readonly id: string; readonly name: string }[];
+  /** Settings → Team changed: move the member to that team (the page's toast with Undo). */
+  readonly onMoveTeam?: (teamId: string) => void;
   readonly onBack: () => void;
   readonly onMenu: (anchor: { readonly x: number; readonly y: number }) => void;
   readonly onMove: (targetMachineId: string) => void;
@@ -147,7 +153,7 @@ export function MemberPanel({
           </div>
         ) : null}
         {/* D105: Edit… of a proposal mounts the form anew, filled with it; so does a charter that changed (an accepted proposal, a synced edit), so a later Save never puts the old one back. */}
-        {tab === 'settings' ? <MemberSettings key={`${member.id}:${focus === 'proposal' ? (member.charterRequest?.requestId ?? '') : ''}:${JSON.stringify(member.charter)}`} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
+        {tab === 'settings' ? <MemberSettings key={`${member.id}:${focus === 'proposal' ? (member.charterRequest?.requestId ?? '') : ''}:${JSON.stringify(member.charter)}`} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} teams={teams} onMoveTeam={onMoveTeam} onMove={onMove} onChanged={onChanged} /> : null}
       </div>
     </section>
   );
@@ -187,6 +193,8 @@ function MemberSettings({
   sessionModel,
   focus,
   moveTargets,
+  teams,
+  onMoveTeam,
   onMove,
   onChanged,
 }: {
@@ -194,6 +202,8 @@ function MemberSettings({
   readonly sessionModel: SessionModel | null;
   readonly focus: SettingsFocus;
   readonly moveTargets: readonly { readonly id: string; readonly name: string; readonly online: boolean }[];
+  readonly teams: readonly { readonly id: string; readonly name: string }[];
+  readonly onMoveTeam: ((teamId: string) => void) | undefined;
   readonly onMove: (targetMachineId: string) => void;
   readonly onChanged: () => void;
 }) {
@@ -339,6 +349,19 @@ function MemberSettings({
         ) : null}
       </div>
       <MemberFormFields form={form} onChange={setForm} errors={errors} parts={{ sessionLoops: loops, models: models.options }} disabled={busy} />
+      {/* D100 follow-up 2026-10-14: the team it is in; another pick moves it there at once (toast with Undo). */}
+      {teams.length > 1 && onMoveTeam ? (
+        <label className="sb-team-field" data-section="team">
+          <span className="sb-team-field__label">Team</span>
+          <select className="sb-team-input" data-testid="team-settings-team" value={member.teamId} disabled={busy} onChange={(event) => onMoveTeam(event.target.value)}>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <div className="sb-team-field" data-section="machine">
         <span className="sb-team-field__label">Runs on</span>
         <div className="sb-team-runs-on">

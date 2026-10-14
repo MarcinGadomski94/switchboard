@@ -3,7 +3,9 @@ import { DEFAULT_MODEL_VALUE, effortLevelsFor, modelLabel, normalizeModel } from
 import type { Machine } from '../../core/peers.ts';
 import { type SidebarLayout, dropPosition } from '../../core/sidebar-layout.ts';
 import {
+  ALL_TEAMS,
   ALWAYS_ON_GATE,
+  DEFAULT_TEAM_ID,
   DEFAULT_TEAM_NAME,
   GATE_KINDS,
   GATE_LABELS,
@@ -573,6 +575,38 @@ export function inOrder<T extends { readonly id: string }>(items: readonly T[], 
     .map((item, index) => ({ item, index, at: at.get(item.id) ?? ids.length + index }))
     .sort((a, b) => a.at - b.at)
     .map((entry) => entry.item);
+}
+
+// ── moving a member between teams (D100 follow-up 2026-10-14) ────────────
+
+/**
+ * Whether a member dragged from `memberTeamId` may be dropped on the tab of
+ * `targetTeamId`: a real team (not **All teams**), one that exists, and not the
+ * member's own team (one team per session: moving there would be a no-op).
+ */
+export function canDropOnTeam(teams: readonly { readonly id: string }[], memberTeamId: string | null | undefined, targetTeamId: string): boolean {
+  if (targetTeamId === ALL_TEAMS || targetTeamId === '') return false;
+  if (targetTeamId === (memberTeamId || DEFAULT_TEAM_ID)) return false;
+  return teams.some((team) => team.id === targetTeamId);
+}
+
+/** The toast after a move: "Moved <member> to <team>" (its Undo button moves it back). */
+export function movedToast(member: string, team: string): string {
+  return `Moved ${member} to ${team}`;
+}
+
+/**
+ * Undo of a move: the old team's order to save once the member is back (the server
+ * puts it at the end). `before` is the order when it left; members that left the
+ * team meanwhile are dropped, members that joined meanwhile keep their place after
+ * the others. `null` when the current order already is that.
+ */
+export function restoredOrder(before: readonly string[], current: readonly string[]): string[] | null {
+  const here = new Set(current);
+  const kept = before.filter((id) => here.has(id));
+  const known = new Set(kept);
+  const next = [...kept, ...current.filter((id) => !known.has(id))];
+  return next.every((id, index) => id === current[index]) ? null : next;
 }
 
 // ── Needs you ────────────────────────────────────────────────────────────

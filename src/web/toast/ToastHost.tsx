@@ -17,6 +17,8 @@ export interface Toast {
   readonly sessionId: string | null;
   /** The jump button's label (default "Jump to session"; D75's ▶ Start toast: "Open"). */
   readonly jumpLabel?: string;
+  /** An action of its own (D100 follow-up 2026-10-14: Team's "Undo" of a move); clicking it closes the toast. */
+  readonly action?: { readonly label: string; readonly run: () => void };
 }
 
 interface ToastValue {
@@ -79,6 +81,19 @@ export function ToastHost() {
       {toast.branch ? <div className="sb-toast-branch">{toast.branch}</div> : null}
       <div className="sb-toast-text">{toast.text}</div>
       <div className="sb-toast-actions">
+        {toast.action ? (
+          <button
+            type="button"
+            className="sb-button sb-toast-jump"
+            data-testid="toast-action"
+            onClick={() => {
+              dismiss(toast.id);
+              toast.action?.run();
+            }}
+          >
+            {toast.action.label}
+          </button>
+        ) : null}
         {toast.sessionId ? (
           <button type="button" className="sb-button sb-toast-jump" data-testid="toast-jump" onClick={jump}>
             {toast.jumpLabel ?? 'Jump to session'}

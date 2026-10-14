@@ -56,6 +56,8 @@ export function MemberCard({
       aria-pressed={selected}
       onClick={onSelect}
       onKeyDown={(event) => {
+        // The card's own keys only: Enter / Space on its ⋯ opens the menu (D100 follow-up 2026-10-14, keyboard).
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onSelect();

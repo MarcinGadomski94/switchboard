@@ -9,6 +9,7 @@ import {
   bannerText,
   bannerVisible,
   budgetLine,
+  canDropOnTeam,
   cardStatus,
   charterAskedToast,
   charterOfferText,
@@ -31,6 +32,8 @@ import {
   idleLine,
   memberMenu,
   modelLine,
+  movedToast,
+  restoredOrder,
   sidebarTeamText,
   teamTitle,
   needsYouCounts,
@@ -309,6 +312,30 @@ describe('D100 · Team page: the member form and menu', () => {
     // Not a team: the whole text is the role name.
     expect(parseHandoffTarget('QA (nightly)', ['Team', 'Growth'])).toEqual({ name: 'QA (nightly)', team: null });
     expect(parseHandoffTarget('Developer', ['Team'])).toEqual({ name: 'Developer', team: null });
+  });
+
+  it('D100 follow-up 2026-10-14: a dragged card drops on another team\'s tab only (never its own team, All teams or a team gone)', () => {
+    const teams = [{ id: 'team' }, { id: 'g' }, { id: 'o' }];
+    expect(canDropOnTeam(teams, 'g', 'team')).toBe(true);
+    expect(canDropOnTeam(teams, 'g', 'o')).toBe(true);
+    // One team per session: its own team is no move.
+    expect(canDropOnTeam(teams, 'g', 'g')).toBe(false);
+    // No team id on an older record: the first team.
+    expect(canDropOnTeam(teams, undefined, 'team')).toBe(false);
+    expect(canDropOnTeam(teams, '', 'g')).toBe(true);
+    expect(canDropOnTeam(teams, 'g', 'all')).toBe(false);
+    expect(canDropOnTeam(teams, 'g', 'gone')).toBe(false);
+    expect(canDropOnTeam(teams, 'g', '')).toBe(false);
+    expect(movedToast('Developer', 'Growth')).toBe('Moved Developer to Growth');
+  });
+
+  it('D100 follow-up 2026-10-14: Undo of a move puts the old team\'s order back (leavers dropped, newcomers after)', () => {
+    // Back at the end after the move back: b goes back between a and c.
+    expect(restoredOrder(['a', 'b', 'c'], ['a', 'c', 'b'])).toEqual(['a', 'b', 'c']);
+    // Already in place: nothing to save.
+    expect(restoredOrder(['a', 'b'], ['a', 'b'])).toBeNull();
+    // c left meanwhile, d joined meanwhile.
+    expect(restoredOrder(['b', 'a', 'c'], ['a', 'd', 'b'])).toEqual(['b', 'a', 'd']);
   });
 
   it('D100 follow-up 2026-10-14: the model dropdown: a template\'s model pre-selected when the CLI lists it, else the session\'s; efforts only where the model has them', () => {

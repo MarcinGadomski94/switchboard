@@ -32,9 +32,9 @@ import { useTeamSwitch } from './hidden.ts';
 import { bannerLaterIds, highlightReturnedRow, lastTeam, setBannerLater, setLastTeam } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, adoptedToast, canDropOnTeam, movedToast, restoredOrder, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
-import { DeleteTeamDialog, NewTeamDialog, TeamTabs } from './TeamTabs.tsx';
+import { DeleteTeamDialog, NewTeamDialog, TeamTabs, teamTabAt } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
 import { reloadTeam, showTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
@@ -115,6 +115,10 @@ export function TeamPage() {
   /** D105: the one-time offer was just answered here (hidden before the next read). */
   const [offerAnswered, setOfferAnswered] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  /** D100 follow-up 2026-10-14: the member card being dragged (the other teams' tabs are drop targets meanwhile). */
+  const [lifted, setLifted] = useState<string | null>(null);
+  /** The team tabs' feed of a held finger's point (`TeamTabs`). */
+  const tabsTouch = useRef<((point: { readonly x: number; readonly y: number } | null) => void) | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -208,6 +212,59 @@ export function TeamPage() {
       .catch((caught: unknown) => setActionError(refusalText(caught)))
       .finally(() => setPendingOrder((current) => (current === ids ? null : current)));
   };
+  /**
+   * D100 follow-up 2026-10-14 · moves a member to another team (a card dropped on a
+   * team tab, Settings → Team, ⋯ Move to team ▸): "Moved <member> to <team>" with
+   * Undo, which moves it back to its old team and place.
+   */
+  const moveToTeam = (member: TeamMember, toId: string): void => {
+    const fromId = member.teamId || teamId;
+    const to = teams.find((team) => team.id === toId);
+    // One team per session: its own team (or All teams, or a team gone meanwhile) is no move.
+    if (!to || !canDropOnTeam(teams, fromId, to.id)) return;
+    const before = members.map((m) => m.id);
+    setActionError(null);
+    teamApi.moveToTeam(member.id, to.id).then(
+      () => {
+        if (selectedId === member.id) setSelectedId(null);
+        show({
+          id: `team-move-${member.id}`,
+          title: 'Team',
+          sub: 'now',
+          branch: '',
+          text: movedToast(member.name, to.name),
+          sessionId: null,
+          action: { label: 'Undo', run: () => void undoMove(member, fromId, before) },
+        });
+        refresh();
+      },
+      (caught: unknown) => setActionError(refusalText(caught)),
+    );
+  };
+  /** Undo of a move: back to its old team, then that team's order as it was. */
+  const undoMove = async (member: TeamMember, fromId: string, before: readonly string[]): Promise<void> => {
+    setActionError(null);
+    try {
+      await teamApi.moveToTeam(member.id, fromId);
+      const back = await teamApi.view(fromId);
+      const order = restoredOrder(
+        before,
+        back.members.map((m) => m.id),
+      );
+      if (order) await teamApi.reorder(order, fromId);
+      setSelectedId(member.id);
+      refresh();
+    } catch (caught) {
+      setActionError(refusalText(caught));
+    }
+  };
+  /** A held card released by a finger away from the strip: on a team tab, a move. */
+  const touchDropOutside = (memberId: string, point: { readonly x: number; readonly y: number }): void => {
+    tabsTouch.current?.(null);
+    const target = teamTabAt(point.x, point.y);
+    const member = members.find((m) => m.id === memberId);
+    if (target && member) moveToTeam(member, target);
+  };
   const pickMenu = (member: TeamMember, item: MenuItem): void => {
     setMenu(null);
     switch (item.id) {
@@ -256,20 +313,9 @@ export function TeamPage() {
       case 'return':
         void doReturn(member);
         return;
-      case 'team': {
-        const to = teams.find((team) => team.id === item.teamId);
-        if (!to) return;
-        setActionError(null);
-        void teamApi.moveToTeam(member.id, to.id).then(
-          () => {
-            toast(`${member.name} moved to team ${to.name}`);
-            if (selectedId === member.id) setSelectedId(null);
-            refresh();
-          },
-          (caught: unknown) => setActionError(refusalText(caught)),
-        );
+      case 'team':
+        if (item.teamId) moveToTeam(member, item.teamId);
         return;
-      }
     }
   };
   const openTeam = (id: string): void => navigate({ view: 'team', teamId: id });
@@ -322,6 +368,7 @@ export function TeamPage() {
   const detail = phone && panelShown && selected !== null;
   const menuMember = menu ? members.find((member) => member.id === menu.memberId) : undefined;
   const openMember = (id: string): TeamMember | undefined => members.find((member) => member.id === id);
+  const liftedMember = lifted ? openMember(lifted) : undefined;
 
   const cards = (
     <ReorderStrip
@@ -334,6 +381,9 @@ export function TeamPage() {
       className="sb-team-cards"
       testId="team-cards"
       tour="team-cards"
+      onLift={setLifted}
+      onTouchDrag={(_id, point) => tabsTouch.current?.(point)}
+      onTouchDropOutside={touchDropOutside}
     >
       {(member) => (
         <MemberCard
@@ -362,6 +412,11 @@ export function TeamPage() {
         teamApi.reorderTeams(ids).then(() => reloadTeam(), (caught: unknown) => setActionError(refusalText(caught)));
       }}
       onNew={() => setOpen({ kind: 'new-team' })}
+      memberDrag={liftedMember ? { memberId: liftedMember.id, teamId: liftedMember.teamId || teamId } : null}
+      onMemberDrop={(target) => {
+        if (liftedMember) moveToTeam(liftedMember, target);
+      }}
+      touchRef={tabsTouch}
     />
   );
   const teamDialogs = (
@@ -552,6 +607,8 @@ export function TeamPage() {
           composerFocus={composerFocus}
           phone
           moveTargets={moveTargetsOf(selected)}
+          teams={teams}
+          onMoveTeam={(target) => moveToTeam(selected, target)}
           onBack={() => setPanelShown(false)}
           onMenu={(at) => setMenu({ memberId: selected.id, at })}
           onMove={(id) => {
@@ -590,6 +647,8 @@ export function TeamPage() {
                     composerFocus={composerFocus}
                     phone={false}
                     moveTargets={moveTargetsOf(selected)}
+                    teams={teams}
+                    onMoveTeam={(target) => moveToTeam(selected, target)}
                     onBack={() => setPanelShown(false)}
                     onMenu={(at) => setMenu({ memberId: selected.id, at })}
                     onMove={(id) => {

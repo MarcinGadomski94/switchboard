@@ -381,6 +381,31 @@ describe('D100 follow-up 2026-10-14 · multiple teams between paired machines', 
   });
 });
 
+describe('D100 follow-up 2026-10-14 · drag to move between teams, on the other machine', () => {
+  it('a member moved to another team on a paired machine moves here too, and the page is told (teamChanged)', async () => {
+    const r = await setup();
+    await r.team.init();
+    await switchOn(r);
+    const growth = await r.team.createTeam({ name: 'Growth' });
+    const s1 = await r.world.store.sessions.create({ name: 'tracker', claudeSessionId: '20000000-2222-4333-8444-955566667777', attached: true });
+    const tracker = await r.team.adopt({ sessionId: s1.id, name: 'Tracker' });
+    expect((await r.team.view()).members.map((m) => m.name)).toEqual(['Tracker']);
+    const events: unknown[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'teamChanged') events.push(message.payload);
+    });
+    // The paired machine moved it to Growth (a newer clock on the member's record).
+    const out = await r.team.message();
+    const later = `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.0001.m-pc-0002`;
+    const members = out.snapshot.members.map((m) => (m.id === tracker.id ? { ...m, teamId: growth.id, order: 0, clock: later } : m));
+    expect(await r.team.receive({ v: 1, machine: { id: 'm-pc-0002', name: 'PC' }, snapshot: { ...out.snapshot, members, activity: [] } })).toBe(true);
+    off();
+    expect((await r.team.view()).members).toEqual([]);
+    expect((await r.team.view(growth.id)).members.map((m) => m.name)).toEqual(['Tracker']);
+    expect(events.length).toBeGreaterThan(0);
+  });
+});
+
 describe('D100 follow-up 2026-10-14 · the member\'s model', () => {
   it('a model chosen for a member changes its session\'s model (as the header\'s picker); a model not on offer is refused; a peer\'s choice is applied here', async () => {
     const r = await setup();
