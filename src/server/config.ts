@@ -35,6 +35,13 @@ export interface ServerConfig {
   /** `SWITCHBOARD_DEMO=1` loads the demo seed (decisions gap #21). Anything else = off. */
   readonly demo: boolean;
   /**
+   * `SWITCHBOARD_DEMO_EXTRAS=1`, only with `demo` (`npm run screenshots`, `docs/demo.md` →
+   * *Screenshot extras*): demo mode also starts Team (D100) and Plans (D99), each still
+   * behind its own Settings → Experimental switch, and the footer reads the accounts'
+   * stored usage (D66 / D103). Absent otherwise.
+   */
+  readonly demoExtras?: true;
+  /**
    * D35 (`docs/frame-helper.md` → *Guided setup*): `SWITCHBOARD_OPEN_COMMAND`, an
    * argv prefix put in front of the OS opener the frame-helper setup runs (`open …`,
    * `explorer …`, `xdg-open …`, Chrome), so that command becomes its arguments.
@@ -230,6 +237,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     opencodeCommand: parseCommand('SWITCHBOARD_OPENCODE_BIN', env['SWITCHBOARD_OPENCODE_BIN'], 'opencode'),
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
     demo: env['SWITCHBOARD_DEMO'] === '1',
+    ...(env['SWITCHBOARD_DEMO'] === '1' && env['SWITCHBOARD_DEMO_EXTRAS'] === '1' ? { demoExtras: true as const } : {}),
     openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,
     tailscaleCommand: parseCommand('SWITCHBOARD_TAILSCALE_BIN', env['SWITCHBOARD_TAILSCALE_BIN'], 'tailscale'),
     peerTestLoopback: env['SWITCHBOARD_PEER_TEST_LOOPBACK'] === '1',

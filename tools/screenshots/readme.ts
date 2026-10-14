@@ -7,22 +7,39 @@
  * - the UI is built into `.e2e-dist/web` first (the E2E global setup; skip with
  *   `--no-build`);
  * - the app with the demo seed (`SWITCHBOARD_DEMO=1`, `docs/demo.md`), fake CLIs and
- *   the setup wizard off, as every test server (`tests/helpers/server-process.ts`);
+ *   the setup wizard off, as every test server (`tests/helpers/server-process.ts`), plus
+ *   `SWITCHBOARD_DEMO_EXTRAS=1` (screenshots only, `docs/demo.md` → *Screenshot extras*):
+ *   Team and Plans can be switched on, and the footer reads the accounts' stored usage;
+ * - before the start, in the throwaway database: two Claude Code accounts, "Work"
+ *   (`dev@example.com`, past its weekly limit and paid from credits, Acme amounts) and
+ *   "Private" (`team@example.com`, its 5-hour window at the limit), as D103's oracle
+ *   (`tests/e2e/credits.spec.ts`) stores them;
  * - through its API: two pinned sessions, a "Maintenance" folder with a "Releases"
  *   subfolder in the sidebar (D54, D58) and the machine name `studio-mac` (its default is
  *   this computer's host name);
  * - through the throwaway Claude config folder (demo mode has no data for them): two example
- *   MCP servers (`acme-docs`, `example-http`) for the MCP page, and demo sign-ins
- *   (`dev@example.com`, plus a second profile `team@example.com`) for Settings → Accounts.
+ *   MCP servers (`acme-docs`, `example-http`) for the MCP page and the demo sign-ins.
+ * After the first eight shots (Team and Plans off, as a fresh install shows them):
+ * - Search (D97) for "contract" over the demo chats and artifacts;
+ * - Plans (D99) switched on, with one plan "PROJ-123 Acme checkout" over seven todos of the
+ *   `free-talk-feature` session. Demo mode cannot run plan items (its folders are not real),
+ *   so the items' states and history are written into the throwaway `plans.db` while Plans is
+ *   switched off, then Plans is switched on again; the running items point at demo sessions
+ *   (a question, a working one, an idle one waiting for your merge);
+ * - Team (D100) switched on: two teams ("Acme web", "Acme mobile") adopting four demo sessions
+ *   through the API (`POST /api/team/members`, no charter ask, so the chats stay as seeded).
  * Not shown, because demo mode cannot: a paired machine (the demo starts no peers,
  * so Settings → Machines shows its empty state) and a live activity line (the demo
  * runs no processes). The app has one (dark) theme, so every view is shot once, as
- * `<nn>-<name>-dark.png`, at 1440×900 and device scale 2 (each file < 600 KB).
+ * `<nn>-<name>-dark.png`, at 1440×900 and device scale 2 (each file < 600 KB); a close-up
+ * (`clip`) is one element at the same scale.
  */
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { type Browser, type Page, chromium } from '@playwright/test';
+import { type Browser, type Locator, type Page, chromium } from '@playwright/test';
+import { openStore, storeFile } from '../../src/server/db/store.ts';
 import globalSetup from '../../tests/e2e/global-setup.ts';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../../tests/helpers/net.ts';
 import { type PeerNode, startPeerNode } from '../../tests/helpers/peers.ts';
@@ -38,10 +55,15 @@ const DEMO_EMAIL_2 = 'team@example.com';
 const VIEWPORT = { width: 1440, height: 900 } as const;
 const DEVICE_SCALE = 2;
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
 /** One screenshot: its file stem and how to bring the page there. */
 interface Shot {
   readonly name: string;
   go(page: Page, baseUrl: string): Promise<void>;
+  /** A close-up: only this element is shot (same device scale). */
+  readonly clip?: (page: Page) => Locator;
 }
 
 async function open(page: Page, baseUrl: string, route: string): Promise<void> {
@@ -52,6 +74,7 @@ async function open(page: Page, baseUrl: string, route: string): Promise<void> {
   });
 }
 
+/** The README's first shots: Team and Plans off. */
 const SHOTS: readonly Shot[] = [
   {
     name: '01-session',
@@ -111,11 +134,119 @@ const SHOTS: readonly Shot[] = [
     async go(page, base) {
       await open(page, base, '/settings/accounts');
       await page.getByTestId('account-profile').first().waitFor();
+      await page.getByTestId('account-credits').first().waitFor();
+    },
+  },
+  {
+    // D103: the footer grid's "on credits" badge row, close up.
+    name: '09-credits-footer',
+    async go(page, base) {
+      await open(page, base, '/inbox');
+      await page.getByTestId('usage-credits').first().waitFor();
+    },
+    clip: (page) => page.getByTestId('machine-footer'),
+  },
+  {
+    // D97: the Search page.
+    name: '10-search',
+    async go(page, base) {
+      await open(page, base, '/search?q=contract');
+      await page.getByTestId('search-result').first().waitFor();
     },
   },
 ];
 
-/** The demo instance with its sidebar pinned and foldered (D54) and a neutral machine name. */
+/** The shots taken once Plans and Team are on (`seedExperimental`). */
+const EXPERIMENTAL_SHOTS: readonly Shot[] = [
+  {
+    name: '11-plans-graph',
+    async go(page, base) {
+      await open(page, base, '/plans');
+      await page.getByTestId('plan-summary').first().click();
+      await page.getByTestId('plan-card').first().waitFor();
+      await page.locator('[data-testid="plan-card"][data-key="PROJ-126"]').click();
+      await page.getByTestId('plan-detail').waitFor();
+    },
+  },
+  {
+    name: '12-plans-timeline',
+    async go(page) {
+      await page.getByTestId('plan-tab-timeline').click();
+      await page.getByTestId('plan-timeline-row').first().waitFor();
+    },
+  },
+  {
+    name: '13-team',
+    async go(page, base) {
+      await open(page, base, '/team');
+      await page.getByTestId('team-card').first().waitFor();
+      await page.locator('[data-testid="team-card"]').filter({ hasText: 'Backend developer' }).first().click();
+      await page.waitForTimeout(1_000);
+    },
+  },
+];
+
+/** The two Claude Code accounts with their usage (D66 / D103), stored before the demo starts. */
+async function seedAccounts(dataDir: string, root: string): Promise<void> {
+  const privateDir = path.join(root, 'main', 'private-config');
+  await mkdir(privateDir, { recursive: true });
+  await writeFile(path.join(privateDir, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL_2, subscriptionType: 'max' }));
+  const store = await openStore(storeFile(dataDir));
+  try {
+    const now = Date.now();
+    const at = (ms: number): string => new Date(now + ms).toISOString();
+    const epoch = (ms: number): number => Math.floor((now + ms) / 1000);
+    await store.profiles.update('default-claude', { name: 'Work' });
+    const priv = await store.profiles.create({ id: 'demo-private', cli: 'claude', name: 'Private', dir: privateDir, shareSettings: false });
+    // Work: at its weekly limit and still answering, paid from credits (€12.40 left of €50).
+    await store.usage.add({
+      receivedAt: at(-MINUTE),
+      source: 'get_usage',
+      sessionId: null,
+      profileId: 'default-claude',
+      fiveHourPct: 62,
+      fiveHourResetsAt: at(2 * HOUR),
+      sevenDayPct: 100,
+      sevenDayResetsAt: at(39 * HOUR),
+      raw: {
+        subscription_type: 'max',
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: { utilization: 62, resets_at: at(2 * HOUR) },
+          seven_day: { utilization: 100, resets_at: at(39 * HOUR) },
+          extra_usage: { is_enabled: true, monthly_limit: 5000, used_credits: 3760, utilization: 75.2, currency: 'EUR', decimal_places: 2, disabled_reason: null, user_disabled: false, spend_limit_reached: false, credits_ever_enabled: true, daily: null, weekly: null },
+        },
+      },
+    });
+    await store.usage.add({
+      receivedAt: at(-30_000),
+      source: 'rate_limit_event',
+      sessionId: null,
+      profileId: 'default-claude',
+      fiveHourPct: 62,
+      fiveHourResetsAt: at(2 * HOUR),
+      sevenDayPct: 100,
+      sevenDayResetsAt: at(39 * HOUR),
+      raw: { type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: epoch(39 * HOUR), rateLimitType: 'seven_day', overageStatus: 'allowed', overageResetsAt: epoch(400 * HOUR), isUsingOverage: true, overageInUse: true } },
+    });
+    // Private: its 5-hour window at the limit (back in an hour), credits off.
+    await store.usage.add({
+      receivedAt: at(-MINUTE),
+      source: 'get_usage',
+      sessionId: null,
+      profileId: priv.id,
+      fiveHourPct: 100,
+      fiveHourResetsAt: at(HOUR),
+      sevenDayPct: 52,
+      sevenDayResetsAt: at(90 * HOUR),
+      raw: { rate_limits_available: true, rate_limits: { five_hour: { utilization: 100, resets_at: at(HOUR) }, seven_day: { utilization: 52, resets_at: at(90 * HOUR) }, extra_usage: { is_enabled: false, monthly_limit: null, used_credits: null, utilization: null, currency: null } } },
+    });
+  } finally {
+    await store.close();
+  }
+}
+
+/** The demo instance with its sidebar pinned and foldered (D54), a neutral machine name and two accounts. */
 async function startWorld(root: string): Promise<PeerNode> {
   // Demo mode has no MCP or account data of its own, so the throwaway Claude config folder
   // holds two harmless example MCP servers and the fake CLI's signed-in marker (a demo email).
@@ -130,13 +261,12 @@ async function startWorld(root: string): Promise<PeerNode> {
       },
     }),
   );
-  await writeFile(path.join(configDir, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL }));
-  const main = await startPeerNode(root, 'main', { env: { SWITCHBOARD_DEMO: '1', FAKE_CLAUDE_AUTH_REQUIRED: '1' } });
+  await writeFile(path.join(configDir, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL, subscriptionType: 'max' }));
+  const main = await startPeerNode(root, 'main', {
+    env: { SWITCHBOARD_DEMO: '1', SWITCHBOARD_DEMO_EXTRAS: '1', FAKE_CLAUDE_AUTH_REQUIRED: '1' },
+    prepare: ({ dataDir }) => seedAccounts(dataDir, root),
+  });
   try {
-    const profile = await main.call('POST', '/api/accounts/profiles', { cli: 'claude', name: 'Second account' });
-    if (profile.status !== 201) throw new Error(`profile: HTTP ${profile.status}`);
-    const profileDir = path.join(main.dataDir, 'profiles', 'claude');
-    for (const id of await readdir(profileDir)) await writeFile(path.join(profileDir, id, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL_2 }));
     // The default is this computer's host name.
     await main.call('PUT', '/api/machines/self', { name: 'studio-mac' });
     const place = async (sessionId: string, where: Record<string, unknown>) => {
@@ -162,19 +292,140 @@ async function startWorld(root: string): Promise<PeerNode> {
   }
 }
 
-async function shoot(browser: Browser, baseUrl: string): Promise<void> {
+async function expectStatus(answer: { readonly status: number; readonly body: unknown }, what: string): Promise<any> {
+  if (answer.status >= 300) throw new Error(`${what}: HTTP ${answer.status} ${JSON.stringify(answer.body)}`);
+  return answer.body;
+}
+
+/** One plan item of the demo plan: its todo, dependencies and the state written into plans.db. */
+interface DemoItem {
+  readonly key: string;
+  readonly title: string;
+  readonly minutes: number;
+  readonly after: readonly string[];
+  readonly hold: boolean;
+  /** `done`, `running` (+ the demo session it runs in, and what it waits on) or `pending`. */
+  readonly state: 'done' | 'running' | 'pending';
+  readonly run?: string;
+  readonly waitingOn?: 'review' | 'question';
+  /** Its history as spans, minutes before now (`to` null = open). */
+  readonly spans: ReadonlyArray<{ readonly kind: 'running' | 'waiting-you' | 'waiting-dependency'; readonly from: number; readonly to: number | null }>;
+}
+
+const PLAN_SOURCE = 'free-talk-feature';
+const PLAN_ITEMS: readonly DemoItem[] = [
+  { key: 'PROJ-124', title: 'Checkout API contract (ADR)', minutes: 45, after: [], hold: true, state: 'done', spans: [{ kind: 'running', from: 200, to: 160 }, { kind: 'waiting-you', from: 160, to: 150 }] },
+  { key: 'PROJ-125', title: 'Receipt e-mail template', minutes: 30, after: [], hold: false, state: 'done', spans: [{ kind: 'running', from: 200, to: 170 }] },
+  { key: 'PROJ-126', title: 'Checkout screen', minutes: 90, after: ['PROJ-124'], hold: true, state: 'running', run: 'prod-monitoring', waitingOn: 'review', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 45 }, { kind: 'waiting-you', from: 45, to: null }] },
+  { key: 'PROJ-127', title: 'Payment form', minutes: 60, after: ['PROJ-124'], hold: false, state: 'running', run: 'button-rollout', waitingOn: 'question', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 20 }, { kind: 'waiting-you', from: 20, to: null }] },
+  { key: 'PROJ-128', title: 'Order summary', minutes: 120, after: ['PROJ-124'], hold: false, state: 'running', run: 'calendar-func-fix', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: null }] },
+  { key: 'PROJ-129', title: 'Wire checkout to the API', minutes: 60, after: ['PROJ-126', 'PROJ-127'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
+  { key: 'PROJ-130', title: 'Checkout E2E', minutes: 45, after: ['PROJ-129', 'PROJ-128'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
+];
+
+/**
+ * D99 · one running plan. Its todos go in through the API; the plan, its items, edges and
+ * history are written into `plans.db` while Plans is off (demo mode cannot run items: its
+ * folders are not real), then Plans is switched on again and reads them.
+ */
+async function seedPlan(main: PeerNode): Promise<void> {
+  const setPlans = (on: boolean) => main.call('PUT', '/api/settings', { 'experimental.plans': on }).then((a) => expectStatus(a, `plans ${on}`));
+  await setPlans(true);
+  await setPlans(false);
+  const todoIds = new Map<string, string>();
+  for (const item of PLAN_ITEMS) {
+    const title = item.title;
+    const list = await expectStatus(
+      await main.call('POST', `/api/sessions/${PLAN_SOURCE}/todos`, { title, description: `Acme checkout: ${item.title.toLowerCase()}.`, plan: 'No plan: demo item.', priority: 'medium', estimateMinutes: item.minutes }),
+      `todo ${item.key}`,
+    );
+    const todo = (list.todos as Array<{ id: string; title: string }>).find((entry) => entry.title === title);
+    if (!todo) throw new Error(`no todo ${title}`);
+    todoIds.set(item.key, todo.id);
+  }
+  const now = Date.now();
+  const iso = (minutesAgo: number): string => new Date(now - minutesAgo * MINUTE).toISOString();
+  const db = new DatabaseSync(path.join(main.dataDir, 'plans.db'));
+  try {
+    const planId = 'demo-plan';
+    db.prepare(
+      `INSERT INTO plans (id, title, source_session_id, target_branch, repos, base_branch, merge_mode, max_concurrency, usage_threshold, answers, state, created_at, updated_at, started_at)
+       VALUES (?, ?, ?, ?, ?, 'dev', 'agents-with-holds', 3, 85, NULL, 'running', ?, ?, ?)`,
+    ).run(planId, 'PROJ-123 Acme checkout', PLAN_SOURCE, 'feature/PROJ-123-acme-checkout', JSON.stringify(['web']), iso(210), iso(1), iso(200));
+    const itemIds = new Map<string, string>();
+    PLAN_ITEMS.forEach((item, position) => {
+      const id = `demo-item-${item.key.toLowerCase()}`;
+      itemIds.set(item.key, id);
+      const started = item.state === 'pending' ? null : iso(item.spans.find((span) => span.kind === 'running')?.from ?? 200);
+      const done = item.state === 'done' ? iso(item.spans.at(-1)?.to ?? 150) : null;
+      const waitingSince = item.waitingOn ? iso(item.spans.at(-1)?.from ?? 20) : null;
+      db.prepare(
+        `INSERT INTO plan_items (id, plan_id, todo_id, key, title, estimate_minutes, hold, solutions, state, waiting_on, run_session_id, branch, position, created_at, updated_at, started_at, waiting_since, merged_at, done_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        planId,
+        todoIds.get(item.key) as string,
+        item.key,
+        item.title,
+        item.minutes,
+        item.hold ? 1 : 0,
+        item.state,
+        item.waitingOn ?? null,
+        item.run ?? null,
+        item.state === 'pending' ? null : `${item.key}-${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}`,
+        position,
+        iso(210),
+        iso(1),
+        started,
+        waitingSince,
+        done,
+        done,
+      );
+      for (const span of item.spans) db.prepare('INSERT INTO plan_item_spans (plan_id, item_id, kind, started_at, ended_at) VALUES (?, ?, ?, ?, ?)').run(planId, id, span.kind, iso(span.from), span.to === null ? null : iso(span.to));
+    });
+    for (const item of PLAN_ITEMS) {
+      for (const before of item.after) db.prepare('INSERT INTO plan_edges (plan_id, from_item, to_item) VALUES (?, ?, ?)').run(planId, itemIds.get(before) as string, itemIds.get(item.key) as string);
+    }
+  } finally {
+    db.close();
+  }
+  await setPlans(true);
+}
+
+/** D100 · two teams adopting four demo sessions (no charter ask: the chats stay as seeded). */
+async function seedTeam(main: PeerNode): Promise<void> {
+  await expectStatus(await main.call('PUT', '/api/settings', { 'experimental.team': true }), 'team on');
+  await expectStatus(await main.call('PUT', '/api/team', { name: 'Acme web' }), 'rename team');
+  const mobile = await expectStatus(await main.call('POST', '/api/team/teams', { name: 'Acme mobile' }), 'new team');
+  const adopt = async (sessionId: string, name: string, templateId: string, teamId?: string) =>
+    expectStatus(await main.call('POST', '/api/team/members', { sessionId, name, templateId, ...(teamId ? { teamId } : {}) }), `adopt ${sessionId}`);
+  await adopt('notifications-integration', 'Backend developer', 'developer');
+  await adopt('qa-free-talk', 'QA', 'reviewer');
+  await adopt('calendar-func-fix', 'Developer', 'developer');
+  await adopt('prod-monitoring', 'On-call', 'on-call');
+  await adopt('button-rollout', 'Design system', 'developer', mobile.id as string);
+}
+
+async function shoot(browser: Browser, main: PeerNode): Promise<void> {
   await mkdir(README_SHOTS_DIR, { recursive: true });
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: DEVICE_SCALE, colorScheme: 'dark' });
   try {
     const page = await context.newPage();
-    for (const shot of SHOTS) {
-      await shot.go(page, baseUrl);
+    const take = async (shot: Shot) => {
+      await shot.go(page, main.baseUrl);
       // Lets the live rows tick and late API answers settle.
       await page.waitForTimeout(1_500);
+      await page.mouse.move(0, 0);
       const file = path.join(README_SHOTS_DIR, `${shot.name}-dark.png`);
-      await writeFile(file, await page.screenshot({ type: 'png' }));
+      const png = shot.clip ? await shot.clip(page).screenshot({ type: 'png' }) : await page.screenshot({ type: 'png' });
+      await writeFile(file, png);
       console.log(path.relative(REPO_ROOT, file));
-    }
+    };
+    for (const shot of SHOTS) await take(shot);
+    await seedPlan(main);
+    await seedTeam(main);
+    for (const shot of EXPERIMENTAL_SHOTS) await take(shot);
   } finally {
     await context.close();
   }
@@ -187,7 +438,7 @@ async function main(): Promise<void> {
     const main = await startWorld(root);
     const browser = await chromium.launch();
     try {
-      await shoot(browser, main.baseUrl);
+      await shoot(browser, main);
     } finally {
       await browser.close();
       await main.server.stop();
