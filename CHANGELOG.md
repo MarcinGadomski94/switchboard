@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.18.1 (2026-10-14)
+
+### Changed
+- **Team: a calmer left column.** Activity entries are two lines (icon, member and time, then the text without repeating the member's name), runs of the same event are grouped into one row you can expand ("✓ 4 new charters accepted"), and long histories show "Show more". Activity and Needs you can be collapsed (remembered); an empty Needs you is a single line, and it opens by itself when something new arrives.
+
 ## 1.18.0 (2026-10-14)
 
 ### Credits
