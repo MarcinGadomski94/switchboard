@@ -48,10 +48,12 @@ export async function allowedPlaces(home: string, savedFolders: readonly string[
   };
   await add(home);
   for (const folder of savedFolders) {
-    await add(folder);
-    const parent = path.dirname(folder);
-    // Never a drive / file-system root as an allowed place.
-    if (parent !== folder && path.dirname(parent) !== parent) await add(parent);
+    const real = await realpath(folder).catch(() => null);
+    if (real === null) continue;
+    await add(real);
+    const parent = path.dirname(real);
+    // Never a drive / file-system root as an allowed place (only a folder saved there itself).
+    if (parent !== real && path.dirname(parent) !== parent) await add(parent);
   }
   return out;
 }

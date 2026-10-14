@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Session, SessionEvent } from '../../src/core/api.ts';
 import type { RepoResolution, TakeoverPreview, TakeoverRun } from '../../src/core/takeover.ts';
 import { TAKEOVER_STEPS, TAKEOVER_STEP_LABELS } from '../../src/core/takeover.ts';
-import { canStart, clonePathsOf, dialogTitle, directionOf, moveLabel, offersTakeover, runHeadline, stepMark, workLine } from '../../src/web/takeover/takeover.ts';
+import { canStart, clonePathsOf, dialogTitle, directionOf, moveLabel, offersTakeover, repoRows, runHeadline, stepMark, withRepoPath, withRoot, withoutRoot, workLine } from '../../src/web/takeover/takeover.ts';
 import { chatItems } from '../../src/web/views/session/chat.ts';
 
 /** D65 (web): who offers a take-over, the dialog's labels and Start rule, how a run reads, and the chat's two dividers. */
@@ -121,5 +121,47 @@ describe('D65: the chat\'s dividers', () => {
     expect(items.map((item) => item.kind)).toEqual(['divider', 'user', 'divider']);
     expect(items[0]).toMatchObject({ text: 'Taken over from office-pc', from: 'office-pc', to: null });
     expect(items[2]).toMatchObject({ text: 'Moved to laptop', from: null, to: 'laptop' });
+  });
+});
+
+describe('D110 (web): the target folders and the repo table', () => {
+  it('builds the rows from the verification when folders were chosen, from the plan otherwise', () => {
+    const plain = repoRows(preview({}, [resolution(), resolution({ key: 'api', name: 'api', action: 'clone', cloneTo: '/c/api', matchedPath: null }), resolution({ key: 'web', name: 'web', action: 'blocked', summary: 'no remote' })]));
+    expect(plain.map((row) => [row.key, row.mark, row.state, row.target])).toEqual([
+      ['app', '✓', null, 'Use /code/app'],
+      ['api', '⚠', null, 'Use /code/app'],
+      ['web', '✖', null, 'no remote'],
+    ]);
+    const checked = preview(
+      {
+        source: { hooked: false, repos: [{ key: 'app', remoteUrl: 'git@git.acme.example:acme/app.git' }] } as unknown as TakeoverPreview['source'],
+        target: {
+          repos: [resolution({ action: 'blocked', summary: 'choose' })],
+          blockers: ['choose'],
+          verification: { roots: ['/c'], problems: [], repos: [{ key: 'app', name: 'app', branch: 'feature/x', state: 'ambiguous', matches: [{ path: '/c/a', branch: 'main', dirty: 0 }, { path: '/c/b', branch: 'feature/x', dirty: 1 }], path: null, hints: [], cloneTo: null, ok: false, note: 'app has 2 checkouts' }] },
+        } as unknown as TakeoverPreview['target'],
+      },
+      [],
+    );
+    const [row] = repoRows(checked);
+    expect(row).toMatchObject({ mark: '⚠', state: 'ambiguous', target: 'app has 2 checkouts', remoteUrl: 'git@git.acme.example:acme/app.git' });
+    expect(row?.choices.map((choice) => choice.path)).toEqual(['/c/a', '/c/b']);
+  });
+
+  it('adds and removes folders, and sets / clears a repo\'s checkout (nothing left = the saved folders)', () => {
+    const one = withRoot(null, '/Users/dev/ws');
+    expect(one).toEqual({ roots: ['/Users/dev/ws'] });
+    expect(withRoot(one, '/Users/dev/ws')).toEqual(one);
+    const two = withRoot(one, 'D:\\code');
+    expect(two.roots).toEqual(['/Users/dev/ws', 'D:\\code']);
+    expect(withoutRoot(two, '/Users/dev/ws')).toEqual({ roots: ['D:\\code'] });
+    expect(withoutRoot(one, '/Users/dev/ws')).toBeNull();
+    const picked = withRepoPath(one, 'app', '/Users/dev/ws/app');
+    expect(picked).toEqual({ roots: ['/Users/dev/ws'], repoPaths: { app: '/Users/dev/ws/app' } });
+    expect(withRepoPath(picked, 'app', null)).toEqual({ roots: ['/Users/dev/ws'] });
+    expect(withRepoPath(null, 'app', '/x/app')).toEqual({ roots: [], repoPaths: { app: '/x/app' } });
+    expect(withRepoPath({ roots: [], repoPaths: { app: '/x/app' } }, 'app', '')).toBeNull();
+    // Only the explicit pick keeps a placement with no folders alive: removing the last folder keeps the picks.
+    expect(withoutRoot({ roots: ['/a'], repoPaths: { app: '/x' } }, '/a')).toEqual({ roots: [], repoPaths: { app: '/x' } });
   });
 });
