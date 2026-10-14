@@ -43,7 +43,8 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
       }),
     });
     app.addHook('onReady', async () => {
-      if (!context.config.demo) await own.start();
+      // Demo mode never runs Plans, except for the README screenshots (`demoExtras`).
+      if (!context.config.demo || context.config.demoExtras) await own.start();
     });
     app.addHook('preClose', async () => {
       await own.close();

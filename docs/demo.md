@@ -53,3 +53,11 @@ The data files are the prototype's arrays with positional entries turned into na
 **Kept in the data files for later lanes**, not loaded yet: the per-session artifact rows (`sessions.json` → `artifacts`: the prototype's derived rows, which D89 replaced with saved artifacts), the incoming question + toast (M3.4 raises toasts only from real `questionBatch` events, so the demo never simulates an arrival; its toast visual runs on the real path, `docs/visual/toast.md`), the dirty list's times (M6.4), the New-session groups and draft (M5.1), wizard checks and scan rows (M5.3), the prototype's `next` schedule texts (M7.1 computes them from the clock; `cronLabel` is what `cronLabel()` derives from the cron, and `last` is rebuilt from the run's result + summary) and loop facts (M7.2 shows D9's own facts from the stored fields instead: `docs/derivations.md` → *Loop cards*).
 
 Since M8.1 the Codebase Memory strip also reads `solutions.json` → `codebaseMemoryDirty` (with today's times) + `codebaseMemoryIndexed`, and the demo tool probes always answer `down` (no network, as in the prototype's offline screenshots).
+
+## Screenshot extras (`SWITCHBOARD_DEMO_EXTRAS=1`)
+Demo mode never starts Team (D100) or Plans (D99) and keeps the prototype's footer figure, so the visual oracle is unaffected. `npm run screenshots` (`tools/screenshots/readme.ts`) also sets `SWITCHBOARD_DEMO_EXTRAS=1` (`config.demoExtras`, ignored without `SWITCHBOARD_DEMO=1`), which changes two things and nothing else:
+- `installTeam` and `installPlans` read their switches in demo mode too (each stays off until Settings → Experimental switches it on);
+- the footer grid reads the accounts' stored usage readings (`withAccountUsage`), so an account "on credits" (D103) can be shown.
+
+No demo data file changes. The script itself adds the README's extra data to its throwaway folder: two accounts with Acme credit readings stored before the start, a plan "PROJ-123 Acme checkout" whose todos go in through the API and whose item states and history are written into the throwaway `plans.db` while Plans is off (demo folders are not real, so items cannot run), and two teams adopting four demo sessions through the API.
+
