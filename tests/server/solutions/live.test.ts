@@ -67,7 +67,7 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld; m: WorktreeMa
 
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
-  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder), onError: (e) => errors.push(e) });
+  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder), repos: m.repos, onError: (e) => errors.push(e) });
   await seedFolder(sw.store, ws);
   app = await buildApp({
     config: { ...base, port: PORT },

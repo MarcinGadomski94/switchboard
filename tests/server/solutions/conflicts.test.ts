@@ -42,7 +42,7 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld }> {
   await g.makeRepo(path.join(g.workspace, 'deprecated', 'microfrontends', 'old-front'));
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
-  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder) });
+  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder), repos: m.repos });
   await seedFolder(sw.store, g.workspace);
   app = await buildApp({
     config: { ...base, port: PORT },
@@ -185,5 +185,112 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     expect(refused.statusCode).toBe(409);
     expect(refused.json()).toMatchObject({ error: 'detached' });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-in-place'))).toBe(false);
+  });
+
+  // 2026-10-14 (stale Solutions and conflicts): where a session writes comes from the shared repo set (session-repos.ts).
+  it('two sessions each in its own agent-made linked worktree of one repo: isolated, no conflict; two editing the main checkout: a conflict', async () => {
+    const { s, g } = await setup();
+    // The agents made these themselves (`git worktree add`), Switchboard did not register them.
+    const treeA = path.join(path.dirname(g.web), 'web-front-wt-acme-101-checkout');
+    const treeB = path.join(path.dirname(g.web), 'web-front-wt-acme-102-billing');
+    await g.git(g.web, 'worktree', 'add', '-q', '-b', 'ACME-101-checkout', treeA);
+    await g.git(g.web, 'worktree', 'add', '-q', '-b', 'ACME-102-billing', treeB);
+    // D38: a write in a linked worktree adds that folder's name to the session; the other one also names the main checkout
+    // (picked at the start) but only writes in its worktree.
+    const a = await start(s, { name: 'acme-checkout', solutions: [], task: '[fake:write microfrontends/web-front-wt-acme-101-checkout/notes.md]' });
+    const b = await start(s, { name: 'acme-billing', solutions: ['web-front'], task: '[fake:write microfrontends/web-front-wt-acme-102-billing/notes.md]' });
+    expect((await s.store.sessions.get(a.id))?.solutions).toEqual(['web-front-wt-acme-101-checkout']);
+    expect((await s.store.sessions.get(b.id))?.solutions).toEqual(['web-front', 'web-front-wt-acme-102-billing']);
+
+    let web = (await rows()).get('web-front');
+    expect(web).toMatchObject({ conflict: false, flag: '', conflictSessions: [] });
+    expect(web?.branches.map((branch) => [branch.branch, branch.worktree === null ? null : path.basename(branch.worktree), branch.owner])).toEqual([
+      ['ACME-101-checkout', 'web-front-wt-acme-101-checkout', 'acme-checkout'],
+      ['ACME-102-billing', 'web-front-wt-acme-102-billing', 'acme-billing'],
+    ]);
+
+    // Two sessions writing the main checkout itself: a conflict, both named, neither isolated.
+    const c = await start(s, { name: 'acme-main-one', solutions: [], task: '[fake:write microfrontends/web-front/one.md]' });
+    const d = await start(s, { name: 'acme-main-two', solutions: [], task: '[fake:write microfrontends/web-front/two.md]' });
+    web = (await rows()).get('web-front');
+    expect(web?.conflict).toBe(true);
+    expect(web?.conflictSessions.map((writer) => [writer.sessionId, writer.isolated])).toEqual([
+      [a.id, true],
+      [b.id, true],
+      [c.id, false],
+      [d.id, false],
+    ]);
+    expect(forbiddenGitCalls(await g.gitCalls())).toEqual([]);
+  });
+
+  it('closed, moved and continued sessions are not writers (a continued one counts as its successor); their in-place rows go', async () => {
+    const { s } = await setup();
+    const first = await start(s, { name: 'acme-first', solutions: ['mobile'] });
+    const second = await start(s, { name: 'acme-second', solutions: ['mobile'] });
+    expect((await rows()).get('mobile')?.conflict).toBe(true);
+
+    // Closed by the developer: gone from the row; the other one alone is no conflict.
+    await s.supervisor.close(second.id, { confirm: true });
+    let mobile = (await rows()).get('mobile');
+    expect(mobile).toMatchObject({ conflict: false, conflictSessions: [] });
+    expect(mobile?.branches.map((branch) => branch.owner)).toEqual(['acme-first']);
+
+    // Taken over to another machine (D65 `movedTo`, even before it is marked closed): not a writer here.
+    const third = await start(s, { name: 'acme-third', solutions: ['mobile'] });
+    expect((await rows()).get('mobile')?.conflict).toBe(true);
+    await s.store.sessions.update(third.id, { movedTo: { machineId: 'acme-pc', machineName: 'Acme PC', sessionId: 'remote-1', at: new Date().toISOString() } });
+    expect((await rows()).get('mobile')).toMatchObject({ conflict: false });
+
+    // Continued in a fresh session (D83 `continuedTo`): the old one no longer writes.
+    const fourth = await start(s, { name: 'acme-fourth', solutions: ['mobile'] });
+    expect((await rows()).get('mobile')?.conflict).toBe(true);
+    await s.store.sessions.update(fourth.id, { continuedTo: first.id });
+    mobile = (await rows()).get('mobile');
+    expect(mobile).toMatchObject({ conflict: false });
+    expect(mobile?.branches.map((branch) => branch.owner)).toEqual(['acme-first']);
+    expect(mobile?.status).not.toBe('idle');
+  });
+
+  it("a continued session's worktree belongs to its successor; a closed session's worktree is idle", async () => {
+    const { s } = await setup();
+    const old = await start(s, { name: 'acme-old', solutions: ['web-front'], worktrees: true, branch: 'ACME-7-old' });
+    const fresh = await start(s, { name: 'acme-fresh', solutions: ['mobile'] });
+    await s.store.sessions.update(old.id, { continuedTo: fresh.id, closedAt: new Date().toISOString() });
+    let branch = (await rows()).get('web-front')?.branches[0];
+    expect(branch).toMatchObject({ branch: 'ACME-7-old', sessionId: fresh.id, owner: 'acme-fresh' });
+
+    // Its successor closed too: the worktree (still on disk) stays listed, idle, and writes nothing.
+    await s.supervisor.close(fresh.id, { confirm: true });
+    const web = (await rows()).get('web-front');
+    branch = web?.branches[0];
+    expect(branch).toMatchObject({ branch: 'ACME-7-old', owner: 'acme-fresh', status: 'idle' });
+    expect(web?.status).toBe('idle');
+  });
+
+  it("a removed worktree's branch row disappears, and the repo name it left in the session does not read as 'in place'", async () => {
+    const { s, g } = await setup();
+    const isolated = await start(s, { name: 'acme-isolated', solutions: ['web-front'], worktrees: true, branch: 'ACME-8-isolated' });
+    const other = await start(s, { name: 'acme-other', solutions: ['web-front'] });
+    let web = (await rows()).get('web-front');
+    expect(web?.conflictSessions.map((writer) => [writer.sessionId, writer.isolated])).toEqual([
+      [isolated.id, true],
+      [other.id, false],
+    ]);
+    const [worktree] = await s.store.worktrees.list({ sessionId: isolated.id });
+    if (!worktree) throw new Error('no worktree');
+
+    // Removed outside Switchboard (the folder is gone, the record is still live): no branch row for it.
+    await g.git(g.web, 'worktree', 'remove', '--force', worktree.path);
+    web = (await rows()).get('web-front');
+    expect(web?.branches.some((branch) => branch.worktree !== null)).toBe(false);
+    // Its session still lists `web-front` (D38), but it never wrote the main checkout: not a writer there.
+    expect(web?.branches.map((branch) => branch.owner)).toEqual(['acme-other']);
+    expect(web).toMatchObject({ conflict: false });
+
+    // Removed through Switchboard (the record is marked removed): the same.
+    await s.store.worktrees.markRemoved(worktree.id);
+    web = (await rows()).get('web-front');
+    expect(web?.branches.map((branch) => branch.owner)).toEqual(['acme-other']);
+    expect(web).toMatchObject({ conflict: false });
   });
 });

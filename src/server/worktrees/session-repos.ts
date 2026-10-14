@@ -54,6 +54,14 @@ export interface WatchedRepo {
 export interface SessionRepoSet {
   readonly worktrees: readonly WorktreeRecord[];
   readonly inPlace: readonly WatchedRepo[];
+  /**
+   * The working trees (real paths) the session's edits fell in, first edit first,
+   * before any de-duplication: a declared solution's checkout the session also
+   * edited is listed here though `inPlace` names it once as `solution`, and so is
+   * a registered worktree. Solutions (2026-10-14) reads it to tell a checkout the
+   * session really wrote in from one it only names.
+   */
+  readonly editedTops: readonly string[];
 }
 
 /** How long the declared solutions' resolution is reused without any change (a folder made meanwhile shows up after it). */
@@ -135,7 +143,8 @@ export class SessionRepos {
       const top = await topOfDir(session.cwd);
       if (top !== null) add({ name: path.basename(top), top, source: 'cwd' });
     }
-    return { worktrees, inPlace: out };
+    const editedTops = [...new Set([...entry.edited.values()].filter((top): top is string => top !== null))];
+    return { worktrees, inPlace: out, editedTops };
   }
 
   /** Forgets a session's remembered answer (tests; a session that is gone). */

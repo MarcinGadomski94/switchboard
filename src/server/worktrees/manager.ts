@@ -61,6 +61,8 @@ export type WorktreeErrorCode =
   | 'path-exists'
   | 'session-not-found'
   | 'detached'
+  // 2026-10-14: isolate refuses a closed session (or one taken over to another machine) before creating anything.
+  | 'closed'
   | 'not-found'
   | 'removed'
   | 'uncommitted'
@@ -963,6 +965,9 @@ export class WorktreeManager implements DiffProvider {
     if (!session) throw new WorktreeError('session-not-found', `no session ${sessionId}`);
     const existing = (await this.#store.worktrees.list({ sessionId, repo }))[0];
     if (existing) return { worktree: existing, created: false, existing: null };
+    // 2026-10-14: the move message could not be sent to it afterwards (a worktree would be left behind).
+    if (session.movedTo) throw new WorktreeError('closed', `${session.title ?? session.name} was taken over to ${session.movedTo.machineName}: continue it there`);
+    if (session.closedAt !== null) throw new WorktreeError('closed', `${session.title ?? session.name} is closed: reopen it first`);
     if (!session.attached) throw new WorktreeError('detached', 'the session continues in a terminal; attach it first');
     const control = this.#sessions;
     if (!control) throw new Error('isolate needs the session supervisor');

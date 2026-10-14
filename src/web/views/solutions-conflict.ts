@@ -1,5 +1,5 @@
 import type { Solution } from '../../core/api.ts';
-import { conflictText, moveLabel } from '../../core/conflicts.ts';
+import { type ConflictTextSegment, conflictText, conflictTextSegments, moveLabel } from '../../core/conflicts.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { branchFromTitle } from '../../core/ticket-branch.ts';
 import { ApiError } from '../api/client.ts';
@@ -31,6 +31,8 @@ export interface MoveAction {
 /** The card of a solution with a conflict, `null` without one. */
 export interface ConflictCard {
   readonly text: string;
+  /** 2026-10-14: {@link text} in pieces; a session's name carries its id (the card links it to the session). */
+  readonly segments: readonly ConflictTextSegment[];
   /** One per session writing the main checkout, oldest first. */
   readonly actions: readonly MoveAction[];
 }
@@ -40,6 +42,7 @@ export function conflictCard(solution: Pick<Solution, 'conflict' | 'conflictSess
   if (!solution.conflict || solution.conflictSessions.length === 0) return null;
   return {
     text: conflictText(solution.conflictSessions, solution.relativePath),
+    segments: conflictTextSegments(solution.conflictSessions, solution.relativePath),
     actions: solution.conflictSessions
       .filter((session) => !session.isolated)
       .map((session) => ({
@@ -72,4 +75,18 @@ export function isolateErrorText(error: unknown): string {
   const first = body?.errors?.[0]?.message;
   if (typeof first === 'string' && first) return first;
   return `The worktree could not be created (HTTP ${error.status}).`;
+}
+
+/**
+ * 2026-10-14: the card's line for a writer that is a Team member (D100): its
+ * session is hidden from the sidebar's SESSIONS, so the card says where it is
+ * and links it ("open it here"). `role` is the member's role name.
+ */
+export function memberNote(title: string, role: string): string {
+  return `${title} is the Team member ${role}: it is not in the sidebar's SESSIONS.`;
+}
+
+/** 2026-10-14: the tooltip of a writer's name on the card. */
+export function openSessionTitle(title: string, role: string | null): string {
+  return role ? `Open ${title} (Team member ${role})` : `Open ${title}`;
 }

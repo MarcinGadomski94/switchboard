@@ -82,10 +82,34 @@ export function joinNames(names: readonly string[]): string {
  * added. D22: each session is named by its display title (its title, else its name).
  */
 export function conflictText(sessions: readonly Pick<ConflictSession, 'name' | 'title'>[], folder: string): string {
-  const names = sessions.map((session) => displayTitle(session));
+  return conflictTextSegments(sessions.map((session, index) => ({ ...session, sessionId: String(index) })), folder)
+    .map((segment) => segment.text)
+    .join('');
+}
+
+/** One piece of {@link conflictTextSegments}: plain text, or a session's name (`sessionId` set). */
+export interface ConflictTextSegment {
+  readonly text: string;
+  readonly sessionId?: string;
+}
+
+/**
+ * 2026-10-14: {@link conflictText} cut into pieces, each session's name its own
+ * piece with its id, so the card can make the names links that open the session
+ * (Team members' sessions are hidden from the sidebar, D100). Joined, the pieces
+ * are exactly the text.
+ */
+export function conflictTextSegments(sessions: readonly Pick<ConflictSession, 'sessionId' | 'name' | 'title'>[], folder: string): ConflictTextSegment[] {
+  const names = sessions.map((session) => ({ text: displayTitle(session), sessionId: session.sessionId }));
   const quantifier = names.length === 2 ? 'both' : 'all';
   const where = `${folder.replace(/\/+$/, '')}/`;
-  return `${joinNames(names)} ${quantifier} write to ${where} in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.`;
+  const out: ConflictTextSegment[] = [];
+  names.forEach((name, index) => {
+    if (index > 0) out.push({ text: index === names.length - 1 ? ' and ' : ', ' });
+    out.push(name);
+  });
+  out.push({ text: ` ${quantifier} write to ${where} in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.` });
+  return out;
 }
 
 /** The card's action for a session without a worktree (prototype: "Move button-rollout to worktree"); `name` is what the session is shown as (D22: its display title). */
