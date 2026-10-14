@@ -12,6 +12,8 @@ export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
   'path-exists': 409,
   'session-not-found': 404,
   detached: 409,
+  // 2026-10-14: isolating a closed or moved session (Solutions → Move … to worktree).
+  closed: 409,
   'not-found': 404,
   removed: 409,
   uncommitted: 409,

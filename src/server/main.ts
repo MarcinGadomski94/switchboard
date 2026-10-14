@@ -76,6 +76,8 @@ async function main(): Promise<void> {
       store,
       diff: worktrees,
       resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+      // 2026-10-14: where sessions write (and whether they are isolated) is the shared repo set's answer.
+      repos: worktrees.repos,
       onError: (error) => console.error('switchboard solutions:', error),
     });
     // "Start at login" (M9.1): the per-user service definition of this OS (docs/service.md).

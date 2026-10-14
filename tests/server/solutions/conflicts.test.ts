@@ -42,7 +42,7 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld }> {
   await g.makeRepo(path.join(g.workspace, 'deprecated', 'microfrontends', 'old-front'));
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
-  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder) });
+  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder), repos: m.repos });
   await seedFolder(sw.store, g.workspace);
   app = await buildApp({
     config: { ...base, port: PORT },

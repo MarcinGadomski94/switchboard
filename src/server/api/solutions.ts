@@ -46,6 +46,7 @@ export async function registerSolutionRoutes(app: FastifyInstance, context: ApiC
       store: context.store,
       diff: context.providers.diff ?? worktrees,
       resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+      repos: worktrees.repos,
     });
 
   app.get<{ Querystring: { folder?: string } }>('/api/solutions', async (request, reply): Promise<SolutionGroup[] | FastifyReply> => {

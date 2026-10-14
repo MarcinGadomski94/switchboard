@@ -14,7 +14,9 @@ import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import type { DiffProvider, SolutionsProvider } from '../providers.ts';
-import { isMainCheckout } from './checkout.ts';
+import { SessionRepos } from '../worktrees/session-repos.ts';
+import { SessionTouchedFiles } from '../worktrees/touched.ts';
+import { isMainCheckout, isWorkingTreeTop, linkedWorktreeOf } from './checkout.ts';
 import { readDirtyList } from './codebase-memory.ts';
 import { ScanError, WorkspaceScanner } from './scanner.ts';
 
@@ -40,8 +42,36 @@ export interface LiveSolutionsOptions {
    * only the shown folder's own sessions count.
    */
   readonly resolveRepo?: (solution: string, folder: FolderRef) => Promise<{ readonly repoPath: string }>;
+  /**
+   * 2026-10-14: the repositories each session works in (`session-repos.ts`, the
+   * worktree manager's `repos`: the one answer checkpoints and the Diff tab read),
+   * which decides where a session writes and whether it is isolated. Defaults to
+   * its own over the store.
+   */
+  readonly repos?: Pick<SessionRepos, 'of'>;
   /** Called when a live field could not be read (default: ignored; the field stays neutral). */
   readonly onError?: (error: unknown) => void;
+}
+
+/** One live session working in a row's main checkout, with the `{repo}` to isolate it with (M6.3). */
+interface InPlaceWriter {
+  readonly session: SessionRecord;
+  readonly repo: string;
+}
+
+/** One live session working in a linked worktree of a row that Switchboard did not register. */
+interface LinkedWriter {
+  readonly session: SessionRecord;
+  /** The worktree's top folder (real path). */
+  readonly top: string;
+  readonly branch: string | null;
+  readonly repo: string;
+}
+
+/** Where the live sessions write, per row. */
+interface Placement {
+  readonly inPlace: Map<Row, InPlaceWriter[]>;
+  readonly linked: Map<Row, LinkedWriter[]>;
 }
 
 /** A writable or read-only row with what the enrichment needs. */
@@ -98,10 +128,12 @@ export class LiveSolutions implements SolutionsProvider {
   readonly #store: Store;
   readonly #diff: DiffProvider | null;
   readonly #resolveRepo: LiveSolutionsOptions['resolveRepo'] | null;
+  readonly #repos: Pick<SessionRepos, 'of'>;
   readonly #onError: (error: unknown) => void;
 
   constructor(options: LiveSolutionsOptions) {
     this.#store = options.store;
+    this.#repos = options.repos ?? new SessionRepos({ store: options.store, touched: new SessionTouchedFiles({ store: options.store }) });
     this.#diff = options.diff ?? null;
     this.#resolveRepo = options.resolveRepo ?? null;
     this.#onError = options.onError ?? (() => {});
@@ -147,14 +179,19 @@ export class LiveSolutions implements SolutionsProvider {
       ),
     );
 
-    const [sessions, worktrees, saved, dirty] = await Promise.all([
+    const [sessions, registered, everWorktrees, saved, dirty] = await Promise.all([
       // D106: chats work in no solution (and write nothing): left out of rows and conflicts.
       this.#store.sessions.list().then((list) => list.filter((session) => session.kind !== 'chat')),
       this.#store.worktrees.list(),
+      // 2026-10-14: the removed ones too, so a repo the session left for a worktree does not read as "in place".
+      this.#store.worktrees.list({ includeRemoved: true }),
       this.#store.artifacts.list(),
       folder.kind === 'workspace' ? readDirtyList(scan.root) : Promise.resolve(null),
     ]);
     if (dirty?.state === 'unreadable') this.#onError(dirty.error);
+    // 2026-10-14: a registered worktree whose folder is gone (removed outside Switchboard) is a leftover, not a branch.
+    const present = await Promise.all(registered.map(async (worktree) => ((await isWorkingTreeTop(worktree.path)) ? worktree : null)));
+    const worktrees = present.filter((worktree): worktree is WorktreeRecord => worktree !== null);
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     const writable = rows.filter((row) => !row.readOnly);
     const shownRoots = new Set([folder.root, folder.path]);
@@ -174,32 +211,19 @@ export class LiveSolutions implements SolutionsProvider {
       }
     }
 
-    // Worktrees per row (by canonical repo path), in-place sessions per row.
+    // Registered worktrees per row (by canonical repo path), owned by the session they belong to now (D83: its successor).
+    const ownerOf = (worktree: WorktreeRecord): SessionRecord | null => successor(worktree.sessionId ? (sessionsById.get(worktree.sessionId) ?? null) : null, sessionsById);
     const worktreesByRow = new Map<Row, WorktreeRecord[]>();
     for (const worktree of worktrees) {
       const row = writable.find((candidate) => candidate.canonical === worktree.repoPath);
       if (!row) continue;
       worktreesByRow.set(row, [...(worktreesByRow.get(row) ?? []), worktree]);
     }
-    const inPlaceByRow = new Map<Row, SessionRecord[]>();
-    // The solution string each in-place session lists for a row (the `{repo}` to isolate it with, M6.3).
-    const inPlaceRepo = new Map<Row, Map<string, string>>();
-    for (const session of sessions) {
-      if (session.endedAt !== null) continue;
-      for (const name of session.solutions) {
-        const row = await rowOf(session, name);
-        if (!row) continue;
-        if ((worktreesByRow.get(row) ?? []).some((w) => w.sessionId === session.id)) continue;
-        const list = inPlaceByRow.get(row) ?? [];
-        if (!list.includes(session)) inPlaceByRow.set(row, [...list, session]);
-        const repos = inPlaceRepo.get(row) ?? new Map<string, string>();
-        if (!repos.has(session.id)) repos.set(session.id, name);
-        inPlaceRepo.set(row, repos);
-      }
-    }
 
+    // 2026-10-14: where each live session really writes, from the shared repo set (session-repos.ts).
+    const placement = await this.#placement(sessions.filter(isLiveWriter), writable, everWorktrees, rowOf);
     const changes = await this.#changes(
-      [...new Set([...[...worktreesByRow.values()].flat().flatMap((w) => (w.sessionId ? [w.sessionId] : [])), ...[...inPlaceByRow.values()].flat().map((s) => s.id)])],
+      [...new Set([...[...worktreesByRow.values()].flat().flatMap((w) => (w.sessionId ? [w.sessionId] : [])), ...[...placement.inPlace.values()].flat().map((p) => p.session.id)])],
       async (sessionId, solution) => {
         const session = sessionsById.get(sessionId);
         return session ? rowOf(session, solution) : null;
@@ -217,7 +241,9 @@ export class LiveSolutions implements SolutionsProvider {
         const writers: RepoWriter[] = [];
         const rowWorktrees = worktreesByRow.get(row) ?? [];
         for (const worktree of rowWorktrees) {
-          const session = worktree.sessionId ? (sessionsById.get(worktree.sessionId) ?? null) : null;
+          const session = ownerOf(worktree);
+          // 2026-10-14: a closed, moved or continued session's worktree stays listed (its folder is there) but is idle and writes nothing.
+          const open = session !== null && isOpenSession(session);
           branches.push({
             branch: worktree.branch,
             worktree: displayWorktreePath(row, worktree.path),
@@ -225,15 +251,29 @@ export class LiveSolutions implements SolutionsProvider {
             owner: session?.name ?? NO_SESSION_OWNER,
             // D22 (developer ruling 2026-09-28): the chip and card name the owner by its display title.
             ownerTitle: branchOwnerTitle(session),
-            status: session?.status ?? 'idle',
+            status: open ? session.status : 'idle',
           });
-          if (session) {
-            statuses.push(session.status);
-            if (session.endedAt === null && session.phase) phases.push(session.phase);
-            if (session.endedAt === null) writers.push(writer(session, true, worktree.repo));
+          if (open) statuses.push(session.status);
+          if (session !== null && isLiveWriter(session)) {
+            if (session.phase) phases.push(session.phase);
+            writers.push(writer(session, true, worktree.repo));
           }
         }
-        for (const session of inPlaceByRow.get(row) ?? []) {
+        // Linked worktrees the live sessions work in that Switchboard did not register (agent-made `…-wt-…` folders).
+        for (const linked of placement.linked.get(row) ?? []) {
+          branches.push({
+            branch: linked.branch ?? '—',
+            worktree: displayWorktreePath(row, linked.top),
+            sessionId: linked.session.id,
+            owner: linked.session.name,
+            ownerTitle: branchOwnerTitle(linked.session),
+            status: linked.session.status,
+          });
+          statuses.push(linked.session.status);
+          if (linked.session.phase) phases.push(linked.session.phase);
+          writers.push(writer(linked.session, true, linked.repo));
+        }
+        for (const { session, repo } of placement.inPlace.get(row) ?? []) {
           branches.push({
             branch: head ?? '—',
             worktree: null,
@@ -244,7 +284,7 @@ export class LiveSolutions implements SolutionsProvider {
           });
           statuses.push(session.status);
           if (session.phase) phases.push(session.phase);
-          writers.push(writer(session, false, inPlaceRepo.get(row)?.get(session.id) ?? row.solution.name));
+          writers.push(writer(session, false, repo));
         }
         const conflict = row.readOnly ? NO_CONFLICT : repoConflict(writers);
         if (branches.length === 0 && head) branches.push({ branch: head, worktree: null, sessionId: null, owner: IDLE_OWNER, ownerTitle: null, status: 'idle' });
@@ -267,6 +307,99 @@ export class LiveSolutions implements SolutionsProvider {
       }),
     );
     return groups.map((group) => ({ ...group, solutions: group.solutions.map((solution) => enriched.get(solution) ?? solution) }));
+  }
+
+  /**
+   * 2026-10-14 (stale Solutions and conflicts): where each **live** session writes,
+   * from the shared repo set (`SessionRepos.of`):
+   * - a working tree in its set that is a **linked worktree** (`.git` is a file:
+   *   an agent-made `…-wt-…` folder) of a row's repo: the session is isolated
+   *   there, shown as a branch of that row;
+   * - a row's **main checkout** in its set: the session writes there in place when
+   *   it names it (a declared solution, its cwd) or edited files in it while
+   *   having no other working tree of that repo. With another one (a registered
+   *   worktree, removed ones too: D38 adds a worktree's repo to the session's
+   *   solutions, and the name outlives the worktree; a linked worktree in its
+   *   set; a solution named `<repo>-wt-…`, an agent-made worktree that may be
+   *   gone) only its own edits in the checkout count, and only while some are
+   *   not committed (the D90 `head` diff: its touched files with uncommitted
+   *   changes); edits it committed long ago do not keep it a writer.
+   */
+  async #placement(
+    live: readonly SessionRecord[],
+    writable: readonly Row[],
+    everWorktrees: readonly WorktreeRecord[],
+    rowOf: (session: SessionRecord, solution: string) => Promise<Row | null>,
+  ): Promise<Placement> {
+    const inPlace = new Map<Row, InPlaceWriter[]>();
+    const linked = new Map<Row, LinkedWriter[]>();
+    const byCanonical = async (target: string): Promise<Row | null> => {
+      const real = await realpath(target).catch(() => target);
+      return writable.find((row) => row.git && row.canonical === real) ?? null;
+    };
+    const sets = await Promise.all(
+      live.map(async (session) => ({
+        session,
+        set: await this.#repos.of(session).catch((error: unknown) => {
+          this.#onError(error);
+          return null;
+        }),
+      })),
+    );
+    for (const { session, set } of sets) {
+      if (!set) continue;
+      const elsewhere = new Set<Row>();
+      for (const worktree of everWorktrees) {
+        if (worktree.sessionId !== session.id) continue;
+        const row = await byCanonical(worktree.repoPath);
+        if (row) elsewhere.add(row);
+      }
+      for (const row of writable) if (session.solutions.some((name) => namesWorktreeOf(name, row))) elsewhere.add(row);
+      const mains: Array<{ readonly row: Row; readonly top: string; readonly name: string; readonly source: string }> = [];
+      for (const repo of set.inPlace) {
+        const link = await linkedWorktreeOf(repo.top);
+        if (link) {
+          const row = await byCanonical(link.main);
+          if (!row) continue;
+          elsewhere.add(row);
+          const list = linked.get(row) ?? [];
+          if (!list.some((known) => known.session.id === session.id && known.top === repo.top)) {
+            linked.set(row, [...list, { session, top: repo.top, branch: link.head === null ? null : branchFromHead(link.head), repo: repo.name }]);
+          }
+          continue;
+        }
+        if (!(await isMainCheckout(repo.top))) continue;
+        const row = await byCanonical(repo.top);
+        if (row) mains.push({ row, top: repo.top, name: repo.name, source: repo.source });
+      }
+      const edited = new Set(set.editedTops);
+      let uncommitted: Promise<FileDiff[]> | null = null;
+      for (const main of mains) {
+        if (elsewhere.has(main.row)) {
+          // It works in another tree of this repo: only its own edits here count, and only while they are not committed (D90 `head`).
+          if (!edited.has(main.top)) continue;
+          if (this.#diff) {
+            if (set.worktrees.some((worktree) => worktree.repo === main.name)) continue;
+            const diff = this.#diff;
+            uncommitted ??= diff.diff(session.id, undefined, 'head').catch((error: unknown): FileDiff[] => {
+              this.#onError(error);
+              return [];
+            });
+            if (!(await uncommitted).some((file) => file.solution === main.name && file.uncommitted)) continue;
+          }
+        }
+        const list = inPlace.get(main.row) ?? [];
+        if (list.some((known) => known.session.id === session.id)) continue;
+        inPlace.set(main.row, [...list, { session, repo: await this.#isolateName(session, main.row, main.source === 'solution' ? main.name : null, rowOf) }]);
+      }
+    }
+    return { inPlace, linked };
+  }
+
+  /** The `{repo}` a session in place is isolated with: the solution it lists that means the row, else the declared name, else the row's name. */
+  async #isolateName(session: SessionRecord, row: Row, declared: string | null, rowOf: (session: SessionRecord, solution: string) => Promise<Row | null>): Promise<string> {
+    for (const name of session.solutions) if ((await rowOf(session, name)) === row) return name;
+    return declared ?? row.solution.name;
   }
 
   /**
@@ -374,6 +507,39 @@ export class LiveSolutions implements SolutionsProvider {
       .sort();
     return files.map((name) => ({ type: 'FOLLOWUP', name, meta: '', sessionId: null }));
   }
+}
+
+/**
+ * 2026-10-14: a session that still writes: open (not closed), not taken over to
+ * another machine (D65 `movedTo`), not continued in a fresh session (D83
+ * `continuedTo`: its successor counts instead), its process not ended (`done` /
+ * `fail` after exit) and not a chat (D106). Team members (D100) count: they are
+ * ordinary sessions, only hidden from the sidebar.
+ */
+export function isLiveWriter(session: SessionRecord): boolean {
+  return isOpenSession(session) && session.endedAt === null;
+}
+
+/** 2026-10-14: a session still open here: not closed, not taken over to another machine (D65), not continued (D83), not a chat (D106). */
+export function isOpenSession(session: SessionRecord): boolean {
+  return session.kind !== 'chat' && session.closedAt === null && session.movedTo === null && session.continuedTo === null;
+}
+
+/** D83: the session a continued one lives on in (following `continuedTo`), else the session itself. */
+function successor(session: SessionRecord | null, byId: ReadonlyMap<string, SessionRecord>): SessionRecord | null {
+  let current = session;
+  for (let hops = 0; current?.continuedTo && hops < 20; hops += 1) {
+    const next = byId.get(current.continuedTo);
+    if (!next) break;
+    current = next;
+  }
+  return current;
+}
+
+/** `true` when the solution `name` is an agent-made worktree of the row's repo (`<repo>-wt-…`, gap #1's naming). */
+function namesWorktreeOf(name: string, row: Row): boolean {
+  const base = path.basename(name.replace(/[\\/]+$/, ''));
+  return [path.basename(row.repo), row.solution.name].some((repo) => base.startsWith(`${repo}-wt-`));
 }
 
 /** An open session writing a row, for the conflict rule (M6.3). */
