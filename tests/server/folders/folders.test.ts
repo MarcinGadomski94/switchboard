@@ -487,11 +487,13 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
     expect((await call('GET', `/api/solutions?folder=${encodeURIComponent(repoPath)}`)).statusCode).toBe(200);
     expect((await call('GET', '/api/solutions?folder=nope')).json()).toMatchObject({ error: 'not-found' });
 
-    // A session in place in the repo shows on its row, whichever folder it was started from.
-    const started = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-live', task: '' }));
+    // A session in place in the repo shows on its row, whichever folder it was started from
+    // (ruling 2026-10-14: while it has its own uncommitted edits there).
+    const started = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-live', task: '[fake:write solo-notes.md]' }));
     expect(started.statusCode, started.body).toBe(201);
+    await waitForStatus(g.store, (started.json() as Session).id, ['done']);
     const rows = (await call('GET', `/api/solutions?folder=${repo.id}`)).json() as SolutionGroup[];
-    expect(rows[0]?.solutions[0]?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: (started.json() as Session).id, owner: 'solo-live', ownerTitle: 'solo-live', status: 'idle' }]);
+    expect(rows[0]?.solutions[0]?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: (started.json() as Session).id, owner: 'solo-live', ownerTitle: 'solo-live', status: 'done' }]);
     expect(g.workspace).not.toBe(repoPath);
   });
 

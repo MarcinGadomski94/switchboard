@@ -321,15 +321,11 @@ export class LiveSolutions implements SolutionsProvider {
    * - a working tree in its set that is a **linked worktree** (`.git` is a file:
    *   an agent-made `…-wt-…` folder) of a row's repo: the session is isolated
    *   there, shown as a branch of that row;
-   * - a row's **main checkout** in its set: the session writes there in place when
-   *   it names it (a declared solution, its cwd) or edited files in it while
-   *   having no other working tree of that repo. With another one (a registered
-   *   worktree, removed ones too: D38 adds a worktree's repo to the session's
-   *   solutions, and the name outlives the worktree; a linked worktree in its
-   *   set; a solution named `<repo>-wt-…`, an agent-made worktree that may be
-   *   gone) only its own edits in the checkout count, and only while some are
-   *   not committed (the D90 `head` diff: its touched files with uncommitted
-   *   changes); edits it committed long ago do not keep it a writer.
+   * - a row's **main checkout** in its set: the session writes there in place
+   *   only while it has its own **uncommitted** edits in it (developer ruling
+   *   2026-10-14; the D90 `head` diff: its touched files with uncommitted
+   *   changes). Naming the checkout (a declared solution, its cwd) or edits it
+   *   committed do not make it a writer.
    */
   async #placement(
     live: readonly SessionRecord[],
@@ -354,20 +350,12 @@ export class LiveSolutions implements SolutionsProvider {
     );
     for (const { session, set } of sets) {
       if (!set) continue;
-      const elsewhere = new Set<Row>();
-      for (const worktree of everWorktrees) {
-        if (worktree.sessionId !== session.id) continue;
-        const row = await byCanonical(worktree.repoPath);
-        if (row) elsewhere.add(row);
-      }
-      for (const row of writable) if (session.solutions.some((name) => namesWorktreeOf(name, row))) elsewhere.add(row);
       const mains: Array<{ readonly row: Row; readonly top: string; readonly name: string; readonly source: string }> = [];
       for (const repo of set.inPlace) {
         const link = await linkedWorktreeOf(repo.top);
         if (link) {
           const row = await byCanonical(link.main);
           if (!row) continue;
-          elsewhere.add(row);
           const list = linked.get(row) ?? [];
           if (!list.some((known) => known.session.id === session.id && known.top === repo.top)) {
             linked.set(row, [...list, { session, top: repo.top, branch: link.head === null ? null : branchFromHead(link.head), repo: repo.name }]);
@@ -378,21 +366,23 @@ export class LiveSolutions implements SolutionsProvider {
         const row = await byCanonical(repo.top);
         if (row) mains.push({ row, top: repo.top, name: repo.name, source: repo.source });
       }
+      // Developer ruling 2026-10-14: only its own uncommitted edits in the checkout make it a writer there (D90 `head`:
+      // its touched files with uncommitted changes); naming the checkout, or edits it committed, do not.
       const edited = new Set(set.editedTops);
       let uncommitted: Promise<FileDiff[]> | null = null;
       for (const main of mains) {
-        if (elsewhere.has(main.row)) {
-          // It works in another tree of this repo: only its own edits here count, and only while they are not committed (D90 `head`).
-          if (!edited.has(main.top)) continue;
-          if (this.#diff) {
-            if (set.worktrees.some((worktree) => worktree.repo === main.name)) continue;
-            const diff = this.#diff;
-            uncommitted ??= diff.diff(session.id, undefined, 'head').catch((error: unknown): FileDiff[] => {
-              this.#onError(error);
-              return [];
-            });
-            if (!(await uncommitted).some((file) => file.solution === main.name && file.uncommitted)) continue;
-          }
+        if (this.#diff) {
+          // A registered worktree of the same name: its diff cannot be told apart from the checkout's; the session is isolated there.
+          if (set.worktrees.some((worktree) => worktree.repo === main.name)) continue;
+          const diff = this.#diff;
+          uncommitted ??= diff.diff(session.id, undefined, 'head').catch((error: unknown): FileDiff[] => {
+            this.#onError(error);
+            return [];
+          });
+          if (!(await uncommitted).some((file) => file.solution === main.name && file.uncommitted)) continue;
+        } else if (!edited.has(main.top)) {
+          // Without the diff provider: its edits there, committed or not.
+          continue;
         }
         const list = inPlace.get(main.row) ?? [];
         if (list.some((known) => known.session.id === session.id)) continue;
@@ -540,12 +530,6 @@ function successor(session: SessionRecord | null, byId: ReadonlyMap<string, Sess
     current = next;
   }
   return current;
-}
-
-/** `true` when the solution `name` is an agent-made worktree of the row's repo (`<repo>-wt-…`, gap #1's naming). */
-function namesWorktreeOf(name: string, row: Row): boolean {
-  const base = path.basename(name.replace(/[\\/]+$/, ''));
-  return [path.basename(row.repo), row.solution.name].some((repo) => base.startsWith(`${repo}-wt-`));
 }
 
 /** An open session writing a row, for the conflict rule (M6.3). */

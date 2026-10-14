@@ -94,9 +94,9 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
   it('two sessions in one checkout → conflict; moving each to a worktree clears it; the developer tree is untouched', async () => {
     const { s, g } = await setup();
     // D22: a titled writer; its worktree still comes from its short name (D32: its branch is the one the developer names).
-    const first = await start(s, { name: 'first-writer', title: 'First writer', solutions: ['mobile'] });
-    const second = await start(s, { name: 'second-writer', solutions: ['mobile'] });
-    await start(s, { name: 'web-alone', solutions: ['web-front'] });
+    const first = await start(s, { name: 'first-writer', title: 'First writer', solutions: ['mobile'], task: '[fake:write mobile/first-writer.md]' });
+    const second = await start(s, { name: 'second-writer', solutions: ['mobile'], task: '[fake:write mobile/second-writer.md]' });
+    await start(s, { name: 'web-alone', solutions: ['web-front'], task: '[fake:write microfrontends/web-front/web-alone.md]' });
     const statusBefore = await g.git(g.mobile, 'status', '--porcelain');
 
     let byName = await rows();
@@ -158,7 +158,7 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
   it('a worktree session plus one in place is a conflict; ended sessions do not count; a detached one counts but cannot be moved', async () => {
     const { s, g } = await setup();
     const isolated = await start(s, { name: 'has-worktree', solutions: ['web-front'], worktrees: true, branch: 'PROJ-5-has-worktree' });
-    const inPlace = await start(s, { name: 'in-place', solutions: ['web-front'] });
+    const inPlace = await start(s, { name: 'in-place', solutions: ['web-front'], task: '[fake:write microfrontends/web-front/in-place.md]' });
     let web = (await rows()).get('web-front');
     expect(web).toMatchObject({ conflict: true, flag: '⚠ shared working tree' });
     expect(web?.conflictSessions.map((c) => [c.sessionId, c.isolated, c.repo])).toEqual([
@@ -169,7 +169,7 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     // A session that ended (its process failed) no longer writes: mobile has one live writer only.
     const crashed = await start(s, { name: 'crashed', solutions: ['mobile'], task: '[fake:crash]' });
     expect((await s.store.sessions.get(crashed.id))?.endedAt).not.toBeNull();
-    await start(s, { name: 'mobile-live', solutions: ['mobile'] });
+    await start(s, { name: 'mobile-live', solutions: ['mobile'], task: '[fake:write mobile/mobile-live.md]' });
     expect((await rows()).get('mobile')).toMatchObject({ conflict: false, conflictSessions: [] });
 
     // Paused and detached sessions are still open: they count. A detached one cannot be isolated (409).
@@ -225,8 +225,8 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
 
   it('closed, moved and continued sessions are not writers (a continued one counts as its successor); their in-place rows go', async () => {
     const { s } = await setup();
-    const first = await start(s, { name: 'acme-first', solutions: ['mobile'] });
-    const second = await start(s, { name: 'acme-second', solutions: ['mobile'] });
+    const first = await start(s, { name: 'acme-first', solutions: ['mobile'], task: '[fake:write mobile/acme-first.md]' });
+    const second = await start(s, { name: 'acme-second', solutions: ['mobile'], task: '[fake:write mobile/acme-second.md]' });
     expect((await rows()).get('mobile')?.conflict).toBe(true);
 
     // Closed by the developer: gone from the row; the other one alone is no conflict.
@@ -236,13 +236,13 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     expect(mobile?.branches.map((branch) => branch.owner)).toEqual(['acme-first']);
 
     // Taken over to another machine (D65 `movedTo`, even before it is marked closed): not a writer here.
-    const third = await start(s, { name: 'acme-third', solutions: ['mobile'] });
+    const third = await start(s, { name: 'acme-third', solutions: ['mobile'], task: '[fake:write mobile/acme-third.md]' });
     expect((await rows()).get('mobile')?.conflict).toBe(true);
     await s.store.sessions.update(third.id, { movedTo: { machineId: 'acme-pc', machineName: 'Acme PC', sessionId: 'remote-1', at: new Date().toISOString() } });
     expect((await rows()).get('mobile')).toMatchObject({ conflict: false });
 
     // Continued in a fresh session (D83 `continuedTo`): the old one no longer writes.
-    const fourth = await start(s, { name: 'acme-fourth', solutions: ['mobile'] });
+    const fourth = await start(s, { name: 'acme-fourth', solutions: ['mobile'], task: '[fake:write mobile/acme-fourth.md]' });
     expect((await rows()).get('mobile')?.conflict).toBe(true);
     await s.store.sessions.update(fourth.id, { continuedTo: first.id });
     mobile = (await rows()).get('mobile');
@@ -270,7 +270,7 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
   it("a removed worktree's branch row disappears, and the repo name it left in the session does not read as 'in place'", async () => {
     const { s, g } = await setup();
     const isolated = await start(s, { name: 'acme-isolated', solutions: ['web-front'], worktrees: true, branch: 'ACME-8-isolated' });
-    const other = await start(s, { name: 'acme-other', solutions: ['web-front'] });
+    const other = await start(s, { name: 'acme-other', solutions: ['web-front'], task: '[fake:write microfrontends/web-front/acme-other.md]' });
     let web = (await rows()).get('web-front');
     expect(web?.conflictSessions.map((writer) => [writer.sessionId, writer.isolated])).toEqual([
       [isolated.id, true],
@@ -292,5 +292,32 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     web = (await rows()).get('web-front');
     expect(web?.branches.map((branch) => branch.owner)).toEqual(['acme-other']);
     expect(web).toMatchObject({ conflict: false });
+  });
+
+  // Developer ruling 2026-10-14: a session writes a main checkout only while it has its own uncommitted edits there.
+  it('naming a checkout is not writing it; uncommitted edits are, committed ones are not; two with uncommitted edits conflict', async () => {
+    const { s, g } = await setup();
+    const named = await start(s, { name: 'acme-named', solutions: ['mobile'] });
+    const editor = await start(s, { name: 'acme-editor', solutions: ['mobile'], task: '[fake:write mobile/acme-notes.md]' });
+    let mobile = (await rows()).get('mobile');
+    expect(mobile).toMatchObject({ conflict: false, conflictSessions: [] });
+    expect(mobile?.branches.map((branch) => branch.sessionId)).toEqual([editor.id]);
+
+    // Its edit committed (by the developer or the agent): not a writer any more.
+    await g.git(g.mobile, 'add', '--', 'acme-notes.md');
+    await g.git(g.mobile, 'commit', '-q', '-m', 'ACME-12 notes');
+    mobile = (await rows()).get('mobile');
+    expect(mobile?.branches.map((branch) => [branch.sessionId, branch.owner])).toEqual([[null, 'idle']]);
+
+    // A new uncommitted edit makes it a writer again; the named session editing too makes two: a conflict.
+    const again = await call('POST', `/api/sessions/${editor.id}/messages`, { text: '[fake:write mobile/acme-more.md]' });
+    expect(again.statusCode).toBeLessThan(300);
+    const edits = await call('POST', `/api/sessions/${named.id}/messages`, { text: '[fake:write mobile/acme-named.md]' });
+    expect(edits.statusCode).toBeLessThan(300);
+    await until(async () => (await rows()).get('mobile')?.conflict === true, 'both sessions write mobile/ uncommitted');
+    expect((await rows()).get('mobile')?.conflictSessions.map((writer) => [writer.sessionId, writer.isolated])).toEqual([
+      [named.id, false],
+      [editor.id, false],
+    ]);
   });
 });
