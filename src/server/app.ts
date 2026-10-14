@@ -528,7 +528,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     insightsBackfill = own;
   }
-  const insights = new InsightsService({ store: options.store, backfill: insightsBackfill, accounts });
+  const insights = new InsightsService({ store: options.store, backfill: insightsBackfill, accounts, peers });
   const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights };
   await registerApiRoutes(app, apiContext);
   // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──

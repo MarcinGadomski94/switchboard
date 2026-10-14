@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { costText, filtersFromSearch, forecastText, insightsPath, percentText, ratioText, suggestionPath, trendGeometry } from '../../src/web/views/insights/insights-view.ts';
 import { matchModelOption, suggestedRule } from '../../src/web/views/settings/model-rules.ts';
+import { machinesNotice } from '../../src/web/views/insights/useInsights.ts';
 
 /** D108 · the Insights page's pure parts and the suggested rule's way into Model by task. */
 describe('D108 · Insights page helpers', () => {
@@ -56,5 +57,14 @@ describe('D108 · Insights page helpers', () => {
     expect(matchModelOption('claude-haiku-4-5', options)).toBe('haiku');
     expect(matchModelOption('opus', options)).toBe('opus');
     expect(matchModelOption('gpt-x', options)).toBeNull();
+  });
+
+  it('the merged view\'s notice', () => {
+    const here = { id: null, name: 'This machine' };
+    expect(machinesNotice({ scope: 'all', included: [here], pending: [], missing: [{ id: 'm2', name: 'Studio', reason: 'offline' }] })).toBe('This machine only — Studio not reachable');
+    expect(machinesNotice({ scope: 'all', included: [here], pending: [{ id: 'm2', name: 'Studio' }], missing: [] })).toBe('Adding Studio…');
+    expect(machinesNotice({ scope: 'all', included: [here, { id: 'm2', name: 'Studio' }], pending: [], missing: [] })).toBe('All machines: This machine, Studio');
+    expect(machinesNotice({ scope: 'all', included: [here], pending: [], missing: [] })).toBeNull();
+    expect(machinesNotice({ scope: 'local', included: [here], pending: [], missing: [] })).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ACCURACY_BUCKETS, INSIGHTS_PERIODS, type AccuracyDistribution, type InsightsAnswer, type TimeTokensRow, type TrendPoint } from '../../../core/insights.ts';
+import { ACCURACY_BUCKETS, INSIGHTS_PERIODS, type AccuracyDistribution, type InsightsAnswer, type PeriodCostRow, type TimeTokensRow, type TrendPoint } from '../../../core/insights.ts';
+import { machinesNotice, useInsights } from './useInsights.ts';
 import { CLI_LABELS, type CliProviderId } from '../../../core/cli-providers.ts';
 import type { MachinesView } from '../../../core/peers.ts';
 import { api } from '../../api/client.ts';
@@ -36,17 +37,22 @@ export function InsightsView() {
   const { search, navigate } = useRouter();
   const filters = useMemo(() => filtersFromSearch(search, new Date()), [search]);
   const query = apiQuery(filters);
-  const state = useApi(() => api.insights(query, filters.machine), [query, filters.machine]);
+  const state = useInsights(query, filters.machine);
   const machines = useApi<MachinesView | null>(() => api.machines().catch(() => null), []);
   const answer = state.data;
+  const notice = answer ? machinesNotice(answer.machines) : null;
   const set = (patch: Partial<PageFilters>): void => navigate(insightsPath({ ...filters, ...patch }), { replace: true });
-  const online = (machines.data?.machines ?? []).filter((machine) => machine.state === 'online');
 
   return (
     <section className="sb-view sb-insights" data-view="insights" data-testid="view-insights" aria-busy={state.loading || undefined}>
       <header className="sb-ins-head">
         <div className="sb-ins-title-row">
           <h1 className="sb-ins-title">Insights</h1>
+          {notice ? (
+            <span className="sb-ins-note" role="status" data-testid="insights-machines">
+              {notice}
+            </span>
+          ) : null}
           {answer && !answer.backfill.done ? (
             <span className="sb-ins-note" role="status" data-testid="insights-backfill">
               Counting older history… {answer.backfill.percent}%
@@ -75,7 +81,7 @@ export function InsightsView() {
             testId="filter-folder"
             value={filters.folder === null ? 'all' : filters.folder === '' ? 'none' : filters.folder}
             onChange={(value) => set({ folder: value === 'all' ? null : value === 'none' ? '' : value })}
-            options={[['all', 'All folders'], ...withCurrent(answer?.options.folders ?? [], filters.folder).map((f): [string, string] => (f === '' ? ['none', 'No folder'] : [f, folderName(f)]))]}
+            options={[['all', 'All folders'], ...withCurrent(answer?.options.folders ?? [], filters.folder).map((f): [string, string] => (f === '' ? ['none', 'No folder'] : [f, answer?.options.folderLabels[f] ?? folderName(f)]))]}
           />
           <Select
             label="CLI"
@@ -98,13 +104,13 @@ export function InsightsView() {
             onChange={(value) => set({ account: value === 'all' ? null : value })}
             options={[['all', 'All accounts'], ...(answer?.options.accounts ?? []).map((a): [string, string] => [a.id, a.name]), ...(filters.account && !answer?.options.accounts.some((a) => a.id === filters.account) ? [[filters.account, filters.account] as [string, string]] : [])]}
           />
-          {online.length > 0 || filters.machine ? (
+          {(machines.data?.machines.length ?? 0) > 0 || filters.machine ? (
             <Select
               label="Machine"
               testId="filter-machine"
-              value={filters.machine ?? 'local'}
-              onChange={(value) => set({ machine: value === 'local' ? null : value, folder: null, account: null })}
-              options={[['local', machines.data?.self.name ?? 'This machine'], ...online.map((m): [string, string] => [m.id, m.name])]}
+              value={filters.machine ?? 'all'}
+              onChange={(value) => set({ machine: value === 'all' ? null : value, folder: null, account: null })}
+              options={[['all', 'All machines'], ['local', `This machine${machines.data?.self.name ? ` (${machines.data.self.name})` : ''}`], ...(machines.data?.machines ?? []).map((m): [string, string] => [m.id, m.state === 'online' ? m.name : `${m.name} (offline)`])]}
             />
           ) : null}
         </div>
@@ -294,6 +300,18 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
             Edit prices
           </Link>
         </p>
+        <h3 className="sb-ins-h3">Every turn of the period</h3>
+        <div className="sb-ins-tiles">
+          <Tile label="all turns (sessions)" value={`${cost.period.lowerBound ? '≥ ' : ''}${costText(cost.period.total, cost.currency)}`} testId="tile-period-cost" />
+          {cost.period.chats > 0 ? <Tile label="chats (apart)" value={costText(cost.period.chats, cost.currency)} /> : null}
+        </div>
+        <div className="sb-ins-grid sb-ins-grid-2">
+          <PeriodCostTable title="Period cost by folder" rows={cost.period.byFolder} currency={cost.currency} testId="period-cost-folder" />
+          <PeriodCostTable title="Period cost by model" rows={cost.period.byModel} currency={cost.currency} testId="period-cost-model" />
+        </div>
+        {cost.period.lowerBound ? <p className="sb-ins-foot">≥: turns recorded before 1.20 have only a token total, priced as input (a lower bound).</p> : null}
+        {cost.period.unpricedTokens > 0 ? <p className="sb-ins-foot">{tokensText(cost.period.unpricedTokens)} tokens of models without a price row are not in these totals.</p> : null}
+        <h3 className="sb-ins-h3">Per todo</h3>
         <div className="sb-ins-tiles">
           <Tile label={`total · ${cost.priced} of ${cost.todos} todos priced`} value={costText(cost.total, cost.currency)} testId="tile-cost-total" />
           <Tile label="average per todo" value={costText(cost.average, cost.currency)} />
@@ -413,6 +431,36 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
         )}
       </Section>
     </>
+  );
+}
+
+function PeriodCostTable({ title, rows, currency, testId }: { readonly title: string; readonly rows: readonly PeriodCostRow[]; readonly currency: string; readonly testId: string }) {
+  return (
+    <div className="sb-ins-card" data-testid={testId}>
+      <h3 className="sb-ins-h3">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="sb-ins-empty">No turns.</p>
+      ) : (
+        <table className="sb-ins-table">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <th scope="row" className="sb-ins-wrap" title={row.key}>
+                  {row.label}
+                </th>
+                <td>{row.cost === null ? 'no price' : `${row.lowerBound ? '≥ ' : ''}${costText(row.cost, currency)}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

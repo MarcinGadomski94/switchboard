@@ -126,7 +126,7 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D97: search across everything (a read; normal use, on the phone too).
   ['GET', /^\/api\/search$/],
   // D108: the Insights page (a read; phones may look at it too).
-  ['GET', /^\/api\/insights$/],
+  ['GET', /^\/api\/insights(?:\/rows)?$/],
   // Plans (D99) hook: plans, all of it (ruling recorded in docs/plans.md → *Phones and paired machines*): reads, create / edit / delete,
   // items and dependencies, start / pause / resume / cancel, mode and holds, retry / mark done. A start is no more than the
   // phone's ▸ Run in new session (D76) many times; its safeguards (target branch, merge mode, green checks) hold on any device.

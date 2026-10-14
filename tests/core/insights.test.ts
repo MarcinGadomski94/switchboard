@@ -3,6 +3,7 @@ import {
   EMPTY_USAGE,
   EXAMPLE_PRICES,
   type InsightReading,
+  type InsightsRows,
   type InsightsInput,
   type InsightsQuery,
   type MergeDecisionRow,
@@ -13,6 +14,8 @@ import {
   buildInsights,
   insightsQueryString,
   median,
+  mergeMachineRows,
+  readInsightsRows,
   parseInsightsQuery,
   parsePriceTable,
   priceFor,
@@ -347,5 +350,104 @@ describe('D108 · the answer on the fixture world', () => {
       { id: 'default-claude', name: 'Work' },
       { id: 'p2', name: 'Private' },
     ]);
+  });
+});
+
+describe('D108 ruling · period cost of every turn', () => {
+  it('prices each rollup row by its model; lower bound where only totals exist; unpriced tokens apart; chats apart', () => {
+    const rows: TurnRollupRow[] = [
+      // 1,000 × 4 + 10,000 × 20 + 20,000 × 5 + 200,000 × 0.2 = 344,000 → 0.344.
+      turn({ day: '2026-10-12', sessionId: 's1', model: OPUS, turns: 1, tokens: 31_000, usage: SPLIT }),
+      // Haiku: 100 + 5,000 + 2,500 + 2,000 = 9,600 → 0.0096.
+      turn({ day: '2026-10-12', sessionId: 's2', model: HAIKU, folder: '/work/docs', turns: 1, tokens: 31_000, usage: SPLIT }),
+      // Before 1.20: 10,000 unsplit × 4 → 0.04, a lower bound.
+      turn({ day: '2026-10-13', sessionId: 's1', model: OPUS, turns: 1, tokens: 10_000, usage: { ...EMPTY_USAGE, unsplit: 10_000 } }),
+      // No price row: its 5,000 tokens are left out.
+      turn({ day: '2026-10-13', sessionId: 's2', model: 'mystery-model', folder: '/work/docs', turns: 1, tokens: 5_000, usage: { ...EMPTY_USAGE, output: 5_000 } }),
+      // A chat: 1,000 output × 20 → 0.02, apart.
+      turn({ day: '2026-10-13', sessionId: 'c1', model: OPUS, kind: 'chat', turns: 1, tokens: 1_000, usage: { ...EMPTY_USAGE, output: 1_000 } }),
+    ];
+    const period = buildInsights(input({ turns: rows })).cost.period;
+    expect(period.total).toBeCloseTo(0.3936, 10);
+    expect(period.lowerBound).toBe(true);
+    expect(period.unpricedTokens).toBe(5_000);
+    expect(period.chats).toBeCloseTo(0.02, 10);
+    expect(period.byFolder.map((r) => [r.label, Number(r.cost?.toFixed(4)), r.lowerBound, r.unpricedTokens])).toEqual([
+      ['acme', 0.384, true, 0],
+      ['docs', 0.0096, false, 5_000],
+    ]);
+    expect(period.byModel.map((r) => [r.key, r.cost === null ? null : Number(r.cost.toFixed(4)), r.lowerBound])).toEqual([
+      [OPUS, 0.384, true],
+      [HAIKU, 0.0096, false],
+      ['mystery-model', null, false],
+    ]);
+  });
+});
+
+describe('D108 ruling · merged machines', () => {
+  const IDENTITY = 'claude:dev@acme.test';
+  function rows(partial: Partial<InsightsRows>): InsightsRows {
+    return { turns: [], todos: [], plans: null, mergeDecisions: [], readings: [], accounts: [], sessionTitles: {}, accountNames: {}, ...partial };
+  }
+  const local = rows({
+    turns: [turn({ day: '2026-10-13', sessionId: 's1', model: OPUS, folder: '/work/acme', turns: 4, tokens: 40_000, durationMs: 1_000 })],
+    todos: [todo({ todoId: 't1', model: OPUS, estimateMinutes: 10, actualMs: 5 * MIN })],
+    readings: [reading('2026-10-14T11:00:00.000Z', [20, FIVE_RESET], null)],
+    accounts: [{ id: 'default-claude', cli: 'claude', name: 'Work', credits: null, onCredits: false, identity: IDENTITY }],
+    sessionTitles: { s1: 'Acme upload' },
+    accountNames: { 'default-claude': 'Work' },
+  });
+  const studio = rows({
+    // The same session id and the same folder name on the other machine: kept apart.
+    turns: [
+      turn({ day: '2026-10-13', sessionId: 's1', model: HAIKU, folder: '/Users/dev/acme', turns: 2, tokens: 4_000, durationMs: 500 }),
+      turn({ day: '2026-10-13', sessionId: 's9', model: HAIKU, folder: '/Users/dev/docs', profileId: 'p9', turns: 1, tokens: 1_000, durationMs: 100 }),
+    ],
+    todos: [todo({ todoId: 't1', model: HAIKU, estimateMinutes: 10, actualMs: 20 * MIN, folder: '/Users/dev/acme' })],
+    plans: [{ itemId: 'i1', outcome: 'merged', at: '2026-10-13T09:00:00.000Z', provider: 'claude', model: HAIKU, profileId: 'default-claude', folder: '/Users/dev/acme' }],
+    readings: [reading('2026-10-14T12:00:00.000Z', [40, FIVE_RESET], null), reading('2026-10-14T12:00:00.000Z', [5, FIVE_RESET], null, 'p9')],
+    accounts: [
+      { id: 'default-claude', cli: 'claude', name: 'Mac Studio login', credits: null, onCredits: false, identity: IDENTITY },
+      { id: 'p9', cli: 'claude', name: 'Ops', credits: null, onCredits: false, identity: 'claude:ops@acme.test' },
+    ],
+    sessionTitles: { s1: 'Docs rewrite', s9: 'Ops chores' },
+    accountNames: { 'default-claude': 'Mac Studio login', p9: 'Ops' },
+  });
+
+  it('sums both machines; same-named folders carry their machine; accounts merge by identity', () => {
+    const { rows: merged, folderLabels } = mergeMachineRows([
+      { machine: { id: null, name: 'This machine' }, rows: local },
+      { machine: { id: 'm2', name: 'Studio' }, rows: studio },
+    ]);
+    expect(merged.turns.map((t) => [t.sessionId, t.folder, t.profileId])).toEqual([
+      ['s1', '/work/acme', 'default-claude'],
+      ['r~m2~s1', '/Users/dev/acme@@m2', 'default-claude'],
+      ['r~m2~s9', '/Users/dev/docs@@m2', 'r~m2~p9'],
+    ]);
+    expect(Object.fromEntries(folderLabels)).toEqual({ '/work/acme': 'acme · This machine', '/Users/dev/acme@@m2': 'acme · Studio', '/Users/dev/docs@@m2': 'docs' });
+    expect(merged.accounts.map((a) => [a.id, a.name])).toEqual([
+      ['default-claude', 'Work'],
+      ['r~m2~p9', 'Ops (Studio)'],
+    ]);
+    expect(merged.todos.map((t) => t.todoId)).toEqual(['t1', 'r~m2~t1']);
+    expect(merged.plans?.map((p) => p.itemId)).toEqual(['r~m2~i1']);
+
+    const answer = buildInsights(input({ ...merged, turns: merged.turns, sessionTitles: new Map(Object.entries(merged.sessionTitles)), accountNames: new Map(Object.entries(merged.accountNames)), folderLabels, plans: merged.plans, mergeDecisions: [] }));
+    // 4 + 2 + 1 turns; 40k + 4k + 1k tokens; three sessions (s1 on each machine is two).
+    expect(answer.time.totals).toMatchObject({ turns: 7, tokens: 45_000, durationMs: 1_600, sessions: 3 });
+    expect(answer.time.byFolder.map((r) => r.label)).toEqual(['acme · This machine', 'acme · Studio', 'docs']);
+    expect(answer.time.bySession.map((r) => r.label)).toEqual(['Acme upload', 'Docs rewrite (Studio)', 'Ops chores (Studio)']);
+    // Estimates over both machines: 0.5 and 2.0 → median 1.25.
+    expect(answer.estimates.median).toBeCloseTo(1.25, 10);
+    expect(answer.options.folderLabels).toEqual(Object.fromEntries(folderLabels));
+    // The shared account's forecast reads both machines' readings: 20 % at 11:00 here, 40 % at 12:00 there → 20 %/h.
+    const work = answer.forecast.find((f) => f.profileId === 'default-claude');
+    expect(work?.windows[0]).toMatchObject({ readings: 2, pctPerHour: 20 });
+    expect(answer.forecast.map((f) => f.name)).toEqual(['Work', 'Ops (Studio)']);
+  });
+
+  it('reads a peer answer defensively', () => {
+    expect(readInsightsRows({ nope: true })).toBeNull();
+    expect(readInsightsRows({ turns: [], todos: [], plans: null, mergeDecisions: [], readings: [], accounts: [], sessionTitles: { a: 'A', b: 1 } })).toMatchObject({ plans: null, sessionTitles: { a: 'A' } });
   });
 });

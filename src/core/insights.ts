@@ -405,6 +405,8 @@ export interface InsightAccount {
   readonly credits: string | null;
   /** D103: the account runs on credits now. */
   readonly onCredits: boolean;
+  /** D98: the account's identity (`claude:<email>`), when known: the same identity on two machines is one account. */
+  readonly identity?: string | null;
 }
 
 /** Everything {@link buildInsights} needs. */
@@ -427,6 +429,38 @@ export interface InsightsInput {
   /** Account names (for the filter and the tables). */
   readonly accountNames: ReadonlyMap<string, string>;
   readonly backfill: InsightsBackfillState;
+  /** Folder labels where they differ from the folder's last segment (merged machines: `acme · Studio` on a collision). */
+  readonly folderLabels?: ReadonlyMap<string, string>;
+  /** Which machines the rows come from (merged view); absent = this machine only. */
+  readonly machines?: InsightsMachines;
+}
+
+/** D108 ruling (merged machines): which machines an answer covers. */
+export interface InsightsMachines {
+  /** `all` (merged) or `local`. */
+  readonly scope: 'all' | 'local';
+  /** Machines whose rows are in the answer (this one first, `id: null`). */
+  readonly included: ReadonlyArray<{ readonly id: string | null; readonly name: string }>;
+  /** Paired machines whose rows are being fetched: ask again with `peers=wait` to fill them in. */
+  readonly pending: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** Paired machines left out, and why (offline, did not answer in time, an older Switchboard, …). */
+  readonly missing: ReadonlyArray<{ readonly id: string; readonly name: string; readonly reason: string }>;
+}
+
+/**
+ * D108 ruling (merged machines): what one machine contributes to a merged view: its rows of
+ * the period (`GET /api/insights/rows`, the peer API), never computed numbers, so medians,
+ * buckets and the forecast are exact over both machines.
+ */
+export interface InsightsRows {
+  readonly turns: readonly TurnRollupRow[];
+  readonly todos: readonly TodoActualRow[];
+  readonly plans: readonly PlanOutcomeRow[] | null;
+  readonly mergeDecisions: readonly MergeDecisionRow[];
+  readonly readings: readonly InsightReading[];
+  readonly accounts: readonly InsightAccount[];
+  readonly sessionTitles: Readonly<Record<string, string>>;
+  readonly accountNames: Readonly<Record<string, string>>;
 }
 
 // ── The answer ─────────────────────────────────────────────────────────────────
@@ -539,6 +573,32 @@ export interface CostSection {
   readonly byModel: ReadonlyArray<{ readonly model: string; readonly label: string; readonly todos: number; readonly priced: number; readonly total: number; readonly median: number | null }>;
   /** The most expensive runs, at most {@link TOP_COSTS}. */
   readonly top: readonly TodoCost[];
+  /** D108 ruling: every turn of the period priced (sessions; chats apart), from the rollup's token split. */
+  readonly period: PeriodCost;
+}
+
+/** A group's period cost. */
+export interface PeriodCostRow {
+  readonly key: string;
+  readonly label: string;
+  /** `null` when none of its tokens has a price row. */
+  readonly cost: number | null;
+  /** Part of its tokens has no split (turns before 1.20): the cost is a lower bound. */
+  readonly lowerBound: boolean;
+  /** Tokens (D78's) of its turns whose model has no price row. */
+  readonly unpricedTokens: number;
+}
+
+/** D108 ruling: the period's cost of every turn. */
+export interface PeriodCost {
+  readonly total: number;
+  readonly lowerBound: boolean;
+  /** Tokens (D78's) of turns whose model has no price row (not in the total). */
+  readonly unpricedTokens: number;
+  readonly byFolder: readonly PeriodCostRow[];
+  readonly byModel: readonly PeriodCostRow[];
+  /** D106: chats' turns priced apart (never in the total). */
+  readonly chats: number;
 }
 
 /** One usage window's forecast. */
@@ -596,8 +656,12 @@ export interface InsightsAnswer {
     readonly clis: readonly string[];
     readonly models: readonly string[];
     readonly accounts: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+    /** A folder key's label where it is not the last segment of the path (merged machines). */
+    readonly folderLabels: Readonly<Record<string, string>>;
   };
   readonly backfill: InsightsBackfillState;
+  /** Which machines the answer covers (D108 ruling: the merged view by default). */
+  readonly machines: InsightsMachines;
   readonly time: {
     readonly totals: { readonly turns: number; readonly tokens: number; readonly durationMs: number; readonly tokensPerTurn: number | null; readonly sessions: number };
     readonly byFolder: readonly TimeTokensRow[];
@@ -870,6 +934,7 @@ function distinct(values: Iterable<string>): string[] {
 /** D108: the page's answer from the rows (see the module comment and `docs/insights.md`). */
 export function buildInsights(input: InsightsInput): InsightsAnswer {
   const { query, prices } = input;
+  const labelFolder = (key: string): string => input.folderLabels?.get(key) ?? folderLabel(key);
   const periodTurns = input.turns.filter((row) => row.day >= query.from && row.day <= query.to);
   const periodTodos = input.todos.filter((todo) => inPeriod(todo.completedAt, query));
   const periodPlans = input.plans === null ? null : input.plans.filter((row) => inPeriod(row.at, query));
@@ -881,6 +946,7 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
     clis: distinct(dims.map((d) => d.provider).filter((p) => p !== '')),
     models: distinct(dims.map((d) => d.model)),
     accounts: distinct(dims.map((d) => d.profileId).filter((p) => p !== '')).map((id) => ({ id, name: input.accountNames.get(id) ?? id })),
+    folderLabels: Object.fromEntries([...(input.folderLabels ?? new Map<string, string>())].filter(([key]) => dims.some((d) => d.folder === key))),
   };
 
   const turns = periodTurns.filter((row) => matchesFilters(row, query));
@@ -905,7 +971,7 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
   const chats = chatTurns.reduce((acc, row) => ({ turns: acc.turns + row.turns, tokens: acc.tokens + row.tokens, durationMs: acc.durationMs + row.durationMs }), { turns: 0, tokens: 0, durationMs: 0 });
 
   // 2 · Estimates.
-  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, folderLabel) };
+  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, labelFolder) };
 
   // 3 · Outcomes and rework, per model.
   const plans = periodPlans?.filter((row) => matchesFilters(row, query)) ?? null;
@@ -959,6 +1025,7 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
       return { model, label: modelLabel(model), todos: mine.length, priced: mp.length, total: mp.reduce((s, c) => s + c.cost, 0), median: median(mp.map((c) => c.cost)) };
     }),
     top: [...priced].sort((a, b) => b.cost - a.cost || a.todoId.localeCompare(b.todoId)).slice(0, TOP_COSTS),
+    period: periodCost(sessionTurns, chatTurns, prices, labelFolder),
   };
 
   // 5 · Forecast (the account filter applies; the period does not: it is about now).
@@ -978,9 +1045,10 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
     query,
     options,
     backfill: input.backfill,
+    machines: input.machines ?? { scope: 'local', included: [{ id: null, name: 'This machine' }], pending: [], missing: [] },
     time: {
       totals: { ...total, tokensPerTurn: total.turns > 0 ? total.tokens / total.turns : null, sessions: new Set(sessionTurns.map((r) => r.sessionId)).size },
-      byFolder: groupTurns(sessionTurns, (r) => r.folder, folderLabel),
+      byFolder: groupTurns(sessionTurns, (r) => r.folder, labelFolder),
       bySession: groupTurns(sessionTurns, (r) => r.sessionId, (id) => input.sessionTitles.get(id) ?? 'deleted session').slice(0, TOP_SESSIONS),
       byModel: groupTurns(sessionTurns, (r) => r.model, modelLabel),
       trend,
@@ -1003,4 +1071,161 @@ export function resultInsightFields(raw: unknown): { readonly usage?: TokenSplit
   const usage = resultTokenSplit(raw);
   const model = resultModel(raw);
   return { ...(usage ? { usage } : {}), ...(model ? { model } : {}) };
+}
+
+// ── Period cost (D108 ruling) ──────────────────────────────────────────────────
+
+/**
+ * D108 ruling: every turn of the period priced: each rollup row's split × its model's price
+ * row (`usageCost`; tokens without a split at the input rate, marked as a lower bound), summed
+ * per folder, per model and in total. Rows whose model has no price row add their tokens to
+ * `unpricedTokens` instead. Chats (D106) are priced apart.
+ */
+export function periodCost(sessionTurns: readonly TurnRollupRow[], chatTurns: readonly TurnRollupRow[], prices: PriceTable, labelFolder: (key: string) => string = folderLabel): PeriodCost {
+  const group = (keyOf: (row: TurnRollupRow) => string, labelOf: (key: string) => string): PeriodCostRow[] => {
+    const acc = new Map<string, { cost: number | null; lowerBound: boolean; unpricedTokens: number }>();
+    for (const row of sessionTurns) {
+      const key = keyOf(row);
+      const entry = acc.get(key) ?? { cost: null, lowerBound: false, unpricedTokens: 0 };
+      const price = priceFor(prices, row.model);
+      if (price) {
+        entry.cost = (entry.cost ?? 0) + usageCost(row.usage, price);
+        if (row.usage.unsplit > 0) entry.lowerBound = true;
+      } else {
+        entry.unpricedTokens += row.tokens;
+      }
+      acc.set(key, entry);
+    }
+    return [...acc.entries()].map(([key, e]) => ({ key, label: labelOf(key), ...e })).sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1) || a.key.localeCompare(b.key));
+  };
+  const byModel = group((r) => r.model, modelLabel);
+  let chats = 0;
+  for (const row of chatTurns) {
+    const price = priceFor(prices, row.model);
+    if (price) chats += usageCost(row.usage, price);
+  }
+  return {
+    total: byModel.reduce((sum, row) => sum + (row.cost ?? 0), 0),
+    lowerBound: byModel.some((row) => row.lowerBound),
+    unpricedTokens: byModel.reduce((sum, row) => sum + row.unpricedTokens, 0),
+    byFolder: group((r) => r.folder, labelFolder),
+    byModel,
+    chats,
+  };
+}
+
+// ── Merged machines (D108 ruling) ──────────────────────────────────────────────
+
+/** One machine's rows for {@link mergeMachineRows}: `id` `null` = this machine. */
+export interface MachineRows {
+  readonly machine: { readonly id: string | null; readonly name: string };
+  readonly rows: InsightsRows;
+}
+
+/** A paired machine's id in this machine's namespace (sessions, todos, accounts): `r~<machine>~<id>`, as D48's proxy does. */
+export function remoteId(machineId: string, id: string): string {
+  return `r~${machineId}~${id}`;
+}
+
+/** A paired machine's folder key: its path and its machine (folders are per machine). */
+export function remoteFolder(machineId: string, folder: string): string {
+  return folder === '' ? '' : `${folder}@@${machineId}`;
+}
+
+/** The path of a folder key (a paired machine's keys carry `@@<machine>`). */
+export function folderPath(key: string): string {
+  const at = key.lastIndexOf('@@');
+  return at < 0 ? key : key.slice(0, at);
+}
+
+/**
+ * D108 ruling: one view over this machine's and the paired machines' rows. A paired machine's
+ * sessions, todos and plan items are namespaced (`r~<machine>~<id>`); its folders stay its own
+ * (`<path>@@<machine>`) and, where two folders of the view share a name, each is labelled with
+ * its machine (`acme · Studio`); its accounts merge with this machine's by identity (D98) —
+ * the same account is one account (its readings together, the forecast over both) — and an
+ * account only it has is `<name> (<machine>)`. Models and CLIs are the same everywhere.
+ */
+export function mergeMachineRows(parts: readonly MachineRows[]): { readonly rows: InsightsRows; readonly folderLabels: Map<string, string> } {
+  const turns: TurnRollupRow[] = [];
+  const todos: TodoActualRow[] = [];
+  let plans: PlanOutcomeRow[] | null = null;
+  const mergeDecisions: MergeDecisionRow[] = [];
+  const readings: InsightReading[] = [];
+  const accounts: InsightAccount[] = [];
+  const sessionTitles: Record<string, string> = {};
+  const accountNames: Record<string, string> = {};
+  const folderMachine = new Map<string, string>();
+  // Identity → the account id the view uses (the first machine's that has it; this machine comes first).
+  const byIdentity = new Map<string, string>();
+  for (const { machine, rows } of parts) {
+    const local = machine.id === null;
+    const sid = (id: string): string => (local ? id : remoteId(machine.id as string, id));
+    const folder = (key: string): string => {
+      const out = local ? key : remoteFolder(machine.id as string, key);
+      if (out !== '') folderMachine.set(out, machine.name);
+      return out;
+    };
+    const accountMap = new Map<string, string>();
+    for (const account of rows.accounts) {
+      const known = account.identity ? byIdentity.get(account.identity) : undefined;
+      if (known !== undefined) {
+        accountMap.set(account.id, known);
+        continue;
+      }
+      const id = local ? account.id : remoteId(machine.id as string, account.id);
+      accountMap.set(account.id, id);
+      if (account.identity) byIdentity.set(account.identity, id);
+      const name = local ? account.name : `${account.name} (${machine.name})`;
+      accounts.push({ ...account, id, name });
+      accountNames[id] = name;
+    }
+    for (const [id, name] of Object.entries(rows.accountNames)) {
+      const mapped = accountMap.get(id) ?? (local ? id : remoteId(machine.id as string, id));
+      accountNames[mapped] ??= local ? name : `${name} (${machine.name})`;
+    }
+    const profile = (id: string): string => (id === '' ? '' : (accountMap.get(id) ?? (local ? id : remoteId(machine.id as string, id))));
+    for (const row of rows.turns) turns.push({ ...row, sessionId: sid(row.sessionId), folder: folder(row.folder), profileId: profile(row.profileId) });
+    for (const row of rows.todos) todos.push({ ...row, todoId: sid(row.todoId), sessionId: sid(row.sessionId), runSessionId: row.runSessionId === null ? null : sid(row.runSessionId), folder: folder(row.folder), profileId: profile(row.profileId) });
+    if (rows.plans) plans = [...(plans ?? []), ...rows.plans.map((row) => ({ ...row, itemId: sid(row.itemId), folder: folder(row.folder), profileId: profile(row.profileId) }))];
+    for (const row of rows.mergeDecisions) mergeDecisions.push({ ...row, itemId: sid(row.itemId), folder: folder(row.folder), profileId: profile(row.profileId) });
+    for (const row of rows.readings) readings.push({ ...row, profileId: profile(row.profileId) });
+    for (const [id, title] of Object.entries(rows.sessionTitles)) sessionTitles[sid(id)] = local ? title : `${title} (${machine.name})`;
+  }
+  // Labels: the folder's last segment, with its machine where two folders of the view share it.
+  const base = new Map<string, string[]>();
+  for (const key of folderMachine.keys()) base.set(folderLabel(folderPath(key)), [...(base.get(folderLabel(folderPath(key))) ?? []), key]);
+  const folderLabels = new Map<string, string>();
+  for (const [label, keys] of base) {
+    for (const key of keys) {
+      if (keys.length > 1) folderLabels.set(key, `${label} · ${folderMachine.get(key) ?? ''}`);
+      else if (key !== folderPath(key)) folderLabels.set(key, label);
+    }
+  }
+  readings.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+  return { rows: { turns, todos, plans, mergeDecisions, readings, accounts, sessionTitles, accountNames }, folderLabels };
+}
+
+/** Reads a paired machine's rows answer defensively; `null` when it is not one. */
+export function readInsightsRows(value: unknown): InsightsRows | null {
+  if (!isRecord(value)) return null;
+  const list = (key: string): unknown[] | null => (Array.isArray(value[key]) ? (value[key] as unknown[]) : null);
+  const turns = list('turns');
+  const todos = list('todos');
+  const decisions = list('mergeDecisions');
+  const readings = list('readings');
+  const accounts = list('accounts');
+  if (!turns || !todos || !decisions || !readings || !accounts) return null;
+  const plans = value['plans'] === null ? null : list('plans');
+  const record = (key: string): Record<string, string> => (isRecord(value[key]) ? Object.fromEntries(Object.entries(value[key] as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string')) : {});
+  return {
+    turns: turns.filter(isRecord) as unknown as TurnRollupRow[],
+    todos: todos.filter(isRecord) as unknown as TodoActualRow[],
+    plans: plans === null ? null : (plans.filter(isRecord) as unknown as PlanOutcomeRow[]),
+    mergeDecisions: decisions.filter(isRecord) as unknown as MergeDecisionRow[],
+    readings: readings.filter(isRecord) as unknown as InsightReading[],
+    accounts: accounts.filter(isRecord) as unknown as InsightAccount[],
+    sessionTitles: record('sessionTitles'),
+    accountNames: record('accountNames'),
+  };
 }

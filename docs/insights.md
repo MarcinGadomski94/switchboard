@@ -10,7 +10,7 @@ One row above the sections; they scope every section and live in the address (`?
 
 - **Period**: Last 7 / 30 / 90 days (whole **UTC** days, today included) or a custom range (`from`–`to`, both included, at most 366 days). A turn belongs to the UTC day its `result` event was written; a todo to the UTC day it was completed; a Plans outcome / Merge-step decision to the day it ended.
 - **Folder**: the session's root (`sessions.root`), or "No folder". **CLI**: the session's CLI. **Model**: the model key (below). **Account**: the account profile the session ran on (a session without one: its CLI's built-in Default).
-- **Machine** (shown only with paired machines): which machine's Insights to read. Each machine computes its own; the page shows one machine at a time through the peer proxy (`/api/machines/{id}/api/insights`). There is no merged "both machines" view (medians and distributions cannot be merged from two answers; see *Open questions*).
+- **Machine** (shown only with paired machines): **All machines** (the default: merged, *Merged machines* below), **This machine**, or one paired machine (its own Insights through the peer proxy, `/api/machines/{id}/api/insights`).
 - The filter lists offer what the period contains.
 
 **Chats (D106)** are never mixed in: their turns are counted apart (a line under *Time and tokens*). Todos and plan items are not chats by construction.
@@ -58,7 +58,9 @@ Not used: D76's "discarded" runs (gone with review cards), tool errors, error re
 
 ## 4 · Cost per todo run
 
-Each completed todo's tokens (in the period, filtered) priced with **Settings → Notifications & usage → Prices (Insights)** (`insights.prices`, `docs/settings.md`).
+**Every turn of the period** (ruling 2026-10-14): each rollup row (sessions; chats priced apart, a tile) × its model's price row: `usageCost` of its split (input, output, cache writes, cache reads; tokens without a split, turns before 1.20, at the input rate, the group marked `≥`). Summed **per folder**, **per model** and in **total**; the D78 tokens of models without a price row are counted apart ("n tokens of models without a price row are not in these totals"). It follows the merged view and every filter.
+
+**Per todo:** each completed todo's tokens (in the period, filtered) priced with **Settings → Notifications & usage → Prices (Insights)** (`insights.prices`, `docs/settings.md`).
 
 - **A todo's tokens by kind** = the `usage` of the turns D78 counts for it (the working session's turns that ended during its in-progress spans), accumulated per span like `actual_tokens` (`session_todos.actual_usage`, copied to `todo_actuals.usage` at completion).
 - **Price row** = the first row whose `match` text the model key contains (case-insensitive). No row → the todo is *not priced* (counted, shown as `—`).
@@ -87,6 +89,17 @@ Rules for D82's *Model by task* worth trying. Completed todos (all filters but t
 
 Per group, the cheapest such A against the most expensive B. The text names the evidence ("claude-haiku-4-5 finished 3 low-priority todos estimated ≤ 30 min with 0 reopened, at 1/36 the cost of claude-opus-5-5 (3 todos, 1 reopened)"). **Open in Model by task…** opens Settings → Sessions with the rule (priority, estimate, CLI, model) added to the editor **unsaved**; the reported model is offered as the CLI's own value when one matches (`claude-haiku-4-5` → `haiku`). Nothing is ever applied by itself.
 
+## Merged machines
+
+Ruling 2026-10-14: the default view is **All machines**, one view over this machine and every paired machine (D48).
+
+- **What travels: rows, not numbers.** Each machine answers `GET /api/insights/rows?from=&to=` (peer API) with its rows of those days: rollup rows, completed todos with their reopen counts, Plans outcomes (or `null`), Merge-step decisions, the last 24 h of usage readings, its Claude Code accounts with their D98 identity and D103 credit line, session titles and account names. The merged answer is computed from all rows together, so medians, buckets, suggestions and the forecast are exact.
+- **Pulled when the page asks** (not a D98-style background exchange): nothing travels unless the page is open, and an older or away machine simply answers nothing. Each machine's rows are cached **60 s** per period.
+- **Never blocking:** the page's first request (`peers=cached`) answers at once with this machine's rows and any paired machine's fresh copy; a machine without one is listed as *pending* ("Adding Studio…") and fetched behind. The page then asks again with `peers=wait` (each machine bounded by 2.5 s) and fills it in.
+- **Not reachable:** an offline machine, one that does not answer in time or an older Switchboard (no rows route) is left out, with the notice **"This machine only — Studio not reachable"** (or "Studio not reachable (not included)" with other machines in). An offline machine is left out even when a recent copy is cached.
+- **Namespaces:** a paired machine's sessions, todos and plan items are `r~<machine>~<id>` (as D48's proxy names them), its session titles get "(Studio)". **Folders are per machine** (`<path>@@<machine>`): where two folders of the view share a name, each is labelled with its machine ("acme · This machine", "acme · Studio"). **Accounts merge by identity** (D98: the same Claude Code email is one account; its readings from both machines feed one forecast); an account only one machine has is "<name> (<machine>)". Models and CLIs are the same everywhere.
+- A paired machine's own request (`GET /api/insights` over the peer API) always answers that machine alone (never fans out).
+
 ## Rollup and backfill
 
 So the page never scans events, migration 0045 adds `insight_turns_daily`: one row per UTC day × session × CLI × model × account (folder and kind alongside) with turns, error turns, tokens, the split (input, output, cache write, cache read, unsplit), duration, reverts and Redos.
@@ -114,6 +127,18 @@ So the page never scans events, migration 0045 adds `insight_turns_daily`: one r
 
 Answers are 10–15 KB. The acceptance bar (the page in < 500 ms on the bench world) holds with a wide margin.
 
+Merged machines (`node tools/bench/insights-peers.ts`: two paired Switchboard processes on loopback, each with ≈5,400 rollup rows over 90 days and 400 completed todos; `period=90d&machine=all`):
+
+| | time |
+|---|---|
+| peer reachable · the page's first request (this machine, the peer pending) | 53 ms |
+| peer reachable · the fill-in (the peer's rows pulled, 54,000 turns merged) | 84 ms |
+| peer reachable · recomputed with the peer's cached rows | p50 35 ms · p95 39 ms |
+| this machine only · recomputed | p50 26 ms · p95 27 ms |
+| peer slow (its process stopped with SIGSTOP) · first request | p50 9 ms · p95 9.5 ms (30d) |
+| peer slow · fill-in | 2.4 s, then "did not answer in time" (the page already shows this machine) |
+| peer offline · `peers=wait` | p50 26 ms · p95 31 ms, "reconnecting" |
+
 ## The page
 
 `src/web/views/insights/`: one row of filters, then six sections. No chart library: the trend is an inline SVG line (one series, 2 px, crosshair and tooltip, keyboard ← →, a *Table* with every value), the accuracy buckets four HTML bars each labelled with its count, the per-group tables carry a thin bar, the forecast a meter (now solid, the projection hatched). One series colour (`--ins-series`, the dataviz reference palette's dark slot 1, validated against the page's surface); everything else is the app's tokens; status amber only with words ("at this pace … is full …", "€ on credits"). The app is dark only. Responsive (D74): cards 2 → 1 columns below 1024 px, the filters a two-column grid on phones, wide tables scroll inside their card; checked at 360 / 768 / 1366 / 1920 (`tests/e2e/insights.spec.ts`; screenshots `docs/visual/insights-*.png`).
@@ -125,6 +150,8 @@ Devices (D73) may read it; the Machine filter appears only with paired machines.
 - `tests/core/insights.test.ts`: a hand-computed fixture world (tokens, times, estimate buckets and medians, outcomes, costs, the forecast, the suggestion, filters).
 - `tests/server/insights/rollup.test.ts`: the rollup as turns end, the backfill (bounded, resumable, never twice), what a completed todo records (split, model, priority, reopens), migration 0045.
 - `tests/server/api/insights.test.ts`: the route, its 422s, prices from Settings.
+- `tests/core/insights.test.ts` → *merged machines*, *period cost*: two fixture machines (sums, same-named folders, identity-merged accounts, the forecast over both) and exact period totals.
+- `tests/server/insights/peers.test.ts`: a scripted paired machine (pending then filled in, the 60 s cache, offline, older, too slow); `tests/server/peers/insights.test.ts`: two real paired processes.
 - `tests/web/insights.test.ts`: the page's helpers, the suggested rule into Model by task.
 - `tests/e2e/insights.spec.ts`: the page with filters, a suggestion, prices, at 360 / 768 / 1366 / 1920.
 - Route classification: `tests/server/devices/units.test.ts`, `tests/server/peers/units.test.ts`.

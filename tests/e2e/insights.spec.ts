@@ -88,6 +88,9 @@ test('every section renders the seeded numbers; the filters scope them and live 
   // Cost: example prices, marked; 3 × $0.344 + 3 × $0.0096 = $1.06.
   await expect(page.getByTestId('cost-prices')).toContainText('Example prices — edit in Settings');
   await expect(page.getByTestId('tile-cost-total').locator('.sb-ins-tile-value')).toHaveText('$1.06');
+  // Every turn priced: Opus 4 × (100 × 4 + 9,900 × 20 + 20,000 × 0.2) + Haiku 2 × (100 × 0.1 + 1,900 × 0.5 + 20,000 × 0.01) = 0.8096 + 0.00232.
+  await expect(page.getByTestId('tile-period-cost').locator('.sb-ins-tile-value')).toHaveText('$0.81');
+  await expect(page.getByTestId('period-cost-folder').locator('tbody tr')).toHaveText([/acme\s*\$0\.81/, /docs\s*\$0\.0023/]);
   await expect(page.getByTestId('cost-top').locator('tbody tr').first()).toContainText('$0.34');
   // Forecast: 20 %/h, 40 % now, reset in 2 h → ~80 % by the reset.
   await expect(page.getByTestId('forecast-five_hour')).toHaveAttribute('data-verdict', 'holds');
