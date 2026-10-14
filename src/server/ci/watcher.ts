@@ -52,6 +52,8 @@ export interface PrWatcherOptions {
   /** D30: reads the worktree's PR again so a merged, clean one raises the "PR merged" item with Remove worktree. */
   readonly cleanup?: (worktreeId: string) => Promise<void>;
   readonly now?: () => number;
+  /** Tests: read every PR again after this many ms instead of the settings' minutes (`SWITCHBOARD_CI_POLL_MS`). */
+  readonly pollMs?: number;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -64,9 +66,19 @@ export const DEFAULT_CI_TICK_MS = 30_000;
  * both the tick and the first tick's delay (test servers shorten them); otherwise the defaults.
  */
 export function ciTiming(env: Readonly<Record<string, string | undefined>> = process.env): { readonly intervalMs?: number; readonly initialDelayMs?: number } {
-  const raw = env['SWITCHBOARD_CI_TICK_MS']?.trim() ?? '';
-  const ms = /^\d+$/.test(raw) ? Number(raw) : NaN;
-  return Number.isFinite(ms) && ms >= 200 ? { intervalMs: ms, initialDelayMs: ms } : {};
+  const ms = envMs(env, 'SWITCHBOARD_CI_TICK_MS');
+  return ms !== null ? { intervalMs: ms, initialDelayMs: ms } : {};
+}
+
+/** Test servers: `SWITCHBOARD_CI_POLL_MS` (whole ms, ≥ 200) replaces the settings' poll minutes; `null` = the settings. */
+export function ciPollMs(env: Readonly<Record<string, string | undefined>> = process.env): number | null {
+  return envMs(env, 'SWITCHBOARD_CI_POLL_MS');
+}
+
+function envMs(env: Readonly<Record<string, string | undefined>>, name: string): number | null {
+  const raw = env[name]?.trim() ?? '';
+  const ms = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isFinite(ms) && ms >= 200 ? ms : null;
 }
 
 /** A worktree without a known PR is asked at most this often at a turn's end (the agent may have opened one). */
@@ -117,6 +129,7 @@ export class PrWatcher {
   readonly #notices: CiNotices;
   readonly #cleanup: ((worktreeId: string) => Promise<void>) | null;
   readonly #now: () => number;
+  readonly #pollMs: number | null;
   readonly #onError: (error: unknown) => void;
   /** One check per worktree at a time. */
   readonly #running = new Map<string, Promise<void>>();
@@ -139,6 +152,7 @@ export class PrWatcher {
     this.#notices = options.notices;
     this.#cleanup = options.cleanup ?? null;
     this.#now = options.now ?? Date.now;
+    this.#pollMs = options.pollMs ?? null;
     this.#onError = options.onError ?? ((error) => console.error('switchboard ci:', error));
   }
 
@@ -295,6 +309,7 @@ export class PrWatcher {
     if (previous && fresh) await this.#notices.closeCiNotices(worktreeId, 'replaced');
     const ready = prReadyToMerge(pr);
     const minutes = pr.checks.state === 'pending' ? settings['ci.pendingPollMinutes'] : settings['ci.idlePollMinutes'];
+    const waitMs = this.#pollMs ?? minutes * 60_000;
     let row = await this.#store.prWatch.upsert(worktreeId, {
       sessionId: worktree.sessionId,
       prNumber: pr.number,
@@ -306,7 +321,7 @@ export class PrWatcher {
       review: pr.review,
       ready,
       checkedAt: new Date(now).toISOString(),
-      nextAt: pr.state === 'OPEN' ? new Date(now + minutes * 60_000).toISOString() : null,
+      nextAt: pr.state === 'OPEN' ? new Date(now + waitMs).toISOString() : null,
       ...(fresh ? { attempts: 0, failureSha: null, signature: null, stopped: null } : {}),
     });
     if (pr.state !== 'OPEN') {

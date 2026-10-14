@@ -59,7 +59,7 @@ import { WorktreeManager } from './worktrees/manager.ts';
 import { installPlans } from './plans/install.ts';
 import type { PlanService } from './plans/service.ts';
 import { CiGh } from './ci/gh.ts';
-import { PrWatcher } from './ci/watcher.ts';
+import { PrWatcher, ciPollMs } from './ci/watcher.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -618,6 +618,8 @@ export function createPrWatcher(config: ServerConfig, store: Store, bus: HubBus,
     cleanup: async (worktreeId) => {
       await worktrees.checkPullRequest(worktreeId);
     },
+    // Test servers shorten the reads (`SWITCHBOARD_CI_POLL_MS`, docs/configuration.md).
+    ...(ciPollMs() !== null ? { pollMs: ciPollMs() as number } : {}),
   });
 }
 
