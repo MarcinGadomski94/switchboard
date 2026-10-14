@@ -252,6 +252,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'update-available': 'Update available',
   // D102: a plan item waits for the developer's Merge.
   'plan-ready-to-merge': 'Ready to merge',
+  // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
+  'memory-proposals': 'Memory',
   // D109: the PR watcher.
   'ci-failing': 'CI keeps failing',
   'ci-ready': 'Ready to merge',

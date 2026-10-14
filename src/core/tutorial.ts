@@ -16,7 +16,8 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
   // Team (D100) hook: `team` (docs/team-removal.md). Plans (D99) hook: `plans` (docs/plans-removal.md).
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' | 'plans' }
+  // Project memory (D107) hook: `memory` (docs/memory-removal.md).
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' | 'plans' | 'memory' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -85,7 +86,7 @@ const V1_18 = '1.18.0';
 /** The version D106 (chats) ships in. */
 const V1_19 = '1.19.0';
 
-/** The version D109 (the CI / pull-request feedback loop, importing issues as todos) ships in. */
+/** The version D107 (project memory, experimental) and D109 (the CI / pull-request feedback loop, importing issues as todos) ship in. */
 const V1_20 = '1.20.0';
 
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
@@ -789,6 +790,33 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['new-chat'],
         drawer: true,
         missing: 'Start one from ⌘K → New chat, or + New chat on the CHATS header in the sidebar.',
+      },
+    ],
+  },
+  // Project memory (D107) hook: its What's-new tour (docs/memory-removal.md).
+  {
+    id: 'memory',
+    decision: 'D107',
+    version: V1_20,
+    title: 'Project memory (experimental)',
+    steps: [
+      {
+        id: 'switch',
+        title: 'Project memory (experimental)',
+        what: 'Agents can propose durable facts about a project (build commands, gotchas, decisions, where things live). Nothing reaches a session until you approve it; approved entries go to every new or resumed session in that folder. It is off by default.',
+        todo: ['Turn Project memory on here.', 'Open Memory in the sidebar.'],
+        anchors: ['experimental-memory'],
+        route: { view: 'settings', section: 'experimental' },
+        missing: 'Project memory lives in Settings → Experimental. ',
+      },
+      {
+        id: 'review',
+        title: 'Review what agents propose',
+        what: "Proposals wait in the review queue of their folder, each linked to the session that made it, and the Inbox tells you when there are some. Approve one as it is, Edit… it first (your edit is what sessions get) or Reject it. You can add, pin, edit and delete entries yourself too.",
+        todo: ['Pick a folder.', 'Approve, Edit… or Reject each proposal.', 'Press + Add entry to write one yourself; ☆ pins it first.'],
+        anchors: ['memory-queue', 'memory-folder'],
+        route: { view: 'memory' },
+        missing: 'Switch Project memory on in Settings → Experimental, then open Memory in the sidebar. ',
       },
     ],
   },

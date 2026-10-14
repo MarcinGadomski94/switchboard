@@ -88,14 +88,17 @@ export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPr
 /** D102: a plan's "Ready to merge" item's Open plan: goes to the plan (`item.route`) without closing the item. */
 export const OPEN_PLAN = 'open-plan';
 
+/** Project memory (D107) hook: a folder's "N memory proposals" item's Review goes to the Memory page at it (docs/memory-removal.md). */
+export const OPEN_MEMORY = 'open-memory';
+
 /** D109: the PR watcher's items' links: Open session (the item's session) and Open PR (the PR on GitHub). */
 export const OPEN_SESSION_ACTION = 'open-session';
 export const OPEN_PR_ACTION = 'open-pr';
 
-/** D102: the route an action goes to without calling the server (Open plan; D109: Open session), else `null`. */
+/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review; D109: Open session), else `null`. */
 export function openRoute(item: InboxItem, actionId: string): string | null {
   if (item.kind !== 'system') return null;
-  if (actionId === OPEN_PLAN) return item.route ?? null;
+  if (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) return item.route ?? null;
   if (actionId === OPEN_SESSION_ACTION && item.sessionId) return `/sessions/${encodeURIComponent(item.sessionId)}`;
   return null;
 }

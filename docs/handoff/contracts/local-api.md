@@ -1817,6 +1817,42 @@ POST /api/sessions
 → 201 { "id": "9a2b…", "continuedFrom": { "sessionId": "7cf6…", "title": "How should we split the billing module?" }, "…": "…" }
 ```
 
+## Project memory (D107, 2026-10-14, additive, experimental)
+Developer decision D107 (`docs/decisions.md`; details `docs/memory.md`; removal `docs/memory-removal.md`). Types in `src/core/memory.ts` (`MemoryState`, `MemoryEntry`, `MemoryScope`, `MemorySettings`, `MemoryChanged`). Data in the separate `<dataDir>/memory.db` (no migration in the main database). **Off by default** (setting `experimental.memory`, `PUT /api/settings`): while off only `GET /api/memory/state` answers; every other route below is 404 `memory-off`; with a broken `memory.db` they are 503 `memory-unavailable`. Errors are `{ error, message }` (+ `errors: [{ field, message }]` for a 422 on a field).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/memory/state | | 200 `MemoryState` `{ enabled, available, problem }` (always) |
+| GET | /api/memory/scopes | | 200 `MemoryScope[]` `{ scope, label, saved, approved, proposed }` (the saved folders, then other folders with entries) |
+| GET | /api/memory/entries | `?scope=` (a folder; none = all), `?status=` (`proposed` \| `approved` \| `rejected`) | 200 `MemoryEntry[]` (approved in block order, then proposed oldest first, then rejected newest first) |
+| POST | /api/memory/entries | `{ scope, title, text, tags?, pinned? }` | 201 `MemoryEntry` (the developer's: `approved`) · 422 |
+| PUT | /api/memory/entries/{id} | any of `{ title, text, tags, pinned }` | 200 `MemoryEntry` (a proposal stays proposed) · 404 · 422 |
+| DELETE | /api/memory/entries/{id} | | 204 · 404 |
+| POST | /api/memory/entries/{id}/approve | any of `{ title, text, tags, pinned }` (the edit is what is approved) | 200 `MemoryEntry` · 404 · 409 `not-proposed` (already approved) · 422 |
+| POST | /api/memory/entries/{id}/reject | | 200 `MemoryEntry` · 404 · 409 `not-proposed` |
+| GET · PUT | /api/memory/settings | PUT `{ cap }` (500–20,000) | 200 `MemorySettings` `{ cap }` (default 4,000) · 422 |
+
+- **`MemoryEntry`**: `{ id, scope, title, text, tags, authorKind: agent | developer, authorSessionId, authorLabel, status: proposed | approved | rejected, pinned, createdAt, updatedAt, decidedAt, decidedBy: 'developer' | null, proposedTitle, proposedText }` (`proposed*`: the agent's own words when the developer changed them, else `null`).
+- **Agent routes** (the `switchboard` MCP helper, agent token; the caller session's folder; 404 `memory-off` while off, 404 `no-folder` for a chat or a session without a folder): `GET /agent/v1/memory` → `{ scope, label, entries: MemoryEntry[] }` (**approved only**; also the helper's probe), `POST /agent/v1/memory` `{ title, text, tags? }` → 201 `MemoryEntry` (**always `proposed`**) · 409 `duplicate` (a near-identical title in the folder) · 429 `rate-limited` (10 per session per hour) · 422. MCP tools, registered only while on: `memory_propose`, `memory_list`.
+- **Injection:** a session's instruction (D64; `--append-system-prompt` / `developerInstructions` / `system`) ends with its folder's approved entries between `=== Project memory (approved by the developer) ===` and `=== End of project memory ===`; D91's `Session.instructionOutdated` includes it. Ruling 2026-10-14: a change of the approved set only flags open sessions (`instructionOutdated: true`, `sessionUpdated`); nothing is restarted until the developer applies or reloads (D91).
+- **Duplicates (ruling 2026-10-14):** 409 `duplicate` for a title near-identical to a proposed or approved entry of the folder, or one rejected in the last 30 days.
+- **Approval presence:** none beyond the developer routes' own authentication (researched, not built: `docs/security.md` → *Project memory approval presence (D107)*).
+- **Additive fields:** settings key `experimental.memory` (boolean, default `false`); Inbox system items of `source: 'memory'` (`kind: memory-proposals`, label `Memory`, title "N memory proposals for <folder>", actions `open-memory` (**Review**: the UI goes to `InboxItem.route`, `/memory?scope=<folder>`, without calling the server) and `dismiss`), closed `resolved` once the folder has no proposals.
+- **`/hub`:** `memoryChanged` `{ scope }` (`null`: the switch or the cap).
+- **Peers (D48):** every `/api/memory` route is on `PEER_API_ALLOW` (a paired machine's memory through `/api/machines/{id}/api/memory/…`). **Devices (D73):** the reads, `PUT /api/memory/entries/{id}`, `…/approve` and `…/reject` are allowed; `POST /api/memory/entries`, `DELETE /api/memory/entries/{id}` and `PUT /api/memory/settings` are refused.
+
+```
+POST /agent/v1/memory { "title": "Run the tests with the test ports", "text": "SWITCHBOARD_TEST_PORTS=4900-4909 npx vitest run <file>" }
+→ 201 { "id": "4be1c09d2a", "scope": "/Users/dev/acme", "status": "proposed", "authorKind": "agent", "authorSessionId": "6f1e…", … }
+
+POST /api/memory/entries/4be1c09d2a/approve { "text": "SWITCHBOARD_TEST_PORTS=4900-4909, port-hungry files one by one." }
+→ 200 { "id": "4be1c09d2a", "status": "approved", "text": "SWITCHBOARD_TEST_PORTS=4900-4909, port-hungry files one by one.",
+        "decidedBy": "developer", "proposedText": "SWITCHBOARD_TEST_PORTS=4900-4909 npx vitest run <file>", … }
+
+GET /api/memory/entries (Project memory off)
+→ 404 { "error": "memory-off", "message": "Project memory is off: switch it on in Settings → Experimental" }
+```
+
 ## CI and pull requests (D109, 2026-10-14, additive)
 
 The shared PR watcher follows the pull request of every live worktree whose PR is open (`docs/ci.md`, `docs/decisions.md` → D109): a red check sends the failing job's log tail to the session as a normal message (one per red head, at most `ci.maxAttempts` per PR; the same failure twice in a row stops it), then raises "CI keeps failing on PR #n …"; green and approved (or approval not required) raises "PR #n ready to merge" with **Merge PR**. Plans (D99) reads its items' PRs through the same watcher. Issues of a GitHub repository or of Jira become todo items (`docs/todos.md` → *Import issues (D109)*). Migration 0046 adds `pr_watch` and `todo_imports`.

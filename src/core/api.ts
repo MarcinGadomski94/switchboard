@@ -30,6 +30,8 @@ import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
 // Team (D100) hook: the `teamChanged` payload (docs/team-removal.md).
 import type { TeamChanged } from './team.ts';
+// Project memory (D107) hook: the `memoryChanged` payload (docs/memory-removal.md).
+import type { MemoryChanged } from './memory.ts';
 import type { CiChanged } from './ci.ts';
 export type { CiChanged, ImportableIssue, IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi, SessionPr } from './ci.ts';
 import type {
@@ -2495,6 +2497,8 @@ export interface HubEvents {
   readonly planChanged: PlanChanged;
   /** Team (D100) hook: something of the team changed (`docs/team.md`; the page reads `GET /api/team` again). */
   readonly teamChanged: TeamChanged;
+  /** Project memory (D107) hook: a folder's memory changed (`scope`), or the switch / the settings (`null`); the Memory page reads again. */
+  readonly memoryChanged: MemoryChanged;
   /**
    * Additive (D109, `docs/ci.md`): a session's pull-request status changed (checks, review,
    * ready to merge, merged, the failure attempts); the session header's PR chip reads
@@ -2538,6 +2542,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'planChanged',
   // Team (D100) hook.
   'teamChanged',
+  // Project memory (D107) hook.
+  'memoryChanged',
   // D109.
   'ciChanged',
 ];

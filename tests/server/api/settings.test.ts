@@ -95,6 +95,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       // Team (D100): Settings → Experimental → Team, off by default.
       'experimental.team': false,
       'experimental.plans': false,
+      'experimental.memory': false,
       // D109: the CI / PR feedback loop.
       'ci.sendFailures': true,
       'ci.pendingPollMinutes': 2,

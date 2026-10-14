@@ -252,6 +252,12 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // Plans (D99) hook: proposed order, on the machine that owns the plan.
   ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
+  // Project memory (D107) hook: memory is per machine; a paired machine's is read and reviewed there through the proxy
+  // (its folders, entries and size cap; approving reloads that machine's sessions).
+  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings)$/],
+  ['POST', /^\/api\/memory\/entries(?:\/[^/]+\/(?:approve|reject))?$/],
+  ['PUT', /^\/api\/memory\/(?:entries\/[^/]+|settings)$/],
+  ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

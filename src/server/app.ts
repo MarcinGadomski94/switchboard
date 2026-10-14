@@ -58,6 +58,8 @@ import { WorktreeManager } from './worktrees/manager.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { installPlans } from './plans/install.ts';
 import type { PlanService } from './plans/service.ts';
+// Project memory (D107) hook (docs/memory-removal.md).
+import { installMemory } from './memory/install.ts';
 import { CiGh } from './ci/gh.ts';
 import { PrWatcher, ciPollMs } from './ci/watcher.ts';
 
@@ -534,6 +536,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   await installTeam(app, apiContext);
   // ── Plans (D99) hook: the experimental Plans service and its routes (docs/plans-removal.md). ──
   await installPlans(app, apiContext, options.plans);
+  // ── Project memory (D107) hook: the experimental Project memory service and its routes (docs/memory-removal.md). ──
+  await installMemory(app, apiContext);
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

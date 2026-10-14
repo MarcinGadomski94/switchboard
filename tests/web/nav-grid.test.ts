@@ -68,7 +68,7 @@ describe('nav grid (D101)', () => {
   });
 
   it('one icon per view (Search included), each drawn with strokes inside the 18 × 18 box', () => {
-    expect(NAV_ICON_NAMES).toEqual(['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'team', 'plans', 'search']);
+    expect(NAV_ICON_NAMES).toEqual(['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'team', 'plans', 'memory', 'search']);
     for (const name of NAV_ICON_NAMES) {
       const paths = NAV_ICON_GLYPHS[name];
       expect(paths.length, name).toBeGreaterThan(0);
