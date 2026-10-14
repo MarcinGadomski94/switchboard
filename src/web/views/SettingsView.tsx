@@ -30,7 +30,7 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
     case 'sessions':
       return <SessionsSection settings={settings} save={save} onSaved={onSaved} />;
     case 'notify':
-      return <NotifySection settings={settings} save={save} />;
+      return <NotifySection settings={settings} save={save} onSaved={onSaved} />;
     case 'schedules':
       return <SchedulesSection />;
     case 'tools':

@@ -24,7 +24,7 @@ export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'chat' | 'sol
  * `Route` (`router.tsx`), declared here so this model stays free of JSX modules.
  */
 export type PaletteRoute =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'artifacts' | 'history' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'artifacts' | 'history' | 'insights' }
   | { readonly view: 'session'; readonly id: string; readonly tab: 'chat' }
   | { readonly view: 'tool'; readonly id: string }
   | { readonly view: 'settings'; readonly section: null };
@@ -79,6 +79,8 @@ export const PALETTE_VIEWS: ReadonlyArray<readonly [route: PaletteRoute, label: 
   [{ view: 'schedules' }, 'Schedules & loops'],
   [{ view: 'artifacts' }, 'Artifacts'],
   [{ view: 'history' }, 'History'],
+  // D108: the Insights page.
+  [{ view: 'insights' }, 'Insights'],
   [{ view: 'settings', section: null }, 'Settings'],
 ];
 

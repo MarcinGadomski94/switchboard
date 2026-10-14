@@ -20,6 +20,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/history` | History |
  * | `/todos` | Todos: every session's todo list (D68) |
  * | `/search` | D97: Search across everything (the query in `?q=`) |
+ * | `/insights` | D108: Insights (the filters in the query: `?period=&folder=&cli=&model=&account=&machine=`) |
  * | `/share` | D81: a share from the phone's share sheet: "Add to which session?" (the shared fields in the query) |
  * | `/tools/:id` | Embedded tool |
  * | `/settings[/:section]` | Settings |
@@ -32,7 +33,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
 /** The views of the sidebar nav (SPEC → Shell) plus the session, tool and settings views. */
 // Team (D100) hook: the `team` view (docs/team-removal.md).
 // Plans (D99) hook: the `plans` and `plan` views (docs/plans-removal.md).
-export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team' | 'plans' | 'plan';
+export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'insights' | 'share' | 'tool' | 'settings' | 'team' | 'plans' | 'plan';
 
 /** Session view tabs (SPEC → Session). */
 export const SESSION_TABS = ['chat', 'timeline', 'diff', 'artifacts'] as const;
@@ -41,7 +42,7 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'plans' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'insights' | 'share' | 'plans' }
   // Team (D100) hook: the Team page, at a team (`/team/{teamId}`; none = the last-used one) (docs/team-removal.md).
   | { readonly view: 'team'; readonly teamId?: string }
   | {
@@ -61,7 +62,7 @@ export type Route =
   | { readonly view: 'settings'; readonly section: string | null };
 
 // Plans (D99) hook: `plans` (docs/plans-removal.md).
-const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team', 'plans'] as const;
+const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'insights', 'share', 'team', 'plans'] as const;
 
 function decode(segment: string): string {
   try {

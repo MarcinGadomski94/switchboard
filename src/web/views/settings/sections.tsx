@@ -21,6 +21,7 @@ import { InstallAppRow } from './InstallApp.tsx';
 import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
 import { StandingInstructionRow } from './StandingInstruction.tsx';
 import { ModelRulesRow } from './ModelRulesRow.tsx';
+import { PricesRow } from './PricesRow.tsx';
 import { FRESH_OFFER_PCT_CHOICES } from '../../../core/fresh-session.ts';
 
 /** D83: the Settings row of the fresh-session offer. */
@@ -175,7 +176,7 @@ export function SessionsSection({ settings, save, onSaved }: { readonly settings
 }
 
 /** Notifications & usage: Send test, OS notification permission + Allow, the warning threshold, "just warn". */
-export function NotifySection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
+export function NotifySection({ settings, save, onSaved }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void }) {
   const { show } = useToasts();
   const [permission, setPermission] = useState(notificationPermission);
   const state = notificationState(permission);
@@ -225,6 +226,8 @@ export function NotifySection({ settings, save }: { readonly settings: KnownSett
       <Row id="near-limit" label="Near the limit" description="Sessions and scheduled runs keep going">
         <Value>just warn</Value>
       </Row>
+      {/* D108: Insights' prices per model (Cost per todo run). */}
+      <PricesRow settings={settings} onSaved={(body) => onSaved?.(body)} />
     </>
   );
 }

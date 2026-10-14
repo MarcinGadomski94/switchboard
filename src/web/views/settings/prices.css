@@ -1,0 +1,101 @@
+/* D108 · Settings → Notifications & usage → Prices (Insights): the row wraps; the table takes the full width under its text. */
+[data-row='insights-prices'] {
+  flex-wrap: wrap;
+}
+
+.sb-prices {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-prices-example {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--question-border);
+  border-radius: var(--radius-button);
+  background: var(--question-bg);
+  font-size: 12px;
+  color: var(--question-label);
+}
+
+.sb-prices-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-prices input {
+  box-sizing: border-box;
+  min-height: 30px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 8px;
+  font: 400 12.5px var(--font-mono);
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
+
+.sb-prices-currency input {
+  width: 80px;
+}
+
+.sb-prices-scroll {
+  overflow-x: auto;
+}
+
+.sb-prices-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sb-prices-table th {
+  padding: 0 6px 4px 0;
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-prices-table td {
+  padding: 0 6px 6px 0;
+}
+
+.sb-prices-table td input {
+  width: 92px;
+}
+
+.sb-prices-table td:first-child input {
+  width: 150px;
+}
+
+.sb-button.sb-prices-remove {
+  min-width: 30px;
+  min-height: 30px;
+}
+
+.sb-prices-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.sb-prices-errors {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--status-fail);
+}
+
+.sb-prices-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

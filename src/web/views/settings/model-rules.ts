@@ -2,7 +2,7 @@ import type { AccountProfile } from '../../../core/accounts.ts';
 import type { ModelSettings, SessionModelOption } from '../../../core/api.ts';
 import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId } from '../../../core/cli-providers.ts';
 import { readModelOptions } from '../../../core/model-choice.ts';
-import { type EstimateMatch, type ModelRule, type RoutingPriority, ruleEffortLevels, routingExplanation, routingModelOptions } from '../../../core/model-routing.ts';
+import { type EstimateMatch, type ModelRule, type RoutingPriority, parseModelRules, ruleEffortLevels, routingExplanation, routingModelOptions } from '../../../core/model-routing.ts';
 
 /**
  * D82 · the *Model by task* editor (Settings → Sessions, `docs/model-routing.md`):
@@ -129,4 +129,30 @@ export function ruleErrors(body: unknown): Map<number, string[]> {
     out.set(index, [...(out.get(index) ?? []), message]);
   }
   return out;
+}
+
+/**
+ * D108: the rule Insights' "Open in Model by task…" passes in the address
+ * (`?suggestRule=<JSON of a rule without its id>`), with `id`; `null` when there is none or it
+ * is not a valid rule (the server's own parser decides).
+ */
+export function suggestedRule(search: string, id: string): ModelRule | null {
+  const raw = new URLSearchParams(search).get('suggestRule');
+  if (!raw) return null;
+  try {
+    const parsed = parseModelRules([{ ...(JSON.parse(raw) as object), id }]);
+    return parsed.ok ? (parsed.rules[0] ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * D108: the CLI's own model value for a reported model name: the same value, else the option
+ * whose value (an alias like `haiku`) the name contains; `null` when none matches.
+ */
+export function matchModelOption(model: string, options: readonly SessionModelOption[]): string | null {
+  if (options.some((option) => option.value === model)) return model;
+  const name = model.toLowerCase();
+  return options.find((option) => option.value !== 'default' && name.includes(option.value.toLowerCase()))?.value ?? null;
 }

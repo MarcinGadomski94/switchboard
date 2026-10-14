@@ -16,7 +16,7 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
   // Team (D100) hook: `team` (docs/team-removal.md). Plans (D99) hook: `plans` (docs/plans-removal.md).
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' | 'plans' }
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'insights' | 'team' | 'plans' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -84,6 +84,9 @@ const V1_18 = '1.18.0';
 
 /** The version D106 (chats) ships in. */
 const V1_19 = '1.19.0';
+
+/** The version D108 (Insights) ships in. */
+const V1_20 = '1.20.0';
 
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
@@ -786,6 +789,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['new-chat'],
         drawer: true,
         missing: 'Start one from ⌘K → New chat, or + New chat on the CHATS header in the sidebar.',
+      },
+    ],
+  },
+  {
+    id: 'insights',
+    decision: 'D108',
+    version: V1_20,
+    title: 'Insights',
+    steps: [
+      {
+        id: 'nav',
+        title: 'Insights: where the time and tokens went',
+        what: 'A page of numbers about your agents: time and tokens per folder, session and model, how close the todo estimates were, how often work came back (reopened todos, Plans sent back, reverted turns), what the todo runs would cost at the prices you set, when each account\'s usage windows fill at the current pace, and routing rules worth trying.',
+        todo: ['Click the bar-chart icon in the sidebar (or ⌘K → Insights).', 'Pick a period and narrow it by folder, CLI, model or account.'],
+        anchors: ['insights'],
+        drawer: true,
+        missing: 'Open it from ⌘K → Insights.',
+      },
+      {
+        id: 'filters',
+        title: 'Filter, then read the six sections',
+        what: 'The filters scope every section. Costs use example prices until you set your own in Settings → Notifications & usage → Prices; suggested routing rules open Model by task pre-filled and change nothing until you save them.',
+        todo: ['Pick Last 7 days, 30 days, 90 days or a custom range.', 'Edit the prices in Settings if the cost matters to you.'],
+        anchors: ['insights-filters'],
+        route: { view: 'insights' },
+        missing: null,
       },
     ],
   },

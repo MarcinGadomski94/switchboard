@@ -29,6 +29,8 @@ export function pageTitle(route: Route, toolName: string | null = null): string 
       return 'Todos';
     case 'search':
       return 'Search';
+    case 'insights':
+      return 'Insights';
     case 'share':
       return 'Add to todos';
     case 'settings':

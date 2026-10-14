@@ -23,6 +23,8 @@ import {
   rulePreview,
   ruleProfiles,
   rulesDirty,
+  matchModelOption,
+  suggestedRule,
   withModel,
   withProvider,
   withTarget,
@@ -70,6 +72,28 @@ export function ModelRulesRow({ settings, onSaved }: { readonly settings: KnownS
   const { models, profiles } = useRuleSources();
   const rules = draft ?? stored;
   const dirty = rulesDirty(stored, rules);
+  // D108: Insights' "Open in Model by task…" adds its suggested rule to the editor (never saved by itself).
+  const [suggested, setSuggested] = useState<string | null>(null);
+  useEffect(() => {
+    const rule = suggestedRule(window.location.search, ruleId());
+    if (!rule) return;
+    setDraft((current) => [...(current ?? stored), rule]);
+    setSuggested(rule.id);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('suggestRule');
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${params.size > 0 ? `?${params.toString()}` : ''}`);
+    requestAnimationFrame(() => document.querySelector('[data-row="model-rules"]')?.scrollIntoView({ block: 'center' }));
+    // Once, when the row opens.
+  }, []);
+  // The suggested model is the one the CLI reported (`claude-haiku-4-5`); offer the CLI's own value for it once its list is known (`haiku`).
+  useEffect(() => {
+    if (suggested === null || draft === null) return;
+    const rule = draft.find((r) => r.id === suggested);
+    if (!rule?.provider || !rule.model) return;
+    const options = ruleModelOptions(rule.provider, models[rule.provider]);
+    const value = matchModelOption(rule.model, options);
+    if (value !== null && value !== rule.model) setDraft(draft.map((r) => (r.id === suggested ? { ...r, model: value } : r)));
+  }, [suggested, draft, models]);
 
   const edit = (next: readonly ModelRule[]): void => {
     setDraft(next);

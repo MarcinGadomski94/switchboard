@@ -103,6 +103,8 @@ describe('palette model (M8.3)', () => {
       'view | Schedules & loops | ',
       'view | Artifacts | ',
       'view | History | ',
+      // D108
+      'view | Insights | ',
       'view | Settings | ',
       'action | New session | ',
       'action | Add todo… | todo <title>',
@@ -154,6 +156,8 @@ describe('palette model (M8.3)', () => {
       'view | Schedules & loops | ',
       'view | Artifacts | ',
       'view | History | ',
+      // D108
+      'view | Insights | ',
       'view | Settings | ',
       'action | New session | ',
       'action | Add todo… | todo <title>',
@@ -170,7 +174,7 @@ describe('palette model (M8.3)', () => {
     // by label
     expect(rows(filterPalette(entries, 'ACME'))).toEqual(['tool | Acme Tool | ', 'solution | acme-app-front | microfrontends/']);
     // by kind
-    expect(filterPalette(entries, 'view').map((e) => e.label)).toEqual(['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History', 'Settings']);
+    expect(filterPalette(entries, 'view').map((e) => e.label)).toEqual(['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History', 'Insights', 'Settings']);
     expect(filterPalette(entries, 'Session').map((e) => e.label)).toEqual(['New session', 'pair-talk-feature', 'reminder-func-fix']);
     // by hint
     expect(filterPalette(entries, 'microfrontends/').map((e) => e.label)).toEqual(['acme-app-front', 'login-front']);

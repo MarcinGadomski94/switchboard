@@ -57,7 +57,7 @@ const SOLUTIONS_RELOAD_MS = 1_000;
 
 /** D101: one cell of the navigation grid (its view, name, icon and badge). */
 interface NavEntry {
-  readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos';
+  readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'insights';
   readonly label: string;
   readonly icon: NavIconName;
   readonly badge: NavBadge | null;
@@ -275,6 +275,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
     { view: 'history', label: 'History', icon: 'history', badge: null },
     // D68: the Todos page (after the prototype's items, like D61's MCP: the others keep their places).
     { view: 'todos', label: 'Todos', icon: 'todos', badge: todosBadge(openTodos) },
+    // D108: the Insights page (after the others: they keep their places).
+    { view: 'insights', label: 'Insights', icon: 'insights', badge: null },
   ];
 
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);

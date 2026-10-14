@@ -7,7 +7,7 @@
  */
 
 /** A nav grid icon's name (one per view the grid opens). */
-export type NavIconName = 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'team' | 'plans' | 'search';
+export type NavIconName = 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'team' | 'plans' | 'search' | 'insights';
 
 /** The strokes of each icon, on an 18 × 18 view box. */
 export const NAV_ICON_GLYPHS: Readonly<Record<NavIconName, readonly string[]>> = {
@@ -29,6 +29,8 @@ export const NAV_ICON_GLYPHS: Readonly<Record<NavIconName, readonly string[]>> =
   team: ['M4.5 15.5v-13', 'M4.5 3h8.5l-2 3.2 2 3.3H4.5'],
   // Three nodes joined: a dependency graph.
   plans: ['M4 7a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M14 2a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M14 12a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M5.8 8.1 12.2 5', 'M5.8 9.9l6.4 3.1'],
+  // D108: a bar chart (three bars on a baseline).
+  insights: ['M2.5 15.5h13', 'M4.5 15.5v-5', 'M9 15.5v-10', 'M13.5 15.5v-7'],
   // A magnifier.
   search: ['M7.5 2.5a5 5 0 1 0 0 10 5 5 0 1 0 0-10z', 'M11.3 11.3 15.5 15.5'],
 };

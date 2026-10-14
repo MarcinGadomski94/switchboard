@@ -1,5 +1,6 @@
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
+import type { InsightsAnswer } from '../../core/insights.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
@@ -383,6 +384,8 @@ export const api = {
       : request<Session>('POST', `/api/history/${enc(claudeSessionId)}/continue`, body);
   },
 
+  /** D108: the Insights page's answer (`query` = `period=…&folder=…`); `machine` = a paired machine's own Insights through its peer API. */
+  insights: (queryString: string, machine: string | null = null) => request<InsightsAnswer>('GET', onMachine(machine, `/api/insights?${queryString}`)),
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),
   /** D42, additive: the latest reported model list and the last model choice (the New-session form's Model row). D62: of a CLI. */

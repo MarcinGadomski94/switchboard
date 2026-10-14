@@ -16,6 +16,7 @@ import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
 import { TodosView } from '../views/TodosView.tsx';
 import { SearchView } from '../views/SearchView.tsx';
+import { InsightsView } from '../views/insights/InsightsView.tsx';
 import { SharePage } from '../capture/SharePage.tsx';
 import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
@@ -51,6 +52,8 @@ function View({ route }: { readonly route: Route }) {
       return <TodosView />;
     case 'search':
       return <SearchView />;
+    case 'insights':
+      return <InsightsView />;
     case 'share':
       return <SharePage />;
     case 'tool':
