@@ -1,0 +1,68 @@
+import type { MemoryEntry, MemoryScope, MemorySettings, MemoryState } from '../../core/memory.ts';
+import { ApiError } from '../api/client.ts';
+
+/**
+ * D107 · the Memory page's calls (contract → *Project memory (D107)*), on this machine or, through
+ * the D48 proxy (`/api/machines/{id}/api/memory/…`), on a paired machine. Kept here so removing
+ * Project memory (`docs/memory-removal.md`) deletes them with the folder.
+ */
+
+async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method,
+      credentials: 'same-origin',
+      headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (error) {
+    throw new ApiError(0, `${method} ${path}: ${error instanceof Error ? error.message : 'network error'}`);
+  }
+  const text = await response.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      parsed = text;
+    }
+  }
+  if (!response.ok) throw new ApiError(response.status, `${method} ${path}: HTTP ${response.status}`, parsed);
+  return parsed as T;
+}
+
+/** A refusal's text for the page: the server's `message`, else the error's. */
+export function refusalText(error: unknown): string {
+  if (error instanceof ApiError) {
+    const body = error.body as { message?: unknown } | null;
+    if (body && typeof body.message === 'string' && body.message !== '') return body.message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** What an entry form sends. */
+export interface MemoryFields {
+  readonly title?: string;
+  readonly text?: string;
+  readonly tags?: readonly string[];
+  readonly pinned?: boolean;
+}
+
+/** The calls on one machine: `null` = this one, else a paired machine's id (through the proxy). */
+export function memoryApi(machineId: string | null) {
+  const base = machineId ? `/api/machines/${encodeURIComponent(machineId)}/api/memory` : '/api/memory';
+  const entry = (id: string): string => `${base}/entries/${encodeURIComponent(id)}`;
+  return {
+    state: () => call<MemoryState>('GET', `${base}/state`),
+    scopes: () => call<MemoryScope[]>('GET', `${base}/scopes`),
+    entries: (scope: string) => call<MemoryEntry[]>('GET', `${base}/entries?scope=${encodeURIComponent(scope)}`),
+    add: (scope: string, fields: MemoryFields) => call<MemoryEntry>('POST', `${base}/entries`, { scope, ...fields }),
+    update: (id: string, fields: MemoryFields) => call<MemoryEntry>('PUT', entry(id), fields),
+    approve: (id: string, fields: MemoryFields = {}) => call<MemoryEntry>('POST', `${entry(id)}/approve`, fields),
+    reject: (id: string) => call<MemoryEntry>('POST', `${entry(id)}/reject`, {}),
+    remove: (id: string) => call<null>('DELETE', entry(id)),
+    settings: () => call<MemorySettings>('GET', `${base}/settings`),
+    setSettings: (cap: number) => call<MemorySettings>('PUT', `${base}/settings`, { cap }),
+  };
+}

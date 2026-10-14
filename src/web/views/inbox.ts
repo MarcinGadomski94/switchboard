@@ -88,9 +88,12 @@ export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPr
 /** D102: a plan's "Ready to merge" item's Open plan: goes to the plan (`item.route`) without closing the item. */
 export const OPEN_PLAN = 'open-plan';
 
-/** D102: the route an action goes to without calling the server (Open plan), else `null`. */
+/** Project memory (D107) hook: a folder's "N memory proposals" item's Review goes to the Memory page at it (docs/memory-removal.md). */
+export const OPEN_MEMORY = 'open-memory';
+
+/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review), else `null`. */
 export function openRoute(item: InboxItem, actionId: string): string | null {
-  return item.kind === 'system' && actionId === OPEN_PLAN ? (item.route ?? null) : null;
+  return item.kind === 'system' && (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) ? (item.route ?? null) : null;
 }
 
 /** D55: the update item's action that closes it and opens Settings → Updates (the notes and the Update button). */

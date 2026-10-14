@@ -44,6 +44,9 @@ export function pageTitle(route: Route, toolName: string | null = null): string 
     case 'plans':
     case 'plan':
       return 'Plans';
+    // Project memory (D107) hook (docs/memory-removal.md).
+    case 'memory':
+      return 'Memory';
   }
 }
 

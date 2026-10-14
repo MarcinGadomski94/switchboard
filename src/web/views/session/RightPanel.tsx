@@ -15,6 +15,8 @@ import { TerminalTail } from './TerminalTail.tsx';
 import { agentActivity, cappedCards, fewerCardsLine, moreCardsLine } from './workflow-agents.ts';
 // Plans (D99) hook: the session's Plan tab (docs/plans-removal.md).
 import { SessionPlanTab } from '../../plans/PlansNav.tsx';
+// Project memory (D107) hook: the session's "Memory: N entries" line (docs/memory-removal.md).
+import { SessionMemoryLine } from '../../memory/MemoryNav.tsx';
 import { isChat } from '../../../core/chats.ts';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
@@ -83,6 +85,8 @@ export function RightPanel({
       {/* Plans (D99) hook: the Plan tab (its plans, Import from Jira…), only while Plans is on (nothing otherwise). */}
       {/* D106: a chat is no plan source. */}
       {isChat(session) ? null : <SessionPlanTab sessionId={sessionId} />}
+      {/* Project memory (D107) hook: its folder's approved entries, only while Project memory is on (nothing otherwise; never a chat). */}
+      {isChat(session) ? null : <SessionMemoryLine folderPath={session?.folderPath} remote={Boolean(session?.machine)} />}
       {session && panel && capped ? (
         <>
           <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />
