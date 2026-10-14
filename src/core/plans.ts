@@ -8,6 +8,7 @@
  * to an item's session, and the MCP tool definitions of the `switchboard` server.
  */
 import type { Coordination, Phase, SessionMode, SessionStatus, WorkType } from './model.ts';
+import type { PrChecks, PrChecksState } from './ci.ts';
 import { todoFinishLine, todoHasPlan, type TodoToolDefinition } from './todos.ts';
 
 // ── enumerations ──────────────────────────────────────────────────────────
@@ -63,8 +64,8 @@ export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
  */
 export type PlanWaitingOn = 'merge' | 'checks' | 'question' | 'conflict';
 
-/** The state of an item's PR checks: `pending` (running), `green`, `red`, `none` (no checks configured: counts as green). */
-export type PlanChecksState = 'pending' | 'green' | 'red' | 'none';
+/** The state of an item's PR checks: `pending` (running), `green`, `red`, `none` (no checks configured: counts as green). D109: the shared watcher's {@link PrChecksState}. */
+export type PlanChecksState = PrChecksState;
 
 /** Defaults. */
 export const DEFAULT_PLAN_CONCURRENCY = 3;
@@ -102,14 +103,8 @@ export interface PlanExternalRef {
   readonly key: string;
 }
 
-/** The last PR checks read for an item. */
-export interface PlanChecks {
-  readonly state: PlanChecksState;
-  /** The failing (or pending) checks, one line; `null` when green / none. */
-  readonly summary: string | null;
-  /** The PR head the reading was for. */
-  readonly sha: string | null;
-}
+/** The last PR checks read for an item (D109: the shared watcher's {@link PrChecks}). */
+export type PlanChecks = PrChecks;
 
 /** One item of a plan as the API answers it (the computed view model). */
 export interface PlanItem {
@@ -590,32 +585,11 @@ export function forbiddenTargetReason(target: string, facts: { readonly defaultB
 
 // ── PR checks ─────────────────────────────────────────────────────────────
 
-const RED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
-const PENDING_STATES = new Set(['PENDING', 'EXPECTED', 'QUEUED', 'IN_PROGRESS', 'WAITING', 'REQUESTED']);
-
 /**
- * The state of a PR's checks from gh's `statusCheckRollup` (`gh pr view --json
- * statusCheckRollup`): CheckRuns (`status`, `conclusion`, `name`) and StatusContexts
- * (`state`, `context`). Any red one → `red` (the summary names them); else any still
- * running → `pending`; no checks at all → `none` (counts as green); else `green`.
+ * D109: the rollup reading moved to the shared PR watcher's `core/ci.ts` (Plans reads its
+ * PR checks through that watcher); re-exported here for Plans' own callers.
  */
-export function checksFromRollup(rollup: unknown, sha: string | null = null): PlanChecks {
-  const entries = Array.isArray(rollup) ? rollup.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
-  if (entries.length === 0) return { state: 'none', summary: null, sha };
-  const red: string[] = [];
-  const pending: string[] = [];
-  for (const entry of entries) {
-    const name = String(entry['name'] ?? entry['context'] ?? 'check');
-    const conclusion = typeof entry['conclusion'] === 'string' ? entry['conclusion'].toUpperCase() : '';
-    const status = typeof entry['status'] === 'string' ? entry['status'].toUpperCase() : '';
-    const state = typeof entry['state'] === 'string' ? entry['state'].toUpperCase() : '';
-    if (RED_CONCLUSIONS.has(conclusion) || state === 'FAILURE' || state === 'ERROR') red.push(name);
-    else if ((status !== '' && status !== 'COMPLETED') || PENDING_STATES.has(state)) pending.push(name);
-  }
-  if (red.length > 0) return { state: 'red', summary: `failed: ${red.join(', ')}`, sha };
-  if (pending.length > 0) return { state: 'pending', summary: `running: ${pending.join(', ')}`, sha };
-  return { state: 'green', summary: null, sha };
-}
+export { checksFromRollup } from './ci.ts';
 
 // ── texts sent to an item's session ───────────────────────────────────────
 

@@ -75,6 +75,11 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/loops\/[^/]+\/(?:pause|resume|run)$/],
   // D81: quick capture (the palette, a chat selection, the share sheet's page).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
+  // D109: Import issues… (the sources, a preview, the import: normal use, like adding todos) and the header's PR chip.
+  // Merge PR is the Inbox item's action (an explicit click, allowed on phones with the Inbox's actions).
+  ['GET', /^\/api\/sessions\/[^/]+\/todos\/import\/sources$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/import(?:\/preview)?$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/ci$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

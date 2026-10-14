@@ -201,7 +201,7 @@ export function peerPlan(machine: PeerMachineRef, plan: Plan): Plan {
  * a paired machine refreshes the peer's schedules when one changes there.
  * Plans (D99) hook: `planChanged`.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'artifactsChanged', 'draftChanged', 'planChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'artifactsChanged', 'draftChanged', 'planChanged', 'ciChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -249,6 +249,11 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
       // Plans (D99) hook: a peer's plan changed: its plan id namespaced.
       const changed = value as unknown as HubEvents['planChanged'];
       return typeof changed.planId === 'string' ? ({ ...changed, planId: ns(machine, changed.planId) } as HubEvents[K]) : null;
+    }
+    case 'ciChanged': {
+      // D109: a peer's session's PR status changed: its session id namespaced.
+      const changed = value as unknown as HubEvents['ciChanged'];
+      return typeof changed.sessionId === 'string' ? ({ sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
     }
     case 'todosChanged': {
       const changed = value as unknown as HubEvents['todosChanged'];

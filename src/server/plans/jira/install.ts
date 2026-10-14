@@ -10,6 +10,9 @@ import { JiraCredentialSource, type JiraSecretStore } from './credentials.ts';
 import { registerPlanJiraRoutes } from './routes.ts';
 import { PlanJiraService } from './service.ts';
 import { PlanJiraStore } from './store.ts';
+import { JiraClient, JiraError } from './client.ts';
+import { adfToText } from '../../../core/plans-jira.ts';
+import { registerJiraIssueSource } from '../../todos/import.ts';
 
 /** Options of {@link installPlansJira} (tests). */
 export interface PlansJiraOptions {
@@ -79,7 +82,35 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
   app.addHook('onReady', async () => {
     if (!context.config.demo) service.start();
   });
+  // D109: the todo import's Jira issues come through this lane's one Jira connection (Plans on or off;
+  // the connection's settings row is in Settings → Experimental → Plans). Credentials never leave the client.
+  const offImport = registerJiraIssueSource(context.store, {
+    status: async () => {
+      const found = await credentials.resolve();
+      return found ? { available: true, problem: null } : { available: false, problem: 'Jira is not connected: switch Plans on in Settings → Experimental and fill in its Jira connection (or set ATL_BASE_URL, ATL_USER and ATL_TOKEN)' };
+    },
+    search: async (jql, max) => {
+      const found = await credentials.resolve();
+      if (!found) throw new Error('Jira is not connected');
+      const client = new JiraClient(found.credentials, options.fetch ? { fetch: options.fetch } : {});
+      try {
+        const answer = await client.search(jql, ['summary', 'description', 'status'], max);
+        return {
+          truncated: answer.truncated,
+          issues: answer.issues.map((issue) => ({
+            key: issue.key,
+            title: typeof issue.fields['summary'] === 'string' ? issue.fields['summary'] : issue.key,
+            url: `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`,
+            body: adfToText(issue.fields['description']),
+          })),
+        };
+      } catch (error) {
+        throw new Error(error instanceof JiraError ? error.message : 'Jira could not be read');
+      }
+    },
+  });
   app.addHook('preClose', async () => {
+    offImport();
     await service.close();
     release();
   });

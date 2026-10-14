@@ -58,6 +58,8 @@ import { WorktreeManager } from './worktrees/manager.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { installPlans } from './plans/install.ts';
 import type { PlanService } from './plans/service.ts';
+import { CiGh } from './ci/gh.ts';
+import { PrWatcher } from './ci/watcher.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -183,6 +185,12 @@ export interface AppOptions {
    * own (git from PATH, the configured gh), started when the app is ready and closed with it.
    */
   readonly plans?: PlanService;
+  /**
+   * D109 (`docs/ci.md`): the shared PR watcher. A caller that passes one owns it (main.ts starts
+   * its timer and closes it); without one the app makes its own, which is never started (the
+   * routes, the Inbox items' actions and Plans' reads still work) and closes with the app.
+   */
+  readonly ci?: PrWatcher;
   /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
   readonly peerSearchTimeoutMs?: number;
   /** Fastify logger; off by default (tests). */
@@ -510,7 +518,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search };
+  // D109: the shared PR watcher (CI failures back to the session, Merge PR, the header chip; Plans reads its PRs through it).
+  let ci = options.ci;
+  if (!ci) {
+    const own = createPrWatcher(config, options.store, bus, systemItems, supervisor, hooks, worktrees);
+    app.addHook('preClose', async () => {
+      await own.close();
+    });
+    ci = own;
+  }
+  systemItems.useCi(ci);
+  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search };
   await registerApiRoutes(app, apiContext);
   // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
   await installTeam(app, apiContext);
@@ -579,6 +597,27 @@ export function createWorktreeManager(config: ServerConfig, store: Store, superv
     store,
     ghCommand: config.ghCommand,
     sessions: supervisor,
+  });
+}
+
+/**
+ * D109: a PR watcher for the configured gh: its messages go the normal way (a hooked session's
+ * mailbox, else the supervisor: queued while the agent works, held while new turns pause for
+ * credits), its items to the Inbox, and a merged PR's clean-up through the worktree manager.
+ */
+export function createPrWatcher(config: ServerConfig, store: Store, bus: HubBus, systemItems: SystemItemService, supervisor: SessionSupervisor, hooks: HookService, worktrees: WorktreeManager): PrWatcher {
+  return new PrWatcher({
+    store,
+    bus,
+    gh: new CiGh({ gh: config.ghCommand }),
+    send: async (sessionId, text) => {
+      if (await hooks.isHooked(sessionId)) await hooks.sendMessage(sessionId, text);
+      else await supervisor.sendMessage(sessionId, text, 'service');
+    },
+    notices: systemItems,
+    cleanup: async (worktreeId) => {
+      await worktrees.checkPullRequest(worktreeId);
+    },
   });
 }
 

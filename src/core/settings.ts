@@ -10,6 +10,7 @@
  */
 import { FRESH_OFFER_DEFAULT_PCT } from './fresh-session.ts';
 import { type ModelRule, readModelRules } from './model-routing.ts';
+import { type CiMergeMethod, isCiMergeMethod } from './ci.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
 export interface KnownSettings {
@@ -80,6 +81,18 @@ export interface KnownSettings {
    * off Plans opens nothing (no `plans.db`), runs no scheduler and gives agents no plan tools. Editable, default `false`.
    */
   readonly 'experimental.plans': boolean;
+  /** D109: send a red check's failure (with its log tail) to the PR's session (`docs/ci.md`). Editable, default `true`. */
+  readonly 'ci.sendFailures': boolean;
+  /** D109: how often a PR whose checks run is read again, in minutes (1–30). Editable, default 2. */
+  readonly 'ci.pendingPollMinutes': number;
+  /** D109: how often any other open PR is read again, in minutes (2–120). Editable, default 10. */
+  readonly 'ci.idlePollMinutes': number;
+  /** D109: failure messages per PR before the watcher stops and asks you (1–10). Editable, default 3. */
+  readonly 'ci.maxAttempts': number;
+  /** D109: the lines of a failed job's log sent with the message (20–1000). Editable, default 150. */
+  readonly 'ci.logTailLines': number;
+  /** D109: how Merge PR merges (`repo` = the repository's default, else squash). Editable, default `repo`. */
+  readonly 'ci.mergeMethod': CiMergeMethod;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -163,7 +176,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -194,6 +207,13 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'experimental.team': false,
   // Plans (D99) hook: off by default.
   'experimental.plans': false,
+  // D109: the CI / PR feedback loop (docs/ci.md).
+  'ci.sendFailures': true,
+  'ci.pendingPollMinutes': 2,
+  'ci.idlePollMinutes': 10,
+  'ci.maxAttempts': 3,
+  'ci.logTailLines': 150,
+  'ci.mergeMethod': 'repo',
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -231,6 +251,12 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.freshOfferPct': num('sessions.freshOfferPct', SETTING_DEFAULTS['sessions.freshOfferPct']),
     'experimental.team': bool('experimental.team', SETTING_DEFAULTS['experimental.team']),
     'experimental.plans': bool('experimental.plans', SETTING_DEFAULTS['experimental.plans']),
+    'ci.sendFailures': bool('ci.sendFailures', SETTING_DEFAULTS['ci.sendFailures']),
+    'ci.pendingPollMinutes': num('ci.pendingPollMinutes', SETTING_DEFAULTS['ci.pendingPollMinutes']),
+    'ci.idlePollMinutes': num('ci.idlePollMinutes', SETTING_DEFAULTS['ci.idlePollMinutes']),
+    'ci.maxAttempts': num('ci.maxAttempts', SETTING_DEFAULTS['ci.maxAttempts']),
+    'ci.logTailLines': num('ci.logTailLines', SETTING_DEFAULTS['ci.logTailLines']),
+    'ci.mergeMethod': isCiMergeMethod(value['ci.mergeMethod']) ? value['ci.mergeMethod'] : SETTING_DEFAULTS['ci.mergeMethod'],
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

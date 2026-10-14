@@ -1,4 +1,5 @@
 import { type PlanChecks, checksFromRollup } from '../../core/plans.ts';
+import type { PrViewResult } from '../ci/gh.ts';
 import { type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 
 /** What the scheduler learns about one repo of a running item (`docs/plans.md` → *When an item is done*). */
@@ -53,6 +54,12 @@ export interface PlanGitOptions {
   readonly gh: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
   readonly timeoutMs?: number;
+  /**
+   * D109: the shared PR watcher's reading (`PrWatcher.read`): an item's PR, its checks and
+   * mergeable state come from the one reading the watcher keeps, instead of a gh call of Plans'
+   * own. Absent = Plans asks gh itself (tests).
+   */
+  readonly prs?: (repoPath: string, branch: string) => Promise<PrViewResult>;
 }
 
 /** The real {@link PlanGitPort}: `git` and `gh` as child processes (`shell: false`), never pushing. */
@@ -61,8 +68,10 @@ export class PlanGit implements PlanGitPort {
   readonly #gh: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
   readonly #timeout: number;
+  readonly #prs: PlanGitOptions['prs'] | null;
 
   constructor(options: PlanGitOptions) {
+    this.#prs = options.prs ?? null;
     this.#git = options.git ?? ['git'];
     this.#gh = options.gh;
     this.#env = options.env ?? process.env;
@@ -103,7 +112,16 @@ export class PlanGit implements PlanGitPort {
     const hasOrigin = await this.#hasOrigin(repoPath);
     let pr: PlanRepoState['pr'] = null;
     let ghAvailable = false;
-    if (hasOrigin) {
+    if (hasOrigin && this.#prs) {
+      // D109: through the shared PR watcher's reading.
+      const answer = await this.#prs(repoPath, branch);
+      if (answer.kind === 'pr') {
+        ghAvailable = true;
+        pr = { url: answer.pr.url, state: answer.pr.state, baseRefName: answer.pr.baseRefName, checks: answer.pr.checks, mergeable: answer.pr.mergeable };
+      } else if (answer.kind === 'none') {
+        ghAvailable = true;
+      }
+    } else if (hasOrigin) {
       const answer = await this.#runGh(repoPath, ['pr', 'view', branch, '--json', 'state,url,baseRefName,mergeable,statusCheckRollup,headRefOid']);
       if (succeeded(answer)) {
         ghAvailable = true;

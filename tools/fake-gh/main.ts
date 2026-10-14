@@ -28,6 +28,26 @@
  *   the highest + 1) and prints its URL `https://github.com/fake/<repo>/pull/<n>`, exit 0;
  *   an open entry for `<h>` → gh's `a pull request for branch "<h>" into branch "<b>" already
  *   exists:` + its URL, exit 1. `FAKE_GH_FAIL` fails it like every `pr` command.
+ * - D109: `gh pr view` answers whatever fields the `FAKE_GH_PRS` entry carries, so a test gives a
+ *   PR its `statusCheckRollup` (CheckRuns with `name`, `status`, `conclusion`, `detailsUrl`
+ *   `…/actions/runs/<run>/job/<job>`), `reviewDecision`, `mergeable`, `isDraft`, `headRefOid`.
+ * - D109: `gh pr merge <number|branch> --squash|--merge|--rebase` → the entry must be `OPEN`: it
+ *   becomes `MERGED` (with `mergedWith: <method>`) in the `FAKE_GH_PRS` file, exit 0; not open →
+ *   gh's `Pull request #n is not mergeable`, exit 1; none → `no pull requests found`, exit 1.
+ *   `FAKE_GH_MERGE_FAIL=<text>` (and `FAKE_GH_FAIL`) make it fail with that text.
+ * - D109: `gh run view <run> --log-failed [--job <job>]` → the file `<FAKE_GH_RUN_LOGS>/<run>.log`
+ *   (or `<run>-<job>.log` when that exists), printed as is; none → `could not find any workflow
+ *   run with ID <run>`, exit 1.
+ * - D109: `gh repo view [--json <fields>]` → the entry of the cwd's repo folder in the JSON file
+ *   named by `FAKE_GH_REPO` (`{"<repo>": {nameWithOwner, viewerDefaultMergeMethod}, "*": {…}}`),
+ *   else `{"nameWithOwner": "fake/<repo>", "viewerDefaultMergeMethod": "MERGE"}`; outside a repo,
+ *   `not a git repository`, exit 1.
+ * - D109: `gh issue list --repo <owner/repo> [--state open] [--label <l>] [--assignee @me]
+ *   [--limit <n>] --json <fields>` → the repo's list in the JSON file named by `FAKE_GH_ISSUES`
+ *   (`{"<owner/repo>": [{number, title, body, url, labels: [{name}], assignees: [{login}], state}]}`),
+ *   filtered (`@me` = `fake-gh`, the account `auth status` names; state `OPEN` by default),
+ *   cut to the limit (default 30), only the requested fields; an unknown repo → gh's `Could not
+ *   resolve to a Repository`, exit 1. `FAKE_GH_ISSUES_FAIL=<text>` fails it.
  * - anything else → `unknown command`, exit 1.
  * - `FAKE_GH_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
  */
@@ -149,6 +169,108 @@ async function prCreate(args: string[]): Promise<never> {
   return finish(0, `${url}\n`);
 }
 
+/** D109: the entry `pr merge` / `pr view` name: a repo key, a branch, or a number. */
+function findEntry(prs: Record<string, Record<string, unknown>>, repo: string | null, selector: string): string | null {
+  if (repo !== null && prs[`${repo}:${selector}`]) return `${repo}:${selector}`;
+  if (prs[selector]) return selector;
+  if (/^\d+$/.test(selector)) {
+    const found = Object.entries(prs).find(([key, pr]) => pr['number'] === Number(selector) && (repo === null || !key.includes(':') || key.startsWith(`${repo}:`)));
+    return found ? found[0] : null;
+  }
+  return null;
+}
+
+/** D109: `gh pr merge <number|branch> --squash|--merge|--rebase`. */
+async function prMerge(args: string[]): Promise<never> {
+  const failure = process.env['FAKE_GH_MERGE_FAIL'] ?? process.env['FAKE_GH_FAIL'];
+  if (failure) return finish(1, '', `${failure}\n`);
+  const method = args.includes('--squash') ? 'squash' : args.includes('--rebase') ? 'rebase' : args.includes('--merge') ? 'merge' : null;
+  const selector = args.find((arg) => !arg.startsWith('-')) ?? (await currentBranch(process.cwd()));
+  if (method === null || selector === null) return finish(1, '', 'fake-gh only supports `pr merge <number|branch> --squash|--merge|--rebase`\n');
+  const file = process.env['FAKE_GH_PRS'];
+  const prs = await loadPullRequests();
+  const repo = Object.keys(prs).some((key) => key.includes(':')) ? await repoName(process.cwd()) : null;
+  const key = findEntry(prs, repo, selector);
+  const entry = key ? prs[key] : undefined;
+  if (!key || !entry) return finish(1, '', `no pull requests found for branch "${selector}"\n`);
+  if (entry['state'] !== 'OPEN') return finish(1, '', `Pull request #${String(entry['number'])} is not mergeable: it is ${String(entry['state']).toLowerCase()}\n`);
+  prs[key] = { ...entry, state: 'MERGED', mergedWith: method };
+  if (file) await writeFile(file, JSON.stringify(prs));
+  return finish(0, `✓ Merged pull request #${String(entry['number'])}\n`);
+}
+
+/** D109: `gh run view <run> --log-failed [--job <job>]` from `FAKE_GH_RUN_LOGS`. */
+async function runView(args: string[]): Promise<never> {
+  const run = args.find((arg) => /^\d+$/.test(arg));
+  if (!run || !args.includes('--log-failed')) return finish(1, '', 'fake-gh only supports `run view <run> --log-failed [--job <job>]`\n');
+  const job = option(args, '--job');
+  const dir = process.env['FAKE_GH_RUN_LOGS'];
+  if (dir) {
+    for (const name of [...(job ? [`${run}-${job}.log`] : []), `${run}.log`]) {
+      try {
+        return finish(0, await readFile(path.join(dir, name), 'utf8'));
+      } catch {
+        // Next candidate.
+      }
+    }
+  }
+  return finish(1, '', `could not find any workflow run with ID ${run}\n`);
+}
+
+/** D109: `gh repo view [--json <fields>]` for the cwd's repo. */
+async function repoView(args: string[]): Promise<never> {
+  const repo = await repoName(process.cwd());
+  if (repo === null) return finish(1, '', 'failed to run git: fatal: not a git repository (or any of the parent directories): .git\n');
+  let entry: Record<string, unknown> = { nameWithOwner: `fake/${repo}`, viewerDefaultMergeMethod: 'MERGE' };
+  const file = process.env['FAKE_GH_REPO'];
+  if (file) {
+    try {
+      const parsed = JSON.parse(await readFile(file, 'utf8')) as Record<string, Record<string, unknown>>;
+      entry = parsed[repo] ?? parsed['*'] ?? entry;
+    } catch {
+      // No usable file: the default.
+    }
+  }
+  const fields = (option(args, '--json') ?? '').split(',').filter(Boolean);
+  const picked: Record<string, unknown> = {};
+  for (const field of fields) if (field in entry) picked[field] = entry[field];
+  return finish(0, `${JSON.stringify(fields.length > 0 ? picked : entry)}\n`);
+}
+
+/** D109: `gh issue list --repo <r> …` from `FAKE_GH_ISSUES`. */
+async function issueList(args: string[]): Promise<never> {
+  const failure = process.env['FAKE_GH_ISSUES_FAIL'];
+  if (failure) return finish(1, '', `${failure}\n`);
+  const repo = option(args, '--repo');
+  if (!repo) return finish(1, '', 'fake-gh only supports `issue list --repo <owner/repo>`\n');
+  let all: Record<string, Array<Record<string, unknown>>> = {};
+  try {
+    all = JSON.parse(await readFile(process.env['FAKE_GH_ISSUES'] ?? '', 'utf8')) as Record<string, Array<Record<string, unknown>>>;
+  } catch {
+    all = {};
+  }
+  const list = all[repo];
+  if (!Array.isArray(list)) return finish(1, '', `GraphQL: Could not resolve to a Repository with the name '${repo}'. (repository)\n`);
+  const state = (option(args, '--state') ?? 'open').toUpperCase();
+  const label = option(args, '--label');
+  const assignee = option(args, '--assignee');
+  const limit = Number(option(args, '--limit') ?? '30');
+  const fields = (option(args, '--json') ?? '').split(',').filter(Boolean);
+  const names = (value: unknown, key: string): string[] => (Array.isArray(value) ? value.map((entry) => (typeof entry === 'object' && entry !== null ? String((entry as Record<string, unknown>)[key] ?? '') : '')) : []);
+  const matched = list
+    .filter((issue) => state === 'ALL' || String(issue['state'] ?? 'OPEN').toUpperCase() === state)
+    .filter((issue) => label === null || names(issue['labels'], 'name').includes(label))
+    .filter((issue) => assignee === null || names(issue['assignees'], 'login').includes(assignee === '@me' ? 'fake-gh' : assignee))
+    .slice(0, Number.isInteger(limit) && limit > 0 ? limit : 30)
+    .map((issue) => {
+      if (fields.length === 0) return issue;
+      const picked: Record<string, unknown> = {};
+      for (const field of fields) if (field in issue) picked[field] = issue[field];
+      return picked;
+    });
+  return finish(0, `${JSON.stringify(matched)}\n`);
+}
+
 function option(args: readonly string[], name: string): string | null {
   const index = args.indexOf(name);
   if (index !== -1) return args[index + 1] ?? null;
@@ -202,6 +324,10 @@ async function main(): Promise<never> {
   }
   if (first === 'pr' && second === 'view') return prView(rest);
   if (first === 'pr' && second === 'create') return prCreate(rest);
+  if (first === 'pr' && second === 'merge') return prMerge(rest);
+  if (first === 'run' && second === 'view') return runView(rest);
+  if (first === 'repo' && second === 'view') return repoView(rest);
+  if (first === 'issue' && second === 'list') return issueList(rest);
   if (first === 'release') return release(second, rest);
   return finish(1, '', `unknown command "${[first, second].filter(Boolean).join(' ')}" for "gh"\n`);
 }

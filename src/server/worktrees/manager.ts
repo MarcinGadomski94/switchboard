@@ -1225,6 +1225,17 @@ export class WorktreeManager implements DiffProvider {
     return this.#checking;
   }
 
+  /**
+   * D109: reads one worktree's pull request now (as {@link checkPullRequests} does for every
+   * one): after the PR watcher's Merge PR, so a merged, clean worktree raises its "PR merged"
+   * item with Remove worktree at once. `null` when the worktree is not registered or removed.
+   */
+  async checkPullRequest(worktreeId: string): Promise<PullRequestCheck | null> {
+    const record = await this.#store.worktrees.get(worktreeId);
+    if (!record || record.removedAt !== null) return null;
+    return this.#checkOne(record);
+  }
+
   /** Runs {@link checkPullRequests} on a timer until {@link stopPolling}. */
   startPolling(options: PollOptions = {}): void {
     if (this.#polling) return;
