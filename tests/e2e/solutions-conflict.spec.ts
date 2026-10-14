@@ -85,15 +85,16 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   await expect(row(page, 'mobile')).toBeVisible();
   await expect(row(page, 'mobile').locator('.sb-sol-flag')).toHaveCount(0);
 
-  // Two sessions write mobile/ in place (no worktrees). D22: the first has a title, which the card names it by.
-  expect(await startSession(page, { name: 'first-writer', title: 'First writer', task: 'Reply with OK.', solutions: ['mobile'], worktrees: false })).toBe(201);
-  expect(await startSession(page, { name: 'second-writer', task: 'Reply with OK.', solutions: ['mobile'], worktrees: false })).toBe(201);
-  const statusBefore = await world.git(world.mobile, 'status', '--porcelain');
+  // Two sessions write mobile/ in place (no worktrees; ruling 2026-10-14: each leaves an uncommitted edit there). D22: the first has a title, which the card names it by.
+  expect(await startSession(page, { name: 'first-writer', title: 'First writer', task: '[fake:write mobile/first-writer.md]', solutions: ['mobile'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'second-writer', task: '[fake:write mobile/second-writer.md]', solutions: ['mobile'], worktrees: false })).toBe(201);
 
   // The sidebar badge and the row flag follow through /hub (sessionUpdated), without a reload.
   // D101: the icon's badge is an amber "!", the cell's tooltip says "1 conflict".
   await expect(badge).toHaveText('!', { timeout: 15_000 });
   await expect(badge).toHaveAttribute('data-kind', 'warn');
+  // Both edits are on disk once the conflict shows: the developer's checkout as it is from here on.
+  const statusBefore = await world.git(world.mobile, 'status', '--porcelain');
   await expect(page.getByTestId('nav-solutions')).toHaveAttribute('title', 'Solutions · 1 conflict');
   const flag = row(page, 'mobile').locator('.sb-sol-flag');
   await expect(flag).toHaveText('⚠ shared working tree', { timeout: 15_000 });
@@ -188,8 +189,8 @@ async function call(page: Page, method: string, url: string, body?: unknown): Pr
 test('2026-10-14: a Team member writing in place is named and linked on the card (its session is hidden from the sidebar) and can be moved to a worktree', async ({ page }) => {
   await page.goto(`${server.baseUrl}/solutions`);
   await expect(page.getByTestId('view-solutions')).toBeVisible();
-  expect(await startSession(page, { name: 'acme-billing', title: 'Acme billing', task: 'Reply with OK.', solutions: ['web-front'], worktrees: false })).toBe(201);
-  expect(await startSession(page, { name: 'acme-docs', task: 'Reply with OK.', solutions: ['web-front'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'acme-billing', title: 'Acme billing', task: '[fake:write microfrontends/web-front/acme-billing.md]', solutions: ['web-front'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'acme-docs', task: '[fake:write microfrontends/web-front/acme-docs.md]', solutions: ['web-front'], worktrees: false })).toBe(201);
   const sessions = (await call(page, 'GET', '/api/sessions')).body as Array<{ id: string; name: string; status: string }>;
   const member = sessions.find((session) => session.name === 'acme-billing');
   if (!member) throw new Error('no acme-billing session');

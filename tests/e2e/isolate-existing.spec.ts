@@ -76,14 +76,15 @@ async function exists(file: string): Promise<boolean> {
 test('conflict card → Existing branch → pick a remote branch → the session is moved onto it and told so', async ({ page }) => {
   await page.goto(`${server.baseUrl}/solutions`);
   await expect(page.getByTestId('view-solutions')).toBeVisible();
-  expect(await startSession(page, { name: 'first-writer', task: 'Reply with OK.', solutions: ['alpha-front'], worktrees: false })).toBe(201);
-  expect(await startSession(page, { name: 'second-writer', task: 'Reply with OK.', solutions: ['alpha-front'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'first-writer', task: '[fake:write microfrontends/alpha-front/first-writer.md]', solutions: ['alpha-front'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'second-writer', task: '[fake:write microfrontends/alpha-front/second-writer.md]', solutions: ['alpha-front'], worktrees: false })).toBe(201);
   // Pushed after the clone: only the fetch brings it.
   await alpha.push('PROJ-9-late', 'late.txt', 'late\n');
-  const statusBefore = await world.git(alpha.repo, 'status', '--porcelain');
 
+  // Ruling 2026-10-14: each writer leaves an uncommitted edit in the checkout; both are there once the flag shows.
   const row = page.locator('[data-testid="solution-row"][data-solution="alpha-front"]');
   await expect(row.locator('.sb-sol-flag')).toHaveText('⚠ shared working tree', { timeout: 15_000 });
+  const statusBefore = await world.git(alpha.repo, 'status', '--porcelain');
   await row.click();
   const card = page.getByTestId('conflict-card');
   await card.getByRole('button', { name: 'Move second-writer to worktree' }).click();
