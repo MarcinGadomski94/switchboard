@@ -115,6 +115,8 @@ describe('palette model (M8.3)', () => {
       'solution | mobile | mobile/',
       'solution | old-chat-front | read-only',
       // D85: the tutorial's replay comes last.
+      // D106: New chat, after the prototype's entries.
+      'action | New chat | plan without editing',
       'action | Tutorial | replay the tour',
     ]);
     expect(new Set(entries.map((e) => e.key)).size).toBe(entries.length);
@@ -155,6 +157,8 @@ describe('palette model (M8.3)', () => {
       'view | Settings | ',
       'action | New session | ',
       'action | Add todo… | todo <title>',
+      // D106: New chat, after the prototype's entries.
+      'action | New chat | plan without editing',
       'action | Tutorial | replay the tour',
     ]);
   });

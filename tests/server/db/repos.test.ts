@@ -101,6 +101,9 @@ describe('sessions', () => {
       todoLink: null,
       continuedTo: null,
       continuedFrom: null,
+      // D106 (0044): a development session, no folders to look at.
+      kind: 'session',
+      lookAt: [],
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

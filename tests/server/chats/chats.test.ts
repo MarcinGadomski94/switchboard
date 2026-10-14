@@ -271,3 +271,45 @@ describe('D106 · chats', () => {
     expect(long.endsWith('…')).toBe(true);
   });
 });
+
+describe('D106 · chats on Codex CLI and OpenCode (their read-only modes)', () => {
+  async function readLog(file: string): Promise<Array<Record<string, unknown>>> {
+    const { readFile } = await import('node:fs/promises');
+    const text = await readFile(file, 'utf8').catch(() => '');
+    return text
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  async function chatOn(w: SupervisorWorld, provider: 'codex' | 'opencode'): Promise<SessionRecord> {
+    const id = `chat-${provider}`;
+    const cwd = chatScratchDir(w.root, id);
+    await mkdir(cwd, { recursive: true });
+    return w.supervisor.startChat({ name: id, title: 'Plan it', message: 'Plan it.', cwd, provider, lookAt: [] });
+  }
+
+  it('Codex: the thread runs in the read-only sandbox and never asks for approval', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const chat = await chatOn(w, 'codex');
+    await waitForStatus(w.store, chat.id, ['done']);
+    const sent = (await readLog(w.codexLog)).filter((line) => line['kind'] === 'stdin' && typeof line['line'] === 'string').map((line) => JSON.parse(line['line'] as string) as Record<string, unknown>);
+    const start = sent.find((message) => message['method'] === 'thread/start');
+    expect(start?.['params']).toMatchObject({ approvalPolicy: 'never', sandbox: 'read-only' });
+    expect((start?.['params'] as Record<string, unknown>)['developerInstructions']).toContain('This is a Switchboard chat');
+  });
+
+  it("OpenCode: edits and shell commands denied in the server's config, prompts to the plan agent", async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const chat = await chatOn(w, 'opencode');
+    await waitForStatus(w.store, chat.id, ['done']);
+    const log = await readLog(w.opencodeLog);
+    const env = (log.find((line) => line['kind'] === 'argv')?.['env'] ?? {}) as Record<string, string>;
+    expect(JSON.parse(env['OPENCODE_CONFIG_CONTENT'] ?? '{}')['permission']).toEqual({ edit: 'deny', bash: 'deny', webfetch: 'allow', external_directory: 'allow' });
+    const prompt = log.find((line) => line['kind'] === 'prompt')?.['body'] as Record<string, unknown> | undefined;
+    expect(prompt?.['agent']).toBe('plan');
+    expect(String(prompt?.['system'])).toContain('This is a Switchboard chat');
+  });
+});

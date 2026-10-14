@@ -1013,6 +1013,28 @@ describe('0025 session take-over (D65)', () => {
     }
   });
 
+  it('D106 (0044): adds kind (\'session\' for every session that is there) and look_at (\'[]\'); chats are stored and read back; any other kind is refused', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd106', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 44) });
+    try {
+      await earlier.sessions.create({ name: 'older-106', claudeSessionId: 'c-older-106' });
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 44).map((m) => m.version));
+      const [older] = await store.sessions.list();
+      expect([older?.kind, older?.lookAt]).toEqual(['session', []]);
+      const chat = await store.sessions.create({ name: 'chat-abc', claudeSessionId: 'c-chat-106', kind: 'chat', lookAt: ['/acme/repo'] });
+      expect(await store.sessions.get(chat.id)).toMatchObject({ kind: 'chat', lookAt: ['/acme/repo'] });
+      expect(() => store.db.prepare("UPDATE sessions SET kind = 'other' WHERE id = ?").run(chat.id)).toThrow(/CHECK/);
+    } finally {
+      await store.close();
+    }
+  });
+
   it('D85 (0037): adds tutorial_tours; an install with data starts the tutorial at 1.12.0, an empty one gets nothing', async () => {
     const shipped = await loadMigrations();
     const before = shipped.filter((m) => m.version < 37);
@@ -1080,9 +1102,9 @@ describe('0025 session take-over (D65)', () => {
       for (const session of sessions) expect([session.movedTo, session.movedFrom]).toEqual([null, null]);
       // Every column the sessions had keeps its value.
       const after = dump(store.db);
-      // D76 (0032) and D83 (0036) add more columns later.
+      // D76 (0032), D83 (0036) and D106 (0044) add more columns later.
       const strip = (rows: readonly unknown[] | undefined) =>
-        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined }));
+        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined, kind: undefined, look_at: undefined }));
       expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
       // The two moves round-trip.
       const one = sessions[0]!;
