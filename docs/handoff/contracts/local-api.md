@@ -1815,3 +1815,39 @@ POST /api/sessions
 { "simple": true, "name": "billing-split", "title": "Billing split", "task": "Implement the plan.", "folder": "f1", "fromChat": "7cf6…" }
 → 201 { "id": "9a2b…", "continuedFrom": { "sessionId": "7cf6…", "title": "How should we split the billing module?" }, "…": "…" }
 ```
+
+## Insights (D108, 2026-10-14, additive)
+
+The Insights page in one answer (`docs/insights.md`, `docs/decisions.md` → D108): time and tokens, estimate accuracy, outcomes and rework, cost per todo run, the usage-limit forecast and suggested routing rules, from **this machine's** data. Types in `src/core/insights.ts`: `InsightsAnswer`, `InsightsQuery`, `TimeTokensRow`, `TrendPoint`, `AccuracyDistribution`, `AccuracyGroup`, `OutcomeRow`, `CostSection`, `TodoCost`, `AccountForecast`, `WindowForecast`, `RoutingSuggestion`, `PriceTable`, `ModelPrice`. Migration 0045 (the daily rollup, `todo_actuals`' new columns, `todo_reopens`, an index on `usage_readings`).
+
+| Method | Path | Query | Answers |
+|---|---|---|---|
+| GET | /api/insights | `period` (`7d` · `30d` default · `90d` · `custom`), `from` / `to` (`YYYY-MM-DD`, UTC days, both included; `custom` only, at most 366 days), `folder` (a session root; `none` = no folder), `cli`, `model` (a model key; `none` = the CLI's default), `account` (a profile id); each filter absent or `all` = everything | 200 `InsightsAnswer` · 422 `invalid` + `errors` (`field`: `period`, `from`, `to`, `folder`, `cli`, `model`, `account`) |
+
+- **`InsightsAnswer`**: `{ generatedAt, query, options: { folders, clis, models, accounts: { id, name }[] }, backfill: { done, percent }, time, estimates, outcomes, cost, forecast, suggestions }`. `options` lists the values found in the period (before the filters). `backfill.done` is `false` while the rollup still adds the events from before 0045 (the numbers are then partial).
+- **`time`**: `{ totals: { turns, tokens, durationMs, tokensPerTurn, sessions }, byFolder, bySession (top 20 by tokens), byModel: TimeTokensRow[], trend: TrendPoint[] (one per day of the period), chats: { turns, tokens, durationMs } }`. `TimeTokensRow`: `{ key, label, turns, tokens, durationMs, tokensPerTurn }`; `TrendPoint`: `{ day, turns, tokens, tokensPerTurn }` (`null` without turns). Chats (D106) are only in `chats`.
+- **`estimates`**: `{ count, median, buckets: { key, label, count }[], byModel, byFolder: AccuracyGroup[] }`; buckets `under-half` (< 0.5×), `half-to-one` ([0.5, 1)), `one-to-two` ([1, 2)), `over-two` (≥ 2) of actual ÷ estimate.
+- **`outcomes`**: `{ plansOn, byModel: OutcomeRow[] }`; `OutcomeRow`: `{ model, label, todos: { done, reopened, reopenRate }, plans: { merged, failed, blocked, mergeRate, decisions: { merged, sentBack, failed }, sendBackRate } | null, reverts: { turns, reverts, redos, per100Turns } }` (`plans` is `null` while Plans is off).
+- **`cost`**: `{ currency, example, todos, priced, total, average, median, lowerBound, byModel: { model, label, todos, priced, total, median }[], top: TodoCost[] (≤ 10) }`; `TodoCost`: `{ todoId, title, sessionId, runSessionId, model, modelLabel, tokens, actualMs, cost (null: no price row), lowerBound, completedAt }`. `example: true` while the prices are Switchboard's examples.
+- **`forecast`**: `AccountForecast[]` (Claude Code accounts; the `account` / `cli` filters apply, the period does not): `{ profileId, name, cli, windows: WindowForecast[] (five_hour, seven_day), credits (D103 text or null), onCredits }`; `WindowForecast`: `{ window, pct, resetsAt, pctPerHour, readings, verdict: "full" | "fills" | "holds" | "flat" | "unknown", fullAt, atReset }`.
+- **`suggestions`**: `RoutingSuggestion[]`: `{ id, text, evidence: { cheap, expensive: { model, todos, reopened, medianCost }, currency }, rule }`; `rule` is a D82 `ModelRule` without its `id`. Never applied by the server; the page opens `/settings/sessions?suggestRule=<JSON of rule>`, which adds it to the Model by task editor unsaved.
+- **Settings:** `insights.prices` (editable, `PriceTable`: `{ currency (1–8 characters), example, models: { match, input, output, cacheWrite, cacheRead }[] (≤ 40; prices 0–100,000 per 1M tokens) }`; default `EXAMPLE_PRICES`, `example: true`); 422 `invalid` with `field` `insights.prices…` for a bad table.
+- **Result events** (additive payload fields, D108): a turn's `result` payload carries `usage: { input, output, cacheWrite, cacheRead }` and `model` (the model the CLI reported) when the CLI line has them.
+- **Peers (D48):** `GET /api/insights` is on `PEER_API_ALLOW`; it answers that machine's own data. The page reads one machine at a time (its Machine filter: `/api/machines/{id}/api/insights?…`); there is no merged answer. **Devices (D73):** allowed (a read). No new `/hub` event.
+- **UI address:** `/insights?period=…&from=…&to=…&folder=…&cli=…&model=…&account=…&machine=…`.
+
+```
+GET /api/insights?period=7d&model=claude-haiku-4-5
+→ 200
+{ "generatedAt": "2026-10-14T12:00:00.000Z",
+  "query": { "period": "7d", "from": "2026-10-08", "to": "2026-10-14", "folder": null, "cli": null, "model": "claude-haiku-4-5", "account": null },
+  "options": { "folders": ["/work/acme", "/work/docs"], "clis": ["claude"], "models": ["claude-haiku-4-5", "claude-opus-5-5"], "accounts": [{ "id": "default-claude", "name": "Work" }] },
+  "backfill": { "done": true, "percent": 100 },
+  "time": { "totals": { "turns": 6, "tokens": 12000, "durationMs": 120000, "tokensPerTurn": 2000, "sessions": 1 }, "byFolder": [ … ], "bySession": [ … ], "byModel": [ … ], "trend": [ { "day": "2026-10-08", "turns": 0, "tokens": 0, "tokensPerTurn": null }, … ], "chats": { "turns": 0, "tokens": 0, "durationMs": 0 } },
+  "estimates": { "count": 3, "median": 0.6, "buckets": [ { "key": "under-half", "label": "< 0.5×", "count": 1 }, … ], "byModel": [ … ], "byFolder": [ … ] },
+  "outcomes": { "plansOn": false, "byModel": [ { "model": "claude-haiku-4-5", "label": "claude-haiku-4-5", "todos": { "done": 3, "reopened": 0, "reopenRate": 0 }, "plans": null, "reverts": { "turns": 6, "reverts": 0, "redos": 0, "per100Turns": 0 } } ] },
+  "cost": { "currency": "USD", "example": true, "todos": 3, "priced": 3, "total": 0.0288, "average": 0.0096, "median": 0.0096, "lowerBound": false, "byModel": [ … ], "top": [ … ] },
+  "forecast": [ { "profileId": "default-claude", "name": "Work", "cli": "claude", "credits": null, "onCredits": false,
+    "windows": [ { "window": "five_hour", "pct": 40, "resetsAt": "2026-10-14T14:00:00.000Z", "pctPerHour": 20, "readings": 3, "verdict": "holds", "fullAt": null, "atReset": 80 }, … ] } ],
+  "suggestions": [] }
+```

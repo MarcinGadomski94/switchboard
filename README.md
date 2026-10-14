@@ -10,6 +10,7 @@ Switchboard is a local web app for running many coding-agent sessions at once: *
 - start a **chat** instead, to think and plan with an agent that reads but never edits, and continue it as a session when it's time to code;
 - answer their questions and permission prompts from a single Inbox, and paste screenshots and files into the chat;
 - **search** everything that was said or saved, on every machine, and jump to the exact message;
+- see **insights**: where the agents' time and tokens went, how good the estimates were, what came back for rework, what the runs would cost, and when each account's usage limit fills;
 - keep a **todo list** per session and save **artifacts** (reports, plans, diagrams) on purpose;
 - run todos as a **plan**: a dependency graph that starts each item in its own worktree and merges it into the epic branch, imported from a **Jira** epic if you like (experimental);
 - run a **team** of role agents from one page: their questions, hand-offs and activity in one place (experimental);
@@ -530,6 +531,12 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 - **Safari:** can't do this; those tools open in a new tab.
 
 [`docs/tools.md`](docs/tools.md) · [`docs/frame-helper.md`](docs/frame-helper.md)
+
+### Insights
+- **One page of numbers** (the bar-chart icon, or ⌘K → Insights), filtered by period (7 / 30 / 90 days or a range), folder, CLI, model and account: time and tokens per folder, session and model with a tokens-per-turn trend; **estimate accuracy** (actual ÷ estimate, bucketed, with the median); **outcomes and rework** per model (todos reopened, Plans merged / sent back, reverted turns); **cost per todo run** at the prices you set in Settings (example prices until you do); a **usage-limit forecast** per account ("at this pace the weekly window is full Thu 14:00"); and **suggested routing rules** that open Model by task pre-filled, never applied by themselves.
+- Computed from a daily rollup kept as turns end, so it answers in milliseconds; older history is counted in the background after an update. Each machine shows its own.
+
+[`docs/insights.md`](docs/insights.md)
 
 ### Usage and footer
 The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line per account** (every Claude Code account and every Codex account), each with a **5h** and a **Week** mini-bar.
