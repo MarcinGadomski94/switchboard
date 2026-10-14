@@ -137,6 +137,8 @@ export class PrWatcher {
   readonly #cache = new Map<string, { readonly at: number; readonly result: PrViewResult }>();
   /** Worktree → when a turn's end last asked gh whether it has a PR. */
   readonly #discovered = new Map<string, number>();
+  /** Worktree without a watch row → when it was last read (a PR D30 saw that gh cannot read now is not asked every tick). */
+  readonly #tried = new Map<string, number>();
   /** Session → whether its last status was a running turn. */
   readonly #turns = new Map<string, boolean>();
   #timer: NodeJS.Timeout | undefined;
@@ -213,6 +215,7 @@ export class PrWatcher {
     this.#ticking ??= (async () => {
       try {
         const now = this.#now();
+        const idleMs = this.#pollMs ?? (await ciSettingsOf(this.#store.settings))['ci.idlePollMinutes'] * 60_000;
         const rows = new Map((await this.#store.prWatch.list()).map((row) => [row.worktreeId, row]));
         for (const worktree of await this.#store.worktrees.list()) {
           if (worktree.sessionId === null) continue;
@@ -220,6 +223,7 @@ export class PrWatcher {
           const open = row ? row.prState === 'OPEN' : worktree.prState === 'OPEN';
           if (!open) continue;
           if (row && row.nextAt !== null && Date.parse(row.nextAt) > now) continue;
+          if (!row && now - (this.#tried.get(worktree.id) ?? -Infinity) < idleMs) continue;
           await this.check(worktree.id);
         }
       } finally {
@@ -295,6 +299,7 @@ export class PrWatcher {
     const settings = await ciSettingsOf(this.#store.settings);
     const result = await this.#gh.viewPr(cwd, worktree.branch);
     const now = this.#now();
+    this.#tried.set(worktreeId, now);
     const previous = await this.#store.prWatch.get(worktreeId);
     if (result.kind !== 'pr') {
       // gh failed (offline, signed out) or no PR (yet): try again at the idle interval.
