@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.20.0 (2026-10-14)
+
+### Insights
+- **One page showing where your agents' time and tokens went**, across all your paired machines: tokens and agent time per folder, session and model, how close the estimates were, what came back for rework (reopened todos, Plans items sent back, reverted turns), the cost of every turn and every todo run at your own prices (example prices — edit them in Settings), and when each account's 5-hour and weekly limits will fill.
+- Filter by period, folder, CLI, model, account and machine. Suggested routing rules open Model by task pre-filled and are never applied on their own.
+
+### CI and pull requests
+- **A failing check goes back to the agent:** Switchboard sends the end of the failing job's log to the session (up to 3 times per PR, then asks you in the Inbox). A green, approved PR gets **Merge PR** — only on your click — and a status chip in the session header. Settings → CI & pull requests.
+- **Import issues…** turns GitHub or Jira issues into a session's todos, with a preview and a link back, never twice.
+
+### Project memory (experimental)
+- **Agents propose durable facts about a project** (build commands, gotchas, conventions); you approve, edit or reject them on the new Memory page. Only approved entries reach sessions in that folder, next to the standing instruction; open sessions are flagged so you apply it when you choose. Off by default: Settings → Experimental → Project memory.
+
+### Docs
+- A design proposal for using one Switchboard with several developers (`docs/design/team-mode.md`); nothing is built yet.
+
 ## 1.19.0 (2026-10-14)
 
 ### Chats
