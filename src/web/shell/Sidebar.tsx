@@ -16,6 +16,9 @@ import { TOOL_DOT, useProbeOnLoad, useToolState, useToolStates } from '../tools/
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { PANE_ID, PaneHideButton, usePanes } from './Panes.tsx';
 import { SidebarSessions } from './SidebarSessions.tsx';
+import { SidebarChats } from './SidebarChats.tsx';
+import { onRevealChats } from './reveal-chats.ts';
+import { isChat } from '../../core/chats.ts';
 import { NavCell } from './NavCell.tsx';
 import {
   type NavBadge,
@@ -213,6 +216,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
     modals.open(...args);
   };
   const now = useNow(30_000);
+  // D106: ⌘K → Chats shows the CHATS section (the drawer / a hidden sidebar first).
+  useEffect(() => onRevealChats(() => panes.setHidden('sidebar', false)), [panes]);
 
   // D95 follow-up 2: the page's shared list, patched from /hub (no read per sessionUpdated).
   const sessions = useSessionListOf();
@@ -274,7 +279,9 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   useFrameHelperSites(tools.data); // D28 ruling: the saved site tools' hosts, for the frame helper's rules in this tab
   // D33: the list is already open sessions only; a closed one never shows even from a stale payload.
   // Team (D100) hook: team members' sessions leave SESSIONS while Team is on (one filter; docs/team-removal.md).
-  const sessionList = withoutTeamMembers(openSessions(sessions.data ?? []), teamHidden);
+  // D106: chats are listed under CHATS, never under SESSIONS.
+  const sessionList = withoutTeamMembers(openSessions(sessions.data ?? []), teamHidden).filter((session) => !isChat(session));
+  const chatList = openSessions(sessions.data ?? []).filter(isChat);
   const reachable = system.reachable ?? sessions.reachable;
 
   return (
@@ -341,8 +348,11 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
 
       {/* Team (D100) hook: ⚑ Team · <name> · N members above SESSIONS, only while Team is on. */}
       <TeamSidebarEntry />
+      {/* D106: the CHATS section (nothing while there are no chats). */}
+      <SidebarChats chats={chatList} activityOf={activityOf} closer={closer} isCurrent={(id) => isActive(route, 'session', id)} now={now} onNew={() => open('new-chat')} />
       {/* D54: the SESSIONS label and list (Pinned, folders, loose sessions): SidebarSessions.tsx. */}
       <SidebarSessions
+        onNewChat={() => open('new-chat')}
         sessions={sessionList}
         loaded={sessions.data !== null}
         activityOf={activityOf}

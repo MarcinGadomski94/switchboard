@@ -14,6 +14,7 @@ import { useDiffCount } from './useDiffScope.ts';
 import { actionErrorText } from './session-header.ts';
 import { NOTHING_LOADING, anyLoading, loadingParts } from './session-loading.ts';
 import { usePlaceholderDelay, useSessionData } from './useSessionData.ts';
+import { isChat } from '../../../core/chats.ts';
 import './session.css';
 
 /** `sessionUpdated` / `event` come in bursts; the session detail reloads at most this often. */
@@ -123,7 +124,8 @@ export function SessionView({
           />
         ) : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}
-        {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
+        {/* D106: a chat has no Diff (an old link to it shows nothing). */}
+        {tab === 'diff' && !isChat(session) ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} artifactId={artifactId} blocked={session ? offlineReason(session.machine) : null} /> : null}
       </div>
       <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} placeholder={placeholders.panel} />

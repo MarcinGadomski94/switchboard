@@ -15,6 +15,7 @@ import { TerminalTail } from './TerminalTail.tsx';
 import { agentActivity, cappedCards, fewerCardsLine, moreCardsLine } from './workflow-agents.ts';
 // Plans (D99) hook: the session's Plan tab (docs/plans-removal.md).
 import { SessionPlanTab } from '../../plans/PlansNav.tsx';
+import { isChat } from '../../../core/chats.ts';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
 const finishedExpanded = new Map<string, boolean>();
@@ -80,7 +81,8 @@ export function RightPanel({
       aria-hidden={hidden || undefined}
     >
       {/* Plans (D99) hook: the Plan tab (its plans, Import from Jira…), only while Plans is on (nothing otherwise). */}
-      <SessionPlanTab sessionId={sessionId} />
+      {/* D106: a chat is no plan source. */}
+      {isChat(session) ? null : <SessionPlanTab sessionId={sessionId} />}
       {session && panel && capped ? (
         <>
           <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />
@@ -147,7 +149,8 @@ export function RightPanel({
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
-          <HandoffCard attached={session.attached} command={session.resumeCommand} cwd={session.cwd} />
+          {/* D106: a chat is never continued in a terminal (its CLI could leave plan mode there). */}
+          {isChat(session) ? null : <HandoffCard attached={session.attached} command={session.resumeCommand} cwd={session.cwd} />}
         </>
       ) : placeholder ? (
         <PanelSkeleton />

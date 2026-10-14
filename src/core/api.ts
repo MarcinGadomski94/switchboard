@@ -144,6 +144,14 @@ export interface NewSession {
    * not the chosen CLI's, or is disabled.
    */
   readonly profileId?: string | null;
+  /**
+   * Additive (D106, `docs/chats.md` → *Continue as session*): the chat this session
+   * continues (an id of this machine's chat). Its conversation (Switchboard's history
+   * export) starts the first message, before the task; the two are linked both ways
+   * (`continuedFrom` / the chat's `continuedTo`). 422 on field `fromChat` when it names
+   * no chat.
+   */
+  readonly fromChat?: string | null;
 }
 
 /**
@@ -301,6 +309,8 @@ export interface NewRepoSession {
   readonly provider?: CliProviderId | null;
   /** Additive (D63): as {@link NewSession.profileId}. */
   readonly profileId?: string | null;
+  /** Additive (D106): as {@link NewSession.fromChat}. */
+  readonly fromChat?: string | null;
 }
 
 /**
@@ -340,13 +350,35 @@ export interface NewSimpleSession {
   readonly provider?: CliProviderId | null;
   /** Additive (D63): as {@link NewSession.profileId}. */
   readonly profileId?: string | null;
+  /** Additive (D106): as {@link NewSession.fromChat}. */
+  readonly fromChat?: string | null;
+}
+
+/**
+ * Additive (D106, `docs/chats.md`): the `POST /api/chats` body (the New-chat form). A
+ * chat runs in its own scratch folder in its CLI's read-only / plan mode; its title
+ * comes from `message`. `provider` / `profileId` / `model` / `effort` / `attachments`
+ * as {@link NewSession}'s; `lookAt` = folders it may read (absolute paths of existing
+ * folders, at most 10; 422 on field `lookAt` otherwise).
+ */
+export interface NewChat {
+  readonly message: string;
+  readonly attachments?: readonly string[];
+  readonly provider?: CliProviderId | null;
+  readonly profileId?: string | null;
+  readonly model?: string | null;
+  readonly effort?: string | null;
+  readonly lookAt?: readonly string[];
 }
 
 /**
  * Additive (M3.3): values the New-session modal opens with instead of its defaults,
  * e.g. from an Inbox item's "Open fix session" action. Any field may be missing.
  */
-export type NewSessionPrefill = { readonly [K in keyof NewSession]?: NewSession[K] };
+export type NewSessionPrefill = { readonly [K in keyof NewSession]?: NewSession[K] } & {
+  /** Additive (D106): the title of the chat {@link NewSession.fromChat} names (the form's note). */
+  readonly fromChatTitle?: string | null;
+};
 
 /** An agent of a session (data model; gap #8). Provisional: M2.1 / M4.3. */
 export interface Agent {

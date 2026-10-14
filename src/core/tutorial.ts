@@ -82,6 +82,9 @@ const V1_17 = '1.17.0';
 /** The version D101 (the sidebar's navigation as an icon grid, collapsible TOOLS) ships in. */
 const V1_18 = '1.18.0';
 
+/** The version D106 (chats) ships in. */
+const V1_19 = '1.19.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -766,6 +769,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['team-draft-charters'],
         route: { view: 'team' },
         missing: `${TEAM_NO_MEMBER}Draft better charters then sits in the Team page's header.`,
+      },
+    ],
+  },
+  {
+    id: 'chats',
+    decision: 'D106',
+    version: V1_19,
+    title: 'Chats',
+    steps: [
+      {
+        id: 'new-chat',
+        title: 'Start a chat instead of a session',
+        what: 'A chat is a conversation to think and plan in: its agent reads files, searches, browses the web and looks at what you attach, but never edits or runs commands that change things (its CLI stays in plan mode). It runs in its own empty folder, can look at folders you name, and gets its own CHATS section. When you want it built, ⋯ → Continue as session… carries the conversation into a new session.',
+        todo: ['Press the chat button next to SESSIONS (or ⌘K → New chat).', 'Write your question; add folders to look at if it needs code.', 'In the chat, ⋯ → Continue as session… to start coding.'],
+        anchors: ['new-chat'],
+        drawer: true,
+        missing: 'Start one from ⌘K → New chat, or the chat button next to the SESSIONS label in the sidebar.',
       },
     ],
   },

@@ -1,3 +1,4 @@
+import { CHATS_LABEL, NEW_CHAT_LABEL, isChat } from '../../core/chats.ts';
 import type { Session, SolutionGroup, Tool, SessionListItem } from '../../core/api.ts';
 import { openSessions } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
@@ -16,7 +17,7 @@ import type { SearchRoute } from '../views/search-view.ts';
  */
 
 /** Kind label of a result (shown upper-cased). */
-export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'solution' | 'todo' | 'search';
+export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'chat' | 'solution' | 'todo' | 'search';
 
 /**
  * The routes the palette navigates to: a structural subset of the router's
@@ -34,6 +35,10 @@ export type PaletteTarget =
   | { readonly type: 'route'; readonly route: PaletteRoute }
   /** Open the New-session modal. */
   | { readonly type: 'new-session' }
+  /** D106: open the New-chat form. */
+  | { readonly type: 'new-chat' }
+  /** D106: the sidebar's CHATS section (shown, scrolled to and focused; the drawer opens on a phone). */
+  | { readonly type: 'chats' }
   /** Open the Solutions view with this solution (its `path`) selected. */
   | { readonly type: 'solution'; readonly path: string }
   /** D81: "Add todo…": the query becomes `todo ` (the palette stays open for the title). */
@@ -107,7 +112,8 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
     entries.push({ key: `tool:${tool.id}`, kind: 'tool', label: tool.name, hint: urlHost(tool.url), target: { type: 'route', route: { view: 'tool', id: tool.id } } });
   }
   // D33: closed sessions are not offered (the service leaves them out already; a stale list may still hold one).
-  for (const session of openSessions(data.sessions ?? [])) {
+  // D106: chats are listed as chats (after the solutions, below).
+  for (const session of openSessions(data.sessions ?? []).filter((item) => !isChat(item))) {
     const label = displayTitle(session);
     entries.push({
       key: `session:${session.id}`,
@@ -122,6 +128,13 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
     for (const solution of group.solutions) {
       entries.push({ key: `solution:${solution.path}`, kind: 'solution', label: solution.name, hint: group.folder, target: { type: 'solution', path: solution.path } });
     }
+  }
+  // D106: New chat, the CHATS section, and each open chat (after the prototype's entries, so its first ten results stay).
+  entries.push({ key: 'action:new-chat', kind: 'action', label: NEW_CHAT_LABEL, hint: 'plan without editing', target: { type: 'new-chat' }, also: 'chat conversation think plan ask' });
+  const chats = openSessions(data.sessions ?? []).filter(isChat);
+  if (chats.length > 0) entries.push({ key: 'action:chats', kind: 'action', label: CHATS_LABEL, hint: `${chats.length} open`, target: { type: 'chats' }, also: 'chat list' });
+  for (const chat of chats) {
+    entries.push({ key: `chat:${chat.id}`, kind: 'chat', label: displayTitle(chat), hint: chat.continuedTo?.title ? `continued as ${chat.continuedTo.title}` : 'plan mode', target: { type: 'route', route: { view: 'session', id: chat.id, tab: 'chat' } }, also: 'chat' });
   }
   // D85: the tutorial's replay, last (the prototype's first ten results stay as they were).
   entries.push({ key: 'action:tutorial', kind: 'action', label: TUTORIAL_LABEL, hint: 'replay the tour', target: { type: 'tutorial' }, also: "tour what's new help guide" });

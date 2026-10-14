@@ -45,6 +45,7 @@ import type {
   ModelSettings,
   NewRepoSession,
   NewSimpleSession,
+  NewChat,
   NewSession,
   ResumeCommand,
   Schedule,
@@ -282,6 +283,10 @@ export const api = {
   dismissUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/dismiss', { version } satisfies UpdateVersionInput),
   /** D33: reopen a closed session (no process starts). */
   reopenSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reopen`),
+  /** D106: start a chat (this machine's); its folders to look at (a peer's chat id is forwarded); delete one (closed first, `confirm` while it runs). */
+  createChat: (body: NewChat) => request<Session>('POST', '/api/chats', body),
+  setChatLookAt: (id: string, lookAt: readonly string[]) => request<Session>('PUT', `/api/chats/${enc(id)}/look-at`, { lookAt }),
+  deleteChat: (id: string, confirm = false) => request<null>('DELETE', `/api/chats/${enc(id)}`, { confirm }),
   /** D72: Continue in Switchboard of a hooked terminal session; 409 `terminal-running` until called with the stop confirmed. */
   continueHookedSession: (id: string, confirmStopTerminal = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/continue-in-switchboard`, confirmStopTerminal ? { confirmStopTerminal: true } : {}),

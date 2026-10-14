@@ -14,6 +14,7 @@ import { MAIN_TOUR_ID } from '../../core/tutorial.ts';
 import { ADD_TODO_QUERY, PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries, paletteTodoEntries } from './palette.ts';
 import type { SearchAnswer } from '../../core/search.ts';
 import { SEARCH_DEBOUNCE_MS, paletteSearchEntries, paletteSearchText, searchPath } from '../views/search-view.ts';
+import { revealChats } from '../shell/reveal-chats.ts';
 import './palette.css';
 
 /** Id of the results list (the input's `aria-controls`). */
@@ -103,6 +104,16 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
     const { target } = entry;
     if (target.type === 'new-session') {
       open('new-session');
+      return;
+    }
+    // D106: New chat; Chats shows the sidebar's CHATS section.
+    if (target.type === 'new-chat') {
+      open('new-chat');
+      return;
+    }
+    if (target.type === 'chats') {
+      onClose();
+      revealChats();
       return;
     }
     if (target.type === 'none') return;

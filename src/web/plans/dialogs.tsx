@@ -1,3 +1,4 @@
+import { isChat } from '../../core/chats.ts';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import type { SessionTodo } from '../../core/api.ts';
 import { DEFAULT_PLAN_BASE, type Plan, type PlanMergeMode } from '../../core/plans.ts';
@@ -164,7 +165,8 @@ function TodoPicker({ sessionId, taken, picked, onPick }: { readonly sessionId: 
 /** ＋ New plan: the session whose todos it runs, a title, the target branch, the base, the items from its todos. */
 export function NewPlanDialog({ initialSessionId, onCreated, onClose }: { readonly initialSessionId: string | null; readonly onCreated: (plan: Plan) => void; readonly onClose: () => void }) {
   const sessions = useSessionListOf();
-  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.machine == null && session.folderKind !== 'plain'), [sessions.data]);
+  // D106: chats are no plan sources.
+  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.machine == null && session.folderKind !== 'plain' && !isChat(session)), [sessions.data]);
   const [sessionId, setSessionId] = useState(initialSessionId ?? '');
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState('');
@@ -318,7 +320,7 @@ export function LimitsDialog({ plan, onDone, onClose }: { readonly plan: Plan; r
 /** Import from Jira… on the Plans list: the session whose todo list the plan will run, then the Jira lane's dialog. */
 export function JiraSourceDialog({ onPick, onClose }: { readonly onPick: (sessionId: string) => void; readonly onClose: () => void }) {
   const sessions = useSessionListOf();
-  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.folderKind !== 'plain'), [sessions.data]);
+  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.folderKind !== 'plain' && !isChat(session)), [sessions.data]);
   const [sessionId, setSessionId] = useState('');
   useEffect(() => {
     if (sessionId === '' && choices[0]) setSessionId(choices[0].id);

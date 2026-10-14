@@ -18,7 +18,7 @@ export const CONTINUE_IN_TERMINAL = '⇄ Continue in terminal';
 export const ATTACH_HERE = '⇄ Attach here';
 
 /** The session's folder facts the root line reads (D14). */
-export type SessionPlace = Pick<Session, 'cwd' | 'folderPath' | 'folderKind'>;
+export type SessionPlace = Pick<Session, 'cwd' | 'folderPath' | 'folderKind'> & { readonly kind?: Session['kind'] };
 
 /**
  * What the session's working folder is (D14): `workspace root` for a workspace
@@ -27,6 +27,8 @@ export type SessionPlace = Pick<Session, 'cwd' | 'folderPath' | 'folderKind'>;
  * for a plain folder (no AGENTS.md, not a git repository).
  */
 export function placeLabel(session: SessionPlace): string {
+  // D106: a chat works in its own scratch folder.
+  if (session.kind === 'chat') return 'chat scratch folder';
   if (session.folderKind === 'plain') return 'folder';
   if (session.folderKind !== 'repo') return 'workspace root';
   const repo = session.folderPath ? folderName(session.folderPath) : null;
@@ -74,11 +76,12 @@ export interface TabLabel {
  * (gap #9). D45 (developer ruling): a count is `null` while the session's detail
  * loads, and its tab reads just `Diff` / `Artifacts` until it is there.
  */
-export function tabLabels(files: number | null, artifacts: number | null): TabLabel[] {
+export function tabLabels(files: number | null, artifacts: number | null, chat = false): TabLabel[] {
   return [
     { tab: 'chat', label: 'Chat' },
     { tab: 'timeline', label: 'Timeline' },
-    { tab: 'diff', label: files === null ? 'Diff' : `Diff · ${files}` },
+    // D106: a chat changes no files: no Diff tab.
+    ...(chat ? [] : [{ tab: 'diff' as const, label: files === null ? 'Diff' : `Diff · ${files}` }]),
     { tab: 'artifacts', label: artifacts === null ? 'Artifacts' : `Artifacts · ${artifacts}` },
   ];
 }

@@ -104,7 +104,7 @@ function useSidebarLayout(): SidebarLayoutControl {
  * so the row keeps the prototype's geometry. A click closes the session and never
  * follows the row's link. The glyph is drawn, so the row's text is unchanged.
  */
-function SessionCloseButton({ session, busy, onClose }: { readonly session: SessionListItem; readonly busy: boolean; readonly onClose: () => void }) {
+export function SessionCloseButton({ session, busy, onClose }: { readonly session: SessionListItem; readonly busy: boolean; readonly onClose: () => void }) {
   const click = (event: MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault();
     event.stopPropagation();
@@ -295,6 +295,8 @@ export interface SidebarSessionsProps {
   /** D62 P6: the row's CLI badge (`codex`), `null` = none (a list of Claude Code sessions only). */
   readonly cliBadge?: (session: SessionListItem) => string | null;
   readonly now: number;
+  /** D106: the label's New chat button (absent = none). */
+  readonly onNewChat?: () => void;
 }
 
 /** A text field for a folder's name: Enter saves, Esc cancels; leaving it saves (`saveOnBlur`) or cancels. */
@@ -346,7 +348,7 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  * subfolder. The layout is stored by the service and live in every tab
  * (`sidebarLayoutChanged`).
  */
-export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now }: SidebarSessionsProps) {
+export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now, onNewChat }: SidebarSessionsProps) {
   const { layout, run, error } = useSidebarLayout();
   const { navigate } = useRouter();
   const { show: showToast } = useToasts();
@@ -1011,6 +1013,14 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         Sessions
         <span className="sb-section-count">{loaded ? String(sessions.length) : ''}</span>
         {/* D54: drawn, not text, so the label's copy stays the prototype's. */}
+        {/* D106: New chat (drawn, like the folder's +: the label's copy and size stay the prototype's). */}
+        {onNewChat ? (
+          <button type="button" className="sb-button sb-folder-add sb-chat-add" data-testid="sidebar-sessions-new-chat" data-tour="new-chat" aria-label="New chat" title="New chat" onClick={onNewChat}>
+            <svg width="12" height="11" viewBox="0 0 12 11" aria-hidden="true" focusable="false">
+              <path d="M2 1.5h8a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1H5.5L3 9.8V8H2a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
         <button type="button" className="sb-button sb-folder-add" data-testid="sidebar-new-folder" aria-label="New folder" title="New folder" onClick={() => setCreating(null)}>
           <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true" focusable="false">
             <path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />

@@ -15,6 +15,7 @@ import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWarningText, terminalConversations } from '../views/history-move.ts';
 import { ModelChoicePicker } from '../views/session/ModelPicker.tsx';
+import { continueFromChatNote } from '../../core/chats.ts';
 import { AccountPicker } from '../components/AccountPicker.tsx';
 import { CliPicker } from '../components/CliPicker.tsx';
 import { effectiveCli } from '../components/cli.ts';
@@ -206,9 +207,12 @@ export function NewSessionModal({
   const { navigate } = useRouter();
   const scheduling = schedule !== null;
   // D56: Simple / Full. A schedule and a prefill open Full; else the remembered mode (`newSession.mode`, Simple on a fresh install).
-  const remembered = useApi(() => (scheduling || prefill ? Promise.resolve(null) : api.settings().catch(() => null)), []);
+  // D106: Continue as session carries a chat over (`prefill.fromChat`); its form is the remembered one.
+  const fromChat = prefill?.fromChat ?? null;
+  const fixed = scheduling || (prefill !== null && fromChat === null);
+  const remembered = useApi(() => (fixed ? Promise.resolve(null) : api.settings().catch(() => null)), []);
   const [pickedMode, setPickedMode] = useState<NewSessionMode | null>(null);
-  const mode: NewSessionMode | null = pickedMode ?? (scheduling || prefill ? 'full' : remembered.loading ? null : openingMode({ scheduling, prefill }, remembered.data));
+  const mode: NewSessionMode | null = pickedMode ?? (fixed ? 'full' : remembered.loading ? null : openingMode({ scheduling, prefill }, remembered.data));
   const simple = mode === 'simple' && !scheduling;
   // D88 ruling 2026-10-09: a plain New session keeps what is typed as this machine's draft (`new-session`; Simple and
   // Full share it); a prefill or a schedule opens with its own values and keeps none. Cancel keeps it (a mail draft);
@@ -470,7 +474,7 @@ export function NewSessionModal({
       // D57: the attachments upload to the chosen machine first; their ids go with the start.
       const ids = await uploadAttachments();
       // D56: a NewSimpleSession (no router answers, no solutions, no branching); D48: on the chosen machine.
-      const session = await machineApi(peer).createSession({ ...toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }), ...(ids.length > 0 ? { attachments: ids } : {}) });
+      const session = await machineApi(peer).createSession({ ...toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }), ...(ids.length > 0 ? { attachments: ids } : {}), ...(fromChat ? { fromChat } : {}) });
       started();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -516,7 +520,7 @@ export function NewSessionModal({
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
       // D57: the attachments upload to the chosen machine first; their ids go with the start.
       const ids = await uploadAttachments();
-      const body = { ...toStartBody(launch, folder, takenNames), ...(ids.length > 0 ? { attachments: ids } : {}) };
+      const body = { ...toStartBody(launch, folder, takenNames), ...(ids.length > 0 ? { attachments: ids } : {}), ...(fromChat ? { fromChat } : {}) };
       // D40: with a worktree, the branching (epic, base, per-repo choices; D47: the parent) goes with it.
       // D48: on a peer the session starts there; the answer is its remote id (the session view opens it like a local one).
       const session = await machineApi(peer).createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
@@ -638,6 +642,13 @@ export function NewSessionModal({
   ) : null;
   const modeToggle = mode !== null && offersModeToggle(scheduling) ? <ModeToggle mode={mode} onPick={pickMode} disabled={busy} /> : null;
 
+  // D106: Continue as session: the chat this session carries over (its conversation starts the first message).
+  const carryBanner = fromChat ? (
+    <div className="sb-ns-carry" data-testid="ns-from-chat" data-chat-id={fromChat}>
+      {continueFromChatNote(prefill?.fromChatTitle ?? null)}
+    </div>
+  ) : null;
+
   if (mode === null || simple) {
     return (
       <div ref={overlayRef} className="sb-overlay" data-modal="new-session" onClick={onClose}>
@@ -650,6 +661,7 @@ export function NewSessionModal({
           data-mode={mode ?? 'loading'}
           onClick={(event: MouseEvent) => event.stopPropagation()}
         >
+          {carryBanner}
           {mode === null ? (
             <div className="sb-ns-simple-loading" data-testid="ns-mode-loading">
               Loading…
@@ -697,6 +709,7 @@ export function NewSessionModal({
         onClick={(event: MouseEvent) => event.stopPropagation()}
       >
         <div className="sb-ns-form">
+          {carryBanner}
           <div className="sb-ns-head">
             <div className="sb-ns-title" data-testid="ns-title">
               {title}

@@ -1,3 +1,4 @@
+import { isChat } from '../../core/chats.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarLayout } from '../../core/sidebar-layout.ts';
 import { ALL_TEAMS, DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, TEAM_NAME_MAX, type TeamMember, type TeamSuggestion } from '../../core/team.ts';
@@ -146,7 +147,8 @@ export function TeamPage() {
   const templateOf = (id: string | null): TeamTemplate | null => templates.find((template) => template.id === id) ?? null;
   const placeOf = (member: TeamMember): string => placeLabel(member.originalPlace, layoutSidebar);
   const memberRefs = new Set(members.map((member) => member.sessionRef));
-  const openList = openSessions(sessions.data ?? []).filter((session) => !memberRefs.has(session.id));
+  // D106: chats are never members nor suggested.
+  const openList = openSessions(sessions.data ?? []).filter((session) => !memberRefs.has(session.id) && !isChat(session));
   const suggestionIds = (suggestions ?? []).filter((s) => !memberRefs.has(s.sessionId)).map((s) => s.sessionId);
   const banner = bannerVisible(suggestionIds, laterIds);
 

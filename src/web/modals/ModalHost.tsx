@@ -2,6 +2,8 @@ import { type ReactNode, createContext, useCallback, useContext, useEffect, useM
 import type { NewSessionPrefill } from '../../core/api.ts';
 import './modals.css';
 import { NewSessionModal } from './NewSessionModal.tsx';
+import { NewChatModal } from './NewChatModal.tsx';
+import { LookAtDialog, type LookAtTarget } from './LookAtDialog.tsx';
 import { Palette } from './Palette.tsx';
 import type { ScheduleDraft } from './schedule-form.ts';
 import { SetupWizard } from './SetupWizard.tsx';
@@ -9,7 +11,7 @@ import { UpdateDialog } from '../updates/UpdateDialog.tsx';
 import { LoopDialog, type LoopDialogTarget } from '../views/OwnedLoops.tsx';
 
 /** The app's modals (SPEC → Modals). */
-export type ModalName = 'new-session' | 'setup-wizard' | 'palette' | 'update' | 'loop';
+export type ModalName = 'new-session' | 'setup-wizard' | 'palette' | 'update' | 'loop' | 'new-chat' | 'look-at';
 
 /** Extra state a modal opens with. */
 export interface ModalOptions {
@@ -27,6 +29,8 @@ export interface ModalOptions {
   readonly updateConfirm?: boolean;
   /** D94: New loop… (in a session, or on Schedules & loops with a session picker) or a loop's Edit. */
   readonly loop?: LoopDialogTarget | null;
+  /** D106: the chat whose folders to look at the dialog edits. */
+  readonly chat?: LookAtTarget | null;
 }
 
 interface ModalValue {
@@ -41,6 +45,8 @@ interface ModalValue {
   readonly updateConfirm: boolean;
   /** D94: the open loop dialog's session / loop. */
   readonly loop: LoopDialogTarget | null;
+  /** D106: the chat of the open Look-at-folders dialog. */
+  readonly chat: LookAtTarget | null;
   readonly open: (name: ModalName, options?: ModalOptions) => void;
   readonly close: () => void;
 }
@@ -58,12 +64,14 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
   const [machine, setMachine] = useState<string | null>(null);
   const [updateConfirm, setUpdateConfirm] = useState(false);
   const [loop, setLoop] = useState<LoopDialogTarget | null>(null);
+  const [chat, setChat] = useState<LookAtTarget | null>(null);
   const open = useCallback((name: ModalName, options?: ModalOptions) => {
     setUpdateConfirm(name === 'update' && options?.updateConfirm === true);
     setPrefill(name === 'new-session' ? (options?.prefill ?? null) : null);
     setSchedule(name === 'new-session' ? (options?.schedule ?? null) : null);
     setMachine(name === 'new-session' ? (options?.machine ?? null) : null);
     setLoop(name === 'loop' ? (options?.loop ?? {}) : null);
+    setChat(name === 'look-at' ? (options?.chat ?? null) : null);
     setModal(name);
   }, []);
   const close = useCallback(() => setModal(null), []);
@@ -81,7 +89,7 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, machine, updateConfirm, loop, open, close }), [modal, prefill, schedule, machine, updateConfirm, loop, open, close]);
+  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, machine, updateConfirm, loop, chat, open, close }), [modal, prefill, schedule, machine, updateConfirm, loop, chat, open, close]);
   return <ModalContext.Provider value={value}>{children}</ModalContext.Provider>;
 }
 
@@ -94,11 +102,13 @@ export function useModals(): ModalValue {
 
 /** Renders the open modal over the shell (positioned against `.sb-shell`). */
 export function ModalHost() {
-  const { modal, prefill, schedule, machine, updateConfirm, loop, close } = useModals();
+  const { modal, prefill, schedule, machine, updateConfirm, loop, chat, close } = useModals();
   if (modal === 'new-session') return <NewSessionModal onClose={close} prefill={prefill} schedule={schedule} machine={machine} />;
   if (modal === 'setup-wizard') return <SetupWizard onClose={close} />;
   if (modal === 'palette') return <Palette onClose={close} />;
   if (modal === 'update') return <UpdateDialog onClose={close} confirm={updateConfirm} />;
+  if (modal === 'new-chat') return <NewChatModal onClose={close} />;
+  if (modal === 'look-at' && chat) return <LookAtDialog key={chat.id} target={chat} onClose={close} />;
   if (modal === 'loop') return <LoopDialog key={loop?.edit?.id ?? loop?.sessionId ?? 'new'} target={loop ?? {}} onClose={close} />;
   return null;
 }

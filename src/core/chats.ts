@@ -47,6 +47,12 @@ export const CHAT_MODE_LABEL = 'Plan mode';
 /** The chat badge's text (header, search results). */
 export const CHAT_BADGE = 'chat';
 
+/** The New-chat action (sidebar, ⌘K). */
+export const NEW_CHAT_LABEL = 'New chat';
+
+/** The ⌘K entry that shows the CHATS section. */
+export const CHATS_LABEL = 'Chats';
+
 /** The ⋯ menu item that opens the New-session form carrying the chat over. */
 export const CONTINUE_AS_SESSION_LABEL = 'Continue as session…';
 
@@ -160,6 +166,11 @@ export function continuedAsLabel(title: string): string {
 /** The new session's divider: "Continued from the chat <title>". */
 export function continuedFromChatLabel(title: string): string {
   return `Continued from the chat ${title}`;
+}
+
+/** The New-session form's line when it continues a chat. */
+export function continueFromChatNote(title: string | null): string {
+  return `Continues the chat ${title ? `“${title}”` : ''}: its conversation is carried into the session's first message, before yours.`.replace('chat :', 'chat:');
 }
 
 /** Characters of the chat a new session's first message carries inline (the newest part; the export file has all of it). */

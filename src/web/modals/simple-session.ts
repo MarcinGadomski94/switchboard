@@ -30,7 +30,8 @@ export const MODE_OPTIONS: ReadonlyArray<readonly [NewSessionMode, string]> = [
  * /api/settings`, Simple on a fresh install or when the settings cannot be read).
  */
 export function openingMode(options: { readonly scheduling: boolean; readonly prefill: NewSessionPrefill | null }, settings: Readonly<Record<string, unknown>> | null): NewSessionMode {
-  if (options.scheduling || options.prefill) return 'full';
+  // D106: Continue as session (a prefill that only carries a chat over) opens the remembered form, like New session.
+  if (options.scheduling || (options.prefill && !options.prefill.fromChat)) return 'full';
   return readKnownSettings(settings)['newSession.mode'];
 }
 

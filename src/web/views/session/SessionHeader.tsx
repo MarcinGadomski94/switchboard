@@ -19,6 +19,8 @@ import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../../core/hooke
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { moveLinkId, movedToLabel, takenOverLabel } from '../../../core/takeover.ts';
 import { continuedInLabel } from '../../../core/fresh-session.ts';
+import { CHAT_BADGE, CHAT_LOCKED_HINT, CHAT_MODE_LABEL, continuedAsLabel, isChat } from '../../../core/chats.ts';
+import { useChatMenu } from './ChatMenu.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
   ATTACH_ANYWAY,
@@ -208,6 +210,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
 
   // D48 P4: a hooked terminal session: what hooks cannot do is not offered (the note says where it stays).
   const hooked = session?.hooked === true;
+  // D106: a chat: plan mode locked, no terminal, Remote Control, take-over or undo; its own ⋯ menu.
+  const chat = isChat(session);
+  const chatMenu = useChatMenu(session, sessionId);
   // D48 ruling D48-cache-persist: an unreachable machine's session shows its last known state; every action waits for the reconnection.
   // Fix · peer reconnects: the machine's live state (a block lifts the moment it is back); `reconnecting` blocks nothing.
   const machine = useLiveMachine(session?.machine);
@@ -250,9 +255,15 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
     return (
         <>
           {/* D62 P5: the CLI the session runs on, and switching it (sessions Switchboard runs; not the demo's, not hooked). */}
-          {at('cli') && session && !blocked && offersSwitcher(session) ? switcher.picker : null}
+          {at('cli') && session && !blocked && !chat && offersSwitcher(session) ? switcher.picker : null}
           {at('account') && session && !blocked && offersSwitcher(session) ? accounts.picker : null}
           {at('model') && session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
+          {/* D106: where a permission-mode picker would be, a chat shows its mode, locked, with the reason. */}
+          {chat && where === 'row' ? (
+            <span className="sb-chat-mode" data-testid="chat-mode-locked" role="note" aria-label={`${CHAT_MODE_LABEL} (locked). ${CHAT_LOCKED_HINT}`} title={CHAT_LOCKED_HINT}>
+              <span aria-hidden="true">🔒</span> {CHAT_MODE_LABEL}
+            </span>
+          ) : null}
           {at('close') ? (
           <button
             type="button"
@@ -271,7 +282,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             {closed ? REOPEN_LABEL : CLOSE_LABEL}
           </button>
           ) : null}
-          {at('remote') && remote ? (
+          {at('remote') && remote && !chat ? (
             <div className="sb-sv-remote" data-testid="session-remote">
               <button
                 type="button"
@@ -305,11 +316,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             </div>
           ) : null}
           {/* D65: take a session over to / from a paired machine. */}
-          {at('takeover') && !blocked ? <TakeoverAction session={session} sessionId={sessionId} short={overflow.short} /> : null}
+          {at('takeover') && !blocked && !chat ? <TakeoverAction session={session} sessionId={sessionId} short={overflow.short} /> : null}
           {/* D80 (developer ruling 2026-10-08, int-header-overflow): *Undo last turn* is never in the header row; only in the
               compact header's ⋯ menu (below 1024 px), like the sidebar row's ⋯ menu, disabled with the reason when the newest
               turn has no checkpoint. Desktop: the sidebar row's ⋯ menu and each message's ↶ Revert. */}
-          {where === 'row' && headerMenu && undo && !blocked && !closed ? (
+          {where === 'row' && headerMenu && undo && !blocked && !closed && !chat ? (
             <button
               type="button"
               className="sb-button sb-sv-action"
@@ -341,7 +352,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           </button>
           )}
           {/* D48: the terminal handoff is on the machine the session runs on; not offered for a peer's session. */}
-          {session?.machine || hooked || !at('handoff') ? null : (
+          {session?.machine || hooked || chat || !at('handoff') ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -371,6 +382,12 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             {placeholder ? <TitleSkeleton /> : missing || loadError ? sessionId : null}
           </div>
         )}
+        {/* D106: a chat says so. */}
+        {chat ? (
+          <span className="sb-chat-badge" data-testid="session-chat-badge" title={CHAT_LOCKED_HINT}>
+            {CHAT_BADGE}
+          </span>
+        ) : null}
         {/* D48: a peer's session names its machine. */}
         {session?.machine ? <MachineTag machine={session.machine} testId="session-machine" /> : null}
         <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
@@ -416,6 +433,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             </div>
           </div>
         ) : null}
+        {/* D106: the chat's ⋯ (Continue as session…, Look at folders…, Delete chat). */}
+        {chat && session ? chatMenu.button : null}
         {/* D74: after the row's own parts (their child paths are the prototype's); compact layouts only. */}
         {compact ? <DrawerButton pane="rightPanel" className="sb-sv-panel-open" /> : null}
         {headerMenu ? (
@@ -488,14 +507,16 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       {/* D83: continued in a fresh session (this one is closed): the link to it (the fresh one's chat starts with the way back). */}
       {session?.continuedTo ? (
         <div className="sb-sv-remote-copy sb-sv-moved" data-testid="session-continued-in-note">
-          <span>{continuedInLabel(session.continuedTo.title ?? 'a session that no longer exists')}</span>
+          {/* D106: a chat continued as a session stays open: "Continued as <session>". */}
+          <span>{(chat ? continuedAsLabel : continuedInLabel)(session.continuedTo.title ?? 'a session that no longer exists')}</span>
           {session.continuedTo.title !== null ? (
             <Link to={{ view: 'session', id: session.continuedTo.sessionId, tab: 'chat' }} className="sb-sv-remote-copy-link" data-testid="session-continued-in-link">
-              Open the fresh session
+              {chat ? 'Open the session' : 'Open the fresh session'}
             </Link>
           ) : null}
         </div>
       ) : null}
+      {chatMenu.panel}
       {session?.remoteSource ? (
         <div className="sb-sv-remote-copy" data-testid="session-remote-copy-note">
           <span>{REMOTE_COPY_NOTE}</span>
@@ -542,7 +563,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       {/* D104: the chips, status first, folded to one line ("+N more ▾") when they need more. */}
       <SessionChips sessionId={sessionId} chips={session?.chips ?? []} solutions={session?.solutions ?? []} placeholder={placeholder} />
       <div className="sb-sv-tabs" role="tablist">
-        {tabLabels(files, artifacts).map((entry) => (
+        {tabLabels(files, artifacts, chat).map((entry) => (
           <Link
             key={entry.tab}
             to={{ view: 'session', id: sessionId, tab: entry.tab }}
