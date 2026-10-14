@@ -34,5 +34,5 @@
     "vitest.config.ts",
     "playwright.config.ts"
   ],
-  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web", "tests/e2e", "tools/screenshots", "tools/bench/browser.ts"]
+  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web", "tests/e2e", "tools/screenshots", "tools/bench/browser.ts", "tools/bench/insights.ts"]
 }
