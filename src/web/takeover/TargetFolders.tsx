@@ -3,6 +3,7 @@ import { ApiError, api } from '../api/client.ts';
 import { FolderBrowserList } from '../folders/FolderTag.tsx';
 import type { TakeoverPreview, TargetDirListing, TargetPlacement } from '../../core/takeover.ts';
 import { type RepoRow, repoRows, withRoot, withoutRoot } from './takeover.ts';
+import './takeover.css';
 
 /**
  * D110 (`docs/peers.md` → *Target folders and verification*): the move dialog's

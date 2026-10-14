@@ -48,6 +48,10 @@ test('move dialog: the checks first, then Move; the member runs on the other mac
   // The checks come first; nothing moves until Move.
   await expect(dialog.getByTestId('team-move-check')).toBeVisible({ timeout: 60_000 });
   await expect(dialog.getByTestId('team-move-check')).toHaveAttribute('data-ok', 'true');
+  // D110: the same target folders and ✓ / ⚠ / ✖ table as a session's move (the mac's saved folder holds alpha: ✓).
+  await expect(dialog.getByTestId('takeover-folders')).toContainText(`Folders on ${bName}`);
+  await expect(dialog.getByTestId('takeover-repo-mark')).toHaveText('✓');
+  if (process.env['MOVE_TARGET_SHOTS']) await dialog.screenshot({ path: `${process.env['MOVE_TARGET_SHOTS']}/team-move-target.png` });
   const before = (await w.a.call('GET', '/api/team')).body as TeamView;
   expect(before.members.find((m) => m.name === 'Tracker')?.machineId).toBe(w.aId);
   await dialog.getByTestId('team-move-start').click();

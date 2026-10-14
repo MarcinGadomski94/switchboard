@@ -550,7 +550,7 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
         </div>
       ) : null}
       {check?.preview && run === null ? (
-        <>
+        <div className="sb-takeover-embed">
           <TargetFolderPicker
             machine={target.id}
             machineName={target.name}
@@ -574,7 +574,7 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
               recheck(next, clonePaths);
             }}
           />
-        </>
+        </div>
       ) : null}
       {check ? (
         <div className="sb-team-move-check" data-testid="team-move-check" data-ok={String(check.ok)}>
