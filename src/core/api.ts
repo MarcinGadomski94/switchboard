@@ -12,6 +12,7 @@
  * step because both import this file.
  */
 import type { FreshStep } from './fresh-session.ts';
+import type { SessionKind } from './chats.ts';
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AccountProfile, AccountSettings } from './accounts.ts';
@@ -781,6 +782,14 @@ export interface Session {
    */
   readonly continuedTo?: SessionLink | null;
   readonly continuedFrom?: SessionLink | null;
+  /**
+   * Additive (D106): `chat` for a chat (a conversation to think and plan in: its own
+   * scratch folder, its CLI's read-only / plan mode, listed under CHATS); absent for a
+   * development session (and from a machine before D106).
+   */
+  readonly kind?: SessionKind;
+  /** Additive (D106): the folders a chat may read (canonical absolute paths); absent for a session. */
+  readonly lookAt?: readonly string[];
   /** Additive (D83): a continuation in a fresh session in progress (the offer bar's progress); `null` / absent when none runs. */
   readonly freshContinue?: SessionFreshContinue | null;
   /**

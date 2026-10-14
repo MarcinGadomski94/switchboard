@@ -162,6 +162,7 @@ export class SearchService {
           ts: row.ts,
           score: hit.score,
           target: { type: 'event', sessionId: row.sessionId, eventId: row.id, agentId: subagent ? row.agentId : null },
+          ...(row.chat ? { chat: true as const } : {}),
         });
         continue;
       }
@@ -183,6 +184,7 @@ export class SearchService {
         ts: row.ts,
         score: hit.score,
         target,
+        ...(row.chat ? { chat: true as const } : {}),
       });
     }
     return results;

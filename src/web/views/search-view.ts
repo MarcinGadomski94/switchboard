@@ -67,8 +67,14 @@ export function resultRoute(result: SearchResult): SearchRoute {
   }
 }
 
-/** A result's kind tag (`Message`, `Note`, `Bash`, `Artifact`, …). */
+/** A result's kind tag (`Message`, `Note`, `Bash`, `Artifact`, …). D106: a chat's title is `Chat`, anything else in a chat gets ` · chat`. */
 export function kindLabel(result: SearchResult): string {
+  const label = baseKindLabel(result);
+  if (!result.chat) return label;
+  return result.kind === 'session' ? 'Chat' : `${label} · chat`;
+}
+
+function baseKindLabel(result: SearchResult): string {
   switch (result.kind) {
     case 'message':
       return result.detail === 'You' ? 'You' : 'Agent';

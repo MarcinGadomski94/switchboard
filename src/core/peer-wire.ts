@@ -307,6 +307,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   const upper = method.toUpperCase();
   if (pathname === '/api/sessions') return upper === 'GET' ? 'sessions' : upper === 'POST' ? 'session' : 'none';
   if (pathname === '/api/inbox') return upper === 'GET' ? 'inbox' : 'none';
+  // D106: a chat's start and its folders to look at answer the Session (Delete answers 204).
+  if (pathname === '/api/chats') return upper === 'POST' ? 'session' : 'none';
+  if (/^\/api\/chats\/[^/]+\/look-at$/.test(pathname)) return upper === 'PUT' ? 'session' : 'none';
   // D52: the schedules (the list, Save schedule, Run now, Pause, Resume; Delete answers 204) and the terminal sessions' loops.
   if (pathname === '/api/schedules') return upper === 'GET' ? 'schedules' : upper === 'POST' ? 'schedule' : 'none';
   if (upper === 'POST' && /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/.test(pathname)) return 'schedule';

@@ -15,6 +15,7 @@ import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachme
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { restoreFullEvent } from '../sessions/full-event.ts';
 import { startNewSession } from '../sessions/start.ts';
+import { deleteChat, resolveLookAt, startChat } from '../chats/start.ts';
 import { isCliProviderId, supports } from '../../core/cli-providers.ts';
 import { outgoingCapacity } from '../cli/capacity.ts';
 import path from 'node:path';
@@ -60,6 +61,9 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'reload-failed': 502,
   // D103: Edit / Remove of a message that no longer waits for an account with allowance.
   'not-held': 409,
+  // D106
+  'not-a-chat': 409,
+  chat: 409,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,
@@ -597,6 +601,53 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const targets = providers.diff.targets ? await providers.diff.targets(record.id) : { worktrees: [], inPlace: [] };
     const shown = offeredDiffScope(scope, targets);
     return { scope: shown, files: (await providers.diff.diff(record.id, undefined, shown)).length };
+  });
+
+  // ── D106 · chats (contract → *Chats (D106)*, docs/chats.md) ──────────────
+
+  // Start a chat: `{ message, attachments?, provider?, profileId?, model?, effort?, lookAt? }` → 201 Session (`kind: 'chat'`).
+  app.post('/api/chats', async (request, reply) => {
+    try {
+      const outcome = await startChat({ ...context, dataDir: context.config.dataDir }, request.body);
+      if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+      // D42: like a session's start, a named model / effort is the form's next default for that CLI.
+      if (outcome.named) await rememberModelChoice(store.settings, { model: outcome.model, effort: outcome.effort }, outcome.record.provider);
+      return reply.code(201).send(await toSession(store, outcome.record, supervisor.activity(outcome.record.id)));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // The folders a chat may read: `{ lookAt: string[] }` → the Session; its process restarts to read them (idle now, busy after its turn).
+  app.put<{ Params: IdParams }>('/api/chats/:id/look-at', async (request, reply): Promise<Session | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    const body = request.body;
+    const lookAt = await resolveLookAt(typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>)['lookAt'] ?? [] : undefined);
+    if (!lookAt.ok) return reply.code(lookAt.status).send(lookAt.body);
+    try {
+      const updated = await supervisor.setLookAt(record.id, lookAt.paths);
+      return await toSession(store, updated, supervisor.activity(updated.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // Delete a chat: it is closed first (its process stops; `{ confirm: true }` while it runs or waits), then its record,
+  // its scratch folder, attachments and exports go. 204; 409 `not-a-chat` for a session (sessions go through Clean-up).
+  app.delete<{ Params: IdParams }>('/api/chats/:id', async (request, reply) => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    if (record.kind !== 'chat') return reply.code(409).send({ error: 'not-a-chat', message: 'only a chat is deleted here: a session goes through Clean-up' });
+    const confirm = parseCloseInput(request.body);
+    if (confirm === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'confirm', message: 'the body must be empty or { confirm: true | false }' }] });
+    try {
+      if (record.closedAt === null) await supervisor.close(record.id, { confirm, beforePublish: (id) => context.questions.closeSession(id) });
+      await deleteChat(store, context.config.dataDir, record.id);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendError(reply, error);
+    }
   });
 
   registerPending(app, SESSION_ROUTES_PENDING);

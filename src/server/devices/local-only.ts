@@ -52,6 +52,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D103: Edit / Remove of a message held for an account with allowance (normal use, like editing a queued message).
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/withdraw$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],
+  // D106: chats (start one, the folders it looks at, delete it): normal use, like a session.
+  ['POST', /^\/api\/chats$/],
+  ['PUT', /^\/api\/chats\/[^/]+\/look-at$/],
+  ['DELETE', /^\/api\/chats\/[^/]+$/],
   // D80: Undo a turn (the checkpoints, the confirm dialog's plan, revert, Redo): normal use, with the confirm.
   ['GET', /^\/api\/sessions\/[^/]+\/checkpoints(?:\/[^/]+)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/checkpoints\/(?:redo|[^/]+\/revert)$/],

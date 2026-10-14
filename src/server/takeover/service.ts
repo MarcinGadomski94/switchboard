@@ -1,3 +1,4 @@
+import { CHAT_TAKEOVER_REFUSAL } from '../../core/chats.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { type FileHandle, chmod, copyFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -258,6 +259,8 @@ export class TakeoverService {
     const blockers: string[] = [];
     const display = record.title ?? record.name;
     if (record.closedAt !== null) blockers.push(`${display} is closed: reopen it first`);
+    // D106: a chat lives in this machine's scratch folder.
+    if (record.kind === 'chat') blockers.push(`${display}: ${CHAT_TAKEOVER_REFUSAL}`);
     if (record.movedTo) blockers.push(`${display} was already taken over to ${record.movedTo.machineName}`);
     if (!record.hooked && !record.attached) blockers.push(`${display} continues in a terminal: attach it here first`);
     if (this.#supervisor.currentSwitch(sessionId) || this.#supervisor.accountSwitching(sessionId)) blockers.push(`${display} is switching CLI or account: wait for it to finish`);

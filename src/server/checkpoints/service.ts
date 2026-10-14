@@ -190,7 +190,8 @@ export class CheckpointService {
     try {
       if (!(await this.#enabled())) return null;
       const session = await this.#store.sessions.get(sessionId);
-      if (!session || session.hooked) return null;
+      // D106: a chat changes no files: no checkpoints.
+      if (!session || session.hooked || session.kind === 'chat') return null;
       return await this.#exclusive(sessionId, async () => {
         const items: Array<{ snapshot: TreeSnapshot; sha: string }> = [];
         for (const top of await this.treesOf(session)) {

@@ -20,6 +20,10 @@ export interface RunArgs {
   permissionMode: string | null;
   permissionPromptTool: string | null;
   allowedTools: string[];
+  /** D106: `--disallowedTools` names (each value split at commas and spaces); a `[fake:write]` with `Write` among them writes nothing. */
+  disallowedTools: string[];
+  /** D106: every `--add-dir <dir>` as given (accepted; the argv log is what tests read). */
+  addDir: string[];
   settings: string | null;
   includeHookEvents: boolean;
   forwardSubagentText: boolean;
@@ -66,6 +70,8 @@ function defaults(): RunArgs {
     permissionMode: null,
     permissionPromptTool: null,
     allowedTools: [],
+    disallowedTools: [],
+    addDir: [],
     settings: null,
     includeHookEvents: false,
     forwardSubagentText: false,
@@ -190,6 +196,13 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
       case '--allowedTools':
       case '--allowed-tools':
         args.allowedTools.push(value());
+        break;
+      case '--disallowedTools':
+      case '--disallowed-tools':
+        args.disallowedTools.push(...value().split(/[,\s]+/).filter((name) => name !== ''));
+        break;
+      case '--add-dir':
+        args.addDir.push(value());
         break;
       case '--settings':
         args.settings = value();

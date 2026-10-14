@@ -25,6 +25,8 @@ export const claudeAdapter: CliAdapter = {
       // D68: the session's todo tools (`--mcp-config`, merged with the developer's own servers).
       ...(request.agentMcp ? { mcpArgs: claudeMcpArgs(request.agentMcp) } : {}),
       extraArgs: request.extraArgs,
+      // D106: a chat's read-only flags.
+      ...(request.readOnly ? { readOnly: request.readOnly } : {}),
     });
     return new ClaudeProcess({ command: request.command, args, cwd: request.cwd, env: request.env, onLine: request.onLine });
   },

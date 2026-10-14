@@ -795,6 +795,12 @@ export class Runner {
       tool = { name: toolCall.name, input: toolCall.input };
       scenario = 'tx-main';
       turnIndex = 0;
+    } else if (writePath !== null && (this.args.disallowedTools.includes('Write') || this.permissionMode === 'plan')) {
+      // D106: the CLI does not offer Write (`--disallowedTools`) or plan mode refuses it: nothing is written; the reply says so.
+      steps = this.core.base.turns[0] ?? [];
+      say = `fake-claude: Write is not available (${this.args.disallowedTools.includes('Write') ? '--disallowedTools' : 'plan mode'}); nothing was written`;
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
     } else if (writePath !== null) {
       const target = resolveInside(this.o.cwd, writePath);
       if (target === null) {

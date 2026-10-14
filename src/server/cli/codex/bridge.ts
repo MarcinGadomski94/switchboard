@@ -219,8 +219,9 @@ export class CodexBridge implements AgentProcess {
       const overrides: JsonRecord = {
         cwd: this.#options.cwd,
         // D6 equivalent: edits and commands inside the workspace run; leaving the sandbox asks (Codex's "Auto").
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
+        // D106: a chat runs in Codex's read-only sandbox and never asks (a command that would write fails in the sandbox).
+        approvalPolicy: this.#options.readOnly ? 'never' : 'on-request',
+        sandbox: this.#options.readOnly ? 'read-only' : 'workspace-write',
         ...(this.#model ? { model: this.#model } : {}),
         // ASSUMED D64-codex-developer-instructions: `developerInstructions` on `thread/start` / `thread/resume` (the standing instruction; `docs/providers.md`).
         ...(this.#options.standingInstruction ? { developerInstructions: this.#options.standingInstruction } : {}),

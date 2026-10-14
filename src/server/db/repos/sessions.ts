@@ -3,6 +3,7 @@ import type { SessionModelOption, TodoLink } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
 import type { ContextState } from '../../../core/context-meter.ts';
+import type { SessionKind } from '../../../core/chats.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
@@ -150,8 +151,15 @@ export interface SessionRecord {
    * id of the new session; the old one is closed): "Continued in <new session>".
    */
   readonly continuedTo: string | null;
-  /** D83 (0036): set on the **new** session: the session it continues ("Continued from <old session>"). */
+  /** D83 (0036): set on the **new** session: the session it continues ("Continued from <old session>"). D106: or the chat it continues. */
   readonly continuedFrom: string | null;
+  /**
+   * D106 (0044): a development session (`session`, every row before 0044) or a chat
+   * (`chat`: its own scratch folder, the CLI's read-only / plan mode, listed under CHATS).
+   */
+  readonly kind: SessionKind;
+  /** D106 (0044): the folders a chat may read (canonical, absolute; extra read-only directories of its CLI); `[]` for a session. */
+  readonly lookAt: string[];
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -238,6 +246,8 @@ const SPEC: TableSpec<SessionRecord> = {
     todoLink: ['todo_link', 'json'],
     continuedTo: ['continued_to', 'text'],
     continuedFrom: ['continued_from', 'text'],
+    kind: ['kind', 'text'],
+    lookAt: ['look_at', 'json'],
   },
 };
 

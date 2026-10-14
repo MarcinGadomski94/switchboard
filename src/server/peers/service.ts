@@ -125,6 +125,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/checkpoints\/(?:redo|[^/]+\/revert)$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model)$/],
+  // D106: chats work like sessions: start one there, its folders to look at, delete it.
+  ['POST', /^\/api\/chats$/],
+  ['PUT', /^\/api\/chats\/[^/]+\/look-at$/],
+  ['DELETE', /^\/api\/chats\/[^/]+$/],
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/questions\/batch\/[^/]+\/answers$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

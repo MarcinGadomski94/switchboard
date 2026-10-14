@@ -142,11 +142,13 @@ export function chatMarkdown(input: {
   readonly at: Date;
   readonly events: readonly EventRecord[];
   readonly mainAgentId: string | null;
+  /** D106: why it was exported (else the switch from `from` to `to`). */
+  readonly purpose?: string;
 }): string {
   const head = [
     `# ${input.title} — the chat so far`,
     '',
-    `Exported by Switchboard on ${input.at.toISOString()} for the switch from ${CLI_LABELS[input.from]} to ${CLI_LABELS[input.to]}.`,
+    `Exported by Switchboard on ${input.at.toISOString()} ${input.purpose ?? `for the switch from ${CLI_LABELS[input.from]} to ${CLI_LABELS[input.to]}`}.`,
     `Folder: ${input.cwd}`,
     '',
   ];
@@ -181,12 +183,12 @@ export function chatMarkdown(input: {
   return `${head.join('\n')}${joined}\n`;
 }
 
-/** Writes an export to `<dir>/<session id>/<stamp>-<from>-to-<to>.md` (folder 0700, file 0600); its path. */
-export async function writeExport(dir: string, sessionId: string, from: CliProviderId, to: CliProviderId, at: Date, markdown: string): Promise<string> {
+/** Writes an export to `<dir>/<session id>/<stamp>-<from>-to-<to>.md` (folder 0700, file 0600; D106: `<stamp>-<suffix>.md` with `suffix`); its path. */
+export async function writeExport(dir: string, sessionId: string, from: CliProviderId, to: CliProviderId, at: Date, markdown: string, suffix?: string): Promise<string> {
   const folder = path.join(dir, sessionId);
   await mkdir(folder, { recursive: true, mode: 0o700 });
   const stamp = at.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const file = path.join(folder, `${stamp}-${from}-to-${to}.md`);
+  const file = path.join(folder, `${stamp}-${suffix ?? `${from}-to-${to}`}.md`);
   await writeFile(file, markdown, { mode: 0o600 });
   await chmod(file, 0o600).catch(() => undefined);
   return file;

@@ -56,6 +56,8 @@ export interface SearchEventRow {
   readonly ts: string;
   readonly payload: unknown;
   readonly sessionTitle: string | null;
+  /** D106: the row's session is a chat. */
+  readonly chat: boolean;
 }
 
 /** A `search_items` hit's row. */
@@ -69,6 +71,8 @@ export interface SearchItemRow {
   readonly body: string;
   readonly ts: string;
   readonly sessionTitle: string | null;
+  /** D106: the row's session is a chat. */
+  readonly chat: boolean;
 }
 
 /** The kinds of `search_items` each scope reads; `conversations` reads the events too. */
@@ -260,7 +264,7 @@ export class SearchRepository {
     const out = new Map<number, SearchEventRow>();
     if (ids.length === 0) return out;
     const rows = this.#statement(
-      `SELECT e.id, e.session_id, e.agent_id, e.ts, e.payload, a.kind AS agent_kind, COALESCE(NULLIF(s.title, ''), s.name) AS session_title
+      `SELECT e.id, e.session_id, e.agent_id, e.ts, e.payload, a.kind AS agent_kind, COALESCE(NULLIF(s.title, ''), s.name) AS session_title, s.kind AS session_kind
        FROM events e LEFT JOIN agents a ON a.id = e.agent_id LEFT JOIN sessions s ON s.id = e.session_id
        WHERE e.id IN (SELECT value FROM json_each(?))`,
     ).all(JSON.stringify(ids));
@@ -279,6 +283,7 @@ export class SearchRepository {
         ts: String(row['ts']),
         payload,
         sessionTitle: row['session_title'] === null || row['session_title'] === undefined ? null : String(row['session_title']),
+        chat: row['session_kind'] === 'chat',
       });
     }
     return out;
@@ -289,7 +294,7 @@ export class SearchRepository {
     const out = new Map<number, SearchItemRow>();
     if (ids.length === 0) return out;
     const rows = this.#statement(
-      `SELECT i.id, i.kind, i.ref, i.session_id, i.link, i.title, i.body, i.ts, COALESCE(NULLIF(s.title, ''), s.name) AS session_title
+      `SELECT i.id, i.kind, i.ref, i.session_id, i.link, i.title, i.body, i.ts, COALESCE(NULLIF(s.title, ''), s.name) AS session_title, s.kind AS session_kind
        FROM search_items i LEFT JOIN sessions s ON s.id = i.session_id
        WHERE i.id IN (SELECT value FROM json_each(?))`,
     ).all(JSON.stringify(ids));
@@ -304,6 +309,7 @@ export class SearchRepository {
         body: String(row['body']),
         ts: String(row['ts']),
         sessionTitle: row['session_title'] === null || row['session_title'] === undefined ? null : String(row['session_title']),
+        chat: row['session_kind'] === 'chat',
       });
     }
     return out;

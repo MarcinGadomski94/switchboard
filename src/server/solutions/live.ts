@@ -148,7 +148,8 @@ export class LiveSolutions implements SolutionsProvider {
     );
 
     const [sessions, worktrees, saved, dirty] = await Promise.all([
-      this.#store.sessions.list(),
+      // D106: chats work in no solution (and write nothing): left out of rows and conflicts.
+      this.#store.sessions.list().then((list) => list.filter((session) => session.kind !== 'chat')),
       this.#store.worktrees.list(),
       this.#store.artifacts.list(),
       folder.kind === 'workspace' ? readDirtyList(scan.root) : Promise.resolve(null),

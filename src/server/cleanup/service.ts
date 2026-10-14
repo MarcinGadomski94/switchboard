@@ -528,7 +528,8 @@ export class CleanupService {
     for (const session of await this.#store.sessions.list({ closed: true })) {
       if (session.closedAt === null || Date.parse(session.closedAt) > cutoff || this.#isLive(session.id)) continue;
       const counts = this.#sessionCounts(session.id);
-      const folders = [path.join(this.#dataDir, ATTACHMENTS_DIR, session.id), path.join(this.#dataDir, 'handovers', session.id)];
+      // D106: a chat's scratch folder goes with it.
+      const folders = [path.join(this.#dataDir, ATTACHMENTS_DIR, session.id), path.join(this.#dataDir, 'handovers', session.id), ...(session.kind === 'chat' ? [path.join(this.#dataDir, 'chats', session.id)] : [])];
       const present: string[] = [];
       let bytes = counts.eventBytes;
       let capped = false;
@@ -932,7 +933,7 @@ export class CleanupService {
 
   #assertInData(file: string): void {
     const resolved = path.resolve(file);
-    const inside = ['attachments', 'handovers', 'takeover', ARTIFACTS_DIR].some((dir) => resolved.startsWith(path.join(this.#dataDir, dir) + path.sep));
+    const inside = ['attachments', 'handovers', 'takeover', 'chats', ARTIFACTS_DIR].some((dir) => resolved.startsWith(path.join(this.#dataDir, dir) + path.sep));
     if (!inside) throw new Error(`refusing to remove ${file}: not in Switchboard's data folder`);
   }
 

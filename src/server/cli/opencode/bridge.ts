@@ -17,6 +17,16 @@ export const OPENCODE_START_TIMEOUT_MS = 30_000;
  */
 export const OPENCODE_PERMISSIONS = { edit: 'allow', bash: 'ask', webfetch: 'ask', external_directory: 'ask' } as const;
 
+/**
+ * D106: a chat's rules (read-only): edits and shell commands denied, the web and
+ * reads outside the scratch folder (the folders it looks at) allowed; its prompts go
+ * to OpenCode's built-in `plan` agent ({@link OPENCODE_CHAT_AGENT}).
+ */
+export const OPENCODE_CHAT_PERMISSIONS = { edit: 'deny', bash: 'deny', webfetch: 'allow', external_directory: 'allow' } as const;
+
+/** D106: the OpenCode agent a chat's prompts name (its built-in planning agent). */
+export const OPENCODE_CHAT_AGENT = 'plan';
+
 /** OpenCode's tool names → Claude Code's (the recorder's rules read those). */
 const TOOL_NAMES: Readonly<Record<string, string>> = {
   bash: 'Bash',
@@ -65,11 +75,12 @@ export function freePort(): Promise<number> {
 }
 
 /**
- * `OPENCODE_CONFIG_CONTENT` with Switchboard's permission rules over any the environment already has.
+ * `OPENCODE_CONFIG_CONTENT` with Switchboard's permission rules over any the environment already has
+ * (D106: a chat's read-only rules with `readOnly`).
  * D68: with `agentMcp`, its `mcp.switchboard` entry is added next to the environment's own servers.
  * Team (D100) hook (D100-T2): `opencodeMcpEntries` also adds a team member's access servers (docs/team-removal.md).
  */
-export function configContent(existing: string | undefined, agentMcp: AgentMcpLaunch | null = null): string {
+export function configContent(existing: string | undefined, agentMcp: AgentMcpLaunch | null = null, readOnly = false): string {
   let base: JsonRecord = {};
   try {
     const parsed: unknown = existing ? JSON.parse(existing) : {};
@@ -79,7 +90,7 @@ export function configContent(existing: string | undefined, agentMcp: AgentMcpLa
   }
   const permission = isRecord(base['permission']) ? base['permission'] : {};
   const mcp = isRecord(base['mcp']) ? base['mcp'] : {};
-  return JSON.stringify({ ...base, permission: { ...permission, ...OPENCODE_PERMISSIONS }, ...(agentMcp ? { mcp: { ...mcp, ...opencodeMcpEntries(agentMcp) } } : {}) });
+  return JSON.stringify({ ...base, permission: { ...permission, ...(readOnly ? OPENCODE_CHAT_PERMISSIONS : OPENCODE_PERMISSIONS) }, ...(agentMcp ? { mcp: { ...mcp, ...opencodeMcpEntries(agentMcp) } } : {}) });
 }
 
 /**
@@ -235,7 +246,8 @@ export class OpenCodeBridge implements AgentProcess {
       OPENCODE_SERVER_PASSWORD: this.#password,
       OPENCODE_SERVER_USERNAME: 'opencode',
       // D68: plus the session's todo tools (UNVERIFIED with a real OpenCode, docs/todos.md).
-      OPENCODE_CONFIG_CONTENT: configContent(this.#options.env['OPENCODE_CONFIG_CONTENT'], this.#options.agentMcp ?? null),
+      // D106: a chat's read-only rules.
+      OPENCODE_CONFIG_CONTENT: configContent(this.#options.env['OPENCODE_CONFIG_CONTENT'], this.#options.agentMcp ?? null, Boolean(this.#options.readOnly)),
     };
     const child = spawn(cmd, [...prefix, 'serve', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: this.#options.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...serverSpawnOptions });
     this.#child = child;
@@ -456,7 +468,7 @@ export class OpenCodeBridge implements AgentProcess {
     const [providerID, ...rest] = (this.#model ?? '').split('/');
     const model = this.#model && providerID && rest.length > 0 ? { providerID, modelID: rest.join('/') } : null;
     try {
-      await this.#http('POST', `/session/${encodeURIComponent(this.#sessionId)}/prompt_async`, { parts, ...(this.#options.standingInstruction ? { system: this.#options.standingInstruction } : {}), ...(model ? { model } : {}), ...(this.#variant ? { variant: this.#variant } : {}) });
+      await this.#http('POST', `/session/${encodeURIComponent(this.#sessionId)}/prompt_async`, { parts, ...(this.#options.readOnly ? { agent: OPENCODE_CHAT_AGENT } : {}), ...(this.#options.standingInstruction ? { system: this.#options.standingInstruction } : {}), ...(model ? { model } : {}), ...(this.#variant ? { variant: this.#variant } : {}) });
       turn.posted = true;
     } catch (error) {
       turn.error = error instanceof Error ? error.message : String(error);

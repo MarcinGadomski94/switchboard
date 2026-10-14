@@ -52,6 +52,8 @@ export interface BridgeCommon {
   readonly onUsage?: (usage: ProviderUsage) => void;
   /** Switchboard's version, told to the CLI as the client's. */
   readonly clientVersion?: string;
+  /** D106: a chat: the CLI's read-only mode, and the folders it may read (`docs/chats.md` → *Read-only per CLI*). */
+  readonly readOnly?: { readonly lookAt: readonly string[] } | null;
 }
 
 /** A `control_response` success line. */

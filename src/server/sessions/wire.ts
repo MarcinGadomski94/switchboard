@@ -15,9 +15,8 @@ import { loopShown, wireLoop } from '../../core/derive/loops.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
-import { standingInstructionFor } from '../settings/settings.ts';
+import { sessionInstruction } from './instruction.ts';
 // Team (D100) hook (docs/team-removal.md).
-import { withTeamCharter } from '../team/hooks.ts';
 import type { WorkflowSource } from '../workflows/service.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
@@ -238,17 +237,19 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     continuedTo: await sessionLink(store, record.continuedTo),
     continuedFrom: await sessionLink(store, record.continuedFrom),
     freshContinue: switchSources.get(store)?.fresh?.(record.id) ?? null,
+    // D106: a chat says so, with the folders it may read (a session sends neither: additive).
+    ...(record.kind === 'chat' ? { kind: 'chat' as const, lookAt: record.lookAt } : {}),
     // D91: its running process uses an older standing instruction; a reload waits for the turn's end.
-    ...(await instructionState(store, record.id)),
+    ...(await instructionState(store, record)),
   };
 }
 
 /** D91: `Session.instructionOutdated` / `instructionPending` (both `false` without a running process). */
-async function instructionState(store: Store, sessionId: string): Promise<{ instructionOutdated: boolean; instructionPending: boolean }> {
-  const live = switchSources.get(store)?.instruction?.(sessionId) ?? null;
+async function instructionState(store: Store, record: SessionRecord): Promise<{ instructionOutdated: boolean; instructionPending: boolean }> {
+  const live = switchSources.get(store)?.instruction?.(record.id) ?? null;
   if (live === null) return { instructionOutdated: false, instructionPending: false };
-  // Team (D100) hook: compared with the charter included.
-  return { instructionOutdated: live.text !== (await withTeamCharter(store, sessionId, await standingInstructionFor(store.settings))), instructionPending: live.pending };
+  // Team (D100) hook: compared with the charter included. D106: a chat with its own instruction.
+  return { instructionOutdated: live.text !== (await sessionInstruction(store, record)), instructionPending: live.pending };
 }
 
 /** D83: the other session of a continuation, with its display title now (`null` when it is gone); `null` without a link. */

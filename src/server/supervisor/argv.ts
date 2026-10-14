@@ -1,3 +1,5 @@
+import { CHAT_DISALLOWED_TOOLS } from '../../core/chats.ts';
+
 /**
  * How a supervised `claude` process is started (`docs/handoff/ARCHITECTURE.md` →
  * *Claude Code integration* → *Process and flags*; `docs/spike-m0.md`).
@@ -44,6 +46,30 @@ export interface ClaudeArgsInput {
   readonly mcpArgs?: readonly string[];
   /** Dev-only flags appended at the end (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`, the D13 real-CLI smoke). */
   readonly extraArgs?: readonly string[];
+  /**
+   * D106: a chat's read-only flags: `--disallowedTools` (the editors and `ExitPlanMode`),
+   * the web tools allowed (they would otherwise ask, and a chat's requests are refused),
+   * and one `--add-dir` per folder it may look at. Absent = a development session.
+   */
+  readonly readOnly?: { readonly lookAt: readonly string[] } | null;
+}
+
+/** D106: the tools a chat may use without asking (reading the web is planning). */
+export const CHAT_ALLOWED_TOOLS: readonly string[] = ['WebFetch', 'WebSearch'];
+
+/**
+ * D106: the MCP flags with the chat's allowed tools merged into their `--allowedTools`
+ * value (one comma-separated list), or a list of their own without MCP flags.
+ */
+function withChatAllowedTools(mcpArgs: readonly string[]): string[] {
+  const at = mcpArgs.indexOf('--allowedTools');
+  if (at < 0 || at + 1 >= mcpArgs.length) return [...mcpArgs, '--allowedTools', CHAT_ALLOWED_TOOLS.join(',')];
+  return mcpArgs.map((arg, index) => (index === at + 1 ? [arg, ...CHAT_ALLOWED_TOOLS].join(',') : arg));
+}
+
+/** D106: a chat's `--disallowedTools` and `--add-dir` flags. */
+function chatArgs(readOnly: { readonly lookAt: readonly string[] }): string[] {
+  return ['--disallowedTools', CHAT_DISALLOWED_TOOLS.join(','), ...readOnly.lookAt.flatMap((dir) => ['--add-dir', dir])];
 }
 
 /** The flag pair that says which conversation the process runs (see {@link ClaudeStart}). */
@@ -84,7 +110,8 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     ...(input.model ? ['--model', input.model] : []),
     ...(input.effort ? ['--effort', input.effort] : []),
     ...(input.standingInstruction ? ['--append-system-prompt', input.standingInstruction] : []),
-    ...(input.mcpArgs ?? []),
+    ...(input.readOnly ? withChatAllowedTools(input.mcpArgs ?? []) : (input.mcpArgs ?? [])),
+    ...(input.readOnly ? chatArgs(input.readOnly) : []),
     '--name',
     input.name,
     '--forward-subagent-text',

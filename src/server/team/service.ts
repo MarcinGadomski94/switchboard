@@ -795,6 +795,8 @@ export class TeamService {
     const session = await this.#o.store.sessions.get(sessionId);
     if (!session) throw new TeamError(404, 'not-found', `no session ${sessionId}`);
     if (session.closedAt !== null) throw new TeamError(409, 'closed', 'the session is closed: reopen it first');
+    // D106: a chat only plans: continue it as a session to make it a member.
+    if (session.kind === 'chat') throw new TeamError(409, 'chat', 'a chat cannot be a team member: continue it as a session first');
     if (session.hooked || (await this.#o.isHooked(sessionId))) {
       throw new TeamError(409, 'hooked', 'This is a hooked terminal session: Switchboard does not run its CLI, so it cannot get a charter. Continue it in Switchboard first (its ⋯ menu → Continue in Switchboard), then adopt it.');
     }

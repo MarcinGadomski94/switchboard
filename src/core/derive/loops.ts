@@ -141,6 +141,7 @@ const PROCESS_START_ACTIONS = new Set([
   'continued',
   'continued-from',
   'instruction-updated',
+  'look-at-updated',
 ]);
 
 /**

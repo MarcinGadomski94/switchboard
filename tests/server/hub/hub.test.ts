@@ -126,7 +126,10 @@ const SESSION_KEYS = keys<Session>()([
   'agentsDelta',
   // additive, D95-q3 (only on a delta stream's updates)
   'unchanged',
-]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged');
+  // additive, D106 (only on a chat)
+  'kind',
+  'lookAt',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',

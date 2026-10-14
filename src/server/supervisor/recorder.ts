@@ -1,3 +1,4 @@
+import { CHAT_PERMISSION_MODE } from '../../core/chats.ts';
 import path from 'node:path';
 import { resultTurnTokens } from '../../core/todo-actuals.ts';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
@@ -667,6 +668,17 @@ export class StreamRecorder {
         `Auto mode is not available for this model: permissions use ${FALLBACK_PERMISSION_MODE}`,
         { type: 'mode-mismatch', requested: DEFAULT_PERMISSION_MODE, observed: message.permissionMode, fallback: FALLBACK_PERMISSION_MODE },
       );
+      return;
+    }
+    if (this.#requestedMode === CHAT_PERMISSION_MODE && message.permissionMode !== CHAT_PERMISSION_MODE && this.#onPermissionFallback) {
+      // D106: a chat stays in plan mode: whatever took the CLI out of it, Switchboard sets it back at once (every turn it reports another mode).
+      this.#onPermissionFallback(CHAT_PERMISSION_MODE);
+      await this.#append('text', `The chat left plan mode (${message.permissionMode ?? 'none'}): set back to plan`, {
+        type: 'mode-mismatch',
+        requested: CHAT_PERMISSION_MODE,
+        observed: message.permissionMode,
+        fallback: CHAT_PERMISSION_MODE,
+      });
       return;
     }
     if (this.#requestedMode && message.permissionMode !== this.#requestedMode && !this.#modeMismatchFlagged) {

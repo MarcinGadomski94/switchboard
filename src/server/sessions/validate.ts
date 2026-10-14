@@ -252,7 +252,7 @@ function branchingOf(
  * else a failure on that field. `null` when the body names neither (the session
  * starts on the CLI's defaults and is no "choice").
  */
-function modelOf(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void): { readonly model: string | null; readonly effort: string | null } | null {
+export function modelOf(body: Record<string, unknown>, checks: Pick<NewSessionChecks, 'modelOptions'>, fail: (field: string, message: string) => void): { readonly model: string | null; readonly effort: string | null } | null {
   const rawModel = body['model'];
   const rawEffort = body['effort'];
   if (rawModel === undefined && rawEffort === undefined) return null;

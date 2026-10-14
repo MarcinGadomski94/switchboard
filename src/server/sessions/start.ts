@@ -9,6 +9,8 @@ import type { ApiContext } from '../routes.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
 import { type TaskWorktree, WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
+import { chatCarryOverBlock } from '../chats/carry.ts';
+import { linkChatContinuation } from '../chats/link.ts';
 import { CLI_LABELS, type CliProviderId, isCliProviderId, supports } from '../../core/cli-providers.ts';
 import type { CliStatusService } from '../cli/status.ts';
 import { AttachmentError, type AttachmentService, NO_ATTACHMENTS, type PreparedAttachments, parseAttachmentIds } from '../attachments/service.ts';
@@ -21,6 +23,8 @@ export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supe
   readonly attachments?: AttachmentService;
   /** D62: which CLIs can be chosen (installed, signed in) and the default; without it only the adapters are checked and the default is Claude Code. */
   readonly clis?: CliStatusService;
+  /** D106: the data folder (a session continued from a chat writes the chat's export under `handovers/`); without it the chat goes inline only. */
+  readonly config?: { readonly dataDir: string };
 };
 
 /**
@@ -145,6 +149,13 @@ export async function resolveSessionFolder(
  */
 export async function startNewSession(context: SessionStartContext, body: unknown, options: StartNewSessionOptions = {}): Promise<StartNewSessionOutcome> {
   const { store, supervisor, providers, worktrees, folders } = context;
+  // D106: Continue as session: the chat this session continues (this machine's, open or closed).
+  const fromChatId = isRecord(body) ? body['fromChat'] : undefined;
+  let fromChat: SessionRecord | null = null;
+  if (fromChatId !== undefined && fromChatId !== null) {
+    fromChat = typeof fromChatId === 'string' ? await store.sessions.get(fromChatId) : null;
+    if (!fromChat || fromChat.kind !== 'chat') return { ok: false, status: 422, body: { error: 'invalid', errors: [{ field: 'fromChat', message: 'fromChat must be the id of a chat' }] } };
+  }
   const resolved = await resolveSessionFolder(context, body);
   if (!resolved.ok) return resolved;
   const { folder } = resolved;
@@ -240,12 +251,17 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     });
     // D14: a workspace session runs at the folder root (the router applies); a repo session in the repo, or in its worktree.
     const cwd = folder.kind === 'repo' && created[0] ? created[0].path : folder.root;
-    const record = await supervisor.start(input, { folder, cwd }, firstTurn.message, {
+    // D106: a session continued from a chat starts with the chat (its export inline) before the developer's message.
+    const carried = fromChat ? await chatCarryOverBlock(store, fromChat, context.config?.dataDir ?? null) : null;
+    const firstMessage = carried && firstTurn.message !== '' ? `${carried}${firstTurn.message}` : firstTurn.message;
+    const firstBlock = carried && firstTurn.message === '' && firstTurn.block !== '' ? `${carried}${firstTurn.block}` : firstTurn.block;
+    const record = await supervisor.start(input, { folder, cwd }, firstMessage, {
       beforeSpawn: async (session) => {
+        if (fromChat) await linkChatContinuation(store, supervisor, fromChat, session);
         // D40 (0012): the branching, for the worktrees its agent creates later (adoption reads it, also after a restart).
         if (branching) await store.sessions.update(session.id, { branching });
         await worktrees.assign(created, session.id);
-        if (firstTurn.message === '' && firstTurn.block !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
+        if (firstTurn.message === '' && firstBlock !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstBlock });
         // D57: the staged uploads become the new session's (moved into its folder), then go with the first message.
         if (context.attachments && staged.length > 0) prepared = await context.attachments.prepare(await context.attachments.bind(staged, session.id), { inline: true, pdfs: supports(provider, 'pdfs') });
         if (options.beforeSpawn) await options.beforeSpawn(session);

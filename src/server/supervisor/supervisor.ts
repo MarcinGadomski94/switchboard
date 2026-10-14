@@ -36,9 +36,10 @@ import type { FolderRef } from '../folders/ref.ts';
 import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
-import { standingInstructionFor } from '../settings/settings.ts';
+import { sessionInstruction } from '../sessions/instruction.ts';
+import { CHAT_PERMISSION_MODE, CHAT_REMOTE_REFUSAL, CHAT_TERMINAL_REFUSAL, LOOK_AT_UPDATED_DIVIDER, chatRefusal, chatRefusedLabel } from '../../core/chats.ts';
 // Team (D100) hook: a member session's charter rides on the standing instruction (docs/team-removal.md).
-import { teamAccessEnv, withTeamCharter } from '../team/hooks.ts';
+import { teamAccessEnv } from '../team/hooks.ts';
 import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
@@ -169,6 +170,22 @@ export type SessionStartInput = Omit<NewSession, 'workType' | 'mode' | 'phase'> 
   readonly mode: NewSession['mode'] | null;
   readonly phase: NewSession['phase'] | null;
 };
+
+/** D106: what {@link SessionSupervisor.startChat} stores (validated by `chats/start.ts`). */
+export interface ChatStartInput {
+  /** The chat's id when the caller chose it (its scratch folder is named after it). */
+  readonly id?: string;
+  readonly name: string;
+  readonly title: string;
+  readonly message: string;
+  /** The scratch folder (`<dataDir>/chats/<id>/`), created by the caller. */
+  readonly cwd: string;
+  readonly provider: CliProviderId;
+  readonly profileId?: string | null;
+  readonly model?: string | null;
+  readonly effort?: string | null;
+  readonly lookAt: readonly string[];
+}
 
 /**
  * What {@link SessionSupervisor.adopt} stores for a terminal conversation moved
@@ -372,7 +389,10 @@ export type SupervisorErrorCode =
   /** D91: the process could not be restarted with the current standing instruction. */
   | 'reload-failed'
   /** D103: the message is not held for an account with allowance (sent or withdrawn already). */
-  | 'not-held';
+  | 'not-held'
+  /** D106: the action is a chat's (folders to look at), or a session's that a chat refuses (Remote Control, the terminal, a take-over). */
+  | 'not-a-chat'
+  | 'chat';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -547,6 +567,8 @@ interface Live {
   stopInFlight: boolean;
   /** D91: the standing instruction this process was started with (`null` = none): compared with the current one. */
   readonly instruction: string | null;
+  /** D106: the process is a chat's (read-only: every permission request is refused). */
+  readonly chat: boolean;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -845,6 +867,67 @@ export class SessionSupervisor {
   }
 
   /**
+   * D106: starts a chat (`docs/chats.md`): stored with `kind: 'chat'`, no folder,
+   * its scratch folder as cwd (the caller created it), the title from its first
+   * message, and its first spawn in plan mode with the chat's own instruction and the
+   * folders it may read; then its first message goes in (with its attachments).
+   */
+  async startChat(input: ChatStartInput, options: StartOptions = {}): Promise<SessionRecord> {
+    this.#assertOpen();
+    const paused = input.message.trim() !== '' ? await this.#creditsPaused(input.provider) : false;
+    const cwd = await canonicalFolder(input.cwd);
+    const session = await this.#store.sessions.create({
+      ...(input.id ? { id: input.id } : {}),
+      name: input.name,
+      title: input.title,
+      task: input.message,
+      claudeSessionId: randomUUID(),
+      status: 'idle',
+      solutions: [],
+      worktrees: false,
+      ultracode: false,
+      attached: true,
+      cwd,
+      folderId: null,
+      root: null,
+      rootKind: null,
+      requestedPermissionMode: CHAT_PERMISSION_MODE,
+      model: input.model ?? null,
+      effort: input.effort ?? null,
+      provider: input.provider,
+      profileId: input.profileId ?? (await this.#accounts?.pick(input.provider)) ?? null,
+      kind: 'chat',
+      lookAt: [...input.lookAt],
+    });
+    await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, []), status: 'idle' });
+    if (options.beforeSpawn) await options.beforeSpawn(session);
+    const live = await this.#spawn(session, { kind: 'new', claudeSessionId: session.claudeSessionId }, 'started');
+    const attachments = options.attachments?.() ?? NO_ATTACHMENTS;
+    if (input.message.trim() !== '' && !paused) await this.#send(live, input.message, 'task', { attachments });
+    else await this.#enqueue(live, () => this.#refreshStatus(live));
+    if (input.message.trim() !== '' && paused) await this.#hold(await this.#get(session.id), input.message, 'task', attachments, null, paused);
+    return this.#get(session.id);
+  }
+
+  /**
+   * D106: the folders a chat may read. Stored, then given to its process: an idle one is
+   * restarted with `--resume` (the divider "Folders to look at updated"), a busy one once its
+   * turn ends (D91's reload: the chat's instruction names the folders), none: at its next start.
+   * @throws {SupervisorError} `not-found`, `not-a-chat`, `closed`.
+   */
+  async setLookAt(sessionId: string, lookAt: readonly string[]): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    if (session.kind !== 'chat') throw new SupervisorError('not-a-chat', 'only a chat has folders to look at: a session works in its own folder');
+    this.#assertNotClosed(session);
+    await this.#store.sessions.update(sessionId, { lookAt: [...lookAt] });
+    await this.#emitSession(sessionId);
+    if (this.#live.has(sessionId)) await this.reloadInstruction(sessionId);
+    return this.#get(sessionId);
+  }
+
+  /**
    * Sends a user message. A session without a live process is resumed with
    * `--resume` and gets the message instead of "Continue."; D44: that message is
    * then queued (`resume`) until the new process takes it up. Refused while detached.
@@ -1097,6 +1180,8 @@ export class SessionSupervisor {
   async detach(sessionId: string): Promise<ResumeCommand> {
     await this.#gate;
     const session = await this.#get(sessionId);
+    // D106: a terminal could take a chat out of plan mode: it stays in Switchboard.
+    if (session.kind === 'chat') throw new SupervisorError('chat', CHAT_TERMINAL_REFUSAL);
     const live = this.#live.get(sessionId);
     if (live) {
       await this.#stop(live, 'detach');
@@ -1511,6 +1596,9 @@ export class SessionSupervisor {
         profileId: old.profileId,
         profilePinned: old.profilePinned,
         continuedFrom: old.id,
+        // D106: a chat continues as a chat (its scratch folder, read-only mode and folders).
+        kind: old.kind,
+        lookAt: [...old.lookAt],
       });
       const fresh = created;
       await this.#store.agents.create({ sessionId: fresh.id, kind: 'main', name: mainAgentName(fresh.mode, fresh.solutions), status: 'idle' });
@@ -1631,7 +1719,7 @@ export class SessionSupervisor {
       return 'not-running';
     }
     // Team (D100) hook: the charter is part of the instruction a process runs.
-    if (live.instruction === (await withTeamCharter(this.#store, sessionId, await standingInstructionFor(this.#store.settings)))) {
+    if (live.instruction === (await sessionInstruction(this.#store, session))) {
       if (wasPending) await this.#emitSession(sessionId);
       return 'current';
     }
@@ -1669,7 +1757,8 @@ export class SessionSupervisor {
     // Between turns before, between turns again (not `paused`): the conversation goes on as it was.
     const restored = (await this.#store.sessions.update(session.id, { status })) ?? stopped;
     await this.#setMainAgentStatus(session.id, status);
-    const next = await this.#spawn(restored, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'instruction-updated');
+    // D106: a chat's instruction changes with its folders to look at: its divider says so.
+    const next = await this.#spawn(restored, { kind: 'resume', claudeSessionId: session.claudeSessionId }, restored.kind === 'chat' ? 'look-at-updated' : 'instruction-updated');
     await this.#enqueue(next, () => this.#refreshStatus(next));
   }
 
@@ -2505,6 +2594,8 @@ export class SessionSupervisor {
     await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
+    // D106: claude.ai could take a chat out of plan mode.
+    if (session.kind === 'chat' && enabled) throw new SupervisorError('chat', CHAT_REMOTE_REFUSAL);
     // D62: Remote Control is Claude Code's (claude.ai on the phone).
     const missing = unavailableText(session.provider, 'remote-control');
     if (missing) throw new SupervisorError('not-available', missing);
@@ -2795,7 +2886,8 @@ export class SessionSupervisor {
     // D14: a session always runs in its own stored cwd (its folder or its repo worktree), never a global root.
     const cwd = session.cwd;
     if (!cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
-    const permissionMode = DEFAULT_PERMISSION_MODE;
+    // D106: a chat runs in the CLI's plan mode from its first spawn to its last; a session in D6's mode.
+    const permissionMode = session.kind === 'chat' ? CHAT_PERMISSION_MODE : DEFAULT_PERMISSION_MODE;
     let prepared =
       (await this.#store.sessions.update(session.id, {
         cwd,
@@ -2831,6 +2923,7 @@ export class SessionSupervisor {
       onEvent: (event) => this.#emitEvent(event),
       onActivity: (value) => activity.push(value),
       // D6: `auto` is not available for this model; its control_response needs no waiter.
+      // D106: for a chat the same line sets plan mode back when the CLI reports another one.
       onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
       // D24: a withdrawn request was answered on claude.ai while Remote Control is on.
       answeredOn: () => holder.live?.remote.answeredOn() ?? null,
@@ -2869,7 +2962,8 @@ export class SessionSupervisor {
     }
     // D91: kept on the live process, so a later change of the setting shows it runs an older one.
     // Team (D100) hook: a member's charter is appended (docs/team-removal.md).
-    const instruction = await withTeamCharter(this.#store, session.id, await standingInstructionFor(this.#store.settings));
+    // D106: a chat's own instruction instead (sessions/instruction.ts).
+    const instruction = await sessionInstruction(this.#store, prepared);
     // Team (D100) hook (D100-T2): a member's approved access: its API keys in the environment, every value masked in what is recorded of it.
     const teamAccess = await teamAccessEnv(this.#store, session.id);
     const proc = this.#providers.adapter(provider).spawn({
@@ -2884,6 +2978,8 @@ export class SessionSupervisor {
       // D64: read now, so a change applies to every session started or resumed afterwards.
       standingInstruction: instruction,
       agentMcp,
+      // D106: a chat's read-only mode and the folders it may read.
+      ...(prepared.kind === 'chat' ? { readOnly: { lookAt: prepared.lookAt } } : {}),
       onLine: (line) => {
         const live = holder.live;
         if (live) void this.#enqueue(live, () => this.#onLine(live, teamAccess.mask(line)));
@@ -2921,6 +3017,7 @@ export class SessionSupervisor {
       interrupting: null,
       stopInFlight: false,
       instruction,
+      chat: prepared.kind === 'chat',
       remote: new LiveRemote({
         request: (line, timeoutMs) => (holder.live ? this.#controlOn(holder.live, line, timeoutMs) : Promise.resolve(null)),
         session: () => this.#store.sessions.get(session.id),
@@ -3016,6 +3113,13 @@ export class SessionSupervisor {
 
   async #onLine(live: Live, line: string): Promise<void> {
     const message = parseStreamLine(line);
+    // D106: a chat never asks the developer to allow a tool: anything that asks (an edit, a command, leaving plan mode)
+    // is refused at once, before it reaches the recorder or the Inbox. Questions (AskUserQuestion) go on as usual.
+    if (message.kind === 'can-use-tool' && message.toolName !== 'AskUserQuestion' && live.chat) {
+      live.proc.write(controlSuccessLine(message.requestId, { behavior: 'deny', message: chatRefusal(message.toolName) }));
+      await live.recorder.recordLifecycle('text', chatRefusedLabel(message.toolName), { type: 'lifecycle', action: 'chat-refused', message: message.toolName });
+      return;
+    }
     // D24: read before the recorder closes the request (the recorder asks the same question).
     const answeredOn = message.kind === 'control-cancel' ? live.remote.answeredOn() : null;
     if (message.kind === 'control-request') {
@@ -3350,4 +3454,6 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'continued-from': 'Continued from another session',
   'continued-in': 'Continued in a fresh session',
   'instruction-updated': INSTRUCTION_UPDATED_DIVIDER,
+  'chat-refused': 'Refused in a chat',
+  'look-at-updated': LOOK_AT_UPDATED_DIVIDER,
 };

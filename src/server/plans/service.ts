@@ -625,6 +625,8 @@ export class PlanService {
     const source = await this.#store.sessions.get(sourceSessionId);
     if (!source) throw new PlanError(404, 'not-found', `no session ${sourceSessionId}`);
     if (source.closedAt !== null) throw new PlanError(409, 'closed', 'the session is closed: reopen it to plan its todos');
+    // D106: a chat is no plan source (its todos are run as sessions only after it is continued as one).
+    if (source.kind === 'chat') throw new PlanError(409, 'chat', 'a chat is not a plan source: continue it as a session first');
     const title = checkTitle(input['title']);
     const targetBranch = checkBranch(input['targetBranch'], 'targetBranch', null);
     const baseBranch = checkBranch(input['baseBranch'], 'baseBranch', DEFAULT_PLAN_BASE);

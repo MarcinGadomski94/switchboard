@@ -23,6 +23,8 @@ export const codexAdapter: CliAdapter = {
       ...(request.onNotice ? { onNotice: request.onNotice } : {}),
       ...(request.onUsage ? { onUsage: request.onUsage } : {}),
       ...(request.clientVersion ? { clientVersion: request.clientVersion } : {}),
+      // D106: a chat runs read-only.
+      ...(request.readOnly ? { readOnly: request.readOnly } : {}),
     });
   },
 };

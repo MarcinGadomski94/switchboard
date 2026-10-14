@@ -177,7 +177,7 @@ export function dedupeSuggestions(list: readonly TeamSuggestion[]): TeamSuggesti
 export async function computeSuggestions(input: { readonly store: Store; readonly loops: LoopService; readonly exclude: ReadonlySet<string>; readonly now: number }): Promise<TeamSuggestion[]> {
   const { store } = input;
   const since = new Date(input.now - 7 * 24 * 3600_000).toISOString();
-  const sessions = (await store.sessions.list({ closed: false })).filter((s) => !input.exclude.has(s.id) && !s.hooked);
+  const sessions = (await store.sessions.list({ closed: false })).filter((s) => !input.exclude.has(s.id) && !s.hooked && s.kind !== 'chat'); // D106: chats are never suggested
   if (sessions.length === 0) return [];
   const events = new Map<string, { readonly n: number; readonly days: number }>();
   for (const row of store.db.prepare('SELECT session_id AS id, COUNT(*) AS n, COUNT(DISTINCT substr(ts, 1, 10)) AS days FROM events WHERE ts > ? GROUP BY session_id').all(since)) {

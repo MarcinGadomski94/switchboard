@@ -51,6 +51,13 @@ export interface SpawnRequest {
   readonly onUsage?: (usage: ProviderUsage) => void;
   /** Switchboard's version (told to a bridge's CLI as the client's). */
   readonly clientVersion?: string;
+  /**
+   * D106: the session is a chat: its CLI's read-only mode (Claude Code: plan mode with
+   * the editors disallowed and `--add-dir` per folder; Codex: the read-only sandbox,
+   * approvals never; OpenCode: the plan agent with edits and commands denied), and the
+   * folders it may read. Absent / `null` = a development session.
+   */
+  readonly readOnly?: { readonly lookAt: readonly string[] } | null;
 }
 
 /** One CLI behind the {@link AgentProcess} seam. */
