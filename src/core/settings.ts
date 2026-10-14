@@ -88,6 +88,12 @@ export interface KnownSettings {
    * off Plans opens nothing (no `plans.db`), runs no scheduler and gives agents no plan tools. Editable, default `false`.
    */
   readonly 'experimental.plans': boolean;
+  /**
+   * Project memory (D107) hook: Settings → Experimental → **Project memory** (`docs/memory.md`). Off by
+   * default; while off nothing opens (no `memory.db`), no agent gets the memory tools and no session
+   * gets a memory block. Editable, default `false`.
+   */
+  readonly 'experimental.memory': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -171,7 +177,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -203,6 +209,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'experimental.team': false,
   // Plans (D99) hook: off by default.
   'experimental.plans': false,
+  // Project memory (D107) hook: off by default.
+  'experimental.memory': false,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -241,6 +249,8 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'insights.prices': readPriceTable(value['insights.prices']),
     'experimental.team': bool('experimental.team', SETTING_DEFAULTS['experimental.team']),
     'experimental.plans': bool('experimental.plans', SETTING_DEFAULTS['experimental.plans']),
+    // Project memory (D107) hook.
+    'experimental.memory': bool('experimental.memory', SETTING_DEFAULTS['experimental.memory']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

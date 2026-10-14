@@ -7,7 +7,8 @@
  */
 
 /** A nav grid icon's name (one per view the grid opens). */
-export type NavIconName = 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'team' | 'plans' | 'search' | 'insights';
+// Project memory (D107) hook: `memory` (docs/memory-removal.md).
+export type NavIconName = 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'team' | 'plans' | 'memory' | 'search' | 'insights';
 
 /** The strokes of each icon, on an 18 × 18 view box. */
 export const NAV_ICON_GLYPHS: Readonly<Record<NavIconName, readonly string[]>> = {
@@ -29,6 +30,8 @@ export const NAV_ICON_GLYPHS: Readonly<Record<NavIconName, readonly string[]>> =
   team: ['M4.5 15.5v-13', 'M4.5 3h8.5l-2 3.2 2 3.3H4.5'],
   // Three nodes joined: a dependency graph.
   plans: ['M4 7a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M14 2a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M14 12a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', 'M5.8 8.1 12.2 5', 'M5.8 9.9l6.4 3.1'],
+  // A book with a bookmark (Project memory, D107).
+  memory: ['M4 3.5a1.5 1.5 0 0 1 1.5-1.5h8v11.5h-8A1.5 1.5 0 0 0 4 15z', 'M4 15a1.5 1.5 0 0 0 1.5 1.5h8v-3', 'M8 2v5l1.5-1 1.5 1V2'],
   // D108: a bar chart (three bars on a baseline).
   insights: ['M2.5 15.5h13', 'M4.5 15.5v-5', 'M9 15.5v-10', 'M13.5 15.5v-7'],
   // A magnifier.

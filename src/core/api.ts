@@ -30,6 +30,8 @@ import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
 // Team (D100) hook: the `teamChanged` payload (docs/team-removal.md).
 import type { TeamChanged } from './team.ts';
+// Project memory (D107) hook: the `memoryChanged` payload (docs/memory-removal.md).
+import type { MemoryChanged } from './memory.ts';
 import type {
   AgentKind,
   Coordination,
@@ -2491,6 +2493,8 @@ export interface HubEvents {
   readonly planChanged: PlanChanged;
   /** Team (D100) hook: something of the team changed (`docs/team.md`; the page reads `GET /api/team` again). */
   readonly teamChanged: TeamChanged;
+  /** Project memory (D107) hook: a folder's memory changed (`scope`), or the switch / the settings (`null`); the Memory page reads again. */
+  readonly memoryChanged: MemoryChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2528,6 +2532,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'planChanged',
   // Team (D100) hook.
   'teamChanged',
+  // Project memory (D107) hook.
+  'memoryChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

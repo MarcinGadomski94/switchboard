@@ -39,6 +39,8 @@ import { useTeamHiddenSessions, withoutTeamMembers } from '../team/hidden.ts';
 import { TeamNavItem, TeamSidebarEntry } from '../team/SidebarTeam.tsx';
 // Plans (D99) hook (docs/plans-removal.md).
 import { PlansNavItem } from '../plans/PlansNav.tsx';
+// Project memory (D107) hook (docs/memory-removal.md).
+import { MemoryNavItem } from '../memory/MemoryNav.tsx';
 import {
   type Meter,
   type UsageCell,
@@ -329,6 +331,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         <TeamNavItem />
         {/* Plans (D99) hook: the Plans cell, only while Plans is on (nothing while off). */}
         <PlansNavItem />
+        {/* Project memory (D107) hook: the Memory cell, only while Project memory is on (nothing while off). */}
+        <MemoryNavItem />
       </nav>
 
       {/* D101: the header toggles the list (▾ / ▸, the count and a stopped tool's dot while collapsed); + Add does not. */}

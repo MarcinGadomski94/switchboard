@@ -15,7 +15,7 @@
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), and (D91) a
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), (D107) project memory (read, approve, reject, edit, pin), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -138,6 +138,11 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|merge|open-pr|send-back)$/],
   ['DELETE', /^\/api\/plans\/[^/]+\/edges\/[^/]+\/[^/]+$/],
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
+  // Project memory (D107) hook (docs/memory.md → *Phones and paired machines*): read it, and review proposals on the phone:
+  // approve (as proposed or edited), reject, edit and pin an entry. Adding by hand, deleting and the size cap stay on the desktop.
+  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings)$/],
+  ['PUT', /^\/api\/memory\/entries\/[^/]+$/],
+  ['POST', /^\/api\/memory\/entries\/[^/]+\/(?:approve|reject)$/],
   // Team (D100) hook (docs/team.md → Devices): read the team, answer (requests), pause / resume, give tasks (hand-offs),
   // adopt / create, return and remove a member (the session itself is never lost). Settings edits, moves and the sync stay off phones.
   ['GET', /^\/api\/team(?:\/(?:state|templates|suggestions|activity|needs-you))?$/],
@@ -226,6 +231,10 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/team\/access\/[^/]+$/],
   // Plans (D99) hook: Settings → Integrations → Jira (the credentials) stay on this computer.
   ['*', /^\/api\/integrations\/jira$/],
+  // Project memory (D107) hook: adding an entry by hand, deleting one and the block's size cap (desktop).
+  ['POST', /^\/api\/memory\/entries$/],
+  ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
+  ['PUT', /^\/api\/memory\/settings$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

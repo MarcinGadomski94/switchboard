@@ -30,6 +30,8 @@ import { TeamPage } from '../team/TeamPage.tsx';
 // Plans (D99) hook: the Plans pages (docs/plans-removal.md).
 import { PlanPage } from '../plans/PlanPage.tsx';
 import { PlansPage } from '../plans/PlansPage.tsx';
+// Project memory (D107) hook: the Memory page (docs/memory-removal.md).
+import { MemoryPage } from '../memory/MemoryPage.tsx';
 import './shell.css';
 
 function View({ route }: { readonly route: Route }) {
@@ -67,6 +69,9 @@ function View({ route }: { readonly route: Route }) {
       return <PlansPage />;
     case 'plan':
       return <PlanPage key={route.id} planId={route.id} />;
+    // Project memory (D107) hook (docs/memory-removal.md).
+    case 'memory':
+      return <MemoryPage />;
   }
 }
 
