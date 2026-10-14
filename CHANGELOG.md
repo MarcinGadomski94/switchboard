@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.21.0 (2026-10-15)
+
+### Moving sessions and team members
+- **Choose the folders on the other machine** when you move a session or a Team member: its saved folders, its home folder, a path you type, or by browsing its folders (folders only, never file contents). Switchboard then checks, by git remote rather than folder name, that every repository is there — ✓ found, ⚠ another branch / uncommitted changes / to be cloned / several to pick from, ✖ blocked — and enables **Move** only when all of them are found or will be cloned. It looks up to three levels below each chosen folder; your choice is remembered for the next move.
+- Repositories now match across machines whatever the URL form or letter case, including Azure DevOps URLs. **Update both machines:** with one on an older version, a repository whose owner or name has capital letters may not match.
+
+### Fixed
+- **Solutions no longer shows stale sessions or false conflicts.** Closed, moved and continued sessions stop counting; sessions in their own worktree (agent-made ones included) count as isolated; a session counts as working in a main checkout only while it has uncommitted edits there; worktrees removed outside Switchboard disappear. Names on a conflict card open the session — Team members included — and the page has a **↻ Refresh** button.
+
 ## 1.20.0 (2026-10-14)
 
 ### Insights
