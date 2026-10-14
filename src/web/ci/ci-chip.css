@@ -1,0 +1,55 @@
+/* D109 · the session header's PR chip (docs/ci.md). */
+.sb-ci-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  font: 500 11px var(--font-mono);
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-ci-chip:hover {
+  border-color: var(--muted-4);
+  color: var(--text-strong);
+}
+
+.sb-ci-chip:focus-visible {
+  outline: 2px solid var(--status-run);
+  outline-offset: 1px;
+}
+
+.sb-ci-chip-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-idle);
+}
+
+.sb-ci-chip[data-state='running'] .sb-ci-chip-dot {
+  background: var(--status-run);
+}
+
+.sb-ci-chip[data-state='failed'] {
+  color: var(--diff-del-fg);
+}
+
+.sb-ci-chip[data-state='failed'] .sb-ci-chip-dot {
+  background: var(--status-fail);
+}
+
+.sb-ci-chip[data-state='green'] .sb-ci-chip-dot {
+  background: var(--status-done);
+}
+
+.sb-ci-chip[data-state='merged'] .sb-ci-chip-dot {
+  background: oklch(0.7 0.12 300);
+}

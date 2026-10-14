@@ -10,6 +10,7 @@ import { MachineTag } from '../components/MachineTag.tsx';
 import { useSessionList } from '../folders/useFolders.ts';
 import { Link } from '../router.tsx';
 import { useToasts } from '../toast/ToastHost.tsx';
+import { useModals } from '../modals/ModalHost.tsx';
 import { TodoBoard } from './TodoBoard.tsx';
 import { TodoCards, TodoSelectionBar, runToast, runTodos, startTodo, todoRefusal, useMinuteClock, useRunSessions, useTodoSelection } from './session/TodoStrip.tsx';
 import './session/todos.css';
@@ -48,6 +49,7 @@ function readMode(): TodosMode {
 export function TodosView() {
   const groups = useApi(api.todos);
   const { show } = useToasts();
+  const { open: openModal } = useModals();
   // D75: which sessions are working (an in-progress card's edge pulses).
   const sessions = useSessionList();
   const working = new Set((sessions.data ?? []).filter((session) => session.status === 'run').map((session) => session.id));
@@ -143,6 +145,10 @@ export function TodosView() {
             Board
           </button>
         </div>
+        {/* D109: Import issues… (GitHub / Jira) into a session's todos. */}
+        <button type="button" className="sb-todos-page-select" data-testid="todos-import" data-tour="todos-import" onClick={() => openModal('import-issues', { importTarget: { sessionId: null } })}>
+          Import issues…
+        </button>
         {mode === 'list' ? (
           <>
             <button

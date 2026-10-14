@@ -40,6 +40,7 @@ import {
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
 import { type PlanItemOutcome, registerPlanHooks } from './hooks.ts';
+import { registerCiMergeOwner } from '../ci/hooks.ts';
 import type { PlanItemPatch, PlanItemRecord, PlanRecord, PlanRepository } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
@@ -115,6 +116,14 @@ export interface PlanEnvironment {
   mergeNotice(input: PlanMergeNotice): Promise<void>;
   /** D102: closes the open "Ready to merge" items of plan item `itemId` (merged, sent back, failed, …) with `outcome`. */
   closeMergeNotice(itemId: string, outcome: string): Promise<void>;
+  /**
+   * D109: `true` while the shared PR watcher sends red checks to the session itself (Settings →
+   * CI & pull requests → *Send CI failures to the session*, on by default), with the failing
+   * job's log: Plans then sends no checks message of its own. Absent = `false` (tests).
+   */
+  ciSendsFailures?(): Promise<boolean>;
+  /** D109: a PR was opened for a run session's branch (Open PR): the shared watcher reads it now. */
+  prOpened?(sessionId: string): Promise<void>;
 }
 
 /** D102: what the Inbox's "Ready to merge" item says and acts on. */
@@ -234,6 +243,7 @@ export class PlanService {
   /** Why `plans.db` could not be opened (while on). */
   #problem: string | null = null;
   #offHooks: (() => void) | null = null;
+  #offCi: (() => void) | null = null;
   /** The switch changes, one at a time. */
   #switching: Promise<void> = Promise.resolve();
 
@@ -258,6 +268,8 @@ export class PlanService {
    */
   async start(): Promise<void> {
     if (this.#closed) return;
+    // D109: the shared PR watcher raises no "ready to merge" item for a running item's session (Plans has its own Merge step).
+    this.#offCi ??= registerCiMergeOwner(this.#store, async (sessionId) => this.#enabled && this.#db !== null && this.#runs.has(sessionId));
     this.#offHooks ??= registerPlanHooks(this.#store, {
       switchChanged: () => this.switchChanged(),
       sessionContinued: (from, to) => this.sessionContinued(from, to),
@@ -305,6 +317,8 @@ export class PlanService {
     this.#closed = true;
     this.#offHooks?.();
     this.#offHooks = null;
+    this.#offCi?.();
+    this.#offCi = null;
     await this.#switching.catch(() => undefined);
     this.#stopListening();
     await this.idle();
@@ -531,6 +545,14 @@ export class PlanService {
         const turnEnded = run.status === 'run' && (status === 'idle' || status === 'done');
         run.status = status;
         this.#dirty.set(run.itemId, turnEnded || this.#dirty.get(run.itemId) === true);
+        this.kick();
+        return;
+      }
+      case 'ciChanged': {
+        // D109: the shared PR watcher read a run session's PR (checks, review, merged): look at the item now.
+        const run = this.#runs.get(message.payload.sessionId);
+        if (!run) return;
+        if (!this.#dirty.has(run.itemId)) this.#dirty.set(run.itemId, false);
         this.kick();
         return;
       }
@@ -1039,6 +1061,8 @@ export class PlanService {
       let url: string | null = null;
       for (const input of inputs) url = await this.#merger.openPullRequest(input, title, `${item.key ? `${item.key}: ` : ''}${title}\n\nAn item of the plan "${plan.title}". Opened from Switchboard's Plans page.`);
       if (url !== null) await this.#repo().updateItem(item.id, { prUrl: url });
+      // D109: the shared PR watcher follows it from now (its checks, review, merged).
+      if (url !== null && item.runSessionId) await this.#env.prOpened?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
       return [];
     });
   }
@@ -1348,7 +1372,9 @@ export class PlanService {
         checks = reading;
         note = `checks ${reading.summary ?? 'failed'}`;
         if (waiting === null) waiting = 'checks';
-        if (!already) await this.#env.send(session.id, planChecksMessage(plan.targetBranch, reading.summary ?? 'failed')).catch((error: unknown) => this.#onError(error));
+        // D109: the shared PR watcher sends the failure itself (with the failing job's log) unless switched off.
+        const watcherSends = (await this.#env.ciSendsFailures?.().catch(() => false)) === true;
+        if (!already && !watcherSends) await this.#env.send(session.id, planChecksMessage(plan.targetBranch, reading.summary ?? 'failed')).catch((error: unknown) => this.#onError(error));
       } else if (pending?.pr) {
         checks = pending.pr.checks;
         if (waiting === null) waiting = 'checks';

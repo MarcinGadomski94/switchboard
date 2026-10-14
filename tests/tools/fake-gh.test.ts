@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCommand } from '../../src/server/exec.ts';
@@ -44,5 +44,39 @@ describe('tools/fake-gh', () => {
     expect(log[0]).toEqual({ argv: ['pr', 'view', 'main', '--json', 'number,state'], cwd: world.web });
     expect(log).toHaveLength(6);
     expect(path.isAbsolute(log[0]?.cwd ?? '')).toBe(true);
+  });
+
+  it('D109: pr merge (OPEN → MERGED with the method), run view --log-failed, repo view, issue list with filters', async () => {
+    world = await makeGitWorld();
+    await writeFile(world.prsFile, JSON.stringify({ main: { number: 4, state: 'OPEN', url: 'https://github.com/o/r/pull/4' } }));
+    expect((await gh(world, ['pr', 'merge', '4', '--squash'])).code).toBe(0);
+    expect(JSON.parse((await gh(world, ['pr', 'view', 'main', '--json', 'state,mergedWith'])).stdout)).toEqual({ state: 'MERGED', mergedWith: 'squash' });
+    const again = await gh(world, ['pr', 'merge', '4', '--merge']);
+    expect(again.code).toBe(1);
+    expect(again.stderr).toMatch(/not mergeable/);
+    expect((await gh(world, ['pr', 'merge', '9', '--merge'])).code).toBe(1);
+
+    const logs = path.join(world.root, 'logs');
+    await mkdir(logs, { recursive: true });
+    await writeFile(path.join(logs, '7-8.log'), 'job\tstep\tline one\n');
+    expect((await gh(world, ['run', 'view', '7', '--log-failed', '--job', '8'], { FAKE_GH_RUN_LOGS: logs })).stdout).toBe('job\tstep\tline one\n');
+    expect((await gh(world, ['run', 'view', '7', '--log-failed'], { FAKE_GH_RUN_LOGS: logs })).code).toBe(1);
+
+    expect(JSON.parse((await gh(world, ['repo', 'view', '--json', 'nameWithOwner,viewerDefaultMergeMethod'])).stdout)).toEqual({ nameWithOwner: 'fake/web-front', viewerDefaultMergeMethod: 'MERGE' });
+
+    const issues = path.join(world.root, 'issues.json');
+    await writeFile(issues, JSON.stringify({ 'acme/app': [
+      { number: 1, title: 'a', labels: [{ name: 'bug' }], assignees: [{ login: 'fake-gh' }], state: 'OPEN' },
+      { number: 2, title: 'b', labels: [], assignees: [], state: 'OPEN' },
+      { number: 3, title: 'c', labels: [{ name: 'bug' }], assignees: [], state: 'CLOSED' },
+    ] }));
+    const list = (args: string[]) => gh(world as GitWorld, ['issue', 'list', '--repo', 'acme/app', '--json', 'number', ...args], { FAKE_GH_ISSUES: issues });
+    expect(JSON.parse((await list([])).stdout)).toEqual([{ number: 1 }, { number: 2 }]);
+    expect(JSON.parse((await list(['--label', 'bug'])).stdout)).toEqual([{ number: 1 }]);
+    expect(JSON.parse((await list(['--assignee', '@me'])).stdout)).toEqual([{ number: 1 }]);
+    expect(JSON.parse((await list(['--state', 'all', '--limit', '2'])).stdout)).toEqual([{ number: 1 }, { number: 2 }]);
+    const unknown = await gh(world, ['issue', 'list', '--repo', 'acme/none', '--json', 'number'], { FAKE_GH_ISSUES: issues });
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toMatch(/Could not resolve to a Repository/);
   });
 });

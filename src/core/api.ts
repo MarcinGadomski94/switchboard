@@ -32,6 +32,8 @@ import type { DraftChanged } from './drafts.ts';
 import type { TeamChanged } from './team.ts';
 // Project memory (D107) hook: the `memoryChanged` payload (docs/memory-removal.md).
 import type { MemoryChanged } from './memory.ts';
+import type { CiChanged } from './ci.ts';
+export type { CiChanged, ImportableIssue, IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi, SessionPr } from './ci.ts';
 import type {
   AgentKind,
   Coordination,
@@ -1529,6 +1531,8 @@ export interface InboxItem {
    * "Ready to merge" item's **Open plan**); the action navigates there and leaves the item open.
    */
   readonly route?: string;
+  /** Additive (D109): the external page an item's **Open PR** opens (the PR on GitHub, `https://` only); the item stays open. */
+  readonly url?: string;
   /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
   readonly teamRole?: string;
 }
@@ -2495,6 +2499,12 @@ export interface HubEvents {
   readonly teamChanged: TeamChanged;
   /** Project memory (D107) hook: a folder's memory changed (`scope`), or the switch / the settings (`null`); the Memory page reads again. */
   readonly memoryChanged: MemoryChanged;
+  /**
+   * Additive (D109, `docs/ci.md`): a session's pull-request status changed (checks, review,
+   * ready to merge, merged, the failure attempts); the session header's PR chip reads
+   * `GET /api/sessions/{id}/ci` again. Forwarded between peers (a peer's with its remote session id).
+   */
+  readonly ciChanged: CiChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2534,6 +2544,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'teamChanged',
   // Project memory (D107) hook.
   'memoryChanged',
+  // D109.
+  'ciChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

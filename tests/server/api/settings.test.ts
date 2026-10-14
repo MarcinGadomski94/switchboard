@@ -99,6 +99,13 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'experimental.team': false,
       'experimental.plans': false,
       'experimental.memory': false,
+      // D109: the CI / PR feedback loop.
+      'ci.sendFailures': true,
+      'ci.pendingPollMinutes': 2,
+      'ci.idlePollMinutes': 10,
+      'ci.maxAttempts': 3,
+      'ci.logTailLines': 150,
+      'ci.mergeMethod': 'repo',
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,

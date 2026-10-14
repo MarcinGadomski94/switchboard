@@ -21,6 +21,7 @@ import {
   linksSession,
   newSessionAfter,
   openRoute,
+  openUrl,
   routeAfter,
   refusalText,
   selectedItem,
@@ -304,6 +305,12 @@ export function InboxView() {
               const link = openRoute(current, action.id);
               if (link) {
                 navigate(link);
+                return;
+              }
+              // D109: Open PR opens the PR on GitHub in a new tab; the item stays open.
+              const external = openUrl(current, action.id);
+              if (external) {
+                window.open(external, '_blank', 'noopener,noreferrer');
                 return;
               }
               // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.

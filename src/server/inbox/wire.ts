@@ -254,6 +254,9 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-ready-to-merge': 'Ready to merge',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
   'memory-proposals': 'Memory',
+  // D109: the PR watcher.
+  'ci-failing': 'CI keeps failing',
+  'ci-ready': 'Ready to merge',
 };
 
 /**
@@ -276,6 +279,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
   const prefill = systemItemPrefill(record);
   // D102: the page an "open" action goes to (a plan's Ready-to-merge item: Open plan).
   const route = isRecord(record.payload) && typeof record.payload['route'] === 'string' ? record.payload['route'] : null;
+  // D109: the PR an item is about (Open PR's link).
+  const url = isRecord(record.payload) && typeof record.payload['url'] === 'string' && /^https:\/\//.test(record.payload['url']) ? record.payload['url'] : null;
   return {
     id: record.id,
     kind: 'system',
@@ -290,6 +295,7 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     actions: record.actions.map((action) => ({ id: action.id, label: action.label })),
     ...(prefill ? { prefill } : {}),
     ...(route ? { route } : {}),
+    ...(url ? { url } : {}),
   };
 }
 

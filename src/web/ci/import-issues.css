@@ -1,0 +1,115 @@
+/* D109 · the Import issues dialog (docs/todos.md → Import issues). */
+.sb-ii-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sb-ii-grow {
+  flex: 1;
+}
+
+.sb-ii-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.sb-ii-label {
+  width: 120px;
+}
+
+.sb-ii-mine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 9px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.sb-ii-select {
+  max-width: 100%;
+}
+
+.sb-ii-sources {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-ii-source {
+  padding: 5px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted-1);
+  font: 500 12px var(--font-mono);
+  cursor: pointer;
+}
+
+.sb-ii-source[aria-checked='true'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-ii-source:focus-visible {
+  outline: 2px solid var(--status-run);
+  outline-offset: 1px;
+}
+
+.sb-ii-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+}
+
+.sb-ii-issue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-row);
+  font: 400 12.5px var(--font-sans, inherit);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sb-ii-issue:last-child {
+  border-bottom: none;
+}
+
+.sb-ii-issue[data-imported='true'] {
+  color: var(--muted-3);
+  cursor: default;
+}
+
+.sb-ii-key {
+  flex: none;
+  font: 500 11.5px var(--font-mono);
+  color: var(--branch-fg);
+}
+
+.sb-ii-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sb-ii-labels,
+.sb-ii-done {
+  flex: none;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-ii-note {
+  padding: 8px 10px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}

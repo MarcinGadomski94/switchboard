@@ -498,6 +498,8 @@ export class TodoService {
    */
   async moveAll(fromSessionId: string, toSessionId: string): Promise<number> {
     const moved = await this.#store.todos.moveAll(fromSessionId, toSessionId);
+    // D109: the imported issues' records follow the todos, so a re-import in the fresh session still skips them.
+    await this.#store.todoImports.moveAll(fromSessionId, toSessionId);
     const relinked = await this.#store.todos.followContinuation(fromSessionId, toSessionId);
     const from = await this.#store.sessions.get(fromSessionId);
     if (from?.todoLink) await this.#store.sessions.update(toSessionId, { todoLink: from.todoLink });

@@ -15,7 +15,7 @@
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), (D107) project memory (read, approve, reject, edit, pin), and (D91) a
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), (D107) project memory (read, approve, reject, edit, pin), (D109) Import issues… and a session's PR status (Merge PR is an Inbox action), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -75,6 +75,11 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/loops\/[^/]+\/(?:pause|resume|run)$/],
   // D81: quick capture (the palette, a chat selection, the share sheet's page).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
+  // D109: Import issues… (the sources, a preview, the import: normal use, like adding todos) and the header's PR chip.
+  // Merge PR is the Inbox item's action (an explicit click, allowed on phones with the Inbox's actions).
+  ['GET', /^\/api\/sessions\/[^/]+\/todos\/import\/sources$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/import(?:\/preview)?$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/ci$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

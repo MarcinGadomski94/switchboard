@@ -5,9 +5,10 @@ import { PlanGit } from './git.ts';
 import { registerPlanRoutes } from './routes.ts';
 import { PlanService } from './service.ts';
 import { installPlansJira } from './jira/install.ts';
+import { ciSettingsOf } from '../settings/settings.ts';
 
 /** What {@link installPlans} needs from the app (the route context it already built). */
-export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers'>;
+export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers' | 'ci'>;
 
 /** The Plans service of an app (tests). */
 const services = new WeakMap<FastifyInstance, PlanService>();
@@ -31,7 +32,8 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
       store: context.store,
       bus: context.bus,
       todos: context.todos,
-      git: new PlanGit({ gh: context.config.ghCommand }),
+      // D109: the items' PRs are read through the shared PR watcher.
+      git: new PlanGit({ gh: context.config.ghCommand, prs: (repoPath, branch) => context.ci.read(repoPath, branch) }),
       env: planEnvironment({
         context: { store: context.store, providers: context.providers, supervisor: context.supervisor, worktrees: context.worktrees, folders: context.folders, todos: context.todos, attachments: context.attachments, clis: context.clis },
         accounts: context.accounts,
@@ -39,6 +41,11 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
         send: async (sessionId, text) => {
           if (await context.hooks.isHooked(sessionId)) await context.hooks.sendMessage(sessionId, text);
           else await context.supervisor.sendMessage(sessionId, text, 'service');
+        },
+        // D109: the shared PR watcher sends red checks itself while its setting is on.
+        ciSendsFailures: async () => (await ciSettingsOf(context.store.settings))['ci.sendFailures'],
+        prOpened: async (sessionId) => {
+          for (const worktree of await context.store.worktrees.list({ sessionId })) await context.ci.watchSoon(worktree.id);
         },
       }),
     });

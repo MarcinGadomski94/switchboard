@@ -15,6 +15,7 @@ import {
   isNewSessionMode,
 } from '../../core/settings.ts';
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
+import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
 import type { ServerConfig } from '../config.ts';
@@ -74,6 +75,19 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       // D83: the fresh-session offer's threshold.
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < FRESH_OFFER_MIN_PCT || raw > FRESH_OFFER_MAX_PCT) {
         errors.push({ field: key, message: `${key} must be a whole number ${FRESH_OFFER_MIN_PCT}–${FRESH_OFFER_MAX_PCT}` });
+        continue;
+      }
+    } else if (key in CI_LIMITS) {
+      // D109: the CI loop's intervals, attempts and log lines (whole numbers in their bounds).
+      const { min, max } = CI_LIMITS[key as keyof typeof CI_LIMITS];
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < min || raw > max) {
+        errors.push({ field: key, message: `${key} must be a whole number ${min}–${max}` });
+        continue;
+      }
+    } else if (key === 'ci.mergeMethod') {
+      // D109: Merge PR's method.
+      if (!isCiMergeMethod(raw)) {
+        errors.push({ field: key, message: `${key} must be "repo", "squash", "merge" or "rebase"` });
         continue;
       }
     } else if (key === 'newSession.mode') {
@@ -166,6 +180,8 @@ export async function readSettings(
       const fallback = SETTING_DEFAULTS[key];
       // D56: the mode is one of two words; anything else stored reads as the default.
       if (key === 'newSession.mode') return [key, isNewSessionMode(value) ? value : fallback];
+      // D109: an unknown merge method reads as the default.
+      if (key === 'ci.mergeMethod') return [key, isCiMergeMethod(value) ? value : fallback];
       // D68: an earlier default text reads as the current default (it gains the todo sentence).
       if (key === 'agents.standingInstruction') return [key, typeof value === 'string' ? currentStandingInstruction(value) : fallback];
       // D82: rules stored by an older or broken write read as none (routing off) rather than half a list.
@@ -217,6 +233,24 @@ export async function checkpointsEnabled(repo: SettingRepository): Promise<boole
 export async function todoEnrichEnabled(repo: SettingRepository): Promise<boolean> {
   const stored = (await repo.getAll())['sessions.todoEnrich'];
   return typeof stored === 'boolean' ? stored : SETTING_DEFAULTS['sessions.todoEnrich'];
+}
+
+/** D109: the CI loop's settings as stored (their defaults until set). */
+export async function ciSettingsOf(repo: SettingRepository): Promise<Pick<EditableSettings, 'ci.sendFailures' | 'ci.pendingPollMinutes' | 'ci.idlePollMinutes' | 'ci.maxAttempts' | 'ci.logTailLines' | 'ci.mergeMethod'>> {
+  const stored = await repo.getAll();
+  const num = (key: keyof typeof CI_LIMITS): number => {
+    const value = stored[key];
+    const { min, max } = CI_LIMITS[key];
+    return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : SETTING_DEFAULTS[key];
+  };
+  return {
+    'ci.sendFailures': typeof stored['ci.sendFailures'] === 'boolean' ? stored['ci.sendFailures'] : SETTING_DEFAULTS['ci.sendFailures'],
+    'ci.pendingPollMinutes': num('ci.pendingPollMinutes'),
+    'ci.idlePollMinutes': num('ci.idlePollMinutes'),
+    'ci.maxAttempts': num('ci.maxAttempts'),
+    'ci.logTailLines': num('ci.logTailLines'),
+    'ci.mergeMethod': isCiMergeMethod(stored['ci.mergeMethod']) ? stored['ci.mergeMethod'] : SETTING_DEFAULTS['ci.mergeMethod'],
+  };
 }
 
 /** D82: the stored *Model by task* rules (Settings → Sessions), in order; `[]` = off. */

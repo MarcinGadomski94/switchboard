@@ -5,6 +5,7 @@ import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
+import type { IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi } from '../../core/ci.ts';
 import type {
   DiffScope,
   DiffCount,
@@ -261,6 +262,14 @@ export const api = {
   reorderTodos: (id: string, ids: readonly string[]) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/order`, { ids } satisfies TodoOrderInput),
   /** D68: every open session's items, grouped (this machine's, then the paired machines' as last known). */
   todos: () => request<TodoGroup[]>('GET', '/api/todos'),
+  /** D109: the session's watched pull requests (the header's PR chip; `docs/ci.md`). A peer's session id is forwarded. */
+  sessionCi: (id: string) => request<SessionCi>('GET', `/api/sessions/${enc(id)}/ci`),
+  /** D109 · Import issues…: the session's `owner/repo`s and whether Jira is connected. */
+  importSources: (id: string) => request<IssueImportSources>('GET', `/api/sessions/${enc(id)}/todos/import/sources`),
+  /** D109: the matching issues (already imported ones marked). */
+  previewImport: (id: string, query: IssueImportQuery) => request<IssueImportPreview>('POST', `/api/sessions/${enc(id)}/todos/import/preview`, query),
+  /** D109: imports the ticked issues as todos (201: the session's list). */
+  importIssues: (id: string, input: IssueImportInput) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/import`, input),
   /** D54, additive: the sidebar's pins and folders (this machine's; `docs/sidebar.md`). Every write answers the new layout. */
   sidebarLayout: () => request<SidebarLayout>('GET', '/api/sidebar'),
   /** D54: a new folder, at the end of the folders (201); D58: `parentId` = at the end of that folder's subfolders. */

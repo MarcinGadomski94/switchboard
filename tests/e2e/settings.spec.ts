@@ -132,6 +132,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Schedules',
     'Embedded tools',
     'GitHub',
+    // D109.
+    'CI & pull requests',
     // D62: after the prototype's seven.
     'CLIs',
     'Accounts',
@@ -171,6 +173,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     ['schedules', 'Schedules'],
     ['tools', 'Embedded tools'],
     ['github', 'GitHub'],
+    // D109.
+    ['ci', 'CI & pull requests'],
     ['clis', 'CLIs'],
     ['machines', 'Machines'],
     ['devices', 'Devices'],

@@ -191,6 +191,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/(?:start|run)$/],
   // D81: quick capture into that machine's session (its machine asks its agent to fill the item in).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
+  // D109: Import issues… into that machine's session (its gh, its Jira connection: no credential travels), and its PR chip.
+  ['GET', /^\/api\/sessions\/[^/]+\/todos\/import\/sources$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/import(?:\/preview)?$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/ci$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],

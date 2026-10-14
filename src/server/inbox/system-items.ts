@@ -82,6 +82,40 @@ export const WORKTREE_REMOVABLE_ACTIONS: readonly InboxAction[] = [
 /** D47: the actions of a parent-merged item (it only informs: the agent, not Switchboard, retargets and rebases). */
 export const PARENT_MERGED_ACTIONS: readonly InboxAction[] = [{ id: 'dismiss', label: 'Dismiss' }];
 
+/** D109: kind of "CI keeps failing on PR #n …" (the watcher stopped sending failures: the cap or the same failure twice). */
+export const CI_FAILING = 'ci-failing';
+/** D109: kind of "PR #n ready to merge" (green and approved, or no approval required). */
+export const CI_READY = 'ci-ready';
+/** D109: **Merge PR**: `gh pr merge` through the PR watcher (only on this click). */
+export const CI_MERGE_PR = 'merge-pr';
+/** D109: **Open PR**: a link (`InboxItem.url`); the item stays open. */
+export const CI_OPEN_PR = 'open-pr';
+/** D109: **Open session**: a link to the item's session; the item stays open. */
+export const CI_OPEN_SESSION = 'open-session';
+/** D109: **Try again**: the PR's attempts start again and its failure is sent. */
+export const CI_TRY_AGAIN = 'try-again';
+/** D109: the actions of "CI keeps failing" (the first is primary). */
+export const CI_FAILING_ACTIONS: readonly InboxAction[] = [
+  { id: CI_OPEN_PR, label: 'Open PR' },
+  { id: CI_OPEN_SESSION, label: 'Open session' },
+  { id: CI_TRY_AGAIN, label: 'Try again' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+/** D109: the actions of "ready to merge". */
+export const CI_READY_ACTIONS: readonly InboxAction[] = [
+  { id: CI_MERGE_PR, label: 'Merge PR' },
+  { id: CI_OPEN_PR, label: 'Open PR' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
+/** D109: what the CI items' actions run (the PR watcher, `src/server/ci/watcher.ts`). */
+export interface CiActions {
+  /** Merge PR: answers `null` when merged, else why not. */
+  merge(worktreeId: string): Promise<string | null>;
+  /** Try again: the attempts start again. */
+  tryAgain(worktreeId: string): Promise<void>;
+}
+
 /** Default pause between two {@link SystemItemService.sync} runs of {@link SystemItemService.startWatching}. */
 export const DEFAULT_SYNC_MS = 30_000;
 
@@ -159,6 +193,7 @@ export class SystemItemService {
   readonly #onError: (error: unknown) => void;
   readonly #busy = new Set<string>();
   #runner: ScheduleRunner | null;
+  #ci: CiActions | null = null;
   #unsubscribe: (() => void) | null = null;
   #unsubscribeParent: (() => void) | null = null;
   #unsubscribeClosed: (() => void) | null = null;
@@ -193,7 +228,57 @@ export class SystemItemService {
     this.#runner = runner;
   }
 
+  /** D109: plugs in the PR watcher that serves Merge PR and Try again. */
+  useCi(actions: CiActions | null): void {
+    this.#ci = actions;
+  }
+
   // ── raise ─────────────────────────────────────────────────────────────
+
+  /**
+   * D109 (`docs/ci.md`): the PR watcher's items: "CI keeps failing on PR #n …" (Open PR /
+   * Open session / Try again / Dismiss) and "PR #n ready to merge" (Merge PR / Open PR /
+   * Dismiss). Once per `dedupe` (open or closed); `payload.url` is the PR (Open PR's link).
+   * A new item is what the devices' push announces (D73, the *Other Inbox items* toggle).
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async ciNotice(input: { readonly kind: 'ci-failing' | 'ci-ready'; readonly worktreeId: string; readonly sessionId: string | null; readonly title: string; readonly detail: string; readonly url: string | null; readonly repo: string; readonly branch: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const actions = input.kind === CI_FAILING ? CI_FAILING_ACTIONS : CI_READY_ACTIONS;
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: input.kind,
+        source: 'ci',
+        status: input.kind === CI_FAILING ? 'fail' : 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [{ solution: input.repo, branch: input.branch }],
+        actions: actions.filter((action) => action.id !== CI_OPEN_PR || input.url !== null).map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        worktreeId: input.worktreeId,
+        payload: { dedupe: input.dedupe, ...(input.url ? { url: input.url } : {}) },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D109: closes the open CI items of a worktree (only `kinds` when given) with `outcome`; answers how many. */
+  async closeCiNotices(worktreeId: string, outcome: string, kinds: readonly string[] = [CI_FAILING, CI_READY]): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.worktreeId !== worktreeId || !kinds.includes(item.kind)) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
 
   /**
    * The scheduler's hook (M7.1): call it when a run ends. A run whose result is
@@ -593,6 +678,19 @@ export class SystemItemService {
       return;
     }
     if (action === OPEN_PLAN) throw new SystemItemError('refused', 'Open plan is a link: open the plan page');
+    // D109: the PR watcher's items.
+    if (action === CI_OPEN_PR || action === CI_OPEN_SESSION) throw new SystemItemError('refused', 'this action is a link: open it in the app');
+    if (action === CI_MERGE_PR || action === CI_TRY_AGAIN) {
+      if (!item.worktreeId) throw new SystemItemError('gone', 'the worktree is no longer registered');
+      if (!this.#ci) throw new SystemItemError('unavailable', 'the PR watcher is not available');
+      if (action === CI_TRY_AGAIN) {
+        await this.#ci.tryAgain(item.worktreeId);
+        return;
+      }
+      const refused = await this.#ci.merge(item.worktreeId);
+      if (refused !== null) throw new SystemItemError('refused', refused);
+      return;
+    }
     if (action === RETRY_RUN) {
       if (!item.scheduleId || !(await this.#store.schedules.get(item.scheduleId))) {
         throw new SystemItemError('gone', 'the schedule no longer exists');

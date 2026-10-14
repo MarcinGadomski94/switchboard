@@ -91,9 +91,21 @@ export const OPEN_PLAN = 'open-plan';
 /** Project memory (D107) hook: a folder's "N memory proposals" item's Review goes to the Memory page at it (docs/memory-removal.md). */
 export const OPEN_MEMORY = 'open-memory';
 
-/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review), else `null`. */
+/** D109: the PR watcher's items' links: Open session (the item's session) and Open PR (the PR on GitHub). */
+export const OPEN_SESSION_ACTION = 'open-session';
+export const OPEN_PR_ACTION = 'open-pr';
+
+/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review; D109: Open session), else `null`. */
 export function openRoute(item: InboxItem, actionId: string): string | null {
-  return item.kind === 'system' && (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) ? (item.route ?? null) : null;
+  if (item.kind !== 'system') return null;
+  if (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) return item.route ?? null;
+  if (actionId === OPEN_SESSION_ACTION && item.sessionId) return `/sessions/${encodeURIComponent(item.sessionId)}`;
+  return null;
+}
+
+/** D109: the external page an action opens in a new tab without calling the server (Open PR), else `null`. */
+export function openUrl(item: InboxItem, actionId: string): string | null {
+  return item.kind === 'system' && actionId === OPEN_PR_ACTION && item.url && /^https:\/\//.test(item.url) ? item.url : null;
 }
 
 /** D55: the update item's action that closes it and opens Settings → Updates (the notes and the Update button). */

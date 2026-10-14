@@ -63,10 +63,14 @@ import { registerSearchRoutes } from './api/search.ts';
 import type { SearchService } from './search/service.ts';
 import { registerInsightsRoutes } from './api/insights.ts';
 import type { InsightsService } from './insights/service.ts';
+import type { PrWatcher } from './ci/watcher.ts';
+import { registerCiRoutes } from './api/ci.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
   readonly config: ServerConfig;
+  /** D109: the shared PR watcher (CI failures, Merge PR, the session header's PR chip; docs/ci.md). */
+  readonly ci: PrWatcher;
   /** D63: the account profiles of each CLI and the rules (docs/accounts.md). */
   readonly accounts: AccountService;
   /** D98: the paired machines' accounts, shared and merged by identity (absent in demo mode). */
@@ -161,6 +165,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerTodoRoutes(app, context);
+  await registerCiRoutes(app, context);
   await registerCheckpointRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);

@@ -1,7 +1,8 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { usageWindowLabel } from '../core/usage.ts';
-import { buildApp, createCliStatus, createSessionServices, createWorktreeManager } from './app.ts';
+import { buildApp, createCliStatus, createPrWatcher, createSessionServices, createWorktreeManager } from './app.ts';
+import { ciTiming } from './ci/watcher.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
@@ -147,7 +148,9 @@ async function main(): Promise<void> {
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
     // D73 (docs/devices.md): paired phones / tablets, the device listener (off by default) and web push. The demo has none.
     const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name, remoteInbox: () => peers.remoteInbox() });
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ...(usage ? { usage } : {}), logger: true });
+    // D109 (docs/ci.md): the shared PR watcher; its timer starts once the port is ours. The demo's worktrees are not real.
+    const ci = createPrWatcher(config, store, bus, systemItems, supervisor, hooks, worktrees);
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -161,6 +164,7 @@ async function main(): Promise<void> {
       await peers.close();
       await hooks.close();
       await worktrees.stopPolling();
+      await ci.close();
       await scheduler.close();
       await systemItems.close();
       await usage?.stop();
@@ -178,6 +182,8 @@ async function main(): Promise<void> {
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.
     if (!config.demo) systemItems.startWatching();
+    // D109: the PR watcher's reads (`SWITCHBOARD_CI_TICK_MS` shortens its tick for tests).
+    if (!config.demo) ci.start(ciTiming());
     // The cron timer (M7.1), only once the port is ours; the demo's schedules never fire.
     if (!config.demo) scheduler.start();
     // D48: the peer listener (when switched on) and the connections to paired machines.

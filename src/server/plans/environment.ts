@@ -18,6 +18,10 @@ export interface PlanEnvironmentDeps {
   readonly systemItems: SystemItemService;
   /** Sends a service message to a session (a hooked one through its mailbox). */
   readonly send: (sessionId: string, text: string) => Promise<void>;
+  /** D109: whether the shared PR watcher sends red checks itself. */
+  readonly ciSendsFailures?: () => Promise<boolean>;
+  /** D109: a PR was opened for a run session (the watcher reads it now). */
+  readonly prOpened?: (sessionId: string) => Promise<void>;
   readonly now?: () => number;
 }
 
@@ -98,6 +102,9 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     },
 
     send: deps.send,
+
+    ...(deps.ciSendsFailures ? { ciSendsFailures: deps.ciSendsFailures } : {}),
+    ...(deps.prOpened ? { prOpened: deps.prOpened } : {}),
 
     async notice(input) {
       await systemItems.planNotice(input);

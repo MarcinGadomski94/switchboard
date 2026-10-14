@@ -33,6 +33,7 @@ import { DraftRepository } from './repos/drafts.ts';
 import { SessionLoopRepository } from './repos/session-loops.ts';
 import { SearchRepository } from './repos/search.ts';
 import { InsightsRepository } from './repos/insights.ts';
+import { PrWatchRepository, TodoImportRepository } from './repos/ci.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -89,6 +90,10 @@ export interface Store {
   readonly search: SearchRepository;
   /** D108 (0045): the Insights page's daily turn rollup and reads (`docs/insights.md`); the events repository writes to it. */
   readonly insights: InsightsRepository;
+  /** D109 (0046): the pull requests the PR watcher follows (`docs/ci.md`). */
+  readonly prWatch: PrWatchRepository;
+  /** D109 (0046): the issues imported into the sessions' todo lists. */
+  readonly todoImports: TodoImportRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -161,6 +166,8 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     sessionLoops: new SessionLoopRepository(ctx),
     search,
     insights,
+    prWatch: new PrWatchRepository(ctx),
+    todoImports: new TodoImportRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;
