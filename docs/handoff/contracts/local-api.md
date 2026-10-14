@@ -1785,3 +1785,30 @@ POST /api/sessions/5f0c…/plans/jira/import { "epic": "PROJ-10", "targetBranch"
 → 201 { "plan": { "id": "a1b2c3d4e5", "state": "draft", "mergeMode": null, "external": { "system": "jira", "key": "PROJ-10" }, … },
         "jira": { "sync": "write", "transitions": { "inProgress": "In Progress", "inReview": "In Review" }, … }, "preview": { … } }
 ```
+
+## Chats (D106, 2026-10-14, additive)
+
+A chat is a conversation to think and plan in, started instead of a development session (`docs/chats.md`, `docs/decisions.md` → D106): its own scratch folder `<dataDir>/chats/<id>/`, its CLI's read-only / plan mode (every permission request refused by Switchboard), the switchboard MCP tools, optional folders it may read. Migration 0044 adds `sessions.kind` and `sessions.look_at`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/chats | `NewChat` `{ message, attachments?, provider?, profileId?, model?, effort?, lookAt? }` | 201 `Session` (`kind: "chat"`, `title` from the message) · 422 `invalid` (`message` empty; `provider` unknown / not available / without a read-only mode; `profileId`; `model` / `effort`; `lookAt` not absolute, missing, not a folder or more than 10; `attachments`) · 503 `closing` |
+| PUT | /api/chats/{id}/look-at | `{ lookAt: string[] }` | 200 `Session` (its process restarts to read them: now when idle, after its turn when busy) · 404 `not-found` · 409 `not-a-chat` / `closed` · 422 `invalid` (as above) |
+| DELETE | /api/chats/{id} | `{ confirm?: boolean }` (as Close's) | 204 (closed first, then its record, scratch folder, attachments and exports are removed) · 404 `not-found` · 409 `not-a-chat` (a session goes through Clean-up) · 409 `close-needs-confirm` |
+
+- **`Session.kind`** (additive): `"chat"` for a chat; absent for a development session (and from a machine before D106). **`Session.lookAt`** (additive, chats only): the folders it may read (canonical absolute paths). A chat has `folder: null`, `solutions: []`, `worktrees: false`; its `cwd` is its scratch folder.
+- **`NewSession.fromChat`** / `NewRepoSession.fromChat` / `NewSimpleSession.fromChat` (additive): Continue as session: the chat (this machine's id) whose conversation (Switchboard's export) starts the new session's first message, before the task; linked both ways (`continuedFrom` on the session, `continuedTo` on the chat, which stays open). 422 on field `fromChat` when it names no chat. `NewSessionPrefill.fromChatTitle` (additive): the form's note.
+- **Refusals for a chat** (409 `chat`): `POST /api/sessions/{id}/detach`, `PUT /api/sessions/{id}/remote` `{ enabled: true }`, a take-over (a blocker), `POST /api/team/members` (adopt), `POST /api/plans` (as the source). Checkpoints are never taken; solution rows and conflicts leave chats out.
+- **Lifecycle events** (`LifecyclePayload.action`, additive): `chat-refused` (kind `text`, label `Refused in a chat: <tool> (chats can plan but not edit)`, `message` = the tool) and `look-at-updated` (the divider `Folders to look at updated`). Continue as session uses `continued-from` (`Continued from the chat <title>`) and `continued-in` (`Continued as <session>`) with `linkedSessionId` / `linkedTitle`. A turn that left plan mode records a `mode-mismatch` text line with `fallback: "plan"`.
+- **`SearchResult.chat`** (additive): `true` when the result's session is a chat.
+- **Peers (D48):** the three routes are on `PEER_API_ALLOW` (`POST /api/chats` and the look-at answer are mapped as a `session`). **Devices (D73):** on `DEVICE_ALLOWED`.
+
+```json
+POST /api/chats
+{ "message": "How should we split the billing module?", "provider": "claude", "lookAt": ["/Users/dev/acme/billing"] }
+→ 201 { "id": "7cf6…", "kind": "chat", "title": "How should we split the billing module?", "cwd": "<dataDir>/chats/7cf6…", "folder": null, "lookAt": ["/Users/dev/acme/billing"], "status": "run", "…": "…" }
+
+POST /api/sessions
+{ "simple": true, "name": "billing-split", "title": "Billing split", "task": "Implement the plan.", "folder": "f1", "fromChat": "7cf6…" }
+→ 201 { "id": "9a2b…", "continuedFrom": { "sessionId": "7cf6…", "title": "How should we split the billing module?" }, "…": "…" }
+```

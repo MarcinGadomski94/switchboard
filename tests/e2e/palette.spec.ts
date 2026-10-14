@@ -219,8 +219,8 @@ test('palette: views, New session, sessions and solutions from the real API; fil
   // "New session" opens the New-session modal in place of the palette.
   await openPalette(page);
   await input.fill('new');
-  // D85: "new" also finds the Tutorial (its "what's new" keywords), after New session.
-  await expect.poll(() => rows(page)).toEqual(['action | New session | ', 'action | Tutorial | replay the tour']);
+  // D85: "new" also finds the Tutorial (its "what's new" keywords), after New session; D106: and New chat.
+  await expect.poll(() => rows(page)).toEqual(['action | New session | ', 'action | New chat | plan without editing', 'action | Tutorial | replay the tour']);
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('modal-new-session')).toBeVisible();
   await expect(page.getByTestId('modal-palette')).toHaveCount(0);

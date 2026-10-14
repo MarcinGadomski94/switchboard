@@ -7,6 +7,7 @@
 Switchboard is a local web app for running many coding-agent sessions at once: **Claude Code**, **Codex CLI** and **OpenCode**. From one window you can:
 
 - start sessions in any folder, workspace or repo, each in its own git worktree if you want, and watch every agent work live (subagents and workflow agents included);
+- start a **chat** instead, to think and plan with an agent that reads but never edits, and continue it as a session when it's time to code;
 - answer their questions and permission prompts from a single Inbox, and paste screenshots and files into the chat;
 - **search** everything that was said or saved, on every machine, and jump to the exact message;
 - keep a **todo list** per session and save **artifacts** (reports, plans, diagrams) on purpose;
