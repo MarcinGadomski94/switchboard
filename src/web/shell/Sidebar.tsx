@@ -31,7 +31,7 @@ import {
   toolsNeedAttention,
 } from './nav-grid.ts';
 import type { NavIconName } from './nav-icons.tsx';
-import { useToolsCollapsed } from './useToolsCollapsed.ts';
+import { setSectionCollapsed, useToolsCollapsed } from './useToolsCollapsed.ts';
 import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
 // Team (D100) hook (docs/team-removal.md).
@@ -217,7 +217,14 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   };
   const now = useNow(30_000);
   // D106: ⌘K → Chats shows the CHATS section (the drawer / a hidden sidebar first).
-  useEffect(() => onRevealChats(() => panes.setHidden('sidebar', false)), [panes]);
+  useEffect(
+    () =>
+      onRevealChats(() => {
+        panes.setHidden('sidebar', false);
+        setSectionCollapsed('ui.chatsCollapsed', false);
+      }),
+    [panes],
+  );
 
   // D95 follow-up 2: the page's shared list, patched from /hub (no read per sessionUpdated).
   const sessions = useSessionListOf();
@@ -348,11 +355,10 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
 
       {/* Team (D100) hook: ⚑ Team · <name> · N members above SESSIONS, only while Team is on. */}
       <TeamSidebarEntry />
-      {/* D106: the CHATS section (nothing while there are no chats). */}
-      <SidebarChats chats={chatList} activityOf={activityOf} closer={closer} isCurrent={(id) => isActive(route, 'session', id)} now={now} onNew={() => open('new-chat')} />
+      {/* D106: the CHATS section (always shown; folds like TOOLS). */}
+      <SidebarChats chats={chatList} loaded={sessions.data !== null} activityOf={activityOf} closer={closer} isCurrent={(id) => isActive(route, 'session', id)} now={now} onNew={() => open('new-chat')} />
       {/* D54: the SESSIONS label and list (Pinned, folders, loose sessions): SidebarSessions.tsx. */}
       <SidebarSessions
-        onNewChat={() => open('new-chat')}
         sessions={sessionList}
         loaded={sessions.data !== null}
         activityOf={activityOf}

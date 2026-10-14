@@ -123,5 +123,23 @@ describe('TOOLS collapse (D101)', () => {
       await Promise.resolve();
       expect(saveSettings).toHaveBeenCalledTimes(2);
     });
+
+    it('D106: SESSIONS and CHATS fold the same way, each under its own setting (expanded by default)', async () => {
+      const store = await import('../../src/web/shell/useToolsCollapsed.ts');
+      expect(SETTING_DEFAULTS['ui.sessionsCollapsed']).toBe(false);
+      expect(SETTING_DEFAULTS['ui.chatsCollapsed']).toBe(false);
+      expect(readKnownSettings({ 'ui.chatsCollapsed': 'yes' })['ui.chatsCollapsed']).toBe(false);
+      store.seedToolsCollapsed({ 'ui.sessionsCollapsed': true, 'ui.chatsCollapsed': false });
+      store.setSectionCollapsed('ui.chatsCollapsed', true);
+      await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ 'ui.chatsCollapsed': true }));
+      store.setSectionCollapsed('ui.sessionsCollapsed', false);
+      await vi.waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ 'ui.sessionsCollapsed': false }));
+      // A late read does not undo either change made on the page.
+      store.seedToolsCollapsed({ 'ui.sessionsCollapsed': true, 'ui.chatsCollapsed': false, 'ui.toolsCollapsed': true });
+      store.setSectionCollapsed('ui.sessionsCollapsed', false);
+      store.setSectionCollapsed('ui.chatsCollapsed', true);
+      await Promise.resolve();
+      expect(saveSettings).toHaveBeenCalledTimes(2);
+    });
   });
 });

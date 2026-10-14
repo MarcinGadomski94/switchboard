@@ -18,7 +18,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
-import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
+import { APP_FOOTER_PATH, FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
 
 /**
  * Visual oracle for the empty shell (M1.4, D10): the app's sidebar chrome against
@@ -90,16 +90,17 @@ const PARTS: Readonly<
   // The TOOLS label keeps the prototype's x, width and height (its y follows the grid); + Add its box relative to it.
   toolsLabel: { path: [0, 3], geometry: 'size', copy: false },
   toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true, appPath: [0, 3, 1], anchor: [0, 3] },
-  sessionsLabel: { path: [0, 5], geometry: 'size', copy: false },
-  settings: { path: [0, 7], geometry: 'size', copy: true },
-  footer: { path: [0, 8], geometry: 'bottom', copy: false },
+  // D106: the app has the CHATS section (always shown) right before the SESSIONS label: every later part is one child further.
+  sessionsLabel: { path: [0, 5], geometry: 'size', copy: false, appPath: [0, 6] },
+  settings: { path: [0, 7], geometry: 'size', copy: true, appPath: [0, 8] },
+  footer: { path: [0, 8], geometry: 'bottom', copy: false, appPath: APP_FOOTER_PATH },
   // "claude code" wraps in the prototype only because its row also holds "9 bg processes".
-  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true },
+  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true, appPath: [...APP_FOOTER_PATH, 0, 1] },
   // D17: the footer grows upward by the Week row, so its rows are compared relative to its top.
-  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, footerRelative: true },
-  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, footerRelative: true },
-  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, footerRelative: true },
-  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, footerRelative: true },
+  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, appAnchor: APP_FOOTER_PATH, appPath: [...APP_FOOTER_PATH, 1, 0], footerRelative: true },
+  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, appAnchor: APP_FOOTER_PATH, appPath: [...APP_FOOTER_PATH, 1, 1], footerRelative: true },
+  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, appAnchor: APP_FOOTER_PATH, appPath: [...APP_FOOTER_PATH, 2, 0], footerRelative: true },
+  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, appAnchor: APP_FOOTER_PATH, appPath: [...APP_FOOTER_PATH, 2, 1], footerRelative: true },
   // The prototype's Max row (maxLabel / maxTrack) has no counterpart: D17's Session + Week rows, see usage-rows.ts.
 };
 
@@ -462,3 +463,36 @@ export async function navGridChecks(protoPage: Page, appPage: Page): Promise<{ c
   rows.push(['TOOLS toggle: ▾ Tools, expanded, the label\'s mono uppercase', '▾Tools · true · uppercase', `${app.toggle.text} · ${app.toggle.expanded} · ${app.toggle.transform}`, app.toggle.text === '▾Tools' && app.toggle.expanded === 'true' && app.toggle.transform === 'uppercase' && app.toggle.font.includes('Geist Mono')]);
   return { checks: rows, failures: rows.filter(([, , , ok]) => !ok).map(([check, want, got]) => `D101 nav grid · ${check}: expected ${want}, got ${got}`) };
 }
+
+test('D106: the CHATS header is the SESSIONS label\'s twin (styles, height, x and width), right above it; no chats in the demo seed', async ({ browser }) => {
+  const appPage = await newVisualPage(browser);
+  await openApp(appPage, app.baseUrl, '/');
+  const facts = await appPage.evaluate(() => {
+    const chats = document.querySelector<HTMLElement>('[data-testid="sidebar-chats-head"]')!;
+    const sessions = document.querySelector<HTMLElement>('[data-testid="sessions-head"]')!;
+    const style = (el: HTMLElement) => {
+      const s = getComputedStyle(el);
+      return [s.color, s.fontFamily, s.fontSize, s.fontWeight, s.letterSpacing, s.textTransform].join(' | ');
+    };
+    const a = chats.getBoundingClientRect();
+    const b = sessions.getBoundingClientRect();
+    return {
+      styles: [style(chats), style(sessions)],
+      boxes: [
+        [a.x, a.width, a.height],
+        [b.x, b.width, b.height],
+      ],
+      gap: b.top - a.bottom,
+      rows: document.querySelectorAll('[data-testid="sidebar-chat"]').length,
+      text: chats.textContent,
+    };
+  });
+  expect(facts.styles[0]).toBe(facts.styles[1]);
+  for (let i = 0; i < 3; i++) expect(Math.abs((facts.boxes[0]?.[i] ?? 0) - (facts.boxes[1]?.[i] ?? 0))).toBeLessThanOrEqual(2);
+  // The empty list adds nothing between the two headers.
+  expect(facts.gap).toBeGreaterThanOrEqual(0);
+  expect(facts.gap).toBeLessThanOrEqual(2);
+  expect(facts.rows).toBe(0);
+  expect(facts.text).toBe('▾Chats0+ New chat');
+  await appPage.close();
+});

@@ -44,7 +44,7 @@ const APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(na
  * first paint ({@link loadPaneStateFrom}), so a hidden pane never flashes open.
  */
 export function loadPaneState(): Promise<PaneState> {
-  // D101: the same read carries the sidebar's TOOLS state (useToolsCollapsed.ts).
+  // D101 / D106: the same read carries the sidebar's TOOLS, SESSIONS and CHATS states (useToolsCollapsed.ts).
   return loadPaneStateFrom(() =>
     api.settings().then((body) => {
       seedToolsCollapsed(body);

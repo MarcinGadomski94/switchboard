@@ -561,7 +561,10 @@ function sidebarChecks(served: Served): PartCheck[] {
   }
   // Without tool rows everything from SESSIONS down sits higher: compared by size / relative to the label.
   // D101: with them, the SESSIONS label is compared with y relative to the TOOLS label, and its rows relative to it.
-  out.push({ name: 'sessionsLabel', path: SESSIONS_LABEL, ...(served.tools ? underTools : { geometry: 'size' as const }), copy: true, styles: text });
+  // D106: the CHATS header sits between the tool rows and the SESSIONS label (gated in shell.spec.ts: the SESSIONS label's
+  // twin), so the label keeps the prototype's x, width and height; its copy gains the toggle's chevron ("▾Sessions6", as
+  // D101's TOOLS label), so only its styles are compared with the prototype's. Its rows stay relative to it.
+  out.push({ name: 'sessionsLabel', path: SESSIONS_LABEL, geometry: 'size', copy: false, styles: text });
   for (let i = 0; i < SESSION_COUNT; i++) {
     const row = [...SESSIONS, i];
     const rel = { geometry: 'relative' as const, anchor: SESSIONS_LABEL };
@@ -692,6 +695,17 @@ async function navGridIssues(protoPage: Page, appPage: Page): Promise<string[]> 
   return issues;
 }
 
+/**
+ * D106: the app's sidebar has the CHATS section (always shown) right before the SESSIONS
+ * label, a child the prototype does not have: from the SESSIONS label on, the app's
+ * sidebar children are one further down. The prototype's sidebar paths, as the app's.
+ */
+function appSidebarPaths(paths: Record<string, readonly number[]>): Record<string, readonly number[]> {
+  return Object.fromEntries(
+    Object.entries(paths).map(([name, path]) => [name, path[0] === SIDEBAR[0] && path.length >= 2 && (path[1] ?? 0) >= (SESSIONS_LABEL[1] ?? 0) ? [path[0] as number, (path[1] as number) + 1, ...path.slice(2)] : path]),
+  );
+}
+
 /** Paths to measure for `checks`, anchors included (`@<path>`). */
 function pathsOf(checks: readonly PartCheck[]): Record<string, readonly number[]> {
   const out: Record<string, readonly number[]> = {};
@@ -786,7 +800,7 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       sidebarTally.checks += 1;
       sidebarTally.failures += gridIssues.length;
       rows.push({ surface: surface.id, group: 'sidebar', part: 'nav grid (D101)', geometry: 'D101 rules', proto: '—', app: '5 × 40 px, selected cell', result: gridIssues.length ? 'FAIL' : 'ok', note: gridIssues.join('; ') });
-      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, paths)), sidebarTally, 'sidebar');
+      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, appSidebarPaths(paths))), sidebarTally, 'sidebar');
       // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.
       const usage = await usageRowChecks(protoPage, appPage, surface.id);
       track(

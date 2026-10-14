@@ -84,6 +84,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'ui.rightPanelHidden': false,
       // D101: the sidebar's TOOLS section, expanded by default.
       'ui.toolsCollapsed': false,
+      'ui.sessionsCollapsed': false,
+      'ui.chatsCollapsed': false,
       'newSession.mode': 'simple',
       'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
       'agents.standingInstruction.enabled': true,

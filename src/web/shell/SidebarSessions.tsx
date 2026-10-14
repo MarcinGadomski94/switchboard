@@ -47,7 +47,11 @@ import { useModals } from '../modals/ModalHost.tsx';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
 import { LONG_PRESS_MS, type Press, dropOverAt, pressHeld, pressMove, pressStart } from './touch-drag.ts';
 import { useCoarsePointer } from './useLayout.ts';
+import { useSectionCollapsed } from './useToolsCollapsed.ts';
 import './sidebar-layout.css';
+
+/** D106: the id of the SESSIONS list (its header's toggle controls it). */
+const SESSIONS_LIST_ID = 'sb-sessions-list';
 
 /** The text of a refused layout write. */
 function layoutErrorText(caught: unknown): string {
@@ -295,8 +299,6 @@ export interface SidebarSessionsProps {
   /** D62 P6: the row's CLI badge (`codex`), `null` = none (a list of Claude Code sessions only). */
   readonly cliBadge?: (session: SessionListItem) => string | null;
   readonly now: number;
-  /** D106: the label's New chat button (absent = none). */
-  readonly onNewChat?: () => void;
 }
 
 /** A text field for a folder's name: Enter saves, Esc cancels; leaving it saves (`saveOnBlur`) or cancels. */
@@ -348,7 +350,9 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  * subfolder. The layout is stored by the service and live in every tab
  * (`sidebarLayoutChanged`).
  */
-export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now, onNewChat }: SidebarSessionsProps) {
+export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now }: SidebarSessionsProps) {
+  // D106: SESSIONS folds to its header like TOOLS (D101).
+  const [collapsed, toggleCollapsed] = useSectionCollapsed('ui.sessionsCollapsed');
   const { layout, run, error } = useSidebarLayout();
   const { navigate } = useRouter();
   const { show: showToast } = useToasts();
@@ -1009,18 +1013,18 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
 
   return (
     <>
-      <div className="sb-section-label" data-tour="sessions-label">
-        Sessions
-        <span className="sb-section-count">{loaded ? String(sessions.length) : ''}</span>
+      {/* D106: the label folds the list (▾ / ▸, kept per install as `ui.sessionsCollapsed`, like D101's TOOLS). */}
+      <div className="sb-section-label sb-sessions-head" data-tour="sessions-label" data-testid="sessions-head" data-collapsed={collapsed ? 'true' : undefined}>
+        <button type="button" className="sb-section-toggle" data-testid="sessions-toggle" aria-expanded={!collapsed} aria-controls={SESSIONS_LIST_ID} onClick={toggleCollapsed}>
+          <span className="sb-section-chevron" aria-hidden="true">
+            {collapsed ? '▸' : '▾'}
+          </span>
+          Sessions
+        </button>
+        <span className="sb-section-count" data-testid="sessions-count">
+          {loaded ? String(sessions.length) : ''}
+        </span>
         {/* D54: drawn, not text, so the label's copy stays the prototype's. */}
-        {/* D106: New chat (drawn, like the folder's +: the label's copy and size stay the prototype's). */}
-        {onNewChat ? (
-          <button type="button" className="sb-button sb-folder-add sb-chat-add" data-testid="sidebar-sessions-new-chat" data-tour="new-chat" aria-label="New chat" title="New chat" onClick={onNewChat}>
-            <svg width="12" height="11" viewBox="0 0 12 11" aria-hidden="true" focusable="false">
-              <path d="M2 1.5h8a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1H5.5L3 9.8V8H2a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-            </svg>
-          </button>
-        ) : null}
         <button type="button" className="sb-button sb-folder-add" data-testid="sidebar-new-folder" aria-label="New folder" title="New folder" onClick={() => setCreating(null)}>
           <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true" focusable="false">
             <path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -1030,6 +1034,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       <div
         ref={listRef}
         className="sb-sessions"
+        id={SESSIONS_LIST_ID}
+        hidden={collapsed}
         data-testid="sidebar-sessions"
         data-tour="sessions"
         data-dragging={drag ? drag.kind : undefined}

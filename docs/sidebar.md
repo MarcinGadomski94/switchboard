@@ -22,6 +22,11 @@ Developer request D101 (`docs/decisions.md` → *Sidebar navigation as an icon g
 - Collapsed, the list (`.sb-tools`) is `hidden` (it stays mounted, so the sidebar's child paths hold). When one of its tools is down (its probe answered unreachable, the red dot of the row) the collapsed header shows a small red dot (`tools-attention`, "A tool is not reachable").
 - The state is the editable setting `ui.toolsCollapsed` (`docs/settings.md`): per install, not synced with paired machines, like D41's pane state; read from the same `GET /api/settings` the app reads before its first paint (`loadPaneState` → `seedToolsCollapsed`, `useToolsCollapsed.ts`), so a collapsed section never flashes open; each change is saved at once. Expanded by default.
 
+## SESSIONS and CHATS (D106)
+- **Both sections always show**, CHATS above SESSIONS (after TOOLS and the Team entry), also with no chats (its header then reads `▾ CHATS 0 + New chat` and its list is empty). SESSIONS never lists chats (`docs/chats.md`).
+- **Each header folds its list** like TOOLS (D101): a ▾ / ▸ toggle (`sessions-toggle`, `chats-toggle`; `aria-expanded`, `aria-controls` the list), the count stays on the header (folded or not), CHATS keeps **+ New chat** on its header and SESSIONS its folder **+**. The state is kept per install in the editable settings `ui.sessionsCollapsed` / `ui.chatsCollapsed` (`docs/settings.md`), read before the first paint with the pane state (`seedToolsCollapsed` in `src/web/shell/useToolsCollapsed.ts`, which now keeps all three sections) and saved at once; default expanded. With SESSIONS folded, Settings and the footer stay at the bottom of the sidebar. ⌘K → **Chats** unfolds CHATS.
+- **Visual oracle:** the CHATS header is a sidebar child the prototype does not have (`docs/visual/README.md` → *D106*).
+
 ## Layout and scrolling
 Fix: sidebar scrolling (`docs/decisions.md` → *Fix: sidebar scrolling*): "When there are a lot of sessions, only the sessions part of the left sidebar should scroll, not the whole sidebar." Choices where the request is silent: `.loop/questions.md` → *Fix · sidebar scrolling*.
 

@@ -86,12 +86,13 @@ async function openRowMenu(page: Page, id: string): Promise<Locator> {
   return menu;
 }
 
-test('nothing pinned or foldered: the rows are the list itself, the label copy unchanged', async ({ page }) => {
+test('nothing pinned or foldered: the rows are the list itself, the label copy unchanged but for its chevron', async ({ page }) => {
   const all = await sessions(page);
   await expect(list(page).locator(':scope > *')).toHaveCount(all.length);
   await expect(list(page).locator(':scope > a.sb-session')).toHaveCount(all.length);
   const label = page.locator('.sb-section-label').filter({ has: page.getByTestId('sidebar-new-folder') });
-  expect((await label.textContent())?.trim()).toBe(`Sessions${all.length}`);
+  // D106: the label's toggle adds its chevron (▾ expanded), as D101's TOOLS label.
+  expect((await label.textContent())?.trim()).toBe(`▾Sessions${all.length}`);
   // Loose rows keep the service's order (newest first).
   expect((await shown(page)).map(([id]) => id)).toEqual(all.map((s) => s.id));
   // The row's ⋯ is invisible at rest, next to the × on hover.

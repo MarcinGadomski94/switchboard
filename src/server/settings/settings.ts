@@ -50,7 +50,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
  * keys (`EDITABLE_SETTINGS`). D82's `sessions.modelRules` is a rule list (`parseModelRules`; the
  * route then checks each model and profile, {@link checkModelRules}). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D80 `sessions.checkpoints` / D81 `sessions.todoEnrich` and
- * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` and D101's `ui.toolsCollapsed` are booleans,
+ * D41's `ui.sidebarHidden` / `ui.rightPanelHidden`, D101's `ui.toolsCollapsed` and D106's `ui.sessionsCollapsed` / `ui.chatsCollapsed` are booleans,
  * `usage.warnAtPct` a whole number 1–100, D83's `sessions.freshOfferPct` a whole number 50–95 (`sessions.freshOffer` a boolean), D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */

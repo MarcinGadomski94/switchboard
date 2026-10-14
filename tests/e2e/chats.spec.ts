@@ -39,9 +39,13 @@ function chatIdOf(page: Page): string {
 test('New chat from the sidebar: its own CHATS section, the chat badge, the locked plan-mode hint, no Diff tab', async ({ page }) => {
   test.setTimeout(90_000);
   await openWithHub(page, `${world.baseUrl}/`);
-  // No chats yet: no CHATS section; the SESSIONS label's chat button is the way in.
-  await expect(page.getByTestId('sidebar-chats')).toHaveCount(0);
-  await page.getByTestId('sidebar-sessions-new-chat').click();
+  // No chats yet: the CHATS header is there anyway (0), with "+ New chat"; its list is empty.
+  await expect(page.getByTestId('sidebar-chats-head')).toContainText('Chats');
+  await expect(page.getByTestId('chats-count')).toHaveText('0');
+  await expect(page.getByTestId('sidebar-chat')).toHaveCount(0);
+  await expect(page.getByTestId('sessions-head')).toContainText('Sessions');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/sidebar-no-chats.png` });
+  await page.getByTestId('sidebar-new-chat').click();
   const form = page.getByTestId('modal-new-chat');
   await expect(form).toBeVisible();
   await expect(form.getByTestId('nc-sub')).toHaveText(CHAT_LOCKED_HINT);
@@ -67,14 +71,15 @@ test('New chat from the sidebar: its own CHATS section, the chat badge, the lock
 
   // The sidebar: CHATS lists it (SESSIONS does not).
   const chats = page.getByTestId('sidebar-chats');
-  await expect(chats.getByTestId('sidebar-chats-head')).toContainText('Chats');
+  await expect(page.getByTestId('sidebar-chats-head')).toContainText('Chats');
+  await expect(page.getByTestId('chats-count')).toHaveText('1');
   await expect(chats.locator(`a.sb-chat-row[data-session-id="${id}"]`)).toContainText('How should we split the billing module?');
   await expect(chats.getByTestId('sidebar-chat-line')).toHaveText('plan mode');
   await expect(page.getByTestId('sidebar-sessions').locator(`a.sb-session[data-session-id="${id}"]`)).toHaveCount(0);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-view.png` });
 
-  // "+ New chat" in the CHATS label opens the form too.
-  await chats.getByTestId('sidebar-new-chat').click();
+  // "+ New chat" in the CHATS label opens the form again.
+  await page.getByTestId('sidebar-new-chat').click();
   await expect(page.getByTestId('modal-new-chat')).toBeVisible();
   await page.getByTestId('nc-cancel').click();
   await expect(page.getByTestId('modal-new-chat')).toHaveCount(0);
@@ -143,4 +148,40 @@ test('⋯ → Continue as session… opens the New-session form pre-filled; the 
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-continued.png` });
   await page.getByTestId('session-continued-in-link').click();
   await expect.poll(() => chatIdOf(page)).toBe(sessionId);
+});
+
+test('SESSIONS and CHATS fold to their headers (▾ / ▸, with their counts), kept per install', async ({ page }) => {
+  test.setTimeout(60_000);
+  await openWithHub(page, `${world.baseUrl}/`);
+  const setting = (key: string) => page.evaluate(async (k) => (await (await fetch('/api/settings')).json())[k] as unknown, key);
+  await expect(page.getByTestId('sidebar-chat').first()).toBeVisible();
+  const chatCount = await page.getByTestId('chats-count').textContent();
+  // Fold both.
+  await page.getByTestId('chats-toggle').click();
+  await page.getByTestId('sessions-toggle').click();
+  await expect(page.getByTestId('chats-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('sessions-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('chats-toggle')).toContainText('▸');
+  await expect(page.getByTestId('sidebar-chats')).toBeHidden();
+  await expect(page.getByTestId('sidebar-sessions')).toBeHidden();
+  // A folded section still shows its count; "+ New chat" stays on the header.
+  await expect(page.getByTestId('chats-count')).toHaveText(chatCount ?? '');
+  await expect(page.getByTestId('sidebar-new-chat')).toBeVisible();
+  await expect.poll(() => setting('ui.chatsCollapsed')).toBe(true);
+  await expect.poll(() => setting('ui.sessionsCollapsed')).toBe(true);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/sidebar-folded.png` });
+  // Kept across a reload (read before the first paint).
+  await page.reload();
+  await expect(page.getByTestId('chats-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('sidebar-sessions')).toBeHidden();
+  // ⌘K → Chats unfolds CHATS.
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByTestId('palette-input').fill('chats');
+  await page.getByTestId('palette-row').filter({ hasText: 'Chats' }).first().click();
+  await expect(page.getByTestId('sidebar-chats')).toBeVisible();
+  await expect.poll(() => setting('ui.chatsCollapsed')).toBe(false);
+  // Unfold SESSIONS again.
+  await page.getByTestId('sessions-toggle').click();
+  await expect(page.getByTestId('sidebar-sessions')).toBeVisible();
+  await expect.poll(() => setting('ui.sessionsCollapsed')).toBe(false);
 });

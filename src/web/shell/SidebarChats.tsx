@@ -7,11 +7,17 @@ import { MachineTag } from '../components/MachineTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, statusColor } from './format.ts';
 import { SessionCloseButton } from './SidebarSessions.tsx';
+import { useSectionCollapsed } from './useToolsCollapsed.ts';
+
+/** The id of the CHATS list (its header's toggle controls it). */
+const CHATS_LIST_ID = 'sb-chats-list';
 
 /** Props of {@link SidebarChats}. */
 export interface SidebarChatsProps {
   /** The open chats (this machine's and the paired machines'), newest first. */
   readonly chats: readonly SessionListItem[];
+  /** `false` while the session list has not loaded (no count yet). */
+  readonly loaded: boolean;
   readonly activityOf: (id: string) => SessionActivity | null;
   readonly closer: CloseSessionControl;
   readonly isCurrent: (id: string) => boolean;
@@ -27,25 +33,31 @@ function chatLine(chat: SessionListItem): string {
 }
 
 /**
- * D106 · the CHATS section (`docs/chats.md` → *Sidebar*): its own label with the count
- * and "+ New chat", then one row per open chat (dot, title, age, "plan mode" or
- * "continued as <session>"; the × closes it like a session's). Above SESSIONS, which
- * never lists chats. With no chats it renders nothing, so the sidebar is exactly as
- * before (the visual oracle's shell is unchanged); the way in is then the SESSIONS
- * label's chat button and ⌘K → New chat.
+ * D106 · the CHATS section (`docs/chats.md` → *Sidebar*, `docs/sidebar.md` → *SESSIONS
+ * and CHATS*): always shown, above SESSIONS. Its header is a ▾ / ▸ toggle with the
+ * count (kept per install as `ui.chatsCollapsed`, like D101's TOOLS) and "+ New chat";
+ * then one row per open chat (dot, title, age, "plan mode" or "continued as <session>";
+ * the row's × closes it). SESSIONS never lists chats.
  */
-export function SidebarChats({ chats, activityOf, closer, isCurrent, now, onNew }: SidebarChatsProps) {
-  if (chats.length === 0) return null;
+export function SidebarChats({ chats, loaded, activityOf, closer, isCurrent, now, onNew }: SidebarChatsProps) {
+  const [collapsed, toggle] = useSectionCollapsed('ui.chatsCollapsed');
   return (
-    <div className="sb-chats" data-testid="sidebar-chats" data-tour="chats">
+    <div className="sb-chats" data-testid="sidebar-chats-section" data-collapsed={collapsed ? 'true' : undefined}>
       <div className="sb-section-label sb-chats-head" data-testid="sidebar-chats-head" tabIndex={-1}>
-        Chats
-        <span className="sb-section-count">{String(chats.length)}</span>
-        <button type="button" className="sb-section-action sb-chats-new" data-testid="sidebar-new-chat" onClick={onNew}>
+        <button type="button" className="sb-section-toggle" data-testid="chats-toggle" aria-expanded={!collapsed} aria-controls={CHATS_LIST_ID} onClick={toggle}>
+          <span className="sb-section-chevron" aria-hidden="true">
+            {collapsed ? '▸' : '▾'}
+          </span>
+          Chats
+        </button>
+        <span className="sb-section-count" data-testid="chats-count">
+          {loaded ? String(chats.length) : ''}
+        </span>
+        <button type="button" className="sb-section-action sb-chats-new" data-testid="sidebar-new-chat" data-tour="new-chat" onClick={onNew}>
           + New chat
         </button>
       </div>
-      <div className="sb-chats-list">
+      <div className="sb-chats-list" data-testid="sidebar-chats" id={CHATS_LIST_ID} hidden={collapsed}>
         {chats.map((chat) => {
           const activity = activityOf(chat.id);
           return (

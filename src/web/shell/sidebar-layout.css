@@ -262,6 +262,11 @@
   min-height: 0;
 }
 
+.sb-chats-head,
+.sb-sessions-head {
+  align-items: center;
+}
+
 .sb-chats-head:focus {
   outline: none;
 }
@@ -285,4 +290,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* D106: a folded SESSIONS / CHATS list (their header's ▸). */
+.sb-sessions[hidden],
+.sb-chats-list[hidden] {
+  display: none;
+}
+
+/* With SESSIONS folded nothing takes the free height: Settings and the footer stay at the bottom. */
+.sb-sessions[hidden] ~ .sb-settings {
+  margin-top: auto;
 }

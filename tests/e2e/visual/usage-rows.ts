@@ -25,11 +25,17 @@ import { BOX_TOLERANCE_PX, type Box, type Part, measure, round } from './harness
  *   height less the prototype's Max row.
  */
 
-/** The machine footer, from the shell grid (both pages). */
+/** The machine footer, from the shell grid (the prototype's). */
 export const FOOTER_PATH = [0, 8] as const;
 
+/**
+ * D106: the app's footer is one child further down: the CHATS section (always shown,
+ * above SESSIONS) is a sidebar child the prototype does not have (`docs/visual/README.md` → *D106*).
+ */
+export const APP_FOOTER_PATH = [0, 9] as const;
+
 /** The usage grid in the app (`.sb-usage`): the footer's 4th child, where the prototype has its Max row. */
-const USAGE_PATH = [...FOOTER_PATH, 3] as const;
+const USAGE_PATH = [...APP_FOOTER_PATH, 3] as const;
 
 /** The footer's vertical gap (SPEC shell footer: `gap: 7px`). */
 const FOOTER_GAP_PX = 7;
@@ -118,11 +124,11 @@ export async function usageRowChecks(protoPage: Page, appPage: Page, label: stri
     maxValue: [...FOOTER_PATH, 3, 2],
   });
   const appPaths: Record<string, readonly number[]> = {
-    footer: FOOTER_PATH,
-    ram: [...FOOTER_PATH, 2],
-    ramLabel: [...FOOTER_PATH, 2, 0],
-    ramTrack: [...FOOTER_PATH, 2, 1],
-    ramValue: [...FOOTER_PATH, 2, 2],
+    footer: APP_FOOTER_PATH,
+    ram: [...APP_FOOTER_PATH, 2],
+    ramLabel: [...APP_FOOTER_PATH, 2, 0],
+    ramTrack: [...APP_FOOTER_PATH, 2, 1],
+    ramValue: [...APP_FOOTER_PATH, 2, 2],
     grid: USAGE_PATH,
     head: [...USAGE_PATH, 0],
     head5h: [...USAGE_PATH, 0, 0],
