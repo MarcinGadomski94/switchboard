@@ -689,7 +689,8 @@ async function navGridIssues(protoPage: Page, appPage: Page): Promise<string[]> 
   if (!app) return ['nav grid (D101): missing'];
   const issues: string[] = [];
   if (app.columns !== '40px 40px 40px 40px 40px') issues.push(`nav grid (D101): columns ${app.columns}`);
-  if (app.sizes.length !== 7 || app.sizes.some((size) => size !== '40×40')) issues.push(`nav grid (D101): cells ${app.sizes.join(' ')}`);
+  // D108: eight cells (Insights last).
+  if (app.sizes.length !== 8 || app.sizes.some((size) => size !== '40×40')) issues.push(`nav grid (D101): cells ${app.sizes.join(' ')}`);
   if ((proto?.label ?? null) !== (app.selected?.label ?? null)) issues.push(`nav grid (D101): selected ${JSON.stringify(app.selected?.label ?? null)}, prototype ${JSON.stringify(proto?.label ?? null)}`);
   else if (proto && app.selected && (proto.bg !== app.selected.bg || proto.fg !== app.selected.fg)) issues.push(`nav grid (D101): selected colours ${app.selected.bg} / ${app.selected.fg}, prototype ${proto.bg} / ${proto.fg}`);
   return issues;

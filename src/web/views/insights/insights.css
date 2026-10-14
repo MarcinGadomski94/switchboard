@@ -39,8 +39,29 @@
   color: var(--muted-2);
 }
 
+.sb-button.sb-ins-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-button.sb-ins-action:hover {
+  color: var(--text-strong);
+  background: var(--bg-selected-nav);
+}
+
 .sb-button.sb-ins-refresh {
   margin-left: auto;
+}
+
+.sb-ins-evidence {
+  margin: 0;
+  font-size: 12px;
 }
 
 .sb-ins-filters {
@@ -209,8 +230,9 @@
 
 .sb-ins-wrap {
   white-space: normal !important;
+  min-width: 120px;
   max-width: 280px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .sb-ins-bar {
@@ -459,9 +481,8 @@
   color: var(--text);
 }
 
-.sb-ins-suggestions .sb-button {
-  display: inline-flex;
-  margin-top: 8px;
+.sb-ins-suggestions .sb-ins-action {
+  margin-top: 10px;
   text-decoration: none;
 }
 
@@ -482,6 +503,10 @@
 
 /* Phones */
 @media (max-width: 639px) {
+  .sb-button.sb-ins-action {
+    min-height: 36px;
+  }
+
   .sb-ins-head {
     padding: 12px 12px 10px;
   }
@@ -502,9 +527,19 @@
     min-height: 36px;
   }
 
+  .sb-ins-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .sb-ins-tile {
-    flex: 1 1 calc(50% - 10px);
     min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .sb-ins-tile-value {
+    font-size: 17px;
   }
 
   .sb-ins-card {

@@ -127,7 +127,7 @@ test('the shell renders from the real API and shows only what the API returns', 
 
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
-  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '', '']); // D61: six nav items (MCP); D68: seven (Todos)
+  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '', '', '']); // D61: six nav items (MCP); D68: seven (Todos); D108: eight (Insights)
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
   await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM']);
@@ -152,6 +152,7 @@ test('the nav switches views client-side and deep links load the right view', as
     ['nav-artifacts', '/artifacts', 'view-artifacts'],
     ['nav-history', '/history', 'view-history'],
     ['nav-todos', '/todos', 'view-todos'],
+    ['nav-insights', '/insights', 'view-insights'],
     ['nav-settings', '/settings', 'view-settings'],
     ['nav-inbox', '/inbox', 'view-inbox'],
   ];

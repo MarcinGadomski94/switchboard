@@ -95,6 +95,8 @@ const VIEW_ROWS = [
   'view | Schedules & loops | ',
   'view | Artifacts | ',
   'view | History | ',
+  // D108
+  'view | Insights | ',
   'view | Settings | ',
   'action | New session | ',
   'action | Add todo… | todo <title>',

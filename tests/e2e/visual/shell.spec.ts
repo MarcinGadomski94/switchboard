@@ -370,9 +370,9 @@ ${input.failures.length ? input.failures.map((f) => `- ${f}`).join('\n') : '- (n
 `;
 }
 
-/** The prototype's nav labels, in its order (D101: the app's cells carry them as `aria-label`, MCP and Todos added). */
+/** The prototype's nav labels, in its order (D101: the app's cells carry them as `aria-label`, MCP and Todos added; D108: Insights last). */
 const PROTO_NAV_LABELS = ['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History'] as const;
-const APP_NAV_LABELS = ['Inbox', 'Solutions', 'Schedules & loops', 'MCP', 'Artifacts', 'History', 'Todos'] as const;
+const APP_NAV_LABELS = ['Inbox', 'Solutions', 'Schedules & loops', 'MCP', 'Artifacts', 'History', 'Todos', 'Insights'] as const;
 
 /**
  * D101: the nav grid and the TOOLS header on their own rules, at 1440×900 with the demo seed
@@ -441,7 +441,8 @@ export async function navGridChecks(protoPage: Page, appPage: Page): Promise<{ c
   const r = (n: number): string => String(Math.round(n * 10) / 10);
   const rows: Array<[string, string, string, boolean]> = [];
   rows.push(['grid columns', '40px × 5', app.columns, app.columns === '40px 40px 40px 40px 40px']);
-  rows.push(['cells (7 views; Team / Plans off)', '7', String(app.cells.length), app.cells.length === 7]);
+  // D108 (a deliberate change, `docs/visual/README.md` → D108): Insights is the eighth cell, still two rows.
+  rows.push(['cells (8 views; Team / Plans off)', '8', String(app.cells.length), app.cells.length === 8]);
   rows.push(['cell size', '40 × 40 each', app.cells.map((c) => `${r(c.w)}×${r(c.h)}`).join(' '), app.cells.every((c) => near(c.w, 40) && near(c.h, 40))]);
   rows.push(['grid top = "+ New session" row bottom (its 8 px padding)', r(app.wrapBottom), r(app.nav.top), near(app.nav.top, app.wrapBottom)]);
   const first = app.cells[0]!;
@@ -449,10 +450,10 @@ export async function navGridChecks(protoPage: Page, appPage: Page): Promise<{ c
   rows.push(['first column left = "+ New session" left', r(app.button.left), r(first.x), near(first.x, app.button.left)]);
   rows.push(['fifth column right = "+ New session" right', r(app.button.right), r(fifth.x + fifth.w), near(fifth.x + fifth.w, app.button.right)]);
   const rowTops = [...new Set(app.cells.map((c) => Math.round(c.y)))];
-  rows.push(['rows (5 + 2), 6 px apart', `2 · gap 6`, `${rowTops.length} · gap ${rowTops.length > 1 ? r(rowTops[1]! - rowTops[0]! - 40) : '—'}`, rowTops.length === 2 && near(rowTops[1]! - rowTops[0]! - 40, 6, 1)]);
+  rows.push(['rows (5 + 3), 6 px apart', `2 · gap 6`, `${rowTops.length} · gap ${rowTops.length > 1 ? r(rowTops[1]! - rowTops[0]! - 40) : '—'}`, rowTops.length === 2 && near(rowTops[1]! - rowTops[0]! - 40, 6, 1)]);
   rows.push(['second row starts in the first column', r(first.x), r(app.cells[5]!.x), near(app.cells[5]!.x, first.x)]);
   rows.push(['icons 18 × 18, centred', '18×18, ±0.5', app.cells.map((c) => `${r(c.iconW)}×${r(c.iconH)}`).join(' '), app.cells.every((c) => near(c.iconW, 18) && near(c.iconH, 18) && near(c.iconDx, 0) && near(c.iconDy, 0))]);
-  rows.push(['names (aria-label): the prototype\'s labels in order, MCP and Todos added', [...proto.labels].join(' · ') + ' (+ MCP, Todos)', app.cells.map((c) => c.label).join(' · '), proto.labels.join('|') === PROTO_NAV_LABELS.join('|') && app.cells.map((c) => c.label).join('|') === APP_NAV_LABELS.join('|')]);
+  rows.push(['names (aria-label): the prototype\'s labels in order, MCP, Todos and Insights added', [...proto.labels].join(' · ') + ' (+ MCP, Todos, Insights)', app.cells.map((c) => c.label).join(' · '), proto.labels.join('|') === PROTO_NAV_LABELS.join('|') && app.cells.map((c) => c.label).join('|') === APP_NAV_LABELS.join('|')]);
   rows.push(['tooltips start with the name', 'name[ · badge]', app.cells.map((c) => c.title).join(' · '), app.cells.every((c) => c.title === c.label || c.title.startsWith(`${c.label} · `))]);
   const selected = app.cells.filter((c) => c.selected);
   rows.push(['selected cell (Inbox) in the prototype\'s selected nav colours', `${proto.bg} / ${proto.fg}`, selected.map((c) => `${c.label}: ${c.bg} / ${c.fg}`).join(), selected.length === 1 && selected[0]!.label === 'Inbox' && selected[0]!.bg === proto.bg && selected[0]!.fg === proto.fg]);

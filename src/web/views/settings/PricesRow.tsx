@@ -107,7 +107,7 @@ export function PricesRow({ settings, onSaved }: { readonly settings: KnownSetti
                     </td>
                   ))}
                   <td>
-                    <button type="button" className="sb-button sb-prices-remove" aria-label={`Remove row ${index + 1}`} disabled={busy} onClick={() => edit({ ...table, models: table.models.filter((_, i) => i !== index) })}>
+                    <button type="button" className="sb-set-action sb-prices-remove" aria-label={`Remove row ${index + 1}`} disabled={busy} onClick={() => edit({ ...table, models: table.models.filter((_, i) => i !== index) })}>
                       ×
                     </button>
                   </td>

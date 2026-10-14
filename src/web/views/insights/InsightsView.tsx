@@ -52,7 +52,7 @@ export function InsightsView() {
               Counting older history… {answer.backfill.percent}%
             </span>
           ) : null}
-          <button type="button" className="sb-button sb-ins-refresh" data-testid="insights-refresh" onClick={state.reload}>
+          <button type="button" className="sb-button sb-ins-action sb-ins-refresh" data-testid="insights-refresh" onClick={state.reload}>
             Refresh
           </button>
         </div>
@@ -401,10 +401,10 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
             {suggestions.map((s) => (
               <li key={s.id} className="sb-ins-card" data-testid="suggestion">
                 <p className="sb-ins-suggestion-text">{s.text}</p>
-                <p className="sb-ins-muted">
+                <p className="sb-ins-muted sb-ins-evidence">
                   Median cost {costText(s.evidence.cheap.medianCost, s.evidence.currency)} vs {costText(s.evidence.expensive.medianCost, s.evidence.currency)} per todo.
                 </p>
-                <a className="sb-button" href={suggestionPath(s)} data-testid="suggestion-open" onClick={(event) => open(event, suggestionPath(s))}>
+                <a className="sb-button sb-ins-action" href={suggestionPath(s)} data-testid="suggestion-open" onClick={(event) => open(event, suggestionPath(s))}>
                   Open in Model by task…
                 </a>
               </li>
@@ -464,7 +464,7 @@ function TrendChart({ trend }: { readonly trend: readonly TrendPoint[] }) {
   useEffect(() => {
     const element = box.current;
     if (!element || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => setWidth(Math.max(200, element.clientWidth - 56)));
+    const observer = new ResizeObserver(() => setWidth(Math.max(160, element.clientWidth - 28 - 56 - 16)));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

@@ -170,6 +170,14 @@ export class InsightsRepository {
     this.revision += 1;
   }
 
+  /** The model the CLI reported for the session's newest turn written before event `beforeId`; `null` when none did. */
+  #lastTurnModel(sessionId: string, beforeId: number): string | null {
+    const row = this.#statement(
+      "SELECT json_extract(payload, '$.model') AS m FROM events WHERE session_id = ? AND id < ? AND kind IN ('ok', 'error', 'text') AND json_extract(payload, '$.type') = 'result' ORDER BY id DESC LIMIT 1",
+    ).get(sessionId, beforeId);
+    return typeof row?.['m'] === 'string' ? row['m'] : null;
+  }
+
   /** Adds one event to the rollup (a result or a D80 revert / Redo; anything else adds nothing). */
   #roll(event: RollupEvent, dimsOf: (sessionId: string) => SessionDims | null): void {
     const parsed = rollupDelta(event.payload);
@@ -178,8 +186,9 @@ export class InsightsRepository {
     if (!dims) return;
     const at = Date.parse(event.ts);
     if (!Number.isFinite(at)) return;
-    // A revert belongs to the model the session runs on; a turn to the one the CLI reported.
-    this.#add(utcDay(at), event.sessionId, dims, modelKey(parsed.model, dims.chosenModel), parsed.delta);
+    // A turn belongs to the model the CLI reported for it; a revert / Redo to the model of the session's newest turn before it.
+    const model = parsed.delta.turns > 0 ? parsed.model : this.#lastTurnModel(event.sessionId, event.id);
+    this.#add(utcDay(at), event.sessionId, dims, modelKey(model, dims.chosenModel), parsed.delta);
   }
 
   /**

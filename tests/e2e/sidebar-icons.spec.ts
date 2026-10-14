@@ -40,6 +40,8 @@ const CELLS = [
   ['nav-artifacts', 'Artifacts', '/artifacts', 'view-artifacts'],
   ['nav-history', 'History', '/history', 'view-history'],
   ['nav-todos', 'Todos', '/todos', 'view-todos'],
+  // D108
+  ['nav-insights', 'Insights', '/insights', 'view-insights'],
 ] as const;
 
 async function putSettings(page: Page, body: Record<string, unknown>): Promise<void> {
@@ -72,13 +74,13 @@ test('the nav is a 5-column icon grid under + New session; each icon opens its v
     return { columns: getComputedStyle(nav).gridTemplateColumns.split(' ').length, button: { left: button.left, right: button.right, bottom: button.bottom }, cells };
   });
   expect(geometry.columns).toBe(5);
-  expect(geometry.cells).toHaveLength(7);
+  expect(geometry.cells).toHaveLength(8);
   for (const cell of geometry.cells) {
     expect(cell.w).toBe(40);
     expect(cell.h).toBe(40);
     expect(cell.icon).toEqual([18, 18]);
   }
-  // Two rows: five then two, the first row's ends on the button's edges.
+  // Two rows: five then three (D108: Insights), the first row's ends on the button's edges.
   const rows = [...new Set(geometry.cells.map((c) => c.y))];
   expect(rows).toHaveLength(2);
   expect(geometry.cells[0]!.x).toBeCloseTo(geometry.button.left, 0);
@@ -154,7 +156,7 @@ test('keyboard: Tab reaches each cell with a visible ring; Enter and Space open 
   await expect(page.getByTestId('nav-schedules')).toHaveAttribute('aria-current', 'page');
 });
 
-test('the desktop sidebar with Team and Plans off: seven cells, nothing of theirs', async ({ page }) => {
+test('the desktop sidebar with Team and Plans off: eight cells, nothing of theirs', async ({ page }) => {
   await openShell(page);
   await expect(page.getByTestId('nav-team')).toHaveCount(0);
   await expect(page.getByTestId('nav-plans')).toHaveCount(0);
@@ -191,7 +193,8 @@ test.describe('Team and Plans switched on', () => {
     await expect(team).toHaveAttribute('data-tour', 'team');
     await expect(plans).toHaveAttribute('data-tour', 'plans');
     await expect(page.getByTestId('nav-plans-count')).toHaveText('');
-    expect(await page.getByTestId('nav-grid').locator('.sb-nav-item').count()).toBe(9);
+    // D108: Insights makes it ten (still two rows of five).
+    expect(await page.getByTestId('nav-grid').locator('.sb-nav-item').count()).toBe(10);
     const rows = await page.getByTestId('nav-grid').evaluate((nav) => new Set([...nav.querySelectorAll('.sb-nav-item')].map((c) => c.getBoundingClientRect().y)).size);
     expect(rows).toBe(2);
     const neutral = await team.evaluate((el) => getComputedStyle(el).color);
