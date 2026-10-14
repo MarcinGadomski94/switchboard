@@ -31,7 +31,7 @@ It runs on your machine only (`127.0.0.1`). It drives the unmodified CLIs with y
   - [Accounts](#accounts) and [credits](#credits)
   - [New session](#new-session) · [The session view](#the-session-view) · [The sidebar](#the-sidebar)
   - [Search](#search)
-  - [Todo lists](#todo-lists) · [Plans (experimental)](#plans-experimental) · [Team (experimental)](#team-experimental)
+  - [Todo lists](#todo-lists) · [Plans (experimental)](#plans-experimental) · [Team (experimental)](#team-experimental) · [Project memory (experimental)](#project-memory-experimental)
   - [Inbox and notifications](#inbox-and-notifications) · [Schedules and loops](#schedules-and-loops) · [MCP servers](#mcp-servers)
   - [Machines (peers)](#machines-peers) · [Devices (phones and tablets)](#devices-phones-and-tablets)
   - [Usage and footer](#usage-and-footer)
@@ -354,7 +354,7 @@ When an account's 5-hour or weekly window is at 100 % and it keeps answering, it
 [`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md) · [`docs/panes.md`](docs/panes.md) · [`docs/responsive.md`](docs/responsive.md)
 
 ### The sidebar
-- **Navigation:** the views (Inbox, Solutions, Schedules & loops, MCP, Artifacts, History, Todos, and Team and Plans while they are on) are a grid of icons under **+ New session**. Each icon has its name on hover (a long press on a touch screen) and a badge: the Inbox count, Solutions' conflicts, failed schedules, artifacts, open todos, Team's needs-you, running plans. In the phone / tablet drawer the grid shows the names under the icons.
+- **Navigation:** the views (Inbox, Solutions, Schedules & loops, MCP, Artifacts, History, Todos, and Team, Plans and Memory while they are on) are a grid of icons under **+ New session**. Each icon has its name on hover (a long press on a touch screen) and a badge: the Inbox count, Solutions' conflicts, failed schedules, artifacts, open todos, Team's needs-you, running plans, memory proposals to review. In the phone / tablet drawer the grid shows the names under the icons.
 - **TOOLS** collapse from their header (▾ / ▸, with the count, and a red dot when a tool is down); **+ Add** opens Settings → Embedded tools.
 - **Pins and folders:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels).
 - **Drag and drop:** drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder; collapse a folder to its name and count. Loose sessions can be dragged into an order too; new ones and the ones you never placed show at the top, newest first. On a touch screen a long press lifts a row or folder. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard.
@@ -421,6 +421,13 @@ Each session has a todo list for things that still need doing.
 <img src="docs/screenshots/13-team-dark.png" alt="The Team page: two teams, a strip of four member cards, Needs you with a question, the Activity feed and the selected member's chat">
 
 [`docs/team.md`](docs/team.md)
+
+### Project memory (experimental)
+> Off by default: **Settings → Experimental → Project memory**. Its data lives in its own file.
+
+- **Agents propose, you approve:** an agent proposes a durable fact about the project (a build command, a gotcha, where something lives) with `memory_propose`; it waits in the **Memory** page's review queue (and an Inbox item) until you **Approve** it, **Edit…** it first or **Reject** it. Approved entries, and only those, go to every new or resumed session in that folder, next to the standing instruction; you can also add, pin, edit and delete entries yourself.
+
+[`docs/memory.md`](docs/memory.md)
 
 ### Undo a turn
 - **Checkpoints:** before each turn Switchboard saves a checkpoint of the session's git working trees (hidden refs; your index, branch and files are never touched; about 0.15 s on a 5,000-file repo).

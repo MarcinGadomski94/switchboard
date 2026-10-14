@@ -1,0 +1,313 @@
+/*
+ * D107 · Project memory: the Memory page (`docs/memory.md` → *The Memory page*) and the session
+ * panel's "Memory: N entries" line. The app's tokens only (tokens.css); cards like the Todos page's.
+ */
+.sb-mem-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.sb-mem-head {
+  padding: 18px 22px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-mem-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-title {
+  margin: 0;
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+}
+
+.sb-mem-hint,
+.sb-mem-path,
+.sb-mem-none,
+.sb-mem-meta {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-mem-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.sb-mem-pickers {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-select,
+.sb-mem-input {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: var(--fs-body);
+  max-width: 100%;
+}
+
+.sb-mem-select {
+  min-width: 240px;
+}
+
+.sb-mem-body {
+  padding: 14px 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 920px;
+}
+
+.sb-mem-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-mem-h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-1);
+}
+
+.sb-mem-count {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-mem-card {
+  background: var(--bg-card-2);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-mem-card--proposed {
+  border-left: 3px solid var(--status-need);
+}
+
+.sb-mem-card--rejected {
+  opacity: 0.7;
+}
+
+.sb-mem-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-entry-title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-mem-entry-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+}
+
+.sb-mem-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-session {
+  color: var(--text-2b);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sb-mem-tags {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-tag {
+  font: 400 11px var(--font-mono);
+  color: var(--branch-fg);
+  background: var(--branch-bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.sb-mem-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb-mem-btn {
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-2b);
+  background: var(--bg-card);
+}
+
+.sb-mem-btn:hover:not([disabled]) {
+  background: var(--bg-selected-card);
+}
+
+.sb-mem-btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-mem-btn--primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sb-mem-btn--primary:hover:not([disabled]) {
+  background: var(--text-2b);
+}
+
+.sb-mem-btn--danger {
+  color: var(--status-fail);
+  border-color: var(--status-fail);
+}
+
+.sb-mem-add {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.sb-mem-pin {
+  all: unset;
+  cursor: pointer;
+  color: var(--muted-2);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.sb-mem-pin[aria-pressed='true'] {
+  color: var(--status-need);
+}
+
+.sb-mem-toggle {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb-mem-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-mem-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.sb-mem-check {
+  font-size: 12px;
+  color: var(--muted-1);
+}
+
+.sb-mem-error {
+  color: var(--status-fail);
+  font-size: 12px;
+}
+
+.sb-mem-error--page {
+  padding: 10px 22px 0;
+}
+
+.sb-mem-empty {
+  padding: 32px 22px;
+  color: var(--muted-2);
+}
+
+.sb-mem-empty a {
+  color: var(--text-2b);
+}
+
+.sb-mem-settings {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted-1);
+}
+
+.sb-mem-cap-input {
+  width: 84px;
+}
+
+/* The session panel's line (right panel, above the agent overview). */
+.sb-mem-line {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 8px 14px 0;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-mem-line__link {
+  color: var(--text-2b);
+  text-decoration: none;
+}
+
+.sb-mem-line__link:hover {
+  text-decoration: underline;
+}
+
+.sb-mem-line__pending {
+  color: var(--status-need);
+}
+
+@media (max-width: 767px) {
+  .sb-mem-head,
+  .sb-mem-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .sb-mem-select {
+    min-width: 0;
+    flex: 1;
+  }
+}

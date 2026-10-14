@@ -33,6 +33,8 @@ import { z } from 'zod';
 import { registerTeamToolsIfMember } from '../core/team-tools.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { registerPlanToolsIfOn } from './sb-plan-tools.ts';
+// Project memory (D107) hook (docs/memory-removal.md).
+import { registerMemoryToolsIfOn } from './sb-memory-tools.ts';
 import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
 import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
@@ -648,6 +650,8 @@ async function main(argv: readonly string[]): Promise<number> {
   await registerTeamToolsIfMember(server, api, loopbackApi(port, sessionId, token, 3_000));
   // Plans (D99) hook: while Plans is on, also plan_create / plan_add_item / plan_add_dependency / plan_status / plan_start (docs/plans-removal.md).
   await registerPlanToolsIfOn(server, api, loopbackApi(port, sessionId, token, 3_000));
+  // Project memory (D107) hook: while Project memory is on (and the session has a folder), also memory_propose / memory_list (docs/memory-removal.md).
+  await registerMemoryToolsIfOn(server, api, loopbackApi(port, sessionId, token, 3_000));
   // Serves until stdin ends; the process exits once the last answer is written.
   await server.connect(new StdioServerTransport());
   return 0;

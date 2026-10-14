@@ -25,14 +25,15 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/settings[/:section]` | Settings |
  * | `/team`, `/team/:teamId` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md); `/team` opens the last-used team, `/team/all` the All teams tab |
  * | `/plans`, `/plans/:id` | D99: the Plans list and a plan's page (only while Plans is on; Plans (D99) hook, docs/plans-removal.md) |
+ * | `/memory?scope=` | D107: the Memory page at a folder (only while Project memory is on; docs/memory-removal.md) |
  *
  * Unknown paths show the Inbox.
  */
 
 /** The views of the sidebar nav (SPEC → Shell) plus the session, tool and settings views. */
 // Team (D100) hook: the `team` view (docs/team-removal.md).
-// Plans (D99) hook: the `plans` and `plan` views (docs/plans-removal.md).
-export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team' | 'plans' | 'plan';
+// Plans (D99) hook: the `plans` and `plan` views (docs/plans-removal.md). Project memory (D107) hook: `memory` (docs/memory-removal.md).
+export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'tool' | 'settings' | 'team' | 'plans' | 'plan' | 'memory';
 
 /** Session view tabs (SPEC → Session). */
 export const SESSION_TABS = ['chat', 'timeline', 'diff', 'artifacts'] as const;
@@ -41,7 +42,7 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'plans' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'search' | 'share' | 'plans' | 'memory' }
   // Team (D100) hook: the Team page, at a team (`/team/{teamId}`; none = the last-used one) (docs/team-removal.md).
   | { readonly view: 'team'; readonly teamId?: string }
   | {
@@ -60,8 +61,8 @@ export type Route =
   | { readonly view: 'plan'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
 
-// Plans (D99) hook: `plans` (docs/plans-removal.md).
-const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team', 'plans'] as const;
+// Plans (D99) hook: `plans` (docs/plans-removal.md). Project memory (D107) hook: `memory` (docs/memory-removal.md).
+const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos', 'search', 'share', 'team', 'plans', 'memory'] as const;
 
 function decode(segment: string): string {
   try {

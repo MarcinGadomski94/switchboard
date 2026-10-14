@@ -95,6 +95,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       // Team (D100): Settings → Experimental → Team, off by default.
       'experimental.team': false,
       'experimental.plans': false,
+      'experimental.memory': false,
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,

@@ -3,6 +3,8 @@ import type { KnownSettings } from '../../../core/settings.ts';
 import { TeamSwitchRow } from '../../team/TeamSwitchRow.tsx';
 // Plans (D99) hook (docs/plans-removal.md).
 import { PlansSwitchRow } from '../../plans/PlansSwitchRow.tsx';
+// Project memory (D107) hook (docs/memory-removal.md).
+import { MemorySwitchRow } from '../../memory/MemorySwitchRow.tsx';
 import { SectionTitle } from './rows.tsx';
 import type { SaveSettings } from './sections.tsx';
 
@@ -20,6 +22,8 @@ export function ExperimentalSection({ settings, save }: { readonly settings: Kno
       <TeamSwitchRow settings={settings} save={save} />
       {/* Plans (D99) hook. */}
       <PlansSwitchRow settings={settings} save={save} />
+      {/* Project memory (D107) hook. */}
+      <MemorySwitchRow settings={settings} save={save} />
     </>
   );
 }
