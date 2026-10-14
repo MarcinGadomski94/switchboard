@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.18.2 (2026-10-14)
+
+### Changed
+- **Team: move members between teams by dragging** a member's card onto another team's tab (long press on touch), or pick its team in Settings → Team; every move shows a toast with **Undo**, which puts the member back in its place. The member's ⋯ menu now opens with Enter / Space and can be used with the arrow keys.
+- The README has new screenshots and sections for Search, Plans, Team and credits, and the demo data uses fictional Acme names throughout.
+
 ## 1.18.1 (2026-10-14)
 
 ### Changed
