@@ -221,7 +221,13 @@ export class LiveSolutions implements SolutionsProvider {
     }
 
     // 2026-10-14: where each live session really writes, from the shared repo set (session-repos.ts).
-    const placement = await this.#placement(sessions.filter(isLiveWriter), writable, everWorktrees, rowOf);
+    const placement = await this.#placement(
+      // Oldest first, so the rows list their sessions in a stable order.
+      sessions.filter(isLiveWriter).sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.name.localeCompare(b.name))),
+      writable,
+      everWorktrees,
+      rowOf,
+    );
     const changes = await this.#changes(
       [...new Set([...[...worktreesByRow.values()].flat().flatMap((w) => (w.sessionId ? [w.sessionId] : [])), ...[...placement.inPlace.values()].flat().map((p) => p.session.id)])],
       async (sessionId, solution) => {

@@ -1,10 +1,14 @@
 import { useId, useState } from 'react';
 import type { Solution } from '../../core/api.ts';
 import { TICKET_BRANCH_EXAMPLE, checkTicketBranch, tidyTicketBranch } from '../../core/ticket-branch.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { api } from '../api/client.ts';
+import { Link } from '../router.tsx';
+// Team (D100) hook: a writer that is a member is named with its role and linked, its session being hidden from the sidebar (docs/team-removal.md).
+import { useTeamSwitch } from '../team/hidden.ts';
 import { BRANCH_MODE_LABELS, type BranchMode, existingConfirmText, isolateBody, pickedBranch, pickerNote } from './branch-picker.ts';
 import { ExistingBranchPicker, useRepoBranches } from './ExistingBranchPicker.tsx';
-import { MOVE_CONFIRM, type MoveAction, conflictCard, isolateErrorText, moveConfirmText } from './solutions-conflict.ts';
+import { MOVE_CONFIRM, type MoveAction, conflictCard, isolateErrorText, memberNote, moveConfirmText, openSessionTitle } from './solutions-conflict.ts';
 
 /**
  * D32: the confirm step of one action: its session and the Branch field as typed
@@ -36,6 +40,8 @@ interface Confirming {
  */
 export function SolutionConflictCard({ solution, onMoved }: { readonly solution: Solution; readonly onMoved: () => void }) {
   const card = conflictCard(solution);
+  // Team (D100) hook: role names of the writers that are members (none while Team is off).
+  const team = useTeamSwitch();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
@@ -86,8 +92,34 @@ export function SolutionConflictCard({ solution, onMoved }: { readonly solution:
   return (
     <div className="sb-sol-conflict" data-testid="conflict-card">
       <div className="sb-sol-conflict-text" data-testid="conflict-text">
-        {card.text}
+        {/* 2026-10-14: each writer's name opens its session (a Team member's too, though the sidebar hides it). */}
+        {card.segments.map((segment, index) =>
+          segment.sessionId ? (
+            <Link
+              key={`${segment.sessionId}\u0000${index}`}
+              className="sb-sol-conflict-session"
+              data-testid="conflict-session"
+              data-session={segment.sessionId}
+              title={openSessionTitle(segment.text, team.roles[segment.sessionId] ?? null)}
+              to={{ view: 'session', id: segment.sessionId, tab: 'chat' }}
+            >
+              {segment.text}
+            </Link>
+          ) : (
+            segment.text
+          ),
+        )}
       </div>
+      {solution.conflictSessions
+        .filter((session) => team.roles[session.sessionId] !== undefined)
+        .map((session) => (
+          <div className="sb-sol-conflict-member" key={session.sessionId} data-testid="conflict-member" data-session={session.sessionId}>
+            ⚑ {memberNote(displayTitle(session), team.roles[session.sessionId] ?? '')}{' '}
+            <Link to={{ view: 'session', id: session.sessionId, tab: 'chat' }} data-testid="conflict-member-open">
+              Open it ›
+            </Link>
+          </div>
+        ))}
       {card.actions.length > 0 ? (
         <div className="sb-sol-conflict-actions">
           {card.actions.map((action) => (

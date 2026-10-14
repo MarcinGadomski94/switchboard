@@ -111,7 +111,14 @@ function SolutionDetail({ solution, toolId, onMoved, back }: { readonly solution
               <div className="sb-sol-card-wt">{worktreeLine(branch.worktree, solution.path)}</div>
               <div className="sb-sol-card-owner">
                 <span className="sb-sol-card-dot" style={{ background: statusColor(branch.status) }} />
-                <span title={owner.tooltip}>{owner.text}</span>
+                {/* 2026-10-14: the owner opens its session (also a Team member's, which the sidebar hides). */}
+                {branch.sessionId ? (
+                  <Link className="sb-sol-card-owner-link" data-testid="branch-owner" to={{ view: 'session', id: branch.sessionId, tab: 'chat' }} title={owner.tooltip ?? `Open ${owner.text}`}>
+                    {owner.text}
+                  </Link>
+                ) : (
+                  <span title={owner.tooltip}>{owner.text}</span>
+                )}
               </div>
             </div>
           );
@@ -272,6 +279,18 @@ export function SolutionsView() {
                 headerMeta(groups)
               )}
             </div>
+            {/* 2026-10-14: read the sessions, worktrees and conflicts again now (they also reload on session updates). */}
+            <button
+              type="button"
+              className="sb-button sb-sol-refresh"
+              data-testid="solutions-refresh"
+              aria-busy={solutions.loading || undefined}
+              disabled={solutions.loading}
+              title="Read the solutions, sessions, worktrees and conflicts again"
+              onClick={() => solutions.reload()}
+            >
+              ↻ Refresh
+            </button>
           </div>
           <div className="sb-sol-pills" role="group" aria-label="Filter solutions">
             {SOLUTION_FILTERS.map((label) => (

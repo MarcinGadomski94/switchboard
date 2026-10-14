@@ -595,3 +595,45 @@
 .sb-sol-art--link:hover .sb-sol-art-name {
   text-decoration: underline;
 }
+
+/* 2026-10-14 (stale Solutions and conflicts): a manual refresh, session links, Team members on the card. */
+.sb-sol-refresh {
+  margin-left: auto;
+  align-self: center;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  color: var(--text-2);
+  background: var(--bg-selected-row);
+  cursor: pointer;
+}
+
+.sb-sol-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sb-sol-conflict-session,
+.sb-sol-card-owner-link {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.sb-sol-conflict-session:hover,
+.sb-sol-card-owner-link:hover {
+  text-decoration-style: solid;
+}
+
+.sb-sol-conflict-member {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.sb-sol-conflict-member a {
+  color: inherit;
+  text-decoration: underline;
+}

@@ -3,7 +3,7 @@ import type { ConflictSession, Solution } from '../../src/core/api.ts';
 import { createDemoProviders } from '../../src/server/demo/providers.ts';
 import { loadDemoData } from '../../src/server/demo/data.ts';
 import { ApiError } from '../../src/web/api/client.ts';
-import { MOVE_CONFIRM, conflictCard, isolateErrorText, moveConfirmText } from '../../src/web/views/solutions-conflict.ts';
+import { MOVE_CONFIRM, conflictCard, isolateErrorText, memberNote, moveConfirmText, openSessionTitle } from '../../src/web/views/solutions-conflict.ts';
 
 function session(name: string, isolated: boolean, attached = true, title: string | null = null): ConflictSession {
   return { sessionId: `id-${name}`, name, title, isolated, repo: 'web-front', attached };
@@ -25,6 +25,15 @@ describe('conflictCard (M6.3)', () => {
     };
     expect(conflictCard(input)).toEqual({
       text: "with-wt, in-place and away all write to microfrontends/web-front/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+      // 2026-10-14: the names are their own pieces (links to the sessions); joined, the text.
+      segments: [
+        { text: 'with-wt', sessionId: 'id-with-wt' },
+        { text: ', ' },
+        { text: 'in-place', sessionId: 'id-in-place' },
+        { text: ' and ' },
+        { text: 'away', sessionId: 'id-away' },
+        { text: " all write to microfrontends/web-front/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo." },
+      ],
       actions: [
         { sessionId: 'id-in-place', repo: 'web-front', label: 'Move in-place to worktree', disabled: false, title: '', sessionTitle: 'in-place', suggestedBranch: '' },
         {
@@ -48,6 +57,7 @@ describe('conflictCard (M6.3)', () => {
     };
     expect(conflictCard(input)).toEqual({
       text: "with-wt, JIRA Ticket handling and Billing fixes all write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+      segments: expect.arrayContaining([{ text: 'JIRA Ticket handling', sessionId: 'id-jira-ticket-handling' }, { text: 'Billing fixes', sessionId: 'id-away' }]),
       actions: [
         {
           sessionId: 'id-jira-ticket-handling',
@@ -77,8 +87,19 @@ describe('conflictCard (M6.3)', () => {
     expect(mobile).toBeDefined();
     expect(conflictCard(mobile as Solution)).toEqual({
       text: "pair-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+      segments: expect.any(Array),
       actions: [{ sessionId: 'button-rollout', repo: 'mobile', label: 'Move button-rollout to worktree', disabled: false, title: '', sessionTitle: 'button-rollout', suggestedBranch: '' }],
     });
+  });
+
+  it('2026-10-14: the pieces join to the text; a Team member is named with its role', () => {
+    const input: CardInput = { conflict: true, conflictSessions: [session('a', false), session('b', true, true, 'Bee')], relativePath: 'mobile' };
+    const card = conflictCard(input);
+    expect(card?.segments.map((segment) => segment.text).join('')).toBe(card?.text);
+    expect(card?.segments.filter((segment) => segment.sessionId).map((segment) => segment.sessionId)).toEqual(['id-a', 'id-b']);
+    expect(memberNote('Bee', 'Tech debt handler')).toBe("Bee is the Team member Tech debt handler: it is not in the sidebar's SESSIONS.");
+    expect(openSessionTitle('Bee', 'Tech debt handler')).toBe('Open Bee (Team member Tech debt handler)');
+    expect(openSessionTitle('a', null)).toBe('Open a');
   });
 
   it('D32: the confirm step suggests the branch a ticket title gives, else nothing, and names the session and repo', () => {
