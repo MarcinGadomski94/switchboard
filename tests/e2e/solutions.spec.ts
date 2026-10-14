@@ -133,7 +133,7 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
 
   // Detail of web-front: the worktree card; D89: the session's written contract is no artifact (only follow-up files are listed).
   await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ PROJ-11-live-worktree../web-front-wt-wt-liveLive worktree']);
-  await expect(detail.getByTestId('branch-card').locator('.sb-sol-card-owner span[title]')).toHaveAttribute('title', 'wt-live');
+  await expect(detail.getByTestId('branch-card').locator('.sb-sol-card-owner [title]')).toHaveAttribute('title', 'wt-live');
   await expect(detail.getByTestId('solution-artifact')).toHaveText(['INFONo artifacts']);
 
   // Select mobile: in-place card, the ledger from phase-ledger.md, the follow-up, fresh index.

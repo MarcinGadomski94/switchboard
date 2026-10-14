@@ -172,3 +172,59 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   expect(await world.git(world.mobile, 'status', '--porcelain')).toBe(statusBefore);
   expect(await world.git(world.mobile, 'stash', 'list')).toBe('');
 });
+
+/** A JSON API call from the page (same origin, the sb_token cookie). */
+async function call(page: Page, method: string, url: string, body?: unknown): Promise<{ status: number; body: any }> {
+  return page.evaluate(
+    async ({ method, url, body }) => {
+      const response = await fetch(url, { method, headers: body === undefined ? {} : { 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const text = await response.text();
+      return { status: response.status, body: text ? JSON.parse(text) : null };
+    },
+    { method, url, body },
+  );
+}
+
+test('2026-10-14: a Team member writing in place is named and linked on the card (its session is hidden from the sidebar) and can be moved to a worktree', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/solutions`);
+  await expect(page.getByTestId('view-solutions')).toBeVisible();
+  expect(await startSession(page, { name: 'acme-billing', title: 'Acme billing', task: 'Reply with OK.', solutions: ['web-front'], worktrees: false })).toBe(201);
+  expect(await startSession(page, { name: 'acme-docs', task: 'Reply with OK.', solutions: ['web-front'], worktrees: false })).toBe(201);
+  const sessions = (await call(page, 'GET', '/api/sessions')).body as Array<{ id: string; name: string; status: string }>;
+  const member = sessions.find((session) => session.name === 'acme-billing');
+  if (!member) throw new Error('no acme-billing session');
+  await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${member.id}`)).body?.status as string, { timeout: 20_000 }).toMatch(/^(idle|done|need)$/);
+
+  // Team on; the session becomes a member (it leaves the sidebar's SESSIONS).
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
+  const adopted = await call(page, 'POST', '/api/team/members', { sessionId: member.id, name: 'Billing keeper' });
+  expect(adopted.status, JSON.stringify(adopted.body)).toBe(201);
+  await page.reload();
+  await row(page, 'web-front').click();
+
+  // The manual Refresh reads the list again.
+  await page.getByTestId('solutions-refresh').click();
+  const card = page.getByTestId('conflict-card');
+  await expect(page.getByTestId('conflict-text')).toHaveText(`Acme billing and acme-docs both write to microfrontends/web-front/ ${WARNING_TAIL}`, { timeout: 15_000 });
+  await expect(card.getByTestId('conflict-member')).toHaveText("⚑ Acme billing is the Team member Billing keeper: it is not in the sidebar's SESSIONS. Open it ›");
+  const nameLink = card.getByTestId('conflict-session').filter({ hasText: 'Acme billing' });
+  await expect(nameLink).toHaveAttribute('title', 'Open Acme billing (Team member Billing keeper)');
+
+  // The name opens the member's session directly.
+  await nameLink.click();
+  await expect(page.getByTestId('view-session')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${member.id}$`));
+  await page.goBack();
+  await row(page, 'web-front').click();
+
+  // "Move Acme billing to worktree" works for the member like for any session.
+  await card.getByRole('button', { name: 'Move Acme billing to worktree' }).click();
+  await card.getByTestId('conflict-branch').fill('ACME-11-billing');
+  await card.getByTestId('conflict-confirm-move').click();
+  await expect(card.getByTestId('conflict-move')).toHaveText(['Move acme-docs to worktree'], { timeout: 15_000 });
+  expect(await exists(path.join(path.dirname(world.web), 'web-front-wt-acme-billing'))).toBe(true);
+  // Its branch card's owner links to the member's session too.
+  await expect(page.getByTestId('solution-detail').getByTestId('branch-owner').filter({ hasText: 'Acme billing' })).toHaveAttribute('href', `/sessions/${member.id}`);
+
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.team': false })).status).toBe(200);
+});
