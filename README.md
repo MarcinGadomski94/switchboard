@@ -383,6 +383,7 @@ Each session has a todo list for things that still need doing.
 - **Run in a new session:** **⋯ → Run in new session** (or **Select** several → **Run N in new sessions**) starts a new session for an item, on its own `todo/<slug>` worktree (one per solution repo in a workspace) cut from the source session's branch, with the same CLI, model and account. The card links it live; when its agent marks the item done, it is done.
 - **Estimates vs actuals:** finished items show what they took against the estimate (`est ~45m · took 32m · 41k tokens`), with per-session totals, and agents get a short line on how accurate their recent estimates were.
 - **Quick capture:** type `todo <text>` in ⌘K, select text in the chat and press **Add to todo**, or share a link from your phone to the installed app (Android). The item is saved with just a title and the session's agent is asked once, when it's idle, to fill in the rest (Settings → Sessions).
+- **Import issues:** **Import issues…** on the Todos page (or **Import…** on a session's strip) brings a GitHub repository's open issues (by label, or assigned to you) or Jira issues (a project key or JQL, through the Plans Jira connection) into a session's list, with a preview to tick them and a link back. Issues imported before are skipped.
 - Hand-started terminal sessions keep a list too, edited from the UI only.
 
 [`docs/todos.md`](docs/todos.md)
@@ -453,6 +454,14 @@ Settings → Sessions → **Model by task** routes a todo to a CLI, model, effor
 - Review cards were removed in 1.18.0: agents commit and merge themselves, and Plans have their own Merge step.
 
 [`docs/inbox.md`](docs/inbox.md) · [`docs/notifications.md`](docs/notifications.md)
+
+### CI and pull requests
+- **Failures go back to the agent:** when a check of a session's pull request fails, the end of the failing job's log is sent to the session ("CI failed: build — … Fix it and push."), queued while it works. After 3 tries per PR, or the same failure twice, Switchboard stops and asks you in the Inbox (**Open PR** / **Open session** / **Try again**).
+- **Merge PR:** a green, approved PR (or one that needs no approval) raises "PR #12 ready to merge" in the Inbox. **Merge PR** merges it with the repository's default method (or the one you choose), only when you click; then **Remove worktree** cleans up.
+- **The header chip** shows the session's PR: CI running, failed, green, merged; click it to open the PR.
+- **Settings → CI & pull requests:** switch the messages off, the fixes per PR, the log lines sent, how often PRs are read, the merge method. Plans read their items' PRs through the same watcher.
+
+[`docs/ci.md`](docs/ci.md)
 
 ### Solutions
 - Every solution of a folder, grouped the way the router groups them.

@@ -1513,6 +1513,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null` (also the server's orphan clean-up, ruling 2026-10-09); other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id; `sessionId: null` = this machine's own draft (`/api/drafts`), not forwarded) |
 | artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox (D102: `review` removed), title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
+| ciChanged | { sessionId } (additive, D109: a session's pull-request status changed; the session header's PR chip reads `GET /api/sessions/{id}/ci` again; forwarded between peers with the remote session id) |
 
 ## Paged events (D95, 2026-10-10, additive)
 `docs/performance.md` → *Paged events*. `GET /api/sessions/{id}/events` takes three more queries, each optional and combinable with `since`; without them the answer is every event, as before.
@@ -1814,4 +1815,31 @@ POST /api/chats
 POST /api/sessions
 { "simple": true, "name": "billing-split", "title": "Billing split", "task": "Implement the plan.", "folder": "f1", "fromChat": "7cf6…" }
 → 201 { "id": "9a2b…", "continuedFrom": { "sessionId": "7cf6…", "title": "How should we split the billing module?" }, "…": "…" }
+```
+
+## CI and pull requests (D109, 2026-10-14, additive)
+
+The shared PR watcher follows the pull request of every live worktree whose PR is open (`docs/ci.md`, `docs/decisions.md` → D109): a red check sends the failing job's log tail to the session as a normal message (one per red head, at most `ci.maxAttempts` per PR; the same failure twice in a row stops it), then raises "CI keeps failing on PR #n …"; green and approved (or approval not required) raises "PR #n ready to merge" with **Merge PR**. Plans (D99) reads its items' PRs through the same watcher. Issues of a GitHub repository or of Jira become todo items (`docs/todos.md` → *Import issues (D109)*). Migration 0046 adds `pr_watch` and `todo_imports`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/ci | — | 200 `SessionCi` `{ prs: SessionPr[] }` (newest first; `[]` without a watched PR) · 404 `not-found` |
+| GET | /api/sessions/{id}/todos/import/sources | — | 200 `IssueImportSources` `{ github: { available, repos, problem }, jira: { available, problem } }` · 404 `not-found` |
+| POST | /api/sessions/{id}/todos/import/preview | `IssueImportQuery`: `{ source: "github", repo, label?, mine? }` or `{ source: "jira", jql? , project? }` | 200 `IssueImportPreview` `{ issues: ImportableIssue[], truncated }` · 404 `not-found` · 422 `invalid` (+ `field`) · 409 `jira-unavailable` · 502 `source-failed` (gh's or Jira's message; never a credential) |
+| POST | /api/sessions/{id}/todos/import | `IssueImportInput` `{ query: IssueImportQuery, keys: string[] }` (1–100) | 201 `SessionTodoList` (the ticked issues not imported before, in the preview's order) · 404 · 409 `jira-unavailable` / `too-many` · 422 `invalid` · 502 `source-failed` |
+
+- **`SessionPr`**: `{ worktreeId, repo, branch, number, url, state: "OPEN" | "MERGED" | "CLOSED", checks: "pending" | "green" | "red" | "none", summary, review: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null, ready, attempts, maxAttempts, stopped: "cap" | "same-failure" | null, checkedAt }`.
+- **`ImportableIssue`**: `{ key, title, url, body, labels, imported }`; `key` is `owner/repo#12` (GitHub) or `PROJ-12` (Jira), recorded per session so a re-import skips it, also after its todo was removed. An imported todo: title `#12 <title>` / `PROJ-12 <title>`, description = the body (cut to 1,500 characters) and a last line `GitHub: <url>` / `Jira: <url>`, plan `No plan: imported from GitHub (owner/repo#12)`, added by the developer.
+- **Inbox items** (system, source `ci`): kind `ci-failing` (label "CI keeps failing", status `fail`; actions `open-pr`, `open-session`, `try-again`, `dismiss`) and kind `ci-ready` (label "Ready to merge", status `need`; actions `merge-pr`, `open-pr`, `dismiss`), through `POST /api/inbox/{id}/actions/{action}`. `merge-pr` runs `gh pr merge <n> --squash | --merge | --rebase` after reading the PR again (409 `refused` with the reason when it is no longer ready, or gh's failure); `try-again` resets the PR's attempts and sends the current failure. `open-pr` and `open-session` are links (the API answers 409 `refused`). **`InboxItem.url`** (additive): the PR an item is about (`https://` only).
+- **`/hub` `ciChanged`** `{ sessionId }` (additive): a session's PR status changed; forwarded between peers with the remote session id.
+- **Settings** (additive, editable): `ci.sendFailures` (default `true`), `ci.pendingPollMinutes` (1–30, default 2), `ci.idlePollMinutes` (2–120, default 10), `ci.maxAttempts` (1–10, default 3), `ci.logTailLines` (20–1000, default 150), `ci.mergeMethod` (`repo` | `squash` | `merge` | `rebase`, default `repo`: the repository's default merge method as gh reports it, else squash).
+- **Peers (D48):** the four routes are on `PEER_API_ALLOW` (the import's answer is mapped as a `todo-list`; the others carry no ids). **Devices (D73):** on `DEVICE_ALLOWED` (Merge PR is the Inbox action, an explicit click, allowed on phones).
+
+```json
+GET /api/sessions/5d1e…/ci
+→ 200 { "prs": [{ "worktreeId": "a91c…", "repo": "web-front", "branch": "PROJ-7-checkout", "number": 7, "url": "https://github.com/acme/web-front/pull/7", "state": "OPEN", "checks": "red", "summary": "failed: build", "review": null, "ready": false, "attempts": 1, "maxAttempts": 3, "stopped": null, "checkedAt": "2026-10-14T10:02:00.000Z" }] }
+
+POST /api/sessions/5d1e…/todos/import
+{ "query": { "source": "github", "repo": "acme/web-front", "label": "bug", "mine": true }, "keys": ["acme/web-front#21"] }
+→ 201 { "sessionId": "5d1e…", "todos": [{ "title": "#21 Checkout button overlaps the footer", "description": "On 360 px the button sits on the footer.\n\nGitHub: https://github.com/acme/web-front/issues/21", "…": "…" }], "…": "…" }
 ```

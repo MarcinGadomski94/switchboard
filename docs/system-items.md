@@ -79,3 +79,23 @@ Refusals: unknown id `404`; an action the item does not list `400 {error:"unknow
 - D47: `tests/server/inbox/parent-merged.test.ts` (sync raises the parent-merged item and the message once, the outbox fallback, a closed session) and `tests/server/worktrees/stacking.test.ts` (the real poll: squash and merge-commit merges, the item and the message once, a closed session).
 - `tests/e2e/inbox-system.spec.ts` (oracle, real server, no demo): failed runs inserted before start → the items in the Inbox; Retry run refused (501 line); Dismiss; Open fix session → the modal with the prefill; a session started with a worktree whose PR the fake gh reports merged → the item arrives live after the first PR check; Remove worktree refused while a file is uncommitted, then the folder is removed and the branch kept.
 - Visual: the system item detail is part of the M3.2 visual gate (`tests/e2e/visual/inbox.spec.ts`, the demo's `nightly-build-verify` item against the prototype); M3.3 adds no new markup.
+
+## CI items (D109)
+The PR watcher (`docs/ci.md`) raises two kinds, source `ci`, each with its worktree and the `<repo> ⎇ <branch>` chip, and `payload.url` = the PR (answered as `InboxItem.url`):
+
+- **`ci-failing`**, label *CI keeps failing*, status `fail`: "CI keeps failing on PR #12 (build) — 3 fixes tried" (or "— the same failure twice, 1 fix tried"). The detail ends with the last 12 lines of the log. Actions:
+  - **Open PR**, a link that leaves the item open;
+  - **Open session**, a link;
+  - **Try again**: the PR's attempts start over and the current failure is sent;
+  - **Dismiss**.
+
+  It is raised once per PR head and closed by itself ("fixed") when the checks turn green.
+- **`ci-ready`**, label *Ready to merge*, status `need`: "PR #12 ready to merge". Actions:
+  - **Merge PR**: `gh pr merge` through the watcher, refused (`refused`, with the reason) when the PR is no longer ready;
+  - **Open PR**;
+  - **Dismiss**.
+
+  It is raised once per PR head and closed by itself when the PR stops being ready, merges or closes. It is never raised for a running Plans item's session (Plans has its own "Ready to merge").
+
+After **Merge PR** the worktree's PR is checked at once, so the "PR merged" item above (Remove worktree / Keep) follows as the clean-up offer.
+

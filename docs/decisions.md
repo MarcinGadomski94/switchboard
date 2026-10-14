@@ -1076,6 +1076,48 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - What's new 1.19.0 (`V1_19`): a one-step tour `chats`. Details: `docs/chats.md`; contract → *Chats (D106)*; ASSUMED items: `.loop/questions.md` → *D106*.
   - **Rulings 2026-10-14 (on D106's questions).** (1) **No shell at all in chats:** Claude Code's `--disallowedTools` also names `Bash`, `BashOutput`, `KillShell`, `KillBash`, `PowerShell` and `REPL`; Codex's app-server starts with `-c features.shell_tool=false -c features.unified_exec=false` (besides the read-only sandbox, approvals never, and Switchboard refusing any request); OpenCode's `bash: deny` confirmed; the chat's instruction says it has no shell and reads with the read tools, Grep and Glob. (2) **The sidebar shows both sections, collapsible:** SESSIONS and CHATS always show (CHATS also with no chats, "+ New chat" on its header), each header a ▾ / ▸ toggle folding its list, its count kept; the states are the editable settings `ui.sessionsCollapsed` / `ui.chatsCollapsed` (per install, default expanded, like D101's `ui.toolsCollapsed`); the chat button on the SESSIONS label is gone. The desktop visual oracle changes by design (`docs/visual/README.md` → *D106*). (3) **Direct delete** (`DELETE /api/chats/{id}`, ⋯ → Delete chat…) kept as built. Details: `docs/chats.md`, `docs/sidebar.md` → *SESSIONS and CHATS (D106)*; contract → *Collapsible SESSIONS and CHATS (D106)*.
 
+## CI / pull-request feedback loop and issue import (added 2026-10-14)
+
+- **D109 Switchboard follows each session's pull request: red checks go back to the session with the failing job's log, green and approved PRs get Merge PR in the Inbox, and GitHub / Jira issues can be imported as todos.** Developer todo, adapted to today's code (the todo predates D102):
+  - review cards are not resurrected;
+  - Plans' PR-check logic was generalised into one shared PR watcher, which Plans now uses.
+
+  Built on:
+  - D30: the worktree PR poll and the "PR merged" clean-up item;
+  - D99 / D102: Plans, its Merge step, `BranchMergeGit`'s Open PR;
+  - D73: devices, push through the Inbox;
+  - D103: held messages;
+  - D68: todos;
+  - the Plans Jira client and connection.
+
+  Details: `docs/ci.md`, `docs/todos.md` → *Import issues (D109)*, `docs/settings.md` → *CI & pull requests (D109)*, `docs/system-items.md` → *CI items (D109)*; contract → *CI and pull requests (D109)*.
+  - **The shared PR watcher** (`src/server/ci/`) follows every live session worktree whose PR is open. It learns about PRs from:
+    - D30's poll;
+    - the end of a session's turn (the agent may have opened one);
+    - Plans' Open PR.
+
+    It reads them with `gh pr view` every `ci.pendingPollMinutes` (default 2) while checks run and `ci.idlePollMinutes` (default 10) otherwise, and stops once merged or closed. State is in `pr_watch` (migration **0046**; 0045 is left to the Insights lane). Every change publishes `ciChanged { sessionId }`.
+  - **Red checks:** the first failing Actions job's log (`gh run view --log-failed`) is trimmed to `ci.logTailLines` (default 150) and sent as a normal message: "CI failed: <check> — … Fix it and push." It is queued while the agent works, held while new turns pause for credits, and goes to a hooked session's mailbox. Rules:
+    - one message per red head;
+    - at most `ci.maxAttempts` (default 3) per PR;
+    - the same failure signature twice in a row also stops it.
+
+    Stopped, the Inbox gets "CI keeps failing on PR #12 (<check>) — 3 fixes tried" with Open PR / Open session / Try again. Settings → CI & pull requests → *Send CI failures to the session* (default on) switches the messages off.
+  - **Green and approved** (or approval not required; gh's review decision): "PR #12 ready to merge" with **Merge PR** and Open PR.
+    - Merge PR runs `gh pr merge` only on the click, after reading the PR again.
+    - The method is `ci.mergeMethod`: `repo` (default, the repository's default through gh, else squash), `squash`, `merge` or `rebase`.
+    - After the merge the item closes and D30's "PR merged" item offers Remove worktree (the clean-up).
+    - A small chip in the session header shows CI running / failed / green (ready to merge) / merged, only with a PR.
+  - **Plans:** `PlanGit` reads its items' PRs through the watcher (`PrWatcher.read`). With the watcher's messages on, Plans sends no checks message of its own. A running item's session gets no watcher "ready to merge" item: Plans keeps its own Merge UI and item (`registerCiMergeOwner`). `ciChanged` makes the scheduler look at the item at once.
+  - **Import issues as todos:** **Import issues…** on the Todos page (with a session picker) and **Import…** on a session's todo strip. Sources:
+    - GitHub (`gh issue list --repo`, a label, assigned to me, open);
+    - Jira (a project key or JQL, through the Plans Jira client and its one connection, also with Plans switched off again; without one the dialog says where to set it up).
+
+    The flow is a preview with checkboxes, then each ticked issue becomes a todo: its title, its body (cut) and a link back. It is recorded per session in `todo_imports`, so a re-import skips it. Credentials are never logged, answered or sent to peers.
+  - **Devices and peers:** the routes (`GET /api/sessions/{id}/ci`, `…/todos/import/sources`, `…/todos/import/preview`, `…/todos/import`) are on `DEVICE_ALLOWED` and `PEER_API_ALLOW`. Phones may Merge PR (an Inbox action, an explicit click) and import.
+  - **Push:** no new toggle. The two items are Inbox items, so they reach paired devices under *Other Inbox items*.
+  - **What's new:** `ci-loop` under 1.20.0 (the chip, the settings, Import issues). ASSUMED items: `.loop/questions.md` → *D109*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

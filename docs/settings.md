@@ -66,3 +66,18 @@ Settings → **CLIs** (`/settings/clis`, after the prototype's seven sections): 
 
 ## Accounts (D63)
 Settings → **Accounts** (`/settings/accounts`, after CLIs): per CLI the account profiles in priority order (sign in / out, enabled, same settings as Default, delete), the add form, and the automatic-switch rules (D103: *When every account is out of allowance*: **Use credits** (default) / **Pause new turns until an account resets**, stored in `accounts.settings` → `outOfAllowance`); each account's credits line (D103); a *Machine* picker when a paired machine is online. `docs/accounts.md` → *Credits (D103)*.
+
+## CI & pull requests (D109)
+Settings → **CI & pull requests** (`/settings/ci`, `src/web/views/settings/CiSection.tsx`), after GitHub. Every row is an editable key of `PUT /api/settings`, read by the PR watcher at its next read (`docs/ci.md`):
+
+| Row | Key | Default | Values |
+|---|---|---|---|
+| Send CI failures to the session | `ci.sendFailures` | on | on / off |
+| Fixes per pull request | `ci.maxAttempts` | 3 | 1–10 |
+| Log lines sent | `ci.logTailLines` | 150 | 20–1000 |
+| While checks run | `ci.pendingPollMinutes` | every 2 min | 1–30 |
+| Otherwise | `ci.idlePollMinutes` | every 10 min | 2–120 |
+| Merge method | `ci.mergeMethod` | `repo` (the repository's default, else squash) | `repo` / `squash` / `merge` / `rebase` |
+
+A value outside the bounds, or of the wrong type, is refused with 422 (`validateSettingsPatch`); a stored oddity reads as the default (`ciSettingsOf`).
+

@@ -134,3 +134,35 @@ Developer rulings 2026-10-08 (`docs/decisions.md` → D81): a todo can be captur
 - **Peers and take-over:** the capture route is on `PEER_API_ALLOW` and the devices' allow-list. A paired machine before D81 has no such route: the UI then adds the item the plain way (title and note as the description), bare and unmarked. Items carry `needsEnrichment` / `capturedFrom` to a paired machine's UI; a take-over does not carry the mark (the item arrives bare: ASSUMED D81-takeover).
 - **Rules** in `src/core/todo-capture.ts` (pure, shared): `paletteTodoText`, `captureTitle`, `quoteNote`, `sharedCapture`, `todoEnrichMessage`, `captureTargets`, `ENRICH_WAITING_LABEL`.
 - **Tests:** `tests/server/todos/capture.test.ts` (0035, the rules, the route, the mark, the enricher, the allow-lists, the share target on both listeners), `tests/web/capture.test.ts` (palette rows, the floating action's place, the selection's bounds), `tests/e2e/capture.spec.ts` (⌘K in and outside a session, the agent's one message and its `todo_update`, the selection popover, the share page at 360 px), `tests/e2e/devices.spec.ts` (the share target on a paired phone).
+
+## Import issues (D109)
+Developer request (D109, `docs/decisions.md`): bring issues into a session's todo list.
+
+- **Where:**
+  - **Import issues…** on the Todos page head, which picks the session (open sessions, chats left out);
+  - **Import…** on a session's todo strip, next to **+ Add**.
+
+  Both open the same dialog (`src/web/ci/ImportIssuesDialog.tsx`).
+- **GitHub:** `gh issue list --repo <owner/repo> --state open --json number,title,body,url,labels`, at most 100 issues. Filters:
+  - **Label** (one);
+  - **Assigned to me** (`--assignee @me`).
+
+  The repository field offers the session's repositories as gh names them (`gh repo view --json nameWithOwner` in its worktrees and in-place solutions). gh runs on the session's machine with its own login: Switchboard stores no token.
+- **Jira:** a **project key** (`PROJ`: its issues that are not done) or a **JQL** query. It reuses the Plans Jira client and its one Jira connection: Settings → Experimental → Plans → Jira connection (OS keychain), else `ATL_BASE_URL` / `ATL_USER` / `ATL_TOKEN`.
+  - **Plans switched off:** the connection keeps working for the import (Plans' Jira lane registers it, `registerJiraIssueSource`).
+  - **No connection:** the dialog says where to set it up. To *set it up*, Plans must be on, since its row lives in Plans' settings (the simplest choice, ASSUMED: `.loop/questions.md` → *D109*).
+  - **Credentials** are never logged, answered or sent to a paired machine.
+- **Preview:** each issue with a checkbox, ticked by default. Issues already imported into this session show **imported**, cannot be ticked, and are skipped by the import.
+- **The todo:**
+  - title `#12 <title>` (GitHub) or `PROJ-12 <title>` (Jira);
+  - description = the issue's body cut to 1,500 characters, then a line linking back (`GitHub: <url>` / `Jira: <url>`);
+  - plan `No plan: imported from GitHub (owner/repo#12)`;
+  - priority medium, added by the developer.
+- **No duplicates:** each import is recorded per session (`todo_imports`, migration 0046) under the issue's key (`owner/repo#12`, `PROJ-12`). Importing again skips it, also after its todo was removed or done. Another session imports it on its own.
+- **Routes:**
+  - `GET /api/sessions/{id}/todos/import/sources`;
+  - `POST /api/sessions/{id}/todos/import/preview`;
+  - `POST /api/sessions/{id}/todos/import` `{ query, keys }`, which answers the session's list.
+
+  Contract → *CI and pull requests (D109)*. Phones may import (D73). A paired machine's session imports there, with that machine's gh and Jira (D48).
+

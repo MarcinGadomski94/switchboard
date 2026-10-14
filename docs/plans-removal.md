@@ -41,6 +41,8 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Team, D100) | keep while Team is there; otherwise remove both |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Team, D100) | keep while Team is there; otherwise remove the entry |
 
+D109 (not markers: the shared code never imports Plans): Plans registers itself into the shared PR watcher (`registerCiMergeOwner` in `src/server/plans/service.ts`, the `prs` read and `ciSendsFailures` / `prOpened` in `install.ts` and `environment.ts`) and its Jira lane registers the todo import's Jira source (`registerJiraIssueSource` in `src/server/plans/jira/install.ts`). They go with `src/server/plans/`; without them the watcher raises its own "ready to merge" for every session and the Import issues dialog says Jira needs Plans.
+
 Not markers (Plans' D102 Merge step, shared code): `src/server/worktrees/branch-merge.ts` (`BranchMergeGit`, the safe local merge and Open PR) may stay or go; the `plan-ready-to-merge` label in `SYSTEM_ITEM_LABELS` (`src/server/inbox/wire.ts`) and the web's `openRoute` / `OPEN_PLAN` (`src/web/views/inbox.ts`) and the Needs-you `merge` shape (`src/web/team/`) are harmless without Plans.
 
 Outside `src/` (not markers): `vite.config.ts` builds the Jira dialog's dev mount as an entry (`rollupOptions.input.plansJiraDev`: remove it); `tests/helpers/server-process.ts` drops `ATL_*` from test servers' environment (the Jira lane's guard; harmless without Plans, may stay).
