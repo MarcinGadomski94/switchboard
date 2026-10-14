@@ -33,7 +33,7 @@ function event(agentId: string | null, kind: EventKind, label: string, start: nu
   return { id: nextId++, sessionId: 's', agentId, ts: at(start), endTs: end === null ? null : at(end), kind, label, payload };
 }
 
-/** The prototype's `free-talk-feature` timeline (t0 2, dur 46), in the demo seed's shape. */
+/** The prototype's `pair-talk-feature` timeline (t0 2, dur 46), in the demo seed's shape. */
 function prototypeSession(): { agents: Agent[]; events: SessionEvent[] } {
   nextId = 1;
   const agents = [
@@ -46,12 +46,12 @@ function prototypeSession(): { agents: Agent[]; events: SessionEvent[] } {
   const lanes: Array<[string, Array<[number, number, EventKind, string]>]> = [
     ['o', [[0, 3, 'plan', 'task definition'], [3, 9, 'plan', 'recon · codebase-memory'], [9, 12, 'plan', 'contract lock'], [12, 13, 'impl', 'dispatch'], [30, 33, 'ask', 'relay 3 Qs'], [40, 46, 'ok', 'reconcile']]],
     ['f', [[9, 12, 'plan', 'spec table']]],
-    ['w', [[13, 22, 'impl', 'implement FreeTalkPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]],
-    ['m', [[13, 24, 'impl', 'implement FreeTalkView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]],
+    ['w', [[13, 22, 'impl', 'implement PairTalkPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]],
+    ['m', [[13, 24, 'impl', 'implement PairTalkView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]],
   ];
   const events: SessionEvent[] = [
     // chat (text) at the start and the end, terminal lines at the end: not blocks
-    event(null, 'text', 'Free talk screen at 360', t0, null, { source: 'demo', channel: 'chat' }),
+    event(null, 'text', 'Pair talk screen at 360', t0, null, { source: 'demo', channel: 'chat' }),
     event(null, 'text', 'Contract locked', t0 + 46, null, { source: 'demo', channel: 'chat' }),
     event(null, 'tool', '✓ web 13/14 fields match', t0 + 46, null, { source: 'demo', channel: 'terminal' }),
   ];

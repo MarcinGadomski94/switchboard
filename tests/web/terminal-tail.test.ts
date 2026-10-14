@@ -20,7 +20,7 @@ describe('lineTone (the prototype lineColor)', () => {
     expect(lineTone('⚠ mobile TopicId: required ≠ web nullable')).toBe('warn');
     expect(lineTone('⏸ waiting for your answers')).toBe('warn');
     expect(lineTone('✕ figma: no variant State=Loading')).toBe('err');
-    expect(lineTone('[web] $ dotnet test --filter FreeTalk')).toBe('cmd');
+    expect(lineTone('[web] $ dotnet test --filter PairTalk')).toBe('cmd');
     expect(lineTone('[orch] reconcile · contract-adherence report')).toBe('plain');
     expect(lineTone('CS0103 TimeZoneInfo not found')).toBe('plain');
   });

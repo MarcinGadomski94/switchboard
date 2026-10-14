@@ -16,7 +16,7 @@ describe('short name from a title (D22)', () => {
   it('lower-cases and turns every run of anything but letters and digits into one dash, trimmed', () => {
     expect(shortNameBase('JIRA Ticket handling')).toBe('jira-ticket-handling');
     expect(shortNameBase('  Fix: the login (again)!  ')).toBe('fix-the-login-again');
-    expect(shortNameBase('free-talk-640')).toBe('free-talk-640');
+    expect(shortNameBase('pair-talk-640')).toBe('pair-talk-640');
     expect(shortNameBase('--a__b--')).toBe('a-b');
     expect(shortNameBase('Café déjà vu')).toBe('cafe-deja-vu');
   });
@@ -75,8 +75,8 @@ describe('title check (D22)', () => {
 describe('display title (D22)', () => {
   it('is the title, else the name', () => {
     expect(displayTitle({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' })).toBe('JIRA Ticket handling');
-    expect(displayTitle({ name: 'free-talk-640', title: null })).toBe('free-talk-640');
-    expect(displayTitle({ name: 'free-talk-640' })).toBe('free-talk-640');
+    expect(displayTitle({ name: 'pair-talk-640', title: null })).toBe('pair-talk-640');
+    expect(displayTitle({ name: 'pair-talk-640' })).toBe('pair-talk-640');
     expect(displayTitle({ name: 'n', title: 't', displayTitle: 'shown' })).toBe('shown');
   });
 });

@@ -22,10 +22,10 @@ import { checkOtherPills, sameCopyBesidesOther } from './own-answer.ts';
 /**
  * Visual oracle for the Chat tab (M4.2, D10): the app (demo seed) against the
  * prototype, 1440×900, `simulateIncoming` off, on two sessions:
- * 1. `calendar-func-fix`: its header has the same height on both pages (M4.1), so
+ * 1. `reminder-func-fix`: its header has the same height on both pages (M4.1), so
  *    every box is absolute: the user bubble, the agent text with its step lines
  *    (`✓ …`, `● …`) and the composer (field, Send; D86: see below).
- * 2. `free-talk-feature` (the prototype's default): the inline question card
+ * 2. `pair-talk-feature` (the prototype's default): the inline question card
  *    (3 questions), then one option picked per question (All answered, Send at
  *    full opacity), then Send → the answers bubble and its note. The prototype's
  *    hand-written chips wrap its header to two rows (M4.1), so the chat area starts
@@ -69,7 +69,7 @@ const CHAT = [...MAIN, 1] as const;
 const COMPOSER = [...MAIN, 2] as const;
 const CARD = [...CHAT, 2] as const;
 
-/** Parts inside the chat area (y compared relative to it on free-talk-feature). */
+/** Parts inside the chat area (y compared relative to it on pair-talk-feature). */
 const MESSAGE_PARTS: Readonly<Record<string, PartSpec>> = {
   user: { path: [...CHAT, 0], geometry: 'box', copy: true },
   userBubble: { path: [...CHAT, 0, 0], geometry: 'box', copy: true },
@@ -142,7 +142,7 @@ function questionParts(index: number): Record<string, PartSpec> {
   };
 }
 
-/** The inline question card (free-talk-feature: 3 questions). */
+/** The inline question card (pair-talk-feature: 3 questions). */
 const CARD_PARTS: Readonly<Record<string, PartSpec>> = {
   card: { path: CARD, geometry: 'box', copy: false },
   cardHead: { path: [...CARD, 0], geometry: 'box', copy: true },
@@ -334,14 +334,14 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   const failures: string[] = [];
   await openPrototype(protoPage, { simulateIncoming: false });
 
-  // 1. calendar-func-fix: one-row header on both pages → every box absolute.
-  await openProtoSession(protoPage, 'calendar-func-fix');
-  await openAppSession(appPage, 'calendar-func-fix');
+  // 1. reminder-func-fix: one-row header on both pages → every box absolute.
+  await openProtoSession(protoPage, 'reminder-func-fix');
+  await openAppSession(appPage, 'reminder-func-fix');
   await expect(appPage.getByTestId('chat-step')).toHaveText(['✓ recon · codebase-memory · ReminderScheduler.cs', '● dotnet build · self-heal 1/3']);
-  const calendarChat = await compareChatArea(protoPage, appPage, 'calendar-func-fix', 'box', failures);
-  const calendar = await compare(protoPage, appPage, 'calendar-func-fix', MESSAGE_PARTS, { chatRelative: false, inChat: true }, failures);
-  const calendarComposer = await compare(protoPage, appPage, 'calendar-func-fix', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
-  const calendarAttach = await checkAttach(protoPage, appPage, 'calendar-func-fix', failures);
+  const calendarChat = await compareChatArea(protoPage, appPage, 'reminder-func-fix', 'box', failures);
+  const calendar = await compare(protoPage, appPage, 'reminder-func-fix', MESSAGE_PARTS, { chatRelative: false, inChat: true }, failures);
+  const calendarComposer = await compare(protoPage, appPage, 'reminder-func-fix', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
+  const calendarAttach = await checkAttach(protoPage, appPage, 'reminder-func-fix', failures);
   if ((await appPage.getByTestId('chat-quick-reply').count()) !== 0) failures.push('D86: the app still shows quick replies');
   const placeholders = await Promise.all(
     [protoPage, appPage].map((page) => page.locator('[placeholder^="Message "]').first().getAttribute('placeholder')),
@@ -352,15 +352,15 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   const appCalendar = await appPage.screenshot({ clip: calendarClip });
   const calendarDiff = await pixelDiff(appPage, protoCalendar, appCalendar);
 
-  // 2. free-talk-feature: the inline card, picks, then the answers bubble (y relative to the chat area).
-  await openProtoSession(protoPage, 'free-talk-feature');
-  await openAppSession(appPage, 'free-talk-feature');
+  // 2. pair-talk-feature: the inline card, picks, then the answers bubble (y relative to the chat area).
+  await openProtoSession(protoPage, 'pair-talk-feature');
+  await openAppSession(appPage, 'pair-talk-feature');
   await expect(appPage.getByTestId('question-card')).toBeVisible();
-  const freeChat = await compareChatArea(protoPage, appPage, 'free-talk-feature', 'bottom', failures);
-  const freeMessages = await compare(protoPage, appPage, 'free-talk-feature', MESSAGE_PARTS, { chatRelative: true, inChat: true }, failures);
-  const freeCard = await compare(protoPage, appPage, 'free-talk-feature', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
-  const freeComposer = await compare(protoPage, appPage, 'free-talk-feature', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
-  const freeAttach = await checkAttach(protoPage, appPage, 'free-talk-feature', failures);
+  const freeChat = await compareChatArea(protoPage, appPage, 'pair-talk-feature', 'bottom', failures);
+  const freeMessages = await compare(protoPage, appPage, 'pair-talk-feature', MESSAGE_PARTS, { chatRelative: true, inChat: true }, failures);
+  const freeCard = await compare(protoPage, appPage, 'pair-talk-feature', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
+  const freeComposer = await compare(protoPage, appPage, 'pair-talk-feature', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
+  const freeAttach = await checkAttach(protoPage, appPage, 'pair-talk-feature', failures);
   const opacities: string[] = [];
   const sendOpacity = async (state: string, want: string) => {
     const [p, a] = [await opacityAt(protoPage, [...CARD, 4, 1]), await opacityAt(appPage, [...CARD, 4, 1])];
@@ -369,7 +369,7 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   };
   await sendOpacity('0 of 3 answered', '0.45');
   const optionRows = { q0Options: [...CARD, 1, 2], q1Options: [...CARD, 2, 2], q2Options: [...CARD, 3, 2] };
-  const otherOpen = await checkOtherPills(protoPage, appPage, 'free-talk-feature', optionRows, failures);
+  const otherOpen = await checkOtherPills(protoPage, appPage, 'pair-talk-feature', optionRows, failures);
   const protoOpen = await protoPage.screenshot({ clip: calendarClip });
   const appOpen = await appPage.screenshot({ clip: calendarClip });
   const openDiff = await pixelDiff(appPage, protoOpen, appOpen);
@@ -377,8 +377,8 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   await pickAll(protoPage, 'proto', 0, 3);
   await pickAll(appPage, 'app', 0, 3);
   await expect(appPage.getByTestId('question-status')).toHaveText('All answered. Each answer is written into the blocked brief word for word.');
-  const picked = await compare(protoPage, appPage, 'free-talk-feature picked', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
-  const otherPicked = await checkOtherPills(protoPage, appPage, 'free-talk-feature picked', optionRows, failures);
+  const picked = await compare(protoPage, appPage, 'pair-talk-feature picked', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
+  const otherPicked = await checkOtherPills(protoPage, appPage, 'pair-talk-feature picked', optionRows, failures);
   await sendOpacity('all answered', '1');
 
   // Send in both: the card becomes the answers bubble + note.
@@ -386,7 +386,7 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   await appPage.getByTestId('question-send').click();
   await expect(appPage.getByTestId('chat-answers-note')).toBeVisible();
   await protoPage.getByText('● Answers written into the briefs. Blocked agents are resuming…', { exact: true }).waitFor();
-  const answered = await compare(protoPage, appPage, 'free-talk-feature answered', ANSWERED_PARTS, { chatRelative: true, inChat: true }, failures);
+  const answered = await compare(protoPage, appPage, 'pair-talk-feature answered', ANSWERED_PARTS, { chatRelative: true, inChat: true }, failures);
   const protoAnswered = await protoPage.screenshot({ clip: calendarClip });
   const appAnswered = await appPage.screenshot({ clip: calendarClip });
   const answeredDiff = await pixelDiff(appPage, protoAnswered, appAnswered);
@@ -447,8 +447,8 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
       otherRows: [
         calendarAttach,
         freeAttach,
-        ...otherOpen.map((check) => `| free-talk-feature | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
-        ...otherPicked.map((check) => `| free-talk-feature picked | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
+        ...otherOpen.map((check) => `| pair-talk-feature | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
+        ...otherPicked.map((check) => `| pair-talk-feature picked | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
       ],
       opacities,
       computedRows,
@@ -477,17 +477,17 @@ function report(input: {
 }): string {
   return `# Visual oracle · Chat tab (M4.2)
 
-Generated by \`tests/e2e/visual/session-chat.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/calendar-func-fix\` and \`/sessions/free-talk-feature\` (Chat tab).
+Generated by \`tests/e2e/visual/session-chat.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/reminder-func-fix\` and \`/sessions/pair-talk-feature\` (Chat tab).
 Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, the same sessions opened from their sidebar rows. Both chat areas scrolled to the top before measuring.
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
 
-Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **${input.diffs.calendar.toFixed(2)}%**, free-talk-feature with the open card **${input.diffs.open.toFixed(2)}%**, after Send **${input.diffs.answered.toFixed(2)}%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
+Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): reminder-func-fix **${input.diffs.calendar.toFixed(2)}%**, pair-talk-feature with the open card **${input.diffs.open.toFixed(2)}%**, after Send **${input.diffs.answered.toFixed(2)}%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's pair-talk-feature header to two rows).
 
 Side by side (prototype left, app right): \`chat-calendar-side-by-side.png\`, \`chat-card-side-by-side.png\`, \`chat-answered-side-by-side.png\`.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry: \`box\` = x, y, width, height; \`bottom\` = x, width and the bottom edge. On free-talk-feature the y of every part inside the chat area is relative to the chat area's top (the prototype's header is taller there, M4.1). Styles compared: ${COMPARED_STYLES.join(', ')}.
+Geometry: \`box\` = x, y, width, height; \`bottom\` = x, width and the bottom edge. On pair-talk-feature the y of every part inside the chat area is relative to the chat area's top (the prototype's header is taller there, M4.1). Styles compared: ${COMPARED_STYLES.join(', ')}.
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|

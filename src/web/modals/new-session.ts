@@ -201,7 +201,7 @@ export interface StartNames {
  * title and the short name is derived from it (`shortNameFromTitle`: `JIRA
  * Ticket handling` → `jira-ticket-handling`, `-2`, `-3`, … when taken; `session`
  * for an empty field). Developer ruling 2026-09-28: text that already is its own
- * short name (`free-talk-640`) is a title too, so every session started from the
+ * short name (`pair-talk-640`) is a title too, so every session started from the
  * form has one; only an empty field has none.
  */
 export function startNames(form: Pick<NewSessionForm, 'name'>, takenNames: readonly string[]): StartNames {

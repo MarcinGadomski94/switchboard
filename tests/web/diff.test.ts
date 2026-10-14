@@ -28,14 +28,14 @@ import {
 } from '../../src/web/views/session/diff.ts';
 
 function file(patch: Partial<FileDiff> & Pick<FileDiff, 'path'>): FileDiff {
-  return { solution: 'acme-app-front', branch: 'session/free-talk', added: 1, removed: 0, lines: ['+x'], uncommitted: true, ...patch };
+  return { solution: 'acme-app-front', branch: 'session/pair-talk', added: 1, removed: 0, lines: ['+x'], uncommitted: true, ...patch };
 }
 
 const FILES: FileDiff[] = [
-  file({ path: 'Pages/FreeTalk/FreeTalk.razor', added: 118, lines: [' @page "/free-talk"', '+<AcmPageHeader Title="Free talk" />', '+'] }),
-  file({ path: 'Pages/FreeTalk/TopicChips.razor', added: 51, removed: 12, lines: [' <div>', '-    <AcmChip Size="Compact">', '+    <AcmChip>'] }),
-  file({ solution: 'mobile', path: 'Views/FreeTalkView.xaml', added: 96, uncommitted: false }),
-  file({ solution: 'root', path: 'contracts/free-talk.md', branch: null, added: 62 }),
+  file({ path: 'Pages/PairTalk/PairTalk.razor', added: 118, lines: [' @page "/pair-talk"', '+<AcmPageHeader Title="Pair talk" />', '+'] }),
+  file({ path: 'Pages/PairTalk/TopicChips.razor', added: 51, removed: 12, lines: [' <div>', '-    <AcmChip Size="Compact">', '+    <AcmChip>'] }),
+  file({ solution: 'mobile', path: 'Views/PairTalkView.xaml', added: 96, uncommitted: false }),
+  file({ solution: 'root', path: 'contracts/pair-talk.md', branch: null, added: 62 }),
 ];
 
 describe('Diff tab model (M4.5)', () => {
@@ -57,7 +57,7 @@ describe('Diff tab model (M4.5)', () => {
     expect(lineTone('-removed')).toBe('del');
     expect(lineTone(' context')).toBe('ctx');
     expect(lineTone('')).toBe('ctx');
-    expect(shortName('Pages/FreeTalk/FreeTalk.razor')).toBe('FreeTalk.razor');
+    expect(shortName('Pages/PairTalk/PairTalk.razor')).toBe('PairTalk.razor');
     expect(shortName('README.md')).toBe('README.md');
   });
 
@@ -65,19 +65,19 @@ describe('Diff tab model (M4.5)', () => {
     const model = diffModel(FILES, null);
     expect(model.empty).toBe(false);
     expect(model.rows.map((r) => [r.short, r.delta, r.sub, r.selected])).toEqual([
-      ['FreeTalk.razor', '+118', 'acme-app-front · Pages/FreeTalk/FreeTalk.razor', true],
-      ['TopicChips.razor', '+51 −12', 'acme-app-front · Pages/FreeTalk/TopicChips.razor', false],
-      ['FreeTalkView.xaml', '+96', 'mobile · Views/FreeTalkView.xaml', false],
-      ['free-talk.md', '+62', 'root · contracts/free-talk.md', false],
+      ['PairTalk.razor', '+118', 'acme-app-front · Pages/PairTalk/PairTalk.razor', true],
+      ['TopicChips.razor', '+51 −12', 'acme-app-front · Pages/PairTalk/TopicChips.razor', false],
+      ['PairTalkView.xaml', '+96', 'mobile · Views/PairTalkView.xaml', false],
+      ['pair-talk.md', '+62', 'root · contracts/pair-talk.md', false],
     ]);
     expect(model.pane).toEqual({
       key: fileKey(FILES[0]!),
-      name: 'acme-app-front / Pages/FreeTalk/FreeTalk.razor',
-      branch: '⎇ session/free-talk',
+      name: 'acme-app-front / Pages/PairTalk/PairTalk.razor',
+      branch: '⎇ session/pair-talk',
       note: true,
       lines: [
-        { text: ' @page "/free-talk"', tone: 'ctx' },
-        { text: '+<AcmPageHeader Title="Free talk" />', tone: 'add' },
+        { text: ' @page "/pair-talk"', tone: 'ctx' },
+        { text: '+<AcmPageHeader Title="Pair talk" />', tone: 'add' },
         { text: '+', tone: 'add' },
       ],
     });
@@ -89,12 +89,12 @@ describe('Diff tab model (M4.5)', () => {
     expect(chips.pane.lines.map((l) => l.tone)).toEqual(['ctx', 'del', 'add']);
 
     const root = diffModel(FILES, fileKey(FILES[3]!));
-    expect(root.pane.name).toBe('root / contracts/free-talk.md');
+    expect(root.pane.name).toBe('root / contracts/pair-talk.md');
     expect(root.pane.branch).toBe('');
     expect(root.pane.note).toBe(true);
 
     const committed = diffModel(FILES, fileKey(FILES[2]!));
-    expect(committed.pane.name).toBe('mobile / Views/FreeTalkView.xaml');
+    expect(committed.pane.name).toBe('mobile / Views/PairTalkView.xaml');
     expect(committed.pane.note).toBe(false);
   });
 

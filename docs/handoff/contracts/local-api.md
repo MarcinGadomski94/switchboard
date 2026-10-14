@@ -30,7 +30,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 
 ### NewSession
 ```json
-{ "name": "free-talk-640", "task": "…", "workType": "feature|qa", "mode": "single|orchestrator",
+{ "name": "pair-talk-640", "task": "…", "workType": "feature|qa", "mode": "single|orchestrator",
   "solutions": ["acme-app-front","mobile"], "phase": "ui-first|integration",
   "coordination": "sequential|parallel-twin|none|null", "qa": { "stack": "web|mobile|both", "confluenceUrl": "", "figmaUrls": [] } ,
   "worktrees": true, "ultracode": false }
@@ -283,7 +283,7 @@ Developer ruling D33 (`docs/decisions.md` → *Ticket branches and closing sessi
 
 ```json
 SessionCloseInput { "confirm"?: true }
-CloseRefusal      { "error": "close-needs-confirm", "message": "free-talk-640 is running: closing it stops its process (the conversation stays resumable). Confirm to stop and close it." }
+CloseRefusal      { "error": "close-needs-confirm", "message": "pair-talk-640 is running: closing it stops its process (the conversation stays resumable). Confirm to stop and close it." }
 Session           { …, "closedAt": "2026-09-28T18:40:00.000Z" | null }
 Question          { …, "closedReason": "session closed" | null }
 HistoryItem       { …, "closedAt"?: "2026-09-28T18:40:00.000Z" | null }
@@ -530,7 +530,7 @@ Developer report D51 (`docs/decisions.md` → *Workflow agents are visible*): a 
 
 ```json
 WorkflowRun { "runId": "wf_5bf13727-e69", "taskId": "wk2etiaas", "name": "proj-3015-gtm", "summary": "GTM + Consent Mode v2 …", "status": "run", "phase": "Review", "phases": ["Implement", "Review"], "agentCount": 14, "doneCount": 9, "failedCount": 0, "startedAt": "2026-09-29T12:12:03.000Z", "endedAt": null }
-Agent { "id": "wf_5bf13727-e69--12", "kind": "workflow", "name": "review:quizzes-front", "description": "Review", "solutionPath": null, "branch": null, "status": "run", "statusText": null, "toolUseId": null,
+Agent { "id": "wf_5bf13727-e69--12", "kind": "workflow", "name": "review:surveys-front", "description": "Review", "solutionPath": null, "branch": null, "status": "run", "statusText": null, "toolUseId": null,
         "workflow": { "runId": "wf_5bf13727-e69", "index": 12, "agentId": "a66193aea95b903b2", "phase": "Review", "model": "claude-opus-5-5", "startedAt": "…", "endedAt": null, "action": { "tool": "Bash", "summary": "dotnet build", "since": "…" }, "cwd": "/…/workspace", "version": 457272 } }
 WorkflowAgentChat { "events": [Event, …], "result": null, "version": 457272 }
 ```
@@ -1291,8 +1291,8 @@ POST /api/cleanup/runs
 → 202
 { "id": "c1f2…", "startedAt": "2026-10-08T18:23:35.000Z", "finishedAt": null,
   "items": [
-    { "id": "wt:5d0c…", "group": "worktrees", "title": "/Users/me/src/web-front-wt-free-talk", "status": "pending", "error": null, "sizeBytes": null },
-    { "id": "rb:91ab…", "group": "remoteBranches", "title": "origin/session/free-talk", "status": "pending", "error": null, "sizeBytes": null }
+    { "id": "wt:5d0c…", "group": "worktrees", "title": "/Users/me/src/web-front-wt-pair-talk", "status": "pending", "error": null, "sizeBytes": null },
+    { "id": "rb:91ab…", "group": "remoteBranches", "title": "origin/session/pair-talk", "status": "pending", "error": null, "sizeBytes": null }
   ],
   "summary": { "done": 0, "failed": 0, "freedBytes": 0 } }
 ```
@@ -1342,9 +1342,9 @@ Developer ruling D88 (`docs/decisions.md`, `docs/chat.md` → *Drafts*): the uns
 
 ```json
 PUT /api/drafts/new-session
-{ "value": { "form": { "task": "Free talk screen at 640", "name": "", "solutions": [], "worktrees": true }, "simpleBranch": null }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
+{ "value": { "form": { "task": "Pair talk screen at 640", "name": "", "solutions": [], "worktrees": true }, "simpleBranch": null }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
 → 200
-{ "field": "new-session", "value": { "form": { "name": "", "task": "Free talk screen at 640", "worktrees": true, "solutions": [] }, "simpleBranch": null },
+{ "field": "new-session", "value": { "form": { "name": "", "task": "Pair talk screen at 640", "worktrees": true, "solutions": [] }, "simpleBranch": null },
   "updatedAt": "2026-10-09T10:12:40.501Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" }
 
 PUT /api/sessions/5b0c…/drafts/composer
@@ -1389,7 +1389,7 @@ Developer request D89 (`docs/decisions.md`, `docs/artifacts.md`): artifacts are 
 POST /agent/v1/artifacts
 { "title": "Release plan", "kind": "markdown", "content": "# Release plan\n\n1. Ship\n", "id": "a1b2c3d4e5" }
 → 201
-{ "artifact": { "id": "a1b2c3d4e5", "sessionId": "free-talk-feature", "title": "Release plan", "kind": "markdown", "language": null,
+{ "artifact": { "id": "a1b2c3d4e5", "sessionId": "pair-talk-feature", "title": "Release plan", "kind": "markdown", "language": null,
     "createdBy": "agent", "versions": 2, "size": 24, "createdAt": "2026-10-09T10:00:00.000Z", "updatedAt": "2026-10-09T10:05:00.000Z" },
   "version": 2, "created": false }
 ```

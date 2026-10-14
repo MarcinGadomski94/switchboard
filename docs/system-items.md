@@ -29,7 +29,7 @@ The Inbox shows them through `systemItem()` (`src/server/inbox/wire.ts`): kind l
 | Field | Value |
 |---|---|
 | `name` | `fix-<schedule name as kebab-case>`, cut to 64 characters (the modal still checks it is unique) |
-| `task` | `<schedule>: <title>.` + ` Fix on <branch>.` when the run's session has a branch chip (prototype: `nightly-build-verify: … Fix on feature/free-talk-360.`) |
+| `task` | `<schedule>: <title>.` + ` Fix on <branch>.` when the run's session has a branch chip (prototype: `nightly-build-verify: … Fix on feature/pair-talk-360.`) |
 | `workType` | `feature` (a fix is feature work) |
 | `solutions` | the schedule template's `solutions` (strings only), else `[]` |
 | `mode`, `phase` | the template's when valid, else `single` / `ui-first` (the router's recommended answers, which the prototype's prefill uses) |

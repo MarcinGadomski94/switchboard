@@ -22,7 +22,7 @@
  * After the first eight shots (Team and Plans off, as a fresh install shows them):
  * - Search (D97) for "contract" over the demo chats and artifacts;
  * - Plans (D99) switched on, with one plan "PROJ-123 Acme checkout" over seven todos of the
- *   `free-talk-feature` session. Demo mode cannot run plan items (its folders are not real),
+ *   `pair-talk-feature` session. Demo mode cannot run plan items (its folders are not real),
  *   so the items' states and history are written into the throwaway `plans.db` while Plans is
  *   switched off, then Plans is switched on again; the running items point at demo sessions
  *   (a question, a working one, an idle one waiting for your merge);
@@ -78,7 +78,7 @@ async function open(page: Page, baseUrl: string, route: string): Promise<void> {
 const SHOTS: readonly Shot[] = [
   {
     name: '01-session',
-    go: (page, base) => open(page, base, '/sessions/free-talk-feature/chat'),
+    go: (page, base) => open(page, base, '/sessions/pair-talk-feature/chat'),
   },
   {
     name: '02-new-session',
@@ -273,12 +273,12 @@ async function startWorld(root: string): Promise<PeerNode> {
       const answer = await main.call('POST', '/api/sidebar/place', { sessionId, ...where });
       if (answer.status !== 200) throw new Error(`place ${sessionId}: HTTP ${answer.status} ${JSON.stringify(answer.body)}`);
     };
-    await place('free-talk-feature', { place: 'pinned' });
-    await place('notifications-integration', { place: 'pinned' });
+    await place('pair-talk-feature', { place: 'pinned' });
+    await place('acme-alerts-integration', { place: 'pinned' });
     const folder = await main.call('POST', '/api/sidebar/folders', { name: 'Maintenance' });
     if (folder.status !== 201) throw new Error(`folder: HTTP ${folder.status}`);
     const folderId = (folder.body.folders as Array<{ id: string; name: string }>).find((f) => f.name === 'Maintenance')?.id;
-    await place('calendar-func-fix', { place: 'folder', folderId });
+    await place('reminder-func-fix', { place: 'folder', folderId });
     await place('prod-monitoring', { place: 'folder', folderId });
     // D58: a subfolder of Maintenance.
     const sub = await main.call('POST', '/api/sidebar/folders', { name: 'Releases', parentId: folderId });
@@ -312,13 +312,13 @@ interface DemoItem {
   readonly spans: ReadonlyArray<{ readonly kind: 'running' | 'waiting-you' | 'waiting-dependency'; readonly from: number; readonly to: number | null }>;
 }
 
-const PLAN_SOURCE = 'free-talk-feature';
+const PLAN_SOURCE = 'pair-talk-feature';
 const PLAN_ITEMS: readonly DemoItem[] = [
   { key: 'PROJ-124', title: 'Checkout API contract (ADR)', minutes: 45, after: [], hold: true, state: 'done', spans: [{ kind: 'running', from: 200, to: 160 }, { kind: 'waiting-you', from: 160, to: 150 }] },
   { key: 'PROJ-125', title: 'Receipt e-mail template', minutes: 30, after: [], hold: false, state: 'done', spans: [{ kind: 'running', from: 200, to: 170 }] },
   { key: 'PROJ-126', title: 'Checkout screen', minutes: 90, after: ['PROJ-124'], hold: true, state: 'running', run: 'prod-monitoring', waitingOn: 'review', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 45 }, { kind: 'waiting-you', from: 45, to: null }] },
   { key: 'PROJ-127', title: 'Payment form', minutes: 60, after: ['PROJ-124'], hold: false, state: 'running', run: 'button-rollout', waitingOn: 'question', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 20 }, { kind: 'waiting-you', from: 20, to: null }] },
-  { key: 'PROJ-128', title: 'Order summary', minutes: 120, after: ['PROJ-124'], hold: false, state: 'running', run: 'calendar-func-fix', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: null }] },
+  { key: 'PROJ-128', title: 'Order summary', minutes: 120, after: ['PROJ-124'], hold: false, state: 'running', run: 'reminder-func-fix', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: null }] },
   { key: 'PROJ-129', title: 'Wire checkout to the API', minutes: 60, after: ['PROJ-126', 'PROJ-127'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
   { key: 'PROJ-130', title: 'Checkout E2E', minutes: 45, after: ['PROJ-129', 'PROJ-128'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
 ];
@@ -400,9 +400,9 @@ async function seedTeam(main: PeerNode): Promise<void> {
   const mobile = await expectStatus(await main.call('POST', '/api/team/teams', { name: 'Acme mobile' }), 'new team');
   const adopt = async (sessionId: string, name: string, templateId: string, teamId?: string) =>
     expectStatus(await main.call('POST', '/api/team/members', { sessionId, name, templateId, ...(teamId ? { teamId } : {}) }), `adopt ${sessionId}`);
-  await adopt('notifications-integration', 'Backend developer', 'developer');
-  await adopt('qa-free-talk', 'QA', 'reviewer');
-  await adopt('calendar-func-fix', 'Developer', 'developer');
+  await adopt('acme-alerts-integration', 'Backend developer', 'developer');
+  await adopt('qa-pair-talk', 'QA', 'reviewer');
+  await adopt('reminder-func-fix', 'Developer', 'developer');
   await adopt('prod-monitoring', 'On-call', 'on-call');
   await adopt('button-rollout', 'Design system', 'developer', mobile.id as string);
 }

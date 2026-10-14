@@ -125,7 +125,7 @@ async function start(s: SupervisorWorld, body: NewSession): Promise<{ session: S
 
 const FEATURE_SINGLE: NewSession = {
   name: 'feature-single',
-  task: 'Build the free talk screen at 640 on web.',
+  task: 'Build the pair talk screen at 640 on web.',
   workType: 'feature',
   mode: 'single',
   solutions: ['web-front'],
@@ -135,12 +135,12 @@ const FEATURE_SINGLE: NewSession = {
   worktrees: true,
   ultracode: false,
   // D32: the developer's ticket branch, which the worktree line names.
-  branch: 'PROJ-0640-free-talk-web',
+  branch: 'PROJ-0640-pair-talk-web',
 };
 
 const ORCHESTRATOR: NewSession = {
   name: 'orchestrator-run',
-  task: '  Wire the free talk screen to the Gateway on web and mobile.\nThe contract is in contracts/free-talk.md.\n',
+  task: '  Wire the pair talk screen to the Gateway on web and mobile.\nThe contract is in contracts/pair-talk.md.\n',
   workType: 'feature',
   mode: 'orchestrator',
   solutions: ['web-front', 'mobile'],
@@ -150,12 +150,12 @@ const ORCHESTRATOR: NewSession = {
   worktrees: true,
   ultracode: true,
   // D32: one ticket branch in every solution's repo.
-  branch: 'PROJ-0641-free-talk-gateway',
+  branch: 'PROJ-0641-pair-talk-gateway',
 };
 
 const QA: NewSession = {
-  name: 'qa-free-talk',
-  task: 'Write E2E tests for free talk at 360 and 640.',
+  name: 'qa-pair-talk',
+  task: 'Write E2E tests for pair talk at 360 and 640.',
   workType: 'qa',
   mode: 'single',
   solutions: ['microfrontends/web-front'],
@@ -163,7 +163,7 @@ const QA: NewSession = {
   coordination: null,
   qa: {
     stack: 'web',
-    confluenceUrl: 'https://example.atlassian.net/wiki/spaces/SL/pages/2231902/Free+talk',
+    confluenceUrl: 'https://example.atlassian.net/wiki/spaces/SL/pages/2231902/Pair+talk',
     figmaUrls: ['https://www.figma.com/design/AbC123/Acme?node-id=2231-902', 'https://www.figma.com/design/AbC123/Acme?node-id=2231-990'],
   },
   worktrees: false,
@@ -194,14 +194,14 @@ describe('first-turn payload (M5.2) through POST /api/sessions + fake-claude', (
     }
     // The worktrees named in the payloads exist on disk, on the ticket branches (D32).
     for (const [repo, name, branch] of [
-      [g.web, 'feature-single', 'PROJ-0640-free-talk-web'],
-      [g.web, 'orchestrator-run', 'PROJ-0641-free-talk-gateway'],
-      [g.mobile, 'orchestrator-run', 'PROJ-0641-free-talk-gateway'],
+      [g.web, 'feature-single', 'PROJ-0640-pair-talk-web'],
+      [g.web, 'orchestrator-run', 'PROJ-0641-pair-talk-gateway'],
+      [g.mobile, 'orchestrator-run', 'PROJ-0641-pair-talk-gateway'],
     ] as const) {
       const folder = path.join(path.dirname(repo), `${path.basename(repo)}-wt-${name}`);
       expect(await g.git(folder, 'symbolic-ref', '--short', 'HEAD')).toBe(branch);
     }
-    expect(await s.store.worktrees.list({ sessionId: (await s.store.sessions.getByName('qa-free-talk'))?.id ?? '' })).toEqual([]);
+    expect(await s.store.worktrees.list({ sessionId: (await s.store.sessions.getByName('qa-pair-talk'))?.id ?? '' })).toEqual([]);
   });
 
   it('an empty task starts the process idle; the answers go out ahead of the first message the developer writes', async () => {
@@ -215,17 +215,17 @@ describe('first-turn payload (M5.2) through POST /api/sessions + fake-claude', (
     const queued = await s.store.pendingMessages.pending(session.id);
     expect(queued.map((m) => m.kind)).toEqual([SESSION_START_KIND]);
     const block = (await golden('feature-single-worktrees', g.workspace))
-      .replace('Build the free talk screen at 640 on web.\n\n', '')
+      .replace('Build the pair talk screen at 640 on web.\n\n', '')
       .replaceAll('feature-single', 'no-task-yet');
     expect(queued[0]?.text).toBe(block);
 
-    expect((await call('POST', `/api/sessions/${session.id}/messages`, { text: 'Build the free talk screen at 640 on web.' })).statusCode).toBe(202);
+    expect((await call('POST', `/api/sessions/${session.id}/messages`, { text: 'Build the pair talk screen at 640 on web.' })).statusCode).toBe(202);
     const lines = await until(async () => {
       const log = await readFakeLog(s.logFile);
       const own = log.filter((line) => line.kind === 'stdin' && line.pid === spawn.pid && !isHandshake(JSON.parse(line.line as string) as Record<string, unknown>)).map((line) => line.line as string);
       return own.length > 0 ? own : undefined;
     }, 'the first message');
-    expect(lines[0]).toBe(userLine(`${block}\n\nBuild the free talk screen at 640 on web.`));
+    expect(lines[0]).toBe(userLine(`${block}\n\nBuild the pair talk screen at 640 on web.`));
     expect(await s.store.pendingMessages.pending(session.id)).toEqual([]);
     await waitForStatus(s.store, session.id, ['done']);
     // Delivered once: the next message goes out alone.

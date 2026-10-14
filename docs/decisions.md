@@ -25,7 +25,7 @@ Rulings made by the developer at kickoff, on top of `docs/handoff/`. **Where thi
 ## Full implementation (added after launch, same night)
 - **D13 Full implementation, not a UI over demo data.** The developer wants the whole product working. **This ruling overrides any item-brief wording that suggests rendering from demo data or leaving wiring for later.**
   - In normal runs every view and action goes through the real services and the real API: real `claude` processes via the SessionSupervisor, real git/gh via the WorktreeManager, real workspace scanning, real transcripts, the real scheduler, real system metrics, and `/hub` events emitted from real state changes.
-  - The demo seed (gap #21) is data only. It loads into the same DB, or feeds alternate implementations of the same provider interfaces, selected only when `SWITCHBOARD_DEMO=1`. Normal code paths never read demo data. Nothing from the prototype's mock data (session names like `free-talk-feature`, fixed counts, badges, timestamps) is hard-coded in `src/` outside `src/server/demo/`.
+  - The demo seed (gap #21) is data only. It loads into the same DB, or feeds alternate implementations of the same provider interfaces, selected only when `SWITCHBOARD_DEMO=1`. Normal code paths never read demo data. Nothing from the prototype's mock data (session names like `pair-talk-feature`, fixed counts, badges, timestamps) is hard-coded in `src/` outside `src/server/demo/`.
   - Every item's oracle includes at least one **non-demo** test that drives the real code path end to end: fake-claude as the CLI binary, temp git repos with a fake `gh`, and a fixture workspace in a temp dir. A screen that passes only with demo data is not green.
   - A lane that needs an endpoint another lane builds in the same wave codes against the contract and leaves a test that fails until the merge. The merge step must wire it for real, with no demo fallback, and make that test pass; otherwise the item goes into brokenItems.
   - **Final verify** adds three checks:
@@ -82,7 +82,7 @@ Rulings made by the developer at kickoff, on top of `docs/handoff/`. **Where thi
   - **Moved sessions (D16)** take the conversation's title as their title (their short name is still derived from it). **Scheduled runs** get the schedule's name as their title.
   - **Developer rulings (2026-09-28)**, on the questions the implementation raised:
     1. *Conflict card: show the title.* `ConflictSession` gains `title` (string | null, additive); the Solutions conflict card and its "Move … to worktree" button name the session by its display title. Worktree paths and branches stay derived from the short name.
-    2. *Kebab-case text: store it as a title too.* Text in the New-session name field that already is a valid short name (e.g. `free-talk-640`) is posted as the title as well, so every session created from the form gets a title, even when it equals the name.
+    2. *Kebab-case text: store it as a title too.* Text in the New-session name field that already is a valid short name (e.g. `pair-talk-640`) is posted as the title as well, so every session created from the form gets a title, even when it equals the name.
     3. *Move with a typed title: accept free text.* With a terminal conversation picked (D16), free text in the name field is accepted: it becomes the moved session's title and its short name is derived from it by the new-session rules (slug, `-2` / `-3` on collisions). With the field empty the move keeps D16 (the conversation's title). The continue route gains an additive `title`.
     4. *Branch owner in Solutions: show the title.* `SolutionBranch` gains `ownerTitle` (the owner session's display title, `null` when the branch has no session; additive). The Solutions detail's branch cards and chips name the owner by it, with the short name in a tooltip. Branch and worktree names are unchanged (supersedes `ASSUMED D22-branch-owner`).
 
@@ -343,7 +343,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     ```
     origin/dev
     └── feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development
-        └── PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains   (PR → epic)
+        └── PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains   (PR → epic)
             └── PROJ-3014-<slug>                                                   (PR → PROJ-3013)
     ```
   - **Rules:**
@@ -359,11 +359,11 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - Branching model: epic/task (lazy), stacked
       - Epic: PROJ-3010 — feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development (base: origin/dev)
       - Task branch: PROJ-3014-<slug>
-      - Parent: PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains (stacked; PR #306/#1080/#1204 open)
+      - Parent: PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains (stacked; PR #306/#1080/#1204 open)
       - Per-repo base / PR target:
         - acme-app-front: origin/PROJ-3013-… → PR into PROJ-3013-…
-        - static-front: origin/PROJ-3013-… → PR into PROJ-3013-…
-        - quizzes-front: origin/dev (epic missing; parent not in repo) → PR into feature/PROJ-3010-… (epic, created lazily)
+        - assets-front: origin/PROJ-3013-… → PR into PROJ-3013-…
+        - surveys-front: origin/dev (epic missing; parent not in repo) → PR into feature/PROJ-3010-… (epic, created lazily)
     ```
     (The developer's text ended at "→ PR into"; they confirmed that was the end, so the completion is ours: when falling back the PR goes into the epic branch, created lazily.) A session whose parent is the epic keeps D40's lines unchanged; a stacked one also gets rule 5 as an instruction.
   - **Developer rulings (2026-09-29, override the spec where they differ):**

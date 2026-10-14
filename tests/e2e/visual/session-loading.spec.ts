@@ -7,7 +7,7 @@ import { type DemoApp, BOX_TOLERANCE_PX, VIEWPORT, hexToRgb, openApp, round, sid
  * loading placeholders are not in the prototype, and the loaded views are
  * unchanged (every other visual spec and the full pass gate them as before).
  *
- * The demo app at 1440×900: `calendar-func-fix` is open, then `free-talk-feature`
+ * The demo app at 1440×900: `reminder-func-fix` is open, then `pair-talk-feature`
  * is opened from the sidebar with its detail and events held back in the browser
  * (`page.route`), so its placeholders show; the same view loaded is the template.
  * Gated here:
@@ -30,8 +30,8 @@ import { type DemoApp, BOX_TOLERANCE_PX, VIEWPORT, hexToRgb, openApp, round, sid
  * left, loaded right).
  */
 
-const FROM = 'calendar-func-fix';
-const TARGET = 'free-talk-feature';
+const FROM = 'reminder-func-fix';
+const TARGET = 'pair-talk-feature';
 
 const BG_CARD = hexToRgb('#17181b');
 const BORDER_ROW = hexToRgb('#1f2024');

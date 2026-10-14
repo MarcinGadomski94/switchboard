@@ -27,7 +27,7 @@ import {
 
 /** D47 (`docs/decisions.md` → *Stacked task branches*): the pure rules. */
 const EPIC = 'feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development';
-const PARENT = 'PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains';
+const PARENT = 'PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains';
 const TASK = 'PROJ-3014-kpi-events';
 const withEpic = { epic: { key: 'PROJ-3010', summary: 'x', branch: EPIC }, base: 'dev', bases: {} };
 
@@ -138,7 +138,7 @@ describe('parentFromTask (pre-fill)', () => {
     expect(parentFromTask('Add the KPI events; create it from PROJ-3013.')).toBe('PROJ-3013');
     expect(parentFromTask('stack on PROJ-3013 please')).toBe('PROJ-3013');
     expect(parentFromTask('Stacked on proj-3013')).toBe('PROJ-3013');
-    expect(parentFromTask('based on PROJ-3013-configure-hubspot')).toBe('PROJ-3013');
+    expect(parentFromTask('based on PROJ-3013-configure-crm')).toBe('PROJ-3013');
     expect(parentFromTask('Build it on top of PROJ-3013')).toBe('PROJ-3013');
     expect(parentFromTask('branch off the branch of PROJ-3013')).toBe('PROJ-3013');
     expect(parentFromTask('cut it from `PROJ-3013`')).toBe('PROJ-3013');
@@ -166,8 +166,8 @@ describe('hand-off lines', () => {
     parent: 'PROJ-3013',
     repos: [
       repo('acme-app-front', { parentMatches: [PARENT], epicOnOrigin: true, defaultBranch: null }, open306),
-      repo('static-front', { parentMatches: [PARENT], epicOnOrigin: false, defaultBranch: null }, open1080),
-      repo('quizzes-front', { parentMatches: [], epicOnOrigin: false, defaultBranch: null }, null),
+      repo('assets-front', { parentMatches: [PARENT], epicOnOrigin: false, defaultBranch: null }, open1080),
+      repo('surveys-front', { parentMatches: [], epicOnOrigin: false, defaultBranch: null }, null),
     ],
   };
   const handoff: HandoffBranching = { task: TASK, epic: { key: 'PROJ-3010', branch: EPIC }, base: 'dev', defaultBases: [], overrides: [], dropped: [], stack };
@@ -180,8 +180,8 @@ describe('hand-off lines', () => {
       `  - Parent: ${PARENT} (stacked; PR #306/#1080 open)`,
       '  - Per-repo base / PR target:',
       `    - acme-app-front: origin/${PARENT} → PR into ${PARENT}`,
-      `    - static-front: origin/${PARENT} → PR into ${PARENT}`,
-      `    - quizzes-front: origin/dev (epic missing; parent not in repo) → PR into ${EPIC} (epic, created lazily)`,
+      `    - assets-front: origin/${PARENT} → PR into ${PARENT}`,
+      `    - surveys-front: origin/dev (epic missing; parent not in repo) → PR into ${EPIC} (epic, created lazily)`,
       "  - Rule: push the task branch with `git push -u origin <same name>` only in a repo at its first code change; in a repo where the parent is not on origin, create and push the epic too (cut from the current `origin/dev` when it is missing on origin); never create a branch in repos that are not changed; open each repo's PR into its PR target above",
       `  - When the parent merges: Switchboard watches the parent's PR in each repo and tells you when it merges; then retarget this task's PR to the parent's own base (\`gh pr edit ${TASK} --base <parent's base>\`) and rebase ${TASK} onto \`origin/<parent's base>\` (\`git rebase --onto origin/<parent's base> <old parent tip> ${TASK}\` when the parent was squash-merged, else a normal rebase), then report; ask the developer before force-pushing a rebased branch`,
     ]);

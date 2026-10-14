@@ -157,13 +157,13 @@ test('CSV as a table, a file copied from the session\'s folder, Full screen and 
   await openWithHub(page, `${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'table-run', 'Hi.');
   await waitDone(page, id);
-  const csv = await agentSaves(id, { title: 'Coverage', kind: 'csv', content: 'Requirement,State\n"FT-1, lobby",covered\nFT-2,open\n' });
+  const csv = await agentSaves(id, { title: 'Coverage', kind: 'csv', content: 'Requirement,State\n"PT-1, lobby",covered\nFT-2,open\n' });
   const file = await agentSaves(id, { title: 'Plan', kind: 'markdown', path: 'plan.md' });
   await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${csv.artifact.id}`);
   const table = page.getByTestId('artifact-table');
   await expect(table.locator('th')).toHaveText(['Requirement', 'State']);
   await expect(table.locator('tbody tr')).toHaveCount(2);
-  await expect(table.locator('tbody tr').first().locator('td')).toHaveText(['FT-1, lobby', 'covered']);
+  await expect(table.locator('tbody tr').first().locator('td')).toHaveText(['PT-1, lobby', 'covered']);
   await page.getByTestId('artifact-fullscreen').click();
   await expect(page.getByTestId('artifact-fullscreen-view').getByTestId('artifact-table')).toBeVisible();
   await page.keyboard.press('Escape');

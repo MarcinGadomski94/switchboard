@@ -53,8 +53,8 @@ describe('sessionStartBlock (M5.2)', () => {
     expect(items(session({ coordination: null })).some((line) => line.startsWith('- Mobile coordination'))).toBe(false);
     expect(items(session({ solutions: ['mobile'], coordination: 'none' })).some((line) => line.startsWith('- Mobile coordination'))).toBe(false);
     expect(items(session({ mode: 'orchestrator' })).some((line) => line.startsWith('- Mobile coordination'))).toBe(false);
-    expect(asksMobileCoordination({ workType: 'feature', mode: 'single', solutions: ['microfrontends/auth-front'] })).toBe(true);
-    expect(asksMobileCoordination({ workType: 'qa', mode: 'single', solutions: ['auth-front'] })).toBe(false);
+    expect(asksMobileCoordination({ workType: 'feature', mode: 'single', solutions: ['microfrontends/login-front'] })).toBe(true);
+    expect(asksMobileCoordination({ workType: 'qa', mode: 'single', solutions: ['login-front'] })).toBe(false);
   });
 
   it('QA: stack and sources, `—` for what was left empty; never mobile coordination', () => {
@@ -109,18 +109,18 @@ describe('sessionStartBlock · D38: solutions chosen by the agent', () => {
   });
 
   it('no solutions + worktrees: the agent creates one per solution it changes, on the ticket branch, at <repo>-wt-<name>', () => {
-    const s = session({ name: 'free-talk', solutions: [], worktrees: true, branch: 'PROJ-12-free-talk', mode: 'orchestrator' });
-    const lines = sessionStartBlock({ session: s, folders: [], worktrees: [], agentBranch: 'PROJ-12-free-talk' }).split('\n').slice(SESSION_START_HEADER.length);
+    const s = session({ name: 'pair-talk', solutions: [], worktrees: true, branch: 'PROJ-12-pair-talk', mode: 'orchestrator' });
+    const lines = sessionStartBlock({ session: s, folders: [], worktrees: [], agentBranch: 'PROJ-12-pair-talk' }).split('\n').slice(SESSION_START_HEADER.length);
     expect(lines).toEqual([
       '- Work type: feature-building',
       '- Mode: workspace orchestrator',
       `- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`,
       '- Phase: UI-first',
       '- Ultracode: off',
-      "- Worktrees: for each solution you change, create a git worktree on branch PROJ-12-free-talk at <the solution repo's parent>/<repo>-wt-free-talk (git worktree add -b PROJ-12-free-talk <path>, from the repo's current HEAD) and make every change there, not in the main checkout",
+      "- Worktrees: for each solution you change, create a git worktree on branch PROJ-12-pair-talk at <the solution repo's parent>/<repo>-wt-pair-talk (git worktree add -b PROJ-12-pair-talk <path>, from the repo's current HEAD) and make every change there, not in the main checkout",
     ]);
     // Without the service's branch, the session's own (the ticket branch).
-    expect(sessionStartBlock({ session: s, folders: [], worktrees: [] })).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-12-free-talk', 'free-talk')}`);
+    expect(sessionStartBlock({ session: s, folders: [], worktrees: [] })).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-12-pair-talk', 'pair-talk')}`);
   });
 
   it('a scheduled run (no ticket branch): the instruction names session/{name}', () => {

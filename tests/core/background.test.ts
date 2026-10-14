@@ -260,12 +260,12 @@ describe('the live activity with background tasks (ActivityTracker.snapshot)', (
  * (`system/task_started`), CLI 2.1.284's wordings (read in its code).
  */
 describe('every background task counts (D43)', () => {
-  const SUMMARY = 'Read-only audit of HubSpot contacts and deals';
+  const SUMMARY = 'Read-only audit of CRM contacts and deals';
   /** The Workflow tool's result text for a background launch (its `mapToolResultToToolResultBlockParam`). */
   const WORKFLOW_LAUNCHED = (id: string, summary: string | null = SUMMARY): string =>
-    `Workflow launched in background. Task ID: ${id}${summary ? `\nSummary: ${summary}` : ''}\nTranscript dir: /tmp/wf/transcripts\nScript file: /tmp/wf/hubspot-audit.js\n(Edit this file with Write/Edit and re-invoke Workflow with {scriptPath: "/tmp/wf/hubspot-audit.js"} to iterate without resending the script.)\n\nYou will be notified when it completes. Use /workflows to watch live progress.`;
-  const LAUNCH_DETAIL = (id: string) => ({ status: 'async_launched', taskId: id, taskType: 'local_workflow', workflowName: 'hubspot-audit', runId: 'wf_0123456789ab', summary: SUMMARY });
-  const SCRIPT = { script: "export const meta = { name: 'hubspot-audit', description: 'Read-only audit of HubSpot contacts and deals', phases: [] }" };
+    `Workflow launched in background. Task ID: ${id}${summary ? `\nSummary: ${summary}` : ''}\nTranscript dir: /tmp/wf/transcripts\nScript file: /tmp/wf/crm-audit.js\n(Edit this file with Write/Edit and re-invoke Workflow with {scriptPath: "/tmp/wf/crm-audit.js"} to iterate without resending the script.)\n\nYou will be notified when it completes. Use /workflows to watch live progress.`;
+  const LAUNCH_DETAIL = (id: string) => ({ status: 'async_launched', taskId: id, taskType: 'local_workflow', workflowName: 'crm-audit', runId: 'wf_0123456789ab', summary: SUMMARY });
+  const SCRIPT = { script: "export const meta = { name: 'crm-audit', description: 'Read-only audit of CRM contacts and deals', phases: [] }" };
   const start = (fields: Partial<TaskStart> & { taskId: string }): TaskStart => ({ toolUseId: null, taskType: null, description: null, backgrounded: null, ...fields });
 
   it('taskKind maps the CLI\'s task types; startedSummary reads the description (a workflow\'s name, else the type, without one)', () => {
@@ -286,7 +286,7 @@ describe('every background task counts (D43)', () => {
     expect(workflowSummary({ text: `Workflow launched in background. Task ID: wbetnz0pi Summary: ${SUMMARY}`, isError: false }, SCRIPT)).toBe(SUMMARY);
     expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false, detail: { summary: 'From the detail' } }, SCRIPT)).toBe('From the detail');
     expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, SCRIPT, 'From task_started')).toBe('From task_started');
-    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, { description: 'Audit HubSpot', script: 'x' })).toBe('Audit HubSpot');
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, { description: 'Audit the CRM', script: 'x' })).toBe('Audit the CRM');
     expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, { name: 'deep-research' })).toBe('deep-research');
     expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, SCRIPT)).toBe('Workflow');
     expect(backgroundSummary('Workflow', { name: 'deep-research', args: 'x' })).toBe('deep-research');
@@ -297,7 +297,7 @@ describe('every background task counts (D43)', () => {
     w.tracker.called('tw', 'Workflow', SCRIPT);
     w.tick(1);
     // The CLI registers the task during the call: its task_started comes before the result and is held for it.
-    expect(w.tracker.started(start({ taskId: 'wbetnz0pi', toolUseId: 'tw', taskType: 'local_workflow', description: SUMMARY, workflowName: 'hubspot-audit' }))).toBe(false);
+    expect(w.tracker.started(start({ taskId: 'wbetnz0pi', toolUseId: 'tw', taskType: 'local_workflow', description: SUMMARY, workflowName: 'crm-audit' }))).toBe(false);
     expect(w.tracker.list()).toEqual([]);
     expect(w.tracker.resulted('tw', { text: WORKFLOW_LAUNCHED('wbetnz0pi'), isError: false, detail: LAUNCH_DETAIL('wbetnz0pi') })).toBe(true);
     expect(w.tracker.list()).toEqual([{ id: 'wbetnz0pi', toolUseId: 'tw', kind: 'workflow', summary: SUMMARY, startedAt: iso(0), github: false }]);

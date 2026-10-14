@@ -65,7 +65,7 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
 function body(overrides: Partial<NewSession> & Record<string, unknown> = {}): Record<string, unknown> {
   return {
     name: 'agent-picks',
-    task: 'Add the free talk screen.',
+    task: 'Add the pair talk screen.',
     workType: 'feature',
     mode: 'single',
     solutions: [],
@@ -203,7 +203,7 @@ describe('D38: solutions fill in from writes', () => {
     expect((await s.store.sessions.get(session.id))?.solutions).toEqual(['mobile']);
     await waitForStatus(s.store, session.id, ['done']);
     const results = async (): Promise<number> => (await s.store.events.list(session.id)).filter((e) => (e.payload as { type?: string }).type === 'result').length;
-    for (const text of ['[fake:write contracts/free-talk.md]', '[fake:write deprecated/microfrontends/old-front/x.md]', '[fake:write microfrontends/web-front/src/a.txt]', '[fake:write mobile/again.md]']) {
+    for (const text of ['[fake:write contracts/pair-talk.md]', '[fake:write deprecated/microfrontends/old-front/x.md]', '[fake:write microfrontends/web-front/src/a.txt]', '[fake:write mobile/again.md]']) {
       const before = await results();
       expect((await call('POST', `/api/sessions/${session.id}/messages`, { text })).statusCode).toBe(202);
       await until(async () => ((await results()) > before ? true : undefined), `the turn of ${text}`);

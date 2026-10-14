@@ -12,7 +12,7 @@ A solution name resolves **in a folder** (D14, `docs/folders.md`): `resolveRepo(
 
 ## Create (gap #1)
 `createForSession(name, solutions, folder, sessionId?, { branch? })`, one worktree per solution of that folder:
-- branch `{branch}` (D32: the developer's ticket branch, the same in every repo), else `session/{name}` (scheduled runs, teleports), from the repo's **current HEAD commit**, folder `../{repo}-wt-{name}` (a sibling of the repo folder: `microfrontends/web-front-wt-free-talk`, `mobile-wt-free-talk`; always the short name, never the branch): `git worktree add -b <branch> <path> <HEAD sha>`, run in the repo;
+- branch `{branch}` (D32: the developer's ticket branch, the same in every repo), else `session/{name}` (scheduled runs, teleports), from the repo's **current HEAD commit**, folder `../{repo}-wt-{name}` (a sibling of the repo folder: `microfrontends/web-front-wt-pair-talk`, `mobile-wt-pair-talk`; always the short name, never the branch): `git worktree add -b <branch> <path> <HEAD sha>`, run in the repo;
 - `base_ref` = the branch HEAD was on (`main`, `dev`, …), or the commit itself when HEAD was detached. The diff and the unpushed check use it;
 - the row stores `repo` = the solution name as given, `repo_path`, `branch`, `base_ref`, the canonical `path`, `session_id`.
 

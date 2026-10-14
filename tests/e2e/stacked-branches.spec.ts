@@ -27,7 +27,7 @@ import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts'
  * nothing, and the first message carries the stacked Branching lines.
  */
 const EPIC = 'feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development';
-const PARENT = 'PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains';
+const PARENT = 'PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains';
 const TASK = 'PROJ-3014-kpi-events';
 const NAME = 'proj-3014-kpi-events';
 

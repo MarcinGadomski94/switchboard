@@ -41,13 +41,13 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 
 describe('derived table rows', () => {
   it('a session with only the main agent: one row, the task\'s first line as its description, no solution yet', () => {
-    const rows = overviewRows([agent({ status: 'done' })], { status: 'done', task: 'Build the free-talk screen.\nMore detail.' });
+    const rows = overviewRows([agent({ status: 'done' })], { status: 'done', task: 'Build the pair-talk screen.\nMore detail.' });
     expect(rows).toEqual([
       {
         id: 'main',
         main: true,
         name: 'acme-app-front',
-        description: 'Build the free-talk screen.',
+        description: 'Build the pair-talk screen.',
         solution: '—',
         solutionPath: null,
         status: 'done',

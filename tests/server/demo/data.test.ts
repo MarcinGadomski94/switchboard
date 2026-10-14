@@ -46,11 +46,11 @@ describe('demo seed data files (gap #21)', () => {
   it('carries every prototype array with its full length', async () => {
     const data = await loadDemoData();
     expect(data.sessions.map((s) => s.name)).toEqual([
-      'free-talk-feature',
-      'notifications-integration',
-      'qa-free-talk',
+      'pair-talk-feature',
+      'acme-alerts-integration',
+      'qa-pair-talk',
       'button-rollout',
-      'calendar-func-fix',
+      'reminder-func-fix',
       'prod-monitoring',
     ]);
     expect(data.sessions.map((s) => s.questions.length)).toEqual([3, 1, 0, 1, 0, 0]);
@@ -61,7 +61,7 @@ describe('demo seed data files (gap #21)', () => {
     expect(data.solutions.groups.map((g) => g.folder)).toEqual(['microfrontends/', 'mobile/', 'nugets/', 'microservices/', 'functions/', 'read-only']);
     expect(data.solutions.groups.flatMap((g) => g.solutions)).toHaveLength(12);
     expect(Object.keys(data.solutions.phaseLedgers)).toEqual(['mobile', 'acme-app-front']);
-    expect(data.solutions.codebaseMemoryDirty.map((d) => d.project)).toEqual(['mobile', 'acme-app-front', 'components-library-nuget']);
+    expect(data.solutions.codebaseMemoryDirty.map((d) => d.project)).toEqual(['mobile', 'acme-app-front', 'design-system-nuget']);
     expect(data.schedules.map((s) => [s.name, s.cron, s.runs.length])).toEqual([
       ['nightly-build-verify', '0 2 * * *', 14],
       ['codebase-memory-reindex', '0 */4 * * *', 14],

@@ -222,7 +222,7 @@ const SURFACES: readonly Surface[] = [
       },
     ],
     openProto: (page) => clickPath(page, [...SESSIONS, 0]),
-    openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/chat'),
+    openApp: (page, base) => appRoute(page, base, '/sessions/pair-talk-feature/chat'),
   },
   {
     id: 'session-timeline',
@@ -236,7 +236,7 @@ const SURFACES: readonly Surface[] = [
     placeholder: 'empty',
     landmarks: ['10:02 – 10:48'],
     openProto: (page) => protoTab(page, /^Timeline$/),
-    openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/timeline'),
+    openApp: (page, base) => appRoute(page, base, '/sessions/pair-talk-feature/timeline'),
   },
   {
     id: 'session-diff',
@@ -250,7 +250,7 @@ const SURFACES: readonly Surface[] = [
     placeholder: 'empty',
     landmarks: ['Not committed. Commit only when you approve.'],
     openProto: (page) => protoTab(page, /^Diff · \d+$/),
-    openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/diff'),
+    openApp: (page, base) => appRoute(page, base, '/sessions/pair-talk-feature/diff'),
   },
   {
     id: 'session-artifacts',
@@ -271,9 +271,9 @@ const SURFACES: readonly Surface[] = [
         note: 'D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent\'s artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md)',
       },
     ],
-    rulings: [{ id: 'D89', appCopy: 'Free talk · implementation plan', note: 'D89: the demo session\'s saved artifacts (the same count per session as the prototype\'s tab)' }],
+    rulings: [{ id: 'D89', appCopy: 'Pair talk · implementation plan', note: 'D89: the demo session\'s saved artifacts (the same count per session as the prototype\'s tab)' }],
     openProto: (page) => protoTab(page, /^Artifacts · \d+$/),
-    openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/artifacts'),
+    openApp: (page, base) => appRoute(page, base, '/sessions/pair-talk-feature/artifacts'),
   },
   {
     id: 'solutions',

@@ -96,15 +96,15 @@ describe('POST /api/sessions · title (D22)', () => {
     await waitForStatus(w.store, titled.id, ['done']);
 
     // Without a title (omitted or null) the name is what is shown and passed.
-    const plain = await create({ name: 'free-talk-640', title: null });
-    expect(plain).toMatchObject({ name: 'free-talk-640', title: null, displayTitle: 'free-talk-640' });
+    const plain = await create({ name: 'pair-talk-640', title: null });
+    expect(plain).toMatchObject({ name: 'pair-talk-640', title: null, displayTitle: 'pair-talk-640' });
     const spawns = await spawnCount(w, 2);
-    expect(nameArg(spawns[1]?.argv)).toBe('free-talk-640');
+    expect(nameArg(spawns[1]?.argv)).toBe('pair-talk-640');
     await waitForStatus(w.store, plain.id, ['done']);
 
     const list = (await call('GET', '/api/sessions')).json() as Session[];
     expect(list.map((s) => [s.name, s.title, s.displayTitle])).toEqual([
-      ['free-talk-640', null, 'free-talk-640'],
+      ['pair-talk-640', null, 'pair-talk-640'],
       ['jira-ticket-handling', 'JIRA Ticket handling', 'JIRA Ticket handling'],
     ]);
     const detail = (await call('GET', `/api/sessions/${titled.id}`)).json() as SessionDetail;

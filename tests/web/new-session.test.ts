@@ -60,7 +60,7 @@ function solution(name: string, relativePath: string, rule: Solution['rule'] = '
 }
 
 const GROUPS: SolutionGroup[] = [
-  { folder: 'microfrontends/', note: '', rule: 'editable', solutions: [solution('auth-front', 'microfrontends/auth-front'), solution('acme-app-front', 'microfrontends/acme-app-front')] },
+  { folder: 'microfrontends/', note: '', rule: 'editable', solutions: [solution('login-front', 'microfrontends/login-front'), solution('acme-app-front', 'microfrontends/acme-app-front')] },
   { folder: 'mobile/', note: '', rule: 'editable', solutions: [solution('mobile', 'mobile')] },
   { folder: 'other/', note: 'on request only', rule: 'on-request', solutions: [solution('it-dashboard', 'other/it-dashboard', 'on-request')] },
   {
@@ -143,12 +143,12 @@ describe('defaults and prefill', () => {
 
 describe('name', () => {
   it('turns whitespace into dashes and lower-cases (prototype onNsName)', () => {
-    expect(sanitizeName('Free Talk  640')).toBe('free-talk-640');
+    expect(sanitizeName('Pair Talk  640')).toBe('pair-talk-640');
   });
 
   it('falls back to "session" while the field is empty (prototype sname)', () => {
     expect(sessionName({ name: '' })).toBe('session');
-    expect(sessionName({ name: 'free-talk-640' })).toBe('free-talk-640');
+    expect(sessionName({ name: 'pair-talk-640' })).toBe('pair-talk-640');
   });
 });
 
@@ -177,7 +177,7 @@ describe('chip groups', () => {
     const rows = chipGroups(GROUPS, ['mobile']);
     expect(rows.map((row) => row.folder)).toEqual(['microfrontends/', 'mobile/', 'other/', 'read-only']);
     expect(rows[0]?.chips).toEqual([
-      { value: 'auth-front', label: 'auth-front', selected: false, locked: false },
+      { value: 'login-front', label: 'login-front', selected: false, locked: false },
       { value: 'acme-app-front', label: 'acme-app-front', selected: false, locked: false },
     ]);
     expect(rows[1]?.chips).toEqual([{ value: 'mobile', label: '✓ mobile', selected: true, locked: false }]);
@@ -213,7 +213,7 @@ describe('chip groups', () => {
 
 describe('summary', () => {
   it('is the prototype nsSummary for an orchestrator feature session with worktrees (D32: plus the branch line)', () => {
-    const lines = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'], branch: 'PROJ-0640-free-talk' }), 'D:\\acme', []);
+    const lines = summaryLines(form({ name: 'pair-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'], branch: 'PROJ-0640-pair-talk' }), 'D:\\acme', []);
     expect(lines).toEqual([
       { text: '# claude code · background · Max', tone: 'comment' },
       { text: 'cwd       D:\\acme', tone: 'value' },
@@ -223,9 +223,9 @@ describe('summary', () => {
       { text: 'ultracode off', tone: 'value' },
       { text: ' ', tone: 'value' },
       { text: '# worktrees', tone: 'comment' },
-      { text: 'branch    PROJ-0640-free-talk', tone: 'value' },
-      { text: '../acme-app-front-wt-free-talk-640', tone: 'path' },
-      { text: '../mobile-wt-free-talk-640', tone: 'path' },
+      { text: 'branch    PROJ-0640-pair-talk', tone: 'value' },
+      { text: '../acme-app-front-wt-pair-talk-640', tone: 'path' },
+      { text: '../mobile-wt-pair-talk-640', tone: 'path' },
       { text: ' ', tone: 'value' },
       { text: '✓ answers pre-filled → agent confirms, no re-ask', tone: 'ok' },
     ]);
@@ -479,11 +479,11 @@ describe('D38 · solutions chosen by the agent', () => {
   const repo = { id: 'f-repo', path: '/r/app', name: 'app', displayName: 'app', kind: 'repo' } as const;
 
   it('Start needs no picked solution in a workspace folder; the other rules stay (QA contract, the D32 branch, the title)', () => {
-    expect(canStart(form({ name: 'Free talk', branch: 'PROJ-1-free-talk' }), [], ws)).toBe(true);
-    expect(canStart(form({ name: 'Free talk', worktrees: false }), [], ws)).toBe(true);
+    expect(canStart(form({ name: 'Pair talk', branch: 'PROJ-1-pair-talk' }), [], ws)).toBe(true);
+    expect(canStart(form({ name: 'Pair talk', worktrees: false }), [], ws)).toBe(true);
     // Worktrees on: the Branch field still shows (the agent may create a worktree) and is still required.
     expect(showsBranch(form())).toBe(true);
-    expect(canStart(form({ name: 'Free talk' }), [], ws)).toBe(false);
+    expect(canStart(form({ name: 'Pair talk' }), [], ws)).toBe(false);
     expect(canStart(form({ workType: 'qa', worktrees: false }), [], ws)).toBe(false);
     expect(canStart(form({ workType: 'qa', worktrees: false, stack: 'web', confluenceUrl: 'https://c/1', figmaUrls: 'https://f/1' }), [], ws)).toBe(true);
     expect(canStart(form({ name: 'T'.repeat(81), worktrees: false }), [], ws)).toBe(false);
@@ -491,7 +491,7 @@ describe('D38 · solutions chosen by the agent', () => {
 
   it('the summary reads `solutions  chosen by the agent` instead of the warning, with and without worktrees', () => {
     expect(SOLUTIONS_BY_AGENT).toBe('solutions  chosen by the agent');
-    expect(summaryLines(form({ name: 'PROJ-12 Free talk' }), null, [], ws)).toEqual([
+    expect(summaryLines(form({ name: 'PROJ-12 Pair talk' }), null, [], ws)).toEqual([
       { text: '# claude code · background · Max', tone: 'comment' },
       { text: 'folder    ws · workspace', tone: 'value' },
       { text: 'cwd       /ws', tone: 'value' },
@@ -501,17 +501,17 @@ describe('D38 · solutions chosen by the agent', () => {
       { text: 'ultracode off', tone: 'value' },
       { text: ' ', tone: 'value' },
       { text: '# worktrees', tone: 'comment' },
-      { text: 'branch    PROJ-12-free-talk', tone: 'value' },
+      { text: 'branch    PROJ-12-pair-talk', tone: 'value' },
       { text: 'solutions  chosen by the agent', tone: 'value' },
       { text: ' ', tone: 'value' },
       { text: '✓ answers pre-filled → agent confirms, no re-ask', tone: 'ok' },
     ]);
-    const inPlace = summaryLines(form({ name: 'free-talk', worktrees: false }), null, [], ws).map((line) => line.text);
+    const inPlace = summaryLines(form({ name: 'pair-talk', worktrees: false }), null, [], ws).map((line) => line.text);
     expect(inPlace.slice(8)).toEqual(['# no worktrees · edits in place', 'solutions  chosen by the agent', ' ', '✓ answers pre-filled → agent confirms, no re-ask']);
     expect(inPlace.some((text) => text.startsWith('⚠'))).toBe(false);
     // Picked solutions keep their worktree folders and no such line.
-    const picked = summaryLines(form({ name: 'free-talk', solutions: ['mobile'], branch: 'PROJ-1-x' }), null, [], ws).map((line) => line.text);
-    expect(picked).toContain('../mobile-wt-free-talk');
+    const picked = summaryLines(form({ name: 'pair-talk', solutions: ['mobile'], branch: 'PROJ-1-x' }), null, [], ws).map((line) => line.text);
+    expect(picked).toContain('../mobile-wt-pair-talk');
     expect(picked).not.toContain(SOLUTIONS_BY_AGENT);
   });
 
@@ -525,7 +525,7 @@ describe('D38 · solutions chosen by the agent', () => {
   });
 
   it('Start posts an empty `solutions` for a workspace (and the branch with worktrees)', () => {
-    expect(toStartBody(form({ name: 'PROJ-12 Free talk', folder: 'f-ws' }), ws, [])).toMatchObject({ name: 'proj-12-free-talk', solutions: [], worktrees: true, branch: 'PROJ-12-free-talk', folder: 'f-ws' });
-    expect(toStartBody(form({ name: 'free-talk', worktrees: false }), ws, [])).toMatchObject({ solutions: [], worktrees: false });
+    expect(toStartBody(form({ name: 'PROJ-12 Pair talk', folder: 'f-ws' }), ws, [])).toMatchObject({ name: 'proj-12-pair-talk', solutions: [], worktrees: true, branch: 'PROJ-12-pair-talk', folder: 'f-ws' });
+    expect(toStartBody(form({ name: 'pair-talk', worktrees: false }), ws, [])).toMatchObject({ solutions: [], worktrees: false });
   });
 });

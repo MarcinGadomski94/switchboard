@@ -113,7 +113,7 @@ describe('Branching section (D40)', () => {
   });
 });
 
-const PARENT = 'PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains';
+const PARENT = 'PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains';
 
 describe('Parent (D47)', () => {
   it('follows the task text until typed; typed (even empty) is never overwritten', () => {

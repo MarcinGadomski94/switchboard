@@ -22,7 +22,7 @@ describe('writtenSolution (D38 fill-in from a write)', () => {
   });
 
   it('nothing for the workspace root, a path outside it, read-only solutions and repo folders', () => {
-    expect(writtenSolution(ws, 'contracts/free-talk.md', 'demo')).toBeNull();
+    expect(writtenSolution(ws, 'contracts/pair-talk.md', 'demo')).toBeNull();
     expect(writtenSolution(ws, 'notes.md', 'demo')).toBeNull();
     expect(writtenSolution(ws, path.join(path.sep, 'elsewhere', 'x.ts'), 'demo')).toBeNull();
     expect(writtenSolution(ws, 'deprecated/microfrontends/old-front/a.ts', 'demo')).toBeNull();
@@ -74,11 +74,11 @@ describe('parseWorktreeList / isSessionWorktree (D38 adoption)', () => {
     '',
     'worktree /ws/microfrontends/web-front-wt-demo',
     'HEAD 2222222222222222222222222222222222222222',
-    'branch refs/heads/PROJ-12-free-talk',
+    'branch refs/heads/PROJ-12-pair-talk',
     '',
     'worktree /tmp/elsewhere',
     'HEAD 3333333333333333333333333333333333333333',
-    'branch refs/heads/PROJ-12-free-talk',
+    'branch refs/heads/PROJ-12-pair-talk',
     'locked because',
     '',
     'worktree /ws/microfrontends/web-front-wt-other',
@@ -96,8 +96,8 @@ describe('parseWorktreeList / isSessionWorktree (D38 adoption)', () => {
     const list = parseWorktreeList(porcelain);
     expect(list.map((w) => [w.path, w.branch, w.prunable])).toEqual([
       ['/ws/microfrontends/web-front', 'main', false],
-      ['/ws/microfrontends/web-front-wt-demo', 'PROJ-12-free-talk', false],
-      ['/tmp/elsewhere', 'PROJ-12-free-talk', false],
+      ['/ws/microfrontends/web-front-wt-demo', 'PROJ-12-pair-talk', false],
+      ['/tmp/elsewhere', 'PROJ-12-pair-talk', false],
       ['/ws/microfrontends/web-front-wt-other', null, false],
       ['/ws/microfrontends/gone-wt-demo', 'feature/x', true],
     ]);
@@ -108,7 +108,7 @@ describe('parseWorktreeList / isSessionWorktree (D38 adoption)', () => {
 
   it('adopts the session branch anywhere, or <repo>-wt-<name> on any branch; never detached, bare or gone', () => {
     const [, named, elsewhere, detached, gone] = parseWorktreeList(porcelain);
-    const match = { sessionName: 'demo', branch: 'PROJ-12-free-talk', repoPath: '/ws/microfrontends/web-front', solution: 'web-front' };
+    const match = { sessionName: 'demo', branch: 'PROJ-12-pair-talk', repoPath: '/ws/microfrontends/web-front', solution: 'web-front' };
     expect(isSessionWorktree(named!, match)).toBe(true);
     expect(isSessionWorktree(elsewhere!, match)).toBe(true);
     expect(isSessionWorktree(detached!, match)).toBe(false);

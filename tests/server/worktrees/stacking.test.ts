@@ -30,7 +30,7 @@ import { type SupervisorWorld, isHandshake, makeSupervisorWorld, readFakeLog, un
 const PORT = 4874; // inject() opens no socket; the port feeds the Host check only
 const HOST = `127.0.0.1:${PORT}`;
 const EPIC = 'feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development';
-const PARENT = 'PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains';
+const PARENT = 'PROJ-3013-configure-crm-opt-in-cookie-banner-across-both-domains';
 const TASK = 'PROJ-3014-kpi-events';
 
 let sw: SupervisorWorld | undefined;

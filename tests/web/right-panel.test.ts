@@ -125,14 +125,14 @@ describe('agent cards', () => {
     expect(agentSummary([agent()])).toBe('1 agents · 0 solutions · 0 branches');
     expect(
       agentSummary([
-        agent({ solutionPath: 'functions/calendar-func', branch: 'fix/timezone-dst' }),
+        agent({ solutionPath: 'functions/reminder-func', branch: 'fix/timezone-dst' }),
       ]),
     ).toBe('1 agents · 1 solutions · 1 branches');
     expect(
       agentSummary([
         agent({ solutionPath: 'workspace root' }),
-        agent({ solutionPath: 'microfrontends/acme-app-front', branch: 'feature/free-talk-360' }),
-        agent({ solutionPath: 'mobile/', branch: 'feature/free-talk-360' }),
+        agent({ solutionPath: 'microfrontends/acme-app-front', branch: 'feature/pair-talk-360' }),
+        agent({ solutionPath: 'mobile/', branch: 'feature/pair-talk-360' }),
         agent({ solutionPath: 'read-only' }),
       ]),
     ).toBe('4 agents · 2 solutions · 1 branches');

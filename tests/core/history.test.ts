@@ -403,7 +403,7 @@ describe('History rows (M7.4, gap #5)', () => {
         [
           { facts: baseFacts({ sessionId: 'in-ws', startCwd: `${ROOT}/mobile`, cwds: [`${ROOT}/mobile`], gitBranch: 'main', startedAt: '2026-09-28T01:00:00.000Z' }), mtimeMs: OLD },
           {
-            facts: baseFacts({ sessionId: 'in-repo', startCwd: `${repoRoot}/src`, cwds: [`${repoRoot}/src`, `${ROOT}/nugets/typography-nuget`], gitBranch: 'dev', startedAt: '2026-09-28T02:00:00.000Z' }),
+            facts: baseFacts({ sessionId: 'in-repo', startCwd: `${repoRoot}/src`, cwds: [`${repoRoot}/src`, `${ROOT}/nugets/acme-fonts-nuget`], gitBranch: 'dev', startedAt: '2026-09-28T02:00:00.000Z' }),
             mtimeMs: OLD,
           },
         ],
@@ -414,7 +414,7 @@ describe('History rows (M7.4, gap #5)', () => {
     const byId = Object.fromEntries(all.map((item) => [item.claudeSessionId, item]));
     expect(byId['claude-1']).toMatchObject({ folder: 'ws-id', folderPath: ROOT });
     expect(byId['in-ws']).toMatchObject({ folder: 'ws-id', folderPath: ROOT, branches: [{ solution: 'mobile', branch: 'main' }] });
-    expect(byId['in-repo']).toMatchObject({ folder: 'repo-id', folderPath: repoRoot, branches: [{ solution: 'switchboard', branch: 'dev' }], solutions: ['typography-nuget'] });
+    expect(byId['in-repo']).toMatchObject({ folder: 'repo-id', folderPath: repoRoot, branches: [{ solution: 'switchboard', branch: 'dev' }], solutions: ['acme-fonts-nuget'] });
   });
 
   it('lists newest first and searches the row, the task, every prompt, the whole last reply and the folders', () => {
@@ -422,7 +422,7 @@ describe('History rows (M7.4, gap #5)', () => {
     const long = `${'word '.repeat(80)}needle-at-the-end`;
     const transcripts: HistoryTranscript[] = [
       { facts: baseFacts({ sessionId: 't1', startedAt: '2026-09-27T01:00:00.000Z', prompts: 'first\nsecond mentions kestrel', lastText: long }), mtimeMs: OLD },
-      { facts: baseFacts({ sessionId: 't2', startedAt: '2026-09-28T01:00:00.000Z', cwds: [ROOT, `${ROOT}/nugets/typography-nuget`] }), mtimeMs: OLD },
+      { facts: baseFacts({ sessionId: 't2', startedAt: '2026-09-28T01:00:00.000Z', cwds: [ROOT, `${ROOT}/nugets/acme-fonts-nuget`] }), mtimeMs: OLD },
     ];
     const all = rows([stored], transcripts);
     expect(all.map((r) => r.item.claudeSessionId)).toEqual(['t2', 't1', 'claude-1']);
@@ -430,7 +430,7 @@ describe('History rows (M7.4, gap #5)', () => {
     expect(filterHistory(all, 'KESTREL').map((i) => i.claudeSessionId)).toEqual(['t1']);
     expect(filterHistory(all, 'needle-at-the-end').map((i) => i.claudeSessionId)).toEqual(['t1']);
     expect(filterHistory(all, 'checkout basket').map((i) => i.claudeSessionId)).toEqual(['claude-1']);
-    expect(filterHistory(all, 'typography').map((i) => i.claudeSessionId)).toEqual(['t2']);
+    expect(filterHistory(all, 'acme-fonts').map((i) => i.claudeSessionId)).toEqual(['t2']);
     expect(filterHistory(all, '  ended ').map((i) => i.claudeSessionId)).toEqual(['t2', 't1']);
     expect(filterHistory(all, 'nothing like this')).toEqual([]);
   });
@@ -439,15 +439,15 @@ describe('History rows (M7.4, gap #5)', () => {
 describe('History helpers', () => {
   it('maps folders to solutions by the router layout', () => {
     expect(solutionOfPath('')).toBeNull();
-    expect(solutionOfPath('microfrontends/auth-front/src')).toBe('auth-front');
-    expect(solutionOfPath('nugets/typography-nuget')).toBe('typography-nuget');
+    expect(solutionOfPath('microfrontends/login-front/src')).toBe('login-front');
+    expect(solutionOfPath('nugets/acme-fonts-nuget')).toBe('acme-fonts-nuget');
     expect(solutionOfPath('microservices')).toBe('microservices');
     expect(solutionOfPath('other/switchboard/.spike')).toBe('switchboard');
     expect(solutionOfPath('mobile/App')).toBe('mobile');
     expect(solutionOfPath('infrastructure')).toBe('infrastructure');
     expect(solutionOfPath('deprecated/microfrontends/old-front/x')).toBe('old-front');
     expect(solutionOfPath('deprecated/mobile/App')).toBe('mobile');
-    expect(solutionOfPath('functions\\calendar-func')).toBe('calendar-func');
+    expect(solutionOfPath('functions\\reminder-func')).toBe('reminder-func');
   });
 
   it('relativeToRoot needs a separator after the root', () => {

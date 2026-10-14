@@ -222,7 +222,7 @@ describe('answers bubble and composer', () => {
   it('draft: trimmed, nothing to send when empty; placeholder from the session name', () => {
     expect(draftToSend('  hello  ')).toBe('hello');
     expect(draftToSend('   ')).toBeNull();
-    expect(composerPlaceholder('free-talk-640')).toBe('Message free-talk-640…');
+    expect(composerPlaceholder('pair-talk-640')).toBe('Message pair-talk-640…');
   });
 
   it('D26: Enter sends, Shift+Enter is a new line, Enter while an IME composes does neither', () => {

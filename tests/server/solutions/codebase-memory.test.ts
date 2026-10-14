@@ -60,8 +60,8 @@ describe('readDirtyList', () => {
     expect(read.state).toBe('ok');
     expect(read.projects?.map((project) => project.id)).toEqual([
       'Users-dev-Acme Corp-workspace-microfrontends-acme-app-front',
-      'Users-dev-Acme Corp-workspace-nugets-auth-nuget-v2',
-      'Users-dev-Other Place-workspace-nugets-auth-nuget',
+      'Users-dev-Acme Corp-workspace-nugets-login-nuget-v2',
+      'Users-dev-Other Place-workspace-nugets-login-nuget',
       'Users-dev-Acme Corp-workspace-deprecated-microfrontends-old-front',
       'Users-dev-Acme Corp-workspace-tools-scripts',
       'Users-dev-Acme Corp-workspace',
@@ -85,7 +85,7 @@ describe('readDirtyList', () => {
     expect(read.projects?.map((project) => project.relativePath)).toEqual(['microfrontends/web-front', 'mobile/src']);
     expect(solutionFreshness(read.projects, read.roots, 'microfrontends/web-front')).toBe('dirty');
     expect(solutionFreshness(read.projects, read.roots, 'mobile')).toBe('dirty');
-    expect(solutionFreshness(read.projects, read.roots, 'nugets/auth-nuget')).toBe('fresh');
+    expect(solutionFreshness(read.projects, read.roots, 'nugets/login-nuget')).toBe('fresh');
   });
 
   it('a workspace configured through a symlink: the hook’s real-path ids still count', async () => {
@@ -93,11 +93,11 @@ describe('readDirtyList', () => {
     const real = await realpath(ws);
     const link = path.join(path.dirname(ws), 'linked workspace');
     await symlink(ws, link, 'dir');
-    await writeDirty(ws, `${codebaseMemoryProjectId(real, 'nugets/auth-nuget')}\n`);
+    await writeDirty(ws, `${codebaseMemoryProjectId(real, 'nugets/login-nuget')}\n`);
     expect(await workspaceRootForms(link)).toEqual([link, real]);
     const read = await readDirtyList(link);
-    expect(read.projects).toEqual([{ id: codebaseMemoryProjectId(real, 'nugets/auth-nuget'), relativePath: 'nugets/auth-nuget' }]);
-    expect(solutionFreshness(read.projects, read.roots, 'nugets/auth-nuget')).toBe('dirty');
+    expect(read.projects).toEqual([{ id: codebaseMemoryProjectId(real, 'nugets/login-nuget'), relativePath: 'nugets/login-nuget' }]);
+    expect(solutionFreshness(read.projects, read.roots, 'nugets/login-nuget')).toBe('dirty');
     // A relative root resolves the way the hook resolves CLAUDE_PROJECT_DIR.
     expect((await workspaceRootForms(path.relative(process.cwd(), link)))[0]).toBe(link);
   });

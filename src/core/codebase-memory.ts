@@ -62,7 +62,7 @@ function normalizeRelative(relativePath: string): string {
  * The codebase-memory project id of a folder, as the hook computes it: the
  * absolute path with `\` turned into `/` and trailing slashes dropped, then every
  * run of `:`, `/` and `\` turned into one `-`, and leading / trailing `-` removed
- * (`D:\…\nugets\auth-nuget` → `D-…-nugets-auth-nuget`,
+ * (`D:\…\nugets\login-nuget` → `D-…-nugets-login-nuget`,
  * `/Users/me/ws/mobile` → `Users-me-ws-mobile`). Spaces and case are kept.
  */
 export function codebaseMemoryProjectId(root: string, relativePath = ''): string {

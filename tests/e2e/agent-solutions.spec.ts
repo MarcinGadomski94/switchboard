@@ -116,7 +116,7 @@ test('no solution picked: the agent is told to choose; a write into acme-app-fro
   await openWithHub(page, `${server.baseUrl}/inbox`);
   const modal = await openModal(page);
   await modal.getByTestId('ns-name').fill('agent-picks');
-  await modal.getByTestId('ns-task').fill('Add the free talk screen.');
+  await modal.getByTestId('ns-task').fill('Add the pair talk screen.');
   await modal.getByTestId('ns-switch-worktrees').click();
   await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · leave empty to let the agent choose · read-only folders locked');
   expect(await summary(modal)).toEqual([
@@ -145,7 +145,7 @@ test('no solution picked: the agent is told to choose; a write into acme-app-fro
   const created = (await listSessions(page)).find((s) => s.name === 'agent-picks');
   expect(created?.solutions).toEqual([]);
   const lines = await firstMessage(page, created?.id ?? '');
-  expect(lines[0]).toBe('Add the free talk screen.');
+  expect(lines[0]).toBe('Add the pair talk screen.');
   expect(lines).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
   expect(lines).toContain('- Worktrees: no worktrees · edits in place');
   expect(lines.some((line) => line.startsWith('- Mobile coordination'))).toBe(false);

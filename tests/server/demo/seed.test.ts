@@ -31,9 +31,9 @@ describe('seedDemo (gap #21)', () => {
 
     const sessions = await store.sessions.list();
     expect(sessions.map((s) => s.name)).toEqual(data.sessions.map((s) => s.name)); // newest activity first
-    const free = await store.sessions.get('free-talk-feature');
+    const free = await store.sessions.get('pair-talk-feature');
     expect(free).toMatchObject({
-      name: 'free-talk-feature',
+      name: 'pair-talk-feature',
       claudeSessionId: '7f3a2c91',
       status: 'need',
       workType: 'feature',
@@ -41,21 +41,21 @@ describe('seedDemo (gap #21)', () => {
       phase: 'ui-first',
       solutions: ['acme-app-front', 'mobile'],
       worktrees: true,
-      task: 'Free talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page.',
+      task: 'Pair talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page.',
       lastActivityAt: minutesAgo(1),
     });
     expect(await store.sessions.get('prod-monitoring')).toMatchObject({ workType: null, mode: null, phase: null, lastActivityAt: minutesAgo(41) });
-    expect(await store.sessions.get('qa-free-talk')).toMatchObject({ workType: 'qa', status: 'run' });
+    expect(await store.sessions.get('qa-pair-talk')).toMatchObject({ workType: 'qa', status: 'run' });
 
-    const agents = await store.agents.listBySession('free-talk-feature');
+    const agents = await store.agents.listBySession('pair-talk-feature');
     expect(agents.map((a) => [a.name, a.kind, a.branch, a.status, a.statusText])).toEqual([
       ['orchestrator', 'main', null, 'need', 'needs you'],
-      ['web', 'subagent', 'feature/free-talk-360', 'need', 'asked 1'],
-      ['mobile', 'subagent', 'feature/free-talk-360', 'need', 'asked 1'],
+      ['web', 'subagent', 'feature/pair-talk-360', 'need', 'asked 1'],
+      ['mobile', 'subagent', 'feature/pair-talk-360', 'need', 'asked 1'],
       ['figma-extractor', 'subagent', null, 'done', 'done'],
     ]);
 
-    const events = await store.events.list('free-talk-feature');
+    const events = await store.events.list('pair-talk-feature');
     const byChannel = (channel: string) => events.filter((e) => (e.payload as { channel: string }).channel === channel);
     // M4.2: the chat as real payloads (user / assistant) + one step event per prototype tool line (✓ = a finished tool).
     const chat = events.filter((e) => ['user', 'assistant', 'tool', 'request'].includes(String((e.payload as { type?: unknown }).type)));
@@ -77,7 +77,7 @@ describe('seedDemo (gap #21)', () => {
     );
     expect(results[0]?.payload).toMatchObject({ source: 'demo', type: 'result', subtype: 'success', isError: false, errors: [], taskNotification: false });
     // The prototype's cursor line `▍` is not stored: the tail adds it while the session runs.
-    const calendar = (await store.events.list('calendar-func-fix')).filter((e) => (e.payload as { type?: unknown }).type === 'result');
+    const calendar = (await store.events.list('reminder-func-fix')).filter((e) => (e.payload as { type?: unknown }).type === 'result');
     expect(calendar.map((e) => e.label)).toEqual(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build']);
     const timeline = byChannel('timeline');
     expect(timeline).toHaveLength(16);
@@ -86,8 +86,8 @@ describe('seedDemo (gap #21)', () => {
     expect(first?.agentId).toBe(agents[0]?.id);
 
     const batches = await store.questions.listBatches({ states: ['open'] });
-    expect(batches.map((b) => b.sessionId).sort()).toEqual(['button-rollout', 'free-talk-feature', 'notifications-integration']);
-    const questions = await store.questions.questionsOf('demo-free-talk-feature');
+    expect(batches.map((b) => b.sessionId).sort()).toEqual(['acme-alerts-integration', 'button-rollout', 'pair-talk-feature']);
+    const questions = await store.questions.questionsOf('demo-pair-talk-feature');
     expect(questions.map((q) => [q.source, q.options.map((o) => o.label)])).toEqual(
       data.sessions[0]?.questions.map((q) => [q.source, q.options]),
     );
@@ -109,7 +109,7 @@ describe('seedDemo (gap #21)', () => {
     expect(sysRun?.payload).toEqual({
       prefill: {
         name: 'fix-xamlc-acmchip',
-        task: 'nightly-build-verify: FreeTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/free-talk-360.',
+        task: 'nightly-build-verify: PairTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/pair-talk-360.',
         solutions: ['mobile'],
         mode: 'single',
         phase: 'ui-first',
@@ -126,10 +126,10 @@ describe('seedDemo (gap #21)', () => {
     expect((await store.schedules.list()).map((s) => s.name)).toEqual(data.schedules.map((s) => s.name));
 
     const merged = await store.worktrees.get(items.find((i) => i.id === 'sys-wt')!.worktreeId!);
-    expect(merged).toMatchObject({ repo: 'acme-app-front', branch: 'feature/speaking-page', prNumber: 231, prState: 'MERGED', removable: true });
+    expect(merged).toMatchObject({ repo: 'acme-app-front', branch: 'feature/profile-page', prNumber: 231, prState: 'MERGED', removable: true });
     const worktrees = await store.worktrees.list();
     expect(worktrees).toHaveLength(10); // 9 from the Solutions rows (in-place branches have none) + the merged one
-    expect(worktrees.find((w) => w.path === '../mobile-wt-free-talk-feature')).toMatchObject({ repo: 'mobile', sessionId: 'free-talk-feature' });
+    expect(worktrees.find((w) => w.path === '../mobile-wt-pair-talk-feature')).toMatchObject({ repo: 'mobile', sessionId: 'pair-talk-feature' });
 
     const loops = await store.loops.list();
     expect(loops.map((l) => [l.sessionId, l.kind, l.iteration, l.cap, l.breakerState])).toEqual(
@@ -142,20 +142,20 @@ describe('seedDemo (gap #21)', () => {
     // D89: the saved artifacts (texts, versions oldest first; the latest version's age).
     const artifacts = await store.artifacts.list();
     expect(artifacts).toHaveLength(13);
-    expect(artifacts.find((a) => a.title === 'Free talk · implementation plan')).toMatchObject({
+    expect(artifacts.find((a) => a.title === 'Pair talk · implementation plan')).toMatchObject({
       kind: 'markdown',
-      sessionId: 'free-talk-feature',
+      sessionId: 'pair-talk-feature',
       createdBy: 'agent',
       versions: 2,
       updatedAt: minutesAgo(1),
     });
-    expect((await store.artifacts.list({ sessionId: 'free-talk-feature' })).map((a) => [a.title, a.kind])).toEqual([
-      ['Free talk · implementation plan', 'markdown'],
-      ['Free talk flow', 'mermaid'],
-      ['Free talk card · mockup', 'html'],
-      ['FreeTalkTimer.cs', 'code'],
+    expect((await store.artifacts.list({ sessionId: 'pair-talk-feature' })).map((a) => [a.title, a.kind])).toEqual([
+      ['Pair talk · implementation plan', 'markdown'],
+      ['Pair talk flow', 'mermaid'],
+      ['Pair talk card · mockup', 'html'],
+      ['PairTalkTimer.cs', 'code'],
     ]);
-    const plan = artifacts.find((a) => a.title === 'Free talk · implementation plan')!;
+    const plan = artifacts.find((a) => a.title === 'Pair talk · implementation plan')!;
     expect((await store.artifacts.version(plan.id, 1))?.createdAt).toBe(minutesAgo(2));
 
     expect((await store.tools.list()).map((t) => [t.id, t.name, t.url, t.position])).toEqual([
@@ -210,7 +210,7 @@ describe('seedDemo (gap #21)', () => {
   it('maps agent folders to solution names', () => {
     expect(solutionOf('microfrontends/acme-app-front')).toBe('acme-app-front');
     expect(solutionOf('mobile/')).toBe('mobile');
-    expect(solutionOf('functions/calendar-func')).toBe('calendar-func');
+    expect(solutionOf('functions/reminder-func')).toBe('reminder-func');
     expect(solutionOf('workspace root')).toBeNull();
     expect(solutionOf('read-only')).toBeNull();
     expect(solutionOf('prod')).toBeNull();

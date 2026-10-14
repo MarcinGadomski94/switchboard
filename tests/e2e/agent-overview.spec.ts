@@ -41,23 +41,23 @@ const BOX = [
   '┌───────────┬──────────────────────────────────────────────────────────────┬────────────────────────────────┬────────────┐',
   '│ Agent     │ Description                                                  │ Solution                       │ Status     │',
   '├───────────┼──────────────────────────────────────────────────────────────┼────────────────────────────────┼────────────┤',
-  '│ 1. web    │ Free talk at 360: layout, tokens and the empty state (Figma) │ microfrontends/acme-app-front/ │ 🟢 running │',
+  '│ 1. web    │ Pair talk at 360: layout, tokens and the empty state (Figma) │ microfrontends/acme-app-front/ │ 🟢 running │',
   '├───────────┼──────────────────────────────────────────────────────────────┼────────────────────────────────┼────────────┤',
-  '│ 2. mobile │ Free talk at 360: the same screen in MAUI                    │ mobile/                        │ 🟢 running │',
+  '│ 2. mobile │ Pair talk at 360: the same screen in MAUI                    │ mobile/                        │ 🟢 running │',
   '└───────────┴──────────────────────────────────────────────────────────────┴────────────────────────────────┴────────────┘',
 ];
 const BOX_NEWER = BOX.map((line) => line.replace('🟢 running', '✅ done   '));
 const PIPE = [
   '| Agent | Description | Status |',
   '|:--|---|--:|',
-  '| **web** | Free talk at [360](https://example.com/360) | done |',
-  '| mobile | Free talk at 360 | ⏳ queued |',
+  '| **web** | Pair talk at [360](https://example.com/360) | done |',
+  '| mobile | Pair talk at 360 | ⏳ queued |',
 ];
 /** D27: a pipe status table whose row has an extra cell, and a description far wider than the panel. */
 const PIPE_MALFORMED = [
   '| Agent | Description | Status |',
   '|---|---|---|',
-  '| web | Free talk at 360, then 640, 768 and 1024, each against its Figma frame, with the empty state and the loading skeleton | done | extra |',
+  '| web | Pair talk at 360, then 640, 768 and 1024, each against its Figma frame, with the empty state and the loading skeleton | done | extra |',
 ];
 /** D27: a status table whose second row has an extra cell (a stray │): it cannot be parsed, so it shows as printed. */
 const BOX_MALFORMED = BOX.map((line, i) => (i === 5 ? line.replace('│ 🟢 running │', '│ 🟢 running │ x │') : line));
@@ -184,11 +184,11 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(reportedRows).toHaveCount(2);
   await expect(reportedRows.nth(0).getByTestId('overview-reported-cell')).toHaveText([
     '1. web',
-    'Free talk at 360: layout, tokens and the empty state (Figma)',
+    'Pair talk at 360: layout, tokens and the empty state (Figma)',
     'microfrontends/acme-app-front/',
     'running',
   ]);
-  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['2. mobile', 'Free talk at 360: the same screen in MAUI', 'mobile/', 'running']);
+  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['2. mobile', 'Pair talk at 360: the same screen in MAUI', 'mobile/', 'running']);
   expect(await reportedRows.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-status')))).toEqual(['run', 'run']);
   const statusCells = table.locator('[data-kind="status"]');
   await expect(statusCells).toHaveCount(2);
@@ -197,7 +197,7 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(statusCells.first().getByTestId('overview-reported-dot')).toHaveCSS('background-color', runColor);
   // Cut with …, the full text as the tooltip; the derived table's classes; nothing wider than the panel.
   const description = reportedRows.nth(0).getByTestId('overview-reported-cell').nth(1);
-  await expect(description).toHaveAttribute('title', 'Free talk at 360: layout, tokens and the empty state (Figma)');
+  await expect(description).toHaveAttribute('title', 'Pair talk at 360: layout, tokens and the empty state (Figma)');
   await expect(description).toHaveCSS('text-overflow', 'ellipsis');
   await expect(table).toHaveClass(/sb-overview-table/);
   await expect(table).toHaveCSS('table-layout', 'fixed');
@@ -254,8 +254,8 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(reported).toHaveAttribute('data-format', 'gfm');
   await expect(table.getByTestId('overview-reported-column')).toHaveText(['Agent', 'Description', 'Status']);
   await expect(reportedRows).toHaveCount(2);
-  await expect(reportedRows.nth(0).getByTestId('overview-reported-cell')).toHaveText(['web', 'Free talk at 360', 'done']);
-  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['mobile', 'Free talk at 360', 'queued']);
+  await expect(reportedRows.nth(0).getByTestId('overview-reported-cell')).toHaveText(['web', 'Pair talk at 360', 'done']);
+  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['mobile', 'Pair talk at 360', 'queued']);
   await expect(statusCells.nth(0)).toHaveCSS('color', doneColor);
   await expect(statusCells.nth(1)).toHaveAttribute('data-status', 'need');
   await expect(statusCells.nth(1)).toHaveCSS('color', needColor);
@@ -264,7 +264,7 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(popover).toHaveAttribute('data-format', 'gfm');
   await expect(popover.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
   await expect(popover.locator('tbody tr')).toHaveCount(2);
-  await expect(popover.locator('tbody tr').first().locator('td')).toHaveText(['web', 'Free talk at 360', 'done']);
+  await expect(popover.locator('tbody tr').first().locator('td')).toHaveText(['web', 'Pair talk at 360', 'done']);
   await expect(popover.locator('tbody tr').first().locator('strong')).toHaveText('web');
   await expect(popover.locator('pre')).toHaveCount(0);
   await popover.getByTestId('overview-printed-close').click();

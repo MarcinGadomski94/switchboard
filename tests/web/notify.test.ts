@@ -44,13 +44,13 @@ function inboxItem(event: QuestionBatchEvent, overrides: Partial<InboxItem> = {}
     id: event.batchId,
     kind: 'questions',
     sessionId: event.sessionId,
-    source: 'qa-free-talk',
+    source: 'qa-pair-talk',
     status: 'need',
     title: event.questions[0]?.text ?? '',
     label: 'Question',
     detail: '',
     createdAt: '2026-09-28T00:00:00.000Z',
-    branches: [{ solution: 'acme-app-front', branch: 'qa/free-talk-e2e' }],
+    branches: [{ solution: 'acme-app-front', branch: 'qa/pair-talk-e2e' }],
     questions: event.questions,
     ...overrides,
   };
@@ -61,13 +61,13 @@ describe('questionNotice (toast + OS notification of a question batch)', () => {
     expect(questionNotice(ONE, inboxItem(ONE), null)).toEqual({
       toast: {
         id: 'req-1',
-        title: 'qa-free-talk',
+        title: 'qa-pair-talk',
         sub: 'question · now',
-        branch: 'acme-app-front ⎇ qa/free-talk-e2e',
+        branch: 'acme-app-front ⎇ qa/pair-talk-e2e',
         text: 'Which environment should I target?',
         sessionId: 's1',
       },
-      os: { title: 'qa-free-talk needs you', body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' },
+      os: { title: 'qa-pair-talk needs you', body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' },
     });
   });
 
@@ -101,7 +101,7 @@ describe('questionNotice (toast + OS notification of a question batch)', () => {
   it('helpers', () => {
     expect(questionSub(1)).toBe('question · now');
     expect(questionSub(3)).toBe('3 questions · now');
-    expect(osTitle('free-talk')).toBe('free-talk needs you');
+    expect(osTitle('pair-talk')).toBe('pair-talk needs you');
   });
 });
 
@@ -248,7 +248,7 @@ function notificationWorld(permission: string, throwOnCreate = false) {
 }
 
 describe('notifyOs (Web Notifications API)', () => {
-  const notice = { title: 'qa-free-talk needs you', body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' };
+  const notice = { title: 'qa-pair-talk needs you', body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' };
 
   it('sends one when granted; a click runs the jump and closes it', () => {
     const world = notificationWorld('granted');
@@ -256,7 +256,7 @@ describe('notifyOs (Web Notifications API)', () => {
     const notification = notifyOs(notice, () => (jumps += 1), world.Ctor);
     expect(notification).not.toBeNull();
     expect(world.sent.map((n) => [n.title, n.options])).toEqual([
-      ['qa-free-talk needs you', { body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' }],
+      ['qa-pair-talk needs you', { body: 'Which environment should I target?', tag: 'switchboard-batch-req-1' }],
     ]);
     world.sent[0]?.onclick?.();
     expect(jumps).toBe(1);

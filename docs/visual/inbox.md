@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.70%**, main area (256,0 1184×900) **0.12%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **2.02%**, main area (256,0 1184×900) **0.12%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
 
 Side by side (prototype left, app right): `inbox-side-by-side.png`, `inbox-main-side-by-side.png`, `inbox-system-side-by-side.png`, `inbox-empty-side-by-side.png`.
 
@@ -26,16 +26,16 @@ Every part also compares these computed styles: color, background-color, font-fa
 | card0 | box | 266,53 319×83.2 | 266,53 319×83.2 | ok |  |
 | card0Head | box | 279,66 293×16 | 279,66 293×16 | ok |  |
 | card0Dot | box | 279,70.5 7×7 | 279,70.5 7×7 | ok |  |
-| card0Source | box | 293,66 94.4×16 | 293,66 94.4×16 | ok | "free-talk-feature" |
+| card0Source | box | 293,66 93.3×16 | 293,66 93.3×16 | ok | "pair-talk-feature" |
 | card0Age | box | 558.8,67 13.2×14 | 558.8,67 13.2×14 | ok | "1m" |
 | card0Title | box | 279,87 293×18.2 | 279,87 293×18.2 | ok | "3 questions from web, mobile, (orchestrator)" |
 | card0Kind | box | 279,110.2 293×13 | 279,110.2 293×13 | ok | "3 questions" |
 | card1 | box | 266,142.2 319×137.8 | 266,142.2 319×137.8 | ok |  |
 | card1Head | box | 279,155.2 293×16 | 279,155.2 293×16 | ok |  |
 | card1Dot | box | 279,159.7 7×7 | 279,159.7 7×7 | ok |  |
-| card1Source | box | 293,155.2 135.3×16 | 293,155.2 135.3×16 | ok | "notifications-integration" |
+| card1Source | box | 293,155.2 133.7×16 | 293,155.2 133.7×16 | ok | "acme-alerts-integration" |
 | card1Age | box | 558.8,156.2 13.2×14 | 558.8,156.2 13.2×14 | ok | "3m" |
-| card1Title | box | 279,176.2 293×72.8 | 279,176.2 293×72.8 | ok | "Tier A is green on web. Tier B boots notifications-microservice → Gateway → workspace-front locally (3 processes, about 6 min). Authorize Tier B now?" |
+| card1Title | box | 279,176.2 293×72.8 | 279,176.2 293×72.8 | ok | "Tier A is green on web. Tier B boots acme-alerts-microservice → Gateway → dashboard-front locally (3 processes, about 6 min). Authorize Tier B now?" |
 | card1Kind | box | 279,253.9 293×13 | 279,253.9 293×13 | ok | "Question" |
 | card2 | box | 266,285.9 319×137.8 | 266,285.9 319×137.8 | ok |  |
 | card2Head | box | 279,298.9 293×16 | 279,298.9 293×16 | ok |  |
@@ -59,17 +59,17 @@ Every part also compares these computed styles: color, background-color, font-fa
 | card4Title | box | 279,552.9 293×18.2 | 279,552.9 293×18.2 | ok | "PR #231 merged, so the worktree can be removed" |
 | card4Kind | box | 279,576.1 293×13 | 279,576.1 293×13 | ok | "PR merged" |
 | detail | box | 596,0 844×900 | 596,0 844×900 | ok |  |
-| meta | box | 636,28 764×29 | 636,28 764×29 | ok | "free-talk-feature·3 questions·1mOpen session →" |
+| meta | box | 636,28 764×29 | 636,28 764×29 | ok | "pair-talk-feature·3 questions·1mOpen session →" |
 | metaDot | box | 636,38.5 8×8 | 636,38.5 8×8 | ok |  |
-| metaSource | box | 654,34 101.3×17 | 654,34 101.3×17 | ok | "free-talk-feature" |
-| metaKind | box | 777.9,34 66.6×17 | 777.9,34 66.6×17 | ok | "3 questions" |
-| metaAge | box | 867,34 15.8×17 | 867,34 15.8×17 | ok | "1m" |
+| metaSource | box | 654,34 100.1×17 | 654,34 100.1×17 | ok | "pair-talk-feature" |
+| metaKind | box | 776.6,34 66.6×17 | 776.6,34 66.6×17 | ok | "3 questions" |
+| metaAge | box | 865.7,34 15.8×17 | 865.7,34 15.8×17 | ok | "1m" |
 | openSession | box | 1286.5,28 113.5×29 | 1286.5,28 113.5×29 | ok | "Open session →" |
 | title | box | 636,73 720×31.2 | 636,73 720×31.2 | ok | "3 questions from web, mobile, (orchestrator)" |
 | branches | box | 636,120.2 764×26 | 636,120.2 764×26 | ok |  |
-| branch0 | box | 636,120.2 301.2×26 | 636,120.2 301.2×26 | ok | "acme-app-front⎇ feature/free-talk-360" |
-| branch0Name | box | 755.8,125.2 170.4×16 | 755.8,125.2 170.4×16 | ok | "⎇ feature/free-talk-360" |
-| branch1 | box | 943.2,120.2 243.6×26 | 943.2,120.2 243.6×26 | ok | "mobile⎇ feature/free-talk-360" |
+| branch0 | box | 636,120.2 301.2×26 | 636,120.2 301.2×26 | ok | "acme-app-front⎇ feature/pair-talk-360" |
+| branch0Name | box | 755.8,125.2 170.4×16 | 755.8,125.2 170.4×16 | ok | "⎇ feature/pair-talk-360" |
+| branch1 | box | 943.2,120.2 243.6×26 | 943.2,120.2 243.6×26 | ok | "mobile⎇ feature/pair-talk-360" |
 | card | box | 636,162.2 764×393.8 | 636,162.2 764×393.8 | ok |  |
 | cardHead | box | 653,177.2 730×14 | 653,177.2 730×14 | ok | "3 questions · relayed verbatim" |
 | q0 | box | 653,203.2 730×90.3 | 653,203.2 730×90.3 | ok |  |
@@ -80,7 +80,7 @@ Every part also compares these computed styles: color, background-color, font-fa
 | q0Option1 | box | 833,262.4 118.2×31 | 833,262.4 118.2×31 | ok | "Horizontal scroll" |
 | q0Option2 | box | 957.3,262.4 100.7×31 | 957.3,262.4 100.7×31 | ok | "Ask designer" |
 | q1 | box | 653,305.4 730×90.3 | 653,305.4 730×90.3 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?”Use default sizeAdd compact variantStop here" + "Other…" (D39, checked on its own) |
-| q2 | box | 653,407.7 730×90.3 | 653,407.7 730×90.3 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" + "Other…" (D39, checked on its own) |
+| q2 | box | 653,407.7 730×90.3 | 653,407.7 730×90.3 | ok | "(orchestrator)“Web mocked PairTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" + "Other…" (D39, checked on its own) |
 | cardFoot | box | 653,509.9 730×31 | 653,509.9 730×31 | ok |  |
 | cardStatus | box | 653,517.4 88.9×16 | 653,517.4 88.9×16 | ok | "0 of 3 answered" |
 | send | box | 1248,509.9 135×31 | 1248,509.9 135×31 | ok | "Send all answers" |
@@ -100,8 +100,8 @@ Every part also compares these computed styles: color, background-color, font-fa
 | metaSource | box | 654,28 114.9×17 | 654,28 114.9×17 | ok | "nightly-build-verify" |
 | title | box | 636,61 720×31.2 | 636,61 720×31.2 | ok | "Android build failed at XamlC" |
 | branches | box | 636,108.2 764×26 | 636,108.2 764×26 | ok |  |
-| branch0 | box | 636,108.2 250.8×26 | 636,108.2 250.8×26 | ok | "mobile/⎇ feature/free-talk-360" |
-| text | box | 636,150.2 720×43.4 | 636,150.2 720×43.4 | ok | "mobile/ · FreeTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to free-talk-feature." |
+| branch0 | box | 636,108.2 250.8×26 | 636,108.2 250.8×26 | ok | "mobile/⎇ feature/pair-talk-360" |
+| text | box | 636,150.2 720×43.4 | 636,150.2 720×43.4 | ok | "mobile/ · PairTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to pair-talk-feature." |
 | actions | box | 636,209.6 764×35 | 636,209.6 764×35 | ok |  |
 | action0 | box | 636,209.6 132.1×35 | 636,209.6 132.1×35 | ok | "Open fix session" |
 | action1 | box | 776.1,209.6 89.2×35 | 776.1,209.6 89.2×35 | ok | "Retry run" |

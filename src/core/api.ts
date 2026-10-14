@@ -1611,7 +1611,7 @@ export interface PhaseLedgerEntry {
   readonly interface: string;
   /** `UI-first` or `integration`. */
   readonly phase: string;
-  /** Where the seam is (`seam TODO · FreeTalkViewModel.cs:41`); empty when the ledger names none. */
+  /** Where the seam is (`seam TODO · PairTalkViewModel.cs:41`); empty when the ledger names none. */
   readonly seam: string;
 }
 
@@ -1619,7 +1619,7 @@ export interface PhaseLedgerEntry {
 export interface SolutionArtifact {
   /** Artifact type tag (`CONTRACT`, `QA`, `FOLLOWUP`, …). */
   readonly type: string;
-  /** Path inside the solution (`contracts/free-talk.md`) or the artifact's name. */
+  /** Path inside the solution (`contracts/pair-talk.md`) or the artifact's name. */
   readonly name: string;
   /** Short state (`locked`, `2 pending`); empty when none. */
   readonly meta: string;

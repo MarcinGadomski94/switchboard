@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.61%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.94%**.
 Known data differences: the header meta (the prototype hard-codes "18 solutions · 7 active" while its own list has 12 rows, 6 of them not idle; the app counts its rows: "12 solutions · 6 active"), and the sidebar (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-side-by-side.png` (view), `solutions-page-side-by-side.png` (page).
@@ -25,11 +25,11 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | detail | box | 1100,0 340×900 | 1100,0 340×900 | ok |  |
 | detailPath | box | 1118,18 304×15 | 1118,18 304×15 | ok | "D:\\acme\\microfrontends\\acme-app-front" |
 | detailName | box | 1118,35 304×23 | 1118,35 304×23 | ok | "acme-app-front" |
-| branchesSection | box | 1118,72 304×248 | 1118,72 304×248 | ok | "Branches & worktrees⎇ feature/free-talk-360../acme-app-front-wt-free- |
+| branchesSection | box | 1118,72 304×248 | 1118,72 304×248 | ok | "Branches & worktrees⎇ feature/pair-talk-360../acme-app-front-wt-pair- |
 | branchesLabel | box | 1118,72 304×14 | 1118,72 304×14 | ok | "Branches & worktrees" |
-| ledgerSection | box | 1118,334 304×116 | 1118,334 304×116 | ok | "Phase ledgerFreeTalkServiceUI-firstmock-DI · fixtures/free-talk.jsonP |
+| ledgerSection | box | 1118,334 304×116 | 1118,334 304×116 | ok | "Phase ledgerPairTalkServiceUI-firstmock-DI · fixtures/pair-talk.jsonP |
 | ledgerLabel | box | 1118,334 304×14 | 1118,334 304×14 | ok | "Phase ledger" |
-| artifactsSection | box | 1118,464 304×60 | 1118,464 304×60 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedQAcoverage- |
+| artifactsSection | box | 1118,464 304×60 | 1118,464 304×60 | ok | "Artifacts & follow-upsCONTRACTcontracts/pair-talk.mdlockedQAcoverage- |
 | artifactsLabel | box | 1118,464 304×14 | 1118,464 304×14 | ok | "Artifacts & follow-ups" |
 | freshness | box | 1118,840 304×42 | 1118,840 304×42 | ok | "codebase-memory · edited by agents since last indexopen Codebase Memo |
 | freshnessDot | box | 1118,858 3.5×6 | 1118,858 3.5×6 | ok |  |
@@ -53,135 +53,135 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | group:functions:note | box | 352,667 0×14 | 352,667 0×14 | ok | "" |
 | group:readOnly | box | 268,721 819×32 | 268,721 819×32 | ok | "read-onlydeprecated/ · infrastructure/ · never edited" |
 | group:readOnly:note | box | 345.4,735 290.4×14 | 345.4,735 290.4×14 | ok | "deprecated/ · infrastructure/ · never edited" |
-| row:acme-app-front | box | 268,122 819×86 | 268,122 819×86 | ok | "acme-app-front⎇ feature/free-talk-360acme-app-front-wt-free-talk-feat |
+| row:acme-app-front | box | 268,122 819×86 | 268,122 819×86 | ok | "acme-app-front⎇ feature/pair-talk-360acme-app-front-wt-pair-talk-feat |
 | row:acme-app-front:dot | box | 278,162.5 7×7 | 278,162.5 7×7 | ok |  |
 | row:acme-app-front:name | box | 293,156.5 96.6×17 | 293,156.5 96.6×17 | ok | "acme-app-front" |
-| row:acme-app-front:chips | box | 480,130 439×70 | 480,130 439×70 | ok | "⎇ feature/free-talk-360acme-app-front-wt-free-talk-featurefree-talk-f |
-| row:acme-app-front:chip0 | box | 480,130 439×20 | 480,130 439×20 | ok | "⎇ feature/free-talk-360acme-app-front-wt-free-talk-featurefree-talk-f |
-| row:acme-app-front:chip0:branch | box | 488,133 156.2×14 | 488,133 156.2×14 | ok | "⎇ feature/free-talk-360" |
-| row:acme-app-front:chip0:who | box | 899.2,133 11.8×14 | 899.2,133 11.8×14 | ok | "free-talk-feature" |
+| row:acme-app-front:chips | box | 480,130 439×70 | 480,130 439×70 | ok | "⎇ feature/pair-talk-360acme-app-front-wt-pair-talk-featurepair-talk-f |
+| row:acme-app-front:chip0 | box | 480,130 439×20 | 480,130 439×20 | ok | "⎇ feature/pair-talk-360acme-app-front-wt-pair-talk-featurepair-talk-f |
+| row:acme-app-front:chip0:branch | box | 488,133 156.2×14 | 488,133 156.2×14 | ok | "⎇ feature/pair-talk-360" |
+| row:acme-app-front:chip0:who | box | 899.2,133 11.8×14 | 899.2,133 11.8×14 | ok | "pair-talk-feature" |
 | row:acme-app-front:phase | box | 931,157.5 80×15 | 931,157.5 80×15 | ok | "mixed" |
 | row:acme-app-front:changes | box | 1023,157.5 54×15 | 1023,157.5 54×15 | ok | "+508" |
-| row:workspace-front | box | 268,208 819×36 | 268,208 819×36 | ok | "workspace-front⎇ feature/notifications-panelworkspace-front-wt-notifi |
-| row:workspace-front:dot | box | 278,223.5 7×7 | 278,223.5 7×7 | ok |  |
-| row:workspace-front:name | box | 293,217.5 101.5×17 | 293,217.5 101.5×17 | ok | "workspace-front" |
-| row:workspace-front:chips | box | 480,216 439×20 | 480,216 439×20 | ok | "⎇ feature/notifications-panelworkspace-front-wt-notifications-integra |
-| row:workspace-front:chip0 | box | 480,216 439×20 | 480,216 439×20 | ok | "⎇ feature/notifications-panelworkspace-front-wt-notifications-integra |
-| row:workspace-front:chip0:branch | box | 488,219 195.8×14 | 488,219 195.8×14 | ok | "⎇ feature/notifications-panel" |
-| row:workspace-front:chip0:who | box | 998.2,219 0×14 | 998.2,219 0×14 | ok | "notifications-integration" |
-| row:workspace-front:phase | box | 931,218.5 80×15 | 931,218.5 80×15 | ok | "integration" |
-| row:workspace-front:changes | box | 1023,218.5 54×15 | 1023,218.5 54×15 | ok | "+131" |
-| row:auth-front | box | 268,244 819×36 | 268,244 819×36 | ok | "auth-front⎇ mainidleintegration—" |
-| row:auth-front:dot | box | 278,259.5 7×7 | 278,259.5 7×7 | ok |  |
-| row:auth-front:name | box | 293,253.5 62.3×17 | 293,253.5 62.3×17 | ok | "auth-front" |
-| row:auth-front:chips | box | 480,252 439×20 | 480,252 439×20 | ok | "⎇ mainidle" |
-| row:auth-front:chip0 | box | 480,252 110.4×20 | 480,252 110.4×20 | ok | "⎇ mainidle" |
-| row:auth-front:chip0:branch | box | 488,255 44×14 | 488,255 44×14 | ok | "⎇ main" |
-| row:auth-front:chip0:who | box | 556,255 26.4×14 | 556,255 26.4×14 | ok | "idle" |
-| row:auth-front:phase | box | 931,254.5 80×15 | 931,254.5 80×15 | ok | "integration" |
-| row:auth-front:changes | box | 1023,254.5 54×15 | 1023,254.5 54×15 | ok | "—" |
-| row:learning-material-front | box | 268,280 819×36 | 268,280 819×36 | ok | "learning-material-front⎇ mainidleUI-first—" |
-| row:learning-material-front:dot | box | 278,295.5 7×7 | 278,295.5 7×7 | ok |  |
-| row:learning-material-front:name | box | 293,289.5 139.3×17 | 293,289.5 139.3×17 | ok | "learning-material-front" |
-| row:learning-material-front:chips | box | 480,288 439×20 | 480,288 439×20 | ok | "⎇ mainidle" |
-| row:learning-material-front:chip0 | box | 480,288 110.4×20 | 480,288 110.4×20 | ok | "⎇ mainidle" |
-| row:learning-material-front:chip0:branch | box | 488,291 44×14 | 488,291 44×14 | ok | "⎇ main" |
-| row:learning-material-front:chip0:who | box | 556,291 26.4×14 | 556,291 26.4×14 | ok | "idle" |
-| row:learning-material-front:phase | box | 931,290.5 80×15 | 931,290.5 80×15 | ok | "UI-first" |
-| row:learning-material-front:changes | box | 1023,290.5 54×15 | 1023,290.5 54×15 | ok | "—" |
-| row:mobile | box | 268,348 819×86 | 268,348 819×86 | ok | "mobile⚠ shared working tree⎇ feature/free-talk-360mobile-wt-free-talk |
+| row:dashboard-front | box | 268,208 819×36 | 268,208 819×36 | ok | "dashboard-front⎇ feature/notifications-paneldashboard-front-wt-acme-a |
+| row:dashboard-front:dot | box | 278,223.5 7×7 | 278,223.5 7×7 | ok |  |
+| row:dashboard-front:name | box | 293,217.5 99.7×17 | 293,217.5 99.7×17 | ok | "dashboard-front" |
+| row:dashboard-front:chips | box | 480,216 439×20 | 480,216 439×20 | ok | "⎇ feature/notifications-paneldashboard-front-wt-acme-alerts-integrati |
+| row:dashboard-front:chip0 | box | 480,216 439×20 | 480,216 439×20 | ok | "⎇ feature/notifications-paneldashboard-front-wt-acme-alerts-integrati |
+| row:dashboard-front:chip0:branch | box | 488,219 195.8×14 | 488,219 195.8×14 | ok | "⎇ feature/notifications-panel" |
+| row:dashboard-front:chip0:who | box | 985,219 0×14 | 985,219 0×14 | ok | "acme-alerts-integration" |
+| row:dashboard-front:phase | box | 931,218.5 80×15 | 931,218.5 80×15 | ok | "integration" |
+| row:dashboard-front:changes | box | 1023,218.5 54×15 | 1023,218.5 54×15 | ok | "+131" |
+| row:login-front | box | 268,244 819×36 | 268,244 819×36 | ok | "login-front⎇ mainidleintegration—" |
+| row:login-front:dot | box | 278,259.5 7×7 | 278,259.5 7×7 | ok |  |
+| row:login-front:name | box | 293,253.5 64.8×17 | 293,253.5 64.8×17 | ok | "login-front" |
+| row:login-front:chips | box | 480,252 439×20 | 480,252 439×20 | ok | "⎇ mainidle" |
+| row:login-front:chip0 | box | 480,252 110.4×20 | 480,252 110.4×20 | ok | "⎇ mainidle" |
+| row:login-front:chip0:branch | box | 488,255 44×14 | 488,255 44×14 | ok | "⎇ main" |
+| row:login-front:chip0:who | box | 556,255 26.4×14 | 556,255 26.4×14 | ok | "idle" |
+| row:login-front:phase | box | 931,254.5 80×15 | 931,254.5 80×15 | ok | "integration" |
+| row:login-front:changes | box | 1023,254.5 54×15 | 1023,254.5 54×15 | ok | "—" |
+| row:content-library-front | box | 268,280 819×36 | 268,280 819×36 | ok | "content-library-front⎇ mainidleUI-first—" |
+| row:content-library-front:dot | box | 278,295.5 7×7 | 278,295.5 7×7 | ok |  |
+| row:content-library-front:name | box | 293,289.5 125.1×17 | 293,289.5 125.1×17 | ok | "content-library-front" |
+| row:content-library-front:chips | box | 480,288 439×20 | 480,288 439×20 | ok | "⎇ mainidle" |
+| row:content-library-front:chip0 | box | 480,288 110.4×20 | 480,288 110.4×20 | ok | "⎇ mainidle" |
+| row:content-library-front:chip0:branch | box | 488,291 44×14 | 488,291 44×14 | ok | "⎇ main" |
+| row:content-library-front:chip0:who | box | 556,291 26.4×14 | 556,291 26.4×14 | ok | "idle" |
+| row:content-library-front:phase | box | 931,290.5 80×15 | 931,290.5 80×15 | ok | "UI-first" |
+| row:content-library-front:changes | box | 1023,290.5 54×15 | 1023,290.5 54×15 | ok | "—" |
+| row:mobile | box | 268,348 819×86 | 268,348 819×86 | ok | "mobile⚠ shared working tree⎇ feature/pair-talk-360mobile-wt-pair-talk |
 | row:mobile:dot | box | 278,381.5 7×7 | 278,381.5 7×7 | ok |  |
 | row:mobile:name | box | 293,375.5 132.3×17 | 293,375.5 132.3×17 | ok | "mobile" |
-| row:mobile:chips | box | 480,356 439×70 | 480,356 439×70 | ok | "⎇ feature/free-talk-360mobile-wt-free-talk-featurefree-talk-feature⎇  |
-| row:mobile:chip0 | box | 480,356 439×20 | 480,356 439×20 | ok | "⎇ feature/free-talk-360mobile-wt-free-talk-featurefree-talk-feature" |
-| row:mobile:chip0:branch | box | 488,359 156.2×14 | 488,359 156.2×14 | ok | "⎇ feature/free-talk-360" |
-| row:mobile:chip0:who | box | 846.4,359 64.6×14 | 846.4,359 64.6×14 | ok | "free-talk-feature" |
+| row:mobile:chips | box | 480,356 439×70 | 480,356 439×70 | ok | "⎇ feature/pair-talk-360mobile-wt-pair-talk-featurepair-talk-feature⎇  |
+| row:mobile:chip0 | box | 480,356 439×20 | 480,356 439×20 | ok | "⎇ feature/pair-talk-360mobile-wt-pair-talk-featurepair-talk-feature" |
+| row:mobile:chip0:branch | box | 488,359 156.2×14 | 488,359 156.2×14 | ok | "⎇ feature/pair-talk-360" |
+| row:mobile:chip0:who | box | 846.4,359 64.6×14 | 846.4,359 64.6×14 | ok | "pair-talk-feature" |
 | row:mobile:phase | box | 931,383.5 80×15 | 931,383.5 80×15 | ok | "mixed" |
 | row:mobile:changes | box | 1023,383.5 54×15 | 1023,383.5 54×15 | ok | "+312" |
-| row:components-library-nuget | box | 268,466 819×36 | 268,466 819×36 | ok | "components-library-nuget⎇ feature/acm-button-sizescomponents-library- |
-| row:components-library-nuget:dot | box | 278,481.5 7×7 | 278,481.5 7×7 | ok |  |
-| row:components-library-nuget:name | box | 293,475.5 159.8×17 | 293,475.5 159.8×17 | ok | "components-library-nuget" |
-| row:components-library-nuget:chips | box | 480,474 439×20 | 480,474 439×20 | ok | "⎇ feature/acm-button-sizescomponents-library-nuget-wt-button-rolloutb |
-| row:components-library-nuget:chip0 | box | 480,474 439×20 | 480,474 439×20 | ok | "⎇ feature/acm-button-sizescomponents-library-nuget-wt-button-rolloutb |
-| row:components-library-nuget:chip0:branch | box | 488,477 176×14 | 488,477 176×14 | ok | "⎇ feature/acm-button-sizes" |
-| row:components-library-nuget:chip0:who | box | 965.2,477 0×14 | 965.2,477 0×14 | ok | "button-rollout" |
-| row:components-library-nuget:phase | box | 931,476.5 80×15 | 931,476.5 80×15 | ok | "—" |
-| row:components-library-nuget:changes | box | 1023,476.5 54×15 | 1023,476.5 54×15 | ok | "+64" |
-| row:typography-nuget | box | 268,502 819×36 | 268,502 819×36 | ok | "typography-nuget⎇ mainidle——" |
-| row:typography-nuget:dot | box | 278,517.5 7×7 | 278,517.5 7×7 | ok |  |
-| row:typography-nuget:name | box | 293,511.5 109.9×17 | 293,511.5 109.9×17 | ok | "typography-nuget" |
-| row:typography-nuget:chips | box | 480,510 439×20 | 480,510 439×20 | ok | "⎇ mainidle" |
-| row:typography-nuget:chip0 | box | 480,510 110.4×20 | 480,510 110.4×20 | ok | "⎇ mainidle" |
-| row:typography-nuget:chip0:branch | box | 488,513 44×14 | 488,513 44×14 | ok | "⎇ main" |
-| row:typography-nuget:chip0:who | box | 556,513 26.4×14 | 556,513 26.4×14 | ok | "idle" |
-| row:typography-nuget:phase | box | 931,512.5 80×15 | 931,512.5 80×15 | ok | "—" |
-| row:typography-nuget:changes | box | 1023,512.5 54×15 | 1023,512.5 54×15 | ok | "—" |
-| row:notifications-microservice | box | 268,570 819×47 | 268,570 819×47 | ok | "notifications-microservicecontract source⎇ feature/push-prefsnotifica |
-| row:notifications-microservice:dot | box | 278,584 7×7 | 278,584 7×7 | ok |  |
-| row:notifications-microservice:name | box | 293,578 158.6×17 | 293,578 158.6×17 | ok | "notifications-microservice" |
-| row:notifications-microservice:chips | box | 480,583.5 439×20 | 480,583.5 439×20 | ok | "⎇ feature/push-prefsnotifications-microservice-wt-notifications-integ |
-| row:notifications-microservice:chip0 | box | 480,583.5 439×20 | 480,583.5 439×20 | ok | "⎇ feature/push-prefsnotifications-microservice-wt-notifications-integ |
-| row:notifications-microservice:chip0:branch | box | 488,586.5 136.4×14 | 488,586.5 136.4×14 | ok | "⎇ feature/push-prefs" |
-| row:notifications-microservice:chip0:who | box | 1011.4,586.5 0×14 | 1011.4,586.5 0×14 | ok | "notifications-integration" |
-| row:notifications-microservice:phase | box | 931,586 80×15 | 931,586 80×15 | ok | "integration" |
-| row:notifications-microservice:changes | box | 1023,586 54×15 | 1023,586 54×15 | ok | "+41" |
-| row:auth-microservice | box | 268,617 819×36 | 268,617 819×36 | ok | "auth-microservice⎇ mainidleintegration—" |
-| row:auth-microservice:dot | box | 278,632.5 7×7 | 278,632.5 7×7 | ok |  |
-| row:auth-microservice:name | box | 293,626.5 110.8×17 | 293,626.5 110.8×17 | ok | "auth-microservice" |
-| row:auth-microservice:chips | box | 480,625 439×20 | 480,625 439×20 | ok | "⎇ mainidle" |
-| row:auth-microservice:chip0 | box | 480,625 110.4×20 | 480,625 110.4×20 | ok | "⎇ mainidle" |
-| row:auth-microservice:chip0:branch | box | 488,628 44×14 | 488,628 44×14 | ok | "⎇ main" |
-| row:auth-microservice:chip0:who | box | 556,628 26.4×14 | 556,628 26.4×14 | ok | "idle" |
-| row:auth-microservice:phase | box | 931,627.5 80×15 | 931,627.5 80×15 | ok | "integration" |
-| row:auth-microservice:changes | box | 1023,627.5 54×15 | 1023,627.5 54×15 | ok | "—" |
-| row:calendar-func | box | 268,685 819×36 | 268,685 819×36 | ok | "calendar-func⎇ fix/timezone-dstcalendar-func-wt-calendar-func-fixcale |
-| row:calendar-func:dot | box | 278,700.5 7×7 | 278,700.5 7×7 | ok |  |
-| row:calendar-func:name | box | 293,694.5 85.9×17 | 293,694.5 85.9×17 | ok | "calendar-func" |
-| row:calendar-func:chips | box | 480,693 439×20 | 480,693 439×20 | ok | "⎇ fix/timezone-dstcalendar-func-wt-calendar-func-fixcalendar-func-fix |
-| row:calendar-func:chip0 | box | 480,693 439×20 | 480,693 439×20 | ok | "⎇ fix/timezone-dstcalendar-func-wt-calendar-func-fixcalendar-func-fix |
-| row:calendar-func:chip0:branch | box | 488,696 123.2×14 | 488,696 123.2×14 | ok | "⎇ fix/timezone-dst" |
-| row:calendar-func:chip0:who | box | 859.6,696 51.4×14 | 859.6,696 51.4×14 | ok | "calendar-func-fix" |
-| row:calendar-func:phase | box | 931,695.5 80×15 | 931,695.5 80×15 | ok | "integration" |
-| row:calendar-func:changes | box | 1023,695.5 54×15 | 1023,695.5 54×15 | ok | "+23" |
-| row:infrastructure | box | 268,753 819×36 | 268,753 819×36 | ok | "infrastructure⎇ mainread by notifications-integration—locked" |
+| row:design-system-nuget | box | 268,466 819×36 | 268,466 819×36 | ok | "design-system-nuget⎇ feature/acm-button-sizesdesign-system-nuget-wt-b |
+| row:design-system-nuget:dot | box | 278,481.5 7×7 | 278,481.5 7×7 | ok |  |
+| row:design-system-nuget:name | box | 293,475.5 130.9×17 | 293,475.5 130.9×17 | ok | "design-system-nuget" |
+| row:design-system-nuget:chips | box | 480,474 439×20 | 480,474 439×20 | ok | "⎇ feature/acm-button-sizesdesign-system-nuget-wt-button-rolloutbutton |
+| row:design-system-nuget:chip0 | box | 480,474 439×20 | 480,474 439×20 | ok | "⎇ feature/acm-button-sizesdesign-system-nuget-wt-button-rolloutbutton |
+| row:design-system-nuget:chip0:branch | box | 488,477 176×14 | 488,477 176×14 | ok | "⎇ feature/acm-button-sizes" |
+| row:design-system-nuget:chip0:who | box | 932.2,477 0×14 | 932.2,477 0×14 | ok | "button-rollout" |
+| row:design-system-nuget:phase | box | 931,476.5 80×15 | 931,476.5 80×15 | ok | "—" |
+| row:design-system-nuget:changes | box | 1023,476.5 54×15 | 1023,476.5 54×15 | ok | "+64" |
+| row:acme-fonts-nuget | box | 268,502 819×36 | 268,502 819×36 | ok | "acme-fonts-nuget⎇ mainidle——" |
+| row:acme-fonts-nuget:dot | box | 278,517.5 7×7 | 278,517.5 7×7 | ok |  |
+| row:acme-fonts-nuget:name | box | 293,511.5 110.8×17 | 293,511.5 110.8×17 | ok | "acme-fonts-nuget" |
+| row:acme-fonts-nuget:chips | box | 480,510 439×20 | 480,510 439×20 | ok | "⎇ mainidle" |
+| row:acme-fonts-nuget:chip0 | box | 480,510 110.4×20 | 480,510 110.4×20 | ok | "⎇ mainidle" |
+| row:acme-fonts-nuget:chip0:branch | box | 488,513 44×14 | 488,513 44×14 | ok | "⎇ main" |
+| row:acme-fonts-nuget:chip0:who | box | 556,513 26.4×14 | 556,513 26.4×14 | ok | "idle" |
+| row:acme-fonts-nuget:phase | box | 931,512.5 80×15 | 931,512.5 80×15 | ok | "—" |
+| row:acme-fonts-nuget:changes | box | 1023,512.5 54×15 | 1023,512.5 54×15 | ok | "—" |
+| row:acme-alerts-microservice | box | 268,570 819×47 | 268,570 819×47 | ok | "acme-alerts-microservicecontract source⎇ feature/push-prefsacme-alert |
+| row:acme-alerts-microservice:dot | box | 278,584 7×7 | 278,584 7×7 | ok |  |
+| row:acme-alerts-microservice:name | box | 293,578 156.9×17 | 293,578 156.9×17 | ok | "acme-alerts-microservice" |
+| row:acme-alerts-microservice:chips | box | 480,583.5 439×20 | 480,583.5 439×20 | ok | "⎇ feature/push-prefsacme-alerts-microservice-wt-acme-alerts-integrati |
+| row:acme-alerts-microservice:chip0 | box | 480,583.5 439×20 | 480,583.5 439×20 | ok | "⎇ feature/push-prefsacme-alerts-microservice-wt-acme-alerts-integrati |
+| row:acme-alerts-microservice:chip0:branch | box | 488,586.5 136.4×14 | 488,586.5 136.4×14 | ok | "⎇ feature/push-prefs" |
+| row:acme-alerts-microservice:chip0:who | box | 985,586.5 0×14 | 985,586.5 0×14 | ok | "acme-alerts-integration" |
+| row:acme-alerts-microservice:phase | box | 931,586 80×15 | 931,586 80×15 | ok | "integration" |
+| row:acme-alerts-microservice:changes | box | 1023,586 54×15 | 1023,586 54×15 | ok | "+41" |
+| row:login-microservice | box | 268,617 819×36 | 268,617 819×36 | ok | "login-microservice⎇ mainidleintegration—" |
+| row:login-microservice:dot | box | 278,632.5 7×7 | 278,632.5 7×7 | ok |  |
+| row:login-microservice:name | box | 293,626.5 113.3×17 | 293,626.5 113.3×17 | ok | "login-microservice" |
+| row:login-microservice:chips | box | 480,625 439×20 | 480,625 439×20 | ok | "⎇ mainidle" |
+| row:login-microservice:chip0 | box | 480,625 110.4×20 | 480,625 110.4×20 | ok | "⎇ mainidle" |
+| row:login-microservice:chip0:branch | box | 488,628 44×14 | 488,628 44×14 | ok | "⎇ main" |
+| row:login-microservice:chip0:who | box | 556,628 26.4×14 | 556,628 26.4×14 | ok | "idle" |
+| row:login-microservice:phase | box | 931,627.5 80×15 | 931,627.5 80×15 | ok | "integration" |
+| row:login-microservice:changes | box | 1023,627.5 54×15 | 1023,627.5 54×15 | ok | "—" |
+| row:reminder-func | box | 268,685 819×36 | 268,685 819×36 | ok | "reminder-func⎇ fix/timezone-dstreminder-func-wt-reminder-func-fixremi |
+| row:reminder-func:dot | box | 278,700.5 7×7 | 278,700.5 7×7 | ok |  |
+| row:reminder-func:name | box | 293,694.5 87.2×17 | 293,694.5 87.2×17 | ok | "reminder-func" |
+| row:reminder-func:chips | box | 480,693 439×20 | 480,693 439×20 | ok | "⎇ fix/timezone-dstreminder-func-wt-reminder-func-fixreminder-func-fix |
+| row:reminder-func:chip0 | box | 480,693 439×20 | 480,693 439×20 | ok | "⎇ fix/timezone-dstreminder-func-wt-reminder-func-fixreminder-func-fix |
+| row:reminder-func:chip0:branch | box | 488,696 123.2×14 | 488,696 123.2×14 | ok | "⎇ fix/timezone-dst" |
+| row:reminder-func:chip0:who | box | 859.6,696 51.4×14 | 859.6,696 51.4×14 | ok | "reminder-func-fix" |
+| row:reminder-func:phase | box | 931,695.5 80×15 | 931,695.5 80×15 | ok | "integration" |
+| row:reminder-func:changes | box | 1023,695.5 54×15 | 1023,695.5 54×15 | ok | "+23" |
+| row:infrastructure | box | 268,753 819×36 | 268,753 819×36 | ok | "infrastructure⎇ mainread by acme-alerts-integration—locked" |
 | row:infrastructure:dot | box | 278,768.5 7×7 | 278,768.5 7×7 | ok |  |
 | row:infrastructure:name | box | 293,762.5 83.9×17 | 293,762.5 83.9×17 | ok | "infrastructure" |
-| row:infrastructure:chips | box | 480,761 439×20 | 480,761 439×20 | ok | "⎇ mainread by notifications-integration" |
-| row:infrastructure:chip0 | box | 480,761 301.8×20 | 480,761 301.8×20 | ok | "⎇ mainread by notifications-integration" |
+| row:infrastructure:chips | box | 480,761 439×20 | 480,761 439×20 | ok | "⎇ mainread by acme-alerts-integration" |
+| row:infrastructure:chip0 | box | 480,761 288.6×20 | 480,761 288.6×20 | ok | "⎇ mainread by acme-alerts-integration" |
 | row:infrastructure:chip0:branch | box | 488,764 44×14 | 488,764 44×14 | ok | "⎇ main" |
-| row:infrastructure:chip0:who | box | 556,764 217.8×14 | 556,764 217.8×14 | ok | "read by notifications-integration" |
+| row:infrastructure:chip0:who | box | 556,764 204.6×14 | 556,764 204.6×14 | ok | "read by acme-alerts-integration" |
 | row:infrastructure:phase | box | 931,763.5 80×15 | 931,763.5 80×15 | ok | "—" |
 | row:infrastructure:changes | box | 1023,763.5 54×15 | 1023,763.5 54×15 | ok | "locked" |
-| row:old-chat-front | box | 268,789 819×36 | 268,789 819×36 | ok | "old-chat-front⎇ mainread by notifications-integration—locked" |
+| row:old-chat-front | box | 268,789 819×36 | 268,789 819×36 | ok | "old-chat-front⎇ mainread by acme-alerts-integration—locked" |
 | row:old-chat-front:dot | box | 278,804.5 7×7 | 278,804.5 7×7 | ok |  |
 | row:old-chat-front:name | box | 293,798.5 85.8×17 | 293,798.5 85.8×17 | ok | "old-chat-front" |
-| row:old-chat-front:chips | box | 480,797 439×20 | 480,797 439×20 | ok | "⎇ mainread by notifications-integration" |
-| row:old-chat-front:chip0 | box | 480,797 301.8×20 | 480,797 301.8×20 | ok | "⎇ mainread by notifications-integration" |
+| row:old-chat-front:chips | box | 480,797 439×20 | 480,797 439×20 | ok | "⎇ mainread by acme-alerts-integration" |
+| row:old-chat-front:chip0 | box | 480,797 288.6×20 | 480,797 288.6×20 | ok | "⎇ mainread by acme-alerts-integration" |
 | row:old-chat-front:chip0:branch | box | 488,800 44×14 | 488,800 44×14 | ok | "⎇ main" |
-| row:old-chat-front:chip0:who | box | 556,800 217.8×14 | 556,800 217.8×14 | ok | "read by notifications-integration" |
+| row:old-chat-front:chip0:who | box | 556,800 204.6×14 | 556,800 204.6×14 | ok | "read by acme-alerts-integration" |
 | row:old-chat-front:phase | box | 931,799.5 80×15 | 931,799.5 80×15 | ok | "—" |
 | row:old-chat-front:changes | box | 1023,799.5 54×15 | 1023,799.5 54×15 | ok | "locked" |
 | row:mobile:flag | box | 293,392.5 132.3×14 | 293,392.5 132.3×14 | ok | "⚠ shared working tree" |
-| row:notifications-microservice:flag | box | 293,595 158.6×14 | 293,595 158.6×14 | ok | "contract source" |
-| card1 | box | 1118,92 304×72 | 1118,92 304×72 | ok | "⎇ feature/free-talk-360../acme-app-front-wt-free-talk-featurefree-tal |
-| card1:branch | box | 1130,102 280×16 | 1130,102 280×16 | ok | "⎇ feature/free-talk-360" |
-| card1:worktree | box | 1130,121 280×14 | 1130,121 280×14 | ok | "../acme-app-front-wt-free-talk-feature" |
-| card1:owner | box | 1130,138 280×16 | 1130,138 280×16 | ok | "free-talk-feature" |
+| row:acme-alerts-microservice:flag | box | 293,595 156.9×14 | 293,595 156.9×14 | ok | "contract source" |
+| card1 | box | 1118,92 304×72 | 1118,92 304×72 | ok | "⎇ feature/pair-talk-360../acme-app-front-wt-pair-talk-featurepair-tal |
+| card1:branch | box | 1130,102 280×16 | 1130,102 280×16 | ok | "⎇ feature/pair-talk-360" |
+| card1:worktree | box | 1130,121 280×14 | 1130,121 280×14 | ok | "../acme-app-front-wt-pair-talk-feature" |
+| card1:owner | box | 1130,138 280×16 | 1130,138 280×16 | ok | "pair-talk-feature" |
 | card2 | box | 1118,170 304×72 | 1118,170 304×72 | ok | "⎇ feature/button-variants../acme-app-front-wt-button-rolloutbutton-ro |
 | card2:branch | box | 1130,180 280×16 | 1130,180 280×16 | ok | "⎇ feature/button-variants" |
 | card2:worktree | box | 1130,199 280×14 | 1130,199 280×14 | ok | "../acme-app-front-wt-button-rollout" |
 | card2:owner | box | 1130,216 280×16 | 1130,216 280×16 | ok | "button-rollout" |
-| card3 | box | 1118,248 304×72 | 1118,248 304×72 | ok | "⎇ qa/free-talk-e2e../acme-app-front-wt-qa-free-talkqa-free-talk" |
-| card3:branch | box | 1130,258 280×16 | 1130,258 280×16 | ok | "⎇ qa/free-talk-e2e" |
-| card3:worktree | box | 1130,277 280×14 | 1130,277 280×14 | ok | "../acme-app-front-wt-qa-free-talk" |
-| card3:owner | box | 1130,294 280×16 | 1130,294 280×16 | ok | "qa-free-talk" |
-| ledger1 | box | 1118,354 304×45 | 1118,354 304×45 | ok | "FreeTalkServiceUI-firstmock-DI · fixtures/free-talk.json" |
-| ledger1:interface | box | 1118,359 240.8×15 | 1118,359 240.8×15 | ok | "FreeTalkService" |
+| card3 | box | 1118,248 304×72 | 1118,248 304×72 | ok | "⎇ qa/pair-talk-e2e../acme-app-front-wt-qa-pair-talkqa-pair-talk" |
+| card3:branch | box | 1130,258 280×16 | 1130,258 280×16 | ok | "⎇ qa/pair-talk-e2e" |
+| card3:worktree | box | 1130,277 280×14 | 1130,277 280×14 | ok | "../acme-app-front-wt-qa-pair-talk" |
+| card3:owner | box | 1130,294 280×16 | 1130,294 280×16 | ok | "qa-pair-talk" |
+| ledger1 | box | 1118,354 304×45 | 1118,354 304×45 | ok | "PairTalkServiceUI-firstmock-DI · fixtures/pair-talk.json" |
+| ledger1:interface | box | 1118,359 240.8×15 | 1118,359 240.8×15 | ok | "PairTalkService" |
 | ledger1:phase | box | 1366.8,359 55.2×15 | 1366.8,359 55.2×15 | ok | "UI-first" |
-| ledger1:seam | box | 1118,378 304×15 | 1118,378 304×15 | ok | "mock-DI · fixtures/free-talk.json" |
-| artifact1 | box | 1118,484 304×17 | 1118,484 304×17 | ok | "CONTRACTcontracts/free-talk.mdlocked" |
+| ledger1:seam | box | 1118,378 304×15 | 1118,378 304×15 | ok | "mock-DI · fixtures/pair-talk.json" |
+| artifact1 | box | 1118,484 304×17 | 1118,484 304×17 | ok | "CONTRACTcontracts/pair-talk.mdlocked" |
 | artifact1:tag | box | 1118,484 60×17 | 1118,484 60×17 | ok | "CONTRACT" |
-| artifact1:name | box | 1186,484 188.4×17 | 1186,484 188.4×17 | ok | "contracts/free-talk.md" |
+| artifact1:name | box | 1186,484 188.4×17 | 1186,484 188.4×17 | ok | "contracts/pair-talk.md" |
 | artifact1:meta | box | 1382.4,485.5 39.6×14 | 1382.4,485.5 39.6×14 | ok | "locked" |
 | ledger2 | box | 1118,405 304×45 | 1118,405 304×45 | ok | "ProfileConnectorintegrationTier B green 09-24" |
 | ledger2:interface | box | 1118,410 220.1×15 | 1118,410 220.1×15 | ok | "ProfileConnector" |
@@ -223,12 +223,12 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 ## Filter pills (rows shown, same on both pages)
 | Pill | Rows | Result |
 |---|---|---|
-| Web | microfrontends/, acme-app-front, workspace-front, auth-front, learning-material-front | ok |
+| Web | microfrontends/, acme-app-front, dashboard-front, login-front, content-library-front | ok |
 | Mobile | mobile/, mobile | ok |
-| NuGet | nugets/, components-library-nuget, typography-nuget | ok |
-| Backend | microservices/, notifications-microservice, auth-microservice, functions/, calendar-func | ok |
+| NuGet | nugets/, design-system-nuget, acme-fonts-nuget | ok |
+| Backend | microservices/, acme-alerts-microservice, login-microservice, functions/, reminder-func | ok |
 | Read-only | read-only, infrastructure, old-chat-front | ok |
-| All | microfrontends/, acme-app-front, workspace-front, auth-front, learning-material-front, mobile/, mobile, nugets/, components-library-nuget, typography-nuget, microservices/, notifications-microservice, auth-microservice, functions/, calendar-func, read-only, infrastructure, old-chat-front | ok |
+| All | microfrontends/, acme-app-front, dashboard-front, login-front, content-library-front, mobile/, mobile, nugets/, design-system-nuget, acme-fonts-nuget, microservices/, acme-alerts-microservice, login-microservice, functions/, reminder-func, read-only, infrastructure, old-chat-front | ok |
 
 ## Findings
 - (none)

@@ -179,9 +179,9 @@ describe('readOnlyCheck (NewSession validation)', () => {
 
   it('a bare name lists the folders it can resolve to inside a folder the router made read-only (read-only when one exists)', () => {
     const tightened = mergeFolderRules([{ folder: 'nugets', rule: 'read-only', depth: 1 }]);
-    expect(readOnlyCheck(tightened, root, 'typography-nuget')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'typography-nuget')] });
+    expect(readOnlyCheck(tightened, root, 'acme-fonts-nuget')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'acme-fonts-nuget')] });
     expect(readOnlyCheck(tightened, root, 'mobile')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'mobile')] });
-    expect(readOnlyCheck(tightened, root, 'nugets/typography-nuget')).toEqual({ always: true, candidates: [] });
+    expect(readOnlyCheck(tightened, root, 'nugets/acme-fonts-nuget')).toEqual({ always: true, candidates: [] });
   });
 
   it('leaves names that are no workspace solution to the other checks', () => {
@@ -212,7 +212,7 @@ describe('toSolutionGroups', () => {
   it('one group per writable folder, other/ on request, every read-only folder in one read-only group', () => {
     const groups = toSolutionGroups(
       scan([
-        folder('microfrontends', ['microfrontends/workspace-front', 'microfrontends/Auth-front', 'microfrontends/acme-app-front']),
+        folder('microfrontends', ['microfrontends/dashboard-front', 'microfrontends/Billing-front', 'microfrontends/acme-app-front']),
         folder('mobile', ['mobile']),
         folder('nugets', []),
         folder('microservices', [], false),
@@ -222,7 +222,7 @@ describe('toSolutionGroups', () => {
       ]),
     );
     expect(groups.map((g) => [g.folder, g.note, g.rule, g.solutions.map((s) => s.name)])).toEqual([
-      ['microfrontends/', '', 'editable', ['acme-app-front', 'Auth-front', 'workspace-front']],
+      ['microfrontends/', '', 'editable', ['acme-app-front', 'Billing-front', 'dashboard-front']],
       ['mobile/', '', 'editable', ['mobile']],
       ['other/', 'on request only', 'on-request', ['it-dashboard']],
       ['read-only', 'deprecated/ · infrastructure/ · never edited', 'read-only', ['infrastructure', 'mobile', 'old-chat-front']],

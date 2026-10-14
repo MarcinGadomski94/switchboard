@@ -42,15 +42,15 @@ const DETAIL = [...VIEW, 1];
 const GROUP_HEADERS: Readonly<Record<string, number>> = { microfrontends: 0, mobile: 5, nugets: 7, microservices: 10, functions: 13, readOnly: 15 };
 const ROWS: Readonly<Record<string, number>> = {
   'acme-app-front': 1,
-  'workspace-front': 2,
-  'auth-front': 3,
-  'learning-material-front': 4,
+  'dashboard-front': 2,
+  'login-front': 3,
+  'content-library-front': 4,
   mobile: 6,
-  'components-library-nuget': 8,
-  'typography-nuget': 9,
-  'notifications-microservice': 11,
-  'auth-microservice': 12,
-  'calendar-func': 14,
+  'design-system-nuget': 8,
+  'acme-fonts-nuget': 9,
+  'acme-alerts-microservice': 11,
+  'login-microservice': 12,
+  'reminder-func': 14,
   infrastructure: 16,
   'old-chat-front': 17,
 };
@@ -97,7 +97,7 @@ function parts(): Record<string, PartSpec> {
     out[`row:${name}:changes`] = { path: [...row, 3], geometry: 'box', copy: true };
   }
   out['row:mobile:flag'] = { path: [...SCROLL, ROWS['mobile'] as number, 0, 1, 1], geometry: 'box', copy: true };
-  out['row:notifications-microservice:flag'] = { path: [...SCROLL, ROWS['notifications-microservice'] as number, 0, 1, 1], geometry: 'box', copy: true };
+  out['row:acme-alerts-microservice:flag'] = { path: [...SCROLL, ROWS['acme-alerts-microservice'] as number, 0, 1, 1], geometry: 'box', copy: true };
   for (let i = 1; i <= 3; i++) {
     out[`card${i}`] = { path: [...DETAIL, 1, i], geometry: 'box', copy: true };
     out[`card${i}:branch`] = { path: [...DETAIL, 1, i, 0], geometry: 'box', copy: true };
@@ -284,8 +284,8 @@ test('Solutions view matches the prototype (tokens, boxes ±2 px, copy)', async 
   }
   const dots = await appPage.evaluate(() => ({
     acme: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-app-front"] .sb-sol-dot')!).backgroundColor,
-    notifications: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="notifications-microservice"] .sb-sol-dot')!).backgroundColor,
-    calendar: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="calendar-func"] .sb-sol-dot')!).backgroundColor,
+    notifications: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-alerts-microservice"] .sb-sol-dot')!).backgroundColor,
+    calendar: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="reminder-func"] .sb-sol-dot')!).backgroundColor,
     mobileFlag: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="mobile"] .sb-sol-flag')!).color,
     ledgerUiFirst: getComputedStyle(document.querySelector('[data-testid="ledger-row"] span:nth-child(2)')!).color,
   }));

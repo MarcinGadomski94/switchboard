@@ -185,7 +185,7 @@ describe('M3.3 · failed scheduled run → Inbox item (inserted into the schedul
   it('the scheduler hook raises at once; startWatching picks up a run inserted later; branches + "Fix on" from the run session', async () => {
     const r = await setup();
     const session = await r.w.store.sessions.create({ name: 'nightly-run-7', claudeSessionId: randomUUID(), solutions: ['mobile'], worktrees: true });
-    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: r.w.mobile, branch: 'feature/free-talk-360', path: `${r.w.mobile}-wt-x`, sessionId: session.id });
+    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: r.w.mobile, branch: 'feature/pair-talk-360', path: `${r.w.mobile}-wt-x`, sessionId: session.id });
     const { schedule, runs } = await scheduleWithRuns(r, 'Nightly Build', ['fail', 'ok', 'fail'], {
       template: { task: 'no session fields' },
       lastSummary: null,
@@ -195,11 +195,11 @@ describe('M3.3 · failed scheduled run → Inbox item (inserted into the schedul
     // The M7.1 hook: only the given run.
     const hooked = await r.service.scheduleRunFinished(runs[2]!.id);
     expect(hooked).toMatchObject({ source: 'Nightly Build', title: 'Nightly Build failed', detail: 'The previous run was green.', sessionId: session.id });
-    expect(hooked?.branches).toEqual([{ solution: 'mobile', branch: 'feature/free-talk-360' }]);
+    expect(hooked?.branches).toEqual([{ solution: 'mobile', branch: 'feature/pair-talk-360' }]);
     expect(hooked?.payload).toEqual({
       prefill: {
         name: 'fix-nightly-build',
-        task: 'Nightly Build: Nightly Build failed. Fix on feature/free-talk-360.',
+        task: 'Nightly Build: Nightly Build failed. Fix on feature/pair-talk-360.',
         workType: 'feature',
         mode: 'single',
         solutions: [],
@@ -271,10 +271,10 @@ describe('M3.3 · failed scheduled run → Inbox item (inserted into the schedul
 describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
   it('worktreeRemovable raises one item; Remove worktree is refused while uncommitted, then removes the folder and keeps the branch', async () => {
     const r = await setup();
-    const session = await r.w.store.sessions.create({ name: 'speaking-page', claudeSessionId: randomUUID(), solutions: ['web-front'], worktrees: true });
-    const [record] = await r.m.createForSession('speaking-page', ['web-front'], r.w.folder, session.id);
+    const session = await r.w.store.sessions.create({ name: 'profile-page', claudeSessionId: randomUUID(), solutions: ['web-front'], worktrees: true });
+    const [record] = await r.m.createForSession('profile-page', ['web-front'], r.w.folder, session.id);
     if (!record) throw new Error('no worktree');
-    await r.w.setPullRequests({ 'session/speaking-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } });
+    await r.w.setPullRequests({ 'session/profile-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } });
 
     await r.m.checkPullRequests();
     const [item] = await until(async () => {
@@ -289,9 +289,9 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
       status: 'done',
       title: 'PR #231 merged, so the worktree can be removed',
       label: 'PR merged',
-      detail: `${path.join('..', 'web-front-wt-speaking-page')} · branch session/speaking-page was merged on GitHub (checked through gh). No uncommitted changes.`,
+      detail: `${path.join('..', 'web-front-wt-profile-page')} · branch session/profile-page was merged on GitHub (checked through gh). No uncommitted changes.`,
       createdAt: (await r.w.store.worktrees.get(record.id))!.prCheckedAt,
-      branches: [{ solution: 'web-front', branch: 'session/speaking-page' }],
+      branches: [{ solution: 'web-front', branch: 'session/profile-page' }],
       actions: [
         { id: 'remove-worktree', label: 'Remove worktree' },
         { id: 'keep', label: 'Keep' },
@@ -316,7 +316,7 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
     await rm(path.join(record.path, 'leftover.txt'));
     expect((await call(r, 'POST', `/api/inbox/${item!.id}/actions/remove-worktree`)).statusCode).toBe(204);
     expect(await exists(record.path)).toBe(false);
-    expect(await r.w.git(r.w.web, 'branch', '--list', 'session/speaking-page')).not.toBe('');
+    expect(await r.w.git(r.w.web, 'branch', '--list', 'session/profile-page')).not.toBe('');
     expect((await r.w.store.worktrees.get(record.id))?.removedAt).not.toBeNull();
     expect(await r.w.store.systemItems.get(item!.id)).toMatchObject({ state: 'closed', closedAction: 'remove-worktree' });
     expect(await inbox(r)).toEqual([]);

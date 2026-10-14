@@ -246,7 +246,7 @@ note: all thirteen Blocked items are blocked by the Wave 1 / Wave 2 merge steps 
 - W1-merge · breaker counter left at 0 (w1-tools blocked by the merge step, not by attempts)
 - M4.1 · Attach warning enforced server-side (409 `attach-warning` unless `{confirm:true}`); agents --json unreadable → `liveness-unknown` warning; warning copy/look (no prototype design)
 - M4.1 · header chips = session-start answers + QA stack + blue loop/run chips; Session gains `cwd`, `live`, `resumeCommand`, `chips`; Pause/Resume rule, disabled while detached
-- M4.1 · imported terminal turns: transcript timestamps, origin `terminal`, no subagents/artifacts; handoff card + minimal chat list built early; demo sessions get the demo root as `cwd`; visual on calendar-func-fix + free-talk-feature
+- M4.1 · imported terminal turns: transcript timestamps, origin `terminal`, no subagents/artifacts; handoff card + minimal chat list built early; demo sessions get the demo root as `cwd`; visual on reminder-func-fix + pair-talk-feature
 - M4.2 · SessionDetail gains `questions`; chat = main agent's events; step lines + marks; batch at its AskUserQuestion call; SPEC answers note for every answered batch; quick replies fill the draft only; no optimistic bubble; stick-to-bottom; demo chat → real payloads; answeredLines uses the source name part
 - M4.3 · agent placed by its first successful write into a solution; unplaced → `workspace root`; main agent desc = task's first line; prototype status words; summary template verbatim; terminal tail rules; demo terminal lines → turn results
 - W2-merge · only lane/w2-session merged; w2-newsession and w2-tabs merges aborted (tool permission check), lanes + worktrees kept

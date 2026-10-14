@@ -101,7 +101,7 @@ describe('Solutions view logic (M6.2)', () => {
     // An untitled session (its display title is its name), a title equal to the name, a note without a session.
     expect(branchOwnerLabel({ owner: 'button-rollout', ownerTitle: 'button-rollout' })).toEqual({ text: 'button-rollout', tooltip: undefined });
     expect(branchOwnerLabel({ owner: 'idle', ownerTitle: null })).toEqual({ text: 'idle', tooltip: undefined });
-    expect(branchOwnerLabel({ owner: 'read by notifications-integration' })).toEqual({ text: 'read by notifications-integration', tooltip: undefined });
+    expect(branchOwnerLabel({ owner: 'read by acme-alerts-integration' })).toEqual({ text: 'read by acme-alerts-integration', tooltip: undefined });
   });
 
   it('D22: the demo branches (no titles) read exactly as before: every owner by `owner`, no tooltip', async () => {

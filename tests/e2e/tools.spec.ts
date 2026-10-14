@@ -84,7 +84,7 @@ test.beforeAll(async () => {
   const rootId = projectId(workspace);
   await writeFile(
     path.join(workspace, DIRTY_FILE),
-    `${rootId}-microfrontends-acme-app-front\n${rootId}-nugets-components-library-nuget\n`,
+    `${rootId}-microfrontends-acme-app-front\n${rootId}-nugets-design-system-nuget\n`,
   );
   cmStub = await stub(refusesFraming('Codebase Memory stub'));
   const dataDir = path.join(tmp, 'data');
@@ -291,7 +291,7 @@ test('Codebase Memory strip: the dirty projects and "Reindex 2 now" start a real
   await page.goto(`${server.baseUrl}/tools/cm`);
   const strip = page.getByTestId('cm-strip');
   await expect(strip.locator('.sb-cm-strip-file')).toHaveText('.codebase-memory-dirty');
-  await expect(strip.getByTestId('cm-dirty')).toHaveText(['acme-app-front', 'components-library-nuget']); // no time: the file keeps none
+  await expect(strip.getByTestId('cm-dirty')).toHaveText(['acme-app-front', 'design-system-nuget']); // no time: the file keeps none
   await expect(strip.getByTestId('cm-dirty').first()).toHaveAttribute('title', path.join(workspace, 'microfrontends', 'acme-app-front'));
   await expect(strip.getByTestId('cm-note')).toHaveText(''); // the indexed count is unknown: never invented
   const button = strip.getByTestId('cm-reindex');

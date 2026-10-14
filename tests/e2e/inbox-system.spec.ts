@@ -228,14 +228,14 @@ test.describe('PR merged → worktree removable', () => {
     await page.goto(`${server.baseUrl}/inbox`);
     await expect(page.getByTestId('inbox-zero')).toBeVisible();
 
-    // A real session with a worktree (gap #1; D32: on its ticket branch): PROJ-231-speaking-page at ../web-front-wt-speaking-page.
+    // A real session with a worktree (gap #1; D32: on its ticket branch): PROJ-231-profile-page at ../web-front-wt-profile-page.
     const started = await page.evaluate(async () => {
       const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          name: 'speaking-page',
-          task: 'Build the speaking page.',
+          name: 'profile-page',
+          task: 'Build the profile page.',
           workType: 'feature',
           mode: 'single',
           solutions: ['web-front'],
@@ -244,18 +244,18 @@ test.describe('PR merged → worktree removable', () => {
           qa: null,
           worktrees: true,
           ultracode: false,
-          branch: 'PROJ-231-speaking-page',
+          branch: 'PROJ-231-profile-page',
         }),
       });
       return { status: response.status, body: (await response.json()) as { id: string } };
     });
     expect(started.status).toBe(201);
-    const worktree = path.join(workspace, 'microfrontends', 'web-front-wt-speaking-page');
+    const worktree = path.join(workspace, 'microfrontends', 'web-front-wt-profile-page');
     expect(await exists(worktree)).toBe(true);
-    expect(await git(repo, 'branch', '--list', 'PROJ-231-speaking-page')).not.toBe('');
+    expect(await git(repo, 'branch', '--list', 'PROJ-231-profile-page')).not.toBe('');
 
     // gh now reports the PR merged; the manager's check (15 s after start) flags the worktree removable → the item arrives live.
-    await writeFile(prsFile, JSON.stringify({ 'PROJ-231-speaking-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } }));
+    await writeFile(prsFile, JSON.stringify({ 'PROJ-231-profile-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } }));
     const cards = page.getByTestId('inbox-item');
     await expect(cards).toHaveCount(1, { timeout: 60_000 });
     await expect(cards.locator('.sb-inbox__card-source')).toHaveText('worktrees');
@@ -263,9 +263,9 @@ test.describe('PR merged → worktree removable', () => {
     await expect(page.getByTestId('inbox-title')).toHaveText('PR #231 merged, so the worktree can be removed');
     await expect(page.getByTestId('inbox-meta')).toHaveText('worktrees·PR merged·now');
     await expect(page.getByTestId('inbox-text')).toHaveText(
-      `${path.join('..', 'web-front-wt-speaking-page')} · branch PROJ-231-speaking-page was merged on GitHub (checked through gh). No uncommitted changes.`,
+      `${path.join('..', 'web-front-wt-profile-page')} · branch PROJ-231-profile-page was merged on GitHub (checked through gh). No uncommitted changes.`,
     );
-    await expect(page.getByTestId('inbox-branch')).toHaveText(['web-front⎇ PROJ-231-speaking-page']);
+    await expect(page.getByTestId('inbox-branch')).toHaveText(['web-front⎇ PROJ-231-profile-page']);
     const actions = page.getByTestId('inbox-action');
     await expect(actions).toHaveText(['Remove worktree', 'Keep']);
     await expect(actions.nth(0)).toHaveAttribute('data-primary', 'true');
@@ -283,7 +283,7 @@ test.describe('PR merged → worktree removable', () => {
     await expect(page.getByTestId('inbox-zero')).toBeVisible();
     await expect(cards).toHaveCount(0);
     await expect.poll(() => exists(worktree)).toBe(false);
-    expect(await git(repo, 'branch', '--list', 'PROJ-231-speaking-page')).not.toBe('');
-    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('web-front-wt-speaking-page');
+    expect(await git(repo, 'branch', '--list', 'PROJ-231-profile-page')).not.toBe('');
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('web-front-wt-profile-page');
   });
 });

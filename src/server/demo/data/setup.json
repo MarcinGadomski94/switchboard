@@ -17,7 +17,7 @@
     {
       "folder": "microfrontends/",
       "count": 4,
-      "examples": "acme-app-front, workspace-front, auth-front, …",
+      "examples": "acme-app-front, dashboard-front, login-front, …",
       "rule": "editable"
     },
     {
@@ -29,19 +29,19 @@
     {
       "folder": "nugets/",
       "count": 4,
-      "examples": "components-library-nuget, typography-nuget, …",
+      "examples": "design-system-nuget, acme-fonts-nuget, …",
       "rule": "editable"
     },
     {
       "folder": "microservices/",
       "count": 2,
-      "examples": "auth-microservice, notifications-microservice",
+      "examples": "login-microservice, acme-alerts-microservice",
       "rule": "editable"
     },
     {
       "folder": "functions/",
       "count": 2,
-      "examples": "calendar-func, hubspot-func",
+      "examples": "reminder-func, crm-sync-func",
       "rule": "editable"
     },
     {
@@ -53,7 +53,7 @@
     {
       "folder": "deprecated/",
       "count": 3,
-      "examples": "old-chat-front, legacy-auth-microservice, …",
+      "examples": "old-chat-front, legacy-login-microservice, …",
       "rule": "read-only"
     },
     {

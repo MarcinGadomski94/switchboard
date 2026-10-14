@@ -263,15 +263,15 @@ describe('M3.2 · Inbox item rules (prototype copy)', () => {
     const r = await setup('default');
     const session = await r.w.store.sessions.create({ name: 'chips', task: 't', claudeSessionId: 'c2', status: 'need', solutions: [] });
     await r.w.store.agents.create({ sessionId: session.id, kind: 'main', name: 'orchestrator', solutionPath: 'workspace root', branch: null });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'web', solutionPath: 'microfrontends/acme-app-front', branch: 'feature/free-talk-360' });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile', solutionPath: 'mobile/', branch: 'feature/free-talk-360' });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile-2', solutionPath: 'mobile', branch: 'feature/free-talk-360' });
-    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'feature/free-talk-360', path: '/w/mobile-wt', sessionId: session.id });
-    await r.w.store.worktrees.create({ repo: 'calendar-func', repoPath: '/w/calendar-func', branch: 'session/chips', path: '/w/cf-wt', sessionId: session.id });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'web', solutionPath: 'microfrontends/acme-app-front', branch: 'feature/pair-talk-360' });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile', solutionPath: 'mobile/', branch: 'feature/pair-talk-360' });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile-2', solutionPath: 'mobile', branch: 'feature/pair-talk-360' });
+    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'feature/pair-talk-360', path: '/w/mobile-wt', sessionId: session.id });
+    await r.w.store.worktrees.create({ repo: 'reminder-func', repoPath: '/w/reminder-func', branch: 'session/chips', path: '/w/cf-wt', sessionId: session.id });
     expect(await sessionBranches(r.w.store, session.id)).toEqual([
-      { solution: 'acme-app-front', branch: 'feature/free-talk-360' },
-      { solution: 'mobile', branch: 'feature/free-talk-360' },
-      { solution: 'calendar-func', branch: 'session/chips' },
+      { solution: 'acme-app-front', branch: 'feature/pair-talk-360' },
+      { solution: 'mobile', branch: 'feature/pair-talk-360' },
+      { solution: 'reminder-func', branch: 'session/chips' },
     ]);
   });
 

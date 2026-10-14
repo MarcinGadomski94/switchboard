@@ -21,22 +21,22 @@ import { stubToolProbes } from './probes.ts';
  * Screenshots go to `SWITCHBOARD_SHOTS_DIR` when set.
  */
 const SHOTS = process.env['SWITCHBOARD_SHOTS_DIR'] ?? '';
-const LONG_TITLE = 'Migrate the lesson booking flow to the new calendar contract across every front';
+const LONG_TITLE = 'Migrate the room booking flow to the new calendar contract across every front';
 const SOLUTIONS = [
-  'auth-front',
-  'workspace-front',
-  'swap-app-front',
-  'learning-material-front',
-  'admin-front',
-  'auth-microservice',
-  'notifications-microservice',
-  'calendar-microservice',
+  'login-front',
+  'dashboard-front',
+  'acme-app-front',
+  'content-library-front',
+  'console-front',
+  'login-microservice',
+  'acme-alerts-microservice',
+  'reminder-microservice',
   'billing-microservice',
-  'calendar-func',
-  'hubspot-func',
-  'components-library-nuget',
-  'typography-nuget',
-  'auth-nuget',
+  'reminder-func',
+  'crm-sync-func',
+  'design-system-nuget',
+  'acme-fonts-nuget',
+  'login-nuget',
   'mobile',
 ];
 
@@ -78,7 +78,7 @@ test.beforeAll(async () => {
       mode: 'single',
       phase: 'ui-first',
       ultracode: false,
-      solutions: ['auth-front'],
+      solutions: ['login-front'],
     })
   ).id;
   await store.close();
@@ -194,7 +194,7 @@ test('15 solutions: one line with "+N more ▾" (status chips first); expand / c
   await page.keyboard.press('ControlOrMeta+Alt+b');
   await expect.poll(async () => (await chipRow(page)).shown.length).toBeGreaterThan(at1440);
   state = await chipRow(page);
-  expect(state.shown[4]).toBe('scope auth-front');
+  expect(state.shown[4]).toBe('scope login-front');
   expect(state.lines).toBe(1);
   expect(state.toggle).toBe(`+${state.folded} more ▾`);
   if (SHOTS) await page.getByTestId('session-header').screenshot({ path: path.join(SHOTS, 'd104-chips-collapsed-1440-no-panel.png') });
@@ -234,7 +234,7 @@ test('a few chips: no toggle, the row as before', async ({ page }) => {
   await stubToolProbes(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await openSession(page, fewId);
-  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope auth-front']);
+  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope login-front']);
   await expect(page.getByTestId('session-chips-toggle')).toHaveCount(0);
   await expect(page.getByTestId('session-chips')).not.toHaveAttribute('data-fold', /.*/);
 });

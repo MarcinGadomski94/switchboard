@@ -21,7 +21,7 @@ import {
  * Visual oracle for History (M7.4, D10), against the prototype's `vHistory` at
  * 1440×900 (screenshot 08): the header (title, subtitle, search), the eight
  * `HIST` rows of the demo seed (date, name + mode, summary + solutions/branches,
- * outcome in its status color) and one searched state ("speaking"). The demo
+ * outcome in its status color) and one searched state ("profile"). The demo
  * rows keep the prototype's order (newest first), so rows compare by index.
  */
 
@@ -185,9 +185,9 @@ test('History matches the prototype (tokens, boxes ±2 px, copy)', async ({ brow
   const full = await pixelDiff(appPage, protoShot, appShot);
   const main = await pixelDiff(appPage, protoMain, appMain);
 
-  // One searched state: "speaking" keeps two rows in both.
-  await protoPage.locator('input[placeholder="Search conversations, solutions, branches…"]').fill('speaking');
-  await appPage.getByTestId('history-search').fill('speaking');
+  // One searched state: "profile" keeps two rows in both.
+  await protoPage.locator('input[placeholder="Search conversations, solutions, branches…"]').fill('profile');
+  await appPage.getByTestId('history-search').fill('profile');
   await expect(appPage.getByTestId('history-row')).toHaveCount(2);
   await expect(appPage.getByTestId('view-history')).toHaveAttribute('aria-busy', 'false');
   const searchedRows: string[] = [];
@@ -235,7 +235,7 @@ Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulat
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
 
-Pixel diff (advisory, channel threshold 24): full page **${input.full.toFixed(2)}%**, main area (256,0 1184×900) **${input.main.toFixed(2)}%**, main area searched ("speaking") **${input.searched.toFixed(2)}%**.
+Pixel diff (advisory, channel threshold 24): full page **${input.full.toFixed(2)}%**, main area (256,0 1184×900) **${input.main.toFixed(2)}%**, main area searched ("profile") **${input.searched.toFixed(2)}%**.
 
 Side by side (prototype left, app right): \`history-side-by-side.png\`, \`history-main-side-by-side.png\`, \`history-search-side-by-side.png\`.
 
@@ -246,7 +246,7 @@ The demo rows are the prototype's \`HIST\` in its order (newest first, the API's
 |---|---|---|---|---|---|
 ${input.rows.join('\n')}
 
-## Searched ("speaking")
+## Searched ("profile")
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
 ${input.searchedRows.join('\n')}

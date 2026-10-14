@@ -35,10 +35,10 @@ const ROWS: readonly FreshnessRow[] = [
   { name: 'acme-app-front', relativePath: 'microfrontends/acme-app-front' },
   { name: 'web-front', relativePath: 'microfrontends/web-front' },
   { name: 'mobile', relativePath: 'mobile' },
-  { name: 'auth-nuget', relativePath: 'nugets/auth-nuget' },
-  { name: 'components-library-nuget', relativePath: 'nugets/components-library-nuget' },
-  { name: 'auth-microservice', relativePath: 'microservices/auth-microservice' },
-  { name: 'calendar-func', relativePath: 'functions/calendar-func' },
+  { name: 'login-nuget', relativePath: 'nugets/login-nuget' },
+  { name: 'design-system-nuget', relativePath: 'nugets/design-system-nuget' },
+  { name: 'login-microservice', relativePath: 'microservices/login-microservice' },
+  { name: 'reminder-func', relativePath: 'functions/reminder-func' },
   { name: 'switchboard', relativePath: 'other/switchboard' },
   { name: 'old-front', relativePath: 'deprecated/microfrontends/old-front' },
   { name: 'mobile', relativePath: 'deprecated/mobile' },
@@ -56,8 +56,8 @@ function freshnessByRow(projects: Parameters<typeof solutionFreshness>[0], roots
 
 describe('project ids (the dirty-tracker hook’s form)', () => {
   it('absolute path with runs of `:` `/` `\\` turned into one `-`; spaces and case kept', () => {
-    expect(codebaseMemoryProjectId(WINDOWS_ROOT, 'nugets/auth-nuget')).toBe(`${WINDOWS_ID}-nugets-auth-nuget`);
-    expect(codebaseMemoryProjectId('D:/riderprojects/acme/workspace/', 'nugets\\auth-nuget\\')).toBe(`${WINDOWS_ID}-nugets-auth-nuget`);
+    expect(codebaseMemoryProjectId(WINDOWS_ROOT, 'nugets/login-nuget')).toBe(`${WINDOWS_ID}-nugets-login-nuget`);
+    expect(codebaseMemoryProjectId('D:/riderprojects/acme/workspace/', 'nugets\\login-nuget\\')).toBe(`${WINDOWS_ID}-nugets-login-nuget`);
     expect(codebaseMemoryProjectId(`${POSIX_ROOT}/`, 'microfrontends/web-front')).toBe(`${POSIX_ID}-microfrontends-web-front`);
     expect(codebaseMemoryProjectId(POSIX_ROOT)).toBe(POSIX_ID);
   });
@@ -75,11 +75,11 @@ describe('project ids (the dirty-tracker hook’s form)', () => {
 describe('hook-posix.txt (macOS, as the hook writes it)', () => {
   it('parses one project per line in file order, naming <category>/<folder>', async () => {
     expect(parseDirtyFile(await fixture('hook-posix.txt'), [POSIX_ROOT])).toEqual([
-      { id: `${POSIX_ID}-functions-calendar-func`, relativePath: 'functions/calendar-func' },
+      { id: `${POSIX_ID}-functions-reminder-func`, relativePath: 'functions/reminder-func' },
       { id: `${POSIX_ID}-microfrontends-acme-app-front`, relativePath: 'microfrontends/acme-app-front' },
       { id: `${POSIX_ID}-mobile-Acme.Mobile`, relativePath: 'mobile/Acme.Mobile' },
       { id: `${POSIX_ID}-mobile-Acme.Mobile.Gateway`, relativePath: 'mobile/Acme.Mobile.Gateway' },
-      { id: `${POSIX_ID}-nugets-components-library-nuget`, relativePath: 'nugets/components-library-nuget' },
+      { id: `${POSIX_ID}-nugets-design-system-nuget`, relativePath: 'nugets/design-system-nuget' },
       { id: `${POSIX_ID}-other-switchboard`, relativePath: 'other/switchboard' },
     ]);
   });
@@ -90,10 +90,10 @@ describe('hook-posix.txt (macOS, as the hook writes it)', () => {
       'microfrontends/acme-app-front': 'dirty',
       'microfrontends/web-front': 'fresh',
       mobile: 'dirty',
-      'nugets/auth-nuget': 'fresh',
-      'nugets/components-library-nuget': 'dirty',
-      'microservices/auth-microservice': 'fresh',
-      'functions/calendar-func': 'dirty',
+      'nugets/login-nuget': 'fresh',
+      'nugets/design-system-nuget': 'dirty',
+      'microservices/login-microservice': 'fresh',
+      'functions/reminder-func': 'dirty',
       'other/switchboard': 'dirty',
       'deprecated/microfrontends/old-front': 'fresh',
       // The archived mobile shares the name, not the folder.
@@ -120,7 +120,7 @@ describe('hook-posix.txt (macOS, as the hook writes it)', () => {
   it('strip list: one chip per solution (`mobile` once, with both lines), in first-line order', async () => {
     const projects = parseDirtyFile(await fixture('hook-posix.txt'), [POSIX_ROOT]);
     expect(dirtyTargets(projects, [POSIX_ROOT], ROWS)).toEqual([
-      { name: 'calendar-func', relativePath: 'functions/calendar-func', solution: true, ids: [`${POSIX_ID}-functions-calendar-func`] },
+      { name: 'reminder-func', relativePath: 'functions/reminder-func', solution: true, ids: [`${POSIX_ID}-functions-reminder-func`] },
       { name: 'acme-app-front', relativePath: 'microfrontends/acme-app-front', solution: true, ids: [`${POSIX_ID}-microfrontends-acme-app-front`] },
       {
         name: 'mobile',
@@ -129,10 +129,10 @@ describe('hook-posix.txt (macOS, as the hook writes it)', () => {
         ids: [`${POSIX_ID}-mobile-Acme.Mobile`, `${POSIX_ID}-mobile-Acme.Mobile.Gateway`],
       },
       {
-        name: 'components-library-nuget',
-        relativePath: 'nugets/components-library-nuget',
+        name: 'design-system-nuget',
+        relativePath: 'nugets/design-system-nuget',
         solution: true,
-        ids: [`${POSIX_ID}-nugets-components-library-nuget`],
+        ids: [`${POSIX_ID}-nugets-design-system-nuget`],
       },
       { name: 'switchboard', relativePath: 'other/switchboard', solution: true, ids: [`${POSIX_ID}-other-switchboard`] },
     ]);
@@ -144,9 +144,9 @@ describe('hook-windows-crlf.txt (a Windows root, CRLF)', () => {
     const text = await fixture('hook-windows-crlf.txt');
     const expected = [
       { id: `${WINDOWS_ID}-infrastructure-network`, relativePath: 'infrastructure/network' },
-      { id: `${WINDOWS_ID}-microservices-auth-microservice`, relativePath: 'microservices/auth-microservice' },
+      { id: `${WINDOWS_ID}-microservices-login-microservice`, relativePath: 'microservices/login-microservice' },
       { id: `${WINDOWS_ID}-mobile-src`, relativePath: 'mobile/src' },
-      { id: `${WINDOWS_ID}-nugets-auth-nuget`, relativePath: 'nugets/auth-nuget' },
+      { id: `${WINDOWS_ID}-nugets-login-nuget`, relativePath: 'nugets/login-nuget' },
     ];
     expect(parseDirtyFile(text, [WINDOWS_ROOT])).toEqual(expected);
     expect(parseDirtyFile(text, ['d:/RiderProjects/Acme/Workspace'])).toEqual(expected);
@@ -158,16 +158,16 @@ describe('hook-windows-crlf.txt (a Windows root, CRLF)', () => {
       'microfrontends/acme-app-front': 'fresh',
       'microfrontends/web-front': 'fresh',
       mobile: 'dirty',
-      'nugets/auth-nuget': 'dirty',
-      'nugets/components-library-nuget': 'fresh',
-      'microservices/auth-microservice': 'dirty',
-      'functions/calendar-func': 'fresh',
+      'nugets/login-nuget': 'dirty',
+      'nugets/design-system-nuget': 'fresh',
+      'microservices/login-microservice': 'dirty',
+      'functions/reminder-func': 'fresh',
       'other/switchboard': 'fresh',
       'deprecated/microfrontends/old-front': 'fresh',
       'deprecated/mobile': 'fresh',
       infrastructure: 'dirty',
     });
-    expect(dirtyTargets(projects, [WINDOWS_ROOT], ROWS).map((target) => target.name)).toEqual(['infrastructure', 'auth-microservice', 'mobile', 'auth-nuget']);
+    expect(dirtyTargets(projects, [WINDOWS_ROOT], ROWS).map((target) => target.name)).toEqual(['infrastructure', 'login-microservice', 'mobile', 'login-nuget']);
   });
 });
 
@@ -175,8 +175,8 @@ describe('messy.txt (lenient reading)', () => {
   it('lines: BOM, padding, blank / whitespace lines, a case-only repeat and `\\r\\n` / `\\r` / `\\n` ends', async () => {
     expect(dirtyLines(await fixture('messy.txt'))).toEqual([
       `${POSIX_ID}-microfrontends-acme-app-front`,
-      `${POSIX_ID}-nugets-auth-nuget-v2`,
-      'Users-dev-Other Place-workspace-nugets-auth-nuget',
+      `${POSIX_ID}-nugets-login-nuget-v2`,
+      'Users-dev-Other Place-workspace-nugets-login-nuget',
       `${POSIX_ID}-deprecated-microfrontends-old-front`,
       `${POSIX_ID}-tools-scripts`,
       POSIX_ID,
@@ -188,7 +188,7 @@ describe('messy.txt (lenient reading)', () => {
   it('only the hook’s <root>-<category>-<folder> form names a folder', async () => {
     expect(parseDirtyFile(await fixture('messy.txt'), [POSIX_ROOT]).map((project) => project.relativePath)).toEqual([
       'microfrontends/acme-app-front',
-      'nugets/auth-nuget-v2',
+      'nugets/login-nuget-v2',
       null, // another root
       null, // `deprecated/` is not a hook category
       null, // neither is `tools/`
@@ -205,11 +205,11 @@ describe('messy.txt (lenient reading)', () => {
       'microfrontends/web-front': 'fresh',
       // `<root>-mobile` is the mobile row's own project id.
       mobile: 'dirty',
-      // `auth-nuget-v2` is another project; `Other Place` another workspace.
-      'nugets/auth-nuget': 'fresh',
-      'nugets/components-library-nuget': 'fresh',
-      'microservices/auth-microservice': 'fresh',
-      'functions/calendar-func': 'fresh',
+      // `login-nuget-v2` is another project; `Other Place` another workspace.
+      'nugets/login-nuget': 'fresh',
+      'nugets/design-system-nuget': 'fresh',
+      'microservices/login-microservice': 'fresh',
+      'functions/reminder-func': 'fresh',
       'other/switchboard': 'dirty',
       // Not a hook category, but the line is exactly this row's project id.
       'deprecated/microfrontends/old-front': 'dirty',
@@ -222,12 +222,12 @@ describe('messy.txt (lenient reading)', () => {
     const projects = parseDirtyFile(await fixture('messy.txt'), [POSIX_ROOT]);
     expect(dirtyTargets(projects, [POSIX_ROOT], ROWS)).toEqual([
       { name: 'acme-app-front', relativePath: 'microfrontends/acme-app-front', solution: true, ids: [`${POSIX_ID}-microfrontends-acme-app-front`] },
-      { name: 'auth-nuget-v2', relativePath: 'nugets/auth-nuget-v2', solution: false, ids: [`${POSIX_ID}-nugets-auth-nuget-v2`] },
+      { name: 'login-nuget-v2', relativePath: 'nugets/login-nuget-v2', solution: false, ids: [`${POSIX_ID}-nugets-login-nuget-v2`] },
       {
-        name: 'Users-dev-Other Place-workspace-nugets-auth-nuget',
+        name: 'Users-dev-Other Place-workspace-nugets-login-nuget',
         relativePath: null,
         solution: false,
-        ids: ['Users-dev-Other Place-workspace-nugets-auth-nuget'],
+        ids: ['Users-dev-Other Place-workspace-nugets-login-nuget'],
       },
       {
         name: 'old-front',

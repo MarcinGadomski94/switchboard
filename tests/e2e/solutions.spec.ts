@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   await world.makeRepo(path.join(ws, 'nugets', 'idle-nuget'));
   await world.makeRepo(path.join(ws, 'other', 'it-tool'));
   await world.makeRepo(path.join(ws, 'deprecated', 'microfrontends', 'old-front'));
-  await world.commit(world.mobile, 'phase-ledger.md', '| Interface | Phase | Seam |\n|---|---|---|\n| FreeTalkService | UI-first | seam TODO · FreeTalkViewModel.cs:41 |\n');
+  await world.commit(world.mobile, 'phase-ledger.md', '| Interface | Phase | Seam |\n|---|---|---|\n| PairTalkService | UI-first | seam TODO · PairTalkViewModel.cs:41 |\n');
   await mkdir(path.join(ws, '.claude'), { recursive: true });
   await writeFile(path.join(ws, '.claude', '.codebase-memory-dirty'), `${hookProjectId(path.join(ws, 'microfrontends', 'web-front'))}\n`);
   const claudeConfig = path.join(world.root, 'claude-config');
@@ -100,7 +100,7 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
     await startSession(page, {
       name: 'wt-live',
       title: 'Live worktree',
-      task: '[fake:write microfrontends/web-front-wt-wt-live/contracts/free-talk.md]',
+      task: '[fake:write microfrontends/web-front-wt-wt-live/contracts/pair-talk.md]',
       solutions: ['web-front'],
       phase: 'integration',
       worktrees: true,
@@ -142,7 +142,7 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   await expect(row(page, 'mobile')).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('solution-path')).toHaveText(path.join(ws, 'mobile'));
   await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ mainin placein-place-live']);
-  await expect(detail.getByTestId('ledger-row')).toHaveText(['FreeTalkServiceUI-firstseam TODO · FreeTalkViewModel.cs:41']);
+  await expect(detail.getByTestId('ledger-row')).toHaveText(['PairTalkServiceUI-firstseam TODO · PairTalkViewModel.cs:41']);
   await expect(detail.getByTestId('solution-artifact').filter({ has: page.locator('.sb-sol-art-tag', { hasText: /^FOLLOWUP$/ }) })).toHaveText('FOLLOWUPmobile-followups/from-web-front.md');
   await expect(page.getByTestId('codebase-memory')).toHaveAttribute('data-state', 'fresh');
   await expect(page.getByTestId('codebase-memory')).toContainText('codebase-memory · indexed · fresh');

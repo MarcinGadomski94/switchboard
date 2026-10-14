@@ -62,11 +62,11 @@ test.beforeAll(async () => {
   world = await makeGitWorld({ root: tmp, store });
   await seedFolder(store, world.workspace);
   // Merged into main, its session closed: worktree + local branch.
-  merged = await worktree('free-talk', await closedSession(store, 'free-talk', 3));
-  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/free-talk');
+  merged = await worktree('pair-talk', await closedSession(store, 'pair-talk', 3));
+  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/pair-talk');
   // Merged too, but with an uncommitted change: needs the extra confirmation.
-  dirty = await worktree('lesson-plan', await closedSession(store, 'lesson-plan', 3));
-  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/lesson-plan');
+  dirty = await worktree('launch-plan', await closedSession(store, 'launch-plan', 3));
+  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/launch-plan');
   await writeFile(path.join(dirty.path, 'notes.md'), 'draft\n');
   // Pushed and merged: a remote branch (never ticked for you).
   pushed = await worktree('pricing-page', await closedSession(store, 'pricing-page', 3));
@@ -134,11 +134,11 @@ test('Clean-up lists Switchboard’s leftovers, confirms, removes exactly the ti
   }
 
   // A merged branch goes with its worktree; the dirty worktree's branch waits for its worktree.
-  await expect(item('session/free-talk').getByTestId('cleanup-item-check')).toBeChecked();
-  await expect(item('session/lesson-plan').getByTestId('cleanup-item-check')).not.toBeChecked();
+  await expect(item('session/pair-talk').getByTestId('cleanup-item-check')).toBeChecked();
+  await expect(item('session/launch-plan').getByTestId('cleanup-item-check')).not.toBeChecked();
   // Tick the dirty worktree (and its branch) and the remote branch by hand: the worktree and the remote branch need their confirmation.
   await item(dirty.path).getByTestId('cleanup-item-check').check();
-  await item('session/lesson-plan').getByTestId('cleanup-item-check').check();
+  await item('session/launch-plan').getByTestId('cleanup-item-check').check();
   await item('origin/session/pricing-page').getByTestId('cleanup-item-check').check();
   await page.getByTestId('cleanup-start').click();
   const dialog = page.getByTestId('cleanup-dialog');

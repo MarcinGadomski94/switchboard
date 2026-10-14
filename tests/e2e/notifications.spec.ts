@@ -39,13 +39,13 @@ test('a question batch: toast + chime + OS notification (granted) together; Jump
   const toast = page.getByTestId('toast');
   await expect(toast).toHaveCount(0);
 
-  const session = await world.startSession(page, 'qa-free-talk', '[fake:ask-delay] Ask me where to deploy.', true);
+  const session = await world.startSession(page, 'qa-pair-talk', '[fake:ask-delay] Ask me where to deploy.', true);
 
   // The toast (SPEC → Modals → Toast): dot, title, sub, branch line, the question verbatim; Jump to session / Later.
   await expect(toast).toBeVisible();
-  await expect(toast.locator('.sb-toast-title')).toHaveText('qa-free-talk');
+  await expect(toast.locator('.sb-toast-title')).toHaveText('qa-pair-talk');
   await expect(toast.locator('.sb-toast-sub')).toHaveText('question · now');
-  await expect(toast.locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ PROJ-1-qa-free-talk');
+  await expect(toast.locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ PROJ-1-qa-pair-talk');
   await expect(toast.locator('.sb-toast-text')).toHaveText('Which environment should I target?');
   await expect(toast.getByRole('button')).toHaveText(['✕', 'Jump to session', 'Later']);
   // Top-right, 16 px in (prototype); `width: 360px` + padding + border like the prototype's inline style.
@@ -60,7 +60,7 @@ test('a question batch: toast + chime + OS notification (granted) together; Jump
   expect(mocks.tones).toEqual(CHIME_TONES);
   expect(mocks.gains).toEqual(CHIME_GAINS);
   expect(mocks.notifications).toEqual([
-    { title: 'qa-free-talk needs you', body: 'Which environment should I target?', tag: `switchboard-batch-${batch.id}`, closed: false },
+    { title: 'qa-pair-talk needs you', body: 'Which environment should I target?', tag: `switchboard-batch-${batch.id}`, closed: false },
   ]);
   expect(mocks.permissionRequests).toBe(0);
   // The chime's context is closed once the tones have stopped.

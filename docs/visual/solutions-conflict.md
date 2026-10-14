@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.95%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.94%**.
 Known data differences: the header meta (see `solutions.md`) and the sidebar's other badges, rows and footer (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-conflict-side-by-side.png` (view), `solutions-conflict-page-side-by-side.png` (page).
@@ -15,30 +15,30 @@ Geometry: `box` = x, y, width, height. Styles compared: color, background-color,
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
-| mobileRow | box | 268,348 819×86 | 268,348 819×86 | ok | "mobile⚠ shared working tree⎇ feature/free-talk-360mobile-wt-free-talk-featurefree-talk-fe |
+| mobileRow | box | 268,348 819×86 | 268,348 819×86 | ok | "mobile⚠ shared working tree⎇ feature/pair-talk-360mobile-wt-pair-talk-featurepair-talk-fe |
 | mobileName | box | 293,375.5 132.3×17 | 293,375.5 132.3×17 | ok | "mobile" |
 | mobileFlag | box | 293,392.5 132.3×14 | 293,392.5 132.3×14 | ok | "⚠ shared working tree" |
 | detail | box | 1100,0 340×900 | 1100,0 340×900 | ok |  |
 | detailPath | box | 1118,18 304×15 | 1118,18 304×15 | ok | "D:\\acme\\mobile" |
 | detailName | box | 1118,35 304×23 | 1118,35 304×23 | ok | "mobile" |
-| card | box | 1118,72 304×136.4 | 1118,72 304×136.4 | ok | "free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGEN |
-| cardText | box | 1133,85 274×75.4 | 1133,85 274×75.4 | ok | "free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGEN |
+| card | box | 1118,72 304×136.4 | 1118,72 304×136.4 | ok | "pair-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGEN |
+| cardText | box | 1133,85 274×75.4 | 1133,85 274×75.4 | ok | "pair-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGEN |
 | cardActions | box | 1133,169.4 274×26 | 1133,169.4 274×26 | ok | "Move button-rollout to worktree" |
 | cardButton | box | 1133,169.4 199.7×26 | 1133,169.4 199.7×26 | ok | "Move button-rollout to worktree" |
-| branchesSection | box | 1118,222.4 304×248 | 1118,222.4 304×248 | ok | "Branches & worktrees⎇ feature/free-talk-360../mobile-wt-free-talk-featurefree-talk-featur |
+| branchesSection | box | 1118,222.4 304×248 | 1118,222.4 304×248 | ok | "Branches & worktrees⎇ feature/pair-talk-360../mobile-wt-pair-talk-featurepair-talk-featur |
 | branchesLabel | box | 1118,222.4 304×14 | 1118,222.4 304×14 | ok | "Branches & worktrees" |
-| ledgerSection | box | 1118,484.4 304×116 | 1118,484.4 304×116 | ok | "Phase ledgerFreeTalkServiceUI-firstseam TODO · FreeTalkViewModel.cs:41PushPreferencesClie |
-| artifactsSection | box | 1118,614.4 304×83 | 1118,614.4 304×83 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedFOLLOWUPmobile-followups/from-a |
+| ledgerSection | box | 1118,484.4 304×116 | 1118,484.4 304×116 | ok | "Phase ledgerPairTalkServiceUI-firstseam TODO · PairTalkViewModel.cs:41PushPreferencesClie |
+| artifactsSection | box | 1118,614.4 304×83 | 1118,614.4 304×83 | ok | "Artifacts & follow-upsCONTRACTcontracts/pair-talk.mdlockedFOLLOWUPmobile-followups/from-a |
 | freshness | box | 1118,840 304×42 | 1118,840 304×42 | ok | "codebase-memory · edited by agents since last indexopen Codebase Memory ›" |
-| card1 | box | 1118,242.4 304×72 | 1118,242.4 304×72 | ok | "⎇ feature/free-talk-360../mobile-wt-free-talk-featurefree-talk-feature" |
-| card1:worktree | box | 1130,271.4 280×14 | 1130,271.4 280×14 | ok | "../mobile-wt-free-talk-feature" |
-| card1:owner | box | 1130,288.4 280×16 | 1130,288.4 280×16 | ok | "free-talk-feature" |
+| card1 | box | 1118,242.4 304×72 | 1118,242.4 304×72 | ok | "⎇ feature/pair-talk-360../mobile-wt-pair-talk-featurepair-talk-feature" |
+| card1:worktree | box | 1130,271.4 280×14 | 1130,271.4 280×14 | ok | "../mobile-wt-pair-talk-feature" |
+| card1:owner | box | 1130,288.4 280×16 | 1130,288.4 280×16 | ok | "pair-talk-feature" |
 | card2 | box | 1118,320.4 304×72 | 1118,320.4 304×72 | ok | "⎇ feature/button-variantsin placebutton-rollout" |
 | card2:worktree | box | 1130,349.4 280×14 | 1130,349.4 280×14 | ok | "in place" |
 | card2:owner | box | 1130,366.4 280×16 | 1130,366.4 280×16 | ok | "button-rollout" |
-| card3 | box | 1118,398.4 304×72 | 1118,398.4 304×72 | ok | "⎇ feature/push-prefs-bff../mobile-wt-notifications-integrationnotifications-integration" |
-| card3:worktree | box | 1130,427.4 280×14 | 1130,427.4 280×14 | ok | "../mobile-wt-notifications-integration" |
-| card3:owner | box | 1130,444.4 280×16 | 1130,444.4 280×16 | ok | "notifications-integration" |
+| card3 | box | 1118,398.4 304×72 | 1118,398.4 304×72 | ok | "⎇ feature/push-prefs-bff../mobile-wt-acme-alerts-integrationacme-alerts-integration" |
+| card3:worktree | box | 1130,427.4 280×14 | 1130,427.4 280×14 | ok | "../mobile-wt-acme-alerts-integration" |
+| card3:owner | box | 1130,444.4 280×16 | 1130,444.4 280×16 | ok | "acme-alerts-integration" |
 
 ## SPEC tokens (computed)
 | Check | Expected | App | Result |

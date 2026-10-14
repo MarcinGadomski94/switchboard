@@ -27,7 +27,7 @@ afterEach(async () => {
   await removeTempDir(tmp);
 });
 
-async function session(name = 'free-talk', claudeSessionId = `claude-${name}`) {
+async function session(name = 'pair-talk', claudeSessionId = `claude-${name}`) {
   return store.sessions.create({ name, claudeSessionId });
 }
 
@@ -36,11 +36,11 @@ describe('sessions', () => {
     const created = await session();
     expect(created).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      name: 'free-talk',
+      name: 'pair-talk',
       // D22 (0006): no title until one is given.
       title: null,
       task: '',
-      claudeSessionId: 'claude-free-talk',
+      claudeSessionId: 'claude-pair-talk',
       status: 'idle',
       workType: null,
       mode: null,
@@ -108,7 +108,7 @@ describe('sessions', () => {
   it('stores every NewSession field and the M0 fields', async () => {
     const created = await store.sessions.create({
       id: 's-1',
-      name: 'qa-free-talk',
+      name: 'qa-pair-talk',
       task: 'Write E2E tests.',
       claudeSessionId: 'c9d4118a-0000-4000-8000-000000000000',
       status: 'run',
@@ -130,7 +130,7 @@ describe('sessions', () => {
       lastTranscriptUuid: 'u-1',
     });
     expect(created).toMatchObject({ id: 's-1', workType: 'qa', qaStack: 'both', solutions: ['acme-app-front', 'mobile'], worktrees: true, ultracode: true, pid: 4242 });
-    expect(await store.sessions.getByName('qa-free-talk')).toEqual(created);
+    expect(await store.sessions.getByName('qa-pair-talk')).toEqual(created);
     expect(await store.sessions.getByClaudeSessionId('c9d4118a-0000-4000-8000-000000000000')).toEqual(created);
     expect(await store.sessions.getByName('nope')).toBeNull();
   });
@@ -188,7 +188,7 @@ describe('sessions', () => {
     await store.permissions.create({ sessionId: s.id, requestId: 'req-2', toolName: 'Bash', input: { command: 'ls' } });
     await store.loops.create({ sessionId: s.id, kind: '/loop' });
     await store.pendingMessages.enqueue({ sessionId: s.id, kind: 'restart-note', text: 'Switchboard restarted.' });
-    const worktree = await store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/free-talk', path: '/w/mobile-wt-free-talk', sessionId: s.id });
+    const worktree = await store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/pair-talk', path: '/w/mobile-wt-pair-talk', sessionId: s.id });
     const artifact = await store.artifacts.create({ id: 'a000000001', sessionId: s.id, title: 'Notes', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
     const item = await store.systemItems.create({ kind: 'worktree-removable', source: 'worktrees', title: 't', sessionId: s.id });
     const reading = await store.usage.add({ source: 'get_usage', sessionId: s.id, fiveHourPct: 8 });
@@ -219,9 +219,9 @@ describe('agents', () => {
     const sub = await store.agents.create({
       sessionId: s.id,
       name: 'web',
-      description: 'FreeTalkPage @360',
+      description: 'PairTalkPage @360',
       solutionPath: 'microfrontends/acme-app-front',
-      branch: 'feature/free-talk-360',
+      branch: 'feature/pair-talk-360',
       toolUseId: 'toolu_1',
       taskId: 'task_1',
       subagentType: 'general-purpose',
@@ -534,9 +534,9 @@ describe('worktrees', () => {
     const wt = await store.worktrees.create({
       repo: 'acme-app-front',
       repoPath: '/w/microfrontends/acme-app-front',
-      branch: 'session/free-talk',
+      branch: 'session/pair-talk',
       baseRef: 'main',
-      path: '/w/microfrontends/acme-app-front-wt-free-talk',
+      path: '/w/microfrontends/acme-app-front-wt-pair-talk',
       sessionId: s.id,
     });
     expect(wt).toMatchObject({ removable: false, prNumber: null, prState: null, removedAt: null });
@@ -554,7 +554,7 @@ describe('worktrees', () => {
     expect(await store.worktrees.list()).toEqual([]);
     expect(await store.worktrees.list({ includeRemoved: true })).toHaveLength(1);
     expect(await store.worktrees.getLiveByPath(wt.path)).toBeNull();
-    const again = await store.worktrees.create({ repo: 'acme-app-front', repoPath: wt.repoPath, branch: 'session/free-talk-2', path: wt.path });
+    const again = await store.worktrees.create({ repo: 'acme-app-front', repoPath: wt.repoPath, branch: 'session/pair-talk-2', path: wt.path });
     expect(await store.worktrees.getLiveByPath(wt.path)).toEqual(again);
   });
 });

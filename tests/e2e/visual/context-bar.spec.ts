@@ -8,7 +8,7 @@ import { type DemoApp, BOX_TOLERANCE_PX, hexToRgb, newVisualPage, openApp, round
  * meter data (`Session.context` is `null`: Switchboard never ran their process),
  * so every other visual spec and the full pass measure the composer as before.
  *
- * The demo app at 1440×900 on `calendar-func-fix`, first as seeded (the template),
+ * The demo app at 1440×900 on `reminder-func-fix`, first as seeded (the template),
  * then with a `context` added to its `GET /api/sessions/{id}` in the browser
  * (`page.route`), one page load per state. Gated here:
  * - the bar is the composer's first row, directly above the field's row (the
@@ -28,7 +28,7 @@ import { type DemoApp, BOX_TOLERANCE_PX, hexToRgb, newVisualPage, openApp, round
  * bar right).
  */
 
-const SESSION = 'calendar-func-fix';
+const SESSION = 'reminder-func-fix';
 const BORDER_CARD = hexToRgb('#26272c');
 const MUTED_2 = hexToRgb('#8d8c87');
 const MUTED_3 = hexToRgb('#76756f');

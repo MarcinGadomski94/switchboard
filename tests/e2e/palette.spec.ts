@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   world = await makeGitWorld();
   const ws = world.workspace;
   await writeFile(path.join(ws, 'AGENTS.md'), await readFile(path.join(REPO_ROOT, 'tests', 'fixtures', 'workspace', 'router-AGENTS.md'), 'utf8'));
-  await world.makeRepo(path.join(ws, 'microfrontends', 'auth-front'));
+  await world.makeRepo(path.join(ws, 'microfrontends', 'login-front'));
   await world.makeRepo(path.join(ws, 'nugets', 'idle-nuget'));
   await world.makeRepo(path.join(ws, 'other', 'it-tool'));
   await world.makeRepo(path.join(ws, 'deprecated', 'microfrontends', 'old-front'));
@@ -138,7 +138,7 @@ test('palette: views, New session, sessions and solutions from the real API; fil
   await expect.poll(() => rows(page)).toEqual(solutionRows);
   expect(solutionRows).toEqual([
     'view | Solutions | ',
-    'solution | auth-front | microfrontends/',
+    'solution | login-front | microfrontends/',
     'solution | web-front | microfrontends/',
     'solution | mobile | mobile/',
     'solution | idle-nuget | nugets/',
@@ -146,7 +146,7 @@ test('palette: views, New session, sessions and solutions from the real API; fil
     'solution | old-front | read-only',
   ]);
   await input.fill('microfrontends/');
-  await expect.poll(() => rows(page)).toEqual(['solution | auth-front | microfrontends/', 'solution | web-front | microfrontends/']);
+  await expect.poll(() => rows(page)).toEqual(['solution | login-front | microfrontends/', 'solution | web-front | microfrontends/']);
   await input.fill('integration');
   await expect.poll(() => rows(page)).toEqual(['session | palette-mobile | single · feature · integration']);
   await input.fill('no such thing');
@@ -163,7 +163,7 @@ test('palette: views, New session, sessions and solutions from the real API; fil
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => selectedRow(page)).toBe('solution | web-front | microfrontends/');
   await page.keyboard.press('ArrowUp');
-  await expect.poll(() => selectedRow(page)).toBe('solution | auth-front | microfrontends/');
+  await expect.poll(() => selectedRow(page)).toBe('solution | login-front | microfrontends/');
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowUp');
   await expect.poll(() => selectedRow(page)).toBe('view | Solutions | ');
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
@@ -172,7 +172,7 @@ test('palette: views, New session, sessions and solutions from the real API; fil
   await expect(page.locator('[data-testid="palette-row"][aria-selected="false"]').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(input).toHaveValue('solution'); // the arrows do not move the caret into the text
   await input.fill('solution ');
-  expect(await selectedRow(page)).toBe('solution | auth-front | microfrontends/');
+  expect(await selectedRow(page)).toBe('solution | login-front | microfrontends/');
 
   // Enter on a solution: Solutions opens with that solution selected (not the first row).
   await input.fill('mobile/');
@@ -250,7 +250,7 @@ test('palette: views, New session, sessions and solutions from the real API; fil
   // The session results follow /hub while the palette is open.
   await input.fill('palette-');
   await expect.poll(() => rows(page)).toHaveLength(2);
-  const late = await startSession(page, { name: 'palette-late', mode: 'single', phase: 'ui-first', solutions: ['auth-front'] });
+  const late = await startSession(page, { name: 'palette-late', mode: 'single', phase: 'ui-first', solutions: ['login-front'] });
   await expect.poll(() => rows(page), { timeout: 10_000 }).toContain('session | palette-late | single · feature · UI-first');
   await input.fill('palette-late');
   await expect.poll(() => rows(page)).toEqual(['session | palette-late | single · feature · UI-first']);

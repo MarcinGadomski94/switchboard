@@ -281,24 +281,24 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await expect(pill(modal, 'coordination', 'sequential')).toHaveAttribute('aria-checked', 'true');
   // D32: still disabled until the branch is a ticket branch; typed text is tidied on blur.
   await expect(start).toBeDisabled();
-  await branch.fill('proj-640 Free Talk!');
+  await branch.fill('proj-640 Pair Talk!');
   await expect(modal.getByTestId('ns-branch-note')).toHaveText(BRANCH_RULE);
   await expect(start).toBeDisabled();
   await branch.blur();
-  await expect(branch).toHaveValue('PROJ-640-free-talk');
+  await expect(branch).toHaveValue('PROJ-640-pair-talk');
   await expect(modal.getByTestId('ns-branch-note')).toHaveText('⎇ the branch of every worktree');
   await expect(modal.getByTestId('ns-branch-note')).toHaveAttribute('data-ok', 'true');
   await expect(start).toBeEnabled();
   await expect(start).toHaveCSS('opacity', '1');
   expect(await summary(modal)).toContain('mobile    sequential');
-  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-free-talk', '../web-front-wt-session']));
+  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-pair-talk', '../web-front-wt-session']));
   expect((await summary(modal)).some((line) => line.startsWith('⚠'))).toBe(false);
 
   // D22: the name field keeps free text (the title); the short name is derived from it and the worktree folder follows it.
   // D32: the typed branch stays (a title without a ticket key suggests none anyway).
-  await modal.getByTestId('ns-name').fill('Free Talk 640');
-  await expect(modal.getByTestId('ns-name')).toHaveValue('Free Talk 640');
-  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-free-talk', '../web-front-wt-free-talk-640']));
+  await modal.getByTestId('ns-name').fill('Pair Talk 640');
+  await expect(modal.getByTestId('ns-name')).toHaveValue('Pair Talk 640');
+  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-pair-talk', '../web-front-wt-pair-talk-640']));
 
   // Orchestrator hides the coordination section; back to single shows it again.
   await pill(modal, 'mode', 'orchestrator').click();
@@ -313,7 +313,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await chip(modal, 'mobile').click();
   await expect(modal.locator('[data-section="coordination"]')).toHaveCount(0);
   await chip(modal, 'web-front').click();
-  expect((await summary(modal)).filter((line) => line.startsWith('../'))).toEqual(['../mobile-wt-free-talk-640', '../web-front-wt-free-talk-640']);
+  expect((await summary(modal)).filter((line) => line.startsWith('../'))).toEqual(['../mobile-wt-pair-talk-640', '../web-front-wt-pair-talk-640']);
 
   // Toggles (32×18): worktrees off → edits in place; ultracode on.
   const wt = modal.getByTestId('ns-switch-worktrees');
@@ -333,7 +333,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await expect(modal.getByTestId('ns-branch-row')).toHaveCount(0);
   expect((await summary(modal)).some((line) => line.startsWith('branch'))).toBe(false);
   await wt.click();
-  await expect(branch).toHaveValue('PROJ-640-free-talk');
+  await expect(branch).toHaveValue('PROJ-640-pair-talk');
   await ultra.click();
   await expect(ultra).toHaveAttribute('aria-checked', 'true');
   expect(await summary(modal)).toContain('ultracode on');
@@ -367,7 +367,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   // D22: a taken name no longer disables Start: the short name gets -2, and the worktree line says so.
   await modal.getByTestId('ns-name').fill('existing-one');
   await expect(start).toBeEnabled();
-  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-free-talk', '../web-front-wt-existing-one-2']));
+  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    PROJ-640-pair-talk', '../web-front-wt-existing-one-2']));
   expect(await summary(modal)).not.toContain('⚠ a session with this name exists');
   await modal.getByTestId('ns-name').fill('');
   expect(await summary(modal)).toContain('../web-front-wt-session');
@@ -382,25 +382,25 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
 test('Start session posts the form, opens the session, and creates the worktrees', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openModal(page);
-  await modal.getByTestId('ns-name').fill('free-talk-640');
-  await modal.getByTestId('ns-task').fill('Free talk screen at 640, web and mobile.');
+  await modal.getByTestId('ns-name').fill('pair-talk-640');
+  await modal.getByTestId('ns-task').fill('Pair talk screen at 640, web and mobile.');
   await chip(modal, 'web-front').click();
   await chip(modal, 'mobile').click();
   await pill(modal, 'coordination', 'parallel-twin').click();
   await modal.getByTestId('ns-switch-ultracode').click();
-  expect((await summary(modal)).filter((line) => line.startsWith('../'))).toEqual(['../web-front-wt-free-talk-640', '../mobile-wt-free-talk-640']);
+  expect((await summary(modal)).filter((line) => line.startsWith('../'))).toEqual(['../web-front-wt-pair-talk-640', '../mobile-wt-pair-talk-640']);
   // D32: one ticket branch for both solutions' worktrees.
-  await modal.getByTestId('ns-branch').fill('PROJ-0640-free-talk-screen');
-  expect(await summary(modal)).toContain('branch    PROJ-0640-free-talk-screen');
+  await modal.getByTestId('ns-branch').fill('PROJ-0640-pair-talk-screen');
+  expect(await summary(modal)).toContain('branch    PROJ-0640-pair-talk-screen');
 
   const [folder] = await savedFolders(page);
   const posted = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions');
   await modal.getByTestId('ns-start').click();
   expect((await posted).postDataJSON()).toEqual({
-    name: 'free-talk-640',
+    name: 'pair-talk-640',
     // D22, developer ruling: kebab-case text is posted as the title too.
-    title: 'free-talk-640',
-    task: 'Free talk screen at 640, web and mobile.',
+    title: 'pair-talk-640',
+    task: 'Pair talk screen at 640, web and mobile.',
     workType: 'feature',
     mode: 'single',
     solutions: ['web-front', 'mobile'],
@@ -410,7 +410,7 @@ test('Start session posts the form, opens the session, and creates the worktrees
     worktrees: true,
     ultracode: true,
     folder: folder?.id,
-    branch: 'PROJ-0640-free-talk-screen',
+    branch: 'PROJ-0640-pair-talk-screen',
     // D40: with a worktree the Branching section's choices go along (no epic here: a task only).
     branching: { epic: null, base: 'dev' },
     // D42: the Model row's choice (the CLI default).
@@ -423,10 +423,10 @@ test('Start session posts the form, opens the session, and creates the worktrees
   const view = page.getByTestId('view-session');
   await expect(view).toBeVisible();
 
-  const created = (await listSessions(page)).find((s) => s.name === 'free-talk-640');
+  const created = (await listSessions(page)).find((s) => s.name === 'pair-talk-640');
   expect(created).toMatchObject({
-    title: 'free-talk-640',
-    displayTitle: 'free-talk-640',
+    title: 'pair-talk-640',
+    displayTitle: 'pair-talk-640',
     workType: 'feature',
     mode: 'single',
     phase: 'ui-first',
@@ -440,10 +440,10 @@ test('Start session posts the form, opens the session, and creates the worktrees
   expect(new URL(page.url()).pathname).toBe(`/sessions/${created?.id}`);
 
   // Gap #1: ../{repo}-wt-{name}, next to each repo; D32: on the ticket branch (no session/{name}).
-  expect(await exists(path.join(workspace, 'microfrontends', 'web-front-wt-free-talk-640'))).toBe(true);
-  expect(await exists(path.join(workspace, 'mobile-wt-free-talk-640'))).toBe(true);
-  expect(await git(path.join(workspace, 'microfrontends', 'web-front-wt-free-talk-640'), 'branch', '--show-current')).toBe('PROJ-0640-free-talk-screen');
-  expect(await git(path.join(workspace, 'mobile-wt-free-talk-640'), 'branch', '--show-current')).toBe('PROJ-0640-free-talk-screen');
+  expect(await exists(path.join(workspace, 'microfrontends', 'web-front-wt-pair-talk-640'))).toBe(true);
+  expect(await exists(path.join(workspace, 'mobile-wt-pair-talk-640'))).toBe(true);
+  expect(await git(path.join(workspace, 'microfrontends', 'web-front-wt-pair-talk-640'), 'branch', '--show-current')).toBe('PROJ-0640-pair-talk-screen');
+  expect(await git(path.join(workspace, 'mobile-wt-pair-talk-640'), 'branch', '--show-current')).toBe('PROJ-0640-pair-talk-screen');
   expect(await git(path.join(workspace, 'microfrontends', 'web-front'), 'branch', '--list', 'session/*')).toBe('');
   expect(await git(path.join(workspace, 'mobile'), 'branch', '--list', 'session/*')).toBe('');
 
@@ -452,20 +452,20 @@ test('Start session posts the form, opens the session, and creates the worktrees
   const first = events.find((event) => event.payload.type === 'user');
   expect(first?.payload.origin).toBe('task');
   const lines = (first?.payload.text ?? '').split('\n');
-  expect(lines.slice(0, 3)).toEqual(['Free talk screen at 640, web and mobile.', '', "Session-start answers, confirmed by the developer in Switchboard's new-session form before this session started."]);
+  expect(lines.slice(0, 3)).toEqual(['Pair talk screen at 640, web and mobile.', '', "Session-start answers, confirmed by the developer in Switchboard's new-session form before this session started."]);
   expect(lines).toContain('- Solutions in scope: microfrontends/web-front, mobile');
   expect(lines).toContain('- Mobile coordination: parallel-twin');
   expect(lines).toContain('- Ultracode: on');
-  expect(lines).toContain(`  - microfrontends/web-front: ${path.join(workspace, 'microfrontends', 'web-front-wt-free-talk-640')} (branch PROJ-0640-free-talk-screen)`);
-  expect(lines).toContain(`  - mobile: ${path.join(workspace, 'mobile-wt-free-talk-640')} (branch PROJ-0640-free-talk-screen)`);
+  expect(lines).toContain(`  - microfrontends/web-front: ${path.join(workspace, 'microfrontends', 'web-front-wt-pair-talk-640')} (branch PROJ-0640-pair-talk-screen)`);
+  expect(lines).toContain(`  - mobile: ${path.join(workspace, 'mobile-wt-pair-talk-640')} (branch PROJ-0640-pair-talk-screen)`);
 
-  // The name is now taken: D22 derives free-talk-640-2 instead of blocking Start.
+  // The name is now taken: D22 derives pair-talk-640-2 instead of blocking Start.
   const again = await openModal(page);
   await chip(again, 'billing-front').click();
-  await again.getByTestId('ns-name').fill('free-talk-640');
+  await again.getByTestId('ns-name').fill('pair-talk-640');
   await again.getByTestId('ns-branch').fill('PROJ-0641-billing');
   await expect(again.getByTestId('ns-start')).toBeEnabled();
-  expect(await summary(again)).toEqual(expect.arrayContaining(['branch    PROJ-0641-billing', '../billing-front-wt-free-talk-640-2']));
+  expect(await summary(again)).toEqual(expect.arrayContaining(['branch    PROJ-0641-billing', '../billing-front-wt-pair-talk-640-2']));
   await page.keyboard.press('Escape');
 });
 
@@ -550,7 +550,7 @@ test('POST /api/sessions validates the contract: read-only paths 422, duplicate 
   expect(field(noBranch.body, 'branch')).toEqual([BRANCH_REQUIRED]);
   const badBranch = await postSession(page, { ...base, name: 'bad-branch', solutions: ['billing-front'], worktrees: true, branch: 'feature/x' });
   expect(field(badBranch.body, 'branch')).toEqual([BRANCH_RULE]);
-  expect((await listSessions(page)).map((s) => s.name).sort()).toEqual(['existing-one', 'free-talk-640', 'no-solutions', 'proj-1984-purchase-complete']);
+  expect((await listSessions(page)).map((s) => s.name).sort()).toEqual(['existing-one', 'no-solutions', 'pair-talk-640', 'proj-1984-purchase-complete']);
 });
 
 test('"Open fix session" opens the form prefilled (M3.3); Start creates that session', async ({ page }) => {

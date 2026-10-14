@@ -22,9 +22,9 @@ import {
 /**
  * Visual oracle for the session view's right panel (M4.3, D10): the app (demo
  * seed) against the prototype with the same session open (its sidebar row),
- * 1440×900, `simulateIncoming` off, on `free-talk-feature` (the prototype's
+ * 1440×900, `simulateIncoming` off, on `pair-talk-feature` (the prototype's
  * default: 4 agent cards, 6 terminal lines with ✓ / ⚠ / ⏸ tones) and
- * `calendar-func-fix` (1 card, `$` / output lines and the running cursor `▍`).
+ * `reminder-func-fix` (1 card, `$` / output lines and the running cursor `▍`).
  * The panel does not depend on the header's height, so every box is absolute.
  * Gate: boxes ±2 px, exact copy and equal computed styles for the header, every
  * card (dot, name, description, status, path, ⎇ branch), the "Terminal" label,
@@ -48,14 +48,14 @@ import {
  * D27 addition (not a finding): the demo's chat prints no status table, so the
  * prototype comparisons are unchanged. The reported table is checked on its own
  * ({@link checkReported}) on a separate page of the same demo session whose
- * `GET /api/sessions/free-talk-feature` answer carries a `reportedTable` (the box
+ * `GET /api/sessions/pair-talk-feature` answer carries a `reportedTable` (the box
  * table an orchestrator printed): drawn as a table under the derived one, with its
  * tokens, the columns' shares, the Status colors and dots, and nothing in the
  * panel wider than the panel, also with the "as printed" popover open.
  *
  * D37 developer ruling (not a finding): a finished (`done`) subagent leaves the
  * panel, its card and its overview row, for one "✓ N finished" line under the
- * cards (the main agent always stays). The prototype's free-talk-feature shows its
+ * cards (the main agent always stays). The prototype's pair-talk-feature shows its
  * done `figma-extractor` card, so, as with D29, the prototype's parts that still
  * exist are compared at their boxes: the three other cards exactly, the card list
  * by x, y and width, and the parts under it with the card list's height difference
@@ -443,7 +443,7 @@ const REPORTED_SHARES = [18.18, 36.36, 18.18, 27.27] as const;
 
 /**
  * D27: the reported table on its own (the prototype has none, and the demo's chat
- * prints none): a separate page of the demo's free-talk-feature whose session
+ * prints none): a separate page of the demo's pair-talk-feature whose session
  * detail carries {@link REPORTED_BOX} as its `reportedTable`. Checks its place
  * (under the derived table), the heading and toggle copy and type, the columns in
  * order and their shares, the rows' cells (the Status without its emoji), the
@@ -454,12 +454,12 @@ const REPORTED_SHARES = [18.18, 36.36, 18.18, 27.27] as const;
 async function checkReported(browser: Browser, failures: string[]): Promise<string[]> {
   const page = await newVisualPage(browser);
   const at = new Date(Date.now() - 3 * 60_000).toISOString();
-  await page.route('**/api/sessions/free-talk-feature', async (route) => {
+  await page.route('**/api/sessions/pair-talk-feature', async (route) => {
     const response = await route.fetch();
     const json = (await response.json()) as Record<string, unknown>;
     await route.fulfill({ response, json: { ...json, reportedTable: { text: REPORTED_BOX, format: 'box', at } } });
   });
-  await openAppSession(page, 'free-talk-feature', 3);
+  await openAppSession(page, 'pair-talk-feature', 3);
   await expect(page.getByTestId('overview-reported-table')).toBeVisible();
   const [runColor, doneColor] = await canonicalColors(page, ['oklch(0.72 0.12 250)', 'oklch(0.74 0.13 150)']);
   const read = () =>
@@ -517,8 +517,8 @@ async function checkReported(browser: Browser, failures: string[]): Promise<stri
   const open = await read();
   await page.context().close();
   if (!closed || !open) {
-    failures.push('free-talk-feature reported table (D27): missing');
-    return ['| free-talk-feature | reported table (D27) | present | missing | FAIL |'];
+    failures.push('pair-talk-feature reported table (D27): missing');
+    return ['| pair-talk-feature | reported table (D27) | present | missing | FAIL |'];
   }
   const shareOk = closed.shares.length === REPORTED_SHARES.length && closed.shares.every((share, i) => Math.abs(share - (REPORTED_SHARES[i] ?? 0)) <= 0.5);
   const checks: Array<[string, string, string, boolean?]> = [
@@ -550,17 +550,17 @@ async function checkReported(browser: Browser, failures: string[]): Promise<stri
   const rows: string[] = [];
   for (const [check, want, got, verdict] of checks) {
     const ok = verdict ?? want === got;
-    if (!ok) failures.push(`free-talk-feature reported table (D27) ${check}: expected ${want}, got ${got}`);
-    rows.push(`| free-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
+    if (!ok) failures.push(`pair-talk-feature reported table (D27) ${check}: expected ${want}, got ${got}`);
+    rows.push(`| pair-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
   }
   return rows;
 }
 
-/** D37: the done subagents of the prototype's free-talk-feature (the main agent always stays). */
-const FREE_TALK_FINISHED: readonly string[] = ['figma-extractor'];
+/** D37: the done subagents of the prototype's pair-talk-feature (the main agent always stays). */
+const PAIR_TALK_FINISHED: readonly string[] = ['figma-extractor'];
 
 /**
- * D37: the ruled layout on free-talk-feature, on its own. Collapsed: the app's
+ * D37: the ruled layout on pair-talk-feature, on its own. Collapsed: the app's
  * cards are the prototype's without its done subagents, in order, and so are the
  * overview's rows; one "✓ 1 finished" line under the last card, inside the card
  * list, in Geist Mono 11px `--muted-3`, its text at the cards' dot column.
@@ -607,14 +607,14 @@ async function checkFinished(protoPage: Page, appPage: Page, failures: string[])
   await appPage.getByTestId('agents-finished').click();
   await expect(appPage.getByTestId('agent-card')).toHaveCount(4);
   const expanded = await read();
-  const cardRows = await compare(protoPage, appPage, 'free-talk-feature expanded (D37)', { ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...cardParts(3, false) }, failures);
+  const cardRows = await compare(protoPage, appPage, 'pair-talk-feature expanded (D37)', { ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...cardParts(3, false) }, failures);
   await appPage.getByTestId('agents-finished').click();
   await expect(appPage.getByTestId('agent-card')).toHaveCount(3);
   if (!collapsed || !expanded) {
-    failures.push('free-talk-feature finished line (D37): missing');
-    return ['| free-talk-feature | "✓ N finished" line (D37) | present | missing | FAIL |'];
+    failures.push('pair-talk-feature finished line (D37): missing');
+    return ['| pair-talk-feature | "✓ N finished" line (D37) | present | missing | FAIL |'];
   }
-  const remaining = protoNames.filter((name) => !FREE_TALK_FINISHED.includes(name)).join(',');
+  const remaining = protoNames.filter((name) => !PAIR_TALK_FINISHED.includes(name)).join(',');
   const checks: Array<[string, string, string, boolean?]> = [
     ['prototype cards (done: figma-extractor)', 'orchestrator,web,mobile,figma-extractor', protoNames.join(',')],
     ['collapsed: cards = the prototype\'s without its done subagents, in order', remaining, collapsed.cards.join(',')],
@@ -631,13 +631,13 @@ async function checkFinished(protoPage: Page, appPage: Page, failures: string[])
   const rows: string[] = [];
   for (const [check, want, got, verdict] of checks) {
     const ok = verdict ?? want === got;
-    if (!ok) failures.push(`free-talk-feature finished line (D37) ${check}: expected ${want}, got ${got}`);
-    rows.push(`| free-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
+    if (!ok) failures.push(`pair-talk-feature finished line (D37) ${check}: expected ${want}, got ${got}`);
+    rows.push(`| pair-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
   }
   // The four expanded cards at the prototype's boxes (the parts' rows, in the table's shape).
   for (const row of cardRows) {
     const cells = row.split(' | ');
-    rows.push(`| free-talk-feature | expanded card part ${cells[1] ?? ''} at the prototype's box | ${cells[3] ?? ''} | ${cells[4] ?? ''} | ${cells[5] ?? ''} |`);
+    rows.push(`| pair-talk-feature | expanded card part ${cells[1] ?? ''} at the prototype's box | ${cells[3] ?? ''} | ${cells[4] ?? ''} | ${cells[5] ?? ''} |`);
   }
   return rows;
 }
@@ -651,36 +651,36 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   await openPrototype(protoPage, { simulateIncoming: false });
   const panelClip = { x: 1060, y: 0, width: 380, height: 900 };
 
-  // 1. free-talk-feature: 4 cards in the prototype (2 with a branch), 6 lines (✓ / ⚠ / ⏸ tones). D37: the app lists
+  // 1. pair-talk-feature: 4 cards in the prototype (2 with a branch), 6 lines (✓ / ⚠ / ⏸ tones). D37: the app lists
   // 3 cards (the done figma-extractor is under "✓ 1 finished"); the three are compared at the prototype's boxes.
-  await openProtoSession(protoPage, 'free-talk-feature');
-  await openAppSession(appPage, 'free-talk-feature', 3);
+  await openProtoSession(protoPage, 'pair-talk-feature');
+  await openAppSession(appPage, 'pair-talk-feature', 3);
   await expect(appPage.getByTestId('terminal-line')).toHaveCount(6);
   rows.push(
     ...(await compare(
       protoPage,
       appPage,
-      'free-talk-feature',
+      'pair-talk-feature',
       { ...FRAME_PARTS_D37, ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...lineParts(6) },
       failures,
     )),
   );
-  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'free-talk-feature', failures)));
-  rows.push(...(await compareCopy(protoPage, appPage, 'free-talk-feature', failures)));
-  overviewRows.push(...(await checkOverview(protoPage, appPage, 'free-talk-feature', failures)));
+  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'pair-talk-feature', failures)));
+  rows.push(...(await compareCopy(protoPage, appPage, 'pair-talk-feature', failures)));
+  overviewRows.push(...(await checkOverview(protoPage, appPage, 'pair-talk-feature', failures)));
   const protoFree = await protoPage.screenshot({ clip: panelClip });
   const appFree = await appPage.screenshot({ clip: panelClip });
   const freeDiff = await pixelDiff(appPage, protoFree, appFree);
   // D37: the ruled layout on its own (collapsed, then expanded: all four cards at the prototype's boxes).
   const finishedRows = await checkFinished(protoPage, appPage, failures);
 
-  // 2. calendar-func-fix: 1 card with a branch, `$` / output lines and the cursor (status run).
-  await openProtoSession(protoPage, 'calendar-func-fix');
-  await openAppSession(appPage, 'calendar-func-fix', 1);
+  // 2. reminder-func-fix: 1 card with a branch, `$` / output lines and the cursor (status run).
+  await openProtoSession(protoPage, 'reminder-func-fix');
+  await openAppSession(appPage, 'reminder-func-fix', 1);
   await expect(appPage.getByTestId('terminal-line')).toHaveText(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build', '▍']);
-  rows.push(...(await compare(protoPage, appPage, 'calendar-func-fix', { ...FRAME_PARTS, ...cardParts(0, true), ...lineParts(4) }, failures)));
-  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'calendar-func-fix', failures)));
-  overviewRows.push(...(await checkOverview(protoPage, appPage, 'calendar-func-fix', failures)));
+  rows.push(...(await compare(protoPage, appPage, 'reminder-func-fix', { ...FRAME_PARTS, ...cardParts(0, true), ...lineParts(4) }, failures)));
+  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'reminder-func-fix', failures)));
+  overviewRows.push(...(await checkOverview(protoPage, appPage, 'reminder-func-fix', failures)));
   const protoCalendar = await protoPage.screenshot({ clip: panelClip });
   const appCalendar = await appPage.screenshot({ clip: panelClip });
   const calendarDiff = await pixelDiff(appPage, protoCalendar, appCalendar);
@@ -704,8 +704,8 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
     return [...(el?.children ?? [])].map((child) => (child.textContent ?? '').trim());
   }, [...TERM]);
 
-  // SPEC tokens as computed styles on the app (free-talk-feature panel).
-  await openAppSession(appPage, 'free-talk-feature', 3);
+  // SPEC tokens as computed styles on the app (pair-talk-feature panel).
+  await openAppSession(appPage, 'pair-talk-feature', 3);
   const computed = await appPage.evaluate(() => {
     const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
     const panel = style('.sb-sv-panel');
@@ -773,7 +773,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
       diffs: { free: freeDiff.percent, calendar: calendarDiff.percent },
       rollout: { proto: protoRollout, app: appRollout },
     }),
-    'session-panel-free-talk-side-by-side.png': await sideBySide(appPage, protoFree, appFree),
+    'session-panel-pair-talk-side-by-side.png': await sideBySide(appPage, protoFree, appFree),
     'session-panel-calendar-side-by-side.png': await sideBySide(appPage, protoCalendar, appCalendar),
   });
 
@@ -792,14 +792,14 @@ function report(input: {
 }): string {
   return `# Visual oracle · Session right panel (M4.3)
 
-Generated by \`tests/e2e/visual/session-panel.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/free-talk-feature\` and \`/sessions/calendar-func-fix\` (and \`button-rollout\` for the ✕ tone).
+Generated by \`tests/e2e/visual/session-panel.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/pair-talk-feature\` and \`/sessions/reminder-func-fix\` (and \`button-rollout\` for the ✕ tone).
 Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, the same sessions opened from their sidebar rows.
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
 
-Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **${input.diffs.free.toFixed(2)}%**, calendar-func-fix **${input.diffs.calendar.toFixed(2)}%**.
+Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): pair-talk-feature **${input.diffs.free.toFixed(2)}%**, reminder-func-fix **${input.diffs.calendar.toFixed(2)}%**.
 
-Side by side (prototype left, app right): \`session-panel-free-talk-side-by-side.png\`, \`session-panel-calendar-side-by-side.png\`.
+Side by side (prototype left, app right): \`session-panel-pair-talk-side-by-side.png\`, \`session-panel-calendar-side-by-side.png\`.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry \`box\` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')}. D21: the app column shows each part's box with the agent overview's height taken out of y (the overview is the app panel's first child, above every prototype part; see *D21 additions*).
@@ -821,14 +821,14 @@ ${input.computedRows.join('\n')}
 ${input.overviewRows.join('\n')}
 
 ## D27 additions (not findings)
-- The newest status table the agent printed is drawn as a table under "As reported by the agent · <age>", with an "as printed" toggle that opens the original in a popover over the main area; nothing in the right panel scrolls sideways. The demo's chat prints no status table, so nothing above changes. The table is checked on its own on a separate page of free-talk-feature whose session detail carries this session's orchestrator table (4 columns, \`├─┼─┤\` rows, 🟢 / ✅ statuses) as its \`reportedTable\`:
+- The newest status table the agent printed is drawn as a table under "As reported by the agent · <age>", with an "as printed" toggle that opens the original in a popover over the main area; nothing in the right panel scrolls sideways. The demo's chat prints no status table, so nothing above changes. The table is checked on its own on a separate page of pair-talk-feature whose session detail carries this session's orchestrator table (4 columns, \`├─┼─┤\` rows, 🟢 / ✅ statuses) as its \`reportedTable\`:
 
 | Session | Check | Expected | App | Result |
 |---|---|---|---|---|
 ${input.reportedRows.join('\n')}
 
 ## D37 ruling (developer, 2026-09-28; not findings)
-- A finished (\`done\`) subagent leaves the right panel: its card and its overview row. One line, \`✓ N finished\` (Geist Mono 11px, \`--muted-3\`), under the cards expands them in place; the main agent always stays, and the summary still counts every agent. The prototype's free-talk-feature shows its done \`figma-extractor\` card, so the app lists three cards there: those three are compared above at the prototype's boxes, the card list by x, y and width, and the parts under it (Terminal label, tail, handoff card, copy control) with the card list's height difference taken out of y. The ruled layout is checked on its own (the expanded cards are the prototype's four, at its boxes):
+- A finished (\`done\`) subagent leaves the right panel: its card and its overview row. One line, \`✓ N finished\` (Geist Mono 11px, \`--muted-3\`), under the cards expands them in place; the main agent always stays, and the summary still counts every agent. The prototype's pair-talk-feature shows its done \`figma-extractor\` card, so the app lists three cards there: those three are compared above at the prototype's boxes, the card list by x, y and width, and the parts under it (Terminal label, tail, handoff card, copy control) with the card list's height difference taken out of y. The ruled layout is checked on its own (the expanded cards are the prototype's four, at its boxes):
 
 | Session | Check | Expected | App | Result |
 |---|---|---|---|---|

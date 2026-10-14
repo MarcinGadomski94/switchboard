@@ -271,7 +271,7 @@ describe('background work (D30)', () => {
   });
 
   it('D43: a workflow reads `Running a workflow: <summary>`, a task the CLI reported `Waiting for a background task: <summary>`, in every view', () => {
-    const AUDIT = 'Read-only audit of HubSpot contacts and deals';
+    const AUDIT = 'Read-only audit of CRM contacts and deals';
     const workflow = task({ id: 'wbetnz0pi', toolUseId: 't9', kind: 'workflow', github: false, summary: AUDIT });
     const reported = task({ id: 'k7', toolUseId: 'k7', kind: 'task', github: false, summary: 'Export the quarterly report', startedAt: iso(30) });
     expect(backgroundText(workflow)).toBe(`Running a workflow: ${AUDIT}`);

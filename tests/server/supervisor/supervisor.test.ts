@@ -237,12 +237,12 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
   });
 
   it('D89: written files no longer become artifacts (artifacts are saved on purpose)', async () => {
-    const { w, session } = await start({}, { task: 'Write the contract. [fake:write contracts/free-talk.md]' });
+    const { w, session } = await start({}, { task: 'Write the contract. [fake:write contracts/pair-talk.md]' });
     await waitForStatus(w.store, session.id, ['done']);
     await w.supervisor.sendMessage(session.id, 'And the notes. [fake:write microfrontends/acme-app-front/docs/notes.md]');
     await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('acme-app-front') || undefined, 'the notes written');
     expect(await w.store.artifacts.list({ sessionId: session.id })).toEqual([]);
-    expect(await readFile(path.join(w.workspace, 'contracts', 'free-talk.md'), 'utf8')).toContain('fake-claude');
+    expect(await readFile(path.join(w.workspace, 'contracts', 'pair-talk.md'), 'utf8')).toContain('fake-claude');
   });
 });
 

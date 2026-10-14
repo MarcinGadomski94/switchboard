@@ -1,7 +1,7 @@
 {
   "sessions": [
     {
-      "name": "free-talk-feature",
+      "name": "pair-talk-feature",
       "status": "need",
       "age": "1m",
       "modeLine": "orch · feature · UI-first",
@@ -46,17 +46,17 @@
         },
         {
           "name": "web",
-          "description": "FreeTalkPage @360",
+          "description": "PairTalkPage @360",
           "solutionPath": "microfrontends/acme-app-front",
-          "branch": "feature/free-talk-360",
+          "branch": "feature/pair-talk-360",
           "statusText": "asked 1",
           "status": "need"
         },
         {
           "name": "mobile",
-          "description": "FreeTalkView @360",
+          "description": "PairTalkView @360",
           "solutionPath": "mobile/",
-          "branch": "feature/free-talk-360",
+          "branch": "feature/pair-talk-360",
           "statusText": "asked 1",
           "status": "need"
         },
@@ -72,11 +72,11 @@
       "messages": [
         {
           "from": "user",
-          "text": "Free talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page."
+          "text": "Pair talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page."
         },
         {
           "from": "agent",
-          "text": "Contract locked from Figma node 2231:884 and written to contracts/free-talk.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.",
+          "text": "Contract locked from Figma node 2231:884 and written to contracts/pair-talk.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.",
           "tools": [
             "✓ recon · codebase-memory · 2 precedents found",
             "✓ figma-extractor · spec table, 14 slots",
@@ -106,7 +106,7 @@
         },
         {
           "source": "(orchestrator)",
-          "text": "Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?",
+          "text": "Web mocked PairTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?",
           "options": [
             "Nullable",
             "Required",
@@ -125,13 +125,13 @@
       "files": [
         {
           "solution": "acme-app-front",
-          "path": "Pages/FreeTalk/FreeTalk.razor",
-          "branch": "feature/free-talk-360",
+          "path": "Pages/PairTalk/PairTalk.razor",
+          "branch": "feature/pair-talk-360",
           "delta": "+118",
           "lines": [
-            " @page \"/free-talk\"",
-            " @inject IFreeTalkService FreeTalkService",
-            "+<AcmPageHeader Title=\"Free talk\" />",
+            " @page \"/pair-talk\"",
+            " @inject IPairTalkService PairTalkService",
+            "+<AcmPageHeader Title=\"Pair talk\" />",
             "+<TopicChips Topics=\"@_topics\" Wrap=\"true\" />",
             "+<AcmButton Size=\"Large\" OnClick=\"StartAsync\">Start talking</AcmButton>",
             "+",
@@ -139,14 +139,14 @@
             "+    private IReadOnlyList<TopicDto> _topics = [];",
             "+",
             "+    protected override async Task OnInitializedAsync()",
-            "+        => _topics = await FreeTalkService.GetTopicsAsync();",
+            "+        => _topics = await PairTalkService.GetTopicsAsync();",
             "+}"
           ]
         },
         {
           "solution": "acme-app-front",
-          "path": "Pages/FreeTalk/TopicChips.razor",
-          "branch": "feature/free-talk-360",
+          "path": "Pages/PairTalk/TopicChips.razor",
+          "branch": "feature/pair-talk-360",
           "delta": "+51 −12",
           "lines": [
             " <div class=\"topic-chips\">",
@@ -159,12 +159,12 @@
         },
         {
           "solution": "mobile/",
-          "path": "Views/FreeTalkView.xaml",
-          "branch": "feature/free-talk-360",
+          "path": "Views/PairTalkView.xaml",
+          "branch": "feature/pair-talk-360",
           "delta": "+96",
           "lines": [
-            "+<ContentPage x:Class=\"Acme.Mobile.Views.FreeTalkView\"",
-            "+             Title=\"Free talk\">",
+            "+<ContentPage x:Class=\"Acme.Mobile.Views.PairTalkView\"",
+            "+             Title=\"Pair talk\">",
             "+  <VerticalStackLayout Spacing=\"16\" Padding=\"16\">",
             "+    <controls:AcmChipGroup ItemsSource=\"{Binding Topics}\" />",
             "+    <controls:AcmButton Text=\"Start talking\" Command=\"{Binding StartCommand}\" />",
@@ -174,24 +174,24 @@
         },
         {
           "solution": "mobile/",
-          "path": "ViewModels/FreeTalkViewModel.cs",
-          "branch": "feature/free-talk-360",
+          "path": "ViewModels/PairTalkViewModel.cs",
+          "branch": "feature/pair-talk-360",
           "delta": "+88",
           "lines": [
-            "+public partial class FreeTalkViewModel : ObservableObject",
+            "+public partial class PairTalkViewModel : ObservableObject",
             "+{",
-            "+    // UI-first seam: swap FreeTalkServiceMock for the real connector at integration",
+            "+    // UI-first seam: swap PairTalkServiceMock for the real connector at integration",
             "+    [ObservableProperty] private IReadOnlyList<TopicDto> _topics = [];",
             "+}"
           ]
         },
         {
           "solution": "root",
-          "path": "contracts/free-talk.md",
+          "path": "contracts/pair-talk.md",
           "branch": "—",
           "delta": "+62",
           "lines": [
-            "+# Free talk · locked contract",
+            "+# Pair talk · locked contract",
             "+Figma: 2231:884 (360)",
             "+Breakpoints: web 360 · mobile 360",
             "+Phase: UI-first (mock-DI)"
@@ -201,7 +201,7 @@
       "artifacts": [
         {
           "type": "CONTRACT",
-          "name": "contracts/free-talk.md",
+          "name": "contracts/pair-talk.md",
           "meta": "locked"
         },
         {
@@ -283,7 +283,7 @@
               "start": 13,
               "end": 22,
               "kind": "impl",
-              "label": "implement FreeTalkPage"
+              "label": "implement PairTalkPage"
             },
             {
               "start": 22,
@@ -319,7 +319,7 @@
               "start": 13,
               "end": 24,
               "kind": "impl",
-              "label": "implement FreeTalkView"
+              "label": "implement PairTalkView"
             },
             {
               "start": 24,
@@ -344,7 +344,7 @@
       ]
     },
     {
-      "name": "notifications-integration",
+      "name": "acme-alerts-integration",
       "status": "need",
       "age": "3m",
       "modeLine": "orch · integration · Tier A 3/6",
@@ -366,7 +366,7 @@
         },
         {
           "k": "scope",
-          "v": "notifications-microservice → mobile BFF → workspace-front"
+          "v": "acme-alerts-microservice → mobile BFF → dashboard-front"
         },
         {
           "k": "loop",
@@ -386,7 +386,7 @@
         {
           "name": "microservice",
           "description": "push-preferences endpoint",
-          "solutionPath": "microservices/notifications-microservice",
+          "solutionPath": "microservices/acme-alerts-microservice",
           "branch": "feature/push-prefs",
           "statusText": "contract locked",
           "status": "done"
@@ -394,7 +394,7 @@
         {
           "name": "web",
           "description": "NotificationsPanel connector",
-          "solutionPath": "microfrontends/workspace-front",
+          "solutionPath": "microfrontends/dashboard-front",
           "branch": "feature/notifications-panel",
           "statusText": "Tier A green",
           "status": "done"
@@ -411,7 +411,7 @@
       "messages": [
         {
           "from": "user",
-          "text": "Wire the notifications panel to the real notifications-microservice. Push preferences endpoint."
+          "text": "Wire the notifications panel to the real acme-alerts-microservice. Push preferences endpoint."
         },
         {
           "from": "agent",
@@ -427,7 +427,7 @@
       "questions": [
         {
           "source": "(orchestrator)",
-          "text": "Tier A is green on web. Tier B boots notifications-microservice → Gateway → workspace-front locally (3 processes, about 6 min). Authorize Tier B now?",
+          "text": "Tier A is green on web. Tier B boots acme-alerts-microservice → Gateway → dashboard-front locally (3 processes, about 6 min). Authorize Tier B now?",
           "options": [
             "Authorize Tier B",
             "Tier A only for now",
@@ -444,7 +444,7 @@
       ],
       "files": [
         {
-          "solution": "workspace-front",
+          "solution": "dashboard-front",
           "path": "Services/PushPreferencesConnector.cs",
           "branch": "feature/notifications-panel",
           "delta": "+74",
@@ -457,7 +457,7 @@
           ]
         },
         {
-          "solution": "notifications-microservice",
+          "solution": "acme-alerts-microservice",
           "path": "swagger.yml",
           "branch": "feature/push-prefs",
           "delta": "+41",
@@ -478,12 +478,12 @@
         },
         {
           "type": "PR",
-          "name": "notifications-microservice #88",
+          "name": "acme-alerts-microservice #88",
           "meta": "open"
         },
         {
           "type": "DIFF",
-          "name": "workspace-front · 4 files",
+          "name": "dashboard-front · 4 files",
           "meta": "+131 −9"
         }
       ],
@@ -508,7 +508,7 @@
         },
         {
           "agent": "microservice",
-          "solution": "notifications-microservice",
+          "solution": "acme-alerts-microservice",
           "blocks": [
             {
               "start": 6,
@@ -526,7 +526,7 @@
         },
         {
           "agent": "web",
-          "solution": "workspace-front",
+          "solution": "dashboard-front",
           "blocks": [
             {
               "start": 18,
@@ -557,7 +557,7 @@
       ]
     },
     {
-      "name": "qa-free-talk",
+      "name": "qa-pair-talk",
       "status": "run",
       "age": "9m",
       "modeLine": "orch · QA · 14/18 covered",
@@ -591,7 +591,7 @@
           "name": "qa-web-playwright",
           "description": "E2E @360",
           "solutionPath": "microfrontends/acme-app-front",
-          "branch": "qa/free-talk-e2e",
+          "branch": "qa/pair-talk-e2e",
           "statusText": "AC 14/18",
           "status": "run"
         },
@@ -599,7 +599,7 @@
           "name": "qa-mobile-appium",
           "description": "UI tests @360",
           "solutionPath": "mobile/",
-          "branch": "qa/free-talk-appium",
+          "branch": "qa/pair-talk-appium",
           "statusText": "AC 12/18",
           "status": "run"
         }
@@ -607,7 +607,7 @@
       "messages": [
         {
           "from": "user",
-          "text": "Write E2E tests for Free talk at 360 on both stacks."
+          "text": "Write E2E tests for Pair talk at 360 on both stacks."
         },
         {
           "from": "agent",
@@ -621,7 +621,7 @@
       ],
       "questions": [],
       "terminal": [
-        "[web] $ dotnet test --filter FreeTalk",
+        "[web] $ dotnet test --filter PairTalk",
         "[web] Passed 14 · Failed 0",
         "[mobile] appium · emulator pixel_7 @360",
         "[mobile] AC-5 swipe to next topic ✓",
@@ -630,8 +630,8 @@
       "files": [
         {
           "solution": "acme-app-front",
-          "path": "Tests/E2E/FreeTalkTests.cs",
-          "branch": "qa/free-talk-e2e",
+          "path": "Tests/E2E/PairTalkTests.cs",
+          "branch": "qa/pair-talk-e2e",
           "delta": "+212",
           "lines": [
             "+[Test, Requirement(\"AC-3\")]",
@@ -648,7 +648,7 @@
           "delta": "+48",
           "lines": [
             "+| ID | Requirement | Web | Mobile |",
-            "+| AC-1 | Title shows \"Free talk\" | ✓ | ✓ |"
+            "+| AC-1 | Title shows \"Pair talk\" | ✓ | ✓ |"
           ]
         }
       ],
@@ -737,14 +737,14 @@
         },
         {
           "k": "scope",
-          "v": "components-library-nuget + acme-app-front + mobile"
+          "v": "design-system-nuget + acme-app-front + mobile"
         }
       ],
       "agents": [
         {
           "name": "nuget",
           "description": "AcmButton size variants",
-          "solutionPath": "nugets/components-library-nuget",
+          "solutionPath": "nugets/design-system-nuget",
           "branch": "feature/acm-button-sizes",
           "statusText": "item 7 done",
           "status": "done"
@@ -802,7 +802,7 @@
       ],
       "files": [
         {
-          "solution": "components-library-nuget",
+          "solution": "design-system-nuget",
           "path": "AcmButton/AcmButton.razor",
           "branch": "feature/acm-button-sizes",
           "delta": "+64 −8",
@@ -864,10 +864,10 @@
       ]
     },
     {
-      "name": "calendar-func-fix",
+      "name": "reminder-func-fix",
       "status": "run",
       "age": "20m",
-      "modeLine": "single · calendar-func",
+      "modeLine": "single · reminder-func",
       "resumeId": "a7710de2",
       "t0": 12,
       "duration": 22,
@@ -886,14 +886,14 @@
         },
         {
           "k": "scope",
-          "v": "functions/calendar-func"
+          "v": "functions/reminder-func"
         }
       ],
       "agents": [
         {
-          "name": "calendar-func",
+          "name": "reminder-func",
           "description": "DST offset in reminders",
-          "solutionPath": "functions/calendar-func",
+          "solutionPath": "functions/reminder-func",
           "branch": "fix/timezone-dst",
           "statusText": "build self-heal 1/3",
           "status": "run"
@@ -902,7 +902,7 @@
       "messages": [
         {
           "from": "user",
-          "text": "Reminders fire an hour late after the DST switch. Fix in calendar-func."
+          "text": "Reminders fire an hour late after the DST switch. Fix in reminder-func."
         },
         {
           "from": "agent",
@@ -922,7 +922,7 @@
       ],
       "files": [
         {
-          "solution": "calendar-func",
+          "solution": "reminder-func",
           "path": "Services/ReminderScheduler.cs",
           "branch": "fix/timezone-dst",
           "delta": "+14 −6",
@@ -936,14 +936,14 @@
       "artifacts": [
         {
           "type": "DIFF",
-          "name": "calendar-func · 2 files",
+          "name": "reminder-func · 2 files",
           "meta": "+23 −6"
         }
       ],
       "timeline": [
         {
-          "agent": "calendar-func",
-          "solution": "functions/calendar-func",
+          "agent": "reminder-func",
+          "solution": "functions/reminder-func",
           "blocks": [
             {
               "start": 0,
@@ -1010,7 +1010,7 @@
           "text": "Sweep 14:00 done: 212 events, 3 new signatures. Fixed 1 (null-ref in NotificationsController, PR #412). Escalated 2 to you as notes. Next sweep 15:00.",
           "tools": [
             "✓ 209 known-noise events filtered",
-            "✓ PR #412 opened · notifications-microservice",
+            "✓ PR #412 opened · acme-alerts-microservice",
             "• 2 escalations written to monitoring-notes.md"
           ]
         }
@@ -1026,7 +1026,7 @@
       "artifacts": [
         {
           "type": "PR",
-          "name": "notifications-microservice #412",
+          "name": "acme-alerts-microservice #412",
           "meta": "open"
         },
         {

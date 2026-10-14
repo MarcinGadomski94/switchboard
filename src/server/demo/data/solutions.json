@@ -16,10 +16,10 @@
           "flagKind": null,
           "branches": [
             {
-              "branch": "feature/free-talk-360",
-              "owner": "free-talk-feature",
+              "branch": "feature/pair-talk-360",
+              "owner": "pair-talk-feature",
               "status": "need",
-              "worktree": "acme-app-front-wt-free-talk-feature"
+              "worktree": "acme-app-front-wt-pair-talk-feature"
             },
             {
               "branch": "feature/button-variants",
@@ -28,15 +28,15 @@
               "worktree": "acme-app-front-wt-button-rollout"
             },
             {
-              "branch": "qa/free-talk-e2e",
-              "owner": "qa-free-talk",
+              "branch": "qa/pair-talk-e2e",
+              "owner": "qa-pair-talk",
               "status": "run",
-              "worktree": "acme-app-front-wt-qa-free-talk"
+              "worktree": "acme-app-front-wt-qa-pair-talk"
             }
           ]
         },
         {
-          "name": "workspace-front",
+          "name": "dashboard-front",
           "type": "Web",
           "status": "run",
           "readOnly": false,
@@ -47,14 +47,14 @@
           "branches": [
             {
               "branch": "feature/notifications-panel",
-              "owner": "notifications-integration",
+              "owner": "acme-alerts-integration",
               "status": "done",
-              "worktree": "workspace-front-wt-notifications-integration"
+              "worktree": "dashboard-front-wt-acme-alerts-integration"
             }
           ]
         },
         {
-          "name": "auth-front",
+          "name": "login-front",
           "type": "Web",
           "status": "idle",
           "readOnly": false,
@@ -72,7 +72,7 @@
           ]
         },
         {
-          "name": "learning-material-front",
+          "name": "content-library-front",
           "type": "Web",
           "status": "idle",
           "readOnly": false,
@@ -105,15 +105,15 @@
           "flag": "⚠ shared working tree",
           "flagKind": "warn",
           "conflictSessions": [
-            "free-talk-feature",
+            "pair-talk-feature",
             "button-rollout"
           ],
           "branches": [
             {
-              "branch": "feature/free-talk-360",
-              "owner": "free-talk-feature",
+              "branch": "feature/pair-talk-360",
+              "owner": "pair-talk-feature",
               "status": "need",
-              "worktree": "mobile-wt-free-talk-feature"
+              "worktree": "mobile-wt-pair-talk-feature"
             },
             {
               "branch": "feature/button-variants",
@@ -123,9 +123,9 @@
             },
             {
               "branch": "feature/push-prefs-bff",
-              "owner": "notifications-integration",
+              "owner": "acme-alerts-integration",
               "status": "run",
-              "worktree": "mobile-wt-notifications-integration"
+              "worktree": "mobile-wt-acme-alerts-integration"
             }
           ]
         }
@@ -136,7 +136,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "components-library-nuget",
+          "name": "design-system-nuget",
           "type": "NuGet",
           "status": "run",
           "readOnly": false,
@@ -149,12 +149,12 @@
               "branch": "feature/acm-button-sizes",
               "owner": "button-rollout",
               "status": "done",
-              "worktree": "components-library-nuget-wt-button-rollout"
+              "worktree": "design-system-nuget-wt-button-rollout"
             }
           ]
         },
         {
-          "name": "typography-nuget",
+          "name": "acme-fonts-nuget",
           "type": "NuGet",
           "status": "idle",
           "readOnly": false,
@@ -178,7 +178,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "notifications-microservice",
+          "name": "acme-alerts-microservice",
           "type": "Backend",
           "status": "done",
           "readOnly": false,
@@ -189,14 +189,14 @@
           "branches": [
             {
               "branch": "feature/push-prefs",
-              "owner": "notifications-integration",
+              "owner": "acme-alerts-integration",
               "status": "done",
-              "worktree": "notifications-microservice-wt-notifications-integration"
+              "worktree": "acme-alerts-microservice-wt-acme-alerts-integration"
             }
           ]
         },
         {
-          "name": "auth-microservice",
+          "name": "login-microservice",
           "type": "Backend",
           "status": "idle",
           "readOnly": false,
@@ -220,7 +220,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "calendar-func",
+          "name": "reminder-func",
           "type": "Backend",
           "status": "run",
           "readOnly": false,
@@ -231,9 +231,9 @@
           "branches": [
             {
               "branch": "fix/timezone-dst",
-              "owner": "calendar-func-fix",
+              "owner": "reminder-func-fix",
               "status": "run",
-              "worktree": "calendar-func-wt-calendar-func-fix"
+              "worktree": "reminder-func-wt-reminder-func-fix"
             }
           ]
         }
@@ -255,7 +255,7 @@
           "branches": [
             {
               "branch": "main",
-              "owner": "read by notifications-integration",
+              "owner": "read by acme-alerts-integration",
               "status": "run",
               "worktree": null
             }
@@ -273,7 +273,7 @@
           "branches": [
             {
               "branch": "main",
-              "owner": "read by notifications-integration",
+              "owner": "read by acme-alerts-integration",
               "status": "run",
               "worktree": null
             }
@@ -290,10 +290,10 @@
   "phaseLedgers": {
     "mobile": [
       {
-        "interface": "FreeTalkService",
+        "interface": "PairTalkService",
         "phase": "UI-first",
         "status": "need",
-        "seam": "seam TODO · FreeTalkViewModel.cs:41"
+        "seam": "seam TODO · PairTalkViewModel.cs:41"
       },
       {
         "interface": "PushPreferencesClient",
@@ -304,10 +304,10 @@
     ],
     "acme-app-front": [
       {
-        "interface": "FreeTalkService",
+        "interface": "PairTalkService",
         "phase": "UI-first",
         "status": "need",
-        "seam": "mock-DI · fixtures/free-talk.json"
+        "seam": "mock-DI · fixtures/pair-talk.json"
       },
       {
         "interface": "ProfileConnector",
@@ -321,7 +321,7 @@
     "mobile": [
       {
         "type": "CONTRACT",
-        "name": "contracts/free-talk.md",
+        "name": "contracts/pair-talk.md",
         "meta": "locked"
       },
       {
@@ -338,7 +338,7 @@
     "acme-app-front": [
       {
         "type": "CONTRACT",
-        "name": "contracts/free-talk.md",
+        "name": "contracts/pair-talk.md",
         "meta": "locked"
       },
       {
@@ -358,7 +358,7 @@
       "ts": "10:22"
     },
     {
-      "project": "components-library-nuget",
+      "project": "design-system-nuget",
       "ts": "09:58"
     }
   ],
@@ -371,9 +371,9 @@
       "folder": "microfrontends/",
       "solutions": [
         "acme-app-front",
-        "workspace-front",
-        "auth-front",
-        "learning-material-front"
+        "dashboard-front",
+        "login-front",
+        "content-library-front"
       ]
     },
     {
@@ -385,24 +385,24 @@
     {
       "folder": "nugets/",
       "solutions": [
-        "components-library-nuget",
-        "typography-nuget",
-        "wrap-up-nuget",
-        "auth-nuget"
+        "design-system-nuget",
+        "acme-fonts-nuget",
+        "summary-nuget",
+        "login-nuget"
       ]
     },
     {
       "folder": "microservices/",
       "solutions": [
-        "auth-microservice",
-        "notifications-microservice"
+        "login-microservice",
+        "acme-alerts-microservice"
       ]
     },
     {
       "folder": "functions/",
       "solutions": [
-        "calendar-func",
-        "hubspot-func"
+        "reminder-func",
+        "crm-sync-func"
       ]
     },
     {
@@ -420,8 +420,8 @@
     }
   ],
   "newSessionDraft": {
-    "name": "free-talk-640",
-    "task": "Free talk screen at 640, web and mobile. Figma node 2231:902.",
+    "name": "pair-talk-640",
+    "task": "Pair talk screen at 640, web and mobile. Figma node 2231:902.",
     "work": "feature",
     "mode": "orch",
     "phase": "ui",
