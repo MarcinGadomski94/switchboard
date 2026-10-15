@@ -6,8 +6,8 @@ import { displayTitle } from '../../core/session-title.ts';
 import { openSessions } from '../../core/session-close.ts';
 import { api } from '../api/client.ts';
 import { useSessionListOf } from '../api/session-list.ts';
-import { plansApi, refusalText } from './api.ts';
-import { MERGE_MODE_OPTIONS, alwaysOnNote, shortLabel } from './model.ts';
+import { plansApi, refusalCode, refusalText } from './api.ts';
+import { alwaysOnNote, isProtectedTargetName, mergeModeOptions, shortLabel } from './model.ts';
 
 /**
  * D99 · the Plans page's dialogs (`docs/plans-ui.md`): the merge-mode dialog (Start and "Change
@@ -36,27 +36,39 @@ export function PlanDialog({ label, testId, wide = false, onClose, children }: {
 // ── merge mode ────────────────────────────────────────────────────────────
 
 /**
- * "How should finished tickets be merged into the epic branch?": three options, no default
- * (Start stays disabled until one is picked); "Agents merge, with hold points" carries the
- * recommended tag and a hold checkbox per open item (pre-ticked as the core marks them). The
+ * "How should finished tickets be merged into the epic branch?": four options (D99 follow-up
+ * 2026-10-15: the fourth, "No merging"), no default (Start stays disabled until one is picked);
+ * "Agents merge, with hold points" carries the recommended tag and a hold checkbox per open item
+ * (pre-ticked as the core marks them), as does "No merging" (the items you confirm). A plan without
+ * a target branch offers only "No merging". An agent mode on a protected target (`dev`, `main`, …;
+ * the server also knows the default and protected branches and refuses with `target-forbidden`)
+ * shows the warning checkbox "Agents will merge straight into `dev`", which must be ticked. The
  * same dialog changes the mode of a started plan (Apply).
  */
 export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly plan: Plan; readonly purpose: 'start' | 'change'; readonly onDone: (plan: Plan) => void; readonly onClose: () => void }) {
-  const [mode, setMode] = useState<PlanMergeMode | null>(purpose === 'change' ? plan.mergeMode : null);
+  const options = mergeModeOptions(plan);
+  const [mode, setMode] = useState<PlanMergeMode | null>(purpose === 'change' ? plan.mergeMode : options.length === 1 ? (options[0]?.mode ?? null) : null);
   const [holds, setHolds] = useState<Readonly<Record<string, boolean>>>(() => Object.fromEntries(plan.items.map((item) => [item.id, item.hold])));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ack, setAck] = useState(plan.allowProtectedTarget);
+  // The server knows protected / default branches the page cannot: its refusal shows the checkbox too.
+  const [refusedTarget, setRefusedTarget] = useState(false);
   const open = plan.items.filter((item) => item.state !== 'done');
+  const agents = mode === 'agents' || mode === 'agents-with-holds';
+  const needsAck = agents && (isProtectedTargetName(plan.targetBranch) || refusedTarget);
   const confirm = async (): Promise<void> => {
     if (!mode) return;
     setBusy(true);
     setError(null);
     try {
       const changed = Object.fromEntries(Object.entries(holds).filter(([id, hold]) => plan.items.find((item) => item.id === id)?.hold !== hold && plan.items.find((item) => item.id === id)?.state !== 'done'));
-      if (mode === 'agents-with-holds' && Object.keys(changed).length > 0) await plansApi.setHolds(plan.id, changed);
-      const answer = purpose === 'start' ? await plansApi.start(plan.id, mode) : await plansApi.setMode(plan.id, mode);
+      if ((mode === 'agents-with-holds' || mode === 'none') && Object.keys(changed).length > 0) await plansApi.setHolds(plan.id, changed);
+      const extra = needsAck && ack ? { allowProtectedTarget: true } : {};
+      const answer = purpose === 'start' ? await plansApi.start(plan.id, mode, extra) : await plansApi.setMode(plan.id, mode, extra);
       onDone(answer);
     } catch (caught) {
+      if (refusalCode(caught) === 'target-forbidden') setRefusedTarget(true);
       setError(refusalText(caught));
     } finally {
       setBusy(false);
@@ -64,10 +76,10 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
   };
   return (
     <PlanDialog label={purpose === 'start' ? 'Start the plan' : 'Change the merge mode'} testId="plan-mode-dialog" onClose={onClose}>
-      <div className="sb-plan-dialog__question">How should finished tickets be merged into the epic branch?</div>
-      <div className="sb-plan-muted">You have to choose — there is no default. You can change it while the plan runs.</div>
+      <div className="sb-plan-dialog__question">{plan.targetBranch === null ? 'This plan has no target branch: nothing is merged.' : 'How should finished tickets be merged into the epic branch?'}</div>
+      <div className="sb-plan-muted">{plan.targetBranch === null ? 'An item is done when its agent marks it done.' : 'You have to choose — there is no default. You can change it while the plan runs.'}</div>
       <div className="sb-plan-choices" role="radiogroup" aria-label="Merge mode">
-        {MERGE_MODE_OPTIONS.map((option) => (
+        {options.map((option) => (
           <div key={option.mode} className="sb-plan-choice" data-selected={mode === option.mode || undefined}>
             <label className="sb-plan-choice__head">
               <input type="radio" name="plan-merge-mode" data-testid="plan-mode-option" data-mode={option.mode} checked={mode === option.mode} onChange={() => setMode(option.mode)} />
@@ -75,7 +87,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
               {option.recommended ? <span className="sb-plan-tag">recommended</span> : null}
             </label>
             <div className="sb-plan-choice__text">{option.text}</div>
-            {option.mode === 'agents-with-holds' && mode === 'agents-with-holds' ? (
+            {(option.mode === 'agents-with-holds' && mode === 'agents-with-holds') || (option.mode === 'none' && mode === 'none') ? (
               <div className="sb-plan-holds" data-testid="plan-mode-holds">
                 {open.length === 0 ? <span className="sb-plan-muted">Every ticket is merged.</span> : null}
                 {open.map((item) => (
@@ -89,8 +101,16 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
           </div>
         ))}
       </div>
+      {needsAck ? (
+        <label className="sb-plan-ack" data-testid="plan-mode-ack">
+          <input type="checkbox" data-testid="plan-mode-ack-check" checked={ack} onChange={(event) => setAck(event.target.checked)} />
+          <span>
+            ⚠ Agents will merge straight into <code>{plan.targetBranch}</code>
+          </span>
+        </label>
+      ) : null}
       <div className="sb-plan-note" data-testid="plan-mode-note">
-        {alwaysOnNote(plan)}
+        {alwaysOnNote(plan, mode)}
       </div>
       {error ? (
         <div className="sb-plan-error" data-testid="plan-mode-error">
@@ -101,7 +121,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-mode-confirm" disabled={busy || mode === null} onClick={() => void confirm()}>
+        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-mode-confirm" disabled={busy || mode === null || (needsAck && !ack)} onClick={() => void confirm()}>
           {purpose === 'start' ? '▶ Start plan' : 'Apply'}
         </button>
       </div>
@@ -166,7 +186,8 @@ function TodoPicker({ sessionId, taken, picked, onPick }: { readonly sessionId: 
 export function NewPlanDialog({ initialSessionId, onCreated, onClose }: { readonly initialSessionId: string | null; readonly onCreated: (plan: Plan) => void; readonly onClose: () => void }) {
   const sessions = useSessionListOf();
   // D106: chats are no plan sources.
-  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.machine == null && session.folderKind !== 'plain' && !isChat(session)), [sessions.data]);
+  // D99 follow-up 2026-10-15: a plan without a target branch may run in a plain folder too.
+  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.machine == null && !isChat(session)), [sessions.data]);
   const [sessionId, setSessionId] = useState(initialSessionId ?? '');
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState('');
@@ -181,7 +202,7 @@ export function NewPlanDialog({ initialSessionId, onCreated, onClose }: { readon
     setBusy(true);
     setError(null);
     try {
-      let plan = await plansApi.create({ sourceSessionId: sessionId, title: title.trim(), targetBranch: target.trim(), baseBranch: base.trim() || DEFAULT_PLAN_BASE });
+      let plan = await plansApi.create({ sourceSessionId: sessionId, title: title.trim(), targetBranch: target.trim() === '' ? null : target.trim(), baseBranch: base.trim() || DEFAULT_PLAN_BASE });
       for (const todoId of picked) plan = (await plansApi.addItem(plan.id, { todoId })).plan;
       onCreated(plan);
     } catch (caught) {
@@ -211,8 +232,13 @@ export function NewPlanDialog({ initialSessionId, onCreated, onClose }: { readon
       </label>
       <div className="sb-plan-field-row">
         <label className="sb-plan-field">
-          <span>Target branch (the epic branch)</span>
+          <span>Target branch (optional)</span>
           <input className="sb-plan-input sb-plan-input--mono" data-testid="plan-new-target" value={target} placeholder="feature/PROJ-100-acme-epic" onChange={(event) => setTarget(event.target.value)} />
+          {target.trim() === '' ? (
+            <span className="sb-plan-muted" data-testid="plan-new-no-target">
+              No target — items finish when marked done
+            </span>
+          ) : null}
         </label>
         <label className="sb-plan-field">
           <span>Base (you merge into it at the end)</span>
@@ -232,7 +258,7 @@ export function NewPlanDialog({ initialSessionId, onCreated, onClose }: { readon
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-new-create" disabled={busy || sessionId === '' || title.trim() === '' || target.trim() === ''} onClick={() => void create()}>
+        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-new-create" disabled={busy || sessionId === '' || title.trim() === ''} onClick={() => void create()}>
           Create plan
         </button>
       </div>

@@ -24,6 +24,9 @@ import {
   planItemSpanKind,
   PLANS_OFF_REASON,
   PLANS_SETTING,
+  PLAN_NO_TARGET,
+  agentsMerge,
+  developerConfirms,
   developerMerges,
   findCycle,
   forbiddenTargetReason,
@@ -36,6 +39,7 @@ import {
   planItemBrief,
   planRuleChangedMessage,
   planView,
+  protectedTargetRefusal,
   readyItems,
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
@@ -86,8 +90,12 @@ export interface PlanRunInput {
   readonly todo: TodoRecord;
   /** The branch's base name (`PROJ-123-<slug>` / `todo/<slug>`). */
   readonly branch: string;
-  /** Solution → the ref the worktree is cut from (the target branch). */
-  readonly from: Readonly<Record<string, string>>;
+  /**
+   * Solution → the ref the worktree is cut from (the target branch); `null` (D99 follow-up
+   * 2026-10-15, a plan without a target branch) = D76's own cut (the source's branch, or the
+   * source folder without a worktree).
+   */
+  readonly from: Readonly<Record<string, string>> | null;
   readonly repoPaths: readonly string[];
   readonly task: (branch: string | null) => string;
   readonly answers: { readonly workType: NonNullable<PlanAnswers['workType']>; readonly mode: NonNullable<PlanAnswers['mode']>; readonly phase: NonNullable<PlanAnswers['phase']>; readonly coordination: PlanAnswers['coordination'] } | null;
@@ -111,7 +119,7 @@ export interface PlanEnvironment {
   /** Sends a service message to a session (red checks, a conflict, a changed merge rule). */
   send(sessionId: string, text: string): Promise<void>;
   /** Raises an Inbox system item (once per `dedupe`). */
-  notice(input: { readonly kind: 'plan-ready' | 'plan-conflict'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
+  notice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
   /** D102: raises the Inbox's "Ready to merge: <item> (<plan>)" item (Merge / Open plan; once per `dedupe`). */
   mergeNotice(input: PlanMergeNotice): Promise<void>;
   /** D102: closes the open "Ready to merge" items of plan item `itemId` (merged, sent back, failed, …) with `outcome`. */
@@ -164,7 +172,8 @@ export interface PlanServiceOptions {
 export interface ExternalPlanInput {
   readonly sourceSessionId: string;
   readonly title: string;
-  readonly targetBranch: string;
+  /** `null` = no target branch (a plan without a merge step). */
+  readonly targetBranch: string | null;
   readonly baseBranch?: string;
   readonly repos?: readonly string[] | null;
   readonly maxConcurrency?: number;
@@ -623,6 +632,8 @@ export class PlanService {
       });
     }
     const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime() });
+    // D99 follow-up 2026-10-15: a plan without a merge step waits on the developer's confirmation, stored like the Merge.
+    const waitingOn = (on: PlanWaitingOn | null): PlanWaitingOn | null => (plan.mergeMode === 'none' && on === 'merge' ? 'confirm' : on);
     return {
       id: plan.id,
       title: plan.title,
@@ -631,6 +642,7 @@ export class PlanService {
       repos: plan.repos,
       baseBranch: plan.baseBranch,
       mergeMode: plan.mergeMode,
+      allowProtectedTarget: plan.allowProtectedTarget,
       maxConcurrency: plan.maxConcurrency,
       usageThreshold: plan.usageThreshold,
       answers: plan.answers,
@@ -638,7 +650,7 @@ export class PlanService {
       external: plan.external,
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
-      items: model.items.map((item) => ({ ...item, spans: spans.get(item.id) ?? [] })),
+      items: model.items.map((item) => ({ ...item, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),
       edges,
       criticalPath: model.criticalPath,
       progress: model.progress,
@@ -655,7 +667,8 @@ export class PlanService {
 
   /**
    * `POST /api/plans`: a draft plan over session `sourceSessionId`'s todo list. Body: `title`,
-   * `targetBranch`, optional `baseBranch` (default `dev`), `repos` (a workspace's solution names,
+   * optional `targetBranch` (any branch; missing, `null`, empty or `none` = no target branch: a
+   * plan without a merge step, D99 follow-up 2026-10-15), `baseBranch` (default `dev`), `repos` (a workspace's solution names,
    * default the session's), `maxConcurrency` (1–16, default 3), `usageThreshold` (1–100, default
    * 85), `answers` (default the session's start answers), `external`.
    */
@@ -676,13 +689,15 @@ export class PlanService {
     // D106: a chat is no plan source (its todos are run as sessions only after it is continued as one).
     if (source.kind === 'chat') throw new PlanError(409, 'chat', 'a chat is not a plan source: continue it as a session first');
     const title = checkTitle(input['title']);
-    const targetBranch = checkBranch(input['targetBranch'], 'targetBranch', null);
+    const targetBranch = checkTarget(input['targetBranch']);
     const baseBranch = checkBranch(input['baseBranch'], 'baseBranch', DEFAULT_PLAN_BASE);
-    if (targetBranch === baseBranch) throw invalid('targetBranch', 'the target branch must differ from the base branch');
     const names = input['repos'] === undefined || input['repos'] === null ? null : checkNames(input['repos'], 'repos');
     const resolved = await this.#env.repos(sourceSessionId, names);
-    if (resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a plan needs a target branch");
-    if (resolved.repos.length === 0) throw invalid('repos', 'name the solution repos the target branch lives in (the session uses none yet)');
+    // A target branch needs a repository; a plan without one (no merge step) may run in any folder.
+    if (targetBranch !== null) {
+      if (resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a target branch needs one (leave the target out for a plan without a merge step)");
+      if (resolved.repos.length === 0) throw invalid('repos', 'name the solution repos the target branch lives in (the session uses none yet)');
+    }
     const answers = checkAnswers(input['answers'], { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination, notes: null });
     return this.#repo().create({
       id: newId(),
@@ -715,15 +730,14 @@ export class PlanService {
     if (input['external'] !== undefined) patch['external'] = checkExternal(input['external']);
     if (input['targetBranch'] !== undefined || input['repos'] !== undefined) {
       if (plan.state !== 'draft') throw new PlanError(409, 'started', 'the target branch and the repos change only before the plan starts');
-      if (input['targetBranch'] !== undefined) patch['targetBranch'] = checkBranch(input['targetBranch'], 'targetBranch', null);
-      if (input['repos'] !== undefined) {
-        const resolved = await this.#env.repos(plan.sourceSessionId, checkNames(input['repos'], 'repos'));
+      if (input['targetBranch'] !== undefined) patch['targetBranch'] = checkTarget(input['targetBranch']);
+      const target = input['targetBranch'] !== undefined ? (patch['targetBranch'] as string | null) : plan.targetBranch;
+      if (input['repos'] !== undefined || (target !== null && plan.repos.length === 0)) {
+        const resolved = await this.#env.repos(plan.sourceSessionId, input['repos'] !== undefined ? checkNames(input['repos'], 'repos') : null);
+        if (target !== null && (resolved.kind === 'plain' || resolved.repos.length === 0)) throw new PlanError(409, 'not-a-repo', 'a target branch needs a git repository: the session uses none');
         patch['repos'] = resolved.repos.map((repo) => repo.name);
       }
     }
-    const target = (patch['targetBranch'] as string | undefined) ?? plan.targetBranch;
-    const base = (patch['baseBranch'] as string | undefined) ?? plan.baseBranch;
-    if (target === base) throw invalid('targetBranch', 'the target branch must differ from the base branch');
     await this.#repo().update(planId, patch);
     await this.#publish(planId);
     this.kick();
@@ -888,36 +902,44 @@ export class PlanService {
   // ── control ─────────────────────────────────────────────────────────────
 
   /**
-   * `POST /api/plans/{id}/start` `{ mergeMode }`: **requires** the merge mode (422
-   * `merge-mode-required`: there is no default, the developer chooses). Refused: a plan without
-   * items, one that is not a draft, an agent mode whose target is `dev` / `master` / `main` /
-   * the default or a protected branch (422 `target-forbidden`), a target branch that cannot be
-   * found or made from the base (409 `no-target`).
+   * `POST /api/plans/{id}/start` `{ mergeMode, allowProtectedTarget? }`: **requires** the merge
+   * mode when the plan has a target branch (422 `merge-mode-required`: there is no default, the
+   * developer chooses); a plan without a target is `none` (any other mode: 422 `target-required`).
+   * Refused: a plan without items, one that is not a draft, an agent mode whose target is `dev` /
+   * `develop` / `master` / `main` / the default or a protected branch without
+   * `allowProtectedTarget: true` (422 `target-forbidden`; D99 follow-up 2026-10-15: the
+   * developer's acknowledgement, stored on the plan), a target branch that cannot be found or made
+   * from the base (409 `no-target`).
    */
   async startPlan(planId: string, body: unknown): Promise<Plan> {
     const plan = await this.#plan(planId);
-    const mode = checkMergeMode(isRecord(body) ? body['mergeMode'] : undefined);
+    const input = isRecord(body) ? body : {};
+    const mode = checkMergeMode(input['mergeMode'], plan.targetBranch);
+    const ack = input['allowProtectedTarget'] === undefined || input['allowProtectedTarget'] === null ? plan.allowProtectedTarget : checkBool(input['allowProtectedTarget'], 'allowProtectedTarget');
     if (plan.state !== 'draft') throw new PlanError(409, plan.state === 'paused' ? 'paused' : 'started', plan.state === 'paused' ? 'the plan is paused: resume it' : `the plan is ${plan.state}`);
     const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
-    const repos = (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos;
-    if (mode !== 'developer') await this.#checkTarget(plan.targetBranch, repos);
-    for (const repo of repos) {
-      const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch, plan.baseBranch);
-      if (!prepared.ok) throw new PlanError(409, 'no-target', prepared.message);
+    if (plan.targetBranch !== null) {
+      const repos = (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos;
+      if (agentsMerge(mode) && !ack) await this.#checkTarget(plan.targetBranch, repos);
+      for (const repo of repos) {
+        const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch, plan.baseBranch);
+        if (!prepared.ok) throw new PlanError(409, 'no-target', prepared.message);
+      }
     }
-    await this.#repo().update(planId, { mergeMode: mode, state: 'running', startedAt: plan.startedAt ?? this.#nowIso() });
+    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso() });
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
   }
 
+  /** Refuses (422 `target-forbidden`) an agent mode on a protected target: the developer's acknowledgement (`allowProtectedTarget`) is missing. */
   async #checkTarget(target: string, repos: readonly PlanRepoRef[]): Promise<void> {
     const plain = forbiddenTargetReason(target);
-    if (plain) throw new PlanError(422, 'target-forbidden', plain, 'targetBranch');
+    if (plain) throw new PlanError(422, 'target-forbidden', protectedTargetRefusal(plain), 'allowProtectedTarget');
     for (const repo of repos) {
       const reason = forbiddenTargetReason(target, await this.#git.targetFacts(repo.repoPath, target));
-      if (reason) throw new PlanError(422, 'target-forbidden', `${reason} (${repo.name})`, 'targetBranch');
+      if (reason) throw new PlanError(422, 'target-forbidden', protectedTargetRefusal(`${reason} (${repo.name})`), 'allowProtectedTarget');
     }
   }
 
@@ -957,10 +979,16 @@ export class PlanService {
   async setMode(planId: string, body: unknown): Promise<Plan> {
     const plan = await this.#plan(planId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
-    const mode = checkMergeMode(isRecord(body) ? body['mergeMode'] : undefined);
-    if (mode !== 'developer') await this.#checkTarget(plan.targetBranch, (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos);
+    const input = isRecord(body) ? body : {};
+    const mode = checkMergeMode(input['mergeMode'], plan.targetBranch);
+    const ack = input['allowProtectedTarget'] === undefined || input['allowProtectedTarget'] === null ? plan.allowProtectedTarget : checkBool(input['allowProtectedTarget'], 'allowProtectedTarget');
+    // D99 follow-up 2026-10-15: the briefs of a started plan say whether there is a merge step; it does not change afterwards.
+    if (plan.state !== 'draft' && plan.mergeMode !== null && (plan.mergeMode === 'none') !== (mode === 'none')) {
+      throw new PlanError(409, 'started', mode === 'none' ? 'the plan started with a merge step: it keeps one (choose agents, agents-with-holds or developer)' : 'the plan started without a merge step: it keeps none');
+    }
+    if (plan.targetBranch !== null && agentsMerge(mode) && !ack) await this.#checkTarget(plan.targetBranch, (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos);
     const items = await this.#repo().items(planId);
-    await this.#repo().update(planId, { mergeMode: mode });
+    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack });
     if (plan.state !== 'draft') await this.#tellChangedRules(plan, plan.mergeMode, mode, items, items);
     await this.#publish(planId);
     this.kick();
@@ -1003,6 +1031,7 @@ export class PlanService {
       const was = developerMerges(fromMode, old);
       const now = developerMerges(toMode, item);
       if (was === now) continue;
+      if (plan.targetBranch === null || toMode === 'none') continue;
       await this.#env.send(item.runSessionId, planRuleChangedMessage({ targetBranch: plan.targetBranch, branch: item.branch ?? '(your branch)', developerMerges: now })).catch((error: unknown) => this.#onError(error));
       this.#dirty.set(item.id, this.#dirty.get(item.id) === true);
     }
@@ -1040,12 +1069,13 @@ export class PlanService {
    * never pushed, never forced. The item is done and its dependents may start.
    */
   async mergeItem(planId: string, itemId: string): Promise<Plan> {
+    await this.#refuseWithoutMergeStep(planId);
     return this.#act(planId, itemId, async (plan, item, inputs) => {
       const checked: BranchMergePlan[] = [];
       for (const input of inputs) checked.push(await this.#merger.check(input));
       const notes: string[] = [];
       for (const ready of checked) notes.push(await this.#merger.merge(ready));
-      await this.#done(plan, item, `merged by you into ${plan.targetBranch}`);
+      await this.#done(plan, item, `merged by you into ${plan.targetBranch ?? ''}`);
       return notes;
     });
   }
@@ -1055,6 +1085,7 @@ export class PlanService {
    * forced) and opens (or reuses) its pull request into the target; the item stays ready to merge.
    */
   async openItemPullRequest(planId: string, itemId: string): Promise<Plan> {
+    await this.#refuseWithoutMergeStep(planId);
     return this.#act(planId, itemId, async (plan, item, inputs) => {
       const todo = await this.#store.todos.get(item.todoId);
       const title = todo?.title ?? item.title;
@@ -1086,7 +1117,13 @@ export class PlanService {
       await this.#repo().updateItem(item.id, { waitingOn: null, waitingSince: null });
       await this.#env.closeMergeNotice(item.id, 'sent-back').catch((error: unknown) => this.#onError(error));
       return [];
-    });
+    }, false);
+  }
+
+  /** D99 follow-up 2026-10-15: Merge and Open PR need a merge step (409 `no-merge-step`; a plan without one confirms an item with Mark done). */
+  async #refuseWithoutMergeStep(planId: string): Promise<void> {
+    const plan = await this.#plan(planId);
+    if (plan.mergeMode === 'none' || plan.targetBranch === null) throw new PlanError(409, 'no-merge-step', 'the plan has no merge step: confirm the item with Mark done');
   }
 
   /**
@@ -1094,24 +1131,24 @@ export class PlanService {
    * scheduling cycles; the item must be ready to merge (409 `not-ready`); a git refusal is a 409
    * with its code (and `conflicts`). Publishes and answers the plan.
    */
-  async #act(planId: string, itemId: string, run: (plan: PlanRecord, item: PlanItemRecord, inputs: BranchMergeInput[]) => Promise<readonly string[]>): Promise<Plan> {
+  async #act(planId: string, itemId: string, run: (plan: PlanRecord, item: PlanItemRecord, inputs: BranchMergeInput[]) => Promise<readonly string[]>, needsBranch = true): Promise<Plan> {
     const plan = await this.#plan(planId);
     const item = await this.#item(planId, itemId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
-    if (item.state !== 'running' || item.waitingOn !== 'merge' || item.runSessionId === null) throw new PlanError(409, 'not-ready', `${itemLabel(item)} is not waiting for your merge`);
+    if (item.state !== 'running' || item.waitingOn !== 'merge' || item.runSessionId === null) throw new PlanError(409, 'not-ready', `${itemLabel(item)} is not waiting for your ${plan.mergeMode === 'none' ? 'confirmation' : 'merge'}`);
     if (this.#acting.has(item.id)) throw new PlanError(409, 'busy', 'an action on this item is still running');
     const session = await this.#store.sessions.get(item.runSessionId);
     if (session?.status === 'run') throw new PlanError(409, 'busy', "the item's session is working: wait for its turn to end");
     this.#acting.add(item.id);
     try {
       const inputs: BranchMergeInput[] = [];
-      if (item.branch !== null) {
+      if (item.branch !== null && plan.targetBranch !== null) {
         for (const record of await this.#store.worktrees.list({ sessionId: item.runSessionId })) {
           if (record.branch !== item.branch) continue;
           inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch });
         }
       }
-      if (inputs.length === 0) throw new PlanError(409, 'no-branch', `${itemLabel(item)} has no worktree branch to merge (it ran in the source folder): merge it yourself, then Mark done`);
+      if (needsBranch && inputs.length === 0) throw new PlanError(409, 'no-branch', `${itemLabel(item)} has no worktree branch to merge (it ran in the source folder): merge it yourself, then Mark done`);
       // Run between scheduling cycles, so the scheduler never reads the item half-merged.
       const work = this.#tail.then(() => run(plan, item, inputs));
       this.#tail = work.then(
@@ -1243,13 +1280,7 @@ export class PlanService {
       if (items.length > 0 && items.every((item) => item.state === 'done')) {
         await this.#repo().update(plan.id, { state: 'done', finishedAt: this.#nowIso(), heldReason: null });
         await this.#env
-          .notice({
-            kind: 'plan-ready',
-            sessionId: plan.sourceSessionId,
-            title: `Plan ready: ${plan.targetBranch} → ${plan.baseBranch}`,
-            detail: `Every item of the plan "${plan.title}" is merged into ${plan.targetBranch}. Merge ${plan.targetBranch} into ${plan.baseBranch} when you are ready.`,
-            dedupe: `plan-ready:${plan.id}`,
-          })
+          .notice({ kind: 'plan-ready', sessionId: plan.sourceSessionId, ...planDoneNotice(plan), dedupe: `plan-ready:${plan.id}` })
           .catch((error: unknown) => this.#onError(error));
         changed = true;
       }
@@ -1265,18 +1296,21 @@ export class PlanService {
     }
     const { kind, repos } = resolved as Awaited<ReturnType<PlanEnvironment['repos']>>;
     const mine = item.solutions.length > 0 ? repos.filter((repo) => item.solutions.includes(repo.name)) : repos;
-    const from: Record<string, string> = {};
+    const target = plan.targetBranch;
+    // D99 follow-up 2026-10-15: without a target branch the run is D76's own (cut from the source's branch, or the source folder).
+    const cutFrom: Record<string, string> = {};
     const cut: Record<string, string> = {};
-    for (const repo of mine) {
-      const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch, plan.baseBranch);
+    for (const repo of target === null ? [] : mine) {
+      const prepared = await this.#git.prepareTarget(repo.repoPath, target as string, plan.baseBranch);
       if (!prepared.ok) {
         await this.#fail(item, `could not start: ${prepared.message}`);
         return;
       }
-      from[repo.name] = prepared.ref;
+      cutFrom[repo.name] = prepared.ref;
       const tip = await this.#git.tip(repo.repoPath, prepared.ref);
       if (tip) cut[repo.name] = tip;
     }
+    const from = target === null ? null : cutFrom;
     const branch = planItemBranch(item.key, shortNameFromTitle(todo.title, []));
     const developer = developerMerges(plan.mergeMode, item);
     const answers = plan.answers;
@@ -1287,14 +1321,16 @@ export class PlanService {
       todo,
       branch,
       from,
-      repoPaths: mine.map((repo) => repo.repoPath),
+      repoPaths: from === null ? [] : mine.map((repo) => repo.repoPath),
       task: (final) =>
         planItemBrief({
           planTitle: plan.title,
           targetBranch: plan.targetBranch,
+          noMerge: plan.mergeMode === 'none',
+          developerConfirms: developerConfirms(plan.mergeMode, item),
           notes: answers?.notes ?? null,
           key: item.key,
-          branch: final ?? branch,
+          branch: final ?? (from === null ? null : branch),
           developerMerges: developer,
           todo: { id: todo.id, title: todo.title, description: todo.description, plan: todo.plan },
         }),
@@ -1333,6 +1369,7 @@ export class PlanService {
       return true;
     }
     if (item.runSessionId && !this.#runs.has(item.runSessionId)) this.#runs.set(item.runSessionId, { itemId: item.id, status: session.status });
+    if (plan.mergeMode === 'none' || plan.targetBranch === null) return this.#refreshWithoutMerge(plan, item, session);
     const developer = developerMerges(plan.mergeMode, item);
     const todo = await this.#store.todos.get(item.todoId);
     // D102: a run finished (its todo done, its turn over) while the developer merges: ready to merge.
@@ -1433,8 +1470,28 @@ export class PlanService {
     return changed;
   }
 
+  /**
+   * D99 follow-up 2026-10-15 · a plan without a merge step (`none`): no git, no PR, no checks. The
+   * item is done once its todo is done and its session's turn is over; a held item then waits for
+   * the developer to confirm it (Mark done; stored like the Merge, `waitingOn` `merge`, answered
+   * `confirm`). A session closed before its todo is done fails the item.
+   */
+  async #refreshWithoutMerge(plan: PlanRecord, item: PlanItemRecord, session: { readonly id: string; readonly status: SessionStatus; readonly closedAt: string | null }): Promise<boolean> {
+    this.#dirty.delete(item.id);
+    const todo = await this.#store.todos.get(item.todoId);
+    const idle = session.status !== 'run' && session.status !== 'need';
+    const finished = todo?.state === 'done' && idle;
+    if (finished && !developerConfirms(plan.mergeMode, item)) return this.#done(plan, item, null);
+    if (session.closedAt !== null && todo?.state !== 'done') {
+      await this.#fail(item, 'its session was closed before its todo was done');
+      return true;
+    }
+    const waiting: PlanWaitingOn | null = session.status === 'need' ? 'question' : finished || (item.waitingOn === 'merge' && todo?.state === 'done') ? 'merge' : null;
+    return this.#setWaiting(plan, item, waiting);
+  }
+
   async #inspect(plan: PlanRecord, item: PlanItemRecord, conflicts: boolean): Promise<PlanRepoState[]> {
-    if (item.branch === null) return [];
+    if (item.branch === null || plan.targetBranch === null) return [];
     const records = item.runSessionId ? await this.#store.worktrees.list({ sessionId: item.runSessionId }) : [];
     const out: PlanRepoState[] = [];
     for (const record of records) {
@@ -1452,7 +1509,19 @@ export class PlanService {
     if (item.waitingOn === on) return false;
     const since = on === null ? null : this.#nowIso();
     await this.#repo().updateItem(item.id, { waitingOn: on, waitingSince: since });
-    if (on === 'merge' && item.runSessionId) {
+    if (on === 'merge' && item.runSessionId && plan.mergeMode === 'none') {
+      // D99 follow-up 2026-10-15: a held item of a plan without a merge step waits for the developer's confirmation.
+      const todo = await this.#store.todos.get(item.todoId);
+      await this.#env
+        .notice({
+          kind: 'plan-confirm',
+          sessionId: item.runSessionId,
+          title: `Confirm done: ${todo?.title ?? item.title} (${plan.title})`,
+          detail: `Its agent marked the todo done. Open the plan and tick Done on the item to confirm it; the items that wait on it start then.`,
+          dedupe: `plan-confirm:${item.id}:${since ?? ''}`,
+        })
+        .catch((error: unknown) => this.#onError(error));
+    } else if (on === 'merge' && item.runSessionId) {
       const todo = await this.#store.todos.get(item.todoId);
       const title = todo?.title ?? item.title;
       await this.#env
@@ -1461,7 +1530,7 @@ export class PlanService {
           planId: plan.id,
           itemId: item.id,
           title: `Ready to merge: ${title} (${plan.title})`,
-          detail: `${item.branch ?? 'Its branch'} → ${plan.targetBranch}. Merge it into ${plan.targetBranch}, or open the plan to send it back.`,
+          detail: `${item.branch ?? 'Its branch'} → ${plan.targetBranch ?? ''}. Merge it into ${plan.targetBranch ?? ''}, or open the plan to send it back.`,
           dedupe: `plan-merge:${item.id}:${since ?? ''}`,
         })
         .catch((error: unknown) => this.#onError(error));
@@ -1473,7 +1542,7 @@ export class PlanService {
 
   async #done(plan: PlanRecord, item: PlanItemRecord, note: string | null, prUrl: string | null = item.prUrl, checks: PlanChecks | null = item.checks): Promise<true> {
     const now = this.#nowIso();
-    await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: item.mergedAt ?? now, doneAt: now, reason: null });
+    await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: plan.mergeMode === 'none' ? null : (item.mergedAt ?? now), doneAt: now, reason: null });
     // D102: its "Ready to merge" Inbox item (if any) is closed.
     if (item.waitingOn === 'merge') await this.#env.closeMergeNotice(item.id, 'merged').catch((error: unknown) => this.#onError(error));
     // The todo is done too.
@@ -1538,6 +1607,23 @@ function checkBranch(value: unknown, field: string, fallback: string | null): st
   return name;
 }
 
+/**
+ * D99 follow-up 2026-10-15: a plan's target branch: any branch name (also `dev`, `main`, …), or
+ * `null` (no target branch: a plan without a merge step) for a missing, `null`, empty or `none` value.
+ */
+function checkTarget(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && (value.trim() === '' || value.trim().toLowerCase() === PLAN_NO_TARGET)) return null;
+  return checkBranch(value, 'targetBranch', null);
+}
+
+/** The Inbox's "every item is done" notice of a plan: with a merge step "Plan ready: <target> → <base>", else "Plan done". */
+function planDoneNotice(plan: PlanRecord): { readonly title: string; readonly detail: string } {
+  if (plan.targetBranch === null || plan.mergeMode === 'none') return { title: `Plan done: ${plan.title}`, detail: `Every item of the plan "${plan.title}" is done.` };
+  if (plan.targetBranch === plan.baseBranch) return { title: `Plan ready: ${plan.targetBranch}`, detail: `Every item of the plan "${plan.title}" is merged into ${plan.targetBranch}.` };
+  return { title: `Plan ready: ${plan.targetBranch} → ${plan.baseBranch}`, detail: `Every item of the plan "${plan.title}" is merged into ${plan.targetBranch}. Merge ${plan.targetBranch} into ${plan.baseBranch} when you are ready.` };
+}
+
 function checkNames(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry.trim() === '')) throw invalid(field, `${field} must be a list of names`);
   return [...new Set((value as string[]).map((entry) => entry.trim()))];
@@ -1554,11 +1640,14 @@ function checkBool(value: unknown, field: string): boolean {
   return value;
 }
 
-function checkMergeMode(value: unknown): PlanMergeMode {
+/** The merge mode of `start` / `mode`: required with a target branch; a plan without one is `none` (D99 follow-up 2026-10-15). */
+function checkMergeMode(value: unknown, targetBranch: string | null): PlanMergeMode {
   if (value === undefined || value === null || value === '') {
+    if (targetBranch === null) return 'none';
     throw new PlanError(422, 'merge-mode-required', `choose the merge mode: ${PLAN_MERGE_MODES.join(', ')} (there is no default: ask the developer)`, 'mergeMode');
   }
   if (typeof value !== 'string' || !(PLAN_MERGE_MODES as readonly string[]).includes(value)) throw invalid('mergeMode', `the merge mode is one of ${PLAN_MERGE_MODES.join(', ')}`);
+  if (targetBranch === null && value !== 'none') throw new PlanError(422, 'target-required', 'the plan has no target branch: nothing can be merged, so its merge mode is none', 'mergeMode');
   return value as PlanMergeMode;
 }
 

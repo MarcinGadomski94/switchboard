@@ -300,6 +300,8 @@ export class PlanJiraService {
     const input = isRecord(body) ? body : {};
     const epicKey = parseEpicKey(input['epic']);
     if (!epicKey) throw new PlanJiraError(422, 'invalid', 'paste an epic key (PROJ-100) or its Jira link', 'epic');
+    // An epic's plan merges into a target branch: the import keeps requiring one (D99 follow-up 2026-10-15: a plan without a target is made by hand or by an agent).
+    if (typeof input['targetBranch'] !== 'string' || input['targetBranch'].trim() === '') throw new PlanJiraError(422, 'invalid', "give the target branch (the epic's feature branch, e.g. feature/PROJ-100-acme-epic)", 'targetBranch');
     const sync = checkSync(input['sync'], 'off');
     const transitions = checkTransitions(input['transitions'], DEFAULT_JIRA_TRANSITIONS);
     const client = await this.#client();
@@ -644,7 +646,7 @@ export class PlanJiraService {
       if (current.questionOpen || done?.state === 'pending') await pass.comment(current, event, JIRA_COMMENTS.question());
     }
     // 4. Merged into the target (never Done: the team's process moves the ticket there).
-    if (item.storedState === 'done' && item.note !== MARKED_DONE) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(pass.plan.targetBranch));
+    if (item.storedState === 'done' && item.note !== MARKED_DONE && pass.plan.targetBranch !== null) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(pass.plan.targetBranch));
   }
 
   /** @internal the pass's access to the client. */

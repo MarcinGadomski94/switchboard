@@ -99,9 +99,11 @@ test('create a plan from todos, add a dependency (a loop refused), Start needs a
   const modes = page.getByTestId('plan-mode-dialog');
   await expect(modes).toContainText('How should finished tickets be merged into the epic branch?');
   await expect(modes).toContainText('You have to choose — there is no default.');
-  await expect(modes.getByTestId('plan-mode-option')).toHaveCount(3);
+  // D99 follow-up 2026-10-15: a fourth option, no merging.
+  await expect(modes.getByTestId('plan-mode-option')).toHaveCount(4);
   for (const option of await modes.getByTestId('plan-mode-option').all()) await expect(option).not.toBeChecked();
-  await expect(modes.getByTestId('plan-mode-note')).toHaveText(`Always on: agents merge only into ${world.target} — never dev or master · checks must be green · a second conflict comes to your Inbox.`);
+  await expect(modes.getByTestId('plan-mode-note')).toHaveText(`Always on: agents merge only into ${world.target} · checks must be green · a second conflict comes to your Inbox.`);
+  await expect(modes.getByTestId('plan-mode-ack')).toHaveCount(0);
   await expect(modes.getByTestId('plan-mode-confirm')).toBeDisabled();
   await modes.locator('[data-mode="agents-with-holds"]').check();
   await expect(modes.getByTestId('plan-mode-hold')).toHaveCount(3);
@@ -277,12 +279,72 @@ test("What's new: the Plans tour is listed while Plans is on, and replays", asyn
   const row = page.locator('.sb-set-row[data-row="whats-new-plans"]');
   await expect(row).toContainText('Plans (experimental)');
   await expect(row).toContainText('1.17.0');
+  // D99 follow-up 2026-10-15: its own tour, also only while Plans is on.
+  await expect(page.locator('.sb-set-row[data-row="whats-new-plans-any"]')).toContainText('Plans for anything');
+  await expect(page.locator('.sb-set-row[data-row="whats-new-plans-any"]')).toContainText('1.22.0');
   await page.getByTestId('whats-new-replay-plans').click();
   await expect(page.getByTestId('tour-card').getByTestId('tour-kicker')).toHaveText("What's new · Plans (experimental)");
   await page.getByTestId('tour-next').click();
   await expect(page).toHaveURL(/\/plans$/);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('tour')).toHaveCount(0);
+});
+
+test('D99 follow-up 2026-10-15: a plan without a target branch (New plan, Start offers only "No merging"); agents into dev need the ticked warning', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/plans`);
+  const source = await world.sourceSession(page, 'anything-source');
+  await world.addTodo(page, source, 'Read the vendor docs', 20);
+  await page.goto(`${world.baseUrl}/plans`);
+  await page.getByTestId('plans-new').click();
+  const dialog = page.getByTestId('plan-new-dialog');
+  await dialog.getByTestId('plan-new-session').selectOption(source);
+  await dialog.getByTestId('plan-new-title').fill('Vendor research');
+  await expect(dialog.getByTestId('plan-new-no-target')).toHaveText('No target — items finish when marked done');
+  await dialog.getByTestId('plan-todo').first().check();
+  await expect(dialog.getByTestId('plan-new-create')).toBeEnabled();
+  await dialog.getByTestId('plan-new-create').click();
+  await expect(page.getByTestId('plan-page')).toBeVisible();
+  const freeId = (await page.getByTestId('plan-page').getAttribute('data-plan-id')) as string;
+  await expect(page.getByTestId('plan-target')).toHaveText('No merge step');
+  await expect(page.getByTestId('plan-mode-chip')).toHaveText('No merge step');
+  await page.getByTestId('plan-start').click();
+  const modes = page.getByTestId('plan-mode-dialog');
+  await expect(modes).toContainText('This plan has no target branch: nothing is merged.');
+  await expect(modes.getByTestId('plan-mode-option')).toHaveCount(1);
+  await expect(modes.locator('[data-mode="none"]')).toBeChecked();
+  await expect(modes).toContainText('No merging');
+  await modes.getByTestId('plan-mode-confirm').click();
+  await expect(modes).toHaveCount(0);
+  await expect(page.getByTestId('plan-state')).toHaveText('running');
+  expect((await world.plan(page, freeId)).mergeMode).toBe('none');
+  expect((await world.call(page, 'POST', `/api/plans/${freeId}/cancel`)).status).toBe(200);
+
+  // dev as the target: "Agents merge" shows the warning, which must be ticked.
+  const created = await world.call(page, 'POST', '/api/plans', { sourceSessionId: source, title: 'Hotfix into dev', targetBranch: 'dev', baseBranch: 'main' });
+  expect(created.status).toBe(201);
+  const devId = created.body.id as string;
+  await world.addTodo(page, source, 'Fix the footer', 20);
+  const todos = (await world.call(page, 'GET', `/api/sessions/${source}/todos`)).body.todos as Array<{ id: string; title: string }>;
+  const footer = todos.find((todo) => todo.title === 'Fix the footer')?.id as string;
+  expect((await world.call(page, 'POST', `/api/plans/${devId}/items`, { todoId: footer })).status).toBe(201);
+  await page.goto(`${world.baseUrl}/plans/${devId}`);
+  await expect(page.getByTestId('plan-target')).toHaveText('⎇ dev → main');
+  await page.getByTestId('plan-start').click();
+  await expect(modes.getByTestId('plan-mode-option')).toHaveCount(4);
+  await modes.locator('[data-mode="developer"]').check();
+  await expect(modes.getByTestId('plan-mode-ack')).toHaveCount(0);
+  await modes.locator('[data-mode="agents"]').check();
+  await expect(modes.getByTestId('plan-mode-ack')).toHaveText('⚠ Agents will merge straight into dev');
+  await expect(modes.getByTestId('plan-mode-confirm')).toBeDisabled();
+  await modes.getByTestId('plan-mode-ack-check').check();
+  await expect(modes.getByTestId('plan-mode-confirm')).toBeEnabled();
+  await modes.getByTestId('plan-mode-confirm').click();
+  await expect(modes).toHaveCount(0);
+  await expect(page.getByTestId('plan-state')).toHaveText('running');
+  await expect(page.getByTestId('plan-target')).toHaveText('⎇ dev (agents merge — acknowledged)');
+  expect((await world.plan(page, devId)).allowProtectedTarget).toBe(true);
+  expect((await world.call(page, 'POST', `/api/plans/${devId}/cancel`)).status).toBe(200);
 });
 
 test('switched off while running: nothing of Plans shows; on again, the plan is paused with the reason', async ({ page }) => {

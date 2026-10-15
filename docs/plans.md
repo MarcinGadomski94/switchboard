@@ -1,6 +1,6 @@
 # Plans (D99)
 
-A **plan** groups todo items of one session (D68) into a dependency graph ("B after A") and runs them by itself: a scheduler starts every ready item as a todo run (D76) in its own session and worktree, cut from the plan's **target branch** (the epic's feature branch), keeps at most *N* running at once, and moves an item to done once its work is merged into the target under the plan's **merge mode**. When every item is done, the Inbox says "Plan ready: `<target>` → `<base>`" and the developer merges the epic.
+A **plan** groups todo items of one session (D68) into a dependency graph ("B after A") and runs them by itself: a scheduler starts every ready item as a todo run (D76) in its own session and worktree, cut from the plan's **target branch** (the epic's feature branch), keeps at most *N* running at once, and moves an item to done once its work is merged into the target under the plan's **merge mode**. When every item is done, the Inbox says "Plan ready: `<target>` → `<base>`" and the developer merges the epic. Since the D99 follow-up of 2026-10-15 a plan is for anything: any target branch (also `dev` or `main`), or none at all (*Plans for anything* below).
 
 Plans is **experimental**: switchable and revertible like Team (D100). Contract → *Plans (D99)* in `docs/handoff/contracts/local-api.md`; the Plans page (web UI) → `docs/plans-ui.md`; removal → `docs/plans-removal.md`; decision → D99 in `docs/decisions.md`; assumptions → `.loop/questions.md` → *D99*.
 
@@ -19,12 +19,12 @@ Settings → Experimental → **Plans** (`experimental.plans`), **off by default
 
 Everything of Plans is in its own SQLite file, `<dataDir>/plans.db`, with its own migration list (`src/server/plans/db.ts`, `PLANS_MIGRATIONS`) run by the main database's runner (`db/migrate.ts`, the one Team's `team.db` uses). No migration in `switchboard.db` (the earlier, never released `0043_plans.sql` was removed).
 
-Tables: `plans` (title, source session, target / base branch, repos, merge mode, concurrency, usage threshold, start answers, state, external ref, `held_reason`, `paused_reason`), `plan_items` (todo id, key, hold, solutions, stored state, reason, note, waiting-on, run session, branch, the target tip it was cut from, PR url, checks, conflict count, timeline) and `plan_edges`. Items and edges go with their plan. Session ids are plain text (no foreign key across files): the service deletes a plan whose source session no longer exists (at activation and at every scheduling cycle).
+Tables: `plans` (title, source session, target / base branch, repos, merge mode, concurrency, usage threshold, start answers, state, external ref, `held_reason`, `paused_reason`; migration 3: `no_merge` and `allow_protected_target`, a missing target stored as `''`), `plan_items` (todo id, key, hold, solutions, stored state, reason, note, waiting-on, run session, branch, the target tip it was cut from, PR url, checks, conflict count, timeline) and `plan_edges`. Items and edges go with their plan. Session ids are plain text (no foreign key across files): the service deletes a plan whose source session no longer exists (at activation and at every scheduling cycle).
 
 ## A plan
 
-- Made from a session (`sourceSessionId`) whose folder is a git repository (a repo folder, or a workspace's solution repos); a plain folder is refused (409 `not-a-repo`).
-- **Target branch** required, never equal to the base. **Base branch** default `dev`. **Repos**: a workspace's solution names (default the session's); a repo folder's one repo.
+- Made from a session (`sourceSessionId`) whose folder is a git repository (a repo folder, or a workspace's solution repos); with a target branch a plain folder is refused (409 `not-a-repo`); a plan without a target may come from any folder.
+- **Target branch** optional and any branch (D99 follow-up 2026-10-15; it may equal the base); missing, `null`, empty or `none` = no target. **Base branch** default `dev`. **Repos**: a workspace's solution names (default the session's); a repo folder's one repo.
 - **Max concurrency** 1–16 (default 3); **usage threshold** 1–100 % (default 85).
 - **Start answers** (`answers`: work type, mode, phase, coordination, notes) default to the source session's; a workspace item's run is a Full start with them (D76-workspace); `notes` are added to every item's brief.
 - **External** `{ system: 'jira', key }`: stored and shown only (the Jira lane fills it).
@@ -44,22 +44,38 @@ Each item keeps its history as **spans** (`plan_item_spans` in `plans.db`, migra
 
 ## Merge modes (required at start, no default)
 
-`POST /api/plans/{id}/start` requires `mergeMode` (422 `merge-mode-required`); the UI pre-selects `agents-with-holds` as the recommendation, the server never picks one. The `plan_start` tool's description tells the agent to ASK the developer and never choose.
+`POST /api/plans/{id}/start` requires `mergeMode` when the plan has a target (422 `merge-mode-required`); the UI pre-selects `agents-with-holds` as the recommendation, the server never picks one. A plan without a target is `none` (any other mode: 422 `target-required`). The `plan_start` tool's description tells the agent to ASK the developer and never choose.
 
 - `agents`: each item's agent opens a PR into the target and merges it once its checks are green.
 - `agents-with-holds`: the same, except held items wait for the developer's Merge (*Merge step* below).
 - `developer`: every item waits for the developer's Merge (*Merge step* below).
+- `none` (D99 follow-up 2026-10-15): no merge step; an item is done when its agent marks its todo done (*Plans for anything* below).
 
-The mode can change while a plan runs (`PUT /api/plans/{id}/mode`), as can holds (`PUT /api/plans/{id}/holds`); running items whose rule changed are told their new rule.
+The mode can change while a plan runs (but not to or from `none` once started: the briefs say whether there is a merge step; 409 `started`) (`PUT /api/plans/{id}/mode`), as can holds (`PUT /api/plans/{id}/holds`); running items whose rule changed are told their new rule.
 
 ## Safeguards
 
-- **Agents merge only into the target branch.** An agent mode is refused (422 `target-forbidden`) when the target is `dev`, `develop`, `master`, `main`, the repo's default branch or a protected branch (gh, best effort); the brief says never to merge anywhere else. Developer mode may target any branch.
+- **Agents merge only into the target branch**; the brief says never to merge anywhere else. **A protected target needs the developer's acknowledgement** (D99 follow-up 2026-10-15; until then a hard refusal): an agent mode (`agents`, `agents-with-holds`) whose target is `dev`, `develop`, `master`, `main`, the repo's default branch or a protected branch (gh, best effort) is refused (422 `target-forbidden`, field `allowProtectedTarget`) unless `start` / `mode` carries `allowProtectedTarget: true`, which is stored on the plan (`Plan.allowProtectedTarget`). The UI asks with a warning checkbox, "Agents will merge straight into `dev`"; the `plan_start` tool tells the agent to ask the developer first. Developer mode (and `none`) may target any branch without it.
 - **Green checks first.** In agent modes an item is done when its work is merged into the target and its PR's checks are green or absent (gh `statusCheckRollup`). Without a remote or gh, merged into the local target counts, with a note.
 - **Red checks go back to the session**: once per head and failure, the session gets a message; the item stays running and its dependents wait. D109: the PRs are read through the shared PR watcher (`docs/ci.md` → *Plans*); while *Send CI failures to the session* is on, the watcher sends the failure with the failing job's log (at most `ci.maxAttempts` per PR) instead of Plans' own message, and it raises no "PR #n ready to merge" for a running item's session (Plans' Merge step stays).
 - **Conflicts**: the first conflict with the target asks the agent to rebase; a **second** becomes an Inbox item for the developer and the item shows blocked.
 - **Failed / discarded / blocked items block their dependents** with a reason. Retry (`POST …/items/{itemId}/retry`) puts a failed item back; Mark done (`…/done`) counts it as done.
 - **Usage**: no new item starts while the account it would use (D82 routing, then D63's pick; D98's merged readings) is at or above the threshold of its 5-hour or weekly window, or spent; `held` says why. Running items go on.
+
+## Plans for anything (D99 follow-up 2026-10-15)
+
+Developer request: an agent skipped `plan_create` because the target had to be a feature branch; "can we allow to make plans for anything?"
+
+- **Any target.** `dev`, `main`, `master` or the default branch are accepted (also equal to the base). `developer` mode needs nothing more; an agent mode needs the acknowledgement above. The header chip reads "⎇ dev (agents merge — acknowledged)"; "Plan ready: dev" when the target is the base.
+- **No target, or no merge step.** For work that is not a git merge flow (research, docs elsewhere, ops tasks, agents that push on their own): leave the target out (`null`, `''` or `none`), or start a plan with a target in `mergeMode: 'none'` ("No merging — an item is done when its agent marks it done", the merge-mode dialog's fourth option).
+  - The items still run in dependency order within the concurrency and usage limits; a question still shows `question`.
+  - An item is **done when its todo is done** and its session's turn is over. Nothing is read from git or gh: no merge, no PR, no checks, no conflict.
+  - A **held** item waits for the developer's confirmation instead (`to-confirm`, `waitingOn: confirm`, stored like the Merge as `review`): an Inbox item "Confirm done: <item> (<plan>)" (`kind: plan-confirm`, dismiss-only) and, on the item, **✔ Done** (`POST …/done`) or **Send back**. Merge and Open PR answer 409 `no-merge-step`.
+  - Without a target the run is D76's own: cut from the source session's branch in a repo (a worktree), else in the source folder; a plain folder may be a source. With a target in `none` mode the runs are cut from the target as before.
+  - The brief says there is no merge step: commit, push or open a PR only if the todo asks for it; mark the todo done at the end.
+  - A session closed before its todo is done fails the item. The last item done raises "Plan done: <title>" in the Inbox. The header chip reads "No merge step".
+- **Compatibility.** Plans made before are unchanged (`allowProtectedTarget: false`, their mode). `plans.db` migration 3 adds `no_merge` and `allow_protected_target`; migrations 1 and 2 are untouched (their checksums are pinned in `tests/server/plans/migration.test.ts`). The Jira import still requires a target branch (an epic merges into one).
+- **MCP:** `plan_create`'s `target_branch` is optional (`none` = no target); `plan_start` takes `merge_mode` `none` and `allow_protected_target`; the descriptions say plans are for anything and when to ASK the developer (the merge mode, the acknowledgement).
 
 ## Item runs
 
@@ -86,7 +102,7 @@ When a plan's source session is continued in a fresh session, the plan follows i
 
 ## Agents (MCP tools)
 
-While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) adds `plan_create`, `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (the helper asks `GET /agent/v1/plans` once at its start; 200 = on). They act only on plans whose source is the agent's own session. The helper's server instructions never name them (they exist only while on).
+While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) adds `plan_create` (target optional), `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode`, `allow_protected_target`) (the helper asks `GET /agent/v1/plans` once at its start; 200 = on). They act only on plans whose source is the agent's own session. The helper's server instructions never name them (they exist only while on).
 
 ## Seam for an external list (Jira)
 

@@ -20,6 +20,9 @@ import { SystemItemService } from '../../../src/server/inbox/system-items.ts';
 import { planEnvironment } from '../../../src/server/plans/environment.ts';
 import { PlanGit } from '../../../src/server/plans/git.ts';
 import { PlanService } from '../../../src/server/plans/service.ts';
+import type { AgentApi } from '../../../src/hook/sb-mcp.ts';
+import { planAddItem, planCreate, planStart } from '../../../src/hook/sb-plan-tools.ts';
+import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { BranchMergeGit } from '../../../src/server/worktrees/branch-merge.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { generateToken } from '../../../src/server/token.ts';
@@ -426,4 +429,72 @@ describe('D99 · a plan on the real path', () => {
     expect((await r.s.store.sessions.get(second.runSessionId as string))?.todoLink?.sourceSessionId).toBe(freshId);
     expect(r.s.errors).toEqual([]);
   }, 90_000);
+
+  // ── D99 follow-up 2026-10-15: plans for anything ──
+
+  it('the MCP tools: a plan without a target (plan_start without a mode is none); its items finish when their todos are done, with no PR or merge', async () => {
+    const r = await setup();
+    const api = helperApi(r.source.id);
+    const created = await planCreate(api, { title: 'Research' });
+    const text = (created.content[0] as { text: string }).text;
+    expect(created.isError, text).toBeFalsy();
+    expect(text).toContain('without a target branch');
+    const id = /\[([0-9a-f]+)\]/.exec(text)?.[1] as string;
+    expect((await plan(id)).targetBranch).toBeNull();
+    expect((await planAddItem(api, { plan_id: id, key: 'RES-1', title: 'Read A' })).isError).toBeFalsy();
+    expect((await planAddItem(api, { plan_id: id, key: 'RES-2', title: 'Read B', after: ['RES-1'] })).isError).toBeFalsy();
+    // Only none fits: a merging mode is refused with the reason.
+    const refused = await planStart(api, { plan_id: id, merge_mode: 'agents' });
+    expect(refused.isError).toBe(true);
+    expect((refused.content[0] as { text: string }).text).toContain('no target branch');
+    const startedText = (await planStart(api, { plan_id: id })).content[0] as { text: string };
+    expect(startedText.text).toContain('Started.');
+    expect((await plan(id)).mergeMode).toBe('none');
+    await agentWorks(r, id, 'RES-1', { merge: false });
+    await settledItem(id, 'RES-1', 'done');
+    await agentWorks(r, id, 'RES-2', { merge: false });
+    await settledItem(id, 'RES-2', 'done');
+    const finished = await until(async () => {
+      const current = await plan(id);
+      return current.state === 'done' ? current : undefined;
+    }, 'the plan done');
+    expect(finished.items.map((item) => [item.key, item.prUrl, item.mergedAt])).toEqual([
+      ['RES-1', null, null],
+      ['RES-2', null, null],
+    ]);
+    // Nothing was merged anywhere: no target branch was made.
+    expect(await r.g.git(r.repoPath, 'branch', '--list', TARGET)).toBe('');
+    expect(r.s.errors).toEqual([]);
+  }, 90_000);
+
+  it('the MCP tools: an agent mode into the default branch needs allow_protected_target; the plan stores the acknowledgement', async () => {
+    const r = await setup();
+    const api = helperApi(r.source.id);
+    const created = await planCreate(api, { title: 'Hotfixes', target_branch: 'main', base_branch: 'main' });
+    const id = /\[([0-9a-f]+)\]/.exec((created.content[0] as { text: string }).text)?.[1] as string;
+    await planAddItem(api, { plan_id: id, title: 'Fix the footer' });
+    const refused = await planStart(api, { plan_id: id, merge_mode: 'agents' });
+    expect(refused.isError).toBe(true);
+    expect((refused.content[0] as { text: string }).text).toContain('allowProtectedTarget: true');
+    expect((await plan(id)).state).toBe('draft');
+    const started = await planStart(api, { plan_id: id, merge_mode: 'agents', allow_protected_target: true });
+    expect(started.isError, (started.content[0] as { text: string }).text).toBeFalsy();
+    expect((started.content[0] as { text: string }).text).toContain('(agents merge: acknowledged)');
+    expect(await plan(id)).toMatchObject({ state: 'running', mergeMode: 'agents', allowProtectedTarget: true, targetBranch: 'main' });
+    expect((await call('POST', `/api/plans/${id}/cancel`)).statusCode).toBe(200);
+  }, 60_000);
 });
+
+/** D99 follow-up: the \`switchboard\` MCP helper's API as session \`sessionId\` (its agent token), over \`inject\`. */
+function helperApi(sessionId: string): AgentApi {
+  return async (method, url, body) => {
+    if (!app) throw new Error('no app');
+    const answer = await app.inject({
+      method,
+      url,
+      headers: { host: HOST, 'x-switchboard-session': sessionId, authorization: `Bearer ${agentTokenFor(token, sessionId)}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
+    });
+    return { status: answer.statusCode, body: answer.body ? (answer.json() as unknown) : null };
+  };
+}

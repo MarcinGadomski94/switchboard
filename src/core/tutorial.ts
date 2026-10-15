@@ -92,6 +92,9 @@ const V1_20 = '1.20.0';
 /** The version D110 (choosing the target folders of a move, and their verification) ships in. */
 const V1_21 = '1.21.0';
 
+/** The version the D99 follow-up of 2026-10-15 (plans for anything: any target branch, or none) ships in. */
+const V1_22 = '1.22.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -898,6 +901,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['session-takeover'],
         route: { view: 'session' },
         missing: 'Move to <machine> ▸ sits in the header of a session once a paired machine is online (Settings → Machines). In its dialog, Choose folders… picks where the repos are on that machine.',
+      },
+    ],
+  },
+  // Plans (D99) hook: the D99 follow-up's tour, shown only while Plans is on like the Plans tour (src/web/plans/store.ts; docs/plans-removal.md).
+  {
+    id: 'plans-any',
+    decision: 'D99',
+    version: V1_22,
+    title: 'Plans for anything',
+    steps: [
+      {
+        id: 'target',
+        title: 'Any target branch, or none',
+        what: 'A plan no longer needs an epic branch. Target dev or main (agents merging straight into it needs your tick in the Start dialog), or leave the target empty for work that is not merged at all: research, docs elsewhere, ops tasks. Such a plan still runs its items in order within its limits, and an item is done when its agent marks it done; the ones you mark ⚑ wait for your Done.',
+        todo: ['Press ＋ New plan and leave the target branch empty.', 'Tick the todos, Create plan, then ▶ Start plan.'],
+        anchors: ['plans-new'],
+        route: { view: 'plans' },
+        missing: 'Plans sits in the sidebar once Settings → Experimental → Plans is on. ＋ New plan takes an optional target branch: empty means no merge step.',
       },
     ],
   },

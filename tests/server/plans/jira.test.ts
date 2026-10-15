@@ -109,8 +109,8 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
     },
     async run(input) {
       runs += 1;
-      const session = await store.sessions.create({ name: `run-${runs}`, claudeSessionId: `c-${runs}`, status: 'run', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: Object.keys(input.from), worktrees: true });
-      for (const [repo] of Object.entries(input.from)) await store.worktrees.create({ repo, repoPath: `/repos/${repo}`, branch: input.branch, path: `/wt/${input.branch}/${repo}`, sessionId: session.id });
+      const session = await store.sessions.create({ name: `run-${runs}`, claudeSessionId: `c-${runs}`, status: 'run', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: Object.keys(input.from ?? {}), worktrees: true });
+      for (const [repo] of Object.entries(input.from ?? {})) await store.worktrees.create({ repo, repoPath: `/repos/${repo}`, branch: input.branch, path: `/wt/${input.branch}/${repo}`, sessionId: session.id });
       return { ok: true, sessionId: session.id, branch: input.branch };
     },
     async usageHeld() {

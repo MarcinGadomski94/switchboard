@@ -39,8 +39,14 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, 
 export interface NewPlanBody {
   readonly sourceSessionId: string;
   readonly title: string;
-  readonly targetBranch: string;
+  /** `null` = no target branch: a plan without a merge step (D99 follow-up 2026-10-15). */
+  readonly targetBranch: string | null;
   readonly baseBranch?: string;
+}
+
+/** D99 follow-up 2026-10-15: the developer's acknowledgement that agents merge straight into a protected target. */
+export interface StartOptions {
+  readonly allowProtectedTarget?: boolean;
 }
 
 /** The error code of a refusal (`{ error }`), `null` when there is none. */
@@ -77,16 +83,18 @@ export const plansApi = {
   updateItem: (id: string, itemId: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/items/${enc(itemId)}`, body),
   removeItem: (id: string, itemId: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/items/${enc(itemId)}`),
   retryItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/retry`),
+  /** Mark done (also the developer's confirmation of a held item of a plan without a merge step). */
+  markItemDone: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/done`),
   /** D102: the Merge step of a ready-to-merge item (merge locally into the target; open its PR; send it back with a comment). */
   mergeItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/merge`),
   openItemPr: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/open-pr`),
   sendBackItem: (id: string, itemId: string, comment: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/send-back`, { comment }),
   addEdge: (id: string, from: string, to: string) => call<Plan>('POST', `/api/plans/${enc(id)}/edges`, { from, to }),
   removeEdge: (id: string, from: string, to: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/edges/${enc(from)}/${enc(to)}`),
-  start: (id: string, mergeMode: PlanMergeMode) => call<Plan>('POST', `/api/plans/${enc(id)}/start`, { mergeMode }),
+  start: (id: string, mergeMode: PlanMergeMode, options: StartOptions = {}) => call<Plan>('POST', `/api/plans/${enc(id)}/start`, { mergeMode, ...options }),
   pause: (id: string) => call<Plan>('POST', `/api/plans/${enc(id)}/pause`),
   resume: (id: string) => call<Plan>('POST', `/api/plans/${enc(id)}/resume`),
   cancel: (id: string) => call<Plan>('POST', `/api/plans/${enc(id)}/cancel`),
-  setMode: (id: string, mergeMode: PlanMergeMode) => call<Plan>('PUT', `/api/plans/${enc(id)}/mode`, { mergeMode }),
+  setMode: (id: string, mergeMode: PlanMergeMode, options: StartOptions = {}) => call<Plan>('PUT', `/api/plans/${enc(id)}/mode`, { mergeMode, ...options }),
   setHolds: (id: string, holds: Readonly<Record<string, boolean>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/holds`, { holds }),
 };

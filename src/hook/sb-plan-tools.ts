@@ -60,13 +60,14 @@ function planIdOf(input: ToolInput): string {
 /** D99 · `plan_create`: a draft plan over this session's todos. */
 export async function planCreate(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   if (typeof input['title'] !== 'string' || input['title'].trim() === '') return textResult('Give the plan a title.', true);
-  if (typeof input['target_branch'] !== 'string' || input['target_branch'].trim() === '') return textResult("Give target_branch: the epic's feature branch every item is merged into (never dev, master or main).", true);
+  // D99 follow-up 2026-10-15: the target is optional (left out, or "none": a plan without a merge step) and may be any branch.
+  const target = typeof input['target_branch'] === 'string' && input['target_branch'].trim() !== '' ? input['target_branch'].trim() : null;
   const answers: Record<string, unknown> = {};
   if (input['work_type'] !== undefined) answers['workType'] = input['work_type'];
   if (input['mode'] !== undefined) answers['mode'] = input['mode'];
   if (input['phase'] !== undefined) answers['phase'] = input['phase'];
   if (input['notes'] !== undefined) answers['notes'] = input['notes'];
-  const body: Record<string, unknown> = { title: input['title'], targetBranch: input['target_branch'] };
+  const body: Record<string, unknown> = { title: input['title'], targetBranch: target };
   if (input['base_branch'] !== undefined) body['baseBranch'] = input['base_branch'];
   if (input['repos'] !== undefined) body['repos'] = input['repos'];
   if (input['max_concurrency'] !== undefined) body['maxConcurrency'] = input['max_concurrency'];
@@ -74,7 +75,11 @@ export async function planCreate(api: AgentApi, input: ToolInput): Promise<CallT
   if (Object.keys(answers).length > 0) body['answers'] = answers;
   return request(api, 'POST', '/agent/v1/plans', body, (answer) =>
     isPlan(answer)
-      ? textResult(`Created plan [${answer.id}] "${answer.title}" (a draft): ${answer.targetBranch} → ${answer.baseBranch}, repos ${answer.repos.join(', ')}, up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then ask the developer for the merge mode and call plan_start.`)
+      ? textResult(
+          answer.targetBranch === null
+            ? `Created plan [${answer.id}] "${answer.title}" (a draft) without a target branch: no merge step, an item is done when its todo is done; up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then call plan_start (its merge mode is none).`
+            : `Created plan [${answer.id}] "${answer.title}" (a draft): ${answer.targetBranch} → ${answer.baseBranch}, repos ${answer.repos.join(', ')}, up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then ask the developer for the merge mode and call plan_start.`,
+        )
       : textResult('Switchboard did not answer with the plan.', true),
   );
 }
@@ -124,15 +129,23 @@ export async function planStatus(api: AgentApi, input: ToolInput): Promise<CallT
   return request(api, 'GET', planRoute(id), undefined, (answer) => (isPlan(answer) ? textResult(planStatusText(answer)) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
-/** D99 · `plan_start`: requires the developer's merge mode. */
+/**
+ * D99 · `plan_start`: the developer's merge mode (required with a target branch: the server
+ * answers 422 `merge-mode-required`; a plan without a target is `none`); D99 follow-up
+ * 2026-10-15: `allow_protected_target` is the developer's acknowledgement that agents merge
+ * straight into a protected target.
+ */
 export async function planStart(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   const id = planIdOf(input);
   if (id === '') return textResult(NEED_PLAN_ID, true);
   const mode = input['merge_mode'];
-  if (typeof mode !== 'string' || !(PLAN_MERGE_MODES as readonly string[]).includes(mode)) {
-    return textResult(`merge_mode is required and is the developer's choice: ask them which one (${PLAN_MERGE_MODES.join(', ')}; agents-with-holds is recommended), then call plan_start again. Never choose it yourself.`, true);
+  if (mode !== undefined && (typeof mode !== 'string' || !(PLAN_MERGE_MODES as readonly string[]).includes(mode))) {
+    return textResult(`merge_mode is the developer's choice: ask them which one (${PLAN_MERGE_MODES.join(', ')}; agents-with-holds is recommended), then call plan_start again. Never choose it yourself.`, true);
   }
-  return request(api, 'POST', planRoute(id, '/start'), { mergeMode: mode }, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
+  const body: Record<string, unknown> = {};
+  if (mode !== undefined) body['mergeMode'] = mode;
+  if (input['allow_protected_target'] !== undefined) body['allowProtectedTarget'] = input['allow_protected_target'] === true;
+  return request(api, 'POST', planRoute(id, '/start'), body, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
 /** D99-Jira-q1 · `plan_propose_dependencies`: proposals for the developer, nothing changes. */
@@ -259,7 +272,11 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
     {
       title: planStartTool.annotations.title,
       description: planStartTool.description,
-      inputSchema: inputSchema('plan_start', { plan_id: field.text('plan_start', 'plan_id'), merge_mode: z.enum(PLAN_MERGE_MODES).describe(about('plan_start', 'merge_mode')).optional() }),
+      inputSchema: inputSchema('plan_start', {
+        plan_id: field.text('plan_start', 'plan_id'),
+        merge_mode: z.enum(PLAN_MERGE_MODES).describe(about('plan_start', 'merge_mode')).optional(),
+        allow_protected_target: z.boolean().describe(about('plan_start', 'allow_protected_target')).optional(),
+      }),
       annotations: planStartTool.annotations,
     },
     (input) => serial(() => planStart(api, input)),

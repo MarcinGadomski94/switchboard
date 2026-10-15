@@ -123,6 +123,19 @@ CREATE INDEX plan_item_spans_item ON plan_item_spans (item_id, started_at);
 CREATE INDEX plan_item_spans_plan_open ON plan_item_spans (plan_id) WHERE ended_at IS NULL;
 `,
   ),
+  makeMigration(
+    3,
+    'plans_any_target',
+    `-- D99 follow-up 2026-10-15 (plans for anything, docs/plans.md): any target branch, or none.
+-- plans.target_branch: '' (empty) = no target branch (a plan without a merge step); the column stays NOT NULL.
+-- plans.no_merge: 1 = the merge mode is none (no merge step: an item is done when its todo is done);
+--   merge_mode is then NULL (its CHECK predates none). 0 = merge_mode says the mode (NULL = a draft).
+-- plans.allow_protected_target: 1 = the developer acknowledged that agents merge straight into a
+--   protected target (dev, develop, main, master, the default or a protected branch).
+ALTER TABLE plans ADD COLUMN no_merge INTEGER NOT NULL DEFAULT 0 CHECK (no_merge IN (0, 1));
+ALTER TABLE plans ADD COLUMN allow_protected_target INTEGER NOT NULL DEFAULT 0 CHECK (allow_protected_target IN (0, 1));
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */

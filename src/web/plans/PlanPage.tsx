@@ -256,7 +256,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           </span>
         </div>
         <div className="sb-plan-chips">
-          <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-mode-chip" data-mode={plan.mergeMode ?? 'none'} disabled={finished || remote} onClick={() => setOpen(plan.state === 'draft' ? 'start' : 'mode')}>
+          <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-mode-chip" data-mode={plan.mergeMode ?? 'unset'} disabled={finished || remote} onClick={() => setOpen(plan.state === 'draft' ? 'start' : 'mode')}>
             {mergeModeChip(plan)}
           </button>
           <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-limits-chip" disabled={finished || remote} onClick={() => setOpen('limits')}>

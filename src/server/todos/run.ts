@@ -32,8 +32,11 @@ export type TodoRunContext = SessionStartContext & Pick<ApiContext, 'todos'>;
 export interface TodoRunOverrides {
   /** The branch's base name (made unique across `repoPaths` with `-2`, `-3`, … like D76's). */
   readonly branch: string;
-  /** Solution / repo name → the ref each worktree is cut from (the plan's target branch). */
-  readonly from: Readonly<Record<string, string>>;
+  /**
+   * Solution / repo name → the ref each worktree is cut from (the plan's target branch); `null`
+   * (a plan without a target branch, D99 follow-up 2026-10-15) = D76's own cut below.
+   */
+  readonly from: Readonly<Record<string, string>> | null;
   /** The main checkouts of the repos in {@link from} (where the branch must be free). */
   readonly repoPaths: readonly string[];
   /** The first message (the plan item's brief), given the run's final branch (`null` = no worktree). */
@@ -117,7 +120,7 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   const from: Record<string, string> = {};
   const repoPaths: string[] = [];
   let note: string | null = null;
-  if (overrides) {
+  if (overrides && overrides.from !== null) {
     Object.assign(from, overrides.from);
     repoPaths.push(...overrides.repoPaths);
     if (folder.kind === 'plain') note = "The source session's folder is not a git repository: the run works in the same folder, without a worktree.";

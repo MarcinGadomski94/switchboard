@@ -118,6 +118,9 @@ export function dropPlan(id: string): void {
 /** The What's-new tour of Plans (`src/core/tutorial.ts`): it exists only while Plans is on. */
 export const PLANS_TOUR_ID = 'plans';
 
+/** Every What's-new tour of Plans (D99 follow-up 2026-10-15: `plans-any`, plans for anything): shown only while Plans is on. */
+export const PLANS_TOUR_IDS: readonly string[] = [PLANS_TOUR_ID, 'plans-any'];
+
 /** Whether Plans is on, read once now (the What's-new gate asks before it opens the pending tours). */
 export async function plansOn(): Promise<boolean> {
   start();
@@ -125,7 +128,7 @@ export async function plansOn(): Promise<boolean> {
   return current.on;
 }
 
-/** `ids` without the Plans tour while Plans is off (the same array otherwise). */
+/** `ids` without the Plans tours ({@link PLANS_TOUR_IDS}) while Plans is off (the same array otherwise). */
 export function withoutPlansTour<T extends string | { readonly id: string }>(ids: readonly T[], on: boolean): readonly T[] {
-  return on ? ids : ids.filter((entry) => (typeof entry === 'string' ? entry : entry.id) !== PLANS_TOUR_ID);
+  return on ? ids : ids.filter((entry) => !PLANS_TOUR_IDS.includes(typeof entry === 'string' ? entry : entry.id));
 }

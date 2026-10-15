@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { openSessions } from '../../core/session-close.ts';
 import { type TourStep, pendingTours } from '../../core/tutorial.ts';
 // Plans (D99) hook (docs/plans-removal.md).
-import { PLANS_TOUR_ID, plansOn, withoutPlansTour } from '../plans/store.ts';
+import { PLANS_TOUR_IDS, plansOn, withoutPlansTour } from '../plans/store.ts';
 import { api } from '../api/client.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { SKIPPED_KEY } from '../modals/setup-wizard.ts';
@@ -59,7 +59,7 @@ function TourGate() {
     api.tutorial().then(
       async (state) => {
         // Plans (D99) hook: the Plans tour exists only while Plans is on (docs/plans-removal.md).
-        const tours = [...withoutPlansTour(pendingTours(state), pendingTours(state).includes(PLANS_TOUR_ID) ? await plansOn() : false)];
+        const tours = [...withoutPlansTour(pendingTours(state), pendingTours(state).some((id) => PLANS_TOUR_IDS.includes(id)) ? await plansOn() : false)];
         if (cancelled || tours.length === 0) return;
         const setup = setupSkippedInThisTab() ? null : await api.setup().catch(() => null);
         if (cancelled) return;

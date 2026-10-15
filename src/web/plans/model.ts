@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, findCycle } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_FORBIDDEN_TARGETS, findCycle } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -27,6 +27,7 @@ export const STATE_LOOK: Readonly<Record<PlanItemState, StateLook>> = {
   running: { icon: '●', color: 'var(--status-run)', word: 'running' },
   question: { icon: '?', color: 'var(--status-need)', word: 'question' },
   'ready-to-merge': { icon: '◐', color: MERGE_COLOR, word: 'ready to merge' },
+  'to-confirm': { icon: '◐', color: MERGE_COLOR, word: 'to confirm' },
   done: { icon: '✔', color: 'var(--status-done)', word: 'done' },
   blocked: { icon: '✖', color: 'var(--status-fail)', word: 'blocked' },
 };
@@ -59,6 +60,8 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
       return 'needs your answer';
     case 'ready-to-merge':
       return 'waiting for your merge';
+    case 'to-confirm':
+      return 'waiting for you to confirm';
     case 'done':
       return 'done · merged';
     case 'blocked':
@@ -94,11 +97,15 @@ export function timeLeftText(plan: Pick<Plan, 'estimatedMinutesLeft'>): string |
   return plan.estimatedMinutesLeft === null ? null : `~${durationShort(plan.estimatedMinutesLeft)} left`;
 }
 
-/** The merge-mode chip: "Merge: agents · hold ⚑ 3165", "Merge: I merge each one", "Merge mode: not chosen yet". */
-export function mergeModeChip(plan: Pick<Plan, 'mergeMode' | 'items'>): string {
+/** The merge-mode chip: "Merge: agents · hold ⚑ 3165", "Merge: I merge each one", "No merge step", "Merge mode: not chosen yet". */
+export function mergeModeChip(plan: Pick<Plan, 'mergeMode' | 'items'> & Partial<Pick<Plan, 'targetBranch'>>): string {
   switch (plan.mergeMode) {
     case null:
-      return 'Merge mode: not chosen yet';
+      return plan.targetBranch === null ? 'No merge step' : 'Merge mode: not chosen yet';
+    case 'none': {
+      const holds = plan.items.filter((item) => item.hold).map((item) => shortLabel(item, plan.items));
+      return holds.length > 0 ? `No merge step · confirm ⚑ ${holds.join(', ')}` : 'No merge step';
+    }
     case 'developer':
       return 'Merge: I merge each one';
     case 'agents':
@@ -115,14 +122,27 @@ export function limitsChip(plan: Pick<Plan, 'maxConcurrency' | 'usageThreshold'>
   return `${plan.maxConcurrency} at once · ${plan.usageThreshold} %`;
 }
 
-/** The target chip: "⎇ epic/x → dev". */
-export function targetChip(plan: Pick<Plan, 'targetBranch' | 'baseBranch'>): string {
-  return `⎇ ${plan.targetBranch} → ${plan.baseBranch}`;
+/**
+ * The target chip: "⎇ epic/x → dev"; D99 follow-up 2026-10-15: "No merge step" without a target
+ * (or in the `none` mode), "⎇ dev (agents merge — acknowledged)" when the developer acknowledged
+ * that agents merge straight into a protected target, "⎇ dev" when the target is the base.
+ */
+export function targetChip(plan: Pick<Plan, 'targetBranch' | 'baseBranch'> & Partial<Pick<Plan, 'mergeMode' | 'allowProtectedTarget'>>): string {
+  if (plan.targetBranch === null || plan.mergeMode === 'none') return 'No merge step';
+  if (plan.allowProtectedTarget === true && (plan.mergeMode === 'agents' || plan.mergeMode === 'agents-with-holds')) return `⎇ ${plan.targetBranch} (agents merge — acknowledged)`;
+  return plan.targetBranch === plan.baseBranch ? `⎇ ${plan.targetBranch}` : `⎇ ${plan.targetBranch} → ${plan.baseBranch}`;
 }
 
-/** The final node's text: "epic → dev · yours". */
-export function finalNodeText(plan: Pick<Plan, 'targetBranch' | 'baseBranch'>): string {
+/** The final node's text: "epic → dev · yours"; "all done" without a merge step; "dev · done" when the target is the base. */
+export function finalNodeText(plan: Pick<Plan, 'targetBranch' | 'baseBranch'> & Partial<Pick<Plan, 'mergeMode'>>): string {
+  if (plan.targetBranch === null || plan.mergeMode === 'none') return 'all done';
+  if (plan.targetBranch === plan.baseBranch) return `${plan.targetBranch} · done`;
   return `${plan.targetBranch} → ${plan.baseBranch} · yours`;
+}
+
+/** D99 follow-up 2026-10-15: whether `target` is a branch agents merge into only with the developer's acknowledgement, as far as the page can tell (the server also knows the default and protected branches). */
+export function isProtectedTargetName(target: string | null): boolean {
+  return target !== null && PLAN_FORBIDDEN_TARGETS.includes(target.replace(/^origin\//, '').toLowerCase());
 }
 
 /**
@@ -279,8 +299,9 @@ export function waitingText(item: PlanItem, items: readonly PlanItem[]): string 
   return `Starts by itself when ${list} ${names.length === 1 ? 'is' : 'are'} done.`;
 }
 
-/** A done item's line: "Merged into <target> · checks ✔". */
-export function doneText(item: Pick<PlanItem, 'checks' | 'note'>, plan: Pick<Plan, 'targetBranch'>): string {
+/** A done item's line: "Merged into <target> · checks ✔"; "Done" without a merge step. */
+export function doneText(item: Pick<PlanItem, 'checks' | 'note'>, plan: Pick<Plan, 'targetBranch'> & Partial<Pick<Plan, 'mergeMode'>>): string {
+  if (plan.targetBranch === null || plan.mergeMode === 'none') return 'Done · its todo is done';
   const checks = item.checks === null || item.checks.state === 'green' || item.checks.state === 'none' ? 'checks ✔' : item.checks.state === 'red' ? 'checks ✖' : 'checks …';
   return `Merged into ${plan.targetBranch} · ${checks}`;
 }
@@ -300,16 +321,23 @@ export interface MergeModeOption {
   readonly recommended: boolean;
 }
 
-/** The dialog's three options, in the design's order. */
+/** The dialog's options, in the design's order; D99 follow-up 2026-10-15: the fourth, no merging. */
 export const MERGE_MODE_OPTIONS: readonly MergeModeOption[] = [
   { mode: 'agents', title: 'Agents merge', text: "A ticket counts as done when its agent has merged it with green checks.", recommended: false },
   { mode: 'agents-with-holds', title: 'Agents merge, with hold points', text: 'The same, except the tickets you tick below wait for your Merge here.', recommended: true },
   { mode: 'developer', title: 'I merge each one', text: 'Every ticket waits for your Merge here once its agent is done.', recommended: false },
+  { mode: 'none', title: 'No merging', text: 'An item is done when its agent marks it done. Nothing is merged and no pull request is watched; the items you tick below wait for you to confirm them.', recommended: false },
 ];
 
-/** The dialog's footer note. */
-export function alwaysOnNote(plan: Pick<Plan, 'targetBranch'>): string {
-  return `Always on: agents merge only into ${plan.targetBranch} — never dev or master · checks must be green · a second conflict comes to your Inbox.`;
+/** The options a plan offers: without a target branch only "No merging". */
+export function mergeModeOptions(plan: Pick<Plan, 'targetBranch'>): readonly MergeModeOption[] {
+  return plan.targetBranch === null ? MERGE_MODE_OPTIONS.filter((option) => option.mode === 'none') : MERGE_MODE_OPTIONS;
+}
+
+/** The dialog's footer note (`mode` = the one picked). */
+export function alwaysOnNote(plan: Pick<Plan, 'targetBranch'>, mode: PlanMergeMode | null = null): string {
+  if (plan.targetBranch === null || mode === 'none') return 'Always on: items run in dependency order, within the limits · an item is done when its todo is · nothing is merged.';
+  return `Always on: agents merge only into ${plan.targetBranch} · checks must be green · a second conflict comes to your Inbox.`;
 }
 
 // ── the timeline ──────────────────────────────────────────────────────────
@@ -371,7 +399,8 @@ function parse(value: string | null): number | null {
 function waitsOnYou(item: PlanItem): string | null {
   if (item.state === 'question') return 'question';
   if (item.state === 'ready-to-merge') return 'merge';
-  if (item.waitingOn === 'question' || item.waitingOn === 'merge' || item.waitingOn === 'conflict') return item.waitingOn;
+  if (item.state === 'to-confirm') return 'confirm';
+  if (item.waitingOn === 'question' || item.waitingOn === 'merge' || item.waitingOn === 'conflict' || item.waitingOn === 'confirm') return item.waitingOn;
   return null;
 }
 

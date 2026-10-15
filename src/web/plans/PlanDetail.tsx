@@ -69,11 +69,13 @@ export function PlanDetail({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [comment, setComment] = useState<string | null>(null);
-  const latest = useLatestMessage(item.state === 'running' || item.state === 'ready-to-merge' ? item.runSessionId : null);
+  const latest = useLatestMessage(item.state === 'running' || item.state === 'ready-to-merge' || item.state === 'to-confirm' ? item.runSessionId : null);
   const question = item.runSessionId ? inbox.find((entry) => entry.kind === 'questions' && entry.sessionId === item.runSessionId) : undefined;
   const permission = item.runSessionId ? inbox.find((entry) => entry.kind === 'permission' && entry.sessionId === item.runSessionId) : undefined;
   const jira = jiraLink(plan, item);
   const remote = plan.machine !== null;
+  // D99 follow-up 2026-10-15: a plan without a merge step (no target, or the `none` mode).
+  const noMerge = plan.targetBranch === null || plan.mergeMode === 'none';
 
   useEffect(() => {
     setError(null);
@@ -132,9 +134,15 @@ export function PlanDetail({
             PR ↗
           </a>
         ) : null}
-        <label className="sb-plan-detail__hold" title={plan.mergeMode === 'agents-with-holds' || plan.mergeMode === null ? 'In "Agents merge, with hold points" this ticket waits for your Merge' : 'Counts in the "Agents merge, with hold points" mode'}>
-          <input type="checkbox" data-testid="plan-detail-hold" checked={item.hold} disabled={busy || remote || item.state === 'done' || plan.state === 'done' || plan.state === 'cancelled'} onChange={(event) => void setHold(event.target.checked)} /> ⚑ I merge this one
-        </label>
+        {noMerge ? (
+          <label className="sb-plan-detail__hold" title="Without a merge step this item waits for you to confirm it once its todo is done">
+            <input type="checkbox" data-testid="plan-detail-hold" checked={item.hold} disabled={busy || remote || item.state === 'done' || plan.state === 'done' || plan.state === 'cancelled'} onChange={(event) => void setHold(event.target.checked)} /> ⚑ I confirm this one
+          </label>
+        ) : (
+          <label className="sb-plan-detail__hold" title={plan.mergeMode === 'agents-with-holds' || plan.mergeMode === null ? 'In "Agents merge, with hold points" this ticket waits for your Merge' : 'Counts in the "Agents merge, with hold points" mode'}>
+            <input type="checkbox" data-testid="plan-detail-hold" checked={item.hold} disabled={busy || remote || item.state === 'done' || plan.state === 'done' || plan.state === 'cancelled'} onChange={(event) => void setHold(event.target.checked)} /> ⚑ I merge this one
+          </label>
+        )}
       </div>
       {item.note ? <div className="sb-plan-detail__note">{item.note}</div> : null}
 
@@ -185,6 +193,38 @@ export function PlanDetail({
                   Open diff
                 </Link>
               ) : null}
+            </div>
+          ) : (
+            <div className="sb-plan-detail__sendback">
+              <textarea className="sb-plan-input" data-testid="plan-detail-comment" rows={3} placeholder="What should the agent change?" value={comment} onChange={(event) => setComment(event.target.value)} />
+              <div className="sb-plan-detail__actions">
+                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-send" disabled={busy || comment.trim() === ''} onClick={() => void run(() => plansApi.sendBackItem(plan.id, item.id, comment.trim()).then((answer) => {
+                  setComment(null);
+                  return answer;
+                }))}>
+                  Send back
+                </button>
+                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={() => setComment(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {item.state === 'to-confirm' ? (
+        <div className="sb-plan-detail__body" data-testid="plan-detail-confirm-step">
+          {latest ? <div className="sb-plan-detail__message">{latest}</div> : null}
+          <div className="sb-plan-detail__text">Its agent marked the todo done. Tick Done to confirm it; the items that wait on it start then.</div>
+          {comment === null ? (
+            <div className="sb-plan-detail__actions">
+              <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-confirm" disabled={busy || remote} onClick={() => void run(() => plansApi.markItemDone(plan.id, item.id))}>
+                ✔ Done
+              </button>
+              <button type="button" className="sb-button sb-plan-btn" data-testid="plan-detail-send-back" disabled={busy} onClick={() => setComment('')}>
+                Send back
+              </button>
             </div>
           ) : (
             <div className="sb-plan-detail__sendback">

@@ -27,16 +27,16 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order) and of `DEVICE_REFUSED` (`/api/integrations/jira`), and "(D99) plans" in the file comment | remove them |
 | `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) | drop the import and the call |
-| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items); D102: imports `plansInboxMerge`; `PLAN_READY_TO_MERGE` / `PLAN_MERGE` / `OPEN_PLAN` / `PLAN_READY_TO_MERGE_ACTIONS`, `planMergeNotice`, `closePlanMergeNotices` and the `plan-merge` / `open-plan` branch of `#perform` (the "Ready to merge" item) | remove them (the `refused` error code and the closed-by-the-action check in `act` may stay) |
+| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" / "Plan done", second-conflict and "Confirm done" Inbox items); D102: imports `plansInboxMerge`; `PLAN_READY_TO_MERGE` / `PLAN_MERGE` / `OPEN_PLAN` / `PLAN_READY_TO_MERGE_ACTIONS`, `planMergeNotice`, `closePlanMergeNotices` and the `plan-merge` / `open-plan` branch of `#perform` (the "Ready to merge" item) | remove them (the `refused` error code and the closed-by-the-action check in `act` may stay) |
 | `src/server/insights/service.ts` | D108: imports `plansInsightOutcomes`; Insights reads the plan items' outcomes through it (`plans: null` while off) | drop the import and pass `plans: null` (the Outcomes section then shows no Plans part, as while Plans is off) |
-| `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
-| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) | remove both |
+| `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers; `from: null` = D76's own cut, a plan without a target branch) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
+| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) and the `plans-any` entry (1.22.0, the D99 follow-up of 2026-10-15) | remove them |
 | `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table | remove them |
 | `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` | drop the imports and the cases |
 | `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` | drop them |
 | `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is off) | drop the import and the element |
 | `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while off) | drop the import and the element |
-| `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_ID`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tour while Plans is off | `const tours = pendingTours(state);` |
+| `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_IDS`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tours while Plans is off | `const tours = pendingTours(state);` |
 | `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while off | `state.data?.whatsNew` in its two places |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `PlansSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Team) is left |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Team, D100) | keep while Team is there; otherwise remove both |
@@ -44,7 +44,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 
 D109 (not markers: the shared code never imports Plans): Plans registers itself into the shared PR watcher (`registerCiMergeOwner` in `src/server/plans/service.ts`, the `prs` read and `ciSendsFailures` / `prOpened` in `install.ts` and `environment.ts`) and its Jira lane registers the todo import's Jira source (`registerJiraIssueSource` in `src/server/plans/jira/install.ts`). They go with `src/server/plans/`; without them the watcher raises its own "ready to merge" for every session and the Import issues dialog says Jira needs Plans.
 
-Not markers (Plans' D102 Merge step, shared code): `src/server/worktrees/branch-merge.ts` (`BranchMergeGit`, the safe local merge and Open PR) may stay or go; the `plan-ready-to-merge` label in `SYSTEM_ITEM_LABELS` (`src/server/inbox/wire.ts`) and the web's `openRoute` / `OPEN_PLAN` (`src/web/views/inbox.ts`) and the Needs-you `merge` shape (`src/web/team/`) are harmless without Plans.
+Not markers (Plans' D102 Merge step, shared code): `src/server/worktrees/branch-merge.ts` (`BranchMergeGit`, the safe local merge and Open PR) may stay or go; the `plan-ready-to-merge` and `plan-confirm` labels in `SYSTEM_ITEM_LABELS` (`src/server/inbox/wire.ts`) and the web's `openRoute` / `OPEN_PLAN` (`src/web/views/inbox.ts`) and the Needs-you `merge` shape (`src/web/team/`) are harmless without Plans.
 
 Outside `src/` (not markers): `vite.config.ts` builds the Jira dialog's dev mount as an entry (`rollupOptions.input.plansJiraDev`: remove it); `tests/helpers/server-process.ts` drops `ATL_*` from test servers' environment (the Jira lane's guard; harmless without Plans, may stay).
 
@@ -54,7 +54,7 @@ Tests that name Plans' additions (revert with the code):
 - The Experimental section's Plans row has no screenshot of its own.
 - `tests/server/tutorial/tutorial.test.ts`: `'D99'` in the What's-new decisions.
 - `tests/e2e/shell.spec.ts`: the `/api/plans/state` branch of the shell's API calls.
-- `tests/e2e/tutorial.spec.ts`: the `WHATS_NEW` filter without `plans` and the `status['plans']` line.
+- `tests/e2e/tutorial.spec.ts`: the `WHATS_NEW` filter without `plans` / `plans-any` and the `status['plans']` / `status['plans-any']` lines.
 
 Docs: the *Plans (D99)* and *Plans · Jira (D99)* sections of `docs/handoff/contracts/local-api.md`, *Jira credentials (D99)* in `docs/security.md`, the Jira paragraphs of `PRIVACY.md`, the *D99-Jira* section of `.loop/questions.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* and *D99-UI* sections of `.loop/questions.md`.
 

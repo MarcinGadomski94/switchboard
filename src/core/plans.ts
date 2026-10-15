@@ -21,15 +21,33 @@ import { todoFinishLine, todoHasPlan, type TodoToolDefinition } from './todos.ts
  *   (the recommended option; the UI pre-selects it);
  * - `developer`: every item waits for the developer's Merge.
  *
+ * - `none` (D99 follow-up 2026-10-15, plans for anything): no merge step at all. An item is done
+ *   when its todo is done (its agent marks it done); nothing is merged, no PR or checks are
+ *   watched. A held item waits for the developer to confirm it (Mark done). The only mode of a
+ *   plan without a target branch.
+ *
  * D102: the developer's Merge is Plans' own step (it was a Review card, D79, until those were
  * removed): a finished item waits `ready-to-merge` on the Plans page and in the Inbox.
  */
-export const PLAN_MERGE_MODES = ['agents', 'agents-with-holds', 'developer'] as const;
+export const PLAN_MERGE_MODES = ['agents', 'agents-with-holds', 'developer', 'none'] as const;
 /** One of {@link PLAN_MERGE_MODES}. */
 export type PlanMergeMode = (typeof PLAN_MERGE_MODES)[number];
 
 /** The merge mode the UI pre-selects (never applied by the server: `start` requires the field). */
 export const RECOMMENDED_MERGE_MODE: PlanMergeMode = 'agents-with-holds';
+
+/** Whether agents merge into the target under `mode` (`agents`, `agents-with-holds`): the modes that need the protected-target acknowledgement. */
+export function agentsMerge(mode: PlanMergeMode | null): boolean {
+  return mode === 'agents' || mode === 'agents-with-holds';
+}
+
+/** Whether `mode` has a merge step (every mode but `none`; a draft's `null` counts as one, its mode is not chosen yet). */
+export function hasMergeStep(mode: PlanMergeMode | null): boolean {
+  return mode !== 'none';
+}
+
+/** What `targetBranch` says "no target branch" with (the MCP tools; the REST API also takes `null` or an empty value). */
+export const PLAN_NO_TARGET = 'none';
 
 /** A plan's state: `draft` (being built) → `running` ↔ `paused` → `done` | `cancelled`. */
 export const PLAN_STATES = ['draft', 'running', 'paused', 'done', 'cancelled'] as const;
@@ -49,20 +67,24 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  * - `question`: its session waits for the developer (a question or a permission request, in the Inbox);
  * - `ready-to-merge` (D102): its run finished (its todo is done, or its PR is open with green
  *   checks) and it waits for the developer's Merge ("Waiting for your merge");
+ * - `to-confirm` (D99 follow-up 2026-10-15): a held item of a plan without a merge step (`none`)
+ *   whose todo is done waits for the developer to confirm it (Mark done);
  * - `done`: merged into the target branch (and the checks are green, in agent modes);
  * - `blocked`: it failed (discarded, could not start), its session stopped with an error, a
  *   conflict went to the developer, or a dependency is blocked; {@link PlanItem.reason} says why.
  */
-export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'ready-to-merge', 'done', 'blocked'] as const;
+export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'ready-to-merge', 'to-confirm', 'done', 'blocked'] as const;
 /** One of {@link PLAN_ITEM_STATES}. */
 export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
 
 /**
  * What a running item waits on (stored, with `waitingSince`): the developer's Merge (D102;
  * stored as `review` in `plans.db`, the name its CHECK has), its PR's checks, the developer's
- * answer, a conflict.
+ * answer, a conflict; `confirm` (D99 follow-up 2026-10-15): a held item of a plan without a merge
+ * step waits for the developer to confirm it is done (stored like `merge`, as `review`; answered
+ * as `confirm` in a `none` plan).
  */
-export type PlanWaitingOn = 'merge' | 'checks' | 'question' | 'conflict';
+export type PlanWaitingOn = 'merge' | 'checks' | 'question' | 'conflict' | 'confirm';
 
 /** The state of an item's PR checks: `pending` (running), `green`, `red`, `none` (no checks configured: counts as green). D109: the shared watcher's {@link PrChecksState}. */
 export type PlanChecksState = PrChecksState;
@@ -79,7 +101,11 @@ export const PLAN_NOTES_MAX = 4_000;
 /** The most items one plan holds. */
 export const PLAN_ITEMS_MAX = 100;
 
-/** Branches agents may never merge into (D99 safeguard), besides the repo's default branch and its protected branches. */
+/**
+ * Branches agents merge into only with the developer's acknowledgement (D99 safeguard; D99
+ * follow-up 2026-10-15: `allowProtectedTarget`), besides the repo's default branch and its
+ * protected branches.
+ */
 export const PLAN_FORBIDDEN_TARGETS: readonly string[] = ['dev', 'develop', 'master', 'main'];
 
 // ── API shapes ────────────────────────────────────────────────────────────
@@ -131,6 +157,8 @@ export interface PlanItem {
   readonly checks: PlanChecks | null;
   /** Whether the developer merges this item (developer mode, or a hold in agents-with-holds). */
   readonly developerMerges: boolean;
+  /** D99 follow-up 2026-10-15: whether the developer confirms this item is done (a hold in a plan without a merge step). */
+  readonly developerConfirms: boolean;
   readonly estimateMinutes: number | null;
   /** Minutes from start to done (done items), or so far (running ones); `null` before it starts. */
   readonly actualMinutes: number | null;
@@ -177,6 +205,7 @@ export function planItemSpanKind(plan: { readonly state: PlanState; readonly hel
       return 'running';
     case 'question':
     case 'ready-to-merge':
+    case 'to-confirm':
       return 'waiting-you';
     case 'blocked':
       return item.storedState === 'running' ? 'waiting-you' : item.storedState === 'pending' ? 'waiting-dependency' : null;
@@ -200,11 +229,20 @@ export interface Plan {
   readonly id: string;
   readonly title: string;
   readonly sourceSessionId: string;
-  readonly targetBranch: string;
+  /**
+   * The branch every item's work is merged into; `null` = no target branch (D99 follow-up
+   * 2026-10-15): a plan without a merge step, whose items are done when their todos are.
+   */
+  readonly targetBranch: string | null;
   readonly repos: readonly string[];
   readonly baseBranch: string;
-  /** `null` until started (a draft). */
+  /** `null` until started (a draft; a plan without a target starts as `none`). */
   readonly mergeMode: PlanMergeMode | null;
+  /**
+   * D99 follow-up 2026-10-15: the developer acknowledged that agents merge straight into a
+   * protected target (`dev`, `main`, `master`, `develop`, the default or a protected branch).
+   */
+  readonly allowProtectedTarget: boolean;
   readonly maxConcurrency: number;
   readonly usageThreshold: number;
   readonly answers: PlanAnswers | null;
@@ -360,13 +398,18 @@ export function developerMerges(mode: PlanMergeMode | null, item: Pick<PlanItemF
   return mode === 'developer' || (mode === 'agents-with-holds' && item.hold);
 }
 
+/** D99 follow-up 2026-10-15: whether the developer confirms item `item` is done (a hold in a plan without a merge step). */
+export function developerConfirms(mode: PlanMergeMode | null, item: Pick<PlanItemFacts, 'hold'>): boolean {
+  return mode === 'none' && item.hold;
+}
+
 /** Minutes between two ISO times (at least 0), rounded. */
 function minutesBetween(from: string, to: number): number {
   return Math.max(0, Math.round((to - Date.parse(from)) / 60_000));
 }
 
 /** An item's own view state and reason, before its dependencies are looked at. */
-function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string): { state: PlanItemState; reason: string | null } | null {
+function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string | null): { state: PlanItemState; reason: string | null } | null {
   switch (item.state) {
     case 'done':
       return { state: 'done', reason: null };
@@ -374,9 +417,10 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
       return { state: 'blocked', reason: item.reason ?? 'it failed' };
     case 'running':
       if (item.sessionStatus === 'fail') return { state: 'blocked', reason: 'its session stopped with an error' };
-      if (item.waitingOn === 'conflict' && item.conflicts >= 2) return { state: 'blocked', reason: `its branch conflicts with ${targetBranch} again: waiting for you in the Inbox` };
+      if (item.waitingOn === 'conflict' && item.conflicts >= 2) return { state: 'blocked', reason: `its branch conflicts with ${targetBranch ?? 'its base'} again: waiting for you in the Inbox` };
       if (item.sessionStatus === 'need') return { state: 'question', reason: 'its session waits for your answer in the Inbox' };
       if (developerMerges(mode, item) && item.waitingOn === 'merge') return { state: 'ready-to-merge', reason: 'waiting for your merge' };
+      if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return { state: 'to-confirm', reason: 'its todo is done: waiting for you to confirm it' };
       return { state: 'running', reason: null };
     case 'pending':
       return null;
@@ -386,7 +430,7 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
 /** Input of {@link planView}. */
 export interface PlanViewInput {
   readonly mode: PlanMergeMode | null;
-  readonly targetBranch: string;
+  readonly targetBranch: string | null;
   readonly maxConcurrency: number;
   readonly items: readonly PlanItemFacts[];
   readonly edges: readonly PlanEdge[];
@@ -509,6 +553,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
       prUrl: item.prUrl,
       checks: item.checks,
       developerMerges: developerMerges(input.mode, item),
+      developerConfirms: developerConfirms(input.mode, item),
       estimateMinutes: item.estimateMinutes,
       actualMinutes,
       onCriticalPath: onPath.has(id),
@@ -571,16 +616,23 @@ export function isBranchName(value: string): boolean {
 }
 
 /**
- * D99 safeguard: why agents may not merge into `target`, or `null` when they may. Refused:
- * `dev`, `develop`, `master`, `main` ({@link PLAN_FORBIDDEN_TARGETS}), `origin/…` of those,
- * the repo's default branch, and a protected branch (as gh reports it).
+ * D99 safeguard: why agents merging into `target` needs the developer's acknowledgement, or
+ * `null` when it does not. Protected: `dev`, `develop`, `master`, `main`
+ * ({@link PLAN_FORBIDDEN_TARGETS}), `origin/…` of those, the repo's default branch, and a
+ * protected branch (as gh reports it). D99 follow-up 2026-10-15: no longer a hard refusal; an
+ * agent mode starts with `allowProtectedTarget: true` (`docs/plans.md` → *Safeguards*).
  */
 export function forbiddenTargetReason(target: string, facts: { readonly defaultBranches?: readonly string[]; readonly protectedBranches?: readonly string[] } = {}): string | null {
   const name = target.replace(/^origin\//, '');
-  if (PLAN_FORBIDDEN_TARGETS.includes(name.toLowerCase())) return `agents never merge into ${name}: give the plan its own feature branch (e.g. feature/PROJ-100-acme-epic)`;
-  if ((facts.defaultBranches ?? []).includes(name)) return `${name} is the repository's default branch: agents never merge into it`;
-  if ((facts.protectedBranches ?? []).includes(name)) return `${name} is a protected branch: agents never merge into it`;
+  if (PLAN_FORBIDDEN_TARGETS.includes(name.toLowerCase())) return `agents would merge straight into ${name}`;
+  if ((facts.defaultBranches ?? []).includes(name)) return `${name} is the repository's default branch: agents would merge straight into it`;
+  if ((facts.protectedBranches ?? []).includes(name)) return `${name} is a protected branch: agents would merge straight into it`;
   return null;
+}
+
+/** The refusal of an agent mode on a protected target without the acknowledgement (422 `target-forbidden`). */
+export function protectedTargetRefusal(reason: string): string {
+  return `${reason}. Ask the developer whether agents may merge straight into it; if they agree, start again with allowProtectedTarget: true (or give the plan its own feature branch).`;
 }
 
 // ── PR checks ─────────────────────────────────────────────────────────────
@@ -596,10 +648,16 @@ export { checksFromRollup } from './ci.ts';
 /** Input of {@link planItemBrief}. */
 export interface PlanItemBriefInput {
   readonly planTitle: string;
-  readonly targetBranch: string;
+  /** `null` = no target branch (a plan without a merge step). */
+  readonly targetBranch: string | null;
+  /** D99 follow-up 2026-10-15: the plan has no merge step (`none`): the brief asks for no PR and no merge. */
+  readonly noMerge?: boolean;
+  /** D99 follow-up 2026-10-15: in a plan without a merge step, the developer confirms this item (a hold). */
+  readonly developerConfirms?: boolean;
   readonly notes: string | null;
   readonly key: string | null;
-  readonly branch: string;
+  /** The run's branch; `null` = no worktree (the run works in the source folder). */
+  readonly branch: string | null;
   readonly developerMerges: boolean;
   readonly todo: { readonly id: string; readonly title: string; readonly description: string | null; readonly plan: string | null };
 }
@@ -608,7 +666,7 @@ export interface PlanItemBriefInput {
 export function planMergeRule(input: { readonly targetBranch: string; readonly branch: string; readonly developerMerges: boolean }): string {
   return input.developerMerges
     ? `Do not merge it yourself: the developer merges it into ${input.targetBranch} from the Plans page in Switchboard once you mark the todo done.`
-    : `Once its checks are green, merge the pull request into ${input.targetBranch} yourself (gh pr merge). Never merge into dev, master, main or any branch other than ${input.targetBranch}. If a check fails, fix it and push again first. If the repository has no remote or gh is not available, merge ${input.branch} into ${input.targetBranch} locally instead.`;
+    : `Once its checks are green, merge the pull request into ${input.targetBranch} yourself (gh pr merge). Never merge into any branch other than ${input.targetBranch}. If a check fails, fix it and push again first. If the repository has no remote or gh is not available, merge ${input.branch} into ${input.targetBranch} locally instead.`;
 }
 
 /**
@@ -618,18 +676,37 @@ export function planMergeRule(input: { readonly targetBranch: string; readonly b
  */
 export function planItemBrief(input: PlanItemBriefInput): string {
   const head = `Work on todo [${input.todo.id}]: ${input.todo.title}`;
-  const lines: string[] = [head, `This is ${input.key ? `${input.key}, ` : ''}an item of the plan "${input.planTitle}". Your branch is ${input.branch}, cut from ${input.targetBranch}.`];
+  const where =
+    input.branch === null
+      ? 'You work in the source folder (no worktree of your own).'
+      : input.targetBranch === null
+        ? `Your branch is ${input.branch}.`
+        : `Your branch is ${input.branch}, cut from ${input.targetBranch}.`;
+  const lines: string[] = [head, `This is ${input.key ? `${input.key}, ` : ''}an item of the plan "${input.planTitle}". ${where}`];
   if (input.todo.description && input.todo.description.trim() !== '') lines.push(input.todo.description.trim());
   if (todoHasPlan(input.todo.plan)) lines.push(`Plan and acceptance criteria:\n${(input.todo.plan as string).trim()}`);
   if (input.notes && input.notes.trim() !== '') lines.push(`Notes for every item of this plan:\n${input.notes.trim()}`);
+  if (input.noMerge === true || input.targetBranch === null) {
+    // D99 follow-up 2026-10-15: a plan without a merge step: the item is done when its todo is.
+    lines.push(
+      [
+        'When the work is done:',
+        '1. This plan has no merge step: Switchboard merges nothing and watches no pull request for it. Commit, push or open a pull request only if the todo asks for it.',
+        `2. ${todoFinishLine(input.todo.id)}${input.developerConfirms === true ? ' The developer then confirms it on the Plans page.' : ' That finishes this item: the items that wait on it start then.'}`,
+      ].join('\n'),
+    );
+    return lines.join('\n\n');
+  }
+  const target = input.targetBranch;
+  const branch = input.branch ?? 'your branch';
   lines.push(
     [
       'When the work is done:',
-      `1. Commit it on ${input.branch} and push the branch.`,
-      `2. Open a pull request into ${input.targetBranch} (gh pr create --base ${input.targetBranch}).`,
-      `3. ${planMergeRule(input)}`,
+      `1. Commit it on ${branch} and push the branch.`,
+      `2. Open a pull request into ${target} (gh pr create --base ${target}).`,
+      `3. ${planMergeRule({ targetBranch: target, branch, developerMerges: input.developerMerges })}`,
       `4. ${todoFinishLine(input.todo.id)}`,
-      `If ${input.targetBranch} moved on and your branch conflicts with it, rebase onto ${input.targetBranch} first.`,
+      `If ${target} moved on and your branch conflicts with it, rebase onto ${target} first.`,
     ].join('\n'),
   );
   return lines.join('\n\n');
@@ -645,7 +722,7 @@ export function planConflictMessage(branch: string, targetBranch: string): strin
   return `Your branch ${branch} conflicts with ${targetBranch} (other work of the plan was merged into it). Rebase onto ${targetBranch}, resolve the conflicts, run the tests and push again.`;
 }
 
-/** D99: sent to a running item's session when the plan's merge mode or its hold changed. */
+/** D99: sent to a running item's session when the plan's merge mode or its hold changed (merging modes only: `none` is fixed once started). */
 export function planRuleChangedMessage(input: { readonly targetBranch: string; readonly branch: string; readonly developerMerges: boolean }): string {
   return `The plan's merge rule changed for this item. ${planMergeRule(input)}`;
 }
@@ -661,12 +738,12 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_create',
     description:
-      "Create a plan (a draft): todo items of this session grouped into a dependency graph that Switchboard runs by itself, each item in its own session and worktree cut from the plan's target branch, with up to max_concurrency running at once. Use it when the developer wants several todos worked on in parallel or in order, e.g. the tasks of an epic. Give a title and the target branch (the epic's feature branch, e.g. feature/PROJ-100-acme-epic; never dev, master, main or the default branch). Then add items with plan_add_item, order them with plan_add_dependency, check with plan_status, and start it with plan_start after asking the developer for the merge mode. Returns the plan id.",
+      "Create a plan (a draft): todo items of this session grouped into a dependency graph that Switchboard runs by itself, each item in its own session (and worktree, in a git repository), with up to max_concurrency running at once. Plans are for anything: the tasks of an epic merged into a feature branch, work merged straight into dev or main, or work with no merge at all (research, docs elsewhere, ops tasks, agents that push on their own). Give a title and, optionally, the target branch: the branch every item's work is merged into (e.g. the epic's feature branch feature/PROJ-100-acme-epic; dev, main, master or the default branch are allowed too, but agents merging into one needs the developer's acknowledgement at plan_start). Leave target_branch out (or give \"none\") for a plan without a merge step: an item is done when its agent marks its todo done. Then add items with plan_add_item, order them with plan_add_dependency, check with plan_status, and start it with plan_start after asking the developer for the merge mode. Returns the plan id.",
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'The plan name, e.g. the epic: "PROJ-100 Acme checkout".' },
-        target_branch: { type: 'string', description: "The branch every item's work is merged into (the epic feature branch). It is created from base_branch when a repo does not have it." },
+        target_branch: { type: 'string', description: "Optional: the branch every item's work is merged into (e.g. the epic feature branch; dev, main or master are allowed). It is created from base_branch when a repo does not have it. Leave it out, or give \"none\", for a plan without a merge step (items are done when their todos are)." },
         base_branch: { type: 'string', description: 'The branch the developer merges the target into at the end (default dev).' },
         repos: { type: 'array', items: { type: 'string' }, description: "In a workspace: the solution repos the target branch lives in (default: this session's solutions). Ignored in a repo folder." },
         max_concurrency: { type: 'integer', minimum: 1, maximum: PLAN_CONCURRENCY_MAX, description: 'At most this many items run at once (default 3).' },
@@ -676,7 +753,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
         phase: { type: 'string', enum: ['ui-first', 'integration'], description: "Workspace start answer for every item's session; default this session's." },
         notes: { type: 'string', description: "Extra notes added to every item's brief, e.g. a testing carve-out." },
       },
-      required: ['title', 'target_branch'],
+      required: ['title'],
       additionalProperties: false,
     },
     annotations: { title: 'Create a plan', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -730,14 +807,15 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_start',
     description:
-      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is required and is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended) and developer (the developer merges every item from the Plans page).",
+      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended), developer (the developer merges every item from the Plans page) and none (no merging: an item is done when its agent marks its todo done; items marked hold wait for the developer to confirm them). A plan without a target branch can only be none (merge_mode may be left out then). If the target is dev, develop, main, master, the default or a protected branch and the developer picks agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own.",
     inputSchema: {
       type: 'object',
       properties: {
         plan_id: PLAN_ID,
-        merge_mode: { type: 'string', enum: [...PLAN_MERGE_MODES], description: 'The merge mode the developer chose (ask them; never pick it yourself): agents, agents-with-holds or developer.' },
+        merge_mode: { type: 'string', enum: [...PLAN_MERGE_MODES], description: 'The merge mode the developer chose (ask them; never pick it yourself): agents, agents-with-holds, developer or none. Required when the plan has a target branch; a plan without one is none.' },
+        allow_protected_target: { type: 'boolean', description: 'The developer confirmed that agents may merge straight into a protected target (dev, develop, main, master, the default or a protected branch). Ask them first; never set it yourself. Needed only for agents / agents-with-holds on such a target.' },
       },
-      required: ['plan_id', 'merge_mode'],
+      required: ['plan_id'],
       additionalProperties: false,
     },
     annotations: { title: 'Start a plan', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -747,7 +825,8 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
 
 /** One line per item for `plan_status`. */
 export function planStatusText(plan: Plan): string {
-  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${plan.targetBranch} → ${plan.baseBranch} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
+  const target = plan.targetBranch === null ? 'no target branch (no merge step)' : plan.mergeMode === 'none' ? `${plan.targetBranch} (no merge step)` : `${plan.targetBranch} → ${plan.baseBranch}${plan.allowProtectedTarget ? ' (agents merge: acknowledged)' : ''}`;
+  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${target} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
   const keyOf = new Map(plan.items.map((item) => [item.id, item.key ?? item.id]));
   const lines = plan.items.map((item) => {
     const after = item.dependsOn.length > 0 ? ` after ${item.dependsOn.map((id) => keyOf.get(id) ?? id).join(', ')}` : '';

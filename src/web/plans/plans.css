@@ -1119,6 +1119,23 @@
   color: var(--muted-1);
 }
 
+/* D99 follow-up 2026-10-15: the acknowledgement that agents merge straight into a protected target. */
+.sb-plan-ack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--status-need);
+  border: 1px solid var(--status-need);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.sb-plan-ack code {
+  font: var(--fs-mono-meta) var(--font-mono);
+}
+
 .sb-plan-note {
   font-size: 11.5px;
   color: var(--muted-2);

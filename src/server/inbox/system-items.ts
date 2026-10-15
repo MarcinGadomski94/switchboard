@@ -398,10 +398,13 @@ export class SystemItemService {
   /**
    * Plans (D99) hook (`docs/plans.md`): an Inbox item about a plan: every item is done ("Plan ready: <target>
    * → <base>", the developer merges the epic), or an item's branch conflicts with the target a
-   * second time (a question to the developer). Once per `dedupe` key (open or closed); dismiss-only.
+   * second time (a question to the developer), or (D99 follow-up 2026-10-15, `plan-confirm`) a held item
+   * of a plan without a merge step waits for the developer to confirm it. Once per `dedupe` key (open or
+   * closed); dismiss-only (a `plan-confirm` item is also closed when its item is done or fails:
+   * {@link closePlanMergeNotices}).
    * @returns the new item, or `null` when this key already raised one.
    */
-  async planNotice(input: { readonly kind: 'plan-ready' | 'plan-conflict'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+  async planNotice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
     const created = await this.#store.systemItems.createOnceByPayload(
       {
         kind: input.kind,
@@ -452,7 +455,8 @@ export class SystemItemService {
   async closePlanMergeNotices(itemId: string, outcome: string): Promise<number> {
     let closed = 0;
     for (const item of await this.#store.systemItems.list(['open'])) {
-      if (item.kind !== PLAN_READY_TO_MERGE || !isPayload(item.payload) || item.payload['itemId'] !== itemId) continue;
+      const confirm = item.kind === 'plan-confirm' && isPayload(item.payload) && typeof item.payload['dedupe'] === 'string' && item.payload['dedupe'].startsWith(`plan-confirm:${itemId}:`);
+      if (!confirm && (item.kind !== PLAN_READY_TO_MERGE || !isPayload(item.payload) || item.payload['itemId'] !== itemId)) continue;
       try {
         await this.#store.systemItems.close(item.id, outcome);
         closed += 1;

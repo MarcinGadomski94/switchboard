@@ -124,8 +124,8 @@ function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
     async run(input) {
       r.runs.push(input);
       if (r.failRun !== null) return { ok: false, message: r.failRun };
-      const session = await r.store.sessions.create({ name: `run-${r.runs.length}`, claudeSessionId: `c-${r.runs.length}`, status: 'run', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: Object.keys(input.from), worktrees: true });
-      for (const [repo] of Object.entries(input.from)) await r.store.worktrees.create({ repo, repoPath: `/repos/${repo}`, branch: input.branch, path: `/wt/${input.branch}/${repo}`, sessionId: session.id });
+      const session = await r.store.sessions.create({ name: `run-${r.runs.length}`, claudeSessionId: `c-${r.runs.length}`, status: 'run', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: Object.keys(input.from ?? {}), worktrees: true });
+      for (const [repo] of Object.entries(input.from ?? {})) await r.store.worktrees.create({ repo, repoPath: `/repos/${repo}`, branch: input.branch, path: `/wt/${input.branch}/${repo}`, sessionId: session.id });
       return { ok: true, sessionId: session.id, branch: input.branch };
     },
     async usageHeld() {
@@ -706,5 +706,130 @@ describe('D99 · plan scheduler', () => {
     await settle(r);
     expect(await open(ids.B)).toEqual(['waiting-dependency']);
     expect(r.errors).toEqual([]);
+  });
+});
+
+describe('D99 follow-up 2026-10-15 · plans for anything', () => {
+  it('a dev target: developer mode starts as it is; an agent mode needs allowProtectedTarget, which is stored', async () => {
+    const r = await setup();
+    // dev as the target (also equal to the default base, dev): accepted.
+    const dev = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Straight to dev', targetBranch: 'dev' });
+    expect(dev).toMatchObject({ targetBranch: 'dev', baseBranch: 'dev', allowProtectedTarget: false });
+    const { itemId } = await r.plans.addItem(dev.id, { todo: { title: 'Fix the login' } });
+    expect((await r.plans.startPlan(dev.id, { mergeMode: 'developer' })).state).toBe('running');
+    await settle(r);
+    expect(r.runs[0]?.from).toEqual({ 'acme-front': 'dev' });
+    expect(r.runs[0]?.task('todo/fix-the-login')).toContain('the developer merges it into dev');
+    // Changing to an agent mode without the acknowledgement is refused; with it, accepted and stored.
+    await expect(r.plans.setMode(dev.id, { mergeMode: 'agents' })).rejects.toMatchObject({ status: 422, code: 'target-forbidden', field: 'allowProtectedTarget', message: expect.stringContaining('allowProtectedTarget: true') });
+    const changed = await r.plans.setMode(dev.id, { mergeMode: 'agents', allowProtectedTarget: true });
+    expect(changed).toMatchObject({ mergeMode: 'agents', allowProtectedTarget: true });
+    expect(r.sent.at(-1)?.text).toContain('Never merge into any branch other than dev');
+    expect((await item(r, dev.id, itemId)).developerMerges).toBe(false);
+  });
+
+  it('agents mode on dev / the default / a protected branch: refused without the ack, started with it', async () => {
+    const r = await setup();
+    const dev = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Agents into dev', targetBranch: 'dev', baseBranch: 'main' });
+    await r.plans.addItem(dev.id, { todo: { title: 'A' } });
+    for (const mode of ['agents', 'agents-with-holds']) await expect(r.plans.startPlan(dev.id, { mergeMode: mode })).rejects.toMatchObject({ status: 422, code: 'target-forbidden' });
+    await expect(r.plans.startPlan(dev.id, { mergeMode: 'agents', allowProtectedTarget: 'yes' })).rejects.toMatchObject({ status: 422, code: 'invalid', field: 'allowProtectedTarget' });
+    expect((await r.plans.get(dev.id)).state).toBe('draft');
+    const started = await r.plans.startPlan(dev.id, { mergeMode: 'agents', allowProtectedTarget: true });
+    expect(started).toMatchObject({ state: 'running', mergeMode: 'agents', allowProtectedTarget: true });
+    await settle(r);
+    const brief = r.runs[0]?.task('todo/a') ?? '';
+    expect(brief).toContain('merge the pull request into dev yourself');
+    expect(brief).not.toContain('Never merge into dev');
+    // The repo's protected branch (gh) too: refused without the ack, started with it.
+    r.git.protectedBranches = ['release'];
+    const release = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Into release', targetBranch: 'release' });
+    await r.plans.addItem(release.id, { todo: { title: 'B' } });
+    await expect(r.plans.startPlan(release.id, { mergeMode: 'agents-with-holds' })).rejects.toMatchObject({ code: 'target-forbidden', message: expect.stringContaining('protected') });
+    expect((await r.plans.startPlan(release.id, { mergeMode: 'agents-with-holds', allowProtectedTarget: true })).state).toBe('running');
+    // A feature branch needs no ack.
+    const feature = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Epic', targetBranch: 'feature/PROJ-1-x' });
+    await r.plans.addItem(feature.id, { todo: { title: 'C' } });
+    expect(await r.plans.startPlan(feature.id, { mergeMode: 'agents' })).toMatchObject({ state: 'running', allowProtectedTarget: false });
+  });
+
+  it('no target branch: runs the items in order, done when their todos are done, no git / PR watching; holds wait for your Done', async () => {
+    const r = await setup();
+    for (const value of [undefined, null, '', 'none', 'NONE']) {
+      const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: `No target ${String(value)}`, ...(value === undefined ? {} : { targetBranch: value }) });
+      expect(plan).toMatchObject({ targetBranch: null, mergeMode: null, allowProtectedTarget: false });
+      await r.plans.remove(plan.id);
+    }
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Research' });
+    const ids: Record<string, string> = {};
+    for (const name of ['A', 'B', 'C']) ids[name] = (await r.plans.addItem(plan.id, { key: `RES-${name.charCodeAt(0) - 64}`, todo: { title: `Read ${name}` }, hold: name === 'C' })).itemId;
+    await r.plans.addEdge(plan.id, { from: 'RES-1', to: 'RES-2' });
+    await r.plans.addEdge(plan.id, { from: 'RES-2', to: 'RES-3' });
+    // Only "none" fits a plan without a target.
+    await expect(r.plans.startPlan(plan.id, { mergeMode: 'agents' })).rejects.toMatchObject({ status: 422, code: 'target-required' });
+    expect(await r.plans.startPlan(plan.id, {})).toMatchObject({ state: 'running', mergeMode: 'none' });
+    await settle(r);
+    expect(started(r)).toEqual(['RES-1']);
+    expect(r.runs[0]?.from).toBeNull();
+    const brief = r.runs[0]?.task(null) ?? '';
+    expect(brief).toContain('no merge step');
+    expect(brief).not.toContain('gh pr create');
+    // Its todo done while its turn still runs: not yet; the turn ends: done, the next one starts.
+    const a = await item(r, plan.id, ids['A'] as string);
+    await r.todos.update(r.sourceId, a.todoId, { state: 'done' }, 'agent');
+    await settle(r);
+    expect((await item(r, plan.id, a.id)).state).toBe('running');
+    await status(r, a.runSessionId as string, 'idle');
+    expect(await item(r, plan.id, a.id)).toMatchObject({ state: 'done', mergedAt: null, note: null });
+    expect(started(r)).toEqual(['RES-1', 'RES-2']);
+    // B: a question first, then finished.
+    const b = await item(r, plan.id, ids['B'] as string);
+    await status(r, b.runSessionId as string, 'need');
+    expect((await item(r, plan.id, b.id)).state).toBe('question');
+    await r.todos.update(r.sourceId, b.todoId, { state: 'done' }, 'agent');
+    await status(r, b.runSessionId as string, 'idle');
+    expect((await item(r, plan.id, b.id)).state).toBe('done');
+    // C is held: once its todo is done it waits for the developer's Done (an Inbox item), never merged.
+    const c = await item(r, plan.id, ids['C'] as string);
+    await r.todos.update(r.sourceId, c.todoId, { state: 'done' }, 'agent');
+    await status(r, c.runSessionId as string, 'idle');
+    expect(await item(r, plan.id, c.id)).toMatchObject({ state: 'to-confirm', waitingOn: 'confirm', developerConfirms: true });
+    expect(r.notices.filter((notice) => notice.kind === 'plan-confirm').map((notice) => notice.title)).toEqual(['Confirm done: Read C (Research)']);
+    await expect(r.plans.mergeItem(plan.id, c.id)).rejects.toMatchObject({ status: 409, code: 'no-merge-step' });
+    await expect(r.plans.openItemPullRequest(plan.id, c.id)).rejects.toMatchObject({ status: 409, code: 'no-merge-step' });
+    // The mode cannot switch to a merging one.
+    await expect(r.plans.setMode(plan.id, { mergeMode: 'developer' })).rejects.toMatchObject({ status: 422, code: 'target-required' });
+    expect((await r.plans.markItemDone(plan.id, c.id)).items.find((entry) => entry.id === c.id)?.state).toBe('done');
+    await settle(r);
+    expect((await r.plans.get(plan.id)).state).toBe('done');
+    expect(r.mergeNotices).toEqual([`- ${c.id} merged`]);
+    expect(r.notices.at(-1)).toEqual({ kind: 'plan-ready', title: 'Plan done: Research' });
+    // Nothing was read from git or gh, and no checks message was sent.
+    expect(r.git.inspected).toEqual([]);
+    expect(r.sent).toEqual([]);
+  });
+
+  it('no merge step with a target: runs are cut from the target, done when their todos are; the mode stays none', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Docs', targetBranch: 'docs/site' });
+    const { itemId } = await r.plans.addItem(plan.id, { todo: { title: 'Write the guide' } });
+    expect(await r.plans.startPlan(plan.id, { mergeMode: 'none' })).toMatchObject({ state: 'running', mergeMode: 'none' });
+    await settle(r);
+    expect(r.runs[0]?.from).toEqual({ 'acme-front': 'docs/site' });
+    expect(r.runs[0]?.task('todo/write-the-guide')).toContain('Your branch is todo/write-the-guide, cut from docs/site.');
+    await expect(r.plans.setMode(plan.id, { mergeMode: 'developer' })).rejects.toMatchObject({ status: 409, code: 'started' });
+    const running = await item(r, plan.id, itemId);
+    await agentFinishes(r, plan.id, itemId);
+    expect((await r.plans.get(plan.id)).state).toBe('done');
+    expect(r.git.inspected).toEqual([]);
+    expect(running.state).toBe('running');
+  });
+
+  it('an existing plan (made before the follow-up) reads as it was', async () => {
+    const r = await setup();
+    const { plan } = await diamond(r);
+    expect(plan).toMatchObject({ targetBranch: 'feature/PROJ-100-acme', mergeMode: null, allowProtectedTarget: false, baseBranch: 'dev' });
+    await expect(r.plans.startPlan(plan.id, {})).rejects.toMatchObject({ status: 422, code: 'merge-mode-required' });
+    expect((await r.plans.startPlan(plan.id, { mergeMode: 'agents' })).mergeMode).toBe('agents');
   });
 });

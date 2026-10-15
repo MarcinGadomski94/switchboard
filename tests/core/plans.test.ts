@@ -7,7 +7,10 @@ import {
   forbiddenTargetReason,
   normalizeItemKey,
   planItemBranch,
+  planItemBrief,
+  planItemSpanKind,
   planView,
+  protectedTargetRefusal,
   readyItems,
   topologicalOrder,
 } from '../../src/core/plans.ts';
@@ -113,7 +116,9 @@ describe('D99 · plan graph rules', () => {
   });
 
   it('target safeguard, keys and branch names', () => {
-    for (const name of ['dev', 'master', 'main', 'origin/main', 'develop']) expect(forbiddenTargetReason(name)).toMatch(/never merge into/);
+    // D99 follow-up 2026-10-15: a protected target needs the developer's acknowledgement (no longer a hard refusal).
+    for (const name of ['dev', 'master', 'main', 'origin/main', 'develop']) expect(forbiddenTargetReason(name)).toMatch(/would merge straight into/);
+    expect(protectedTargetRefusal('agents would merge straight into dev')).toContain('allowProtectedTarget: true');
     expect(forbiddenTargetReason('feature/PROJ-1-x')).toBeNull();
     expect(forbiddenTargetReason('trunk', { defaultBranches: ['trunk'] })).toMatch(/default branch/);
     expect(forbiddenTargetReason('release', { protectedBranches: ['release'] })).toMatch(/protected/);
@@ -127,11 +132,34 @@ describe('D99 · plan graph rules', () => {
   it('the MCP tools: five plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
     expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start']);
     const start = PLAN_TOOLS.find((tool) => tool.name === 'plan_start');
-    expect(start?.inputSchema['required']).toEqual(['plan_id', 'merge_mode']);
+    // D99 follow-up 2026-10-15: merge_mode may be left out for a plan without a target (the server still requires it with one).
+    expect(start?.inputSchema['required']).toEqual(['plan_id']);
     expect(start?.description).toContain('ASK the developer');
     expect(start?.description).toContain('never choose it yourself');
+    expect(Object.keys(start?.inputSchema['properties'] as object)).toEqual(['plan_id', 'merge_mode', 'allow_protected_target']);
+    expect(JSON.stringify(start?.inputSchema['properties'])).toContain('"none"');
+    expect(start?.description).toMatch(/allow_protected_target: true; never set it on your own/);
+    const create = PLAN_TOOLS.find((tool) => tool.name === 'plan_create');
+    expect(create?.inputSchema['required']).toEqual(['title']);
+    expect(create?.description).toContain('Plans are for anything');
     expect(PLAN_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['plan_status']);
     // Experimental (D99): the server's instructions never name the plan tools (they exist only while Plans is on).
     expect(AGENT_MCP_INSTRUCTIONS).not.toContain('plan_');
+  });
+
+  it('D99 follow-up 2026-10-15: a plan without a merge step — to-confirm, the brief, no merge rule', () => {
+    const running = fact('1', { state: 'running', runSessionId: 's1', sessionStatus: 'idle', hold: true, waitingOn: 'merge' });
+    const view = planView({ mode: 'none', targetBranch: null, maxConcurrency: 3, edges: [], now: NOW, items: [running, fact('2', { state: 'running', runSessionId: 's2', sessionStatus: 'run' })] });
+    expect(view.items[0]).toMatchObject({ state: 'to-confirm', developerConfirms: true, developerMerges: false });
+    expect(view.items[1]).toMatchObject({ state: 'running', developerConfirms: false });
+    expect(planItemSpanKind({ state: 'running', heldReason: null }, view.items[0] as never)).toBe('waiting-you');
+    const brief = planItemBrief({ planTitle: 'Research', targetBranch: null, noMerge: true, notes: null, key: null, branch: null, developerMerges: false, todo: { id: 't1', title: 'Read the docs', description: null, plan: null } });
+    expect(brief).toContain('no merge step');
+    expect(brief).toContain('You work in the source folder');
+    expect(brief).not.toContain('gh pr create');
+    // A merging plan into dev: no "never merge into dev" line any more.
+    const dev = planItemBrief({ planTitle: 'Fixes', targetBranch: 'dev', notes: null, key: null, branch: 'todo/x', developerMerges: false, todo: { id: 't1', title: 'Fix', description: null, plan: null } });
+    expect(dev).toContain('gh pr create --base dev');
+    expect(dev).toContain('Never merge into any branch other than dev');
   });
 });

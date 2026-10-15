@@ -8,10 +8,14 @@ export interface PlanRecord {
   readonly id: string;
   readonly title: string;
   readonly sourceSessionId: string;
-  readonly targetBranch: string;
+  /** `null` = no target branch (stored as `''`, plans.db migration 3). */
+  readonly targetBranch: string | null;
   readonly repos: readonly string[];
   readonly baseBranch: string;
+  /** `none` is stored as `no_merge = 1` with `merge_mode` NULL (plans.db migration 3). */
   readonly mergeMode: PlanMergeMode | null;
+  /** The developer acknowledged that agents merge straight into a protected target (migration 3). */
+  readonly allowProtectedTarget: boolean;
   readonly maxConcurrency: number;
   readonly usageThreshold: number;
   readonly answers: PlanAnswers | null;
@@ -88,10 +92,11 @@ function planOf(row: Row): PlanRecord {
     id: String(row['id']),
     title: String(row['title']),
     sourceSessionId: String(row['source_session_id']),
-    targetBranch: String(row['target_branch']),
+    targetBranch: row['target_branch'] === null || row['target_branch'] === undefined || row['target_branch'] === '' ? null : String(row['target_branch']),
     repos: json<string[]>(row['repos'] ?? null, []),
     baseBranch: String(row['base_branch']),
-    mergeMode: text(row['merge_mode'] ?? null) as PlanMergeMode | null,
+    mergeMode: Number(row['no_merge'] ?? 0) === 1 ? 'none' : (text(row['merge_mode'] ?? null) as PlanMergeMode | null),
+    allowProtectedTarget: Number(row['allow_protected_target'] ?? 0) === 1,
     maxConcurrency: Number(row['max_concurrency']),
     usageThreshold: Number(row['usage_threshold']),
     answers: json<PlanAnswers | null>(row['answers'] ?? null, null),
@@ -152,12 +157,11 @@ function itemOf(row: Row): PlanItemRecord {
 }
 
 /** Plan field → column, with how its value is stored. */
-const PLAN_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'text' | 'int' | 'json']>> = {
+const PLAN_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'text' | 'int' | 'json' | 'bool']>> = {
   title: ['title', 'text'],
-  targetBranch: ['target_branch', 'text'],
   repos: ['repos', 'json'],
   baseBranch: ['base_branch', 'text'],
-  mergeMode: ['merge_mode', 'text'],
+  allowProtectedTarget: ['allow_protected_target', 'bool'],
   maxConcurrency: ['max_concurrency', 'int'],
   usageThreshold: ['usage_threshold', 'int'],
   answers: ['answers', 'json'],
@@ -251,7 +255,7 @@ export class PlanRepository {
       input.id,
       input.title,
       input.sourceSessionId,
-      input.targetBranch,
+      input.targetBranch ?? '',
       JSON.stringify(input.repos),
       input.baseBranch,
       input.maxConcurrency,
@@ -272,6 +276,15 @@ export class PlanRepository {
       if (!spec || value === undefined) continue;
       sets.push(`${spec[0]} = ?`);
       values.push(stored(value, spec[1]));
+    }
+    // Migration 3: no target is stored as '' (the column is NOT NULL); none as no_merge = 1 with merge_mode NULL.
+    if (patch.targetBranch !== undefined) {
+      sets.push('target_branch = ?');
+      values.push(patch.targetBranch ?? '');
+    }
+    if (patch.mergeMode !== undefined) {
+      sets.push('merge_mode = ?', 'no_merge = ?');
+      values.push(patch.mergeMode === 'none' ? null : patch.mergeMode, patch.mergeMode === 'none' ? 1 : 0);
     }
     sets.push('updated_at = ?');
     values.push(this.#ctx.now());

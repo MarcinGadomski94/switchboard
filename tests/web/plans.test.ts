@@ -48,6 +48,7 @@ function item(id: string, patch: Partial<PlanItem> = {}): PlanItem {
     prUrl: null,
     checks: null,
     developerMerges: false,
+    developerConfirms: false,
     estimateMinutes: 60,
     actualMinutes: null,
     onCriticalPath: false,
@@ -67,6 +68,7 @@ function plan(items: readonly PlanItem[], edges: readonly { from: string; to: st
     title: 'PROJ-100 Acme checkout',
     sourceSessionId: 's1',
     targetBranch: 'feature/PROJ-100-acme-epic',
+    allowProtectedTarget: false,
     repos: ['acme'],
     baseBranch: 'dev',
     mergeMode: null,
@@ -141,6 +143,13 @@ describe('header texts', () => {
     expect(mergeModeChip({ ...p, mergeMode: 'agents' })).toBe('Merge: agents');
     expect(limitsChip(p)).toBe('3 at once · 85 %');
     expect(targetChip(p)).toBe('⎇ feature/PROJ-100-acme-epic → dev');
+    // D99 follow-up 2026-10-15: no merge step, an acknowledged protected target, the target as the base.
+    expect(targetChip({ ...p, targetBranch: null, mergeMode: null })).toBe('No merge step');
+    expect(targetChip({ ...p, mergeMode: 'none' })).toBe('No merge step');
+    expect(targetChip({ ...p, targetBranch: 'dev', mergeMode: 'agents', allowProtectedTarget: true })).toBe('⎇ dev (agents merge — acknowledged)');
+    expect(targetChip({ ...p, targetBranch: 'dev', mergeMode: 'developer' })).toBe('⎇ dev');
+    expect(mergeModeChip({ ...p, targetBranch: null, mergeMode: null })).toBe('No merge step');
+    expect(mergeModeChip({ ...p, mergeMode: 'none' })).toBe('No merge step · confirm ⚑ 1, 2');
     expect(repoLine(item('1', { estimateMinutes: 45 }), p)).toBe('acme · ~45m');
     expect(repoLine(item('1', { estimateMinutes: null }), { repos: ['a', 'b'] })).toBe('all repos · ~?');
     expect(durationShort(150)).toBe('2.5h');
