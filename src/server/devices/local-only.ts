@@ -145,7 +145,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
   // Project memory (D107) hook (docs/memory.md → *Phones and paired machines*): read it, and review proposals on the phone:
   // approve (as proposed or edited), reject, edit and pin an entry. Adding by hand, deleting and the size cap stay on the desktop.
-  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings)$/],
+  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings|scope-options)$/],
+  // D107 follow-up 2026-10-15: what a session receives (the panel's line); the scope selector reads its options.
+  ['GET', /^\/api\/memory\/sessions\/[^/]+$/],
   ['PUT', /^\/api\/memory\/entries\/[^/]+$/],
   ['POST', /^\/api\/memory\/entries\/[^/]+\/(?:approve|reject)$/],
   // Team (D100) hook (docs/team.md → Devices): read the team, answer (requests), pause / resume, give tasks (hand-offs),
@@ -240,6 +242,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/memory\/entries$/],
   ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
   ['PUT', /^\/api\/memory\/settings$/],
+  // D107 follow-up 2026-10-15: "Draft memory" asks and a moved member's import (desktop and paired machines only).
+  ['POST', /^\/api\/memory\/(?:draft|draft-all|import)$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

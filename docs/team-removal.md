@@ -40,6 +40,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |
+| `src/server/memory/team-link.ts` | Project memory's member scope (D107 follow-up 2026-10-15): imports `teamMemberOf` / `teamMemberList` (and `TeamMemberRef`) from `team/hooks.ts` | `memberOfSession` returns `null`, `members` returns `[]` and `MemoryMember` becomes its own `{ id, name, teamId, sessionId, machineId, here, paused }` interface (Project memory then has workspace and repo scopes only; member entries stay in `memory.db`, never injected) |
 
 Outside `src/` (not markers): `vite.config.ts` builds T2's dev mount as a second entry (`rollupOptions.input.teamAccessDev`: remove it; the `main` entry may stay or the whole `rollupOptions` go); `tools/fake-claude` has a generic `[fake:echo-env NAME]` token (T2's tests use it; it may stay).
 

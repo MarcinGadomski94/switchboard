@@ -122,7 +122,7 @@ describe('D107 · the Project memory switch', () => {
   it('off by default: only the state answers, no memory.db, no memory tools, nothing for the agent', async () => {
     const r = await setup();
     expect((await ui(r, 'GET', '/api/settings')).json()['experimental.memory']).toBe(false);
-    expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: false, available: false, problem: null });
+    expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: false, available: false, problem: null, members: 0 });
     for (const [method, url] of [
       ['GET', '/api/memory/scopes'],
       ['GET', '/api/memory/entries'],
@@ -144,7 +144,7 @@ describe('D107 · the Project memory switch', () => {
   it('on: memory.db appears and the tools are registered (not for a chat); off again: they go', async () => {
     const r = await setup();
     expect((await ui(r, 'PUT', '/api/settings', { 'experimental.memory': true })).statusCode).toBe(200);
-    expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: true, available: true, problem: null });
+    expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: true, available: true, problem: null, members: 0 });
     expect(await exists(path.join(r.dataDir, MEMORY_DB_FILE))).toBe(true);
     const sessionId = await agentSession(r);
     expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('memory_'))).toEqual(MEMORY_TOOLS.map((tool) => tool.name));
@@ -260,11 +260,18 @@ describe('D107 · route classification', () => {
       ['PUT', '/api/memory/entries/abc'],
       ['POST', '/api/memory/entries/abc/approve'],
       ['POST', '/api/memory/entries/abc/reject'],
+      // D107 follow-up 2026-10-15: what a session receives, and the scope selector's options.
+      ['GET', '/api/memory/sessions/s-1'],
+      ['GET', '/api/memory/scope-options'],
     ];
     const refused: Array<[string, string]> = [
       ['POST', '/api/memory/entries'],
       ['DELETE', '/api/memory/entries/abc'],
       ['PUT', '/api/memory/settings'],
+      // D107 follow-up 2026-10-15: the draft asks and a moved member's import (desktop and paired machines).
+      ['POST', '/api/memory/draft'],
+      ['POST', '/api/memory/draft-all'],
+      ['POST', '/api/memory/import'],
     ];
     for (const [method, url] of allowed) {
       expect([method, url, isLocalOnly(method, url)]).toEqual([method, url, false]);

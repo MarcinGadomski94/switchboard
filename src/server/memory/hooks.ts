@@ -12,6 +12,17 @@ export interface MemoryHooks {
   blockFor(session: MemorySessionRef): Promise<string | null>;
   /** Settings → Experimental → Project memory was switched (`PUT /api/settings`). */
   switchChanged(): Promise<void>;
+  /** D107 follow-up 2026-10-15: a Team member moved to another machine (D65 / D110): its member-scoped entries go with it. */
+  memberMoved?(move: MemoryMemberMove): Promise<void>;
+}
+
+/** A Team member's move, as Project memory needs it. */
+export interface MemoryMemberMove {
+  readonly memberId: string;
+  /** The machine it runs on now. */
+  readonly machineId: string;
+  /** Its session there (that machine's id). */
+  readonly sessionId: string;
 }
 
 /** What the block needs of a session (a `SessionRecord` has all of it). */
@@ -41,6 +52,14 @@ export async function withProjectMemory(store: object, session: MemorySessionRef
   const block = await registry.get(store)?.blockFor(session).catch(() => null);
   if (!block) return base;
   return base ? `${base}\n\n${block}` : block;
+}
+
+/**
+ * Team seam (D100 move, D107 follow-up 2026-10-15): the member's member-scoped entries move with it
+ * to the machine it now runs on. Never throws: a failed copy leaves them here (`docs/memory.md` → *Scopes*).
+ */
+export async function memoryMemberMoved(store: object, move: MemoryMemberMove): Promise<void> {
+  await registry.get(store)?.memberMoved?.(move).catch(() => undefined);
 }
 
 /** Settings seam: the Project memory switch changed. */

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MEMORY_CAP_DEFAULT, MEMORY_CAP_MAX, MEMORY_CAP_MIN, MEMORY_TEXT_MAX, MEMORY_TITLE_MAX, type MemoryEntry, type MemoryScope } from '../../core/memory.ts';
+import { MEMORY_CAP_DEFAULT, MEMORY_CAP_MAX, MEMORY_CAP_MIN, MEMORY_TEXT_MAX, MEMORY_TITLE_MAX, type MemoryEntry, type MemoryScope, type MemoryScopeKind, type MemoryScopeOption } from '../../core/memory.ts';
 import type { Machine } from '../../core/peers.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { Link, useRouter } from '../router.tsx';
 import { formatAge } from '../shell/format.ts';
 import { type MemoryFields, memoryApi, refusalText } from './api.ts';
+import { DRAFT_ALL_LABEL, draftAllText } from './draft.ts';
 import { reloadMemory, useMemory } from './store.ts';
 import './memory.css';
 
@@ -22,19 +23,96 @@ function sessionRouteId(machineId: string | null, sessionId: string): string {
   return machineId ? `r~${machineId}~${sessionId}` : sessionId;
 }
 
-/** The title / text / tags form (add, edit, edit-then-approve). */
+/** A scope as the selector keeps it: `kind:key`. */
+type ScopeValue = string;
+
+function scopeValue(scope: { readonly kind: MemoryScopeKind; readonly key: string | null }): ScopeValue {
+  return `${scope.kind}:${scope.key ?? ''}`;
+}
+
+function entryScopeValue(entry: Pick<MemoryEntry, 'scopeKind' | 'scopeKey'>): ScopeValue {
+  return scopeValue({ kind: entry.scopeKind, key: entry.scopeKey });
+}
+
+/** The fields a chosen scope sends (`{}` when it is the entry's own). */
+function scopeFields(value: ScopeValue, entry: Pick<MemoryEntry, 'scopeKind' | 'scopeKey'> | null): MemoryFields {
+  if (entry && value === entryScopeValue(entry)) return {};
+  const cut = value.indexOf(':');
+  const kind = value.slice(0, cut) as MemoryScopeKind;
+  const key = value.slice(cut + 1);
+  return kind === 'workspace' ? { scopeKind: 'workspace' } : { scopeKind: kind, scopeKey: key };
+}
+
+const KIND_NAMES: Readonly<Record<MemoryScopeKind, string>> = { member: 'Member', repo: 'Repo', workspace: 'Workspace' };
+
+/** An entry's scope chip: Workspace / the repository's name / the member's role (D107 follow-up 2026-10-15). */
+function ScopeChip({ entry }: { readonly entry: Pick<MemoryEntry, 'scopeKind' | 'scopeLabel'> }) {
+  const label = entry.scopeKind === 'workspace' ? 'Workspace' : (entry.scopeLabel ?? KIND_NAMES[entry.scopeKind]);
+  const title = entry.scopeKind === 'workspace' ? 'Every session in this folder' : entry.scopeKind === 'repo' ? `Sessions working in the repository ${label}` : `Only the team member ${label}`;
+  return (
+    <span className={`sb-mem-scope sb-mem-scope--${entry.scopeKind}`} data-testid="memory-entry-scope" data-scope-kind={entry.scopeKind} title={title}>
+      {entry.scopeKind === 'repo' ? '⎇ ' : entry.scopeKind === 'member' ? '⚑ ' : ''}
+      {label}
+    </span>
+  );
+}
+
+/** The scopes an entry can be given (loaded once per entry / folder). */
+function useScopeOptions(machineId: string | null, folder: string, entryId: string | null): readonly MemoryScopeOption[] {
+  const [options, setOptions] = useState<readonly MemoryScopeOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    memoryApi(machineId)
+      .scopeOptions(folder, entryId ?? undefined)
+      .then(
+        (list) => {
+          if (!cancelled) setOptions(list);
+        },
+        () => {
+          if (!cancelled) setOptions([]);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [machineId, folder, entryId]);
+  return options;
+}
+
+/** The scope selector (the review queue and the edit form): Workspace, the repositories, the members. */
+function ScopeSelect({ options, value, onChange, testId }: { readonly options: readonly MemoryScopeOption[]; readonly value: ScopeValue; readonly onChange: (value: ScopeValue) => void; readonly testId: string }) {
+  const known = options.some((option) => scopeValue(option) === value);
+  return (
+    <select className="sb-mem-select sb-mem-scope-select" data-testid={testId} aria-label="Scope" value={value} onChange={(event) => onChange(event.target.value)}>
+      {known ? null : <option value={value}>{value.startsWith('workspace') ? 'Workspace' : value}</option>}
+      {options.map((option) => (
+        <option key={scopeValue(option)} value={scopeValue(option)} data-kind={option.kind}>
+          {option.kind === 'workspace' ? `Workspace · everyone in ${option.label}` : option.kind === 'repo' ? `Repo · ${option.label}` : `Member · ${option.label}`}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** The title / text / tags (and scope) form (add, edit, edit-then-approve). */
 function EntryForm({
   initial,
   submitLabel,
   submitTestId,
   withPin,
+  scopeOptions,
+  stored,
   onSubmit,
   onCancel,
 }: {
-  readonly initial: Pick<MemoryEntry, 'title' | 'text' | 'tags'> | null;
+  readonly initial: Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'scopeKind' | 'scopeKey'> | null;
+  /** The entry as stored (a scope equal to it is not sent); defaults to `initial`. */
+  readonly stored?: Pick<MemoryEntry, 'scopeKind' | 'scopeKey'>;
   readonly submitLabel: string;
   readonly submitTestId: string;
   readonly withPin?: boolean;
+  /** D107 follow-up 2026-10-15: the scopes it can be given. */
+  readonly scopeOptions: readonly MemoryScopeOption[];
   readonly onSubmit: (fields: MemoryFields) => Promise<void>;
   readonly onCancel: () => void;
 }) {
@@ -42,12 +120,13 @@ function EntryForm({
   const [text, setText] = useState(initial?.text ?? '');
   const [tags, setTags] = useState(initial?.tags.join(', ') ?? '');
   const [pinned, setPinned] = useState(false);
+  const [scope, setScope] = useState<ScopeValue>(initial ? entryScopeValue(initial) : 'workspace:');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = (): void => {
     setBusy(true);
     setError(null);
-    onSubmit({ title, text, tags: parseTags(tags), ...(withPin ? { pinned } : {}) })
+    onSubmit({ title, text, tags: parseTags(tags), ...(withPin ? { pinned } : {}), ...scopeFields(scope, stored ?? initial) })
       .catch((failure: unknown) => setError(refusalText(failure)))
       .finally(() => setBusy(false));
   };
@@ -63,6 +142,9 @@ function EntryForm({
       <input className="sb-mem-input" data-testid="memory-form-title" value={title} maxLength={MEMORY_TITLE_MAX} placeholder="Title: one short line" aria-label="Title" onChange={(event) => setTitle(event.target.value)} autoFocus />
       <textarea className="sb-mem-input sb-mem-textarea" data-testid="memory-form-text" value={text} maxLength={MEMORY_TEXT_MAX} placeholder="The fact itself, plain and brief" aria-label="Text" rows={4} onChange={(event) => setText(event.target.value)} />
       <input className="sb-mem-input" data-testid="memory-form-tags" value={tags} placeholder="Tags, comma separated (optional)" aria-label="Tags" onChange={(event) => setTags(event.target.value)} />
+      <label className="sb-mem-check">
+        For: <ScopeSelect options={scopeOptions} value={scope} onChange={setScope} testId="memory-form-scope" />
+      </label>
       {withPin ? (
         <label className="sb-mem-check">
           <input type="checkbox" data-testid="memory-form-pinned" checked={pinned} onChange={(event) => setPinned(event.target.checked)} /> Pinned (always first in the block)
@@ -124,6 +206,85 @@ function Author({ entry, machineId }: { readonly entry: MemoryEntry; readonly ma
   );
 }
 
+/** + Add entry's form: the folder's scope options (Workspace by default). */
+function AddForm({ machineId, folder, onSubmit, onCancel }: { readonly machineId: string | null; readonly folder: string; readonly onSubmit: (fields: MemoryFields) => Promise<void>; readonly onCancel: () => void }) {
+  const options = useScopeOptions(machineId, folder, null);
+  return <EntryForm initial={null} submitLabel="Save" submitTestId="memory-form-save" withPin scopeOptions={options} onSubmit={onSubmit} onCancel={onCancel} />;
+}
+
+/** An approved entry's Edit form (its scope can change too). */
+function EditForm({ entry, machineId, folder, onSubmit, onCancel }: { readonly entry: MemoryEntry; readonly machineId: string | null; readonly folder: string; readonly onSubmit: (fields: MemoryFields) => Promise<void>; readonly onCancel: () => void }) {
+  const options = useScopeOptions(machineId, folder, entry.id);
+  return <EntryForm initial={entry} submitLabel="Save" submitTestId="memory-form-save" scopeOptions={options} onSubmit={onSubmit} onCancel={onCancel} />;
+}
+
+/**
+ * A proposal in the review queue: its suggested scope in a selector the developer confirms or
+ * changes (D107 follow-up 2026-10-15), Approve (with the chosen scope), Edit… (the form, scope
+ * included) and Reject.
+ */
+function ProposalCard({
+  entry,
+  machineId,
+  folder,
+  editing,
+  onEdit,
+  onCancel,
+  onApprove,
+  onAct,
+  onReject,
+}: {
+  readonly entry: MemoryEntry;
+  readonly machineId: string | null;
+  readonly folder: string;
+  readonly editing: boolean;
+  readonly onEdit: () => void;
+  readonly onCancel: () => void;
+  readonly onApprove: (fields: MemoryFields) => Promise<void>;
+  readonly onAct: (work: () => Promise<unknown>) => void;
+  readonly onReject: () => void;
+}) {
+  const options = useScopeOptions(machineId, folder, entry.id);
+  const [scope, setScope] = useState<ScopeValue>(entryScopeValue(entry));
+  if (editing) return <EntryForm initial={{ ...entry, ...scopeFieldsAsEntry(scope, entry) }} submitLabel="Approve" submitTestId="memory-form-approve" scopeOptions={options} stored={entry} onSubmit={onApprove} onCancel={onCancel} />;
+  return (
+    <>
+      <div className="sb-mem-card-head">
+        <span className="sb-mem-entry-title" data-testid="memory-entry-title">
+          {entry.title}
+        </span>
+        <Tags tags={entry.tags} />
+      </div>
+      <div className="sb-mem-entry-text" data-testid="memory-entry-text">
+        {entry.text}
+      </div>
+      <div className="sb-mem-scope-row">
+        <span className="sb-mem-meta">Suggested for</span> <ScopeSelect options={options} value={scope} onChange={setScope} testId="memory-proposal-scope" />
+      </div>
+      <div className="sb-mem-card-foot">
+        <Author entry={entry} machineId={machineId} />
+        <span className="sb-mem-actions">
+          <button type="button" className="sb-button sb-mem-btn sb-mem-btn--primary" data-testid="memory-approve" onClick={() => onAct(() => onApprove(scopeFields(scope, entry)))}>
+            Approve
+          </button>
+          <button type="button" className="sb-button sb-mem-btn" data-testid="memory-edit" onClick={onEdit}>
+            Edit…
+          </button>
+          <button type="button" className="sb-button sb-mem-btn" data-testid="memory-reject" onClick={onReject}>
+            Reject
+          </button>
+        </span>
+      </div>
+    </>
+  );
+}
+
+/** The scope a selector value names, as an entry's fields (the edit form starts from the queue's choice). */
+function scopeFieldsAsEntry(value: ScopeValue, entry: Pick<MemoryEntry, 'scopeKind' | 'scopeKey'>): Pick<MemoryEntry, 'scopeKind' | 'scopeKey'> {
+  const fields = scopeFields(value, entry);
+  return fields.scopeKind ? { scopeKind: fields.scopeKind, scopeKey: fields.scopeKey ?? null } : { scopeKind: entry.scopeKind, scopeKey: entry.scopeKey };
+}
+
 /**
  * D107 · the Memory page (`/memory`, only while Project memory is on; `docs/memory.md` → *The
  * Memory page*): a folder picker (this machine's saved folders and every folder with entries; a
@@ -148,6 +309,10 @@ export function MemoryPage() {
   const [showRejected, setShowRejected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  /** D107 follow-up 2026-10-15: show one scope only (`all`: every entry). */
+  const [kind, setKind] = useState<MemoryScopeKind | 'all'>('all');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [members, setMembers] = useState(0);
   const memory = memoryApi(machineId);
 
   useEffect(() => {
@@ -177,7 +342,9 @@ export function MemoryPage() {
         const chosen = scope && list.some((candidate) => candidate.scope === scope) ? scope : scope && machineId === null ? scope : (list.find((candidate) => candidate.proposed > 0)?.scope ?? list[0]?.scope ?? null);
         if (chosen !== scope) setScope(chosen);
         const settings = await memory.settings();
+        const state = await memory.state();
         if (cancelled) return;
+        setMembers(state.members ?? 0);
         setCap(settings.cap);
         setCapText(String(settings.cap));
         setEntries(chosen ? await memory.entries(chosen) : []);
@@ -213,9 +380,10 @@ export function MemoryPage() {
     );
   }
 
-  const proposed = entries.filter((entry) => entry.status === 'proposed');
-  const approved = entries.filter((entry) => entry.status === 'approved');
-  const rejected = entries.filter((entry) => entry.status === 'rejected');
+  const shown = kind === 'all' ? entries : entries.filter((entry) => entry.scopeKind === kind);
+  const proposed = shown.filter((entry) => entry.status === 'proposed');
+  const approved = shown.filter((entry) => entry.status === 'approved');
+  const rejected = shown.filter((entry) => entry.status === 'rejected');
   const current = scopes?.find((candidate) => candidate.scope === scope) ?? null;
 
   return (
@@ -265,6 +433,26 @@ export function MemoryPage() {
               </option>
             ))}
           </select>
+          <select className="sb-mem-select" data-testid="memory-kind" data-tour="memory-kind" aria-label="Scope" value={kind} onChange={(event) => setKind(event.target.value as MemoryScopeKind | 'all')}>
+            <option value="all">Every scope</option>
+            <option value="member">Member</option>
+            <option value="repo">Repo</option>
+            <option value="workspace">Workspace</option>
+          </select>
+          {members > 0 ? (
+            <button
+              type="button"
+              className="sb-button sb-mem-btn"
+              data-testid="memory-draft-all"
+              data-tour="memory-draft-all"
+              onClick={() => {
+                setNotice(null);
+                act(async () => setNotice(draftAllText(await memory.draftAll())));
+              }}
+            >
+              {DRAFT_ALL_LABEL}
+            </button>
+          ) : null}
         </div>
         {current ? (
           <div className="sb-mem-path" data-testid="memory-folder-path">
@@ -275,6 +463,11 @@ export function MemoryPage() {
       {error ? (
         <div className="sb-mem-error sb-mem-error--page" role="alert" data-testid="memory-error">
           {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="sb-mem-notice" role="status" data-testid="memory-notice">
+          {notice}
         </div>
       ) : null}
       {scope === null ? (
@@ -290,46 +483,22 @@ export function MemoryPage() {
             {proposed.length === 0 ? <div className="sb-mem-none">No proposals. Agents propose with the memory_propose tool.</div> : null}
             {proposed.map((entry) => (
               <article key={entry.id} className="sb-mem-card sb-mem-card--proposed" data-testid="memory-proposal" data-entry-id={entry.id}>
-                {editing === entry.id ? (
-                  <EntryForm
-                    initial={entry}
-                    submitLabel="Approve"
-                    submitTestId="memory-form-approve"
-                    onSubmit={async (fields) => {
-                      await memory.approve(entry.id, fields);
-                      setEditing(null);
-                      reload();
-                      void reloadMemory();
-                    }}
-                    onCancel={() => setEditing(null)}
-                  />
-                ) : (
-                  <>
-                    <div className="sb-mem-card-head">
-                      <span className="sb-mem-entry-title" data-testid="memory-entry-title">
-                        {entry.title}
-                      </span>
-                      <Tags tags={entry.tags} />
-                    </div>
-                    <div className="sb-mem-entry-text" data-testid="memory-entry-text">
-                      {entry.text}
-                    </div>
-                    <div className="sb-mem-card-foot">
-                      <Author entry={entry} machineId={machineId} />
-                      <span className="sb-mem-actions">
-                        <button type="button" className="sb-button sb-mem-btn sb-mem-btn--primary" data-testid="memory-approve" onClick={() => act(() => memory.approve(entry.id))}>
-                          Approve
-                        </button>
-                        <button type="button" className="sb-button sb-mem-btn" data-testid="memory-edit" onClick={() => setEditing(entry.id)}>
-                          Edit…
-                        </button>
-                        <button type="button" className="sb-button sb-mem-btn" data-testid="memory-reject" onClick={() => act(() => memory.reject(entry.id))}>
-                          Reject
-                        </button>
-                      </span>
-                    </div>
-                  </>
-                )}
+                <ProposalCard
+                  entry={entry}
+                  machineId={machineId}
+                  folder={scope}
+                  editing={editing === entry.id}
+                  onEdit={() => setEditing(entry.id)}
+                  onCancel={() => setEditing(null)}
+                  onApprove={async (fields) => {
+                    await memory.approve(entry.id, fields);
+                    setEditing(null);
+                    reload();
+                    void reloadMemory();
+                  }}
+                  onAct={act}
+                  onReject={() => act(() => memory.reject(entry.id))}
+                />
               </article>
             ))}
           </section>
@@ -343,11 +512,9 @@ export function MemoryPage() {
             </h2>
             {adding ? (
               <div className="sb-mem-card">
-                <EntryForm
-                  initial={null}
-                  submitLabel="Save"
-                  submitTestId="memory-form-save"
-                  withPin
+                <AddForm
+                  machineId={machineId}
+                  folder={scope}
                   onSubmit={async (fields) => {
                     await memory.add(scope, fields);
                     setAdding(false);
@@ -362,10 +529,10 @@ export function MemoryPage() {
             {approved.map((entry) => (
               <article key={entry.id} className="sb-mem-card" data-testid="memory-entry" data-entry-id={entry.id} data-pinned={entry.pinned ? 'true' : undefined}>
                 {editing === entry.id ? (
-                  <EntryForm
-                    initial={entry}
-                    submitLabel="Save"
-                    submitTestId="memory-form-save"
+                  <EditForm
+                    entry={entry}
+                    machineId={machineId}
+                    folder={scope}
                     onSubmit={async (fields) => {
                       await memory.update(entry.id, fields);
                       setEditing(null);
@@ -376,6 +543,7 @@ export function MemoryPage() {
                 ) : (
                   <>
                     <div className="sb-mem-card-head">
+                      <ScopeChip entry={entry} />
                       <button
                         type="button"
                         className="sb-mem-pin"
@@ -436,6 +604,7 @@ export function MemoryPage() {
                 ? rejected.map((entry) => (
                     <article key={entry.id} className="sb-mem-card sb-mem-card--rejected" data-testid="memory-rejected-entry" data-entry-id={entry.id}>
                       <div className="sb-mem-card-head">
+                        <ScopeChip entry={entry} />
                         <span className="sb-mem-entry-title">{entry.title}</span>
                       </div>
                       <div className="sb-mem-entry-text">{entry.text}</div>

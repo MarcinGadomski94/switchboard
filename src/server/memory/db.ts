@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import type { MemoryAuthorKind, MemoryEntry, MemoryStatus } from '../../core/memory.ts';
+import { type MemoryAuthorKind, type MemoryEntry, type MemoryScopeKind, type MemoryStatus, readScopeKind } from '../../core/memory.ts';
 import { openDatabase } from '../db/database.ts';
 import { type Migration, makeMigration, migrate } from '../db/migrate.ts';
 
@@ -61,6 +61,27 @@ CREATE TABLE memory_meta (
 ) STRICT;
 `,
   ),
+  makeMigration(
+    2,
+    'memory_scopes',
+    `-- D107 follow-up 2026-10-15: scopes on every entry (docs/memory.md -> Scopes) and the
+-- "Draft memory from this session" asks.
+-- memory_entries.scope_kind   workspace (every session of the folder: every entry made before this) |
+--                             repo (sessions working in one repository) | member (one Team member).
+-- memory_entries.scope_key    repo: the repository's normalized remote key, else its main checkout's path;
+--                             member: the member id; NULL for workspace.
+-- memory_entries.scope_label  repo: the repository's name; member: the role name; NULL for workspace.
+-- memory_draft_asks: the last time each session was asked to draft memory (one ask per 24 hours).
+ALTER TABLE memory_entries ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'workspace' CHECK (scope_kind IN ('workspace', 'repo', 'member'));
+ALTER TABLE memory_entries ADD COLUMN scope_key TEXT;
+ALTER TABLE memory_entries ADD COLUMN scope_label TEXT;
+CREATE INDEX memory_entries_scope_key ON memory_entries (scope_kind, scope_key, status);
+CREATE TABLE memory_draft_asks (
+  session_id TEXT PRIMARY KEY,
+  asked_at TEXT NOT NULL
+) STRICT;
+`,
+  ),
 ];
 
 interface Row {
@@ -80,6 +101,9 @@ interface Row {
   decided_by: string | null;
   proposed_title: string | null;
   proposed_text: string | null;
+  scope_kind: string;
+  scope_key: string | null;
+  scope_label: string | null;
 }
 
 function toEntry(row: Row): MemoryEntry {
@@ -107,11 +131,14 @@ function toEntry(row: Row): MemoryEntry {
     decidedBy: row.decided_by === 'developer' ? 'developer' : null,
     proposedTitle: row.proposed_title,
     proposedText: row.proposed_text,
+    scopeKind: readScopeKind(row.scope_kind) ?? 'workspace',
+    scopeKey: row.scope_key,
+    scopeLabel: row.scope_label,
   };
 }
 
 /** A row patch (only the fields given change). */
-export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt'>>;
+export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt' | 'scopeKind' | 'scopeKey' | 'scopeLabel' | 'scope'>>;
 
 const COLUMNS: Readonly<Record<keyof MemoryPatch, string>> = {
   title: 'title',
@@ -124,6 +151,10 @@ const COLUMNS: Readonly<Record<keyof MemoryPatch, string>> = {
   proposedTitle: 'proposed_title',
   proposedText: 'proposed_text',
   updatedAt: 'updated_at',
+  scopeKind: 'scope_kind',
+  scopeKey: 'scope_key',
+  scopeLabel: 'scope_label',
+  scope: 'scope',
 };
 
 /** The Project memory database: one connection, its entries and its settings. */
@@ -146,7 +177,7 @@ export class MemoryDb {
     const db = await openDatabase(file);
     try {
       migrate(db, migrations);
-      for (const table of ['memory_entries', 'memory_meta']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      for (const table of ['memory_entries', 'memory_meta', 'memory_draft_asks']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;
@@ -167,8 +198,8 @@ export class MemoryDb {
   insert(entry: MemoryEntry): MemoryEntry {
     this.#db
       .prepare(
-        `INSERT INTO memory_entries (id, scope, title, text, tags, author_kind, author_session_id, author_label, status, pinned, created_at, updated_at, decided_at, decided_by, proposed_title, proposed_text)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO memory_entries (id, scope, title, text, tags, author_kind, author_session_id, author_label, status, pinned, created_at, updated_at, decided_at, decided_by, proposed_title, proposed_text, scope_kind, scope_key, scope_label)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         entry.id,
@@ -187,8 +218,11 @@ export class MemoryDb {
         entry.decidedBy,
         entry.proposedTitle,
         entry.proposedText,
+        entry.scopeKind,
+        entry.scopeKind === 'workspace' ? null : entry.scopeKey,
+        entry.scopeKind === 'workspace' ? null : entry.scopeLabel,
       );
-    return entry;
+    return this.get(entry.id) ?? entry;
   }
 
   get(id: string): MemoryEntry | null {
@@ -196,13 +230,46 @@ export class MemoryDb {
     return row ? toEntry(row) : null;
   }
 
-  /** Entries, oldest first; filtered by folder and / or states. */
-  list(filter: { readonly scope?: string; readonly statuses?: readonly MemoryStatus[] } = {}): MemoryEntry[] {
+  /**
+   * Entries, oldest first; filtered by folder and / or states. `visibleTo` (D107 follow-up
+   * 2026-10-15) keeps the entries a session sees: the folder's workspace entries, its
+   * repositories' and its member's (any folder); it replaces `scope`.
+   */
+  list(
+    filter: {
+      readonly scope?: string;
+      readonly statuses?: readonly MemoryStatus[];
+      readonly scopeKind?: MemoryScopeKind;
+      readonly scopeKey?: string;
+      readonly visibleTo?: { readonly folder: string; readonly repoKeys: readonly string[]; readonly memberId: string | null };
+    } = {},
+  ): MemoryEntry[] {
     const where: string[] = [];
     const args: string[] = [];
-    if (filter.scope !== undefined) {
+    if (filter.visibleTo !== undefined) {
+      const { folder, repoKeys, memberId } = filter.visibleTo;
+      const any = ["(scope_kind = 'workspace' AND scope = ?)"];
+      args.push(folder);
+      if (repoKeys.length > 0) {
+        any.push(`(scope_kind = 'repo' AND scope_key IN (${repoKeys.map(() => '?').join(', ')}))`);
+        args.push(...repoKeys);
+      }
+      if (memberId !== null) {
+        any.push("(scope_kind = 'member' AND scope_key = ?)");
+        args.push(memberId);
+      }
+      where.push(`(${any.join(' OR ')})`);
+    } else if (filter.scope !== undefined) {
       where.push('scope = ?');
       args.push(filter.scope);
+    }
+    if (filter.scopeKind !== undefined) {
+      where.push('scope_kind = ?');
+      args.push(filter.scopeKind);
+    }
+    if (filter.scopeKey !== undefined) {
+      where.push('scope_key = ?');
+      args.push(filter.scopeKey);
     }
     if (filter.statuses && filter.statuses.length > 0) {
       where.push(`status IN (${filter.statuses.map(() => '?').join(', ')})`);
@@ -246,6 +313,17 @@ export class MemoryDb {
 
   delete(id: string): boolean {
     return Number(this.#db.prepare('DELETE FROM memory_entries WHERE id = ?').run(id).changes) > 0;
+  }
+
+  /** D107 follow-up 2026-10-15: when `sessionId` was last asked to draft memory (`null`: never). */
+  draftAskedAt(sessionId: string): string | null {
+    const row = this.#db.prepare('SELECT asked_at FROM memory_draft_asks WHERE session_id = ?').get(sessionId) as { asked_at: string } | undefined;
+    return row?.asked_at ?? null;
+  }
+
+  setDraftAsked(sessionId: string, at: string | null): void {
+    if (at === null) this.#db.prepare('DELETE FROM memory_draft_asks WHERE session_id = ?').run(sessionId);
+    else this.#db.prepare('INSERT INTO memory_draft_asks (session_id, asked_at) VALUES (?, ?) ON CONFLICT (session_id) DO UPDATE SET asked_at = excluded.asked_at').run(sessionId, at);
   }
 
   meta(key: string): string | null {

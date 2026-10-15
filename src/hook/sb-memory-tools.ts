@@ -45,15 +45,19 @@ export async function memoryPropose(api: AgentApi, input: ToolInput): Promise<Ca
   if (typeof input['text'] !== 'string' || input['text'].trim() === '') return textResult('Give the entry its text: the fact itself, plain and brief.', true);
   const body: Record<string, unknown> = { title: input['title'], text: input['text'] };
   if (input['tags'] !== undefined) body['tags'] = input['tags'];
+  // D107 follow-up 2026-10-15: who it is for (the server picks the default when none is given).
+  if (input['scope'] !== undefined) body['scope'] = input['scope'];
+  if (input['repo'] !== undefined) body['repo'] = input['repo'];
   return request(api, 'POST', '/agent/v1/memory', body, (answer) => {
     const entry = record(answer);
+    const scope = typeof entry['scopeKind'] === 'string' ? ` with scope ${String(entry['scopeKind'])}${typeof entry['scopeLabel'] === 'string' ? ` (${entry['scopeLabel']})` : ''}` : '';
     return typeof entry['id'] === 'string'
-      ? textResult(`Proposed "${String(entry['title'])}" [${entry['id']}]. The developer reviews it in Switchboard; it is used only once approved (as written or edited). Do not propose it again.`)
+      ? textResult(`Proposed "${String(entry['title'])}" [${entry['id']}]${scope}. The developer reviews it in Switchboard and may change its scope; it is used only once approved (as written or edited). Do not propose it again.`)
       : textResult('Switchboard did not answer with the entry.', true);
   });
 }
 
-/** D107 · `memory_list`: the folder's approved entries. */
+/** D107 · `memory_list`: the approved entries this session sees (its member's, its repositories', its folder's), each with its scope. */
 export function memoryList(api: AgentApi): Promise<CallToolResult> {
   return request(api, 'GET', '/agent/v1/memory', undefined, (answer) => {
     const value = record(answer);
@@ -87,6 +91,8 @@ export function registerMemoryTools(server: McpServer, api: AgentApi): void {
           title: z.string().describe(about('memory_propose', 'title')).optional(),
           text: z.string().describe(about('memory_propose', 'text')).optional(),
           tags: z.array(z.string()).max(MEMORY_TAGS_MAX).describe(about('memory_propose', 'tags')).optional(),
+          scope: z.enum(['member', 'repo', 'workspace']).describe(about('memory_propose', 'scope')).optional(),
+          repo: z.string().describe(about('memory_propose', 'repo')).optional(),
         })
         .meta({ required: ['title', 'text'], additionalProperties: false }),
       annotations: propose.annotations,

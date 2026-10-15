@@ -1,21 +1,34 @@
 import { randomBytes } from 'node:crypto';
 import {
   MEMORY_CAP_DEFAULT,
+  MEMORY_DRAFT_REPEAT_HOURS,
   MEMORY_PROPOSE_PER_HOUR,
+  MEMORY_SCOPE_KINDS,
   MEMORY_SETTING,
+  type MemoryDraftAllAnswer,
+  type MemoryDraftAnswer,
   type MemoryEntry,
   type MemoryInput,
+  type MemoryReach,
   type MemoryScope,
+  type MemoryScopeKind,
+  type MemoryScopeOption,
+  type MemorySessionCount,
   type MemorySettings,
   type MemoryState,
   type MemoryStatus,
+  NO_REACH,
+  defaultProposalScope,
   folderName,
-  memoryBlock,
+  memoryBlockParts,
+  memoryDraftAskText,
   memoryOrder,
   memoryProposalsTitle,
   nearDuplicateTitle,
   readMemoryCap,
   readMemoryInput,
+  readScopeKind,
+  scopeKindOf,
 } from '../../core/memory.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -23,7 +36,9 @@ import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { MemoryDb } from './db.ts';
-import { type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
+import { type MemoryMemberMove, type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
+import { type MemoryRepoSource, MemoryRepoIdentity, reachOf } from './reach.ts';
+import { members as teamMembers } from './team-link.ts';
 
 /** Why the service refused a call: maps to the route's HTTP answer (`{ error, message, errors? }`). */
 export class MemoryError extends Error {
@@ -48,9 +63,16 @@ export const MEMORY_PROPOSALS_ITEM = 'memory-proposals';
 /** Its Review action (a link to the Memory page: the web goes to `payload.route`, the item stays open). */
 export const OPEN_MEMORY = 'open-memory';
 
-/** What the service needs of the supervisor: D91's "older instruction" flag (republishes the live sessions). */
+/** What the service needs of the supervisor: D91's "older instruction" flag (republishes the live sessions) and the draft ask's message. */
 export interface MemorySupervisor {
   instructionSettingChanged(): Promise<void>;
+  /** D107 follow-up 2026-10-15: "Draft memory from this session" sends a normal message (queued while a turn runs, held while new turns pause, D103). */
+  sendMessage?(sessionId: string, text: string, origin: 'service'): Promise<unknown>;
+}
+
+/** What the service needs of the paired machines (D48): a member's memory moves with it; draft asks for members elsewhere. */
+export interface MemoryPeers {
+  forward(machineId: string, method: string, path: string, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
 }
 
 export interface MemoryServiceOptions {
@@ -59,6 +81,10 @@ export interface MemoryServiceOptions {
   readonly bus: HubBus;
   /** D91: open sessions of a folder are flagged as on an older instruction when its approved memory changes (never restarted). */
   readonly supervisor: MemorySupervisor;
+  /** D107 follow-up 2026-10-15: the shared repo set (`SessionRepos`): which repositories a session works in (repo scope). */
+  readonly repos?: MemoryRepoSource;
+  /** D107 follow-up 2026-10-15: the paired machines (a moved member's entries; draft asks for members elsewhere). */
+  readonly peers?: MemoryPeers;
   readonly now?: () => Date;
   readonly onError?: (error: unknown) => void;
 }
@@ -68,6 +94,7 @@ const HOUR_MS = 60 * 60 * 1000;
 /** D107 ruling 2026-10-14: a rejected entry blocks near-identical proposals for this long. */
 export const MEMORY_REJECTED_BLOCK_DAYS = 30;
 const REJECTED_BLOCK_MS = MEMORY_REJECTED_BLOCK_DAYS * 24 * HOUR_MS;
+const DRAFT_REPEAT_MS = MEMORY_DRAFT_REPEAT_HOURS * HOUR_MS;
 
 /**
  * D107 · Project memory (`docs/memory.md`). Agents propose entries for their session's folder
@@ -97,6 +124,7 @@ export class MemoryService {
   #closed = false;
   #offHooks: (() => void) | null = null;
   #switching: Promise<void> = Promise.resolve();
+  readonly #identity = new MemoryRepoIdentity();
 
   constructor(options: MemoryServiceOptions) {
     this.#o = options;
@@ -112,6 +140,7 @@ export class MemoryService {
     this.#offHooks ??= registerMemoryHooks(this.#o.store, {
       blockFor: (session) => this.blockFor(session),
       switchChanged: () => this.switchChanged(),
+      memberMoved: (move) => this.memberMoved(move),
     });
     await this.switchChanged();
   }
@@ -159,7 +188,7 @@ export class MemoryService {
 
   /** `GET /api/memory/state` (answered while off too). */
   state(): MemoryState {
-    return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null };
+    return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null, members: this.#enabled ? teamMembers(this.#o.store).length : 0 };
   }
 
   /** Timers running (tests): Project memory runs none. */
@@ -213,10 +242,11 @@ export class MemoryService {
   // ── reads ───────────────────────────────────────────────────────────────
 
   /** `GET /api/memory/entries`: a folder's entries (all folders without one), approved in block order, then proposed (oldest first), then rejected. */
-  entries(filter: { readonly scope?: string; readonly status?: string } = {}): MemoryEntry[] {
+  entries(filter: { readonly scope?: string; readonly status?: string; readonly kind?: string } = {}): MemoryEntry[] {
     const db = this.#need();
     const statuses: MemoryStatus[] | undefined = filter.status === 'approved' || filter.status === 'proposed' || filter.status === 'rejected' ? [filter.status] : undefined;
-    const rows = db.list({ ...(filter.scope ? { scope: filter.scope } : {}), ...(statuses ? { statuses } : {}) });
+    const kind = readScopeKind(filter.kind);
+    const rows = db.list({ ...(filter.scope ? { scope: filter.scope } : {}), ...(statuses ? { statuses } : {}), ...(kind ? { scopeKind: kind } : {}) });
     return [...memoryOrder(rows.filter((entry) => entry.status === 'approved')), ...rows.filter((entry) => entry.status === 'proposed'), ...rows.filter((entry) => entry.status === 'rejected').reverse()];
   }
 
@@ -244,26 +274,90 @@ export class MemoryService {
     if (!this.#enabled || !this.#db) return null;
     const scope = MemoryService.scopeOf(session);
     if (scope === null) return null;
-    const approved = this.#db.list({ scope, statuses: ['approved'] });
+    const reach = await this.#reach(session.id);
+    const approved = this.#visible(scope, reach, ['approved']);
     if (approved.length === 0) return null;
-    return memoryBlock(approved, this.settings().cap, await this.#label(scope));
+    return memoryBlockParts(approved, this.settings().cap, await this.#label(scope), reach)?.text ?? null;
+  }
+
+  /** D107 follow-up 2026-10-15: what a session sees besides its folder: its member and its repositories (nothing found = the folder only). */
+  async #reach(sessionId: string): Promise<MemoryReach> {
+    const record = await this.#o.store.sessions.get(sessionId).catch(() => null);
+    if (!record) return NO_REACH;
+    return reachOf(this.#o.store, record, this.#o.repos ?? null, this.#identity);
+  }
+
+  /** The entries a session of `folder` with `reach` sees (its folder's workspace entries, its repositories', its member's). */
+  #visible(folder: string, reach: MemoryReach, statuses: readonly MemoryStatus[]): MemoryEntry[] {
+    return this.#need().list({ statuses, visibleTo: { folder, repoKeys: reach.repos.map((repo) => repo.key), memberId: reach.memberId } });
+  }
+
+  /**
+   * `GET /api/memory/sessions/{id}` (D107 follow-up 2026-10-15): what this session receives: the
+   * entries in its block, per scope, those over the cap, and its folder's proposals.
+   */
+  async sessionCount(sessionId: string): Promise<MemorySessionCount> {
+    this.#need();
+    const session = await this.#o.store.sessions.get(sessionId);
+    if (!session) throw new MemoryError(404, 'not-found', `no session ${sessionId}`);
+    const folder = MemoryService.scopeOf(session);
+    if (folder === null) return { count: 0, member: 0, repo: 0, workspace: 0, overflow: 0, proposed: 0, folder: null };
+    const reach = await this.#reach(sessionId);
+    const parts = memoryBlockParts(this.#visible(folder, reach, ['approved']), this.settings().cap, await this.#label(folder), reach);
+    const proposed = this.#need().list({ scope: folder, statuses: ['proposed'] }).length;
+    const counts = parts?.counts ?? { member: 0, repo: 0, workspace: 0 };
+    return { count: parts?.included.length ?? 0, ...counts, overflow: parts?.overflow.length ?? 0, proposed, folder };
   }
 
   // ── the agent's calls (`/agent/v1/memory`, the session's agent token) ───
 
-  async #agentScope(sessionId: string): Promise<{ session: SessionRecord; scope: string }> {
+  async #agentScope(sessionId: string): Promise<{ session: SessionRecord; scope: string; reach: MemoryReach }> {
     this.#need();
     const session = await this.#o.store.sessions.get(sessionId);
     if (!session) throw new MemoryError(404, 'not-found', 'this session is not known to Switchboard');
     const scope = MemoryService.scopeOf(session);
     if (scope === null) throw new MemoryError(404, 'no-folder', session.kind === 'chat' ? 'a chat has no project folder: project memory belongs to sessions' : 'this session has no folder');
-    return { session, scope };
+    return { session, scope, reach: await reachOf(this.#o.store, session, this.#o.repos ?? null, this.#identity) };
   }
 
-  /** `memory_list`: the folder's approved entries in block order, and the folder's label. */
+  /**
+   * `memory_list`: the approved entries the caller sees (its member's, its repositories', its
+   * folder's), member first, then repo, then workspace, each in block order; each carries its scope.
+   */
   async agentList(sessionId: string): Promise<{ scope: string; label: string; entries: MemoryEntry[] }> {
-    const { scope } = await this.#agentScope(sessionId);
-    return { scope, label: await this.#label(scope), entries: memoryOrder(this.#need().list({ scope, statuses: ['approved'] })) };
+    const { scope, reach } = await this.#agentScope(sessionId);
+    const visible = this.#visible(scope, reach, ['approved']);
+    const entries = MEMORY_SCOPE_KINDS.flatMap((kind) => memoryOrder(visible.filter((entry) => scopeKindOf(entry) === kind)));
+    return { scope, label: await this.#label(scope), entries };
+  }
+
+  /** The scope a proposal asks for (`scope`, `repo`), checked against the caller's reach; the default when none is given. */
+  #proposalScope(body: unknown, reach: MemoryReach): { kind: MemoryScopeKind; key: string | null; label: string | null } {
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    let kind: MemoryScopeKind = defaultProposalScope(reach);
+    if (raw['scope'] !== undefined && raw['scope'] !== null) {
+      const asked = readScopeKind(raw['scope']);
+      if (asked === null) throw new MemoryError(422, 'invalid', 'scope must be member, repo or workspace', 'scope');
+      kind = asked;
+    }
+    if (kind === 'member') {
+      if (reach.memberId === null) throw new MemoryError(422, 'invalid', 'scope "member" is only for team members: use repo or workspace', 'scope');
+      return { kind, key: reach.memberId, label: reach.memberLabel };
+    }
+    if (kind === 'repo') {
+      if (reach.repos.length === 0) throw new MemoryError(422, 'invalid', 'this session works in no repository Switchboard can see: use workspace', 'scope');
+      const wanted = typeof raw['repo'] === 'string' ? raw['repo'].trim() : '';
+      if (wanted === '') {
+        if (reach.repos.length > 1) throw new MemoryError(422, 'invalid', `you work in several repositories: name one in repo (${reach.repos.map((repo) => repo.label).join(', ')})`, 'repo');
+        const only = reach.repos[0] as { key: string; label: string };
+        return { kind, key: only.key, label: only.label };
+      }
+      const lower = wanted.toLowerCase();
+      const found = reach.repos.find((repo) => repo.key === wanted || repo.label.toLowerCase() === lower || repo.key.toLowerCase().endsWith(`/${lower}`));
+      if (!found) throw new MemoryError(422, 'invalid', `no repository "${wanted}" among the ones this session works in (${reach.repos.map((repo) => repo.label).join(', ')})`, 'repo');
+      return { kind, key: found.key, label: found.label };
+    }
+    return { kind: 'workspace', key: null, label: null };
   }
 
   /**
@@ -273,9 +367,10 @@ export class MemoryService {
    * entry of the folder or one it rejected in the last 30 days (409 `duplicate`).
    */
   async propose(sessionId: string, body: unknown): Promise<MemoryEntry> {
-    const { session, scope } = await this.#agentScope(sessionId);
+    const { session, scope, reach } = await this.#agentScope(sessionId);
     const input = readMemoryInput(body, ['title', 'text']);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    const target = this.#proposalScope(body, reach);
     const db = this.#need();
     const since = new Date(this.#now().getTime() - HOUR_MS).toISOString();
     if (db.proposalsSince(sessionId, since) >= MEMORY_PROPOSE_PER_HOUR) {
@@ -284,8 +379,8 @@ export class MemoryService {
     const title = input.value.title as string;
     // Ruling 2026-10-14: a rejected entry blocks near-identical proposals for 30 days only.
     const blockedSince = new Date(this.#now().getTime() - REJECTED_BLOCK_MS).toISOString();
-    const twin = db
-      .list({ scope })
+    const known = new Map([...db.list({ scope }), ...this.#visible(scope, reach, ['proposed', 'approved', 'rejected'])].map((entry) => [entry.id, entry]));
+    const twin = [...known.values()]
       .filter((entry) => entry.status !== 'rejected' || (entry.decidedAt ?? entry.updatedAt) >= blockedSince)
       .find((entry) => nearDuplicateTitle(entry.title, title) || (entry.proposedTitle !== null && nearDuplicateTitle(entry.proposedTitle, title)));
     if (twin) {
@@ -310,6 +405,9 @@ export class MemoryService {
       decidedBy: null,
       proposedTitle: null,
       proposedText: null,
+      scopeKind: target.kind,
+      scopeKey: target.key,
+      scopeLabel: target.label,
     });
     await this.#syncInbox(scope);
     this.#o.bus.publish('memoryChanged', { scope });
@@ -326,10 +424,12 @@ export class MemoryService {
     if (scope === '') throw new MemoryError(422, 'invalid', 'scope is required: the folder the entry belongs to', 'scope');
     const input = readMemoryInput(body, ['title', 'text']);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    const target = (await this.#chosenScope(body, scope, null)) ?? { scopeKind: 'workspace' as const, scopeKey: null, scopeLabel: null };
     const now = this.#iso();
     const entry = db.insert({
       id: randomBytes(5).toString('hex'),
       scope,
+      ...target,
       title: input.value.title as string,
       text: input.value.text as string,
       tags: input.value.tags ?? [],
@@ -371,7 +471,9 @@ export class MemoryService {
     const entry = this.#get(id);
     const input = readMemoryInput(body);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    const target = await this.#chosenScope(body, entry.scope, entry);
     const updated = this.#need().update(id, {
+      ...(target ?? {}),
       ...(input.value.title !== undefined ? { title: input.value.title } : {}),
       ...(input.value.text !== undefined ? { text: input.value.text } : {}),
       ...(input.value.tags !== undefined ? { tags: input.value.tags } : {}),
@@ -394,8 +496,10 @@ export class MemoryService {
     if (entry.status === 'approved') throw new MemoryError(409, 'not-proposed', 'this entry is already approved');
     const input = readMemoryInput(body);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    const target = await this.#chosenScope(body, entry.scope, entry);
     const now = this.#iso();
     const approved = this.#need().update(id, {
+      ...(target ?? {}),
       ...(input.value.title !== undefined ? { title: input.value.title } : {}),
       ...(input.value.text !== undefined ? { text: input.value.text } : {}),
       ...(input.value.tags !== undefined ? { tags: input.value.tags } : {}),
@@ -429,6 +533,185 @@ export class MemoryService {
     if (entry.status === 'proposed') await this.#syncInbox(entry.scope);
     if (entry.status === 'approved') await this.#approvedChanged(entry.scope);
     else this.#o.bus.publish('memoryChanged', { scope: entry.scope });
+  }
+
+  // ── scopes the developer can choose (D107 follow-up 2026-10-15) ────────
+
+  /**
+   * `GET /api/memory/scope-options?scope=<folder>&entry=<id>`: the scopes an entry of `folder` can be
+   * given (the review queue's and the edit form's selector): **Workspace**; the repositories of the
+   * proposing session, of the folder's open sessions and of the folder's repo entries; the Team
+   * members (every team) and the entry's own current scope.
+   */
+  async scopeOptions(folder: string, entryId?: string): Promise<MemoryScopeOption[]> {
+    const db = this.#need();
+    const entry = entryId ? this.#get(entryId) : null;
+    const out: MemoryScopeOption[] = [{ kind: 'workspace', key: null, label: await this.#label(entry?.scope ?? folder) }];
+    const add = (option: MemoryScopeOption): void => {
+      if (!out.some((known) => known.kind === option.kind && known.key === option.key)) out.push(option);
+    };
+    if (entry && entry.scopeKind !== 'workspace' && entry.scopeKey !== null) add({ kind: entry.scopeKind, key: entry.scopeKey, label: entry.scopeLabel ?? entry.scopeKey });
+    const sessionIds: string[] = [];
+    if (entry?.authorSessionId) sessionIds.push(entry.authorSessionId);
+    const open = (await this.#o.store.sessions.list({ closed: false })).filter((session) => MemoryService.scopeOf(session) === (entry?.scope ?? folder));
+    for (const session of open.slice(0, 20)) if (!sessionIds.includes(session.id)) sessionIds.push(session.id);
+    const reaches: MemoryReach[] = [];
+    for (const sessionId of sessionIds) reaches.push(await this.#reach(sessionId));
+    for (const reach of reaches) for (const repo of reach.repos) add({ kind: 'repo', key: repo.key, label: repo.label });
+    for (const known of db.list({ scope: entry?.scope ?? folder, scopeKind: 'repo' })) if (known.scopeKey) add({ kind: 'repo', key: known.scopeKey, label: known.scopeLabel ?? known.scopeKey });
+    for (const reach of reaches) if (reach.memberId) add({ kind: 'member', key: reach.memberId, label: reach.memberLabel ?? reach.memberId });
+    for (const member of teamMembers(this.#o.store)) add({ kind: 'member', key: member.id, label: member.name });
+    return out;
+  }
+
+  /**
+   * The scope a developer's body asks for (`scopeKind`, `scopeKey`), `null` when it names none.
+   * A repo or member scope must be one of {@link scopeOptions} (or the entry's own).
+   */
+  async #chosenScope(body: unknown, folder: string, entry: MemoryEntry | null): Promise<Pick<MemoryEntry, 'scopeKind' | 'scopeKey' | 'scopeLabel'> | null> {
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    if (raw['scopeKind'] === undefined || raw['scopeKind'] === null) return null;
+    const kind = readScopeKind(raw['scopeKind']);
+    if (kind === null) throw new MemoryError(422, 'invalid', 'scopeKind must be member, repo or workspace', 'scopeKind');
+    if (kind === 'workspace') return { scopeKind: 'workspace', scopeKey: null, scopeLabel: null };
+    const key = typeof raw['scopeKey'] === 'string' ? raw['scopeKey'] : '';
+    if (key === '') throw new MemoryError(422, 'invalid', `a ${kind} scope needs scopeKey (the ${kind === 'repo' ? 'repository' : 'member'})`, 'scopeKey');
+    if (entry && entry.scopeKind === kind && entry.scopeKey === key) return { scopeKind: kind, scopeKey: key, scopeLabel: entry.scopeLabel };
+    const option = (await this.scopeOptions(folder, entry?.id)).find((candidate) => candidate.kind === kind && candidate.key === key);
+    if (!option) throw new MemoryError(422, 'invalid', `${kind === 'repo' ? 'that repository' : 'that member'} is not one this entry can be scoped to`, 'scopeKey');
+    return { scopeKind: kind, scopeKey: key, scopeLabel: option.label };
+  }
+
+  // ── "Draft memory from this session" (D107 follow-up 2026-10-15) ───────
+
+  /**
+   * `POST /api/memory/draft` `{ sessionId }` or `{ memberId }`: sends the session a normal message
+   * ({@link memoryDraftAskText}: queued while a turn runs, held while new turns pause, D103) asking
+   * its agent to review its own history and propose its durable facts with `memory_propose`. Nothing
+   * is applied: the proposals go through the review queue. One ask per session: another within
+   * {@link MEMORY_DRAFT_REPEAT_HOURS} hours is ignored (`asked: false`, `asked-recently`). A member on
+   * a paired machine is asked there (through the peer API).
+   */
+  async draft(body: unknown): Promise<MemoryDraftAnswer> {
+    const db = this.#need();
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    let sessionId = typeof raw['sessionId'] === 'string' ? raw['sessionId'] : '';
+    if (typeof raw['memberId'] === 'string' && raw['memberId'] !== '') {
+      const member = teamMembers(this.#o.store).find((candidate) => candidate.id === raw['memberId']);
+      if (!member) throw new MemoryError(404, 'not-found', 'no such team member (or Team is off)');
+      if (!member.here) return this.#draftThere(member.machineId, member.sessionId);
+      sessionId = member.sessionId;
+    }
+    if (sessionId === '') throw new MemoryError(422, 'invalid', 'sessionId (or memberId) is required', 'sessionId');
+    const session = await this.#o.store.sessions.get(sessionId);
+    if (!session) throw new MemoryError(404, 'not-found', `no session ${sessionId}`);
+    if (MemoryService.scopeOf(session) === null) return { asked: false, reason: 'no-folder', askedAt: null };
+    if (session.closedAt !== null) return { asked: false, reason: 'closed', askedAt: null };
+    const before = db.draftAskedAt(sessionId);
+    if (before !== null && this.#now().getTime() - Date.parse(before) < DRAFT_REPEAT_MS) return { asked: false, reason: 'asked-recently', askedAt: before };
+    const now = this.#iso();
+    db.setDraftAsked(sessionId, now);
+    const reach = await this.#reach(sessionId);
+    try {
+      if (!this.#o.supervisor.sendMessage) throw new Error('no supervisor');
+      await this.#o.supervisor.sendMessage(sessionId, memoryDraftAskText(reach.memberLabel, reach), 'service');
+    } catch (error) {
+      db.setDraftAsked(sessionId, before);
+      return { asked: false, reason: `not-sent: ${error instanceof Error ? error.message : String(error)}`, askedAt: null };
+    }
+    return { asked: true, reason: null, askedAt: now };
+  }
+
+  async #draftThere(machineId: string, sessionId: string): Promise<MemoryDraftAnswer> {
+    if (!this.#o.peers) return { asked: false, reason: 'offline', askedAt: null };
+    try {
+      const answer = await this.#o.peers.forward(machineId, 'POST', '/api/memory/draft', { sessionId });
+      if (answer.status === 200) return answer.body as MemoryDraftAnswer;
+      const message = (answer.body as { message?: unknown } | null)?.message;
+      return { asked: false, reason: typeof message === 'string' ? message : `the paired machine answered HTTP ${answer.status}`, askedAt: null };
+    } catch (error) {
+      return { asked: false, reason: `offline: ${error instanceof Error ? error.message : String(error)}`, askedAt: null };
+    }
+  }
+
+  /**
+   * `POST /api/memory/draft-all` `{ teamId? }` ("Draft memory for all members"): {@link draft} for
+   * every Team member (of `teamId`, else every team), on whichever machine it runs; paused members
+   * and the ones asked in the last 24 hours are skipped (with the reason).
+   */
+  async draftAll(body: unknown): Promise<MemoryDraftAllAnswer> {
+    this.#need();
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const teamId = typeof raw['teamId'] === 'string' && raw['teamId'] !== '' && raw['teamId'] !== 'all' ? raw['teamId'] : null;
+    const asked: { memberId: string; name: string }[] = [];
+    const skipped: { memberId: string; name: string; reason: string }[] = [];
+    for (const member of teamMembers(this.#o.store)) {
+      if (teamId !== null && member.teamId !== teamId) continue;
+      if (member.paused) {
+        skipped.push({ memberId: member.id, name: member.name, reason: 'paused' });
+        continue;
+      }
+      const answer = await this.draft({ memberId: member.id }).catch((error: unknown) => ({ asked: false, reason: error instanceof Error ? error.message : String(error), askedAt: null }));
+      if (answer.asked) asked.push({ memberId: member.id, name: member.name });
+      else skipped.push({ memberId: member.id, name: member.name, reason: answer.reason === 'asked-recently' ? 'asked in the last 24 hours' : (answer.reason ?? 'not asked') });
+    }
+    return { asked, skipped };
+  }
+
+  // ── a member's memory moves with it (D107 follow-up 2026-10-15) ────────
+
+  /**
+   * Team's move seam: the member now runs on `move.machineId`; its member-scoped entries (every
+   * state: approved ones stay approved, proposals stay in review, rejections keep blocking) are
+   * copied there (`POST /api/memory/import` through the peer API) and, once the other machine took
+   * them, deleted here. When it cannot take them (offline, Project memory off there, an older
+   * build), they stay here and the error is reported; a later move back finds them again.
+   */
+  async memberMoved(move: MemoryMemberMove): Promise<void> {
+    if (!this.#enabled || !this.#db || !this.#o.peers) return;
+    const entries = this.#db.list({ scopeKind: 'member', scopeKey: move.memberId });
+    if (entries.length === 0) return;
+    const answer = await this.#o.peers.forward(move.machineId, 'POST', '/api/memory/import', { sessionId: move.sessionId, memberId: move.memberId, entries });
+    if (answer.status < 200 || answer.status >= 300) {
+      this.#onError(new Error(`a moved member's memory stayed here: the other machine answered HTTP ${answer.status}`));
+      return;
+    }
+    const folders = new Set(entries.map((entry) => entry.scope));
+    for (const entry of entries) this.#db.delete(entry.id);
+    for (const folder of folders) {
+      await this.#syncInbox(folder);
+      await this.#approvedChanged(folder);
+    }
+  }
+
+  /**
+   * `POST /api/memory/import` `{ sessionId, memberId, entries }` (a paired machine, after a member
+   * moved here): the member's entries, kept exactly as they were (ids, texts, states, decisions),
+   * now belonging to the member's session's folder on this machine. Only member-scoped entries of
+   * that member are taken; an id already here is replaced.
+   */
+  async importMember(body: unknown): Promise<{ readonly imported: number }> {
+    const db = this.#need();
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const sessionId = typeof raw['sessionId'] === 'string' ? raw['sessionId'] : '';
+    const memberId = typeof raw['memberId'] === 'string' ? raw['memberId'] : '';
+    const session = sessionId ? await this.#o.store.sessions.get(sessionId) : null;
+    const folder = session ? MemoryService.scopeOf(session) : null;
+    if (!session || folder === null || memberId === '') throw new MemoryError(422, 'invalid', 'sessionId (a session with a folder on this machine) and memberId are required', 'sessionId');
+    const list = Array.isArray(raw['entries']) ? (raw['entries'] as unknown[]) : [];
+    let imported = 0;
+    for (const item of list) {
+      const entry = item as MemoryEntry;
+      if (!entry || typeof entry !== 'object' || entry.scopeKind !== 'member' || entry.scopeKey !== memberId || typeof entry.id !== 'string') continue;
+      const input = readMemoryInput(entry, ['title', 'text']);
+      if (!input.ok || !['proposed', 'approved', 'rejected'].includes(entry.status)) continue;
+      db.delete(entry.id);
+      db.insert({ ...entry, scope: folder, title: input.value.title as string, text: input.value.text as string, tags: input.value.tags ?? [], authorKind: entry.authorKind === 'developer' ? 'developer' : 'agent', decidedBy: entry.decidedBy === 'developer' ? 'developer' : null });
+      imported += 1;
+    }
+    await this.#syncInbox(folder);
+    await this.#approvedChanged(folder);
+    return { imported };
   }
 
   // ── after a change ──────────────────────────────────────────────────────

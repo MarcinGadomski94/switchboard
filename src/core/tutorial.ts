@@ -922,6 +922,33 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // Project memory (D107) hook: the scopes follow-up's tour (docs/memory-removal.md).
+  {
+    id: 'memory-scopes',
+    decision: 'D107',
+    version: V1_22,
+    title: 'Memory for a member, a repo or the folder',
+    steps: [
+      {
+        id: 'scopes',
+        title: 'Who an entry is for',
+        what: "Every memory entry now has a scope: one Team member, the sessions working in one repository, or everyone in the folder (Workspace; every entry you had). A member's session gets its own entries first, then its repositories', then the folder's, each with its share of the block, so a member's knowledge is never pushed out by the rest. Agents suggest the narrowest scope; you confirm or change it when you approve.",
+        todo: ['Pick a scope in the filter to see only those entries.', 'In the review queue, check the scope each proposal suggests and change it before Approve if it is wrong.'],
+        anchors: ['memory-kind', 'memory-queue'],
+        route: { view: 'memory' },
+        missing: 'Switch Project memory on in Settings → Experimental, then open Memory in the sidebar. ',
+      },
+      {
+        id: 'draft',
+        title: 'Draft memory from a session',
+        what: "A session's ⋯ menu (and a member's) has Draft memory from this session: its own agent reviews its history and proposes its durable facts. Draft memory for all members asks every Team member at once. Nothing is applied: the proposals wait for you here.",
+        todo: ['Press Draft memory for all members (with Team on), or a session\'s ⋯ → Draft memory from this session.', 'Review the proposals here when they arrive.'],
+        anchors: ['memory-draft-all', 'memory-queue'],
+        route: { view: 'memory' },
+        missing: "Use a session's ⋯ menu in the sidebar → Draft memory from this session; with Team on, Draft memory for all members sits on this page and in the Team page's header. ",
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

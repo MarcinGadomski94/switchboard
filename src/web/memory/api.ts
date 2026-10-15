@@ -1,4 +1,4 @@
-import type { MemoryEntry, MemoryScope, MemorySettings, MemoryState } from '../../core/memory.ts';
+import type { MemoryDraftAllAnswer, MemoryDraftAnswer, MemoryEntry, MemoryScope, MemoryScopeKind, MemoryScopeOption, MemorySessionCount, MemorySettings, MemoryState } from '../../core/memory.ts';
 import { ApiError } from '../api/client.ts';
 
 /**
@@ -47,6 +47,10 @@ export interface MemoryFields {
   readonly text?: string;
   readonly tags?: readonly string[];
   readonly pinned?: boolean;
+  /** D107 follow-up 2026-10-15: who it is for (left out: unchanged; workspace for a new entry). */
+  readonly scopeKind?: MemoryScopeKind;
+  /** The repository's key or the member id (`repo` / `member`). */
+  readonly scopeKey?: string | null;
 }
 
 /** The calls on one machine: `null` = this one, else a paired machine's id (through the proxy). */
@@ -62,6 +66,10 @@ export function memoryApi(machineId: string | null) {
     approve: (id: string, fields: MemoryFields = {}) => call<MemoryEntry>('POST', `${entry(id)}/approve`, fields),
     reject: (id: string) => call<MemoryEntry>('POST', `${entry(id)}/reject`, {}),
     remove: (id: string) => call<null>('DELETE', entry(id)),
+    scopeOptions: (scope: string, entryId?: string) => call<MemoryScopeOption[]>('GET', `${base}/scope-options?scope=${encodeURIComponent(scope)}${entryId ? `&entry=${encodeURIComponent(entryId)}` : ''}`),
+    sessionCount: (sessionId: string) => call<MemorySessionCount>('GET', `${base}/sessions/${encodeURIComponent(sessionId)}`),
+    draft: (target: { readonly sessionId: string } | { readonly memberId: string }) => call<MemoryDraftAnswer>('POST', `${base}/draft`, target),
+    draftAll: (teamId?: string) => call<MemoryDraftAllAnswer>('POST', `${base}/draft-all`, teamId ? { teamId } : {}),
     settings: () => call<MemorySettings>('GET', `${base}/settings`),
     setSettings: (cap: number) => call<MemorySettings>('PUT', `${base}/settings`, { cap }),
   };

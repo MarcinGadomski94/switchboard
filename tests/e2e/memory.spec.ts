@@ -169,3 +169,80 @@ test('the switch, an agent proposal → Inbox → Review → Edit… → Approve
   await expect(page.getByTestId('memory-page')).toBeVisible();
   await expect(page.getByTestId('memory-approved').getByTestId('memory-entry')).toHaveCount(2);
 });
+
+/**
+ * D107 follow-up 2026-10-15 (scopes): a Team member's ⋯ → Draft memory from this session sends its
+ * session the ask (a second one is ignored for 24 hours); its agent's proposals come in with the
+ * member scope suggested; the developer approves one as it is and changes the other to the repo;
+ * then a new non-member session in the same repo gets the repo entry and never the member's.
+ */
+test('draft ask → proposals → approve with scope → only the right session gets it', async ({ page }) => {
+  // Project memory is on from the test above; Team goes on here.
+  await page.goto(`${world.baseUrl}/memory`);
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'experimental.team': true }) });
+  });
+  const builder = await world.startSession(page, 'mem-builder', 'Reply with just OK.');
+  await settled(page, 3);
+  const adopted = await page.evaluate(async (sessionId) => {
+    const response = await fetch('/api/team/members', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, name: 'Builder' }) });
+    return { status: response.status, body: (await response.json()) as { id: string } };
+  }, builder.id);
+  expect(adopted.status).toBe(201);
+
+  // The member's ⋯ → Draft memory from this session.
+  await page.goto(`${world.baseUrl}/team`);
+  const card = page.getByTestId('team-card').filter({ hasText: 'Builder' });
+  await card.getByTestId('team-card-menu').click();
+  await page.getByTestId('team-menu-draft-memory').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Asked Builder to draft project memory' })).toBeVisible();
+  await expect
+    .poll(async () => page.evaluate(async (id) => JSON.stringify(await (await fetch(`/api/sessions/${id}/events`)).json()), builder.id), { timeout: 15_000 })
+    .toContain('Switchboard asks you to draft project memory from this session.');
+  // A second ask within 24 hours is ignored.
+  await card.getByTestId('team-card-menu').click();
+  await page.getByTestId('team-menu-draft-memory').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'in the last 24 hours' })).toBeVisible();
+  await page.screenshot({ path: path.join('test-results', 'memory-draft-ask.png') });
+
+  // Its agent proposes (no scope given: a member's default is member).
+  expect(await agentPropose(builder.id, { title: 'Builder release steps', text: 'MEMBER-ONLY: tag, then publish.' })).toBe(201);
+  expect(await agentPropose(builder.id, { title: 'Acme app lint command', text: 'REPO-WIDE: npm run lint in acme-app-front.' })).toBe(201);
+
+  await page.goto(`${world.baseUrl}/memory`);
+  const queue = page.getByTestId('memory-queue');
+  await expect(queue.getByTestId('memory-proposal')).toHaveCount(2);
+  const release = queue.getByTestId('memory-proposal').filter({ hasText: 'Builder release steps' });
+  const lint = queue.getByTestId('memory-proposal').filter({ hasText: 'Acme app lint command' });
+  await expect(release.getByTestId('memory-proposal-scope').locator('option:checked')).toHaveText('Member · Builder');
+  // The developer changes the lint entry to the repository, then approves both.
+  await expect(lint.getByTestId('memory-proposal-scope').locator('option[data-kind="repo"]')).toHaveCount(1);
+  const repoValue = await lint.getByTestId('memory-proposal-scope').locator('option[data-kind="repo"]').getAttribute('value');
+  await lint.getByTestId('memory-proposal-scope').selectOption(repoValue ?? '');
+  await page.screenshot({ path: path.join('test-results', 'memory-scope-select.png') });
+  await lint.getByTestId('memory-approve').click();
+  await release.getByTestId('memory-approve').click();
+  await expect(queue.getByTestId('memory-proposal')).toHaveCount(0);
+  const approved = page.getByTestId('memory-approved').getByTestId('memory-entry');
+  await expect(approved.filter({ hasText: 'Acme app lint command' }).getByTestId('memory-entry-scope')).toHaveText(/acme-app-front/);
+  await expect(approved.filter({ hasText: 'Builder release steps' }).getByTestId('memory-entry-scope')).toHaveText(/Builder/);
+  // The scope filter.
+  await page.getByTestId('memory-kind').selectOption('member');
+  await expect(approved).toHaveCount(1);
+  await expect(approved.getByTestId('memory-entry-title')).toHaveText('Builder release steps');
+  await page.getByTestId('memory-kind').selectOption('all');
+
+  // The member receives both (and the test above's entries: its agent's proposal defaulted to the repo, the developer's own is the folder's).
+  await expect
+    .poll(async () => page.evaluate(async (id) => (await (await fetch(`/api/memory/sessions/${id}`)).json()) as { member: number; repo: number }, builder.id))
+    .toMatchObject({ member: 1, repo: 2, workspace: 1 });
+  // A new non-member session in the repo gets the repo entries and the folder's, never the member's.
+  const reader = await world.startSession(page, 'mem-repo-reader', 'Reply with just OK.');
+  await expect.poll(async () => (await instructions()).filter((text) => text?.includes('REPO-WIDE')).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+  const latest = (await instructions()).filter((text): text is string => text !== null && text.includes('REPO-WIDE')).at(-1) ?? '';
+  expect(latest).toContain('-- Repository acme-app-front (repo memory) --');
+  expect(latest).not.toContain('MEMBER-ONLY');
+  await page.goto(`${world.baseUrl}/sessions/${reader.id}`);
+  await expect(page.getByTestId('session-memory-link')).toHaveAttribute('title', /member 0 · repo 2 · workspace 1/);
+  await expect(page.getByTestId('session-memory-link')).toHaveText('Memory: 3 entries');
+});

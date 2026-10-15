@@ -38,6 +38,9 @@ import { ReorderStrip } from './ReorderStrip.tsx';
 import { DeleteTeamDialog, NewTeamDialog, TeamTabs, teamTabAt } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
 import { reloadTeam, showTeam, useTeamData } from './useTeamData.ts';
+// Project memory (D107) hook: "Draft memory from this session" (⋯) and "Draft memory for all members" (the header) (docs/memory-removal.md).
+import { DRAFT_ALL_LABEL, DRAFT_MEMORY_LABEL, draftAllText, draftAnswerText, draftMemory, draftMemoryForMembers } from '../memory/draft.ts';
+import { useMemory } from '../memory/store.ts';
 import './team.css';
 
 /** The dialog open on the page (one at a time). */
@@ -163,6 +166,19 @@ export function TeamPage() {
     setAccessFocus(null);
   };
   const toast = (text: string): void => show({ id: `team-${Date.now()}`, title: 'Team', sub: 'now', branch: '', text, sessionId: null });
+  // Project memory (D107) hook: the members' own agents propose memory (nothing is applied; the Memory page reviews it).
+  const memoryOn = useMemory().on;
+  const [draftingMemory, setDraftingMemory] = useState(false);
+  const draftAllMemory = (scope: string): void => {
+    setActionError(null);
+    setDraftingMemory(true);
+    draftMemoryForMembers(scope)
+      .then(
+        (answer) => toast(draftAllText(answer)),
+        (caught: unknown) => setActionError(refusalText(caught)),
+      )
+      .finally(() => setDraftingMemory(false));
+  };
 
   const onAdopted = (member: TeamMember, title: string): void => {
     setOpen(null);
@@ -318,6 +334,14 @@ export function TeamPage() {
       case 'team':
         if (item.teamId) moveToTeam(member, item.teamId);
         return;
+      // Project memory (D107) hook.
+      case 'draft-memory':
+        setActionError(null);
+        void draftMemory({ memberId: member.id }).then(
+          (answer) => toast(draftAnswerText(answer, member.name)),
+          (caught: unknown) => setActionError(refusalText(caught)),
+        );
+        return;
     }
   };
   const openTeam = (id: string): void => navigate({ view: 'team', teamId: id });
@@ -468,6 +492,12 @@ export function TeamPage() {
             <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-charters" data-tour="team-draft-charters" disabled={drafting} onClick={() => draftCharters(ALL_TEAMS)}>
               Draft better charters
             </button>
+            {/* Project memory (D107) hook: every team's members propose memory from their own sessions. */}
+            {memoryOn ? (
+              <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-memory" disabled={draftingMemory} onClick={() => draftAllMemory(ALL_TEAMS)}>
+                {DRAFT_ALL_LABEL}
+              </button>
+            ) : null}
           </div>
         </header>
         {error ? (
@@ -526,6 +556,12 @@ export function TeamPage() {
             {members.length > 0 ? (
               <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-charters" data-tour="team-draft-charters" disabled={drafting} onClick={() => draftCharters(teamId)}>
                 Draft better charters
+              </button>
+            ) : null}
+            {/* Project memory (D107) hook: this team's members propose memory from their own sessions. */}
+            {memoryOn && members.length > 0 ? (
+              <button type="button" className="sb-button sb-team-btn" data-testid="team-draft-memory" data-tour="team-draft-memory" disabled={draftingMemory} onClick={() => draftAllMemory(teamId)}>
+                {DRAFT_ALL_LABEL}
               </button>
             ) : null}
             <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-add" data-tour="team-add" onClick={() => setOpen({ kind: 'add' })}>
@@ -667,7 +703,9 @@ export function TeamPage() {
       ) : null}
 
       {menu && menuMember ? (
-        <MemberMenu items={memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember), { index: ordered.indexOf(menuMember), count: ordered.length, vertical: phone }, teams)} at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
+        <MemberMenu
+          items={withMemoryDraft(memberMenu(menuMember, peerMachines, selfId, placeOf(menuMember), { index: ordered.indexOf(menuMember), count: ordered.length, vertical: phone }, teams), memoryOn, menuMember.status === 'offline')}
+          at={menu.at} onPick={(item) => pickMenu(menuMember, item)} onClose={() => setMenu(null)} />
       ) : null}
       {open?.kind === 'add' ? (
         <AddMemberDialog
@@ -822,4 +860,13 @@ function TeamTitle({ teamId, name, onRenamed }: { readonly teamId: string; reado
       ) : null}
     </>
   );
+}
+
+/** Project memory (D107) hook: "Draft memory from this session" after Redraft charter in a member's ⋯ (only while Project memory is on). */
+function withMemoryDraft(items: MenuItem[], on: boolean, offline: boolean): MenuItem[] {
+  if (!on) return items;
+  const at = items.findIndex((item) => item.id === 'redraft');
+  const out = [...items];
+  out.splice(at >= 0 ? at + 1 : out.length, 0, { id: 'draft-memory', label: DRAFT_MEMORY_LABEL, disabled: offline });
+  return out;
 }

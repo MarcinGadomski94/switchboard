@@ -311,3 +311,41 @@
     flex: 1;
   }
 }
+
+/* D107 follow-up 2026-10-15: scopes (the chip, the selector) and the draft notice. */
+.sb-mem-scope {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  border: 1px solid var(--sb-border, rgba(127, 127, 127, 0.35));
+  color: var(--sb-text-dim, inherit);
+}
+.sb-mem-scope--member {
+  border-color: rgba(139, 92, 246, 0.55);
+  color: rgb(167, 139, 250);
+}
+.sb-mem-scope--repo {
+  border-color: rgba(59, 130, 246, 0.55);
+  color: rgb(96, 165, 250);
+}
+.sb-mem-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.sb-mem-scope-select {
+  max-width: 100%;
+}
+.sb-mem-notice {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(139, 92, 246, 0.12);
+}

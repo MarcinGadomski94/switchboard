@@ -86,7 +86,7 @@ export function RightPanel({
       {/* D106: a chat is no plan source. */}
       {isChat(session) ? null : <SessionPlanTab sessionId={sessionId} />}
       {/* Project memory (D107) hook: its folder's approved entries, only while Project memory is on (nothing otherwise; never a chat). */}
-      {isChat(session) ? null : <SessionMemoryLine folderPath={session?.folderPath} remote={Boolean(session?.machine)} />}
+      {isChat(session) ? null : <SessionMemoryLine sessionId={sessionId} folderPath={session?.folderPath} remote={Boolean(session?.machine)} />}
       {session && panel && capped ? (
         <>
           <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />

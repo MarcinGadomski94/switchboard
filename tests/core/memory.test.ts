@@ -4,8 +4,13 @@ import {
   MEMORY_BLOCK_START,
   MEMORY_OVERFLOW_TITLES,
   type MemoryEntry,
+  type MemoryReach,
+  defaultProposalScope,
   memoryBlock,
   memoryBlockParts,
+  memoryBudgets,
+  memoryEntryText,
+  memoryVisible,
   memoryCountText,
   memoryProposalsTitle,
   nearDuplicateTitle,
@@ -36,6 +41,9 @@ function entry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
     decidedBy: 'developer',
     proposedTitle: null,
     proposedText: null,
+    scopeKind: 'workspace',
+    scopeKey: null,
+    scopeLabel: null,
     ...overrides,
   };
 }
@@ -108,5 +116,94 @@ describe('D107 · inputs, duplicates, texts', () => {
     expect(memoryProposalsTitle(1, 'Acme app')).toBe('1 memory proposal for Acme app');
     expect(memoryCountText(1)).toBe('Memory: 1 entry');
     expect(memoryCountText(4)).toBe('Memory: 4 entries');
+  });
+});
+
+/** D107 follow-up 2026-10-15 · scopes: order, budgets with spill-over both ways, the overflow line. */
+describe('D107 follow-up · scoped blocks', () => {
+  const REPO = { key: 'github.com/acme/app', label: 'app' };
+  const MEMBER: MemoryReach = { memberId: 'm1', memberLabel: 'Builder', repos: [REPO] };
+  const PLAIN: MemoryReach = { memberId: null, memberLabel: null, repos: [REPO] };
+
+  /** An approved entry whose block text is exactly `size` characters. */
+  function sized(kind: 'member' | 'repo' | 'workspace', size: number, title: string, overrides: Partial<MemoryEntry> = {}): MemoryEntry {
+    const base = entry({ title, text: '', scopeKind: kind, scopeKey: kind === 'member' ? 'm1' : kind === 'repo' ? REPO.key : null, scopeLabel: kind === 'member' ? 'Builder' : kind === 'repo' ? 'app' : null, ...overrides });
+    const pad = size - memoryEntryText({ ...base, text: '' }).length;
+    return { ...base, text: 'y'.repeat(pad) };
+  }
+
+  it('budgets: 50 / 30 / 20 for a member; without one the member share goes to repo and workspace (3 : 2)', () => {
+    expect(memoryBudgets(4000, true)).toEqual({ member: 2000, repo: 1200, workspace: 800 });
+    expect(memoryBudgets(4000, false)).toEqual({ member: 0, repo: 2400, workspace: 1600 });
+  });
+
+  it('visibility and the default proposal scope', () => {
+    expect(memoryVisible({ scope: '/w', scopeKind: 'workspace', scopeKey: null }, '/w', PLAIN)).toBe(true);
+    expect(memoryVisible({ scope: '/other', scopeKind: 'workspace', scopeKey: null }, '/w', PLAIN)).toBe(false);
+    expect(memoryVisible({ scope: '/other', scopeKind: 'repo', scopeKey: REPO.key }, '/w', PLAIN)).toBe(true);
+    expect(memoryVisible({ scope: '/w', scopeKind: 'member', scopeKey: 'm1' }, '/w', PLAIN)).toBe(false);
+    expect(memoryVisible({ scope: '/other', scopeKind: 'member', scopeKey: 'm1' }, '/w', MEMBER)).toBe(true);
+    expect(defaultProposalScope(MEMBER)).toBe('member');
+    expect(defaultProposalScope(PLAIN)).toBe('repo');
+    expect(defaultProposalScope({ ...PLAIN, repos: [REPO, { key: 'k2', label: 'other' }] })).toBe('workspace');
+    expect(defaultProposalScope({ ...PLAIN, repos: [] })).toBe('workspace');
+  });
+
+  it('member first, then repo, then workspace; within each pinned first, then newest', () => {
+    const ws = sized('workspace', 50, 'Workspace new');
+    const repo = sized('repo', 50, 'Repo fact');
+    const memberOld = sized('member', 50, 'Member old');
+    const memberPinned = sized('member', 50, 'Member pinned', { pinned: true, updatedAt: '2026-01-01T00:00:00.000Z', decidedAt: '2026-01-01T00:00:00.000Z' });
+    const parts = memoryBlockParts([ws, repo, memberOld, memberPinned], 4000, 'Acme', MEMBER) as NonNullable<ReturnType<typeof memoryBlockParts>>;
+    expect(parts.included).toEqual([memberPinned.id, memberOld.id, repo.id, ws.id]);
+    expect(parts.counts).toEqual({ member: 2, repo: 1, workspace: 1 });
+    const lines = parts.text.split('\n').filter((line) => line.startsWith('-- '));
+    expect(lines).toEqual(['-- For you, Builder (member memory) --', '-- Repository app (repo memory) --', '-- Everyone in Acme (workspace memory) --']);
+  });
+
+  it('unused budget passes on: a small member share leaves room for a big repo entry', () => {
+    // cap 1000 → member 500, repo 300, workspace 200.
+    const member = sized('member', 200, 'Small member fact');
+    const repo = sized('repo', 500, 'Big repo fact');
+    const ws = sized('workspace', 200, 'Workspace fact');
+    const parts = memoryBlockParts([member, repo, ws], 1000, 'Acme', MEMBER) as NonNullable<ReturnType<typeof memoryBlockParts>>;
+    // member 200 (300 left over) → repo 300 + 300 = 600 takes 501 → workspace 200 + 99 = 299 takes 201.
+    expect(parts.included).toEqual([member.id, repo.id, ws.id]);
+    expect(parts.overflow).toEqual([]);
+  });
+
+  it('and back down: room left by later scopes goes to the member scope that stopped early; the rest are named', () => {
+    // cap 1000 → member 500: the first 300 fits, the second (301) does not; repo and workspace leave room.
+    const m1 = sized('member', 300, 'Member one', { pinned: true });
+    const m2 = sized('member', 300, 'Member two');
+    const m3 = sized('member', 300, 'Member three', { updatedAt: '2026-01-01T00:00:00.000Z', decidedAt: '2026-01-01T00:00:00.000Z' });
+    const ws = sized('workspace', 100, 'Workspace fact');
+    const parts = memoryBlockParts([m1, m2, m3, ws], 1000, 'Acme', MEMBER) as NonNullable<ReturnType<typeof memoryBlockParts>>;
+    // Pass 1: member 300; repo none; workspace 101. Pass 2: 599 left → member two (301) fits, member three (301) does not.
+    expect(parts.included).toEqual([m1.id, m2.id, ws.id]);
+    expect(parts.overflow).toEqual([m3.id]);
+    expect(parts.counts).toEqual({ member: 2, repo: 0, workspace: 1 });
+    expect(parts.text).toContain('1 more approved entry, not shown to save space: "Member three". Read them with the switchboard memory_list tool when they matter.');
+    // The text kept within the cap (headings and head lines are not counted).
+    const body = parts.text.split('\n').filter((line) => line.startsWith('- ') || line.startsWith('  ')).join('\n');
+    expect(body.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("a non-member session never sees member entries; its member share went to repo and workspace", () => {
+    const member = sized('member', 100, 'Someone else');
+    const repo = sized('repo', 550, 'Repo fact');
+    const ws = sized('workspace', 350, 'Workspace fact');
+    // cap 1000 without a member → repo 600, workspace 400: both fit.
+    const parts = memoryBlockParts([member, repo, ws], 1000, 'Acme', PLAIN) as NonNullable<ReturnType<typeof memoryBlockParts>>;
+    expect(parts.included).toEqual([repo.id, ws.id]);
+    expect(parts.text).not.toContain('Someone else');
+  });
+
+  it('a workspace-only block reads exactly as before scopes', () => {
+    const a = entry({ title: 'Kept' });
+    const b = entry({ title: 'Also kept' });
+    expect(memoryBlock([a, b], 4000, 'Acme', PLAIN)).toBe(memoryBlock([a, b], 4000, 'Acme'));
+    expect(memoryBlock([a, b], 4000, 'Acme') as string).not.toContain('-- ');
+    expect((memoryBlock([a, b], 4000, 'Acme') as string).split('\n')[1]).toMatch(/^Folder: Acme\. Durable facts and conventions about this project/);
   });
 });

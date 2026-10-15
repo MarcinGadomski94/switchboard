@@ -48,6 +48,9 @@ import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folder
 import { LONG_PRESS_MS, type Press, dropOverAt, pressHeld, pressMove, pressStart } from './touch-drag.ts';
 import { useCoarsePointer } from './useLayout.ts';
 import { useSectionCollapsed } from './useToolsCollapsed.ts';
+// Project memory (D107) hook: the ⋯ menu's "Draft memory from this session" (docs/memory-removal.md).
+import { DRAFT_MEMORY_LABEL, draftAnswerText, draftMemory, offersMemoryDraft } from '../memory/draft.ts';
+import { useMemory } from '../memory/store.ts';
 import './sidebar-layout.css';
 
 /** D106: the id of the SESSIONS list (its header's toggle controls it). */
@@ -356,6 +359,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const { layout, run, error } = useSidebarLayout();
   const { navigate } = useRouter();
   const { show: showToast } = useToasts();
+  // Project memory (D107) hook: the draft ask is offered only while Project memory is on.
+  const memoryOn = useMemory().on;
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -693,6 +698,22 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         disabled: session.instructionPending === true,
         ...(session.instructionPending === true ? { title: RELOAD_PENDING_TITLE } : {}),
         run: () => reloadInstruction(session),
+      });
+    }
+    // Project memory (D107) hook (follow-up 2026-10-15): its own agent proposes its durable facts; nothing is applied (docs/memory.md).
+    if (memoryOn && offersMemoryDraft(session)) {
+      const name = session.displayTitle ?? session.title ?? session.name;
+      items.push({
+        label: DRAFT_MEMORY_LABEL,
+        testId: 'sidebar-menu-draft-memory',
+        run: () => {
+          setMenu(null);
+          draftMemory({ sessionId: session.id }).then(
+            (answer) => showToast({ id: `draft-memory-${session.id}`, title: answer.asked ? 'Drafting project memory' : 'Not asked', sub: name, branch: '', text: draftAnswerText(answer, name), sessionId: null }),
+            (error: unknown) =>
+              showToast({ id: `draft-memory-${session.id}`, title: 'Could not ask for memory', sub: name, branch: '', text: error instanceof ApiError ? refusalText(error.status, error.body) : refusalText(0, null), sessionId: null }),
+          );
+        },
       });
     }
     // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.

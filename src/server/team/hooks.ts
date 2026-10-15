@@ -28,6 +28,22 @@ export interface TeamHooks {
   accessEnv?(sessionId: string): Promise<AccessEnv>;
   /** D100-T2: the masking pass of a session's recorded output (identity for a non-member). */
   mask?(sessionId: string): (text: string) => string;
+  /** Project memory (D107) hook (follow-up 2026-10-15): the member a session of this machine is, `null` otherwise. */
+  memberOf?(sessionId: string): TeamMemberRef | null;
+  /** Project memory (D107) hook: every member (every team), where it runs. */
+  memberList?(): readonly TeamMemberRef[];
+}
+
+/** Project memory (D107) hook: a member as Project memory sees it (its member scope, "Draft memory for all members"). */
+export interface TeamMemberRef {
+  readonly id: string;
+  readonly name: string;
+  readonly teamId: string;
+  readonly sessionId: string;
+  readonly machineId: string;
+  /** It runs on this machine. */
+  readonly here: boolean;
+  readonly paused: boolean;
 }
 
 /** The access launcher (`src/hook/sb-access-mcp.ts`), next to the `switchboard` helper. */
@@ -84,6 +100,24 @@ export function labelSearchAnswer(store: object, answer: SearchAnswer): SearchAn
  */
 export async function teamSessionModelChanged(store: object, sessionId: string, model: string | null, effort: string | null): Promise<void> {
   await registry.get(store)?.sessionModelChanged?.(sessionId, model, effort).catch(() => undefined);
+}
+
+/** Project memory (D107) hook: the member a session of this machine is (`null`: none, or Team off / absent). */
+export function teamMemberOf(store: object, sessionId: string): TeamMemberRef | null {
+  try {
+    return registry.get(store)?.memberOf?.(sessionId) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Project memory (D107) hook: every member (empty while Team is off or absent). */
+export function teamMemberList(store: object): readonly TeamMemberRef[] {
+  try {
+    return registry.get(store)?.memberList?.() ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /** Settings seam: the Team switch changed. */

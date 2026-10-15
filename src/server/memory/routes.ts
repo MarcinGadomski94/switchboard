@@ -34,7 +34,13 @@ async function answer<T>(reply: FastifyReply, work: () => T | Promise<T>, status
  * - `PUT /api/memory/entries/{id}` `{ title?, text?, tags?, pinned? }`; `DELETE /api/memory/entries/{id}` → 204;
  * - `POST /api/memory/entries/{id}/approve` `{ title?, text?, tags?, pinned? }` (the edit is what is approved);
  *   `POST /api/memory/entries/{id}/reject`;
- * - `GET|PUT /api/memory/settings` `{ cap }`.
+ * - `GET|PUT /api/memory/settings` `{ cap }`;
+ * - D107 follow-up 2026-10-15 (scopes): `GET /api/memory/entries?kind=member|repo|workspace`;
+ *   `GET /api/memory/scope-options?scope=&entry=` → `MemoryScopeOption[]`; `scopeKind` / `scopeKey`
+ *   on add, edit and approve; `GET /api/memory/sessions/{id}` → `MemorySessionCount`;
+ *   `POST /api/memory/draft` `{ sessionId } | { memberId }` → `MemoryDraftAnswer`;
+ *   `POST /api/memory/draft-all` `{ teamId? }` → `MemoryDraftAllAnswer`;
+ *   `POST /api/memory/import` `{ sessionId, memberId, entries }` (a paired machine, after a member moved here).
  *
  * The agent's (the `memory_*` MCP tools), only with the session's agent token, for that session's
  * folder: `GET /agent/v1/memory` (approved entries; also the helper's probe), `POST /agent/v1/memory`
@@ -46,9 +52,16 @@ async function answer<T>(reply: FastifyReply, work: () => T | Promise<T>, status
 export async function registerMemoryRoutes(app: FastifyInstance, memory: MemoryService): Promise<void> {
   app.get('/api/memory/state', async () => memory.state());
   app.get('/api/memory/scopes', async (_request, reply) => answer(reply, () => memory.scopes()));
-  app.get<{ Querystring: { scope?: string; status?: string } }>('/api/memory/entries', async (request, reply) =>
-    answer(reply, () => memory.entries({ ...(request.query.scope ? { scope: request.query.scope } : {}), ...(request.query.status ? { status: request.query.status } : {}) })),
+  app.get<{ Querystring: { scope?: string; status?: string; kind?: string } }>('/api/memory/entries', async (request, reply) =>
+    answer(reply, () =>
+      memory.entries({ ...(request.query.scope ? { scope: request.query.scope } : {}), ...(request.query.status ? { status: request.query.status } : {}), ...(request.query.kind ? { kind: request.query.kind } : {}) }),
+    ),
   );
+  app.get<{ Querystring: { scope?: string; entry?: string } }>('/api/memory/scope-options', async (request, reply) => answer(reply, () => memory.scopeOptions(request.query.scope ?? '', request.query.entry || undefined)));
+  app.get<{ Params: { id: string } }>('/api/memory/sessions/:id', async (request, reply) => answer(reply, () => memory.sessionCount(request.params.id)));
+  app.post('/api/memory/draft', async (request, reply) => answer(reply, () => memory.draft(request.body)));
+  app.post('/api/memory/draft-all', async (request, reply) => answer(reply, () => memory.draftAll(request.body)));
+  app.post('/api/memory/import', async (request, reply) => answer(reply, () => memory.importMember(request.body)));
   app.post('/api/memory/entries', async (request, reply) => answer(reply, () => memory.add(request.body), 201));
   app.put<{ Params: { id: string } }>('/api/memory/entries/:id', async (request, reply) => answer(reply, () => memory.update(request.params.id, request.body)));
   app.delete<{ Params: { id: string } }>('/api/memory/entries/:id', async (request, reply) => answer(reply, () => memory.delete(request.params.id), 204));

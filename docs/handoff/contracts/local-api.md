@@ -1889,6 +1889,39 @@ GET /api/memory/entries (Project memory off)
 → 404 { "error": "memory-off", "message": "Project memory is off: switch it on in Settings → Experimental" }
 ```
 
+### Scopes and draft asks (D107 follow-up, 2026-10-15, additive)
+Decision: `docs/decisions.md` → *D107 follow-up · scopes*; details `docs/memory.md` → *Scopes*, *Draft memory from a session*. New types in `src/core/memory.ts`: `MemoryScopeKind` (`member` \| `repo` \| `workspace`), `MemoryScopeOption` `{ kind, key, label }`, `MemorySessionCount`, `MemoryDraftAnswer`, `MemoryDraftAllAnswer`. `memory.db` migration 2 (`memory_scopes`); migration 1 is unchanged.
+
+- **`MemoryEntry`** gains `scopeKind`, `scopeKey` (`repo`: the repository's normalized remote key, else its main checkout's path; `member`: the member id; `null` for `workspace`) and `scopeLabel` (the repository's name / the role name). Entries made before are `workspace` (`scope` keeps meaning the folder). A reader that ignores the new fields sees what it saw before. **`MemoryState`** gains `members` (Team members, 0 while Team is off).
+- **Visibility:** a session sees its folder's `workspace` entries, the `repo` entries of the repositories it works in (any folder; a linked worktree is its repository) and its member's `member` entries (any folder).
+
+| Method | Path | Query / body | Answers |
+|---|---|---|---|
+| GET | /api/memory/entries | `?kind=member\|repo\|workspace` (additive filter) | as before |
+| GET | /api/memory/scope-options | `?scope=<folder>` `&entry=<id>` (optional) | 200 `MemoryScopeOption[]`: Workspace, the repositories of the proposing session, of the folder's open sessions and of the folder's repo entries, the Team members |
+| POST · PUT | /api/memory/entries, /api/memory/entries/{id}, …/approve | additive `{ scopeKind?, scopeKey? }` (a repo or member scope must be one of the options) | as before · 422 `invalid` (`field`: `scopeKind` / `scopeKey`) |
+| GET | /api/memory/sessions/{id} | | 200 `MemorySessionCount` `{ count, member, repo, workspace, overflow, proposed, folder }` (what the session receives) · 404 |
+| POST | /api/memory/draft | `{ sessionId }` or `{ memberId }` | 200 `MemoryDraftAnswer` `{ asked, reason, askedAt }` (`reason`: `asked-recently` within 24 h, `no-folder`, `closed`, `not-sent: …`, or the paired machine's) · 404 · 422 |
+| POST | /api/memory/draft-all | `{ teamId? }` (none or `all`: every team) | 200 `MemoryDraftAllAnswer` `{ asked: [{ memberId, name }], skipped: [{ memberId, name, reason }] }` |
+| POST | /api/memory/import | `{ sessionId, memberId, entries: MemoryEntry[] }` (a paired machine, after a member moved here) | 200 `{ imported }` · 422 |
+
+- **Agent routes:** `POST /agent/v1/memory` takes `{ title, text, tags?, scope?, repo? }` (`scope`: `member`, `repo` or `workspace`); without `scope`: `member` for a Team member, `repo` when the session works in exactly one repository, else `workspace`; 422 `invalid` for `member` from a non-member, `repo` without a repository, or several repositories and no (known) `repo`. `GET /agent/v1/memory`'s `entries` are the visible ones, member first, then repo, then workspace (each in block order), each with its scope fields.
+- **Injection:** the block is ordered member, repo, workspace (pinned, then newest within each) under separate budgets of the cap (50 / 30 / 20 %; without a member 60 / 40 % for repo / workspace); unused budget passes on and back; the entries that did not fit are named on the overflow line. A block with workspace entries only is as before. The Team charter is not counted against the cap.
+- **Peers (D48):** the new routes are on `PEER_API_ALLOW`. **Devices (D73):** `GET /api/memory/sessions/{id}` and `GET /api/memory/scope-options` are allowed; `POST /api/memory/draft`, `…/draft-all` and `…/import` are refused.
+
+```
+POST /agent/v1/memory { "title": "Builder release steps", "text": "Tag, then publish." }   (a Team member's session)
+→ 201 { "id": "7c0d…", "status": "proposed", "scopeKind": "member", "scopeKey": "m-41f…", "scopeLabel": "Builder", … }
+
+POST /api/memory/entries/7c0d…/approve { "scopeKind": "repo", "scopeKey": "github.com/acme/acme-app" }
+→ 200 { "id": "7c0d…", "status": "approved", "scopeKind": "repo", "scopeKey": "github.com/acme/acme-app", "scopeLabel": "acme-app", … }
+
+POST /api/memory/draft { "memberId": "m-41f…" }
+→ 200 { "asked": true, "reason": null, "askedAt": "2026-10-15T10:00:00.000Z" }
+POST /api/memory/draft { "memberId": "m-41f…" }   (again, the same day)
+→ 200 { "asked": false, "reason": "asked-recently", "askedAt": "2026-10-15T10:00:00.000Z" }
+```
+
 ## Insights (D108, 2026-10-14, additive)
 
 The Insights page in one answer (`docs/insights.md`, `docs/decisions.md` → D108): time and tokens, estimate accuracy, outcomes and rework, cost per todo run, the usage-limit forecast and suggested routing rules, from **this machine's** data. Types in `src/core/insights.ts`: `InsightsAnswer`, `InsightsQuery`, `TimeTokensRow`, `TrendPoint`, `AccuracyDistribution`, `AccuracyGroup`, `OutcomeRow`, `CostSection`, `TodoCost`, `AccountForecast`, `WindowForecast`, `RoutingSuggestion`, `PriceTable`, `ModelPrice`. Migration 0045 (the daily rollup, `todo_actuals`' new columns, `todo_reopens`, an index on `usage_readings`).

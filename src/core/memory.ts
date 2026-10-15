@@ -23,11 +23,29 @@ export const MEMORY_STATUSES: readonly MemoryStatus[] = ['proposed', 'approved',
 /** Who wrote an entry: an agent (it proposed it) or the developer (added by hand: approved at once). */
 export type MemoryAuthorKind = 'agent' | 'developer';
 
+/**
+ * D107 follow-up 2026-10-15 · who an entry is for (`docs/memory.md` → *Scopes*):
+ * - `workspace`: every session of its folder ({@link MemoryEntry.scope}; what every entry was before);
+ * - `repo`: sessions that work in one repository ({@link MemoryEntry.scopeKey}: its normalized remote
+ *   key, else its main checkout's path), wherever they run from: a linked worktree counts as its repo;
+ * - `member`: one Team member (D100) only ({@link MemoryEntry.scopeKey}: the member id).
+ */
+export type MemoryScopeKind = 'member' | 'repo' | 'workspace';
+
+/** In injection order: member first, then repo, then workspace. */
+export const MEMORY_SCOPE_KINDS: readonly MemoryScopeKind[] = ['member', 'repo', 'workspace'];
+
 /** One memory entry (`GET /api/memory/entries`). */
 export interface MemoryEntry {
   readonly id: string;
   /** The folder it belongs to: a session's canonical root (a saved workspace or repo folder, D14 / D18). */
   readonly scope: string;
+  /** Who it is for (D107 follow-up 2026-10-15); entries made before it are `workspace`. */
+  readonly scopeKind: MemoryScopeKind;
+  /** `repo`: the repository's key; `member`: the member id; `null` for `workspace`. */
+  readonly scopeKey: string | null;
+  /** `repo`: the repository's name; `member`: the member's role name (when scoped); `null` for `workspace`. */
+  readonly scopeLabel: string | null;
   readonly title: string;
   readonly text: string;
   readonly tags: readonly string[];
@@ -61,6 +79,63 @@ export interface MemoryScope {
   readonly proposed: number;
 }
 
+/** One scope an entry can be given (`GET /api/memory/scope-options`): the review queue's and the edit form's selector. */
+export interface MemoryScopeOption {
+  readonly kind: MemoryScopeKind;
+  /** `null` for `workspace`. */
+  readonly key: string | null;
+  readonly label: string;
+}
+
+/** A repository a session works in, as Project memory names it. */
+export interface MemoryRepoRef {
+  /** The normalized remote key (`src/core/takeover.ts` `normalizeRemoteUrl`), else the main checkout's path. */
+  readonly key: string;
+  /** The main checkout's folder name. */
+  readonly label: string;
+}
+
+/** What a session can see besides its folder's workspace entries: its member (if any) and its repositories. */
+export interface MemoryReach {
+  readonly memberId: string | null;
+  /** The member's role name. */
+  readonly memberLabel: string | null;
+  readonly repos: readonly MemoryRepoRef[];
+}
+
+/** A session that is no member and works in no repository: workspace entries only (D107 as first built). */
+export const NO_REACH: MemoryReach = { memberId: null, memberLabel: null, repos: [] };
+
+/** `GET /api/memory/sessions/{id}`: what a session receives (the session panel's line and its tooltip). */
+export interface MemorySessionCount {
+  /** Entries in its block. */
+  readonly count: number;
+  readonly member: number;
+  readonly repo: number;
+  readonly workspace: number;
+  /** Visible to it but over the cap (named in the block; `memory_list` reads them). */
+  readonly overflow: number;
+  /** Proposals waiting for review in its folder. */
+  readonly proposed: number;
+  /** Its folder (the Memory page's link), `null` without one. */
+  readonly folder: string | null;
+}
+
+/** `POST /api/memory/draft`'s answer: the session was asked, or why not. */
+export interface MemoryDraftAnswer {
+  readonly asked: boolean;
+  /** `asked-recently` (one ask per session per {@link MEMORY_DRAFT_REPEAT_HOURS} hours), `no-folder`, `closed`, `not-sent`. */
+  readonly reason: string | null;
+  /** When it was asked (this ask or the earlier one). */
+  readonly askedAt: string | null;
+}
+
+/** `POST /api/memory/draft-all`'s answer. */
+export interface MemoryDraftAllAnswer {
+  readonly asked: readonly { readonly memberId: string; readonly name: string }[];
+  readonly skipped: readonly { readonly memberId: string; readonly name: string; readonly reason: string }[];
+}
+
 /** `GET /api/memory/state`: the switch (answered while off too). */
 export interface MemoryState {
   readonly enabled: boolean;
@@ -68,6 +143,8 @@ export interface MemoryState {
   readonly available: boolean;
   /** Why `memory.db` could not be opened (while on), else `null`. */
   readonly problem: string | null;
+  /** D107 follow-up 2026-10-15: Team members (every team; 0 while Team is off): "Draft memory for all members" shows when there are some. */
+  readonly members?: number;
 }
 
 /** `GET|PUT /api/memory/settings`. */
@@ -82,6 +159,14 @@ export interface MemoryChanged {
 }
 
 export const MEMORY_CAP_DEFAULT = 4_000;
+/**
+ * D107 follow-up 2026-10-15: each scope's share of the cap (member, repo, workspace). Unused budget
+ * passes on to the next scope and back to an earlier one that had more; a session that is no
+ * member gives the member share to repo and workspace in the same 3 : 2 proportion.
+ */
+export const MEMORY_SHARES: Readonly<Record<MemoryScopeKind, number>> = { member: 0.5, repo: 0.3, workspace: 0.2 };
+/** "Draft memory from this session": at most one ask per session in this many hours (duplicates are ignored). */
+export const MEMORY_DRAFT_REPEAT_HOURS = 24;
 export const MEMORY_CAP_MIN = 500;
 export const MEMORY_CAP_MAX = 20_000;
 export const MEMORY_TITLE_MAX = 80;
@@ -105,6 +190,11 @@ export interface MemoryInput {
   readonly text?: string;
   readonly tags?: readonly string[];
   readonly pinned?: boolean;
+}
+
+/** A scope kind from a body value (`null` when it is not one). */
+export function readScopeKind(value: unknown): MemoryScopeKind | null {
+  return value === 'member' || value === 'repo' || value === 'workspace' ? value : null;
 }
 
 export type MemoryInputResult = { readonly ok: true; readonly value: MemoryInput } | { readonly ok: false; readonly field: string; readonly message: string };
@@ -222,6 +312,39 @@ export function memoryOrder<T extends Pick<MemoryEntry, 'pinned' | 'decidedAt' |
   });
 }
 
+/** An entry's scope kind (rows without one, e.g. from an older peer, are `workspace`). */
+export function scopeKindOf(entry: Partial<Pick<MemoryEntry, 'scopeKind'>>): MemoryScopeKind {
+  return entry.scopeKind ?? 'workspace';
+}
+
+/**
+ * Whether a session of `folder` with `reach` sees `entry`: a workspace entry of its folder, a repo
+ * entry of one of its repositories (any folder), a member entry of its member (any folder).
+ */
+export function memoryVisible(entry: Pick<MemoryEntry, 'scope'> & Partial<Pick<MemoryEntry, 'scopeKind' | 'scopeKey'>>, folder: string, reach: MemoryReach): boolean {
+  const kind = scopeKindOf(entry);
+  if (kind === 'member') return reach.memberId !== null && entry.scopeKey === reach.memberId;
+  if (kind === 'repo') return reach.repos.some((repo) => repo.key === entry.scopeKey);
+  return entry.scope === folder;
+}
+
+/** Each scope's budget of `cap` characters ({@link MEMORY_SHARES}); without a member the member share goes to repo and workspace. */
+export function memoryBudgets(cap: number, member: boolean): Record<MemoryScopeKind, number> {
+  if (member) {
+    const m = Math.floor(cap * MEMORY_SHARES.member);
+    const r = Math.floor(cap * MEMORY_SHARES.repo);
+    return { member: m, repo: r, workspace: cap - m - r };
+  }
+  const r = Math.floor((cap * MEMORY_SHARES.repo) / (MEMORY_SHARES.repo + MEMORY_SHARES.workspace));
+  return { member: 0, repo: r, workspace: cap - r };
+}
+
+/** The proposal's default scope for a session: `member` for a Team member, `repo` with exactly one repository, else `workspace`. */
+export function defaultProposalScope(reach: MemoryReach): MemoryScopeKind {
+  if (reach.memberId !== null) return 'member';
+  return reach.repos.length === 1 ? 'repo' : 'workspace';
+}
+
 /** One entry as the block shows it. */
 export function memoryEntryText(entry: Pick<MemoryEntry, 'title' | 'text' | 'tags'>): string {
   const tags = entry.tags.length > 0 ? ` [${entry.tags.join(', ')}]` : '';
@@ -232,53 +355,109 @@ export function memoryEntryText(entry: Pick<MemoryEntry, 'title' | 'text' | 'tag
   return `- ${entry.title}${tags}\n${body}`;
 }
 
-/** What {@link memoryBlock} put in and left out. */
+/** What {@link memoryBlockParts} put in and left out. */
 export interface MemoryBlockParts {
   readonly text: string;
   readonly included: readonly string[];
   readonly overflow: readonly string[];
+  /** Entries in the block per scope. */
+  readonly counts: Readonly<Record<MemoryScopeKind, number>>;
 }
 
 /**
  * The block a session of a folder gets next to its standing instruction (`null` without approved
- * entries). Only the entries given are used: the caller passes **approved** entries only (the
- * server reads them with `status = 'approved'`). Pinned first, then newest; entries are added while
- * their text fits in `cap` characters; the first that does not fit and every one after it are named
- * on one line (at most {@link MEMORY_OVERFLOW_TITLES} titles) with a pointer to `memory_list`.
+ * entries it can see). Only the entries given are used: the caller passes **approved** entries only
+ * (the server reads them with `status = 'approved'`); `reach` (D107 follow-up 2026-10-15) picks the
+ * ones the session sees ({@link memoryVisible}; without it every entry counts as the folder's).
+ *
+ * **Order and budgets:** member entries first, then repo, then workspace; within each, pinned first,
+ * then newest. Each scope has its share of `cap` ({@link memoryBudgets}); within a scope entries are
+ * added while they fit (the first that does not fit stops that scope), and what a scope leaves unused
+ * passes on to the next. Whatever is still unused at the end goes back, in the same order, to the
+ * scopes that stopped early. The entries that did not fit are named on one line (at most
+ * {@link MEMORY_OVERFLOW_TITLES} titles) with a pointer to `memory_list`. Only the entries' text
+ * counts against `cap` (the head lines, the scope headings and the Team charter do not).
+ *
+ * A block with workspace entries only reads exactly as before scopes existed.
  */
-export function memoryBlockParts(entries: readonly MemoryEntry[], cap: number, label: string): MemoryBlockParts | null {
-  const approved = entries.filter((entry) => entry.status === 'approved');
+export function memoryBlockParts(entries: readonly MemoryEntry[], cap: number, label: string, reach?: MemoryReach): MemoryBlockParts | null {
+  const approved = entries.filter((entry) => entry.status === 'approved' && (reach === undefined || memoryVisible(entry, entry.scope, reach)));
   if (approved.length === 0) return null;
-  const ordered = memoryOrder(approved);
-  const lines: string[] = [];
+  const effective: MemoryReach = reach ?? NO_REACH;
+  const groups: Record<MemoryScopeKind, MemoryEntry[]> = { member: [], repo: [], workspace: [] };
+  for (const entry of approved) groups[reach === undefined ? 'workspace' : scopeKindOf(entry)].push(entry);
+  for (const kind of MEMORY_SCOPE_KINDS) groups[kind] = memoryOrder(groups[kind]);
+  const budgets = memoryBudgets(cap, effective.memberId !== null);
+  const taken: Record<MemoryScopeKind, number> = { member: 0, repo: 0, workspace: 0 };
+  let lines = 0;
+  const fill = (kind: MemoryScopeKind, allowance: number): number => {
+    let spent = 0;
+    const group = groups[kind];
+    while (taken[kind] < group.length) {
+      const cost = memoryEntryText(group[taken[kind]] as MemoryEntry).length + (lines > 0 ? 1 : 0);
+      if (spent + cost > allowance) break;
+      spent += cost;
+      taken[kind] += 1;
+      lines += 1;
+    }
+    return spent;
+  };
+  // Pass 1: each scope its share plus what the earlier ones left.
+  let carry = 0;
+  for (const kind of MEMORY_SCOPE_KINDS) {
+    const allowance = budgets[kind] + carry;
+    carry = allowance - fill(kind, allowance);
+  }
+  // Pass 2: what is still unused goes back to the scopes that stopped early, in order.
+  for (const kind of MEMORY_SCOPE_KINDS) carry -= fill(kind, carry);
+
   const included: string[] = [];
-  const overflow: string[] = [];
-  let used = 0;
-  for (const entry of ordered) {
-    const text = memoryEntryText(entry);
-    if (overflow.length === 0 && used + text.length + (lines.length > 0 ? 1 : 0) <= cap) {
-      lines.push(text);
-      used += text.length + (lines.length > 1 ? 1 : 0);
-      included.push(entry.id);
-    } else overflow.push(entry.id);
+  const overflowEntries: MemoryEntry[] = [];
+  for (const kind of MEMORY_SCOPE_KINDS) {
+    groups[kind].forEach((entry, index) => (index < taken[kind] ? included.push(entry.id) : overflowEntries.push(entry)));
+  }
+  const workspaceOnly = groups.member.length === 0 && groups.repo.length === 0;
+  const body: string[] = [];
+  if (workspaceOnly) {
+    for (const entry of groups.workspace.slice(0, taken.workspace)) body.push(memoryEntryText(entry));
+  } else {
+    if (taken.member > 0) {
+      body.push(`-- For you, ${effective.memberLabel ?? 'this member'} (member memory) --`);
+      for (const entry of groups.member.slice(0, taken.member)) body.push(memoryEntryText(entry));
+    }
+    if (taken.repo > 0) {
+      const shown = groups.repo.slice(0, taken.repo);
+      const keys = [...new Set(shown.map((entry) => entry.scopeKey))];
+      for (const key of keys) {
+        const repoLabel = effective.repos.find((repo) => repo.key === key)?.label ?? shown.find((entry) => entry.scopeKey === key)?.scopeLabel ?? key ?? 'a repository';
+        body.push(`-- Repository ${repoLabel} (repo memory) --`);
+        for (const entry of shown.filter((candidate) => candidate.scopeKey === key)) body.push(memoryEntryText(entry));
+      }
+    }
+    if (taken.workspace > 0) {
+      body.push(`-- Everyone in ${label} (workspace memory) --`);
+      for (const entry of groups.workspace.slice(0, taken.workspace)) body.push(memoryEntryText(entry));
+    }
   }
   const head = [
     MEMORY_BLOCK_START,
-    `Folder: ${label}. Durable facts and conventions about this project that the developer reviewed and approved. Treat them as project knowledge. To add one, propose it with the switchboard memory_propose tool (the developer reviews every proposal); do not write project memory anywhere else.`,
+    workspaceOnly
+      ? `Folder: ${label}. Durable facts and conventions about this project that the developer reviewed and approved. Treat them as project knowledge. To add one, propose it with the switchboard memory_propose tool (the developer reviews every proposal); do not write project memory anywhere else.`
+      : `Folder: ${label}. Durable facts and conventions that the developer reviewed and approved, grouped by who they are for: your own as a team member first, then the repositories you work in, then everyone in this folder. Treat them as project knowledge. To add one, propose it with the switchboard memory_propose tool, scoped as narrowly as it holds (the developer reviews every proposal); do not write project memory anywhere else.`,
   ];
   const tail: string[] = [];
-  if (overflow.length > 0) {
-    const titles = ordered.filter((entry) => overflow.includes(entry.id)).map((entry) => `"${entry.title}"`);
+  if (overflowEntries.length > 0) {
+    const titles = overflowEntries.map((entry) => `"${entry.title}"`);
     const named = titles.slice(0, MEMORY_OVERFLOW_TITLES).join(', ');
     const more = titles.length > MEMORY_OVERFLOW_TITLES ? ` and ${titles.length - MEMORY_OVERFLOW_TITLES} more` : '';
-    tail.push(`${overflow.length === 1 ? '1 more approved entry' : `${overflow.length} more approved entries`}, not shown to save space: ${named}${more}. Read them with the switchboard memory_list tool when they matter.`);
+    tail.push(`${overflowEntries.length === 1 ? '1 more approved entry' : `${overflowEntries.length} more approved entries`}, not shown to save space: ${named}${more}. Read them with the switchboard memory_list tool when they matter.`);
   }
-  return { text: [...head, ...lines, ...tail, MEMORY_BLOCK_END].join('\n'), included, overflow };
+  return { text: [...head, ...body, ...tail, MEMORY_BLOCK_END].join('\n'), included, overflow: overflowEntries.map((entry) => entry.id), counts: taken };
 }
 
 /** {@link memoryBlockParts}' text, or `null`. */
-export function memoryBlock(entries: readonly MemoryEntry[], cap: number, label: string): string | null {
-  return memoryBlockParts(entries, cap, label)?.text ?? null;
+export function memoryBlock(entries: readonly MemoryEntry[], cap: number, label: string, reach?: MemoryReach): string | null {
+  return memoryBlockParts(entries, cap, label, reach)?.text ?? null;
 }
 
 /** The standing instruction `base` with the block appended (the block alone without one). */
@@ -299,10 +478,44 @@ export function memoryCountText(count: number): string {
   return `Memory: ${count === 1 ? '1 entry' : `${count} entries`}`;
 }
 
-/** `memory_list`'s answer. */
-export function memoryListText(entries: readonly Pick<MemoryEntry, 'title' | 'text' | 'tags'>[], label: string): string {
+/** An entry's scope as a short label: "workspace", "repo app", "member Developer". */
+export function memoryScopeText(entry: Partial<Pick<MemoryEntry, 'scopeKind' | 'scopeLabel'>>): string {
+  const kind = scopeKindOf(entry);
+  if (kind === 'workspace') return 'workspace';
+  return entry.scopeLabel ? `${kind} ${entry.scopeLabel}` : kind;
+}
+
+/** The session panel's tooltip: what the session receives, per scope, and what is over the cap. */
+export function memoryCountTooltip(count: Pick<MemorySessionCount, 'member' | 'repo' | 'workspace' | 'overflow'>): string {
+  const parts = [`member ${count.member}`, `repo ${count.repo}`, `workspace ${count.workspace}`].join(' · ');
+  const over = count.overflow > 0 ? `; ${count.overflow} more over the size cap (named in the block, read with memory_list)` : '';
+  return `In this session's block: ${parts}${over}`;
+}
+
+/** `memory_list`'s answer: each entry labelled with its scope. */
+export function memoryListText(entries: readonly (Pick<MemoryEntry, 'title' | 'text' | 'tags'> & Partial<Pick<MemoryEntry, 'scopeKind' | 'scopeLabel'>>)[], label: string): string {
   if (entries.length === 0) return `No approved project memory for ${label} yet. Propose durable facts with memory_propose.`;
-  return [`Project memory for ${label} (approved by the developer), ${entries.length === 1 ? '1 entry' : `${entries.length} entries`}:`, ...entries.map(memoryEntryText)].join('\n');
+  return [
+    `Project memory for ${label} (approved by the developer) that this session sees, ${entries.length === 1 ? '1 entry' : `${entries.length} entries`}, member first, then repo, then workspace:`,
+    ...entries.map((entry) => `[${memoryScopeText(entry)}] ${memoryEntryText(entry)}`),
+  ].join('\n');
+}
+
+/**
+ * The message "Draft memory from this session" sends (D107 follow-up 2026-10-15): the session's own
+ * agent reviews its history and proposes its durable facts with `memory_propose`. Nothing is applied.
+ */
+export function memoryDraftAskText(role: string | null, reach: MemoryReach): string {
+  const scopeHint =
+    role !== null
+      ? `Use scope "member" (the default for you, ${role}) for what only your own work on your feature needs; "repo" for facts about one repository that any session working in it needs; "workspace" only for facts true for everyone in this folder.`
+      : `Use scope "repo" for facts about one repository${reach.repos.length > 1 ? ' (name it in repo: you work in several)' : ''}; "workspace" only for facts true for everyone in this folder.`;
+  return [
+    'Switchboard asks you to draft project memory from this session.',
+    'Review your own history in this session and pick the durable, reusable facts a future session would need: build and test commands, gotchas, decisions and their reasons, where things live. Not task notes or progress.',
+    `Read memory_list first and skip what is already there. Then call memory_propose once per fact, short, and give each the narrowest scope that holds. ${scopeHint}`,
+    'Nothing is applied: the developer reviews every proposal and may change its scope. Do no other work for this message.',
+  ].join('\n\n');
 }
 
 /** The folder's name for a label: its last path segment. */
@@ -317,13 +530,19 @@ export function folderName(scope: string): string {
 export const MEMORY_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'memory_propose',
-    description: `Propose a project memory entry for this session's folder: a durable, reusable fact or convention about this project that a future session would need, e.g. a build or test command, a gotcha, a decision and its reason, where something lives. Not for task notes, progress or anything only this task needs (use the todo tools for those). Keep it short: one fact per entry, a title of at most ${MEMORY_TITLE_MAX} characters and a text of at most ${MEMORY_TEXT_MAX}. The developer reviews every proposal; it is used only once approved. At most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour; a title close to an existing entry is refused.`,
+    description: `Propose a project memory entry: a durable, reusable fact or convention about this project that a future session would need, e.g. a build or test command, a gotcha, a decision and its reason, where something lives. Not for task notes, progress or anything only this task needs (use the todo tools for those). Keep it short: one fact per entry, a title of at most ${MEMORY_TITLE_MAX} characters and a text of at most ${MEMORY_TEXT_MAX}. Prefer the narrowest scope that holds: "member" (only you, when you are a team member: the default for members), "repo" (sessions working in one repository: the default when you work in exactly one), "workspace" (every session in this folder) only for facts true for everyone in the folder. The developer reviews every proposal and may change its scope; it is used only once approved. At most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour; a title close to an existing entry is refused.`,
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: `One short line naming the fact (at most ${MEMORY_TITLE_MAX} characters), e.g. "Run the tests with the test ports".` },
         text: { type: 'string', description: `The fact itself, plain and brief (at most ${MEMORY_TEXT_MAX} characters): the command, the rule, the location, and why when it is not obvious.` },
         tags: { type: 'array', items: { type: 'string' }, description: `Optional, up to ${MEMORY_TAGS_MAX} short words, e.g. build, tests, gotcha.` },
+        scope: {
+          type: 'string',
+          enum: ['member', 'repo', 'workspace'],
+          description: 'Optional: who it is for. member = only you (team members), repo = sessions working in the repository, workspace = everyone in this folder (only for facts true for everyone). Default: member for a team member, repo when you work in exactly one repository, else workspace.',
+        },
+        repo: { type: 'string', description: 'Optional, with scope "repo" when you work in several repositories: the repository\'s name (its folder name) or remote.' },
       },
       required: ['title', 'text'],
       additionalProperties: false,
@@ -332,7 +551,7 @@ export const MEMORY_TOOLS: readonly TodoToolDefinition[] = [
   },
   {
     name: 'memory_list',
-    description: "List this session's folder's project memory: the entries the developer approved (title, text, tags). Proposals still under review are not listed.",
+    description: "List the project memory this session sees: the entries the developer approved for you as a team member, for the repositories you work in and for everyone in this folder (title, text, tags), each labelled with its scope. Proposals still under review are not listed.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { title: 'List project memory', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },

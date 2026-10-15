@@ -74,7 +74,9 @@ import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
 import { type SecretStore, defaultSecretStore } from './access/secret-store.ts';
 import { TeamDb } from './db.ts';
-import { registerTeamHooks } from './hooks.ts';
+import { type TeamMemberRef, registerTeamHooks } from './hooks.ts';
+// Project memory (D107) hook: a moved member's member-scoped memory goes with it (docs/memory-removal.md).
+import { memoryMemberMoved } from '../memory/hooks.ts';
 import { peerCall } from './peer-call.ts';
 import { computeSuggestions, type TeamSuggestion } from './suggestions.ts';
 
@@ -237,6 +239,12 @@ export class TeamService {
       accessServers: (sessionId) => this.access.serversFor(sessionId),
       accessEnv: (sessionId) => this.access.envFor(sessionId),
       mask: (sessionId) => this.access.maskerFor(sessionId),
+      // Project memory (D107) hook: the member scope (docs/memory-removal.md).
+      memberOf: (sessionId) => {
+        const member = this.memberOfSession(sessionId);
+        return member ? this.#memberRef(member) : null;
+      },
+      memberList: () => (this.#enabled && this.#db ? this.#liveMembers().map((member) => this.#memberRef(member)) : []),
     });
     await this.switchChanged();
   }
@@ -251,6 +259,11 @@ export class TeamService {
     this.#offHooks = null;
     this.#db?.close();
     this.#db = null;
+  }
+
+  /** Project memory (D107) hook: a member as Project memory sees it. */
+  #memberRef(member: TeamMemberRecord): TeamMemberRef {
+    return { id: member.id, name: member.name, teamId: member.teamId, sessionId: member.sessionId, machineId: member.machineId, here: member.machineId === this.#selfId(), paused: member.paused };
   }
 
   /** The stored switch (default off). */
@@ -1962,6 +1975,8 @@ export class TeamService {
       });
       this.#changed(['members', 'activity']);
       await this.syncNow();
+      // Project memory (D107) hook: its member-scoped entries move to the machine it now runs on (docs/memory.md → Scopes).
+      await memoryMemberMoved(this.#o.store, { memberId: run.memberId, machineId: result.machineId, sessionId: newSessionId });
       // The member is told which access needs setting up again (T2 fills the entries; none yet).
       const missing = before.access.filter((entry) => !entry.setUpOn.includes(result.machineId)).map((entry) => entry.name);
       if (missing.length > 0) {

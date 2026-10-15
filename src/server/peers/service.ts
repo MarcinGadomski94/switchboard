@@ -258,8 +258,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
   // Project memory (D107) hook: memory is per machine; a paired machine's is read and reviewed there through the proxy
   // (its folders, entries and size cap; approving reloads that machine's sessions).
-  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings)$/],
+  ['GET', /^\/api\/memory\/(?:state|scopes|entries|settings|scope-options)$/],
   ['POST', /^\/api\/memory\/entries(?:\/[^/]+\/(?:approve|reject))?$/],
+  // D107 follow-up 2026-10-15: what a session there receives; "Draft memory" for a member running there; a moved member's entries arriving.
+  ['GET', /^\/api\/memory\/sessions\/[^/]+$/],
+  ['POST', /^\/api\/memory\/(?:draft|draft-all|import)$/],
   ['PUT', /^\/api\/memory\/(?:entries\/[^/]+|settings)$/],
   ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
 ];
