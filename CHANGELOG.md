@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.0 (2026-10-16)
+
+### Team
+- **Fold the Team page's left column** (Needs you and Activity) into a slim strip with **‹** or the **[** key, giving the member's chat the full width. The strip keeps the needs-you badge (a click opens straight at Needs you), shows a dot for new activity, and pulses once when something new needs you without opening by itself. Your choice is remembered.
+
 ## 1.23.1 (2026-10-16)
 
 ### Fixed
