@@ -63,6 +63,8 @@ import { closeNeedsConfirm } from '../../core/session-close.ts';
 import { CONTINUED_DIVIDER } from '../../core/hooked-continue.ts';
 import { INSTRUCTION_UPDATED_DIVIDER, type InstructionReloadOutcome } from '../../core/standing-instruction.ts';
 import { withSolutions } from '../../core/session-solutions.ts';
+import { TOOLS_UPDATED_DIVIDER } from '../../core/todos.ts';
+import { AgentToolsRegistry } from '../todos/agent-tools.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -344,7 +346,19 @@ export interface SupervisorOptions {
   readonly onProviderUsage?: (sessionId: string, usage: ProviderUsage) => void;
   /** D63: the account profiles: the folder variable each process gets, the profile new sessions start on (`docs/accounts.md`). */
   readonly accounts?: AccountService;
+  /**
+   * 2026-10-16 (`docs/mcp.md` → *Tools that appear without a restart*): how long an ask that needs a
+   * feature tool waits for the session's helper to list it after a wake-up, and for a restarted
+   * process's helper to list it, before going on (default {@link TOOL_REFRESH_WAIT_MS}).
+   */
+  readonly toolRefreshWaitMs?: number;
 }
+
+/** Default of {@link SupervisorOptions.toolRefreshWaitMs}: a list_changed round trip is well under a second; a cold CLI start lists its MCP tools within a few. */
+export const TOOL_REFRESH_WAIT_MS = 8_000;
+
+/** How an ask that needs a feature tool went out ({@link SessionSupervisor.sendNeedingTool}). */
+export type ToolAskDelivery = 'listed' | 'refreshed' | 'unknown' | 'not-running' | 'reloaded' | 'after-turn';
 
 /** Options of {@link SessionSupervisor.close} (D33). */
 export interface CloseOptions {
@@ -667,6 +681,14 @@ export class SessionSupervisor {
   readonly #instructionPending = new Set<string>();
   /** D91: instruction reloads in progress, by session (a message or Resume meanwhile waits for it). */
   readonly #instructionReloads = new Map<string, Promise<unknown>>();
+  /**
+   * 2026-10-16: what each session's `switchboard` helper listed to its CLI, and the wake-up that
+   * makes it re-probe its feature tools (`src/server/todos/agent-tools.ts`).
+   */
+  readonly agentTools = new AgentToolsRegistry();
+  /** 2026-10-16: asks waiting for the turn's end, then the restart that gives the process their tool (in order, by session). */
+  readonly #toolAsks = new Map<string, { readonly text: string; readonly origin: UserMessageOrigin; readonly tool: string }[]>();
+  readonly #toolRefreshWaitMs: number;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -691,6 +713,7 @@ export class SessionSupervisor {
     this.#providers = options.providers ?? new CliRegistry({ commands: { claude: options.claudeCommand } });
     this.#onProviderUsage = options.onProviderUsage ?? null;
     this.#accounts = options.accounts ?? null;
+    this.#toolRefreshWaitMs = options.toolRefreshWaitMs ?? TOOL_REFRESH_WAIT_MS;
     this.#workflows = new WorkflowService({
       configDir: () => claudeConfigDir(this.#env),
       onChange: (sessionId) => this.#workflowChanged(sessionId),
@@ -1761,7 +1784,7 @@ export class SessionSupervisor {
   }
 
   /** D91: the restart itself; the checks that can run before the stop run first (a refusal leaves the process running as it was). */
-  async #restartForInstruction(session: SessionRecord, live: Live): Promise<void> {
+  async #restartForInstruction(session: SessionRecord, live: Live, action?: 'tools-updated'): Promise<void> {
     if (!session.cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
     await canonicalFolder(session.cwd);
     if (!this.#providers.hasAdapter(session.provider)) {
@@ -1778,8 +1801,112 @@ export class SessionSupervisor {
     const restored = (await this.#store.sessions.update(session.id, { status })) ?? stopped;
     await this.#setMainAgentStatus(session.id, status);
     // D106: a chat's instruction changes with its folders to look at: its divider says so.
-    const next = await this.#spawn(restored, { kind: 'resume', claudeSessionId: session.claudeSessionId }, restored.kind === 'chat' ? 'look-at-updated' : 'instruction-updated');
+    const next = await this.#spawn(restored, { kind: 'resume', claudeSessionId: session.claudeSessionId }, action ?? (restored.kind === 'chat' ? 'look-at-updated' : 'instruction-updated'));
     await this.#enqueue(next, () => this.#refreshStatus(next));
+  }
+
+  // ── 2026-10-16: feature tools that appear without a restart (docs/mcp.md → Tools that appear without a restart) ──
+
+  /**
+   * Something a session's feature tools depend on changed (it was adopted into Team or returned, a
+   * switch turned): its helper (`sessionId`), or every helper, re-probes now and adds or removes the
+   * tools with MCP `list_changed`. Nothing restarts: only an ask that needs a tool the CLI still lacks
+   * does ({@link sendNeedingTool}).
+   */
+  agentToolsChanged(sessionId?: string): void {
+    this.agentTools.nudge(sessionId);
+  }
+
+  /**
+   * Sends `text` (a Switchboard ask, e.g. D105's charter ask or D107's memory draft ask) that asks the
+   * agent to call the feature tool `tool`, making sure its CLI has that tool first:
+   *
+   * - no running process (`not-running`), or a helper that never reported (`unknown`: a CLI without
+   *   the helper, a hooked session): sent as {@link sendMessage} would (a new process probes at start);
+   * - its CLI listed the tool already (`listed`): sent;
+   * - else the helper is woken and the ask waits up to {@link SupervisorOptions.toolRefreshWaitMs} for
+   *   the CLI to re-list with it (`refreshed`: the CLI honours `list_changed`);
+   * - else (the CLI did not re-list) the process restarts once with `--resume` (D91's restart, the
+   *   divider {@link TOOLS_UPDATED_DIVIDER}) and the ask goes to the new process once its helper listed
+   *   the tool (or the wait ran out): `reloaded`. A turn that runs is never interrupted: the restart and
+   *   the ask wait for its end (`after-turn`).
+   * @throws {SupervisorError} as {@link sendMessage}, and the restart's refusals (`folder-missing`, …).
+   */
+  async sendNeedingTool(sessionId: string, text: string, origin: UserMessageOrigin, tool: string): Promise<ToolAskDelivery> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    const live = this.#live.get(sessionId);
+    if (session.hooked || !session.attached || !live || live.stopping || !live.proc.running) {
+      await this.sendMessage(sessionId, text, origin);
+      return session.hooked || !session.attached ? 'unknown' : 'not-running';
+    }
+    const listed = this.agentTools.listed(sessionId);
+    if (listed === null) {
+      await this.sendMessage(sessionId, text, origin);
+      return 'unknown';
+    }
+    if (listed.tools.has(tool)) {
+      await this.sendMessage(sessionId, text, origin);
+      return 'listed';
+    }
+    this.agentTools.nudge(sessionId);
+    if (await this.agentTools.waitForTool(sessionId, tool, this.#toolRefreshWaitMs)) {
+      await this.sendMessage(sessionId, text, origin);
+      return 'refreshed';
+    }
+    // Earlier asks of this session wait for the same restart: this one goes after them.
+    const queued = this.#toolAsks.get(sessionId);
+    if (queued) {
+      queued.push({ text, origin, tool });
+      return 'after-turn';
+    }
+    const current = this.#live.get(sessionId);
+    if (current && !current.stopping && current.proc.running && current.recorder.turnBusy()) {
+      this.#toolAsks.set(sessionId, [{ text, origin, tool }]);
+      return 'after-turn';
+    }
+    this.#toolAsks.set(sessionId, [{ text, origin, tool }]);
+    await this.#reloadForTools(sessionId);
+    return 'reloaded';
+  }
+
+  /** The restart {@link sendNeedingTool} falls back to, then its queued asks (each once its tool is listed, or the wait ran out). */
+  async #reloadForTools(sessionId: string): Promise<void> {
+    const asks = this.#toolAsks.get(sessionId) ?? [];
+    this.#toolAsks.delete(sessionId);
+    if (asks.length === 0 || this.#closing) return;
+    const live = this.#live.get(sessionId);
+    const session = await this.#get(sessionId);
+    if (live && !live.stopping && live.proc.running && session.closedAt === null) {
+      // The restart also gives the process the current standing instruction: a reload waiting for it is done.
+      this.#instructionPending.delete(sessionId);
+      const prior = this.#instructionReloads.get(sessionId) ?? Promise.resolve();
+      const run = prior.catch(() => undefined).then(() => this.#restartForInstruction(session, live, 'tools-updated'));
+      this.#instructionReloads.set(sessionId, run);
+      try {
+        await run;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await this.recordServiceEvent(sessionId, 'error', `Could not restart for the Switchboard tools: ${reason}`, { type: 'lifecycle', action: 'tools-updated', message: reason }).catch(() => undefined);
+      } finally {
+        if (this.#instructionReloads.get(sessionId) === run) this.#instructionReloads.delete(sessionId);
+      }
+    }
+    for (const ask of asks) {
+      await this.agentTools.waitForTool(sessionId, ask.tool, this.#toolRefreshWaitMs);
+      await this.sendMessage(sessionId, ask.text, ask.origin);
+    }
+  }
+
+  /** The asks that waited for a turn's end (their failures are reported, never thrown into the line queue). */
+  async #toolAsksPending(sessionId: string): Promise<void> {
+    try {
+      await this.#reloadForTools(sessionId);
+    } catch (error) {
+      this.#onError(error);
+    }
   }
 
   /** D91: the reload that waited for the turn's end (its refusal is recorded in the chat by the reload). */
@@ -3218,6 +3345,11 @@ export class SessionSupervisor {
       }
     }
     await this.#refreshStatus(live);
+    // 2026-10-16: asks that need a tool the CLI lacks restart the idle process first, then go out (the restart covers a waiting instruction reload too).
+    if (this.#toolAsks.has(live.sessionId) && !live.stopping && live.proc.running && !live.recorder.turnBusy()) {
+      this.#instructionPending.delete(live.sessionId);
+      setImmediate(() => void this.#toolAsksPending(live.sessionId));
+    }
     // D91: a reload that waited for this turn (or the developer's answer) runs once the session is idle (outside this queue: the restart stops this process).
     if (this.#instructionPending.has(live.sessionId) && !live.stopping && live.proc.running && !live.recorder.turnBusy()) {
       this.#instructionPending.delete(live.sessionId);
@@ -3345,6 +3477,9 @@ export class SessionSupervisor {
       this.#live.delete(live.sessionId);
       // D91: no process left to reload: the next start gets the current instruction.
       this.#instructionPending.delete(live.sessionId);
+      // 2026-10-16: its helper's report goes with it; asks that waited for its turn go to the next process (which probes its tools at start).
+      this.agentTools.forget(live.sessionId);
+      if (this.#toolAsks.has(live.sessionId) && !this.#instructionReloads.has(live.sessionId)) setImmediate(() => void this.#toolAsksPending(live.sessionId));
     }
     await this.#emitSession(live.sessionId);
   }
@@ -3515,4 +3650,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'instruction-updated': INSTRUCTION_UPDATED_DIVIDER,
   'chat-refused': 'Refused in a chat',
   'look-at-updated': LOOK_AT_UPDATED_DIVIDER,
+  'tools-updated': TOOLS_UPDATED_DIVIDER,
 };

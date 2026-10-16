@@ -27,6 +27,7 @@ import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
 import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
+import { registerAgentToolRoutes } from './todos/agent-tools.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
 import { checkpointsEnabled, todoEnrichEnabled, todoReminderEnabled } from './settings/settings.ts';
@@ -461,6 +462,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await enricher.stop();
   });
   if (options.agentTools !== false) {
+    // 2026-10-16: the helpers' tool reports and wake-ups (docs/mcp.md → Tools that appear without a restart).
+    await registerAgentToolRoutes(app, supervisor.agentTools);
     supervisor.useAgentMcp(async (session) =>
       withClaudeConfigFile(
         config.dataDir,

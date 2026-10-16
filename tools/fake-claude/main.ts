@@ -11,6 +11,7 @@ import { authLogin, authLogout, authStatus } from './auth.ts';
 import { CLI_VERSION, type FakeCommand, UsageError, parseArgv } from './args.ts';
 import { FixtureStore } from './fixtures.ts';
 import { runMcpCommand } from './mcp.ts';
+import { FakeMcpClient } from './mcp-client.ts';
 import { Logger } from './log.ts';
 import { Runner } from './session.ts';
 import { listAgents } from './transcript.ts';
@@ -87,7 +88,10 @@ async function main(argv: readonly string[]): Promise<void> {
         await writeErr('fake-claude: only print mode (-p) is supported\n');
         return exit(1);
       }
+      // 2026-10-16: opt-in, the `switchboard` MCP server of --mcp-config runs as the real CLI runs it (mcp-client.ts).
+      const mcp = await FakeMcpClient.start(command.args.mcpConfig, process.env);
       const runner = new Runner({
+        ...(mcp ? { mcpTools: () => mcp.tools() } : {}),
         args: command.args,
         env: process.env,
         cwd,

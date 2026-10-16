@@ -31,7 +31,8 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/server/plans/hooks.ts` | D100 follow-up 2026-10-16 (the sidebar's member rows): `PlanHooks.itemsOfTodos`, `PlanItemRef` and the seam `plansItemsOfTodos` (Team names a member's current todo by its plan item's key) | remove them (Plans keeps working without them) |
 | `src/server/plans/repo.ts` | D100 follow-up 2026-10-16: `PlanRepository.itemsByTodos` (the query behind `itemsOfTodos`) | remove it |
 | `src/server/plans/service.ts` | D100 follow-up 2026-10-16: `PlanService.itemsOfTodos` and its `itemsOfTodos` entry in `registerPlanHooks` | remove both (and the `PlanItemRef` import) |
-| `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
+| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step | nothing once `sb-feature-tools.ts` has no team set (the hook comment goes) |
+| `src/hook/sb-feature-tools.ts` | the `team` entry of `FEATURE_TOOL_SETS` (imports `TEAM_TOOLS`, `registerTeamTools`, `registerAccessTool`) | drop the entry and the three imports |
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |
 | `src/core/search.ts` | `SearchResult.teamRole` | remove it |
 | `src/web/shell/Sidebar.tsx` | imports `useTeamHiddenSessions` / `withoutTeamMembers` and `TeamNavItem` / `TeamSidebarEntry`; `teamHidden`; the one filter on `sessionList`; `<TeamNavItem />` at the end of the nav (D101: the nav grid, so it is the grid's last-but-Plans cell) and `<TeamSidebarEntry />` above `<SidebarSessions>` (both render nothing while Team is off) | `const sessionList = openSessions(sessions.data ?? []);`; drop the two elements |

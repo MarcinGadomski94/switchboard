@@ -59,6 +59,8 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
     if ('experimental.plans' in result.value) await plansSwitchChanged(store);
     // Project memory (D107) hook: Settings → Experimental → Project memory opens / closes memory.db; sessions gain / lose their block (docs/memory-removal.md).
     if ('experimental.memory' in result.value) await memorySwitchChanged(store);
+    // 2026-10-16: the sessions' helpers re-probe now and add / remove the feature tools live (list_changed; docs/mcp.md).
+    if ('experimental.team' in result.value || 'experimental.plans' in result.value || 'experimental.memory' in result.value) context.supervisor.agentToolsChanged();
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
 

@@ -255,7 +255,7 @@ export class TeamAccess {
    */
   async request(sessionId: string, body: unknown): Promise<{ readonly access: TeamAccessEntryView; readonly reused: boolean }> {
     const member = this.#h.memberOfSession(sessionId);
-    if (!member) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    if (!member) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
     const parsed = readAccessRequest(body, (id) => catalogEntry(id));
     if (!parsed.ok) throw new TeamError(422, 'invalid', parsed.errors.map((e) => `${e.field}: ${e.message}`).join('; '), { errors: parsed.errors });
     const input = parsed.input;

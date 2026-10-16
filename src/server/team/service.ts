@@ -1162,6 +1162,8 @@ export class TeamService {
   /** D64 / D91: the session's process picks the (new / withdrawn) charter up: idle → restarted now, busy → after its turn, not running → its next start. */
   async #applyCharter(sessionId: string): Promise<void> {
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
+    // 2026-10-16: membership may have changed: the session's helper re-probes and adds / removes the Team tools (list_changed; docs/mcp.md).
+    this.#o.supervisor.agentToolsChanged(sessionId);
     try {
       await this.#o.supervisor.reloadInstruction(sessionId);
     } catch (error) {
@@ -1500,7 +1502,7 @@ export class TeamService {
   /** `team_members`: the members, their charters and status, as text. */
   async membersText(asSessionId: string, team?: unknown): Promise<string> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
     // Its own team by default; `team` (a name or id) lists another (D100 follow-up 2026-10-14).
     let teamId = me.teamId;
     if (typeof team === 'string' && team.trim() !== '') {
@@ -1527,7 +1529,7 @@ export class TeamService {
   /** `team_report`: a short status line in the activity feed. */
   async report(asSessionId: string, text: unknown): Promise<void> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
     const line = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
     if (line === '' || line.length > REPORT_MAX) throw new TeamError(422, 'invalid', `text is required (one line, at most ${REPORT_MAX} characters)`);
     await this.#serial(async () => {
@@ -1706,7 +1708,8 @@ export class TeamService {
     this.#changed(['requests', 'activity', 'members']);
     try {
       // The normal message path: queued while a turn runs, held while new turns pause (D103).
-      await this.#o.supervisor.sendMessage(before.sessionId, charterAskText(before.name, this.#teamName(before.teamId), before.charter), 'service');
+      // 2026-10-16: the ask needs team_propose_charter: a CLI that has not listed it gets it first (live list_changed, else one restart; docs/mcp.md).
+      await this.#o.supervisor.sendNeedingTool(before.sessionId, charterAskText(before.name, this.#teamName(before.teamId), before.charter), 'service', 'team_propose_charter');
     } catch (error) {
       await this.#serial(async () => {
         const current = this.#need().requests().find((r) => r.id === request.id) ?? request;
@@ -1760,7 +1763,7 @@ export class TeamService {
    */
   async proposeCharter(asSessionId: string, body: Record<string, unknown>): Promise<{ readonly requestId: string }> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
     const proposal = readCharter({ owns: body['owns'], produces: body['produces'], neverDoes: body['neverDoes'], howItWorks: body['howItWorks'] });
     if (!proposal) throw new TeamError(422, 'invalid', 'owns, produces, neverDoes and howItWorks must be text of at most 2,000 characters each');
     for (const field of ['owns', 'produces', 'neverDoes'] as const) {

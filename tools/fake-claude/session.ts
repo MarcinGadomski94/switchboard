@@ -176,6 +176,8 @@ export interface RunnerOptions {
   writeStderr(text: string): void;
   /** Flushes stdout/stderr and ends the process with `code`. */
   exit(code: number): Promise<void>;
+  /** 2026-10-16: the running `switchboard` MCP server's tools (`FAKE_CLAUDE_MCP_RUN=1`), logged with each user message. */
+  mcpTools?: () => readonly string[];
 }
 
 /** Recorded fixtures every run needs synchronously (loaded once at start). */
@@ -525,6 +527,7 @@ export class Runner {
     if (!isObject(parsed)) return;
     const type = parsed['type'];
     if (type === 'user') {
+      if (this.o.mcpTools) await this.o.log?.mcpTools(this.o.mcpTools());
       const content = asObject(parsed['message'])?.['content'] ?? '';
       this.enqueue(messageText(content), content, asString(parsed['uuid']));
     } else if (type === 'control_request') {

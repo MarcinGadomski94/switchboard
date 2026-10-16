@@ -102,7 +102,7 @@ When a plan's source session is continued in a fresh session, the plan follows i
 
 ## Agents (MCP tools)
 
-While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) adds `plan_create` (target optional), `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode`, `allow_protected_target`) (the helper asks `GET /agent/v1/plans` once at its start; 200 = on). They act only on plans whose source is the agent's own session. The helper's server instructions never name them (they exist only while on).
+While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) adds `plan_create` (target optional), `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode`, `allow_protected_target`) (the helper asks `GET /agent/v1/plans`; 200 = on; since 2026-10-16 again on each wake-up, the Plans switch included, and every ~25 s, so the tools appear in running sessions without a restart, `docs/mcp.md` → *Tools that appear without a restart*). They act only on plans whose source is the agent's own session. The helper's server instructions never name them (they exist only while on).
 
 ## Seam for an external list (Jira)
 

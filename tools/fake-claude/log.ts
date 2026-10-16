@@ -46,6 +46,11 @@ export class Logger {
     return this.append({ kind: 'stdin', line });
   }
 
+  /** 2026-10-16: the `switchboard` MCP tools the fake held when a user message arrived (`FAKE_CLAUDE_MCP_RUN=1`, `mcp-client.ts`). */
+  mcpTools(tools: readonly string[]): Promise<void> {
+    return this.append({ kind: 'mcp-tools', tools });
+  }
+
   /** Waits for every queued append. */
   flush(): Promise<void> {
     return this.writes;

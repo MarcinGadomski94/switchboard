@@ -19,7 +19,8 @@ Project memory is experimental and built to be removed cleanly (`docs/memory.md`
 | `src/core/settings.ts` | `experimental.memory` in `KnownSettings`, `EDITABLE_SETTINGS`, `SETTING_DEFAULTS` and `readKnownSettings` | remove the key in all four places |
 | `src/server/api/settings.ts` | imports `memorySwitchChanged`; calls it when `PUT /api/settings` changes `experimental.memory` | drop both |
 | `src/server/sessions/instruction.ts` | imports `withProjectMemory`; `sessionInstruction` wraps the standing instruction and charter with it (and its `Pick` names `root` / `cwd`) | `return withTeamCharter(store, session.id, await standingInstructionFor(store.settings));` |
-| `src/hook/sb-mcp.ts` | imports `registerMemoryToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
+| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step | nothing once `sb-feature-tools.ts` has no memory set (the hook comment goes) |
+| `src/hook/sb-feature-tools.ts` | the `memory` entry of `FEATURE_TOOL_SETS` (imports `MEMORY_TOOLS`, `registerMemoryTools`) | drop the entry and the two imports |
 | `src/core/api.ts` | imports `MemoryChanged`; `HubEvents.memoryChanged` and its entry in `HUB_EVENT_NAMES` | remove all three |
 | `src/server/devices/local-only.ts` | the memory entries of `DEVICE_ALLOWED` (reads, a session's count, the scope options, edit / pin, approve, reject) and of `DEVICE_REFUSED` (add, delete, the cap, the draft asks, the import), and "(D107) project memory" in the file comment | remove them |
 | `src/server/peers/service.ts` | the memory entries of `PEER_API_ALLOW`; imports `memoryPeerChanged` and the `memoryChanged` branch at the top of `#onPeerEvent` (a pending member-memory copy is retried) | remove them |

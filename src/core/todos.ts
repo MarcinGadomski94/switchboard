@@ -45,6 +45,9 @@ export const TODO_MAX_PER_SESSION = 200;
 /** The MCP server name every Switchboard-started session gets (its tools are `mcp__switchboard__todo_*` in Claude Code). */
 export const AGENT_MCP_SERVER = 'switchboard';
 
+/** 2026-10-16: the chat's divider when a process restarted so its CLI lists a Switchboard tool an ask needs (`docs/mcp.md` → *Tools that appear without a restart*). */
+export const TOOLS_UPDATED_DIVIDER = 'Switchboard tools updated';
+
 /** The marker argument of the MCP helper script (`src/hook/sb-mcp.ts --switchboard-mcp <port> <sessionId>`). */
 export const AGENT_MCP_MARKER = '--switchboard-mcp';
 

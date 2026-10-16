@@ -119,7 +119,7 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
 
   const memberOnly = (request: FastifyRequest): string => {
     const session = agentSession(request);
-    if (!team.memberOfSession(session)) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    if (!team.memberOfSession(session)) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
     return session;
   };
 

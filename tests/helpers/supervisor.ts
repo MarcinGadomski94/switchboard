@@ -68,6 +68,8 @@ export interface WorldOptions {
   readonly subagentQuietMs?: number;
   /** 2026-10-16: the guard's notes (default: dropped, so tests stay quiet). */
   readonly onWarn?: (message: string) => void;
+  /** 2026-10-16: how long an ask that needs a feature tool waits for it to be listed (the supervisor's default when omitted). */
+  readonly toolRefreshWaitMs?: number;
 }
 
 /** Parent env without CODEX* / OPENCODE* / FAKE_* of the other fakes either (D62). */
@@ -134,6 +136,7 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
     ...(options.teleportInitTimeoutMs !== undefined ? { teleportInitTimeoutMs: options.teleportInitTimeoutMs } : {}),
     ...(options.subagentQuietMs !== undefined ? { subagentQuietMs: options.subagentQuietMs } : {}),
+    ...(options.toolRefreshWaitMs !== undefined ? { toolRefreshWaitMs: options.toolRefreshWaitMs } : {}),
     onWarn: options.onWarn ?? (() => undefined),
     onError: (error) => errors.push(error),
   });

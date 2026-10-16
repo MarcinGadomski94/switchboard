@@ -282,7 +282,9 @@ export type LifecycleAction =
   /** D106: Switchboard refused a tool a chat's agent asked to use (the line "Refused in a chat: <tool> …"; `message` = the tool). */
   | 'chat-refused'
   /** D106: the chat's folders to look at changed and its process restarted (`--resume`, no message) to read them. */
-  | 'look-at-updated';
+  | 'look-at-updated'
+  /** 2026-10-16: the process was restarted (`--resume`, no message) so its CLI lists a Switchboard tool an ask needs (the chat's divider "Switchboard tools updated"; `docs/mcp.md`). */
+  | 'tools-updated';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

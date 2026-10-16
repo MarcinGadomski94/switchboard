@@ -68,6 +68,8 @@ export interface MemorySupervisor {
   instructionSettingChanged(): Promise<void>;
   /** D107 follow-up 2026-10-15: "Draft memory from this session" sends a normal message (queued while a turn runs, held while new turns pause, D103). */
   sendMessage?(sessionId: string, text: string, origin: 'service'): Promise<unknown>;
+  /** 2026-10-16: the same, making sure the session's CLI has listed `tool` first (live list_changed, else one restart; `docs/mcp.md`). */
+  sendNeedingTool?(sessionId: string, text: string, origin: 'service', tool: string): Promise<unknown>;
 }
 
 /** What the service needs of the paired machines (D48): a member's memory moves with it; draft asks for members elsewhere. */
@@ -645,8 +647,11 @@ export class MemoryService {
     db.setDraftAsked(sessionId, now);
     const reach = await this.#reach(sessionId);
     try {
-      if (!this.#o.supervisor.sendMessage) throw new Error('no supervisor');
-      await this.#o.supervisor.sendMessage(sessionId, memoryDraftAskText(reach.memberLabel, reach), 'service');
+      const supervisor = this.#o.supervisor;
+      // 2026-10-16: the ask needs memory_propose: a CLI that has not listed it gets it first.
+      if (supervisor.sendNeedingTool) await supervisor.sendNeedingTool(sessionId, memoryDraftAskText(reach.memberLabel, reach), 'service', 'memory_propose');
+      else if (supervisor.sendMessage) await supervisor.sendMessage(sessionId, memoryDraftAskText(reach.memberLabel, reach), 'service');
+      else throw new Error('no supervisor');
     } catch (error) {
       db.setDraftAsked(sessionId, before);
       return { asked: false, reason: `not-sent: ${error instanceof Error ? error.message : String(error)}`, askedAt: null };

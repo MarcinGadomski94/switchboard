@@ -29,12 +29,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-// Team (D100) hook (docs/team-removal.md).
-import { registerTeamToolsIfMember } from '../core/team-tools.ts';
-// Plans (D99) hook (docs/plans-removal.md).
-import { registerPlanToolsIfOn } from './sb-plan-tools.ts';
-// Project memory (D107) hook (docs/memory-removal.md).
-import { registerMemoryToolsIfOn } from './sb-memory-tools.ts';
+// Team (D100), Plans (D99) and Project memory (D107) hooks: their tools, probed and kept in step live (docs/mcp.md → Tools that appear without a restart).
+import { FeatureTools, ListedToolsTransport } from './sb-feature-tools.ts';
 import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
 import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
@@ -63,8 +59,8 @@ export interface ApiAnswer {
 /** How the helper reaches Switchboard (tests pass a stand-in). */
 export type AgentApi = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) => Promise<ApiAnswer>;
 
-/** The local API over loopback HTTP, as session `sessionId` with its agent token. */
-export function loopbackApi(port: number, sessionId: string, token: string, timeoutMs = 15_000): AgentApi {
+/** The local API over loopback HTTP, as session `sessionId` with its agent token (`signal` aborts a request in flight). */
+export function loopbackApi(port: number, sessionId: string, token: string, timeoutMs = 15_000, signal?: AbortSignal): AgentApi {
   return (method, route, body) =>
     new Promise((resolve, reject) => {
       const text = body === undefined ? '' : JSON.stringify(body);
@@ -81,6 +77,7 @@ export function loopbackApi(port: number, sessionId: string, token: string, time
             ...(body === undefined ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) }),
           },
           agent: false,
+          ...(signal ? { signal } : {}),
         },
         (res) => {
           const chunks: Buffer[] = [];
@@ -646,14 +643,24 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   const api = loopbackApi(port, sessionId, token);
   const server = createTodoServer(api);
-  // Team (D100) hook: a team member's session (Team on) also gets team_handoff / team_members / team_report (docs/team-removal.md).
-  await registerTeamToolsIfMember(server, api, loopbackApi(port, sessionId, token, 3_000));
-  // Plans (D99) hook: while Plans is on, also plan_create / plan_add_item / plan_add_dependency / plan_status / plan_start (docs/plans-removal.md).
-  await registerPlanToolsIfOn(server, api, loopbackApi(port, sessionId, token, 3_000));
+  // Team (D100) hook: a team member's session (Team on) also gets team_handoff / team_members / team_report / team_propose_charter / request_access (docs/team-removal.md).
+  // Plans (D99) hook: while Plans is on, also the plan tools (docs/plans-removal.md).
   // Project memory (D107) hook: while Project memory is on (and the session has a folder), also memory_propose / memory_list (docs/memory-removal.md).
-  await registerMemoryToolsIfOn(server, api, loopbackApi(port, sessionId, token, 3_000));
-  // Serves until stdin ends; the process exits once the last answer is written.
-  await server.connect(new StdioServerTransport());
+  // 2026-10-16: probed now and again whenever Switchboard wakes the helper (or every ~25 s), added / removed live with list_changed.
+  const features = new FeatureTools(server, api, loopbackApi(port, sessionId, token, 3_000));
+  await features.refresh();
+  const stop = new AbortController();
+  // Every tools/list answer the CLI gets is reported, so Switchboard knows which tools the CLI really has.
+  const transport = new ListedToolsTransport(
+    new StdioServerTransport(),
+    (tools) => void api('POST', '/agent/v1/tools', { tools }).catch(() => undefined),
+    (name) => features.unavailable(name),
+  );
+  // Serves until stdin ends; then the watch stops and the process exits once the last answer is written.
+  process.stdin.once('end', () => stop.abort());
+  process.stdin.once('close', () => stop.abort());
+  await server.connect(transport);
+  void features.watch(loopbackApi(port, sessionId, token, 60_000, stop.signal), stop.signal);
   return 0;
 }
 
