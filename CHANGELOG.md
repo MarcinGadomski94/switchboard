@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.23.1 (2026-10-16)
+
+### Fixed
+- **Sessions waiting on background work read as working, not idle:** waiting on GitHub Actions (`gh pr checks --watch`, `gh run watch`, …) shows "⏳ GitHub Actions · 12m", other background tasks the agent waits on count for up to 30 minutes without output, and a scheduled wake-up shows "⏰ waking up at 18:40". Dev servers and watchers left running don't count.
+- **Team, Project memory and Plans tools appear without a restart** when a session is adopted into a team or a switch is turned on. Before a charter or memory-draft ask, Switchboard makes sure the agent has the tool it needs, restarting it once between turns if its CLI can't refresh its tools live.
+
 ## 1.23.0 (2026-10-16)
 
 ### Team
