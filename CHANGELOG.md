@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.22.0 (2026-10-16)
+
+### Plans for anything
+- **Any target branch**, including dev, main or master: with "I merge each one" there is no restriction; agents merging straight into a protected branch needs your explicit tick (and an agent must ask you first).
+- **No merge step:** leave the target empty (or pick "No merging") for work that isn't a git merge flow — items run in order and are done when their agent marks them done; held items wait for your ✔ Done.
+
+### Project memory (experimental)
+- **Scopes:** each entry is for the whole folder, one repository, or one Team member. Every session gets only what applies to it, and a member's own memory comes first in its own share of the space, so shared notes never crowd out what a feature-focused member knows. Agents suggest the scope; you confirm it when approving.
+- **Draft memory from this session** (and **for all members**) asks agents to propose what they've learned; nothing is used until you approve it.
+- A member's memory moves with it to your other machine; if that machine can't take it yet, Switchboard retries and tells you in the Inbox if it keeps failing.
+
 ## 1.21.0 (2026-10-15)
 
 ### Moving sessions and team members
