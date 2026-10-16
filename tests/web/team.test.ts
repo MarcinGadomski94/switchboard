@@ -4,6 +4,11 @@ import { TEAM_TEMPLATES, templateById } from '../../src/core/team-templates.ts';
 import { clearDraftCache, draftAll, draftCharter } from '../../src/web/team/charter-draft.ts';
 import {
   EMPTY_FORM,
+  LEFT_COLUMN_KEY,
+  type LeftColumnPress,
+  isLeftColumnShortcut,
+  leftStripLabel,
+  needsToPulse,
   adoptNote,
   adoptedToast,
   bannerText,
@@ -423,5 +428,35 @@ describe('D105 · better charters (Team page rules)', () => {
     expect(charterAskedToast({ asked: [{ name: 'Studio' }], skipped: [] })).toBe('Asked Studio to draft a specific charter. Their proposals show in Needs you.');
     expect(charterAskedToast({ asked: [{ name: 'A' }, { name: 'B' }], skipped: [{ name: 'C', reason: 'asked already' }] })).toBe('Asked 2 members to draft a specific charter (skipped: C, asked already). Their proposals show in Needs you.');
     expect(charterAskedToast({ asked: [], skipped: [] })).toBe('No member was asked.');
+  });
+});
+
+describe('D100 follow-up 2026-10-16: the left column folds to a slim strip', () => {
+  const press = (key: string, extra: Partial<LeftColumnPress> = {}): LeftColumnPress => ({ key, metaKey: false, ctrlKey: false, altKey: false, repeat: false, isComposing: false, defaultPrevented: false, ...extra });
+  const free = { typing: false, modalOpen: false };
+
+  it('"[" toggles it, only bare and never while typing, in a modal, on a repeat, while composing or when taken', () => {
+    expect(LEFT_COLUMN_KEY).toBe('[');
+    expect(isLeftColumnShortcut(press('['), free)).toBe(true);
+    expect(isLeftColumnShortcut(press(']'), free)).toBe(false);
+    expect(isLeftColumnShortcut(press('b'), free)).toBe(false);
+    for (const modifier of ['metaKey', 'ctrlKey', 'altKey'] as const) expect(isLeftColumnShortcut(press('[', { [modifier]: true }), free), modifier).toBe(false);
+    expect(isLeftColumnShortcut(press('[', { repeat: true }), free)).toBe(false);
+    expect(isLeftColumnShortcut(press('[', { isComposing: true }), free)).toBe(false);
+    expect(isLeftColumnShortcut(press('[', { defaultPrevented: true }), free)).toBe(false);
+    expect(isLeftColumnShortcut(press('['), { typing: true, modalOpen: false })).toBe(false);
+    expect(isLeftColumnShortcut(press('['), { typing: false, modalOpen: true })).toBe(false);
+  });
+
+  it('a new Needs-you item pulses the badge once (never an item already known or already pulsed)', () => {
+    expect(needsToPulse(['inbox:a', 'inbox:b'], new Set(['inbox:a']), new Set())).toEqual(['inbox:b']);
+    expect(needsToPulse(['inbox:a', 'inbox:b'], new Set(['inbox:a']), new Set(['inbox:b']))).toEqual([]);
+    expect(needsToPulse([], new Set(), new Set())).toEqual([]);
+  });
+
+  it("the strip's label names the shortcut, the count and new activity", () => {
+    expect(leftStripLabel(0, false)).toBe('Show Needs you and Activity ([)');
+    expect(leftStripLabel(1, false)).toBe('Show Needs you and Activity ([) · 1 needs you');
+    expect(leftStripLabel(3, true)).toBe('Show Needs you and Activity ([) · 3 need you · new activity');
   });
 });

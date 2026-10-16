@@ -347,6 +347,140 @@
   gap: 18px;
 }
 
+/*
+ * D100 follow-up 2026-10-16 · the whole left column folds to a slim strip (44 px):
+ * the needs-you count as an amber badge, a dot for activity since it was folded, and
+ * ›; the member panel takes the freed width. The ‹ sits over the column's top-right
+ * corner (absolutely, so the expanded layout is unchanged). The columns slide only
+ * right after a fold (`data-left-sliding`), never on a resize; `prefers-reduced-motion`:
+ * no slide, no pulse.
+ */
+.sb-team-split[data-left='collapsed'] {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.sb-team-split[data-left-sliding='true'] {
+  transition: grid-template-columns 180ms ease;
+}
+
+.sb-team-left {
+  position: relative;
+}
+
+.sb-team-left > .sb-team-needs > .sb-team-section-head {
+  padding-right: 24px;
+}
+
+.sb-team-left-fold {
+  position: absolute;
+  top: 9px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted-2);
+  font: 500 15px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.sb-team-left-fold:hover {
+  background: var(--bg-selected-nav);
+  color: var(--text);
+}
+
+.sb-team-left-fold:focus-visible,
+.sb-team-left-badge:focus-visible {
+  outline: 1px solid var(--muted-3);
+  outline-offset: 2px;
+}
+
+.sb-team-left--strip {
+  padding: 9px 0 14px;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.sb-team-left--strip:hover {
+  background: var(--bg-selected-nav);
+}
+
+.sb-team-left--strip > .sb-team-left-fold {
+  position: static;
+}
+
+.sb-team-left-badge {
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--status-need);
+  color: var(--primary-fg);
+  font: 500 11px var(--font-mono);
+  cursor: pointer;
+}
+
+.sb-team-left-badge[data-pulse='true'] {
+  animation: sb-team-left-pulse 1.2s ease-out 1;
+}
+
+@keyframes sb-team-left-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--status-need) 70%, transparent);
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18);
+  }
+  100% {
+    box-shadow: 0 0 0 10px color-mix(in oklch, var(--status-need) 0%, transparent);
+    transform: scale(1);
+  }
+}
+
+.sb-team-left-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--team-role-fg);
+}
+
+/* Touch screens (a tablet): a bigger ‹ / › (the strip itself is a full-height target). */
+@media (pointer: coarse) {
+  .sb-team-left-fold {
+    top: 5px;
+    right: 4px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .sb-team-left > .sb-team-needs > .sb-team-section-head {
+    padding-right: 32px;
+  }
+
+  .sb-team-left-badge {
+    min-height: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-team-split[data-left-sliding='true'] {
+    transition: none;
+  }
+
+  .sb-team-left-badge[data-pulse='true'] {
+    animation: none;
+    outline: 2px solid var(--status-need);
+    outline-offset: 2px;
+  }
+}
+
 .sb-team-section-label {
   font: 500 var(--fs-section-label) var(--font-mono);
   letter-spacing: var(--ls-section-label);

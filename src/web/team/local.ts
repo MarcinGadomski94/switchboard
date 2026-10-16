@@ -177,3 +177,28 @@ export function onMemberRequested(listener: () => void): () => void {
   memberListeners.add(listener);
   return () => memberListeners.delete(listener);
 }
+
+// ── D100 follow-up 2026-10-16: the whole left column folds to a slim strip ─────
+
+const LEFT_COLLAPSED = 'sb.team.leftCollapsed';
+const LEFT_SEEN = 'sb.team.leftSeenAt';
+
+/** Whether the left column (Needs you + Activity) is folded to its strip (default: expanded). */
+export function leftColumnCollapsed(): boolean {
+  return readText(LEFT_COLLAPSED) === 'true';
+}
+
+/** Remembers the left column's state (per install, this browser). */
+export function setLeftColumnCollapsed(collapsed: boolean): void {
+  writeText(LEFT_COLLAPSED, collapsed ? 'true' : 'false');
+}
+
+/** The newest activity time when the column was folded (the strip's dot shows newer entries); `null` = never folded. */
+export function leftColumnSeenAt(): string | null {
+  return readText(LEFT_SEEN);
+}
+
+/** Sets the strip's seen mark (when the column folds). */
+export function setLeftColumnSeenAt(at: string): void {
+  writeText(LEFT_SEEN, at);
+}

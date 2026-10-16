@@ -30,10 +30,13 @@ import {
   sessionsForReview,
 } from './dialogs.tsx';
 import { useTeamSwitch } from './hidden.ts';
-import { bannerLaterIds, clearRequestedMember, highlightReturnedRow, lastTeam, onMemberRequested, requestedMemberId, setBannerLater, setLastTeam } from './local.ts';
+import { bannerLaterIds, clearRequestedMember, highlightReturnedRow, lastTeam, leftColumnCollapsed, onMemberRequested, requestedMemberId, setBannerLater, setLastTeam, setLeftColumnCollapsed, setLeftColumnSeenAt, setSectionCollapsed } from './local.ts';
+import { LeftColumn, type LeftFocus } from './LeftColumn.tsx';
+import { newestAt } from './activity.ts';
+import { isTextEntry } from '../shell/panes.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, canDropOnTeam, movedToast, restoredOrder, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, adoptedToast, canDropOnTeam, movedToast, restoredOrder, isLeftColumnShortcut, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
 import { DeleteTeamDialog, NewTeamDialog, TeamTabs, teamTabAt } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
@@ -180,6 +183,47 @@ export function TeamPage() {
     setFocus(null);
     setAccessFocus(null);
   }, [requested, members]);
+  // D100 follow-up 2026-10-16: the whole left column folds to a slim strip (remembered in this browser; "[" toggles it).
+  const [leftCollapsed, setLeftCollapsed] = useState(() => leftColumnCollapsed());
+  const [leftSliding, setLeftSliding] = useState(false);
+  const leftFocus = useRef<LeftFocus>(null);
+  const activityRef = useRef(view?.activity ?? []);
+  activityRef.current = view?.activity ?? [];
+  const foldLeft = useCallback((collapsed: boolean, focusTo: LeftFocus): void => {
+    if (collapsed) setLeftColumnSeenAt(newestAt(activityRef.current) ?? new Date(0).toISOString());
+    // The badge shows Needs you itself: its own fold opens too.
+    if (focusTo === 'needs') setSectionCollapsed('needs', false);
+    setLeftColumnCollapsed(collapsed);
+    leftFocus.current = focusTo;
+    setLeftSliding(true);
+    setLeftCollapsed(collapsed);
+  }, []);
+  useEffect(() => {
+    if (!leftSliding) return undefined;
+    const timer = setTimeout(() => setLeftSliding(false), 400);
+    return () => clearTimeout(timer);
+  }, [leftSliding, leftCollapsed]);
+  const leftCollapsedRef = useRef(leftCollapsed);
+  leftCollapsedRef.current = leftCollapsed;
+  useEffect(() => {
+    if (!on || phone) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      // Only while the split (cards above, the left column | the member panel) is on screen.
+      if (!document.querySelector('[data-testid="team-split"]')) return;
+      const focused = event.target instanceof Element ? event.target : document.activeElement;
+      const typing = isTextEntry(
+        focused ? { tagName: focused.tagName, type: focused instanceof HTMLInputElement ? focused.type : null, isContentEditable: focused instanceof HTMLElement && focused.isContentEditable } : null,
+      );
+      if (!isLeftColumnShortcut(event, { typing, modalOpen: document.querySelector('[aria-modal="true"]') !== null })) return;
+      event.preventDefault();
+      // The focus moves only when it sat in the column (which is replaced).
+      const inColumn = focused instanceof Element && focused.closest('[data-testid="team-left"], [data-testid="team-left-strip"]') !== null;
+      const folding = !leftCollapsedRef.current;
+      foldLeft(folding, inColumn ? (folding ? 'strip' : 'collapse') : null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [on, phone, foldLeft]);
   const toast = (text: string): void => show({ id: `team-${Date.now()}`, title: 'Team', sub: 'now', branch: '', text, sessionId: null });
   // Project memory (D107) hook: the members' own agents propose memory (nothing is applied; the Memory page reviews it).
   const memoryOn = useMemory().on;
@@ -682,11 +726,11 @@ export function TeamPage() {
           ) : (
             <>
               <div className="sb-team-top">{cards}</div>
-              <div className="sb-team-split" data-testid="team-split">
-                <div className="sb-team-left">
+              <div className="sb-team-split" data-testid="team-split" data-left={leftCollapsed ? 'collapsed' : undefined} data-left-sliding={leftSliding ? 'true' : undefined}>
+                <LeftColumn collapsed={leftCollapsed} items={items} activity={view?.activity ?? []} focus={leftFocus} onFold={foldLeft}>
                   <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onEditCharter={editCharter} onChanged={refresh} />
                   <ActivityFeed activity={view?.activity ?? []} members={members} />
-                </div>
+                </LeftColumn>
                 {selected ? (
                   <MemberPanel
                     member={selected}

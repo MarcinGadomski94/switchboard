@@ -40,7 +40,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/router.tsx` | `team` in `ViewName` and `SIMPLE_VIEWS`; the `{ view: 'team'; teamId? }` member of the `Route` union; the `/team/{teamId}` branch of `parseRoute` and the `case 'team'` of `routePath` (multiple teams, 2026-10-14); the `/team` row of the header table | remove `team` in `ViewName` and `SIMPLE_VIEWS`, the union member, the branch, the case and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
-| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team`, `team-update`, (D105) `better-charters` and (D100 follow-up 2026-10-16) `team-sidebar` entries of `WHATS_NEW`; `V1_23` when nothing else uses it | remove them |
+| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team`, `team-update`, (D105) `better-charters` and (D100 follow-up 2026-10-16) `team-sidebar` and `team-left-column` entries of `WHATS_NEW`; `V1_23` and `V1_24` when nothing else uses them | remove them |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |

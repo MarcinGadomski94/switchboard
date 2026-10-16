@@ -98,6 +98,9 @@ const V1_22 = '1.22.0';
 /** The version the D100 follow-up of 2026-10-16 (the sidebar lists each team's members with their status) ships in. */
 const V1_23 = '1.23.0';
 
+/** The version the D100 follow-up of 2026-10-16 (the Team page's left column folds to a slim strip) ships in. */
+const V1_24 = '1.24.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -967,6 +970,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['sidebar-team'],
         route: { view: 'team' },
         missing: TEAM_OFF,
+      },
+    ],
+  },
+  // Team (D100) hook: the left column folds to a slim strip (D100 follow-up 2026-10-16; docs/team-removal.md).
+  {
+    id: 'team-left-column',
+    decision: 'D100',
+    version: V1_24,
+    title: 'More room for the chat',
+    steps: [
+      {
+        id: 'fold',
+        title: 'Fold Needs you and Activity away',
+        what: "The ‹ at the top of the Team page's left column (or the [ key) folds Needs you and Activity into a slim strip, so the member's chat gets the full width. The strip keeps the needs-you count as an amber badge and shows a dot when there is new activity; a new item makes the badge pulse but never opens the column. Click the strip, the badge or › (or press [ again) to bring it back; the page remembers how you left it.",
+        todo: ['Press ‹ at the top of Needs you, or the [ key.', 'Click the strip or its badge to open the column again.'],
+        anchors: ['team-left-column'],
+        route: { view: 'team' },
+        missing: `${TEAM_NO_MEMBER}On a phone the page is one column, with nothing to fold.`,
       },
     ],
   },

@@ -701,3 +701,48 @@ export const CHARTER_ROWS: readonly { readonly key: 'owns' | 'produces' | 'howIt
   { key: 'howItWorks', label: 'How it works' },
   { key: 'neverDoes', label: 'Never does' },
 ];
+
+// ── D100 follow-up 2026-10-16: the left column folds to a slim strip ───────
+
+/** The key that folds / unfolds the left column on the Team page (no other shortcut of the app uses it). */
+export const LEFT_COLUMN_KEY = '[';
+
+/** What {@link isLeftColumnShortcut} reads of a key press (a `KeyboardEvent` fits). */
+export interface LeftColumnPress {
+  readonly key: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly altKey: boolean;
+  readonly repeat: boolean;
+  readonly isComposing: boolean;
+  readonly defaultPrevented: boolean;
+}
+
+/**
+ * `true` when a key press folds / unfolds the left column: a bare "[" (no ⌘ / Ctrl /
+ * ⌥; ⇧ is not checked, the key is the character), never while typing in a text field,
+ * while a modal is open, on a key repeat, while an IME composes, or when another
+ * handler took the key.
+ */
+export function isLeftColumnShortcut(press: LeftColumnPress, context: { readonly typing: boolean; readonly modalOpen: boolean }): boolean {
+  if (press.defaultPrevented || press.isComposing || press.repeat || context.typing || context.modalOpen) return false;
+  if (press.metaKey || press.ctrlKey || press.altKey) return false;
+  return press.key === LEFT_COLUMN_KEY;
+}
+
+/**
+ * The Needs-you items that should pulse the folded strip's badge: the ones not known
+ * yet (never shown in the open column) and not pulsed for already. A new item never
+ * unfolds the column: the developer's choice stands.
+ */
+export function needsToPulse(keys: readonly string[], known: ReadonlySet<string>, pulsed: ReadonlySet<string>): string[] {
+  return keys.filter((key) => !known.has(key) && !pulsed.has(key));
+}
+
+/** The folded strip's tooltip / accessible name. */
+export function leftStripLabel(needs: number, freshActivity: boolean): string {
+  const parts = [`Show Needs you and Activity (${LEFT_COLUMN_KEY})`];
+  if (needs > 0) parts.push(`${needs} need${needs === 1 ? 's' : ''} you`);
+  if (freshActivity) parts.push('new activity');
+  return parts.join(' · ');
+}

@@ -308,6 +308,120 @@ test('D100 follow-up: many members sit in one row that scrolls sideways; a membe
   await page.screenshot({ path: test.info().outputPath('team-strip-scrolled.png') });
 });
 
+test('D100 follow-up: the left column folds to a strip with the needs-you badge, the chat takes the width; remembered; a new item pulses, never unfolds', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWithHub(page, `${world.baseUrl}/team`);
+  await world.setTeam(page, true);
+  await removeAllMembers(page);
+  const first = await world.startSession(page, 'fold-one', 'Reply with just OK.');
+  const second = await world.startSession(page, 'fold-two', 'Reply with just OK.');
+  await world.settle(page, first.id);
+  await world.settle(page, second.id);
+  await world.adopt(page, first.id, 'Folder one');
+  const two = await world.adopt(page, second.id, 'Folder two');
+  await world.call(page, 'POST', `/api/sessions/${first.id}/messages`, { text: '[fake:ask-delay] Ask me.' });
+  await expect(page.locator('[data-testid="team-need"][data-kind="questions"]')).toHaveCount(1, { timeout: 20_000 });
+  while (await page.getByTestId('toast').isVisible()) await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
+
+  const split = page.getByTestId('team-split');
+  const columns = () => split.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ')[0]);
+  const panelWidth = async () => Math.round((await page.getByTestId('team-panel').boundingBox())!.width);
+  // Expanded by default: the column as before, with ‹ at its top.
+  await expect(split).not.toHaveAttribute('data-left', /.*/);
+  await expect.poll(columns).toBe('330px');
+  const wideBefore = await panelWidth();
+  const needs = await page.getByTestId('team-need').count();
+
+  // ‹ folds it: a 44 px strip with the badge; the member panel takes the freed width.
+  await page.getByTestId('team-left-collapse').click();
+  await expect(split).toHaveAttribute('data-left', 'collapsed');
+  const strip = page.getByTestId('team-left-strip');
+  await expect(strip).toBeVisible();
+  await expect(page.getByTestId('team-needs-you')).toHaveCount(0);
+  await expect(page.getByTestId('team-activity')).toHaveCount(0);
+  await expect(page.getByTestId('team-left-expand')).toBeFocused();
+  await expect.poll(columns).toBe('44px');
+  await expect.poll(panelWidth).toBe(wideBefore + 330 - 44);
+  const badge = page.getByTestId('team-left-badge');
+  await expect(badge).toHaveText(String(needs));
+  const [need] = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'oklch(0.8 0.14 70)';
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return [value];
+  });
+  expect(await badge.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(need);
+  await page.screenshot({ path: test.info().outputPath('team-left-collapsed.png') });
+
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.getByTestId('team-split')).toHaveAttribute('data-left', 'collapsed');
+  await expect(page.getByTestId('team-left-strip')).toBeVisible();
+
+  // A click on the strip unfolds it (the focus goes to ‹).
+  await page.getByTestId('team-left-strip').click({ position: { x: 22, y: 300 } });
+  await expect(split).not.toHaveAttribute('data-left', /.*/);
+  await expect(page.getByTestId('team-left-collapse')).toBeFocused();
+  await expect.poll(columns).toBe('330px');
+  await page.reload();
+  await expect(page.getByTestId('team-left-collapse')).toBeVisible();
+
+  // "[" folds and unfolds it, but not while typing in the chat's composer.
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('[');
+  await expect(split).toHaveAttribute('data-left', 'collapsed');
+  await page.keyboard.press('[');
+  await expect(split).not.toHaveAttribute('data-left', /.*/);
+  const composer = page.getByTestId('team-panel').locator('textarea').first();
+  await composer.click();
+  await page.keyboard.press('[');
+  await expect(composer).toHaveValue('[');
+  await expect(split).not.toHaveAttribute('data-left', /.*/);
+  await composer.fill('');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('[');
+  await expect(split).toHaveAttribute('data-left', 'collapsed');
+
+  // New activity since it was folded: a dot.
+  await expect(page.getByTestId('team-left-dot')).toHaveCount(0);
+  await world.call(page, 'POST', `/api/team/members/${two.id}/pause`);
+  await expect(page.getByTestId('team-left-dot')).toBeVisible({ timeout: 20_000 });
+  await world.call(page, 'POST', `/api/team/members/${two.id}/resume`);
+  await world.settle(page, second.id);
+
+  // A new Needs-you item pulses the badge once and never unfolds the column.
+  const pulsesBefore = Number(await badge.getAttribute('data-pulses'));
+  await world.call(page, 'POST', `/api/sessions/${second.id}/messages`, { text: '[fake:ask-delay] Ask me.' });
+  await expect.poll(async () => Number(await page.getByTestId('team-left-badge').textContent()), { timeout: 20_000 }).toBeGreaterThan(needs);
+  await expect.poll(async () => Number(await page.getByTestId('team-left-badge').getAttribute('data-pulses'))).toBeGreaterThan(pulsesBefore);
+  await expect(split).toHaveAttribute('data-left', 'collapsed');
+  await expect(page.getByTestId('team-needs-you')).toHaveCount(0);
+
+  // The badge unfolds it and brings Needs you (opened) into view.
+  while (await page.getByTestId('toast').isVisible()) await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
+  await page.getByTestId('team-left-badge').click();
+  await expect(split).not.toHaveAttribute('data-left', /.*/);
+  await expect(page.getByTestId('team-needs-you')).toBeInViewport();
+  await expect(page.getByTestId('team-needs-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('[data-testid="team-need"][data-kind="questions"]')).toHaveCount(2);
+
+  // Tablet: the same, from its 260 px column.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByTestId('view-team')).toHaveAttribute('data-layout', 'tablet');
+  await expect.poll(columns).toBe('260px');
+  await page.getByTestId('team-left-collapse').click();
+  await expect(split).toHaveAttribute('data-left', 'collapsed');
+  await expect.poll(columns).toBe('44px');
+  await expect(page.getByTestId('team-left-badge')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: test.info().outputPath('team-left-collapsed-tablet.png') });
+  await page.getByTestId('team-left-expand').click();
+  await expect.poll(columns).toBe('260px');
+});
+
 test('phone: cards in a list with Needs you first; the member opens full screen with ‹ Team', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWithHub(page, `${world.baseUrl}/team`);

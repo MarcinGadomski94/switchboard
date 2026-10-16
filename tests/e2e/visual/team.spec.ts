@@ -16,7 +16,9 @@ import { canonicalColors, writeReport } from './harness.ts';
  * cards in the team's order, the member full screen with
  * "‹ Team"), the empty state, and no sideways overflow. D100 follow-up 2026-10-14
  * (activity redesign): the left column's heads collapse and an activity entry is two
- * lines whose text uses the column's full width. It runs on the fake world
+ * lines whose text uses the column's full width. D100 follow-up 2026-10-16: the whole
+ * left column folds to a 44 px strip with the needs-you badge (desktop and tablet; the
+ * expanded layout is unchanged). It runs on the fake world
  * (demo mode never starts Team) and writes `team.md` plus a screenshot per state and
  * size to `test-results/visual/` (and `docs/visual/` with SWITCHBOARD_VISUAL_REPORT=1).
  *
@@ -214,6 +216,31 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   });
   await shoot(page, 'team-populated-desktop.png');
 
+  // D100 follow-up 2026-10-16: the whole left column folds to a 44 px strip (the
+  // expanded layout above is unchanged): the needs-you count as an amber badge, ›, and
+  // the member panel takes the freed width. Unfolded again before the tablet check.
+  const panelBefore = desk.panel!.width;
+  await page.getByTestId('team-left-collapse').click();
+  await expect(page.getByTestId('team-split')).toHaveAttribute('data-left', 'collapsed');
+  await expect.poll(async () => (await geometry()).columns[0]).toBe('44px');
+  const folded = await geometry();
+  expect(Math.round(folded.panel!.width)).toBe(Math.round(panelBefore + 330 - 44));
+  expect(Math.round(folded.panel!.bottom)).toBe(Math.round(folded.split!.bottom));
+  const strip = await page.getByTestId('team-left-strip').boundingBox();
+  expect(Math.round(strip!.width)).toBe(44);
+  const badgeBox = await page.getByTestId('team-left-badge').boundingBox();
+  expect(badgeBox!.x).toBeGreaterThanOrEqual(strip!.x);
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(strip!.x + strip!.width);
+  expect(await color(page, '[data-testid="team-left-badge"]', 'background-color')).toBe(need);
+  await expect(page.getByTestId('team-left-badge')).toHaveText('1');
+  await expect(page.getByTestId('team-left-expand')).toHaveText('›');
+  expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
+  lines.push(`- desktop, left column folded: a ${Math.round(strip!.width)} px strip (› then the needs-you count as an amber badge ${need}), the member panel ${Math.round(panelBefore)} → ${Math.round(folded.panel!.width)} px`);
+  await shoot(page, 'team-left-collapsed-desktop.png');
+  await page.getByTestId('team-left-expand').click();
+  await expect(page.getByTestId('team-split')).not.toHaveAttribute('data-left', /.*/);
+  await expect.poll(async () => (await geometry()).columns[0]).toBe('330px');
+
   await page.setViewportSize(SIZES.tablet);
   await expect(page.getByTestId('view-team')).toHaveAttribute('data-layout', 'tablet');
   const tab = await geometry();
@@ -226,6 +253,13 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
   lines.push(`- tablet: the cards in one row across the top (scrolling sideways when they do not fit), then Needs you + Activity (${tab.columns[0]}) | the member panel`);
   await shoot(page, 'team-populated-tablet.png');
+  await page.getByTestId('team-left-collapse').click();
+  await expect.poll(async () => (await geometry()).columns[0]).toBe('44px');
+  expect(await noSidewaysOverflow(page)).toBeLessThanOrEqual(0);
+  lines.push('- tablet, left column folded: the same 44 px strip');
+  await shoot(page, 'team-left-collapsed-tablet.png');
+  await page.getByTestId('team-left-expand').click();
+  await expect.poll(async () => (await geometry()).columns[0]).toBe('260px');
 
   await page.setViewportSize(SIZES.phone);
   await expect(page.getByTestId('view-team')).toHaveAttribute('data-layout', 'phone');
