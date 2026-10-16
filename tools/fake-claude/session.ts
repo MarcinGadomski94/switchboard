@@ -20,6 +20,7 @@ import {
   RECORDED_BACKGROUND_TASK,
   FAKE_AGENT_DESCRIPTION,
   agentLaunchText,
+  agentResumeText,
   WAKEUP_REASON,
   SIBLINGS,
   REMOTE_CONTROL_UNAVAILABLE,
@@ -123,7 +124,7 @@ interface ToolSpec {
 type LaunchSpec =
   | { readonly kind: 'workflow'; readonly taskId: string; readonly runId: string; readonly grid: WorkflowGrid | null; readonly seconds: number }
   | { readonly kind: 'task'; readonly taskId: string; readonly taskType: string }
-  | { readonly kind: 'agent'; readonly taskId: string };
+  | { readonly kind: 'agent'; readonly taskId: string; readonly events: boolean; readonly resume: boolean };
 
 /** A `[fake:write]` in progress. */
 interface WriteSpec {
@@ -212,6 +213,11 @@ function isCallStep(step: Step): boolean {
 function isTaskEventStep(step: Step): boolean {
   if (step.t !== 'line' || step.line['type'] !== 'system') return false;
   return ['background_tasks_changed', 'task_started', 'task_updated', 'task_notification', 'task_progress'].includes(String(step.line['subtype']));
+}
+
+/** 2026-10-16 `[fake:bg-agent … events]`: the task events a real async agent run streams (its start and its notification). */
+function isKeptAgentEvent(step: Step): boolean {
+  return step.t === 'line' && step.line['type'] === 'system' && (step.line['subtype'] === 'task_started' || step.line['subtype'] === 'task_notification');
 }
 
 /** The `bg-bash` recording's Bash call id: the async agent's `tool_use` id (rewritten with the turn's ids). */
@@ -363,6 +369,8 @@ export class Runner {
   private readonly backgroundTimers = new Set<NodeJS.Timeout>();
   /** D51: the `tool_use_id` of each workflow task's `task_started` (its progress lines carry it). */
   private readonly workflowToolUse = new Map<string, string>();
+  /** 2026-10-16: each async agent's first `Agent` call id as emitted (a resumed run's lines keep it as their parent). */
+  private readonly agentCalls = new Map<string, string>();
   /** D51 × D50: the running grid workflows by task id (`stop_task` stops their steps). */
   private readonly workflows = new Map<string, FakeWorkflow>();
   /** D44: when the process started, and how long it takes to start (`FAKE_CLAUDE_STARTUP_MS`) before it takes up messages. */
@@ -883,9 +891,11 @@ export class Runner {
       // 2026-10-16: the probe's turn as an async Agent in the real CLI's shape: no task events at all.
       const recorded = (await this.o.store.fixture('bg-bash')).turns[0] ?? [];
       const end = recorded.findIndex((s) => s.t === 'line' && s.line['type'] === 'result' && !isTaskNotificationResult(s.line));
-      launch = { kind: 'agent', taskId: `a${randomBytes(6).toString('hex').slice(0, 8)}` };
-      steps = recorded.slice(0, end + 1).filter((s) => !isTaskEventStep(s));
-      later = { steps: [...agentEndSteps(recorded, background.end), ...recorded.slice(end + 1).filter((s) => !isTaskEventStep(s))], delayMs: background.seconds * 1000 };
+      launch = { kind: 'agent', taskId: background.resume ?? `a${randomBytes(6).toString('hex').slice(0, 8)}`, events: background.events, resume: background.resume !== null };
+      // Without `events`, no task event at all; with them, the task's start and its notification (no list / update lines).
+      const keep = (s: Step): boolean => (background.events ? !isTaskEventStep(s) || isKeptAgentEvent(s) : !isTaskEventStep(s));
+      steps = recorded.slice(0, end + 1).filter(keep);
+      later = { steps: [...agentEndSteps(recorded, background.end), ...recorded.slice(end + 1).filter(keep)], delayMs: background.seconds * 1000 };
       extra.push([RECORDED_BACKGROUND_TASK, launch.taskId]);
       scenario = 'bg-bash';
       turnIndex = 0;
@@ -1616,27 +1626,52 @@ export class Runner {
 
   /** 2026-10-16 `[fake:bg-agent]`: the recording's Bash call becomes an async `Agent` call and its result the launch notice. */
   private patchAgentLaunch(line: JsonObject, launch: Extract<LaunchSpec, { kind: 'agent' }>): void {
-    const input = { description: FAKE_AGENT_DESCRIPTION, prompt: 'Audit the recorded fixtures read-only and hand back a summary.', subagent_type: 'general-purpose', run_in_background: true };
+    const prompt = 'Audit the recorded fixtures read-only and hand back a summary.';
+    const input: JsonObject = launch.resume
+      ? { to: launch.taskId, message: 'Continue the audit with the review notes.' }
+      : { description: FAKE_AGENT_DESCRIPTION, prompt, subagent_type: 'general-purpose', run_in_background: true };
     if (line['type'] === 'assistant' && line['parent_tool_use_id'] === null) {
       for (const block of asArray(asObject(line['message'])?.['content'])) {
         if (isObject(block) && block['type'] === 'tool_use' && block['name'] === 'Bash') {
-          block['name'] = 'Agent';
+          block['name'] = launch.resume ? 'SendMessage' : 'Agent';
           block['input'] = { ...input };
+          if (!launch.resume && typeof block['id'] === 'string') this.agentCalls.set(launch.taskId, block['id']);
         }
       }
       const wire = asObject(line['wire_tool_inputs']);
       if (wire) for (const key of Object.keys(wire)) wire[key] = { ...input };
       return;
     }
+    if (line['type'] === 'assistant' && typeof line['parent_tool_use_id'] === 'string' && launch.resume) {
+      // A resumed agent's lines keep its first Agent call as their parent.
+      const first = this.agentCalls.get(launch.taskId);
+      if (first) line['parent_tool_use_id'] = first;
+      return;
+    }
+    if (line['type'] === 'system' && line['subtype'] === 'task_started') {
+      line['task_type'] = 'local_agent';
+      line['description'] = FAKE_AGENT_DESCRIPTION;
+      line['subagent_type'] = 'general-purpose';
+      return;
+    }
+    if (line['type'] === 'system' && line['subtype'] === 'task_notification') {
+      line['summary'] = `Agent "${FAKE_AGENT_DESCRIPTION}" completed`;
+      delete line['output_file'];
+      return;
+    }
     if (line['type'] === 'user') {
       let launched = false;
       for (const block of asArray(asObject(line['message'])?.['content'])) {
         if (isObject(block) && block['type'] === 'tool_result') {
-          block['content'] = agentLaunchText(launch.taskId);
+          block['content'] = launch.resume ? agentResumeText(launch.taskId) : agentLaunchText(launch.taskId);
           launched = true;
         }
       }
-      if (launched && 'tool_use_result' in line) line['tool_use_result'] = { status: 'async_launched', agentId: launch.taskId, description: input.description, prompt: input.prompt };
+      if (launched && 'tool_use_result' in line) {
+        line['tool_use_result'] = launch.resume
+          ? { status: 'resumed', agentId: launch.taskId }
+          : { status: 'async_launched', agentId: launch.taskId, description: FAKE_AGENT_DESCRIPTION, prompt };
+      }
     }
   }
 

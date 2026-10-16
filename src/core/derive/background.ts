@@ -49,6 +49,17 @@ const BASH_STARTED =
  */
 const ENDS_WITH_TURN = /terminated when you give your final response|stopped when your turn ends|reaches you between your tool calls if it exits in time/;
 
+/** 2026-10-16: the tool that resumes a background agent (its input's `to` = the agent id). */
+const SEND_MESSAGE = 'SendMessage';
+
+/**
+ * 2026-10-16: a `SendMessage` result that says a background agent runs again (resumed, or
+ * launched again in the background): its words, or its structured status. A message to a
+ * teammate that runs no agent ("Message sent …") is not one.
+ */
+const AGENT_RESUMED = /\bresum(?:ed|ing)\b[^\n]*\bagent\b|\bagent\b[^\n]*\bresum(?:ed|ing)\b|Async agent launched|running in the background/i;
+const RESUMED_STATUSES: readonly unknown[] = ['async_launched', 'resumed', 'running'];
+
 /** An async `Agent` / `Task` launch; the `agentId: <id>` in its text. */
 const AGENT_LAUNCHED = 'Async agent launched successfully';
 const AGENT_ID = /agentId: ([A-Za-z0-9_-]+)/;
@@ -82,6 +93,8 @@ const WORKFLOW_LAUNCH_STATUSES: readonly unknown[] = ['async_launched', 'remote_
 function kindOf(name: string): BackgroundTaskKind | null {
   if (name === 'Bash') return 'bash';
   if (AGENT_TOOLS.includes(name)) return 'agent';
+  // 2026-10-16: `SendMessage` to a background agent resumes it (a new run of the same task).
+  if (name === SEND_MESSAGE) return 'agent';
   if (name === 'Monitor') return 'monitor';
   if (name === 'ScheduleWakeup') return 'wakeup';
   if (name === 'Workflow') return 'workflow';
@@ -256,9 +269,14 @@ export interface BackgroundResult {
 }
 
 /** What a confirmed start adds: the task's id, or `null` when the result does not confirm a background start. */
-function startedId(kind: BackgroundTaskKind, result: BackgroundResult, input: Readonly<Record<string, unknown>>, toolUseId: string): string | null {
+function startedId(kind: BackgroundTaskKind, result: BackgroundResult, input: Readonly<Record<string, unknown>>, toolUseId: string, name = ''): string | null {
   if (result.isError) return null;
   const detail = record(result.detail);
+  if (name === SEND_MESSAGE) {
+    // 2026-10-16: a resumed background agent: a pending run under the agent's id.
+    if (!RESUMED_STATUSES.includes(detail?.['status']) && !AGENT_RESUMED.test(result.text)) return null;
+    return str(detail?.['agentId']) ?? AGENT_ID.exec(result.text)?.[1] ?? str(input['to']) ?? toolUseId;
+  }
   switch (kind) {
     case 'bash': {
       const id = str(detail?.['backgroundTaskId']) ?? BASH_STARTED.exec(result.text)?.[1] ?? null;
@@ -378,7 +396,7 @@ export class BackgroundTracker {
     const start = this.#held.get(toolUseId) ?? null;
     this.#held.delete(toolUseId);
     if (call.ended) return false;
-    const confirmed = startedId(call.kind, result, call.input, toolUseId);
+    const confirmed = startedId(call.kind, result, call.input, toolUseId, call.name);
     const reported = start !== null && !result.isError && !(call.kind === 'bash' && ENDS_WITH_TURN.test(result.text)) ? start.taskId : null;
     const id = confirmed ?? reported;
     if (id === null) return false;

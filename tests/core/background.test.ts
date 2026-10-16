@@ -469,3 +469,27 @@ describe('async agents in the real CLI shape (2026-10-16)', () => {
     expect(tracker.list()).toEqual([]);
   });
 });
+
+describe('a resumed background agent (SendMessage, 2026-10-16)', () => {
+  it('a SendMessage whose result resumes an agent is a pending run under the agent id; a plain message to a teammate is not', () => {
+    const tracker = new BackgroundTracker({ now: () => new Date('2026-10-16T10:00:00.000Z') });
+    tracker.called('toolu_s1', 'SendMessage', { to: 'a1b2c3d4', message: 'Continue.' });
+    expect(tracker.resulted('toolu_s1', { text: 'Resuming agent a1b2c3d4 in the background.', isError: false })).toBe(true);
+    tracker.called('toolu_s2', 'SendMessage', { to: 'reviewer', message: 'FYI' });
+    expect(tracker.resulted('toolu_s2', { text: 'Message sent to reviewer.', isError: false })).toBe(false);
+    tracker.called('toolu_s3', 'SendMessage', { to: 'e5f6a7b8', message: 'Go on.' });
+    expect(tracker.resulted('toolu_s3', { text: 'ok', isError: false, detail: { status: 'resumed', agentId: 'e5f6a7b8' } })).toBe(true);
+    expect(tracker.list().map((task) => [task.id, task.kind, task.toolUseId])).toEqual([
+      ['a1b2c3d4', 'agent', 'toolu_s1'],
+      ['e5f6a7b8', 'agent', 'toolu_s3'],
+    ]);
+  });
+
+  it("the CLI's task_started for the resumed run (the same task id, the SendMessage call) confirms it whatever the result's words", () => {
+    const tracker = new BackgroundTracker({ now: () => new Date('2026-10-16T10:00:00.000Z') });
+    tracker.called('toolu_s1', 'SendMessage', { to: 'a1b2c3d4', message: 'Continue.' });
+    tracker.started({ taskId: 'a1b2c3d4', toolUseId: 'toolu_s1', description: 'Audit', taskType: 'local_agent', backgrounded: true } as never);
+    expect(tracker.resulted('toolu_s1', { text: 'Delivered.', isError: false })).toBe(true);
+    expect(tracker.list().map((task) => task.id)).toEqual(['a1b2c3d4']);
+  });
+});

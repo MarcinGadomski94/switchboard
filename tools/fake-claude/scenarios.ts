@@ -295,6 +295,11 @@ export function agentLaunchText(agentId: string): string {
   return `Async agent launched successfully.\nagentId: ${agentId} (internal ID - do not mention to user. Use SendMessage with to: '${agentId}' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.`;
 }
 
+/** 2026-10-16: the `SendMessage` result of a resumed background agent (generic wording). */
+export function agentResumeText(agentId: string): string {
+  return `Resuming agent ${agentId} in the background. You will be notified automatically when it completes.`;
+}
+
 /** D43: the task type `[fake:bg-task <seconds>]` reports without one given: a type Switchboard does not know. */
 export const FAKE_TASK_TYPE = 'fake_task';
 
@@ -336,7 +341,7 @@ export type BackgroundSpec =
   | { readonly kind: 'workflow'; readonly seconds: number; readonly grid: WorkflowGrid | null }
   | { readonly kind: 'task'; readonly seconds: number; readonly taskType: string }
   /** 2026-10-16: an async `Agent` in the real CLI's shape (no task events); its end is the subagent's `SubagentHandback` or a `<task-notification>` line. */
-  | { readonly kind: 'agent'; readonly seconds: number; readonly end: 'handback' | 'notify' };
+  | { readonly kind: 'agent'; readonly seconds: number; readonly end: 'handback' | 'notify'; readonly events: boolean; readonly resume: string | null };
 
 function seconds(value: string | undefined): number {
   return Math.min(Number(value ?? 0), MAX_BACKGROUND_SECONDS);
@@ -361,7 +366,13 @@ function seconds(value: string | undefined): number {
  *   `Agent` call in the shape the real CLI streams it (`run_in_background: true`, the launch
  *   result with its `agentId`, **no** `task_started` / `task_updated` / `task_notification`);
  *   `<seconds>` later the subagent's own `SubagentHandback` call (`handback`, the default) or
- *   a `<task-notification>` user line (`notify`), then the CLI's own turn.
+ *   a `<task-notification>` user line (`notify`), then the CLI's own turn; with `events`, also
+ *   the `local_agent` `task_started` (the call's id) and, after the handback, its `task_notification`;
+ * - 2026-10-16 `[fake:bg-agent-resume <seconds> <agentId>]`: `SendMessage` to that agent resumes it:
+ *   a `task_started` with the **same** task id and this call's id, the result "Resuming agent …";
+ *   `<seconds>` later the agent's `SubagentHandback` whose `parent_tool_use_id` is still its
+ *   **first** `Agent` call (as the CLI streams a resumed agent), then the `task_notification`
+ *   naming this call, then the CLI's own turn.
  * `<seconds>` may have decimals and is capped at an hour.
  * @returns the spec, `{ error }` for a malformed token, `null` without one.
  */
@@ -378,14 +389,16 @@ export function backgroundToken(text: string): BackgroundSpec | { error: string 
     const grid = workflow[2] && workflow[3] ? { phases: Number(workflow[2]), agents: Number(workflow[3]) } : null;
     return { kind: 'workflow', seconds: seconds(workflow[1]), grid };
   }
-  const agent = /\[fake:bg-agent\s+(\d+(?:\.\d+)?)(?:\s+(handback|notify))?\s*\]/.exec(text);
-  if (agent) return { kind: 'agent', seconds: seconds(agent[1]), end: agent[2] === 'notify' ? 'notify' : 'handback' };
+  const resume = /\[fake:bg-agent-resume\s+(\d+(?:\.\d+)?)\s+([A-Za-z0-9_-]+)\s*\]/.exec(text);
+  if (resume) return { kind: 'agent', seconds: seconds(resume[1]), end: 'handback', events: true, resume: resume[2] ?? null };
+  const agent = /\[fake:bg-agent\s+(\d+(?:\.\d+)?)(?:\s+(handback|notify))?(\s+events)?\s*\]/.exec(text);
+  if (agent) return { kind: 'agent', seconds: seconds(agent[1]), end: agent[2] === 'notify' ? 'notify' : 'handback', events: agent[3] !== undefined, resume: null };
   const task = /\[fake:bg-task\s+(\d+(?:\.\d+)?)(?:\s+([A-Za-z0-9_-]+))?\s*\]/.exec(text);
   if (task) return { kind: 'task', seconds: seconds(task[1]), taskType: task[2] ?? FAKE_TASK_TYPE };
-  if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task|bg-agent)(?:\s|\])/.test(text)) {
+  if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task|bg-agent|bg-agent-resume)(?:\s|\])/.test(text)) {
     return {
       error:
-        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds> [<P>x<A>]], [fake:bg-task <seconds> [<type>]] or [fake:bg-agent <seconds> [handback|notify]]',
+        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds> [<P>x<A>]], [fake:bg-task <seconds> [<type>]] or [fake:bg-agent <seconds> [handback|notify] [events]] or [fake:bg-agent-resume <seconds> <agentId>]',
     };
   }
   return null;

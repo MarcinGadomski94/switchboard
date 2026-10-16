@@ -544,6 +544,39 @@ describe('waiting on subagents · real path (2026-10-16)', () => {
     });
   }
 
+  it('a resumed agent (SendMessage, the same task id) is a run of its own: run 1 handed back, run 2 keeps the session run ("waiting on 1 subagent"); its handback is run 2\'s and ends it', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    // Run 1: an async Agent with its task events (the real CLI's), handed back, notified, then the CLI's own turn.
+    const session = await w.supervisor.start(newSession({ task: 'Delegate it. [fake:bg-agent 1 handback events]' }), w.place);
+    await until(async () => (await w.store.agents.listBySession(session.id)).some((a) => a.kind === 'subagent' && a.taskId && a.status === 'done'), 15_000);
+    await waitForStatus(w.store, session.id, ['done'], 15_000);
+    const first = (await w.store.agents.listBySession(session.id)).find((a) => a.kind === 'subagent' && a.taskId);
+    const taskId = first?.taskId as string;
+    expect(taskId).toMatch(/^a[0-9a-f]{8}$/);
+
+    // Run 2: SendMessage resumes the same task; the main turn ends while it works.
+    await w.supervisor.sendMessage(session.id, `Continue it. [fake:bg-agent-resume 3 ${taskId}]`);
+    await until(async () => w.supervisor.activity(session.id)?.state === 'background' && (await w.store.agents.listBySession(session.id)).filter((a) => a.taskId === taskId).length === 2, 15_000);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
+    expect(waitingOnSubagents(w.supervisor.activity(session.id))).toMatchObject({ count: 1 });
+    const runs = (await w.store.agents.listBySession(session.id)).filter((a) => a.taskId === taskId);
+    const second = runs.find((a) => a.id !== first?.id);
+    expect(runs.map((a) => [a.id === first?.id ? 'run 1' : 'run 2', a.status])).toEqual([
+      ['run 1', 'done'],
+      ['run 2', 'run'],
+    ]);
+
+    // Run 2 hands back (its lines' parent is still run 1's Agent call): run 2 ends, then the session is done.
+    await waitForStatus(w.store, session.id, ['done'], 15_000);
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    expect((await w.store.agents.get(second?.id as string))?.status).toBe('done');
+    const handbacks = (await w.store.events.list(session.id)).filter((e) => (e.payload as { name?: string }).name === 'SubagentHandback');
+    expect(handbacks.map((e) => e.agentId)).toEqual([first?.id, second?.id]);
+    expect(w.errors).toEqual([]);
+    await w.supervisor.pause(session.id);
+  });
+
   it('the stale-subagent guard: a subagent quiet past the limit is taken as stopped (logged); the session goes done', async () => {
     const warnings: string[] = [];
     world = await makeSupervisorWorld({ subagentQuietMs: 400, onWarn: (message) => warnings.push(message) });

@@ -40,6 +40,7 @@ import { writtenSolution } from '../../core/session-solutions.ts';
 import { type StreamMessage, progressNoteText } from '../../core/stream-json.ts';
 import { readingFromRateLimit } from '../../core/usage.ts';
 import { type WorkflowLaunch, workflowLaunch } from '../../core/derive/workflows.ts';
+import type { AgentRecord } from '../db/repos/agents.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -121,6 +122,66 @@ interface OpenRequest {
 const SUBAGENT_HANDBACK = 'SubagentHandback';
 
 /**
+ * 2026-10-16 · the open runs of the subagent tasks. One task id can run several times: the
+ * orchestrator resumes a background agent with `SendMessage`, and the CLI reports the new run
+ * under the **same** task id (its own `tool_use_id`, its own `agents` row). A run is keyed by
+ * the `tool_use` that started it (else the task id); an end without a known run ends the
+ * task's latest open run.
+ */
+class OpenRuns {
+  readonly #runs = new Map<string, string[]>();
+  /** Runs already ended: a late end naming one of them ends nothing (never the next run). */
+  readonly #ended = new Set<string>();
+
+  start(taskId: string, runKey: string): void {
+    this.#ended.delete(runKey);
+    const list = this.#runs.get(taskId) ?? [];
+    if (!list.includes(runKey)) list.push(runKey);
+    this.#runs.set(taskId, list);
+  }
+
+  /** Ends the run `runKey` when it is open, else the task's latest; the ended run's key, `null` when none was open. */
+  end(taskId: string, runKey: string | null): string | null {
+    const list = this.#runs.get(taskId);
+    if (!list || list.length === 0) return null;
+    let at = runKey !== null ? list.indexOf(runKey) : -1;
+    if (at < 0 && runKey !== null && runKey !== taskId && this.#ended.has(runKey)) return null;
+    if (at < 0) at = list.length - 1;
+    const [key] = list.splice(at, 1);
+    if (list.length === 0) this.#runs.delete(taskId);
+    if (key !== undefined) this.#ended.add(key);
+    return key ?? null;
+  }
+
+  /** `true` for a run that ended already (a late end naming it is stale). */
+  isEnded(runKey: string): boolean {
+    return this.#ended.has(runKey);
+  }
+
+  latest(taskId: string): string | null {
+    return this.#runs.get(taskId)?.at(-1) ?? null;
+  }
+
+  has(taskId: string): boolean {
+    return this.#runs.has(taskId);
+  }
+
+  tasks(): string[] {
+    return [...this.#runs.keys()];
+  }
+
+  /** Every open run (`[taskId, runKey]`), oldest first per task. */
+  all(): Array<readonly [string, string]> {
+    return [...this.#runs].flatMap(([taskId, keys]) => keys.map((key) => [taskId, key] as const));
+  }
+
+  clear(): void {
+    this.#runs.clear();
+    this.#ended.clear();
+  }
+}
+
+/**
  * Turns one process's stream-json messages into stored state
  * (`docs/derivations.md`): events (chat, timeline, terminal tail), agents,
  * usage readings and the session's CLI fields. It also keeps the
@@ -182,7 +243,10 @@ export class StreamRecorder {
   /** D50: the "Stopped" line of the current stop is written (a late second aborted result adds none). */
   #stopLineWritten = false;
   readonly #openRequests = new Map<string, OpenRequest>();
-  readonly #runningAgents = new Set<string>();
+  /** The running subagent tasks' open runs (`local_agent` tasks; 2026-10-16: a resumed task is a run of its own). */
+  readonly #runningAgents = new OpenRuns();
+  /** 2026-10-16: the task id of a subagent's starting call (its `agents` row's), for attributing a resumed run's lines. */
+  readonly #taskOfToolUse = new Map<string, string>();
   readonly #textByMessage = new Map<string, { eventId: number; text: string; parts: string[] }>();
   readonly #tools = new Map<string, ToolEntry>();
   readonly #agentByToolUse = new Map<string, string>();
@@ -245,7 +309,7 @@ export class StreamRecorder {
 
   /** The running subagents' task ids: `local_agent` tasks, and the pending async agents and workflows. */
   #runningSubagentIds(): Set<string> {
-    const ids = new Set(this.#runningAgents);
+    const ids = new Set(this.#runningAgents.tasks());
     for (const task of this.#background.list()) if (isSubagentTask(task)) ids.add(task.id);
     return ids;
   }
@@ -255,12 +319,15 @@ export class StreamRecorder {
    * its pending background task and its running task end as completed.
    */
   async #subagentHandedBack(toolUseId: string): Promise<void> {
-    const taskId = this.#subagentByToolUse.get(toolUseId) ?? this.#background.list().find((task) => task.toolUseId === toolUseId)?.id ?? null;
+    const taskId =
+      this.#taskOfToolUse.get(toolUseId) ??
+      this.#subagentByToolUse.get(toolUseId) ??
+      (await this.#store.agents.findByToolUseId(this.#sessionId, toolUseId))?.taskId ??
+      this.#background.list().find((task) => task.toolUseId === toolUseId)?.id ??
+      null;
     this.#taskNotified(taskId, toolUseId);
-    if (taskId !== null) {
-      await this.#onTaskEnd(taskId, 'completed');
-      this.#runningAgents.delete(taskId);
-    }
+    // The handback ends the task's LATEST open run (a resumed agent's lines keep its first call as their parent).
+    if (taskId !== null) await this.#onTaskEnd(taskId, 'completed');
   }
 
   /** A sign of life of the subagent with this task id. */
@@ -288,7 +355,7 @@ export class StreamRecorder {
       if (now - seen < quietMs) continue;
       this.#taskNotified(taskId, null);
       await this.#onTaskEnd(taskId, 'stopped');
-      this.#runningAgents.delete(taskId);
+      while (this.#runningAgents.has(taskId)) await this.#onTaskEnd(taskId, 'stopped');
       ended.push({ taskId, quietMs: now - seen });
     }
     if (ended.length > 0) this.#syncActivity();
@@ -561,9 +628,9 @@ export class StreamRecorder {
 
   /** The process ended: running subagents were cut off. */
   async closeRunningAgents(): Promise<void> {
-    for (const taskId of this.#runningAgents) {
-      const agent = await this.#store.agents.findByTaskId(this.#sessionId, taskId);
-      if (agent) {
+    for (const [taskId, runKey] of this.#runningAgents.all()) {
+      const agent = await this.#runRow(taskId, runKey);
+      if (agent && agent.status === 'run') {
         await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt: new Date().toISOString() });
         this.#activity.agentEnded(agent.id);
       }
@@ -590,12 +657,24 @@ export class StreamRecorder {
 
   async #agentFor(parentToolUseId: string | null): Promise<string> {
     if (!parentToolUseId) return this.#mainAgentId;
-    const cached = this.#agentByToolUse.get(parentToolUseId);
-    if (cached) return cached;
-    const agent = await this.#store.agents.findByToolUseId(this.#sessionId, parentToolUseId);
-    if (!agent) return this.#mainAgentId;
-    this.#agentByToolUse.set(parentToolUseId, agent.id);
-    return agent.id;
+    let id = this.#agentByToolUse.get(parentToolUseId);
+    if (!id) {
+      const agent = await this.#store.agents.findByToolUseId(this.#sessionId, parentToolUseId);
+      if (!agent) return this.#mainAgentId;
+      id = agent.id;
+      this.#agentByToolUse.set(parentToolUseId, agent.id);
+      if (agent.taskId) this.#taskOfToolUse.set(parentToolUseId, agent.taskId);
+    }
+    // 2026-10-16: a resumed agent's lines keep its first call as their parent: they belong to the task's latest open run.
+    const taskId = this.#taskOfToolUse.get(parentToolUseId);
+    const latest = taskId !== undefined ? this.#runningAgents.latest(taskId) : null;
+    if (taskId !== undefined && latest !== null && latest !== parentToolUseId) {
+      const cached = this.#agentByToolUse.get(latest);
+      if (cached) return cached;
+      const row = await this.#runRow(taskId, latest);
+      if (row) return row.id;
+    }
+    return id;
   }
 
   async #setTranscriptUuid(uuid: string | null, parentToolUseId: string | null): Promise<void> {
@@ -690,9 +769,11 @@ export class StreamRecorder {
         this.#workflowEnded(message.taskId, message.status);
         return this.#onTaskEnd(message.taskId, message.status);
       case 'task-notification':
+        // 2026-10-16: a late end of an earlier run of a resumed task ends nothing (the new run goes on).
+        if (message.toolUseId !== null && message.taskId !== '' && this.#runningAgents.has(message.taskId) && this.#runningAgents.isEnded(message.toolUseId)) return;
         this.#taskNotified(message.taskId || null, message.toolUseId);
         this.#workflowEnded(message.taskId, message.status);
-        return this.#onTaskEnd(message.taskId, message.status);
+        return this.#onTaskEnd(message.taskId, message.status, message.toolUseId);
       case 'thinking-tokens': {
         // D19: ticks without `parent_tool_use_id` are the main agent's (the only ones observed).
         const agentId = await this.#agentFor(message.parentToolUseId);
@@ -930,7 +1011,7 @@ export class StreamRecorder {
       // it is idle, like a subagent a stopped process leaves behind, and no longer keeps the session running.
       await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt: new Date().toISOString() });
       this.#activity.agentEnded(agent.id);
-      this.#runningAgents.delete(agent.taskId);
+      this.#runningAgents.end(agent.taskId, agent.toolUseId);
       return;
     }
     if (!agent || agent.taskId || agent.status !== 'run') return;
@@ -1085,29 +1166,49 @@ export class StreamRecorder {
         status: 'run',
       });
     }
-    if (agent && message.toolUseId) this.#agentByToolUse.set(message.toolUseId, agent.id);
+    if (agent && message.toolUseId) {
+      this.#agentByToolUse.set(message.toolUseId, agent.id);
+      this.#taskOfToolUse.set(message.toolUseId, message.taskId);
+    }
     if (agent) this.#activity.agentStarted(agent.id);
-    this.#runningAgents.add(message.taskId);
+    // 2026-10-16: a task id seen before (a SendMessage resume) is a new run of its own.
+    this.#runningAgents.start(message.taskId, message.toolUseId ?? message.taskId);
   }
 
   async #onTaskProgress(message: Extract<StreamMessage, { kind: 'task-progress' }>): Promise<void> {
     if (!this.#runningAgents.has(message.taskId)) return;
-    const agent = await this.#store.agents.findByTaskId(this.#sessionId, message.taskId);
+    const agent = await this.#runRow(message.taskId, this.#runningAgents.latest(message.taskId));
     if (agent && message.description && agent.statusText !== message.description) {
       await this.#store.agents.update(agent.id, { statusText: message.description });
     }
   }
 
-  async #onTaskEnd(taskId: string, status: string | null): Promise<void> {
+  /**
+   * A task's end (`task_updated` / `task_notification` with a final status, a handback, a stop):
+   * ends the run its `toolUseId` names when open, else the task's latest open run (2026-10-16:
+   * a resumed task has several runs, each its own row).
+   */
+  async #onTaskEnd(taskId: string, status: string | null, toolUseId: string | null = null): Promise<void> {
     if (!isTaskFinished(status)) return;
-    this.#subagentSeen.delete(taskId);
-    const agent = await this.#store.agents.findByTaskId(this.#sessionId, taskId);
+    const runKey = this.#runningAgents.end(taskId, toolUseId);
+    // A stale end (an earlier run's) while a newer run is open: nothing ends.
+    if (runKey === null && this.#runningAgents.has(taskId)) return;
+    if (!this.#runningAgents.has(taskId)) this.#subagentSeen.delete(taskId);
+    const agent = await this.#runRow(taskId, runKey);
     if (agent && agent.status === 'run') {
       const next: SessionStatus = agentStatusFromTask(status);
       await this.#store.agents.update(agent.id, { status: next, statusText: null, endedAt: new Date().toISOString() });
     }
     if (agent) this.#activity.agentEnded(agent.id);
-    this.#runningAgents.delete(taskId);
+  }
+
+  /** The `agents` row of a task's run: by the run's starting call, else the task's newest row. */
+  async #runRow(taskId: string, runKey: string | null): Promise<AgentRecord | null> {
+    if (runKey !== null && runKey !== taskId) {
+      const row = await this.#store.agents.findByToolUseId(this.#sessionId, runKey);
+      if (row) return row;
+    }
+    return this.#store.agents.findByTaskId(this.#sessionId, taskId);
   }
 
   // ── written files: the writing agent's place, the session's solutions ─────
