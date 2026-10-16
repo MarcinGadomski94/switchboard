@@ -446,3 +446,26 @@ describe('every background task counts (D43)', () => {
     expect(activity.snapshot([task])).toMatchObject({ state: 'background', tool: null, summary: 'Export', agents: { main: { state: 'background', tool: null } } });
   });
 });
+
+describe('async agents in the real CLI shape (2026-10-16)', () => {
+  it('an Agent call with run_in_background: true is pending once its result is not an error, whatever the wording; the launch notice names its agentId', () => {
+    const tracker = new BackgroundTracker({ now: () => new Date('2026-10-16T10:00:00.000Z') });
+    tracker.called('toolu_a', 'Agent', { description: 'Audit', prompt: 'p', run_in_background: true });
+    expect(tracker.resulted('toolu_a', { text: 'Started in the background.', isError: false })).toBe(true);
+    tracker.called('toolu_b', 'Agent', { description: 'Review', prompt: 'p', run_in_background: true });
+    expect(tracker.resulted('toolu_b', { text: 'Async agent launched successfully.\nagentId: a1b2c3d4 (internal ID)', isError: false })).toBe(true);
+    tracker.called('toolu_c', 'Agent', { description: 'Failed', prompt: 'p', run_in_background: true });
+    expect(tracker.resulted('toolu_c', { text: 'Error', isError: true })).toBe(false);
+    // A foreground Agent call is no background work.
+    tracker.called('toolu_d', 'Agent', { description: 'Inline', prompt: 'p' });
+    expect(tracker.resulted('toolu_d', { text: 'The answer.', isError: false })).toBe(false);
+    expect(tracker.list().map((task) => [task.id, task.kind])).toEqual([
+      ['toolu_a', 'agent'],
+      ['a1b2c3d4', 'agent'],
+    ]);
+    // Its end by the call's id (a handback, a notification naming the tool use).
+    expect(tracker.notified(null, 'toolu_a')).toBe(true);
+    expect(tracker.notified('a1b2c3d4', null)).toBe(true);
+    expect(tracker.list()).toEqual([]);
+  });
+});

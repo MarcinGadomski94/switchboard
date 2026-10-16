@@ -287,6 +287,14 @@ export const FAKE_WORKFLOW_SUMMARY = 'fake-claude: read-only audit of the record
 /** D43: the script `[fake:workflow <seconds>]` passes to the `Workflow` tool (never run). */
 export const FAKE_WORKFLOW_SCRIPT = `export const meta = { name: '${FAKE_WORKFLOW_NAME}', description: '${FAKE_WORKFLOW_SUMMARY}', phases: [{ title: 'Audit' }] }\nphase('Audit')\nawait agent('Audit the recorded fixtures read-only')`;
 
+/** 2026-10-16: the async agent `[fake:bg-agent …]` launches (its `Agent` call's description). */
+export const FAKE_AGENT_DESCRIPTION = 'fake-claude: delegated audit';
+
+/** 2026-10-16: the async `Agent` launch result, worded like the CLI's (generic; no real text). */
+export function agentLaunchText(agentId: string): string {
+  return `Async agent launched successfully.\nagentId: ${agentId} (internal ID - do not mention to user. Use SendMessage with to: '${agentId}' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.`;
+}
+
 /** D43: the task type `[fake:bg-task <seconds>]` reports without one given: a type Switchboard does not know. */
 export const FAKE_TASK_TYPE = 'fake_task';
 
@@ -326,7 +334,9 @@ export type BackgroundSpec =
   | { readonly kind: 'wakeup'; readonly seconds: number }
   /** D51: `grid` (`<P>x<A>`): its agents run and write their files; `null`: D43's launch alone. */
   | { readonly kind: 'workflow'; readonly seconds: number; readonly grid: WorkflowGrid | null }
-  | { readonly kind: 'task'; readonly seconds: number; readonly taskType: string };
+  | { readonly kind: 'task'; readonly seconds: number; readonly taskType: string }
+  /** 2026-10-16: an async `Agent` in the real CLI's shape (no task events); its end is the subagent's `SubagentHandback` or a `<task-notification>` line. */
+  | { readonly kind: 'agent'; readonly seconds: number; readonly end: 'handback' | 'notify' };
 
 function seconds(value: string | undefined): number {
   return Math.min(Number(value ?? 0), MAX_BACKGROUND_SECONDS);
@@ -347,6 +357,11 @@ function seconds(value: string | undefined): number {
  * - D43 `[fake:bg-task <seconds> [<type>]]`: the same recording without its tool call:
  *   only a `task_started` of `<type>` (default {@link FAKE_TASK_TYPE}) without a
  *   `tool_use_id`, then its end.
+ * - 2026-10-16 `[fake:bg-agent <seconds> [handback|notify]]`: the same recording as an async
+ *   `Agent` call in the shape the real CLI streams it (`run_in_background: true`, the launch
+ *   result with its `agentId`, **no** `task_started` / `task_updated` / `task_notification`);
+ *   `<seconds>` later the subagent's own `SubagentHandback` call (`handback`, the default) or
+ *   a `<task-notification>` user line (`notify`), then the CLI's own turn.
  * `<seconds>` may have decimals and is capped at an hour.
  * @returns the spec, `{ error }` for a malformed token, `null` without one.
  */
@@ -363,12 +378,14 @@ export function backgroundToken(text: string): BackgroundSpec | { error: string 
     const grid = workflow[2] && workflow[3] ? { phases: Number(workflow[2]), agents: Number(workflow[3]) } : null;
     return { kind: 'workflow', seconds: seconds(workflow[1]), grid };
   }
+  const agent = /\[fake:bg-agent\s+(\d+(?:\.\d+)?)(?:\s+(handback|notify))?\s*\]/.exec(text);
+  if (agent) return { kind: 'agent', seconds: seconds(agent[1]), end: agent[2] === 'notify' ? 'notify' : 'handback' };
   const task = /\[fake:bg-task\s+(\d+(?:\.\d+)?)(?:\s+([A-Za-z0-9_-]+))?\s*\]/.exec(text);
   if (task) return { kind: 'task', seconds: seconds(task[1]), taskType: task[2] ?? FAKE_TASK_TYPE };
-  if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task)(?:\s|\])/.test(text)) {
+  if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task|bg-agent)(?:\s|\])/.test(text)) {
     return {
       error:
-        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds> [<P>x<A>]] or [fake:bg-task <seconds> [<type>]]',
+        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds> [<P>x<A>]], [fake:bg-task <seconds> [<type>]] or [fake:bg-agent <seconds> [handback|notify]]',
     };
   }
   return null;

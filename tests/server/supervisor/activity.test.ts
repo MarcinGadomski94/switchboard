@@ -9,7 +9,7 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { LatestThrottle, type ThrottleTimers } from '../../../src/server/supervisor/activity-throttle.ts';
 import { StreamRecorder } from '../../../src/server/supervisor/recorder.ts';
 import { FIXTURES_DIR } from '../../../tools/fake-claude/fixtures.ts';
-import { FAKE_TASK_DESCRIPTION, FAKE_WORKFLOW_SUMMARY } from '../../../tools/fake-claude/scenarios.ts';
+import { FAKE_AGENT_DESCRIPTION, FAKE_TASK_DESCRIPTION, FAKE_WORKFLOW_SUMMARY } from '../../../tools/fake-claude/scenarios.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
@@ -526,6 +526,23 @@ describe('waiting on subagents · real path (2026-10-16)', () => {
     expect(firstDone === -1 || statuses.slice(0, firstDone).every((status) => status !== 'idle')).toBe(true);
     await w.supervisor.pause(session.id);
   });
+
+  for (const end of ['handback', 'notify'] as const) {
+    it(`fake-claude [fake:bg-agent ${end}] (the real CLI's shape: an async Agent call, no task events): run, "waiting on 1 subagent"; its ${end === 'handback' ? 'SubagentHandback' : '<task-notification>'} ends it, then done`, async () => {
+      world = await makeSupervisorWorld();
+      const w = world;
+      const session = await w.supervisor.start(newSession({ task: `Delegate it. [fake:bg-agent 3 ${end}]` }), w.place);
+      await until(() => w.supervisor.activity(session.id)?.state === 'background');
+      expect((await w.store.sessions.get(session.id))?.status).toBe('run');
+      expect(w.supervisor.activity(session.id)?.background).toMatchObject([{ kind: 'agent', summary: FAKE_AGENT_DESCRIPTION }]);
+      expect(waitingOnSubagents(w.supervisor.activity(session.id))).toMatchObject({ count: 1 });
+      await waitForStatus(w.store, session.id, ['done'], 15_000);
+      expect(w.supervisor.activity(session.id)).toBeNull();
+      // Nothing was left for the stale guard: the end came from the stream itself.
+      expect(w.errors).toEqual([]);
+      await w.supervisor.pause(session.id);
+    });
+  }
 
   it('the stale-subagent guard: a subagent quiet past the limit is taken as stopped (logged); the session goes done', async () => {
     const warnings: string[] = [];

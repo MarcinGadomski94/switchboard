@@ -117,6 +117,9 @@ interface OpenRequest {
   readonly onToolEvent: boolean;
 }
 
+/** 2026-10-16: the tool a subagent ends its work with (its final report to the agent that started it). */
+const SUBAGENT_HANDBACK = 'SubagentHandback';
+
 /**
  * Turns one process's stream-json messages into stored state
  * (`docs/derivations.md`): events (chat, timeline, terminal tail), agents,
@@ -245,6 +248,19 @@ export class StreamRecorder {
     const ids = new Set(this.#runningAgents);
     for (const task of this.#background.list()) if (isSubagentTask(task)) ids.add(task.id);
     return ids;
+  }
+
+  /**
+   * 2026-10-16: the subagent started by the call `toolUseId` handed back (its final report):
+   * its pending background task and its running task end as completed.
+   */
+  async #subagentHandedBack(toolUseId: string): Promise<void> {
+    const taskId = this.#subagentByToolUse.get(toolUseId) ?? this.#background.list().find((task) => task.toolUseId === toolUseId)?.id ?? null;
+    this.#taskNotified(taskId, toolUseId);
+    if (taskId !== null) {
+      await this.#onTaskEnd(taskId, 'completed');
+      this.#runningAgents.delete(taskId);
+    }
   }
 
   /** A sign of life of the subagent with this task id. */
@@ -816,6 +832,8 @@ export class StreamRecorder {
         this.#activity.toolStarted(agentId, block.id, block.name, block.input);
         // D30: the main agent's calls that may start background work.
         if (agentId === this.#mainAgentId) this.#background.called(block.id, block.name, block.input);
+        // 2026-10-16: a subagent's `SubagentHandback` is its final report: it has finished (the real CLI may stream no task event for it).
+        else if (block.name === SUBAGENT_HANDBACK && message.parentToolUseId !== null) await this.#subagentHandedBack(message.parentToolUseId);
         if (AGENT_TOOLS.includes(block.name) && block.id) await this.#createSubagent(block.id, block.input);
       }
     }

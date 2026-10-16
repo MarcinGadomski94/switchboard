@@ -265,7 +265,8 @@ function startedId(kind: BackgroundTaskKind, result: BackgroundResult, input: Re
       return id !== null && !ENDS_WITH_TURN.test(result.text) ? id : null;
     }
     case 'agent': {
-      if (detail?.['status'] !== 'async_launched' && !result.text.includes(AGENT_LAUNCHED)) return null;
+      // 2026-10-16: the launch notice, its structured status, or (another wording) a call asked to run in the background.
+      if (detail?.['status'] !== 'async_launched' && !result.text.includes(AGENT_LAUNCHED) && input['run_in_background'] !== true) return null;
       return str(detail?.['agentId']) ?? AGENT_ID.exec(result.text)?.[1] ?? toolUseId;
     }
     case 'monitor': {

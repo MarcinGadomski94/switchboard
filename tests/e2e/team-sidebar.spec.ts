@@ -209,8 +209,8 @@ test('2026-10-16: a member whose main turn ended while a subagent works reads wo
   const delegator = await start(page, 'delegator-run');
   await settle(page, delegator);
   const memberId = await adopt(page, delegator, 'Delegator');
-  // A background subagent (a local_agent task) outlives the main turn by ~8 s.
-  expect((await call(page, 'POST', `/api/sessions/${delegator}/messages`, { text: '[fake:bg-task 8 local_agent] Delegate it.' })).status).toBeLessThan(300);
+  // An async Agent in the real CLI's shape (no task events) outlives the main turn by ~8 s; its SubagentHandback ends it.
+  expect((await call(page, 'POST', `/api/sessions/${delegator}/messages`, { text: '[fake:bg-agent 8] Delegate it.' })).status).toBeLessThan(300);
   await page.goto(`${server.baseUrl}/team`);
   const row = memberRow(page, memberId);
   await expect(row).toHaveAttribute('data-subagents', '1', { timeout: 10_000 });
