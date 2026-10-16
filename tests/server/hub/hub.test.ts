@@ -184,8 +184,8 @@ const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()([
   'quietSince',
 ]).filter((key) => key !== 'quietSince');
 const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
-/** D30: `wakeAt` only on a wake-up; D51: `workflow` only on a workflow whose run is known. */
-const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github', 'workflow']).filter((key) => key !== 'wakeAt' && key !== 'workflow');
+/** D30: `wakeAt` only on a wake-up; D51: `workflow` only on a workflow whose run is known; 2026-10-16: `waiting` always (additive). */
+const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github', 'workflow', 'waiting']).filter((key) => key !== 'wakeAt' && key !== 'workflow');
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
@@ -431,9 +431,10 @@ describe('/hub · events (contract, field by field)', () => {
     const main = (await sw.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
     expect(Object.keys(waiting.agents)).toEqual([main?.id]);
     expect(keysOf(waiting.agents[main?.id ?? ''])).toEqual(AGENT_ACTIVITY_KEYS);
-    // REST agrees while it waits; the session's status is the finished turn's (D30 changes the activity only).
+    // REST agrees while it waits; 2026-10-16: a GitHub wait the agent waits on keeps the session `run`.
     const detail = (await requestJson(port, 'GET', `/api/sessions/${session.id}`, cookie)).body as Session;
-    expect(detail.status).toBe('done');
+    expect(detail.status).toBe('run');
+    expect(task.waiting).toBe(true);
     expect(detail.activity).toMatchObject({ state: 'background', background: [{ id: task.id, toolUseId: task.toolUseId }] });
     // The task ends (its notification, then the CLI's own turn, a burst the throttle folds): idle again, the last event null.
     await waitForEvent(sw.store, session.id, (e) => (e.payload as { taskNotification?: boolean }).taskNotification === true, 15_000);

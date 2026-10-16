@@ -142,6 +142,8 @@ BackgroundTask  { "id": "<CLI task id | tool_use id>", "toolUseId": "toolu_…",
 - In state `background`, **`SessionActivity.tool`** is `Workflow` for a workflow and `null` for a `task`.
 - A task also ends with a `system/task_updated` whose status is terminal. Details: `docs/derivations.md` → *Background work* → *Every background task counts (D43)*.
 
+**2026-10-16 (additive): background waits keep `run`.** `BackgroundTask` gains **`waiting`** (boolean, always sent by this version): the agent waits on the task (a subagent; a GitHub wait; a wake-up; another shell / monitor / task for at most 30 minutes without a sign of life; never a dev server or watcher; a GitHub wait or a wake-up stops after a 2 h stale guard). While any such task is pending the session's `status` is `run`, which revises D30's "the session's `status` is not affected" for these tasks. A client reading a payload without `waiting` counts a subagent, a GitHub wait and a wake-up. `TeamMember` and `TeamRosterEntry` gain `waitingOn` (`github` | `background` | `wakeup` | `null`) and `wakeAt` (ISO | `null`). Details: `docs/derivations.md` → *Session status* → *Waiting on background work*.
+
 ```json
 BackgroundTask  { …D30 fields, "kind": "bash|agent|monitor|wakeup|workflow|task" }
 ```

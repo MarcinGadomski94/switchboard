@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import type { BackgroundTask } from '../../src/core/api.ts';
 import { ActivityTracker } from '../../src/core/derive/activity.ts';
 import {
+  BACKGROUND_QUIET_MS,
+  BACKGROUND_WAIT_MS,
   BackgroundTracker,
   type TaskStart,
   backgroundSummary,
+  backgroundWait,
+  isLongRunningCommand,
+  isWaitTask,
   endsTask,
   githubCommand,
   isGithubWait,
@@ -109,7 +115,7 @@ describe('BackgroundTracker (pure)', () => {
     expect(w.tracker.list()).toEqual([]);
     expect(w.tracker.resulted('toolu_1', { text: BASH_STARTED('b6kg3qgya'), isError: false, detail: { backgroundTaskId: 'b6kg3qgya' } })).toBe(true);
     expect(w.tracker.list()).toEqual([
-      { id: 'b6kg3qgya', toolUseId: 'toolu_1', kind: 'bash', summary: 'sleep 5; echo done', startedAt: iso(0), github: false },
+      { id: 'b6kg3qgya', toolUseId: 'toolu_1', kind: 'bash', summary: 'sleep 5; echo done', startedAt: iso(0), github: false, waiting: true },
     ]);
     // A notification of something else changes nothing.
     expect(w.tracker.notified('other', 'toolu_9')).toBe(false);
@@ -165,10 +171,10 @@ describe('BackgroundTracker (pure)', () => {
     w.tracker.called('tw', 'ScheduleWakeup', { delaySeconds: 600, reason: 'Check CI again', prompt: '/loop check CI' });
     w.tracker.resulted('tw', { text: 'Next wake-up scheduled.', isError: false });
     expect(w.tracker.list()).toEqual([
-      { id: 'a8d1', toolUseId: 'ta', kind: 'agent', summary: 'Review the diff', startedAt: iso(0), github: false },
+      { id: 'a8d1', toolUseId: 'ta', kind: 'agent', summary: 'Review the diff', startedAt: iso(0), github: false, waiting: true },
       // A monitor's GitHub wait reads like a Bash one: its gh command.
-      { id: 'mon7', toolUseId: 'tm', kind: 'monitor', summary: 'gh run watch 42', startedAt: iso(10), github: true },
-      { id: 'tw', toolUseId: 'tw', kind: 'wakeup', summary: 'Check CI again', startedAt: iso(15), wakeAt: iso(615), github: false },
+      { id: 'mon7', toolUseId: 'tm', kind: 'monitor', summary: 'gh run watch 42', startedAt: iso(10), github: true, waiting: true },
+      { id: 'tw', toolUseId: 'tw', kind: 'wakeup', summary: 'Check CI again', startedAt: iso(15), wakeAt: iso(615), github: false, waiting: true },
     ]);
     // The agent ends (its notification carries the Agent call's id).
     expect(w.tracker.notified('a8d1', 'ta')).toBe(true);
@@ -231,7 +237,7 @@ describe('the live activity with background tasks (ActivityTracker.snapshot)', (
     const during = activity.snapshot(background.list());
     expect(during).toMatchObject({ state: 'thinking', turnStartedAt: iso(0), thinkingTokens: null });
     expect(during?.background).toEqual([
-      { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'gh run view 4242 --json status --jq .status', startedAt: iso(0), github: true },
+      { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'gh run view 4242 --json status --jq .status', startedAt: iso(0), github: true, waiting: true },
     ]);
     clock += 2_000;
     activity.endTurn();
@@ -300,7 +306,7 @@ describe('every background task counts (D43)', () => {
     expect(w.tracker.started(start({ taskId: 'wbetnz0pi', toolUseId: 'tw', taskType: 'local_workflow', description: SUMMARY, workflowName: 'crm-audit' }))).toBe(false);
     expect(w.tracker.list()).toEqual([]);
     expect(w.tracker.resulted('tw', { text: WORKFLOW_LAUNCHED('wbetnz0pi'), isError: false, detail: LAUNCH_DETAIL('wbetnz0pi') })).toBe(true);
-    expect(w.tracker.list()).toEqual([{ id: 'wbetnz0pi', toolUseId: 'tw', kind: 'workflow', summary: SUMMARY, startedAt: iso(0), github: false }]);
+    expect(w.tracker.list()).toEqual([{ id: 'wbetnz0pi', toolUseId: 'tw', kind: 'workflow', summary: SUMMARY, startedAt: iso(0), github: false, waiting: true }]);
     // A progress update (no terminal status) changes nothing; the notification ends it.
     expect(w.tracker.updated('wbetnz0pi', 'running', null)).toBe(false);
     expect(w.tracker.list()).toHaveLength(1);
@@ -337,8 +343,8 @@ describe('every background task counts (D43)', () => {
     w.tick(5);
     expect(w.tracker.started(start({ taskId: 'k8', toolUseId: 'toolu_mcp', taskType: 'mcp_task', description: 'mcp__drive__export' }))).toBe(true);
     expect(w.tracker.list()).toEqual([
-      { id: 'k7', toolUseId: 'k7', kind: 'task', summary: 'Export the quarterly report', startedAt: iso(0), github: false },
-      { id: 'k8', toolUseId: 'toolu_mcp', kind: 'task', summary: 'mcp__drive__export', startedAt: iso(5), github: false },
+      { id: 'k7', toolUseId: 'k7', kind: 'task', summary: 'Export the quarterly report', startedAt: iso(0), github: false, waiting: true },
+      { id: 'k8', toolUseId: 'toolu_mcp', kind: 'task', summary: 'mcp__drive__export', startedAt: iso(5), github: false, waiting: true },
     ]);
     // The same task reported again is no second entry.
     expect(w.tracker.started(start({ taskId: 'k7', taskType: 'fake_task', description: 'again' }))).toBe(false);
@@ -371,9 +377,9 @@ describe('every background task counts (D43)', () => {
     w.tracker.resulted('t3', { text: AGENT_LAUNCHED('a3'), isError: false, detail: { status: 'async_launched', agentId: 'a3' } });
     expect(w.tracker.started(start({ taskId: 'a3', toolUseId: 't3', taskType: 'local_agent', description: 'Review the diff', backgrounded: true }))).toBe(false);
     expect(w.tracker.list()).toEqual([
-      { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'gh run view 4242 --json status --jq .status', startedAt: iso(0), github: true },
-      { id: 'w2', toolUseId: 't2', kind: 'workflow', summary: SUMMARY, startedAt: iso(2), github: false },
-      { id: 'a3', toolUseId: 't3', kind: 'agent', summary: 'Review the diff', startedAt: iso(2), github: false },
+      { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'gh run view 4242 --json status --jq .status', startedAt: iso(0), github: true, waiting: true },
+      { id: 'w2', toolUseId: 't2', kind: 'workflow', summary: SUMMARY, startedAt: iso(2), github: false, waiting: true },
+      { id: 'a3', toolUseId: 't3', kind: 'agent', summary: 'Review the diff', startedAt: iso(2), github: false, waiting: true },
     ]);
   });
 
@@ -388,7 +394,7 @@ describe('every background task counts (D43)', () => {
     w.tracker.called('t3', 'Bash', { command: 'sleep 9', run_in_background: true });
     w.tracker.started(start({ taskId: 'b3', toolUseId: 't3', taskType: 'local_bash', description: 'sleep 9', backgrounded: true }));
     w.tracker.resulted('t3', { text: 'Blocked', isError: true });
-    expect(w.tracker.list()).toEqual([{ id: 'bm1', toolUseId: 't1', kind: 'monitor', summary: 'Deploy log', startedAt: iso(0), github: false }]);
+    expect(w.tracker.list()).toEqual([{ id: 'bm1', toolUseId: 't1', kind: 'monitor', summary: 'Deploy log', startedAt: iso(0), github: false, waiting: false }]);
   });
 
   it('a foreground task counts once the CLI moves it to the background; an ambient one never; its end before the result cancels the start', () => {
@@ -410,7 +416,7 @@ describe('every background task counts (D43)', () => {
     w.tracker.started(start({ taskId: 'a4', toolUseId: 'toolu_sub', taskType: 'local_agent', description: 'Sub-review', backgrounded: false }));
     w.tick(3);
     expect(w.tracker.updated('a4', null, true)).toBe(true);
-    expect(w.tracker.list().at(-1)).toEqual({ id: 'a4', toolUseId: 'toolu_sub', kind: 'agent', summary: 'Sub-review', startedAt: iso(3), github: false });
+    expect(w.tracker.list().at(-1)).toEqual({ id: 'a4', toolUseId: 'toolu_sub', kind: 'agent', summary: 'Sub-review', startedAt: iso(3), github: false, waiting: true });
     // Ambient tasks (the CLI's own watchers) never count.
     expect(w.tracker.started(start({ taskId: 's5', taskType: 'monitor_ws', description: 'Artifact comments', ambient: true }))).toBe(false);
     // The end reported before the confirming result (by task id only, a terminal task_updated): nothing is added.
@@ -491,5 +497,118 @@ describe('a resumed background agent (SendMessage, 2026-10-16)', () => {
     tracker.started({ taskId: 'a1b2c3d4', toolUseId: 'toolu_s1', description: 'Audit', taskType: 'local_agent', backgrounded: true } as never);
     expect(tracker.resulted('toolu_s1', { text: 'Delivered.', isError: false })).toBe(true);
     expect(tracker.list().map((task) => task.id)).toEqual(['a1b2c3d4']);
+  });
+});
+
+
+describe('waiting on background work (2026-10-16): which pending tasks keep the session run', () => {
+  /** The real case of 2026-10-16: a Team member's background PR-checks watch. */
+  const PR_WATCH = 'p=42; gh pr checks $p --watch --interval 60 > /tmp/prstop.txt 2>&1; echo done';
+  const MIN = 60;
+
+  function bash(w: ReturnType<typeof world>, id: string, command: string): void {
+    w.tracker.called(`t-${id}`, 'Bash', { command, run_in_background: true });
+    w.tracker.resulted(`t-${id}`, { text: BASH_STARTED(id), isError: false, detail: { backgroundTaskId: id } });
+  }
+  const waiting = (w: ReturnType<typeof world>): Record<string, boolean | undefined> => Object.fromEntries(w.tracker.list().map((t) => [t.id, t.waiting]));
+
+  it('dev servers and watchers are left running, never waited on; GitHub waits and plain shells are', () => {
+    for (const command of ['npm run dev', 'pnpm start', 'yarn dev', 'bun run serve', 'cd web && npm run dev -- --port 5173', 'next dev', 'vite', 'npx vite --host', 'dotnet watch run', 'dotnet run --project src/Api', 'docker compose up', 'tail -f /var/log/app.log', 'nodemon server.js', 'uvicorn app:app', 'python3 -m http.server 8000', 'npx jest --watch']) {
+      expect(isLongRunningCommand(command), command).toBe(true);
+    }
+    for (const command of [PR_WATCH, 'gh run watch 42 --exit-status', 'gh run view 42 --exit-status', 'sleep 300; echo done', 'npm test', 'npm run build', 'npx vite build', 'dotnet build', 'docker compose up -d', 'npm run e2e']) {
+      expect(isLongRunningCommand(command), command).toBe(false);
+    }
+  });
+
+  it('the real case: a background `gh pr checks --watch` is a GitHub wait the agent waits on, until its notification', () => {
+    const w = world();
+    bash(w, 'bpr', PR_WATCH);
+    expect(w.tracker.list()).toMatchObject([{ id: 'bpr', github: true, waiting: true, summary: 'gh pr checks $p --watch --interval 60 > /tmp/prstop.txt 2>' }]);
+    expect(w.tracker.waitCount()).toBe(1);
+    w.tick(90 * MIN);
+    expect(waiting(w)).toEqual({ bpr: true });
+    expect(w.tracker.notified('bpr', 't-bpr')).toBe(true);
+    expect(w.tracker.waitCount()).toBe(0);
+  });
+
+  it('a GitHub wait stops counting after the stale guard without a sign of life; a sign of life restarts it', () => {
+    const w = world();
+    bash(w, 'bgh', 'gh run watch 42 --exit-status');
+    w.tick(BACKGROUND_QUIET_MS / 1000 - 60);
+    expect(w.tracker.touch('bgh')).toBe(true);
+    w.tick(BACKGROUND_QUIET_MS / 1000 - 1);
+    expect(waiting(w)).toEqual({ bgh: true });
+    w.tick(1);
+    expect(waiting(w)).toEqual({ bgh: false });
+    // Still listed (the shell may still run; D50 can stop it), just no longer waited on.
+    expect(w.tracker.list()).toHaveLength(1);
+  });
+
+  it('a plain shell counts for the wait window since its last sign of life; a dev server never; an agent always', () => {
+    const w = world();
+    bash(w, 'bsleep', 'sleep 3000; echo done');
+    bash(w, 'bdev', 'npm run dev');
+    w.tracker.called('ta', 'Agent', { description: 'Review', run_in_background: true });
+    w.tracker.resulted('ta', { text: AGENT_LAUNCHED('a1'), isError: false, detail: { status: 'async_launched', agentId: 'a1' } });
+    expect(waiting(w)).toEqual({ bsleep: true, bdev: false, a1: true });
+    expect(w.tracker.waitCount()).toBe(1);
+    w.tick(BACKGROUND_WAIT_MS / 1000 - 10);
+    w.tracker.touch('bsleep');
+    w.tick(BACKGROUND_WAIT_MS / 1000 - 1);
+    expect(waiting(w)).toEqual({ bsleep: true, bdev: false, a1: true });
+    w.tick(1);
+    expect(waiting(w)).toEqual({ bsleep: false, bdev: false, a1: true });
+    expect(w.tracker.waitCount()).toBe(0);
+  });
+
+  it('a wake-up counts until the stale guard past its time; the next turn removes it', () => {
+    const w = world();
+    w.tracker.called('tw', 'ScheduleWakeup', { delaySeconds: 1800, reason: 'Check CI again' });
+    w.tracker.resulted('tw', { text: 'Next wake-up scheduled.', isError: false });
+    w.tick(1800 + BACKGROUND_QUIET_MS / 1000 - 1);
+    expect(waiting(w)).toEqual({ tw: true });
+    w.tick(1);
+    expect(waiting(w)).toEqual({ tw: false });
+    w.tracker.turnStarted();
+    expect(w.tracker.list()).toEqual([]);
+  });
+
+  it('the window and the guard are options (the supervisor passes its own)', () => {
+    let clock = T0;
+    const tracker = new BackgroundTracker({ now: () => new Date(clock), waitWindowMs: 1000, quietMs: 5000 });
+    tracker.called('t1', 'Bash', { command: 'sleep 60', run_in_background: true });
+    tracker.resulted('t1', { text: BASH_STARTED('b1'), isError: false });
+    tracker.called('t2', 'Bash', { command: 'gh run watch 1', run_in_background: true });
+    tracker.resulted('t2', { text: BASH_STARTED('b2'), isError: false });
+    clock += 1000;
+    expect(tracker.list().map((t) => t.waiting)).toEqual([false, true]);
+    clock += 4000;
+    expect(tracker.list().map((t) => t.waiting)).toEqual([false, false]);
+  });
+
+  it('backgroundWait: subagents first, then GitHub, then another task, then a wake-up; only while no turn runs', () => {
+    const task = (over: Partial<BackgroundTask>): BackgroundTask => ({ id: 'x', toolUseId: 'x', kind: 'bash', summary: 's', startedAt: iso(0), github: false, waiting: true, ...over });
+    const at = (background: BackgroundTask[]) => ({ state: 'background' as const, background });
+    const gh = task({ id: 'g', github: true, startedAt: iso(20) });
+    const plain = task({ id: 'p', startedAt: iso(5) });
+    const dev = task({ id: 'd', startedAt: iso(1), waiting: false });
+    const wake = task({ id: 'w', kind: 'wakeup', startedAt: iso(2), wakeAt: iso(600) });
+    const agent = task({ id: 'a', kind: 'agent', startedAt: iso(30) });
+    expect(backgroundWait(at([gh, plain, dev, wake, agent]))).toEqual({ kind: 'subagents', count: 1, since: iso(30) });
+    expect(backgroundWait(at([gh, plain, dev, wake]))).toEqual({ kind: 'github', since: iso(20) });
+    expect(backgroundWait(at([plain, dev, wake]))).toEqual({ kind: 'background', since: iso(5) });
+    expect(backgroundWait(at([dev, wake]))).toEqual({ kind: 'wakeup', since: iso(2), wakeAt: iso(600) });
+    expect(backgroundWait(at([dev]))).toBeNull();
+    expect(backgroundWait({ state: 'thinking', background: [gh] })).toBeNull();
+    expect(backgroundWait(null)).toBeNull();
+  });
+
+  it('isWaitTask: an older machine\'s task (no `waiting`) counts by kind: a subagent, a GitHub wait, a wake-up', () => {
+    expect(isWaitTask({ kind: 'bash', github: true })).toBe(true);
+    expect(isWaitTask({ kind: 'wakeup', github: false })).toBe(true);
+    expect(isWaitTask({ kind: 'workflow', github: false })).toBe(true);
+    expect(isWaitTask({ kind: 'bash', github: false })).toBe(false);
+    expect(isWaitTask({ kind: 'bash', github: true, waiting: false })).toBe(false);
   });
 });

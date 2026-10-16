@@ -1,5 +1,6 @@
 import type { SessionActivity, SessionModelOption } from '../../core/api.ts';
-import { waitingOnSubagents } from '../../core/derive/background.ts';
+import { type BackgroundWait, backgroundWait } from '../../core/derive/background.ts';
+import { formatClockTime } from '../activity/activity.ts';
 import { DEFAULT_MODEL_VALUE, effortLevelsFor, modelLabel, normalizeModel } from '../../core/model-choice.ts';
 import type { Machine } from '../../core/peers.ts';
 import { type SidebarLayout, dropPosition } from '../../core/sidebar-layout.ts';
@@ -116,20 +117,46 @@ export function subagentsWaitText(count: number): string {
   return `Waiting on ${count} subagent${count === 1 ? '' : 's'}`;
 }
 
+/** 2026-10-16: the card's line while the member waits on background work: "Waiting on GitHub Actions", "Waiting on a background task", "Waking up at 18:40". */
+export function backgroundWaitText(wait: BackgroundWait): string {
+  switch (wait.kind) {
+    case 'subagents':
+      return subagentsWaitText(wait.count);
+    case 'github':
+      return 'Waiting on GitHub Actions';
+    case 'background':
+      return 'Waiting on a background task';
+    case 'wakeup': {
+      const at = wait.wakeAt ? formatClockTime(wait.wakeAt) : '';
+      return at ? `Waking up at ${at}` : 'Waking up later';
+    }
+  }
+}
+
+/** The member's own wait (`subagents` / `waitingOn`), for a card without the session's live activity. */
+function memberWait(member: Pick<TeamMember, 'subagents' | 'waitingOn' | 'wakeAt'>): BackgroundWait | null {
+  if ((member.subagents ?? 0) > 0) return { kind: 'subagents', count: member.subagents ?? 0, since: '' };
+  const kind = member.waitingOn ?? null;
+  if (kind === 'wakeup') return { kind, since: '', wakeAt: member.wakeAt ?? null };
+  return kind === null ? null : { kind, since: '' };
+}
+
 /**
  * The card's work line: while working, "Waiting on 3 subagents" when its main turn is
- * over and subagents still work (from the live activity, else the member's `subagents`),
- * else the live activity's words; otherwise {@link idleLine}.
+ * over and subagents still work, 2026-10-16: "Waiting on GitHub Actions" / "Waiting on a
+ * background task" / "Waking up at 18:40" while it waits on background work (from the
+ * live activity, else the member's `subagents` / `waitingOn`), else the live activity's
+ * words; otherwise {@link idleLine}.
  */
 export function cardWorkLine(
-  member: Pick<TeamMember, 'status' | 'pausedBy' | 'machineName' | 'subagents'>,
+  member: Pick<TeamMember, 'status' | 'pausedBy' | 'machineName' | 'subagents' | 'waitingOn' | 'wakeAt'>,
   activity: SessionActivity | null,
   firstNeed: TeamNeedsYouItem | null,
   activityText: (activity: SessionActivity) => string,
 ): string {
   if (member.status !== 'working') return idleLine(member, firstNeed);
-  const waiting = waitingOnSubagents(activity)?.count ?? (activity === null || activity.state === 'background' ? (member.subagents ?? 0) : 0);
-  if (waiting > 0) return subagentsWaitText(waiting);
+  const wait = backgroundWait(activity) ?? (activity === null || activity.state === 'background' ? memberWait(member) : null);
+  if (wait !== null) return backgroundWaitText(wait);
   return activity ? activityText(activity) : idleLine(member, firstNeed);
 }
 

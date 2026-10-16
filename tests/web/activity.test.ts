@@ -224,6 +224,16 @@ describe('background work (D30)', () => {
     expect(chatActivityLine(waiting([wake]), at(42))).toEqual({ state: 'background', glyph: '⏳', text: 'Waking up at 18:40', time: '0:12', tokens: null });
   });
 
+  it('2026-10-16: a task the agent does not wait on reads as left running, and a waited-on task shows before it', () => {
+    const dev = task({ id: 'bdev', github: false, summary: 'npm run dev', startedAt: iso(0), waiting: false });
+    expect(backgroundText(dev)).toBe('Running in the background: npm run dev');
+    // A GitHub wait past its stale guard keeps its words.
+    expect(backgroundText(task({ waiting: false }))).toBe(`Waiting for GitHub Actions: ${GH}`);
+    const gh = task({ id: 'bgh', startedAt: iso(60), waiting: true });
+    expect(oldestBackgroundTask([dev, gh])?.id).toBe('bgh');
+    expect(oldestBackgroundTask([dev])?.id).toBe('bdev');
+  });
+
   it('several tasks: the oldest shows (whatever the order) and `+N more`', () => {
     const tasks = [task({ id: 'b2', toolUseId: 't2', github: false, summary: 'npm run dev', startedAt: iso(60) }), task(), task({ id: 'a3', kind: 'agent', github: false, summary: 'Review', startedAt: iso(90) })];
     expect(oldestBackgroundTask(tasks)?.id).toBe('b1');

@@ -66,6 +66,8 @@ export interface WorldOptions {
   readonly standingInstruction?: boolean;
   /** 2026-10-16: the stale-subagent guard's quiet time (the supervisor's 2 hours when omitted). */
   readonly subagentQuietMs?: number;
+  /** 2026-10-16: a plain background task's wait window (the supervisor's 30 minutes when omitted). */
+  readonly backgroundWaitMs?: number;
   /** 2026-10-16: the guard's notes (default: dropped, so tests stay quiet). */
   readonly onWarn?: (message: string) => void;
   /** 2026-10-16: how long an ask that needs a feature tool waits for it to be listed (the supervisor's default when omitted). */
@@ -136,6 +138,7 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
     ...(options.teleportInitTimeoutMs !== undefined ? { teleportInitTimeoutMs: options.teleportInitTimeoutMs } : {}),
     ...(options.subagentQuietMs !== undefined ? { subagentQuietMs: options.subagentQuietMs } : {}),
+    ...(options.backgroundWaitMs !== undefined ? { backgroundWaitMs: options.backgroundWaitMs } : {}),
     ...(options.toolRefreshWaitMs !== undefined ? { toolRefreshWaitMs: options.toolRefreshWaitMs } : {}),
     onWarn: options.onWarn ?? (() => undefined),
     onError: (error) => errors.push(error),

@@ -1,4 +1,5 @@
-import type { TeamCurrentItem, TeamMemberStatus, TeamRosterEntry } from '../../core/team.ts';
+import type { TeamCurrentItem, TeamMemberStatus, TeamRosterEntry, TeamWaitKind } from '../../core/team.ts';
+import { formatClockTime } from '../activity/activity.ts';
 
 /**
  * D100 follow-up 2026-10-16 · the sidebar's member rows under each team (`docs/team.md` →
@@ -18,9 +19,28 @@ export const ROSTER_GLYPH: Readonly<Record<TeamMemberStatus, string>> = {
 /** 2026-10-16: the glyph of a member that works only through its subagents (its main turn is over): half a dot, in the running colour. */
 export const SUBAGENTS_GLYPH = '◐';
 
-/** A row's glyph: {@link ROSTER_GLYPH}, or {@link SUBAGENTS_GLYPH} while it waits on subagents. */
-export function rosterGlyph(entry: Pick<TeamRosterEntry, 'status' | 'subagents'>): string {
-  return entry.status === 'working' && (entry.subagents ?? 0) > 0 ? SUBAGENTS_GLYPH : ROSTER_GLYPH[entry.status];
+/**
+ * A row's glyph: {@link ROSTER_GLYPH}, or {@link SUBAGENTS_GLYPH} while it waits on
+ * subagents or (2026-10-16) on background work: working, but not in a turn.
+ */
+export function rosterGlyph(entry: Pick<TeamRosterEntry, 'status' | 'subagents' | 'waitingOn'>): string {
+  return entry.status === 'working' && ((entry.subagents ?? 0) > 0 || (entry.waitingOn ?? null) !== null) ? SUBAGENTS_GLYPH : ROSTER_GLYPH[entry.status];
+}
+
+/** 2026-10-16: the row's words for a background wait: `⏳ GitHub Actions`, `⏳ background task`, `⏰ waking up at 18:40`. */
+export function waitLabel(kind: TeamWaitKind, wakeAt: string | null | undefined): string {
+  if (kind === 'github') return '⏳ GitHub Actions';
+  if (kind === 'background') return '⏳ background task';
+  const at = wakeAt ? formatClockTime(wakeAt) : '';
+  return at ? `⏰ waking up at ${at}` : '⏰ waking up';
+}
+
+/** 2026-10-16: the tooltip's words for a background wait: `waiting on GitHub Actions`, `waiting on a background task`, `waking up at 18:40`. */
+function waitTitle(kind: TeamWaitKind, wakeAt: string | null | undefined): string {
+  if (kind === 'github') return 'waiting on GitHub Actions';
+  if (kind === 'background') return 'waiting on a background task';
+  const at = wakeAt ? formatClockTime(wakeAt) : '';
+  return at ? `waking up at ${at}` : 'waking up';
 }
 
 /** `1 subagent`, `3 subagents`. */
@@ -66,14 +86,22 @@ export function itemLabel(item: TeamCurrentItem): string {
 /**
  * The row's status line: working → `PROJ-14 · 40m` (the current item and the time since
  * the turn started), `working · 12m` without a known item, `3 subagents · 25m` while only
- * its subagents work (since the oldest started); needs you → `needs you`; idle →
- * `idle · 2h` (since the last activity); paused → `paused`; offline → `offline`.
+ * its subagents work (since the oldest started), 2026-10-16: `⏳ GitHub Actions · 12m` /
+ * `⏳ background task · 12m` while it waits on background work, `⏰ waking up at 18:40`
+ * while it waits for its wake-up; needs you → `needs you`; idle → `idle · 2h` (since the
+ * last activity); paused → `paused`; offline → `offline`.
  */
-export function rosterLine(entry: Pick<TeamRosterEntry, 'status' | 'current' | 'turnStartedAt' | 'lastActivityAt' | 'subagents'>, now: number): string {
+export function rosterLine(entry: Pick<TeamRosterEntry, 'status' | 'current' | 'turnStartedAt' | 'lastActivityAt' | 'subagents' | 'waitingOn' | 'wakeAt'>, now: number): string {
   switch (entry.status) {
     case 'working': {
       // 2026-10-16: the main turn is over, its subagents work: `3 subagents · 25m` (since the oldest started).
       const subagents = entry.subagents ?? 0;
+      const waitingOn = entry.waitingOn ?? null;
+      if (subagents === 0 && waitingOn === 'wakeup') return waitLabel(waitingOn, entry.wakeAt);
+      if (subagents === 0 && waitingOn !== null) {
+        const waited = since(entry.turnStartedAt, now);
+        return waited === null ? waitLabel(waitingOn, null) : `${waitLabel(waitingOn, null)} · ${shortDuration(waited)}`;
+      }
       const head = subagents > 0 ? subagentsLabel(subagents) : entry.current ? itemLabel(entry.current) : 'working';
       const ms = since(entry.turnStartedAt, now);
       return ms === null ? head : `${head} · ${shortDuration(ms)}`;
@@ -88,8 +116,9 @@ export function rosterLine(entry: Pick<TeamRosterEntry, 'status' | 'current' | '
 }
 
 /** The row's tooltip: the full role name, the status and (working) the full item; offline names the other PC. */
-export function rosterTitle(entry: Pick<TeamRosterEntry, 'name' | 'status' | 'current' | 'machineName' | 'subagents'>): string {
+export function rosterTitle(entry: Pick<TeamRosterEntry, 'name' | 'status' | 'current' | 'machineName' | 'subagents' | 'waitingOn' | 'wakeAt'>): string {
   if (entry.status === 'working' && (entry.subagents ?? 0) > 0) return `${entry.name} · waiting on ${subagentsLabel(entry.subagents ?? 0)}`;
+  if (entry.status === 'working' && entry.waitingOn) return `${entry.name} · ${waitTitle(entry.waitingOn, entry.wakeAt)}`;
   if (entry.status === 'offline') return `${entry.name} · offline: runs on ${entry.machineName}, which is not reachable`;
   if (entry.status === 'working' && entry.current) return `${entry.name} · working on ${entry.current.key ? `${entry.current.key} ${entry.current.title}` : entry.current.title}`;
   return `${entry.name} · ${STATUS_WORDS[entry.status]}`;

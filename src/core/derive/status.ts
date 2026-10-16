@@ -24,6 +24,12 @@ export interface LiveStatusInput {
   readonly turnRunning: boolean;
   /** Subagents (`local_agent` tasks) started and not finished. */
   readonly runningAgents: number;
+  /**
+   * 2026-10-16 (*Session status* → *Waiting on background work*): background tasks that
+   * are no subagent and that the agent waits on (a GitHub wait, a wake-up, another shell
+   * within its window); absent = none.
+   */
+  readonly backgroundWaits?: number;
   readonly lastOutcome: TurnOutcome | null;
 }
 
@@ -43,7 +49,8 @@ export interface EndedStatusInput {
 export type StatusInput = LiveStatusInput | EndedStatusInput;
 
 /**
- * - Live: an open request → `need`; a running turn or subagent → `run`; else the
+ * - Live: an open request → `need`; a running turn or subagent, or a background task
+ *   the agent waits on (2026-10-16) → `run`; else the
  *   last turn's outcome (`done` / `fail`); nothing ran yet, or D50 the developer
  *   stopped the last turn → `idle`.
  * - Ended: a stop Switchboard started (`pause` / `detach`) → `paused`, whatever the
@@ -57,7 +64,7 @@ export type StatusInput = LiveStatusInput | EndedStatusInput;
 export function deriveSessionStatus(input: StatusInput): SessionStatus {
   if (input.live) {
     if (input.openRequests > 0) return 'need';
-    if (input.turnRunning || input.runningAgents > 0) return 'run';
+    if (input.turnRunning || input.runningAgents > 0 || (input.backgroundWaits ?? 0) > 0) return 'run';
     if (input.lastOutcome === 'error') return 'fail';
     if (input.lastOutcome === 'success') return 'done';
     return 'idle';

@@ -168,10 +168,10 @@ test('D30: a background GitHub Actions wait after the turn: chat line, sidebar r
   const { id } = await world.startSession(page, 'background-e2e', 'Wait for the CI run. [fake:background-gh 20]');
   await expect.poll(async () => (await detail(page, id)).activity?.state).toBe('background');
   const waiting = await detail(page, id);
-  // The turn is over (its status is the turn's), the wait is the activity.
-  expect(waiting.status).toBe('done');
+  // The turn is over, the wait is the activity; 2026-10-16: the agent waits on GitHub Actions, so the session stays run.
+  expect(waiting.status).toBe('run');
   expect(waiting.activity).toMatchObject({ state: 'background', tool: 'Bash', summary: GH, thinkingTokens: null });
-  expect(waiting.activity?.background).toMatchObject([{ kind: 'bash', github: true, summary: GH }]);
+  expect(waiting.activity?.background).toMatchObject([{ kind: 'bash', github: true, summary: GH, waiting: true }]);
 
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
   await expect(page.getByTestId('session-chat')).toContainText('STARTED');

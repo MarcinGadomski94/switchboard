@@ -427,9 +427,10 @@ describe('stop background tasks · real path (fake-claude, D50 ruling)', () => {
     world = await makeSupervisorWorld();
     const w = world;
     const session = await w.supervisor.start(newSession({ task: 'Wait a bit. [fake:wakeup 60]' }), w.place);
-    await waitForStatus(w.store, session.id, ['done']);
-    const wakeup = await until(async () => w.supervisor.activity(session.id)?.background[0], 'the wake-up');
+    const wakeup = await until(async () => (w.supervisor.activity(session.id)?.state === 'background' ? w.supervisor.activity(session.id)?.background[0] : undefined), 'the wake-up');
     expect(wakeup.kind).toBe('wakeup');
+    // 2026-10-16: a scheduled wake-up keeps the session run.
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
     expect(await w.supervisor.stopBackground(session.id)).toMatchObject({ stopped: [], failed: [] });
     expect(await w.supervisor.stopBackground(session.id, [wakeup.id])).toMatchObject({ stopped: [], failed: [] });
     expect(w.supervisor.activity(session.id)?.background).toHaveLength(1);

@@ -75,6 +75,8 @@ export const WAITING_BACKGROUND = 'Waiting for a background task';
 export const WAKING_UP = 'Waking up at';
 /** D43: a background workflow's words (`Running a workflow: <summary>`). */
 export const RUNNING_WORKFLOW = 'Running a workflow';
+/** 2026-10-16: a task the agent left running and does not wait on (a dev server, a shell past its window): `Running in the background: <summary>`. */
+export const LEFT_RUNNING = 'Running in the background';
 
 /** Milliseconds from `iso` to `now`, never negative (0 for an unreadable time). */
 export function elapsedMs(iso: string, now: number): number {
@@ -147,10 +149,18 @@ export function formatClockTime(iso: string): string {
   return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
 }
 
-/** D30: the oldest of the pending background tasks (the one the views show); `null` without any. */
+/**
+ * D30: the oldest of the pending background tasks (the one the views show); `null`
+ * without any. 2026-10-16: the oldest one the agent waits on comes first (`waiting`), so
+ * a dev server left running does not hide a GitHub wait.
+ */
 export function oldestBackgroundTask(tasks: readonly BackgroundTask[]): BackgroundTask | null {
   let oldest: BackgroundTask | null = null;
-  for (const task of tasks) if (oldest === null || task.startedAt < oldest.startedAt) oldest = task;
+  for (const task of tasks) {
+    if (oldest === null) oldest = task;
+    else if (task.waiting !== false && oldest.waiting === false) oldest = task;
+    else if ((task.waiting !== false) === (oldest.waiting !== false) && task.startedAt < oldest.startedAt) oldest = task;
+  }
   return oldest;
 }
 
@@ -159,15 +169,18 @@ export function oldestBackgroundTask(tasks: readonly BackgroundTask[]): Backgrou
  * → `Waiting for GitHub Actions: <summary>`; D43: a workflow → `Running a workflow:
  * <summary>` (D51: `… · 3/7 agents done · phase Review` once its agents are known);
  * anything else (D43: a `task` the CLI reported included) → `Waiting for a
- * background task: <summary>`.
+ * background task: <summary>`, 2026-10-16: or `Running in the background: <summary>`
+ * once the agent does not wait on it (`waiting: false`: a dev server, past its window).
  */
-export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'> & { readonly workflow?: BackgroundTask['workflow'] }): string {
+export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'> & { readonly workflow?: BackgroundTask['workflow']; readonly waiting?: boolean }): string {
   if (task.kind === 'wakeup' && task.wakeAt) return `${WAKING_UP} ${formatClockTime(task.wakeAt)}`;
   if (task.kind === 'workflow') {
     // D51: with its agents' progress once any agent is known: `… · 3/7 agents done · phase Review`.
     const progress = workflowBackgroundProgress(task.workflow);
     return progress ? `${RUNNING_WORKFLOW}: ${task.summary} · ${progress}` : `${RUNNING_WORKFLOW}: ${task.summary}`;
   }
+  // 2026-10-16: a task the agent does not wait on (a dev server, a shell past its window) is left running.
+  if (task.waiting === false && !task.github) return `${LEFT_RUNNING}: ${task.summary}`;
   return `${task.github ? WAITING_GITHUB : WAITING_BACKGROUND}: ${task.summary}`;
 }
 

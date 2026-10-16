@@ -165,6 +165,7 @@ export function TeamSidebarEntry() {
                       data-member-id={member.id}
                       data-status={member.status}
                       data-subagents={member.subagents ? String(member.subagents) : undefined}
+                      data-waiting-on={member.waitingOn ?? undefined}
                       title={rosterTitle(member)}
                       onClick={() => openMember(member.id)}
                     >

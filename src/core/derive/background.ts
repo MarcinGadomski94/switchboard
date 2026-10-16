@@ -32,6 +32,50 @@ import { SUMMARY_MAX, toolSummary } from './activity.ts';
 import { AGENT_TASK_TYPE, isTaskFinished } from './agents.ts';
 import { AGENT_TOOLS } from './event-kind.ts';
 
+/**
+ * 2026-10-16 (`docs/derivations.md` → *Session status* → *Waiting on background work*):
+ * a shell, monitor or other task that is no GitHub wait, no dev server and no subagent
+ * keeps the session `run` for at most this long without a sign of life (its start, a
+ * `task_progress` / `task_updated`, a monitor's event notice); then it reads as left
+ * running, not waited on.
+ */
+export const BACKGROUND_WAIT_MS = 30 * 60_000;
+
+/**
+ * 2026-10-16: the stale guard of the background waits that count until their end (a
+ * GitHub wait, a wake-up past its time): with no sign of life for this long (a wake-up:
+ * since its `wakeAt`) it no longer keeps the session `run`. The same 2 hours as the
+ * stale-subagent guard (`SUBAGENT_QUIET_MS`).
+ */
+export const BACKGROUND_QUIET_MS = 2 * 3600_000;
+
+/**
+ * 2026-10-16: a command the agent leaves running rather than waits on: a dev server or a
+ * watcher (`npm run dev`, `pnpm start`, `next dev`, `vite` (not `vite build`), `dotnet watch` / `dotnet run`,
+ * `docker compose up` without `-d`, `tail -f`, `nodemon`, `uvicorn`, `python -m
+ * http.server`, any `--watch` that is no GitHub wait). Such a task never keeps `run`.
+ */
+const LONG_RUNNING = new RegExp(
+  [
+    String.raw`\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|preview|watch)\b`,
+    String.raw`\b(?:next|nuxt|astro|remix)\s+(?:dev|start)\b`,
+    String.raw`\bvite(?!\s+(?:build|optimize)\b)(?:\s|$|[;&|)])`,
+    String.raw`\bdotnet\s+(?:watch|run)\b`,
+    String.raw`\bdocker(?:-|\s+)compose\s+up\b(?![^\n;&|]*\s-d\b)(?![^\n;&|]*--detach\b)`,
+    String.raw`\b(?:tail|journalctl)\b[^\n;&|]*\s-f\b`,
+    String.raw`\b(?:nodemon|uvicorn|gunicorn|http-server|live-server)\b`,
+    String.raw`\bpython3?\s+-m\s+http\.server\b`,
+    String.raw`\b(?:flask|rails)\s+(?:run|s|server)\b`,
+    String.raw`\bwebpack(?:-dev-server|\s+serve)\b`,
+    String.raw`--watch\b`,
+  ].join('|'),
+);
+
+/** `true` when a shell command is a dev server or a watcher the agent leaves running (2026-10-16), never a GitHub wait. */
+export function isLongRunningCommand(command: string): boolean {
+  return !GITHUB_WAIT.test(command) && LONG_RUNNING.test(command);
+}
+
 /** A command that waits for GitHub Actions (D30): `gh run …`, `gh pr checks …`, `gh workflow …`. */
 const GITHUB_WAIT = /\bgh\s+(?:run|pr\s+checks|workflow)\b/;
 
@@ -311,6 +355,18 @@ function startedId(kind: BackgroundTaskKind, result: BackgroundResult, input: Re
 export interface BackgroundTrackerOptions {
   /** Clock (tests pass a fake one). */
   readonly now?: () => Date;
+  /** 2026-10-16: how long a plain shell / monitor / task counts as waited on without a sign of life (default {@link BACKGROUND_WAIT_MS}). */
+  readonly waitWindowMs?: number;
+  /** 2026-10-16: the stale guard of a GitHub wait or a wake-up (default {@link BACKGROUND_QUIET_MS}). */
+  readonly quietMs?: number;
+}
+
+/** 2026-10-16: what the tracker knows of a pending task beyond its wire shape. */
+interface Life {
+  /** Its last sign of life (epoch ms); a wake-up: its `wakeAt`. */
+  seen: number;
+  /** A dev server or watcher ({@link isLongRunningCommand}): never waited on. */
+  readonly longRunning: boolean;
 }
 
 interface Call {
@@ -371,9 +427,15 @@ export class BackgroundTracker {
   readonly #held = new Map<string, Started>();
   /** D43: foreground tasks (`is_backgrounded: false`) of the running turn, by task id. */
   readonly #foreground = new Map<string, Started>();
+  /** 2026-10-16: each pending task's last sign of life and whether it is a dev server, by its key in {@link #tasks}. */
+  readonly #life = new Map<string, Life>();
+  readonly #waitWindowMs: number;
+  readonly #quietMs: number;
 
   constructor(options: BackgroundTrackerOptions = {}) {
     this.#now = options.now ?? (() => new Date());
+    this.#waitWindowMs = options.waitWindowMs ?? BACKGROUND_WAIT_MS;
+    this.#quietMs = options.quietMs ?? BACKGROUND_QUIET_MS;
   }
 
   /** A main-agent `tool_use`: remembered when its tool can start background work. */
@@ -412,7 +474,7 @@ export class BackgroundTracker {
       ...(call.kind === 'wakeup' && typeof delay === 'number' ? { wakeAt: new Date(call.startedAt.getTime() + delay * 1000).toISOString() } : {}),
       github,
     };
-    this.#add(task);
+    this.#add(task, command !== null && (call.kind === 'bash' || call.kind === 'monitor') && isLongRunningCommand(command));
     return true;
   }
 
@@ -462,11 +524,11 @@ export class BackgroundTracker {
       for (const [key, held] of this.#held) if (held.taskId === taskId) callId = key;
     }
     if (callId !== null) this.#held.delete(callId);
-    if (toolUseId !== null && this.#tasks.delete(toolUseId)) return true;
+    if (toolUseId !== null && this.#delete(toolUseId)) return true;
     if (taskId !== null) {
       for (const [key, task] of this.#tasks) {
         if (task.id === taskId) {
-          this.#tasks.delete(key);
+          this.#delete(key);
           return true;
         }
       }
@@ -482,7 +544,7 @@ export class BackgroundTracker {
    * (D43: a turn ends only once they did).
    */
   turnStarted(): void {
-    for (const [key, task] of this.#tasks) if (task.kind === 'wakeup') this.#tasks.delete(key);
+    for (const [key, task] of this.#tasks) if (task.kind === 'wakeup') this.#delete(key);
     this.#calls.clear();
     this.#held.clear();
     this.#foreground.clear();
@@ -492,14 +554,60 @@ export class BackgroundTracker {
   clear(): void {
     this.#calls.clear();
     this.#tasks.clear();
+    this.#life.clear();
     this.#held.clear();
     this.#foreground.clear();
   }
 
-  /** The pending tasks, oldest first. */
+  /**
+   * 2026-10-16: a sign of life of the pending task with this task id (or `tool_use` id):
+   * its `task_started`, a `task_progress` / non-terminal `task_updated`, a monitor's event
+   * notice. It restarts the wait window of a plain shell and the stale guard of a GitHub
+   * wait. Returns `true` when a pending task had that id.
+   */
+  touch(id: string): boolean {
+    if (id === '') return false;
+    let touched = false;
+    for (const [key, task] of this.#tasks) {
+      if (task.id !== id && task.toolUseId !== id) continue;
+      const life = this.#life.get(key);
+      if (life && task.kind !== 'wakeup') life.seen = this.#now().getTime();
+      touched = true;
+    }
+    return touched;
+  }
+
+  /**
+   * The pending tasks, oldest first, each with `waiting` (2026-10-16, *Session status*
+   * → *Waiting on background work*): an async agent or a workflow always (the
+   * stale-subagent guard is the recorder's); a GitHub wait until it was quiet for
+   * `quietMs`; a wake-up until `quietMs` past its time; a dev server or watcher never;
+   * any other shell, monitor or task while quiet for less than `waitWindowMs`.
+   */
   list(): BackgroundTask[] {
+    const now = this.#now().getTime();
+    const tasks = [...this.#tasks].map(([key, task]) => ({ ...task, waiting: this.#waits(task, this.#life.get(key), now) }));
     // A stable sort: tasks started in the same millisecond keep their start order.
-    return [...this.#tasks.values()].sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0));
+    return tasks.sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0));
+  }
+
+  /** 2026-10-16: how many pending tasks that are no subagent are waited on (the recorder's status input). */
+  waitCount(): number {
+    return this.list().filter((task) => task.waiting && !isSubagentTask(task)).length;
+  }
+
+  #waits(task: BackgroundTask, life: Life | undefined, now: number): boolean {
+    if (isSubagentTask(task)) return true;
+    const quiet = life ? now - life.seen : 0;
+    if (task.kind === 'wakeup' || task.github) return quiet < this.#quietMs;
+    if (life?.longRunning) return false;
+    return quiet < this.#waitWindowMs;
+  }
+
+  /** Removes a pending task by its key, with what the tracker knew of it. */
+  #delete(key: string): boolean {
+    this.#life.delete(key);
+    return this.#tasks.delete(key);
   }
 
   /** `true` when a pending task has this task id or this `tool_use` id. */
@@ -515,14 +623,19 @@ export class BackgroundTracker {
       if (!call.ended) this.#held.set(entry.toolUseId, entry);
       return false;
     }
-    this.#add(taskFromStart(entry));
+    this.#add(taskFromStart(entry), isLongRunningCommand(entry.description ?? ''));
     return true;
   }
 
-  /** Adds a pending task; one pending under the same task id or `tool_use` id is replaced (D43: no double entry). */
-  #add(task: BackgroundTask): void {
-    for (const [key, pending] of this.#tasks) if (pending.id === task.id || pending.toolUseId === task.toolUseId) this.#tasks.delete(key);
+  /**
+   * Adds a pending task; one pending under the same task id or `tool_use` id is replaced
+   * (D43: no double entry). 2026-10-16: its life starts now (a wake-up's at its `wakeAt`).
+   */
+  #add(task: BackgroundTask, longRunning = false): void {
+    for (const [key, pending] of this.#tasks) if (pending.id === task.id || pending.toolUseId === task.toolUseId) this.#delete(key);
     this.#tasks.set(task.toolUseId, task);
+    const wakeAt = task.wakeAt ? Date.parse(task.wakeAt) : Number.NaN;
+    this.#life.set(task.toolUseId, { seen: Number.isFinite(wakeAt) ? wakeAt : this.#now().getTime(), longRunning });
   }
 }
 
@@ -563,4 +676,49 @@ export function waitingOnSubagents(activity: Pick<SessionActivity, 'state' | 'ba
   if (subagents.length === 0) return null;
   const since = subagents.reduce((oldest, task) => (task.startedAt < oldest ? task.startedAt : oldest), subagents[0]?.startedAt ?? '');
   return { count: pendingSubagentCount(subagents), since };
+}
+
+/**
+ * 2026-10-16: `true` when the agent waits on this pending task (it keeps the session
+ * `run`): the task's `waiting`, else (an older machine's payload, without the field) by
+ * kind: a subagent, a GitHub wait or a wake-up.
+ */
+export function isWaitTask(task: Pick<BackgroundTask, 'kind' | 'github' | 'waiting'>): boolean {
+  if (task.waiting !== undefined) return task.waiting;
+  return isSubagentTask(task) || task.github || task.kind === 'wakeup';
+}
+
+/**
+ * 2026-10-16 (*Session status* → *Waiting on background work*): what a session whose
+ * main turn is over waits on, the most telling first: its subagents (with their count),
+ * a GitHub Actions wait, another background task, a wake-up (with its time). `since` =
+ * when the oldest such task started. `null` while a turn runs, or when nothing pending is
+ * waited on (only dev servers / watchers, or tasks past their window).
+ */
+export type BackgroundWait =
+  | { readonly kind: 'subagents'; readonly count: number; readonly since: string }
+  | { readonly kind: 'github' | 'background'; readonly since: string }
+  | { readonly kind: 'wakeup'; readonly since: string; readonly wakeAt: string | null };
+
+/** The kinds of {@link BackgroundWait}, the most telling first. */
+export type BackgroundWaitKind = BackgroundWait['kind'];
+
+function oldestStart(tasks: readonly Pick<BackgroundTask, 'startedAt'>[]): string {
+  return tasks.reduce((oldest, task) => (task.startedAt < oldest ? task.startedAt : oldest), tasks[0]?.startedAt ?? '');
+}
+
+/** The wait of a session's activity ({@link BackgroundWait}); `null` without one. */
+export function backgroundWait(activity: Pick<SessionActivity, 'state' | 'background'> | null | undefined): BackgroundWait | null {
+  if (!activity || activity.state !== 'background') return null;
+  const waited = (activity.background ?? []).filter(isWaitTask);
+  const subagents = waited.filter(isSubagentTask);
+  if (subagents.length > 0) return { kind: 'subagents', count: pendingSubagentCount(subagents), since: oldestStart(subagents) };
+  const github = waited.filter((task) => task.github);
+  if (github.length > 0) return { kind: 'github', since: oldestStart(github) };
+  const other = waited.filter((task) => task.kind !== 'wakeup');
+  if (other.length > 0) return { kind: 'background', since: oldestStart(other) };
+  const wakeups = waited.filter((task) => task.kind === 'wakeup');
+  if (wakeups.length === 0) return null;
+  const next = wakeups.reduce((soonest, task) => ((task.wakeAt ?? '') < (soonest.wakeAt ?? '') ? task : soonest), wakeups[0] as BackgroundTask);
+  return { kind: 'wakeup', since: oldestStart(wakeups), wakeAt: next.wakeAt ?? null };
 }

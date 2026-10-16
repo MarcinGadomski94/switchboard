@@ -326,7 +326,18 @@ export interface TeamMember extends Omit<TeamMemberRecord, 'clock' | 'deleted'> 
   readonly charterRequest?: TeamCharterRequestView | null;
   /** 2026-10-16: the subagents it waits on while its main turn is over (`0` = none); additive. */
   readonly subagents?: number;
+  /**
+   * 2026-10-16: with its main turn over and no subagent working, the background work it
+   * waits on (`github`: a GitHub Actions wait; `background`: another background task;
+   * `wakeup`: a scheduled wake-up, at {@link wakeAt}); `null` / absent = none. Additive.
+   */
+  readonly waitingOn?: TeamWaitKind | null;
+  /** 2026-10-16: `waitingOn: 'wakeup'`: when it wakes up (ISO); additive. */
+  readonly wakeAt?: string | null;
 }
+
+/** 2026-10-16: the background work a member waits on besides subagents (`docs/team.md` → *Waiting on background work*). */
+export type TeamWaitKind = 'github' | 'background' | 'wakeup';
 
 /** D105 · a member's open charter request as the UI sees it. */
 export interface TeamCharterRequestView {
@@ -399,6 +410,10 @@ export interface TeamRosterEntry {
   readonly turnStartedAt: string | null;
   /** 2026-10-16: while working with its main turn over, the subagents it waits on (`0` / absent = none). */
   readonly subagents?: number;
+  /** 2026-10-16: while working with its main turn over and no subagent working, the background work it waits on (`null` / absent = none). */
+  readonly waitingOn?: TeamWaitKind | null;
+  /** 2026-10-16: `waitingOn: 'wakeup'`: when it wakes up (ISO). */
+  readonly wakeAt?: string | null;
   /** The session's last activity (ISO; an idle member's "idle · 2h"), `null` when unknown. */
   readonly lastActivityAt: string | null;
 }
@@ -561,14 +576,21 @@ export type SessionStatusLike = 'need' | 'run' | 'done' | 'fail' | 'idle' | 'pau
  * gone), `needs-you` while its session waits for the developer, `paused` while Team
  * paused it, `working` while a turn runs **or its subagents still work** (2026-10-16:
  * the main turn is over, async agents / a workflow are not; an older machine's session
- * may read `done` meanwhile), else `idle`.
+ * may read `done` meanwhile) **or it waits on background work** (2026-10-16: a GitHub
+ * Actions wait, another background task, a wake-up: `waiting`), else `idle`.
  */
-export function memberStatus(input: { readonly reachable: boolean; readonly sessionStatus: SessionStatusLike | null; readonly paused: boolean; readonly subagents?: number }): TeamMemberStatus {
+export function memberStatus(input: {
+  readonly reachable: boolean;
+  readonly sessionStatus: SessionStatusLike | null;
+  readonly paused: boolean;
+  readonly subagents?: number;
+  readonly waiting?: boolean;
+}): TeamMemberStatus {
   if (!input.reachable || input.sessionStatus === null) return 'offline';
   if (input.sessionStatus === 'need') return 'needs-you';
   if (input.paused) return 'paused';
   if (input.sessionStatus === 'run') return 'working';
-  if ((input.subagents ?? 0) > 0 && input.sessionStatus !== 'paused') return 'working';
+  if (((input.subagents ?? 0) > 0 || input.waiting === true) && input.sessionStatus !== 'paused') return 'working';
   return 'idle';
 }
 

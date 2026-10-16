@@ -561,6 +561,14 @@ export interface BackgroundTask {
    * otherwise.
    */
   readonly workflow?: { readonly runId: string; readonly doneCount: number; readonly agentCount: number; readonly phase: string | null } | null;
+  /**
+   * Additive (2026-10-16, `docs/derivations.md` → *Session status* → *Waiting on
+   * background work*): the agent waits on it, so it keeps the session `run`: a subagent,
+   * a GitHub wait and a wake-up (until the 2 h stale guard), any other shell / monitor /
+   * task for at most 30 minutes without a sign of life, never a dev server or watcher.
+   * Absent from an older machine (`isWaitTask` then falls back by kind).
+   */
+  readonly waiting?: boolean;
 }
 
 /** Additive (D19): one agent's current action while the session's turn runs. */

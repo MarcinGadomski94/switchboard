@@ -69,6 +69,10 @@ export interface RecorderOptions {
   readonly answeredOn?: () => AnsweredOn | null;
   /** Clock of the live activity's timestamps (tests pass a fake one). */
   readonly now?: () => Date;
+  /** 2026-10-16: the wait window of a plain background shell / monitor / task (default `BACKGROUND_WAIT_MS`, 30 min). */
+  readonly backgroundWaitMs?: number;
+  /** 2026-10-16: the stale guard of a GitHub wait or a wake-up (default `BACKGROUND_QUIET_MS`, 2 h). */
+  readonly backgroundQuietMs?: number;
   /**
    * D25: the process may report `system/init` at startup, before it takes any
    * message (a `--teleport` spawn, `docs/supervisor.md` → *Teleport*). The first
@@ -216,6 +220,8 @@ export class StreamRecorder {
   readonly #subagentSeen = new Map<string, number>();
   /** The task id of a subagent by the `tool_use` that started it (its lines carry that id). */
   readonly #subagentByToolUse = new Map<string, string>();
+  /** 2026-10-16: the non-subagent background tasks waited on at the last {@link expireBackgroundWaits}, by `tool_use` id. */
+  #waitedKeys = new Set<string>();
 
   /**
    * User messages written to stdin that the CLI has not taken up yet (no replay
@@ -283,7 +289,11 @@ export class StreamRecorder {
     this.#onActivity = options.onActivity;
     this.#answeredOn = options.answeredOn;
     this.#activity = new ActivityTracker({ mainAgentId: options.mainAgentId, ...(options.now ? { now: options.now } : {}) });
-    this.#background = new BackgroundTracker(options.now ? { now: options.now } : {});
+    this.#background = new BackgroundTracker({
+      ...(options.now ? { now: options.now } : {}),
+      ...(options.backgroundWaitMs !== undefined ? { waitWindowMs: options.backgroundWaitMs } : {}),
+      ...(options.backgroundQuietMs !== undefined ? { quietMs: options.backgroundQuietMs } : {}),
+    });
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
@@ -303,6 +313,8 @@ export class StreamRecorder {
       turnRunning: this.#pendingTurns > 0 || this.#turnOpen,
       // 2026-10-16: a pending async agent or background workflow is a running subagent too (it keeps `run`).
       runningAgents: this.#runningSubagentIds().size,
+      // 2026-10-16: a GitHub wait, a wake-up or another background task the agent waits on keeps `run` too.
+      backgroundWaits: this.#background.waitCount(),
       lastOutcome: this.#lastOutcome,
     };
   }
@@ -365,6 +377,33 @@ export class StreamRecorder {
   /** `true` while a subagent runs (the stale-subagent sweep only looks at such recorders). */
   hasRunningSubagents(): boolean {
     return this.#runningSubagentIds().size > 0;
+  }
+
+  /**
+   * 2026-10-16: `true` while a background task that is no subagent is waited on, or was at
+   * the last {@link expireBackgroundWaits} (the sweep then re-checks its window once more).
+   */
+  hasBackgroundWaits(): boolean {
+    return this.#waitedKeys.size > 0 || this.#background.waitCount() > 0;
+  }
+
+  /**
+   * 2026-10-16 · the background waits' clock (*Waiting on background work*): a plain
+   * shell past its window, a GitHub wait or a wake-up past the stale guard stops counting
+   * as waited on. Returns the tasks that stopped since the last check (for the log); the
+   * activity follows at once, the status is the caller's to refresh.
+   */
+  expireBackgroundWaits(): BackgroundTask[] {
+    const now = new Map(this.#background.list().map((task) => [task.toolUseId, task] as const));
+    const stopped: BackgroundTask[] = [];
+    for (const key of this.#waitedKeys) {
+      const task = now.get(key);
+      if (task && !task.waiting) stopped.push(task);
+    }
+    this.#waitedKeys = new Set([...now.values()].filter((task) => task.waiting && !isSubagentTask(task)).map((task) => task.toolUseId));
+    // The activity carries each task's `waiting`: a change goes out (deduplicated by its JSON).
+    this.#syncActivity();
+    return stopped;
   }
 
   /** `true` while a turn runs or waits for an answer (an interrupt then produces a `result`). */
@@ -473,6 +512,7 @@ export class StreamRecorder {
   endActivity(): void {
     this.#activity.endTurn();
     this.#background.clear();
+    this.#waitedKeys.clear();
     this.#subagentSeen.clear();
     this.#subagentByToolUse.clear();
     this.#syncActivity();
@@ -489,6 +529,11 @@ export class StreamRecorder {
   #startTurn(): void {
     if (!this.#activity.running) this.#background.turnStarted();
     this.#activity.startTurn();
+  }
+
+  /** 2026-10-16: a sign of life of a pending background task (by its task id, else its call). */
+  #touchBackground(taskId: string | null, toolUseId: string | null): void {
+    if (!(taskId !== null && this.#background.touch(taskId)) && toolUseId !== null) this.#background.touch(toolUseId);
   }
 
   /** D30: the CLI reported a task's end (`system/task_notification`, or a `<task-notification>` text). */
@@ -753,17 +798,20 @@ export class StreamRecorder {
         return this.#onCancel(message.requestId);
       case 'task-started':
         this.#touchSubagent(message.taskId);
+        this.#background.touch(message.taskId);
         if (message.toolUseId) this.#subagentByToolUse.set(message.toolUseId, message.taskId);
         // D43: every background task the CLI reports counts, whatever its type.
         this.#background.started(message);
         return this.#onTaskStarted(message);
       case 'task-progress':
         this.#touchSubagent(message.taskId);
+        this.#background.touch(message.taskId);
         // D51: a workflow's live list of phases and agents.
         if (message.workflowProgress !== null && message.taskId !== '') this.#onWorkflow?.({ kind: 'progress', taskId: message.taskId, progress: message.workflowProgress });
         return this.#onTaskProgress(message);
       case 'task-updated':
         this.#touchSubagent(message.taskId);
+        this.#background.touch(message.taskId);
         // D43: a terminal status ends a background task; `is_backgrounded: true` moves a foreground one there.
         this.#background.updated(message.taskId, message.status, message.backgrounded);
         this.#workflowEnded(message.taskId, message.status);
@@ -856,6 +904,8 @@ export class StreamRecorder {
     const notification = parseTaskNotification(message.text);
     if (notification) {
       if (endsTask(notification)) this.#taskNotified(notification.taskId, notification.toolUseId);
+      // 2026-10-16: a monitor's event notice is its sign of life.
+      else this.#touchBackground(notification.taskId, notification.toolUseId);
       await this.#setTranscriptUuid(message.uuid, null);
       return;
     }
@@ -1024,6 +1074,8 @@ export class StreamRecorder {
     const notification = message.parentToolUseId ? null : parseTaskNotification(message.text);
     if (notification) {
       if (endsTask(notification)) this.#taskNotified(notification.taskId, notification.toolUseId);
+      // 2026-10-16: a monitor's event notice is its sign of life.
+      else this.#touchBackground(notification.taskId, notification.toolUseId);
       await this.#setTranscriptUuid(message.uuid, message.parentToolUseId);
       return;
     }

@@ -228,3 +228,30 @@ test('2026-10-16: a member whose main turn ended while a subagent works reads wo
   await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
   await flipTeam(page, 'off');
 });
+
+test('2026-10-16: a member whose main turn ended while it waits on GitHub Actions (a background `gh pr checks --watch`) reads working ("⏳ GitHub Actions"), then idle once it is done', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  await flipTeam(page, 'on');
+  for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
+  const watcher = await start(page, 'ci-watcher');
+  await settle(page, watcher);
+  const memberId = await adopt(page, watcher, 'Watcher');
+  // The real case: a background PR-checks watch outlives the main turn by ~8 s.
+  expect((await call(page, 'POST', `/api/sessions/${watcher}/messages`, { text: '[fake:background 8 gh pr checks 42 --watch --interval 60 > /tmp/prstop.txt 2>&1] Watch the PR checks.' })).status).toBeLessThan(300);
+  await page.goto(`${server.baseUrl}/team`);
+  const row = memberRow(page, memberId);
+  await expect(row).toHaveAttribute('data-waiting-on', 'github', { timeout: 10_000 });
+  await expect(row).toHaveAttribute('data-status', 'working');
+  await expect(row.getByTestId('sidebar-team-member-glyph')).toHaveText('◐');
+  await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^⏳ GitHub Actions · \d+m$/);
+  await expect(row).toHaveAttribute('title', 'Watcher · waiting on GitHub Actions');
+  // The main turn is over (no turn runs), and the session reads run, not idle.
+  expect((await call(page, 'GET', `/api/sessions/${watcher}`)).body.status).toBe('run');
+  await expect(page.locator('[data-testid="team-card"][data-status="working"]').getByTestId('team-card-work')).toHaveText('Waiting on GitHub Actions');
+  await expect(page.getByTestId('team-counts')).toContainText('1 working');
+  // The checks finish: idle (done) once the CLI's own turn for the notification has ended.
+  await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 25_000 });
+  await expect(row).not.toHaveAttribute('data-waiting-on', /.+/);
+  await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
+  await flipTeam(page, 'off');
+});

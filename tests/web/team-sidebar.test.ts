@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BackgroundTask, SessionActivity } from '../../src/core/api.ts';
 import { pendingSubagentCount, waitingOnSubagents } from '../../src/core/derive/background.ts';
 import { type TeamRosterEntry, memberStatus } from '../../src/core/team.ts';
-import { cardWorkLine, subagentsWaitText } from '../../src/web/team/model.ts';
+import { backgroundWaitText, cardWorkLine, subagentsWaitText } from '../../src/web/team/model.ts';
 import { ROSTER_GLYPH, SUBAGENTS_GLYPH, collapsedSummary, hasDuration, itemLabel, rosterGlyph, rosterLine, rosterTitle, shortDuration } from '../../src/web/team/sidebar-roster.ts';
 
 /** D100 follow-up 2026-10-16 · the sidebar's member rows (`src/web/team/sidebar-roster.ts`). */
@@ -143,5 +143,57 @@ describe('waiting on subagents (2026-10-16)', () => {
     // A turn runs (it reads as before), and idle members keep their idle line.
     expect(cardWorkLine({ ...member, subagents: 2 }, { ...background([task({})]), state: 'thinking' }, null, text)).toBe('activity words');
     expect(cardWorkLine({ ...member, status: 'idle' }, null, null, text)).toBe('Idle: waiting for a hand-off or its next loop');
+  });
+});
+
+describe('waiting on background work (2026-10-16)', () => {
+  const task = (patch: Partial<BackgroundTask>): BackgroundTask => ({ id: 't', toolUseId: 'u', kind: 'bash', summary: 's', startedAt: ago(12 * MIN), github: false, waiting: true, ...patch });
+  const background = (tasks: BackgroundTask[]): SessionActivity => ({
+    turnStartedAt: tasks[0]?.startedAt ?? ago(0),
+    state: 'background',
+    since: tasks[0]?.startedAt ?? ago(0),
+    tool: 'Bash',
+    summary: null,
+    thinkingTokens: null,
+    agents: {},
+    background: tasks,
+  });
+  /** 18:40 local time (the views show local clock times). */
+  const WAKE = new Date(2026, 9, 16, 18, 40).toISOString();
+
+  it('a member is working while it waits on background work, even when its session reads done (an older machine)', () => {
+    expect(memberStatus({ reachable: true, sessionStatus: 'done', paused: false, waiting: true })).toBe('working');
+    expect(memberStatus({ reachable: true, sessionStatus: 'idle', paused: false, waiting: false })).toBe('idle');
+    expect(memberStatus({ reachable: true, sessionStatus: 'done', paused: true, waiting: true })).toBe('paused');
+  });
+
+  it('the sidebar row: ◐ "⏳ GitHub Actions · 12m", "⏳ background task · 12m", "⏰ waking up at 18:40"; the tooltip says it', () => {
+    const gh = entry({ status: 'working', waitingOn: 'github', turnStartedAt: ago(12 * MIN) });
+    expect(rosterLine(gh, NOW)).toBe('⏳ GitHub Actions · 12m');
+    expect(rosterGlyph(gh)).toBe(SUBAGENTS_GLYPH);
+    expect(rosterTitle(gh)).toBe('Builder · waiting on GitHub Actions');
+    const other = entry({ status: 'working', waitingOn: 'background', turnStartedAt: ago(12 * MIN) });
+    expect(rosterLine(other, NOW)).toBe('⏳ background task · 12m');
+    expect(rosterTitle(other)).toBe('Builder · waiting on a background task');
+    const wake = entry({ status: 'working', waitingOn: 'wakeup', wakeAt: WAKE, turnStartedAt: ago(5 * MIN) });
+    expect(rosterLine(wake, NOW)).toBe('⏰ waking up at 18:40');
+    expect(rosterTitle(wake)).toBe('Builder · waking up at 18:40');
+    // Subagents win; an idle member is idle.
+    expect(rosterLine(entry({ status: 'working', subagents: 2, waitingOn: null, turnStartedAt: ago(3 * MIN) }), NOW)).toBe('2 subagents · 3m');
+    expect(rosterLine(entry({ status: 'idle', waitingOn: null, lastActivityAt: ago(2 * MIN) }), NOW)).toBe('idle · 2m');
+  });
+
+  it('the Team card: "Waiting on GitHub Actions", "Waiting on a background task", "Waking up at 18:40", from the live activity, else from the member', () => {
+    const text = () => 'activity words';
+    const member = { status: 'working' as const, pausedBy: null, machineName: 'Studio' };
+    // The real case of 2026-10-16: a background `gh pr checks --watch`.
+    expect(cardWorkLine(member, background([task({ github: true, summary: 'gh pr checks $p --watch --interval 60 > /tmp/prstop.txt 2>' })]), null, text)).toBe('Waiting on GitHub Actions');
+    expect(cardWorkLine(member, background([task({})]), null, text)).toBe('Waiting on a background task');
+    expect(cardWorkLine(member, background([task({ kind: 'wakeup', wakeAt: WAKE })]), null, text)).toBe('Waking up at 18:40');
+    // A dev server left running is no wait: the activity's own words.
+    expect(cardWorkLine(member, background([task({ waiting: false })]), null, text)).toBe('activity words');
+    expect(cardWorkLine({ ...member, waitingOn: 'github' }, null, null, text)).toBe('Waiting on GitHub Actions');
+    expect(cardWorkLine({ ...member, waitingOn: 'wakeup', wakeAt: WAKE }, null, null, text)).toBe('Waking up at 18:40');
+    expect(backgroundWaitText({ kind: 'subagents', count: 3, since: '' })).toBe('Waiting on 3 subagents');
   });
 });
