@@ -21,7 +21,7 @@ import { type ContextInput, type ContextState, readContextState, reduceContext }
 import { ActivityTracker } from '../../core/derive/activity.ts';
 import { QueueTracker, type Withdrawn, queuedReason, withoutQueued } from '../../core/derive/queued.ts';
 import { STOPPED_LABEL, isInterruptedResult, stopTimeoutText } from '../../core/stop-turn.ts';
-import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
+import { BackgroundTracker, endsTask, isSubagentTask, parseTaskNotification } from '../../core/derive/background.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import { type SessionPlace, sessionSolutionFolder } from '../../core/derive/artifacts.ts';
 import {
@@ -144,6 +144,14 @@ export class StreamRecorder {
   readonly #background: BackgroundTracker;
   /** The last activity reported to `onActivity`, as JSON. */
   #activityKey = 'null';
+  /**
+   * 2026-10-16 (the stale-subagent guard): when each running subagent (a `local_agent`
+   * task, a pending async agent or workflow) last gave a sign of life (epoch ms), by task
+   * id: its start, progress, update or a line of its own (`parent_tool_use_id`).
+   */
+  readonly #subagentSeen = new Map<string, number>();
+  /** The task id of a subagent by the `tool_use` that started it (its lines carry that id). */
+  readonly #subagentByToolUse = new Map<string, string>();
 
   /**
    * User messages written to stdin that the CLI has not taken up yet (no replay
@@ -226,9 +234,54 @@ export class StreamRecorder {
       live: true,
       openRequests: this.#openRequests.size,
       turnRunning: this.#pendingTurns > 0 || this.#turnOpen,
-      runningAgents: this.#runningAgents.size,
+      // 2026-10-16: a pending async agent or background workflow is a running subagent too (it keeps `run`).
+      runningAgents: this.#runningSubagentIds().size,
       lastOutcome: this.#lastOutcome,
     };
+  }
+
+  /** The running subagents' task ids: `local_agent` tasks, and the pending async agents and workflows. */
+  #runningSubagentIds(): Set<string> {
+    const ids = new Set(this.#runningAgents);
+    for (const task of this.#background.list()) if (isSubagentTask(task)) ids.add(task.id);
+    return ids;
+  }
+
+  /** A sign of life of the subagent with this task id. */
+  #touchSubagent(taskId: string): void {
+    if (taskId !== '') this.#subagentSeen.set(taskId, this.#now().getTime());
+  }
+
+  /**
+   * 2026-10-16 · the stale-subagent guard: a running subagent with no sign of life for
+   * `quietMs` (it never reported its end: a lost notification, a CLI that dropped it) is
+   * taken as stopped (its card idle, the background wait gone), so the session can go
+   * idle. Returns the ended ones (`taskId`, how long they were quiet) for the log.
+   */
+  async expireQuietSubagents(quietMs: number): Promise<{ readonly taskId: string; readonly quietMs: number }[]> {
+    const now = this.#now().getTime();
+    const ended: { taskId: string; quietMs: number }[] = [];
+    const started = new Map(this.#background.list().map((task) => [task.id, Date.parse(task.startedAt)]));
+    for (const taskId of this.#runningSubagentIds()) {
+      let seen = this.#subagentSeen.get(taskId);
+      if (seen === undefined) {
+        const at = started.get(taskId);
+        seen = at !== undefined && Number.isFinite(at) ? at : now;
+        this.#subagentSeen.set(taskId, seen);
+      }
+      if (now - seen < quietMs) continue;
+      this.#taskNotified(taskId, null);
+      await this.#onTaskEnd(taskId, 'stopped');
+      this.#runningAgents.delete(taskId);
+      ended.push({ taskId, quietMs: now - seen });
+    }
+    if (ended.length > 0) this.#syncActivity();
+    return ended;
+  }
+
+  /** `true` while a subagent runs (the stale-subagent sweep only looks at such recorders). */
+  hasRunningSubagents(): boolean {
+    return this.#runningSubagentIds().size > 0;
   }
 
   /** `true` while a turn runs or waits for an answer (an interrupt then produces a `result`). */
@@ -337,6 +390,8 @@ export class StreamRecorder {
   endActivity(): void {
     this.#activity.endTurn();
     this.#background.clear();
+    this.#subagentSeen.clear();
+    this.#subagentByToolUse.clear();
     this.#syncActivity();
   }
 
@@ -535,6 +590,9 @@ export class StreamRecorder {
 
   /** Records one parsed stdout message (and reports the live activity when it changed, D19). */
   async handle(message: StreamMessage): Promise<void> {
+    // 2026-10-16: a subagent's own line is its sign of life (the stale-subagent guard).
+    const parent = 'parentToolUseId' in message ? message.parentToolUseId : null;
+    if (typeof parent === 'string') this.#touchSubagent(this.#subagentByToolUse.get(parent) ?? this.#background.list().find((task) => task.toolUseId === parent)?.id ?? '');
     await this.#dispatch(message);
     this.#syncActivity();
   }
@@ -599,14 +657,18 @@ export class StreamRecorder {
       case 'control-cancel':
         return this.#onCancel(message.requestId);
       case 'task-started':
+        this.#touchSubagent(message.taskId);
+        if (message.toolUseId) this.#subagentByToolUse.set(message.toolUseId, message.taskId);
         // D43: every background task the CLI reports counts, whatever its type.
         this.#background.started(message);
         return this.#onTaskStarted(message);
       case 'task-progress':
+        this.#touchSubagent(message.taskId);
         // D51: a workflow's live list of phases and agents.
         if (message.workflowProgress !== null && message.taskId !== '') this.#onWorkflow?.({ kind: 'progress', taskId: message.taskId, progress: message.workflowProgress });
         return this.#onTaskProgress(message);
       case 'task-updated':
+        this.#touchSubagent(message.taskId);
         // D43: a terminal status ends a background task; `is_backgrounded: true` moves a foreground one there.
         this.#background.updated(message.taskId, message.status, message.backgrounded);
         this.#workflowEnded(message.taskId, message.status);
@@ -1020,6 +1082,7 @@ export class StreamRecorder {
 
   async #onTaskEnd(taskId: string, status: string | null): Promise<void> {
     if (!isTaskFinished(status)) return;
+    this.#subagentSeen.delete(taskId);
     const agent = await this.#store.agents.findByTaskId(this.#sessionId, taskId);
     if (agent && agent.status === 'run') {
       const next: SessionStatus = agentStatusFromTask(status);

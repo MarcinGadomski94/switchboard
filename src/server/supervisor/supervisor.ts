@@ -135,6 +135,12 @@ export interface StopBackgroundReply {
   readonly failed: ReadonlyArray<{ readonly id: string; readonly error: string }>;
 }
 
+/** 2026-10-16: a running subagent quiet this long is taken as stopped (the stale-subagent guard). */
+export const SUBAGENT_QUIET_MS = 2 * 3600_000;
+
+/** The stale-subagent sweep runs at most this often (more often only for a short quiet time, in tests). */
+const SUBAGENT_SWEEP_MS = 60_000;
+
 /** D50 background: how long Switchboard waits for the CLI to report a stopped task's end before ending it itself (ms). */
 export const STOP_TASK_END_MS = 5_000;
 
@@ -308,6 +314,14 @@ export interface SupervisorOptions {
   readonly listLive?: LiveProcessLister;
   /** Called when processing a line or an exit throws (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
+  /**
+   * 2026-10-16 (the stale-subagent guard, `docs/derivations.md` → *Waiting on subagents*):
+   * a running subagent with no sign of life for this long is taken as stopped (default
+   * {@link SUBAGENT_QUIET_MS}, 2 hours).
+   */
+  readonly subagentQuietMs?: number;
+  /** Where the guard's notes go (a subagent taken as stopped, subagents cut off by a process end); default `console.warn`. */
+  readonly onWarn?: (message: string) => void;
   /** D19: the minimum gap between two `activity` notifications of one session (default {@link ACTIVITY_INTERVAL_MS}). */
   readonly activityIntervalMs?: number;
   /**
@@ -604,6 +618,10 @@ export class SessionSupervisor {
     activity: new Set<Listener<'activity'>>(),
   };
   readonly #activityIntervalMs: number;
+  readonly #subagentQuietMs: number;
+  readonly #onWarn: (message: string) => void;
+  /** The stale-subagent sweep's timer, running only while a live process exists. */
+  #subagentSweep: NodeJS.Timeout | null = null;
   readonly #teleportInitTimeoutMs: number;
   /** D25: sessions whose teleport has not reported `init` yet: stored, but not announced (they may be deleted again). */
   readonly #starting = new Set<string>();
@@ -666,6 +684,8 @@ export class SessionSupervisor {
     this.#onError = options.onError ?? ((error) => console.error('switchboard supervisor:', error));
     this.#listLive = options.listLive ?? null;
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
+    this.#subagentQuietMs = options.subagentQuietMs ?? SUBAGENT_QUIET_MS;
+    this.#onWarn = options.onWarn ?? ((message) => console.warn(`switchboard supervisor: ${message}`));
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
     this.#attachments = options.attachments ?? null;
     this.#providers = options.providers ?? new CliRegistry({ commands: { claude: options.claudeCommand } });
@@ -2843,6 +2863,7 @@ export class SessionSupervisor {
   /** Stops every live process (service shutdown). Their stored status is kept so a restart can resume them (D7, M2.4). */
   async shutdown(): Promise<void> {
     this.#closing = true;
+    this.#stopSubagentSweep();
     await Promise.all([...this.#live.values()].map((live) => this.#stop(live, 'shutdown')));
     // D62 P5: a switch in progress ends (failed: "the service is shutting down") once its processes are stopped.
     await Promise.allSettled([...this.#switchRuns]);
@@ -2851,6 +2872,41 @@ export class SessionSupervisor {
   }
 
   // ── internals ──────────────────────────────────────────────────────────
+
+  /** Starts the stale-subagent sweep (once; it stops by itself when no process is live). */
+  #armSubagentSweep(): void {
+    if (this.#subagentSweep || this.#closing) return;
+    const every = Math.max(10, Math.min(SUBAGENT_SWEEP_MS, Math.floor(this.#subagentQuietMs / 2)));
+    this.#subagentSweep = setInterval(() => this.#sweepSubagents(), every);
+    this.#subagentSweep.unref();
+  }
+
+  #stopSubagentSweep(): void {
+    if (this.#subagentSweep) clearInterval(this.#subagentSweep);
+    this.#subagentSweep = null;
+  }
+
+  /**
+   * 2026-10-16 · the stale-subagent guard: every live process's subagents that gave no
+   * sign of life for {@link SUBAGENT_QUIET_MS} are taken as stopped (logged), and its status
+   * and activity follow (an idle main turn then reads idle).
+   */
+  #sweepSubagents(): void {
+    if (this.#live.size === 0) {
+      this.#stopSubagentSweep();
+      return;
+    }
+    for (const live of this.#live.values()) {
+      if (live.stopping || !live.recorder.hasRunningSubagents()) continue;
+      void this.#enqueue(live, async () => {
+        const ended = await live.recorder.expireQuietSubagents(this.#subagentQuietMs);
+        if (ended.length === 0) return;
+        for (const task of ended) this.#onWarn(`session ${live.sessionId}: subagent task ${task.taskId} gave no sign of life for ${Math.round(task.quietMs / 60_000)} min; taken as stopped`);
+        live.activity.push(live.recorder.activity());
+        await this.#refreshStatus(live);
+      });
+    }
+  }
 
   #assertOpen(): void {
     if (this.#closing) throw new SupervisorError('closing', 'the service is shutting down');
@@ -3042,6 +3098,7 @@ export class SessionSupervisor {
     };
     holder.live = live;
     this.#live.set(session.id, live);
+    this.#armSubagentSweep();
     this.#profileOfLive.set(session.id, sessionProfileId(prepared));
     // D24: `initialize` goes out first (before any user message); its reply says whether Remote Control is available.
     live.remote.handshake().catch((error: unknown) => this.#onError(error));
@@ -3232,6 +3289,8 @@ export class SessionSupervisor {
         this.#onError(error);
       }
     }
+    // 2026-10-16: subagents still running die with the process (no notification will come).
+    if (live.recorder.hasRunningSubagents()) this.#onWarn(`session ${live.sessionId}: its process ended with subagents still running; they are taken as stopped`);
     await live.recorder.closeRunningAgents();
     // D44: nothing is taken up any more: no message keeps its clock.
     await live.recorder.closeQueued();

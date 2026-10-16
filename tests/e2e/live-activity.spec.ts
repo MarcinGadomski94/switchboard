@@ -234,7 +234,8 @@ test('D43: a background workflow after the turn: "Running a workflow: …" in th
   const { id } = await world.startSession(page, 'workflow-e2e', 'Audit the fixtures in the background. [fake:workflow 15]');
   await expect.poll(async () => (await detail(page, id)).activity?.state).toBe('background');
   const waiting = await detail(page, id);
-  expect(waiting.status).toBe('done');
+  // 2026-10-16: the workflow's agents are subagents at work: the session stays run (waiting on subagents), never done meanwhile.
+  expect(waiting.status).toBe('run');
   expect(waiting.activity).toMatchObject({ state: 'background', tool: 'Workflow', summary: FAKE_WORKFLOW_SUMMARY, thinkingTokens: null });
   // One task, though the CLI reported it twice (its task_started and the Workflow call's launch result).
   expect(waiting.activity?.background).toMatchObject([{ kind: 'workflow', github: false, summary: FAKE_WORKFLOW_SUMMARY }]);

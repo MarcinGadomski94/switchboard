@@ -27,7 +27,7 @@
  * `task_started` starts a pending task too ({@link BackgroundTracker.started}), unless
  * the call that started it registers it (matched by task id or `tool_use_id`).
  */
-import type { BackgroundTask, BackgroundTaskKind } from '../api.ts';
+import type { BackgroundTask, BackgroundTaskKind, SessionActivity } from '../api.ts';
 import { SUMMARY_MAX, toolSummary } from './activity.ts';
 import { AGENT_TASK_TYPE, isTaskFinished } from './agents.ts';
 import { AGENT_TOOLS } from './event-kind.ts';
@@ -505,4 +505,43 @@ export class BackgroundTracker {
     for (const [key, pending] of this.#tasks) if (pending.id === task.id || pending.toolUseId === task.toolUseId) this.#tasks.delete(key);
     this.#tasks.set(task.toolUseId, task);
   }
+}
+
+/**
+ * Subagent work (2026-10-16, `docs/derivations.md` → *Session status* → *Waiting on
+ * subagents*): the pending tasks that are agents working for the session, an async
+ * `Agent` / `Task` and a background `Workflow`. Shells, monitors, wake-ups and other
+ * tasks are not subagents (a dev server may run for hours).
+ */
+export function isSubagentTask(task: Pick<BackgroundTask, 'kind'>): boolean {
+  return task.kind === 'agent' || task.kind === 'workflow';
+}
+
+/**
+ * How many subagents the pending tasks stand for: one per async agent; a workflow's
+ * agents not done yet once its run is known (D51), else one.
+ */
+export function pendingSubagentCount(tasks: readonly Pick<BackgroundTask, 'kind' | 'workflow'>[]): number {
+  let count = 0;
+  for (const task of tasks) {
+    if (task.kind === 'agent') count += 1;
+    else if (task.kind === 'workflow') {
+      const run = task.workflow;
+      count += run && run.agentCount > 0 ? Math.max(1, run.agentCount - run.doneCount) : 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * The main turn is over but subagents still work (`state: background` with a subagent
+ * task pending): their count and when the oldest started; `null` otherwise (a turn runs,
+ * nothing is pending, or only shells / monitors / wake-ups are).
+ */
+export function waitingOnSubagents(activity: Pick<SessionActivity, 'state' | 'background'> | null | undefined): { readonly count: number; readonly since: string } | null {
+  if (!activity || activity.state !== 'background') return null;
+  const subagents = (activity.background ?? []).filter(isSubagentTask);
+  if (subagents.length === 0) return null;
+  const since = subagents.reduce((oldest, task) => (task.startedAt < oldest ? task.startedAt : oldest), subagents[0]?.startedAt ?? '');
+  return { count: pendingSubagentCount(subagents), since };
 }

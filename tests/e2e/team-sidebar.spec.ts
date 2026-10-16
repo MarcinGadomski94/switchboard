@@ -201,3 +201,30 @@ test('D100 follow-up 2026-10-16: member rows with live status; folding is rememb
   await page.goto(`${server.baseUrl}/inbox`);
   await expect(page.getByTestId('sidebar-teams')).toHaveCount(0);
 });
+
+test('2026-10-16: a member whose main turn ended while a subagent works reads working ("1 subagent"), then idle once it completes', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  await flipTeam(page, 'on');
+  for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
+  const delegator = await start(page, 'delegator-run');
+  await settle(page, delegator);
+  const memberId = await adopt(page, delegator, 'Delegator');
+  // A background subagent (a local_agent task) outlives the main turn by ~8 s.
+  expect((await call(page, 'POST', `/api/sessions/${delegator}/messages`, { text: '[fake:bg-task 8 local_agent] Delegate it.' })).status).toBeLessThan(300);
+  await page.goto(`${server.baseUrl}/team`);
+  const row = memberRow(page, memberId);
+  await expect(row).toHaveAttribute('data-subagents', '1', { timeout: 10_000 });
+  await expect(row).toHaveAttribute('data-status', 'working');
+  await expect(row.getByTestId('sidebar-team-member-glyph')).toHaveText('◐');
+  await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^1 subagent · \d+m$/);
+  await expect(row).toHaveAttribute('title', 'Delegator · waiting on 1 subagent');
+  // The main turn is over (no turn runs), and the session reads run, not idle.
+  expect((await call(page, 'GET', `/api/sessions/${delegator}`)).body.status).toBe('run');
+  await expect(page.locator('[data-testid="team-card"][data-status="working"]').getByTestId('team-card-work')).toHaveText('Waiting on 1 subagent');
+  await expect(page.getByTestId('team-counts')).toContainText('1 working');
+  // It completes: idle (done) once the CLI's own turn for its notification has ended.
+  await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 25_000 });
+  await expect(row.getByTestId('sidebar-team-member-glyph')).toHaveText('○');
+  await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
+  await flipTeam(page, 'off');
+});

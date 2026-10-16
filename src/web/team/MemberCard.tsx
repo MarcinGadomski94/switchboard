@@ -2,7 +2,7 @@ import type { MouseEvent } from 'react';
 import type { SessionActivity } from '../../core/api.ts';
 import type { TeamMember, TeamMemberStatus, TeamNeedsYouItem } from '../../core/team.ts';
 import { sessionActivityLabel } from '../activity/activity.ts';
-import { STATUS_META, budgetLine, idleLine } from './model.ts';
+import { STATUS_META, budgetLine, cardWorkLine } from './model.ts';
 
 /**
  * D100 · one member's card on the Team page: a top border coloured by its status
@@ -37,7 +37,7 @@ export function MemberCard({
   readonly onMenu: (anchor: { readonly x: number; readonly y: number }) => void;
 }) {
   const meta = STATUS_META[status];
-  const work = activity && member.status === 'working' ? sessionActivityLabel(activity, now).text : idleLine(member, firstNeed);
+  const work = cardWorkLine(member, activity, firstNeed, (a) => sessionActivityLabel(a, now).text);
   const budget = budgetLine(member);
   const menu = (event: MouseEvent<HTMLElement>): void => {
     event.preventDefault();

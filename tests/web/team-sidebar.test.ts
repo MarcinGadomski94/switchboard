@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { TeamRosterEntry } from '../../src/core/team.ts';
-import { ROSTER_GLYPH, collapsedSummary, hasDuration, itemLabel, rosterLine, rosterTitle, shortDuration } from '../../src/web/team/sidebar-roster.ts';
+import type { BackgroundTask, SessionActivity } from '../../src/core/api.ts';
+import { pendingSubagentCount, waitingOnSubagents } from '../../src/core/derive/background.ts';
+import { type TeamRosterEntry, memberStatus } from '../../src/core/team.ts';
+import { cardWorkLine, subagentsWaitText } from '../../src/web/team/model.ts';
+import { ROSTER_GLYPH, SUBAGENTS_GLYPH, collapsedSummary, hasDuration, itemLabel, rosterGlyph, rosterLine, rosterTitle, shortDuration } from '../../src/web/team/sidebar-roster.ts';
 
 /** D100 follow-up 2026-10-16 · the sidebar's member rows (`src/web/team/sidebar-roster.ts`). */
 
@@ -84,5 +87,61 @@ describe('the glyphs, the folded summary, the minute tick', () => {
     expect(hasDuration([entry({ status: 'working' })])).toBe(false);
     expect(hasDuration([entry({ status: 'working', turnStartedAt: ago(MIN) })])).toBe(true);
     expect(hasDuration([entry({ status: 'idle', lastActivityAt: ago(MIN) })])).toBe(true);
+  });
+});
+
+describe('waiting on subagents (2026-10-16)', () => {
+  const task = (patch: Partial<BackgroundTask>): BackgroundTask => ({ id: 't', toolUseId: 'u', kind: 'agent', summary: 's', startedAt: ago(25 * MIN), github: false, ...patch });
+  const background = (tasks: BackgroundTask[]): SessionActivity => ({
+    turnStartedAt: tasks[0]?.startedAt ?? ago(0),
+    state: 'background',
+    since: tasks[0]?.startedAt ?? ago(0),
+    tool: null,
+    summary: null,
+    thinkingTokens: null,
+    agents: {},
+    background: tasks,
+  });
+
+  it('counts async agents one each, a workflow by its agents not done (one while unknown); shells, monitors and wake-ups are no subagents', () => {
+    expect(pendingSubagentCount([task({}), task({ id: 'w', kind: 'workflow' })])).toBe(2);
+    expect(pendingSubagentCount([task({ kind: 'workflow', workflow: { runId: 'r', doneCount: 3, agentCount: 7, phase: null } })])).toBe(4);
+    expect(pendingSubagentCount([task({ kind: 'bash' }), task({ kind: 'monitor' }), task({ kind: 'wakeup' }), task({ kind: 'task' })])).toBe(0);
+  });
+
+  it('is a background wait with a subagent pending only (a running turn is not a wait)', () => {
+    expect(waitingOnSubagents(background([task({ startedAt: ago(10 * MIN) }), task({ id: 'b', kind: 'bash', startedAt: ago(40 * MIN) }), task({ id: 'c', startedAt: ago(25 * MIN) })]))).toEqual({ count: 2, since: ago(25 * MIN) });
+    expect(waitingOnSubagents(background([task({ kind: 'bash' })]))).toBeNull();
+    expect(waitingOnSubagents({ ...background([task({})]), state: 'thinking' })).toBeNull();
+    expect(waitingOnSubagents(null)).toBeNull();
+  });
+
+  it('a member is working while its subagents work, even when its session reads done / idle (an older machine)', () => {
+    expect(memberStatus({ reachable: true, sessionStatus: 'done', paused: false, subagents: 3 })).toBe('working');
+    expect(memberStatus({ reachable: true, sessionStatus: 'idle', paused: false, subagents: 1 })).toBe('working');
+    expect(memberStatus({ reachable: true, sessionStatus: 'done', paused: false, subagents: 0 })).toBe('idle');
+    expect(memberStatus({ reachable: true, sessionStatus: 'done', paused: true, subagents: 2 })).toBe('paused');
+    expect(memberStatus({ reachable: true, sessionStatus: 'need', paused: false, subagents: 2 })).toBe('needs-you');
+    expect(memberStatus({ reachable: false, sessionStatus: 'run', paused: false, subagents: 2 })).toBe('offline');
+  });
+
+  it('the sidebar row: ◐, "3 subagents · 25m" (since the oldest started), "waiting on 3 subagents" in the tooltip', () => {
+    const waiting = entry({ status: 'working', subagents: 3, turnStartedAt: ago(25 * MIN), current: { key: 'PROJ-14', title: 'x' } });
+    expect(rosterLine(waiting, NOW)).toBe('3 subagents · 25m');
+    expect(rosterLine(entry({ status: 'working', subagents: 1, turnStartedAt: ago(2 * MIN) }), NOW)).toBe('1 subagent · 2m');
+    expect(rosterGlyph(waiting)).toBe(SUBAGENTS_GLYPH);
+    expect(rosterGlyph(entry({ status: 'working' }))).toBe('●');
+    expect(rosterTitle(waiting)).toBe('Builder · waiting on 3 subagents');
+  });
+
+  it('the Team card: "Waiting on 3 subagents" from the live activity, else from the member', () => {
+    const text = () => 'activity words';
+    const member = { status: 'working' as const, pausedBy: null, machineName: 'Studio' };
+    expect(subagentsWaitText(1)).toBe('Waiting on 1 subagent');
+    expect(cardWorkLine(member, background([task({}), task({ id: 'b' }), task({ id: 'c' })]), null, text)).toBe('Waiting on 3 subagents');
+    expect(cardWorkLine({ ...member, subagents: 2 }, null, null, text)).toBe('Waiting on 2 subagents');
+    // A turn runs (it reads as before), and idle members keep their idle line.
+    expect(cardWorkLine({ ...member, subagents: 2 }, { ...background([task({})]), state: 'thinking' }, null, text)).toBe('activity words');
+    expect(cardWorkLine({ ...member, status: 'idle' }, null, null, text)).toBe('Idle: waiting for a hand-off or its next loop');
   });
 });

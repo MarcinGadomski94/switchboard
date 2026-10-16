@@ -324,6 +324,8 @@ export interface TeamMember extends Omit<TeamMemberRecord, 'clock' | 'deleted'> 
   readonly usedTodayPct: number | null;
   /** D105: its open charter ask or proposal (`null` = none); additive, absent from older machines. */
   readonly charterRequest?: TeamCharterRequestView | null;
+  /** 2026-10-16: the subagents it waits on while its main turn is over (`0` = none); additive. */
+  readonly subagents?: number;
 }
 
 /** D105 · a member's open charter request as the UI sees it. */
@@ -393,8 +395,10 @@ export interface TeamRosterEntry {
   readonly local: boolean;
   /** While working: its current item when known (this machine's members only), else `null`. */
   readonly current: TeamCurrentItem | null;
-  /** While working: when the running turn started (ISO), else `null`. */
+  /** While working: when the running turn started (ISO; while it waits on subagents, when the oldest of them started), else `null`. */
   readonly turnStartedAt: string | null;
+  /** 2026-10-16: while working with its main turn over, the subagents it waits on (`0` / absent = none). */
+  readonly subagents?: number;
   /** The session's last activity (ISO; an idle member's "idle · 2h"), `null` when unknown. */
   readonly lastActivityAt: string | null;
 }
@@ -555,13 +559,16 @@ export type SessionStatusLike = 'need' | 'run' | 'done' | 'fail' | 'idle' | 'pau
 /**
  * A member's status: `offline` when its machine is not reachable (or the session is
  * gone), `needs-you` while its session waits for the developer, `paused` while Team
- * paused it, `working` while a turn runs, else `idle`.
+ * paused it, `working` while a turn runs **or its subagents still work** (2026-10-16:
+ * the main turn is over, async agents / a workflow are not; an older machine's session
+ * may read `done` meanwhile), else `idle`.
  */
-export function memberStatus(input: { readonly reachable: boolean; readonly sessionStatus: SessionStatusLike | null; readonly paused: boolean }): TeamMemberStatus {
+export function memberStatus(input: { readonly reachable: boolean; readonly sessionStatus: SessionStatusLike | null; readonly paused: boolean; readonly subagents?: number }): TeamMemberStatus {
   if (!input.reachable || input.sessionStatus === null) return 'offline';
   if (input.sessionStatus === 'need') return 'needs-you';
   if (input.paused) return 'paused';
   if (input.sessionStatus === 'run') return 'working';
+  if ((input.subagents ?? 0) > 0 && input.sessionStatus !== 'paused') return 'working';
   return 'idle';
 }
 

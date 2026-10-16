@@ -95,7 +95,9 @@ describe('stuck run (2026-09-29): a result ends the turn and every message it to
     await w.send('move into the task');
     expect(w.status()).toBe('run');
     await w.feed(init(), replay('move into the task', 'u-1'), workflowCall(), workflowLaunched(), workflowStarted(), say('m-1', 'While the audit runs…'), result('While the audit runs…'));
-    expect(w.status()).toBe('done');
+    // 2026-10-16: the main turn is over, the workflow's agents still work: run (waiting on subagents), never done meanwhile.
+    expect(w.status()).toBe('run');
+    expect(w.recorder.turnBusy()).toBe(false);
     // 06:41: the workflow ends → the CLI's own turn (origin task-notification).
     await w.feed(...workflowEnded(), init(), say('m-2', 'The implementation workflow is done.'));
     expect(w.status()).toBe('run');
@@ -143,7 +145,8 @@ describe('stuck run (2026-09-29): a result ends the turn and every message it to
     const w = await world();
     await w.send('first');
     await w.feed(init(), replay('first', 'u-1'), workflowCall(), workflowLaunched(), workflowStarted(), result('launched'));
-    expect(w.status()).toBe('done');
+    // 2026-10-16: waiting on the workflow's agents is working.
+    expect(w.status()).toBe('run');
     // The developer sends a message as the workflow ends: the CLI's own turn opens before it takes the message up.
     await w.send('are you there?');
     await w.feed(...workflowEnded(), init(), say('m-2', 'The workflow is done.'), replay('are you there?', 'u-2'), say('m-3', 'Yes.'));

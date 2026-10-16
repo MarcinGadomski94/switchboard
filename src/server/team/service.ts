@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { InboxItem, OwnedLoop, Session, SessionModelInput, SessionTodo } from '../../core/api.ts';
+import { waitingOnSubagents } from '../../core/derive/background.ts';
 import { HybridClock } from '../../core/hlc.ts';
 import { DEFAULT_MODEL_VALUE, normalizeModel } from '../../core/model-choice.ts';
 import { remoteId, parseRemoteId } from '../../core/peers.ts';
@@ -157,6 +158,8 @@ interface SessionFacts {
   readonly lastActivityAt: string | null;
   /** When the running turn started (ISO), `null` while none runs or unknown. */
   readonly turnStartedAt: string | null;
+  /** 2026-10-16: the subagents the session waits on with its main turn over, and since when (`null` = none). */
+  readonly subagents: { readonly count: number; readonly since: string } | null;
 }
 
 /** Statuses of a session that count as the session existing for Team. */
@@ -483,9 +486,16 @@ export class TeamService {
   async #sessionFacts(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<SessionFacts> {
     if (member.machineId === this.#selfId()) {
       const record = await this.#o.store.sessions.get(member.sessionId);
-      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null, lastActivityAt: record?.lastActivityAt ?? null, turnStartedAt: null };
-      const turnStartedAt = this.#o.supervisor.activity(member.sessionId)?.turnStartedAt ?? null;
-      return { reachable: true, status: STATUSES.has(record.status) ? (record.status as SessionStatusLike) : 'idle', title: record.title ?? record.name, lastActivityAt: record.lastActivityAt, turnStartedAt };
+      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null, lastActivityAt: record?.lastActivityAt ?? null, turnStartedAt: null, subagents: null };
+      const activity = this.#o.supervisor.activity(member.sessionId);
+      return {
+        reachable: true,
+        status: STATUSES.has(record.status) ? (record.status as SessionStatusLike) : 'idle',
+        title: record.title ?? record.name,
+        lastActivityAt: record.lastActivityAt,
+        turnStartedAt: activity?.turnStartedAt ?? null,
+        subagents: waitingOnSubagents(activity),
+      };
     }
     const machine = machines.get(member.machineId);
     const ref = remoteId(member.machineId, member.sessionId);
@@ -497,6 +507,7 @@ export class TeamService {
       title: session ? (session.title ?? session.name) : null,
       lastActivityAt: session?.lastActivityAt ?? null,
       turnStartedAt: session?.activity?.turnStartedAt ?? null,
+      subagents: waitingOnSubagents(session?.activity),
     };
   }
 
@@ -507,7 +518,7 @@ export class TeamService {
     return {
       ...rest,
       rhythm: local ? { ...member.rhythm, loops: await this.#rhythmLoops(member) } : member.rhythm,
-      status: memberStatus({ reachable: facts.reachable, sessionStatus: facts.status, paused: member.paused }),
+      status: memberStatus({ reachable: facts.reachable, sessionStatus: facts.status, paused: member.paused, subagents: facts.subagents?.count ?? 0 }),
       sessionRef: this.#sessionRef(member),
       sessionTitle: facts.title,
       machineName: machines.get(member.machineId)?.name ?? member.machineId,
@@ -515,6 +526,7 @@ export class TeamService {
       cliLoopsUnmanaged: member.cliLoops.length > 0,
       usedTodayPct: local && member.budget.dailyPct !== null ? await this.#usedToday(member) : null,
       charterRequest: this.#charterRequestView(member.id),
+      subagents: facts.subagents?.count ?? 0,
     };
   }
 
@@ -582,7 +594,7 @@ export class TeamService {
    * a paired machine's todos are its own).
    */
   async #rosterEntry(member: TeamMemberRecord, facts: SessionFacts, waiting: boolean, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<TeamRosterEntry> {
-    const status = memberStatus({ reachable: facts.reachable, sessionStatus: facts.status, paused: member.paused });
+    const status = memberStatus({ reachable: facts.reachable, sessionStatus: facts.status, paused: member.paused, subagents: facts.subagents?.count ?? 0 });
     const shown: TeamMemberStatus = status === 'offline' || status === 'paused' || !waiting ? status : 'needs-you';
     const local = member.machineId === this.#selfId();
     const working = shown === 'working';
@@ -594,7 +606,9 @@ export class TeamService {
       machineName: machines.get(member.machineId)?.name ?? member.machineId,
       local,
       current: working && local ? await this.#currentItem(member.sessionId) : null,
-      turnStartedAt: working ? facts.turnStartedAt : null,
+      // Waiting on subagents: since the oldest of them started.
+      turnStartedAt: working ? (facts.subagents?.since ?? facts.turnStartedAt) : null,
+      subagents: working ? (facts.subagents?.count ?? 0) : 0,
       lastActivityAt: facts.lastActivityAt,
     };
   }

@@ -7,7 +7,7 @@ import { useTeamSwitch } from './hidden.ts';
 import { DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, type TeamSummary } from '../../core/team.ts';
 import { teamApi } from './api.ts';
 import { requestMember } from './local.ts';
-import { ROSTER_GLYPH, collapsedSummary, hasDuration, rosterLine, rosterTitle } from './sidebar-roster.ts';
+import { collapsedSummary, rosterGlyph, hasDuration, rosterLine, rosterTitle } from './sidebar-roster.ts';
 import { sidebarTeamText } from './model.ts';
 import { reloadTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
@@ -164,11 +164,12 @@ export function TeamSidebarEntry() {
                       data-testid="sidebar-team-member"
                       data-member-id={member.id}
                       data-status={member.status}
+                      data-subagents={member.subagents ? String(member.subagents) : undefined}
                       title={rosterTitle(member)}
                       onClick={() => openMember(member.id)}
                     >
                       <span className="sb-team-member-row__glyph" data-testid="sidebar-team-member-glyph" aria-hidden="true">
-                        {ROSTER_GLYPH[member.status]}
+                        {rosterGlyph(member)}
                       </span>
                       <span className="sb-team-member-row__name">{member.name}</span>
                       <span className="sb-team-member-row__line" data-testid="sidebar-team-member-line">

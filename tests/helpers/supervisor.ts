@@ -64,6 +64,10 @@ export interface WorldOptions {
    * switches it off, so the many tests that assert an exact argv / request stay about their own subject.
    */
   readonly standingInstruction?: boolean;
+  /** 2026-10-16: the stale-subagent guard's quiet time (the supervisor's 2 hours when omitted). */
+  readonly subagentQuietMs?: number;
+  /** 2026-10-16: the guard's notes (default: dropped, so tests stay quiet). */
+  readonly onWarn?: (message: string) => void;
 }
 
 /** Parent env without CODEX* / OPENCODE* / FAKE_* of the other fakes either (D62). */
@@ -129,6 +133,8 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     timeouts: { ack: 3_000, result: 5_000, exit: 5_000, signal: 2_000, ...options.timeouts },
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
     ...(options.teleportInitTimeoutMs !== undefined ? { teleportInitTimeoutMs: options.teleportInitTimeoutMs } : {}),
+    ...(options.subagentQuietMs !== undefined ? { subagentQuietMs: options.subagentQuietMs } : {}),
+    onWarn: options.onWarn ?? (() => undefined),
     onError: (error) => errors.push(error),
   });
   const folder = folderRef(workspace);

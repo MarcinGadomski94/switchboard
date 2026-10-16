@@ -3,6 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SessionActivity } from '../../../src/core/api.ts';
 import { ActivityTracker, toolSummary } from '../../../src/core/derive/activity.ts';
+import { waitingOnSubagents } from '../../../src/core/derive/background.ts';
 import { parseStreamLine } from '../../../src/core/stream-json.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { LatestThrottle, type ThrottleTimers } from '../../../src/server/supervisor/activity-throttle.ts';
@@ -325,7 +326,9 @@ describe('every background task counts · real path (D43)', () => {
     world = await makeSupervisorWorld();
     const w = world;
     const session = await w.supervisor.start(newSession({ task: 'Audit the fixtures. [fake:workflow 3]' }), w.place);
-    await waitForStatus(w.store, session.id, ['done']);
+    // 2026-10-16: a background workflow is subagent work: the session stays `run` until it ends.
+    await until(() => w.supervisor.activity(session.id)?.state === 'background');
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
     const waiting = w.supervisor.activity(session.id);
     expect(waiting).toMatchObject({ state: 'background', tool: 'Workflow', summary: FAKE_WORKFLOW_SUMMARY, thinkingTokens: null });
     // One entry, though both the task_started and the confirming result reported it.
@@ -333,6 +336,7 @@ describe('every background task counts · real path (D43)', () => {
     expect(waiting?.background[0]?.id).toMatch(/^w[a-z0-9]{8}$/);
     await until(() => w.supervisor.activity(session.id) === null);
     expect(w.supervisor.activity(session.id)).toBeNull();
+    await waitForStatus(w.store, session.id, ['done']);
     await w.supervisor.pause(session.id);
   });
 
@@ -494,5 +498,60 @@ describe('activity throttle (D19: at most one `activity` per second per session)
     expect(seen[0]?.activity?.state).toBe('thinking');
     expect(seen.at(-1)?.activity).toBeNull();
     for (let i = 1; i < seen.length; i += 1) expect(seen[i]!.at - seen[i - 1]!.at).toBeGreaterThanOrEqual(950);
+  });
+});
+
+describe('waiting on subagents · real path (2026-10-16)', () => {
+  const until = async (check: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> => {
+    const deadline = Date.now() + ms;
+    while (!(await check()) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  };
+
+  it('fake-claude: a background subagent outlives the main turn: run, "waiting on 1 subagent"; its completion makes the session done', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const statuses: string[] = [];
+    w.supervisor.on('sessionUpdated', (payload) => statuses.push(payload.status));
+    const session = await w.supervisor.start(newSession({ task: 'Delegate it. [fake:bg-task 3 local_agent]' }), w.place);
+    await until(() => w.supervisor.activity(session.id)?.state === 'background');
+    // The main turn is over (its result came), the subagent runs: working, never idle / done meanwhile.
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
+    expect(waitingOnSubagents(w.supervisor.activity(session.id))).toMatchObject({ count: 1 });
+    expect(w.supervisor.activity(session.id)?.background).toMatchObject([{ kind: 'agent' }]);
+    // The subagent completes; the CLI's own turn answers its notification; then the session is done.
+    await waitForStatus(w.store, session.id, ['done'], 15_000);
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    expect(waitingOnSubagents(w.supervisor.activity(session.id))).toBeNull();
+    const firstDone = statuses.indexOf('done');
+    expect(firstDone === -1 || statuses.slice(0, firstDone).every((status) => status !== 'idle')).toBe(true);
+    await w.supervisor.pause(session.id);
+  });
+
+  it('the stale-subagent guard: a subagent quiet past the limit is taken as stopped (logged); the session goes done', async () => {
+    const warnings: string[] = [];
+    world = await makeSupervisorWorld({ subagentQuietMs: 400, onWarn: (message) => warnings.push(message) });
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Delegate it. [fake:bg-task 600 local_agent]' }), w.place);
+    await until(() => w.supervisor.activity(session.id)?.state === 'background');
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
+    await waitForStatus(w.store, session.id, ['done'], 10_000);
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    expect(warnings.some((message) => message.includes('gave no sign of life') && message.includes(session.id))).toBe(true);
+    // Its card is no longer running.
+    const agents = await w.store.agents.listBySession(session.id);
+    expect(agents.filter((agent) => agent.kind === 'subagent' && agent.status === 'run')).toEqual([]);
+    await w.supervisor.pause(session.id);
+  });
+
+  it('a pause with a subagent running: it is taken as stopped with the process (logged), nothing stays pending', async () => {
+    const warnings: string[] = [];
+    world = await makeSupervisorWorld({ onWarn: (message) => warnings.push(message) });
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Delegate it. [fake:bg-task 600 local_agent]' }), w.place);
+    await until(() => w.supervisor.activity(session.id)?.state === 'background');
+    await w.supervisor.pause(session.id);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('paused');
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    expect(warnings.some((message) => message.includes('ended with subagents still running'))).toBe(true);
   });
 });

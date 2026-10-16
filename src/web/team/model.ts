@@ -1,4 +1,5 @@
-import type { SessionModelOption } from '../../core/api.ts';
+import type { SessionActivity, SessionModelOption } from '../../core/api.ts';
+import { waitingOnSubagents } from '../../core/derive/background.ts';
 import { DEFAULT_MODEL_VALUE, effortLevelsFor, modelLabel, normalizeModel } from '../../core/model-choice.ts';
 import type { Machine } from '../../core/peers.ts';
 import { type SidebarLayout, dropPosition } from '../../core/sidebar-layout.ts';
@@ -108,6 +109,28 @@ export function phoneOrder<T extends Pick<TeamMember, 'id' | 'status'>>(members:
     .map((member, index) => ({ member, index, rank: rank(member), needs: counts.get(member.id) ?? 0 }))
     .sort((a, b) => a.rank - b.rank || b.needs - a.needs || a.index - b.index)
     .map((entry) => entry.member);
+}
+
+/** 2026-10-16: the card's line while only the member's subagents work: "Waiting on 3 subagents". */
+export function subagentsWaitText(count: number): string {
+  return `Waiting on ${count} subagent${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * The card's work line: while working, "Waiting on 3 subagents" when its main turn is
+ * over and subagents still work (from the live activity, else the member's `subagents`),
+ * else the live activity's words; otherwise {@link idleLine}.
+ */
+export function cardWorkLine(
+  member: Pick<TeamMember, 'status' | 'pausedBy' | 'machineName' | 'subagents'>,
+  activity: SessionActivity | null,
+  firstNeed: TeamNeedsYouItem | null,
+  activityText: (activity: SessionActivity) => string,
+): string {
+  if (member.status !== 'working') return idleLine(member, firstNeed);
+  const waiting = waitingOnSubagents(activity)?.count ?? (activity === null || activity.state === 'background' ? (member.subagents ?? 0) : 0);
+  if (waiting > 0) return subagentsWaitText(waiting);
+  return activity ? activityText(activity) : idleLine(member, firstNeed);
 }
 
 /** The card's work line when the session shows no live activity. */

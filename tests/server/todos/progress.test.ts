@@ -273,6 +273,26 @@ describe('the finish reminder (D75)', () => {
     return { bus, todos, reminder, delivered };
   }
 
+  it('2026-10-16: no reminder while the main turn is over but subagents still work (the session stays run); one once all of it is done', async () => {
+    const { bus, todos, reminder, delivered } = await world();
+    const id = await session('remind-subagents');
+    const started = (await todos.add(id, { title: 'Delegated' }, 'developer')).todo;
+    await todos.startItem(id, started.id, async () => undefined);
+    update(bus, id, 'idle');
+    clock += 1_000;
+    update(bus, id, 'run');
+    clock += 1_000;
+    // The main turn's result came; its subagents keep the session run (the same status: no turn end for the reminder).
+    update(bus, id, 'run');
+    await reminder.idle();
+    expect(delivered).toEqual([]);
+    // They completed, and the CLI's own turn for their notification ended: now the reminder goes.
+    clock += 1_000;
+    update(bus, id, 'done');
+    await reminder.idle();
+    expect(delivered).toEqual([[id, todoReminderMessage({ id: started.id, title: 'Delegated' })]]);
+  });
+
   it('a turn that ends with a started item untouched sends one reminder for it, once per start; not for a done, open or hand-marked item', async () => {
     const { bus, todos, reminder, delivered } = await world();
     const id = await session('remind');

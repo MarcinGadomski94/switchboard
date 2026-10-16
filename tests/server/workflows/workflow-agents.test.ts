@@ -66,7 +66,9 @@ describe('D51 · workflow agents on the real path', () => {
     const updates: Session[] = [];
     w.supervisor.on('sessionUpdated', (session) => updates.push(session));
     const session = await w.supervisor.start(newSession({ task: 'Audit the fixtures. [fake:workflow 6 2x2]' }), w.place);
-    await waitForStatus(w.store, session.id, ['done']);
+    // The main turn is over; 2026-10-16: the workflow's agents keep the session `run` (waiting on subagents).
+    await until(async () => w.supervisor.activity(session.id)?.state === 'background' || undefined, 'the main turn over, the workflow pending');
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
 
     // Live: the first phase's agents run (from the stream's snapshot and the files), grouped under their run.
     const live = await until(async () => {
@@ -104,6 +106,8 @@ describe('D51 · workflow agents on the real path', () => {
       return d.workflows?.[0]?.status === 'done' ? d : undefined;
     }, 'the run done', 20_000);
     expect(done.workflows?.[0]).toMatchObject({ agentCount: 4, doneCount: 4, failedCount: 0, phase: 'Review' });
+    // Its notification and the CLI's own turn after it: then the session is done.
+    await waitForStatus(w.store, session.id, ['done'], 20_000);
     expect(done.agents.filter((a) => a.kind === 'workflow').map((a) => [a.name, a.status, a.description])).toEqual([
       [fakeAgentLabel(0, 1), 'done', 'Audit'],
       [fakeAgentLabel(0, 2), 'done', 'Audit'],
@@ -135,7 +139,9 @@ describe('D51 · a run whose process ends', () => {
   it('a pause mid-run stops the run at once: it and its running agents read stopped (idle), however fresh the files are', async () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Audit. [fake:workflow 30 1x2]' }), w.place);
-    await waitForStatus(w.store, session.id, ['done']);
+    // The main turn is over; 2026-10-16: the workflow's agents keep the session `run` (waiting on subagents).
+    await until(async () => w.supervisor.activity(session.id)?.state === 'background' || undefined, 'the main turn over, the workflow pending');
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
     await until(async () => {
       const d = await detail(session.id);
       return d.agents.filter((a) => a.kind === 'workflow' && a.status === 'run' && a.workflow?.agentId).length === 2 || undefined;
@@ -156,7 +162,9 @@ describe('D51 × D50 · stopping a workflow task', () => {
   it('Stop background tasks (stop_task) stops the run: it reads stopped, its running agents cut off, the process lives on', async () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Audit. [fake:workflow 30 1x2]' }), w.place);
-    await waitForStatus(w.store, session.id, ['done']);
+    // The main turn is over; 2026-10-16: the workflow's agents keep the session `run` (waiting on subagents).
+    await until(async () => w.supervisor.activity(session.id)?.state === 'background' || undefined, 'the main turn over, the workflow pending');
+    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
     await until(async () => {
       const d = await detail(session.id);
       return d.agents.filter((a) => a.kind === 'workflow' && a.status === 'run' && a.workflow?.agentId).length === 2 || undefined;
@@ -168,6 +176,8 @@ describe('D51 × D50 · stopping a workflow task', () => {
     }, 'the run stopped', 5_000);
     expect(stopped.agents.filter((a) => a.kind === 'workflow').map((a) => a.status)).toEqual(['idle', 'idle']);
     expect(w.supervisor.isLive(session.id)).toBe(true);
+    // Nothing works any more: the session leaves `run`.
+    await waitForStatus(w.store, session.id, ['done', 'idle'], 10_000);
     await w.supervisor.pause(session.id);
   }, 60_000);
 });
