@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.23.0 (2026-10-16)
+
+### Team
+- **Teams fold open in the sidebar** and list their members with what they're doing: ● working, ◐ waiting on subagents, ? needs you, ○ idle, ⏸ paused, ⌁ offline — with a short line such as "PROJ-14 · 40m", "3 subagents · 25m" or "idle · 2h". A folded team shows a summary ("2 working · 1 idle"); clicking a member opens it. Your choice of folded teams is remembered.
+
+### Fixed
+- **A session waiting on its subagents now shows as working, not idle** — background `Agent` runs, workflows, and agents resumed with `SendMessage` (each resumed run is tracked on its own). It goes idle only when the main turn and every subagent run are finished; runs that never report back stop counting after 2 hours. The finish reminder and Plans wait for subagents too; messages still reach the main agent at once.
+
 ## 1.22.0 (2026-10-16)
 
 ### Plans for anything
