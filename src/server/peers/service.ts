@@ -42,6 +42,8 @@ import { tailscaleIPv4 } from './tailscale.ts';
 import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { labelInboxItems } from '../team/hooks.ts';
+// Project memory (D107) hook (follow-up 2026-10-16): a paired machine's memoryChanged retries a pending member-memory copy (docs/memory-removal.md).
+import { memoryPeerChanged } from '../memory/hooks.ts';
 
 /**
  * D48 "Switchboard peers" (`docs/peers.md`): this machine's identity, its optional
@@ -852,6 +854,11 @@ export class PeerService implements PeerHandlers {
   #onPeerEvent<K extends HubEventName>(id: string, name: K, payload: HubEvents[K]): void {
     const ref = this.#ref(id);
     if (!ref) return;
+    if (name === 'memoryChanged') {
+      // Project memory (D107) hook (follow-up 2026-10-16): its memory changed (switched on there?): a pending member-memory copy is retried. Never republished.
+      memoryPeerChanged(this.#store, id);
+      return;
+    }
     if (name === 'inboxChanged') {
       void this.#publishInboxCount();
       return;

@@ -82,6 +82,33 @@ CREATE TABLE memory_draft_asks (
 ) STRICT;
 `,
   ),
+  makeMigration(
+    3,
+    'memory_pending_copies',
+    `-- D107 follow-up 2026-10-16 (docs/memory.md -> Scopes -> A member's move): a moved member's
+-- member entries that the machine it now runs on could not take yet. Kept on the old machine,
+-- retried with backoff (and when that machine comes online or switches Project memory on);
+-- after a few failures an Inbox item asks the developer to Retry or Keep on this PC.
+-- member_id        the member (Team's id); one pending copy per member.
+-- member_label     its role name when it moved (the Inbox item's text).
+-- machine_id       the paired machine it runs on now; session_id its session there.
+-- attempts         failed copies so far (the first one at the move).
+-- first_failed_at  when the first copy failed; next_attempt_at when the next try is due.
+-- last_error       the last failure, shown in the item.
+-- item_id          the open Inbox item (switchboard.db system_items), NULL until raised.
+CREATE TABLE memory_pending_copies (
+  member_id TEXT PRIMARY KEY,
+  member_label TEXT,
+  machine_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 1,
+  first_failed_at TEXT NOT NULL,
+  next_attempt_at TEXT NOT NULL,
+  last_error TEXT,
+  item_id TEXT
+) STRICT;
+`,
+  ),
 ];
 
 interface Row {
@@ -137,6 +164,45 @@ function toEntry(row: Row): MemoryEntry {
   };
 }
 
+/** D107 follow-up 2026-10-16: a moved member's entries the other machine could not take yet. */
+export interface MemoryPendingCopy {
+  readonly memberId: string;
+  readonly memberLabel: string | null;
+  readonly machineId: string;
+  readonly sessionId: string;
+  readonly attempts: number;
+  readonly firstFailedAt: string;
+  readonly nextAttemptAt: string;
+  readonly lastError: string | null;
+  readonly itemId: string | null;
+}
+
+interface PendingRow {
+  member_id: string;
+  member_label: string | null;
+  machine_id: string;
+  session_id: string;
+  attempts: number;
+  first_failed_at: string;
+  next_attempt_at: string;
+  last_error: string | null;
+  item_id: string | null;
+}
+
+function toPending(row: PendingRow): MemoryPendingCopy {
+  return {
+    memberId: row.member_id,
+    memberLabel: row.member_label,
+    machineId: row.machine_id,
+    sessionId: row.session_id,
+    attempts: Number(row.attempts),
+    firstFailedAt: row.first_failed_at,
+    nextAttemptAt: row.next_attempt_at,
+    lastError: row.last_error,
+    itemId: row.item_id,
+  };
+}
+
 /** A row patch (only the fields given change). */
 export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt' | 'scopeKind' | 'scopeKey' | 'scopeLabel' | 'scope'>>;
 
@@ -177,7 +243,7 @@ export class MemoryDb {
     const db = await openDatabase(file);
     try {
       migrate(db, migrations);
-      for (const table of ['memory_entries', 'memory_meta', 'memory_draft_asks']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      for (const table of ['memory_entries', 'memory_meta', 'memory_draft_asks', 'memory_pending_copies']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;
@@ -324,6 +390,30 @@ export class MemoryDb {
   setDraftAsked(sessionId: string, at: string | null): void {
     if (at === null) this.#db.prepare('DELETE FROM memory_draft_asks WHERE session_id = ?').run(sessionId);
     else this.#db.prepare('INSERT INTO memory_draft_asks (session_id, asked_at) VALUES (?, ?) ON CONFLICT (session_id) DO UPDATE SET asked_at = excluded.asked_at').run(sessionId, at);
+  }
+
+  /** D107 follow-up 2026-10-16: the pending member-memory copies (oldest due first). */
+  pendingCopies(): MemoryPendingCopy[] {
+    return (this.#db.prepare('SELECT * FROM memory_pending_copies ORDER BY next_attempt_at, member_id').all() as unknown as PendingRow[]).map(toPending);
+  }
+
+  pendingCopy(memberId: string): MemoryPendingCopy | null {
+    const row = this.#db.prepare('SELECT * FROM memory_pending_copies WHERE member_id = ?').get(memberId) as PendingRow | undefined;
+    return row ? toPending(row) : null;
+  }
+
+  putPendingCopy(copy: MemoryPendingCopy): void {
+    this.#db
+      .prepare(
+        `INSERT INTO memory_pending_copies (member_id, member_label, machine_id, session_id, attempts, first_failed_at, next_attempt_at, last_error, item_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (member_id) DO UPDATE SET member_label = excluded.member_label, machine_id = excluded.machine_id, session_id = excluded.session_id, attempts = excluded.attempts,
+           first_failed_at = excluded.first_failed_at, next_attempt_at = excluded.next_attempt_at, last_error = excluded.last_error, item_id = excluded.item_id`,
+      )
+      .run(copy.memberId, copy.memberLabel, copy.machineId, copy.sessionId, copy.attempts, copy.firstFailedAt, copy.nextAttemptAt, copy.lastError, copy.itemId);
+  }
+
+  deletePendingCopy(memberId: string): void {
+    this.#db.prepare('DELETE FROM memory_pending_copies WHERE member_id = ?').run(memberId);
   }
 
   meta(key: string): string | null {

@@ -22,8 +22,10 @@ Project memory is experimental and built to be removed cleanly (`docs/memory.md`
 | `src/hook/sb-mcp.ts` | imports `registerMemoryToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
 | `src/core/api.ts` | imports `MemoryChanged`; `HubEvents.memoryChanged` and its entry in `HUB_EVENT_NAMES` | remove all three |
 | `src/server/devices/local-only.ts` | the memory entries of `DEVICE_ALLOWED` (reads, a session's count, the scope options, edit / pin, approve, reject) and of `DEVICE_REFUSED` (add, delete, the cap, the draft asks, the import), and "(D107) project memory" in the file comment | remove them |
-| `src/server/peers/service.ts` | the memory entries of `PEER_API_ALLOW` | remove them |
-| `src/server/inbox/wire.ts` | `'memory-proposals': 'Memory'` in `SYSTEM_ITEM_LABELS` | remove the line |
+| `src/server/peers/service.ts` | the memory entries of `PEER_API_ALLOW`; imports `memoryPeerChanged` and the `memoryChanged` branch at the top of `#onPeerEvent` (a pending member-memory copy is retried) | remove them |
+| `src/core/peer-wire.ts` | `'memoryChanged'` in `PEER_HUB_EVENTS` (streamed to paired machines; never republished) | remove the entry |
+| `src/server/inbox/system-items.ts` | imports `MEMORY_COPY_RETRY` / `MEMORY_COPY_KEEP` / `memoryInboxAction`; their branch in `#perform` (the "missing its memory" item's Retry / Keep on this PC) | drop the import and the branch |
+| `src/server/inbox/wire.ts` | `'memory-proposals': 'Memory'` and `'memory-copy': 'Memory'` in `SYSTEM_ITEM_LABELS` | remove the lines |
 | `src/core/tutorial.ts` | `memory` in `TourRoute`; `V1_20` and the `memory` entry of `WHATS_NEW`; the `memory-scopes` entry (1.22.0) | remove them (keep `V1_20` if another 1.20.0 tour uses it) |
 | `src/web/router.tsx` | `memory` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/memory` row of the header table | remove them |
 | `src/web/shell/Shell.tsx` | imports `MemoryPage`; `case 'memory'` of `View` | drop the import and the case |
@@ -43,6 +45,7 @@ Tests that name Project memory's additions (revert with the code):
 - `tests/server/api/settings.test.ts`: the `'experimental.memory': false` line of the fresh-install answer.
 - `tests/server/tutorial/tutorial.test.ts`: `'D107'` in the What's-new decisions.
 - `tests/web/nav-grid.test.ts`: `'memory'` in the icon names.
+- `tests/server/inbox/inbox-list.test.ts`: `'memory-proposals'` and `'memory-copy'` in the labels.
 - `tests/server/tutorial/tutorial.test.ts`: the second `'D107'` (the `memory-scopes` tour, 1.22.0).
 
 Docs: the *Project memory (D107)* section of `docs/handoff/contracts/local-api.md`, the README's Features bullet, the *D107* section of `.loop/questions.md`, D107 in `docs/decisions.md` (mark it removed rather than deleting the record).
@@ -52,7 +55,7 @@ Docs: the *Project memory (D107)* section of `docs/handoff/contracts/local-api.m
 `<dataDir>/memory.db` (and `memory.db-wal` / `memory.db-shm` if present). Nothing of Project memory's own state is in `switchboard.db`. Two kinds of rows there mention it, both harmless to a build without it:
 
 - the `experimental.memory` setting (an unknown settings key is never read): `DELETE FROM settings WHERE key = 'experimental.memory'`;
-- the Inbox items it raised ("N memory proposals for …"): `DELETE FROM system_items WHERE source = 'memory'`.
+- the Inbox items it raised ("N memory proposals for …", "<member> is missing its memory on <PC>"): `DELETE FROM system_items WHERE source = 'memory'`.
 
 Sessions keep running as before: their next start (or a D91 Reload instruction) gives them the standing instruction without the memory block.
 

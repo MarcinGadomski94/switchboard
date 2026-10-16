@@ -35,8 +35,8 @@ import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { inboxCount } from '../inbox/wire.ts';
-import { MemoryDb } from './db.ts';
-import { type MemoryMemberMove, type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
+import { MemoryDb, type MemoryPendingCopy } from './db.ts';
+import { MEMORY_COPY_ITEM, MEMORY_COPY_KEEP, MEMORY_COPY_RETRY, type MemoryMemberMove, type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
 import { type MemoryRepoSource, MemoryRepoIdentity, reachOf } from './reach.ts';
 import { members as teamMembers } from './team-link.ts';
 
@@ -73,6 +73,8 @@ export interface MemorySupervisor {
 /** What the service needs of the paired machines (D48): a member's memory moves with it; draft asks for members elsewhere. */
 export interface MemoryPeers {
   forward(machineId: string, method: string, path: string, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** The paired machines' names (the "missing its memory on <PC>" item). */
+  machines?(): Promise<readonly { readonly id: string; readonly name: string }[]>;
 }
 
 export interface MemoryServiceOptions {
@@ -95,6 +97,17 @@ const HOUR_MS = 60 * 60 * 1000;
 export const MEMORY_REJECTED_BLOCK_DAYS = 30;
 const REJECTED_BLOCK_MS = MEMORY_REJECTED_BLOCK_DAYS * 24 * HOUR_MS;
 const DRAFT_REPEAT_MS = MEMORY_DRAFT_REPEAT_HOURS * HOUR_MS;
+/** D107 follow-up 2026-10-16: the waits after a failed member-memory copy (1, 5, 30 minutes, then hourly). */
+export const MEMORY_COPY_BACKOFF_MS: readonly number[] = [60_000, 5 * 60_000, 30 * 60_000, HOUR_MS];
+/** The Inbox item is raised after this many failed copies … */
+export const MEMORY_COPY_ITEM_AFTER_FAILURES = 3;
+/** … or this long after the first failure, whichever comes first. */
+export const MEMORY_COPY_ITEM_AFTER_MS = HOUR_MS;
+
+/** The wait after the `attempts`-th failure. */
+function backoffAfter(attempts: number): number {
+  return MEMORY_COPY_BACKOFF_MS[Math.min(attempts - 1, MEMORY_COPY_BACKOFF_MS.length - 1)] as number;
+}
 
 /**
  * D107 · Project memory (`docs/memory.md`). Agents propose entries for their session's folder
@@ -125,6 +138,11 @@ export class MemoryService {
   #offHooks: (() => void) | null = null;
   #switching: Promise<void> = Promise.resolve();
   readonly #identity = new MemoryRepoIdentity();
+  #offBus: (() => void) | null = null;
+  /** D107 follow-up 2026-10-16: the timer of the next pending member-memory copy. */
+  #copyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Copies run one at a time (a retry never overlaps another). */
+  #copying: Promise<unknown> = Promise.resolve();
 
   constructor(options: MemoryServiceOptions) {
     this.#o = options;
@@ -141,6 +159,14 @@ export class MemoryService {
       blockFor: (session) => this.blockFor(session),
       switchChanged: () => this.switchChanged(),
       memberMoved: (move) => this.memberMoved(move),
+      peerMemoryChanged: (machineId) => void this.retryCopies({ machineId }).catch((error: unknown) => this.#onError(error)),
+      copyAction: (payload, action) => this.copyAction(payload, action),
+    });
+    // D107 follow-up 2026-10-16: a paired machine coming online retries its pending member-memory copies.
+    this.#offBus ??= this.#o.bus.subscribe((message) => {
+      if (message.name !== 'machineState') return;
+      const machine = message.payload as { readonly id?: unknown; readonly state?: unknown; readonly removed?: unknown };
+      if (machine.state === 'online' && machine.removed !== true && typeof machine.id === 'string') void this.retryCopies({ machineId: machine.id }).catch((error: unknown) => this.#onError(error));
     });
     await this.switchChanged();
   }
@@ -149,7 +175,11 @@ export class MemoryService {
     this.#closed = true;
     this.#offHooks?.();
     this.#offHooks = null;
+    this.#offBus?.();
+    this.#offBus = null;
+    this.#clearCopyTimer();
     await this.#switching.catch(() => undefined);
+    await this.#copying.catch(() => undefined);
     this.#db?.close();
     this.#db = null;
   }
@@ -167,6 +197,7 @@ export class MemoryService {
     if (on === this.#enabled) return;
     this.#enabled = on;
     if (!on) {
+      this.#clearCopyTimer();
       this.#db?.close();
       this.#db = null;
       this.#problem = null;
@@ -183,6 +214,7 @@ export class MemoryService {
     // The blocks appear / disappear: the open sessions' `instructionOutdated` follows (D91; no restart).
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
     await this.#syncAllInbox();
+    this.#scheduleCopies();
     this.#o.bus.publish('memoryChanged', { scope: null });
   }
 
@@ -191,9 +223,9 @@ export class MemoryService {
     return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null, members: this.#enabled ? teamMembers(this.#o.store).length : 0 };
   }
 
-  /** Timers running (tests): Project memory runs none. */
+  /** Timers running (tests): only the next pending member-memory copy's (none without one). */
   activeTimers(): number {
-    return 0;
+    return this.#copyTimer ? 1 : 0;
   }
 
   #need(): MemoryDb {
@@ -665,23 +697,210 @@ export class MemoryService {
    * state: approved ones stay approved, proposals stay in review, rejections keep blocking) are
    * copied there (`POST /api/memory/import` through the peer API) and, once the other machine took
    * them, deleted here. When it cannot take them (offline, Project memory off there, an older
-   * build), they stay here and the error is reported; a later move back finds them again.
+   * build), they stay here and a **pending copy** is kept (D107 follow-up 2026-10-16): retried
+   * with backoff ({@link MEMORY_COPY_BACKOFF_MS}), when that machine comes online and when its
+   * Project memory changes (switched on); after {@link MEMORY_COPY_ITEM_AFTER_FAILURES} failures or
+   * an hour, an Inbox item "<member> is missing its memory on <PC>" offers Retry / Keep on this PC.
    */
   async memberMoved(move: MemoryMemberMove): Promise<void> {
     if (!this.#enabled || !this.#db || !this.#o.peers) return;
-    const entries = this.#db.list({ scopeKind: 'member', scopeKey: move.memberId });
-    if (entries.length === 0) return;
-    const answer = await this.#o.peers.forward(move.machineId, 'POST', '/api/memory/import', { sessionId: move.sessionId, memberId: move.memberId, entries });
+    if (this.#db.list({ scopeKind: 'member', scopeKey: move.memberId }).length === 0) return;
+    await this.#serialCopy(async () => {
+      const db = this.#need();
+      const label = teamMembers(this.#o.store).find((member) => member.id === move.memberId)?.name ?? this.#memberLabelOf(move.memberId);
+      const before = db.pendingCopy(move.memberId);
+      const error = await this.#copy(move.memberId, move.machineId, move.sessionId);
+      if (error === null) {
+        if (before) await this.#resolveCopy(before);
+        return;
+      }
+      const now = this.#now().getTime();
+      db.putPendingCopy({
+        memberId: move.memberId,
+        memberLabel: label,
+        machineId: move.machineId,
+        sessionId: move.sessionId,
+        attempts: 1,
+        firstFailedAt: new Date(now).toISOString(),
+        nextAttemptAt: new Date(now + backoffAfter(1)).toISOString(),
+        lastError: error,
+        itemId: before?.itemId ?? null,
+      });
+      this.#onError(new Error(`a moved member's memory stayed here for now (it is retried): ${error}`));
+    });
+    this.#scheduleCopies();
+  }
+
+  /** The member's role name from its entries (the move's label when Team no longer lists it). */
+  #memberLabelOf(memberId: string): string | null {
+    return this.#db?.list({ scopeKind: 'member', scopeKey: memberId }).find((entry) => entry.scopeLabel !== null)?.scopeLabel ?? null;
+  }
+
+  #serialCopy<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.#copying.then(work, work);
+    this.#copying = next.catch(() => undefined);
+    return next;
+  }
+
+  /**
+   * One copy of a member's entries to `machineId` (its session there `sessionId`): `null` when the
+   * other machine took them (or there were none) and they were deleted here, else why not.
+   */
+  async #copy(memberId: string, machineId: string, sessionId: string): Promise<string | null> {
+    const db = this.#need();
+    const entries = db.list({ scopeKind: 'member', scopeKey: memberId });
+    if (entries.length === 0) return null;
+    if (!this.#o.peers) return 'paired machines are not available';
+    let answer: { readonly status: number; readonly body: unknown };
+    try {
+      answer = await this.#o.peers.forward(machineId, 'POST', '/api/memory/import', { sessionId, memberId, entries });
+    } catch (error) {
+      return `the other machine could not be reached: ${error instanceof Error ? error.message : String(error)}`;
+    }
     if (answer.status < 200 || answer.status >= 300) {
-      this.#onError(new Error(`a moved member's memory stayed here: the other machine answered HTTP ${answer.status}`));
-      return;
+      const body = answer.body as { error?: unknown; message?: unknown } | null;
+      if (answer.status === 404 && body?.error === 'memory-off') return 'Project memory is off there';
+      return typeof body?.message === 'string' ? body.message : `the other machine answered HTTP ${answer.status}`;
     }
     const folders = new Set(entries.map((entry) => entry.scope));
-    for (const entry of entries) this.#db.delete(entry.id);
+    for (const entry of entries) db.delete(entry.id);
     for (const folder of folders) {
       await this.#syncInbox(folder);
       await this.#approvedChanged(folder);
     }
+    return null;
+  }
+
+  /**
+   * Retries the pending copies (all, one machine's or one member's; `due` only those whose time
+   * came). Before each: a member that runs on this machine again needs no copy (dropped), one that
+   * moved on is copied to where it runs now. Success deletes the entries here and resolves the
+   * item; a failure counts, waits longer and raises the item once it is due. Answers the copies
+   * still pending among those tried.
+   */
+  async retryCopies(filter: { readonly machineId?: string; readonly memberId?: string; readonly due?: boolean } = {}): Promise<MemoryPendingCopy[]> {
+    if (!this.#enabled || !this.#db) return [];
+    const left = await this.#serialCopy(async () => {
+      if (!this.#enabled || !this.#db) return [];
+      const now = this.#now().getTime();
+      const pending = this.#db
+        .pendingCopies()
+        .filter((copy) => (filter.memberId === undefined || copy.memberId === filter.memberId) && (filter.machineId === undefined || copy.machineId === filter.machineId) && (!filter.due || Date.parse(copy.nextAttemptAt) <= now));
+      const out: MemoryPendingCopy[] = [];
+      for (const before of pending) {
+        let copy = before;
+        const member = teamMembers(this.#o.store).find((candidate) => candidate.id === copy.memberId);
+        if (member?.here) {
+          // It runs here again: its entries are where it is.
+          await this.#resolveCopy(copy);
+          continue;
+        }
+        if (member && (member.machineId !== copy.machineId || member.sessionId !== copy.sessionId)) copy = { ...copy, machineId: member.machineId, sessionId: member.sessionId };
+        const error = await this.#copy(copy.memberId, copy.machineId, copy.sessionId);
+        if (error === null) {
+          await this.#resolveCopy(copy);
+          continue;
+        }
+        const attempts = copy.attempts + 1;
+        const failed: MemoryPendingCopy = { ...copy, attempts, lastError: error, nextAttemptAt: new Date(now + backoffAfter(attempts)).toISOString() };
+        this.#need().putPendingCopy(failed);
+        const raised = attempts >= MEMORY_COPY_ITEM_AFTER_FAILURES || now - Date.parse(copy.firstFailedAt) >= MEMORY_COPY_ITEM_AFTER_MS ? await this.#raiseCopyItem(failed) : failed;
+        out.push(raised);
+      }
+      return out;
+    });
+    this.#scheduleCopies();
+    return left;
+  }
+
+  /** The pending copies (tests, the docs' contract). */
+  pendingCopies(): MemoryPendingCopy[] {
+    return this.#db?.pendingCopies() ?? [];
+  }
+
+  /** The copy is no longer pending: its record goes and its Inbox item is resolved. */
+  async #resolveCopy(copy: MemoryPendingCopy): Promise<void> {
+    this.#db?.deletePendingCopy(copy.memberId);
+    if (copy.itemId) {
+      try {
+        await this.#o.store.systemItems.close(copy.itemId, 'resolved');
+        this.#o.bus.publish('inboxChanged', { count: await inboxCount(this.#o.store) });
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+  }
+
+  /** Raises (or refreshes) the "<member> is missing its memory on <PC>" item; answers the copy with its item id. */
+  async #raiseCopyItem(copy: MemoryPendingCopy): Promise<MemoryPendingCopy> {
+    const machines = (await this.#o.peers?.machines?.().catch(() => [])) ?? [];
+    const pc = machines.find((machine) => machine.id === copy.machineId)?.name ?? 'the other machine';
+    const member = copy.memberLabel ?? 'A team member';
+    const title = `${member} is missing its memory on ${pc}`;
+    const detail = `${member} moved to ${pc}, but its member memory could not be copied there (${copy.attempts} tries; last: ${copy.lastError ?? 'unknown'}). Switchboard keeps retrying. Retry tries now; Keep on this PC stops retrying and leaves the entries here (they reach ${member} again if it moves back).`;
+    const payload = { memberId: copy.memberId, machineId: copy.machineId };
+    const existing = copy.itemId ? await this.#o.store.systemItems.get(copy.itemId) : null;
+    if (existing && existing.state === 'open') {
+      if (existing.title !== title || existing.detail !== detail) await this.#o.store.systemItems.update(existing.id, { title, detail, payload });
+      return copy;
+    }
+    const item = await this.#o.store.systemItems.create({
+      kind: MEMORY_COPY_ITEM,
+      source: 'memory',
+      status: 'need',
+      title,
+      detail,
+      branches: [],
+      actions: [
+        { id: MEMORY_COPY_RETRY, label: 'Retry' },
+        { id: MEMORY_COPY_KEEP, label: 'Keep on this PC' },
+      ],
+      sessionId: null,
+      payload,
+    });
+    const raised = { ...copy, itemId: item.id };
+    this.#need().putPendingCopy(raised);
+    this.#o.bus.publish('inboxChanged', { count: await inboxCount(this.#o.store) });
+    return raised;
+  }
+
+  /**
+   * The item's actions (`POST /api/inbox/{id}/actions/…`): **Retry** copies now (`null` once done:
+   * the copy resolved the item; else the failure, and the item stays); **Keep on this PC** drops the
+   * pending copy (the entries stay here; the Inbox closes the item).
+   */
+  async copyAction(payload: unknown, action: string): Promise<string | null> {
+    if (!this.#enabled || !this.#db) return 'Project memory is off: switch it on in Settings → Experimental';
+    const memberId = payload !== null && typeof payload === 'object' ? (payload as Record<string, unknown>)['memberId'] : null;
+    if (typeof memberId !== 'string') return 'the member is no longer known';
+    if (action === MEMORY_COPY_KEEP) {
+      await this.#serialCopy(async () => this.#db?.deletePendingCopy(memberId));
+      this.#scheduleCopies();
+      return null;
+    }
+    if (!this.#db.pendingCopy(memberId)) return null;
+    const left = await this.retryCopies({ memberId });
+    const still = left.find((copy) => copy.memberId === memberId);
+    return still ? `still not copied: ${still.lastError ?? 'unknown'}` : null;
+  }
+
+  #clearCopyTimer(): void {
+    if (this.#copyTimer) clearTimeout(this.#copyTimer);
+    this.#copyTimer = null;
+  }
+
+  /** Arms the timer for the next due pending copy (none while off, closed or without one). */
+  #scheduleCopies(): void {
+    this.#clearCopyTimer();
+    if (this.#closed || !this.#enabled || !this.#db) return;
+    const next = this.#db.pendingCopies()[0];
+    if (!next) return;
+    const delay = Math.min(Math.max(0, Date.parse(next.nextAttemptAt) - this.#now().getTime()), 2 ** 31 - 1);
+    this.#copyTimer = setTimeout(() => {
+      this.#copyTimer = null;
+      void this.retryCopies({ due: true }).catch((error: unknown) => this.#onError(error));
+    }, delay);
+    this.#copyTimer.unref?.();
   }
 
   /**

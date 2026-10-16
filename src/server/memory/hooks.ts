@@ -14,7 +14,16 @@ export interface MemoryHooks {
   switchChanged(): Promise<void>;
   /** D107 follow-up 2026-10-15: a Team member moved to another machine (D65 / D110): its member-scoped entries go with it. */
   memberMoved?(move: MemoryMemberMove): Promise<void>;
+  /** D107 follow-up 2026-10-16: a paired machine's Project memory changed (e.g. switched on there): retry its pending copies. */
+  peerMemoryChanged?(machineId: string): void;
+  /** D107 follow-up 2026-10-16: Retry / Keep on this PC of a "<member> is missing its memory on <PC>" item; the refusal's text, or `null`. */
+  copyAction?(payload: unknown, action: string): Promise<string | null>;
 }
+
+/** D107 follow-up 2026-10-16: the Inbox item of a member's memory that could not be copied after a move, and its actions. */
+export const MEMORY_COPY_ITEM = 'memory-copy';
+export const MEMORY_COPY_RETRY = 'memory-copy-retry';
+export const MEMORY_COPY_KEEP = 'memory-copy-keep';
 
 /** A Team member's move, as Project memory needs it. */
 export interface MemoryMemberMove {
@@ -60,6 +69,25 @@ export async function withProjectMemory(store: object, session: MemorySessionRef
  */
 export async function memoryMemberMoved(store: object, move: MemoryMemberMove): Promise<void> {
   await registry.get(store)?.memberMoved?.(move).catch(() => undefined);
+}
+
+/** Peers seam (D107 follow-up 2026-10-16): a paired machine's `memoryChanged` arrived (its switch, its entries). */
+export function memoryPeerChanged(store: object, machineId: string): void {
+  try {
+    registry.get(store)?.peerMemoryChanged?.(machineId);
+  } catch {
+    // Never breaks the peer stream.
+  }
+}
+
+/**
+ * Inbox seam (D107 follow-up 2026-10-16): Retry / Keep on this PC of a `memory-copy` item.
+ * Answers the refusal's text (the item stays open), or `null` when done.
+ */
+export async function memoryInboxAction(store: object, payload: unknown, action: string): Promise<string | null> {
+  const hooks = registry.get(store);
+  if (!hooks?.copyAction) return 'Project memory is off: switch it on in Settings → Experimental';
+  return hooks.copyAction(payload, action);
 }
 
 /** Settings seam: the Project memory switch changed. */

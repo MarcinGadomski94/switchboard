@@ -14,6 +14,8 @@ import { WorktreeError } from '../worktrees/manager.ts';
 import { inboxCount, sessionBranches } from './wire.ts';
 // Plans (D99) hook (D102): the "Ready to merge" item's Merge.
 import { plansInboxMerge } from '../plans/hooks.ts';
+// Project memory (D107) hook: a moved member's memory copy, Retry / Keep on this PC (docs/memory-removal.md).
+import { MEMORY_COPY_KEEP, MEMORY_COPY_RETRY, memoryInboxAction } from '../memory/hooks.ts';
 
 /**
  * System Inbox items (M3.3, `docs/system-items.md`): the items the service raises
@@ -682,6 +684,12 @@ export class SystemItemService {
       return;
     }
     if (action === OPEN_PLAN) throw new SystemItemError('refused', 'Open plan is a link: open the plan page');
+    // Project memory (D107) hook (follow-up 2026-10-16): copy a moved member's memory again, or keep it on this PC.
+    if (action === MEMORY_COPY_RETRY || action === MEMORY_COPY_KEEP) {
+      const refused = await memoryInboxAction(this.#store, item.payload, action);
+      if (refused !== null) throw new SystemItemError('refused', refused);
+      return;
+    }
     // D109: the PR watcher's items.
     if (action === CI_OPEN_PR || action === CI_OPEN_SESSION) throw new SystemItemError('refused', 'this action is a link: open it in the app');
     if (action === CI_MERGE_PR || action === CI_TRY_AGAIN) {

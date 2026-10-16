@@ -201,7 +201,22 @@ export function peerPlan(machine: PeerMachineRef, plan: Plan): Plan {
  * a paired machine refreshes the peer's schedules when one changes there.
  * Plans (D99) hook: `planChanged`.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'artifactsChanged', 'draftChanged', 'planChanged', 'ciChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>([
+  'sessionUpdated',
+  'event',
+  'questionBatch',
+  'inboxChanged',
+  'activity',
+  'scheduleRun',
+  'schedulesChanged',
+  'todosChanged',
+  'artifactsChanged',
+  'draftChanged',
+  'planChanged',
+  'ciChanged',
+  // Project memory (D107) hook (follow-up 2026-10-16): streamed so a machine with a pending member-memory copy retries when memory is switched on here; the receiver never republishes it (peerHubEvent answers null).
+  'memoryChanged',
+]);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is

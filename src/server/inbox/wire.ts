@@ -256,6 +256,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-confirm': 'Confirm done',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
   'memory-proposals': 'Memory',
+  // Project memory (D107) hook (follow-up 2026-10-16): a moved member's memory could not be copied.
+  'memory-copy': 'Memory',
   // D109: the PR watcher.
   'ci-failing': 'CI keeps failing',
   'ci-ready': 'Ready to merge',
