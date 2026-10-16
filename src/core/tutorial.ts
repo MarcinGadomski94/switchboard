@@ -95,6 +95,9 @@ const V1_21 = '1.21.0';
 /** The version the D99 follow-up of 2026-10-15 (plans for anything: any target branch, or none) ships in. */
 const V1_22 = '1.22.0';
 
+/** The version the D100 follow-up of 2026-10-16 (the sidebar lists each team's members with their status) ships in. */
+const V1_23 = '1.23.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -946,6 +949,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['memory-draft-all', 'memory-queue'],
         route: { view: 'memory' },
         missing: "Use a session's ⋯ menu in the sidebar → Draft memory from this session; with Team on, Draft memory for all members sits on this page and in the Team page's header. ",
+      },
+    ],
+  },
+  // Team (D100) hook: the sidebar's member rows (D100 follow-up 2026-10-16; docs/team-removal.md).
+  {
+    id: 'team-sidebar',
+    decision: 'D100',
+    version: V1_23,
+    title: 'Who is working, in the sidebar',
+    steps: [
+      {
+        id: 'members',
+        title: 'Each team lists its members',
+        what: "Under each team in the sidebar, its members are listed in the team's order: a blue ● while one works (with its current item, like PROJ-14 · 40m), ? when it needs you, ○ idle (and for how long), ⏸ paused, ⌁ offline. Click a member to open it on the Team page with its chat. The ▾ / ▸ in front of a team folds it to one line (\"2 working · 1 idle\"); each team remembers how you left it.",
+        todo: ['Look at the member rows under your team.', 'Click a member to open it; fold the team with ▸ when you need the room.'],
+        anchors: ['sidebar-team'],
+        route: { view: 'team' },
+        missing: TEAM_OFF,
       },
     ],
   },

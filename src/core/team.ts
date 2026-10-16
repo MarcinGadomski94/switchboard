@@ -360,6 +360,43 @@ export interface TeamSummary {
   readonly members: number;
   /** Its members that need the developer (the session waits, or Needs-you items are open). */
   readonly needsYou: number;
+  /**
+   * D100 follow-up 2026-10-16 (the sidebar's member rows): its members in the team's
+   * order, each with its status and what it works on. Additive: absent from an older
+   * answer (the sidebar then lists nothing under the team).
+   */
+  readonly roster?: readonly TeamRosterEntry[];
+  /** D100 follow-up 2026-10-16: the sidebar shows the team folded to its row (remembered per install; absent / `false` = expanded). */
+  readonly collapsed?: boolean;
+}
+
+/**
+ * D100 follow-up 2026-10-16 · what a member works on now, as the sidebar's member row
+ * names it: its todo in progress, else the item its session runs (a todo run, a plan
+ * item); `key` = the plan item's ticket key (`PROJ-14`) when it has one.
+ */
+export interface TeamCurrentItem {
+  readonly title: string;
+  readonly key: string | null;
+}
+
+/** D100 follow-up 2026-10-16 · one member as the sidebar lists it under its team (`TeamSummary.roster`). */
+export interface TeamRosterEntry {
+  readonly id: string;
+  /** The role name. */
+  readonly name: string;
+  /** As the card shows it: `needs-you` also while Needs-you items of it are open (offline / paused win). */
+  readonly status: TeamMemberStatus;
+  /** How this machine addresses its session. */
+  readonly sessionRef: string;
+  readonly machineName: string;
+  readonly local: boolean;
+  /** While working: its current item when known (this machine's members only), else `null`. */
+  readonly current: TeamCurrentItem | null;
+  /** While working: when the running turn started (ISO), else `null`. */
+  readonly turnStartedAt: string | null;
+  /** The session's last activity (ISO; an idle member's "idle · 2h"), `null` when unknown. */
+  readonly lastActivityAt: string | null;
 }
 
 /** `GET /api/team`. */

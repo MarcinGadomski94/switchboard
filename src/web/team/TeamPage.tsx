@@ -30,7 +30,7 @@ import {
   sessionsForReview,
 } from './dialogs.tsx';
 import { useTeamSwitch } from './hidden.ts';
-import { bannerLaterIds, highlightReturnedRow, lastTeam, setBannerLater, setLastTeam } from './local.ts';
+import { bannerLaterIds, clearRequestedMember, highlightReturnedRow, lastTeam, onMemberRequested, requestedMemberId, setBannerLater, setLastTeam } from './local.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
 import { type MenuItem, adoptedToast, canDropOnTeam, movedToast, restoredOrder, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
@@ -165,6 +165,21 @@ export function TeamPage() {
     setFocus(null);
     setAccessFocus(null);
   };
+  // D100 follow-up 2026-10-16: a member row of the sidebar opens that member here, selected, on its chat.
+  const [requested, setRequested] = useState<string | null>(() => requestedMemberId());
+  useEffect(() => onMemberRequested(() => setRequested(requestedMemberId())), []);
+  useEffect(() => {
+    if (requested === null) return;
+    const member = members.find((m) => m.id === requested);
+    if (!member) return;
+    clearRequestedMember(requested);
+    setRequested(null);
+    setSelectedId(member.id);
+    setPanelShown(true);
+    setTab('chat');
+    setFocus(null);
+    setAccessFocus(null);
+  }, [requested, members]);
   const toast = (text: string): void => show({ id: `team-${Date.now()}`, title: 'Team', sub: 'now', branch: '', text, sessionId: null });
   // Project memory (D107) hook: the members' own agents propose memory (nothing is applied; the Memory page reviews it).
   const memoryOn = useMemory().on;

@@ -15,6 +15,7 @@ import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
+import { registerPlanHooks } from '../../../src/server/plans/hooks.ts';
 import { TEAM_DB_FILE } from '../../../src/server/team/db.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { generateToken } from '../../../src/server/token.ts';
@@ -430,6 +431,62 @@ describe('D100 · the routes', () => {
     expect(await names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
     expect(await names(growth.id)).toEqual([]);
     expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).members.map((m) => m.order)).toEqual([0, 1, 2]);
+  });
+
+  it('D100 follow-up 2026-10-16 · the sidebar rows: each team lists its members with status and current item; folding is stored per install', async () => {
+    const r = await setup();
+    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
+    const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
+    const builderSession = await session(r, 'builder-session');
+    const runnerSession = await session(r, 'runner-session');
+    const idleSession = await session(r, 'idle-session');
+    const askerSession = await session(r, 'asker-session');
+    const builder = (await ui(r, 'POST', '/api/team/members', { sessionId: builderSession, name: 'Builder' })).json() as TeamMember;
+    const runner = (await ui(r, 'POST', '/api/team/members', { sessionId: runnerSession, name: 'Runner' })).json() as TeamMember;
+    const idler = (await ui(r, 'POST', '/api/team/members', { sessionId: idleSession, name: 'Idler' })).json() as TeamMember;
+    const asker = (await ui(r, 'POST', '/api/team/members', { sessionId: askerSession, name: 'Asker', teamId: growth.id })).json() as TeamMember;
+
+    // Builder works on a todo in progress (a plan item with a key); Runner works without one; Idler is idle.
+    const added = (await ui(r, 'POST', `/api/sessions/${builderSession}/todos`, { title: 'Wire the sidebar rows' })).json() as { todos: Array<{ id: string }> };
+    const todoId = added.todos[0]?.id as string;
+    expect((await ui(r, 'PUT', `/api/sessions/${builderSession}/todos/${todoId}`, { state: 'in_progress' })).statusCode).toBe(200);
+    for (const id of [builderSession, runnerSession]) await r.store.sessions.update(id, { status: 'run' });
+    await r.store.sessions.update(idleSession, { status: 'done', lastActivityAt: '2026-10-16T10:00:00.000Z' });
+    await r.store.permissions.create({ sessionId: askerSession, requestId: 'req-asker', toolUseId: null, toolName: 'Bash', input: { command: 'ls' }, description: 'List files', decisionReason: null, agentId: null });
+    const rows = async () => (await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[];
+
+    let teams = await rows();
+    expect(teams.map((t) => [t.name, t.collapsed, (t.roster ?? []).map((m) => [m.name, m.status])])).toEqual([
+      ['Team', false, [['Builder', 'working'], ['Runner', 'working'], ['Idler', 'idle']]],
+      ['Growth', false, [['Asker', 'needs-you']]],
+    ]);
+    const roster = teams[0]?.roster ?? [];
+    expect(roster[0]).toMatchObject({ id: builder.id, current: { title: 'Wire the sidebar rows', key: null }, local: true, sessionRef: builderSession });
+    expect(roster[1]).toMatchObject({ id: runner.id, current: null });
+    expect(roster[2]).toMatchObject({ id: idler.id, current: null, turnStartedAt: null, lastActivityAt: '2026-10-16T10:00:00.000Z' });
+    expect(teams[1]?.roster?.[0]?.id).toBe(asker.id);
+
+    // Plans (D99) knows the todo as a plan item with a key: the row names it by the key.
+    registerPlanHooks(r.store, {
+      switchChanged: async () => undefined,
+      sessionContinued: async () => undefined,
+      inboxMerge: async () => null,
+      outcomes: async () => null,
+      itemsOfTodos: async (ids) => (ids.includes(todoId) ? [{ todoId, key: 'PROJ-14', title: 'Sidebar member rows' }] : []),
+    });
+    expect((await rows())[0]?.roster?.[0]?.current).toEqual({ title: 'Sidebar member rows', key: 'PROJ-14' });
+
+    // Folding: stored per install, answered with the teams; unknown team 404, a non-boolean 422.
+    expect((await ui(r, 'PUT', `/api/team/teams/${growth.id}/sidebar`, { collapsed: true })).json()).toEqual({ collapsed: true });
+    teams = await rows();
+    expect(teams.map((t) => t.collapsed)).toEqual([false, true]);
+    expect(await r.store.settings.get('team.sidebarCollapsed')).toBe(JSON.stringify([growth.id]));
+    expect((await ui(r, 'PUT', '/api/team/teams/nope/sidebar', { collapsed: true })).statusCode).toBe(404);
+    expect((await ui(r, 'PUT', '/api/team/teams/team/sidebar', { collapsed: 'yes' })).statusCode).toBe(422);
+    expect((await ui(r, 'PUT', `/api/team/teams/${growth.id}/sidebar`, { collapsed: false })).statusCode).toBe(200);
+    expect((await rows()).map((t) => t.collapsed)).toEqual([false, false]);
+    // A device may fold too (the D74 drawer); peers never ask (each install keeps its own).
+    expect(isLocalOnly('PUT', '/api/team/teams/t1/sidebar')).toBe(false);
   });
 
   it('every Team route is classified for devices; the peer API serves what a paired machine needs', () => {

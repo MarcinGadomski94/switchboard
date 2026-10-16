@@ -150,3 +150,30 @@ export function addKnownNeeds(keys: readonly string[]): void {
   const next = [...known.filter((key) => !keys.includes(key)), ...keys].slice(-200);
   write(NEEDS_SEEN, next);
 }
+
+// ── D100 follow-up 2026-10-16: a member picked in the sidebar ─────────────
+
+let requestedMember: string | null = null;
+const memberListeners = new Set<() => void>();
+
+/** The sidebar's member row was clicked: the Team page selects that member (with its chat) once it lists it. */
+export function requestMember(memberId: string): void {
+  requestedMember = memberId;
+  for (const listener of [...memberListeners]) listener();
+}
+
+/** The member the sidebar asked for (`null` = none); the Team page takes it once it selected it. */
+export function requestedMemberId(): string | null {
+  return requestedMember;
+}
+
+/** The Team page selected the requested member. */
+export function clearRequestedMember(memberId: string): void {
+  if (requestedMember === memberId) requestedMember = null;
+}
+
+/** Calls `listener` whenever the sidebar asks for a member; returns the unsubscribe. */
+export function onMemberRequested(listener: () => void): () => void {
+  memberListeners.add(listener);
+  return () => memberListeners.delete(listener);
+}

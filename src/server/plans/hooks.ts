@@ -12,6 +12,16 @@ export interface PlanHooks {
   inboxMerge(planId: string, itemId: string): Promise<string | null>;
   /** D108: every plan item that ended (merged, failed, blocked), for Insights; `null` while Plans is off or `plans.db` is unavailable. */
   outcomes(): Promise<PlanItemOutcome[] | null>;
+  /** Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16: the plan items of these todos (Team's sidebar member rows name them); empty while off. */
+  itemsOfTodos(todoIds: readonly string[]): Promise<PlanItemRef[]>;
+}
+
+/** D100 follow-up 2026-10-16: a plan item as Team's sidebar names a member's current item. */
+export interface PlanItemRef {
+  readonly todoId: string;
+  /** Its ticket key (`PROJ-14`), `null` when it has none. */
+  readonly key: string | null;
+  readonly title: string;
 }
 
 /** D108: a plan item's outcome as Insights reads it (`docs/insights.md` → *Outcomes and rework*). */
@@ -63,4 +73,13 @@ export async function plansSwitchChanged(store: object): Promise<void> {
 export async function plansInsightOutcomes(store: object): Promise<PlanItemOutcome[] | null> {
   const hooks = registry.get(store);
   return hooks ? hooks.outcomes() : null;
+}
+
+/**
+ * Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16 seam (Team's sidebar member rows, `src/server/team/service.ts`): the
+ * plan items of the todos `todoIds` (their keys and titles); empty while Plans is off.
+ */
+export async function plansItemsOfTodos(store: object, todoIds: readonly string[]): Promise<PlanItemRef[]> {
+  const hooks = registry.get(store);
+  return hooks && todoIds.length > 0 ? hooks.itemsOfTodos(todoIds) : [];
 }

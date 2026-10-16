@@ -145,6 +145,21 @@ test('populated: cards across the top, then Needs you | panel; phone one column 
   expect(await color(page, '[data-testid="team-card"][data-status="working"]', 'border-top-width')).toBe('3px');
   lines.push(`- card top borders: working ${run}, needs you ${need}, idle ${idle}, paused / offline ${control} dimmed`);
 
+  // D100 follow-up 2026-10-16: the sidebar's member rows (expanded by default), their glyphs in the status colours.
+  const glyph = (status: string) => `[data-testid="sidebar-team-member"][data-status="${status}"] [data-testid="sidebar-team-member-glyph"]`;
+  await expect(page.getByTestId('sidebar-team-member')).toHaveCount(4);
+  await expect(page.getByTestId('sidebar-team-toggle')).toHaveAttribute('aria-expanded', 'true');
+  expect(await color(page, glyph('working'), 'color')).toBe(run);
+  expect(await color(page, glyph('needs-you'), 'color')).toBe(need);
+  await expect(page.locator(glyph('paused'))).toHaveText('⏸');
+  const [muted] = await canonicalColors(page, ['#76756f']);
+  expect(await color(page, '[data-testid="sidebar-team-member"] [data-testid="sidebar-team-member-line"]', 'color')).toBe(muted);
+  // The status line sits at the row's right edge; the role name truncates before it.
+  const rowBox = await page.getByTestId('sidebar-team-member').first().boundingBox();
+  const lineBox = await page.getByTestId('sidebar-team-member-line').first().boundingBox();
+  expect(Math.abs(rowBox!.x + rowBox!.width - 8 - (lineBox!.x + lineBox!.width))).toBeLessThanOrEqual(1);
+  lines.push(`- sidebar member rows: expanded by default, glyphs working ${run} / needs you ${need} / paused ⏸, status line ${muted} at the right edge`);
+
   // Desktop: header, banner-free (all adopted); the cards across the full width, then Needs you | panel.
   await expect(page.getByTestId('team-title')).toHaveText('Team');
   await expect(page.getByTestId('sidebar-team').locator('.sb-team-entry__text')).toHaveText('Team · 4 members');

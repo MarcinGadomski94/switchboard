@@ -86,6 +86,8 @@ export const teamApi = {
   teams: () => call<TeamSummary[]>('GET', '/api/team/teams'),
   createTeam: (name: string) => call<TeamSummary>('POST', '/api/team/teams', { name }),
   deleteTeam: (teamId: string) => call<{ readonly ok: true; readonly returned: number }>('DELETE', `/api/team/teams/${enc(teamId)}`),
+  // D100 follow-up 2026-10-16: fold / unfold a team in the sidebar (per install).
+  sidebar: (teamId: string, collapsed: boolean) => call<{ readonly collapsed: boolean }>('PUT', `/api/team/teams/${enc(teamId)}/sidebar`, { collapsed }),
   reorderTeams: (teamIds: readonly string[]) => call<TeamSummary[]>('PUT', '/api/team/teams/order', { teamIds }),
   moveToTeam: (memberId: string, teamId: string) => call<TeamMember>('POST', `/api/team/members/${enc(memberId)}/team`, { teamId }),
   templates: () => call<TeamTemplate[]>('GET', '/api/team/templates'),

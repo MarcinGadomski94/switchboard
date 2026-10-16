@@ -29,8 +29,10 @@ import {
   type TeamGateKind,
   type TeamHandoff,
   type TeamHandoffRecord,
+  type TeamCurrentItem,
   type TeamMember,
   type TeamMemberRecord,
+  type TeamMemberStatus,
   type TeamNeedsYouItem,
   type TeamOriginalPlace,
   type TeamRecord,
@@ -38,6 +40,7 @@ import {
   type TeamRequestAction,
   type TeamRequestRecord,
   type TeamRhythmLoop,
+  type TeamRosterEntry,
   type TeamState,
   type TeamSummary,
   type TeamView,
@@ -75,6 +78,8 @@ import { TeamAccess, accessIdOfRef } from './access/service.ts';
 import { type SecretStore, defaultSecretStore } from './access/secret-store.ts';
 import { TeamDb } from './db.ts';
 import { type TeamMemberRef, registerTeamHooks } from './hooks.ts';
+// Plans (D99) hook: a member's current item is named by its plan item's key (docs/plans-removal.md).
+import { plansItemsOfTodos } from '../plans/hooks.ts';
 // Project memory (D107) hook: a moved member's member-scoped memory goes with it (docs/memory-removal.md).
 import { memoryMemberMoved } from '../memory/hooks.ts';
 import { peerCall } from './peer-call.ts';
@@ -139,6 +144,20 @@ interface MemberFields {
 
 /** D105 · the one-time "Draft better charters" offer's mark in the main `settings` table (`done` = acted on or Not now; `docs/team-removal.md`). */
 export const CHARTER_OFFER_SETTING = 'team.charterOffer';
+
+/** D100 follow-up 2026-10-16 · the teams folded in the sidebar (a JSON list of team ids) in the main `settings` table (per install; `docs/team-removal.md`). */
+export const SIDEBAR_COLLAPSED_SETTING = 'team.sidebarCollapsed';
+
+/** What Team reads of a member's session. */
+interface SessionFacts {
+  readonly reachable: boolean;
+  readonly status: SessionStatusLike | null;
+  readonly title: string | null;
+  /** The session's last activity (ISO), `null` when unknown. */
+  readonly lastActivityAt: string | null;
+  /** When the running turn started (ISO), `null` while none runs or unknown. */
+  readonly turnStartedAt: string | null;
+}
 
 /** Statuses of a session that count as the session existing for Team. */
 const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'idle', 'paused']);
@@ -461,17 +480,24 @@ export class TeamService {
     return out;
   }
 
-  async #sessionFacts(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<{ readonly reachable: boolean; readonly status: SessionStatusLike | null; readonly title: string | null }> {
+  async #sessionFacts(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<SessionFacts> {
     if (member.machineId === this.#selfId()) {
       const record = await this.#o.store.sessions.get(member.sessionId);
-      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null };
-      return { reachable: true, status: STATUSES.has(record.status) ? (record.status as SessionStatusLike) : 'idle', title: record.title ?? record.name };
+      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null, lastActivityAt: record?.lastActivityAt ?? null, turnStartedAt: null };
+      const turnStartedAt = this.#o.supervisor.activity(member.sessionId)?.turnStartedAt ?? null;
+      return { reachable: true, status: STATUSES.has(record.status) ? (record.status as SessionStatusLike) : 'idle', title: record.title ?? record.name, lastActivityAt: record.lastActivityAt, turnStartedAt };
     }
     const machine = machines.get(member.machineId);
     const ref = remoteId(member.machineId, member.sessionId);
     const session = this.#o.peers.remoteSessions().find((s) => s.id === ref) as (Session & { readonly title?: string | null; readonly unreachable?: boolean }) | undefined;
     const reachable = machine?.online === true;
-    return { reachable, status: session && STATUSES.has(session.status) ? (session.status as SessionStatusLike) : null, title: session ? (session.title ?? session.name) : null };
+    return {
+      reachable,
+      status: session && STATUSES.has(session.status) ? (session.status as SessionStatusLike) : null,
+      title: session ? (session.title ?? session.name) : null,
+      lastActivityAt: session?.lastActivityAt ?? null,
+      turnStartedAt: session?.activity?.turnStartedAt ?? null,
+    };
   }
 
   async #toMember(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<TeamMember> {
@@ -533,17 +559,93 @@ export class TeamService {
     const items = await this.needsYou(ALL_TEAMS);
     const counts = new Map<string, number>();
     for (const item of items) counts.set(item.memberId, (counts.get(item.memberId) ?? 0) + 1);
+    const collapsed = await this.#sidebarCollapsed();
     const out: TeamSummary[] = [];
     for (const team of this.#teams()) {
       const members = this.#teamMembers(team.id);
       let needsYou = 0;
+      const roster: TeamRosterEntry[] = [];
       for (const member of members) {
-        if ((counts.get(member.id) ?? 0) > 0) needsYou += 1;
-        else if ((await this.#sessionFacts(member, machines)).status === 'need') needsYou += 1;
+        const facts = await this.#sessionFacts(member, machines);
+        const waiting = (counts.get(member.id) ?? 0) > 0 || facts.status === 'need';
+        if (waiting) needsYou += 1;
+        roster.push(await this.#rosterEntry(member, facts, waiting, machines));
       }
-      out.push({ id: team.id, name: team.name, order: team.order, members: members.length, needsYou });
+      out.push({ id: team.id, name: team.name, order: team.order, members: members.length, needsYou, roster, collapsed: collapsed.has(team.id) });
     }
     return out;
+  }
+
+  /**
+   * D100 follow-up 2026-10-16 · a member's sidebar row: its status as the card shows it,
+   * and while it works the turn's start and its current item (this machine's members only:
+   * a paired machine's todos are its own).
+   */
+  async #rosterEntry(member: TeamMemberRecord, facts: SessionFacts, waiting: boolean, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<TeamRosterEntry> {
+    const status = memberStatus({ reachable: facts.reachable, sessionStatus: facts.status, paused: member.paused });
+    const shown: TeamMemberStatus = status === 'offline' || status === 'paused' || !waiting ? status : 'needs-you';
+    const local = member.machineId === this.#selfId();
+    const working = shown === 'working';
+    return {
+      id: member.id,
+      name: member.name,
+      status: shown,
+      sessionRef: this.#sessionRef(member),
+      machineName: machines.get(member.machineId)?.name ?? member.machineId,
+      local,
+      current: working && local ? await this.#currentItem(member.sessionId) : null,
+      turnStartedAt: working ? facts.turnStartedAt : null,
+      lastActivityAt: facts.lastActivityAt,
+    };
+  }
+
+  /** The member's todo in progress (the latest started), else the item its session runs; with its plan item's key when Plans knows one. */
+  async #currentItem(sessionId: string): Promise<TeamCurrentItem | null> {
+    let todo: SessionTodo | null = null;
+    try {
+      const started = (await this.#o.todos.list(sessionId)).todos.filter((t) => t.state === 'in_progress');
+      todo = started.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))[0] ?? (await this.#o.todos.linkedTodo(sessionId));
+    } catch {
+      return null;
+    }
+    if (!todo) return null;
+    // Plans (D99) hook (docs/plans-removal.md): the plan item of that todo names it by its key.
+    const item = (await plansItemsOfTodos(this.#o.store, [todo.id]).catch(() => []))[0];
+    return { title: item?.title ?? todo.title, key: item?.key ?? null };
+  }
+
+  /** The teams folded in the sidebar (a row of the main `settings` table, per install; `docs/team-removal.md`). */
+  async #sidebarCollapsed(): Promise<Set<string>> {
+    const raw = await this.#o.store.settings.get(SIDEBAR_COLLAPSED_SETTING);
+    if (typeof raw !== 'string') return new Set();
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * `PUT /api/team/teams/{id}/sidebar` (D100 follow-up 2026-10-16): folds (`collapsed: true`)
+   * or unfolds the team in the sidebar; remembered on this install (not synced).
+   * @throws {TeamError} 404 unknown team, 422 without a boolean `collapsed`.
+   */
+  async setSidebarCollapsed(teamId: string, body: Record<string, unknown>): Promise<{ readonly collapsed: boolean }> {
+    this.#need();
+    const team = this.#team(teamId);
+    if (typeof body['collapsed'] !== 'boolean') throw new TeamError(422, 'invalid', 'collapsed must be true or false');
+    const next = body['collapsed'];
+    await this.#serial(async () => {
+      const ids = await this.#sidebarCollapsed();
+      if (next) ids.add(team.id);
+      else ids.delete(team.id);
+      // Teams deleted meanwhile leave the list.
+      const live = new Set(this.#teams().map((t) => t.id));
+      await this.#o.store.settings.set(SIDEBAR_COLLAPSED_SETTING, JSON.stringify([...ids].filter((id) => live.has(id))));
+    });
+    this.#publish(['sidebar'], team.id);
+    return { collapsed: next };
   }
 
   /** `GET /api/team/members/{id}`. @throws {TeamError} 404. */

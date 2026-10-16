@@ -64,6 +64,164 @@
   color: var(--primary-fg);
 }
 
+/* D100 follow-up 2026-10-16: each team folds (▾ / ▸) and lists its members under its row. */
+.sb-team-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb-team-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 10px 0 2px;
+  min-width: 0;
+}
+
+.sb-team-entries .sb-team-entry-row > .sb-team-entry {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.sb-team-entry-toggle {
+  flex: none;
+  width: 16px;
+  align-self: stretch;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-3);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sb-team-entry-toggle:hover {
+  color: var(--text-2);
+}
+
+.sb-team-entry-toggle:focus-visible {
+  outline: 1px solid var(--muted-3);
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
+.sb-team-entry__summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.sb-team-entry__summary + .sb-team-entry__need {
+  margin-left: 0;
+}
+
+.sb-team-members {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 10px 0 20px;
+  min-width: 0;
+}
+
+.sb-team-members[hidden] {
+  display: none;
+}
+
+.sb-team-member-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.sb-team-member-row:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--team-role-bg) 60%, transparent);
+}
+
+.sb-team-member-row:focus-visible {
+  outline: 1px solid var(--team-role-border);
+  outline-offset: -1px;
+}
+
+.sb-team-member-row__glyph {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--status-idle);
+}
+
+.sb-team-member-row[data-status='working'] .sb-team-member-row__glyph {
+  color: var(--status-run);
+}
+
+.sb-team-member-row[data-status='needs-you'] .sb-team-member-row__glyph {
+  color: var(--status-need);
+  font-weight: 600;
+}
+
+.sb-team-member-row[data-status='paused'] .sb-team-member-row__glyph {
+  color: var(--muted-3);
+}
+
+.sb-team-member-row[data-status='offline'] {
+  opacity: 0.55;
+}
+
+.sb-team-member-row__name {
+  flex: 1 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-team-member-row__line {
+  flex: 0 0 auto;
+  max-width: 64%;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-team-member-row[data-status='needs-you'] .sb-team-member-row__line {
+  color: var(--status-need);
+}
+
+/* D74: a finger's targets (the phone / tablet drawer): 44 px rows and chevrons. */
+@media (pointer: coarse) {
+  .sb-team-entry-toggle {
+    width: 44px;
+    min-height: 44px;
+  }
+
+  .sb-team-entries .sb-team-entry-row > .sb-team-entry,
+  .sb-team-member-row {
+    box-sizing: border-box;
+    min-height: 44px;
+  }
+
+  .sb-team-members {
+    margin-left: 46px;
+  }
+}
+
 .sb-session[data-team-returned='true'] {
   background: color-mix(in srgb, var(--bg-selected-row), var(--team-role-fg) 18%);
   transition: background 0.4s ease;

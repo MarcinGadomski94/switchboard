@@ -164,6 +164,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET|POST', /^\/api\/team\/teams$/],
   ['PUT', /^\/api\/team\/teams\/order$/],
   ['DELETE', /^\/api\/team\/teams\/[^/]+$/],
+  // D100 follow-up 2026-10-16: fold / unfold a team in the drawer's sidebar.
+  ['PUT', /^\/api\/team\/teams\/[^/]+\/sidebar$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/team$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
   // D105: Redraft charter / Draft better charters (a message to the members' agents, like giving a task) and Not now on the offer;

@@ -43,7 +43,7 @@ import {
   readyItems,
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
-import { type PlanItemOutcome, registerPlanHooks } from './hooks.ts';
+import { type PlanItemOutcome, type PlanItemRef, registerPlanHooks } from './hooks.ts';
 import { registerCiMergeOwner } from '../ci/hooks.ts';
 import type { PlanItemPatch, PlanItemRecord, PlanRecord, PlanRepository } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
@@ -292,8 +292,18 @@ export class PlanService {
         }
       },
       outcomes: () => this.insightOutcomes(),
+      itemsOfTodos: (todoIds) => this.itemsOfTodos(todoIds),
     });
     await this.switchChanged();
+  }
+
+  /**
+   * Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16 (Team's sidebar member rows): the key and title of the plan items
+   * of the todos `todoIds`; empty while Plans is off or `plans.db` is unavailable. Read-only.
+   */
+  async itemsOfTodos(todoIds: readonly string[]): Promise<PlanItemRef[]> {
+    if (!this.#enabled || this.#db === null) return [];
+    return (await this.#repo().itemsByTodos(todoIds)).map((item) => ({ todoId: item.todoId, key: item.key, title: item.title }));
   }
 
   /**

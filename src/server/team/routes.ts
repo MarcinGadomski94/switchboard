@@ -50,6 +50,8 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
   app.post('/api/team/teams', (request, reply) => run(request, reply, () => team.createTeam(fields(request.body)), 201));
   app.put('/api/team/teams/order', (request, reply) => run(request, reply, () => team.reorderTeams(fields(request.body))));
   app.put<{ Params: { teamId: string } }>('/api/team/teams/:teamId', (request, reply) => run(request, reply, () => team.rename(request.body, request.params.teamId)));
+  // D100 follow-up 2026-10-16: fold / unfold a team in the sidebar (per install).
+  app.put<{ Params: { teamId: string } }>('/api/team/teams/:teamId/sidebar', (request, reply) => run(request, reply, () => team.setSidebarCollapsed(request.params.teamId, fields(request.body))));
   app.delete<{ Params: { teamId: string } }>('/api/team/teams/:teamId', (request, reply) => run(request, reply, () => team.deleteTeam(request.params.teamId)));
   // D100 follow-up 2026-10-14: the members' order (synced; phones may reorder).
   app.put('/api/team/order', (request, reply) => run(request, reply, () => team.reorder(fields(request.body))));

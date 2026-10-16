@@ -337,6 +337,13 @@ export class PlanRepository {
     return (this.#statement('SELECT * FROM plan_items WHERE run_session_id = ? ORDER BY created_at, rowid').all(sessionId) as unknown as Row[]).map(itemOf);
   }
 
+  /** Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16 (Team's sidebar rows): the items of the todos `todoIds` (none = none). */
+  async itemsByTodos(todoIds: readonly string[]): Promise<PlanItemRecord[]> {
+    if (todoIds.length === 0) return [];
+    const marks = todoIds.map(() => '?').join(', ');
+    return (this.#statement(`SELECT * FROM plan_items WHERE todo_id IN (${marks}) ORDER BY created_at, rowid`).all(...todoIds) as unknown as Row[]).map(itemOf);
+  }
+
   /** Adds an item at the end of its plan. */
   async addItem(input: PlanItemCreate): Promise<PlanItemRecord> {
     const now = this.#ctx.now();
