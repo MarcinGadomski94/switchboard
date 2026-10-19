@@ -34,6 +34,7 @@ import { checkpointsEnabled, todoEnrichEnabled, todoReminderEnabled } from './se
 import { CheckpointService } from './checkpoints/service.ts';
 import { TodoEnricher } from './todos/enricher.ts';
 import { FreshPlaces } from './sessions/fresh-place.ts';
+import { RunPlaces } from './sessions/run-place.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -480,6 +481,23 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.addHook('onClose', async () => {
     await freshPlaces.stop();
+  });
+  // D99 / D76 follow-up 2026-10-19: a todo's or a plan item's run goes to its source's sidebar folder, after the source (this machine's and a paired machine's).
+  const runPlaces = new RunPlaces({
+    bus,
+    store: options.store,
+    listed: async () => [
+      ...(await options.store.sessions.list({ closed: false })).filter((record) => !supervisor.isStarting(record.id)).map((record) => record.id),
+      ...peers.remoteSessions().map((session) => session.id),
+    ],
+    remoteSessions: () => peers.remoteSessions(),
+    synced: (changes) => peers.sidebarChanged(changes),
+  });
+  app.addHook('onReady', async () => {
+    runPlaces.start();
+  });
+  app.addHook('onClose', async () => {
+    await runPlaces.stop();
   });
   // D94: the loops Switchboard fires itself: a firing is a message through the usual path (a hooked session's mailbox, else the supervisor).
   let ownedLoops = options.loops;

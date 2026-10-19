@@ -204,6 +204,71 @@ export function inheritPlace(layout: SidebarLayout, oldId: string, newId: string
   };
 }
 
+/** What {@link placeRun} needs besides the layout. */
+export interface RunPlaceInput {
+  /** The session the run comes from (a todo's session, a plan's source session). */
+  readonly sourceId: string;
+  /** The new run session. */
+  readonly runId: string;
+  /** The ids of the source's other runs (todo and plan runs, closed ones included): a new run goes after them. */
+  readonly runsOfSource: ReadonlySet<string>;
+  /** The listed (open) sessions' ids in the service's order ({@link looseList}). */
+  readonly listed: readonly string[];
+  /**
+   * D100: the source is a Team member (hidden from SESSIONS): the place it had
+   * before it joined (`folderId` `null` = not a folder: the run stays at the root).
+   * `null` = not a member.
+   */
+  readonly member: { readonly folderId: string | null; readonly index: number | null } | null;
+}
+
+/** The index from `from` on in `ids` past the consecutive ids of `runs` (the earlier runs stay together). */
+function afterRuns(ids: readonly string[], from: number, runs: ReadonlySet<string>): number {
+  let at = from;
+  while (at < ids.length && runs.has(ids[at] as string)) at += 1;
+  return at;
+}
+
+/**
+ * D99 / D76 follow-up 2026-10-19 (`docs/sidebar.md` → *Where runs appear*): a run
+ * session started on the developer's behalf (a todo's ▸ Run, a plan item) goes to
+ * its source's sidebar folder, right after the source and its earlier runs:
+ *
+ * - the source in a folder → that folder, after the source (and its runs there);
+ * - a Team member source (hidden from SESSIONS) not in a folder → the folder it had
+ *   before it joined, at that position (after its runs there); no such folder → the root;
+ * - the source loose (in the loose order or unplaced) → the loose list, after the
+ *   source (and its runs); the unplaced sessions keep the order they show in, as
+ *   after a loose drop ({@link placeSession});
+ * - a pinned source, or one this layout does not list → the root, unplaced (the top
+ *   of the loose list, as before).
+ *
+ * `null` (nothing to change) when the run is placed already (a later move by the
+ * developer wins) or it stays unplaced.
+ */
+export function placeRun(layout: SidebarLayout, input: RunPlaceInput): SidebarLayout | null {
+  const { sourceId, runId, runsOfSource } = input;
+  if (isPlaced(layout, runId)) return null;
+  const where = placeOf(layout, sourceId);
+  const into = (folderId: string, index: number): SidebarLayout | null => placeSession(layout, { sessionId: runId, place: 'folder', folderId, index });
+  if (where !== null && where !== 'pinned') {
+    const ids = layout.folders.find((f) => f.id === where.folderId)?.sessionIds ?? [];
+    return into(where.folderId, afterRuns(ids, ids.indexOf(sourceId) + 1, runsOfSource));
+  }
+  if (input.member !== null) {
+    const folderId = input.member.folderId;
+    const folder = folderId === null ? undefined : layout.folders.find((f) => f.id === folderId);
+    if (!folder) return null;
+    return into(folder.id, afterRuns(folder.sessionIds, clamp(input.member.index ?? undefined, folder.sessionIds.length), runsOfSource));
+  }
+  if (where === 'pinned') return null;
+  const listed = input.listed.filter((id) => id !== runId);
+  const loose = looseList(layout, listed);
+  const at = loose.indexOf(sourceId);
+  if (at < 0) return null;
+  return placeSession(layout, { sessionId: runId, place: 'loose', index: afterRuns(loose, at + 1, runsOfSource) }, listed);
+}
+
 /** D58: the folder a folder sits in (`null` = top level). */
 export function parentOf(folder: SidebarFolder): string | null {
   return folder.parentId ?? null;

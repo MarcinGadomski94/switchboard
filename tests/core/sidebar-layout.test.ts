@@ -25,6 +25,7 @@ import {
   stepPosition,
   updateFolder,
   looseList,
+  placeRun,
 } from '../../src/core/sidebar-layout.ts';
 
 /** D54 oracle: the sidebar's pins and folders (src/core/sidebar-layout.ts, docs/sidebar.md). */
@@ -338,5 +339,53 @@ describe('loose order (D71)', () => {
     expect(arrangeSidebar(listed, out).loose.map((s) => s.id)).toEqual(['n1', 'new', 'n2', 'n3']);
     // Pinning takes it out of the loose order.
     expect(placeSession(placed, { sessionId: 'n1', place: 'pinned' }, ids)?.loose).toEqual(['new', 'n2', 'n3']);
+  });
+});
+
+describe('placeRun (D99 / D76 follow-up 2026-10-19: runs go to the source\'s folder)', () => {
+  const base = { runsOfSource: new Set<string>(), listed: [] as string[], member: null };
+  const tree: SidebarLayout = {
+    pinned: ['p1'],
+    folders: [
+      { id: 'acme', name: 'Acme', collapsed: false, sessionIds: [], parentId: null },
+      { id: 'rel', name: 'Releases', collapsed: false, sessionIds: ['x1', 'src', 'x2'], parentId: 'acme' },
+    ],
+    loose: ['l1', 'l2'],
+  };
+
+  it('a source in a subfolder: right after it, a later run after the earlier runs', () => {
+    const first = placeRun(tree, { ...base, sourceId: 'src', runId: 'r1' }) as SidebarLayout;
+    expect(first.folders.find((f) => f.id === 'rel')?.sessionIds).toEqual(['x1', 'src', 'r1', 'x2']);
+    const second = placeRun(first, { ...base, sourceId: 'src', runId: 'r2', runsOfSource: new Set(['r1']) }) as SidebarLayout;
+    expect(second.folders.find((f) => f.id === 'rel')?.sessionIds).toEqual(['x1', 'src', 'r1', 'r2', 'x2']);
+  });
+
+  it('a placed run is left alone (a later move wins)', () => {
+    expect(placeRun(tree, { ...base, sourceId: 'src', runId: 'l1' })).toBeNull();
+  });
+
+  it('a source at the root: in the loose list right after it (the unplaced ones keep their order, as a loose drop)', () => {
+    const inLoose = placeRun(tree, { ...base, sourceId: 'l1', runId: 'r1', listed: ['n1', 'r1'] }) as SidebarLayout;
+    expect(inLoose.loose).toEqual(['n1', 'l1', 'r1', 'l2']);
+    const unplaced = placeRun(tree, { ...base, sourceId: 'u2', runId: 'r1', listed: ['r1', 'u1', 'u2', 'u3'] }) as SidebarLayout;
+    expect(unplaced.loose).toEqual(['u1', 'u2', 'r1', 'u3', 'l1', 'l2']);
+    expect(looseList(unplaced, ['r1', 'u1', 'u2', 'u3'])).toEqual(['u1', 'u2', 'r1', 'u3', 'l1', 'l2']);
+  });
+
+  it('a pinned source, a source not listed, a member without a folder: the run stays unplaced (the root)', () => {
+    expect(placeRun(tree, { ...base, sourceId: 'p1', runId: 'r1' })).toBeNull();
+    expect(placeRun(tree, { ...base, sourceId: 'gone', runId: 'r1', listed: ['r1'] })).toBeNull();
+    expect(placeRun(tree, { ...base, sourceId: 'm1', runId: 'r1', member: { folderId: null, index: 0 } })).toBeNull();
+    expect(placeRun(tree, { ...base, sourceId: 'm1', runId: 'r1', member: { folderId: 'deleted', index: 0 } })).toBeNull();
+  });
+
+  it('a hidden Team member source not in a folder: the folder it had, at its position, after its runs', () => {
+    const placed = placeRun(tree, { ...base, sourceId: 'm1', runId: 'r1', member: { folderId: 'rel', index: 1 } }) as SidebarLayout;
+    expect(placed.folders.find((f) => f.id === 'rel')?.sessionIds).toEqual(['x1', 'r1', 'src', 'x2']);
+    const again = placeRun(placed, { ...base, sourceId: 'm1', runId: 'r2', runsOfSource: new Set(['r1']), member: { folderId: 'rel', index: 1 } }) as SidebarLayout;
+    expect(again.folders.find((f) => f.id === 'rel')?.sessionIds).toEqual(['x1', 'r1', 'r2', 'src', 'x2']);
+    // Still in its folder (the layout kept it): after it there.
+    const kept = placeRun(tree, { ...base, sourceId: 'src', runId: 'r1', member: { folderId: null, index: null } }) as SidebarLayout;
+    expect(kept.folders.find((f) => f.id === 'rel')?.sessionIds).toEqual(['x1', 'src', 'r1', 'x2']);
   });
 });

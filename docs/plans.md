@@ -81,6 +81,8 @@ Developer request: an agent skipped `plan_create` because the target had to be a
 
 An item's run is D76's todo run with the plan's overrides (`TodoRunOverrides` in `src/server/todos/run.ts`): the branch above, cut from the target's tip in each repo it works in (the target is created locally from the base when missing, never pushed), the plan's start answers, and a brief: the todo, its plan / acceptance criteria, the notes, then "commit, push, open a PR into the target, merge rule, mark the todo done".
 
+**Where the run appears (follow-up 2026-10-19):** in the sidebar folder of the plan's source session, right after the source; a later item's run after the earlier ones, so a plan's runs stay together (a source at the root: at the root, after it). `docs/sidebar.md` → *Where runs appear*.
+
 The scheduler is event driven (run sessions' status, todo changes, usage updates), polls the checks of items waiting on them (60 s), and reads git / gh only for items whose session changed. On restart it resumes the running plans.
 
 ## Merge step (D102)

@@ -278,6 +278,14 @@ export class TeamService {
         return member ? this.#memberRef(member) : null;
       },
       memberList: () => (this.#enabled && this.#db ? this.#liveMembers().map((member) => this.#memberRef(member)) : []),
+      // D99 / D76 follow-up 2026-10-19: a run from a member goes to the folder the member had (docs/sidebar.md → Where runs appear).
+      originalPlaceOf: (sessionId) => {
+        if (!this.#enabled || !this.#db) return null;
+        const member = this.#liveMembers().find((candidate) => this.#sessionRef(candidate) === sessionId);
+        if (!member) return null;
+        const place = member.originalPlace;
+        return { folderId: place.place === 'folder' ? place.folderId : null, index: place.index };
+      },
     });
     await this.switchChanged();
   }

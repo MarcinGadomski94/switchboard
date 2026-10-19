@@ -11,6 +11,7 @@ import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
+import type { SidebarLayout } from '../../../src/core/sidebar-layout.ts';
 import { PLANS_SETTING, type Plan, type PlanItem, type PlanMergeMode } from '../../../src/core/plans.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -258,6 +259,30 @@ describe('D99 · a plan on the real path', () => {
     await developerMerges(r, created.id, 'PROJ-1');
     await settledItem(created.id, 'PROJ-1', 'done');
     await settledItem(created.id, 'PROJ-2', 'running');
+  }, 60_000);
+
+  it('D99 / D76 follow-up 2026-10-19: item runs land in the source\'s sidebar folder (Acme / Releases), right after it, a later run after the earlier one', async () => {
+    const r = await setup();
+    const folderId = async (name: string, parentId: string | null): Promise<string> => {
+      const answer = await call('POST', '/api/sidebar/folders', { name, parentId });
+      expect(answer.statusCode, answer.body).toBe(201);
+      return ((answer.json() as SidebarLayout).folders.find((f) => f.name === name) as { id: string }).id;
+    };
+    const releases = await folderId('Releases', await folderId('Acme', null));
+    expect((await call('POST', '/api/sidebar/place', { sessionId: r.source.id, place: 'folder', folderId: releases })).statusCode).toBe(200);
+    const holds = async (ids: readonly string[]): Promise<void> => {
+      await until(async () => {
+        const layout = (await call('GET', '/api/sidebar')).json() as SidebarLayout;
+        return JSON.stringify(layout.folders.find((f) => f.id === releases)?.sessionIds) === JSON.stringify(ids) ? true : undefined;
+      }, `Releases holds ${ids.join(', ')}`);
+    };
+    const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'] });
+    await startPlan(created.id, 'agents');
+    const first = (await settledItem(created.id, 'PROJ-1', 'running')).runSessionId as string;
+    await holds([r.source.id, first]);
+    await agentWorks(r, created.id, 'PROJ-1', { merge: true });
+    const second = (await settledItem(created.id, 'PROJ-2', 'running')).runSessionId as string;
+    await holds([r.source.id, first, second]);
   }, 60_000);
 
   it('keeps to the concurrency limit, and holds new starts while the account is above the usage threshold', async () => {

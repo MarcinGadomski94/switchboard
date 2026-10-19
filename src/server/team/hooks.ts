@@ -32,6 +32,12 @@ export interface TeamHooks {
   memberOf?(sessionId: string): TeamMemberRef | null;
   /** Project memory (D107) hook: every member (every team), where it runs. */
   memberList?(): readonly TeamMemberRef[];
+  /**
+   * D99 / D76 follow-up 2026-10-19: the sidebar folder a member's session (this machine's id or
+   * `r~<machine>~<id>`) had before it joined (D100's `originalPlace`; `folderId` `null` = not a
+   * folder), `null` when it is not a member's (or Team is off).
+   */
+  originalPlaceOf?(sessionId: string): { readonly folderId: string | null; readonly index: number | null } | null;
 }
 
 /** Project memory (D107) hook: a member as Project memory sees it (its member scope, "Draft memory for all members"). */
@@ -117,6 +123,18 @@ export function teamMemberList(store: object): readonly TeamMemberRef[] {
     return registry.get(store)?.memberList?.() ?? [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Run-place seam (D99 / D76 follow-up 2026-10-19, `src/server/sessions/run-place.ts`): a
+ * member source's sidebar folder before it joined; `null` for a non-member, or Team off / absent.
+ */
+export function teamOriginalPlace(store: object, sessionId: string): { readonly folderId: string | null; readonly index: number | null } | null {
+  try {
+    return registry.get(store)?.originalPlaceOf?.(sessionId) ?? null;
+  } catch {
+    return null;
   }
 }
 
