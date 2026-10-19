@@ -3,7 +3,7 @@ import type { InsightsRows } from '../../../src/core/insights.ts';
 import { utcDay } from '../../../src/core/insights.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { InsightsBackfill } from '../../../src/server/insights/backfill.ts';
-import { InsightsService } from '../../../src/server/insights/service.ts';
+import { InsightsService, PEER_COPIES_MAX } from '../../../src/server/insights/service.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -107,5 +107,20 @@ describe('D108 ruling · merged machines (scripted peer)', () => {
     const answer = await service(slow.peers).answer(QUERY, { scope: 'all', peers: 'wait' });
     expect(answer.machines.missing).toEqual([{ id: 'm2', name: 'Studio', reason: 'did not answer in time' }]);
     expect(answer.time.totals.turns).toBe(1);
+  });
+
+  it('1.24 perf: keeps the newest PEER_COPIES_MAX copies (machine × period); an older one is asked again', async () => {
+    const peer = scripted('online', async () => ({ machine: { id: 'm2', name: 'Studio', state: 'online' }, body: PEER_ROWS, reason: null }));
+    const insights = service(peer.peers);
+    // One copy per period, as a page left open for days asks for (its `to` moves every day).
+    const periods = Array.from({ length: PEER_COPIES_MAX + 1 }, (_, i) => ({ ...QUERY, from: utcDay(Date.now() - (i + 7) * 86_400_000) }));
+    for (const query of periods) await insights.answer(query, { scope: 'all', peers: 'wait' });
+    expect(peer.calls).toHaveLength(PEER_COPIES_MAX + 1);
+    // The newest is still kept (within the TTL: not asked again) ...
+    await insights.answer(periods.at(-1) ?? QUERY, { scope: 'all', peers: 'wait' });
+    expect(peer.calls).toHaveLength(PEER_COPIES_MAX + 1);
+    // ... the oldest was dropped.
+    await insights.answer(periods[0] ?? QUERY, { scope: 'all', peers: 'wait' });
+    expect(peer.calls).toHaveLength(PEER_COPIES_MAX + 2);
   });
 });

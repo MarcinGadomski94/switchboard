@@ -37,6 +37,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json && tsc -p tsconfig.sw.json",
     "test": "vitest run",
     "e2e": "playwright test",
+    "perf:guard": "node tools/release/helper-bundle.ts && node tools/bench/soak.ts --sessions 6 --active-min 1 --idle-min 3 --profile-min 0 --sample-s 15 --out .bench/perf-guard --max-idle-cpu 4 --max-idle-heap-growth-mb 5 --max-helper-mb 85",
     "icons": "node tools/icons/render.ts",
     "screenshots": "node tools/screenshots/readme.ts",
     "service:install": "node tools/service/install.ts",

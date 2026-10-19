@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -59,6 +59,12 @@ describe('helper bundles', () => {
     expect(await freshHelperBundle('sb-mcp', root)).toBeNull();
     await writeFile(path.join(dir, HELPER_MANIFEST), 'not json');
     expect(await freshHelperBundle('sb-mcp', root)).toBeNull();
+  });
+
+  it('the bundles stay small (a heavy dependency pulled into a helper shows here first)', async () => {
+    // 1.24: sb-mcp ≈438 KB (zod ≈290 KB, ajv ≈180 KB and the MCP SDK ≈170 KB of source before minifying), sb-access-mcp ≈3 KB.
+    expect((await stat(path.join(out, 'hook', 'sb-mcp.js'))).size).toBeLessThan(512_000);
+    expect((await stat(path.join(out, 'hook', 'sb-access-mcp.js'))).size).toBeLessThan(16_000);
   });
 
   // The resident size of a running helper (ps: macOS / Linux). 1.24.1 ran the source: ≈125 MB on macOS.

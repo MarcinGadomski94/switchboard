@@ -9,9 +9,10 @@ import { type PeerNode, startPeerNode, waitFor } from '../../helpers/peers.ts';
 /**
  * 1.24 perf (`docs/performance.md` → *Long runs (1.24)*): a server with live sessions and their
  * `switchboard` MCP helpers (Team, Plans and Project memory on, a `/hub` reader like an open tab)
- * does next to nothing while no session works. The long version is `tools/bench/soak.ts`.
+ * does next to nothing while no session works. The long version is `tools/bench/soak.ts`
+ * (`npm run perf:guard`). About a minute, so not in the default suite: `SWITCHBOARD_PERF=1 npx vitest run tests/server/perf`.
  */
-describe.skipIf(process.platform === 'win32')('idle server', () => {
+describe.skipIf(process.platform === 'win32' || process.env['SWITCHBOARD_PERF'] !== '1')('idle server', () => {
   let tmp: string;
   let node: PeerNode | undefined;
   let hub: AbortController | undefined;
