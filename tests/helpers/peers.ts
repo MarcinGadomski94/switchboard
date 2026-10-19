@@ -35,6 +35,10 @@ export interface PeerNode {
 export interface PeerNodeOptions {
   /** Extra server env. */
   readonly env?: Record<string, string>;
+  /** Node flags of the server process only (benches: `--inspect`, `--cpu-prof`). */
+  readonly nodeArgs?: readonly string[];
+  /** How long the server may take to listen (default 15 s; a bench's seeded world takes longer). */
+  readonly startTimeoutMs?: number;
   /** Make a git repo `repo-<label>` (one commit) and save it as the node's default folder (a repo folder), so sessions can start there. */
   readonly repo?: boolean;
   /**
@@ -90,7 +94,7 @@ export async function startPeerNode(root: string, label: string, options: PeerNo
     CLAUDE_CONFIG_DIR: configDir,
     ...gitEnv(root),
     ...options.env,
-  });
+  }, options.startTimeoutMs ?? 15_000, options.nodeArgs ?? []);
   const token = (await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).trim();
   const call = async (method: string, route: string, body?: unknown) => {
     const response = await fetch(`${server.baseUrl}${route}`, {

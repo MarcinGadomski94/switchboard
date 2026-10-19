@@ -89,9 +89,12 @@ export function testServerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
   return { ...clean, ...testServerDefaults(), ...env };
 }
 
-/** Spawns `node src/server/main.ts` with `env` and `SWITCHBOARD_PORT` = `port` (a raw string tests invalid values). */
-export function spawnServer(port: number | string, env: Record<string, string>): SpawnedServer {
-  const child = spawn(process.execPath, [path.join('src', 'server', 'main.ts')], {
+/**
+ * Spawns `node src/server/main.ts` with `env` and `SWITCHBOARD_PORT` = `port` (a raw string tests invalid values).
+ * `nodeArgs` go before the script (the benches' `--cpu-prof`, `--inspect`): the server's own, never its children's.
+ */
+export function spawnServer(port: number | string, env: Record<string, string>, nodeArgs: readonly string[] = []): SpawnedServer {
+  const child = spawn(process.execPath, [...nodeArgs, path.join('src', 'server', 'main.ts')], {
     cwd: REPO_ROOT,
     env: testServerEnv({ ...env, SWITCHBOARD_PORT: String(port) }),
     shell: false,
@@ -176,10 +179,10 @@ export async function startServerOn(port: number, env: Record<string, string>, t
  * next port if another test took it. `env` must point SWITCHBOARD_DATA_DIR at a
  * temp folder.
  */
-export async function startServer(env: Record<string, string>, timeoutMs = 15_000): Promise<ServerProcess> {
+export async function startServer(env: Record<string, string>, timeoutMs = 15_000, nodeArgs: readonly string[] = []): Promise<ServerProcess> {
   let lastOutput = '';
   for (const port of await candidatePorts()) {
-    const spawned = spawnServer(port, env);
+    const spawned = spawnServer(port, env, nodeArgs);
     const outcome = await waitListening(spawned, port, timeoutMs);
     lastOutput = spawned.output();
     if (outcome === 'up') {
