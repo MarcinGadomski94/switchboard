@@ -84,6 +84,9 @@ export const PEER_FORWARD_TIMEOUT_MS = 30_000;
  */
 export const PEER_HOLD_MS = 10_000;
 
+/** 1.24 perf: a paired machine's offline snapshot is written at most this often. */
+export const SNAPSHOT_SAVE_MS = 2_000;
+
 /** D52: a peer's schedules / terminal loops are fetched again when a list read finds them older than this. */
 export const PEER_LIST_STALE_MS = 10_000;
 
@@ -442,6 +445,7 @@ export class PeerService implements PeerHandlers {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    await this.#flushSaves().catch((error: unknown) => this.#onError(error));
     clearTimeout(this.#outage);
     await this.#listenerChange.catch(() => undefined);
     for (const stream of [...this.#inbound]) stream.close();
@@ -768,6 +772,8 @@ export class PeerService implements PeerHandlers {
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     this.#savedLists.delete(id);
+    clearTimeout(this.#saveTimers.get(id));
+    this.#saveTimers.delete(id);
     this.#lists.delete(id);
     for (const stream of [...this.#inbound]) if (stream.machineId === id) stream.close();
     if (ref) for (const session of sessions) this.#publishFromPeer('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
@@ -795,9 +801,7 @@ export class PeerService implements PeerHandlers {
         this.#logStatus(id, status);
         this.#publishMachine(id);
       },
-      onCache: () => {
-        void this.#saveSessions(id);
-      },
+      onCache: () => this.#saveSessionsSoon(id),
       onSeen: () => {
         void this.#touch(id);
       },
@@ -809,10 +813,35 @@ export class PeerService implements PeerHandlers {
     if (this.#started) connection.start();
   }
 
+  /**
+   * 1.24 perf: the snapshot is written at most every {@link SNAPSHOT_SAVE_MS} per machine. It was
+   * written on every update of the peer's sessions: the whole list with every agent turned into
+   * JSON (and stored) several times a second while the other machine's agents work.
+   */
+  #saveSessionsSoon(id: string): void {
+    if (this.#saveTimers.has(id) || this.#closed) return;
+    const timer = setTimeout(() => {
+      this.#saveTimers.delete(id);
+      void this.#saveSessions(id);
+    }, SNAPSHOT_SAVE_MS);
+    timer.unref();
+    this.#saveTimers.set(id, timer);
+  }
+
+  /** Writes the snapshots still waiting (the service is closing). */
+  async #flushSaves(): Promise<void> {
+    const ids = [...this.#saveTimers.keys()];
+    for (const timer of this.#saveTimers.values()) clearTimeout(timer);
+    this.#saveTimers.clear();
+    await Promise.all(ids.map((id) => this.#saveSessions(id, true)));
+  }
+
+  readonly #saveTimers = new Map<string, NodeJS.Timeout>();
+
   /** D48 ruling D48-cache-persist: stores the machine's open sessions as last known (and drops the snapshots of the others). */
-  async #saveSessions(id: string): Promise<void> {
+  async #saveSessions(id: string, closing = false): Promise<void> {
     const connection = this.#connections.get(id);
-    if (!connection || !this.#records.has(id) || this.#closed) return;
+    if (!connection || !this.#records.has(id) || (this.#closed && !closing)) return;
     const sessions = connection.sessions;
     const text = JSON.stringify(sessions);
     if (this.#savedLists.get(id) === text) return;

@@ -86,6 +86,7 @@ import { plansItemsOfTodos } from '../plans/hooks.ts';
 import { memoryMemberMoved } from '../memory/hooks.ts';
 import { peerCall } from './peer-call.ts';
 import { computeSuggestions, type TeamSuggestion } from './suggestions.ts';
+import type { UsageReadingRecord } from '../db/repos/usage.ts';
 
 /** A refusal of a Team operation (`{ error: code, message }` with `status`). */
 export class TeamError extends Error {
@@ -174,6 +175,9 @@ function waitFields(wait: BackgroundWait | null): { readonly subagents: number; 
 }
 
 /** Statuses of a session that count as the session existing for Team. */
+/** 1.24 perf: how long one read of the usage readings serves the members' budgets. */
+const READINGS_MEMO_MS = 10_000;
+
 const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'idle', 'paused']);
 
 /** A running move (`POST /api/team/members/{id}/move`). */
@@ -1854,9 +1858,24 @@ export class TeamService {
 
   // ── the tick: budgets, paused members, hand-offs ──────────────────────
 
+  /**
+   * 1.24 perf: the usage readings since `sinceIso`, read once for a pass over the members (the
+   * minute's tick and the roster read them per member: every reading of two days, decoded again
+   * for each member with a budget). Kept {@link READINGS_MEMO_MS}.
+   */
+  async #readingsSince(sinceIso: string): Promise<readonly UsageReadingRecord[]> {
+    const memo = this.#readingsMemo;
+    if (memo && memo.since === sinceIso && this.#now() - memo.at < READINGS_MEMO_MS) return memo.rows;
+    const rows = await this.#o.store.usage.list(sinceIso);
+    this.#readingsMemo = { since: sinceIso, at: this.#now(), rows };
+    return rows;
+  }
+
+  #readingsMemo: { readonly since: string; readonly at: number; readonly rows: readonly UsageReadingRecord[] } | null = null;
+
   async #usedToday(member: TeamMemberRecord): Promise<number | null> {
     const since = dayStart(new Date(this.#now()));
-    const readings = (await this.#o.store.usage.list(new Date(since.getTime() - 24 * 3600_000).toISOString())).filter((r) => member.budget.profileId === null || r.profileId === member.budget.profileId);
+    const readings = (await this.#readingsSince(new Date(since.getTime() - 24 * 3600_000).toISOString())).filter((r) => member.budget.profileId === null || r.profileId === member.budget.profileId);
     if (readings.length === 0) return 0;
     return shareOfDaily(pointsUsedSince(readings, new Set([member.sessionId]), since));
   }

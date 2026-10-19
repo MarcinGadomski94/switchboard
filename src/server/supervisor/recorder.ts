@@ -109,7 +109,12 @@ export type WorkflowSignal =
 interface ToolEntry {
   readonly eventId: number;
   readonly name: string;
-  readonly input: Readonly<Record<string, unknown>>;
+  /**
+   * A write tool's `file_path` / `notebook_path` (M4.3), else `null`. Not the whole input: the
+   * entry lives until the call's result, and the process for days (1.24 perf: kept inputs were
+   * every Write / Edit's content since the CLI started).
+   */
+  readonly file: string | null;
   readonly command: string | null;
   /** The agent whose `tool_use` it is (M4.3: a write places that agent). */
   readonly agentId: string;
@@ -303,6 +308,11 @@ export class StreamRecorder {
     this.#onContext = options.onContext;
     this.#onWorkflow = options.onWorkflow;
     this.#now = options.now ?? (() => new Date());
+  }
+
+  /** 1.24 perf (tests): how many tool calls the recorder still holds (a call is dropped with its result). */
+  retainedToolCalls(): number {
+    return this.#tools.size;
   }
 
   /** The inputs of the live status derivation. */
@@ -959,7 +969,7 @@ export class StreamRecorder {
           messageId: message.messageId,
           toolUseId: block.id,
         });
-        this.#tools.set(block.id, { eventId: event.id, name: block.name, input: block.input, command, agentId });
+        this.#tools.set(block.id, { eventId: event.id, name: block.name, file: writtenFile(block.name, block.input), command, agentId });
         this.#activity.toolStarted(agentId, block.id, block.name, block.input);
         // D30: the main agent's calls that may start background work.
         if (agentId === this.#mainAgentId) this.#background.called(block.id, block.name, block.input);
@@ -1034,6 +1044,8 @@ export class StreamRecorder {
       });
       const entry = this.#tools.get(result.toolUseId);
       if (!entry) continue;
+      // 1.24 perf: the call is over; nothing reads its entry after its result.
+      this.#tools.delete(result.toolUseId);
       if (entry.name === 'Workflow' && !result.isError) {
         // D51: the run a Workflow call launched (its run id: the key to its files).
         const launch = workflowLaunch(result.text, message.results.length === 1 ? message.toolUseResult : undefined);
@@ -1275,13 +1287,8 @@ export class StreamRecorder {
   /** A successful write (Write / Edit / NotebookEdit …): places its agent (M4.3) and adds the solution to the session's (D38). */
   async #onWrite(entry: ToolEntry): Promise<void> {
     const place = this.#place;
-    if (!place || !WRITE_TOOLS.includes(entry.name)) return;
-    const file = typeof entry.input['file_path'] === 'string'
-      ? (entry.input['file_path'] as string)
-      : typeof entry.input['notebook_path'] === 'string'
-        ? (entry.input['notebook_path'] as string)
-        : null;
-    if (!file) return;
+    const file = entry.file;
+    if (!place || !file) return;
     await this.#placeAgent(entry.agentId, path.resolve(place.cwd, file));
     // D38: the solution joins the session's solutions (fill-in from what its agents touch).
     const solution = writtenSolution(place, path.resolve(place.cwd, file), this.#sessionName);
@@ -1309,4 +1316,11 @@ export class StreamRecorder {
       await this.#store.agents.update(agent.id, { branch });
     }
   }
+}
+
+/** A write tool's (`WRITE_TOOLS`) file: its `file_path`, else its `notebook_path`; `null` for any other call. */
+function writtenFile(name: string, input: Readonly<Record<string, unknown>>): string | null {
+  if (!WRITE_TOOLS.includes(name)) return null;
+  const file = typeof input['file_path'] === 'string' ? input['file_path'] : typeof input['notebook_path'] === 'string' ? input['notebook_path'] : null;
+  return file || null;
 }

@@ -1,6 +1,6 @@
 import { open, stat } from 'node:fs/promises';
 import type { Loop, TerminalLoop, TerminalSession } from '../../core/api.ts';
-import { deriveLoops, type LoopEventInput } from '../../core/derive/loops.ts';
+import { deriveLoops, type LoopEventInput, loopPayloadEssentials } from '../../core/derive/loops.ts';
 import { transcriptLoopEvents } from '../../core/derive/terminal-loops.ts';
 import { terminalStatus } from '../../core/terminal-status.ts';
 import { parseTranscript } from '../../core/transcript-sync.ts';
@@ -42,6 +42,8 @@ export interface TerminalLoopReaderOptions {
 interface Cached {
   readonly key: string;
   readonly events: LoopEventInput[];
+  /** When the file was read (ms). */
+  readonly at: number;
 }
 
 /** The D52 terminal-loop reader of this machine. */
@@ -110,25 +112,44 @@ export class TerminalLoopReader {
  * D52: the loop events of transcript files (`transcriptLoopEvents`), each read again
  * only when its size or mtime changed, at most its last {@link MAX_TRANSCRIPT_BYTES}.
  * Shared by the terminal-loop reader and the hooked sessions' loops.
+ *
+ * 1.24 perf: the events are kept with their payloads cut to what `deriveLoops` reads
+ * (`loopPayloadEssentials`, D95's `deriveLoops(slim) = deriveLoops(whole)`): kept whole, a
+ * cached transcript held every prompt, answer, tool input and result of up to 32 MB of it.
  */
 export class TranscriptLoopEvents {
   readonly #cache = new Map<string, Cached>();
+  readonly #now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.#now = now;
+  }
 
   /** The file's loop events (`[]` when it cannot be read). */
   async events(file: string): Promise<LoopEventInput[]> {
+    return (await this.read(file)).events;
+  }
+
+  /**
+   * The file's loop events, and whether they are older than the file: 1.24 perf, a file read
+   * less than `minRereadMs` ago is not read (and parsed) again however it changed (`stale`:
+   * the caller looks again later).
+   */
+  async read(file: string, minRereadMs = 0): Promise<{ readonly events: LoopEventInput[]; readonly stale: boolean }> {
     let info: { size: number; mtimeMs: number };
     try {
       info = await stat(file);
     } catch {
-      return [];
+      return { events: [], stale: false };
     }
     const key = `${info.size}:${info.mtimeMs}`;
     const cached = this.#cache.get(file);
-    if (cached?.key === key) return cached.events;
+    if (cached?.key === key) return { events: cached.events, stale: false };
+    if (cached && this.#now() - cached.at < minRereadMs) return { events: cached.events, stale: true };
     const text = await readTail(file, info.size);
-    const events = text === null ? [] : transcriptLoopEvents(parseTranscript(text));
-    this.#cache.set(file, { key, events });
-    return events;
+    const events = text === null ? [] : transcriptLoopEvents(parseTranscript(text)).map((event) => ({ ...event, payload: loopPayloadEssentials(event.payload) }));
+    this.#cache.set(file, { key, events, at: this.#now() });
+    return { events, stale: false };
   }
 
   /** Forgets every file but `keep`. */

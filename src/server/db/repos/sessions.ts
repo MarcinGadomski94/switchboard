@@ -184,6 +184,8 @@ export interface SessionFilter {
   readonly statuses?: readonly SessionStatus[];
   /** D33: `false` = only open sessions (`closed_at` NULL), `true` = only closed ones; omitted = both. */
   readonly closed?: boolean;
+  /** 1.24 perf: `true` = only hooked terminal sessions (D48 P4), `false` = only the others; omitted = both. */
+  readonly hooked?: boolean;
 }
 
 const SPEC: TableSpec<SessionRecord> = {
@@ -308,6 +310,7 @@ export class SessionRepository {
       params.push(...filter.statuses);
     }
     if (filter.closed !== undefined) where.push(filter.closed ? 'closed_at IS NOT NULL' : 'closed_at IS NULL');
+    if (filter.hooked !== undefined) where.push(filter.hooked ? 'hooked = 1' : 'hooked = 0');
     return this.#table.select(where.join(' AND '), params, 'created_at DESC, id').map(fromStored);
   }
 

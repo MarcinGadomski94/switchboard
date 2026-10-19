@@ -72,7 +72,9 @@ export class AgentDeltaEncoder {
     const fields = fieldsOf(session);
     const order = session.agents.map((agent) => agent.id);
     const previous = this.#sent.get(session.id);
-    this.#sent.set(session.id, { order, agents: current, fields });
+    // 1.24 perf: a closed session's lists are not kept for the life of the stream (it goes whole again if it comes back).
+    if (session.closedAt) this.#sent.delete(session.id);
+    else this.#sent.set(session.id, { order, agents: current, fields });
     if (!previous) {
       if (session.agentsDelta === undefined && session.unchanged === undefined) return session;
       const { agentsDelta: _delta, unchanged: _unchanged, ...whole } = session;
@@ -134,7 +136,7 @@ export class AgentDeltaDecoder {
     if (!Array.isArray(session.agents)) return session;
     if (session.agentsDelta === undefined || session.agentsDelta === null || typeof session.agentsDelta !== 'object') {
       this.#agents.set(session.id, session.agents);
-      return this.#fill(session);
+      return this.#closed(this.#fill(session));
     }
     const delta = session.agentsDelta;
     const { agentsDelta: _delta, ...rest } = this.#fill(session);
@@ -151,7 +153,16 @@ export class AgentDeltaDecoder {
       for (const agent of session.agents) if (!placed.has(agent.id)) agents.push(agent);
     }
     this.#agents.set(session.id, agents);
-    return { ...rest, agents };
+    return this.#closed({ ...rest, agents } as Session);
+  }
+
+  /** 1.24 perf: the encoder forgets a closed session after sending it (its next update is whole), so does the decoder. */
+  #closed(session: Session): Session {
+    if (session.closedAt) {
+      this.#agents.delete(session.id);
+      this.#fields.delete(session.id);
+    }
+    return session;
   }
 
   /** Forgets every list (a new stream starts with whole lists again). */

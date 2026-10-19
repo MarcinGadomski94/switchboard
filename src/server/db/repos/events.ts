@@ -62,6 +62,14 @@ const SPEC: TableSpec<EventRecord> = {
 /** D95: how many writes per session {@link EventRepository.changedSince} can name. */
 export const EVENT_CHANGE_LOG_LIMIT = 4096;
 
+/**
+ * 1.24 perf: how many sessions keep a change log at once (the most recently written). An older
+ * session keeps its revision with an empty log, so {@link EventRepository.changedSince} answers
+ * `null` (read everything again) for it; before, every session written since the server started
+ * kept up to 8,192 entries for the life of the process.
+ */
+export const EVENT_CHANGE_LOG_SESSIONS = 32;
+
 /** Events of sessions. */
 export class EventRepository {
   readonly #ctx: RepoContext;
@@ -137,13 +145,27 @@ export class EventRepository {
   #changed(record: Pick<EventRecord, 'sessionId' | 'id'>): void {
     this.#lastWriteAt = Date.now();
     let entry = this.#changes.get(record.sessionId);
-    if (!entry) {
-      entry = { revision: 0, log: [] };
-      this.#changes.set(record.sessionId, entry);
-    }
+    if (!entry) entry = { revision: 0, log: [] };
+    // Most recently written last (Map order): the logs of the least recently written go first.
+    this.#changes.delete(record.sessionId);
+    this.#changes.set(record.sessionId, entry);
+    if (entry.log.length === 0) this.#trimLogs();
     entry.revision += 1;
     entry.log.push({ revision: entry.revision, id: record.id });
     if (entry.log.length > EVENT_CHANGE_LOG_LIMIT * 2) entry.log.splice(0, entry.log.length - EVENT_CHANGE_LOG_LIMIT);
+  }
+
+  /** Empties the logs of the least recently written sessions beyond {@link EVENT_CHANGE_LOG_SESSIONS} (their revisions stay). */
+  #trimLogs(): void {
+    let withLog = 0;
+    for (const entry of this.#changes.values()) if (entry.log.length > 0) withLog += 1;
+    if (withLog < EVENT_CHANGE_LOG_SESSIONS) return;
+    for (const entry of this.#changes.values()) {
+      if (withLog < EVENT_CHANGE_LOG_SESSIONS) break;
+      if (entry.log.length === 0) continue;
+      entry.log = [];
+      withLog -= 1;
+    }
   }
 
   async get(id: number): Promise<EventRecord | null> {

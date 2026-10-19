@@ -80,6 +80,9 @@ export const ACTIVITY_EVENT_MS = 1_000;
 /** How often `claude agents --json` is asked while anything is hooked or waiting. */
 export const LIVENESS_POLL_MS = 10_000;
 
+/** 1.24 perf: how many transcript files' current turns {@link HookService} keeps (a file read again when it changed anyway). */
+export const TURN_CACHE_FILES = 256;
+
 /** A wake-up whose turn never started (no UserPromptSubmit) stops blocking the next one after this long. */
 export const WOKEN_TURN_TIMEOUT_MS = 120_000;
 
@@ -651,7 +654,10 @@ export class HookService {
     // A tail starts inside a line: that line is not whole.
     if (start > 0) text = text.slice(text.indexOf('\n') + 1);
     const value = { key, turn: transcriptTurn(parseTranscript(text), { sidechain }), mtimeMs: info.mtimeMs };
+    // 1.24 perf: the most recently read files only (one entry per transcript and subagent file ever read stayed for the life of the process).
+    this.#turns.delete(file);
     this.#turns.set(file, value);
+    while (this.#turns.size > TURN_CACHE_FILES) this.#turns.delete(this.#turns.keys().next().value as string);
     return value;
   }
 
@@ -1197,7 +1203,9 @@ export class HookService {
   /** Checks the hooked sessions' transcripts for growth (`activeOnly`, D53: only those whose turn runs). */
   async #pollTranscripts(activeOnly = false): Promise<void> {
     if (this.#closed) return;
-    for (const record of await this.#store.sessions.list({ closed: false })) {
+    // 1.24 perf: the 500 ms poll has nothing to do while no hooked turn runs (it read and decoded every open session).
+    if (activeOnly && ![...this.#activity.values()].some((entry) => entry.value)) return;
+    for (const record of await this.#store.sessions.list({ closed: false, hooked: true })) {
       if (!record.hooked) continue;
       if (activeOnly && !this.#activity.get(record.id)?.value) continue;
       const transcript = await this.#transcriptOf(record);
@@ -1222,7 +1230,7 @@ export class HookService {
   }
 
   async #pollLiveness(): Promise<void> {
-    const hooked = (await this.#store.sessions.list({ closed: false })).filter((record) => record.hooked && record.status !== 'done');
+    const hooked = (await this.#store.sessions.list({ closed: false, hooked: true })).filter((record) => record.hooked && record.status !== 'done');
     if (hooked.length === 0) return;
     const rows = await this.#listAgents(true);
     if (rows === null) return;

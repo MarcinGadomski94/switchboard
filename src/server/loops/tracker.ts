@@ -16,6 +16,9 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 /** A turn end of a session with no loop rows looks for unlisted schedules at most this often (it reads the transcript). */
 const UNTRACKED_CHECK_MS = 60_000;
 
+/** 1.24 perf: a supervised session's transcript is parsed again at most this often for its CLI prompts. */
+export const TRANSCRIPT_REREAD_MS = 5_000;
+
 /** At most this many transcripts' prompt events are kept in memory. */
 const MAX_CACHED_TRANSCRIPTS = 32;
 
@@ -192,6 +195,19 @@ export class LoopTracker {
     this.#slowTimers.set(sessionId, timer);
   }
 
+  /** 1.24 perf: refreshes the session after `ms` (one such catch-up at a time per session). */
+  #scheduleAfter(sessionId: string, ms: number): void {
+    if (this.#closed || this.#catchUp.has(sessionId)) return;
+    const timer = setTimeout(() => {
+      this.#catchUp.delete(sessionId);
+      void this.refresh(sessionId).catch(this.#onError);
+    }, ms);
+    timer.unref?.();
+    this.#catchUp.set(sessionId, timer);
+  }
+
+  readonly #catchUp = new Map<string, ReturnType<typeof setTimeout>>();
+
   /**
    * Refreshes the session's loops once the delay has passed since the first
    * unhandled event (events in between fold into that refresh; a steady stream
@@ -259,6 +275,8 @@ export class LoopTracker {
     this.#timers.clear();
     for (const timer of this.#slowTimers.values()) clearTimeout(timer);
     this.#slowTimers.clear();
+    for (const timer of this.#catchUp.values()) clearTimeout(timer);
+    this.#catchUp.clear();
     await Promise.allSettled([...this.#running.values()]);
     this.#slim.clear();
   }
@@ -276,7 +294,11 @@ export class LoopTracker {
       if (oldest !== undefined) this.#recentFiles.delete(oldest);
       this.#transcripts.retain(this.#recentFiles);
     }
-    return (await this.#transcripts.events(file)).filter((event) => asRecord(event.payload)?.['type'] === CLI_PROMPT);
+    // 1.24 perf: a growing transcript is parsed again at most every TRANSCRIPT_REREAD_MS (its tail, up to 32 MB, was
+    // parsed on every refresh: every 150 ms while a session with a loop streams); a stale answer refreshes again then.
+    const { events, stale } = await this.#transcripts.read(file, TRANSCRIPT_REREAD_MS);
+    if (stale) this.#scheduleAfter(session.id, TRANSCRIPT_REREAD_MS);
+    return events.filter((event) => asRecord(event.payload)?.['type'] === CLI_PROMPT);
   }
 
   /**

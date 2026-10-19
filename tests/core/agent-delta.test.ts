@@ -13,6 +13,20 @@ function session(agents: Agent[], id = 's1', status: Session['status'] = 'run'):
 }
 
 describe('D95 · agent deltas', () => {
+  it('1.24 perf: a closed session is forgotten on both sides after it was sent; it comes back whole', () => {
+    const encoder = new AgentDeltaEncoder();
+    const decoder = new AgentDeltaDecoder();
+    const closed = (agents: Agent[]) => ({ ...session(agents, 's1', 'done'), closedAt: '2026-10-19T10:00:00.000Z' }) as Session;
+    const updates = [session([agent('main'), agent('a')]), closed([agent('main', 'done'), agent('a')]), session([agent('main'), agent('a')])];
+    const sent = updates.map((update) => encoder.encode(update));
+    // The close itself is still a delta (the decoder knows the list)...
+    expect(sent[1]?.agents.map((a) => a.id)).toEqual(['main']);
+    // ...and what follows is whole again.
+    expect(sent[2]?.agentsDelta).toBeUndefined();
+    expect(sent[2]?.agents.map((a) => a.id)).toEqual(['main', 'a']);
+    for (const [index, message] of sent.entries()) expect(decoder.decode(JSON.parse(JSON.stringify(message)) as Session)).toEqual(updates[index]);
+  });
+
   it('whole the first time, then only what changed; the decoder gives back the whole list each time', () => {
     const encoder = new AgentDeltaEncoder();
     const decoder = new AgentDeltaDecoder();

@@ -30,6 +30,9 @@ export const PEER_ROWS_TTL_MS = 60_000;
 /** A stale peer copy is still shown (marked pending, refreshed behind it) up to this age (ms). */
 export const PEER_ROWS_STALE_MS = 10 * 60_000;
 
+/** 1.24 perf: how many paired-machine row copies (machine × period) are kept. */
+export const PEER_COPIES_MAX = 24;
+
 /** How long a `peers=wait` request waits for a paired machine (ms). */
 export const PEER_ROWS_TIMEOUT_MS = 2_500;
 
@@ -147,6 +150,16 @@ export class InsightsService {
   }
 
   /** A paired machine's rows (fetched now; one fetch per machine and period at a time). */
+  /**
+   * 1.24 perf: keeps a peer's rows, the newest {@link PEER_COPIES_MAX} copies only (a key per machine
+   * and period, and `to` moves every day: the copies of past days stayed for the life of the process).
+   */
+  #keepPeerCopy(key: string, copy: PeerCopy): void {
+    this.#peerCopies.delete(key);
+    this.#peerCopies.set(key, copy);
+    while (this.#peerCopies.size > PEER_COPIES_MAX) this.#peerCopies.delete(this.#peerCopies.keys().next().value as string);
+  }
+
   #fetchPeer(machineId: string, from: string, to: string): Promise<PeerCopy> {
     const key = `${machineId}|${from}|${to}`;
     const running = this.#peerFetches.get(key);
@@ -161,14 +174,14 @@ export class InsightsService {
       return { at: Date.now(), rows, reason: rows ? null : 'answered something unexpected' };
     })().then(
       (copy) => {
-        this.#peerCopies.set(key, copy);
+        this.#keepPeerCopy(key, copy);
         this.#peerFetches.delete(key);
         return copy;
       },
       (error: unknown) => {
         this.#peerFetches.delete(key);
         const copy = { at: Date.now(), rows: null, reason: error instanceof Error ? error.message : 'failed' };
-        this.#peerCopies.set(key, copy);
+        this.#keepPeerCopy(key, copy);
         return copy;
       },
     );

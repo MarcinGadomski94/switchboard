@@ -92,3 +92,24 @@ describe('agent placement · recorder (a subagent writes)', () => {
     ]);
   });
 });
+
+describe('1.24 perf · the recorder keeps a tool call only until its result', () => {
+  it('a Write of a big file is not held after its result (placing is covered above)', async () => {
+    tmp = await makeTempDir('placement-retained');
+    store = await openTempStore(tmp);
+    const root = path.join(tmp, 'ws');
+    const session = await store.sessions.create({ name: 'orch', claudeSessionId: 'c-1', task: 't', mode: 'orchestrator', cwd: root, status: 'run' });
+    const mainAgent = await store.agents.create({ sessionId: session.id, kind: 'main', name: 'orchestrator', status: 'run' });
+    const recorder = new StreamRecorder({ store, session, mainAgentId: mainAgent.id, onEvent: () => undefined });
+    const content = 'x'.repeat(200_000);
+    for (let i = 0; i < 5; i += 1) {
+      await recorder.handle(parseStreamObject({ type: 'assistant', uuid: `u-${i}`, parent_tool_use_id: null, message: { id: `m-${i}`, content: [{ type: 'tool_use', id: `tu_${i}`, name: 'Write', input: { file_path: `microfrontends/acme-app-front/f${i}.ts`, content } }] } }));
+      expect(recorder.retainedToolCalls()).toBe(1);
+      await recorder.handle(parseStreamObject({ type: 'user', uuid: `r-${i}`, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `tu_${i}`, content: 'ok', is_error: false }] } }));
+      expect(recorder.retainedToolCalls()).toBe(0);
+    }
+    // A call still waiting for its result is held (without its input).
+    await recorder.handle(parseStreamObject({ type: 'assistant', uuid: 'u-open', parent_tool_use_id: null, message: { id: 'm-open', content: [{ type: 'tool_use', id: 'tu_open', name: 'Bash', input: { command: 'sleep 1' } }] } }));
+    expect(recorder.retainedToolCalls()).toBe(1);
+  });
+});

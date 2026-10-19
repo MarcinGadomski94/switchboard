@@ -215,6 +215,8 @@ export class PrWatcher {
     this.#ticking ??= (async () => {
       try {
         const now = this.#now();
+        // 1.24 perf: readings past their freshness are never answered again; they were kept for the life of the process.
+        for (const [key, cached] of this.#cache) if (now - cached.at >= PR_READ_TTL_MS) this.#cache.delete(key);
         const idleMs = this.#pollMs ?? (await ciSettingsOf(this.#store.settings))['ci.idlePollMinutes'] * 60_000;
         const rows = new Map((await this.#store.prWatch.list()).map((row) => [row.worktreeId, row]));
         for (const worktree of await this.#store.worktrees.list()) {

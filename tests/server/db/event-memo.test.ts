@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EVENT_CHANGE_LOG_LIMIT } from '../../../src/server/db/repos/events.ts';
+import { EVENT_CHANGE_LOG_LIMIT, EVENT_CHANGE_LOG_SESSIONS } from '../../../src/server/db/repos/events.ts';
 import { EventMemo, payloadType } from '../../../src/server/db/event-memo.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -49,6 +49,29 @@ describe('D95 · EventRepository revisions', () => {
     for (let i = 0; i < EVENT_CHANGE_LOG_LIMIT * 2 + 1; i += 1) await tool('s1');
     expect(await store.events.changedSince('s1', 0)).toBeNull();
     expect(await store.events.changedSince('s1', EVENT_CHANGE_LOG_LIMIT * 2)).toHaveLength(1);
+  });
+
+  it('1.24 perf: only the most recently written sessions keep a log; the others keep their revision and read everything again', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < EVENT_CHANGE_LOG_SESSIONS + 2; i += 1) {
+      const id = `x${i}`;
+      await store.sessions.create({ id, name: id, claudeSessionId: `cx${i}` });
+      ids.push(id);
+      await tool(id);
+    }
+    // The two written first lost their log, not their revision.
+    expect(await store.events.revision('x0')).toBe(1);
+    expect(await store.events.changedSince('x0', 0)).toBeNull();
+    expect(await store.events.changedSince('x0', 1)).toEqual([]);
+    expect(await store.events.changedSince('x1', 0)).toBeNull();
+    expect(await store.events.changedSince('x2', 0)).toHaveLength(1);
+    expect(await store.events.changedSince(ids.at(-1) as string, 0)).toHaveLength(1);
+    // Written again: a log again, from that write on.
+    const again = await tool('x0');
+    expect(await store.events.changedSince('x0', 1)).toEqual([again.id]);
+    expect(await store.events.changedSince('x0', 0)).toBeNull();
+    // ...and the least recently written of the others lost its log instead.
+    expect(await store.events.changedSince('x2', 0)).toBeNull();
   });
 });
 
