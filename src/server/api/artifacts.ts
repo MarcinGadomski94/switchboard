@@ -103,6 +103,9 @@ export function filterArtifacts(items: readonly ArtifactListItem[], query: { rea
  *   `ArtifactSaveInput` (no `path`) → 201 `ArtifactSaveResult`.
  * - `GET /api/sessions/{id}/artifacts/{artifactId}[?version=n]` → `ArtifactDetail`;
  *   `DELETE` → 204.
+ * - `DELETE /api/artifacts/{artifactId}` → 204: an artifact whose session is gone
+ *   (`sessionId` `null`); 409 `has-session` while its session exists (the session's
+ *   route deletes it). A paired machine's goes through `/api/machines/{id}/api/artifacts/{artifactId}`.
  * - `GET …/{artifactId}/versions/{n}/raw[?download]` → the version's bytes
  *   ({@link artifactHeaders}); D89 ruling: `?render` on a Mermaid version → the
  *   sandboxed page that draws it (`mermaidPage`), under {@link HTML_ARTIFACT_CSP}.
@@ -119,6 +122,16 @@ export async function registerArtifactRoutes(app: FastifyInstance, context: ApiC
     const local = await artifacts.listAll();
     const all = isPeerRequest(request) ? local : [...local, ...context.peers.remoteArtifacts()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return filterArtifacts(all, { q: lastValue(request.query.q), kind: lastValue(request.query.kind), session: lastValue(request.query.session) });
+  });
+
+  // An artifact whose session is gone (the Artifacts page's rows without a session).
+  app.delete<{ Params: { artifactId: string } }>('/api/artifacts/:artifactId', async (request, reply) => {
+    try {
+      await artifacts.removeOrphan(request.params.artifactId);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendArtifactError(reply, error);
+    }
   });
 
   app.get<{ Params: { id: string } }>('/api/sessions/:id/artifacts', async (request, reply) => {

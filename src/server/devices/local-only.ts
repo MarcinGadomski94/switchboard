@@ -69,6 +69,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
+  // D89 follow-up: Delete on the Artifacts page for one whose session is gone (here or, through the proxy, on a paired machine).
+  ['DELETE', /^\/api\/artifacts\/[^/]+$/],
   // D94: a session's Switchboard loops: list, New loop…, Edit, Pause / Resume, Run now, Cancel (normal use).
   ['GET|POST', /^\/api\/sessions\/[^/]+\/loops$/],
   ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],

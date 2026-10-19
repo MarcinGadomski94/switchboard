@@ -6,6 +6,8 @@ import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, Hu
 import { ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
 import { HTML_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
+import { DEVICE_ALLOWED, matchesRule } from '../../../src/server/devices/local-only.ts';
+import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
@@ -247,5 +249,48 @@ describe('D89 · the Artifacts page and delete', () => {
     await store.sessions.delete(other);
     const all = (await ui('GET', '/api/artifacts')).body as ArtifactListItem[];
     expect(all.find((a) => a.title === 'Coverage')).toMatchObject({ sessionId: null, sessionName: null });
+  });
+  it('deletes an artifact without a session by its id (DELETE /api/artifacts/{id}): versions, files and the event', async () => {
+    // An image artifact (a file in the data folder) whose session then goes.
+    const gone = (await store.sessions.create({ name: 'old-run', claudeSessionId: '00000000-0000-4000-8000-000000000003', root: work, cwd: work })).id;
+    const image = await agent('POST', '/agent/v1/artifacts', { title: 'Old screen', kind: 'image', path: 'shot.png' }, gone);
+    expect(image.status).toBe(201);
+    const imageId = (image.body as ArtifactSaveResult).artifact.id;
+    await agent('POST', '/agent/v1/artifacts', { id: imageId, title: 'Old screen', kind: 'image', path: 'shot.png' }, gone);
+    expect(await readdir(path.join(tmp, 'artifacts', imageId))).toEqual(['1.png', '2.png']);
+    await store.sessions.delete(gone);
+    const before = events.length;
+    expect((await ui('DELETE', `/api/artifacts/${imageId}`)).status).toBe(204);
+    expect(await readdir(path.join(tmp, 'artifacts'))).not.toContain(imageId);
+    expect(await store.artifacts.get(imageId)).toBeNull();
+    expect(await store.artifacts.versions(imageId)).toEqual([]);
+    expect(events.slice(before)).toEqual([{ sessionId: null, artifactId: imageId, change: 'deleted' }]);
+    const coverage = ((await ui('GET', '/api/artifacts')).body as ArtifactListItem[]).find((a) => a.title === 'Coverage')!;
+    expect((await ui('DELETE', `/api/artifacts/${coverage.id}`)).status).toBe(204);
+    expect(((await ui('GET', '/api/artifacts')).body as ArtifactListItem[]).map((a) => a.title)).not.toContain('Coverage');
+    // Gone already, never one, not an id.
+    expect((await ui('DELETE', `/api/artifacts/${imageId}`)).body).toMatchObject({ error: 'not-found' });
+    expect((await ui('DELETE', '/api/artifacts/0123456789')).status).toBe(404);
+    expect((await ui('DELETE', '/api/artifacts/..%2Fsecret')).status).toBe(404);
+  });
+
+  it('refuses an artifact whose session exists (409, its session\'s route deletes it); that route is unchanged', async () => {
+    const list = (await ui('GET', `/api/sessions/${session}/artifacts`)).body as Artifact[];
+    const kept = list[0]!;
+    const before = events.length;
+    const refused = await ui('DELETE', `/api/artifacts/${kept.id}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ error: 'has-session' });
+    expect((refused.body as { message: string }).message).toContain(`DELETE /api/sessions/${session}/artifacts/${kept.id}`);
+    expect(events.length).toBe(before);
+    expect((await ui('GET', `/api/sessions/${session}/artifacts/${kept.id}`)).status).toBe(200);
+    expect((await ui('DELETE', `/api/sessions/${session}/artifacts/${kept.id}`)).status).toBe(204);
+    expect(events.slice(before)).toEqual([{ sessionId: session, artifactId: kept.id, change: 'deleted' }]);
+  });
+
+  it('a paired machine and a paired device may delete one without a session', () => {
+    expect(peerApiAllowed('DELETE', '/api/artifacts/a1b2c3d4e5')).toBe(true);
+    expect(peerApiAllowed('DELETE', '/api/artifacts/r~abcdefghijkl~a1b2c3d4e5')).toBe(false);
+    expect(matchesRule(DEVICE_ALLOWED, 'DELETE', '/api/artifacts/a1b2c3d4e5')).toBe(true);
   });
 });

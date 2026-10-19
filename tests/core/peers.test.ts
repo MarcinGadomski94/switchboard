@@ -155,6 +155,9 @@ describe('D48 peer wire mapping', () => {
     expect(peerHubEvent(MACHINE, 'questionBatch', { sessionId: 's1', batchId: 'b1', questions: [] })).toEqual({ sessionId: 'r~abcdefghijkl~s1', batchId: 'r~abcdefghijkl~b1', questions: [] });
     expect(peerHubEvent(MACHINE, 'scheduleRun', { scheduleId: 'x', result: 'ok' })).toEqual({ scheduleId: 'r~abcdefghijkl~x', result: 'ok' });
     expect(peerHubEvent(MACHINE, 'schedulesChanged', { scheduleId: 'x', change: 'paused' })).toEqual({ scheduleId: 'r~abcdefghijkl~x', change: 'paused' });
+    // D89: an artifact's session id is namespaced; a deleted one without a session keeps `null`.
+    expect(peerHubEvent(MACHINE, 'artifactsChanged', { sessionId: 's1', artifactId: 'a1b2c3d4e5', change: 'deleted' })).toEqual({ sessionId: 'r~abcdefghijkl~s1', artifactId: 'a1b2c3d4e5', change: 'deleted' });
+    expect(peerHubEvent(MACHINE, 'artifactsChanged', { sessionId: null, artifactId: 'a1b2c3d4e5', change: 'deleted' })).toEqual({ sessionId: null, artifactId: 'a1b2c3d4e5', change: 'deleted' });
     expect(peerHubEvent(MACHINE, 'system', {} as never)).toBeNull();
     expect(peerHubEvent(MACHINE, 'worktreeRemovable', {} as never)).toBeNull();
   });

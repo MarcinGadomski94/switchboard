@@ -249,8 +249,9 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     case 'inboxChanged':
       return payload;
     case 'artifactsChanged': {
-      // D89: a peer's artifact was saved or deleted: its session id namespaced.
+      // D89: a peer's artifact was saved or deleted: its session id namespaced (`null`: one without a session was deleted there).
       const changed = value as unknown as HubEvents['artifactsChanged'];
+      if (changed.sessionId === null) return { ...changed, sessionId: null } as HubEvents[K];
       return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
     }
     case 'draftChanged': {

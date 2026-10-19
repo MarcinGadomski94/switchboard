@@ -1303,7 +1303,8 @@ export interface ArtifactSaveResult {
 
 /** D89: the `artifactsChanged` payload (an artifact saved, a version added, or one deleted). */
 export interface ArtifactsChanged {
-  readonly sessionId: string;
+  /** The artifact's session; `null` for one deleted after its session was gone (`DELETE /api/artifacts/{artifactId}`). */
+  readonly sessionId: string | null;
   readonly artifactId: string;
   readonly change: 'saved' | 'deleted';
 }

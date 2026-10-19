@@ -327,6 +327,25 @@ export class ArtifactService {
   async remove(sessionId: string, artifactId: string): Promise<void> {
     await this.#session(sessionId);
     const record = await this.#artifact(sessionId, artifactId);
+    await this.#delete(record, sessionId);
+  }
+
+  /**
+   * Deletes an artifact whose session is gone (the Artifacts page's rows without a
+   * session) with every version and its image files, exactly as {@link remove}.
+   * 404 unknown artifact; 409 `has-session` while its session exists (that
+   * session's route deletes it).
+   */
+  async removeOrphan(artifactId: string): Promise<void> {
+    const record = ARTIFACT_ID.test(artifactId) ? await this.#store.artifacts.get(artifactId) : null;
+    if (!record) throw new ArtifactError(404, 'not-found', `no artifact ${artifactId}`);
+    if (record.sessionId !== null && (await this.#store.sessions.get(record.sessionId))) {
+      throw new ArtifactError(409, 'has-session', `artifact ${artifactId} belongs to session ${record.sessionId}: delete it with DELETE /api/sessions/${record.sessionId}/artifacts/${artifactId}`);
+    }
+    await this.#delete(record, null);
+  }
+
+  async #delete(record: ArtifactRecord, sessionId: string | null): Promise<void> {
     await this.#store.artifacts.delete(record.id);
     await rm(path.join(this.#root, record.id), { recursive: true, force: true });
     await this.#changed(sessionId, record.id, 'deleted');
@@ -348,9 +367,10 @@ export class ArtifactService {
     });
   }
 
-  async #changed(sessionId: string, artifactId: string, change: 'saved' | 'deleted'): Promise<void> {
+  /** Publishes `artifactsChanged` (`sessionId` `null`: an artifact without a session) and the session's `sessionUpdated`. */
+  async #changed(sessionId: string | null, artifactId: string, change: 'saved' | 'deleted'): Promise<void> {
     this.#bus.publish('artifactsChanged', { sessionId, artifactId, change });
-    await this.#announce?.(sessionId).catch(() => undefined);
+    if (sessionId !== null) await this.#announce?.(sessionId).catch(() => undefined);
   }
 }
 

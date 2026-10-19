@@ -211,6 +211,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
+  // D89 follow-up: Delete on the Artifacts page for an artifact of that machine whose session is gone.
+  ['DELETE', /^\/api\/artifacts\/[^/]+$/],
   // D88: a session's drafts live on the machine that runs it (read, save, clear).
   ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
