@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.1 (2026-10-19)
+
+### Changed
+- **Sessions that a plan or a todo's Run starts now appear in their source session's sidebar folder**, right after it (and after its earlier runs), instead of at the top of SESSIONS. A run you move yourself stays where you put it, and the update doesn't rearrange your existing sidebar.
+
 ## 1.24.0 (2026-10-16)
 
 ### Team
