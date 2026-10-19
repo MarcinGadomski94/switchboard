@@ -142,17 +142,44 @@ language, session name and title, and machine. `n of m` counts what is shown of
 everything. A row opens its session's Artifacts tab on that artifact. Live on
 `artifactsChanged` (and `sessionUpdated`, for renamed sessions).
 
+### Deleting from the lists (D111)
+- **A row's ⋯ → Delete…** on the Artifacts page and in a session's Artifacts
+  tab, with the viewer's confirmation ("Delete “Title” and all its versions?
+  This cannot be undone.", Cancel focused; one shared component,
+  `src/web/views/session/ArtifactDelete.tsx`). The ⋯ never opens the row; its
+  menu opens in the window (↑ ↓, Esc back to the ⋯, a click outside or a scroll
+  closes it).
+- **Several at once** (the page only): a checkbox per row, **Select all** (the
+  rows shown, in the column header; in words on tablets and phones), then
+  **Delete N** ("Delete N artifacts and all their versions? …") or **Clear
+  selection**. Each artifact goes through its own route; a partial failure keeps
+  the failed rows selected and says "k of N could not be deleted: <why>". The
+  selection keeps only rows still shown after a reload or a filter change.
+- **Unreachable machines (D48):** a paired machine's row whose machine cannot be
+  reached cannot be selected, and its ⋯ shows Delete… off with the reason, as
+  the viewer's Delete does. The session tab follows its session's machine.
+- **Without a session:** a row whose session is gone is deleted with
+  `DELETE /api/artifacts/{artifactId}` (files removed exactly as the session
+  route does; `artifactsChanged` with `sessionId: null`); 409 `has-session` while
+  its session exists. A paired machine's goes to that machine through the proxy
+  (`/api/machines/{id}/api/artifacts/{artifactId}`); a machine before 1.25.0
+  refuses it (the error says so).
+- **The open artifact** deleted anywhere (its row, the page, another window)
+  takes the session tab back to the list.
+
 ## Paired machines and devices
 - **Peers (D48):** a paired machine's session's artifacts go through the proxy
   like every session route: the list, one artifact, a version's bytes (passed on
   as bytes with their serving headers, the CSP included), Save as artifact,
-  Delete. Their ids come back namespaced (`r~<machine>~<id>` session ids; the
+  Delete; D111: Delete of one whose session is gone there
+  (`DELETE /api/artifacts/{artifactId}` on `PEER_API_ALLOW`). Their ids come back namespaced (`r~<machine>~<id>` session ids; the
   artifact ids stay). The Artifacts page lists the paired machines' artifacts as
   last known (`GET /api/artifacts` there, refreshed on its `artifactsChanged` and
   after a save or delete through the proxy). A machine before D89 sends derived
   rows: they are left out.
 - **Devices (D73):** a paired device may read (the page, a session's list, an
-  artifact, a version's bytes), Save as artifact and Delete: normal use.
+  artifact, a version's bytes), Save as artifact and Delete (D111: also one
+  without a session): normal use.
 
 ## What D89 removed
 - The recorder's artifact derivation (file / DIFF / PR / BRANCH rows) and its

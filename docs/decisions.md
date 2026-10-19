@@ -1183,6 +1183,14 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **What's new:** `move-target` under 1.21.0. ASSUMED items: `.loop/questions.md` → *D110*.
   - **Rulings 2026-10-14 (on D110's questions).** (1) The saved folders' **parents** stay allowed places (as built). (2) Mixed versions are accepted: update both machines (said in the release notes). (3) A chosen folder that is not saved is **saved by the move** (as built). (4) The search goes **three levels** below each chosen folder (was two), breadth first so a crowded deep level never hides a shallow checkout; the skips stay and the cap went from 2,000 to 10,000 folders (a 13,025-folder temp tree takes about 0.2 s).
 
+## Deleting artifacts from the lists (added 2026-10-19)
+
+- **D111 Artifacts can be deleted from the Artifacts page and a session's Artifacts tab, one or several at once, including those whose session is gone.** Developer request, 2026-10-19 (relayed). Builds on D89 (artifacts) and D48 (paired machines). Details: `docs/artifacts.md` → *Deleting from the lists (D111)*; contract → *Artifacts saved on purpose (D89)*.
+  - **Row ⋯ → Delete…** in both lists, with the viewer's confirmation (shared, not duplicated). **Bulk** on the page only: a checkbox per row, Select all of the shown rows, Delete N; each artifact through its own route; a partial failure keeps the failed rows selected with how many failed and why; the selection keeps only rows still shown.
+  - **Unreachable machine:** its rows cannot be selected and Delete… is off with the reason (as the viewer, D48).
+  - **Orphans:** new `DELETE /api/artifacts/{artifactId}` (only without a live session, else 409 `has-session`); `artifactsChanged.sessionId` may be `null`. **A paired machine's orphans are forwarded** through the existing machines proxy (`/api/machines/{id}/api/artifacts/{artifactId}`; one `PEER_API_ALLOW` entry), not disabled: the rows already carry their machine, so it was a small addition. A machine before this version refuses it with an error.
+  - **What's new:** `artifacts-delete` under 1.25.0.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

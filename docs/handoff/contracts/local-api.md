@@ -1401,6 +1401,7 @@ Developer request D89 (`docs/decisions.md`, `docs/artifacts.md`): artifacts are 
 | POST | /api/sessions/{id}/artifacts | ArtifactSaveInput without `path` (body up to ~6 MB) | 201 ArtifactSaveResult (saved by the developer) · 404 · 409 `too-many` · 413 `too-large` · 422 `invalid` |
 | GET | /api/sessions/{id}/artifacts/{artifactId} | `?version=n` (default: the latest) | 200 ArtifactDetail · 404 `not-found` · 422 `invalid` |
 | DELETE | /api/sessions/{id}/artifacts/{artifactId} | — | 204 · 404 `not-found` |
+| DELETE | /api/artifacts/{artifactId} | — (D111, additive: an artifact whose session is gone; a paired machine's through `/api/machines/{id}/api/artifacts/{artifactId}`) | 204 (versions and files removed; `artifactsChanged` with `sessionId: null`) · 404 `not-found` · 409 `has-session` while its session exists (its message names the session route) |
 | GET | /api/sessions/{id}/artifacts/{artifactId}/versions/{n}/raw | `?download` | 200 the version's bytes: `html` as `text/html` under the sandbox CSP, `svg` as `image/svg+xml` and images as their type under a CSP that runs nothing, other text as `text/plain`; `nosniff`; `?download` = attachment named after the title (`docs/security.md` → *Artifacts*); ruling 2026-10-09: `?render` on a Mermaid version = an HTML page (the HTML CSP) that draws it with the inlined Mermaid bundle · 404 |
 | GET | /agent/v1/artifacts | — (agent token) | 200 Artifact[] of the token's session (`artifact_list`) |
 | POST | /agent/v1/artifacts | ArtifactSaveInput (`path` allowed: a file inside the session's folders, copied now) | 201 ArtifactSaveResult (saved by the agent; `artifact_save`) · the refusals above |
@@ -1537,7 +1538,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 
 
 | draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null` (also the server's orphan clean-up, ruling 2026-10-09); other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id; `sessionId: null` = this machine's own draft (`/api/drafts`), not forwarded) |
-| artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
+| artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (D111: `sessionId` is `null` for an artifact deleted after its session was gone) (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox (D102: `review` removed), title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
 | ciChanged | { sessionId } (additive, D109: a session's pull-request status changed; the session header's PR chip reads `GET /api/sessions/{id}/ci` again; forwarded between peers with the remote session id) |
 
