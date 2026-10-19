@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.25.0 (2026-10-19)
+
+### Artifacts
+- **Delete artifacts straight from the lists:** every row on the Artifacts page and in a session's Artifacts tab has a ⋯ menu with Delete…, and on the Artifacts page you can tick several rows (or Select all) and delete them at once. Artifacts whose session is gone can now be deleted too, also on a paired machine. Rows on a machine that can't be reached can't be deleted, with the reason shown.
+
+### Performance
+- **Much less memory on long runs:** each agent's built-in switchboard helper now runs prebuilt and takes about 70 MB instead of about 120 MB, and the server no longer keeps whole tool inputs and transcript events for days or re-reads every open session twice a second while idle (idle CPU roughly halved in our soak test). `npm run perf:guard` checks it.
+
+### Fixed
+- **Every tool of the built-in switchboard MCP server declares all four behaviour hints** (read-only, destructive, idempotent, open-world) as explicit booleans with a title, so MCP directories accept it; `plan_start` is now marked open-world.
+
 ## 1.24.1 (2026-10-19)
 
 ### Changed
