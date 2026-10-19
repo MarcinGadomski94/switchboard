@@ -547,7 +547,7 @@ export const MEMORY_TOOLS: readonly TodoToolDefinition[] = [
       required: ['title', 'text'],
       additionalProperties: false,
     },
-    annotations: { title: 'Propose a project memory entry', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    annotations: { title: 'Propose a project memory entry', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'memory_list',

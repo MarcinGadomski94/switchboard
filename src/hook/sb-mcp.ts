@@ -477,14 +477,14 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
   const list = tool('todo_list');
   server.registerTool(
     'todo_list',
-    { title: list.annotations.title, description: list.description, inputSchema: inputSchema('todo_list', {}), annotations: list.annotations },
+    { title: list.annotations.title, description: list.description, inputSchema: inputSchema('todo_list', {}), annotations: { title: list.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     () => serial(() => todoList(api)),
   );
 
   const get = tool('todo_get');
   server.registerTool(
     'todo_get',
-    { title: get.annotations.title, description: get.description, inputSchema: inputSchema('todo_get', { id: field.id('todo_get') }), annotations: get.annotations },
+    { title: get.annotations.title, description: get.description, inputSchema: inputSchema('todo_get', { id: field.id('todo_get') }), annotations: { title: get.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => todoGet(api, input)),
   );
 
@@ -501,7 +501,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
         priority: field.priority('todo_add'),
         estimate_minutes: field.estimate('todo_add'),
       }),
-      annotations: add.annotations,
+      annotations: { title: add.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => serial(() => todoAdd(api, input)),
   );
@@ -520,7 +520,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
         priority: field.priority('todo_update'),
         estimate_minutes: field.estimate('todo_update'),
       }),
-      annotations: update.annotations,
+      annotations: { title: update.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => todoUpdate(api, input)),
   );
@@ -528,7 +528,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
   const start = tool('todo_start');
   server.registerTool(
     'todo_start',
-    { title: start.annotations.title, description: start.description, inputSchema: inputSchema('todo_start', { id: field.id('todo_start') }), annotations: start.annotations },
+    { title: start.annotations.title, description: start.description, inputSchema: inputSchema('todo_start', { id: field.id('todo_start') }), annotations: { title: start.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => todoStart(api, input)),
   );
 
@@ -539,7 +539,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       title: done.annotations.title,
       description: done.description,
       inputSchema: inputSchema('todo_done', { id: field.id('todo_done'), done: field.done('todo_done') }),
-      annotations: done.annotations,
+      annotations: { title: done.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => todoDone(api, input)),
   );
@@ -547,7 +547,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
   const remove = tool('todo_remove');
   server.registerTool(
     'todo_remove',
-    { title: remove.annotations.title, description: remove.description, inputSchema: inputSchema('todo_remove', { id: field.id('todo_remove') }), annotations: remove.annotations },
+    { title: remove.annotations.title, description: remove.description, inputSchema: inputSchema('todo_remove', { id: field.id('todo_remove') }), annotations: { title: remove.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => todoRemove(api, input)),
   );
 
@@ -566,7 +566,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
         language: field.text('artifact_save', 'language'),
         id: field.text('artifact_save', 'id'),
       }),
-      annotations: save.annotations,
+      annotations: { title: save.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => serial(() => artifactSave(api, input)),
   );
@@ -574,7 +574,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
   const artifacts = tool('artifact_list');
   server.registerTool(
     'artifact_list',
-    { title: artifacts.annotations.title, description: artifacts.description, inputSchema: inputSchema('artifact_list', {}), annotations: artifacts.annotations },
+    { title: artifacts.annotations.title, description: artifacts.description, inputSchema: inputSchema('artifact_list', {}), annotations: { title: artifacts.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     () => serial(() => artifactList(api)),
   );
 
@@ -585,7 +585,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       title: read.annotations.title,
       description: read.description,
       inputSchema: inputSchema('artifact_get', { id: field.text('artifact_get', 'id'), version: field.version('artifact_get') }),
-      annotations: read.annotations,
+      annotations: { title: read.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => artifactGet(api, input)),
   );
@@ -594,13 +594,13 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
   const loopCreateTool = tool('loop_create');
   server.registerTool(
     'loop_create',
-    { title: loopCreateTool.annotations.title, description: loopCreateTool.description, inputSchema: inputSchema('loop_create', loopShape('loop_create')), annotations: loopCreateTool.annotations },
+    { title: loopCreateTool.annotations.title, description: loopCreateTool.description, inputSchema: inputSchema('loop_create', loopShape('loop_create')), annotations: { title: loopCreateTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
     (input) => serial(() => loopCreate(api, input)),
   );
   const loopListTool = tool('loop_list');
   server.registerTool(
     'loop_list',
-    { title: loopListTool.annotations.title, description: loopListTool.description, inputSchema: inputSchema('loop_list', {}), annotations: loopListTool.annotations },
+    { title: loopListTool.annotations.title, description: loopListTool.description, inputSchema: inputSchema('loop_list', {}), annotations: { title: loopListTool.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     () => serial(() => loopList(api)),
   );
   const loopUpdateTool = tool('loop_update');
@@ -610,7 +610,7 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       title: loopUpdateTool.annotations.title,
       description: loopUpdateTool.description,
       inputSchema: inputSchema('loop_update', { id: field.text('loop_update', 'id'), ...loopShape('loop_update') }),
-      annotations: loopUpdateTool.annotations,
+      annotations: { title: loopUpdateTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => loopUpdate(api, input)),
   );
@@ -618,14 +618,14 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
     const definition = tool(`loop_${action}`);
     server.registerTool(
       `loop_${action}`,
-      { title: definition.annotations.title, description: definition.description, inputSchema: inputSchema(`loop_${action}`, { id: field.text(`loop_${action}`, 'id') }), annotations: definition.annotations },
+      { title: definition.annotations.title, description: definition.description, inputSchema: inputSchema(`loop_${action}`, { id: field.text(`loop_${action}`, 'id') }), annotations: { title: definition.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
       (input) => serial(() => loopAction(api, input, action)),
     );
   }
   const loopCancelTool = tool('loop_cancel');
   server.registerTool(
     'loop_cancel',
-    { title: loopCancelTool.annotations.title, description: loopCancelTool.description, inputSchema: inputSchema('loop_cancel', { id: field.text('loop_cancel', 'id') }), annotations: loopCancelTool.annotations },
+    { title: loopCancelTool.annotations.title, description: loopCancelTool.description, inputSchema: inputSchema('loop_cancel', { id: field.text('loop_cancel', 'id') }), annotations: { title: loopCancelTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => loopCancel(api, input)),
   );
 

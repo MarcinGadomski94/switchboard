@@ -21,7 +21,8 @@ export interface TeamToolDefinition {
   readonly name: 'team_handoff' | 'team_members' | 'team_report' | 'team_propose_charter';
   readonly title: string;
   readonly description: string;
-  readonly readOnly: boolean;
+  /** The four MCP behaviour hints, each explicit (directories require all four). */
+  readonly annotations: { readonly readOnlyHint: boolean; readonly destructiveHint: boolean; readonly idempotentHint: boolean; readonly openWorldHint: boolean };
 }
 
 /** The tools (D105 added `team_propose_charter`). */
@@ -31,27 +32,27 @@ export const TEAM_TOOLS: readonly TeamToolDefinition[] = [
     title: 'Hand work to another team member',
     description:
       'Give another member of your team a written work item (a hand-off). Name the receiver by its role name (team_members lists them); a member of another team as "Role (Team)" or with team. Write a brief (what to do and why, with the context the receiver needs: it has not seen this conversation) and the expected result (what "done" looks like). It lands as a todo in the receiver\'s list and, if the receiver works on hand-offs, the receiver is told. Use it only for work inside the receiver\'s charter; it is not a chat: do not use it to ask questions or to reply.',
-    readOnly: false,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'team_members',
     title: 'List the team',
     description: "List your team's members: role name, status (working, needs-you, idle, paused, offline), the machine it runs on and its charter (owns, produces, never does), plus your own open hand-offs and the other teams. Pass team to list another team. Read it before handing off, to pick the right receiver.",
-    readOnly: true,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'team_report',
     title: 'Post a status line to the team',
     description:
       'Post one short status line to the team activity the developer reads (for example "Sweep done: 2 new errors, handed to Developer"). One line, at most 500 characters. Use it at milestones and at the end of a loop run, not for every step. Deliverables (reports, plans, tables) go to artifact_save, not here.',
-    readOnly: false,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'team_propose_charter',
     title: 'Propose a charter for yourself',
     description:
       "Propose a new, specific charter for your own role. It is a PROPOSAL: the developer reviews it and accepts, edits or dismisses it; nothing changes until it is accepted. Call it once, when Switchboard (or the developer) asks you to, after summarising your own work in this session. Be specific: name the concrete feature or product area you own, the repositories you work in, what you actually deliver and where, the recurring process you run (rounds, cadence) and who gives you input or feedback (the developer, other people, other members). Base every field on this session's history and never invent a responsibility the history does not show. owns, produces and neverDoes are required; howItWorks is a short paragraph on how you work today; notes are for the developer only.",
-    readOnly: false,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];
 
@@ -122,10 +123,6 @@ function definition(name: TeamToolDefinition['name']): TeamToolDefinition {
   return TEAM_TOOLS.find((tool) => tool.name === name) as TeamToolDefinition;
 }
 
-function annotations(tool: TeamToolDefinition) {
-  return { title: tool.title, readOnlyHint: tool.readOnly, destructiveHint: false, idempotentHint: tool.readOnly, openWorldHint: false };
-}
-
 /** Registers the Team tools on `server` (the helper does it only for a member's session). */
 export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
   const handoff = definition('team_handoff');
@@ -143,7 +140,7 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
           team: z.string().max(100).describe("Optional: the receiver's team (name), when it is not your own team. \"Role (Team)\" in to works too.").optional(),
         })
         .meta({ required: ['to', 'brief', 'expected'], additionalProperties: false }),
-      annotations: annotations(handoff),
+      annotations: { title: handoff.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => teamHandoff(api, input),
   );
@@ -154,7 +151,7 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
       title: members.title,
       description: members.description,
       inputSchema: z.looseObject({ team: z.string().max(100).describe('Optional: another team to list (its name); your own team by default.').optional() }).meta({ additionalProperties: false }),
-      annotations: annotations(members),
+      annotations: { title: members.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => teamMembers(api, input),
   );
@@ -167,7 +164,7 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
       inputSchema: z
         .looseObject({ text: z.string().max(REPORT_MAX).describe('One short status line (at most 500 characters).').optional() })
         .meta({ required: ['text'], additionalProperties: false }),
-      annotations: annotations(report),
+      annotations: { title: report.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => teamReport(api, input),
   );
@@ -186,7 +183,7 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
           notes: z.string().max(CHARTER_NOTES_MAX).describe('Optional notes for the developer reviewing the proposal (not part of the charter).').optional(),
         })
         .meta({ required: ['owns', 'produces', 'neverDoes'], additionalProperties: false }),
-      annotations: annotations(propose),
+      annotations: { title: propose.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => teamProposeCharter(api, input),
   );

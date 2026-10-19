@@ -729,8 +729,6 @@ export function planRuleChangedMessage(input: { readonly targetBranch: string; r
 
 // ── MCP tools (the `switchboard` server) ──────────────────────────────────
 
-const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
-
 const PLAN_ID = { type: 'string', description: 'The plan id, as plan_create or plan_status shows it in brackets.' } as const;
 
 /** D99: the plan tools of the `switchboard` MCP server (`src/hook/sb-mcp.ts`). */
@@ -802,7 +800,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
     description:
       "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
     inputSchema: { type: 'object', properties: { plan_id: PLAN_ID }, additionalProperties: false },
-    annotations: { title: 'Plan status', ...READS },
+    annotations: { title: 'Plan status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'plan_start',
@@ -818,7 +816,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
       required: ['plan_id'],
       additionalProperties: false,
     },
-    annotations: { title: 'Start a plan', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    annotations: { title: 'Start a plan', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
 ];
 

@@ -458,12 +458,9 @@ export interface TodoToolAnnotations {
   readonly readOnlyHint: boolean;
   readonly destructiveHint: boolean;
   readonly idempotentHint: boolean;
-  /** Always false: the tools only touch this session's list in the local Switchboard. */
+  /** True only when the tool reaches outside Switchboard's own state (`plan_start`: the plan's runs work in git repositories and merge pull requests). */
   readonly openWorldHint: boolean;
 }
-
-/** Hints of a tool that only reads. */
-const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
 const ID = { type: 'string', description: 'The item id, as todo_list shows it in brackets.' } as const;
 
@@ -507,13 +504,13 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
     description:
       "List this session's todo list (things that still need doing), open items by priority: each item's id, state (open, in progress or done), priority, estimate and title, and whether it has a description or plan (not their text; use todo_get for that). Use it when the user asks what is left.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: { title: 'List todo items', ...READS },
+    annotations: { title: 'List todo items', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'todo_get',
     description: 'Read one item in full: its title, priority, estimate, description and handover plan. Use it before you start working on an item.',
     inputSchema: { type: 'object', properties: { id: ID }, required: ['id'], additionalProperties: false },
-    annotations: { title: 'Read a todo item', ...READS },
+    annotations: { title: 'Read a todo item', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'todo_add',

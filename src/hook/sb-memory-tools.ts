@@ -95,12 +95,12 @@ export function registerMemoryTools(server: McpServer, api: AgentApi): void {
           repo: z.string().describe(about('memory_propose', 'repo')).optional(),
         })
         .meta({ required: ['title', 'text'], additionalProperties: false }),
-      annotations: propose.annotations,
+      annotations: { title: propose.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => memoryPropose(api, input),
   );
   const list = tool('memory_list');
-  server.registerTool('memory_list', { title: list.annotations.title, description: list.description, inputSchema: z.looseObject({}).meta({ additionalProperties: false }), annotations: list.annotations }, () => memoryList(api));
+  server.registerTool('memory_list', { title: list.annotations.title, description: list.description, inputSchema: z.looseObject({}).meta({ additionalProperties: false }), annotations: { title: list.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, () => memoryList(api));
 }
 
 /**
