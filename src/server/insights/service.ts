@@ -149,7 +149,6 @@ export class InsightsService {
     };
   }
 
-  /** A paired machine's rows (fetched now; one fetch per machine and period at a time). */
   /**
    * 1.24 perf: keeps a peer's rows, the newest {@link PEER_COPIES_MAX} copies only (a key per machine
    * and period, and `to` moves every day: the copies of past days stayed for the life of the process).
@@ -160,6 +159,7 @@ export class InsightsService {
     while (this.#peerCopies.size > PEER_COPIES_MAX) this.#peerCopies.delete(this.#peerCopies.keys().next().value as string);
   }
 
+  /** A paired machine's rows (fetched now; one fetch per machine and period at a time). */
   #fetchPeer(machineId: string, from: string, to: string): Promise<PeerCopy> {
     const key = `${machineId}|${from}|${to}`;
     const running = this.#peerFetches.get(key);

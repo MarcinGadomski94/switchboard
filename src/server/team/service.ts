@@ -175,9 +175,6 @@ function waitFields(wait: BackgroundWait | null): { readonly subagents: number; 
 }
 
 /** Statuses of a session that count as the session existing for Team. */
-/** 1.24 perf: how long one read of the usage readings serves the members' budgets. */
-const READINGS_MEMO_MS = 10_000;
-
 const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'idle', 'paused']);
 
 /** A running move (`POST /api/team/members/{id}/move`). */
@@ -1861,17 +1858,19 @@ export class TeamService {
   /**
    * 1.24 perf: the usage readings since `sinceIso`, read once for a pass over the members (the
    * minute's tick and the roster read them per member: every reading of two days, decoded again
-   * for each member with a budget). Kept {@link READINGS_MEMO_MS}.
+   * for each member with a budget). Kept until a reading is written or the day moves on.
    */
   async #readingsSince(sinceIso: string): Promise<readonly UsageReadingRecord[]> {
+    const usage = this.#o.store.usage;
     const memo = this.#readingsMemo;
-    if (memo && memo.since === sinceIso && this.#now() - memo.at < READINGS_MEMO_MS) return memo.rows;
-    const rows = await this.#o.store.usage.list(sinceIso);
-    this.#readingsMemo = { since: sinceIso, at: this.#now(), rows };
+    if (memo && memo.since === sinceIso && memo.revision === usage.revision) return memo.rows;
+    const revision = usage.revision;
+    const rows = await usage.list(sinceIso);
+    this.#readingsMemo = { since: sinceIso, revision, rows };
     return rows;
   }
 
-  #readingsMemo: { readonly since: string; readonly at: number; readonly rows: readonly UsageReadingRecord[] } | null = null;
+  #readingsMemo: { readonly since: string; readonly revision: number; readonly rows: readonly UsageReadingRecord[] } | null = null;
 
   async #usedToday(member: TeamMemberRecord): Promise<number | null> {
     const since = dayStart(new Date(this.#now()));

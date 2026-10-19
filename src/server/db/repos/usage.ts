@@ -52,7 +52,15 @@ export class UsageRepository {
     this.#table = new Table(ctx.db, SPEC);
   }
 
+  /** 1.24 perf: bumped on every write in this process (a reader keeps what it read while this stays). */
+  get revision(): number {
+    return this.#revision;
+  }
+
+  #revision = 0;
+
   async add(input: UsageReadingCreate): Promise<UsageReadingRecord> {
+    this.#revision += 1;
     return this.#table.insert({ ...defined(input), receivedAt: input.receivedAt ?? this.#ctx.now() });
   }
 
@@ -82,6 +90,7 @@ export class UsageRepository {
   /** Deletes readings received before `beforeTs`; returns how many. */
   async prune(beforeTs: string): Promise<number> {
     const result = this.#table.statement('DELETE FROM usage_readings WHERE received_at < ?').run(beforeTs);
+    this.#revision += 1;
     return Number(result.changes);
   }
 }
