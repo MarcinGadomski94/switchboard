@@ -214,3 +214,46 @@ test('the developer saves an agent message (⋯) and a code block from the chat'
   await expect(page.getByTestId('artifact-meta')).toHaveText([/ · you$/, / · you$/]);
   await expect(page.getByTestId('artifact-viewer').getByTestId('artifact-markdown').locator('code')).toContainText('export const day');
 });
+
+test('D89 follow-up · a row\'s ⋯ → Delete… asks first; the open artifact deleted from its row or elsewhere goes back to the list', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'row-delete', 'Hi.');
+  await waitDone(page, id);
+  const one = await agentSaves(id, { title: 'One', kind: 'markdown', content: '# One\n' });
+  const two = await agentSaves(id, { title: 'Two', kind: 'markdown', content: '# Two\n' });
+  const three = await agentSaves(id, { title: 'Three', kind: 'markdown', content: '# Three\n' });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${one.artifact.id}`);
+  await expect(page.getByTestId('artifact-viewer')).toHaveAttribute('data-artifact-id', one.artifact.id);
+  const row = (title: string) => page.getByTestId('artifact-item').filter({ has: page.getByTestId('artifact-name').filter({ hasText: new RegExp(`^${title}$`) }) });
+
+  // Another row's ⋯: its menu, not the row; Cancel keeps it; Delete removes it and the open one stays.
+  await row('Two').getByTestId('artifact-row-menu').click();
+  await expect(page).toHaveURL(new RegExp(`/artifacts/${one.artifact.id}$`));
+  await page.getByTestId('artifact-row-delete').click();
+  await expect(page.getByTestId('artifact-delete-confirm')).toHaveText(/Delete “Two” and all its versions\? This cannot be undone\./);
+  await page.getByTestId('artifact-delete-cancel').click();
+  await expect(page.getByTestId('artifact-row')).toHaveCount(3);
+  await row('Two').getByTestId('artifact-row-menu').click();
+  await page.getByTestId('artifact-row-delete').click();
+  await page.getByTestId('artifact-delete-yes').click();
+  await expect(page.getByTestId('artifact-row')).toHaveCount(2);
+  await expect(page).toHaveURL(new RegExp(`/artifacts/${one.artifact.id}$`));
+  await expect(page.getByTestId('artifact-viewer')).toHaveAttribute('data-artifact-id', one.artifact.id);
+
+  // The open one's ⋯: back to the list.
+  await row('One').getByTestId('artifact-row-menu').click();
+  await page.getByTestId('artifact-row-delete').click();
+  await page.getByTestId('artifact-delete-yes').click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts$`));
+  await expect(page.getByTestId('artifact-row')).toHaveCount(1);
+  await expect(page.getByTestId('artifact-viewer')).toHaveCount(0);
+
+  // Deleted elsewhere (the Artifacts page, another window) while open: back to the list too.
+  await row('Three').getByTestId('artifact-row').click();
+  await expect(page.getByTestId('artifact-viewer')).toHaveAttribute('data-artifact-id', three.artifact.id);
+  const status = await page.evaluate(async ([sid, aid]) => (await fetch(`/api/sessions/${sid}/artifacts/${aid}`, { method: 'DELETE' })).status, [id, three.artifact.id] as const);
+  expect(status).toBe(204);
+  await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts$`));
+  await expect(page.getByTestId('session-artifacts')).toHaveAttribute('data-state', 'empty');
+  expect(two.artifact.id).not.toBe(one.artifact.id);
+});

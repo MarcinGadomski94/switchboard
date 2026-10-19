@@ -101,6 +101,9 @@ const V1_23 = '1.23.0';
 /** The version the D100 follow-up of 2026-10-16 (the Team page's left column folds to a slim strip) ships in. */
 const V1_24 = '1.24.0';
 
+/** The version D111 (deleting artifacts from the lists) ships in. */
+const V1_25 = '1.25.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -988,6 +991,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['team-left-column'],
         route: { view: 'team' },
         missing: `${TEAM_NO_MEMBER}On a phone the page is one column, with nothing to fold.`,
+      },
+    ],
+  },
+  {
+    id: 'artifacts-delete',
+    decision: 'D111',
+    version: V1_25,
+    title: 'Delete artifacts from the list',
+    steps: [
+      {
+        id: 'delete',
+        title: 'Delete one or several at once',
+        what: "Each artifact row has a ⋯ with Delete…, here and in a session's Artifacts tab, also for artifacts whose session is gone. Tick rows (or Select all) to delete several at once; a row on an unreachable machine can't be picked.",
+        todo: ["Open a row's ⋯ and choose Delete…, or tick a few rows.", 'Press Delete N and confirm.'],
+        anchors: ['artifacts-select', 'artifacts'],
+        route: { view: 'artifacts' },
+        missing: 'Artifacts sits in the sidebar; its rows get a ⋯ and a checkbox once an agent has saved one.',
       },
     ],
   },

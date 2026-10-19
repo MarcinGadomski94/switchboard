@@ -5,11 +5,11 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **5.10%**, main area (256,0 1184×900) **3.85%**.
+Pixel diff (advisory, channel threshold 24): full page **5.61%**, main area (256,0 1184×900) **4.44%**.
 
 Side by side (prototype left, app right): `artifacts-side-by-side.png`, `artifacts-main-side-by-side.png`.
 
-D89 (developer request 2026-10-09, `docs/visual/README.md` → *Deliberate deviations*): the page lists the artifacts saved on purpose (the demo seeds 13, as many per session as the prototype's tabs count). Its kind filters (All · Docs · Code · HTML · Diagrams · Images · Tables + a session filter), its columns (kind · title · session · versions · saved by · age, `110px 1fr 280px 70px 80px 50px`) and its rows' copy are its own and are not compared; the header, the filter row's and the column header's boxes, the rows' area and the 13 row boxes, and the styles of the chrome are. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
+D89 (developer request 2026-10-09, `docs/visual/README.md` → *Deliberate deviations*): the page lists the artifacts saved on purpose (the demo seeds 13, as many per session as the prototype's tabs count). Its kind filters (All · Docs · Code · HTML · Diagrams · Images · Tables + a session filter), its columns (kind · title · session · versions · saved by · age, `110px 1fr 280px 70px 80px 50px`; D89 follow-up: with a select-all checkbox before them and the rows' ⋯ after them, `28px … 28px`) and its rows' copy are its own and are not compared; the header, the filter row's and the column header's boxes, the rows' area and the 13 row boxes, and the styles of the chrome are. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
 
 ## Boxes (±2 px), styles and copy
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
@@ -48,8 +48,8 @@ D89 (developer request 2026-10-09, `docs/visual/README.md` → *Deliberate devia
 | pillSelected | rgb(232, 231, 227) rgb(17, 18, 20) | rgb(232, 231, 227) rgb(17, 18, 20) | ok |
 | pill | rgb(31, 32, 36) rgb(201, 200, 195) | rgb(31, 32, 36) rgb(201, 200, 195) | ok |
 | colsLabel | 500 10.5px "Geist Mono", monospace uppercase rgb(109, 108, 103) | 500 10.5px "Geist Mono", monospace uppercase rgb(109, 108, 103) | ok |
-| colsGrid | 110px 480px 280px 70px 80px 50px | 110px 480px 280px 70px 80px 50px | ok |
-| rowGrid | 110px 480px 280px 70px 80px 50px | 110px 480px 280px 70px 80px 50px | ok |
+| colsGrid | 28px 110px 396px 280px 70px 80px 50px 28px | 28px 110px 396px 280px 70px 80px 50px 28px | ok |
+| rowGrid | 110px 396px 280px 70px 80px 50px | 110px 396px 280px 70px 80px 50px | ok |
 | rowBorder | rgb(31, 32, 36) | rgb(31, 32, 36) | ok |
 | typeTag | rgb(38, 39, 44) rgb(201, 200, 195) 4px | rgb(38, 39, 44) rgb(201, 200, 195) 4px | ok |
 | rowIsLink | true | true | ok |

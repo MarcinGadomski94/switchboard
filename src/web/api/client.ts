@@ -382,6 +382,9 @@ export const api = {
   saveArtifact: (sessionId: string, body: ArtifactSaveInput) => request<ArtifactSaveResult>('POST', `/api/sessions/${enc(sessionId)}/artifacts`, body),
   /** D89: 204. */
   deleteArtifact: (sessionId: string, artifactId: string) => request<void>('DELETE', `/api/sessions/${enc(sessionId)}/artifacts/${enc(artifactId)}`),
+  /** D89 follow-up: an artifact whose session is gone (204; 409 `has-session` while it has one); `machineId` = the paired machine it lives on. */
+  deleteOrphanArtifact: (artifactId: string, machineId?: string) =>
+    request<void>('DELETE', machineId ? `/api/machines/${enc(machineId)}/api/artifacts/${enc(artifactId)}` : `/api/artifacts/${enc(artifactId)}`),
   /** D62 P7: `cli` adds the Codex / OpenCode terminal conversations. */
   history: (q?: string, cli = false) => request<HistoryItem[]>('GET', `/api/history${query({ q, cli: cli ? '1' : undefined })}`),
   /** D16, additive: a terminal conversation continues in Switchboard as the same conversation (201 Session; 409 `ContinueRefusal`s, docs/derivations.md → History). */

@@ -1,9 +1,10 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Artifact, ArtifactDetail } from '../../../core/api.ts';
 import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, lineDiff, parseCsv } from '../../../core/artifacts.ts';
 import { ApiError, api, artifactRawUrl } from '../../api/client.ts';
 import { formatAge } from '../../shell/format.ts';
+import { ArtifactDeleteConfirm } from './ArtifactDelete.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import { KIND_LABELS, type ViewerMode, authorLabel, renderedMarkdown, viewerModes } from './artifacts.ts';
 import { actionErrorText } from './session-header.ts';
@@ -217,7 +218,7 @@ export function ArtifactViewer({ sessionId, artifact, blocked, onBack, onDeleted
         {body}
       </div>
       {fullScreen ? <FullScreen title={artifact.title} onClose={() => setFullScreen(false)}>{body}</FullScreen> : null}
-      {confirming ? <DeleteConfirm title={artifact.title} busy={deleting} onConfirm={remove} onCancel={() => setConfirming(false)} /> : null}
+      {confirming ? <ArtifactDeleteConfirm titles={[artifact.title]} busy={deleting} onConfirm={remove} onCancel={() => setConfirming(false)} /> : null}
     </section>
   );
 }
@@ -336,34 +337,6 @@ function FullScreen({ title, children, onClose }: { readonly title: string; read
         </button>
       </div>
       <div className="sb-artv-full-body">{children}</div>
-    </div>,
-    document.body,
-  );
-}
-
-/** Delete's confirmation (the Close confirmation's look); Cancel has the focus. */
-function DeleteConfirm({ title, busy, onConfirm, onCancel }: { readonly title: string; readonly busy: boolean; readonly onConfirm: () => void; readonly onCancel: () => void }) {
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onCancel();
-    }
-  };
-  return createPortal(
-    <div className="sb-close-overlay" onClick={busy ? undefined : onCancel} onKeyDown={onKeyDown}>
-      <div className="sb-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sb-artv-delete-text" data-testid="artifact-delete-confirm" onClick={(event) => event.stopPropagation()}>
-        <div className="sb-close-text" id="sb-artv-delete-text">
-          Delete “{title}” and all its versions? This cannot be undone.
-        </div>
-        <div className="sb-close-actions">
-          <button type="button" className="sb-button sb-close-primary" data-testid="artifact-delete-yes" disabled={busy} aria-busy={busy || undefined} onClick={onConfirm}>
-            Delete
-          </button>
-          <button type="button" className="sb-button sb-close-outlined" data-testid="artifact-delete-cancel" disabled={busy} autoFocus onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
     </div>,
     document.body,
   );

@@ -26,7 +26,10 @@ import {
  * with the demo's 13 saved artifacts, search), the filter row's and the column
  * header's boxes, the rows' area and the 13 row boxes (by index, equal heights),
  * the styles of the head, search, pills, column header, rows and kind tag, and
- * the new grid. Documented in `docs/visual/artifacts.md`.
+ * the new grid. D89 follow-up (Delete from the list): each row is its checkbox,
+ * the row link and its ⋯, and the column header starts with Select all, so the
+ * title column is 84 px narrower; the row boxes are unchanged. Documented in
+ * `docs/visual/artifacts.md`.
  */
 
 /** Child-index paths from the shell grid (harness.measure): `[1]` = main, `[1, 0]` = the view. */
@@ -131,7 +134,7 @@ test('Artifacts view matches the prototype (tokens, boxes ±2 px, copy)', async 
       colsLabel: `${style('.sb-art-cols').fontWeight} ${style('.sb-art-cols').fontSize} ${style('.sb-art-cols').fontFamily} ${style('.sb-art-cols').textTransform} ${style('.sb-art-cols').color}`,
       colsGrid: style('.sb-art-cols').gridTemplateColumns,
       rowGrid: style('.sb-art-row').gridTemplateColumns,
-      rowBorder: style('.sb-art-row').borderBottomColor,
+      rowBorder: style('.sb-art-item').borderBottomColor,
       typeTag: `${style('.sb-art-type').backgroundColor} ${style('.sb-art-type').color} ${style('.sb-art-type').borderRadius}`,
       rowIsLink: document.querySelector('.sb-art-row')?.tagName === 'A',
     };
@@ -144,9 +147,9 @@ test('Artifacts view matches the prototype (tokens, boxes ±2 px, copy)', async 
     pillSelected: `${hexToRgb('#e8e7e3')} ${hexToRgb('#111214')}`,
     pill: `${hexToRgb('#1f2024')} ${hexToRgb('#c9c8c3')}`,
     colsLabel: `500 10.5px "Geist Mono", monospace uppercase ${hexToRgb('#6d6c67')}`,
-    // D89: kind · title · session · versions · saved by · age.
-    colsGrid: '110px 480px 280px 70px 80px 50px',
-    rowGrid: '110px 480px 280px 70px 80px 50px',
+    // D89: kind · title · session · versions · saved by · age; D89 follow-up: the select-all checkbox first and the rows' ⋯ last (the row: checkbox · the link · ⋯).
+    colsGrid: '28px 110px 396px 280px 70px 80px 50px 28px',
+    rowGrid: '110px 396px 280px 70px 80px 50px',
     rowBorder: hexToRgb('#1f2024'),
     typeTag: `${hexToRgb('#26272c')} ${hexToRgb('#c9c8c3')} 4px`,
     rowIsLink: true,
@@ -192,7 +195,7 @@ Pixel diff (advisory, channel threshold 24): full page **${input.full.toFixed(2)
 
 Side by side (prototype left, app right): \`artifacts-side-by-side.png\`, \`artifacts-main-side-by-side.png\`.
 
-D89 (developer request 2026-10-09, \`docs/visual/README.md\` → *Deliberate deviations*): the page lists the artifacts saved on purpose (the demo seeds 13, as many per session as the prototype's tabs count). Its kind filters (All · Docs · Code · HTML · Diagrams · Images · Tables + a session filter), its columns (kind · title · session · versions · saved by · age, \`110px 1fr 280px 70px 80px 50px\`) and its rows' copy are its own and are not compared; the header, the filter row's and the column header's boxes, the rows' area and the 13 row boxes, and the styles of the chrome are. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
+D89 (developer request 2026-10-09, \`docs/visual/README.md\` → *Deliberate deviations*): the page lists the artifacts saved on purpose (the demo seeds 13, as many per session as the prototype's tabs count). Its kind filters (All · Docs · Code · HTML · Diagrams · Images · Tables + a session filter), its columns (kind · title · session · versions · saved by · age, \`110px 1fr 280px 70px 80px 50px\`; D89 follow-up: with a select-all checkbox before them and the rows' ⋯ after them, \`28px … 28px\`) and its rows' copy are its own and are not compared; the header, the filter row's and the column header's boxes, the rows' area and the 13 row boxes, and the styles of the chrome are. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
 
 ## Boxes (±2 px), styles and copy
 | Part | Geometry | Prototype | App | Result | Copy (exact) |

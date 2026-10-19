@@ -78,7 +78,9 @@
 
 .sb-art-cols {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) 280px 70px 80px 50px;
+  /* D89 follow-up: the select-all checkbox first, the rows' ⋯ last. */
+  grid-template-columns: 28px 110px minmax(0, 1fr) 280px 70px 80px 50px 28px;
+  align-items: center;
   gap: 14px;
   padding: 8px 22px;
   font: 500 var(--fs-section-label) var(--font-mono);
@@ -99,17 +101,79 @@
   padding: 0 22px;
 }
 
-.sb-art-row {
+/* D89 follow-up: a row is its checkbox, the row itself (a link to its session's tab) and its ⋯. */
+.sb-art-item {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) 280px 70px 80px 50px;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
   gap: 14px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--border-row);
   font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.sb-art-item[data-selected='true'] {
+  background: var(--bg-selected-row);
+}
+
+.sb-art-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 280px 70px 80px 50px;
+  gap: 14px;
+  align-items: center;
+  /* The item's padding is the row's too: the whole height opens it. */
+  margin: -10px 0;
+  padding: 10px 0;
+  border-bottom: 0 solid var(--border-row);
+  font-size: var(--fs-body);
   cursor: pointer;
   color: var(--text);
   text-decoration: none;
+  min-width: 0;
+}
+
+.sb-art-check {
+  display: inline-grid;
+  place-items: center;
+  justify-self: center;
+  cursor: pointer;
+}
+
+.sb-art-check input {
+  margin: 0;
+  accent-color: var(--primary-bg);
+  cursor: pointer;
+}
+
+.sb-art-check input:disabled {
+  cursor: not-allowed;
+}
+
+/* "Select all" in words only where the column heads are gone (tablets and phones). */
+.sb-art-check-label {
+  display: none;
+}
+
+.sb-art-item > .sb-art-more {
+  justify-self: center;
+  margin: -4px 0;
+}
+
+.sb-art-bulk {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px var(--font-ui);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-2);
+}
+
+.sb-art-bulk-error {
+  color: var(--status-fail);
 }
 
 .sb-art-row:hover {

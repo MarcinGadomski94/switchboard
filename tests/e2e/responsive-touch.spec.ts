@@ -288,6 +288,16 @@ test('tap targets are at least 44 × 44 px on a touch screen; the row ⋯ shows 
   await big(page.getByTestId('question').first().locator('.sb-qcard__option'), 'question option');
   await page.getByTestId('session-more').tap();
   await big(page.getByTestId('session-actions-menu').locator('.sb-sv-action'), 'header action');
+  await page.keyboard.press('Escape');
+
+  // D89 follow-up: an artifact row's ⋯ and checkbox, and its menu's Delete…
+  await openPage(page, app.baseUrl, '/sessions/pair-talk-feature/artifacts');
+  await big(page.getByTestId('session-artifacts').getByTestId('artifact-row-menu'), 'session artifact ⋯');
+  await openPage(page, app.baseUrl, '/artifacts');
+  await big(page.getByTestId('artifact-row-menu'), 'artifact ⋯');
+  await big(page.locator('.sb-art-check'), 'artifact checkbox');
+  await page.getByTestId('artifact-row-menu').first().tap();
+  await big(page.getByTestId('artifact-row-delete'), 'artifact Delete…');
   await context.close();
 });
 

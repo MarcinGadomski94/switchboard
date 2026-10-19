@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { artifactRawUrl } from '../../src/web/api/client.ts';
-import { KIND_FILTERS, artifactMeta, codeDraft, codeLanguage, kindTag, messageDraft, renderedMarkdown, viewerModes } from '../../src/web/views/session/artifacts.ts';
+import type { ArtifactListItem } from '../../src/core/api.ts';
+import { KIND_FILTERS, artifactKey, artifactMeta, bulkDeleteFailure, codeDraft, codeLanguage, deleteQuestion, keepSelected, kindTag, messageDraft, renderedMarkdown, viewerModes } from '../../src/web/views/session/artifacts.ts';
 
 /** D89: the artifact views' pure model (`src/web/views/session/artifacts.ts`) and their addresses. */
 
@@ -51,5 +52,50 @@ describe('D89 · artifact rows and the viewer', () => {
     expect(routePath({ view: 'session', id: 's1', tab: 'artifacts' })).toBe('/sessions/s1/artifacts');
     expect(artifactRawUrl('s 1', 'a1', 2)).toBe('/api/sessions/s%201/artifacts/a1/versions/2/raw');
     expect(artifactRawUrl('s1', 'a1', 2, true)).toBe('/api/sessions/s1/artifacts/a1/versions/2/raw?download');
+  });
+});
+
+describe('D89 follow-up · deleting from the lists', () => {
+  const row = (id: string, machine?: ArtifactListItem['machine']): ArtifactListItem => ({
+    id,
+    sessionId: null,
+    title: id,
+    kind: 'markdown',
+    language: null,
+    createdBy: 'agent',
+    versions: 1,
+    size: 1,
+    createdAt: '2026-10-19T10:00:00.000Z',
+    updatedAt: '2026-10-19T10:00:00.000Z',
+    sessionName: null,
+    sessionTitle: null,
+    folder: null,
+    folderPath: null,
+    ...(machine ? { machine } : {}),
+  });
+  const studio = { id: 'abcdefghijkl', name: 'Studio', state: 'online' as const };
+
+  it('asks by title for one, by count for several', () => {
+    expect(deleteQuestion(['Plan'])).toBe('Delete “Plan” and all its versions? This cannot be undone.');
+    expect(deleteQuestion(['a', 'b', 'c'])).toBe('Delete 3 artifacts and all their versions? This cannot be undone.');
+  });
+
+  it('keys a row by its machine and id', () => {
+    expect(artifactKey(row('a1'))).toBe('/a1');
+    expect(artifactKey(row('a1', studio))).toBe('abcdefghijkl/a1');
+  });
+
+  it('keeps only rows still shown and selectable; the same set when nothing dropped', () => {
+    const rows = [row('a1'), row('a2'), row('a3', { ...studio, state: 'offline' })];
+    const all = new Set(['/a1', '/a2']);
+    expect(keepSelected(all, rows, () => true)).toBe(all);
+    expect([...keepSelected(new Set(['/a1', '/gone']), rows, () => true)]).toEqual(['/a1']);
+    expect([...keepSelected(new Set(['/a1', 'abcdefghijkl/a3']), rows, (item) => item.machine?.state !== 'offline')]).toEqual(['/a1']);
+  });
+
+  it('says how many failed and why (each reason once)', () => {
+    expect(bulkDeleteFailure([], 3)).toBeNull();
+    expect(bulkDeleteFailure(['Studio is unreachable', 'Studio is unreachable'], 5)).toBe('2 of 5 could not be deleted: Studio is unreachable');
+    expect(bulkDeleteFailure(['a', 'b'], 2)).toBe('2 of 2 could not be deleted: a · b');
   });
 });

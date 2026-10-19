@@ -305,7 +305,10 @@
 
 /* ---------- Artifacts ---------- */
 @media (max-width: 1279px) {
-  .sb-art-cols,
+  .sb-art-cols {
+    grid-template-columns: 28px 100px minmax(0, 1fr) 200px 56px 64px 44px 28px;
+  }
+
   .sb-art-row {
     grid-template-columns: 100px minmax(0, 1fr) 200px 56px 64px 44px;
   }
@@ -333,9 +336,32 @@
     white-space: nowrap;
   }
 
-  /* The column heads go; each artifact is a card: kind · title · age, then its session, then its versions and who saved it. */
+  /* The column heads go (select all and the bulk Delete stay); each artifact is a card: kind · title · age, then its session, then its versions and who saved it. */
   .sb-art-cols {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 6px max(14px, env(safe-area-inset-right)) 6px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-art-cols > span,
+  .sb-art-cols > .sb-art-cols-end {
     display: none;
+  }
+
+  .sb-art-cols .sb-art-check {
+    display: inline-flex;
+    gap: 8px;
+  }
+
+  .sb-art-check-label {
+    display: inline;
+  }
+
+  .sb-art-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 10px;
   }
 
   .sb-art-rows {

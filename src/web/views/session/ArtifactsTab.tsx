@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent, useHubStatus } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { useRouter } from '../../router.tsx';
 import { formatAge } from '../../shell/format.ts';
+import { ArtifactRowMenu } from './ArtifactDelete.tsx';
 import { ArtifactViewer } from './ArtifactViewer.tsx';
 import { artifactMeta, kindTag } from './artifacts.ts';
 import './artifacts.css';
@@ -19,6 +20,8 @@ const RELOAD_MS = 250;
  * age. Picking one opens it in the {@link ArtifactViewer} beside the list (on a
  * phone: instead of it, with ‹ back); its address is
  * `/sessions/{id}/artifacts/{artifactId}`. Live: `artifactsChanged` reloads it.
+ * Each row's ⋯ deletes it (asks first; off with the reason while the session's
+ * machine is unreachable, D48); the open artifact deleted anywhere goes back to the list.
  */
 export function ArtifactsTab({ sessionId, artifactId, blocked }: { readonly sessionId: string; readonly artifactId: string | null; readonly blocked: string | null }) {
   // Keyed by session: another session starts without the previous one's rows.
@@ -43,6 +46,14 @@ function SessionArtifacts({ sessionId, artifactId, blocked }: { readonly session
 
   const rows = list.data ?? [];
   const selected = rows.find((artifact) => artifact.id === artifactId) ?? null;
+  // The open artifact was deleted (a row's ⋯ here, the Artifacts page, another window): back to the list, as the viewer's Delete does.
+  const listed = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (list.data === null) return;
+    const before = listed.current;
+    listed.current = new Set(list.data.map((artifact) => artifact.id));
+    if (artifactId !== null && before.has(artifactId) && !listed.current.has(artifactId)) open(null);
+  }, [list.data]);
   const state = list.data === null ? (list.error ? 'error' : 'loading') : rows.length === 0 ? 'empty' : 'ready';
 
   return (
@@ -60,28 +71,37 @@ function SessionArtifacts({ sessionId, artifactId, blocked }: { readonly session
           </div>
         ) : null}
         {rows.map((artifact) => (
-          <button
-            key={artifact.id}
-            type="button"
-            role="listitem"
-            className="sb-button sb-arts__row"
-            data-testid="artifact-row"
-            data-kind={artifact.kind}
-            data-artifact-id={artifact.id}
-            aria-current={artifact.id === selected?.id ? 'true' : undefined}
-            onClick={() => open(artifact.id)}
-          >
-            <span className="sb-arts__tag" data-testid="artifact-tag">
-              {kindTag(artifact)}
-            </span>
-            <span className="sb-arts__name" data-testid="artifact-name">
-              {artifact.title}
-            </span>
-            <span className="sb-arts__meta" data-testid="artifact-meta">
-              {artifactMeta(artifact)}
-            </span>
-            <span className="sb-arts__age">{formatAge(artifact.updatedAt)}</span>
-          </button>
+          <div key={artifact.id} role="listitem" className="sb-arts__item" data-testid="artifact-item" data-artifact-id={artifact.id}>
+            <button
+              type="button"
+              className="sb-button sb-arts__row"
+              data-testid="artifact-row"
+              data-kind={artifact.kind}
+              data-artifact-id={artifact.id}
+              aria-current={artifact.id === selected?.id ? 'true' : undefined}
+              onClick={() => open(artifact.id)}
+            >
+              <span className="sb-arts__tag" data-testid="artifact-tag">
+                {kindTag(artifact)}
+              </span>
+              <span className="sb-arts__name" data-testid="artifact-name">
+                {artifact.title}
+              </span>
+              <span className="sb-arts__meta" data-testid="artifact-meta">
+                {artifactMeta(artifact)}
+              </span>
+              <span className="sb-arts__age">{formatAge(artifact.updatedAt)}</span>
+            </button>
+            <ArtifactRowMenu
+              title={artifact.title}
+              blocked={blocked}
+              remove={() => api.deleteArtifact(sessionId, artifact.id)}
+              onDeleted={() => {
+                if (artifact.id === artifactId) open(null);
+                list.reload();
+              }}
+            />
+          </div>
         ))}
       </div>
       {selected ? (
