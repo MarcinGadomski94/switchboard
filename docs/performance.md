@@ -87,6 +87,48 @@ Same machine and harness, before = `687218f` (D95), after = `perf/followups`.
 
 Scrolling to the top cost 14 ms a step before (one 690,000 px conversation, everything already there) and 22 ms after (each step near the top now loads and draws the page before: that is the load, not a slower scroll).
 
+## Long runs (1.24)
+
+Developer report: after about three days an install showed 771 MB server RSS, about 19 % CPU while idle and 16 `switchboard` MCP helpers at about 115 MB each. Suspects: what the server keeps per session or per file for the life of the process, what it polls while nothing works, and the helper every running agent CLI starts.
+
+`tools/bench/soak.ts` (two paired test servers, `--sessions` live fake-claude sessions each with the real helper, a `/hub?delta=1` reader, an active phase of fired turns and 40 KB Write calls, then an idle phase measured with `ps`; heap after a forced GC, snapshots and an idle CPU profile through the inspector) and `tools/bench/heap-diff.ts` (two snapshots by node type).
+
+```sh
+SWITCHBOARD_TEST_PORTS=4600-4699 node tools/bench/soak.ts --sessions 10 --active-min 5 --idle-min 6 --profile-min 2 --sample-s 30 --extra-open 60 --extra-closed 200 --out .bench/soak
+node tools/bench/heap-diff.ts .bench/soak/active-start.heapsnapshot .bench/soak/idle-end.heapsnapshot
+```
+
+Same machine (Apple silicon, Node 24.21), before = `8e0f4d88` (1.24.1 + tool annotations), after = the 1.24 perf branch:
+
+| | before | after |
+|---|---|---|
+| Server heap after a GC, start → idle start (100 fired turns) | 43.8 → 51.9 MB (+8.1) | 44.3 → 48.1 MB (+3.8) |
+| Heap snapshot, active start → idle end (strings) | +9.0 MB (+6.5 MB) | +4.9 MB (+2.5 MB) |
+| Heap growth over 6 min idle | 0.6 MB | 0.5 MB |
+| Server CPU while idle (`ps`) | 1.38 % | 0.67 % |
+| JavaScript busy in 2 min of idle (profile) | 2,087 ms | 1,231 ms |
+| Server RSS at idle end (after two heap snapshots) | 326 MB | 331 MB |
+| A helper's RSS (10 helpers, average) | 118.2 MB | 71.1 MB |
+
+The idle profile before was led by the hooks transcript polls listing every open session every 500 ms (`list sessions.ts`, 861 ms of 2,087). The server's RSS barely moves in a 15-minute run: what grew in the installed server is per-session and per-file state that only adds up over days (the recorder's tool inputs, the loop events of up to 32 transcripts, a change log per written session), each now bounded; see `b50abd64`.
+
+### The MCP helper's footprint
+
+`npm run build` bundles each helper into one minified file in `dist/hook/` (`tools/release/helper-bundle.ts`), used while `dist/hook/manifest.json` matches the sources (`src/server/mcp/helper-bundle.ts`). One helper after `initialize` and `tools/list`, macOS:
+
+| | RSS (`ps`) | private footprint (`footprint`) |
+|---|---|---|
+| `node` doing nothing (`--max-semi-space-size=1`) | 45.7 MB | 13 MB |
+| Helper from TypeScript (1.24.1) | 125 MB | 80 MB |
+| Helper bundle, `--max-semi-space-size=1` | 69–71 MB | 31–33 MB |
+
+Under 60 MB of RSS is not reachable without changing what the helper runs: about 36 MB of every helper's RSS is the `node` binary's clean, shared pages (`__TEXT` 24 MB, `__LINKEDIT` 11 MB), counted once per process by `ps` but held once in memory, and an idle `node` alone is 45.7 MB. The bundle adds about 23 MB (V8 heap ≈9 MB, the rest the parser's and compiler's malloc). Measured and left out: `--lite-mode` / `--jitless` (−2 MB RSS, +1 MB footprint), `--single-threaded`, `--v8-pool-size=1`, `--max-old-space-size=32` (no gain); passing the SDK a `jsonSchemaValidator` (no gain: `ajv` is still loaded); replacing the SDK's `ajv` provider with a stub at bundle time (−3 MB, only used for elicitation, which the helper never sends; it patches an SDK internal path, so not done).
+
+### Guards (1.24)
+- `npm run perf:guard`: builds the helper bundles, then a short soak (6 sessions, 1 min active, 3 min idle) that exits 1 over 4 % idle CPU, 5 MB of heap growth while idle, or a helper over 85 MB of RSS. About 6 minutes; not part of `npm test`.
+- `tests/server/perf/idle.test.ts`: three live sessions with helpers stay under 4 % of a core for 20 s. About a minute, so opt-in: `SWITCHBOARD_PERF=1 npx vitest run tests/server/perf`.
+- In the default suite: `tests/server/mcp/helper-bundle.test.ts` (the manifest gate; the bundles' sizes, sb-mcp under 512 KB; a running bundled helper under 90 MB and 30 MB under the source one), `tests/server/insights/peers.test.ts` (the newest 24 peer row copies), `tests/server/db/event-memo.test.ts` (the change log of 32 sessions), `tests/core/agent-delta.test.ts` (a closed session is forgotten), `tests/server/loops/transcript-events.test.ts` (the slimmed loop events), `tests/server/supervisor/agent-placement.test.ts` (the recorder keeps a write's path only), `tests/server/team/team.test.ts` (a budget sees a reading written a moment ago).
+
 ## What the profiles showed (the top offenders)
 
 1. **The chat drew the whole history** (`browser-open-big.cpuprofile`: Markdown parsing and highlight.js regexes, React mounting 2,128 messages, 1.0 s of layout). `GET /events` sent 35 MB, the tab parsed and kept it, and the per-tab session cache kept up to 20 such lists (the soak's 150–200 MB).
