@@ -97,6 +97,43 @@ The feature tools of the `switchboard` server (Team's `team_*` and `request_acce
 - **A call to a tool that is off** (a CLI that has not re-listed yet) is answered by the helper with a tool error that says why (the probe route's message, e.g. "this session is not a team member (or Team is off): the Team tools work only in a member's session") and that the tools come back by themselves, instead of the SDK's bare "Tool … not found". The routes check eligibility on every call as before.
 - Tests: `tests/server/todos/feature-tools.test.ts` (the tool list before and after, over the SDK's in-memory transport; the registry), `tests/server/team/tools-refresh.test.ts` (fake-claude runs the real helper, `docs/fake-claude.md` → *Running the switchboard MCP server*: the charter ask live, with one restart, and after a running turn).
 
+### Tool annotations (2026-10-19)
+Every tool the `switchboard` server can expose declares a `title` and all four MCP behaviour hints as explicit booleans (directories, OpenAI's among them, reject a tool with a hint missing or not a boolean). They are written out in the tool's definition (`src/core/todos.ts`, `artifacts.ts`, `owned-loops.ts`, `plans.ts`, `plans-jira.ts`, `memory.ts`, `team-tools.ts`, `team-access-tools.ts`) and again, as literals, where the tool is registered, so a static scanner resolves them too. Read-only = changes nothing; destructive = can delete or overwrite; idempotent = repeating it with the same arguments has no further effect; open-world = reaches outside Switchboard's own state.
+
+| Tool | Feature | readOnly | destructive | idempotent | openWorld |
+|---|---|---|---|---|---|
+| `todo_list` | always | true | false | true | false |
+| `todo_get` | always | true | false | true | false |
+| `todo_add` | always | false | false | false | false |
+| `todo_update` | always | false | true | true | false |
+| `todo_start` | always | false | false | true | false |
+| `todo_done` | always | false | false | true | false |
+| `todo_remove` | always | false | true | true | false |
+| `artifact_save` | always | false | false | false | false |
+| `artifact_list` | always | true | false | true | false |
+| `artifact_get` | always | true | false | true | false |
+| `loop_create` | always | false | false | false | false |
+| `loop_list` | always | true | false | true | false |
+| `loop_update` | always | false | true | true | false |
+| `loop_pause` | always | false | false | true | false |
+| `loop_resume` | always | false | false | true | false |
+| `loop_cancel` | always | false | true | true | false |
+| `team_handoff` | Team (member) | false | false | false | false |
+| `team_members` | Team (member) | true | false | true | false |
+| `team_report` | Team (member) | false | false | false | false |
+| `team_propose_charter` | Team (member) | false | false | true | false |
+| `request_access` | Team (member) | false | false | true | false |
+| `plan_create` | Plans | false | false | false | false |
+| `plan_add_item` | Plans | false | false | false | false |
+| `plan_add_dependency` | Plans | false | false | true | false |
+| `plan_status` | Plans | true | false | true | false |
+| `plan_start` | Plans | false | false | true | true |
+| `plan_propose_dependencies` | Plans | false | false | true | false |
+| `memory_propose` | Project memory | false | false | true | false |
+| `memory_list` | Project memory | true | false | true | false |
+
+`plan_start` is the one open-world tool: the plan's runs work in git repositories and merge pull requests. `tests/server/todos/tool-annotations.test.ts` lists every tool with all features on in a member's session and fails when a tool lacks a hint, a hint is not a boolean, a hint differs from this table, or the registered hints differ from the definition; a new tool needs a row there and here.
+
 ## Tests
 
 - `tests/core/mcp.test.ts`: masking, `mcp get` / `mcp list` text (fixtures built from the CLI's code), `mcp_status` rows, validation, the add-json definition with kept secrets.

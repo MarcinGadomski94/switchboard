@@ -366,9 +366,6 @@ export function artifactListText(artifacts: readonly Artifact[]): string {
 
 const ARTIFACT_ID = { type: 'string', description: 'The artifact id, as artifact_save and artifact_list show it in brackets.' } as const;
 
-/** Hints of a tool that only reads. */
-const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
-
 /**
  * D89: the artifact tools of the `switchboard` MCP server (next to the todo tools,
  * same helper, same session token): `artifact_save`, `artifact_list`, `artifact_get`.
@@ -401,7 +398,7 @@ export const ARTIFACT_TOOLS: readonly TodoToolDefinition[] = [
     name: 'artifact_list',
     description: "List this session's artifacts (id, title, kind, version count, size), newest first. Use it to find the id of an artifact to update.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: { title: 'List artifacts', ...READS },
+    annotations: { title: 'List artifacts', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'artifact_get',
@@ -412,7 +409,7 @@ export const ARTIFACT_TOOLS: readonly TodoToolDefinition[] = [
       required: ['id'],
       additionalProperties: false,
     },
-    annotations: { title: 'Read an artifact', ...READS },
+    annotations: { title: 'Read an artifact', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];
 

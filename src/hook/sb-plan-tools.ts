@@ -222,7 +222,7 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
         phase: z.enum(['ui-first', 'integration']).describe(about('plan_create', 'phase')).optional(),
         notes: field.text('plan_create', 'notes'),
       }),
-      annotations: planCreateTool.annotations,
+      annotations: { title: planCreateTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => serial(() => planCreate(api, input)),
   );
@@ -245,7 +245,7 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
         solutions: strings('plan_add_item', 'solutions'),
         after: strings('plan_add_item', 'after'),
       }),
-      annotations: planAddItemTool.annotations,
+      annotations: { title: planAddItemTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => serial(() => planAddItem(api, input)),
   );
@@ -256,14 +256,14 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       title: planDependencyTool.annotations.title,
       description: planDependencyTool.description,
       inputSchema: inputSchema('plan_add_dependency', { plan_id: field.text('plan_add_dependency', 'plan_id'), item: field.text('plan_add_dependency', 'item'), after: field.text('plan_add_dependency', 'after') }),
-      annotations: planDependencyTool.annotations,
+      annotations: { title: planDependencyTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => planAddDependency(api, input)),
   );
   const planStatusTool = tool('plan_status');
   server.registerTool(
     'plan_status',
-    { title: planStatusTool.annotations.title, description: planStatusTool.description, inputSchema: inputSchema('plan_status', { plan_id: field.text('plan_status', 'plan_id') }), annotations: planStatusTool.annotations },
+    { title: planStatusTool.annotations.title, description: planStatusTool.description, inputSchema: inputSchema('plan_status', { plan_id: field.text('plan_status', 'plan_id') }), annotations: { title: planStatusTool.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => planStatus(api, input)),
   );
   const planStartTool = tool('plan_start');
@@ -277,7 +277,7 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
         merge_mode: z.enum(PLAN_MERGE_MODES).describe(about('plan_start', 'merge_mode')).optional(),
         allow_protected_target: z.boolean().describe(about('plan_start', 'allow_protected_target')).optional(),
       }),
-      annotations: planStartTool.annotations,
+      annotations: { title: planStartTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     (input) => serial(() => planStart(api, input)),
   );
@@ -298,7 +298,7 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
           .describe(proposeAbout('proposals'))
           .optional(),
       }).meta({ required: ['plan_id', 'proposals'], additionalProperties: false }),
-      annotations: PLAN_PROPOSE_TOOL.annotations,
+      annotations: { title: PLAN_PROPOSE_TOOL.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => planProposeDependencies(api, input)),
   );
