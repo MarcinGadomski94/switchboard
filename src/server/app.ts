@@ -27,6 +27,7 @@ import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
 import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
+import { HELPER_NODE_ARGS, helperScript } from './mcp/helper-bundle.ts';
 import { registerAgentToolRoutes } from './todos/agent-tools.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
@@ -465,14 +466,21 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   if (options.agentTools !== false) {
     // 2026-10-16: the helpers' tool reports and wake-ups (docs/mcp.md → Tools that appear without a restart).
     await registerAgentToolRoutes(app, supervisor.agentTools);
-    supervisor.useAgentMcp(async (session) =>
-      withClaudeConfigFile(
+    supervisor.useAgentMcp(async (session) => {
+      // 1.24 perf: the prebuilt helpers when fresh (docs/performance.md → The MCP helper's footprint).
+      const [script, accessScript] = await Promise.all([helperScript('sb-mcp'), helperScript('sb-access-mcp')]);
+      return withClaudeConfigFile(
         config.dataDir,
         session.id,
         // Team (D100) hook (D100-T2): a member's access MCP servers join its launch (docs/team-removal.md).
-        withTeamAccessServers(options.store, agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }), session.id),
-      ),
-    );
+        withTeamAccessServers(
+          options.store,
+          agentMcpLaunch({ nodePath: process.execPath, scriptPath: script, nodeArgs: HELPER_NODE_ARGS, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }),
+          session.id,
+          { script: accessScript, nodeArgs: HELPER_NODE_ARGS },
+        ),
+      );
+    });
   }
   // D83: a fresh session takes the sidebar place of the session it continues (this machine's and a paired machine's).
   const freshPlaces = new FreshPlaces({ bus, sidebar: options.store.sidebar, synced: (changes) => peers.sidebarChanged(changes) });

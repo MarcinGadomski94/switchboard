@@ -25,7 +25,7 @@ export interface AgentMcpLaunch {
   readonly name: string;
   /** The Node binary that runs the helper (this Switchboard's own). */
   readonly command: string;
-  /** `[<helper script>, --switchboard-mcp, <port>, <session id>]`. */
+  /** `[...<node flags>, <helper script>, --switchboard-mcp, <port>, <session id>]`. */
   readonly args: readonly string[];
   /** `{ SWITCHBOARD_TODO_TOKEN: <the session's agent token> }`. */
   readonly env: Readonly<Record<string, string>>;
@@ -52,11 +52,20 @@ export type AgentMcpExtraServer =
 export const AGENT_MCP_SCRIPT = path.resolve(import.meta.dirname, '..', '..', 'hook', 'sb-mcp.ts');
 
 /** The launch of session `sessionId`'s helper (no file yet). */
-export function agentMcpLaunch(input: { readonly nodePath: string; readonly scriptPath?: string; readonly port: number; readonly sessionId: string; readonly token: string }): AgentMcpLaunch {
+export function agentMcpLaunch(input: {
+  readonly nodePath: string;
+  /** The script (1.24 perf: the prebuilt bundle when fresh, `src/server/mcp/helper-bundle.ts`); default the source. */
+  readonly scriptPath?: string;
+  /** Node flags before the script (1.24 perf: `HELPER_NODE_ARGS`). */
+  readonly nodeArgs?: readonly string[];
+  readonly port: number;
+  readonly sessionId: string;
+  readonly token: string;
+}): AgentMcpLaunch {
   return {
     name: AGENT_MCP_SERVER,
     command: input.nodePath,
-    args: [input.scriptPath ?? AGENT_MCP_SCRIPT, AGENT_MCP_MARKER, String(input.port), input.sessionId],
+    args: [...(input.nodeArgs ?? []), input.scriptPath ?? AGENT_MCP_SCRIPT, AGENT_MCP_MARKER, String(input.port), input.sessionId],
     env: { [AGENT_TOKEN_ENV]: input.token },
     claudeConfigFile: null,
   };

@@ -32,7 +32,7 @@
   },
   "scripts": {
     "dev": "node tools/dev.ts",
-    "build": "vite build",
+    "build": "vite build && node tools/release/helper-bundle.ts",
     "start": "node src/server/main.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json && tsc -p tsconfig.sw.json",
     "test": "vitest run",

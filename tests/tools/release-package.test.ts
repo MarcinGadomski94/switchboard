@@ -66,6 +66,9 @@ describe('packageRelease', () => {
     // The built UI (ignored by git, as in the real repo).
     await write(repo, 'dist/web/index.html', '<!doctype html>\n');
     await write(repo, 'dist/web/assets/app.js', 'console.log(1);\n');
+    // 1.24 perf: the prebuilt MCP helpers go in too.
+    await write(repo, 'dist/hook/manifest.json', '{}\n');
+    await write(repo, 'dist/hook/sb-mcp.js', 'export {};\n');
     const lines: string[] = [];
     const result = await packageRelease({ repoDir: repo, skipBuild: true, outDir: path.join(tmp, 'out'), log: (line) => lines.push(line) });
     expect(path.basename(result.tarball)).toBe('switchboard-1.1.0.tar.gz');
@@ -75,7 +78,7 @@ describe('packageRelease', () => {
     expect(parseChecksum(await readFile(result.checksumFile, 'utf8'), 'switchboard-1.1.0.tar.gz')).toBe(hex);
     const unpacked = await extractRelease(result.tarball, path.join(tmp, 'x'), 'switchboard-1.1.0/');
     expect(await files(unpacked.root)).toEqual(
-      ['.gitignore', 'dist/web/assets/app.js', 'dist/web/index.html', 'docs/updates.md', 'package-lock.json', 'package.json', 'src/server/main.ts', `tools/${'long-folder-name/'.repeat(8)}deep.ts`].sort(),
+      ['.gitignore', 'dist/hook/manifest.json', 'dist/hook/sb-mcp.js', 'dist/web/assets/app.js', 'dist/web/index.html', 'docs/updates.md', 'package-lock.json', 'package.json', 'src/server/main.ts', `tools/${'long-folder-name/'.repeat(8)}deep.ts`].sort(),
     );
   });
 

@@ -148,7 +148,7 @@ export async function teamSwitchChanged(store: object): Promise<void> {
  * launch (the same Node, port and agent token: the launcher fetches the server and
  * its values from Switchboard when it starts). Unchanged for every other session.
  */
-export function withTeamAccessServers(store: object, launch: AgentMcpLaunch, sessionId: string): AgentMcpLaunch {
+export function withTeamAccessServers(store: object, launch: AgentMcpLaunch, sessionId: string, helper: { readonly script: string; readonly nodeArgs: readonly string[] } = { script: ACCESS_MCP_SCRIPT, nodeArgs: [] }): AgentMcpLaunch {
   const specs = registry.get(store)?.accessServers?.(sessionId) ?? [];
   if (specs.length === 0) return launch;
   const at = launch.args.indexOf(AGENT_MCP_MARKER);
@@ -156,7 +156,7 @@ export function withTeamAccessServers(store: object, launch: AgentMcpLaunch, ses
   const extra: AgentMcpExtraServer[] = [];
   for (const spec of specs) {
     if (spec.kind === 'http') extra.push({ name: spec.name, transport: 'http', url: spec.url, headers: spec.headers });
-    else if (port) extra.push({ name: spec.name, transport: 'stdio', command: launch.command, args: [ACCESS_MCP_SCRIPT, ACCESS_MCP_MARKER, port, sessionId, spec.accessId], env: { ...launch.env } });
+    else if (port) extra.push({ name: spec.name, transport: 'stdio', command: launch.command, args: [...helper.nodeArgs, helper.script, ACCESS_MCP_MARKER, port, sessionId, spec.accessId], env: { ...launch.env } });
   }
   return { ...launch, extraServers: extra };
 }

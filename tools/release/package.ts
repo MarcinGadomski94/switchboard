@@ -17,6 +17,7 @@ import path from 'node:path';
 import { checksumLine, checksumName, isReleaseExcluded, packagePrefix, releaseTag, tarballName } from '../../src/core/release.ts';
 import { parseSemVer } from '../../src/core/semver.ts';
 import { type TarInput, walkTar, writeTarGz } from '../../src/server/updates/tar.ts';
+import { buildHelperBundles } from './helper-bundle.ts';
 
 /** Options of {@link packageRelease}. */
 export interface PackageOptions {
@@ -132,6 +133,9 @@ export async function packageRelease(options: PackageOptions): Promise<PackageRe
     log('building the UI (vite build)…');
     const build = await run(process.execPath, [path.join(repoDir, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], repoDir);
     if (build.code !== 0) throw new Error(`vite build failed:\n${build.stderr || build.stdout}`);
+    // 1.24 perf: the MCP helpers prebuilt (docs/performance.md → The MCP helper's footprint).
+    log('bundling the MCP helpers…');
+    await buildHelperBundles(repoDir, log);
   }
   const web = path.join(repoDir, 'dist', 'web');
   try {
@@ -145,6 +149,10 @@ export async function packageRelease(options: PackageOptions): Promise<PackageRe
   const entries: TarInput[] = [{ path: prefix, type: 'dir', mode: 0o755, mtime }, ...committed];
   if (!committed.some((entry) => entry.path === `${prefix}dist/`)) entries.push({ path: `${prefix}dist/`, type: 'dir', mode: 0o755, mtime });
   entries.push(...(await folderEntries(web, `${prefix}dist/web`, mtime)));
+  // 1.24 perf: the prebuilt MCP helpers and their manifest (an install without them runs the sources).
+  const hook = path.join(repoDir, 'dist', 'hook');
+  if (await stat(path.join(hook, 'manifest.json')).then(() => true, () => false)) entries.push(...(await folderEntries(hook, `${prefix}dist/hook`, mtime)));
+  else log('warning: dist/hook is missing: the package runs the MCP helpers from source (npm run build makes them)');
   const outDir = path.resolve(options.outDir ?? path.join(repoDir, 'dist', 'release'));
   await mkdir(outDir, { recursive: true });
   const tarball = path.join(outDir, tarballName(version));

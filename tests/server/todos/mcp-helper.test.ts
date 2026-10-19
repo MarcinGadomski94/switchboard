@@ -4,12 +4,13 @@ import path from 'node:path';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ARTIFACT_TOOLS } from '../../../src/core/artifacts.ts';
 import { LOOP_TOOLS } from '../../../src/core/owned-loops.ts';
 import { AGENT_MCP_INSTRUCTIONS, AGENT_TOKEN_ENV, TODO_TOOLS } from '../../../src/core/todos.ts';
 import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { buildApp } from '../../../src/server/app.ts';
+import { buildHelperBundles } from '../../../tools/release/helper-bundle.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
@@ -260,10 +261,24 @@ describe('MCP messages', () => {
   });
 });
 
-describe('the real helper over stdio against a listening Switchboard', () => {
+// 1.24 perf: the same answers from the source and from the prebuilt bundle (dist/hook, tools/release/helper-bundle.ts).
+describe.each(['source', 'bundle'] as const)('the real helper (%s) over stdio against a listening Switchboard', (variant) => {
   let tmp: string | undefined;
   let store: Store | undefined;
   let app: FastifyInstance | undefined;
+  let script = path.join(REPO_ROOT, 'src', 'hook', 'sb-mcp.ts');
+  let bundleDir: string | undefined;
+
+  beforeAll(async () => {
+    if (variant !== 'bundle') return;
+    bundleDir = await makeTempDir('mcp-helper-bundle');
+    await buildHelperBundles(REPO_ROOT, () => undefined, bundleDir);
+    script = path.join(bundleDir, 'sb-mcp.js');
+  }, 60_000);
+
+  afterAll(async () => {
+    if (bundleDir) await removeTempDir(bundleDir);
+  });
 
   afterEach(async () => {
     await app?.close();
@@ -276,7 +291,7 @@ describe('the real helper over stdio against a listening Switchboard', () => {
 
   /** Runs the helper with `requests` (a string is sent as the raw line) and answers its output lines. */
   async function run(port: number, sessionId: string, token: string, requests: ReadonlyArray<object | string>): Promise<Array<Record<string, unknown>>> {
-    const child = spawn(process.execPath, [path.join(REPO_ROOT, 'src', 'hook', 'sb-mcp.ts'), '--switchboard-mcp', String(port), sessionId], {
+    const child = spawn(process.execPath, [script, '--switchboard-mcp', String(port), sessionId], {
       env: { PATH: process.env['PATH'] ?? '', [AGENT_TOKEN_ENV]: token },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
