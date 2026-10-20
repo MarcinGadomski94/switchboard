@@ -26,10 +26,18 @@ export interface JiraTransitionNames {
   readonly inProgress: string;
   /** When the item's pull request opens. */
   readonly inReview: string;
+  /** D116: when the item's work is merged into the plan's target (only with {@link PlanJiraState.doneOnMerge}). */
+  readonly done: string;
 }
 
-/** The default transition names. Done is never set: the team's own process moves a ticket to Done. */
-export const DEFAULT_JIRA_TRANSITIONS: JiraTransitionNames = { inProgress: 'In Progress', inReview: 'In Review' };
+/** The default transition names. */
+export const DEFAULT_JIRA_TRANSITIONS: JiraTransitionNames = { inProgress: 'In Progress', inReview: 'In Review', done: 'Done' };
+
+/**
+ * D116 · "Move to Done when merged into the feature branch": on for a new plan (the import's
+ * default when the body omits it); a plan imported before D116 has it off.
+ */
+export const DEFAULT_JIRA_DONE_ON_MERGE = true;
 
 /** How often a running plan's tickets are read again (read-only and write). */
 export const JIRA_REFRESH_MS = 30 * 60_000;
@@ -158,6 +166,8 @@ export interface PlanJiraState {
   readonly epicUrl: string;
   readonly sync: JiraSyncMode;
   readonly transitions: JiraTransitionNames;
+  /** D116: the write mode moves a ticket to Done ({@link JiraTransitionNames.done}) once its item is merged into the target. */
+  readonly doneOnMerge: boolean;
   readonly lastRefreshAt: string | null;
   readonly items: readonly PlanJiraItem[];
   /** Newest first. */

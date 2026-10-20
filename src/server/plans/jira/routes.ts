@@ -54,7 +54,7 @@ function agentSession(request: FastifyRequest): string {
  *   refused to phones (D73) and not on the peer allow-list. The token is never answered.
  * - `POST /api/sessions/{id}/plans/jira/preview` `{ epic }` → {@link JiraPreview}; nothing is created.
  * - `POST /api/sessions/{id}/plans/jira/import` `{ epic, targetBranch, title?, baseBranch?, repos?,
- *   maxConcurrency?, sync?, transitions? }` → 201 `{ plan, jira, preview }` (a draft plan).
+ *   maxConcurrency?, sync?, transitions?, doneOnMerge? }` → 201 `{ plan, jira, preview }` (a draft plan).
  * - D112: `POST /api/plans/jira/preview` `{ epic }` (no session: an import from a folder) and
  *   `POST /api/plans/jira/import` (the import's body plus `folder`, `provider?`, `model?`,
  *   `effort?`, `profileId?`, `repos?`) → 201 `{ plan, jira, preview, askedForOrder, askedForRepos, session }`:
@@ -62,7 +62,7 @@ function agentSession(request: FastifyRequest): string {
  *   title is empty) in that folder owns the plan. D115: a workspace's `repos` are optional;
  *   without them the plan's agent is asked to pick each item's repositories (`askedForRepos`). On a paired machine both go
  *   through `/api/machines/{id}/api/plans/jira/…` and run there.
- * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions? }`) → `PlanJiraState`;
+ * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions?, doneOnMerge? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
  *
  * - Proposed order (D99-Jira-q1): `GET /api/plans/{id}/proposals` → `PlanEdgeProposal[]`;

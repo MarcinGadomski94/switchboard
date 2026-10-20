@@ -9,7 +9,8 @@ import { transaction } from '../../db/database.ts';
  * from the core's migration list) and dropped with the file when Plans is removed.
  *
  * - `plan_jira`: one row per imported plan: the epic, the base URL it came from, the sync
- *   mode, the transition names, the last refresh;
+ *   mode, the transition names, the last refresh, (D116) whether a merged item's ticket moves
+ *   to Done (`done_on_merge`, added to an older file by {@link PlanJiraStore}: off there);
  * - `plan_jira_items`: one row per item: its issue key, the status at import and as last read,
  *   the drift and the last soft failure, the question episode the write mode is in;
  * - `plan_jira_writes`: one row per write event (`start:<run>`, `pr-transition:<url>`, …):
@@ -29,7 +30,8 @@ CREATE TABLE IF NOT EXISTS plan_jira (
   sync             TEXT NOT NULL DEFAULT 'off' CHECK (sync IN ('off', 'read-only', 'write')),
   transitions      TEXT NOT NULL CHECK (json_valid(transitions)),
   last_refresh_at  TEXT,
-  created_at       TEXT NOT NULL
+  created_at       TEXT NOT NULL,
+  done_on_merge    INTEGER NOT NULL DEFAULT 0 CHECK (done_on_merge IN (0, 1))
 ) STRICT;
 CREATE TABLE IF NOT EXISTS plan_jira_items (
   item_id           TEXT PRIMARY KEY,
@@ -87,6 +89,8 @@ export interface PlanJiraRecord {
   readonly baseUrl: string;
   readonly sync: JiraSyncMode;
   readonly transitions: JiraTransitionNames;
+  /** D116: a merged item's ticket moves to Done. */
+  readonly doneOnMerge: boolean;
   readonly lastRefreshAt: string | null;
   readonly createdAt: string;
 }
@@ -138,6 +142,8 @@ function readTransitions(value: unknown): JiraTransitionNames {
     return {
       inProgress: typeof parsed['inProgress'] === 'string' ? parsed['inProgress'] : DEFAULT_JIRA_TRANSITIONS.inProgress,
       inReview: typeof parsed['inReview'] === 'string' ? parsed['inReview'] : DEFAULT_JIRA_TRANSITIONS.inReview,
+      // D116: a plan imported before has no Done name (its doneOnMerge is off): the default.
+      done: typeof parsed['done'] === 'string' ? parsed['done'] : DEFAULT_JIRA_TRANSITIONS.done,
     };
   } catch {
     return DEFAULT_JIRA_TRANSITIONS;
@@ -151,6 +157,7 @@ function planRow(row: Row): PlanJiraRecord {
     baseUrl: String(row['base_url']),
     sync: String(row['sync']) as JiraSyncMode,
     transitions: readTransitions(row['transitions']),
+    doneOnMerge: Number(row['done_on_merge'] ?? 0) === 1,
     lastRefreshAt: text(row['last_refresh_at']),
     createdAt: String(row['created_at']),
   };
@@ -182,6 +189,9 @@ export class PlanJiraStore {
     this.#db = db;
     this.#now = now;
     db.exec(PLAN_JIRA_SCHEMA);
+    // D116: a file made before has plan_jira without done_on_merge: added, off for the plans already there.
+    const columns = db.prepare('PRAGMA table_info(plan_jira)').all() as Row[];
+    if (!columns.some((column) => column['name'] === 'done_on_merge')) db.exec('ALTER TABLE plan_jira ADD COLUMN done_on_merge INTEGER NOT NULL DEFAULT 0 CHECK (done_on_merge IN (0, 1))');
   }
 
   #iso(): string {
@@ -189,10 +199,10 @@ export class PlanJiraStore {
   }
 
   /** Records an imported plan and its items (one transaction). */
-  async createPlan(input: { readonly planId: string; readonly epicKey: string; readonly baseUrl: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames; readonly items: ReadonlyArray<{ readonly itemId: string; readonly key: string; readonly status: string | null; readonly statusCategory: string | null; readonly summary: string }> }): Promise<void> {
+  async createPlan(input: { readonly planId: string; readonly epicKey: string; readonly baseUrl: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames; readonly doneOnMerge: boolean; readonly items: ReadonlyArray<{ readonly itemId: string; readonly key: string; readonly status: string | null; readonly statusCategory: string | null; readonly summary: string }> }): Promise<void> {
     const at = this.#iso();
     transaction(this.#db, () => {
-      this.#db.prepare('INSERT INTO plan_jira (plan_id, epic_key, base_url, sync, transitions, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(input.planId, input.epicKey, input.baseUrl, input.sync, JSON.stringify(input.transitions), at);
+      this.#db.prepare('INSERT INTO plan_jira (plan_id, epic_key, base_url, sync, transitions, done_on_merge, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(input.planId, input.epicKey, input.baseUrl, input.sync, JSON.stringify(input.transitions), input.doneOnMerge ? 1 : 0, at);
       const insert = this.#db.prepare('INSERT INTO plan_jira_items (item_id, plan_id, issue_key, status_at_import, status, status_category, summary) VALUES (?, ?, ?, ?, ?, ?, ?)');
       for (const item of input.items) insert.run(item.itemId, input.planId, item.key, item.status, item.status, item.statusCategory, item.summary);
     });
@@ -207,9 +217,10 @@ export class PlanJiraStore {
     return (this.#db.prepare('SELECT * FROM plan_jira ORDER BY created_at').all() as Row[]).map(planRow);
   }
 
-  async updatePlan(planId: string, patch: { readonly sync?: JiraSyncMode; readonly transitions?: JiraTransitionNames; readonly lastRefreshAt?: string }): Promise<void> {
+  async updatePlan(planId: string, patch: { readonly sync?: JiraSyncMode; readonly transitions?: JiraTransitionNames; readonly doneOnMerge?: boolean; readonly lastRefreshAt?: string }): Promise<void> {
     if (patch.sync !== undefined) this.#db.prepare('UPDATE plan_jira SET sync = ? WHERE plan_id = ?').run(patch.sync, planId);
     if (patch.transitions !== undefined) this.#db.prepare('UPDATE plan_jira SET transitions = ? WHERE plan_id = ?').run(JSON.stringify(patch.transitions), planId);
+    if (patch.doneOnMerge !== undefined) this.#db.prepare('UPDATE plan_jira SET done_on_merge = ? WHERE plan_id = ?').run(patch.doneOnMerge ? 1 : 0, planId);
     if (patch.lastRefreshAt !== undefined) this.#db.prepare('UPDATE plan_jira SET last_refresh_at = ? WHERE plan_id = ?').run(patch.lastRefreshAt, planId);
   }
 

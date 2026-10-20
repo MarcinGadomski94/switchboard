@@ -13,13 +13,16 @@ import { PLANS_SETTING, type PlanChecks } from '../../../src/core/plans.ts';
 import type { JiraPreview, PlanJiraState } from '../../../src/core/plans-jira.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
+import { migrate } from '../../../src/server/db/migrate.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import type { PlanGitPort, PlanRepoInput, PlanRepoState } from '../../../src/server/plans/git.ts';
 import { JiraCredentialSource, type JiraSecretStore } from '../../../src/server/plans/jira/credentials.ts';
+import { PLANS_MIGRATIONS } from '../../../src/server/plans/db.ts';
 import { registerPlanJiraRoutes } from '../../../src/server/plans/jira/routes.ts';
 import { PlanJiraService } from '../../../src/server/plans/jira/service.ts';
 import { PlanJiraStore } from '../../../src/server/plans/jira/store.ts';
-import { type PlanEnvironment, PlanError, PlanService } from '../../../src/server/plans/service.ts';
+import type { BranchMergeInput, BranchMergePlan } from '../../../src/server/worktrees/branch-merge.ts';
+import { type PlanEnvironment, PlanError, type PlanMergePort, PlanService } from '../../../src/server/plans/service.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { FakeClock } from '../../helpers/clock.ts';
 import { type FakeJira, commentText, startFakeJira } from '../../helpers/fake-jira.ts';
@@ -50,6 +53,26 @@ class FakeGit implements PlanGitPort {
   }
 }
 
+/** D102's Merge step as the tests say: a merge marks the branch merged (the developer's Merge). */
+class FakeMerger implements PlanMergePort {
+  readonly merged: string[] = [];
+  readonly git: FakeGit;
+  constructor(git: FakeGit) {
+    this.git = git;
+  }
+  async check(input: BranchMergeInput): Promise<BranchMergePlan> {
+    return { input, head: 'beef', targetTip: 'cafe', targetLocal: true, checkedOutAt: null, kind: 'fast-forward', tree: null };
+  }
+  async merge(plan: BranchMergePlan): Promise<string> {
+    this.merged.push(`${plan.input.branch} → ${plan.input.target}`);
+    this.git.branches.set(plan.input.branch, { ...(this.git.branches.get(plan.input.branch) ?? {}), hasWork: true, merged: true });
+    return `${plan.input.repo}: merged`;
+  }
+  async openPullRequest(input: BranchMergeInput): Promise<string> {
+    return `https://git.acme.example/acme/acme-front/pull/${input.branch.length}`;
+  }
+}
+
 /** An in-memory keychain (the Team access lane's `MemorySecretStore` shape). */
 class MemoryKeychain implements JiraSecretStore {
   readonly name = 'memory';
@@ -75,6 +98,7 @@ interface Rig {
   clock: FakeClock;
   git: FakeGit;
   plans: PlanService;
+  todos: TodoService;
   jira: PlanJiraService;
   app: FastifyInstance;
   fake: FakeJira;
@@ -123,7 +147,7 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
   };
   const errors: unknown[] = [];
   await store.settings.set(PLANS_SETTING, true);
-  const plans = new PlanService({ dataDir: dir, store, bus, todos, git, env, clock, onError: (error) => errors.push(error) });
+  const plans = new PlanService({ dataDir: dir, store, bus, todos, git, merger: new FakeMerger(git), env, clock, onError: (error) => errors.push(error) });
   await plans.start();
   const fake = await startFakeJira();
   const keychain = new MemoryKeychain();
@@ -145,6 +169,7 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
     clock,
     git,
     plans,
+    todos,
     jira,
     app,
     fake,
@@ -184,8 +209,8 @@ async function call(r: Rig, method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: stri
   return { status: answer.statusCode, body: answer.body ? JSON.parse(answer.body) : null, text: answer.body };
 }
 
-async function importEpic(r: Rig, sync: 'off' | 'read-only' | 'write' = 'write'): Promise<{ planId: string; ids: Record<string, string> }> {
-  const answer = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'https://acme.atlassian.net/browse/PROJ-10', targetBranch: 'feature/PROJ-10-acme-checkout', sync });
+async function importEpic(r: Rig, sync: 'off' | 'read-only' | 'write' = 'write', extra: Record<string, unknown> = {}): Promise<{ planId: string; ids: Record<string, string> }> {
+  const answer = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'https://acme.atlassian.net/browse/PROJ-10', targetBranch: 'feature/PROJ-10-acme-checkout', sync, ...extra });
   expect(answer.status, answer.text).toBe(201);
   const ids: Record<string, string> = {};
   for (const item of answer.body.plan.items) ids[item.key] = item.id;
@@ -354,15 +379,15 @@ describe('D99-Jira · read-only refresh', () => {
     expect((await call(r, 'POST', `/api/plans/${planId}/jira/refresh`)).body.error).toBe('sync-off');
     const changed = await call(r, 'PUT', `/api/plans/${planId}/jira`, { sync: 'read-only', transitions: { inReview: 'Code Review' } });
     expect(changed.body).toMatchObject({ sync: 'read-only', transitions: { inProgress: 'In Progress', inReview: 'Code Review' } });
-    expect(changed.body.activity[0].text).toBe('Jira sync off → read-only, transitions "In Progress" / "Code Review"');
+    expect(changed.body.activity[0].text).toBe('Jira sync off → read-only, transitions "In Progress" / "Code Review" / "Done"');
     expect((await call(r, 'PUT', `/api/plans/${planId}/jira`, { sync: 'sometimes' })).body.errors[0].field).toBe('sync');
   });
 });
 
 describe('D99-Jira · write mode', () => {
-  it('transitions and comments on run start, PR, question and merge; never Done; no duplicates on retry', async () => {
+  it('transitions and comments on run start, PR, question and merge; no Done with "Move to Done" off (D116); no duplicates on retry', async () => {
     const r = await setup();
-    const { planId } = await importEpic(r, 'write');
+    const { planId } = await importEpic(r, 'write', { doneOnMerge: false });
     await r.plans.startPlan(planId, { mergeMode: 'agents' });
     await settle(r);
     // Run start: PROJ-11, PROJ-14 and PROJ-15 are ready → "In Progress" (through "Start progress", resolved by its target).
@@ -397,7 +422,7 @@ describe('D99-Jira · write mode', () => {
     await status(r, p15.runSessionId as string, 'need');
     expect(commentsOf(r, 'PROJ-15').filter((text) => text.startsWith('The agent working on this ticket is waiting'))).toHaveLength(2);
 
-    // PROJ-11 merges: a comment "Merged into <target>", the ticket stays In Review (Done is the team's).
+    // PROJ-11 merges: a comment "Merged into <target>", the ticket stays In Review (D116's setting is off).
     r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'green', summary: null, sha: 'abc' } } });
     await status(r, p11.runSessionId as string, 'run');
     await status(r, p11.runSessionId as string, 'idle');
@@ -453,6 +478,228 @@ describe('D99-Jira · write mode', () => {
     await r.jira.tick();
     await settle(r);
     expect(r.fake.requests.slice(before)).toEqual([]);
+  });
+});
+
+/** D116: the transition POSTs that moved an issue to Done (transition id 41 in the fake). */
+function donePosts(r: Rig, key: string) {
+  return r.fake.calls(new RegExp(`^POST /rest/api/3/issue/${key}/transitions$`)).filter((request) => (request.body as { transition: { id: string } }).transition.id === '41');
+}
+
+/** PROJ-11's agent opens its PR (In Review), then it is merged (agents mode): the item is done. `before` runs just before the merge is seen. */
+async function agentMerges11(r: Rig, planId: string, before: () => void = () => {}): Promise<void> {
+  const p11 = await item(r, planId, 'PROJ-11');
+  const pr = { url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'pending' as const, summary: 'running: build', sha: 'abc' } };
+  r.git.branches.set(p11.branch as string, { hasWork: true, pr: { state: 'OPEN', ...pr } });
+  await status(r, p11.runSessionId as string, 'idle');
+  expect(r.fake.issues.get('PROJ-11')?.status).not.toBe('In Progress');
+  before();
+  r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: pr.url, checks: { state: 'green', summary: null, sha: 'abc' } } });
+  await status(r, p11.runSessionId as string, 'run');
+  await status(r, p11.runSessionId as string, 'idle');
+  expect((await item(r, planId, 'PROJ-11')).state).toBe('done');
+}
+
+async function jiraState(r: Rig, planId: string): Promise<PlanJiraState> {
+  return (await call(r, 'GET', `/api/plans/${planId}/jira`)).body as PlanJiraState;
+}
+
+describe('D116 · Move to Done when merged into the feature branch', () => {
+  it('is on for a new plan with the "Done" default; an agent merge → the comment, then Done ("Moved PROJ-11 to Done"), no false drift', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    expect(await jiraState(r, planId)).toMatchObject({ doneOnMerge: true, transitions: { inProgress: 'In Progress', inReview: 'In Review', done: 'Done' } });
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges11(r, planId);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    expect(commentsOf(r, 'PROJ-11').filter((text) => text.startsWith('Merged into feature/PROJ-10-acme-checkout.'))).toHaveLength(1);
+    // The comment comes first, then the transition.
+    const order = r.fake.requests.filter((request) => request.method === 'POST' && request.path.startsWith('/rest/api/3/issue/PROJ-11/')).map((request) => request.path.split('/').at(-1));
+    expect(order.slice(-2)).toEqual(['comment', 'transitions']);
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(1);
+    let jira = await jiraState(r, planId);
+    expect(jira.activity.map((entry) => entry.text)).toContain('Moved PROJ-11 to Done (merged into feature/PROJ-10-acme-checkout)');
+    expect(jira.items.find((entry) => entry.key === 'PROJ-11')).toMatchObject({ status: 'Done', statusCategory: 'done' });
+    // A refresh reads Done back: no "Jira says Done; the plan item is …" note on the merged item.
+    await call(r, 'POST', `/api/plans/${planId}/jira/refresh`);
+    jira = await jiraState(r, planId);
+    expect(jira.items.find((entry) => entry.key === 'PROJ-11')?.drift ?? '').not.toMatch(/^Jira says/);
+    // Later passes write nothing more.
+    r.bus.publish('planChanged', { planId, state: 'running' });
+    await settle(r);
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(1);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("the developer's Merge → Done; Mark done → no Done", async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write', { doneOnMerge: true, transitions: { done: 'done' } });
+    await r.plans.startPlan(planId, { mergeMode: 'developer' });
+    await settle(r);
+    // PROJ-11's run finishes: ready for the developer's Merge.
+    const p11 = await item(r, planId, 'PROJ-11');
+    r.git.branches.set(p11.branch as string, { hasWork: true });
+    await r.todos.update(r.sourceId, p11.todoId, { state: 'done' }, 'agent');
+    await status(r, p11.runSessionId as string, 'idle');
+    expect((await item(r, planId, 'PROJ-11')).state).toBe('ready-to-merge');
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('In Progress');
+    await r.plans.mergeItem(planId, p11.id);
+    await settle(r);
+    // The name is matched case-insensitively.
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    expect(commentsOf(r, 'PROJ-11').some((text) => text.startsWith('Merged into feature/PROJ-10-acme-checkout.'))).toBe(true);
+
+    // PROJ-15 is counted done by the developer (no merge happened): no comment, no Done.
+    const p15 = await item(r, planId, 'PROJ-15');
+    await r.plans.markItemDone(planId, p15.id);
+    await settle(r);
+    expect((await item(r, planId, 'PROJ-15')).state).toBe('done');
+    expect(r.fake.issues.get('PROJ-15')?.status).toBe('In Progress');
+    expect(donePosts(r, 'PROJ-15')).toHaveLength(0);
+    expect(commentsOf(r, 'PROJ-15').some((text) => text.startsWith('Merged into'))).toBe(false);
+  });
+
+  it('a plan without a merge step (mergeMode none) never moves a ticket to Done', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'none' });
+    await settle(r);
+    const p11 = await item(r, planId, 'PROJ-11');
+    await r.todos.update(r.sourceId, p11.todoId, { state: 'done' }, 'agent');
+    await status(r, p11.runSessionId as string, 'idle');
+    expect((await item(r, planId, 'PROJ-11')).state).toBe('done');
+    r.bus.publish('planChanged', { planId, state: 'running' });
+    await settle(r);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('In Progress');
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(0);
+  });
+
+  it('the setting off → no Done; switching it on the plan (PUT) is saved and logged', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write', { doneOnMerge: false });
+    expect((await jiraState(r, planId)).doneOnMerge).toBe(false);
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges11(r, planId);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('In Review');
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(0);
+    // Turned on later: the merged item is moved on the next pass.
+    const changed = await call(r, 'PUT', `/api/plans/${planId}/jira`, { doneOnMerge: true, transitions: { done: 'Done' } });
+    expect(changed.status, changed.text).toBe(200);
+    expect(changed.body).toMatchObject({ doneOnMerge: true, transitions: { done: 'Done' } });
+    await settle(r);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    expect((await jiraState(r, planId)).activity.map((entry) => entry.text)).toContain('Jira move to Done when merged on');
+    // Refused: a non-boolean, an empty name.
+    expect((await call(r, 'PUT', `/api/plans/${planId}/jira`, { doneOnMerge: 'yes' })).body).toMatchObject({ error: 'invalid', errors: [{ field: 'doneOnMerge' }] });
+    expect((await call(r, 'PUT', `/api/plans/${planId}/jira`, { transitions: { done: '  ' } })).body).toMatchObject({ error: 'invalid', errors: [{ field: 'transitions.done' }] });
+  });
+
+  it('an issue already Done is left alone; a missing Done transition is a soft note, never retried', async () => {
+    const r = await setup();
+    // PROJ-11 has no Done transition in its workflow.
+    r.fake.issues.get('PROJ-11')!.without = ['41'];
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges11(r, planId);
+    let jira = await jiraState(r, planId);
+    expect(jira.items.find((entry) => entry.key === 'PROJ-11')?.syncNote).toBe('no "Done" transition for PROJ-11 (available: To Do, Start progress)');
+    expect(jira.activity.some((entry) => entry.kind === 'soft-failure' && entry.key === 'PROJ-11')).toBe(true);
+    const asked = r.fake.calls(/^GET \/rest\/api\/3\/issue\/PROJ-11\/transitions$/).length;
+    r.bus.publish('planChanged', { planId, state: 'running' });
+    await settle(r);
+    expect(r.fake.calls(/^GET \/rest\/api\/3\/issue\/PROJ-11\/transitions$/).length).toBe(asked);
+    // The plan went on: PROJ-12 (after PROJ-11) runs.
+    expect((await item(r, planId, 'PROJ-12')).state).toBe('running');
+
+    // PROJ-12 is moved to Done by the team before its merge: left alone.
+    r.fake.issues.get('PROJ-12')!.status = 'Done';
+    const p12 = await item(r, planId, 'PROJ-12');
+    r.git.branches.set(p12.branch as string, { hasWork: true, merged: true });
+    await status(r, p12.runSessionId as string, 'idle');
+    expect((await item(r, planId, 'PROJ-12')).state).toBe('done');
+    expect(donePosts(r, 'PROJ-12')).toHaveLength(0);
+    jira = await jiraState(r, planId);
+    expect(jira.items.find((entry) => entry.key === 'PROJ-12')?.syncNote ?? null).toBeNull();
+  });
+
+  it('a 5xx is retried and then succeeds; a lost answer is not moved twice', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    // The Done POST fails once with 503: pending, retried at the next pass (the pass's own planChanged), then Done.
+    await agentMerges11(r, planId, () => r.fake.failNext(/^POST \/rest\/api\/3\/issue\/PROJ-11\/transitions$/, 503));
+    let jira = await jiraState(r, planId);
+    expect(jira.activity.map((entry) => entry.text)).toContain('PROJ-11: done failed (will retry): Jira answered 503: Fake Jira failure.');
+    r.bus.publish('planChanged', { planId, state: 'running' });
+    await settle(r);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(2);
+    expect(jira.items.find((entry) => entry.key === 'PROJ-11')?.drift ?? '').not.toMatch(/^Jira says/);
+
+    // PROJ-15: the Done POST is made, but its answer is lost (500 after moving). The retry finds it Done: no second POST.
+    const p15 = await item(r, planId, 'PROJ-15');
+    r.fake.failNext(/^POST \/rest\/api\/3\/issue\/PROJ-15\/transitions$/, 500, { commit: true });
+    r.git.branches.set(p15.branch as string, { hasWork: true, merged: true });
+    await status(r, p15.runSessionId as string, 'idle');
+    expect((await item(r, planId, 'PROJ-15')).state).toBe('done');
+    expect(r.fake.issues.get('PROJ-15')?.status).toBe('Done');
+    for (let round = 0; round < 3; round += 1) {
+      r.bus.publish('planChanged', { planId, state: 'running' });
+      await settle(r);
+    }
+    expect(donePosts(r, 'PROJ-15')).toHaveLength(1);
+    jira = await jiraState(r, planId);
+    expect(jira.activity.filter((entry) => entry.key === 'PROJ-15' && entry.text.includes('gave up'))).toEqual([]);
+  });
+
+  it('a pending In Review retry is dropped once the ticket is Done (never moved back)', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    // PROJ-11 is seen with its PR already merged; the In Review POST fails (5xx), the Done one works.
+    r.fake.failNext(/^POST \/rest\/api\/3\/issue\/PROJ-11\/transitions$/, 503);
+    const p11 = await item(r, planId, 'PROJ-11');
+    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'green', summary: null, sha: 'abc' } } });
+    await status(r, p11.runSessionId as string, 'idle');
+    for (let round = 0; round < 3; round += 1) {
+      r.bus.publish('planChanged', { planId, state: 'running' });
+      await settle(r);
+    }
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    const ids = r.fake.calls(/^POST \/rest\/api\/3\/issue\/PROJ-11\/transitions$/).map((request) => (request.body as { transition: { id: string } }).transition.id);
+    expect(ids.filter((id) => id === '31')).toHaveLength(1);
+  });
+
+  it('migration: a plans.db from before D116 gets done_on_merge, off for its plans; a new plan stores it on', async () => {
+    const dir = await makeTempDir('plans-jira-d116');
+    try {
+      const db = await openDatabase(`${dir}/plans.db`);
+      migrate(db, PLANS_MIGRATIONS);
+      const version = Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
+      // plan_jira as v1.27.0 made it (no done_on_merge), with a plan in it.
+      db.exec(`CREATE TABLE plan_jira (
+  plan_id TEXT PRIMARY KEY, epic_key TEXT NOT NULL, base_url TEXT NOT NULL,
+  sync TEXT NOT NULL DEFAULT 'off' CHECK (sync IN ('off', 'read-only', 'write')),
+  transitions TEXT NOT NULL CHECK (json_valid(transitions)), last_refresh_at TEXT, created_at TEXT NOT NULL
+) STRICT;`);
+      db.prepare('INSERT INTO plan_jira (plan_id, epic_key, base_url, sync, transitions, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('a1b2c3d4e5', 'PROJ-10', 'https://acme.atlassian.net', 'write', JSON.stringify({ inProgress: 'In Progress', inReview: 'In Review' }), '2026-10-01T10:00:00Z');
+      const store = new PlanJiraStore(db);
+      expect(await store.plan('a1b2c3d4e5')).toMatchObject({ doneOnMerge: false, transitions: { inProgress: 'In Progress', inReview: 'In Review', done: 'Done' } });
+      await store.createPlan({ planId: 'f6e5d4c3b2', epicKey: 'PROJ-20', baseUrl: 'https://acme.atlassian.net', sync: 'write', transitions: { inProgress: 'In Progress', inReview: 'In Review', done: 'Closed' }, doneOnMerge: true, items: [] });
+      expect(await store.plan('f6e5d4c3b2')).toMatchObject({ doneOnMerge: true, transitions: { done: 'Closed' } });
+      // Opening it again changes nothing; the core's migration list is untouched.
+      new PlanJiraStore(db);
+      expect(await store.plan('a1b2c3d4e5')).toMatchObject({ doneOnMerge: false });
+      expect(Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)).toBe(version);
+      db.close();
+    } finally {
+      await removeTempDir(dir);
+    }
   });
 });
 

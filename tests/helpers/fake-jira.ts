@@ -53,7 +53,7 @@ export interface FakeJira {
   readonly token: string;
   readonly issues: Map<string, FakeIssue>;
   readonly requests: FakeJiraRequest[];
-  /** The next `count` requests whose `METHOD path` matches answer `status` (`commit`: a comment POST is stored first, then fails: a lost answer). */
+  /** The next `count` requests whose `METHOD path` matches answer `status` (`commit`: a comment POST is stored / a transition POST is made first, then fails: a lost answer). */
   failNext(match: RegExp, status: number, options?: { count?: number; commit?: boolean }): void;
   /** Requests whose `METHOD path` matches. */
   calls(match: RegExp): FakeJiraRequest[];
@@ -174,6 +174,7 @@ export async function startFakeJira(issues: FakeIssue[] = acmeEpic()): Promise<F
       const chosen = available.find((entry) => entry.id === id);
       if (!chosen) return reply(400, { errorMessages: ['Transition is not valid.'] });
       issue.status = chosen.to;
+      if (failure?.commit) return reply(failure.status, { errorMessages: ['Fake Jira failure after moving.'] });
       return reply(204, undefined);
     }
     if ((match = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/comment$/.exec(url.pathname))) {

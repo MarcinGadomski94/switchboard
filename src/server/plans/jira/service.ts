@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
 import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
 import {
+  DEFAULT_JIRA_DONE_ON_MERGE,
   DEFAULT_JIRA_TRANSITIONS,
   JIRA_COMMENTS,
   JIRA_IMPORT_MAX,
@@ -188,6 +189,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** What an import body asks for besides its place (checked before anything is read or created). */
+interface ImportChecked {
+  readonly input: Record<string, unknown>;
+  readonly epicKey: string;
+  readonly sync: JiraSyncMode;
+  readonly transitions: JiraTransitionNames;
+  /** D116. */
+  readonly doneOnMerge: boolean;
+}
+
 /** The core's note of an item the developer counted as done (no merge happened: no "merged" comment). */
 const MARKED_DONE = 'marked done by the developer';
 
@@ -197,7 +208,8 @@ const MARKED_DONE = 'marked done by the developer';
  * the per-plan status sync (`off` / `read-only` / `write`). The write mode follows
  * `planChanged`: an item's run starts → "In Progress"; its PR opens → "In Review" and a comment
  * with the link; it waits on a developer question → a comment; it is merged → a comment
- * "Merged into <target>" (never Done). Every write is recorded (idempotent: a write event is
+ * "Merged into <target>" and (D116, when the plan's `doneOnMerge` is on) the Done transition.
+ * Every write is recorded (idempotent: a write event is
  * done once, a comment carries a marker a retry finds) and shown in the plan's Jira activity.
  * Runs on the machine that owns the plan; nothing runs while Plans is off.
  */
@@ -386,12 +398,18 @@ export class PlanJiraService {
   }
 
   /** What an import body asks for besides its place, checked before anything is read or created. */
-  #importInput(body: unknown): { readonly input: Record<string, unknown>; readonly epicKey: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames } {
+  #importInput(body: unknown): ImportChecked {
     const input = isRecord(body) ? body : {};
     const epicKey = this.#epicOf(input);
     // An epic's plan merges into a target branch: the import keeps requiring one (D99 follow-up 2026-10-15: a plan without a target is made by hand or by an agent).
     if (typeof input['targetBranch'] !== 'string' || input['targetBranch'].trim() === '') throw new PlanJiraError(422, 'invalid', "give the target branch (the epic's feature branch, e.g. feature/PROJ-100-acme-epic)", 'targetBranch');
-    return { input, epicKey, sync: checkSync(input['sync'], 'off'), transitions: checkTransitions(input['transitions'], DEFAULT_JIRA_TRANSITIONS) };
+    return {
+      input,
+      epicKey,
+      sync: checkSync(input['sync'], 'off'),
+      transitions: checkTransitions(input['transitions'], DEFAULT_JIRA_TRANSITIONS),
+      doneOnMerge: checkDoneOnMerge(input['doneOnMerge'], DEFAULT_JIRA_DONE_ON_MERGE),
+    };
   }
 
   /**
@@ -400,7 +418,7 @@ export class PlanJiraService {
    * acceptance criteria, the key, no solutions: the developer picks them), the dependencies of
    * the preview (cycles and outside links left out), `external { jira, epicKey }`. Body: `epic`,
    * `targetBranch` (required), optional `title`, `baseBranch`, `repos`, `maxConcurrency`,
-   * `sync` (default `off`), `transitions`. The merge mode is chosen at Start (the core requires it).
+   * `sync` (default `off`), `transitions`, `doneOnMerge` (D116, default on). The merge mode is chosen at Start (the core requires it).
    */
   async importPlan(sessionId: string, body: unknown): Promise<JiraImportResult> {
     await this.#gate();
@@ -468,12 +486,12 @@ export class PlanJiraService {
   /** The import's writes: the draft plan through the core's seam, its Jira rows, the activity line and the ask for the order. */
   async #createPlan(
     sessionId: string,
-    checked: { readonly input: Record<string, unknown>; readonly epicKey: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames },
+    checked: ImportChecked,
     client: JiraClient,
     preview: JiraPreview,
     made?: (planId: string) => void,
   ): Promise<JiraImportResult> {
-    const { input, epicKey, sync, transitions } = checked;
+    const { input, epicKey, sync, transitions, doneOnMerge } = checked;
     const title = typeof input['title'] === 'string' && input['title'].trim() !== '' ? input['title'] : preview.suggestedTitle;
     const created = await this.#options.plans.createFromExternal({
       sourceSessionId: sessionId,
@@ -496,9 +514,10 @@ export class PlanJiraService {
       baseUrl: client.baseUrl,
       sync,
       transitions,
+      doneOnMerge,
       items: preview.items.map((item) => ({ itemId: created.itemIds[item.key] as string, key: item.key, status: item.status, statusCategory: null, summary: item.summary })),
     });
-    const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}`].filter(Boolean);
+    const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}${sync === 'write' && doneOnMerge ? ` (Done on merge: "${transitions.done}")` : ''}`].filter(Boolean);
     await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
     // D99-Jira-q1 (b): items without links → the source session's agent is asked to propose the missing order.
     // D115: a workspace plan without repos → the same message (or its own) asks it to pick each item's repositories.
@@ -547,6 +566,7 @@ export class PlanJiraService {
       epicUrl: `${record.baseUrl}/browse/${record.epicKey}`,
       sync: record.sync,
       transitions: record.transitions,
+      doneOnMerge: record.doneOnMerge,
       lastRefreshAt: record.lastRefreshAt,
       items: rows
         .filter((row) => plan.items.some((item) => item.id === row.itemId))
@@ -575,7 +595,7 @@ export class PlanJiraService {
     return this.#state(await this.#plan(planId));
   }
 
-  /** `PUT /api/plans/{id}/jira` `{ sync?, transitions? }` (any time before the plan is done or cancelled). */
+  /** `PUT /api/plans/{id}/jira` `{ sync?, transitions?, doneOnMerge? }` (any time before the plan is done or cancelled). */
   async update(planId: string, body: unknown): Promise<PlanJiraState> {
     await this.#gate();
     const plan = await this.#plan(planId);
@@ -584,11 +604,13 @@ export class PlanJiraService {
     const input = isRecord(body) ? body : {};
     const sync = input['sync'] === undefined ? record.sync : checkSync(input['sync'], record.sync);
     const transitions = input['transitions'] === undefined ? record.transitions : checkTransitions(input['transitions'], record.transitions);
+    const doneOnMerge = checkDoneOnMerge(input['doneOnMerge'], record.doneOnMerge);
     const changes: string[] = [];
     if (sync !== record.sync) changes.push(`sync ${record.sync} → ${sync}`);
-    if (JSON.stringify(transitions) !== JSON.stringify(record.transitions)) changes.push(`transitions "${transitions.inProgress}" / "${transitions.inReview}"`);
+    if (JSON.stringify(transitions) !== JSON.stringify(record.transitions)) changes.push(`transitions "${transitions.inProgress}" / "${transitions.inReview}" / "${transitions.done}"`);
+    if (doneOnMerge !== record.doneOnMerge) changes.push(`move to Done when merged ${doneOnMerge ? 'on' : 'off'}`);
     if (changes.length > 0) {
-      await (await this.#jdb()).updatePlan(planId, { sync, transitions });
+      await (await this.#jdb()).updatePlan(planId, { sync, transitions, doneOnMerge });
       await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'settings', text: `Jira ${changes.join(', ')}` });
       this.#options.bus.publish('planChanged', { planId, state: plan.state });
     }
@@ -858,11 +880,13 @@ export class PlanJiraService {
 
   async #followItem(pass: WritePass, item: PlanItem, row: PlanJiraItemRecord): Promise<void> {
     const { transitions } = pass.record;
+    // D116: once the ticket was moved to Done, a still-pending In Progress / In Review retry is dropped (it would move it back).
+    const movedToDone = (await (await this.#jdb()).write(row.itemId, `done:${item.id}`))?.state === 'done';
     // 1. The run started.
-    if (item.runSessionId !== null && item.storedState !== 'pending') await pass.transition(row, `start:${item.runSessionId}`, transitions.inProgress, 'its run started');
+    if (item.runSessionId !== null && item.storedState !== 'pending' && !movedToDone) await pass.transition(row, `start:${item.runSessionId}`, transitions.inProgress, 'its run started');
     // 2. Its pull request opened.
     if (item.prUrl) {
-      await pass.transition(row, `pr-transition:${item.prUrl}`, transitions.inReview, 'its pull request opened');
+      if (!movedToDone) await pass.transition(row, `pr-transition:${item.prUrl}`, transitions.inReview, 'its pull request opened');
       await pass.comment(row, `pr-comment:${item.prUrl}`, JIRA_COMMENTS.pr(item.prUrl));
     }
     // 3. A developer question: one comment per episode (the item enters `question` again → a new one).
@@ -879,8 +903,14 @@ export class PlanJiraService {
       const done = await (await this.#jdb()).write(row.itemId, event);
       if (current.questionOpen || done?.state === 'pending') await pass.comment(current, event, JIRA_COMMENTS.question());
     }
-    // 4. Merged into the target (never Done: the team's process moves the ticket there).
+    // 4. Merged into the target: a comment.
     if (item.storedState === 'done' && item.note !== MARKED_DONE && pass.plan.targetBranch !== null) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(pass.plan.targetBranch));
+    // 5. D116: then Done, when the plan asks for it, after a real merge (an agent's or the developer's Merge;
+    // never Mark done, never a plan without a merge step), once the comment is no longer pending (it comes first).
+    if (pass.record.doneOnMerge && item.storedState === 'done' && item.note !== MARKED_DONE && pass.plan.targetBranch !== null && pass.plan.mergeMode !== null && pass.plan.mergeMode !== 'none') {
+      const comment = await (await this.#jdb()).write(row.itemId, 'merged');
+      if (comment && comment.state !== 'pending') await pass.transition(current, `done:${item.id}`, transitions.done, `merged into ${pass.plan.targetBranch}`, true);
+    }
   }
 
   /** @internal the pass's access to the client. */
@@ -936,12 +966,16 @@ class WritePass {
     }
   }
 
-  /** Moves the issue through the transition named `name` (resolved through its available transitions). A missing one is a soft failure. */
-  async transition(row: PlanJiraItemRecord, event: string, name: string, why: string): Promise<void> {
+  /**
+   * Moves the issue through the transition named `name` (resolved through its available transitions). A missing one is a soft failure.
+   * `done` (D116): the Done transition: an issue already in a done-category status is left alone too (also after a lost answer
+   * when the transition's name is not its status' name), and a move is shown as "Moved <key> to <status>".
+   */
+  async transition(row: PlanJiraItemRecord, event: string, name: string, why: string, done = false): Promise<void> {
     await this.#once(row, event, async (client) => {
       const issue = await client.issue(row.key, ['status']);
       const status = typeof (issue.fields['status'] as Record<string, unknown> | undefined)?.['name'] === 'string' ? ((issue.fields['status'] as Record<string, unknown>)['name'] as string) : null;
-      if (status !== null && status.toLowerCase() === name.toLowerCase()) {
+      if ((status !== null && status.toLowerCase() === name.toLowerCase()) || (done && statusCategoryOf(issue) === 'done')) {
         await this.#db.setWrite(this.plan.id, row.itemId, event, 'done', 1);
         return;
       }
@@ -956,8 +990,8 @@ class WritePass {
       }
       await client.transition(row.key, found.id);
       await this.#db.setWrite(this.plan.id, row.itemId, event, 'done', 1);
-      await this.#db.updateItem(row.itemId, { status: found.to ?? name });
-      await this.#log(row, 'transition', `${row.key} → ${found.to ?? found.name} (${why})`);
+      await this.#db.updateItem(row.itemId, done ? { status: found.to ?? name, statusCategory: 'done' } : { status: found.to ?? name });
+      await this.#log(row, 'transition', done ? `Moved ${row.key} to ${found.to ?? found.name} (${why})` : `${row.key} → ${found.to ?? found.name} (${why})`);
     });
   }
 
@@ -985,12 +1019,19 @@ function checkSync(value: unknown, fallback: JiraSyncMode): JiraSyncMode {
 
 function checkTransitions(value: unknown, fallback: JiraTransitionNames): JiraTransitionNames {
   if (value === undefined || value === null) return fallback;
-  if (!isRecord(value)) throw new PlanJiraError(422, 'invalid', 'transitions is { inProgress, inReview }', 'transitions');
-  const pick = (field: 'inProgress' | 'inReview'): string => {
+  if (!isRecord(value)) throw new PlanJiraError(422, 'invalid', 'transitions is { inProgress, inReview, done }', 'transitions');
+  const pick = (field: keyof JiraTransitionNames): string => {
     if (value[field] === undefined) return fallback[field];
     const name = checkTransitionName(value[field]);
     if (name === null) throw new PlanJiraError(422, 'invalid', `transitions.${field} is a transition name (1–60 characters)`, `transitions.${field}`);
     return name;
   };
-  return { inProgress: pick('inProgress'), inReview: pick('inReview') };
+  return { inProgress: pick('inProgress'), inReview: pick('inReview'), done: pick('done') };
+}
+
+/** D116: `doneOnMerge` is a boolean (omitted / null = `fallback`). */
+function checkDoneOnMerge(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== 'boolean') throw new PlanJiraError(422, 'invalid', 'doneOnMerge is true or false', 'doneOnMerge');
+  return value;
 }
