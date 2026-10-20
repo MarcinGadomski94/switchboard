@@ -3,6 +3,8 @@ import { repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
 import type { SystemItemService } from '../inbox/system-items.ts';
 import { modelRulesOf } from '../settings/settings.ts';
+import { isReadOnlyByLayout } from '../sessions/validate.ts';
+import { ScanError, WorkspaceScanner } from '../solutions/scanner.ts';
 import { runTodo, type TodoRunContext } from '../todos/run.ts';
 import { todoRunOptions } from '../todos/run-options.ts';
 import { TodoError } from '../todos/service.ts';
@@ -67,6 +69,37 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
         }
       }
       return { kind: 'workspace' as const, repos: out };
+    },
+
+    // D115: the workspace's solutions an item may work in (the import dialog's Repositories picker's list).
+    async workspaceSolutions(sourceSessionId: string) {
+      const source = await store.sessions.get(sourceSessionId);
+      if (!source) throw new PlanError(404, 'not-found', `no session ${sourceSessionId}`);
+      if (!source.folderId) throw new PlanError(409, 'no-folder', "the session's folder is no longer in the saved folders: add it again");
+      let folder;
+      try {
+        folder = await folders.resolveForSession(source.folderId);
+      } catch (error) {
+        if (error instanceof FolderError) throw new PlanError(409, 'no-folder', error.message);
+        throw error;
+      }
+      if (folder.kind !== 'workspace') return null;
+      let groups;
+      try {
+        groups = await new WorkspaceScanner({ root: folder.path }).solutions();
+      } catch (error) {
+        if (error instanceof ScanError) throw new PlanError(409, 'no-folder', error.message);
+        throw error;
+      }
+      const writable: string[] = [];
+      const readOnly: string[] = [];
+      for (const group of groups) {
+        for (const solution of group.solutions) {
+          const list = solution.rule === 'read-only' || isReadOnlyByLayout(solution.name) ? readOnly : writable;
+          if (!writable.includes(solution.name) && !readOnly.includes(solution.name)) list.push(solution.name);
+        }
+      }
+      return { writable, readOnly };
     },
 
     async run(input: PlanRunInput) {

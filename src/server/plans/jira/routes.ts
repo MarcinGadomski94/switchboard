@@ -30,6 +30,7 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
   ['POST', '/api/plans/:id/jira/refresh'],
   ['GET', '/api/plans/:id/proposals'],
   ['POST', '/api/plans/:id/proposals/ask'],
+  ['POST', '/api/plans/:id/solutions/ask'],
   ['POST', '/api/plans/:id/proposals/accept-all'],
   ['POST', '/api/plans/:id/proposals/reject-all'],
   ['POST', '/api/plans/:id/proposals/:proposalId/accept'],
@@ -56,9 +57,10 @@ function agentSession(request: FastifyRequest): string {
  *   maxConcurrency?, sync?, transitions? }` → 201 `{ plan, jira, preview }` (a draft plan).
  * - D112: `POST /api/plans/jira/preview` `{ epic }` (no session: an import from a folder) and
  *   `POST /api/plans/jira/import` (the import's body plus `folder`, `provider?`, `model?`,
- *   `effort?`, `profileId?`, `repos?`) → 201 `{ plan, jira, preview, askedForOrder, session }`:
+ *   `effort?`, `profileId?`, `repos?`) → 201 `{ plan, jira, preview, askedForOrder, askedForRepos, session }`:
  *   a new session "Plan · <plan title>" (the epic summary when the plan
- *   title is empty) in that folder owns the plan. On a paired machine both go
+ *   title is empty) in that folder owns the plan. D115: a workspace's `repos` are optional;
+ *   without them the plan's agent is asked to pick each item's repositories (`askedForRepos`). On a paired machine both go
  *   through `/api/machines/{id}/api/plans/jira/…` and run there.
  * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
@@ -68,6 +70,8 @@ function agentSession(request: FastifyRequest): string {
  *   `POST /api/plans/{id}/proposals/{proposalId}/accept | reject`, `…/proposals/accept-all | reject-all`
  *   → `{ proposals, refused }` (a single refused Accept: 409 `cycle`); the agent's
  *   `POST /agent/v1/plans/{planId}/proposals` `{ proposals: [{ from, to, reason }] }` → 201 `{ added, skipped }`.
+ * - D115: `POST /api/plans/{id}/solutions/ask` (Ask again: the plan's agent picks the repositories
+ *   of the items without any) → `{ asked, sessionId, items }`; 409 `nothing-to-pick` / `not-sent`.
  *
  * A session's or a plan's remote id (`r~<machine>~<id>`) is forwarded to that machine by the
  * peers' proxy like every `:id` route: import and sync run on the machine that owns the plan,
@@ -181,6 +185,15 @@ export async function registerPlanJiraRoutes(
   app.post<{ Params: { id: string } }>('/api/plans/:id/proposals/ask', async (request, reply) => {
     try {
       return await jira.askForOrder(request.params.id);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  // D115: Ask again: the plan's agent picks the repositories of the items that have none.
+  app.post<{ Params: { id: string } }>('/api/plans/:id/solutions/ask', async (request, reply) => {
+    try {
+      return await jira.askForRepos(request.params.id);
     } catch (error) {
       return send(reply, error);
     }

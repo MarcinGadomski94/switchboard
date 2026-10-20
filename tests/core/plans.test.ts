@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PLAN_PICK_REPOS_REASON,
   PLAN_TOOLS,
   type PlanItemFacts,
+  pickReposMessage,
   checksFromRollup,
   findCycle,
   forbiddenTargetReason,
@@ -129,8 +131,41 @@ describe('D99 · plan graph rules', () => {
     expect(planItemBranch(null, 'fix-login')).toBe('todo/fix-login');
   });
 
-  it('the MCP tools: five plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
-    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start']);
+  it('D115: in a plan whose repos are picked per item, a pending item without solutions waits for them (a blocked dependency still wins)', () => {
+    const items = [fact('1', { solutions: ['web-front'] }), fact('2'), fact('3', { state: 'failed', reason: 'was discarded' }), fact('4', { solutions: ['mobile'] })];
+    const edges = [{ from: '3', to: '4' }];
+    const view = planView({ mode: 'developer', targetBranch: 'feature/x', maxConcurrency: 3, edges, now: NOW, items, reposPerItem: true });
+    const byId = new Map(view.items.map((item) => [item.id, item]));
+    expect(byId.get('1')?.state).toBe('ready');
+    expect(byId.get('2')).toMatchObject({ state: 'waiting', reason: PLAN_PICK_REPOS_REASON });
+    expect(byId.get('4')?.state).toBe('blocked');
+    // Without the flag an item without solutions runs in every repo of the plan (as before).
+    expect(planView({ mode: 'developer', targetBranch: 'feature/x', maxConcurrency: 3, edges, now: NOW, items }).items.find((item) => item.id === '2')?.state).toBe('ready');
+  });
+
+  it('D115: the ask names the solutions and every item (key, id, todo, title, a cut description) and the tool', () => {
+    const text = pickReposMessage({
+      planId: 'p1',
+      planTitle: 'PROJ-10 Acme checkout',
+      solutions: ['web-front', 'mobile'],
+      items: [
+        { label: 'PROJ-11', id: 'i1', todoId: 't1', title: 'PROJ-11 Cart API', description: 'Expose the cart.' },
+        { label: 'PROJ-12', id: 'i2', todoId: 't2', title: 'PROJ-12 Cart page', description: 'x'.repeat(2_000) },
+      ],
+    });
+    expect(text).toContain('Please pick the repositories of the plan "PROJ-10 Acme checkout" [p1]');
+    expect(text).toContain("The workspace's solutions you can pick from: web-front, mobile.");
+    expect(text).toContain('- PROJ-11 [i1] (todo [t1]): PROJ-11 Cart API\n  Expose the cart.');
+    expect(text).toContain('(the rest: todo_get)');
+    expect(text).toContain('plan_set_solutions once with plan_id p1');
+    expect(pickReposMessage({ planId: 'p1', planTitle: 'T', solutions: [], items: [], also: true })).toMatch(/^Also pick the repositories/);
+  });
+
+  it('the MCP tools: six plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
+    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start', 'plan_set_solutions']);
+    const setSolutions = PLAN_TOOLS.find((tool) => tool.name === 'plan_set_solutions');
+    expect(setSolutions?.inputSchema['required']).toEqual(['plan_id', 'items']);
+    expect(setSolutions?.description).toContain('applied at once (it is not a proposal)');
     const start = PLAN_TOOLS.find((tool) => tool.name === 'plan_start');
     // D99 follow-up 2026-10-15: merge_mode may be left out for a plan without a target (the server still requires it with one).
     expect(start?.inputSchema['required']).toEqual(['plan_id']);

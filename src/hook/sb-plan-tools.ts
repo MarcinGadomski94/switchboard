@@ -1,7 +1,8 @@
 /**
  * D99 · the plan tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`, D68's
  * helper and agent token): `plan_create`, `plan_add_item`, `plan_add_dependency`,
- * `plan_status`, `plan_start`, and the Jira lane's `plan_propose_dependencies` (proposals the
+ * `plan_status`, `plan_start`, `plan_set_solutions` (D115: the agent picks its items'
+ * repositories, applied at once), and the Jira lane's `plan_propose_dependencies` (proposals the
  * developer accepts on the plan; `src/core/plans-jira.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
  * once at start (`registerPlanToolsIfOn`) and registers them only when it answers 200
  * (Plans on and `plans.db` open); 404 `plans-off`, 503, an older Switchboard or no answer
@@ -11,7 +12,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { PLAN_CONCURRENCY_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planStatusText } from '../core/plans.ts';
+import { PLAN_CONCURRENCY_MAX, PLAN_ITEMS_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planStatusText } from '../core/plans.ts';
 import { EDGE_PROPOSALS_MAX, PLAN_PROPOSE_TOOL } from '../core/plans-jira.ts';
 import { TODO_ESTIMATE_MAX, TODO_PRIORITIES, type TodoToolDefinition } from '../core/todos.ts';
 import type { AgentApi, ApiAnswer, ToolInput } from './sb-mcp.ts';
@@ -148,6 +149,25 @@ export async function planStart(api: AgentApi, input: ToolInput): Promise<CallTo
   return request(api, 'POST', planRoute(id, '/start'), body, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
+/** D115 · `plan_set_solutions`: the agent picks its items' repositories; applied at once. */
+export async function planSetSolutions(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const items = Array.isArray(input['items']) ? input['items'] : [];
+  if (items.length === 0) return textResult('Give items: [{ item, solutions }] (the key or id of each item and the solutions it works in).', true);
+  return request(api, 'POST', planRoute(id, '/solutions'), { items }, (answer) => {
+    const value = record(answer);
+    const plan = value['plan'];
+    const set = Array.isArray(value['set']) ? (value['set'] as Array<Record<string, unknown>>) : [];
+    if (!isPlan(plan)) return textResult('Switchboard did not answer with the plan.', true);
+    const lines = set.map((entry) => `- ${String(entry['label'])}: ${Array.isArray(entry['solutions']) ? (entry['solutions'] as unknown[]).join(', ') : ''}`);
+    const waiting = plan.items.filter((item) => item.storedState === 'pending' && item.solutions.length === 0 && plan.reposPerItem === true).length;
+    return textResult(
+      [`Set the repositories (applied):\n${lines.join('\n')}`, `The plan's repos: ${plan.repos.join(', ') || 'none yet'}.${waiting > 0 ? ` ${waiting} item(s) still have none and wait.` : ''}`, planStatusText(plan)].join('\n\n'),
+    );
+  });
+}
+
 /** D99-Jira-q1 · `plan_propose_dependencies`: proposals for the developer, nothing changes. */
 export async function planProposeDependencies(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   const id = planIdOf(input);
@@ -200,7 +220,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
   };
 }
 
-/** Registers the five plan tools on `server`, calling `api`. */
+/** Registers the plan tools on `server`, calling `api`. */
 export function registerPlanTools(server: McpServer, api: AgentApi): void {
   const serial = inOrder();
   const strings = (name: string, key: string) => z.array(z.string()).describe(about(name, key)).optional();
@@ -280,6 +300,27 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       annotations: { title: planStartTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     (input) => serial(() => planStart(api, input)),
+  );
+  // D115: the agent's pick of its items' repositories (applied at once).
+  const setSolutionsTool = tool('plan_set_solutions');
+  const entryAbout = (key: string): string => String(record(record(record(record(record(setSolutionsTool.inputSchema['properties'])['items'])['items'])['properties'])[key])['description'] ?? '');
+  server.registerTool(
+    'plan_set_solutions',
+    {
+      title: setSolutionsTool.annotations.title,
+      description: setSolutionsTool.description,
+      inputSchema: z.looseObject({
+        plan_id: z.string().describe(about('plan_set_solutions', 'plan_id')).optional(),
+        items: z
+          .array(z.object({ item: z.string().describe(entryAbout('item')), solutions: z.array(z.string()).min(1).describe(entryAbout('solutions')) }))
+          .min(1)
+          .max(PLAN_ITEMS_MAX)
+          .describe(about('plan_set_solutions', 'items'))
+          .optional(),
+      }).meta({ required: ['plan_id', 'items'], additionalProperties: false }),
+      annotations: { title: setSolutionsTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => planSetSolutions(api, input)),
   );
   // D99-Jira-q1: proposals only (src/core/plans-jira.ts).
   const proposeSchema = PLAN_PROPOSE_TOOL.inputSchema;

@@ -358,7 +358,7 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   // D112: an import from a folder answers the plan and the new session that owns it; its preview stays raw.
   if (upper === 'POST' && pathname === '/api/plans/jira/import') return 'plan-import';
   if (pathname === '/api/plans/jira/preview') return 'none';
-  if (/^\/api\/plans\/[^/]+\/(?:jira(?:\/refresh)?|proposals(?:\/.*)?)$/.test(pathname)) return 'none';
+  if (/^\/api\/plans\/[^/]+\/(?:jira(?:\/refresh)?|proposals(?:\/.*)?|solutions\/ask)$/.test(pathname)) return 'none';
   if (/^\/api\/plans\/[^/]+(?:\/.*)?$/.test(pathname)) return upper === 'DELETE' && /^\/api\/plans\/[^/]+$/.test(pathname) ? 'none' : 'plan';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';

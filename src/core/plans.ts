@@ -140,7 +140,10 @@ export interface PlanItem {
   readonly key: string | null;
   readonly title: string;
   readonly hold: boolean;
-  /** The plan repos it works in (empty = all of them). */
+  /**
+   * The plan repos it works in (empty = all of them). D115: in a plan whose repositories are
+   * picked per item ({@link Plan.reposPerItem}), empty = not picked yet (the item waits).
+   */
   readonly solutions: readonly string[];
   readonly state: PlanItemState;
   /** Why it is blocked / waiting, human-readable ("waiting on PROJ-12, which was discarded"); `null` otherwise. */
@@ -234,7 +237,15 @@ export interface Plan {
    * 2026-10-15): a plan without a merge step, whose items are done when their todos are.
    */
   readonly targetBranch: string | null;
+  /** The plan's repos; D115: with {@link reposPerItem}, the union of its items' solutions (empty until the agent picks). */
   readonly repos: readonly string[];
+  /**
+   * D115: the plan's agent picks each item's repositories (`plan_set_solutions`): a workspace plan
+   * with a target branch made without repos (a Jira import into a workspace). An item without
+   * solutions then waits ({@link PLAN_PICK_REPOS_REASON}) instead of running in every repo.
+   * Additive: absent (a paired machine's older Switchboard) = `false`.
+   */
+  readonly reposPerItem?: boolean;
   readonly baseBranch: string;
   /** `null` until started (a draft; a plan without a target starts as `none`). */
   readonly mergeMode: PlanMergeMode | null;
@@ -268,6 +279,9 @@ export interface Plan {
 
 /** The setting of Settings → Experimental → **Plans** (off by default; `docs/plans.md` → *The switch*). */
 export const PLANS_SETTING = 'experimental.plans';
+
+/** D115: why an item of a plan whose repositories are picked per item waits while it has none. */
+export const PLAN_PICK_REPOS_REASON = "Waiting for the plan's agent to pick repositories";
 
 /** Why a running plan was paused when Plans was switched off (shown on the plan; the developer resumes it). */
 export const PLANS_OFF_REASON = 'Plans was switched off';
@@ -436,6 +450,8 @@ export interface PlanViewInput {
   readonly edges: readonly PlanEdge[];
   /** Now (epoch ms). */
   readonly now: number;
+  /** D115: the plan's agent picks each item's repositories: a pending item without solutions waits ({@link PLAN_PICK_REPOS_REASON}). */
+  readonly reposPerItem?: boolean;
 }
 
 /** The computed part of a {@link Plan}: the items' view states, the critical path, progress and the time left. */
@@ -473,6 +489,11 @@ export function planView(input: PlanViewInput): PlanViewModel {
       const dep = byId.get(blockedDep.dep) as PlanItemFacts;
       const why = dep.state === 'failed' ? (dep.reason ?? 'failed') : 'is blocked';
       views.set(id, { state: 'blocked', reason: `waiting on ${itemLabel(dep)}, which ${why}` });
+      continue;
+    }
+    // D115: it cannot start before the plan's agent picks its repositories.
+    if (input.reposPerItem === true && item.solutions.length === 0) {
+      views.set(id, { state: 'waiting', reason: PLAN_PICK_REPOS_REASON });
       continue;
     }
     const open = deps.filter((dep) => views.get(dep)?.state !== 'done');
@@ -772,7 +793,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
         estimate_minutes: { type: 'integer', minimum: 1, maximum: 10_080, description: 'A new todo: minutes an AI agent would take (used for the critical path and the time left).' },
         key: { type: 'string', description: 'Optional ticket key, e.g. PROJ-123: the item branch becomes PROJ-123-<slug>.' },
         hold: { type: 'boolean', description: 'In the agents-with-holds mode, the developer merges this item from the Plans page (default false).' },
-        solutions: { type: 'array', items: { type: 'string' }, description: "The plan repos this item works in (default all of the plan's)." },
+        solutions: { type: 'array', items: { type: 'string' }, description: "The plan repos this item works in (default all of the plan's; in a plan whose repositories are picked per item, the workspace's solutions it works in: without them it waits)." },
         after: { type: 'array', items: { type: 'string' }, description: 'Ids or keys of the items this one runs after.' },
       },
       required: ['plan_id'],
@@ -818,18 +839,80 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
     },
     annotations: { title: 'Start a plan', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
+  {
+    name: 'plan_set_solutions',
+    description:
+      "Set the repositories (workspace solutions) items of a plan of this session work in. Use it when Switchboard asks you to pick the repositories of a plan's items, e.g. after a Jira import into a workspace: read each item (todo_get for the details) and give every item the solutions its work touches, from the list of the workspace's solutions in the ask (read-only ones are refused). Your choice is applied at once (it is not a proposal): an item can start only once it has solutions, and the plan's repos become the union of its items' solutions. Give every item in one call when you can. An item that already started keeps its solutions. Unknown or read-only names refuse the whole call with the reason; nothing changes then.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: PLAN_ITEMS_MAX,
+          description: 'One entry per item: the item and the solutions it works in.',
+          items: {
+            type: 'object',
+            properties: {
+              item: { type: 'string', description: 'The key (PROJ-123) or the item id of the item.' },
+              solutions: { type: 'array', minItems: 1, items: { type: 'string' }, description: "The names of the workspace's solutions this item works in, e.g. [\"web-front\", \"mobile\"]." },
+            },
+            required: ['item', 'solutions'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['plan_id', 'items'],
+      additionalProperties: false,
+    },
+    // Destructive: it overwrites a pending item's solutions (docs/mcp.md → Tool annotations).
+    annotations: { title: "Set plan items' repositories", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
 ];
+
+/** D115: an item's description in the ask is cut to this many characters (the agent reads the rest with todo_get). */
+export const PICK_REPOS_DESCRIPTION_MAX = 600;
+
+/**
+ * D115: the ask to a plan's source session to pick each item's repositories with
+ * `plan_set_solutions`: the workspace's solutions (read-only ones left out) and the items without
+ * solutions (key, title, description). `also` = it follows the ask for the missing order in the same message.
+ */
+export function pickReposMessage(input: {
+  readonly planId: string;
+  readonly planTitle: string;
+  readonly solutions: readonly string[];
+  readonly items: ReadonlyArray<{ readonly label: string; readonly id: string; readonly todoId: string; readonly title: string; readonly description: string | null }>;
+  readonly also?: boolean;
+}): string {
+  const cut = (text: string): string => (text.length > PICK_REPOS_DESCRIPTION_MAX ? `${text.slice(0, PICK_REPOS_DESCRIPTION_MAX - 1).trimEnd()}… (the rest: todo_get)` : text);
+  const items = input.items.map((item) => {
+    const description = (item.description ?? '').trim();
+    return `- ${item.label} [${item.id}] (todo [${item.todoId}]): ${item.title}${description === '' ? '' : `\n  ${cut(description).replace(/\n+/g, '\n  ')}`}`;
+  });
+  return [
+    input.also === true
+      ? `Also pick the repositories of the plan "${input.planTitle}" [${input.planId}]: its items have none yet, and an item starts only once it has some.`
+      : `Please pick the repositories of the plan "${input.planTitle}" [${input.planId}]: its items have none yet, and an item starts only once it has some.`,
+    `The workspace's solutions you can pick from: ${input.solutions.length > 0 ? input.solutions.join(', ') : '(none found: say so to the developer)'}.`,
+    `Items without repositories:\n${items.join('\n')}`,
+    `Decide which solutions each item's work touches (todo_get for an item's full details), then call plan_set_solutions once with plan_id ${input.planId} and items: [{ item: <key or id>, solutions: [...] }] for every item above. It is applied at once; the developer can change an item's repositories later. Do not start any work yourself.`,
+  ].join('\n\n');
+}
 
 
 /** One line per item for `plan_status`. */
 export function planStatusText(plan: Plan): string {
   const target = plan.targetBranch === null ? 'no target branch (no merge step)' : plan.mergeMode === 'none' ? `${plan.targetBranch} (no merge step)` : `${plan.targetBranch} → ${plan.baseBranch}${plan.allowProtectedTarget ? ' (agents merge: acknowledged)' : ''}`;
-  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${target} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
+  const repos = plan.reposPerItem === true ? ` · repos picked per item${plan.repos.length > 0 ? ` (${plan.repos.join(', ')})` : ''}` : '';
+  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${target}${repos} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
   const keyOf = new Map(plan.items.map((item) => [item.id, item.key ?? item.id]));
   const lines = plan.items.map((item) => {
     const after = item.dependsOn.length > 0 ? ` after ${item.dependsOn.map((id) => keyOf.get(id) ?? id).join(', ')}` : '';
     const extra = [item.reason, item.note].filter(Boolean).join('; ');
-    return `- [${item.id}]${item.key ? ` ${item.key}` : ''} ${item.title}: ${item.state}${item.hold ? ' (hold)' : ''}${after}${item.branch ? ` · ${item.branch}` : ''}${extra ? ` · ${extra}` : ''}`;
+    const solutions = item.solutions.length > 0 ? ` · repos ${item.solutions.join(', ')}` : '';
+    return `- [${item.id}]${item.key ? ` ${item.key}` : ''} ${item.title}: ${item.state}${item.hold ? ' (hold)' : ''}${after}${solutions}${item.branch ? ` · ${item.branch}` : ''}${extra ? ` · ${extra}` : ''}`;
   });
   return [head, ...lines].join('\n');
 }

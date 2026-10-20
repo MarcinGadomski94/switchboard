@@ -128,6 +128,7 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `plan_add_dependency` | Plans | false | false | true | false |
 | `plan_status` | Plans | true | false | true | false |
 | `plan_start` | Plans | false | false | true | true |
+| `plan_set_solutions` | Plans | false | true | true | false |
 | `plan_propose_dependencies` | Plans | false | false | true | false |
 | `memory_propose` | Project memory | false | false | true | false |
 | `memory_list` | Project memory | true | false | true | false |

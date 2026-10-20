@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
-import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, itemLabel, pickReposMessage } from '../../../core/plans.ts';
 import {
   DEFAULT_JIRA_TRANSITIONS,
   JIRA_COMMENTS,
@@ -138,6 +138,16 @@ export interface JiraImportResult {
   readonly jira: PlanJiraState;
   readonly preview: JiraPreview;
   readonly askedForOrder: boolean;
+  /** D115: the plan's agent was asked to pick its items' repositories (a workspace import without repos). */
+  readonly askedForRepos: boolean;
+}
+
+/** D115: how long after the ask the plan's agent may take to pick the repositories before the plan's activity says it has not. */
+export const PICK_REPOS_TIMEOUT_MS = 15 * 60_000;
+
+/** D115: the items of a plan whose repositories the plan's agent still has to pick. */
+export function itemsWithoutRepos(plan: Pick<Plan, 'reposPerItem' | 'items'>): PlanItem[] {
+  return plan.reposPerItem === true ? plan.items.filter((item) => item.storedState === 'pending' && item.solutions.length === 0) : [];
 }
 
 /** D112: a refused session check / start as this lane's error (its first field error, else its message). */
@@ -206,6 +216,8 @@ export class PlanJiraService {
   #timer: unknown = null;
   /** The timer's refresh in flight. */
   #ticking: Promise<void> | null = null;
+  /** D115: per plan, the check that its agent picked the repositories after the ask. */
+  readonly #repoChecks = new Map<string, unknown>();
   #closed = false;
 
   constructor(options: PlanJiraServiceOptions) {
@@ -231,6 +243,8 @@ export class PlanJiraService {
     this.#unsubscribe = null;
     if (this.#timer !== null) this.#clock.clearTimeout(this.#timer);
     this.#timer = null;
+    for (const timer of this.#repoChecks.values()) this.#clock.clearTimeout(timer);
+    this.#repoChecks.clear();
     await this.idle();
   }
 
@@ -404,8 +418,9 @@ export class PlanJiraService {
    * Everything that can be checked is checked first (the body, the folder and repos, Jira's epic),
    * so a refusal leaves nothing behind. Then a new session "Plan · <plan title>" (the epic summary
    * when the plan title is empty) starts in that
-   * folder the way New session starts one (idle: no first message), with the repos as its
-   * solutions, and owns the plan as its source session. If the plan then cannot be made, that
+   * folder the way New session starts one (idle: no first message), with the repos (if given) as its
+   * solutions, and owns the plan as its source session. D115: a workspace needs no repos: the plan's
+   * agent (that session) is asked to pick each item's repositories. If the plan then cannot be made, that
    * session is closed and deleted again (and a plan already made is removed) before the error is
    * answered.
    */
@@ -486,17 +501,22 @@ export class PlanJiraService {
     const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}`].filter(Boolean);
     await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
     // D99-Jira-q1 (b): items without links → the source session's agent is asked to propose the missing order.
-    let askedForOrder = false;
-    if (preview.unlinked.length > 0) {
-      askedForOrder = await this.#ask(created.plan)
+    // D115: a workspace plan without repos → the same message (or its own) asks it to pick each item's repositories.
+    const order = preview.unlinked.length > 0;
+    const repos = itemsWithoutRepos(created.plan).length > 0;
+    let asked = false;
+    if (order || repos) {
+      asked = await this.#ask(created.plan, { order, repos })
         .then(() => true)
         .catch(async (error: unknown) => {
-          await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'error', text: `Could not ask the session to propose the missing order: ${error instanceof Error ? error.message : 'failed'}` });
+          const what = order && repos ? 'propose the missing order and pick the repositories' : order ? 'propose the missing order' : 'pick the repositories';
+          await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'error', text: `Could not ask the session to ${what}: ${error instanceof Error ? error.message : 'failed'}${repos ? ' (use Ask again on the plan)' : ''}` });
           return false;
         });
+      if (asked && repos) await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'ask-repos', text: `Asked the plan's agent to pick the repositories of ${itemsWithoutRepos(created.plan).length} item(s)` });
     }
     this.#options.bus.publish('planChanged', { planId: created.plan.id, state: created.plan.state });
-    return { plan: created.plan, jira: await this.#state(created.plan), preview, askedForOrder };
+    return { plan: created.plan, jira: await this.#state(created.plan), preview, askedForOrder: asked && order, askedForRepos: asked && repos };
   }
 
   // ── a plan's Jira state and settings ────────────────────────────────────
@@ -638,18 +658,91 @@ export class PlanJiraService {
 
   // ── proposed order (D99-Jira-q1 ruling (b)) ─────────────────────────────
 
-  /** Sends the plan's source session the ask ({@link proposeOrderMessage}). */
-  async #ask(plan: Plan): Promise<void> {
+  /**
+   * Sends the plan's source session the ask: the missing order ({@link proposeOrderMessage}) and/or
+   * (D115) the items' repositories ({@link pickReposMessage}), in one message. After a sent ask for
+   * the repositories, a check {@link PICK_REPOS_TIMEOUT_MS} later notes in the plan's activity when
+   * its agent has not picked them.
+   */
+  async #ask(plan: Plan, what: { readonly order: boolean; readonly repos: boolean } = { order: true, repos: false }): Promise<void> {
     if (!this.#options.send) throw new PlanJiraError(409, 'no-messages', 'this Switchboard cannot send the session a message');
-    const linked = new Set(plan.edges.flatMap((edge) => [edge.from, edge.to]));
-    const label = new Map(plan.items.map((item) => [item.id, itemLabel(item)]));
-    const text = proposeOrderMessage({
-      planId: plan.id,
-      planTitle: plan.title,
-      items: plan.items.map((item) => ({ label: itemLabel(item), title: item.title, unlinked: !linked.has(item.id) })),
-      edges: plan.edges.map((edge) => ({ from: label.get(edge.from) ?? edge.from, to: label.get(edge.to) ?? edge.to })),
-    });
-    await this.#options.send(plan.sourceSessionId, text);
+    const parts: string[] = [];
+    if (what.order) {
+      const linked = new Set(plan.edges.flatMap((edge) => [edge.from, edge.to]));
+      const label = new Map(plan.items.map((item) => [item.id, itemLabel(item)]));
+      parts.push(
+        proposeOrderMessage({
+          planId: plan.id,
+          planTitle: plan.title,
+          items: plan.items.map((item) => ({ label: itemLabel(item), title: item.title, unlinked: !linked.has(item.id) })),
+          edges: plan.edges.map((edge) => ({ from: label.get(edge.from) ?? edge.from, to: label.get(edge.to) ?? edge.to })),
+        }),
+      );
+    }
+    if (what.repos) {
+      const items = [];
+      for (const item of itemsWithoutRepos(plan)) {
+        const todo = await this.#options.store.todos.get(item.todoId);
+        items.push({ label: itemLabel(item), id: item.id, todoId: item.todoId, title: todo?.title ?? item.title, description: todo?.description ?? null });
+      }
+      parts.push(pickReposMessage({ planId: plan.id, planTitle: plan.title, solutions: await this.#options.plans.solutionChoices(plan.id), items, also: what.order }));
+    }
+    await this.#options.send(plan.sourceSessionId, parts.join('\n\n'));
+    if (what.repos) this.#armRepoCheck(plan.id);
+  }
+
+  /** D115: {@link PICK_REPOS_TIMEOUT_MS} after an ask, a plan whose items still wait for their repositories says so in its activity (once per ask). */
+  #armRepoCheck(planId: string): void {
+    if (this.#closed) return;
+    const before = this.#repoChecks.get(planId);
+    if (before !== undefined) this.#clock.clearTimeout(before);
+    const timer = this.#clock.setTimeout(() => {
+      if (this.#repoChecks.get(planId) === timer) this.#repoChecks.delete(planId);
+      void this.checkRepos(planId).catch((error: unknown) => this.#onError(error));
+    }, PICK_REPOS_TIMEOUT_MS);
+    this.#repoChecks.set(planId, timer);
+  }
+
+  /** D115 (the timer; tests call it): notes in a Jira plan's activity that its agent has not picked the repositories of some items yet. Answers how many wait. */
+  async checkRepos(planId: string): Promise<number> {
+    if (!(await this.#enabled())) return 0;
+    const plan = await this.#options.plans.get(planId).catch(() => null);
+    if (!plan || plan.state === 'done' || plan.state === 'cancelled') return 0;
+    const waiting = itemsWithoutRepos(plan);
+    if (waiting.length === 0) return 0;
+    const db = await this.#jdb();
+    if (await db.plan(planId)) {
+      await db.addActivity(planId, { itemId: null, key: null, kind: 'error', text: `The plan's agent has not picked the repositories of ${waiting.length} item(s) ${Math.round(PICK_REPOS_TIMEOUT_MS / 60_000)} minutes after the ask (${waiting.map((item) => itemLabel(item)).join(', ')}): use Ask again on the plan, or set them yourself` });
+      this.#options.bus.publish('planChanged', { planId, state: plan.state });
+    }
+    return waiting.length;
+  }
+
+  /**
+   * D115 · `POST /api/plans/{id}/solutions/ask`: the plan page's **Ask again**: asks the plan's
+   * source session again to pick the repositories of the items that have none (any plan whose
+   * repositories are picked per item, before it is done). Refused: 409 `nothing-to-pick` when no
+   * item waits for them; 409 `not-sent` when the message could not be sent (also a line of a Jira
+   * plan's activity).
+   */
+  async askForRepos(planId: string): Promise<{ readonly asked: true; readonly sessionId: string; readonly items: number }> {
+    await this.#gate();
+    const plan = await this.#plan(planId);
+    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanJiraError(409, 'finished', `the plan is ${plan.state}`);
+    const waiting = itemsWithoutRepos(plan);
+    if (waiting.length === 0) throw new PlanJiraError(409, 'nothing-to-pick', 'no item of the plan waits for its repositories');
+    const record = await (await this.#jdb()).plan(planId);
+    try {
+      await this.#ask(plan, { order: false, repos: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'failed';
+      if (record) await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'error', text: `Could not ask the session to pick the repositories: ${message}` });
+      if (error instanceof PlanJiraError) throw error;
+      throw new PlanJiraError(409, 'not-sent', `the plan's session could not be asked: ${message}`);
+    }
+    if (record) await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'ask-repos', text: `Asked the plan's agent again to pick the repositories of ${waiting.length} item(s)` });
+    this.#options.bus.publish('planChanged', { planId, state: plan.state });
+    return { asked: true, sessionId: plan.sourceSessionId, items: waiting.length };
   }
 
   /** `POST /api/plans/{id}/proposals/ask`: the developer's **Propose order** on a draft plan. */

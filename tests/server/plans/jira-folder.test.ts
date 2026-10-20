@@ -151,7 +151,6 @@ describe('D112 · Import from Jira into a folder', () => {
   it('leaves no session behind when the place, the body or Jira refuses', async () => {
     const r = await setup();
     const refusals: Array<[unknown, number, string]> = [
-      [{ ...IMPORT, folder: r.workspaceFolder.id }, 422, 'repos'],
       [{ ...IMPORT, folder: r.workspaceFolder.id, repos: ['nope'] }, 422, 'repos'],
       [{ ...IMPORT, folder: 'no-such-folder' }, 422, 'folder'],
       [{ epic: 'PROJ-10', folder: r.repoFolder.id }, 422, 'targetBranch'],

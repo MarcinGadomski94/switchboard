@@ -39,7 +39,8 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  *
  * The agent's (the `plan_*` MCP tools), only with the session's agent token, over the plans
  * whose source is that session: `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
- * `POST /agent/v1/plans/{planId}/items | edges | start`.
+ * `POST /agent/v1/plans/{planId}/items | edges | start`; D115: `POST /agent/v1/plans/{planId}/solutions`
+ * `{ items: [{ item, solutions }] }` → `{ plan, set }`.
  *
  * Experimental (`docs/plans.md` → *The switch*): while Plans is off every route answers 404
  * `plans-off` except `GET /api/plans/state` (the switch); while `plans.db` is broken, 503
@@ -223,6 +224,16 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
       return await plans.addEdge(request.params.planId, request.body);
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
+  // D115: the plan's agent picks its items' repositories (the `plan_set_solutions` tool), applied at once.
+  app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/solutions', async (request, reply) => {
+    try {
+      await plans.agentPlan(agentSession(request), request.params.planId);
+      return await plans.setSolutions(request.params.planId, request.body);
     } catch (error) {
       return sendPlanError(reply, error);
     }

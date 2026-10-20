@@ -49,6 +49,7 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_add_dependency: [false, false, true, false],
   plan_status: [true, false, true, false],
   plan_start: [false, false, true, true],
+  plan_set_solutions: [false, true, true, false],
   plan_propose_dependencies: [false, false, true, false],
   memory_propose: [false, false, true, false],
   memory_list: [true, false, true, false],

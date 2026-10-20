@@ -19,6 +19,14 @@ import { toSession } from '../../sessions/wire.ts';
 import { WorktreeError } from '../../worktrees/manager.ts';
 import type { PlanOwnerPlace, PlanOwnerRefusal, PlanOwnerSessions } from './service.ts';
 
+/** The Jira lane's service of an app (tests). */
+const services = new WeakMap<FastifyInstance, PlanJiraService>();
+
+/** The Jira lane's service `installPlansJira` gave `app` (`undefined` before; tests). */
+export function planJiraServiceOf(app: FastifyInstance): PlanJiraService | undefined {
+  return services.get(app);
+}
+
 /** Options of {@link installPlansJira} (tests). */
 export interface PlansJiraOptions {
   /** The OS keychain for Settings → Integrations → Jira (default: the Team access lane's `defaultSecretStore()`, in-memory under tests). */
@@ -84,6 +92,7 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
     ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(options.refreshMs ? { refreshMs: options.refreshMs } : {}),
   });
+  services.set(app, service);
   await registerPlanJiraRoutes(app, service, credentials, enabled, async (sessionId) => {
     const record = await context.store.sessions.get(sessionId);
     return record ? toSession(context.store, record, context.supervisor.activity(record.id)) : null;
@@ -147,8 +156,8 @@ export function planOwnerSessions(context: PlansAppContext): PlanOwnerSessions {
       const { folder } = resolved;
       if (folder.kind === 'repo') return { ok: true, kind: 'repo' };
       if (folder.kind !== 'workspace') return refusal(409, 'not-a-repo', 'the folder is not a git repository or a workspace: a plan merges into a target branch, which needs one', 'folder');
+      // D115: repos are optional: without them the plan's agent picks each item's repositories.
       const repos = place.repos ?? [];
-      if (repos.length === 0) return refusal(422, 'invalid', 'pick the repositories the target branch lives in', 'repos');
       for (const name of repos) {
         try {
           await context.worktrees.resolveRepo(name, folder);

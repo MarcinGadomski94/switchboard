@@ -112,6 +112,12 @@ export interface PlanEnvironment {
    * folder. Throws {@link PlanError} (404 no session, 409 no folder, 422 an unknown repo).
    */
   repos(sourceSessionId: string, names: readonly string[] | null): Promise<{ readonly kind: 'workspace' | 'repo' | 'plain'; readonly repos: readonly PlanRepoRef[] }>;
+  /**
+   * D115: the solutions of the source session's workspace an item may work in (`writable`, the
+   * Repositories picker's list: read-only ones left out) and the read-only ones (refused by name);
+   * `null` when the source's folder is not a workspace. Absent (tests' fakes): names are checked by {@link repos} only.
+   */
+  workspaceSolutions?(sourceSessionId: string): Promise<{ readonly writable: readonly string[]; readonly readOnly: readonly string[] } | null>;
   /** Starts the item's run (a todo run, D76, with the plan's branch, cut, brief and answers). */
   run(input: PlanRunInput): Promise<{ readonly ok: true; readonly sessionId: string; readonly branch: string | null } | { readonly ok: false; readonly message: string }>;
   /** Why starting this todo now would be held (its account at or above the plan's usage threshold, or spent), `null` = it may start. */
@@ -641,7 +647,8 @@ export class PlanService {
         sessionStatus: session ? session.status : null,
       });
     }
-    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime() });
+    const perItem = reposPerItem(plan);
+    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime(), reposPerItem: perItem });
     // D99 follow-up 2026-10-15: a plan without a merge step waits on the developer's confirmation, stored like the Merge.
     const waitingOn = (on: PlanWaitingOn | null): PlanWaitingOn | null => (plan.mergeMode === 'none' && on === 'merge' ? 'confirm' : on);
     return {
@@ -649,7 +656,8 @@ export class PlanService {
       title: plan.title,
       sourceSessionId: plan.sourceSessionId,
       targetBranch: plan.targetBranch,
-      repos: plan.repos,
+      repos: planRepoNames(plan, items),
+      reposPerItem: perItem,
       baseBranch: plan.baseBranch,
       mergeMode: plan.mergeMode,
       allowProtectedTarget: plan.allowProtectedTarget,
@@ -704,10 +712,8 @@ export class PlanService {
     const names = input['repos'] === undefined || input['repos'] === null ? null : checkNames(input['repos'], 'repos');
     const resolved = await this.#env.repos(sourceSessionId, names);
     // A target branch needs a repository; a plan without one (no merge step) may run in any folder.
-    if (targetBranch !== null) {
-      if (resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a target branch needs one (leave the target out for a plan without a merge step)");
-      if (resolved.repos.length === 0) throw invalid('repos', 'name the solution repos the target branch lives in (the session uses none yet)');
-    }
+    // D115: a workspace without repos is fine: the plan's agent picks each item's repositories (plan_set_solutions).
+    if (targetBranch !== null && resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a target branch needs one (leave the target out for a plan without a merge step)");
     const answers = checkAnswers(input['answers'], { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination, notes: null });
     return this.#repo().create({
       id: newId(),
@@ -744,7 +750,8 @@ export class PlanService {
       const target = input['targetBranch'] !== undefined ? (patch['targetBranch'] as string | null) : plan.targetBranch;
       if (input['repos'] !== undefined || (target !== null && plan.repos.length === 0)) {
         const resolved = await this.#env.repos(plan.sourceSessionId, input['repos'] !== undefined ? checkNames(input['repos'], 'repos') : null);
-        if (target !== null && (resolved.kind === 'plain' || resolved.repos.length === 0)) throw new PlanError(409, 'not-a-repo', 'a target branch needs a git repository: the session uses none');
+        // D115: a workspace without repos picks them per item.
+        if (target !== null && resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', 'a target branch needs a git repository: the session uses none');
         patch['repos'] = resolved.repos.map((repo) => repo.name);
       }
     }
@@ -780,7 +787,9 @@ export class PlanService {
     const key = normalizeItemKey(input['key']);
     if (key === undefined) throw invalid('key', 'the key must be a ticket key such as PROJ-123');
     if (key !== null && items.some((item) => item.key === key)) throw invalid('key', `the plan has ${key} already`);
-    const solutions = this.#checkSolutions(plan, input['solutions']);
+    const solutions = await this.#checkSolutions(plan, input['solutions']);
+    // D115: a repository that joins a started plan gets its target branch now.
+    await this.#joinRepos(plan, items, solutions);
     const hold = input['hold'] === undefined ? false : checkBool(input['hold'], 'hold');
     const after = input['after'] === undefined ? [] : this.#resolveRefs(items, checkNames(input['after'], 'after'), 'after');
     let todo: TodoRecord;
@@ -822,7 +831,11 @@ export class PlanService {
         if (key === undefined) throw invalid('key', 'the key must be a ticket key such as PROJ-123');
         Object.assign(patch, { key });
       }
-      if (input['solutions'] !== undefined) Object.assign(patch, { solutions: this.#checkSolutions(plan, input['solutions']) });
+      if (input['solutions'] !== undefined) {
+        const solutions = await this.#checkSolutions(plan, input['solutions']);
+        await this.#joinRepos(plan, await this.#repo().items(planId), solutions);
+        Object.assign(patch, { solutions });
+      }
     }
     if (input['hold'] !== undefined) {
       await this.#setHolds(plan, { [itemId]: checkBool(input['hold'], 'hold') });
@@ -901,12 +914,117 @@ export class PlanService {
     });
   }
 
-  #checkSolutions(plan: PlanRecord, value: unknown): string[] {
+  async #checkSolutions(plan: PlanRecord, value: unknown): Promise<string[]> {
     if (value === undefined || value === null) return [];
     const names = checkNames(value, 'solutions');
-    const unknown = names.filter((name) => !plan.repos.includes(name));
-    if (unknown.length > 0) throw invalid('solutions', `not a repo of the plan: ${unknown.join(', ')} (the plan's: ${plan.repos.join(', ')})`);
+    const problems = await this.#nameProblems(plan, names);
+    if (problems.length > 0) throw invalid('solutions', problems.join('; '));
     return names;
+  }
+
+  /**
+   * Why names are not solutions an item of `plan` may work in: a plan's own repos (a subset of
+   * them), or D115 (repos picked per item) the writable solutions of the source's workspace.
+   */
+  async #nameProblems(plan: PlanRecord, names: readonly string[]): Promise<string[]> {
+    if (names.length === 0) return [];
+    if (!reposPerItem(plan)) {
+      const unknown = names.filter((name) => !plan.repos.includes(name));
+      return unknown.length > 0 ? [`not a repo of the plan: ${unknown.join(', ')} (the plan's: ${plan.repos.join(', ')})`] : [];
+    }
+    const choices = this.#env.workspaceSolutions ? await this.#env.workspaceSolutions(plan.sourceSessionId) : null;
+    const problems: string[] = [];
+    if (choices) {
+      const readOnly = names.filter((name) => choices.readOnly.includes(name));
+      const unknown = names.filter((name) => !choices.readOnly.includes(name) && !choices.writable.includes(name));
+      if (readOnly.length > 0) problems.push(`read-only, not a write target: ${readOnly.join(', ')}`);
+      if (unknown.length > 0) problems.push(`not a solution of this workspace: ${unknown.join(', ')} (its solutions: ${choices.writable.join(', ') || 'none'})`);
+      if (problems.length > 0) return problems;
+    }
+    // Each name must resolve to a solution repository of the workspace (the worktree manager's rule).
+    try {
+      await this.#env.repos(plan.sourceSessionId, names);
+    } catch (error) {
+      if (error instanceof PlanError) return [error.message];
+      throw error;
+    }
+    return problems;
+  }
+
+  /**
+   * D115 · a repository that joins a started plan whose repos are picked per item: the protected
+   * target rule (agent modes without the acknowledgement, 422 `target-forbidden`) and the target
+   * branch made from the base there (409 `no-target`), as `start` does for the plan's repos. A
+   * draft's repos are checked at its start; a plan with repos of its own gets none new.
+   */
+  async #joinRepos(plan: PlanRecord, items: readonly PlanItemRecord[], names: readonly string[]): Promise<void> {
+    if (!reposPerItem(plan) || (plan.state !== 'running' && plan.state !== 'paused')) return;
+    const known = new Set(planRepoNames(plan, items));
+    const fresh = names.filter((name) => !known.has(name));
+    if (fresh.length === 0) return;
+    const repos = (await this.#env.repos(plan.sourceSessionId, fresh)).repos;
+    if (agentsMerge(plan.mergeMode) && !plan.allowProtectedTarget) await this.#checkTarget(plan.targetBranch as string, repos);
+    for (const repo of repos) {
+      const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch as string, plan.baseBranch);
+      if (!prepared.ok) throw new PlanError(409, 'no-target', `${repo.name}: ${prepared.message}`);
+    }
+  }
+
+  /** D115: the solutions an item of plan `planId` may work in (the ask's list): a workspace's writable solutions, or the plan's own repos. */
+  async solutionChoices(planId: string): Promise<string[]> {
+    const plan = await this.#plan(planId);
+    if (!reposPerItem(plan)) return [...plan.repos];
+    const choices = this.#env.workspaceSolutions ? await this.#env.workspaceSolutions(plan.sourceSessionId) : null;
+    return choices ? [...choices.writable] : [];
+  }
+
+  /**
+   * D115 · `POST /agent/v1/plans/{planId}/solutions` (the `plan_set_solutions` tool; the plan's
+   * source session only) `{ items: [{ item, solutions }] }`: sets each item's solutions, applied at
+   * once (the developer asked the agent to pick them, not to propose). Every entry is checked
+   * before anything changes: an unknown item, one that started, one listed twice, no solutions, a
+   * name that is not a writable solution of the workspace (or, for a plan with repos of its own,
+   * not one of them) refuse the whole call (422 on `items`, the reasons in the message). A
+   * repository that joins a started plan gets its target branch first (its refusal refuses the
+   * call). The plan's repos are then the union of its items' solutions; the scheduler starts the
+   * items that became ready.
+   */
+  async setSolutions(planId: string, body: unknown): Promise<{ readonly plan: Plan; readonly set: ReadonlyArray<{ readonly itemId: string; readonly label: string; readonly solutions: readonly string[] }> }> {
+    const plan = await this.#plan(planId);
+    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
+    const input = isRecord(body) ? body : {};
+    const list = Array.isArray(input['items']) ? (input['items'] as unknown[]) : null;
+    if (!list || list.length === 0) throw invalid('items', 'give items: [{ item, solutions }] (the key or id of each item and the solutions it works in)');
+    if (list.length > PLAN_ITEMS_MAX) throw invalid('items', `at most ${PLAN_ITEMS_MAX} items at once`);
+    const items = await this.#repo().items(planId);
+    const problems: string[] = [];
+    const chosen = new Map<string, string[]>();
+    for (const raw of list) {
+      const entry = isRecord(raw) ? raw : {};
+      const ref = typeof entry['item'] === 'string' ? entry['item'].trim().replace(/^\[|\]$/g, '') : '';
+      const found = items.find((item) => item.id === ref) ?? items.find((item) => item.key !== null && item.key === ref.toUpperCase());
+      if (!found) {
+        problems.push(`no item ${ref === '' ? '(none given)' : ref} in the plan`);
+        continue;
+      }
+      const label = itemLabel(found);
+      if (chosen.has(found.id)) problems.push(`${label} is listed twice`);
+      else if (found.state !== 'pending') problems.push(`${label} has started: its repositories stay as they are`);
+      else if (!Array.isArray(entry['solutions']) || entry['solutions'].length === 0 || entry['solutions'].some((name) => typeof name !== 'string' || name.trim() === '')) problems.push(`${label}: give the names of the solutions it works in`);
+      else chosen.set(found.id, [...new Set((entry['solutions'] as string[]).map((name) => name.trim()))]);
+    }
+    problems.push(...(await this.#nameProblems(plan, [...new Set([...chosen.values()].flat())])));
+    if (problems.length > 0) throw invalid('items', `nothing was changed: ${problems.join('; ')}`);
+    await this.#joinRepos(plan, items, [...new Set([...chosen.values()].flat())]);
+    const set: Array<{ itemId: string; label: string; solutions: string[] }> = [];
+    for (const [itemId, solutions] of chosen) {
+      await this.#repo().updateItem(itemId, { solutions });
+      set.push({ itemId, label: itemLabel(items.find((item) => item.id === itemId) as PlanItemRecord), solutions });
+    }
+    await this.#repo().touch(planId);
+    await this.#publish(planId);
+    this.kick();
+    return { plan: await this.get(planId), set };
   }
 
   // ── control ─────────────────────────────────────────────────────────────
@@ -930,7 +1048,9 @@ export class PlanService {
     const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
     if (plan.targetBranch !== null) {
-      const repos = (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos;
+      // D115: a plan whose repos are picked per item checks the ones picked so far (the others when they join).
+      const names = planRepoNames(plan, items);
+      const repos = reposPerItem(plan) && names.length === 0 ? [] : (await this.#env.repos(plan.sourceSessionId, names)).repos;
       if (agentsMerge(mode) && !ack) await this.#checkTarget(plan.targetBranch, repos);
       for (const repo of repos) {
         const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch, plan.baseBranch);
@@ -996,8 +1116,11 @@ export class PlanService {
     if (plan.state !== 'draft' && plan.mergeMode !== null && (plan.mergeMode === 'none') !== (mode === 'none')) {
       throw new PlanError(409, 'started', mode === 'none' ? 'the plan started with a merge step: it keeps one (choose agents, agents-with-holds or developer)' : 'the plan started without a merge step: it keeps none');
     }
-    if (plan.targetBranch !== null && agentsMerge(mode) && !ack) await this.#checkTarget(plan.targetBranch, (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos);
     const items = await this.#repo().items(planId);
+    if (plan.targetBranch !== null && agentsMerge(mode) && !ack) {
+      const names = planRepoNames(plan, items);
+      await this.#checkTarget(plan.targetBranch, reposPerItem(plan) && names.length === 0 ? [] : (await this.#env.repos(plan.sourceSessionId, names)).repos);
+    }
     await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack });
     if (plan.state !== 'draft') await this.#tellChangedRules(plan, plan.mergeMode, mode, items, items);
     await this.#publish(planId);
@@ -1222,7 +1345,7 @@ export class PlanService {
     const itemIds: Record<string, string> = {};
     try {
       for (const item of input.items) {
-        const solutions = this.#checkSolutions(record, item.solutions);
+        const solutions = await this.#checkSolutions(record, item.solutions);
         const added = await this.#todos.add(record.sourceSessionId, { title: item.title, description: item.description ?? null, plan: item.plan ?? undefined, priority: item.priority, estimateMinutes: item.estimateMinutes ?? null }, 'developer');
         const stored = await this.#repo().addItem({ id: newId(), planId: record.id, todoId: added.todo.id, key: keys.get(item.ref) ?? null, title: added.todo.title, estimateMinutes: added.todo.estimateMinutes, hold: item.hold === true, solutions });
         itemIds[item.ref] = stored.id;
@@ -1269,7 +1392,10 @@ export class PlanService {
     let held: string | null = null;
     if (plan.state === 'running') {
       const running = items.filter((item) => item.state === 'running').length;
-      for (const item of readyItems(items, edges, plan.maxConcurrency - running)) {
+      // D115: an item whose repositories the plan's agent has not picked yet waits.
+      const perItem = reposPerItem(plan);
+      const startable = readyItems(items, edges, items.length).filter((item) => !perItem || item.solutions.length > 0);
+      for (const item of startable.slice(0, Math.max(0, plan.maxConcurrency - running))) {
         const todo = await this.#store.todos.get(item.todoId);
         if (!todo || todo.sessionId !== plan.sourceSessionId) {
           await this.#fail(item, 'could not start: its todo was removed');
@@ -1299,7 +1425,8 @@ export class PlanService {
   }
 
   async #startItem(plan: PlanRecord, item: PlanItemRecord, todo: TodoRecord): Promise<void> {
-    const resolved = await this.#env.repos(plan.sourceSessionId, plan.repos).catch((error: unknown) => error);
+    // D115: a plan whose repos are picked per item resolves the item's own.
+    const resolved = await this.#env.repos(plan.sourceSessionId, reposPerItem(plan) ? item.solutions : plan.repos).catch((error: unknown) => error);
     if (resolved instanceof Error) {
       await this.#fail(item, `could not start: ${resolved.message}`);
       return;
@@ -1601,6 +1728,21 @@ export class PlanService {
 }
 
 // ── input checks ──────────────────────────────────────────────────────────
+
+/**
+ * D115: the plan's agent picks each item's repositories. Stored as a plan with a target branch and
+ * no repos of its own (a workspace import without repos); before D115 such a plan was refused
+ * (422 `repos`), so the empty set cannot mean anything else and needs no migration.
+ */
+function reposPerItem(plan: Pick<PlanRecord, 'targetBranch' | 'repos'>): boolean {
+  return plan.targetBranch !== null && plan.repos.length === 0;
+}
+
+/** The plan's repos: its own, or (D115, picked per item) the union of its items' solutions, in item order. */
+function planRepoNames(plan: Pick<PlanRecord, 'targetBranch' | 'repos'>, items: readonly Pick<PlanItemRecord, 'solutions' | 'position'>[]): string[] {
+  if (!reposPerItem(plan)) return [...plan.repos];
+  return [...new Set([...items].sort((a, b) => a.position - b.position).flatMap((item) => item.solutions))];
+}
 
 function checkTitle(value: unknown): string {
   if (typeof value !== 'string' || value.trim() === '') throw invalid('title', 'give the plan a title');

@@ -186,6 +186,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // Plans (D99) hook: proposed order (read, Propose order, accept / reject one or all); a phone may (developer ruling 2026-10-13).
   ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
+  // D115: Ask again (the plan's agent picks its items' repositories).
+  ['POST', /^\/api\/plans\/[^/]+\/solutions\/ask$/],
 ];
 
 /**

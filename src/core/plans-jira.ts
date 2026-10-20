@@ -145,7 +145,8 @@ export interface PlanJiraActivity {
   readonly at: string;
   readonly itemId: string | null;
   readonly key: string | null;
-  readonly kind: 'import' | 'refresh' | 'transition' | 'comment' | 'soft-failure' | 'error' | 'settings';
+  /** D115: `ask-repos` = the plan's agent was asked to pick its items' repositories. */
+  readonly kind: 'import' | 'refresh' | 'transition' | 'comment' | 'soft-failure' | 'error' | 'settings' | 'ask-repos';
   readonly text: string;
 }
 
