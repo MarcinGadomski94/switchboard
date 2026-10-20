@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type Page, expect, test } from '@playwright/test';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
-import { type FakeJira, startFakeJira } from '../helpers/fake-jira.ts';
+import { type FakeJira, acmeEpicWithContext, startFakeJira } from '../helpers/fake-jira.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 
@@ -289,4 +289,38 @@ test("a refused Create plan shows the server's reason by the button, even with t
   await expect(refused).toBeInViewport();
   await expect(dialog.getByTestId('jira-target-error')).toBeVisible();
   await expect(page.getByTestId('dev-imported')).toHaveCount(0);
+});
+
+test('D118: the preview shows per ticket what the agents also get, and the epic description collapsed (desktop and 360 px)', async ({ page }) => {
+  // The fake's issues take the context-rich epic's comments, sub-tasks, links and attachments (last test: nothing after it reads the fake).
+  for (const issue of acmeEpicWithContext()) fake.issues.set(issue.key, issue);
+  await page.goto(`${server.baseUrl}/inbox`);
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
+  const sessionId = await session(page, 'epic-planner-context');
+  for (const width of [1440, 360]) {
+    await page.setViewportSize({ width, height: width === 360 ? 740 : 900 });
+    await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
+    await page.getByTestId('dev-open-import').click();
+    const dialog = page.getByTestId('jira-import');
+    await dialog.getByTestId('jira-epic').fill('PROJ-10');
+    await dialog.getByTestId('jira-preview').click();
+    await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
+    await expect(dialog.getByTestId('jira-counts-PROJ-12')).toHaveText('2 comments · 2 sub-tasks · 3 links · 2 attachments');
+    await expect(dialog.getByTestId('jira-counts-PROJ-15')).toHaveText('1 link');
+    await expect(dialog.getByTestId('jira-counts-PROJ-13')).toHaveCount(0);
+    // The epic's description: collapsed until opened.
+    const epic = dialog.getByTestId('jira-epic-context');
+    await expect(dialog.getByTestId('jira-epic-context-toggle')).toHaveText('Epic description · 1 comment · 1 link');
+    await expect(dialog.getByTestId('jira-epic-description')).toBeHidden();
+    await dialog.getByTestId('jira-epic-context-toggle').click();
+    await expect(epic).toHaveAttribute('open', '');
+    await expect(dialog.getByTestId('jira-epic-description')).toContainText('The Acme checkout epic: carts, payments and receipts.');
+    await expect(dialog.getByTestId('jira-epic-acceptance')).toContainText('A customer can pay for the cart');
+    if (width === 360) {
+      const box = await dialog.boundingBox();
+      expect(box?.width).toBe(360);
+      const description = await dialog.getByTestId('jira-epic-description').boundingBox();
+      expect((description?.x ?? 0) + (description?.width ?? 0)).toBeLessThanOrEqual(360);
+    }
+  }
 });
