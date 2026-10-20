@@ -408,3 +408,24 @@
   display: flex;
   flex-direction: column;
 }
+
+/* D113 (docs/artifacts.md → Loading and syncing): the list's placeholders while it loads, a row's height and radius. */
+.sb-arts-skel {
+  height: 52px;
+  border-radius: 9px;
+}
+
+/* D113: a paired machine's session: "Loading artifacts from studio-pc…" with the machine spinner. */
+.sb-arts-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-arts-retry.sb-button {
+  margin-left: 4px;
+  text-decoration: underline;
+}

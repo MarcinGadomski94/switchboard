@@ -1,0 +1,54 @@
+/*
+ * D113 (docs/peers.md → List sync (D113)): a page's per-machine sync notes (the
+ * Artifacts page, the Inbox): "Syncing with studio-pc…" with the machine spinner,
+ * or a static offline note. Small muted chips that wrap on a phone; the live
+ * region is for screen readers only.
+ */
+
+.sb-peer-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.sb-peer-sync-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius-chip-lg);
+  background: var(--bg-card);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted-2);
+}
+
+.sb-peer-sync-note[data-kind='offline'] {
+  color: var(--muted-3);
+}
+
+.sb-peer-sync-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The offline note's mark: a hollow dot (static). */
+.sb-peer-sync-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.sb-peer-sync-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
