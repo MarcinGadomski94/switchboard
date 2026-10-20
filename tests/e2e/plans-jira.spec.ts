@@ -88,6 +88,9 @@ test('preview an epic, then create a draft plan with the write sync', async ({ p
   await dialog.getByTestId('jira-sync-write').check();
   await expect(dialog.getByTestId('jira-transition-progress')).toHaveValue('In Progress');
   await expect(dialog.getByTestId('jira-transition-review')).toHaveValue('In Review');
+  // D116: "Move to Done when merged into the feature branch" is on by default, with its transition name.
+  await expect(dialog.getByTestId('jira-done-on-merge')).toBeChecked();
+  await expect(dialog.getByTestId('jira-transition-done')).toHaveValue('Done');
   await dialog.getByTestId('jira-create').click();
 
   const created = page.getByTestId('dev-imported');
@@ -97,7 +100,7 @@ test('preview an epic, then create a draft plan with the write sync', async ({ p
   expect(plan.body).toMatchObject({ state: 'draft', mergeMode: null, external: { system: 'jira', key: 'PROJ-10' } });
   expect(plan.body.edges).toHaveLength(3);
   const jira = await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}/jira`);
-  expect(jira.body).toMatchObject({ epicKey: 'PROJ-10', sync: 'write' });
+  expect(jira.body).toMatchObject({ epicKey: 'PROJ-10', sync: 'write', doneOnMerge: true, transitions: { done: 'Done' } });
   await expect(page.getByTestId('plan-jira-sync')).toHaveValue('write');
   // The token never reaches the page.
   expect(jira.text).not.toContain(fake.token);
@@ -118,6 +121,57 @@ test('at 360 px the dialog fills the screen and Create stays reachable', async (
   const box = await dialog.boundingBox();
   expect(box?.width).toBe(360);
   await expect(dialog.getByTestId('jira-create')).toBeInViewport();
+});
+
+test('D116: the plan\'s "Move to Done when merged" toggle and its transition name persist (360 px)', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(`${server.baseUrl}/inbox`);
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
+  const sessionId = await session(page, 'epic-planner-done');
+  // Without write sync the dialog shows no Done setting.
+  await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
+  await page.getByTestId('dev-open-import').click();
+  const dialog = page.getByTestId('jira-import');
+  await dialog.getByTestId('jira-epic').fill('PROJ-10');
+  await dialog.getByTestId('jira-preview').click();
+  await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
+  await expect(dialog.getByTestId('jira-done-on-merge')).toHaveCount(0);
+  await dialog.getByTestId('jira-sync-write').check();
+  const check = dialog.getByTestId('jira-done-on-merge');
+  await expect(check).toBeChecked();
+  // At 360 px the checkbox and the name fit the dialog.
+  const width = await dialog.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client);
+  await dialog.getByTestId('jira-create').click();
+  const planId = (await page.getByTestId('dev-imported').getAttribute('data-plan-id')) as string;
+
+  // The plan's Jira section: on; switched off, it stays off after a reload.
+  await page.goto(`${server.baseUrl}/plans-jira-dev.html?plan=${encodeURIComponent(planId)}`);
+  const toggle = page.getByTestId('plan-jira-done-on-merge');
+  await expect(toggle).toBeChecked();
+  await expect(page.getByTestId('plan-jira-transition-done')).toHaveValue('Done');
+  const panel = page.getByTestId('plan-jira');
+  const fits = await panel.evaluate((element) => element.scrollWidth <= element.clientWidth);
+  expect(fits).toBe(true);
+  // Saved through the API (the box follows the answer).
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+  await expect(page.getByTestId('plan-jira-transition-done')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId('plan-jira-done-on-merge')).not.toBeChecked();
+  expect((await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}/jira`)).body).toMatchObject({ doneOnMerge: false });
+
+  // On again with another transition name (saved on Enter).
+  await page.getByTestId('plan-jira-done-on-merge').click();
+  await expect(page.getByTestId('plan-jira-done-on-merge')).toBeChecked();
+  await page.getByTestId('plan-jira-transition-done').fill('Closed');
+  await page.getByTestId('plan-jira-transition-done').press('Enter');
+  await expect.poll(async () => (await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}/jira`)).body.transitions.done).toBe('Closed');
+  await page.reload();
+  await expect(page.getByTestId('plan-jira-done-on-merge')).toBeChecked();
+  await expect(page.getByTestId('plan-jira-transition-done')).toHaveValue('Closed');
+  await page.getByTestId('plan-jira').locator('summary').click();
+  await expect(page.getByTestId('plan-jira-activity')).toContainText('move to Done when merged off');
 });
 
 /** The agent's side: the session's own agent token, from the MCP config Switchboard wrote for its spawn. */

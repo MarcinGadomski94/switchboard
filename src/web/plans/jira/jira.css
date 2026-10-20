@@ -258,6 +258,20 @@
   gap: 8px;
 }
 
+/* D116: "Move to Done when merged into the feature branch" and its transition name (wraps on phones). */
+.sb-jira-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.sb-jira-done .sb-jira-field input {
+  min-width: 0;
+}
+
 /* Phones: the dialog fills the screen. */
 @media (max-width: 640px) {
   .sb-jira-dialog {

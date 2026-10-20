@@ -12,7 +12,7 @@ export interface PlanJiraPanelProps {
 
 /**
  * D99-Jira · a plan's Jira section: the sync setting (changeable on the plan), the transition
- * names, **Refresh now**, each ticket's status with its drift note and its last soft failure,
+ * names, (D116) **Move to Done when merged into the feature branch** with its transition name, **Refresh now**, each ticket's status with its drift note and its last soft failure,
  * and the Jira activity (every write). Live through `planChanged`. Renders nothing for a plan
  * that was not imported from Jira (404 `not-jira`) or while Plans is off.
  */
@@ -21,6 +21,8 @@ export function PlanJiraPanel({ planId }: PlanJiraPanelProps) {
   const [hidden, setHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** D116: the Done transition's name as typed (saved on blur or Enter); `null` = the saved one. */
+  const [doneName, setDoneName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +41,14 @@ export function PlanJiraPanel({ planId }: PlanJiraPanelProps) {
   }, [load, planId]);
 
   if (hidden || state === null) return null;
+
+  const saveDoneName = () => {
+    if (doneName === null) return;
+    const name = doneName.trim();
+    setDoneName(null);
+    if (name === state.transitions.done) return;
+    void act(() => jiraApi.update(planId, { transitions: { done: name } }));
+  };
 
   const act = async (work: () => Promise<PlanJiraState>) => {
     setBusy(true);
@@ -76,9 +86,42 @@ export function PlanJiraPanel({ planId }: PlanJiraPanelProps) {
         <span className="sb-jira-muted">{state.lastRefreshAt ? `read ${new Date(state.lastRefreshAt).toLocaleTimeString()}` : 'not read since the import'}</span>
       </div>
       {state.sync === 'write' ? (
-        <div className="sb-jira-muted">
-          Transitions: "{state.transitions.inProgress}" when a run starts, "{state.transitions.inReview}" when its PR opens; Done is left to your team.
-        </div>
+        <>
+          <div className="sb-jira-muted">
+            Transitions: "{state.transitions.inProgress}" when a run starts, "{state.transitions.inReview}" when its PR opens
+            {state.doneOnMerge ? `, "${state.transitions.done}" when merged into the feature branch` : '; Done is left to your team'}.
+          </div>
+          <div className="sb-jira-row sb-jira-done">
+            <label className="sb-jira-check">
+              <input
+                type="checkbox"
+                data-testid="plan-jira-done-on-merge"
+                checked={state.doneOnMerge}
+                disabled={busy}
+                onChange={(event) => {
+                  const on = event.target.checked;
+                  void act(() => jiraApi.update(planId, { doneOnMerge: on }));
+                }}
+              />
+              Move to Done when merged into the feature branch
+            </label>
+            {state.doneOnMerge ? (
+              <label className="sb-jira-field sb-jira-grow">
+                <span>"Done" transition</span>
+                <input
+                  data-testid="plan-jira-transition-done"
+                  value={doneName ?? state.transitions.done}
+                  disabled={busy}
+                  onChange={(event) => setDoneName(event.target.value)}
+                  onBlur={saveDoneName}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') saveDoneName();
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
+        </>
       ) : null}
       <ul className="sb-jira-lines" data-testid="plan-jira-items">
         {state.items

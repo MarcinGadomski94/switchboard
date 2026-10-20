@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
-import { DEFAULT_JIRA_TRANSITIONS, JIRA_SYNC_MODES, type JiraPreview, type JiraSyncMode } from '../../../core/plans-jira.ts';
+import { DEFAULT_JIRA_DONE_ON_MERGE, DEFAULT_JIRA_TRANSITIONS, JIRA_SYNC_MODES, type JiraPreview, type JiraSyncMode } from '../../../core/plans-jira.ts';
 import { machineApi, onDeviceOrigin } from '../../api/client.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { JiraApiError, jiraApi } from './api.ts';
@@ -31,7 +31,7 @@ export interface ImportJiraDialogProps {
 const SYNC_LABELS: Readonly<Record<JiraSyncMode, string>> = {
   off: 'Off: import only',
   'read-only': 'Read-only: refresh title, status and description every 30 min while the plan runs',
-  write: 'Write: also move tickets to In Progress / In Review and comment (never Done)',
+  write: 'Write: also move tickets to In Progress / In Review and comment',
 };
 
 /**
@@ -68,6 +68,9 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
   const [sync, setSync] = useState<JiraSyncMode>('off');
   const [inProgress, setInProgress] = useState(DEFAULT_JIRA_TRANSITIONS.inProgress);
   const [inReview, setInReview] = useState(DEFAULT_JIRA_TRANSITIONS.inReview);
+  // D116: on by default for a new plan.
+  const [doneOnMerge, setDoneOnMerge] = useState(DEFAULT_JIRA_DONE_ON_MERGE);
+  const [doneName, setDoneName] = useState(DEFAULT_JIRA_TRANSITIONS.done);
   const [error, setError] = useState<JiraApiError | null>(null);
   /** Which call {@link error} came from: a create's refusal shows by the button, a preview's above the preview. */
   const [errorFrom, setErrorFrom] = useState<'preview' | 'create'>('preview');
@@ -157,7 +160,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
       baseBranch: base,
       sync,
       ...(repos ? { repos } : askRepos && pickedRepos.length > 0 ? { repos: pickedRepos } : {}),
-      ...(sync === 'write' ? { transitions: { inProgress, inReview } } : {}),
+      ...(sync === 'write' ? { transitions: { inProgress, inReview, done: doneName }, doneOnMerge } : {}),
     };
     try {
       if (inFolder) {
@@ -361,6 +364,20 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                       <span>"In review" transition</span>
                       <input data-testid="jira-transition-review" value={inReview} onChange={(event) => setInReview(event.target.value)} />
                     </label>
+                  </div>
+                ) : null}
+                {sync === 'write' ? (
+                  <div className="sb-jira-row sb-jira-done">
+                    <label className="sb-jira-check">
+                      <input type="checkbox" data-testid="jira-done-on-merge" checked={doneOnMerge} onChange={(event) => setDoneOnMerge(event.target.checked)} />
+                      Move to Done when merged into the feature branch
+                    </label>
+                    {doneOnMerge ? (
+                      <label className="sb-jira-field sb-jira-grow">
+                        <span>"Done" transition</span>
+                        <input data-testid="jira-transition-done" value={doneName} onChange={(event) => setDoneName(event.target.value)} />
+                      </label>
+                    ) : null}
                   </div>
                 ) : null}
                 <p className="sb-jira-muted">

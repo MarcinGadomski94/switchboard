@@ -45,6 +45,8 @@ export interface JiraImportBody {
   readonly repos?: readonly string[];
   readonly sync?: JiraSyncMode;
   readonly transitions?: Partial<JiraTransitionNames>;
+  /** D116: move a ticket to Done once its item is merged into the target (omitted = on). */
+  readonly doneOnMerge?: boolean;
 }
 
 /**
@@ -79,7 +81,7 @@ export const jiraApi = {
   /** D112: the import into a folder of `machine`: a new session there owns the plan. */
   importIntoFolder: (machine: string | null, body: JiraFolderImportBody) => call<JiraImportAnswer & { readonly session: Session | null }>('POST', onMachine(machine, '/api/plans/jira/import'), body),
   state: (planId: string) => call<PlanJiraState>('GET', `/api/plans/${enc(planId)}/jira`),
-  update: (planId: string, body: { readonly sync?: JiraSyncMode; readonly transitions?: Partial<JiraTransitionNames> }) => call<PlanJiraState>('PUT', `/api/plans/${enc(planId)}/jira`, body),
+  update: (planId: string, body: { readonly sync?: JiraSyncMode; readonly transitions?: Partial<JiraTransitionNames>; readonly doneOnMerge?: boolean }) => call<PlanJiraState>('PUT', `/api/plans/${enc(planId)}/jira`, body),
   refresh: (planId: string) => call<PlanJiraState>('POST', `/api/plans/${enc(planId)}/jira/refresh`),
   proposals: (planId: string) => call<PlanEdgeProposal[]>('GET', `/api/plans/${enc(planId)}/proposals`),
   askForOrder: (planId: string) => call<{ readonly asked: true; readonly sessionId: string }>('POST', `/api/plans/${enc(planId)}/proposals/ask`),
