@@ -258,6 +258,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-pick-repos': 'Pick repositories',
   // D120: a plan item's agent ended its turn without finishing its todo.
   'plan-stopped': 'Stopped',
+  // D121: a plan item marked merged without its branch in the target was reopened.
+  'plan-reopened': 'Reopened',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
   'memory-proposals': 'Memory',
   // Project memory (D107) hook (follow-up 2026-10-16): a moved member's memory could not be copied.

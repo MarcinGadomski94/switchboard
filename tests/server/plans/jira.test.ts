@@ -935,3 +935,53 @@ describe('D117 follow-up · Delete a running plan stops its item sessions', () =
     expect(await r.plans.remove(second.body.plan.id, { stop: true })).toEqual({ cancelled: false, stopped: [] });
   });
 });
+
+describe('D121 · a reopened item in Jira: no correction; a real later merge writes again', () => {
+  it('Reopen after a merge comment + Done: an activity line and the item note, no Jira write; the real merge comments and moves it to Done again', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges11(r, planId);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    const p11 = await item(r, planId, 'PROJ-11');
+    // The branch was not really merged (what the auto-repair finds; the developer's Reopen does the same).
+    r.git.branches.set(p11.branch as string, { hasWork: true, merged: false });
+    const writes = r.fake.requests.filter((request) => request.method !== 'GET').length;
+    await r.plans.reopenItem(planId, p11.id);
+    await settle(r);
+    const reopened = await item(r, planId, 'PROJ-11');
+    expect(reopened.storedState).toBe('running');
+    expect(reopened.note).toBe('Reopened: reopened by you; Jira was told this was merged/Done — check PROJ-11');
+    // No automatic correction in Jira.
+    expect(r.fake.requests.filter((request) => request.method !== 'GET').length).toBe(writes);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    const jira = await jiraState(r, planId);
+    expect(jira.activity.find((entry) => entry.kind === 'reopened')?.text).toBe('PROJ-11: reopened (reopened by the developer). Jira was told this was merged/Done — check PROJ-11; Switchboard corrects nothing in Jira.');
+    // The developer moves the ticket back in Jira; later the work is really merged: the comment and Done are written again.
+    const issue = r.fake.issues.get('PROJ-11');
+    if (issue) Object.assign(issue, { status: 'In Progress', statusCategory: 'indeterminate' });
+    r.git.branches.set(p11.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', url: 'https://git.acme.example/acme/acme-front/pull/7', checks: { state: 'green', summary: null, sha: 'def' } } });
+    await status(r, p11.runSessionId as string, 'run');
+    await status(r, p11.runSessionId as string, 'idle');
+    expect((await item(r, planId, 'PROJ-11')).state).toBe('done');
+    expect(commentsOf(r, 'PROJ-11').filter((text) => text.startsWith('Merged into feature/PROJ-10-acme-checkout.'))).toHaveLength(2);
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(2);
+    expect(r.fake.issues.get('PROJ-11')?.status).toBe('Done');
+    expect(r.errors).toEqual([]);
+  });
+
+  it('a reopen before Jira heard anything: an activity line, no "Jira was told" note', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write');
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    const p15 = await item(r, planId, 'PROJ-15');
+    await r.plans.markItemDone(planId, p15.id);
+    await settle(r);
+    await r.plans.reopenItem(planId, p15.id);
+    await settle(r);
+    expect((await item(r, planId, 'PROJ-15')).note).toBe('Reopened: reopened by you');
+    expect((await jiraState(r, planId)).activity.find((entry) => entry.kind === 'reopened')?.text).toBe('PROJ-15: reopened (reopened by the developer).');
+  });
+});

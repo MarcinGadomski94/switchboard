@@ -692,6 +692,45 @@ export function planItemBranch(key: string | null, slug: string): string {
   return key ? `${key}-${slug}` : `todo/${slug}`;
 }
 
+// ── D121: a fresh item branch is never "merged"; falsely done items are reopened ──
+
+/** D102: the note of an item the developer merged with the Merge step. */
+export function planMergedByYouNote(target: string): string {
+  return `merged by you into ${target}`;
+}
+
+/** D99: the note of an item the developer counted as done (Mark done). */
+export const PLAN_MARKED_DONE_NOTE = 'marked done by the developer';
+
+/**
+ * D121: whether a done item's done came from the git detection (its branch read as merged into
+ * the target: the agent's merge, a PR merged on GitHub): not the developer's Merge, not Mark done.
+ * Only these are re-checked by the auto-repair.
+ */
+export function doneByGitDetection(item: Pick<PlanItemFacts, 'state' | 'note'>): boolean {
+  if (item.state !== 'done') return false;
+  return item.note !== PLAN_MARKED_DONE_NOTE && !(item.note ?? '').startsWith('merged by you into ');
+}
+
+/** D121: the start of a reopened item's note and of the dependents' warning (the UI marks them). */
+export const PLAN_REOPENED_PREFIX = 'Reopened';
+export const PLAN_EARLY_START_PREFIX = 'started before';
+
+/** D121: why an item was reopened (`auto`: the auto-repair; `developer`: Reopen). */
+export function planReopenedWhy(how: 'auto' | 'developer', target: string | null): string {
+  return how === 'auto' ? `it was marked merged but its branch isn't in ${target ?? 'the target'}` : 'reopened by you';
+}
+
+/** D121: the warning on a dependent that started while item `key` was falsely done. */
+export function planEarlyStartWarning(label: string): string {
+  return `${PLAN_EARLY_START_PREFIX} ${label} was merged — its branch may lack that work`;
+}
+
+/** D121: the note on a reopened item whose ticket was told it was merged / Done. */
+export function planJiraToldNote(key: string): string {
+  return `Jira was told this was merged/Done — check ${key}`;
+}
+
 /** A git branch name Switchboard accepts for a plan's target / base (no spaces, no `..`, no leading `-`, …). */
 export function isBranchName(value: string): boolean {
   return /^[A-Za-z0-9._/-]+$/.test(value) && !value.startsWith('-') && !value.startsWith('/') && !value.endsWith('/') && !value.endsWith('.lock') && !value.includes('..') && !value.includes('//');

@@ -50,10 +50,10 @@ import type { Store } from '../../db/store.ts';
 import type { HubBus, HubMessage } from '../../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../../schedules/scheduler.ts';
 import type { TodoService } from '../../todos/service.ts';
-import { PlanError, type PlanService, type ReposAskEvent } from '../service.ts';
+import { PlanError, type PlanReopenAnswer, type PlanReopenEvent, type PlanService, type ReposAskEvent } from '../service.ts';
 import { JiraClient, JiraError } from './client.ts';
 import type { JiraCredentialSource } from './credentials.ts';
-import type { PlanJiraItemRecord, PlanJiraRecord, PlanJiraStore } from './store.ts';
+import { type PlanJiraItemRecord, type PlanJiraRecord, type PlanJiraStore, jiraDoneEvent, jiraMergedEvent } from './store.ts';
 
 /** Why a Jira-lane call was refused: maps to the HTTP answer of the route. */
 export class PlanJiraError extends Error {
@@ -290,6 +290,8 @@ export class PlanJiraService {
   #ticking: Promise<void> | null = null;
   /** D115 follow-ups: stops following the plans' repositories ask. */
   #offReposAsk: (() => void) | null = null;
+  /** D121: stops following reopened items. */
+  #offReopen: (() => void) | null = null;
   #closed = false;
 
   constructor(options: PlanJiraServiceOptions) {
@@ -307,6 +309,8 @@ export class PlanJiraService {
     this.#unsubscribe = this.#options.bus.subscribe((message) => this.#onMessage(message));
     // D115 follow-ups: the plans' repositories ask (sent, failed, not answered in time) is a line of a Jira plan's activity.
     this.#offReposAsk = this.#options.plans.onReposAsk((event) => this.#reposAskLine(event));
+    // D121: a reopened item's false "merged" / Done writes are retired (and the activity says whether Jira was told).
+    this.#offReopen = this.#options.plans.onItemReopened((event) => this.#reopened(event));
     this.#arm();
   }
 
@@ -319,6 +323,8 @@ export class PlanJiraService {
     this.#timer = null;
     this.#offReposAsk?.();
     this.#offReposAsk = null;
+    this.#offReopen?.();
+    this.#offReopen = null;
     await this.idle();
   }
 
@@ -1004,6 +1010,31 @@ export class PlanJiraService {
     await this.#options.send(plan.sourceSessionId, parts.join('\n\n'));
   }
 
+  /**
+   * D121 (`docs/plans.md` → *Jira import and status sync*): an item of a Jira plan was reopened
+   * (it was done by mistake, or the developer reopened it). Nothing is corrected in Jira: no
+   * comment, no transition back. Its "merged" comment and Done transition records (any state) are
+   * retired, so a real later merge comments and moves it to Done again; the activity gets a line,
+   * and when Jira was told (the comment or the Done went through) the answer names the key for the
+   * item's note and the Inbox item.
+   */
+  async #reopened(event: PlanReopenEvent): Promise<PlanReopenAnswer | null> {
+    if (!(await this.#enabled())) return null;
+    const db = await this.#jdb();
+    if (!(await db.plan(event.planId))) return null;
+    const row = (await db.items(event.planId)).find((candidate) => candidate.itemId === event.itemId);
+    if (!row) return null;
+    const generation = await db.mergeGeneration(event.itemId);
+    const merged = await db.write(event.itemId, jiraMergedEvent(generation));
+    const done = await db.write(event.itemId, jiraDoneEvent(event.itemId, generation));
+    const told = merged?.state === 'done' || done?.state === 'done';
+    await db.retireMergeWrites(event.planId, event.itemId, generation, [jiraMergedEvent(generation), jiraDoneEvent(event.itemId, generation)]);
+    const why = event.how === 'auto' ? `it was marked merged but its branch isn't in ${event.target ?? 'the target'}` : 'reopened by the developer';
+    const toldText = told ? ` Jira was told this was merged${done?.state === 'done' ? '/Done' : ''} — check ${row.key}; Switchboard corrects nothing in Jira.` : '';
+    await db.addActivity(event.planId, { itemId: event.itemId, key: row.key, kind: 'reopened', text: `${row.key}: reopened (${why}).${toldText}` });
+    return { jiraTold: told ? row.key : null };
+  }
+
   /** D115 follow-ups: the core's repositories ask as a line of a Jira plan's activity (the import writes its own). */
   async #reposAskLine(event: ReposAskEvent): Promise<void> {
     if (event.via === 'import' || event.via === 'agent') return;
@@ -1171,7 +1202,11 @@ export class PlanJiraService {
   async #followItem(pass: WritePass, item: PlanItem, row: PlanJiraItemRecord): Promise<void> {
     const { transitions } = pass.record;
     // D116: once the ticket was moved to Done, a still-pending In Progress / In Review retry is dropped (it would move it back).
-    const movedToDone = (await (await this.#jdb()).write(row.itemId, `done:${item.id}`))?.state === 'done';
+    // D121: the merge writes of the item's current generation (a reopen retired the earlier ones).
+    const generation = await (await this.#jdb()).mergeGeneration(row.itemId);
+    const mergedEvent = jiraMergedEvent(generation);
+    const doneEvent = jiraDoneEvent(item.id, generation);
+    const movedToDone = (await (await this.#jdb()).write(row.itemId, doneEvent))?.state === 'done';
     // 1. The run started.
     if (item.runSessionId !== null && item.storedState !== 'pending' && !movedToDone) await pass.transition(row, `start:${item.runSessionId}`, transitions.inProgress, 'its run started');
     // 2. Its pull request opened.
@@ -1195,11 +1230,11 @@ export class PlanJiraService {
     }
     // 4. Merged into the target (a real merge only, see mergedIntoTarget): a comment.
     const target = mergedIntoTarget(pass.plan, item);
-    if (target !== null) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(target));
+    if (target !== null) await pass.comment(current, mergedEvent, JIRA_COMMENTS.merged(target));
     // 5. D116: then Done, when the plan asks for it, after the same real merge, once the comment is no longer pending (it comes first).
     if (pass.record.doneOnMerge && target !== null) {
-      const comment = await (await this.#jdb()).write(row.itemId, 'merged');
-      if (comment && comment.state !== 'pending') await pass.transition(current, `done:${item.id}`, transitions.done, `merged into ${pass.plan.targetBranch}`, true);
+      const comment = await (await this.#jdb()).write(row.itemId, mergedEvent);
+      if (comment && comment.state !== 'pending') await pass.transition(current, doneEvent, transitions.done, `merged into ${pass.plan.targetBranch}`, true);
     }
   }
 

@@ -429,7 +429,7 @@ export class SystemItemService {
    * {@link closePlanMergeNotices}).
    * @returns the new item, or `null` when this key already raised one.
    */
-  async planNotice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+  async planNotice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm' | 'plan-reopened'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
     const created = await this.#store.systemItems.createOnceByPayload(
       {
         kind: input.kind,

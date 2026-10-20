@@ -161,8 +161,8 @@ export interface PlanJiraActivity {
   readonly at: string;
   readonly itemId: string | null;
   readonly key: string | null;
-  /** D115: `ask-repos` = the plan's agent was asked to pick its items' repositories. */
-  readonly kind: 'import' | 'refresh' | 'transition' | 'comment' | 'soft-failure' | 'error' | 'settings' | 'ask-repos';
+  /** D115: `ask-repos` = the plan's agent was asked to pick its items' repositories. D121: `reopened` = an item done by mistake was reopened. */
+  readonly kind: 'import' | 'refresh' | 'transition' | 'comment' | 'soft-failure' | 'error' | 'settings' | 'ask-repos' | 'reopened';
   readonly text: string;
 }
 

@@ -32,7 +32,7 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  *   `POST /api/plans` → 201 `Plan` (a draft); `GET|PUT|DELETE /api/plans/{id}` (D117 follow-up: `DELETE …?stop=1`
  *   cancels a running or paused plan and stops its running item sessions first, → 200 `{ cancelled, stopped }`);
  * - `POST /api/plans/{id}/items` → 201 `{ plan, itemId }`; `PUT|DELETE /api/plans/{id}/items/{itemId}`;
- *   `POST /api/plans/{id}/items/{itemId}/retry | done`; D102, the Merge step of a ready-to-merge item:
+ *   `POST /api/plans/{id}/items/{itemId}/retry | done | reopen` (D121); D102, the Merge step of a ready-to-merge item:
  *   `POST /api/plans/{id}/items/{itemId}/merge | open-pr | send-back` (`{ comment }`);
  * - `POST /api/plans/{id}/edges` `{ from, to }`; `DELETE /api/plans/{id}/edges/{from}/{to}`;
  * - `POST /api/plans/{id}/start` `{ mergeMode }` (required), `…/pause`, `…/resume`, `…/cancel`;
@@ -122,9 +122,11 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     }
   });
 
-  for (const action of ['retry', 'done'] as const) {
+  // D121: reopen a done item (a running or paused plan).
+  for (const action of ['retry', 'done', 'reopen'] as const) {
     app.post<{ Params: { id: string; itemId: string } }>(`/api/plans/:id/items/:itemId/${action}`, async (request, reply) => {
       try {
+        if (action === 'reopen') return await plans.reopenItem(request.params.id, request.params.itemId);
         return action === 'retry' ? await plans.retryItem(request.params.id, request.params.itemId) : await plans.markItemDone(request.params.id, request.params.itemId);
       } catch (error) {
         return sendPlanError(reply, error);
