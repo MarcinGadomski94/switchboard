@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.28.0 (2026-10-20)
+
+### Plans
+- **Jira tickets move to Done once their work is merged into the feature branch:** with write sync, an item merged into the plan's target (by its agent, or by your Merge) gets the "Merged into <target>." comment and then the Done transition. It's on by default for new plans ("Move to Done when merged into the feature branch", transition name editable) and off for existing ones (turn it on in the plan's Jira section). Mark done never moves a ticket.
+
+### Fixed
+- **A delayed In Review retry can no longer move a ticket back out of Done.**
+- **A plan without a merge step no longer comments "Merged into <target>."** on a ticket when its item finishes.
+
 ## 1.27.0 (2026-10-20)
 
 ### Plans
