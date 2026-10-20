@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
 import { PLANS_SETTING, type Plan } from '../../../src/core/plans.ts';
 import type { JiraPreview } from '../../../src/core/plans-jira.ts';
+import type { SidebarLayout } from '../../../src/core/sidebar-layout.ts';
 import { peerAnswerKind, mapPeerAnswer } from '../../../src/core/peer-wire.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -38,6 +39,8 @@ interface Rig {
   workspaceFolder: Folder;
   /** The names of the sessions the hub announced. */
   announced: Set<string>;
+  /** D119: how many times the hub published `sidebarLayoutChanged`. */
+  layoutChanges: number;
 }
 
 let rig: Rig | undefined;
@@ -77,7 +80,10 @@ async function setup(): Promise<Rig> {
     const payload = message.payload as { name?: unknown };
     if (message.name.startsWith('session') && typeof payload?.name === 'string') announced.add(payload.name);
   });
-  const partial = { s, g, app, token, fake, announced } as Rig;
+  const partial = { s, g, app, token, fake, announced, layoutChanges: 0 } as Rig;
+  bus.subscribe((message) => {
+    if (message.name === 'sidebarLayoutChanged') partial.layoutChanges += 1;
+  });
   rig = partial;
   const saved = await call(partial, 'PUT', '/api/integrations/jira', { baseUrl: fake.url, email: fake.email, token: fake.token });
   expect(saved.statusCode, saved.body).toBe(200);
@@ -189,4 +195,76 @@ describe('D112 · Import from Jira into a folder', () => {
     expect(mapped.plan.id).toBe('r~m2~p1');
     expect(mapped.session.id).toBe('r~m2~s1');
   });
+});
+
+describe('D119 · the imported plan gets its own sidebar subfolder', () => {
+  async function sidebarFolder(r: Rig, name: string, parentId: string | null = null): Promise<string> {
+    const answer = await call(r, 'POST', '/api/sidebar/folders', { name, parentId });
+    expect(answer.statusCode, answer.body).toBe(201);
+    return ((answer.json() as SidebarLayout).folders.find((f) => f.name === name && (f.parentId ?? null) === parentId) as { id: string }).id;
+  }
+  async function layout(r: Rig): Promise<SidebarLayout> {
+    return (await call(r, 'GET', '/api/sidebar')).json() as SidebarLayout;
+  }
+  type Answer = { plan: Plan; session: Session; sidebarFolder: { id: string; name: string; parentId: string | null } | null };
+
+  it('makes "Plan · <title>" in the chosen folder with the session first, publishes the layout, and a run of the plan lands after the session', async () => {
+    const r = await setup();
+    const releases = await sidebarFolder(r, 'Releases', await sidebarFolder(r, 'Acme'));
+    const before = r.layoutChanges;
+    const answer = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, title: 'PROJ-10 Acme checkout', folder: r.repoFolder.id, sidebarFolderId: releases });
+    expect(answer.statusCode, answer.body).toBe(201);
+    const { plan, session, sidebarFolder: made } = answer.json() as Answer;
+    expect(made).toMatchObject({ name: 'Plan · PROJ-10 Acme checkout', parentId: releases });
+    const folder = (await layout(r)).folders.find((f) => f.id === made?.id);
+    expect(folder).toMatchObject({ name: 'Plan · PROJ-10 Acme checkout', parentId: releases, sessionIds: [session.id] });
+    expect(r.layoutChanges).toBeGreaterThan(before);
+
+    // A run of the plan follows its source (the owner session) into the subfolder, right after it (`placeRun`).
+    const started = await call(r, 'POST', `/api/plans/${plan.id}/start`, { mergeMode: 'agents' });
+    expect(started.statusCode, started.body).toBe(200);
+    const run = await until(async () => (await call(r, 'GET', `/api/plans/${plan.id}`)).json<Plan>().items.find((item) => item.runSessionId)?.runSessionId ?? undefined, 'a running item', 20_000);
+    await until(async () => (JSON.stringify((await layout(r)).folders.find((f) => f.id === made?.id)?.sessionIds) === JSON.stringify([session.id, run]) ? true : undefined), 'the run after the session', 20_000);
+  }, 60_000);
+
+  it('root (null) makes a top-level subfolder; a name taken at that level gets " (2)"; absent places nothing (as before)', async () => {
+    const r = await setup();
+    await sidebarFolder(r, 'Plan · Acme checkout');
+    const first = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id, sidebarFolderId: null });
+    expect(first.statusCode, first.body).toBe(201);
+    const made = (first.json() as Answer).sidebarFolder;
+    expect(made).toMatchObject({ name: 'Plan · Acme checkout (2)', parentId: null });
+    const third = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id, sidebarFolderId: null });
+    expect((third.json() as Answer).sidebarFolder?.name).toBe('Plan · Acme checkout (3)');
+    const before = (await layout(r)).folders.length;
+    const unplaced = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id });
+    expect(unplaced.statusCode, unplaced.body).toBe(201);
+    expect((unplaced.json() as Answer).sidebarFolder).toBeNull();
+    const after = await layout(r);
+    expect(after.folders.length).toBe(before);
+    expect(after.folders.some((f) => f.sessionIds.includes((unplaced.json() as Answer).session.id))).toBe(false);
+  }, 60_000);
+
+  it('refuses an unknown or too-deep sidebar folder before anything is made, and a failed import leaves no folder', async () => {
+    const r = await setup();
+    let parent: string | null = null;
+    for (const name of ['L1', 'L2', 'L3', 'L4', 'L5']) parent = await sidebarFolder(r, name, parent);
+    const folders = (await layout(r)).folders.length;
+    const unknown = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id, sidebarFolderId: 'no-such-folder' });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json().errors?.[0]?.field).toBe('sidebarFolderId');
+    const deep = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id, sidebarFolderId: parent });
+    expect(deep.statusCode).toBe(422);
+    expect(deep.json().errors?.[0]?.field).toBe('sidebarFolderId');
+    const bad = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id, sidebarFolderId: 7 });
+    expect(bad.statusCode).toBe(422);
+    expect(await sessionCount(r)).toBe(0);
+    // D112's rollback (the core refuses the target once the session exists): the session goes, and no folder was made.
+    const before = r.layoutChanges;
+    const refused = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, targetBranch: 'feature/..bad', folder: r.repoFolder.id, sidebarFolderId: null });
+    expect(refused.statusCode, refused.body).toBe(422);
+    expect(await sessionCount(r)).toBe(0);
+    expect((await layout(r)).folders.length).toBe(folders);
+    expect(r.layoutChanges).toBe(before);
+  }, 60_000);
 });

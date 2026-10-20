@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -12,12 +13,14 @@ import { registerPlanJiraRoutes } from './routes.ts';
 import { PlanJiraService } from './service.ts';
 import { PlanJiraStore } from './store.ts';
 import { JiraClient, JiraError } from './client.ts';
-import { adfToText } from '../../../core/plans-jira.ts';
 import { registerJiraIssueSource } from '../../todos/import.ts';
 import { resolveSessionFolder, startNewSession } from '../../sessions/start.ts';
 import { toSession } from '../../sessions/wire.ts';
 import { WorktreeError } from '../../worktrees/manager.ts';
-import type { PlanOwnerPlace, PlanOwnerRefusal, PlanOwnerSessions } from './service.ts';
+import type { PlanOwnerPlace, PlanOwnerRefusal, PlanOwnerSessions, PlanSidebarFolder } from './service.ts';
+import { adfToText, addPlanSidebarFolder, planSidebarFolderName, planSidebarFolderProblem } from '../../../core/plans-jira.ts';
+import type { Session } from '../../../core/api.ts';
+import { PEER_REQUEST_HEADER } from '../../peers/service.ts';
 
 /** The Jira lane's service of an app (tests). */
 const services = new WeakMap<FastifyInstance, PlanJiraService>();
@@ -99,6 +102,7 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
     const record = await context.store.sessions.get(sessionId);
     return record ? toSession(context.store, record, context.supervisor.activity(record.id)) : null;
   });
+  registerForwardedImportPlace(app, context);
   app.addHook('onReady', async () => {
     if (!context.config.demo) service.start();
   });
@@ -205,5 +209,84 @@ export function planOwnerSessions(context: PlansAppContext): PlanOwnerSessions {
       await context.store.sessions.delete(sessionId);
       for (const dir of ['attachments', 'handovers']) await rm(path.join(context.config.dataDir, dir, sessionId), { recursive: true, force: true });
     },
+    checkSidebarFolder: (folderId) => checkPlanSidebarFolder(context, folderId),
+    placeInSidebar: (sessionId, parentId, name) => placePlanInSidebar(context, sessionId, parentId, name),
   };
+}
+
+/** D119: a sidebar folder a plan's own subfolder may go into (`null` = the top level), else the refusal (404 unknown, 422 too deep). */
+export async function checkPlanSidebarFolder(context: Pick<PlansAppContext, 'store'>, folderId: string | null): Promise<PlanOwnerRefusal | null> {
+  const problem = planSidebarFolderProblem(await context.store.sidebar.read(), folderId);
+  if (!problem) return null;
+  const message = problem.kind === 'not-found' ? `no sidebar folder ${problem.id}` : `a plan's own subfolder cannot go there: ${problem.message}`;
+  return { ok: false, status: problem.kind === 'not-found' ? 404 : 422, body: { error: problem.kind === 'not-found' ? 'not-found' : 'invalid', message, errors: [{ field: 'sidebarFolderId', message }] } };
+}
+
+/**
+ * D119: the plan's own subfolder `name` in sidebar folder `parentId` with `sessionId` first in it, written
+ * through the D71 layout store in one transaction, published as `sidebarLayoutChanged` and handed to the
+ * shared-layout sync, exactly like a manual move (`/api/sidebar/*`). `sessionId` is this machine's id, or a
+ * paired machine's remote id (an import forwarded there, placed in this machine's layout).
+ */
+export async function placePlanInSidebar(
+  context: Pick<PlansAppContext, 'store' | 'bus' | 'peers'>,
+  sessionId: string,
+  parentId: string | null,
+  name: string,
+): Promise<PlanSidebarFolder | null> {
+  const id = randomUUID();
+  let made: PlanSidebarFolder | null = null;
+  const write = await context.store.sidebar.change((layout) => {
+    const next = addPlanSidebarFolder(layout, { folderId: id, name, parentId, sessionId });
+    if (!next) return null;
+    made = { id, name: next.name, parentId: next.parentId };
+    return next.layout;
+  });
+  if (!write) return null;
+  context.bus.publish('sidebarLayoutChanged', write.layout);
+  context.peers.sidebarChanged(write.changes);
+  return made;
+}
+
+/**
+ * D119 × D48 / D71 · an import into a new session on a **paired machine**
+ * (`POST /api/machines/{id}/api/plans/jira/import`, otherwise the generic proxy): the session
+ * runs there, but the plan's own sidebar subfolder is made in **this** machine's layout (the
+ * one the developer picked from, by the ids it shows: the session's remote id), exactly as this
+ * machine places that machine's runs (`RunPlaces`). `sidebarFolderId` is checked here first (a
+ * refusal sends nothing), never forwarded (the other machine's folder ids differ unless the layout
+ * is shared), and the subfolder is made only after that machine answered success. With the shared
+ * layout on (D71) the records go to the other machine, which then shows the same subfolder.
+ */
+function registerForwardedImportPlace(app: FastifyInstance, context: PlansAppContext): void {
+  app.post<{ Params: { id: string } }>('/api/machines/:id/api/plans/jira/import', async (request, reply) => {
+    if (request.headers[PEER_REQUEST_HEADER] !== undefined) return reply.code(403).send({ error: 'peer-forbidden', message: 'a peer cannot reach further machines' });
+    const body = request.body;
+    let forwarded: unknown = body;
+    let parent: string | null | undefined;
+    if (typeof body === 'object' && body !== null && !Array.isArray(body) && 'sidebarFolderId' in body) {
+      const { sidebarFolderId, ...rest } = body as Record<string, unknown>;
+      forwarded = rest;
+      if (sidebarFolderId !== undefined && sidebarFolderId !== null && (typeof sidebarFolderId !== 'string' || sidebarFolderId === '')) {
+        const message = 'sidebarFolderId must be the id of a sidebar folder, or null for the top level';
+        return reply.code(422).send({ error: 'invalid', message, errors: [{ field: 'sidebarFolderId', message }] });
+      }
+      parent = sidebarFolderId as string | null | undefined;
+    }
+    if (parent !== undefined) {
+      const refused = await checkPlanSidebarFolder(context, parent);
+      if (refused) return reply.code(refused.status).send(refused.body);
+    }
+    const cut = request.url.indexOf('?');
+    const answer = await context.peers.forward(request.params.id, 'POST', `/api/plans/jira/import${cut < 0 ? '' : request.url.slice(cut)}`, forwarded);
+    const result = answer.body;
+    if (parent === undefined || answer.status < 200 || answer.status >= 300 || typeof result !== 'object' || result === null) return reply.code(answer.status).send(result ?? undefined);
+    const session = (result as { session?: unknown }).session;
+    if (typeof session !== 'object' || session === null || typeof (session as Session).id !== 'string') return reply.code(answer.status).send(result);
+    const sidebarFolder = await placePlanInSidebar(context, (session as Session).id, parent, planSidebarFolderName((session as Session).title ?? '')).catch((error: unknown) => {
+      console.error('switchboard plan sidebar folder:', error);
+      return null;
+    });
+    return reply.code(answer.status).send({ ...result, sidebarFolder });
+  });
 }

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
 import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
 import {
+  planSidebarFolderName,
   DEFAULT_JIRA_DONE_ON_MERGE,
   DEFAULT_JIRA_TRANSITIONS,
   JIRA_COMMENTS,
@@ -148,6 +149,25 @@ export interface PlanOwnerSessions {
   nameTaken(name: string): Promise<boolean>;
   /** Closes (its process stops) and deletes a session this lane started for an import that then failed. */
   discard(sessionId: string): Promise<void>;
+  /**
+   * D119: checks the sidebar folder a plan's own subfolder will go into (`null` = the top level)
+   * before anything is read or created: it exists and can hold one more level.
+   */
+  checkSidebarFolder(folderId: string | null): Promise<PlanOwnerRefusal | null>;
+  /**
+   * D119: after the import succeeded, makes the plan's own subfolder `name` (" (2)"… when taken at
+   * that level) in sidebar folder `parentId` (`null` = the top level) with the session as its first
+   * item, through the D71 layout store in one transaction (published, synced); answers the folder.
+   */
+  placeInSidebar(sessionId: string, parentId: string | null, name: string): Promise<PlanSidebarFolder | null>;
+}
+
+/** D119: the plan's own sidebar subfolder an import made (`POST /api/plans/jira/import`'s `sidebarFolder`). */
+export interface PlanSidebarFolder {
+  readonly id: string;
+  readonly name: string;
+  /** The sidebar folder it sits in (`null` = the top level). */
+  readonly parentId: string | null;
 }
 
 /** The answer of an import. */
@@ -501,7 +521,7 @@ export class PlanJiraService {
    * session is closed and deleted again (and a plan already made is removed) before the error is
    * answered.
    */
-  async importIntoNewSession(body: unknown): Promise<JiraImportResult & { readonly sessionId: string }> {
+  async importIntoNewSession(body: unknown): Promise<JiraImportResult & { readonly sessionId: string; readonly sidebarFolder: PlanSidebarFolder | null }> {
     await this.#gate();
     const sessions = this.#options.newSession;
     if (!sessions) throw new PlanJiraError(409, 'no-sessions', 'this Switchboard cannot start a session for the plan');
@@ -519,27 +539,47 @@ export class PlanJiraService {
       profileId: raw['profileId'],
       repos: Array.isArray(raw['repos']) ? [...new Set(raw['repos'] as string[])] : null,
     };
+    // D119: the sidebar folder the plan's own subfolder goes into (`null` = the top level; absent = none, as before D119).
+    const sidebarParent = raw['sidebarFolderId'];
+    if (sidebarParent !== undefined && sidebarParent !== null && (typeof sidebarParent !== 'string' || sidebarParent === '')) {
+      throw new PlanJiraError(422, 'invalid', 'sidebarFolderId must be the id of a sidebar folder, or null for the top level', 'sidebarFolderId');
+    }
     const where = await sessions.check(place);
     if (!where.ok) throw ownerRefusal(where);
+    if (sidebarParent !== undefined) {
+      const refused = await sessions.checkSidebarFolder(sidebarParent);
+      if (refused) throw ownerRefusal(refused);
+    }
     const client = await this.#client();
     const preview = await this.#readEpic(client, checked.epicKey);
     let name = planOwnerName(checked.epicKey);
     for (let n = 2; await sessions.nameTaken(name); n += 1) name = `${planOwnerName(checked.epicKey)}-${n}`;
-    const started = await sessions.start(place, { name, title: planOwnerTitle(typeof raw['title'] === 'string' ? raw['title'] : '', preview.epic.summary) });
+    const title = planOwnerTitle(typeof raw['title'] === 'string' ? raw['title'] : '', preview.epic.summary);
+    const started = await sessions.start(place, { name, title });
     if (!started.ok) throw ownerRefusal(started);
     const repos = where.kind === 'workspace' ? place.repos : null;
     let planId: string | null = null;
+    let result: JiraImportResult;
     try {
-      const result = await this.#createPlan(started.sessionId, { ...checked, input: { ...raw, repos: repos ?? undefined } }, client, preview, (id) => {
+      result = await this.#createPlan(started.sessionId, { ...checked, input: { ...raw, repos: repos ?? undefined } }, client, preview, (id) => {
         planId = id;
       });
-      return { ...result, sessionId: started.sessionId };
     } catch (error) {
-      // No leftovers: the plan (when it was made) and the session go again.
+      // No leftovers: the plan (when it was made) and the session go again (D119: no sidebar folder was made yet).
       if (planId !== null) await this.#options.plans.remove(planId).catch((cause: unknown) => this.#onError(cause));
       await sessions.discard(started.sessionId).catch((cause: unknown) => this.#onError(cause));
       throw error;
     }
+    // D119: only now that the import succeeded, the plan's own subfolder (the session first in it); its runs follow
+    // the session there (`placeRun`). A failed placement never fails the import: the session stays at the root.
+    const sidebarFolder =
+      sidebarParent === undefined
+        ? null
+        : await sessions.placeInSidebar(started.sessionId, sidebarParent as string | null, planSidebarFolderName(title)).catch((cause: unknown) => {
+            this.#onError(cause);
+            return null;
+          });
+    return { ...result, sessionId: started.sessionId, sidebarFolder };
   }
 
   /** The import's writes: the draft plan through the core's seam, its Jira rows, the activity line and the ask for the order. */

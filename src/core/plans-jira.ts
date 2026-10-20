@@ -5,6 +5,7 @@
  * of the optional status sync. No I/O here: the server's `src/server/plans/jira/` reads Jira.
  */
 import { findCycle, type PlanEdge } from './plans.ts';
+import { SIDEBAR_FOLDER_NAME_MAX, type SidebarLayout, type SidebarTreeProblem, addFolder, checkFolderParent, placeSession } from './sidebar-layout.ts';
 import type { JiraContextCounts } from './plans-jira-context.ts';
 import { TODO_DESCRIPTION_MAX, TODO_TITLE_MAX, type TodoToolDefinition } from './todos.ts';
 
@@ -786,3 +787,143 @@ export const PLAN_PROPOSE_TOOL: TodoToolDefinition = {
   },
   annotations: { title: 'Propose plan dependencies', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
+
+// ── D119: the plan's own sidebar subfolder ────────────────────────────────
+
+/** D119: a plan's own sidebar subfolder is named like its owner session: "Plan · <plan title>". */
+export const PLAN_SIDEBAR_FOLDER_PREFIX = 'Plan · ';
+
+/**
+ * Cuts `text` to at most `max` characters: whole when it fits; else at the last word break in
+ * its last third (else mid-word), with "…".
+ */
+function cutName(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  const room = trimmed.slice(0, max - 1);
+  const space = room.lastIndexOf(' ');
+  const cut = space >= Math.floor((max * 2) / 3) ? room.slice(0, space) : room;
+  return `${cut.replace(/[\s·,;:–-]+$/u, '')}…`;
+}
+
+/**
+ * D119: the name of a plan's own sidebar subfolder: the owner session's title ("Plan · <plan
+ * title>", `planOwnerTitle`) cut to the sidebar's {@link SIDEBAR_FOLDER_NAME_MAX} characters at
+ * a word break (a title the session already cut keeps its words, not a second "…").
+ */
+export function planSidebarFolderName(sessionTitle: string): string {
+  const title = sessionTitle.trim().replace(/…$/u, '').trimEnd() || `${PLAN_SIDEBAR_FOLDER_PREFIX}Jira epic`;
+  const whole = sessionTitle.trim().endsWith('…') ? `${title}…` : title;
+  return whole.length <= SIDEBAR_FOLDER_NAME_MAX ? whole : cutName(title, SIDEBAR_FOLDER_NAME_MAX);
+}
+
+/**
+ * D119: `name`, or, when a folder at the same level is named exactly so, `name (2)`, `name (3)`…
+ * (the first free one; the name is cut to leave room for the suffix within
+ * {@link SIDEBAR_FOLDER_NAME_MAX}). `taken` = the names of the folders at that level.
+ */
+export function uniqueSidebarFolderName(name: string, taken: Iterable<string>): string {
+  const names = new Set(taken);
+  if (!names.has(name)) return name;
+  for (let n = 2; ; n += 1) {
+    const suffix = ` (${n})`;
+    const candidate = `${name.length + suffix.length <= SIDEBAR_FOLDER_NAME_MAX ? name : cutName(name.replace(/…$/u, ''), SIDEBAR_FOLDER_NAME_MAX - suffix.length)}${suffix}`;
+    if (!names.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * D119: the layout with a new subfolder `folderId` for a plan (named {@link uniqueSidebarFolderName}
+ * of `name` among the folders at that level) in `parentId` (`null` = the top level), holding
+ * `sessionId` as its first item (taken out of wherever it was). A parent that is gone or cannot
+ * hold one more level (D58) → the top level. Answers the layout and the name used.
+ */
+export function addPlanSidebarFolder(
+  layout: SidebarLayout,
+  input: { readonly folderId: string; readonly name: string; readonly parentId: string | null; readonly sessionId: string },
+): { readonly layout: SidebarLayout; readonly name: string; readonly parentId: string | null } | null {
+  const parentId = input.parentId !== null && checkFolderParent(layout, null, input.parentId) === null ? input.parentId : null;
+  const name = uniqueSidebarFolderName(
+    input.name,
+    layout.folders.filter((folder) => (folder.parentId ?? null) === parentId).map((folder) => folder.name),
+  );
+  const added = addFolder(layout, input.folderId, name, parentId);
+  if (!added) return null;
+  const placed = placeSession(added, { sessionId: input.sessionId, place: 'folder', folderId: input.folderId, index: 0 });
+  return placed ? { layout: placed, name, parentId } : null;
+}
+
+/**
+ * D119: whether a plan's subfolder may be made in sidebar folder `folderId` (`null` = the top
+ * level): `null` = fine; else why not (an unknown folder, or one {@link SIDEBAR_FOLDER_DEPTH_MAX}
+ * levels deep that cannot hold another).
+ */
+export function planSidebarFolderProblem(layout: SidebarLayout, folderId: string | null): SidebarTreeProblem | null {
+  return checkFolderParent(layout, null, folderId);
+}
+
+/** D119: what {@link defaultPlanSidebarFolder} reads of a listed session. */
+export interface PlanFolderSession {
+  readonly id: string;
+  /** The saved folder it started in (its machine's id) and its path. */
+  readonly folder: string | null;
+  readonly folderPath: string | null;
+  /** The paired machine it runs on (absent / `null` = this one). */
+  readonly machine?: { readonly id: string } | null;
+  readonly kind?: string;
+  readonly closedAt?: string | null;
+  readonly lastActivityAt: string | null;
+  readonly createdAt: string;
+}
+
+/**
+ * D119 · the import dialog's default sidebar folder for a plan (`null` = the sidebar root):
+ *
+ * 1. the sidebar folder holding the most open sessions that run in the chosen working folder
+ *    (on the chosen machine: its saved folder id, or the same path); a session in a plan's own
+ *    subfolder ("Plan · …") counts for the folder that subfolder sits in (so a new plan goes
+ *    next to the earlier ones, not inside one); on a tie, the folder with the most recently
+ *    active such session;
+ * 2. none → the developer's last choice for that working folder (`lastChoice`: a folder id
+ *    while it still exists, `null` = the root; `undefined` = none remembered);
+ * 3. otherwise the root.
+ */
+export function defaultPlanSidebarFolder(input: {
+  readonly layout: SidebarLayout;
+  readonly sessions: readonly PlanFolderSession[];
+  /** The machine the plan runs on (`null` = this one). */
+  readonly machine: string | null;
+  /** The chosen working folder (that machine's saved folder). */
+  readonly workingFolder: { readonly id: string; readonly path: string } | null;
+  readonly lastChoice?: string | null;
+}): string | null {
+  const { layout, workingFolder } = input;
+  const byId = new Map(layout.folders.map((folder) => [folder.id, folder]));
+  const plain = (id: string | null): string | null => {
+    let at = id === null ? undefined : byId.get(id);
+    for (let guard = 0; at && at.name.startsWith(PLAN_SIDEBAR_FOLDER_PREFIX) && guard <= layout.folders.length; guard += 1) {
+      const parent = at.parentId ?? null;
+      at = parent === null ? undefined : byId.get(parent);
+    }
+    return at?.id ?? null;
+  };
+  if (workingFolder) {
+    const tally = new Map<string, { count: number; latest: number }>();
+    for (const session of input.sessions) {
+      if (session.kind === 'chat' || (session.closedAt ?? null) !== null) continue;
+      if ((session.machine?.id ?? null) !== input.machine) continue;
+      if (session.folder !== workingFolder.id && (session.folderPath === null || session.folderPath !== workingFolder.path)) continue;
+      const holder = layout.folders.find((folder) => folder.sessionIds.includes(session.id));
+      const counted = holder ? plain(holder.id) : null;
+      if (counted === null) continue;
+      const when = Date.parse(session.lastActivityAt ?? session.createdAt);
+      const entry = tally.get(counted) ?? { count: 0, latest: Number.NEGATIVE_INFINITY };
+      tally.set(counted, { count: entry.count + 1, latest: Math.max(entry.latest, Number.isFinite(when) ? when : Number.NEGATIVE_INFINITY) });
+    }
+    let best: { id: string; count: number; latest: number } | null = null;
+    for (const [id, entry] of tally) if (!best || entry.count > best.count || (entry.count === best.count && entry.latest > best.latest)) best = { id, ...entry };
+    if (best) return best.id;
+  }
+  if (input.lastChoice !== undefined && input.lastChoice !== null && byId.has(input.lastChoice)) return input.lastChoice;
+  return null;
+}
