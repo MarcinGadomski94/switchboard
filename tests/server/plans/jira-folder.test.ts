@@ -1,6 +1,7 @@
 /**
  * D112 · Import from Jira into a folder: `POST /api/plans/jira/preview` (no session) and
- * `POST /api/plans/jira/import`, which starts a new session "Plan · <epic title>" in the chosen
+ * `POST /api/plans/jira/import`, which starts a new session "Plan · <plan title>" (the epic summary
+ * when the plan title is empty) in the chosen
  * folder (a git repo, or a workspace with the chosen solution repos) through New session's own
  * path, and makes it the plan's source. Every refusal leaves no session behind; a session made
  * for an import that then fails is closed and deleted again. Real app (`buildApp`), fake claude,
@@ -94,8 +95,10 @@ async function sessionCount(r: Rig): Promise<number> {
 }
 
 describe('D112 · Import from Jira into a folder', () => {
-  it('names the owning session after the epic', () => {
-    expect(planOwnerTitle('Acme checkout')).toBe('Plan · Acme checkout');
+  it('names the owning session after the plan title, else the epic', () => {
+    expect(planOwnerTitle('PROJ-10 Acme checkout', 'Acme checkout')).toBe('Plan · PROJ-10 Acme checkout');
+    expect(planOwnerTitle('  ', 'Acme checkout')).toBe('Plan · Acme checkout');
+    expect(planOwnerTitle('', '')).toBe('Plan · Jira epic');
     expect(planOwnerTitle('x'.repeat(100))).toHaveLength(80);
     expect(planOwnerName('PROJ-10')).toBe('plan-proj-10');
   });
@@ -125,10 +128,13 @@ describe('D112 · Import from Jira into a folder', () => {
     const todos = (await call(r, 'GET', `/api/sessions/${session.id}/todos`)).json() as { todos: unknown[] };
     expect(todos.todos).toHaveLength(5);
 
-    // A second import of the same epic gets the next free name.
-    const again = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.repoFolder.id });
+    // A second import of the same epic gets the next free name; its title follows the plan title.
+    const again = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, title: 'PROJ-10 Acme checkout v2', folder: r.repoFolder.id });
     expect(again.statusCode, again.body).toBe(201);
-    expect((again.json() as { session: Session }).session.name).toBe('plan-proj-10-2');
+    const second = again.json() as { plan: Plan; session: Session };
+    expect(second.session.name).toBe('plan-proj-10-2');
+    expect(second.plan.title).toBe('PROJ-10 Acme checkout v2');
+    expect(second.session.title).toBe('Plan · PROJ-10 Acme checkout v2');
   });
 
   it('a workspace folder: the chosen repos become the session\'s solutions and the plan\'s repos', async () => {

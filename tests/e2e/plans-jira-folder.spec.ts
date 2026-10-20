@@ -5,7 +5,7 @@ import { type PlansWorld, startPlansWorld } from './plans-world.ts';
 /**
  * D112 · Import from Jira without a session (real path: fake claude, temp git repos, the fake
  * Jira; never the real Jira). Plans → Import from Jira… asks for the epic and **Where it runs**;
- * Create plan starts a session "Plan · <epic>" in the chosen folder that owns the plan (its
+ * Create plan starts a session "Plan · <plan title>" in the chosen folder that owns the plan (its
  * todos, its repos, the ask for the missing order). Cancel and every failure leave no session;
  * **Use an existing session instead** goes back to the session picker.
  */
@@ -66,7 +66,7 @@ test('a workspace folder: the picked repos, a new "Plan · …" session owns the
   const plan = await world.plan(page, planId);
   expect(plan).toMatchObject({ state: 'draft', repos: ['mobile'], baseBranch: 'main', external: { system: 'jira', key: 'PROJ-10' } });
   const owner = (await world.call(page, 'GET', `/api/sessions/${plan.sourceSessionId}`)).body;
-  expect(owner).toMatchObject({ title: 'Plan · Acme checkout', folder: workspaceFolder, solutions: ['mobile'] });
+  expect(owner).toMatchObject({ title: 'Plan · PROJ-10 Acme checkout', folder: workspaceFolder, solutions: ['mobile'] });
   // PROJ-15 has no links: the new session's agent is asked to propose the order.
   await expect
     .poll(async () => JSON.stringify((await world.call(page, 'GET', `/api/sessions/${plan.sourceSessionId}/events`)).body).includes('Please propose the missing order'), { timeout: 20_000 })
@@ -97,13 +97,15 @@ test('a plain git repo folder: the session runs in the repo, no repositories to 
   // A repo folder is its own repository: nothing to pick.
   await expect(dialog.getByTestId('jira-repos')).toHaveCount(0);
   await dialog.getByTestId('jira-target').fill('feature/PROJ-10-acme-repo');
+  // The session's title follows the plan title as edited in the dialog.
+  await dialog.getByTestId('jira-title').fill('PROJ-10 Acme repo checkout');
   await dialog.getByTestId('jira-create').click();
-  await expect(page.getByTestId('plan-title')).toHaveText('PROJ-10 Acme checkout');
+  await expect(page.getByTestId('plan-title')).toHaveText('PROJ-10 Acme repo checkout');
   const planId = (await page.getByTestId('plan-page').getAttribute('data-plan-id')) as string;
   const plan = await world.plan(page, planId);
   expect(plan.repos).toEqual(['mobile']);
   const owner = (await world.call(page, 'GET', `/api/sessions/${plan.sourceSessionId}`)).body;
-  expect(owner).toMatchObject({ name: 'plan-proj-10-2', title: 'Plan · Acme checkout', folder: repoFolder, folderKind: 'repo' });
+  expect(owner).toMatchObject({ name: 'plan-proj-10-2', title: 'Plan · PROJ-10 Acme repo checkout', folder: repoFolder, folderKind: 'repo' });
 });
 
 test('Cancel, a missing epic and a refused Create plan leave no session behind', async ({ page }) => {

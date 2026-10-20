@@ -149,7 +149,7 @@ From the Plans list, the import needs no session. The dialog asks **Where it run
   1. it checks the body;
   2. it checks the place: a git repo or a workspace (a plain folder: 409 `not-a-repo`), and a workspace's repos, at least one, each a solution repo there;
   3. it reads the epic;
-  4. it starts a session **"Plan · <epic summary>"** (name `plan-<epic key>`, then `-2`, `-3`… when taken) through `POST /api/sessions`' own path (`startNewSession`): a Simple start with no message in that folder, with that CLI, model, effort and account. A workspace's repos become its solutions and the plan's `repos`. Like any New session without a first message, its CLI starts at once and waits, idle;
+  4. it starts a session **"Plan · <plan title>"** (the plan title as edited in the dialog, e.g. "Plan · PROJ-10 Acme checkout"; the epic summary when it is empty; name `plan-<epic key>`, then `-2`, `-3`… when taken) through `POST /api/sessions`' own path (`startNewSession`): a Simple start with no message in that folder, with that CLI, model, effort and account. A workspace's repos become its solutions and the plan's `repos`. Like any New session without a first message, its CLI starts at once and waits, idle;
   5. it makes the plan with that session as its source (`createFromExternal`, the steps above, the ask for the missing order to that session when items have no links).
 
   A refusal in steps 1–3 creates nothing. A refusal after step 4 (the core refuses the plan, …) removes the plan if it was made, closes that session (its process stops) and deletes it with its attachments and exports, then answers the error. The answer is `{ plan, jira, preview, askedForOrder, session }`.

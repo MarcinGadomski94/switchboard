@@ -50,7 +50,8 @@ const SYNC_LABELS: Readonly<Record<JiraSyncMode, string>> = {
  *
  * D112: without a session it asks **Where it runs** instead (machine, folder, CLI and account,
  * model; a workspace's repositories in the Plan section), pre-filled from the last import in
- * this browser. Create plan then starts a new session "Plan · <epic>" there that owns the plan
+ * this browser. Create plan then starts a new session "Plan · <plan title>" (the epic summary when the title
+ * is empty) there that owns the plan
  * (`POST /api/plans/jira/import`, on that machine); **Use an existing session instead** goes back
  * to picking a session.
  */
@@ -355,7 +356,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                   </div>
                 ) : null}
                 <p className="sb-jira-muted">
-                  {inFolder ? `The plan is created as a draft, owned by a new session "Plan · ${preview.epic.summary}". ` : 'The plan is created as a draft. '}
+                  {inFolder ? `The plan is created as a draft, owned by a new session "Plan · ${title.trim() || preview.epic.summary}". ` : 'The plan is created as a draft. '}
                   You choose how its work is merged when you start it.
                 </p>
               </section>

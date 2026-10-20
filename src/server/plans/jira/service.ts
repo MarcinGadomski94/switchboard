@@ -147,9 +147,12 @@ function ownerRefusal(refusal: PlanOwnerRefusal): PlanJiraError {
   return new PlanJiraError(refusal.status, refusal.body.error, refusal.body.message ?? 'the session could not be started');
 }
 
-/** D112: the owning session's title, "Plan · <epic title>" (a session title is at most 80 characters). */
-export function planOwnerTitle(epicSummary: string): string {
-  const title = `Plan · ${epicSummary.trim() || 'Jira epic'}`;
+/**
+ * D112: the owning session's title, "Plan · <plan title>": the plan title the developer can edit
+ * in the dialog, else (when it is empty) the epic summary. A session title is at most 80 characters.
+ */
+export function planOwnerTitle(planTitle: string, epicSummary = ''): string {
+  const title = `Plan · ${planTitle.trim() || epicSummary.trim() || 'Jira epic'}`;
   return title.length <= 80 ? title : `${title.slice(0, 79).trimEnd()}…`;
 }
 
@@ -399,7 +402,8 @@ export class PlanJiraService {
    * body is an import's (`epic`, `targetBranch`, …) plus where the plan runs: `folder` (a saved
    * folder's id), `provider`, `model`, `effort`, `profileId` and, for a workspace, `repos`.
    * Everything that can be checked is checked first (the body, the folder and repos, Jira's epic),
-   * so a refusal leaves nothing behind. Then a new session "Plan · <epic title>" starts in that
+   * so a refusal leaves nothing behind. Then a new session "Plan · <plan title>" (the epic summary
+   * when the plan title is empty) starts in that
    * folder the way New session starts one (idle: no first message), with the repos as its
    * solutions, and owns the plan as its source session. If the plan then cannot be made, that
    * session is closed and deleted again (and a plan already made is removed) before the error is
@@ -429,7 +433,7 @@ export class PlanJiraService {
     const preview = await this.#readEpic(client, checked.epicKey);
     let name = planOwnerName(checked.epicKey);
     for (let n = 2; await sessions.nameTaken(name); n += 1) name = `${planOwnerName(checked.epicKey)}-${n}`;
-    const started = await sessions.start(place, { name, title: planOwnerTitle(preview.epic.summary) });
+    const started = await sessions.start(place, { name, title: planOwnerTitle(typeof raw['title'] === 'string' ? raw['title'] : '', preview.epic.summary) });
     if (!started.ok) throw ownerRefusal(started);
     const repos = where.kind === 'workspace' ? place.repos : null;
     let planId: string | null = null;

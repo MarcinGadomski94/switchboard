@@ -57,7 +57,8 @@ function agentSession(request: FastifyRequest): string {
  * - D112: `POST /api/plans/jira/preview` `{ epic }` (no session: an import from a folder) and
  *   `POST /api/plans/jira/import` (the import's body plus `folder`, `provider?`, `model?`,
  *   `effort?`, `profileId?`, `repos?`) → 201 `{ plan, jira, preview, askedForOrder, session }`:
- *   a new session "Plan · <epic title>" in that folder owns the plan. On a paired machine both go
+ *   a new session "Plan · <plan title>" (the epic summary when the plan
+ *   title is empty) in that folder owns the plan. On a paired machine both go
  *   through `/api/machines/{id}/api/plans/jira/…` and run there.
  * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
