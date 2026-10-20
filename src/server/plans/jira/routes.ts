@@ -23,6 +23,8 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
   ['DELETE', '/api/integrations/jira'],
   ['POST', '/api/sessions/:id/plans/jira/preview'],
   ['POST', '/api/sessions/:id/plans/jira/import'],
+  ['POST', '/api/plans/jira/preview'],
+  ['POST', '/api/plans/jira/import'],
   ['GET', '/api/plans/:id/jira'],
   ['PUT', '/api/plans/:id/jira'],
   ['POST', '/api/plans/:id/jira/refresh'],
@@ -52,6 +54,11 @@ function agentSession(request: FastifyRequest): string {
  * - `POST /api/sessions/{id}/plans/jira/preview` `{ epic }` → {@link JiraPreview}; nothing is created.
  * - `POST /api/sessions/{id}/plans/jira/import` `{ epic, targetBranch, title?, baseBranch?, repos?,
  *   maxConcurrency?, sync?, transitions? }` → 201 `{ plan, jira, preview }` (a draft plan).
+ * - D112: `POST /api/plans/jira/preview` `{ epic }` (no session: an import from a folder) and
+ *   `POST /api/plans/jira/import` (the import's body plus `folder`, `provider?`, `model?`,
+ *   `effort?`, `profileId?`, `repos?`) → 201 `{ plan, jira, preview, askedForOrder, session }`:
+ *   a new session "Plan · <epic title>" in that folder owns the plan. On a paired machine both go
+ *   through `/api/machines/{id}/api/plans/jira/…` and run there.
  * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
  *
@@ -65,7 +72,14 @@ function agentSession(request: FastifyRequest): string {
  * peers' proxy like every `:id` route: import and sync run on the machine that owns the plan,
  * with that machine's credentials.
  */
-export async function registerPlanJiraRoutes(app: FastifyInstance, jira: PlanJiraService, credentials: JiraCredentialSource, enabled: () => boolean | Promise<boolean>): Promise<void> {
+export async function registerPlanJiraRoutes(
+  app: FastifyInstance,
+  jira: PlanJiraService,
+  credentials: JiraCredentialSource,
+  enabled: () => boolean | Promise<boolean>,
+  /** D112: the API's `Session` of the session an import from a folder created (`null` when it is gone). */
+  sessionView: (sessionId: string) => Promise<unknown> = async () => null,
+): Promise<void> {
   const gate = async (): Promise<void> => {
     if (!(await enabled())) throw plansOff();
   };
@@ -108,6 +122,24 @@ export async function registerPlanJiraRoutes(app: FastifyInstance, jira: PlanJir
   app.post<{ Params: { id: string } }>('/api/sessions/:id/plans/jira/import', async (request, reply) => {
     try {
       return reply.code(201).send(await jira.importPlan(request.params.id, request.body));
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  // D112: an import from a folder (no session yet); the new session's view comes from `sessionView`.
+  app.post('/api/plans/jira/preview', async (request, reply) => {
+    try {
+      return await jira.preview(null, request.body);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  app.post('/api/plans/jira/import', async (request, reply) => {
+    try {
+      const { sessionId, ...result } = await jira.importIntoNewSession(request.body);
+      return reply.code(201).send({ ...result, session: await sessionView(sessionId) });
     } catch (error) {
       return send(reply, error);
     }

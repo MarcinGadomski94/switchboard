@@ -257,6 +257,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/team\/access\/catalog$/],
   // Plans (D99) hook: Jira import and sync run on the machine that owns the plan (its credentials); the credential routes are never forwarded.
   ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
+  // D112: an import from a folder of that machine (the plan's new session starts there, with its Jira connection).
+  ['POST', /^\/api\/plans\/jira\/(?:preview|import)$/],
   ['GET', /^\/api\/plans\/[^/]+\/jira$/],
   ['PUT', /^\/api\/plans\/[^/]+\/jira$/],
   ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
@@ -1077,7 +1079,7 @@ export class PeerService implements PeerHandlers {
     // D52: Save schedule (a folder scan) and Run now (a start with worktrees) take the long limit too.
     // D57: an upload (up to 20 MiB over the tailnet) takes the long limit too.
     const long =
-      (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/takeover/') || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
+      (method === 'POST' && (path === '/api/sessions' || path === '/api/plans/jira/import' || path.startsWith('/api/takeover/') || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
       path.endsWith('/hook') ||
       // D72: stopping a running terminal's claude takes up to its grace time plus the wait for it to leave the registry.
       path.split('?')[0]?.endsWith('/continue-in-switchboard') === true;

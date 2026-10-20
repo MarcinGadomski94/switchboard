@@ -298,6 +298,8 @@ export type PeerAnswerKind =
   | 'plan'
   | 'plans'
   | 'plan-item'
+  // D112: an import from a folder: `{ plan, session, … }`.
+  | 'plan-import'
   | 'session'
   | 'sessions'
   | 'detail'
@@ -353,6 +355,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (upper === 'POST' && /^\/api\/plans\/[^/]+\/items$/.test(pathname)) return 'plan-item';
   // Plans (D99) hook: a Jira import answers `{ plan, jira, preview }` (the plan namespaced like an added item's); a plan's Jira state and its proposals stay raw (item ids are raw).
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/plans\/jira\/import$/.test(pathname)) return 'plan-item';
+  // D112: an import from a folder answers the plan and the new session that owns it; its preview stays raw.
+  if (upper === 'POST' && pathname === '/api/plans/jira/import') return 'plan-import';
+  if (pathname === '/api/plans/jira/preview') return 'none';
   if (/^\/api\/plans\/[^/]+\/(?:jira(?:\/refresh)?|proposals(?:\/.*)?)$/.test(pathname)) return 'none';
   if (/^\/api\/plans\/[^/]+(?:\/.*)?$/.test(pathname)) return upper === 'DELETE' && /^\/api\/plans\/[^/]+$/.test(pathname) ? 'none' : 'plan';
   // D51: a Workflow agent's chat: its events carry the session id.
@@ -429,6 +434,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return Array.isArray(body) ? body.filter((plan) => isRecord(plan) && typeof plan['id'] === 'string' && Array.isArray(plan['items'])).map((plan) => peerPlan(machine, plan as unknown as Plan)) : body;
     case 'plan-item':
       return isRecord(body) && isRecord(body['plan']) ? { ...body, plan: peerPlan(machine, body['plan'] as unknown as Plan) } : body;
+    case 'plan-import':
+      return isRecord(body) && isRecord(body['plan'])
+        ? { ...body, plan: peerPlan(machine, body['plan'] as unknown as Plan), ...(isRecord(body['session']) && typeof body['session']['id'] === 'string' ? { session: peerSession(machine, body['session'] as unknown as Session) } : {}) }
+        : body;
     case 'none':
       return body;
   }

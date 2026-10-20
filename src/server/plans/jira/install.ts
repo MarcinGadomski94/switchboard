@@ -1,3 +1,4 @@
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
@@ -13,6 +14,10 @@ import { PlanJiraStore } from './store.ts';
 import { JiraClient, JiraError } from './client.ts';
 import { adfToText } from '../../../core/plans-jira.ts';
 import { registerJiraIssueSource } from '../../todos/import.ts';
+import { resolveSessionFolder, startNewSession } from '../../sessions/start.ts';
+import { toSession } from '../../sessions/wire.ts';
+import { WorktreeError } from '../../worktrees/manager.ts';
+import type { PlanOwnerPlace, PlanOwnerRefusal, PlanOwnerSessions } from './service.ts';
 
 /** Options of {@link installPlansJira} (tests). */
 export interface PlansJiraOptions {
@@ -75,10 +80,14 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
       if (await context.hooks.isHooked(sessionId)) await context.hooks.sendMessage(sessionId, text);
       else await context.supervisor.sendMessage(sessionId, text, 'service');
     },
+    newSession: planOwnerSessions(context),
     ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(options.refreshMs ? { refreshMs: options.refreshMs } : {}),
   });
-  await registerPlanJiraRoutes(app, service, credentials, enabled);
+  await registerPlanJiraRoutes(app, service, credentials, enabled, async (sessionId) => {
+    const record = await context.store.sessions.get(sessionId);
+    return record ? toSession(context.store, record, context.supervisor.activity(record.id)) : null;
+  });
   app.addHook('onReady', async () => {
     if (!context.config.demo) service.start();
   });
@@ -115,4 +124,74 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
     release();
   });
   return service;
+}
+
+/**
+ * D112 · the sessions an import from a folder creates: checked with the New-session form's
+ * folder rules, started through `POST /api/sessions`' own path ({@link startNewSession}) as a
+ * Simple start with no message (its CLI starts and waits, idle, like any New session without a
+ * first message), with a workspace's chosen repos as its solutions; discarded (closed, then
+ * deleted with its attachments and exports, like a deleted chat) when the import then fails.
+ */
+export function planOwnerSessions(context: PlansAppContext): PlanOwnerSessions {
+  const refusal = (status: number, error: string, message: string, field?: string): PlanOwnerRefusal => ({
+    ok: false,
+    status,
+    body: field ? { error, message, errors: [{ field, message }] } : { error, message },
+  });
+  const folderOf = async (place: PlanOwnerPlace) => resolveSessionFolder(context, { folder: place.folder });
+  return {
+    async check(place) {
+      const resolved = await folderOf(place);
+      if (!resolved.ok) return { ok: false, status: resolved.status, body: resolved.body as PlanOwnerRefusal['body'] };
+      const { folder } = resolved;
+      if (folder.kind === 'repo') return { ok: true, kind: 'repo' };
+      if (folder.kind !== 'workspace') return refusal(409, 'not-a-repo', 'the folder is not a git repository or a workspace: a plan merges into a target branch, which needs one', 'folder');
+      const repos = place.repos ?? [];
+      if (repos.length === 0) return refusal(422, 'invalid', 'pick the repositories the target branch lives in', 'repos');
+      for (const name of repos) {
+        try {
+          await context.worktrees.resolveRepo(name, folder);
+        } catch (error) {
+          if (error instanceof WorktreeError) return refusal(422, 'invalid', `${name} is not a solution repository of this workspace: ${error.message}`, 'repos');
+          throw error;
+        }
+      }
+      return { ok: true, kind: 'workspace' };
+    },
+    async start(place, naming) {
+      const body = {
+        simple: true,
+        name: naming.name,
+        title: naming.title,
+        task: '',
+        worktrees: false,
+        ultracode: false,
+        ...(place.folder !== null ? { folder: place.folder } : {}),
+        ...(place.provider !== undefined && place.provider !== null ? { provider: place.provider } : {}),
+        ...(place.model !== undefined ? { model: place.model } : {}),
+        ...(place.effort !== undefined ? { effort: place.effort } : {}),
+        ...(place.profileId !== undefined && place.profileId !== null ? { profileId: place.profileId } : {}),
+      };
+      const repos = place.repos ?? [];
+      const outcome = await startNewSession(context, body, {
+        // A Simple start in a workspace names no solutions; the plan's repos become the session's (D38: they would fill in from its agents' work anyway).
+        beforeSpawn: async (session) => {
+          if (session.rootKind === 'workspace' && repos.length > 0) await context.store.sessions.update(session.id, { solutions: [...repos] });
+        },
+      });
+      if (!outcome.ok) return { ok: false, status: outcome.status, body: outcome.body as PlanOwnerRefusal['body'] };
+      return { ok: true, sessionId: outcome.record.id };
+    },
+    async nameTaken(name) {
+      return (await context.store.sessions.getByName(name)) !== null;
+    },
+    async discard(sessionId) {
+      const record = await context.store.sessions.get(sessionId);
+      if (!record) return;
+      if (record.closedAt === null) await context.supervisor.close(sessionId, { confirm: true });
+      await context.store.sessions.delete(sessionId);
+      for (const dir of ['attachments', 'handovers']) await rm(path.join(context.config.dataDir, dir, sessionId), { recursive: true, force: true });
+    },
+  };
 }
