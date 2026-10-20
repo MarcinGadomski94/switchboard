@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.30.0 (2026-10-20)
+
+### Fixed
+- **Plans no longer mark a freshly started item as merged.** An item counts as merged only when its PR into the plan's target is merged, or its branch has commits of its own that are in the target (locally or on `origin`). Items that were marked "merged … without your Merge" by mistake are **reopened automatically** (back to running, or Stopped when their session is gone; their todo reopened), with an Inbox item that also lists dependents that started too early and Jira tickets that were told "merged/Done". A real later merge still comments and moves the ticket to Done. Done items have a **Reopen** action.
+- **Plan PRs, branches and commits name only their own ticket:** the agents are told never to mention other ticket keys (tracker automation acts on them), and Switchboard's own merge commit and PR text no longer include the epic key.
+- **A SendMessage to an agent that was stopped** no longer leaves the session "waiting on subagents" for 2 hours.
+
+### Plans
+- **Stopped — needs you:** an item whose agent ended its turn without finishing turns red after 2 minutes, with the agent's last message, a "■ N stopped" count and an Inbox item with Open session; it goes back to running when the session works again.
+- **One click to an item's session:** clicking a plan item opens its session (also on a paired machine); its details are behind ⓘ.
+- **Imported plans land in the sidebar:** Import from Jira asks which sidebar folder the plan goes in (prefilled from where that folder's sessions live) and puts the plan's session and its runs in their own "Plan · …" subfolder there.
+
 ## 1.29.0 (2026-10-20)
 
 ### Plans
