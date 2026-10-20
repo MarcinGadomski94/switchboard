@@ -1,8 +1,9 @@
-import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { NewerEvents, OlderEvents } from './useSessionData.ts';
 import { revealEvent } from './reveal-event.ts';
 import { useReleaseFocus } from '../../components/release-focus.ts';
-import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import type { AnswerBatch, Attachment, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import type { QueuedReason } from '../../../core/event-payload.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
@@ -12,7 +13,7 @@ import { attachmentsBlocker, messageToSend } from '../../components/attachments.
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
 import { useFullText } from './FullText.tsx';
-import { COMPOSER_MAX_LINES, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
+import { COMPOSER_MAX_LINES, type ChatItem, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
@@ -30,9 +31,21 @@ import { checkpointsKey, turnRevertFor, useCheckpoints } from './checkpoints.ts'
 import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 import { FreshOffer } from './FreshOffer.tsx';
 import { type ArtifactDraft, SaveArtifactDialog } from './SaveArtifact.tsx';
-import { type ComposerDraft, draftField } from '../../../core/drafts.ts';
+import { type ComposerDraft, draftField, parseDraftValue } from '../../../core/drafts.ts';
 import { initialDraft, useDraft } from '../../drafts/useDraft.ts';
-import { draftsOnce, knownDraft } from '../../drafts/session-drafts.ts';
+import { draftsOnce, knownDraft, readDrafts, rememberDraft } from '../../drafts/session-drafts.ts';
+import { pageClientId } from '../../pwa/presence.ts';
+import {
+  OUTGOING_SETTLE_MS,
+  type OutgoingMessage,
+  addOutgoing,
+  dropOutgoing,
+  matchOutgoing,
+  outgoingOf,
+  outgoingSent,
+  settledOutgoing,
+  subscribeOutgoing,
+} from './outgoing.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -110,6 +123,32 @@ export function ChatTab({ sessionId, session, events, eventsState, placeholder =
       focusEventId={focusEventId}
     />
   );
+}
+
+/**
+ * Fix · queued send feedback: the clock a message sent now shows until the service
+ * records it: a turn runs (or a question holds it) → after the turn; no process →
+ * when the session resumes; else none (it goes to the agent at once).
+ */
+function sendQueued(session: SessionDetail | null): QueuedReason | null {
+  if (!session) return null;
+  if (session.status === 'run' || session.status === 'need') return 'turn';
+  return session.live ? null : 'resume';
+}
+
+/** A message on its way, as a user bubble (not delivered; its id is never an event's). */
+function outgoingItem(message: OutgoingMessage, index: number): ChatItem {
+  return {
+    kind: 'user',
+    key: `o:${message.key}`,
+    id: -(index + 1),
+    text: message.text,
+    origin: 'user',
+    delivered: false,
+    queued: message.queued,
+    attachments: message.attachments,
+    cut: null,
+  };
 }
 
 /** `true` while the conversation is at (or within {@link STICK_PX} of) its bottom. */
@@ -195,6 +234,30 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     () => (ready && questions && agents ? chatItems(fullText.events, questions, mainAgentId, agents, { complete }) : []),
     [ready, fullText.events, questions, mainAgentId, agents, complete],
   );
+  // Fix · queued send feedback: a message the composer sent shows at once (with its clock), until its event is in the chat.
+  const outgoing = useSyncExternalStore(subscribeOutgoing, () => outgoingOf(sessionId));
+  const outgoingMatch = useMemo(() => matchOutgoing(events, outgoing), [events, outgoing]);
+  const shownItems = useMemo(
+    () => (ready && outgoingMatch.waiting.length > 0 ? [...items, ...outgoingMatch.waiting.map(outgoingItem)] : items),
+    [ready, items, outgoingMatch],
+  );
+  useEffect(() => {
+    // Answered and shown by its event (or waited long enough): it goes; the rest are looked at again when they would time out.
+    for (const key of settledOutgoing(outgoing, outgoingMatch.shown)) dropOutgoing(sessionId, key);
+    const waiting = outgoing.filter((item) => item.state === 'sent' && item.sentAt !== null && !outgoingMatch.shown.has(item.key));
+    if (waiting.length === 0) return undefined;
+    const due = Math.min(...waiting.map((item) => (item.sentAt ?? 0) + OUTGOING_SETTLE_MS)) - Date.now();
+    const timer = setTimeout(
+      () => {
+        for (const key of settledOutgoing(outgoingOf(sessionId), new Set())) dropOutgoing(sessionId, key);
+      },
+      Math.max(0, due),
+    );
+    return () => clearTimeout(timer);
+  }, [sessionId, outgoing, outgoingMatch]);
+  const newestEventId = useMemo(() => events.reduce((newest, event) => Math.max(newest, event.id), 0), [events]);
+  const lastEventId = useRef(newestEventId);
+  lastEventId.current = newestEventId;
   // D95: the item at the top of the conversation and where it sat, to keep the view still when older items are put in front.
   const anchor = useRef<{ readonly node: Element; readonly top: number } | null>(null);
   const olderRef = useRef(older);
@@ -277,6 +340,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     setAnswering({ batchId, busy: true, error: null });
     stick.current = true;
     try {
+      // A message sent just before goes first (as when the composer waited for its answer).
+      await sendsSettled(sessionId);
       await api.answerBatch(batchId, body);
       // Stays busy until the reloaded detail shows the batch answered (the card turns into the answers bubble).
     } catch (error) {
@@ -298,7 +363,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       >
         {placeholder ? <ChatSkeleton /> : null}
         {loaded && older.available && !placeholder ? <OlderRow older={older} /> : null}
-        {items.map((item) => (
+        {shownItems.map((item) => (
           <ChatItemView
             key={item.key}
             sessionId={sessionId}
@@ -361,6 +426,9 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         placeholder={composerPlaceholder(session ? displayTitle(session) : '')}
         // D68: the compact "+ Todo" while the list is empty (the strip takes over once it has items).
         onAddTodo={todos.list && todos.list.todos.length === 0 && !addingTodo && blocked === null ? () => setAddingTodo(true) : null}
+        // Fix · queued send feedback: the clock the sent message shows until its event comes (the service's own reason then).
+        sendQueued={sendQueued(session)}
+        lastEventId={() => lastEventId.current}
         onSent={() => {
           stick.current = true;
         }}
@@ -468,6 +536,90 @@ export const ContextBar = memo(function ContextBar({ context }: { readonly conte
   );
 });
 
+/** Fix · queued send feedback: the open composers by session (a refused send puts its text back there). */
+const composers = new Map<string, (text: string, attachments: readonly Attachment[], error: string) => void>();
+/** A refusal that came while the session's composer was not open: shown when it opens again. */
+const refusedNotes = new Map<string, string>();
+/** Per session, the sends one after the other, so messages reach the service in the order they were written. */
+const sendChains = new Map<string, Promise<void>>();
+/**
+ * The page is being left (a reload, a closed tab): a send cut off then got no answer, but the service most likely
+ * has it, so its text is not put back (it would be sent twice, and the field's draft save on the way out would
+ * store it again). The browser may cancel the request before `pagehide`, so a send that got no answer at all waits
+ * {@link NO_ANSWER_GRACE_MS} before its text comes back.
+ */
+let pageLeaving = false;
+const NO_ANSWER_GRACE_MS = 1_000;
+if (typeof window !== 'undefined') {
+  const leaving = (): void => {
+    pageLeaving = true;
+  };
+  window.addEventListener('beforeunload', leaving);
+  window.addEventListener('pagehide', leaving);
+  window.addEventListener('pageshow', () => {
+    pageLeaving = false;
+  });
+}
+
+/**
+ * Posts a message the composer already showed as sent (`outgoing.ts`). On a
+ * refusal its bubble goes and its text (and attachments) go back into the
+ * session's composer with the error, or, when the session was left meanwhile,
+ * into its server draft (D88), so it is there when the developer comes back.
+ */
+function deliver(sessionId: string, key: string, text: string, ids: readonly string[], attachments: readonly Attachment[]): void {
+  const previous = sendChains.get(sessionId) ?? Promise.resolve();
+  const run = previous.then(async () => {
+    try {
+      await api.sendMessage(sessionId, text, [...ids]);
+      outgoingSent(sessionId, key);
+    } catch (caught) {
+      const noAnswer = !(caught instanceof ApiError) || caught.status === 0;
+      if (noAnswer) await new Promise((resolve) => setTimeout(resolve, NO_ANSWER_GRACE_MS));
+      dropOutgoing(sessionId, key);
+      if (noAnswer && pageLeaving) return;
+      await sendRefused(sessionId, text, attachments, refusal(caught));
+    }
+  });
+  sendChains.set(sessionId, run);
+  void run.finally(() => {
+    if (sendChains.get(sessionId) === run) sendChains.delete(sessionId);
+  });
+}
+
+/** Resolves once the session's sends on their way got their answer (a Stop, a Pause or answers wait for them). */
+function sendsSettled(sessionId: string): Promise<void> {
+  return sendChains.get(sessionId) ?? Promise.resolve();
+}
+
+async function sendRefused(sessionId: string, text: string, attachments: readonly Attachment[], error: string): Promise<void> {
+  const open = composers.get(sessionId);
+  if (open) {
+    open(text, attachments, error);
+    return;
+  }
+  refusedNotes.set(sessionId, error);
+  try {
+    const values = await readDrafts(sessionId);
+    const current = parseDraftValue(draftField.composer, values.get(draftField.composer) ?? null) as ComposerDraft | null;
+    const value: ComposerDraft = {
+      text: withdrawnDraft([text], current?.text ?? ''),
+      attachments: [...attachments.flatMap((item) => (item.id !== null ? [{ id: item.id, name: item.name, size: item.size, kind: item.kind, mediaType: item.mediaType }] : [])), ...(current?.attachments ?? [])],
+    };
+    // Opened meanwhile: the composer takes it (its own draft sync saves it).
+    const reopened = composers.get(sessionId);
+    if (reopened) {
+      refusedNotes.delete(sessionId);
+      reopened(text, attachments, error);
+      return;
+    }
+    rememberDraft(sessionId, draftField.composer, value);
+    await api.putDraft(sessionId, draftField.composer, { value, client: pageClientId() });
+  } catch {
+    // Nothing more can be done from here: the note still says it was not sent.
+  }
+}
+
 /**
  * The composer (prototype): D49 the context bar, then the message field, 📎 and
  * Send (D86: no quick replies). D50: while a turn runs (`stoppable`) Send is the
@@ -484,6 +636,8 @@ function Composer({
   context,
   placeholder,
   onAddTodo,
+  sendQueued: queuedReason,
+  lastEventId,
   onSent,
   onStopped,
 }: {
@@ -500,13 +654,16 @@ function Composer({
   readonly placeholder: string;
   /** D68: opens the todo strip with its add field (shown as "+ Todo" while the list is empty); `null` = not shown. */
   readonly onAddTodo: (() => void) | null;
+  /** Fix · queued send feedback: the clock a message sent now shows until the service records it. */
+  readonly sendQueued: QueuedReason | null;
+  /** The newest event id the chat has (a sent message's own event comes after it). */
+  readonly lastEventId: () => number;
   readonly onSent: () => void;
   readonly onStopped: () => void;
 }) {
   // D88: the draft is kept on the server per session (it follows the developer to another session, a reload, a phone);
   // the text stays this component's own state, so typing renders nothing above it (the typing-lag guard).
   const [draft, setDraft] = useState(() => initialDraft<ComposerDraft>(sessionId, draftField.composer)?.text ?? '');
-  const [sending, setSending] = useState(false);
   // D103: Edit on a held message brings its text back here, before what is typed (as a Stop's withdrawn messages do).
   useEffect(() => {
     const insert = (event: Event): void => {
@@ -541,8 +698,6 @@ function Composer({
       if (value && value.attachments.length > 0) restoreAttachments(value.attachments, sessionId);
     },
   });
-  const latestDraft = useRef(draftValue);
-  latestDraft.current = draftValue;
   // D57: files dropped on the composer join the draft too (the chat above has its own drop zone).
   const drop = useFileDrop(attachments.add, blocked === null);
   const attaching = attachmentsBlocker(attachments.items);
@@ -571,6 +726,8 @@ function Composer({
     setStopTimedOut(false);
     setError(null);
     try {
+      // The messages sent just before reach the service first, so the Stop takes them back too (D50).
+      await sendsSettled(sessionId);
       const result = await api.interruptSession(sessionId);
       if (result.outcome !== 'timeout' && result.session.status !== 'run' && result.session.status !== 'need') setStopped(true);
       onStopped();
@@ -597,6 +754,7 @@ function Composer({
   const pause = async (): Promise<void> => {
     setStopTimedOut(false);
     try {
+      await sendsSettled(sessionId);
       await api.pauseSession(sessionId);
     } catch (caught) {
       setError(refusal(caught));
@@ -680,36 +838,53 @@ function Composer({
     setMultiline(height > base.height + 1);
   }, [draft, fontLoads]);
 
-  const send = async (): Promise<void> => {
+  // Fix · queued send feedback: a refused send (sent from here, or before the session was left) puts its text back here.
+  const restoreAttachmentsRef = useRef(attachments.restore);
+  restoreAttachmentsRef.current = attachments.restore;
+  useEffect(() => {
+    const restore = (text: string, items: readonly Attachment[], message: string): void => {
+      setDraft((current) => withdrawnDraft([text], current));
+      if (items.length > 0) restoreAttachmentsRef.current(items, sessionId);
+      setError(message);
+      input.current?.focus();
+    };
+    composers.set(sessionId, restore);
+    const missed = refusedNotes.get(sessionId);
+    if (missed !== undefined) {
+      refusedNotes.delete(sessionId);
+      setError(missed);
+    }
+    return () => {
+      if (composers.get(sessionId) === restore) composers.delete(sessionId);
+    };
+  }, [sessionId]);
+
+  // Fix · queued send feedback: the field empties and the message shows (queued) at once; the service's answer can
+  // take seconds while a turn runs. The draft goes now too, so nothing saves the sent text again (a pause, a blur,
+  // leaving the session). A refusal puts the text back (`composers`), never losing it.
+  const send = (): void => {
     // D57: the text and the uploaded attachments; nothing goes while one is still uploading (or failed).
     const message = messageToSend(draft, attachments.items);
-    if (message === null || sending || blocked !== null) return;
-    const text = message.text;
-    const sent = draft;
-    const sentKeys = attachments.items.filter((item) => item.id !== null).map((item) => item.key);
+    if (message === null || blocked !== null) return;
+    const sentItems = attachments.items.filter((item) => item.id !== null);
+    const sentAttachments: Attachment[] = sentItems.flatMap((item) => (item.id !== null ? [{ id: item.id, name: item.name, size: item.size, kind: item.kind, mediaType: '' }] : []));
     setStopped(false);
-    setSending(true);
     setError(null);
-    try {
-      await api.sendMessage(sessionId, text, message.attachments);
-      // The message shows once the service records it (`/hub` event); the draft clears unless it was edited meanwhile.
-      setDraft((current) => (current === sent ? '' : current));
-      for (const key of sentKeys) attachments.remove(key);
-      // D88: sent: the draft goes (unless more was typed or attached meanwhile; that is saved as usual).
-      if (latestDraft.current.text === sent && latestDraft.current.attachments.every((item) => message.attachments.includes(item.id))) kept.clear();
-      onSent();
-    } catch (caught) {
-      setError(refusal(caught));
-    } finally {
-      setSending(false);
-    }
+    // D88: sent: the draft goes (cleared before the field empties: the sent value counts as empty from now on).
+    kept.clear();
+    rememberDraft(sessionId, draftField.composer, null);
+    setDraft('');
+    for (const item of sentItems) attachments.remove(item.key);
+    const key = addOutgoing(sessionId, { text: message.text, attachments: sentAttachments, queued: queuedReason, afterId: lastEventId() });
+    onSent();
+    deliver(sessionId, key, message.text, message.attachments, sentAttachments);
   };
 
   // D26: Enter sends, Shift+Enter keeps the field's own line break, Enter while composing (IME) confirms the composition.
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (composerKeyAction({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }) !== 'send') return;
     event.preventDefault();
-    void send();
+    send();
   };
 
   return (
@@ -756,11 +931,10 @@ function Composer({
             type="button"
             className="sb-button sb-chat-send"
             data-testid="chat-send"
-            disabled={sending || blocked !== null || attaching !== null}
+            disabled={blocked !== null || attaching !== null}
             title={blocked ?? attaching ?? undefined}
-            aria-busy={sending}
             style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
-            onClick={() => void send()}
+            onClick={send}
           >
             Send
           </button>
