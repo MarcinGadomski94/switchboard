@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.29.0 (2026-10-20)
+
+### Plans
+- **Agents get everything Jira has on their work:** when an item of a Jira plan starts, its agent gets its ticket in full (description, acceptance criteria, sub-tasks, all comments, linked pages, attachment names, and linked tickets outside the epic with their status) plus a shortened epic context, all read fresh from Jira at that moment. The plan's agent gets the full epic when it orders the items or picks repositories, and any of them can read the current text with the new read-only `plan_jira_context` tool. Plans imported before this version get it too. Switchboard's own sync comments are left out.
+- **The import preview shows what the agents will get:** per ticket "2 comments · 2 sub-tasks · 3 links", and the epic's description and acceptance criteria.
+
 ## 1.28.1 (2026-10-20)
 
 ### Fixed
