@@ -246,3 +246,46 @@
   color: var(--muted-3);
   font-size: var(--fs-body);
 }
+
+/* D113 (docs/artifacts.md → Loading and syncing): the first load's placeholder rows, a row's height and line. */
+.sb-art-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 42px;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-art-skel-check {
+  width: 14px;
+  height: 14px;
+  margin: 0 7px;
+}
+
+.sb-art-skel-kind {
+  width: 64px;
+  height: 18px;
+}
+
+.sb-art-skel-title {
+  min-width: 80px;
+  height: 12px;
+}
+
+.sb-art-skel-meta {
+  width: 72px;
+  height: 12px;
+  margin-left: auto;
+}
+
+/* D113: a re-query (a filter, a search) keeps the rows; a small spinner by the count says it is reading. */
+.sb-art-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-art-count-spinner {
+  width: 9px;
+  height: 9px;
+}

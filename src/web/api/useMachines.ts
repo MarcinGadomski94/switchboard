@@ -106,3 +106,11 @@ export function useNow(active: boolean, ms = 1_000): number {
   }, [active, ms]);
   return now;
 }
+
+/** Every paired machine as known (loaded on mount when stale); live while mounted. */
+export function useMachines(): readonly Machine[] {
+  useHubEvent('machineState', rememberMachine);
+  useEffect(() => load(), []);
+  useSyncExternalStore(subscribe, () => version);
+  return [...machines.values()];
+}

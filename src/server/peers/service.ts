@@ -10,11 +10,14 @@ import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
   type Machine,
+  type MachineListSync,
   type MachineState,
   type MachinesView,
   type PairingCode,
   type PeerListenerInput,
   type PeerListenerState,
+  type PeerSyncedList,
+  PEER_SYNCED_LISTS,
   type ReconnectResult,
   cleanMachineName,
   connectionHint,
@@ -384,6 +387,12 @@ export class PeerService implements PeerHandlers {
   /** D52: when each `<machine> <kind>` list was last fetched (ms), and the fetch in flight. */
   readonly #listFetched = new Map<string, number>();
   readonly #listRefresh = new Map<string, Promise<boolean>>();
+  /** D113: per `<machine> <list>` (artifacts, inbox): a fetch is running, and when the last one arrived (ms). */
+  readonly #listSync = new Map<string, { syncing: boolean; syncedAt: number | null }>();
+  /** D113: machines whose Inbox has not arrived since they came online (its count is published when it does). */
+  readonly #inboxAwaited = new Set<string>();
+  /** D113, tests only (`SWITCHBOARD_PEER_TEST_HOOKS=1`): the peers' list reads (artifacts, Inbox) wait for this. */
+  #listHold: { readonly promise: Promise<void>; readonly release: () => void } | null = null;
   /** D71: the sidebar layout shared with the machines it is switched on for. */
   readonly #sidebar: SidebarSync;
 
@@ -451,6 +460,7 @@ export class PeerService implements PeerHandlers {
     this.#closed = true;
     await this.#flushSaves().catch((error: unknown) => this.#onError(error));
     clearTimeout(this.#outage);
+    this.testHoldLists(false);
     await this.#listenerChange.catch(() => undefined);
     for (const stream of [...this.#inbound]) stream.close();
     await Promise.all([...this.#connections.values()].map((connection) => connection.close()));
@@ -599,7 +609,32 @@ export class PeerService implements PeerHandlers {
         hint: status && status.state !== 'online' ? connectionHint(record.name, status.recentFailures) : null,
       },
       sidebarSync: this.#sidebar.view(record.id),
+      listSync: this.#listSyncView(record.id),
     };
+  }
+
+  /** D113: the machine's synced lists as `GET /api/machines` shows them. */
+  #listSyncView(id: string): MachineListSync {
+    const view = (list: PeerSyncedList) => {
+      const sync = this.#listSync.get(`${id} ${list}`);
+      return { syncing: sync?.syncing ?? false, syncedAt: sync?.syncedAt ? new Date(sync.syncedAt).toISOString() : null };
+    };
+    return { artifacts: view('artifacts'), inbox: view('inbox') };
+  }
+
+  /**
+   * D113 (`docs/peers.md` → *List sync (D113)*): a fetch of machine `id`'s `list`
+   * started (`syncing`) or ended (`arrived`: its list came back). A change is
+   * published as `machineState`, so the page that merges the list shows "Syncing
+   * with …" and reads the list again once it is in.
+   */
+  #setListSync(id: string, list: PeerSyncedList, syncing: boolean, arrived: boolean): void {
+    if (!this.#records.has(id) || this.#closed) return;
+    const key = `${id} ${list}`;
+    const before = this.#listSync.get(key) ?? { syncing: false, syncedAt: null };
+    const next = { syncing, syncedAt: arrived ? Date.now() : before.syncedAt };
+    this.#listSync.set(key, next);
+    if (before.syncing !== next.syncing || before.syncedAt !== next.syncedAt) this.#publishMachine(id);
   }
 
   /**
@@ -678,6 +713,24 @@ export class PeerService implements PeerHandlers {
     await this.#listenerChange.catch(() => undefined);
     await this.#stopListener();
     this.#outage = setTimeout(() => void this.testEndOutage(), ms);
+  }
+
+  /**
+   * D113, tests only (`SWITCHBOARD_PEER_TEST_HOOKS=1`): while `on`, the paired
+   * machines' reads of this machine's artifacts and Inbox (`GET /api/artifacts`,
+   * `GET /api/inbox` through the peer API) wait; off answers the held ones.
+   */
+  testHoldLists(on: boolean): void {
+    if (on && !this.#listHold) {
+      let release = (): void => undefined;
+      const promise = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      this.#listHold = { promise, release };
+    } else if (!on && this.#listHold) {
+      this.#listHold.release();
+      this.#listHold = null;
+    }
   }
 
   /** Tests only: ends a {@link testOutage} now (the listener starts again). */
@@ -776,6 +829,8 @@ export class PeerService implements PeerHandlers {
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     this.#savedLists.delete(id);
+    for (const list of PEER_SYNCED_LISTS) this.#listSync.delete(`${id} ${list}`);
+    this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
     this.#saveTimers.delete(id);
     this.#lists.delete(id);
@@ -806,6 +861,11 @@ export class PeerService implements PeerHandlers {
         this.#publishMachine(id);
       },
       onCache: () => this.#saveSessionsSoon(id),
+      onInboxSync: (syncing, arrived) => {
+        this.#setListSync(id, 'inbox', syncing, arrived);
+        // D113: the first Inbox after (re)connecting: the merged count (and the Inbox page) follow.
+        if (!syncing && arrived && this.#inboxAwaited.delete(id)) void this.#publishInboxCount();
+      },
       onSeen: () => {
         void this.#touch(id);
       },
@@ -869,6 +929,9 @@ export class PeerService implements PeerHandlers {
     this.#publishMachine(id);
     this.#publishMachineSessions(id);
     void this.#publishInboxCount();
+    // D113: (re)connected: its Inbox is fetched now (PeerConnection); its count goes out when it arrives.
+    if (state === 'online') this.#inboxAwaited.add(id);
+    else this.#inboxAwaited.delete(id);
     // D52: (re)connected: its schedules and terminal loops are fetched again.
     if (state === 'online') for (const kind of Object.keys(PEER_LISTS) as PeerListKind[]) void this.refreshList(id, kind);
     // D71: (re)connected: the shared sidebar layout catches up both ways; away: it says so.
@@ -1044,21 +1107,30 @@ export class PeerService implements PeerHandlers {
       const connection = this.#connections.get(id);
       if (!connection || connection.state !== 'online' || this.#closed) return false;
       this.#listFetched.set(key, Date.now());
-      let answer: { status: number; body: unknown };
+      // D113: the Artifacts page says "Syncing with …" while its copy is fetched.
+      const synced = kind === 'artifacts' ? 'artifacts' : null;
+      if (synced) this.#setListSync(id, synced, true, false);
+      let arrived = false;
       try {
-        answer = await connection.request('GET', `/peer/v1${PEER_LISTS[kind]}`, undefined, { timeoutMs: PEER_FORWARD_TIMEOUT_MS });
-      } catch (error) {
-        if (!(error instanceof PeerUnreachableError)) this.#onError(error);
-        return false;
+        let answer: { status: number; body: unknown };
+        try {
+          answer = await connection.request('GET', `/peer/v1${PEER_LISTS[kind]}`, undefined, { timeoutMs: PEER_FORWARD_TIMEOUT_MS });
+        } catch (error) {
+          if (!(error instanceof PeerUnreachableError)) this.#onError(error);
+          return false;
+        }
+        // Plans (D99) hook: a machine with Plans off answers 404 `plans-off`: it has no plans to show.
+        const body = kind === 'plans' && answer.status === 404 ? [] : answer.body;
+        if ((answer.status !== 200 && body === answer.body) || !Array.isArray(body) || !this.#records.has(id) || this.#closed) return false;
+        arrived = true;
+        const before = JSON.stringify(this.#lists.get(id)?.get(kind) ?? []);
+        this.#setList(id, kind, body);
+        if (before === JSON.stringify(body)) return false;
+        await this.#store.peerSnapshots.put(id, kind, '', body).catch((error: unknown) => this.#onError(error));
+        return true;
+      } finally {
+        if (synced) this.#setListSync(id, synced, false, arrived);
       }
-      // Plans (D99) hook: a machine with Plans off answers 404 `plans-off`: it has no plans to show.
-      const body = kind === 'plans' && answer.status === 404 ? [] : answer.body;
-      if ((answer.status !== 200 && body === answer.body) || !Array.isArray(body) || !this.#records.has(id) || this.#closed) return false;
-      const before = JSON.stringify(this.#lists.get(id)?.get(kind) ?? []);
-      this.#setList(id, kind, body);
-      if (before === JSON.stringify(body)) return false;
-      await this.#store.peerSnapshots.put(id, kind, '', body).catch((error: unknown) => this.#onError(error));
-      return true;
     })().finally(() => this.#listRefresh.delete(key));
     this.#listRefresh.set(key, run);
     return run;
@@ -1339,6 +1411,8 @@ export class PeerService implements PeerHandlers {
     if (!peerApiAllowed(method, url)) {
       return { status: 403, body: JSON.stringify({ error: 'peer-forbidden', message: `${method} ${url.split('?')[0]} is not part of the peer API` }), contentType: 'application/json; charset=utf-8' };
     }
+    // D113, tests only: a held list read (testHoldLists).
+    if (this.#listHold && method.toUpperCase() === 'GET' && /^\/api\/(?:artifacts|inbox)(?:\?|$)/.test(url)) await this.#listHold.promise;
     const app = this.#app;
     if (!app) return { status: 503, body: JSON.stringify({ error: 'closing' }), contentType: 'application/json; charset=utf-8' };
     const response = await app.inject({

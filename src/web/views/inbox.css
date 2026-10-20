@@ -305,3 +305,47 @@
   font-size: 13px;
   resize: vertical;
 }
+
+/* D113 (docs/inbox.md → Loading and syncing): the per-machine sync notes on their own line under the heading. */
+.sb-inbox__head:has(> .sb-peer-sync) {
+  flex-wrap: wrap;
+}
+
+.sb-inbox__head > .sb-peer-sync {
+  flex-basis: 100%;
+}
+
+/* D113: the first load's placeholder cards, in the cards' place (padding, radius, line, gap). */
+.sb-inbox__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-inbox__skel-card {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-row);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-inbox__skel-head {
+  width: 45%;
+  height: 11px;
+}
+
+.sb-inbox__skel-title {
+  height: 14px;
+}
+
+.sb-inbox__skel-kind {
+  width: 30%;
+  height: 11px;
+}
+
+.sb-inbox__retry.sb-button {
+  margin-left: 4px;
+  text-decoration: underline;
+}

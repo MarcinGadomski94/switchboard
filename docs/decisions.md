@@ -1202,6 +1202,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Paired machines:** the dialog's machine runs both calls there (`/api/machines/{id}/api/plans/jira/…`, on `PEER_API_ALLOW`; the import is a long call like a start); the answer's plan and session are namespaced (`plan-import`). Phones may call both (D73 list).
   - **No migration** (the session is an ordinary one; nothing new is stored server-side). **What's new:** no new entry (a change to an existing step, not a new feature); the Plans tour's Import from Jira step text mentions picking where it runs.
 
+## Loading and syncing the merged lists (added 2026-10-20)
+
+- **D113 The Artifacts page and the Inbox show a loading state, and say when a paired machine's copy is still syncing or the machine is offline.** Developer request, 2026-10-20 (relayed): "we also should add loading state to the artifacts menu if we are syncing it with another pc", then "same goes for inbox". Builds on D89 (artifacts), D48 (paired machines) and the peer-reconnect fix. Details: `docs/artifacts.md` → *Loading and syncing (D113)*, `docs/inbox.md` → *Loading and syncing (D113)*, `docs/peers.md` → *List sync (D113)*.
+  - **First load:** placeholder rows / cards (the D45 skeleton shapes) and `Loading…` instead of an empty list and a blank count; a failed first load says so with Try again. Re-queries and reloads keep the rows (a small spinner by the Artifacts count).
+  - **Per paired machine:** "Syncing with <machine>…" (spinner) while its copy has not arrived or is being fetched again; a static "<machine> is offline — …" note while it cannot be reached. Local rows never wait for it; when the copy arrives the note goes and the list reads again. A polite live region says when it starts and ends.
+  - **How the client learns it:** an additive `Machine.listSync` `{ artifacts, inbox }` (`syncing`, `syncedAt`), published on the existing `machineState` event. One mechanism and one shared web hook/component for both pages. `GET /api/artifacts` and `GET /api/inbox` keep their array shapes (older paired machines and phones read them). The merged Inbox count now goes out once a reconnected machine's Inbox has arrived.
+  - **Session Artifacts tab:** placeholders while its list loads; a paired machine's session says "Loading artifacts from <machine>…" while the forwarded read runs, and "<machine> cannot be reached — …" with Try again if it fails.
+  - **What's new:** none (a status that shows only while a machine syncs, not something to do; nothing to point a tour at).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

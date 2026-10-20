@@ -7,6 +7,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
+import { PeerSyncNotes, usePeerSync } from '../components/PeerSync.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, useRouter } from '../router.tsx';
@@ -28,7 +29,29 @@ import {
   visibleItems,
   waitingLine,
 } from './inbox.ts';
+import './session/session-loading.css';
 import './inbox.css';
+
+/** D113: how many placeholder cards the first load shows. */
+const SKELETON_CARDS = 4;
+
+/** D113: the first load's placeholder cards (decoration; "Loading the Inbox…" is said once for screen readers). */
+function InboxSkeletons() {
+  return (
+    <div className="sb-inbox__skeleton" data-testid="inbox-skeleton">
+      <span className="sb-skel-note" role="status">
+        Loading the Inbox…
+      </span>
+      {Array.from({ length: SKELETON_CARDS }, (_, index) => (
+        <div key={index} className="sb-inbox__skel-card" data-testid="inbox-skeleton-card" aria-hidden="true">
+          <span className="sb-skel sb-inbox__skel-head" />
+          <span className="sb-skel sb-inbox__skel-title" style={{ width: `${[78, 62, 84, 56][index % 4]}%` }} />
+          <span className="sb-skel sb-inbox__skel-kind" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Re-renders every `ms` so relative ages stay current. */
 function useNow(ms: number): number {
@@ -235,9 +258,13 @@ export function InboxView() {
   const pane = useListDetail();
 
   useHubEvent('inboxChanged', () => inbox.reload());
+  // D113: a paired machine's items not in yet (or offline) say so; once they arrive the Inbox reads again.
+  const sync = usePeerSync('inbox', inbox.reload);
   useEffect(() => setDone(new Set()), [inbox.data]);
 
   const loaded = inbox.data !== null;
+  // D113: the first load shows placeholder cards (or why it failed); a reload keeps the cards.
+  const first = !loaded && inbox.error === null;
   const items = visibleItems(inbox.data ?? [], done);
   const current = selectedItem(items, selectedId);
   // D14: the selected item's session (for its folder tag), read when the selection names another session.
@@ -271,10 +298,20 @@ export function InboxView() {
         <div className="sb-inbox__head">
           <div className="sb-inbox__heading">Inbox</div>
           <div className="sb-inbox__count" data-testid="inbox-count">
-            {loaded ? waitingLine(items.length) : ''}
+            {loaded ? waitingLine(items.length) : first ? 'Loading…' : ''}
           </div>
+          <PeerSyncNotes state={sync} testId="inbox-sync" />
         </div>
-        <div className="sb-inbox__list" data-testid="inbox-list">
+        <div className="sb-inbox__list" data-testid="inbox-list" aria-busy={inbox.loading}>
+          {first ? <InboxSkeletons /> : null}
+          {!loaded && inbox.error ? (
+            <div className="sb-inbox__all-clear" role="alert" data-testid="inbox-load-error">
+              The Inbox could not be loaded.{' '}
+              <button type="button" className="sb-button sb-inbox__retry" data-testid="inbox-retry" onClick={inbox.reload}>
+                Try again
+              </button>
+            </div>
+          ) : null}
           {items.map((item) => (
             <ListCard key={item.id} item={item} selected={item.id === current?.id} now={now} onPick={() => {
                 setSelectedId(item.id);

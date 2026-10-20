@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { parseRemoteId } from '../../../core/peers.ts';
 import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent, useHubStatus } from '../../api/useHub.ts';
+import { useMachineStatus } from '../../api/useMachines.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { useRouter } from '../../router.tsx';
 import { formatAge } from '../../shell/format.ts';
 import { ArtifactRowMenu } from './ArtifactDelete.tsx';
 import { ArtifactViewer } from './ArtifactViewer.tsx';
 import { artifactMeta, kindTag } from './artifacts.ts';
+import '../../components/machine-status.css';
+import './session-loading.css';
 import './artifacts.css';
 
 /** Bursts of `artifactsChanged` fold into one fetch per this many ms. */
@@ -55,10 +59,25 @@ function SessionArtifacts({ sessionId, artifactId, blocked }: { readonly session
     if (artifactId !== null && before.has(artifactId) && !listed.current.has(artifactId)) open(null);
   }, [list.data]);
   const state = list.data === null ? (list.error ? 'error' : 'loading') : rows.length === 0 ? 'empty' : 'ready';
+  // D113: a paired machine's session is read there (forwarded): the loading line names it.
+  const remote = parseRemoteId(sessionId);
+  const machine = useMachineStatus(remote?.machineId);
+  const machineName = remote ? (machine?.name ?? 'the other machine') : null;
 
   return (
     <div className="sb-arts" data-testid="session-artifacts" data-session-id={sessionId} data-state={state} data-open={selected ? 'true' : undefined}>
-      <div className="sb-arts-list" data-testid="artifacts-list" role="list" aria-label="Artifacts">
+      <div className="sb-arts-list" data-testid="artifacts-list" role="list" aria-label="Artifacts" aria-busy={list.loading}>
+        {state === 'loading' ? (
+          <>
+            <div className={machineName ? 'sb-arts-loading' : 'sb-skel-note'} role="status" data-testid="artifacts-loading">
+              {machineName ? <span className="sb-machine-spinner" aria-hidden="true" /> : null}
+              {machineName ? `Loading artifacts from ${machineName}…` : 'Loading artifacts…'}
+            </div>
+            {[0, 1, 2].map((index) => (
+              <span key={index} className="sb-skel sb-arts-skel" data-testid="artifacts-skeleton-row" aria-hidden="true" />
+            ))}
+          </>
+        ) : null}
         {state === 'empty' ? (
           <div className="sb-arts-empty" data-testid="artifacts-empty">
             <div className="sb-arts-empty-title">No artifacts yet</div>
@@ -66,8 +85,11 @@ function SessionArtifacts({ sessionId, artifactId, blocked }: { readonly session
           </div>
         ) : null}
         {list.error && list.data === null ? (
-          <div className="sb-arts-empty" role="alert" data-testid="artifacts-error">
-            {list.error.message}
+          <div className="sb-arts-empty" role="alert" data-testid="artifacts-error" data-kind={peerUnreachable(list.error.body) ? 'offline' : 'error'}>
+            {peerUnreachable(list.error.body) && machineName ? `${machineName} cannot be reached — its artifacts cannot be shown now.` : list.error.message}{' '}
+            <button type="button" className="sb-button sb-arts-retry" data-testid="artifacts-retry" onClick={list.reload}>
+              Try again
+            </button>
           </div>
         ) : null}
         {rows.map((artifact) => (
@@ -123,4 +145,10 @@ function SessionArtifacts({ sessionId, artifactId, blocked }: { readonly session
       ) : null}
     </div>
   );
+}
+
+/** D113: the forwarded read failed because the session's machine cannot be reached (or refused the pairing). */
+function peerUnreachable(body: unknown): boolean {
+  const code = typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : null;
+  return code === 'peer-unreachable' || code === 'peer-auth-failed';
 }

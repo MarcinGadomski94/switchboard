@@ -5,13 +5,18 @@ import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { offlineReason } from '../../core/peers.ts';
 import { MachineTag } from '../components/MachineTag.tsx';
+import { PeerSyncNotes, usePeerSync } from '../components/PeerSync.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { Link } from '../router.tsx';
 import { UNKNOWN, formatAge } from '../shell/format.ts';
 import { ArtifactDeleteConfirm, ArtifactRowMenu, deleteErrorText } from './session/ArtifactDelete.tsx';
 import { KIND_FILTERS, artifactKey, artifactMeta, bulkDeleteFailure, keepSelected, kindTag } from './session/artifacts.ts';
+import './session/session-loading.css';
 import './artifacts.css';
+
+/** D113: how many placeholder rows the first load shows. */
+const SKELETON_ROWS = 6;
 
 /** `/hub` bursts fold into one reload per this many ms. */
 const HUB_RELOAD_MS = 250;
@@ -58,6 +63,8 @@ export function ArtifactsView() {
   const [search, setSearch] = useState('');
   const [session, setSession] = useState('');
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // D113: the first load failed (unreachable, refused): said instead of the placeholders.
+  const [failed, setFailed] = useState(false);
   const [tick, setTick] = useState(0);
   const now = useNow(30_000);
 
@@ -76,9 +83,11 @@ export function ArtifactsView() {
         const seen = new Map<string, string>();
         for (const item of every) if (item.sessionId && !seen.has(item.sessionId)) seen.set(item.sessionId, item.sessionTitle ?? item.sessionName ?? UNKNOWN);
         setLoaded({ key, rows, total: every.length, sessions: [...seen].map(([id, label]) => ({ id, label })) });
+        setFailed(false);
       },
       () => {
         // Unreachable or refused: keep the last rows (the sidebar shows the service state).
+        if (!cancelled) setFailed(true);
       },
     );
     return () => {
@@ -90,9 +99,14 @@ export function ArtifactsView() {
   useHubEvent('artifactsChanged', reload);
   // A session renamed (its title in the Session column).
   useHubEvent('sessionUpdated', reload);
+  // D113: a paired machine's artifacts not in yet (or offline) say so; once they arrive the list reads again.
+  const sync = usePeerSync('artifacts', reload);
 
   const rows = loaded?.rows ?? [];
   const empty = loaded !== null && loaded.key === key && rows.length === 0;
+  // D113: the first load shows placeholder rows; a re-query keeps the rows and turns the count's spinner on.
+  const first = loaded === null;
+  const requery = loaded !== null && loaded.key !== key;
   const sessions = useMemo(() => loaded?.sessions ?? [], [loaded]);
 
   // Bulk delete: the selected rows' keys (machine + id).
@@ -143,12 +157,13 @@ export function ArtifactsView() {
   };
 
   return (
-    <section className="sb-view sb-art-view" data-view="artifacts" data-testid="view-artifacts" data-filter={filter.label} aria-busy={loaded?.key !== key}>
+    <section className="sb-view sb-art-view" data-view="artifacts" data-testid="view-artifacts" data-filter={filter.label} data-loading={first ? 'true' : undefined} aria-busy={loaded?.key !== key}>
       <div className="sb-art-head">
         <div className="sb-art-title-row">
           <div className="sb-art-title">Artifacts</div>
-          <div className="sb-art-count" data-testid="artifacts-count">
-            {loaded ? `${rows.length} of ${loaded.total}` : ''}
+          <div className="sb-art-count" data-testid="artifacts-count" data-busy={requery ? 'true' : undefined}>
+            {requery ? <span className="sb-machine-spinner sb-art-count-spinner" data-testid="artifacts-requery" aria-hidden="true" /> : null}
+            {loaded ? `${rows.length} of ${loaded.total}` : failed ? '' : 'Loading…'}
           </div>
           <input
             className="sb-art-search"
@@ -182,6 +197,7 @@ export function ArtifactsView() {
             ))}
           </select>
         </div>
+        <PeerSyncNotes state={sync} testId="artifacts-sync" />
       </div>
       <div className="sb-art-cols" data-testid="artifacts-cols" data-tour="artifacts-select" data-selecting={chosen.length > 0 ? 'true' : undefined}>
         <label className="sb-art-check" title="Select every artifact shown">
@@ -228,6 +244,23 @@ export function ArtifactsView() {
         )}
       </div>
       <div className="sb-art-rows" data-testid="artifacts-rows">
+        {first && !failed ? <ArtifactSkeletons /> : null}
+        {first && failed ? (
+          <div className="sb-art-empty" role="alert" data-testid="artifacts-load-error">
+            The artifacts could not be loaded.{' '}
+            <button
+              type="button"
+              className="sb-button sb-artv-action"
+              data-testid="artifacts-retry"
+              onClick={() => {
+                setFailed(false);
+                reload();
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        ) : null}
         {rows.map((artifact) => (
           <ArtifactRow
             key={artifactKey(artifact)}
@@ -247,6 +280,25 @@ export function ArtifactsView() {
       </div>
       {confirming ? <ArtifactDeleteConfirm titles={chosen.map((row) => row.title)} busy={deleting} onConfirm={bulkDelete} onCancel={() => setConfirming(false)} /> : null}
     </section>
+  );
+}
+
+/** D113: the first load's placeholder rows (decoration; "Loading artifacts…" is said once for screen readers). */
+function ArtifactSkeletons() {
+  return (
+    <div data-testid="artifacts-skeleton">
+      <span className="sb-skel-note" role="status">
+        Loading artifacts…
+      </span>
+      {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+        <div key={index} className="sb-art-skel-row" data-testid="artifacts-skeleton-row" aria-hidden="true">
+          <span className="sb-skel sb-art-skel-check" />
+          <span className="sb-skel sb-art-skel-kind" />
+          <span className="sb-skel sb-art-skel-title" style={{ width: `${[46, 62, 38, 54, 70, 42][index % 6]}%` }} />
+          <span className="sb-skel sb-art-skel-meta" />
+        </div>
+      ))}
+    </div>
   );
 }
 
