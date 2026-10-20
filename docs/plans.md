@@ -108,7 +108,7 @@ While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) ad
 
 ## Seam for an external list (Jira)
 
-`PlanService.createFromExternal({ sourceSessionId, title, targetBranch, external, items: [{ ref, key, title, … }], edges: [{ from, to }] })` makes one draft plan: every item becomes a new todo and a plan item; edges name items by `ref`; everything is checked (unknown refs, a cycle) before anything is written. `PlanService.findByExternal(system, key)` finds the plans made from a list. Both need Plans on (404 / 503 otherwise). The Jira lane uses it: *Jira import and status sync* below. In the web UI, **Import from Jira…** (the Plans list, a session's Plan strip) opens the Jira lane's `ImportJiraDialog` (`docs/plans-ui.md` → *Import from Jira*).
+`PlanService.createFromExternal({ sourceSessionId, title, targetBranch, external, items: [{ ref, key, title, … }], edges: [{ from, to }] })` makes one draft plan: every item becomes a new todo and a plan item; edges name items by `ref`; everything is checked (unknown refs, a cycle) before anything is written. `PlanService.findByExternal(system, key)` finds the plans made from a list. Both need Plans on (404 / 503 otherwise). The Jira lane uses it: *Jira import and status sync* below. In the web UI, **Import from Jira…** (the Plans list, a session's Plan strip) opens the Jira lane's `ImportJiraDialog` (`docs/plans-ui.md` → *Import from Jira*). D112: from the Plans list the import starts a new session in a folder the developer picks, and that session is the plan's source (*Import into a new session (D112)* below).
 
 ## Team interplay (D100)
 
@@ -139,6 +139,22 @@ A plan can be made from a Jira epic: its child issues become the items, their "b
    - the title, target branch, base branch and repos from the dialog (title and target pre-filled: "PROJ-10 Acme checkout", `feature/PROJ-10-acme-checkout`); a workspace session without solutions has no repos of its own, so the dialog asks for them).
 
    The plan is a **draft**; its merge mode is chosen at Start (the core requires it). A failure of the core (no target branch, a forbidden branch, too many items) creates nothing.
+
+### Import into a new session (D112)
+
+From the Plans list, the import needs no session. The dialog asks **Where it runs** (machine, folder, CLI and account, model and effort; a workspace's repositories in the Plan section), and the two calls take no session id:
+
+- `POST /api/plans/jira/preview` `{ epic }`: the same preview, read with that machine's Jira connection.
+- `POST /api/plans/jira/import`: the import's body plus `folder` (a saved folder's id; omitted = the default folder), `provider`, `model`, `effort`, `profileId` and, for a workspace, `repos`. In order:
+  1. it checks the body;
+  2. it checks the place: a git repo or a workspace (a plain folder: 409 `not-a-repo`), and a workspace's repos, at least one, each a solution repo there;
+  3. it reads the epic;
+  4. it starts a session **"Plan · <epic summary>"** (name `plan-<epic key>`, then `-2`, `-3`… when taken) through `POST /api/sessions`' own path (`startNewSession`): a Simple start with no message in that folder, with that CLI, model, effort and account. A workspace's repos become its solutions and the plan's `repos`. Like any New session without a first message, its CLI starts at once and waits, idle;
+  5. it makes the plan with that session as its source (`createFromExternal`, the steps above, the ask for the missing order to that session when items have no links).
+
+  A refusal in steps 1–3 creates nothing. A refusal after step 4 (the core refuses the plan, …) removes the plan if it was made, closes that session (its process stops) and deletes it with its attachments and exports, then answers the error. The answer is `{ plan, jira, preview, askedForOrder, session }`.
+
+The session is an ordinary one: todos, runs (`todo/<slug>` worktrees cut from its branch, in its folder and repos, with its CLI, model, effort and account), sidebar placement and Propose order work through it unchanged. **Use an existing session instead** goes back to picking a session (the routes above under `/api/sessions/{id}/…`), and a session's Plan strip imports with that session as before.
 
 ### Proposed order (ruling D99-Jira-q1 (b))
 
@@ -175,8 +191,8 @@ Plans' `plans.db` (its own connection, opened on first use while Plans is on and
 
 ### Machines and devices
 
-Import and sync run on the machine that owns the plan (the source session's machine): a remote session or plan id is forwarded by the peers' proxy and answered there with that machine's credentials. The token never travels: the credential routes are refused to peers and phones. Phones may preview, import and change a plan's sync (D73 ruling 2026-10-13); the credential settings are this computer's only.
+Import and sync run on the machine that owns the plan (the source session's machine): a remote session or plan id is forwarded by the peers' proxy and answered there with that machine's credentials. D112: an import into a new session on a paired machine goes through `/api/machines/{id}/api/plans/jira/preview | import` (on `PEER_API_ALLOW`), so the session starts there; the answer's plan and session come back namespaced. The token never travels: the credential routes are refused to peers and phones. Phones may preview, import and change a plan's sync (D73 ruling 2026-10-13); the credential settings are this computer's only.
 
 ### Tests
 
-`tests/server/plans/jira.test.ts` (the fake Jira `tests/helpers/fake-jira.ts`: an epic with five children, blocks links with a cycle and a link outside the epic, a workflow without "In Review" for one issue, comments, injected failures), `tests/server/plans/jira-proposals.test.ts` (the proposed order on the real path: a fake-claude source session gets the ask, the MCP tool proposes, accept / cycle / reject, the tool only while Plans is on), `tests/core/plans-jira.test.ts` (rules, route classification), `tests/e2e/plans-jira.spec.ts` (the dialog's dev mount against the fake Jira, desktop and 360 px; the proposals rows; the Jira connection under Settings → Experimental → Plans). Tests never call the real Jira and never read the developer's `ATL_*` (test servers drop them; in-process tests read no environment).
+`tests/server/plans/jira.test.ts` (the fake Jira `tests/helpers/fake-jira.ts`: an epic with five children, blocks links with a cycle and a link outside the epic, a workflow without "In Review" for one issue, comments, injected failures), `tests/server/plans/jira-proposals.test.ts` (the proposed order on the real path: a fake-claude source session gets the ask, the MCP tool proposes, accept / cycle / reject, the tool only while Plans is on), `tests/server/plans/jira-folder.test.ts` (D112: the import into a new session in a repo and a workspace folder, the ask to it, the refusals that leave no session, the session discarded after a refused plan, the forwarded answer's namespacing), `tests/core/plans-jira.test.ts` (rules, route classification), `tests/e2e/plans-jira.spec.ts` (the dialog's dev mount against the fake Jira, desktop and 360 px; the proposals rows; the Jira connection under Settings → Experimental → Plans), `tests/e2e/plans-jira-folder.spec.ts` (D112: Plans → Import from Jira into a workspace and a repo folder, the last place pre-filled, Cancel and failures leave no session, Use an existing session instead, 360 px). Tests never call the real Jira and never read the developer's `ATL_*` (test servers drop them; in-process tests read no environment).
