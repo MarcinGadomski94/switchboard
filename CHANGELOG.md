@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.0 (2026-10-20)
+
+### Plans
+- **The plan's agent picks the repositories:** importing a Jira epic into a workspace (and a New plan there) no longer asks you to pick repositories. The plan's session is asked to set each item's repositories with the new `plan_set_solutions` tool; its choice applies at once, and an item starts as soon as it has them ("Waiting for the plan's agent to pick repositories" until then). "Limit to repositories…" is still there if you want to choose yourself.
+- **It never stalls silently:** the ask goes out by itself (one message for items added together; an agent creating a plan gets it in the tool's answer). If the repositories aren't picked within 15 minutes, or the session couldn't be asked, the Inbox shows "Pick repositories" with Ask again and Open plan; the check survives a restart.
+
 ## 1.26.0 (2026-10-20)
 
 ### Plans
