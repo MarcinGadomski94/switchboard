@@ -44,7 +44,8 @@ export interface PlansWorld {
   stop(): Promise<void>;
 }
 
-export async function startPlansWorld(): Promise<PlansWorld> {
+/** `env`: more of the server's environment (e.g. a test-only timing such as `SWITCHBOARD_PLAN_PICK_REPOS_MS`). */
+export async function startPlansWorld(env: Readonly<Record<string, string>> = {}): Promise<PlansWorld> {
   const git = await makeGitWorld();
   const claudeConfig = path.join(git.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
@@ -65,6 +66,7 @@ export async function startPlansWorld(): Promise<PlansWorld> {
     GIT_AUTHOR_EMAIL: 'test@example.invalid',
     GIT_COMMITTER_NAME: 'Switchboard Test',
     GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    ...env,
   });
   const call: PlansWorld['call'] = async (page, method, url, body) =>
     page.evaluate(
