@@ -92,6 +92,76 @@ export interface PlanJiraServiceOptions {
    * mailbox): the ask for the missing order. Without one, asking answers 409 `no-messages`.
    */
   readonly send?: (sessionId: string, text: string) => Promise<void>;
+  /**
+   * D112: the session an import from a folder creates to own its plan (`POST /api/plans/jira/import`).
+   * Without it, that route answers 409 `no-sessions`.
+   */
+  readonly newSession?: PlanOwnerSessions;
+}
+
+/** D112: where an import from a folder creates its plan's session (the body's `folder`, CLI, model, effort, account, repos). */
+export interface PlanOwnerPlace {
+  readonly folder: string | null;
+  readonly provider?: unknown;
+  readonly model?: unknown;
+  readonly effort?: unknown;
+  readonly profileId?: unknown;
+  /** A workspace folder's solution repos (the plan's `repos` and the session's solutions); ignored for a repo folder. */
+  readonly repos: readonly string[] | null;
+}
+
+/** A refused session start, as `POST /api/sessions` answers it. */
+export interface PlanOwnerRefusal {
+  readonly ok: false;
+  readonly status: number;
+  readonly body: { readonly error: string; readonly message?: string; readonly errors?: ReadonlyArray<{ readonly field: string; readonly message: string }> };
+}
+
+/**
+ * D112 · how the Jira lane creates (and, after a failed import, removes) the session that owns a
+ * plan imported from a folder. The app wires it to `POST /api/sessions`' own path (`startNewSession`).
+ */
+export interface PlanOwnerSessions {
+  /** Checks the place before anything is read or created: the folder exists and is a git repo or a workspace; a workspace names repos that exist. */
+  check(place: PlanOwnerPlace): Promise<{ readonly ok: true; readonly kind: 'repo' | 'workspace' } | PlanOwnerRefusal>;
+  /** Starts the session (idle, no first message) the way New session does; answers its id. */
+  start(place: PlanOwnerPlace, naming: { readonly name: string; readonly title: string }): Promise<{ readonly ok: true; readonly sessionId: string } | PlanOwnerRefusal>;
+  /** `true` when a session already has this short name (the name is made unique). */
+  nameTaken(name: string): Promise<boolean>;
+  /** Closes (its process stops) and deletes a session this lane started for an import that then failed. */
+  discard(sessionId: string): Promise<void>;
+}
+
+/** The answer of an import. */
+export interface JiraImportResult {
+  readonly plan: Plan;
+  readonly jira: PlanJiraState;
+  readonly preview: JiraPreview;
+  readonly askedForOrder: boolean;
+}
+
+/** D112: a refused session check / start as this lane's error (its first field error, else its message). */
+function ownerRefusal(refusal: PlanOwnerRefusal): PlanJiraError {
+  const first = refusal.body.errors?.[0];
+  if (first) return new PlanJiraError(refusal.status, refusal.body.error, first.message, first.field);
+  return new PlanJiraError(refusal.status, refusal.body.error, refusal.body.message ?? 'the session could not be started');
+}
+
+/** D112: the owning session's title, "Plan · <epic title>" (a session title is at most 80 characters). */
+export function planOwnerTitle(epicSummary: string): string {
+  const title = `Plan · ${epicSummary.trim() || 'Jira epic'}`;
+  return title.length <= 80 ? title : `${title.slice(0, 79).trimEnd()}…`;
+}
+
+/** D112: the owning session's short name, `plan-<epic key>` (kebab-case, at most 64 characters). */
+export function planOwnerName(epicKey: string): string {
+  const slug = epicKey
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+    .replace(/-+$/g, '');
+  return `plan-${slug || 'epic'}`;
 }
 
 /** The fields the import reads (plus the acceptance-criteria field when Jira has one). */
@@ -271,19 +341,40 @@ export class PlanJiraService {
     }
   }
 
+  /** The epic of a body (`epic`: a key or an issue URL), else 422 on `epic`. */
+  #epicOf(body: unknown): string {
+    const epicKey = parseEpicKey(isRecord(body) ? body['epic'] : undefined);
+    if (!epicKey) throw new PlanJiraError(422, 'invalid', 'paste an epic key (PROJ-100) or its Jira link', 'epic');
+    return epicKey;
+  }
+
+  /** Reads the epic (and its children); an epic without children is 422 `empty-epic`. */
+  async #readEpic(client: JiraClient, epicKey: string): Promise<JiraPreview> {
+    const preview = await this.#preview(client, epicKey);
+    if (preview.items.length === 0) throw new PlanJiraError(422, 'empty-epic', `${epicKey} has no child issues`, 'epic');
+    return preview;
+  }
+
   /**
    * `POST /api/sessions/{id}/plans/jira/preview` `{ epic }` (a key or an issue URL): the epic's
    * children, their dependencies, the outside links, the cycles left out, the unlinked items.
-   * Nothing is created.
+   * Nothing is created. D112: `sessionId` `null` is `POST /api/plans/jira/preview` (an import
+   * from a folder: there is no session yet).
    */
-  async preview(sessionId: string, body: unknown): Promise<JiraPreview> {
+  async preview(sessionId: string | null, body: unknown): Promise<JiraPreview> {
     await this.#gate();
-    await this.#source(sessionId);
-    const epicKey = parseEpicKey(isRecord(body) ? body['epic'] : undefined);
-    if (!epicKey) throw new PlanJiraError(422, 'invalid', 'paste an epic key (PROJ-100) or its Jira link', 'epic');
-    const preview = await this.#preview(await this.#client(), epicKey);
-    if (preview.items.length === 0) throw new PlanJiraError(422, 'empty-epic', `${epicKey} has no child issues`, 'epic');
-    return preview;
+    if (sessionId !== null) await this.#source(sessionId);
+    const epicKey = this.#epicOf(body);
+    return this.#readEpic(await this.#client(), epicKey);
+  }
+
+  /** What an import body asks for besides its place, checked before anything is read or created. */
+  #importInput(body: unknown): { readonly input: Record<string, unknown>; readonly epicKey: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames } {
+    const input = isRecord(body) ? body : {};
+    const epicKey = this.#epicOf(input);
+    // An epic's plan merges into a target branch: the import keeps requiring one (D99 follow-up 2026-10-15: a plan without a target is made by hand or by an agent).
+    if (typeof input['targetBranch'] !== 'string' || input['targetBranch'].trim() === '') throw new PlanJiraError(422, 'invalid', "give the target branch (the epic's feature branch, e.g. feature/PROJ-100-acme-epic)", 'targetBranch');
+    return { input, epicKey, sync: checkSync(input['sync'], 'off'), transitions: checkTransitions(input['transitions'], DEFAULT_JIRA_TRANSITIONS) };
   }
 
   /**
@@ -294,19 +385,76 @@ export class PlanJiraService {
    * `targetBranch` (required), optional `title`, `baseBranch`, `repos`, `maxConcurrency`,
    * `sync` (default `off`), `transitions`. The merge mode is chosen at Start (the core requires it).
    */
-  async importPlan(sessionId: string, body: unknown): Promise<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview; readonly askedForOrder: boolean }> {
+  async importPlan(sessionId: string, body: unknown): Promise<JiraImportResult> {
     await this.#gate();
     await this.#source(sessionId);
-    const input = isRecord(body) ? body : {};
-    const epicKey = parseEpicKey(input['epic']);
-    if (!epicKey) throw new PlanJiraError(422, 'invalid', 'paste an epic key (PROJ-100) or its Jira link', 'epic');
-    // An epic's plan merges into a target branch: the import keeps requiring one (D99 follow-up 2026-10-15: a plan without a target is made by hand or by an agent).
-    if (typeof input['targetBranch'] !== 'string' || input['targetBranch'].trim() === '') throw new PlanJiraError(422, 'invalid', "give the target branch (the epic's feature branch, e.g. feature/PROJ-100-acme-epic)", 'targetBranch');
-    const sync = checkSync(input['sync'], 'off');
-    const transitions = checkTransitions(input['transitions'], DEFAULT_JIRA_TRANSITIONS);
+    const checked = this.#importInput(body);
     const client = await this.#client();
-    const preview = await this.#preview(client, epicKey);
-    if (preview.items.length === 0) throw new PlanJiraError(422, 'empty-epic', `${epicKey} has no child issues`, 'epic');
+    const preview = await this.#readEpic(client, checked.epicKey);
+    return this.#createPlan(sessionId, checked, client, preview);
+  }
+
+  /**
+   * D112 · `POST /api/plans/jira/import`: an import from a **folder** instead of a session. The
+   * body is an import's (`epic`, `targetBranch`, …) plus where the plan runs: `folder` (a saved
+   * folder's id), `provider`, `model`, `effort`, `profileId` and, for a workspace, `repos`.
+   * Everything that can be checked is checked first (the body, the folder and repos, Jira's epic),
+   * so a refusal leaves nothing behind. Then a new session "Plan · <epic title>" starts in that
+   * folder the way New session starts one (idle: no first message), with the repos as its
+   * solutions, and owns the plan as its source session. If the plan then cannot be made, that
+   * session is closed and deleted again (and a plan already made is removed) before the error is
+   * answered.
+   */
+  async importIntoNewSession(body: unknown): Promise<JiraImportResult & { readonly sessionId: string }> {
+    await this.#gate();
+    const sessions = this.#options.newSession;
+    if (!sessions) throw new PlanJiraError(409, 'no-sessions', 'this Switchboard cannot start a session for the plan');
+    const checked = this.#importInput(body);
+    const raw = checked.input;
+    if (raw['folder'] !== undefined && raw['folder'] !== null && typeof raw['folder'] !== 'string') throw new PlanJiraError(422, 'invalid', 'folder must be the id of a saved folder', 'folder');
+    if (raw['repos'] !== undefined && raw['repos'] !== null && (!Array.isArray(raw['repos']) || !raw['repos'].every((name) => typeof name === 'string' && name.trim() !== ''))) {
+      throw new PlanJiraError(422, 'invalid', 'repos must be a list of solution names', 'repos');
+    }
+    const place: PlanOwnerPlace = {
+      folder: typeof raw['folder'] === 'string' && raw['folder'] !== '' ? raw['folder'] : null,
+      provider: raw['provider'],
+      model: raw['model'],
+      effort: raw['effort'],
+      profileId: raw['profileId'],
+      repos: Array.isArray(raw['repos']) ? [...new Set(raw['repos'] as string[])] : null,
+    };
+    const where = await sessions.check(place);
+    if (!where.ok) throw ownerRefusal(where);
+    const client = await this.#client();
+    const preview = await this.#readEpic(client, checked.epicKey);
+    let name = planOwnerName(checked.epicKey);
+    for (let n = 2; await sessions.nameTaken(name); n += 1) name = `${planOwnerName(checked.epicKey)}-${n}`;
+    const started = await sessions.start(place, { name, title: planOwnerTitle(preview.epic.summary) });
+    if (!started.ok) throw ownerRefusal(started);
+    const repos = where.kind === 'workspace' ? place.repos : null;
+    let planId: string | null = null;
+    try {
+      const result = await this.#createPlan(started.sessionId, { ...checked, input: { ...raw, repos: repos ?? undefined } }, client, preview, (id) => {
+        planId = id;
+      });
+      return { ...result, sessionId: started.sessionId };
+    } catch (error) {
+      // No leftovers: the plan (when it was made) and the session go again.
+      if (planId !== null) await this.#options.plans.remove(planId).catch((cause: unknown) => this.#onError(cause));
+      await sessions.discard(started.sessionId).catch((cause: unknown) => this.#onError(cause));
+      throw error;
+    }
+  }
+
+  /** The import's writes: the draft plan through the core's seam, its Jira rows, the activity line and the ask for the order. */
+  async #createPlan(
+    sessionId: string,
+    checked: { readonly input: Record<string, unknown>; readonly epicKey: string; readonly sync: JiraSyncMode; readonly transitions: JiraTransitionNames },
+    client: JiraClient,
+    preview: JiraPreview,
+    made?: (planId: string) => void,
+  ): Promise<JiraImportResult> {
+    const { input, epicKey, sync, transitions } = checked;
     const title = typeof input['title'] === 'string' && input['title'].trim() !== '' ? input['title'] : preview.suggestedTitle;
     const created = await this.#options.plans.createFromExternal({
       sourceSessionId: sessionId,
@@ -322,6 +470,7 @@ export class PlanJiraService {
       }),
       edges: preview.edges.map((edge) => ({ from: edge.from, to: edge.to })),
     });
+    made?.(created.plan.id);
     await (await this.#jdb()).createPlan({
       planId: created.plan.id,
       epicKey,

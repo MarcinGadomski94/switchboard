@@ -23,18 +23,25 @@ export function PlansOff() {
 /**
  * D99 · the Plans list (`/plans`, `docs/plans-ui.md` → *The Plans page*): a card per plan with
  * its state, progress and merge mode, newest first; **＋ New plan** (a session, title, target
- * branch, base, items from its todos) and **Import from Jira…** (a session, then the Jira
- * lane's `ImportJiraDialog`; the new draft opens).
+ * branch, base, items from its todos) and **Import from Jira…** (the Jira lane's
+ * `ImportJiraDialog`: D112, a new session in a folder owns the plan; **Use an existing session
+ * instead** picks a session first, as before; the new draft opens).
  */
 export function PlansPage() {
   const { on, plans, loaded } = usePlans();
   const { navigate } = useRouter();
   const [open, setOpen] = useState<'new' | 'import' | null>(null);
   const [jiraSource, setJiraSource] = useState<string | null>(null);
+  // D112: Import from Jira starts in a folder (a new session owns the plan); an existing session on request.
+  const [jiraWith, setJiraWith] = useState<'folder' | 'session'>('folder');
   if (!on) return loaded ? <PlansOff /> : <div className="sb-plan-page" />;
-  const opened = (plan: Plan): void => {
+  const closeImport = (): void => {
     setOpen(null);
     setJiraSource(null);
+    setJiraWith('folder');
+  };
+  const opened = (plan: Plan): void => {
+    closeImport();
     putPlan(plan);
     navigate({ view: 'plan', id: plan.id });
   };
@@ -93,17 +100,9 @@ export function PlansPage() {
         ))}
       </div>
       {open === 'new' ? <NewPlanDialog initialSessionId={null} onCreated={opened} onClose={() => setOpen(null)} /> : null}
-      {open === 'import' && jiraSource === null ? <JiraSourceDialog onPick={setJiraSource} onClose={() => setOpen(null)} /> : null}
-      {open === 'import' && jiraSource !== null ? (
-        <ImportJiraDialog
-          sourceSessionId={jiraSource}
-          onImported={opened}
-          onClose={() => {
-            setOpen(null);
-            setJiraSource(null);
-          }}
-        />
-      ) : null}
+      {open === 'import' && jiraWith === 'folder' ? <ImportJiraDialog onImported={opened} onClose={closeImport} onUseSession={() => setJiraWith('session')} /> : null}
+      {open === 'import' && jiraWith === 'session' && jiraSource === null ? <JiraSourceDialog onPick={setJiraSource} onClose={closeImport} onUseFolder={() => setJiraWith('folder')} /> : null}
+      {open === 'import' && jiraWith === 'session' && jiraSource !== null ? <ImportJiraDialog sourceSessionId={jiraSource} onImported={opened} onClose={closeImport} /> : null}
     </div>
   );
 }

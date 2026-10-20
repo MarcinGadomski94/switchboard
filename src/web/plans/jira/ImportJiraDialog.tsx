@@ -1,16 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import { DEFAULT_JIRA_TRANSITIONS, JIRA_SYNC_MODES, type JiraPreview, type JiraSyncMode } from '../../../core/plans-jira.ts';
 import { machineApi, onDeviceOrigin } from '../../api/client.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { JiraApiError, jiraApi } from './api.ts';
 import { JiraCredentialsForm } from './JiraCredentialsForm.tsx';
+import { type JiraImportPlace, loadLastPlace, saveLastPlace } from './place.ts';
+import { type ResolvedPlace, WhereItRuns } from './WhereItRuns.tsx';
 import './jira.css';
 
 /** Props of {@link ImportJiraDialog}. */
 export interface ImportJiraDialogProps {
-  /** The session whose todo list the plan runs (a paired machine's `r~<machine>~<id>` imports on that machine). */
-  readonly sourceSessionId: string;
+  /**
+   * The session whose todo list the plan runs (a paired machine's `r~<machine>~<id>` imports on that machine).
+   * D112: omitted = the plan gets a new session in a folder the dialog asks for (**Where it runs**).
+   */
+  readonly sourceSessionId?: string;
+  /** D112: with no session, **Use an existing session instead** (the Plans list then asks for one). */
+  readonly onUseSession?: () => void;
   /** The plan repos (a workspace's solution names); omitted = the session's own solutions (the core's default). */
   readonly repos?: readonly string[];
   /** Pre-fills the epic field (e.g. a pasted link). */
@@ -40,13 +47,22 @@ const SYNC_LABELS: Readonly<Record<JiraSyncMode, string>> = {
  * them for its target branch: the dialog then asks for the **repositories** (the workspace's
  * solutions, read-only ones left out). Create plan never fails silently: while it cannot be
  * pressed the footer says why, and a refused create shows the server's reason next to it.
+ *
+ * D112: without a session it asks **Where it runs** instead (machine, folder, CLI and account,
+ * model; a workspace's repositories in the Plan section), pre-filled from the last import in
+ * this browser. Create plan then starts a new session "Plan · <epic>" there that owns the plan
+ * (`POST /api/plans/jira/import`, on that machine); **Use an existing session instead** goes back
+ * to picking a session.
  */
-export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImported, onClose }: ImportJiraDialogProps) {
+export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImported, onClose, onUseSession }: ImportJiraDialogProps) {
+  const inFolder = sourceSessionId === undefined;
+  const [place, setPlace] = useState<JiraImportPlace>(() => loadLastPlace());
+  const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [epic, setEpic] = useState(initialEpic ?? '');
   const [preview, setPreview] = useState<JiraPreview | null>(null);
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState('');
-  const [base, setBase] = useState('dev');
+  const [base, setBase] = useState(() => (inFolder ? place.baseBranch : 'dev'));
   const [sync, setSync] = useState<JiraSyncMode>('off');
   const [inProgress, setInProgress] = useState(DEFAULT_JIRA_TRANSITIONS.inProgress);
   const [inReview, setInReview] = useState(DEFAULT_JIRA_TRANSITIONS.inReview);
@@ -54,26 +70,38 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
   /** Which call {@link error} came from: a create's refusal shows by the button, a preview's above the preview. */
   const [errorFrom, setErrorFrom] = useState<'preview' | 'create'>('preview');
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
-  const [pickedRepos, setPickedRepos] = useState<readonly string[]>([]);
+  const [pickedRepos, setPickedRepos] = useState<readonly string[]>(() => (inFolder ? place.repos : []));
   const [repoChoices, setRepoChoices] = useState<readonly string[] | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const sessions = useSessionListOf();
-  const source = sessions.data?.find((session) => session.id === sourceSessionId) ?? null;
+  const source = inFolder ? null : (sessions.data?.find((session) => session.id === sourceSessionId) ?? null);
   // D38: a workspace session may have no solutions yet; the plan's target branch needs repos (the server refuses with field `repos`).
-  const askRepos = repos === undefined && ((source !== null && source.folderKind === 'workspace' && source.solutions.length === 0) || error?.fields['repos'] !== undefined);
-  const sourceMachine = source?.machine?.id ?? null;
-  const sourceFolder = source?.folderPath ?? null;
+  // D112: a new session in a workspace folder runs on the repositories picked here.
+  const askRepos = inFolder
+    ? resolved?.folder?.kind === 'workspace' || error?.fields['repos'] !== undefined
+    : repos === undefined && ((source !== null && source.folderKind === 'workspace' && source.solutions.length === 0) || error?.fields['repos'] !== undefined);
+  const sourceMachine = inFolder ? place.machine : (source?.machine?.id ?? null);
+  const sourceFolder = inFolder ? (resolved?.folder?.id ?? null) : (source?.folderPath ?? null);
+  const changePlace = useCallback((patch: Partial<JiraImportPlace>) => {
+    setPlace((current) => ({ ...current, ...patch }));
+    if (patch.repos !== undefined) setPickedRepos(patch.repos);
+    setError(null);
+  }, []);
+  const onResolved = useCallback((next: ResolvedPlace) => setResolved(next), []);
 
   useEffect(() => {
     if (!askRepos) return;
     let cancelled = false;
+    setRepoChoices(null);
     machineApi(sourceMachine)
       .solutions(sourceFolder ?? undefined)
       .then(
         (groups) => {
           if (cancelled) return;
-          const names = groups.flatMap((group) => group.solutions.filter((solution) => solution.rule !== 'read-only').map((solution) => solution.name));
-          setRepoChoices([...new Set(names)]);
+          const names = [...new Set(groups.flatMap((group) => group.solutions.filter((solution) => solution.rule !== 'read-only').map((solution) => solution.name)))];
+          setRepoChoices(names);
+          // A remembered pick keeps only what this folder still has.
+          setPickedRepos((picked) => picked.filter((name) => names.includes(name)));
         },
         () => {
           if (!cancelled) setRepoChoices([]);
@@ -102,7 +130,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
     setBusy('preview');
     setError(null);
     try {
-      const answer = await jiraApi.preview(sourceSessionId, epic);
+      const answer = inFolder ? await jiraApi.previewForFolder(place.machine, epic) : await jiraApi.preview(sourceSessionId, epic);
       setPreview(answer);
       setTitle(answer.suggestedTitle);
       setTarget(answer.suggestedTargetBranch);
@@ -118,16 +146,31 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
     if (!preview) return;
     setBusy('create');
     setError(null);
+    const body = {
+      epic: preview.epic.key,
+      title,
+      targetBranch: target,
+      baseBranch: base,
+      sync,
+      ...(repos ? { repos } : askRepos ? { repos: pickedRepos } : {}),
+      ...(sync === 'write' ? { transitions: { inProgress, inReview } } : {}),
+    };
     try {
-      const answer = await jiraApi.importPlan(sourceSessionId, {
-        epic: preview.epic.key,
-        title,
-        targetBranch: target,
-        baseBranch: base,
-        sync,
-        ...(repos ? { repos } : askRepos ? { repos: pickedRepos } : {}),
-        ...(sync === 'write' ? { transitions: { inProgress, inReview } } : {}),
-      });
+      if (inFolder) {
+        // D112: a new session in the chosen folder owns the plan (created on that machine; removed again if the import fails).
+        const folder = resolved?.folder?.id ?? place.folder;
+        const answer = await jiraApi.importIntoFolder(place.machine, {
+          ...body,
+          ...(folder ? { folder } : {}),
+          ...(resolved ? { provider: resolved.provider } : {}),
+          ...(resolved?.model ? { model: resolved.model.model, effort: resolved.model.effort } : {}),
+          ...(place.profileId ? { profileId: place.profileId } : {}),
+        });
+        saveLastPlace({ ...place, folder: folder ?? null, provider: resolved?.provider ?? place.provider, repos: askRepos ? pickedRepos : [], baseBranch: base.trim() === '' ? place.baseBranch : base });
+        onImported(answer.plan);
+        return;
+      }
+      const answer = await jiraApi.importPlan(sourceSessionId, body);
       onImported(answer.plan);
     } catch (caught) {
       fail(caught, 'create');
@@ -138,7 +181,16 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
 
   const notConfigured = error?.code === 'jira-not-configured';
   // Why Create plan cannot be pressed now (shown by the button, so it never looks like a dead click).
-  const blocked = !preview || busy !== null ? null : target.trim() === '' ? "Give the target branch (the epic's feature branch)." : askRepos && pickedRepos.length === 0 ? 'Pick the repositories the target branch lives in.' : null;
+  const placeBlocked = !inFolder
+    ? null
+    : resolved === null || !resolved.ready
+      ? 'Reading the folders…'
+      : resolved.folder === null
+        ? 'Pick the folder the plan runs in.'
+        : resolved.folder.kind === 'plain'
+          ? 'Pick a git repository or a workspace: the target branch needs one.'
+          : null;
+  const blocked = !preview || busy !== null ? null : target.trim() === '' ? "Give the target branch (the epic's feature branch)." : (placeBlocked ?? (askRepos && pickedRepos.length === 0 ? 'Pick the repositories the target branch lives in.' : null));
   const createError = error !== null && errorFrom === 'create' && !notConfigured ? error : null;
   const unlinked = new Set(preview?.unlinked ?? []);
 
@@ -167,6 +219,12 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
               {busy === 'preview' ? 'Reading…' : 'Preview'}
             </button>
           </form>
+          {inFolder ? <WhereItRuns place={place} onChange={changePlace} onResolved={onResolved} disabled={busy !== null} /> : null}
+          {inFolder && onUseSession ? (
+            <button type="button" className="sb-jira-link" data-testid="jira-use-session" disabled={busy !== null} onClick={onUseSession}>
+              Use an existing session instead
+            </button>
+          ) : null}
           {notConfigured ? (
             <div className="sb-jira-notice" data-testid="jira-not-configured">
               <p>{error.message}</p>
@@ -258,9 +316,9 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                 </div>
                 {askRepos ? (
                   <fieldset className="sb-jira-sync" data-testid="jira-repos">
-                    <legend>Repositories (the session uses none yet: the target branch lives in these)</legend>
+                    <legend>{inFolder ? 'Repositories (the target branch lives in these; the new session works on them)' : 'Repositories (the session uses none yet: the target branch lives in these)'}</legend>
                     {repoChoices === null ? <span className="sb-jira-muted">Reading the workspace's solutions…</span> : null}
-                    {repoChoices !== null && repoChoices.length === 0 ? <span className="sb-jira-muted">No solution repositories found in the session's workspace.</span> : null}
+                    {repoChoices !== null && repoChoices.length === 0 ? <span className="sb-jira-muted">{inFolder ? 'No solution repositories found in this workspace.' : "No solution repositories found in the session's workspace."}</span> : null}
                     {(repoChoices ?? []).map((name) => (
                       <label key={name}>
                         <input
@@ -296,7 +354,10 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                     </label>
                   </div>
                 ) : null}
-                <p className="sb-jira-muted">The plan is created as a draft. You choose how its work is merged when you start it.</p>
+                <p className="sb-jira-muted">
+                  {inFolder ? `The plan is created as a draft, owned by a new session "Plan · ${preview.epic.summary}". ` : 'The plan is created as a draft. '}
+                  You choose how its work is merged when you start it.
+                </p>
               </section>
             </div>
           ) : null}

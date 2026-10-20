@@ -1,4 +1,6 @@
+import type { Session } from '../../../core/api.ts';
 import type { Plan } from '../../../core/plans.ts';
+import { onMachine } from '../../api/client.ts';
 import type { JiraConnectionStatus, JiraPreview, JiraSyncMode, JiraTransitionNames, PlanEdgeProposal, PlanJiraState } from '../../../core/plans-jira.ts';
 
 /** A refused call: the HTTP status and the answer's `error` / `message` / field errors. */
@@ -45,13 +47,37 @@ export interface JiraImportBody {
   readonly transitions?: Partial<JiraTransitionNames>;
 }
 
+/**
+ * D112 · the body of an import into a folder (`POST /api/plans/jira/import`): the import's, plus
+ * where the plan's new session runs (that machine's saved folder, CLI, model, effort, account).
+ */
+export interface JiraFolderImportBody extends JiraImportBody {
+  readonly folder?: string;
+  readonly provider?: string;
+  readonly model?: string | null;
+  readonly effort?: string | null;
+  readonly profileId?: string;
+}
+
+/** The answer of an import. */
+export interface JiraImportAnswer {
+  readonly plan: Plan;
+  readonly jira: PlanJiraState;
+  readonly preview: JiraPreview;
+  readonly askedForOrder: boolean;
+}
+
 /** The Jira lane's calls (contract → *Plans · Jira (D99)*). */
 export const jiraApi = {
   status: () => call<JiraConnectionStatus>('GET', '/api/integrations/jira'),
   saveCredentials: (body: { readonly baseUrl: string; readonly email: string; readonly token: string }) => call<JiraConnectionStatus>('PUT', '/api/integrations/jira', body),
   clearCredentials: () => call<JiraConnectionStatus>('DELETE', '/api/integrations/jira'),
   preview: (sessionId: string, epic: string) => call<JiraPreview>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/preview`, { epic }),
-  importPlan: (sessionId: string, body: JiraImportBody) => call<{ readonly plan: Plan; readonly jira: PlanJiraState; readonly preview: JiraPreview; readonly askedForOrder: boolean }>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/import`, body),
+  importPlan: (sessionId: string, body: JiraImportBody) => call<JiraImportAnswer>('POST', `/api/sessions/${enc(sessionId)}/plans/jira/import`, body),
+  /** D112: a preview on `machine` (`null` = this one) with no session yet. */
+  previewForFolder: (machine: string | null, epic: string) => call<JiraPreview>('POST', onMachine(machine, '/api/plans/jira/preview'), { epic }),
+  /** D112: the import into a folder of `machine`: a new session there owns the plan. */
+  importIntoFolder: (machine: string | null, body: JiraFolderImportBody) => call<JiraImportAnswer & { readonly session: Session | null }>('POST', onMachine(machine, '/api/plans/jira/import'), body),
   state: (planId: string) => call<PlanJiraState>('GET', `/api/plans/${enc(planId)}/jira`),
   update: (planId: string, body: { readonly sync?: JiraSyncMode; readonly transitions?: Partial<JiraTransitionNames> }) => call<PlanJiraState>('PUT', `/api/plans/${enc(planId)}/jira`, body),
   refresh: (planId: string) => call<PlanJiraState>('POST', `/api/plans/${enc(planId)}/jira/refresh`),

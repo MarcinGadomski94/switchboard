@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlanItem } from '../../src/core/plans.ts';
+import { DEFAULT_PLACE, parsePlace } from '../../src/web/plans/jira/place.ts';
 import {
   GRAPH,
   STATE_LOOK,
@@ -340,5 +341,16 @@ describe('timeline from the history (PlanItem.spans)', () => {
     const p = plan([item('1', { state: 'waiting', spans: [{ kind: 'paused-plan', startedAt: iso(0), endedAt: null }] })], [], { state: 'paused', startedAt: iso(0), pausedReason: 'Plans was switched off' });
     const segment = timeline(p, T0 + 3_600_000).groups[0]?.rows[0]?.segments[0];
     expect(segment).toMatchObject({ kind: 'paused', note: 'Plans was switched off' });
+  });
+});
+
+describe('D112 · the last Jira import\'s place', () => {
+  it('reads what was kept and falls back field by field', () => {
+    expect(parsePlace(null)).toEqual(DEFAULT_PLACE);
+    expect(parsePlace('not json')).toEqual(DEFAULT_PLACE);
+    expect(parsePlace('[]')).toEqual(DEFAULT_PLACE);
+    const kept = { machine: 'm2', folder: 'f1', provider: 'codex', model: { model: 'gpt-x', effort: 'high' }, profileId: 'p1', repos: ['mobile', 'mobile', 'web-front'], baseBranch: 'main' };
+    expect(parsePlace(JSON.stringify(kept))).toEqual({ ...kept, repos: ['mobile', 'web-front'] });
+    expect(parsePlace(JSON.stringify({ provider: 'nope', model: 'x', repos: 'mobile', baseBranch: '' }))).toEqual(DEFAULT_PLACE);
   });
 });
