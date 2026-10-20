@@ -1273,6 +1273,30 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Visible on the plan.** The red ■ state on cards and rows and in the graph legend; "■ N stopped" on the plan's header and its Plans list card.
   - **What's new:** none (an existing page's state and click). ASSUMED (D120-paused): a paused session (Switchboard stopped its process) counts as a turn that is over, like `done` / `idle`.
 
+- **D121 Plans: a fresh item branch is never "merged"; falsely done items are reopened.** Developer report, 2026-10-20, on a real plan with merge mode `agents`, write sync and `doneOnMerge` on: several items got the note "merged into feature/… without your Merge", with no PR, 1.5 to 8 minutes after they started. Their agents kept working for over an hour. Their todos were marked done, their dependents started on a target without their work, and Jira got "Merged into" and the D116 Done. Correction from the developer: one suspected item really was merged 12 minutes later through its PR on GitHub, and a local `--is-ancestor` said "not merged" only because the local target was behind `origin/<target>`. Builds on D99, D102, D116, D120. Details: `docs/plans.md` → *Merge step*, `docs/plans-ui.md`.
+  - **Root cause.** `PlanGit.inspect` counted a branch as having work when its tip differed from the recorded `cut`, and as merged when that tip was an ancestor of the target. The cut is the target's tip read in `#startItem` **before** the run's worktree is made. When another item merged into the target in between, or the agent fast-forwarded its fresh branch to the target, a branch without one commit of its own had a tip ≠ cut inside the target, so it read as merged.
+  - **The rule.** Merged = in every repo with work: its PR into the target is `MERGED`, or the branch has commits of its own (beyond its reflog's creation commit, else the cut; made on it, not fast-forwarded) and its tip is in the local target or `origin/<target>`. The remote-tracking ref is read as it is: no new `git fetch` in the developer's repos. A branch that is gone, or a PR that cannot be read, is unknown and never reopens anything. Chosen over "tip ≠ cut" alone, which still misreads the cut race; the reflog is the one local record of where the branch really started.
+  - **Auto-repair and Reopen.** At activation and once per scheduling cycle of a running or paused plan, every item done by the git detection (not the developer's Merge, not Mark done) is read again. Not merged → it is reopened:
+    - `running` again, or D120's `stopped` when its session is closed or gone;
+    - its todo is open again, and `merged_at` / `done_at` are cleared;
+    - a note, and an Inbox item "Reopened <key>: …" that lists the early-started dependents and the Jira key that was told;
+    - those dependents get a warning but are not stopped.
+
+    A proven merge is not read again until the next activation. The developer's **Reopen** does the same for any done item. No migration (`plans.db` stays at 4): the session-less marker is the item's stored `reason`, and the Jira generations live in `plan_jira_writes` rows.
+  - **Jira.** No automatic correction (no comment, no transition back): the developer decides, so the item's note and the Inbox item say "Jira was told this was merged/Done — check <key>". The false `merged` / `done:<item>` write records are **retired** (renamed `retired:<n>:…`, plus a `reopened:<n>` generation record) rather than deleted. The history stays readable, and a real later merge writes its comment (a new marker) and its Done again under `merged#<n>` / `done:<item>#<n>`.
+  - **Other ancestor checks looked at.** None of them can mark anything done:
+    - the cleanup's "merged" (`src/server/cleanup/service.ts`) only proposes removing a worktree or branch the developer confirms, and a fresh branch holds no work;
+    - D47's merge-kind check runs only after gh says the parent PR is merged;
+    - `BranchMergeGit.check`'s up-to-date / fast-forward reading belongs to the developer's own Merge.
+  - **What's new:** a Reopen action on a done item (an existing page's detail and a list row's ⋯).
+- **D122 Plan PRs and commits reference only their own ticket.** The developer, 2026-10-20: "plans shouldn't add references to other tickets in the prs it opens - it collided with our jira automation (if the ticket 2 is mentioned in description of pr for ticket 1 and is merged, the task is being moved to done)". Builds on D99, D102, D118. Details: `docs/plans.md` → *Merge step*.
+  - **The brief.** Every item brief carries the rule right after the D118 Jira context (`planOwnKeyRule`): the PR title, the PR description, the branch name and every commit message may name only the item's own key, never another (not the epic, not a dependency, not a related ticket), because the tracker's automation acts on every key it finds; other work is described without its key. The context keeps the other keys: the agent needs them.
+  - **Switchboard's own texts.**
+    - The developer's Merge commit was git's "Merge branch '<branch>' into <target>"; the target, e.g. `feature/PROJ-10-…`, carries the epic's key. It is now "Merge <key> into the plan's target".
+    - Open PR's description quoted the plan's title, which a Jira plan names after its epic. It is now "An item of a Switchboard plan."
+    - The PR title and the branch slug leave out any other key in the todo's title (`withoutOtherKeys`).
+  - **What's new:** none.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
