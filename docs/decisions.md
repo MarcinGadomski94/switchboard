@@ -1211,6 +1211,14 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Session Artifacts tab:** placeholders while its list loads; a paired machine's session says "Loading artifacts from <machine>…" while the forwarded read runs, and "<machine> cannot be reached — …" with Try again if it fails.
   - **What's new:** none (a status that shows only while a machine syncs, not something to do; nothing to point a tour at).
 
+## Queued send feedback (added 2026-10-20)
+
+- **D114 A message sent while the agent works leaves the composer at once and shows as queued right away.** Developer report, 2026-10-20: "it doesnt send a message from the message box as waiting in the queue after clicking enter. the only way to see whether it is actually sent is to leave and re-enter the session, then we can see that the message is waiting in the queue, but the same exact message is loading back to the message box. we should get rid of that lag". Mid-turn the service can take seconds to answer `POST /api/sessions/{id}/messages` (the D80 checkpoint snapshot, the process's line queue); the composer waited for that answer, and leaving the session before it saved the text back into the draft (D88). Builds on D26 (the composer), D80 (checkpoints) and D88 (drafts). Details: `docs/chat.md` → *Composer*.
+  - **Enter / Send** clears the draft and the field at once and shows an optimistic queued bubble (`src/web/views/session/outgoing.ts`, kept per session outside React), replaced by the message's own user event when it arrives, so it never shows twice. A session's sends go one after the other.
+  - **A refusal** removes the bubble and puts the text back with the error (into the server draft when the session was left meanwhile), so the text is never lost.
+  - **Developer rulings, 2026-10-20:** the server keeps taking the checkpoint snapshot before it records the message (unchanged; only the client stops waiting). The header **Pause** does not wait for in-flight sends; Stop, the stop-timeout note's Pause and answering a question card do.
+  - **No migration, no API change.** **What's new:** none (a fix).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
