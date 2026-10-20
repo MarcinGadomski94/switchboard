@@ -299,4 +299,14 @@
   .sb-arts__item > .sb-art-more {
     right: 6px;
   }
+
+  /* D117 follow-up: a Plans list row's ⋯ is finger-sized too (the .sb-art-more rule above). */
+  .sb-plan-summary-item > .sb-plan-summary {
+    padding-right: 56px;
+  }
+
+  .sb-plan-summary-item > .sb-art-more {
+    top: 6px;
+    right: 6px;
+  }
 }

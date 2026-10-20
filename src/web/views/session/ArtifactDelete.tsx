@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client.ts';
 import { deleteQuestion } from './artifacts.ts';
@@ -9,6 +9,59 @@ import './artifacts.css';
 /** An API failure in words (the refusal's message, else the status). */
 export function deleteErrorText(caught: unknown): string {
   return caught instanceof ApiError ? actionErrorText(caught.status, caught.body) : actionErrorText(0, null);
+}
+
+/** Props of {@link DeleteConfirm}. */
+export interface DeleteConfirmProps {
+  /** The question ("Delete “…”? …"). */
+  readonly question: ReactNode;
+  /** More under the question (a note, a checkbox), else nothing. */
+  readonly children?: ReactNode;
+  readonly busy: boolean;
+  /** Why the delete failed (shown in the dialog), else `null`. */
+  readonly error?: string | null;
+  /** The test ids' prefix: `<prefix>-delete-confirm | -yes | -cancel | -error`. */
+  readonly testIdPrefix: string;
+  readonly onConfirm: () => void;
+  readonly onCancel: () => void;
+}
+
+/**
+ * D89 · a Delete's confirmation (artifacts; D117 follow-up: plans too): the Close
+ * confirmation's look; Cancel has the focus; Esc or a click outside cancels.
+ */
+export function DeleteConfirm({ question, children, busy, error = null, testIdPrefix, onConfirm, onCancel }: DeleteConfirmProps) {
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      if (!busy) onCancel();
+    }
+  };
+  const textId = `sb-${testIdPrefix}-delete-text`;
+  return createPortal(
+    <div className="sb-close-overlay" onClick={busy ? undefined : onCancel} onKeyDown={onKeyDown}>
+      <div className="sb-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby={textId} data-testid={`${testIdPrefix}-delete-confirm`} onClick={(event) => event.stopPropagation()}>
+        <div className="sb-close-text" id={textId}>
+          {question}
+        </div>
+        {children}
+        {error ? (
+          <div className="sb-close-error" role="alert" data-testid={`${testIdPrefix}-delete-error`}>
+            {error}
+          </div>
+        ) : null}
+        <div className="sb-close-actions">
+          <button type="button" className="sb-button sb-close-primary" data-testid={`${testIdPrefix}-delete-yes`} disabled={busy} aria-busy={busy || undefined} onClick={onConfirm}>
+            Delete
+          </button>
+          <button type="button" className="sb-button sb-close-outlined" data-testid={`${testIdPrefix}-delete-cancel`} disabled={busy} autoFocus onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 /** Props of {@link ArtifactDeleteConfirm}. */
@@ -24,39 +77,27 @@ export interface ArtifactDeleteConfirmProps {
 
 /**
  * D89 · Delete's confirmation, shared by the viewer, a row's ⋯ (the session's
- * Artifacts tab, the Artifacts page) and the Artifacts page's bulk Delete: the
- * Close confirmation's look; Cancel has the focus; Esc or a click outside cancels.
+ * Artifacts tab, the Artifacts page) and the Artifacts page's bulk Delete.
  */
-export function ArtifactDeleteConfirm({ titles, busy, error = null, onConfirm, onCancel }: ArtifactDeleteConfirmProps) {
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      if (!busy) onCancel();
-    }
-  };
-  return createPortal(
-    <div className="sb-close-overlay" onClick={busy ? undefined : onCancel} onKeyDown={onKeyDown}>
-      <div className="sb-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sb-artv-delete-text" data-testid="artifact-delete-confirm" onClick={(event) => event.stopPropagation()}>
-        <div className="sb-close-text" id="sb-artv-delete-text">
-          {deleteQuestion(titles)}
-        </div>
-        {error ? (
-          <div className="sb-close-error" role="alert" data-testid="artifact-delete-error">
-            {error}
-          </div>
-        ) : null}
-        <div className="sb-close-actions">
-          <button type="button" className="sb-button sb-close-primary" data-testid="artifact-delete-yes" disabled={busy} aria-busy={busy || undefined} onClick={onConfirm}>
-            Delete
-          </button>
-          <button type="button" className="sb-button sb-close-outlined" data-testid="artifact-delete-cancel" disabled={busy} autoFocus onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
+export function ArtifactDeleteConfirm({ titles, ...rest }: ArtifactDeleteConfirmProps) {
+  return <DeleteConfirm question={deleteQuestion(titles)} testIdPrefix="artifact" {...rest} />;
+}
+
+/** Props of {@link RowDeleteMenu}. */
+export interface RowDeleteMenuProps {
+  readonly title: string;
+  /** D48: why the row's machine cannot be reached (Delete is off, the menu says why), else `null`. */
+  readonly blocked: string | null;
+  /** Deletes it (rejects with the refusal). */
+  readonly remove: () => Promise<void>;
+  /** After a delete went through. */
+  readonly onDeleted?: () => void;
+  /** The confirmation's question. */
+  readonly question: ReactNode;
+  /** More in the confirmation under the question. */
+  readonly details?: ReactNode;
+  /** The test ids' prefix: `<prefix>-row-menu | -row-menu-list | -row-delete | -row-blocked`, and the confirmation's. */
+  readonly testIdPrefix: string;
 }
 
 /** Props of {@link ArtifactRowMenu}. */
@@ -70,6 +111,11 @@ export interface ArtifactRowMenuProps {
   readonly onDeleted?: () => void;
 }
 
+/** D89 follow-up · an artifact row's ⋯ ({@link RowDeleteMenu}). */
+export function ArtifactRowMenu(props: ArtifactRowMenuProps) {
+  return <RowDeleteMenu {...props} question={deleteQuestion([props.title])} testIdPrefix="artifact" />;
+}
+
 /** Where the open menu sits in the window (fixed, so a scrolling list never clips it). */
 interface Placement {
   readonly top: number;
@@ -78,12 +124,12 @@ interface Placement {
 
 /**
  * D89 follow-up · a list row's ⋯ (the session's Artifacts tab, the Artifacts
- * page): a menu with **Delete…**, which asks first ({@link ArtifactDeleteConfirm}).
+ * page; D117 follow-up: the Plans list): a menu with **Delete…**, which asks first ({@link DeleteConfirm}).
  * The menu opens under the ⋯ (above it near the window's bottom), placed in the
  * window; ↑ ↓ move, Esc closes (focus back on ⋯), a click outside or a scroll
  * closes. The ⋯ never opens the row.
  */
-export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactRowMenuProps) {
+export function RowDeleteMenu({ title, blocked, remove, onDeleted, question, details, testIdPrefix }: RowDeleteMenuProps) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -180,7 +226,7 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
         ref={toggle}
         type="button"
         className="sb-button sb-art-more"
-        data-testid="artifact-row-menu"
+        data-testid={`${testIdPrefix}-row-menu`}
         aria-label={`Actions for ${title}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -201,7 +247,7 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
               role="menu"
               tabIndex={-1}
               aria-label={`Actions for ${title}`}
-              data-testid="artifact-row-menu-list"
+              data-testid={`${testIdPrefix}-row-menu-list`}
               style={placement ? { top: placement.top, right: placement.right } : { visibility: 'hidden' }}
               onKeyDown={keys}
             >
@@ -210,7 +256,7 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
                 role="menuitem"
                 className="sb-button sb-art-menu-item"
                 data-danger="true"
-                data-testid="artifact-row-delete"
+                data-testid={`${testIdPrefix}-row-delete`}
                 disabled={blocked !== null}
                 title={blocked ?? undefined}
                 onClick={() => {
@@ -222,7 +268,7 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
                 Delete…
               </button>
               {blocked ? (
-                <div className="sb-art-menu-note" data-testid="artifact-row-blocked">
+                <div className="sb-art-menu-note" data-testid={`${testIdPrefix}-row-blocked`}>
                   {blocked}
                 </div>
               ) : null}
@@ -231,8 +277,9 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
           )
         : null}
       {confirming ? (
-        <ArtifactDeleteConfirm
-          titles={[title]}
+        <DeleteConfirm
+          question={question}
+          testIdPrefix={testIdPrefix}
           busy={busy}
           error={error}
           onConfirm={confirm}
@@ -241,7 +288,9 @@ export function ArtifactRowMenu({ title, blocked, remove, onDeleted }: ArtifactR
             setError(null);
             toggle.current?.focus();
           }}
-        />
+        >
+          {details}
+        </DeleteConfirm>
       ) : null}
     </>
   );

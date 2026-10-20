@@ -374,6 +374,27 @@
   min-width: 0;
 }
 
+/* D117 follow-up: a row and its ⋯ (Delete…), the ⋯ over the card's top-right corner, outside the link. */
+.sb-plan-summary-item {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.sb-plan-summary-item > .sb-plan-summary {
+  padding-right: 44px;
+}
+
+.sb-plan-summary-item > .sb-art-more {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.sb-plan-btn--danger {
+  color: var(--status-fail);
+}
+
 .sb-plan-summary:hover {
   border-color: var(--border-control);
   background: var(--bg-selected-card);

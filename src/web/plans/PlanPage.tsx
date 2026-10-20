@@ -4,11 +4,12 @@ import { type Plan, type PlanItem, PLAN_PICK_REPOS_REASON } from '../../core/pla
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
-import { Link } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { useLayout } from '../shell/useLayout.ts';
 import { useToasts } from '../toast/ToastHost.tsx';
 import { plansApi, refusalCode, refusalText } from './api.ts';
 import { AddItemsDialog, LimitsDialog, MergeModeDialog } from './dialogs.tsx';
+import { PlanDeleteButton } from './PlanDelete.tsx';
 import { PlanDetail } from './PlanDetail.tsx';
 import { GraphLegend, PlanGraph } from './PlanGraph.tsx';
 import { PlansOff } from './PlansPage.tsx';
@@ -103,7 +104,7 @@ function PlanList({ plan, selectedId, onSelect, onMerged }: { readonly plan: Pla
 /**
  * D99 · a plan's page (`/plans/{id}`, `docs/plans-ui.md` → *The plan page*): the header (title,
  * the external key, ⎇ target → base; progress "4/7 done", its bar, "~3h left"; the merge-mode,
- * limits and critical-path chips; ✎ Edit dependencies, ⏸ Pause / ▶ Resume, ▶ Start plan), the
+ * limits and critical-path chips; ✎ Edit dependencies, ⏸ Pause / ▶ Resume, Delete plan…, ▶ Start plan), the
  * Graph / Timeline / List tabs, the dependency editor and the selected item's detail under
  * them. Phone: the List with the detail full screen ("‹ <plan>"); tablet: the Graph scrolls
  * sideways. Live on `planChanged` (the shared store) and the Inbox.
@@ -113,6 +114,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const { show } = useToasts();
+  const { navigate } = useRouter();
   const [tab, setTab] = useState<PlanTab>('graph');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [critical, setCritical] = useState(true);
@@ -312,6 +314,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
               Propose order
             </button>
           ) : null}
+          <PlanDeleteButton plan={plan} onDeleted={() => navigate({ view: 'plans' })} />
           {plan.state === 'draft' && !remote ? (
             <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-start" disabled={busy || plan.items.length === 0} onClick={() => setOpen('start')}>
               ▶ Start plan

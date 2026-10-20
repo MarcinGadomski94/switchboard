@@ -3,6 +3,7 @@ import type { Plan } from '../../core/plans.ts';
 import { Link, useRouter } from '../router.tsx';
 import { JiraSourceDialog, NewPlanDialog } from './dialogs.tsx';
 import { ImportJiraDialog } from './jira/index.ts';
+import { PlanRowMenu } from './PlanDelete.tsx';
 import { mergeModeChip, planStateText, progressText, targetChip, timeLeftText } from './model.ts';
 import { putPlan, usePlans } from './store.ts';
 import './plans.css';
@@ -25,7 +26,8 @@ export function PlansOff() {
  * its state, progress and merge mode, newest first; **＋ New plan** (a session, title, target
  * branch, base, items from its todos) and **Import from Jira…** (the Jira lane's
  * `ImportJiraDialog`: D112, a new session in a folder owns the plan; **Use an existing session
- * instead** picks a session first, as before; the new draft opens).
+ * instead** picks a session first, as before; the new draft opens). D117 follow-up: each row's
+ * ⋯ has **Delete…** (`PlanRowMenu`).
  */
 export function PlansPage() {
   const { on, plans, loaded } = usePlans();
@@ -76,27 +78,31 @@ export function PlansPage() {
           </div>
         ) : null}
         {sorted.map((plan) => (
-          <Link key={plan.id} to={{ view: 'plan', id: plan.id }} className="sb-plan-summary" data-testid="plan-summary" data-plan-id={plan.id} data-state={plan.state}>
-            <span className="sb-plan-summary__head">
-              <span className="sb-plan-summary__title">{plan.title}</span>
-              {plan.external ? <span className="sb-plan-chip">{plan.external.key}</span> : null}
-              <span className="sb-plan-summary__state" data-state={plan.state} data-testid="plan-summary-state">
-                {planStateText(plan)}
+          <div key={plan.id} className="sb-plan-summary-item">
+            <Link to={{ view: 'plan', id: plan.id }} className="sb-plan-summary" data-testid="plan-summary" data-plan-id={plan.id} data-state={plan.state}>
+              <span className="sb-plan-summary__head">
+                <span className="sb-plan-summary__title">{plan.title}</span>
+                {plan.external ? <span className="sb-plan-chip">{plan.external.key}</span> : null}
+                <span className="sb-plan-summary__state" data-state={plan.state} data-testid="plan-summary-state">
+                  {planStateText(plan)}
+                </span>
+                {plan.machine ? <span className="sb-plan-chip">{plan.machine.name}</span> : null}
               </span>
-              {plan.machine ? <span className="sb-plan-chip">{plan.machine.name}</span> : null}
-            </span>
-            <span className="sb-plan-summary__line">
-              <span className="sb-plan-branch">{targetChip(plan)}</span>
-              <span>{mergeModeChip(plan)}</span>
-            </span>
-            <span className="sb-plan-progress" aria-label={progressText(plan)}>
-              <span className="sb-plan-progress__text">{progressText(plan)}</span>
-              <span className="sb-plan-progress__bar">
-                <span className="sb-plan-progress__fill" style={{ width: `${plan.progress.percent}%` }} />
+              <span className="sb-plan-summary__line">
+                <span className="sb-plan-branch">{targetChip(plan)}</span>
+                <span>{mergeModeChip(plan)}</span>
               </span>
-              <span className="sb-plan-progress__left">{timeLeftText(plan) ?? ''}</span>
-            </span>
-          </Link>
+              <span className="sb-plan-progress" aria-label={progressText(plan)}>
+                <span className="sb-plan-progress__text">{progressText(plan)}</span>
+                <span className="sb-plan-progress__bar">
+                  <span className="sb-plan-progress__fill" style={{ width: `${plan.progress.percent}%` }} />
+                </span>
+                <span className="sb-plan-progress__left">{timeLeftText(plan) ?? ''}</span>
+              </span>
+            </Link>
+            {/* D117 follow-up: the row's ⋯ (Delete…) sits outside the link, like the artifact lists'. */}
+            <PlanRowMenu plan={plan} />
+          </div>
         ))}
       </div>
       {open === 'new' ? <NewPlanDialog initialSessionId={null} onCreated={opened} onClose={() => setOpen(null)} /> : null}
