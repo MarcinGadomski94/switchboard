@@ -291,3 +291,42 @@
   text-transform: uppercase;
   color: var(--muted-1);
 }
+
+/* D112: "Use an existing session instead" (the folder import's way back to a session). */
+.sb-jira-link {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sb-jira-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* D112: Where it runs (an import into a folder): the New-session form's pickers in the dialog's look. */
+.sb-jira-where p {
+  margin: 0;
+}
+
+.sb-jira-where select:not(.sb-cli-picker) {
+  height: 32px;
+  max-width: 100%;
+  padding: 0 10px;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+.sb-jira-where .sb-jira-row {
+  align-items: center;
+}

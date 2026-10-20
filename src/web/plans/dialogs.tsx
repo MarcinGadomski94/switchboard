@@ -343,8 +343,11 @@ export function LimitsDialog({ plan, onDone, onClose }: { readonly plan: Plan; r
   );
 }
 
-/** Import from Jira… on the Plans list: the session whose todo list the plan will run, then the Jira lane's dialog. */
-export function JiraSourceDialog({ onPick, onClose }: { readonly onPick: (sessionId: string) => void; readonly onClose: () => void }) {
+/**
+ * Import from Jira… on the Plans list, **Use an existing session instead** (D112): the session whose todo list the plan
+ * will run, then the Jira lane's dialog. **Pick a folder instead** goes back to the import into a new session.
+ */
+export function JiraSourceDialog({ onPick, onClose, onUseFolder }: { readonly onPick: (sessionId: string) => void; readonly onClose: () => void; readonly onUseFolder?: () => void }) {
   const sessions = useSessionListOf();
   const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.folderKind !== 'plain' && !isChat(session)), [sessions.data]);
   const [sessionId, setSessionId] = useState('');
@@ -365,6 +368,11 @@ export function JiraSourceDialog({ onPick, onClose }: { readonly onPick: (sessio
       </label>
       {choices.length === 0 ? <div className="sb-plan-muted">Start a session in the epic's repository first.</div> : null}
       <div className="sb-plan-dialog__actions">
+        {onUseFolder ? (
+          <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" data-testid="plan-jira-source-folder" onClick={onUseFolder}>
+            Pick a folder instead
+          </button>
+        ) : null}
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
           Cancel
         </button>

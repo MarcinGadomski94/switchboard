@@ -185,6 +185,8 @@ test('a workspace session without solutions: Create plan says to pick the reposi
 
   await page.goto(`${server.baseUrl}/plans`);
   await page.getByTestId('plans-import-jira').click();
+  // D112: the import starts in a folder; an existing session on request.
+  await page.getByTestId('jira-import').getByTestId('jira-use-session').click();
   const picker = page.getByTestId('plan-jira-source-dialog');
   await picker.getByTestId('plan-jira-source-session').selectOption(sessionId);
   await picker.getByTestId('plan-jira-source-continue').click();

@@ -633,8 +633,8 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'jira',
         title: 'Import from Jira',
-        what: "Or start from a Jira epic: Import from Jira… reads the epic's tickets and their links and makes a draft plan from them, each ticket a todo with its key. Nothing runs until you press ▶ Start plan.",
-        todo: ['Press Import from Jira… (on the Plans page, or in a session\'s Plan tab).', 'Type the epic key, check the preview, and press Create plan.'],
+        what: "Or start from a Jira epic: Import from Jira… reads the epic's tickets and their links and makes a draft plan from them, each ticket a todo with its key. From the Plans page you pick the folder it runs in, and a new session there owns the plan. Nothing runs until you press ▶ Start plan.",
+        todo: ['Press Import from Jira… (on the Plans page, or in a session\'s Plan tab).', 'Type the epic key, check the preview, pick where it runs, and press Create plan.'],
         anchors: ['plans-jira-epic', 'plans-import'],
         route: { view: 'plans' },
         missing: null,

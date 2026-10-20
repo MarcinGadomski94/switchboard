@@ -216,6 +216,8 @@ test('import from Jira via the list: the draft opens, Propose order asks, a prop
   await openWithHub(page, `${world.baseUrl}/plans`);
   const source = (await world.plan(page, planId)).sourceSessionId;
   await page.getByTestId('plans-import-jira').click();
+  // D112: the import starts in a folder; an existing session on request.
+  await page.getByTestId('jira-import').getByTestId('jira-use-session').click();
   const picker = page.getByTestId('plan-jira-source-dialog');
   await picker.getByTestId('plan-jira-source-session').selectOption(source);
   await picker.getByTestId('plan-jira-source-continue').click();
@@ -270,6 +272,9 @@ test("the session's Plan strip imports from Jira with that session", async ({ pa
   await page.goto(`${world.baseUrl}/sessions/${source}`);
   await page.getByTestId('session-plan-import').click();
   await expect(page.getByTestId('jira-import')).toBeVisible();
+  // D112: the strip's import stays with its session: no folder to pick.
+  await expect(page.getByTestId('jira-where')).toHaveCount(0);
+  await expect(page.getByTestId('jira-use-session')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('jira-import')).toHaveCount(0);
 });
