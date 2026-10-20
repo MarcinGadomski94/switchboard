@@ -90,6 +90,15 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
       await peers.testEndOutage();
       return reply.code(204).send();
     });
+    // D113: the paired machines' reads of this machine's artifacts and Inbox wait (POST) / go on (DELETE).
+    app.post('/api/test/peers/hold-lists', async (_request, reply) => {
+      peers.testHoldLists(true);
+      return reply.code(204).send();
+    });
+    app.delete('/api/test/peers/hold-lists', async (_request, reply) => {
+      peers.testHoldLists(false);
+      return reply.code(204).send();
+    });
   }
 
   app.delete<{ Params: { id: string } }>('/api/machines/:id', async (request, reply) => {

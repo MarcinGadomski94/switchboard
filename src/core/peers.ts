@@ -43,7 +43,26 @@ export interface Machine {
   readonly connection?: MachineConnection;
   /** Additive (D71): the shared sidebar layout with this machine; absent from older services. */
   readonly sidebarSync?: MachineSidebarSync;
+  /** Additive (D113): where the copies of its lists merged into this machine's pages stand; absent from older services. */
+  readonly listSync?: MachineListSync;
 }
+
+/** D113: a paired machine's list that a local page merges in (the Artifacts page, the Inbox). */
+export type PeerSyncedList = 'artifacts' | 'inbox';
+
+/** D113: the lists {@link MachineListSync} covers. */
+export const PEER_SYNCED_LISTS: readonly PeerSyncedList[] = ['artifacts', 'inbox'];
+
+/** D113: one list's copy from a paired machine. */
+export interface PeerListSync {
+  /** A fetch of the list from the machine is running now. */
+  readonly syncing: boolean;
+  /** When the last fetch arrived (ISO); `null` before the first since this service started. */
+  readonly syncedAt: string | null;
+}
+
+/** D113 (`docs/peers.md` → *List sync (D113)*): every synced list of one paired machine. */
+export type MachineListSync = Readonly<Record<PeerSyncedList, PeerListSync>>;
 
 /**
  * D71 (`docs/peers.md` → *Shared sidebar layout (D71)*): what sharing the
@@ -391,4 +410,47 @@ export function machineTagSuffix(state: MachineState): string | null {
     case 'no-address':
       return 'no address';
   }
+}
+
+/** D113: one paired machine's note on a page that merges its `list`. */
+export interface PeerSyncNote {
+  readonly id: string;
+  readonly name: string;
+  /** `syncing`: its copy has not arrived yet or is being fetched again (a spinner); `offline`: it cannot be reached (static). */
+  readonly kind: 'syncing' | 'offline';
+  /** `Syncing with studio-pc…`, `studio-pc is offline — its artifacts may be out of date`. */
+  readonly text: string;
+}
+
+/** D113: what each list's offline note says about the machine's rows. */
+const OFFLINE_SUFFIX: Readonly<Record<PeerSyncedList, string>> = {
+  artifacts: 'its artifacts may be out of date',
+  inbox: 'its items are not shown until it is back',
+};
+
+/**
+ * D113 (`docs/peers.md` → *List sync (D113)*): the notes a page that merges
+ * `list` from the paired machines shows: a machine that is `reconnecting`, or
+ * online with its copy not in yet or being fetched again, is **syncing**; one
+ * that cannot be reached (offline, refused, no address) gets a static
+ * **offline** note. An online machine from an older service (no `listSync`)
+ * gets none. In the order given.
+ */
+export function peerSyncNotes(machines: readonly Machine[], list: PeerSyncedList): PeerSyncNote[] {
+  const out: PeerSyncNote[] = [];
+  for (const machine of machines) {
+    const { id, name, state } = machine;
+    if (state === 'reconnecting') {
+      out.push({ id, name, kind: 'syncing', text: `Syncing with ${name}…` });
+      continue;
+    }
+    if (state === 'online') {
+      const sync = machine.listSync?.[list];
+      if (sync && (sync.syncing || sync.syncedAt === null)) out.push({ id, name, kind: 'syncing', text: `Syncing with ${name}…` });
+      continue;
+    }
+    const reason = state === 'offline' ? `${name} is offline` : (offlineReason(machine) ?? `${name} is offline`);
+    out.push({ id, name, kind: 'offline', text: `${reason} — ${OFFLINE_SUFFIX[list]}` });
+  }
+  return out;
 }

@@ -85,6 +85,11 @@ export interface PeerConnectionOptions {
   readonly onStatus?: (status: PeerConnectionStatus) => void;
   /** The session or Inbox cache changed. */
   readonly onCache: () => void;
+  /**
+   * D113: a fetch of the peer's Inbox started (`syncing` true) or ended (`false`;
+   * `arrived`: its list came back). Optional (tests build connections without it).
+   */
+  readonly onInboxSync?: (syncing: boolean, arrived: boolean) => void;
   /** A successful contact (hello). */
   readonly onSeen: (info: { readonly name: string | null }) => void;
   readonly onError?: (error: unknown) => void;
@@ -603,6 +608,9 @@ export class PeerConnection {
       this.#inboxAgain = true;
       return this.#inboxRefresh;
     }
+    // D113: the page that merges the Inbox says "Syncing with …" while this runs.
+    let arrived = false;
+    this.#options.onInboxSync?.(true, false);
     this.#inboxRefresh = (async () => {
       do {
         this.#inboxAgain = false;
@@ -612,6 +620,7 @@ export class PeerConnection {
           const answer = await this.#call(target, 'GET', '/peer/v1/api/inbox');
           if (answer.status === 200 && Array.isArray(answer.body)) {
             this.#inbox = answer.body as InboxItem[];
+            arrived = true;
             this.#options.onCache();
           }
         } catch (error) {
@@ -620,6 +629,7 @@ export class PeerConnection {
       } while (this.#inboxAgain && !this.#closed);
     })().finally(() => {
       this.#inboxRefresh = null;
+      if (!this.#closed) this.#options.onInboxSync?.(false, arrived);
     });
     return this.#inboxRefresh;
   }
