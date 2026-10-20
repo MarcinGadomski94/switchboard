@@ -136,6 +136,18 @@ ALTER TABLE plans ADD COLUMN no_merge INTEGER NOT NULL DEFAULT 0 CHECK (no_merge
 ALTER TABLE plans ADD COLUMN allow_protected_target INTEGER NOT NULL DEFAULT 0 CHECK (allow_protected_target IN (0, 1));
 `,
   ),
+  makeMigration(
+    4,
+    'plans_repos_ask',
+    `-- D115 follow-ups 2026-10-20 (docs/plans.md → Repositories picked by the plan's agent): the ask to the
+-- plan's agent to pick its items' repositories, kept so its "not picked in time" check survives a restart.
+-- plans.repos_asked_at: when the last ask was sent (ISO), NULL = no ask waiting for its check.
+-- plans.repos_ask_raised: 1 = an Inbox item says the repositories were not picked (or the ask failed);
+--   it is closed once every item has its repositories.
+ALTER TABLE plans ADD COLUMN repos_asked_at TEXT;
+ALTER TABLE plans ADD COLUMN repos_ask_raised INTEGER NOT NULL DEFAULT 0 CHECK (repos_ask_raised IN (0, 1));
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */

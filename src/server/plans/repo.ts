@@ -24,6 +24,10 @@ export interface PlanRecord {
   readonly heldReason: string | null;
   /** Why the plan was paused when Switchboard paused it (Plans switched off), `null` = by the developer or not paused. */
   readonly pausedReason: string | null;
+  /** D115 follow-ups (migration 4): when the ask to pick the items' repositories was sent, `null` = no ask waits for its check. */
+  readonly reposAskedAt: string | null;
+  /** D115 follow-ups (migration 4): an Inbox item says the repositories were not picked in time (or the ask failed). */
+  readonly reposAskRaised: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly startedAt: string | null;
@@ -63,8 +67,8 @@ export interface PlanItemRecord {
 /** What a plan create stores. */
 export type PlanCreate = Pick<PlanRecord, 'id' | 'title' | 'sourceSessionId' | 'targetBranch' | 'repos' | 'baseBranch' | 'maxConcurrency' | 'usageThreshold' | 'answers' | 'external'>;
 
-/** The plan fields an update may change. */
-export type PlanPatch = Partial<Omit<PlanRecord, 'id' | 'sourceSessionId' | 'createdAt' | 'updatedAt'>>;
+/** The plan fields an update may change (the repositories ask has its own write, {@link PlanRepository.setReposAsk}). */
+export type PlanPatch = Partial<Omit<PlanRecord, 'id' | 'sourceSessionId' | 'createdAt' | 'updatedAt' | 'reposAskedAt' | 'reposAskRaised'>>;
 
 /** What an item create stores. */
 export type PlanItemCreate = Pick<PlanItemRecord, 'id' | 'planId' | 'todoId' | 'key' | 'title' | 'estimateMinutes' | 'hold' | 'solutions'>;
@@ -104,6 +108,8 @@ function planOf(row: Row): PlanRecord {
     external: json<PlanExternalRef | null>(row['external'] ?? null, null),
     heldReason: text(row['held_reason'] ?? null),
     pausedReason: text(row['paused_reason'] ?? null),
+    reposAskedAt: text(row['repos_asked_at'] ?? null),
+    reposAskRaised: Number(row['repos_ask_raised'] ?? 0) === 1,
     createdAt: String(row['created_at']),
     updatedAt: String(row['updated_at']),
     startedAt: text(row['started_at'] ?? null),
@@ -290,6 +296,15 @@ export class PlanRepository {
     values.push(this.#ctx.now());
     this.#ctx.db.prepare(`UPDATE plans SET ${sets.join(', ')} WHERE id = ?`).run(...values, id);
     return this.get(id);
+  }
+
+  /**
+   * D115 follow-ups (migration 4): the repositories ask's state (`askedAt`: when it was sent, `null`
+   * = none waits for its check; `raised`: its Inbox item is open). Leaves `updated_at` as it is.
+   */
+  async setReposAsk(id: string, patch: { readonly askedAt?: string | null; readonly raised?: boolean }): Promise<void> {
+    if (patch.askedAt !== undefined) this.#statement('UPDATE plans SET repos_asked_at = ? WHERE id = ?').run(patch.askedAt, id);
+    if (patch.raised !== undefined) this.#statement('UPDATE plans SET repos_ask_raised = ? WHERE id = ?').run(patch.raised ? 1 : 0, id);
   }
 
   /** Marks the plan changed (its `updated_at`), e.g. after an item or an edge changed. */
