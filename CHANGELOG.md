@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.28.1 (2026-10-20)
+
+### Fixed
+- **Jira "Blocks" links are imported in the right direction.** Plans imported before read every dependency backwards (the last tickets of a chain came first). A draft plan has **Re-read dependencies from Jira** in its Jira section: it shows the dependencies it removes, adds and keeps, and applies them after you confirm.
+
+### Plans
+- **Delete a plan from the UI:** **Delete plan…** on the plan page and in each Plans list row's ⋯ menu. A running or paused plan is cancelled first and its working item sessions are stopped (they stay in the sidebar with their worktrees); the items' todos stay.
+
 ## 1.28.0 (2026-10-20)
 
 ### Plans
