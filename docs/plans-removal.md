@@ -7,6 +7,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/server/plans/` (service and scheduler, `plans.db` and its migrations, repository, routes, git / gh adapter, environment, hooks, `install.ts`)
 - `src/core/plans.ts` (shapes, graph rules, texts, the MCP tool definitions)
 - `src/core/plans-jira.ts` (the Jira lane's shapes and rules; its server code is `src/server/plans/jira/`, its UI `src/web/plans/jira/`, both inside the folders above)
+- `src/core/plans-jira-context.ts` (D118: the Jira context of a plan's agents and the `plan_jira_context` tool)
 - `src/web/plans-jira-dev.html` (the Jira import dialog's dev mount)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
 - `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav grid's cell (D101: through the shell's `NavCell`; the `plans` icon in `src/web/shell/nav-icon-glyphs.ts` and `plansBadge` in `nav-grid.ts` may stay) and the session's Plan tab, the Jira lane's `jira/` folder)
@@ -21,7 +22,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/core/settings.ts` | `experimental.plans` in `KnownSettings`, `EDITABLE_SETTINGS`, `SETTING_DEFAULTS` and `readKnownSettings` | remove the key in all four places |
 | `src/server/api/settings.ts` | imports `plansSwitchChanged`; calls it when `PUT /api/settings` changes `experimental.plans` | drop both |
 | `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step | nothing once `sb-feature-tools.ts` has no plans set (the hook comment goes) |
-| `src/hook/sb-feature-tools.ts` | the `plans` entry of `FEATURE_TOOL_SETS` (imports `PLAN_TOOLS`, `PLAN_PROPOSE_TOOL`, `registerPlanTools`) | drop the entry and the three imports |
+| `src/hook/sb-feature-tools.ts` | the `plans` entry of `FEATURE_TOOL_SETS` (imports `PLAN_TOOLS`, `PLAN_PROPOSE_TOOL`, `PLAN_JIRA_CONTEXT_TOOL`, `registerPlanTools`) | drop the entry and the four imports |
 | `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
 | `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state and proposals `none`); D102: `peerRoute` and its use in `peerInboxItem` (a "Ready to merge" item's plan route) | remove them (`InboxItem.route` may stay: generic) |
 | `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order; D102: an item's merge / open-pr / send-back); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |

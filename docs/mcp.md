@@ -98,7 +98,7 @@ The feature tools of the `switchboard` server (Team's `team_*` and `request_acce
 - Tests: `tests/server/todos/feature-tools.test.ts` (the tool list before and after, over the SDK's in-memory transport; the registry), `tests/server/team/tools-refresh.test.ts` (fake-claude runs the real helper, `docs/fake-claude.md` → *Running the switchboard MCP server*: the charter ask live, with one restart, and after a running turn).
 
 ### Tool annotations (2026-10-19)
-Every tool the `switchboard` server can expose declares a `title` and all four MCP behaviour hints as explicit booleans (directories, OpenAI's among them, reject a tool with a hint missing or not a boolean). They are written out in the tool's definition (`src/core/todos.ts`, `artifacts.ts`, `owned-loops.ts`, `plans.ts`, `plans-jira.ts`, `memory.ts`, `team-tools.ts`, `team-access-tools.ts`) and again, as literals, where the tool is registered, so a static scanner resolves them too. Read-only = changes nothing; destructive = can delete or overwrite; idempotent = repeating it with the same arguments has no further effect; open-world = reaches outside Switchboard's own state.
+Every tool the `switchboard` server can expose declares a `title` and all four MCP behaviour hints as explicit booleans (directories, OpenAI's among them, reject a tool with a hint missing or not a boolean). They are written out in the tool's definition (`src/core/todos.ts`, `artifacts.ts`, `owned-loops.ts`, `plans.ts`, `plans-jira.ts`, `plans-jira-context.ts`, `memory.ts`, `team-tools.ts`, `team-access-tools.ts`) and again, as literals, where the tool is registered, so a static scanner resolves them too. Read-only = changes nothing; destructive = can delete or overwrite; idempotent = repeating it with the same arguments has no further effect; open-world = reaches outside Switchboard's own state.
 
 | Tool | Feature | readOnly | destructive | idempotent | openWorld |
 |---|---|---|---|---|---|
@@ -130,10 +130,11 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `plan_start` | Plans | false | false | true | true |
 | `plan_set_solutions` | Plans | false | true | true | false |
 | `plan_propose_dependencies` | Plans | false | false | true | false |
+| `plan_jira_context` | Plans | true | false | true | true |
 | `memory_propose` | Project memory | false | false | true | false |
 | `memory_list` | Project memory | true | false | true | false |
 
-`plan_start` is the one open-world tool: the plan's runs work in git repositories and merge pull requests. `tests/server/todos/tool-annotations.test.ts` lists every tool with all features on in a member's session and fails when a tool lacks a hint, a hint is not a boolean, a hint differs from this table, or the registered hints differ from the definition; a new tool needs a row there and here.
+`plan_start` and `plan_jira_context` are the open-world tools: the plan's runs work in git repositories and merge pull requests, and `plan_jira_context` (D118, read-only) reads the plan's tickets and epic from Jira (`docs/plans.md` → *Jira context (D118)*); its route answers only the plan's source session and its item run sessions. `tests/server/todos/tool-annotations.test.ts` lists every tool with all features on in a member's session and fails when a tool lacks a hint, a hint is not a boolean, a hint differs from this table, or the registered hints differ from the definition; a new tool needs a row there and here.
 
 ## Tests
 

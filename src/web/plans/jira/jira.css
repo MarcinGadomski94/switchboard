@@ -351,3 +351,26 @@
 .sb-jira-where .sb-jira-row {
   align-items: center;
 }
+
+/* D118: the epic's description, collapsed in the preview. */
+.sb-jira-epic {
+  margin: 6px 0 10px;
+  font-size: 12px;
+}
+.sb-jira-epic > summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.sb-jira-epic h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
+.sb-jira-epic-text {
+  margin: 4px 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+}

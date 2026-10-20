@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import { DEFAULT_JIRA_DONE_ON_MERGE, DEFAULT_JIRA_TRANSITIONS, JIRA_SYNC_MODES, type JiraPreview, type JiraSyncMode } from '../../../core/plans-jira.ts';
+import { jiraCountsText } from '../../../core/plans-jira-context.ts';
 import { machineApi, onDeviceOrigin } from '../../api/client.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { JiraApiError, jiraApi } from './api.ts';
@@ -250,6 +251,21 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                 </a>{' '}
                 {preview.epic.summary} · {preview.items.length} items · {preview.edges.length} dependencies{preview.truncated ? ' · only the first 100 children were read' : ''}
               </div>
+              {preview.epic.description || preview.epic.acceptanceCriteria || (preview.epic.counts && jiraCountsText(preview.epic.counts) !== '') ? (
+                <details className="sb-jira-epic" data-testid="jira-epic-context">
+                  <summary data-testid="jira-epic-context-toggle">
+                    Epic description{preview.epic.counts && jiraCountsText(preview.epic.counts) !== '' ? ` · ${jiraCountsText(preview.epic.counts)}` : ''}
+                  </summary>
+                  <p className="sb-jira-muted">The plan's agent gets the epic in full; each item's run gets it shortened, with its own ticket's comments, sub-tasks and links, read from Jira when it starts.</p>
+                  {preview.epic.acceptanceCriteria ? (
+                    <>
+                      <h4>Acceptance criteria</h4>
+                      <pre className="sb-jira-epic-text" data-testid="jira-epic-acceptance">{preview.epic.acceptanceCriteria}</pre>
+                    </>
+                  ) : null}
+                  {preview.epic.description ? <pre className="sb-jira-epic-text" data-testid="jira-epic-description">{preview.epic.description}</pre> : <p className="sb-jira-muted">No description.</p>}
+                </details>
+              ) : null}
               <section>
                 <h3>Items</h3>
                 <ul className="sb-jira-items" data-testid="jira-items">
@@ -266,6 +282,11 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                         ))}
                         {item.estimateMinutes !== null ? <span className="sb-jira-chip">{item.estimateMinutes} min</span> : null}
                         {item.acceptanceCriteria ? <span className="sb-jira-chip">acceptance criteria</span> : null}
+                        {item.counts && jiraCountsText(item.counts) !== '' ? (
+                          <span className="sb-jira-chip" data-testid={`jira-counts-${item.key}`} title="What the item's run also gets from Jira when it starts">
+                            {jiraCountsText(item.counts)}
+                          </span>
+                        ) : null}
                         {unlinked.has(item.key) ? (
                           <span className="sb-jira-chip sb-jira-flag" data-testid={`jira-unlinked-${item.key}`}>
                             no links

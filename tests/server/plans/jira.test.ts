@@ -248,7 +248,8 @@ describe('D99-Jira · import preview', () => {
     const answer = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'proj-10' });
     expect(answer.status, answer.text).toBe(200);
     const preview = answer.body as JiraPreview;
-    expect(preview.epic).toEqual({ key: 'PROJ-10', summary: 'Acme checkout', url: `${r.fake.url}/browse/PROJ-10` });
+    // D118: the preview also carries the epic's description and counts.
+    expect(preview.epic).toMatchObject({ key: 'PROJ-10', summary: 'Acme checkout', url: `${r.fake.url}/browse/PROJ-10` });
     expect(preview.items.map((entry) => entry.key)).toEqual(['PROJ-11', 'PROJ-12', 'PROJ-13', 'PROJ-14', 'PROJ-15']);
     expect(preview.edges.map((edge) => edge.text)).toEqual(['PROJ-12 waits on PROJ-11', 'PROJ-13 waits on PROJ-12', 'PROJ-13 waits on PROJ-14']);
     expect(preview.cycles).toHaveLength(1);
@@ -805,6 +806,11 @@ describe('D99-Jira-q1 · proposed order (unit)', () => {
   });
 });
 
+/** The embedded fields of the first link's other issue. */
+function link0Fields(links: Array<Record<string, unknown>>): unknown {
+  return (links[0]?.['inwardIssue'] as { fields?: unknown } | undefined)?.fields;
+}
+
 /** D117: a chain epic: backend → front → E2E tests (each blocks the next), plus an unlinked docs item. */
 function chainEpic(): FakeIssue[] {
   return [
@@ -823,7 +829,9 @@ describe('D117 · Jira "Blocks" direction', () => {
     const r = await setup({ issues: chainEpic() });
     const answer = await fetch(`${r.fake.url}/rest/api/3/issue/PROJ-21?fields=issuelinks`, { headers: { authorization: `Basic ${Buffer.from(`${r.fake.email}:${r.fake.token}`).toString('base64')}` } });
     const links = ((await answer.json()) as { fields: { issuelinks: Array<Record<string, unknown>> } }).fields.issuelinks.filter((link) => (link['type'] as { name: string }).name === 'Blocks');
-    expect(links.map((link) => [link['inwardIssue'], link['outwardIssue']])).toEqual([[{ key: 'PROJ-22' }, undefined]]);
+    // Real Jira also embeds the other issue's summary and status (D118 reads them for outside links).
+    expect(links.map((link) => [(link['inwardIssue'] as { key?: string } | undefined)?.key, link['outwardIssue']])).toEqual([['PROJ-22', undefined]]);
+    expect(link0Fields(links)).toMatchObject({ summary: 'Acme tracking front', status: { name: 'To Do' } });
   });
 
   it('imports a chain epic with only its first item ready and the end-of-chain E2E item last', async () => {

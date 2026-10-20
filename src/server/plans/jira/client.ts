@@ -40,6 +40,8 @@ interface SearchPage {
 export interface JiraComment {
   readonly id: string;
   readonly text: string;
+  /** D118: the comment as Jira answered it (author, created, ADF body), for the plan's Jira context. */
+  readonly raw: unknown;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -178,12 +180,18 @@ export class JiraClient {
     for (let startAt = 0; startAt < 5_000; ) {
       const answer = record(await this.#call('GET', `/rest/api/3/issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=100`));
       const page = (Array.isArray(answer?.['comments']) ? (answer['comments'] as unknown[]) : []).map(record).filter((entry): entry is Record<string, unknown> => entry !== null);
-      for (const entry of page) out.push({ id: String(entry['id'] ?? ''), text: adfStrings(entry['body']) });
+      for (const entry of page) out.push({ id: String(entry['id'] ?? ''), text: adfStrings(entry['body']), raw: entry });
       const total = typeof answer?.['total'] === 'number' ? answer['total'] : out.length;
       if (page.length === 0 || out.length >= total) break;
       startAt = out.length;
     }
     return out;
+  }
+
+  /** D118: the issue's remote links (`GET …/remotelink`: Confluence, Figma, any URL), as Jira answers them. */
+  async remoteLinks(key: string): Promise<unknown[]> {
+    const answer = await this.#call('GET', `/rest/api/3/issue/${encodeURIComponent(key)}/remotelink`);
+    return Array.isArray(answer) ? answer : [];
   }
 
   /** Adds a comment (one paragraph of plain text; a URL in it stays a plain link). */

@@ -93,6 +93,8 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
     ...(options.refreshMs ? { refreshMs: options.refreshMs } : {}),
   });
   services.set(app, service);
+  // D118: a Jira plan's runs and asks get its Jira context, read from Jira when they are sent.
+  const offContext = plans.setContextSource({ itemContext: (input) => service.itemContext(input), askContext: (planId) => service.askContext(planId) });
   await registerPlanJiraRoutes(app, service, credentials, enabled, async (sessionId) => {
     const record = await context.store.sessions.get(sessionId);
     return record ? toSession(context.store, record, context.supervisor.activity(record.id)) : null;
@@ -129,6 +131,7 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
   });
   app.addHook('preClose', async () => {
     offImport();
+    offContext();
     await service.close();
     release();
   });

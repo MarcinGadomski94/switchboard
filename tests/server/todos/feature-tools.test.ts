@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MEMORY_TOOLS } from '../../../src/core/memory.ts';
 import { PLAN_TOOLS } from '../../../src/core/plans.ts';
 import { PLAN_PROPOSE_TOOL } from '../../../src/core/plans-jira.ts';
+import { PLAN_JIRA_CONTEXT_TOOL } from '../../../src/core/plans-jira-context.ts';
 import { TEAM_TOOLS } from '../../../src/core/team-tools.ts';
 import { FeatureTools, ListedToolsTransport } from '../../../src/hook/sb-feature-tools.ts';
 import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
@@ -21,7 +22,7 @@ import { until } from '../../helpers/supervisor.ts';
 
 const TEAM = [...TEAM_TOOLS.map((tool) => tool.name), 'request_access'].sort();
 const MEMORY = MEMORY_TOOLS.map((tool) => tool.name).sort();
-const PLANS = [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name].sort();
+const PLANS = [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name].sort();
 
 /** What the probe routes answer (the test flips them); `timeout` throws as an unanswered probe does. */
 type Probe = 'on' | 'off' | 'timeout';

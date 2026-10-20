@@ -5,6 +5,7 @@
  * of the optional status sync. No I/O here: the server's `src/server/plans/jira/` reads Jira.
  */
 import { findCycle, type PlanEdge } from './plans.ts';
+import type { JiraContextCounts } from './plans-jira-context.ts';
 import { TODO_DESCRIPTION_MAX, TODO_TITLE_MAX, type TodoToolDefinition } from './todos.ts';
 
 // ── sync settings ─────────────────────────────────────────────────────────
@@ -72,6 +73,8 @@ export interface JiraPreviewItem {
   readonly url: string;
   /** `true` when no dependency inside the epic names it (flagged in the preview). */
   readonly unlinked: boolean;
+  /** D118: what the agents will get besides the text (the preview only; the import's answer leaves it out). */
+  readonly counts?: JiraContextCounts;
 }
 
 /** A dependency inside the epic: `to` waits on `from` (the plan's "`to` after `from`"). */
@@ -102,7 +105,11 @@ export interface JiraCycleLink extends PlanEdge {
 
 /** `POST /api/sessions/{id}/plans/jira/preview`: what an import would create. Nothing is created. */
 export interface JiraPreview {
-  readonly epic: { readonly key: string; readonly summary: string; readonly url: string };
+  /**
+   * D118: the preview also reads the epic's description, acceptance criteria and counts (shown
+   * collapsed in the dialog: the plan's agent gets them in full, each run shortened).
+   */
+  readonly epic: { readonly key: string; readonly summary: string; readonly url: string; readonly description?: string | null; readonly acceptanceCriteria?: string | null; readonly counts?: JiraContextCounts };
   readonly items: readonly JiraPreviewItem[];
   /** The dependencies that would be created. */
   readonly edges: readonly JiraPreviewEdge[];
@@ -607,19 +614,37 @@ function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
+/** D118: the todo keeps the ticket's description cut to this (the full text comes from Jira when the run starts). */
+export const JIRA_TODO_DESCRIPTION_MAX = 1_200;
+/** D118: the todo keeps the acceptance criteria cut to this. */
+export const JIRA_TODO_ACCEPTANCE_MAX = 1_500;
+/** D118: the todo's last line. */
+export const JIRA_TODO_CONTEXT_LINE = 'The full Jira context (description, acceptance criteria, sub-tasks, comments, links, attachment names and the epic) is read from Jira when the run starts; plan_jira_context reads it any time.';
+
 /**
- * The todo an item becomes: title "KEY Summary"; description = the ticket's description, then
- * its acceptance criteria, then a line with the ticket's link, components and assignee (cut to
- * the todo's limit, the acceptance criteria kept first when something must go).
+ * The todo an item becomes: title "KEY Summary"; description = a short summary (D118): the
+ * ticket's description cut to {@link JIRA_TODO_DESCRIPTION_MAX}, its acceptance criteria cut to
+ * {@link JIRA_TODO_ACCEPTANCE_MAX}, a line with the ticket's link, components and assignee, and
+ * {@link JIRA_TODO_CONTEXT_LINE}. Always within the todo's limit: nothing is dropped silently,
+ * since the run's first message carries the full text read from Jira at its start.
  */
 export function jiraItemTodo(item: JiraPreviewItem): { readonly title: string; readonly description: string } {
   const title = cut(`${item.key} ${item.summary}`, TODO_TITLE_MAX);
   const facts = [`Jira: ${item.url}`, item.components.length > 0 ? `components ${item.components.join(', ')}` : null, item.assignee ? `assignee ${item.assignee}` : null].filter(Boolean).join(' · ');
-  const acceptance = item.acceptanceCriteria ? `Acceptance criteria:\n${item.acceptanceCriteria}` : '';
-  const fixed = [acceptance, facts].filter((part) => part !== '').join('\n\n');
-  const room = TODO_DESCRIPTION_MAX - fixed.length - 2;
-  const body = item.description && room > 40 ? cut(item.description, room) : '';
-  return { title, description: cut([body, fixed].filter((part) => part !== '').join('\n\n'), TODO_DESCRIPTION_MAX) };
+  const acceptance = item.acceptanceCriteria ? `Acceptance criteria:\n${cut(item.acceptanceCriteria, JIRA_TODO_ACCEPTANCE_MAX)}` : '';
+  const body = item.description ? cut(item.description, JIRA_TODO_DESCRIPTION_MAX) : '';
+  return { title, description: cut([body, acceptance, facts, JIRA_TODO_CONTEXT_LINE].filter((part) => part !== '').join('\n\n'), TODO_DESCRIPTION_MAX) };
+}
+
+/**
+ * D118: whether a todo's description is the import's text of ticket `url` (before or after D118:
+ * both end with the line "Jira: <url>…"), so a run whose fresh Jira read succeeded leaves it out
+ * of the brief instead of repeating it next to the "Jira context" block. A description the
+ * developer rewrote without that line is kept.
+ */
+export function isImportedJiraText(description: string | null, url: string): boolean {
+  if (description === null) return false;
+  return description.split('\n').some((line) => line.startsWith(`Jira: ${url}`) && (line.length === `Jira: ${url}`.length || line[`Jira: ${url}`.length] === ' '));
 }
 
 // ── the sync's rules ──────────────────────────────────────────────────────

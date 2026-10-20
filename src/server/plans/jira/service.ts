@@ -24,12 +24,27 @@ import {
   findTransition,
   jiraCommentMarker,
   jiraDrift,
+  isImportedJiraText,
   jiraItemTodo,
   jiraPreviewItem,
   jiraRelinkDiff,
   parseEpicKey,
   statusCategoryOf,
 } from '../../../core/plans-jira.ts';
+import {
+  JIRA_ASK_EPIC_MAX,
+  JIRA_COMMENTS_READ_MAX,
+  JIRA_CONTEXT_FIELDS,
+  JIRA_CONTEXT_PARTS,
+  JIRA_SUBTASKS_MAX,
+  JIRA_TOOL_MAX,
+  JIRA_UNREAD_NOTE,
+  type JiraIssueContext,
+  buildJiraIssueContext,
+  jiraContextCounts,
+  renderJiraIssueContext,
+  renderRunJiraContext,
+} from '../../../core/plans-jira-context.ts';
 import type { Store } from '../../db/store.ts';
 import type { HubBus, HubMessage } from '../../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../../schedules/scheduler.ts';
@@ -186,6 +201,20 @@ const MAX_ATTEMPTS = 5;
 
 /** The plan states in which the write mode follows the items. */
 const FOLLOWED = new Set(['running', 'paused', 'done']);
+
+/** `work` over `items` with at most `limit` at once, answers in order. */
+async function mapLimit<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      out[index] = await work(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return out;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -370,13 +399,28 @@ export class PlanJiraService {
     if (!session) throw new PlanJiraError(404, 'not-found', `no session ${sessionId}`);
   }
 
-  async #preview(client: JiraClient, epicKey: string): Promise<JiraPreview> {
+  async #preview(client: JiraClient, epicKey: string, withContext = false): Promise<JiraPreview> {
     try {
-      const epic = await client.issue(epicKey, ['summary', 'issuetype']);
       const acceptanceField = await client.acceptanceField().catch(() => null);
-      const fields = acceptanceField ? [...IMPORT_FIELDS, acceptanceField] : IMPORT_FIELDS;
+      const extra = acceptanceField ? [acceptanceField] : [];
+      // D118: the preview (not the import) also reads what the agents will get, to show it.
+      const epic = await client.issue(epicKey, withContext ? [...JIRA_CONTEXT_FIELDS, ...extra] : ['summary', 'issuetype']);
+      const fields = [...IMPORT_FIELDS, ...(withContext ? ['comment', 'subtasks', 'attachment'] : []), ...extra];
       const children = await client.search(`parent = ${epicKey} ORDER BY key ASC`, fields, JIRA_IMPORT_MAX);
-      return buildJiraPreview({ baseUrl: client.baseUrl, epic, children: children.issues, acceptanceField, truncated: children.truncated });
+      const preview = buildJiraPreview({ baseUrl: client.baseUrl, epic, children: children.issues, acceptanceField, truncated: children.truncated });
+      if (!withContext) return preview;
+      const exclude = new Set([epicKey, ...children.issues.map((issue) => issue.key)]);
+      const remote = await mapLimit([epic, ...children.issues], 4, async (issue) => (await client.remoteLinks(issue.key).catch(() => [])).length);
+      const byKey = new Map(children.issues.map((issue, index) => [issue.key, jiraContextCounts(issue, exclude, remote[index + 1] ?? 0)]));
+      const epicItem = jiraPreviewItem(epic, client.baseUrl, acceptanceField, false);
+      return {
+        ...preview,
+        epic: { ...preview.epic, description: epicItem.description, acceptanceCriteria: epicItem.acceptanceCriteria, counts: jiraContextCounts(epic, exclude, remote[0] ?? 0) },
+        items: preview.items.map((item) => {
+          const counts = byKey.get(item.key);
+          return counts ? { ...item, counts } : item;
+        }),
+      };
     } catch (error) {
       if (error instanceof JiraError) throw fromJiraError(error);
       throw error;
@@ -407,7 +451,9 @@ export class PlanJiraService {
     await this.#gate();
     if (sessionId !== null) await this.#source(sessionId);
     const epicKey = this.#epicOf(body);
-    return this.#readEpic(await this.#client(), epicKey);
+    const preview = await this.#preview(await this.#client(), epicKey, true);
+    if (preview.items.length === 0) throw new PlanJiraError(422, 'empty-epic', `${epicKey} has no child issues`, 'epic');
+    return preview;
   }
 
   /** What an import body asks for besides its place, checked before anything is read or created. */
@@ -740,6 +786,152 @@ export class PlanJiraService {
     await (await this.#jdb()).addActivity(plan.id, { itemId: null, key: null, kind: failed.length > 0 ? 'error' : 'refresh', text: failed.length > 0 ? `${summary}; failed: ${failed.join('; ')}` : summary });
   }
 
+  // ── the Jira context (D118) ─────────────────────────────────────────────
+
+  /**
+   * D118: one issue's context, read from Jira now: the issue (with the acceptance criteria field),
+   * all its comments (the newest {@link JIRA_COMMENTS_READ_MAX}), its remote links, and its
+   * sub-tasks' descriptions. `exclude` = the epic and its children (not "outside" links).
+   */
+  async #issueContext(client: JiraClient, key: string, acceptanceField: string | null, exclude: ReadonlySet<string>): Promise<JiraIssueContext> {
+    const fields = [...JIRA_CONTEXT_FIELDS.filter((field) => field !== 'comment'), ...(acceptanceField ? [acceptanceField] : [])];
+    const issue = await client.issue(key, fields);
+    const [comments, remoteLinks, subtasks] = await Promise.all([
+      client.comments(key),
+      client.remoteLinks(key),
+      Array.isArray(issue.fields['subtasks']) && issue.fields['subtasks'].length > 0
+        ? client.search(`parent = ${key} ORDER BY key ASC`, ['summary', 'status', 'description'], JIRA_SUBTASKS_MAX).then((found) => found.issues).catch(() => undefined)
+        : Promise.resolve(undefined),
+    ]);
+    return buildJiraIssueContext({
+      issue,
+      baseUrl: client.baseUrl,
+      acceptanceField,
+      comments: comments.slice(-JIRA_COMMENTS_READ_MAX).map((comment) => comment.raw),
+      commentsTotal: comments.length,
+      remoteLinks,
+      ...(subtasks ? { subtasks } : {}),
+      exclude,
+    });
+  }
+
+  /** D118: a Jira plan's epic key, its items' keys, and a client (`null` = not a Jira plan, or Plans is off). */
+  async #contextBase(planId: string): Promise<{ readonly record: PlanJiraRecord; readonly rows: readonly PlanJiraItemRecord[] } | null> {
+    if (!(await this.#enabled())) return null;
+    const db = await this.#jdb();
+    const record = await db.plan(planId);
+    if (!record) return null;
+    return { record, rows: await db.items(planId) };
+  }
+
+  /** Why a read failed, as one short line. */
+  #reason(error: unknown): string {
+    if (error instanceof JiraError || error instanceof PlanJiraError) return error.message;
+    return error instanceof Error ? error.message : 'failed';
+  }
+
+  /**
+   * D118 · the "Jira context" block of an item's run's first message (the core's
+   * {@link PlanContextSource.itemContext}): the item's ticket and the epic, read from Jira now with
+   * this machine's connection, within `budget`. Derived from what every Jira plan stores (its epic
+   * key, its items' keys), so plans imported before D118 get it too. A failed read never blocks the
+   * run: the block is then {@link JIRA_UNREAD_NOTE} (and a line of the plan's Jira activity).
+   */
+  async itemContext(input: { readonly planId: string; readonly itemId: string; readonly todoDescription: string | null; readonly budget: number }): Promise<{ readonly text: string; readonly omitDescription: boolean } | null> {
+    const base = await this.#contextBase(input.planId);
+    if (!base) return null;
+    const row = base.rows.find((entry) => entry.itemId === input.itemId) ?? null;
+    const fail = async (error: unknown) => {
+      const reason = this.#reason(error);
+      await (await this.#jdb()).addActivity(input.planId, { itemId: row?.itemId ?? null, key: row?.key ?? null, kind: 'error', text: `Could not read Jira for ${row?.key ?? 'an item'}'s run at its start (it started with the imported text): ${reason}` });
+      return { text: `${JIRA_UNREAD_NOTE} (${reason}).`, omitDescription: false };
+    };
+    let client: JiraClient;
+    try {
+      client = await this.#client();
+    } catch (error) {
+      return fail(error);
+    }
+    const acceptanceField = await client.acceptanceField().catch(() => null);
+    const exclude = new Set([base.record.epicKey, ...base.rows.map((entry) => entry.key)]);
+    const [item, epic] = await Promise.all([
+      row ? this.#issueContext(client, row.key, acceptanceField, exclude).catch((error: unknown) => error as Error) : Promise.resolve(null),
+      this.#issueContext(client, base.record.epicKey, acceptanceField, exclude).catch((error: unknown) => error as Error),
+    ]);
+    const itemOk = item !== null && !(item instanceof Error) ? item : null;
+    const epicOk = !(epic instanceof Error) ? epic : null;
+    if (itemOk === null && epicOk === null) return fail(item instanceof Error ? item : epic);
+    const text = renderRunJiraContext({ item: itemOk, epic: epicOk, budget: input.budget, readAt: this.#clock.now().toISOString() });
+    return { text, omitDescription: itemOk !== null && isImportedJiraText(input.todoDescription, itemOk.url) };
+  }
+
+  /**
+   * D118 · the full epic for an ask to the plan's agent (its order, its repositories; the core's
+   * {@link PlanContextSource.askContext}), read from Jira now, within {@link JIRA_ASK_EPIC_MAX}
+   * (the oldest comments trimmed first). `null` = not a Jira plan; a failed read is a note.
+   */
+  async askContext(planId: string): Promise<string | null> {
+    const base = await this.#contextBase(planId);
+    if (!base) return null;
+    try {
+      const client = await this.#client();
+      const acceptanceField = await client.acceptanceField().catch(() => null);
+      const epic = await this.#issueContext(client, base.record.epicKey, acceptanceField, new Set([base.record.epicKey, ...base.rows.map((entry) => entry.key)]));
+      return renderJiraIssueContext(epic, { heading: `Epic context (read from Jira now): ${epic.key} ${epic.summary}`, max: JIRA_ASK_EPIC_MAX }).text;
+    } catch (error) {
+      return `The epic ${base.record.epicKey} could not be read from Jira now (${this.#reason(error)}); plan_jira_context reads it.`;
+    }
+  }
+
+  /**
+   * D118 · `GET /agent/v1/plans/{planId}/jira/context?item=&part=` and (no plan id: the run
+   * session's own plan) `GET /agent/v1/plans/jira/context` (the `plan_jira_context` tool):
+   * the full current Jira context of an item's ticket and/or the epic. Only for the plan's source
+   * session and the plan's item run sessions (404 otherwise); 404 `not-jira` for a plan not from
+   * Jira; 502 when Jira cannot be read. Read-only.
+   */
+  async agentContext(sessionId: string, planId: string | null, query: { readonly item?: unknown; readonly part?: unknown }): Promise<{ readonly planId: string; readonly epicKey: string; readonly item: string | null; readonly text: string }> {
+    await this.#gate();
+    const run = await this.#options.plans.runItem(sessionId);
+    let id = planId?.trim().replace(/^\[|\]$/g, '') ?? '';
+    if (id === '') {
+      if (!run) throw new PlanJiraError(404, 'not-found', 'give plan_id: this session is not a plan item\'s run');
+      id = run.planId;
+    }
+    const ownRun = run !== null && run.planId === id;
+    if (!ownRun) await this.#options.plans.agentPlan(sessionId, id);
+    const record = await this.#record(id);
+    const rows = await (await this.#jdb()).items(id);
+    const plan = await this.#plan(id);
+    const wanted = typeof query.item === 'string' && query.item.trim() !== '' ? query.item.trim().replace(/^\[|\]$/g, '') : null;
+    let row: PlanJiraItemRecord | null = null;
+    if (wanted !== null) {
+      row = rows.find((entry) => entry.itemId === wanted || entry.key === wanted.toUpperCase()) ?? null;
+      if (!row) {
+        const known = plan.items.some((entry) => entry.id === wanted || entry.key === wanted.toUpperCase());
+        throw new PlanJiraError(404, 'not-found', known ? `${wanted} is not a Jira ticket of this plan` : `no item ${wanted} in plan ${id}`);
+      }
+    } else if (ownRun) row = rows.find((entry) => entry.itemId === run.itemId) ?? null;
+    const partRaw = typeof query.part === 'string' && query.part !== '' ? query.part : null;
+    if (partRaw !== null && !(JIRA_CONTEXT_PARTS as readonly string[]).includes(partRaw)) throw new PlanJiraError(422, 'invalid', `part is one of ${JIRA_CONTEXT_PARTS.join(', ')}`, 'part');
+    const part = partRaw ?? (row ? 'both' : 'epic');
+    if (part === 'item' && !row) throw new PlanJiraError(422, 'invalid', 'give item: the key (PROJ-12) or id of the item', 'item');
+    const client = await this.#client();
+    const acceptanceField = await client.acceptanceField().catch(() => null);
+    const exclude = new Set([record.epicKey, ...rows.map((entry) => entry.key)]);
+    try {
+      const epic = part !== 'item' ? await this.#issueContext(client, record.epicKey, acceptanceField, exclude) : null;
+      const item = part !== 'epic' && row ? await this.#issueContext(client, row.key, acceptanceField, exclude) : null;
+      const epicText = epic ? renderJiraIssueContext(epic, { heading: `Epic ${epic.key} ${epic.summary}`, max: item ? Math.floor(JIRA_TOOL_MAX / 3) : JIRA_TOOL_MAX, toolNote: false }).text : '';
+      const itemText = item ? renderJiraIssueContext(item, { heading: `Ticket ${item.key} ${item.summary}`, max: JIRA_TOOL_MAX - epicText.length, toolNote: false }).text : '';
+      const head = `Jira context of the plan "${plan.title}" [${id}], read from Jira now (${this.#clock.now().toISOString().slice(0, 16).replace('T', ' ')} UTC). Links are URLs for your own tools; attachments are names only.`;
+      return { planId: id, epicKey: record.epicKey, item: row?.key ?? null, text: [head, itemText, epicText].filter((entry) => entry !== '').join('\n\n') };
+    } catch (error) {
+      if (error instanceof JiraError) throw fromJiraError(error);
+      throw error;
+    }
+  }
+
   // ── proposed order (D99-Jira-q1 ruling (b)) ─────────────────────────────
 
   /**
@@ -766,6 +958,9 @@ export class PlanJiraService {
       const ask = await this.#options.plans.reposAskText(plan.id, what.order);
       if (ask) parts.push(ask.text);
     }
+    // D118: the ask ends with the full epic, read from Jira now.
+    const epic = await this.askContext(plan.id).catch(() => null);
+    if (epic) parts.push(epic);
     await this.#options.send(plan.sourceSessionId, parts.join('\n\n'));
   }
 

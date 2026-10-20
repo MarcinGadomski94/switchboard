@@ -38,6 +38,7 @@ import {
   planConflictMessage,
   planItemBranch,
   planItemBrief,
+  PLAN_RUN_MESSAGE_MAX,
   planRuleChangedMessage,
   planView,
   protectedTargetRefusal,
@@ -187,6 +188,22 @@ export type ReposAskVia = 'import' | 'auto' | 'again' | 'agent';
  * from these): `asked` (sent, the check is armed), `failed` (could not be sent), `late` (the check
  * found items still waiting). `labels` are the waiting items' keys or titles.
  */
+/**
+ * D118 · what a plan's external list adds to its agents' messages, read when they are sent (the
+ * Jira lane: a Jira plan's "Jira context"). Registered with {@link PlanService.setContextSource}.
+ */
+export interface PlanContextSource {
+  /**
+   * The block of an item's run's first message (after the brief, before the merge rule), read
+   * now within `budget` characters; `omitDescription` = the todo's description is the list's own
+   * imported text and the block has it fresh. `null` = none (not such a plan). Never blocks a run:
+   * a failed read answers a note instead.
+   */
+  itemContext(input: { readonly planId: string; readonly itemId: string; readonly todoDescription: string | null; readonly budget: number }): Promise<{ readonly text: string; readonly omitDescription: boolean } | null>;
+  /** The block an ask to the plan's agent (its order, its repositories) ends with, read now; `null` = none. */
+  askContext(planId: string): Promise<string | null>;
+}
+
 export interface ReposAskEvent {
   readonly kind: 'asked' | 'failed' | 'late';
   readonly planId: string;
@@ -354,6 +371,8 @@ export class PlanService {
   /** D115 follow-ups: per plan, the automatic ask waiting for a burst of added items to end. */
   readonly #askSoon = new Map<string, unknown>();
   readonly #askListeners = new Set<(event: ReposAskEvent) => Promise<void> | void>();
+  /** D118: the external list's context (the Jira lane), `null` = none. */
+  #contextSource: PlanContextSource | null = null;
 
   constructor(options: PlanServiceOptions) {
     this.#dataDir = options.dataDir;
@@ -1172,6 +1191,32 @@ export class PlanService {
 
   // ── the repositories ask (D115 follow-ups 2026-10-20) ────────────────────
 
+  /** D118: registers the external list's context for the runs' first messages and the asks (the Jira lane); answers the unregister. */
+  setContextSource(source: PlanContextSource): () => void {
+    this.#contextSource = source;
+    return () => {
+      if (this.#contextSource === source) this.#contextSource = null;
+    };
+  }
+
+  /** D118: the plans' item that run session `sessionId` works on (its newest), or `null`. */
+  async runItem(sessionId: string): Promise<{ readonly planId: string; readonly itemId: string } | null> {
+    const items = await this.#repo().itemsByRunSession(sessionId);
+    const item = items[items.length - 1];
+    return item ? { planId: item.planId, itemId: item.id } : null;
+  }
+
+  /** D118: the external list's block for an ask to the plan's agent ("" when there is none or it failed). */
+  async askContext(planId: string): Promise<string> {
+    if (!this.#contextSource) return '';
+    try {
+      return (await this.#contextSource.askContext(planId)) ?? '';
+    } catch (error) {
+      this.#onError(error);
+      return '';
+    }
+  }
+
   /** Follows the repositories ask (the Jira lane's activity lines); answers the unsubscribe. */
   onReposAsk(listener: (event: ReposAskEvent) => Promise<void> | void): () => void {
     this.#askListeners.add(listener);
@@ -1219,8 +1264,10 @@ export class PlanService {
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
     const ask = await this.reposAskText(planId);
     if (!ask) throw new PlanError(409, 'nothing-to-pick', 'no item of the plan waits for its repositories');
+    // D118: a Jira plan's ask ends with the full epic, read now.
+    const context = await this.askContext(planId);
     try {
-      await this.#env.send(plan.sourceSessionId, ask.text);
+      await this.#env.send(plan.sourceSessionId, context ? `${ask.text}\n\n${context}` : ask.text);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'failed';
       await this.reposAskFailed(planId, message, via);
@@ -1771,6 +1818,18 @@ export class PlanService {
     if (changed) await this.#publish(plan.id);
   }
 
+  /** D118: the external list's block of an item's first message (never throws: a failure is logged and the run starts without it). */
+  async #itemContext(plan: PlanRecord, item: PlanItemRecord, todo: TodoRecord, briefLength: number): Promise<{ readonly text: string; readonly omitDescription: boolean } | null> {
+    if (!this.#contextSource) return null;
+    try {
+      // The brief keeps the todo's description unless the block replaces it; the rest of the cap is the block's (a branch name's slack kept).
+      return await this.#contextSource.itemContext({ planId: plan.id, itemId: item.id, todoDescription: todo.description, budget: PLAN_RUN_MESSAGE_MAX - briefLength - 200 });
+    } catch (error) {
+      this.#onError(error);
+      return null;
+    }
+  }
+
   async #startItem(plan: PlanRecord, item: PlanItemRecord, todo: TodoRecord): Promise<void> {
     // D115: a plan whose repos are picked per item resolves the item's own.
     const resolved = await this.#env.repos(plan.sourceSessionId, reposPerItem(plan) ? item.solutions : plan.repos).catch((error: unknown) => error);
@@ -1799,6 +1858,22 @@ export class PlanService {
     const developer = developerMerges(plan.mergeMode, item);
     const answers = plan.answers;
     const full = kind === 'workspace' && answers !== null && answers.workType !== null && answers.mode !== null && answers.phase !== null;
+    const brief = (final: string | null, context: { readonly text: string; readonly omitDescription: boolean } | null): string =>
+      planItemBrief({
+        planTitle: plan.title,
+        targetBranch: plan.targetBranch,
+        noMerge: plan.mergeMode === 'none',
+        developerConfirms: developerConfirms(plan.mergeMode, item),
+        notes: answers?.notes ?? null,
+        key: item.key,
+        branch: final ?? (from === null ? null : branch),
+        developerMerges: developer,
+        todo: { id: todo.id, title: todo.title, description: todo.description, plan: todo.plan },
+        context: context?.text ?? null,
+        omitDescription: context?.omitDescription === true,
+      });
+    // D118: the external list's context (a Jira plan's), read from it now, within the first message's cap.
+    const context = await this.#itemContext(plan, item, todo, brief(branch, null).length);
     const outcome = await this.#env.run({
       plan,
       item,
@@ -1806,18 +1881,7 @@ export class PlanService {
       branch,
       from,
       repoPaths: from === null ? [] : mine.map((repo) => repo.repoPath),
-      task: (final) =>
-        planItemBrief({
-          planTitle: plan.title,
-          targetBranch: plan.targetBranch,
-          noMerge: plan.mergeMode === 'none',
-          developerConfirms: developerConfirms(plan.mergeMode, item),
-          notes: answers?.notes ?? null,
-          key: item.key,
-          branch: final ?? (from === null ? null : branch),
-          developerMerges: developer,
-          todo: { id: todo.id, title: todo.title, description: todo.description, plan: todo.plan },
-        }),
+      task: (final) => brief(final, context),
       answers: full ? { workType: answers.workType as NonNullable<PlanAnswers['workType']>, mode: answers.mode as NonNullable<PlanAnswers['mode']>, phase: answers.phase as NonNullable<PlanAnswers['phase']>, coordination: answers.coordination } : null,
     });
     if (!outcome.ok) {

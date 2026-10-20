@@ -6,6 +6,7 @@ import { MEMORY_TOOLS } from '../../../src/core/memory.ts';
 import { LOOP_TOOLS } from '../../../src/core/owned-loops.ts';
 import { PLAN_TOOLS } from '../../../src/core/plans.ts';
 import { PLAN_PROPOSE_TOOL } from '../../../src/core/plans-jira.ts';
+import { PLAN_JIRA_CONTEXT_TOOL } from '../../../src/core/plans-jira-context.ts';
 import { TEAM_TOOLS } from '../../../src/core/team-tools.ts';
 import { TODO_TOOLS } from '../../../src/core/todos.ts';
 import { FEATURE_TOOL_SETS, FeatureTools } from '../../../src/hook/sb-feature-tools.ts';
@@ -51,6 +52,7 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_start: [false, false, true, true],
   plan_set_solutions: [false, true, true, false],
   plan_propose_dependencies: [false, false, true, false],
+  plan_jira_context: [true, false, true, true],
   memory_propose: [false, false, true, false],
   memory_list: [true, false, true, false],
 };
@@ -102,7 +104,7 @@ describe('tool annotations', () => {
 
   it('the hints written out where each tool is registered match its definition in src/core', async () => {
     const defined = new Map<string, Record<string, unknown>>([
-      ...[...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, ...PLAN_TOOLS, PLAN_PROPOSE_TOOL, ...MEMORY_TOOLS].map((tool) => [tool.name, { ...tool.annotations }] as const),
+      ...[...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, ...PLAN_TOOLS, PLAN_PROPOSE_TOOL, PLAN_JIRA_CONTEXT_TOOL, ...MEMORY_TOOLS].map((tool) => [tool.name, { ...tool.annotations }] as const),
       ...TEAM_TOOLS.map((tool) => [tool.name, { title: tool.title, ...tool.annotations }] as const),
     ]);
     for (const tool of await listEveryTool()) {
