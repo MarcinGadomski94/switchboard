@@ -81,21 +81,28 @@ test('delete a draft from the plan page', async ({ page }) => {
   expect((await world.call(page, 'GET', `/api/plans/${planId}`)).status).toBe(404);
 });
 
-test('delete a running plan: it is cancelled first, then deleted', async ({ page }) => {
+test('delete a running plan: it is cancelled first and its working session stopped, then deleted', async ({ page }) => {
   test.setTimeout(90_000);
   await openWithHub(page, `${world.baseUrl}/inbox`);
-  const planId = await draft(page, 'Acme running delete', ['Acme running step']);
+  // [fake:hold 60]: the item's turn keeps working until it is stopped.
+  const planId = await draft(page, 'Acme running delete', ['Acme running step [fake:hold 60]']);
   expect((await world.call(page, 'POST', `/api/plans/${planId}/start`, { mergeMode: 'developer' })).status).toBe(200);
-  await world.itemIn(page, planId, 'PROJ-1', 'running');
-  // The server alone refuses a running plan.
+  const item = await world.itemIn(page, planId, 'PROJ-1', 'running');
+  const runId = item.runSessionId as string;
+  await expect.poll(async () => (await world.call(page, 'GET', `/api/sessions/${runId}`)).body.status, { timeout: 20_000 }).toBe('run');
+  // The server alone refuses a running plan (plain DELETE is unchanged).
   expect((await world.call(page, 'DELETE', `/api/plans/${planId}`)).body.error).toBe('running');
   await page.goto(`${world.baseUrl}/plans/${planId}`);
   await expect(page.getByTestId('plan-state')).toHaveAttribute('data-state', 'running');
   await page.getByTestId('plan-delete').click();
-  await expect(page.getByTestId('plan-delete-note')).toContainText('It is running: it is cancelled first');
+  await expect(page.getByTestId('plan-delete-note')).toHaveText('It is running: it is cancelled first and its running session is stopped (they stay in the sidebar); then the plan is deleted.');
   await page.getByTestId('plan-delete-yes').click();
   await expect(page).toHaveURL(new RegExp('/plans$'));
   expect((await world.call(page, 'GET', `/api/plans/${planId}`)).status).toBe(404);
+  // Its session was stopped, not closed: it stays.
+  await expect.poll(async () => (await world.call(page, 'GET', `/api/sessions/${runId}`)).body.status, { timeout: 20_000 }).not.toBe('run');
+  const session = (await world.call(page, 'GET', `/api/sessions/${runId}`)).body;
+  expect(session.closedAt ?? null).toBeNull();
 });
 
 test('Re-read dependencies from Jira on a draft Jira plan lists the change, then applies it', async ({ page }) => {

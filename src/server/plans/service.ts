@@ -146,6 +146,23 @@ export interface PlanEnvironment {
   pickReposNotice?(input: PlanPickReposNotice): Promise<void>;
   /** D115 follow-ups: closes plan `planId`'s open "wait for repositories" items with `outcome`. */
   closePickReposNotices?(planId: string, outcome: string): Promise<void>;
+  /**
+   * D117 follow-up: stops a run session's current turn the way the session's Stop does
+   * (`POST /api/sessions/{id}/interrupt`, the supervisor's interrupt; the process and the session
+   * stay). A hooked terminal session cannot be stopped from here (`hooked`). Absent (tests' fakes): nothing is stopped.
+   */
+  stopTurn?(sessionId: string): Promise<PlanStopOutcome>;
+}
+
+/** D117 follow-up: what stopping a run session's turn did (`stopped` / `idle` / `timeout` as the Stop answers; `hooked`: not stoppable from here). */
+export type PlanStopOutcome = 'stopped' | 'idle' | 'timeout' | 'hooked';
+
+/** D117 follow-up · the answer of `DELETE /api/plans/{id}?stop=1`. */
+export interface PlanDeleteResult {
+  /** The plan was running or paused and was cancelled first. */
+  readonly cancelled: boolean;
+  /** The item run sessions whose turn was running, and what stopping each did. */
+  readonly stopped: ReadonlyArray<{ readonly itemId: string; readonly sessionId: string; readonly outcome: PlanStopOutcome }>;
 }
 
 /** D115 follow-ups: what the Inbox's "wait for repositories" item says. */
@@ -855,14 +872,39 @@ export class PlanService {
     return this.get(planId);
   }
 
-  /** `DELETE /api/plans/{id}`: removes the plan (its items and edges; the todos and run sessions stay). Refused while running. */
-  async remove(planId: string): Promise<void> {
-    const plan = await this.#plan(planId);
+  /**
+   * `DELETE /api/plans/{id}`: removes the plan (its items and edges; the todos and run sessions stay). Refused while running.
+   * D117 follow-up, `?stop=1` (`stop: true`): a running or paused plan is cancelled first (as {@link cancel}), then
+   * every item run session whose turn is running is stopped the way the session's Stop does (`PlanEnvironment.stopTurn`;
+   * the sessions and their worktrees stay), then the plan is removed.
+   */
+  async remove(planId: string, options: { readonly stop?: boolean } = {}): Promise<PlanDeleteResult> {
+    let plan = await this.#plan(planId);
+    let cancelled = false;
+    const stopped: Array<{ itemId: string; sessionId: string; outcome: PlanStopOutcome }> = [];
+    if (options.stop === true) {
+      if (plan.state === 'running' || plan.state === 'paused') {
+        await this.cancel(planId);
+        cancelled = true;
+        plan = await this.#plan(planId);
+      }
+      for (const item of await this.#repo().items(planId)) {
+        if (!item.runSessionId) continue;
+        const session = await this.#store.sessions.get(item.runSessionId);
+        if (!session || session.status !== 'run') continue;
+        const outcome = this.#env.stopTurn ? await this.#env.stopTurn(item.runSessionId).catch((error: unknown) => {
+          this.#onError(error);
+          return 'timeout' as const;
+        }) : 'idle';
+        stopped.push({ itemId: item.id, sessionId: item.runSessionId, outcome });
+      }
+    }
     if (plan.state === 'running') throw new PlanError(409, 'running', 'the plan is running: pause or cancel it first');
     for (const item of await this.#repo().items(planId)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
     await this.#dropReposAsk(plan, 'deleted');
     await this.#repo().delete(planId);
     this.#bus.publish('planChanged', { planId, state: null });
+    return { cancelled, stopped };
   }
 
   // ── items and edges ─────────────────────────────────────────────────────

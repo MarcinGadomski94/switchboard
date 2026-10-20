@@ -29,7 +29,8 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * The UI's routes (the `sb_token` cookie; a paired machine's plan id `r~<machine>~<id>` is
  * forwarded to its machine like every `:id` route; item ids stay raw):
  * - `GET /api/plans` → `Plan[]` (this machine's, then the paired machines' as last known);
- *   `POST /api/plans` → 201 `Plan` (a draft); `GET|PUT|DELETE /api/plans/{id}`;
+ *   `POST /api/plans` → 201 `Plan` (a draft); `GET|PUT|DELETE /api/plans/{id}` (D117 follow-up: `DELETE …?stop=1`
+ *   cancels a running or paused plan and stops its running item sessions first, → 200 `{ cancelled, stopped }`);
  * - `POST /api/plans/{id}/items` → 201 `{ plan, itemId }`; `PUT|DELETE /api/plans/{id}/items/{itemId}`;
  *   `POST /api/plans/{id}/items/{itemId}/retry | done`; D102, the Merge step of a ready-to-merge item:
  *   `POST /api/plans/{id}/items/{itemId}/merge | open-pr | send-back` (`{ comment }`);
@@ -85,9 +86,12 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     }
   });
 
-  app.delete<{ Params: { id: string } }>('/api/plans/:id', async (request, reply) => {
+  // D117 follow-up: `?stop=1` cancels a running or paused plan, stops its running item sessions, then deletes (200 `PlanDeleteResult`); plain DELETE is unchanged (204).
+  app.delete<{ Params: { id: string }; Querystring: { stop?: string } }>('/api/plans/:id', async (request, reply) => {
     try {
-      await plans.remove(request.params.id);
+      const stop = request.query.stop === '1' || request.query.stop === 'true';
+      const result = await plans.remove(request.params.id, { stop });
+      if (stop) return reply.code(200).send(result);
       return reply.code(204).send();
     } catch (error) {
       return sendPlanError(reply, error);

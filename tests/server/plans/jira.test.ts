@@ -106,6 +106,7 @@ interface Rig {
   sourceId: string;
   errors: unknown[];
   sent: Array<{ sessionId: string; text: string }>;
+  stops: string[];
   enabled: boolean;
   close(): Promise<void>;
 }
@@ -126,6 +127,7 @@ async function setup(options: { env?: 'fake' | 'none'; issues?: FakeIssue[] } = 
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new FakeGit();
   let runs = 0;
+  const stops: string[] = [];
   const env: PlanEnvironment = {
     async repos(sourceSessionId, names) {
       if (!(await store.sessions.get(sourceSessionId))) throw new PlanError(404, 'not-found', 'no session');
@@ -139,6 +141,12 @@ async function setup(options: { env?: 'fake' | 'none'; issues?: FakeIssue[] } = 
     },
     async usageHeld() {
       return null;
+    },
+    // D117 follow-up: the session's Stop, as the real environment's supervisor interrupt (the turn ends, the session stays).
+    async stopTurn(sessionId) {
+      stops.push(sessionId);
+      await store.sessions.update(sessionId, { status: 'idle' });
+      return 'stopped';
     },
     async send() {},
     async notice() {},
@@ -177,6 +185,7 @@ async function setup(options: { env?: 'fake' | 'none'; issues?: FakeIssue[] } = 
     sourceId: source.id,
     errors,
     sent,
+    stops,
     get enabled() {
       return state.enabled;
     },
@@ -879,5 +888,42 @@ describe('D117 · Jira "Blocks" direction', () => {
     expect(preview.body.removed).toEqual([]);
     expect(preview.body.kept.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-21 waits on PROJ-22']);
     expect(preview.body.cycles.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-22 waits on PROJ-21']);
+  });
+});
+
+describe('D117 follow-up · Delete a running plan stops its item sessions', () => {
+  it('?stop: cancels, stops the sessions whose turn runs (they stay), then deletes; plain delete is unchanged', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const planId: string = imported.body.plan.id;
+    await r.plans.startPlan(planId, { mergeMode: 'developer' });
+    await settle(r);
+    const running = (await r.plans.get(planId)).items.filter((entry) => entry.state === 'running');
+    expect(running.map((entry) => entry.key).sort()).toEqual(['PROJ-21', 'PROJ-24']);
+    // An item whose session already ended its turn is not stopped again.
+    const idle = running.find((entry) => entry.key === 'PROJ-24');
+    await r.store.sessions.update(idle?.runSessionId as string, { status: 'idle' });
+    // Plain delete still refuses a running plan and stops nothing.
+    await expect(r.plans.remove(planId)).rejects.toMatchObject({ code: 'running' });
+    expect(r.stops).toEqual([]);
+
+    const result = await r.plans.remove(planId, { stop: true });
+    const busy = running.find((entry) => entry.key === 'PROJ-21');
+    expect(result).toEqual({ cancelled: true, stopped: [{ itemId: busy?.id, sessionId: busy?.runSessionId, outcome: 'stopped' }] });
+    expect(r.stops).toEqual([busy?.runSessionId]);
+    await expect(r.plans.get(planId)).rejects.toMatchObject({ code: 'not-found' });
+    // The sessions stay (not closed, not deleted).
+    for (const entry of running) expect(await r.store.sessions.get(entry.runSessionId as string)).toMatchObject({ closedAt: null });
+  });
+
+  it('?stop on a paused plan cancels it first; on a draft it just deletes', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const first = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    await r.plans.startPlan(first.body.plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    await r.plans.pause(first.body.plan.id);
+    expect((await r.plans.remove(first.body.plan.id, { stop: true })).cancelled).toBe(true);
+    const second = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    expect(await r.plans.remove(second.body.plan.id, { stop: true })).toEqual({ cancelled: false, stopped: [] });
   });
 });

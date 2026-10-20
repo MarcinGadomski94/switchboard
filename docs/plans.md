@@ -28,7 +28,7 @@ Tables: `plans` (title, source session, target / base branch, repos, merge mode,
 - **Max concurrency** 1–16 (default 3); **usage threshold** 1–100 % (default 85).
 - **Start answers** (`answers`: work type, mode, phase, coordination, notes) default to the source session's; a workspace item's run is a Full start with them (D76-workspace); `notes` are added to every item's brief.
 - **External** `{ system: 'jira', key }`: stored and shown only (the Jira lane fills it).
-- States: `draft` → `running` ⇄ `paused` → `done` | `cancelled`. Delete is refused while running.
+- States: `draft` → `running` ⇄ `paused` → `done` | `cancelled`. Delete is refused while running. D117 follow-up: `DELETE /api/plans/{id}?stop=1` (the UI's Delete) cancels a running or paused plan first (as Cancel), then stops each item run session whose turn is running through the session's own Stop (D50, the supervisor's interrupt; a hooked terminal session cannot be stopped from here and is reported `hooked`), then deletes the plan; it answers `{ cancelled, stopped: [{ itemId, sessionId, outcome }] }`. The sessions and their worktrees stay. Cancel itself still stops nothing; plain `DELETE` is unchanged (204). A paired machine's plan is deleted on its machine, which stops its own sessions.
 
 ## Items and dependencies
 

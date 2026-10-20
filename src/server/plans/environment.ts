@@ -136,6 +136,12 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
 
     send: deps.send,
 
+    // D117 follow-up: Delete plan stops its running item sessions through the session's own Stop (D50, the supervisor's interrupt).
+    async stopTurn(sessionId: string) {
+      if ((await store.sessions.get(sessionId))?.hooked === true) return 'hooked' as const;
+      return (await context.supervisor.interrupt(sessionId)).outcome;
+    },
+
     ...(deps.ciSendsFailures ? { ciSendsFailures: deps.ciSendsFailures } : {}),
     ...(deps.prOpened ? { prOpened: deps.prOpened } : {}),
 

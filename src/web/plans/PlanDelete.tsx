@@ -10,10 +10,17 @@ export function planDeleteQuestion(plan: Pick<Plan, 'title'>): string {
   return `Delete “${plan.title}”? Its items' todos and their sessions stay; only the plan goes.`;
 }
 
-/** A running or paused plan is cancelled first (the existing Cancel); `null` for any other. */
-export function planDeleteNote(plan: Pick<Plan, 'state'>): string | null {
+/** How many of a plan's items have a session at work now (their turns are stopped by Delete). */
+export function runningSessions(plan: Pick<Plan, 'items'>): number {
+  return plan.items.filter((item) => item.state === 'running' && item.runSessionId !== null).length;
+}
+
+/** A running or paused plan is cancelled first and its working sessions stopped; `null` for any other. */
+export function planDeleteNote(plan: Pick<Plan, 'state' | 'items'>): string | null {
   if (plan.state !== 'running' && plan.state !== 'paused') return null;
-  return `It is ${plan.state}: it is cancelled first, as Cancel does (no item starts again; sessions already working are not stopped), then deleted.`;
+  const count = runningSessions(plan);
+  const stop = count === 0 ? '' : ` and its ${count === 1 ? 'running session is' : `${count} running sessions are`} stopped (they stay in the sidebar)`;
+  return `It is ${plan.state}: it is cancelled first${stop}; then the plan is deleted.`;
 }
 
 /** Why a paired machine's plan cannot be deleted now (that machine is unreachable), else `null`. */
@@ -22,17 +29,16 @@ export function planDeleteBlocked(plan: Pick<Plan, 'machine'>): string | null {
 }
 
 /**
- * D117 follow-up · deletes a plan: a running or paused one is cancelled first through
- * `POST /api/plans/{id}/cancel` (the server refuses to delete a running plan), then
- * `DELETE /api/plans/{id}`. A paired machine's plan id is forwarded to its machine.
+ * D117 follow-up · deletes a plan: `DELETE /api/plans/{id}?stop=1` cancels a running or paused
+ * one and stops its item sessions' running turns on the server (the session's own Stop), then
+ * deletes it. A paired machine's plan id is forwarded to its machine, which stops its own sessions.
  */
-export async function deletePlan(plan: Pick<Plan, 'id' | 'state'>): Promise<void> {
-  if (plan.state === 'running' || plan.state === 'paused') await plansApi.cancel(plan.id);
-  await plansApi.remove(plan.id);
+export async function deletePlan(plan: Pick<Plan, 'id'>): Promise<void> {
+  await plansApi.removeStopping(plan.id);
   dropPlan(plan.id);
 }
 
-function Note({ plan }: { readonly plan: Pick<Plan, 'state'> }) {
+function Note({ plan }: { readonly plan: Pick<Plan, 'state' | 'items'> }) {
   const note = planDeleteNote(plan);
   return note ? (
     <div className="sb-plan-muted" data-testid="plan-delete-note">

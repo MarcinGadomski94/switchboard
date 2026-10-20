@@ -79,6 +79,8 @@ export const plansApi = {
   create: (body: NewPlanBody) => call<Plan>('POST', '/api/plans', body),
   update: (id: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}`, body),
   remove: (id: string) => call<null>('DELETE', `/api/plans/${enc(id)}`),
+  /** D117 follow-up: cancels a running or paused plan and stops its running item sessions (server-side), then deletes it. */
+  removeStopping: (id: string) => call<{ cancelled: boolean; stopped: Array<{ itemId: string; sessionId: string; outcome: string }> }>('DELETE', `/api/plans/${enc(id)}?stop=1`),
   addItem: (id: string, body: Readonly<Record<string, unknown>>) => call<{ plan: Plan; itemId: string }>('POST', `/api/plans/${enc(id)}/items`, body),
   updateItem: (id: string, itemId: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/items/${enc(itemId)}`, body),
   removeItem: (id: string, itemId: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/items/${enc(itemId)}`),
