@@ -6,7 +6,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { Link } from '../router.tsx';
 import { plansApi, refusalText } from './api.ts';
-import { STATE_LOOK, doneText, statusLine, stoppedReason, waitingText, worktreeName } from './model.ts';
+import { STATE_LOOK, canReopen, doneText, earlyStartWarning, statusLine, stoppedReason, waitingText, worktreeName } from './model.ts';
 
 /** The external ref the Jira lane may give a browse URL with (`url`); without one there is no ↗ link. */
 function jiraLink(plan: Plan, item: PlanItem): string | null {
@@ -145,7 +145,12 @@ export function PlanDetail({
           </label>
         )}
       </div>
-      {item.note ? <div className="sb-plan-detail__note">{item.note}</div> : null}
+      {item.note ? (
+        <div className={`sb-plan-detail__note${earlyStartWarning(item) ? ' sb-plan-detail__note--warning' : ''}`} data-testid="plan-detail-note">
+          {earlyStartWarning(item) ? '⚠ ' : ''}
+          {item.note}
+        </div>
+      ) : null}
 
       {item.state === 'question' ? (
         <div className="sb-plan-detail__body" data-testid="plan-detail-question">
@@ -298,6 +303,13 @@ export function PlanDetail({
           <div className="sb-plan-detail__text" data-testid="plan-detail-done">
             {doneText(item, plan)}
           </div>
+          {canReopen(plan, item) ? (
+            <div className="sb-plan-detail__actions">
+              <button type="button" className="sb-button sb-plan-btn" data-testid="plan-detail-reopen" disabled={busy} title="It runs again: its todo is reopened; the items that started after it are flagged" onClick={() => void run(() => plansApi.reopenItem(plan.id, item.id))}>
+                Reopen
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

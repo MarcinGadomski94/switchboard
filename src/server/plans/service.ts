@@ -42,6 +42,15 @@ import {
   PLAN_RUN_MESSAGE_MAX,
   planRuleChangedMessage,
   planView,
+  PLAN_MARKED_DONE_NOTE,
+  PLAN_REOPENED_PREFIX,
+  doneByGitDetection,
+  planEarlyStartWarning,
+  planJiraToldNote,
+  planMergeMessage,
+  planMergedByYouNote,
+  planReopenedWhy,
+  withoutOtherKeys,
   protectedTargetRefusal,
   readyItems,
   stoppedExcerpt,
@@ -130,7 +139,7 @@ export interface PlanEnvironment {
   /** Sends a service message to a session (red checks, a conflict, a changed merge rule). */
   send(sessionId: string, text: string): Promise<void>;
   /** Raises an Inbox system item (once per `dedupe`). */
-  notice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
+  notice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm' | 'plan-reopened'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
   /** D102: raises the Inbox's "Ready to merge: <item> (<plan>)" item (Merge / Open plan; once per `dedupe`). */
   mergeNotice(input: PlanMergeNotice): Promise<void>;
   /** D102: closes the open "Ready to merge" items of plan item `itemId` (merged, sent back, failed, …) with `outcome`. */
@@ -223,6 +232,30 @@ export interface PlanContextSource {
   /** The block an ask to the plan's agent (its order, its repositories) ends with, read now; `null` = none. */
   askContext(planId: string): Promise<string | null>;
 }
+
+/**
+ * D121: an item was reopened (`auto`: the auto-repair found it marked merged without its branch in
+ * the target; `developer`: Reopen). The Jira lane retires its false "merged" / Done write records
+ * and answers the key when Jira was told it was merged or Done (nothing is corrected in Jira).
+ */
+export interface PlanReopenEvent {
+  readonly planId: string;
+  readonly itemId: string;
+  readonly key: string | null;
+  readonly target: string | null;
+  readonly how: 'auto' | 'developer';
+}
+
+/** D121: what a reopen listener answers: the ticket key Jira was told was merged / Done, `null` = none. */
+export interface PlanReopenAnswer {
+  readonly jiraTold: string | null;
+}
+
+/** D121: a reopened item's unknown reading (its PR unreadable, its branch gone) is read again at most this often. */
+const REPAIR_RELOOK_MS = 60_000;
+
+/** D121: the stored reason of a reopened item whose run session is closed or gone (its view is D120's `stopped`). */
+const REOPENED_STOPPED = 'reopened, and its run session is closed';
 
 export interface ReposAskEvent {
   readonly kind: 'asked' | 'failed' | 'late';
@@ -381,6 +414,12 @@ export class PlanService {
   readonly #dirty = new Map<string, boolean>();
   /** D102: items whose Merge / Open PR / Send back runs now (a second click is refused). */
   readonly #acting = new Set<string>();
+  /** D121: done items whose merge was proven (local, remote-tracking or PR evidence): never re-checked. */
+  readonly #provenMerged = new Set<string>();
+  /** D121: done items whose last re-check could not tell (unreadable PR, a gone branch) → when (ms). */
+  readonly #repairLooked = new Map<string, number>();
+  /** D121: the reopen listeners (the Jira lane). */
+  readonly #reopenListeners = new Set<(event: PlanReopenEvent) => Promise<PlanReopenAnswer | null | void> | PlanReopenAnswer | null | void>();
   #tail: Promise<void> = Promise.resolve();
   #queued = false;
   #unsubscribe: (() => void) | null = null;
@@ -663,6 +702,9 @@ export class PlanService {
     this.#stoppedTimers.clear();
     this.#stopped.clear();
     this.#stoppedSwept.clear();
+    // D121: a new activation reads every git-detected done item again.
+    this.#provenMerged.clear();
+    this.#repairLooked.clear();
   }
 
   /** `GET /api/plans/state`: the switch (answered also while Plans is off). */
@@ -814,21 +856,28 @@ export class PlanService {
     for (const item of items) {
       const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
       const todo = await this.#store.todos.get(item.todoId);
+      // D121: a reopened item whose run session is closed or gone shows D120's `stopped` (its turn is over for good).
+      const sessionless = reopenedWithoutSession(item) && (!session || session.closedAt !== null);
       facts.push({
         ...item,
         title: todo?.title ?? item.title,
         estimateMinutes: todo ? todo.estimateMinutes : item.estimateMinutes,
-        sessionStatus: session ? session.status : null,
+        sessionStatus: sessionless ? 'done' : session ? session.status : null,
         // D120: a turn over with the todo open is `stopped` once the grace period has passed.
         todoDone: todo ? todo.state === 'done' : undefined,
-        idleSince: session ? session.lastActivityAt : null,
+        idleSince: sessionless ? null : session ? session.lastActivityAt : null,
       });
     }
     const perItem = reposPerItem(plan);
     const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime(), reposPerItem: perItem, stoppedGraceMs: this.#stoppedGraceMs });
     // D120: a stopped item's reason is its agent's last message (cut).
     const reasons = new Map<string, string>();
-    for (const item of model.items) if (item.state === 'stopped' && item.runSessionId) reasons.set(item.id, stoppedExcerpt(await this.#lastAgentMessage(item.runSessionId)));
+    for (const item of model.items) {
+      if (item.state !== 'stopped') continue;
+      const stored = items.find((candidate) => candidate.id === item.id);
+      if (stored && reopenedWithoutSession(stored) && (!item.runSessionId || (await this.#store.sessions.get(item.runSessionId))?.closedAt != null)) reasons.set(item.id, `${stored.note ?? PLAN_REOPENED_PREFIX}; its run session is closed: reopen it to go on, or Mark done`);
+      else if (item.runSessionId) reasons.set(item.id, stoppedExcerpt(await this.#lastAgentMessage(item.runSessionId)));
+    }
     // D99 follow-up 2026-10-15: a plan without a merge step waits on the developer's confirmation, stored like the Merge.
     const waitingOn = (on: PlanWaitingOn | null): PlanWaitingOn | null => (plan.mergeMode === 'none' && on === 'merge' ? 'confirm' : on);
     return {
@@ -1280,6 +1329,14 @@ export class PlanService {
     };
   }
 
+  /** D121: listens to reopened items (the Jira lane); answers the unsubscribe. */
+  onItemReopened(listener: (event: PlanReopenEvent) => Promise<PlanReopenAnswer | null | void> | PlanReopenAnswer | null | void): () => void {
+    this.#reopenListeners.add(listener);
+    return () => {
+      this.#reopenListeners.delete(listener);
+    };
+  }
+
   /** Tells the listeners (awaited: a Jira plan's activity line is there when the call answers). */
   async #emitAsk(event: ReposAskEvent): Promise<void> {
     for (const listener of this.#askListeners) {
@@ -1636,7 +1693,34 @@ export class PlanService {
     const plan = await this.#plan(planId);
     const item = await this.#item(planId, itemId);
     if (item.state === 'done') return this.get(planId);
-    await this.#done(plan, item, 'marked done by the developer');
+    await this.#done(plan, item, PLAN_MARKED_DONE_NOTE);
+    this.kick();
+    return this.get(planId);
+  }
+
+  /**
+   * D121 · `POST /api/plans/{id}/items/{itemId}/reopen`: a done item of a running or paused plan
+   * runs again, the way the auto-repair reopens a falsely merged one (`#reopen`): back to
+   * `running` (D120's `stopped` when its run session is closed or gone), its todo open, its
+   * merged / done times cleared, the dependents that started after it was done flagged, the
+   * Jira lane told. 409 `not-running` (the plan), `not-done` (the item).
+   */
+  async reopenItem(planId: string, itemId: string): Promise<Plan> {
+    const plan = await this.#plan(planId);
+    if (plan.state !== 'running' && plan.state !== 'paused') throw new PlanError(409, 'not-running', `the plan is ${plan.state}: only an item of a running or paused plan is reopened`);
+    await this.#item(planId, itemId);
+    // Between scheduling cycles, so the scheduler never reads the item half-reopened.
+    const work = this.#tail.then(async () => {
+      const item = await this.#item(planId, itemId);
+      if (item.state !== 'done') throw new PlanError(409, 'not-done', `${itemLabel(item)} is ${item.state}: only a done item is reopened`);
+      await this.#reopen((await this.#plan(planId)) as PlanRecord, item, 'developer');
+    });
+    this.#tail = work.then(
+      () => undefined,
+      () => undefined,
+    );
+    await work;
+    await this.#publish(planId);
     this.kick();
     return this.get(planId);
   }
@@ -1657,7 +1741,7 @@ export class PlanService {
       for (const input of inputs) checked.push(await this.#merger.check(input));
       const notes: string[] = [];
       for (const ready of checked) notes.push(await this.#merger.merge(ready));
-      await this.#done(plan, item, `merged by you into ${plan.targetBranch ?? ''}`);
+      await this.#done(plan, item, planMergedByYouNote(plan.targetBranch ?? ''));
       return notes;
     });
   }
@@ -1672,7 +1756,10 @@ export class PlanService {
       const todo = await this.#store.todos.get(item.todoId);
       const title = todo?.title ?? item.title;
       let url: string | null = null;
-      for (const input of inputs) url = await this.#merger.openPullRequest(input, title, `${item.key ? `${item.key}: ` : ''}${title}\n\nAn item of the plan "${plan.title}". Opened from Switchboard's Plans page.`);
+      // D122: the PR's title and description name only the item's own key (not the plan's title: it may carry the epic's).
+      const own = withoutOtherKeys(title, item.key);
+      const prTitle = item.key && !own.startsWith(item.key) ? `${item.key}: ${own}` : own;
+      for (const input of inputs) url = await this.#merger.openPullRequest(input, prTitle, `${prTitle}\n\nAn item of a Switchboard plan. Opened from Switchboard's Plans page.`);
       if (url !== null) await this.#repo().updateItem(item.id, { prUrl: url });
       // D109: the shared PR watcher follows it from now (its checks, review, merged).
       if (url !== null && item.runSessionId) await this.#env.prOpened?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
@@ -1727,7 +1814,8 @@ export class PlanService {
       if (item.branch !== null && plan.targetBranch !== null) {
         for (const record of await this.#store.worktrees.list({ sessionId: item.runSessionId })) {
           if (record.branch !== item.branch) continue;
-          inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch });
+          // D122: the merge commit names only the item's own key (the target's name may carry the epic's).
+          inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, message: planMergeMessage(item.key) });
         }
       }
       if (needsBranch && inputs.length === 0) throw new PlanError(409, 'no-branch', `${itemLabel(item)} has no worktree branch to merge (it ran in the source folder): merge it yourself, then Mark done`);
@@ -1826,6 +1914,8 @@ export class PlanService {
 
   async #schedule(planAtStart: PlanRecord): Promise<void> {
     let changed = false;
+    // D121: a done item whose done came from git is re-checked (once proven merged, never again); not merged → reopened.
+    if (await this.#repairFalseMerges(planAtStart)) changed = true;
     // 1. Running items: their session's status, then (when asked) git and gh.
     for (const item of await this.#repo().items(planAtStart.id)) {
       if (item.state !== 'running') {
@@ -1911,7 +2001,8 @@ export class PlanService {
       if (tip) cut[repo.name] = tip;
     }
     const from = target === null ? null : cutFrom;
-    const branch = planItemBranch(item.key, shortNameFromTitle(todo.title, []));
+    // D122: the branch names only the item's own key (another key in its title is left out of the slug).
+    const branch = planItemBranch(item.key, shortNameFromTitle(withoutOtherKeys(todo.title, item.key) || todo.title, []));
     const developer = developerMerges(plan.mergeMode, item);
     const answers = plan.answers;
     const full = kind === 'workspace' && answers !== null && answers.workType !== null && answers.mode !== null && answers.phase !== null;
@@ -1969,11 +2060,15 @@ export class PlanService {
    */
   async #refresh(plan: PlanRecord, item: PlanItemRecord): Promise<boolean> {
     const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
+    // D121: a reopened item whose run session is gone stays (D120's stopped) until it is marked done.
+    if (!session && reopenedWithoutSession(item)) return false;
     if (!session) {
       await this.#fail(item, 'lost its run session');
       return true;
     }
     if (item.runSessionId && !this.#runs.has(item.runSessionId)) this.#runs.set(item.runSessionId, { itemId: item.id, status: session.status });
+    // D121: a reopened item whose run session is closed stays (D120's stopped) until its session works again or it is marked done.
+    if (session.closedAt !== null && reopenedWithoutSession(item)) return false;
     if (plan.mergeMode === 'none' || plan.targetBranch === null) return this.#refreshWithoutMerge(plan, item, session);
     const developer = developerMerges(plan.mergeMode, item);
     const todo = await this.#store.todos.get(item.todoId);
@@ -1996,7 +2091,10 @@ export class PlanService {
 
     if (developer) {
       // D102: merged without the developer's Merge (the agent merged it, or someone else did): done.
-      if (merged) return this.#done(plan, item, `merged into ${plan.targetBranch} without your Merge`, prUrl);
+      if (merged) {
+        this.#provenMerged.add(item.id);
+        return this.#done(plan, item, `merged into ${plan.targetBranch} without your Merge`, prUrl);
+      }
       const withPr = worked.filter((repo) => repo.pr !== null);
       if (withPr.length > 0) checks = withPr.find((repo) => repo.pr?.checks.state === 'red')?.pr?.checks ?? withPr[0]?.pr?.checks ?? null;
       // D102: ready for the developer's Merge once its run finished: its todo is done, or every PR is open with green checks; it stays ready until merged or sent back.
@@ -2024,6 +2122,7 @@ export class PlanService {
         checks = withPr[0]?.pr?.checks ?? null;
       }
       if (merged && !red && !pending) {
+        this.#provenMerged.add(item.id);
         const remark = offline ? `no remote or gh: counted as merged into ${plan.targetBranch} without reading checks` : withPr.length === 0 ? `merged into ${plan.targetBranch} without a pull request: no checks read` : null;
         return this.#done(plan, item, remark, prUrl, checks);
       }
@@ -2103,6 +2202,12 @@ export class PlanService {
       if (record.branch !== item.branch) continue;
       out.push(await this.#git.inspect({ repo: record.repo, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, cut: item.cut[record.repo] ?? null }, { conflicts }));
     }
+    if (out.length > 0 || Object.keys(item.cut).length === 0) return out;
+    // D121: its run session (and with it its worktree records) is gone: the repos it was cut in, by name.
+    const resolved = await this.#env.repos(plan.sourceSessionId, Object.keys(item.cut)).catch(() => null);
+    for (const repo of resolved?.repos ?? []) {
+      out.push(await this.#git.inspect({ repo: repo.name, repoPath: repo.repoPath, branch: item.branch, target: plan.targetBranch, cut: item.cut[repo.name] ?? null }, { conflicts }));
+    }
     return out;
   }
 
@@ -2157,6 +2262,99 @@ export class PlanService {
     await this.#publish(plan.id);
     this.kick();
     return true;
+  }
+
+  /**
+   * D121 (`docs/plans.md` → *Merge step*): the auto-repair of a running or paused plan, at
+   * activation and once per scheduling cycle. Every item done by the git detection (not the
+   * developer's Merge, not Mark done) is read again with the corrected rule (`PlanGit.inspect`:
+   * merged only with commits of its own in the local target or `origin/<target>`, or its PR
+   * merged); proven → never read again; not merged → reopened ({@link #reopen}); a reading that
+   * cannot tell (its PR unreadable, its branch gone) is read again later and never reopens.
+   * Idempotent: a reopened item is no longer done. Answers whether anything changed.
+   */
+  async #repairFalseMerges(plan: PlanRecord): Promise<boolean> {
+    if (plan.targetBranch === null || plan.mergeMode === null || plan.mergeMode === 'none') return false;
+    let changed = false;
+    const now = this.#clock.now().getTime();
+    for (const item of await this.#repo().items(plan.id)) {
+      if (!doneByGitDetection(item) || this.#provenMerged.has(item.id)) continue;
+      // Ran in the source folder (no branch): nothing git could have read wrong.
+      if (item.branch === null) {
+        this.#provenMerged.add(item.id);
+        continue;
+      }
+      const looked = this.#repairLooked.get(item.id);
+      if (looked !== undefined && now - looked < REPAIR_RELOOK_MS) continue;
+      const repos = await this.#inspect(plan, item, false);
+      const worked = repos.filter((repo) => repo.hasWork);
+      if (worked.length > 0 && worked.every((repo) => repo.merged)) {
+        this.#provenMerged.add(item.id);
+        this.#repairLooked.delete(item.id);
+        continue;
+      }
+      if (repos.length === 0 || repos.some((repo) => repo.unknown === true)) {
+        this.#repairLooked.set(item.id, now);
+        continue;
+      }
+      await this.#reopen(plan, item, 'auto');
+      changed = true;
+    }
+    return changed;
+  }
+
+  /**
+   * D121: reopens done item `item`: `running` again (its run session goes on; a closed or gone one
+   * shows D120's `stopped`), its todo open, `mergedAt` / `doneAt` cleared, a note saying why. The
+   * dependents that started after it was done get a warning (they are neither stopped nor
+   * restarted; pending ones simply wait again), the Jira lane is told (it retires its false
+   * "merged" / Done write records and answers whether Jira was told), and an Inbox item lists both
+   * (the developer's own Reopen raises one only when there is something to list).
+   */
+  async #reopen(plan: PlanRecord, item: PlanItemRecord, how: 'auto' | 'developer'): Promise<void> {
+    const repo = this.#repo();
+    const label = itemLabel(item);
+    const why = planReopenedWhy(how, plan.targetBranch);
+    const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
+    const live = session !== null && session !== undefined && session.closedAt === null;
+    // The dependents that started while it was (falsely) done.
+    const items = await repo.items(plan.id);
+    const edges = await repo.edges(plan.id);
+    const doneAt = item.doneAt;
+    const early = doneAt === null ? [] : items.filter((other) => other.id !== item.id && other.startedAt !== null && other.startedAt >= doneAt && edges.some((edge) => edge.from === item.id && edge.to === other.id));
+    let jiraTold: string | null = null;
+    for (const listener of this.#reopenListeners) {
+      try {
+        const answer = await listener({ planId: plan.id, itemId: item.id, key: item.key, target: plan.targetBranch, how });
+        if (answer && answer.jiraTold) jiraTold = answer.jiraTold;
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    const note = [`${PLAN_REOPENED_PREFIX}: ${why}`, jiraTold !== null ? planJiraToldNote(jiraTold) : null].filter((part): part is string => part !== null).join('; ');
+    await repo.updateItem(item.id, { state: 'running', mergedAt: null, doneAt: null, note, reason: live ? null : REOPENED_STOPPED, waitingOn: null, waitingSince: null });
+    const todo = await this.#store.todos.get(item.todoId);
+    if (todo && todo.state === 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'in_progress' }, 'developer').catch((error: unknown) => this.#onError(error));
+    if (live && item.runSessionId) this.#runs.set(item.runSessionId, { itemId: item.id, status: (session as { status: SessionStatus }).status });
+    this.#provenMerged.delete(item.id);
+    this.#repairLooked.delete(item.id);
+    const warning = planEarlyStartWarning(label);
+    for (const dependent of early) {
+      // A done dependent keeps its note (it says how it was done); the Inbox item lists it.
+      if (dependent.state === 'done' || dependent.state === 'pending' || (dependent.note ?? '').includes(warning)) continue;
+      await repo.updateItem(dependent.id, { note: dependent.note ? `${warning}; ${dependent.note}` : warning });
+    }
+    if (how === 'developer' && early.length === 0 && jiraTold === null) return;
+    const detail = [
+      `Plan "${plan.title}". ${live ? 'Its todo is open again and it goes on in its run session.' : 'Its todo is open again; its run session is closed: reopen it to go on, or Mark done.'}`,
+      early.length > 0 ? `Started before ${label} was merged (their branches may lack its work; they were not stopped): ${early.map((other) => itemLabel(other)).join(', ')}.` : null,
+      jiraTold !== null ? `Jira was told ${jiraTold} was merged/Done: check ${jiraTold} (Switchboard corrects nothing in Jira).` : null,
+    ]
+      .filter((line): line is string => line !== null)
+      .join('\n\n');
+    await this.#env
+      .notice({ kind: 'plan-reopened', sessionId: plan.sourceSessionId, title: how === 'auto' ? `Reopened ${label}: ${why}` : `Reopened ${label} (${plan.title})`, detail, dedupe: `plan-reopened:${item.id}:${doneAt ?? ''}` })
+      .catch((error: unknown) => this.#onError(error));
   }
 
   async #fail(item: PlanItemRecord, reason: string): Promise<void> {
@@ -2293,6 +2491,11 @@ export class PlanService {
 }
 
 // ── input checks ──────────────────────────────────────────────────────────
+
+/** D121: a reopened item whose run session was closed or gone when it was reopened (its stored reason says so). */
+function reopenedWithoutSession(item: Pick<PlanItemRecord, 'state' | 'reason'>): boolean {
+  return item.state === 'running' && item.reason === REOPENED_STOPPED;
+}
 
 /**
  * D115: the plan's agent picks each item's repositories. Stored as a plan with a target branch and

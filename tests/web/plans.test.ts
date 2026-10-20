@@ -31,6 +31,8 @@ import {
   timeline,
   timelineSummary,
   waitingText,
+  canReopen,
+  earlyStartWarning,
 } from '../../src/web/plans/model.ts';
 
 const T0 = Date.parse('2026-10-13T08:00:00.000Z');
@@ -401,5 +403,22 @@ describe('D112 · the last Jira import\'s place', () => {
     const kept = { sidebarFolders: { [sidebarChoiceKey(null, 'f1')]: 'sf1', [sidebarChoiceKey('m2', 'f1')]: null, bad: 7, empty: '' } };
     expect(parsePlace(JSON.stringify(kept)).sidebarFolders).toEqual({ '|f1': 'sf1', 'm2|f1': null });
     expect(parsePlace(JSON.stringify({ sidebarFolders: [] })).sidebarFolders).toEqual({});
+  });
+});
+
+describe('D121 · Reopen and the early-start warning', () => {
+  it('Reopen: a done item of a running or paused plan of this machine', () => {
+    expect(canReopen({ state: 'running', machine: null }, { state: 'done' })).toBe(true);
+    expect(canReopen({ state: 'paused', machine: null }, { state: 'done' })).toBe(true);
+    expect(canReopen({ state: 'done', machine: null }, { state: 'done' })).toBe(false);
+    expect(canReopen({ state: 'running', machine: null }, { state: 'running' })).toBe(false);
+    expect(canReopen({ state: 'running', machine: { id: 'm2', name: 'Studio', state: 'online' } }, { state: 'done' })).toBe(false);
+  });
+  it('the warning is read from the note, also next to another remark', () => {
+    const warning = 'started before PROJ-1 was merged — its branch may lack that work';
+    expect(earlyStartWarning({ note: warning })).toBe(warning);
+    expect(earlyStartWarning({ note: `${warning}; checks failed` })).toBe(warning);
+    expect(earlyStartWarning({ note: 'checks failed' })).toBeNull();
+    expect(earlyStartWarning({ note: null })).toBeNull();
   });
 });

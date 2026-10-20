@@ -21,6 +21,8 @@ import {
   STATE_LOOK,
   STOPPED_LABEL,
   canEditDependencies,
+  canReopen,
+  earlyStartWarning,
   editHint,
   inlineAction,
   itemSessionId,
@@ -55,6 +57,8 @@ type Open = 'start' | 'mode' | 'limits' | 'add' | null;
 function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly plan: Plan; readonly selectedId: string | null; readonly onSelect: (itemId: string) => void; readonly onOpen: (item: PlanItem) => void; readonly onMerged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // D121: the done row whose ⋯ menu (Reopen) is open.
+  const [menu, setMenu] = useState<string | null>(null);
   return (
     <div className="sb-plan-rows" data-testid="plan-list">
       {error ? <div className="sb-plan-error">{error}</div> : null}
@@ -77,7 +81,14 @@ function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly p
                 {look.icon}
               </span>
               <span className="sb-plan-row__key">{item.key ?? ''}</span>
-              <span className="sb-plan-row__title">{item.title}</span>
+              <span className="sb-plan-row__title">
+                {earlyStartWarning(item) ? (
+                  <span className="sb-plan-row__warning" data-testid="plan-row-warning" title={earlyStartWarning(item) ?? undefined} aria-label={earlyStartWarning(item) ?? undefined}>
+                    ⚠{' '}
+                  </span>
+                ) : null}
+                {item.title}
+              </span>
               <span className="sb-plan-row__status" style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
                 {statusLine(item, plan.items)}
               </span>
@@ -87,6 +98,41 @@ function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly p
               <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost sb-plan-row__details" data-testid="plan-row-details" aria-label={`Details of ${item.key ?? item.title}`} title="Details" aria-pressed={selectedId === item.id} onClick={() => onSelect(item.id)}>
                 ⓘ
               </button>
+            ) : null}
+            {canReopen(plan, item) ? (
+              <span className="sb-plan-row__more">
+                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" data-testid="plan-row-more" aria-label={`More for ${item.key ?? item.title}`} aria-expanded={menu === item.id} onClick={() => setMenu(menu === item.id ? null : item.id)}>
+                  ⋯
+                </button>
+                {menu === item.id ? (
+                  <span className="sb-plan-row__menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sb-button sb-plan-btn"
+                      data-testid="plan-row-reopen"
+                      disabled={busy !== null}
+                      title="It runs again: its todo is reopened; the items that started after it are flagged"
+                      onClick={() => {
+                        setBusy(item.id);
+                        setError(null);
+                        plansApi
+                          .reopenItem(plan.id, item.id)
+                          .then(
+                            () => {
+                              setMenu(null);
+                              onMerged();
+                            },
+                            (caught: unknown) => setError(refusalText(caught)),
+                          )
+                          .finally(() => setBusy(null));
+                      }}
+                    >
+                      Reopen
+                    </button>
+                  </span>
+                ) : null}
+              </span>
             ) : null}
             {action === 'answer' ? (
               <button type="button" className="sb-button sb-plan-btn" data-testid="plan-row-answer" onClick={() => onSelect(item.id)}>

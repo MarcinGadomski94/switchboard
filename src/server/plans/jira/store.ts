@@ -281,6 +281,36 @@ export class PlanJiraStore {
       .run(itemId, event, planId, state, attempts, this.#iso());
   }
 
+  /**
+   * D121: how many times item `itemId`'s false "merged" / Done writes were retired (its reopens
+   * that had any): the generation of its merge write events ({@link jiraMergedEvent},
+   * {@link jiraDoneEvent}). Counted from the `reopened:<n>` records {@link retireMergeWrites} leaves.
+   */
+  async mergeGeneration(itemId: string): Promise<number> {
+    const row = this.#db.prepare("SELECT COUNT(*) AS n FROM plan_jira_writes WHERE item_id = ? AND event LIKE 'reopened:%'").get(itemId) as Row | undefined;
+    return Number(row?.['n'] ?? 0);
+  }
+
+  /**
+   * D121: retires the write records `events` of item `itemId` (generation `generation`): each is
+   * renamed `retired:<n>:<event>` (kept for the record, never read as a write again) and a
+   * `reopened:<n>` record moves the item to the next generation, so a real later merge writes its
+   * comment (a new marker) and its Done again. Nothing to retire = nothing changes. Answers
+   * whether anything was retired.
+   */
+  async retireMergeWrites(planId: string, itemId: string, generation: number, events: readonly string[]): Promise<boolean> {
+    const next = generation + 1;
+    let retired = false;
+    transaction(this.#db, () => {
+      for (const event of events) {
+        const result = this.#db.prepare('UPDATE plan_jira_writes SET event = ? WHERE item_id = ? AND event = ?').run(`retired:${next}:${event}`, itemId, event);
+        if (Number(result.changes) > 0) retired = true;
+      }
+      if (retired) this.#db.prepare('INSERT OR IGNORE INTO plan_jira_writes (item_id, event, plan_id, state, attempts, at) VALUES (?, ?, ?, ?, 0, ?)').run(itemId, `reopened:${next}`, planId, 'done', this.#iso());
+    });
+    return retired;
+  }
+
   /** Adds an activity line (the oldest beyond {@link JIRA_ACTIVITY_MAX} go). */
   async addActivity(planId: string, entry: Omit<PlanJiraActivity, 'id' | 'at'>): Promise<PlanJiraActivity> {
     const line: PlanJiraActivity = { id: randomBytes(5).toString('hex'), at: this.#iso(), ...entry };
@@ -304,4 +334,14 @@ export class PlanJiraStore {
       text: String(row['text']),
     }));
   }
+}
+
+/** D121: the "Merged into" comment's write event of merge generation `generation` (0: `merged`, as before). */
+export function jiraMergedEvent(generation: number): string {
+  return generation === 0 ? 'merged' : `merged#${generation}`;
+}
+
+/** D121 (D116): the Done transition's write event of item `itemId` in merge generation `generation` (0: `done:<item>`, as before). */
+export function jiraDoneEvent(itemId: string, generation: number): string {
+  return generation === 0 ? `done:${itemId}` : `done:${itemId}#${generation}`;
 }

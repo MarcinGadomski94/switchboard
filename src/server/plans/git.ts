@@ -6,16 +6,27 @@ import { type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 export interface PlanRepoState {
   /** The repo's solution name. */
   readonly repo: string;
-  /** The item's branch has commits beyond the commit it was cut from, or a PR. */
+  /** The item's branch has commits of its own beyond the commit it was cut from (D121), or a PR. */
   readonly hasWork: boolean;
-  /** Its work is in the target branch: its PR into the target was merged, or its tip is in the local / origin target. */
+  /**
+   * D121: its work is in the target branch: its PR into the target is merged (gh `MERGED`; closed
+   * or open never counts), or the branch has commits of its own and its tip is in the local
+   * target or in `origin/<target>` (the remote-tracking ref as it is: no fetch). A branch without
+   * commits of its own is never merged.
+   */
   readonly merged: boolean;
   /** The PR gh reports for the item's branch; `null` = none (or gh could not be asked). */
-  readonly pr: { readonly url: string | null; readonly state: string; readonly baseRefName: string | null; readonly checks: PlanChecks; readonly mergeable: string | null } | null;
+  readonly pr: { readonly url: string | null; readonly state: string; readonly baseRefName: string | null; readonly checks: PlanChecks; readonly mergeable: string | null; readonly headRefOid?: string | null } | null;
   /** `false` when the repo has no `origin` remote or gh could not be asked: only "merged into the target" counts there (no checks). */
   readonly ghAvailable: boolean;
   /** The branch conflicts with the target (gh's `mergeable: CONFLICTING`, else a local `git merge-tree`); only read when asked. */
   readonly conflict: boolean;
+  /**
+   * D121: not merged, but that is not proven: the branch is gone (a cleanup removes merged
+   * branches), or the repo has an `origin` and its PR could not be read. The auto-repair never
+   * reopens an item on such a reading. Absent = `false`.
+   */
+  readonly unknown?: boolean;
 }
 
 /** One repo of an item for {@link PlanGitPort.inspect}. */
@@ -117,7 +128,7 @@ export class PlanGit implements PlanGitPort {
       const answer = await this.#prs(repoPath, branch);
       if (answer.kind === 'pr') {
         ghAvailable = true;
-        pr = { url: answer.pr.url, state: answer.pr.state, baseRefName: answer.pr.baseRefName, checks: answer.pr.checks, mergeable: answer.pr.mergeable };
+        pr = { url: answer.pr.url, state: answer.pr.state, baseRefName: answer.pr.baseRefName, checks: answer.pr.checks, mergeable: answer.pr.mergeable, headRefOid: answer.pr.headRefOid };
       } else if (answer.kind === 'none') {
         ghAvailable = true;
       }
@@ -131,18 +142,22 @@ export class PlanGit implements PlanGitPort {
       }
     }
     const targetRef = (await this.tip(repoPath, `refs/heads/${target}`)) !== null ? target : (await this.tip(repoPath, `refs/remotes/origin/${target}`)) !== null ? `origin/${target}` : null;
-    const committed = tip !== null && cut !== null && tip !== cut;
+    // D121: the work of its own the branch has beyond where it started (see ownWork); none = never merged.
+    const own = tip === null ? { start: cut, committed: false } : await this.#ownWork(repoPath, branch, tip, cut);
+    const committed = own.committed;
     let localMerged = false;
     if (committed && tip !== null) {
       for (const ref of [`refs/heads/${target}`, `refs/remotes/origin/${target}`]) {
         if ((await this.tip(repoPath, ref)) === null) continue;
-        if (succeeded(await this.#run(repoPath, ['merge-base', '--is-ancestor', tip, ref]))) {
+        if (await this.#isAncestor(repoPath, tip, ref)) {
           localMerged = true;
           break;
         }
       }
     }
-    const prMerged = pr !== null && pr.state === 'MERGED' && (pr.baseRefName === null || pr.baseRefName === target);
+    // D121: a PR counts only when GitHub says MERGED (a closed or open one never), into the target itself, with a head beyond the branch's start.
+    const prHead = pr?.headRefOid ?? null;
+    const prMerged = pr !== null && pr.state === 'MERGED' && pr.baseRefName === target && (prHead === null || own.start === null || prHead !== own.start);
     const merged = prMerged || localMerged;
     let conflict = false;
     if (options.conflicts === true && !merged && committed && tip !== null) {
@@ -153,7 +168,50 @@ export class PlanGit implements PlanGitPort {
         conflict = tree.error === null && tree.code === 1;
       }
     }
-    return { repo: input.repo, hasWork: committed || pr !== null, merged, pr, ghAvailable, conflict };
+    const unknown = !merged && (tip === null || (hasOrigin && !ghAvailable));
+    return { repo: input.repo, hasWork: committed || pr !== null, merged, pr, ghAvailable, conflict, unknown };
+  }
+
+  /**
+   * D121 (`docs/plans.md` → *Merge step*): whether branch `branch` (at `tip`) has work of its own,
+   * and the commit it started from. The start is the commit its reflog says it was created from
+   * (exact, also when the target moved between the scheduler's read of the cut and the worktree's
+   * cut), else the recorded `cut`; with neither nothing is proven (no work). Work of its own: the
+   * tip is beyond the start (`start` an ancestor of `tip`, `tip` ≠ `start`) and, when the reflog
+   * tells, at least one entry that made a commit of its own (a commit, an amend, a cherry-pick, a
+   * revert, a rebase that kept commits) is still on the branch. A branch only fast-forwarded,
+   * reset or rebased onto newer target commits has no work of its own: it is never "merged".
+   */
+  async #ownWork(repoPath: string, branch: string, tip: string, cut: string | null): Promise<{ readonly start: string | null; readonly committed: boolean }> {
+    const reflog = await this.#reflog(repoPath, branch);
+    const oldest = reflog.at(-1);
+    const created = oldest !== undefined && oldest.subject.startsWith('branch: Created from') ? oldest.sha : null;
+    const start = created ?? cut;
+    if (start === null || tip === start || !(await this.#isAncestor(repoPath, start, tip))) return { start, committed: false };
+    // Without a reflog (expired, or switched off) the commits beyond the recorded cut are all there is to go by.
+    if (created === null) return { start, committed: true };
+    for (const entry of reflog) {
+      if (entry.sha === start || !isOwnEntry(entry)) continue;
+      if (!(await this.#isAncestor(repoPath, entry.sha, tip)) || (await this.#isAncestor(repoPath, entry.sha, start))) continue;
+      return { start, committed: true };
+    }
+    return { start, committed: false };
+  }
+
+  /** The reflog of `refs/heads/<branch>`, newest first (`[]` when it has none). */
+  async #reflog(repoPath: string, branch: string): Promise<Array<{ readonly sha: string; readonly subject: string }>> {
+    const result = await this.#run(repoPath, ['reflog', 'show', '--format=%H %gs', `refs/heads/${branch}`, '--']);
+    if (!succeeded(result)) return [];
+    const out: Array<{ sha: string; subject: string }> = [];
+    for (const line of result.stdout.split('\n')) {
+      const match = /^([0-9a-f]{40,64}) (.*)$/.exec(line.trim());
+      if (match) out.push({ sha: match[1] as string, subject: match[2] as string });
+    }
+    return out;
+  }
+
+  async #isAncestor(repoPath: string, ancestor: string, of: string): Promise<boolean> {
+    return succeeded(await this.#run(repoPath, ['merge-base', '--is-ancestor', ancestor, of]));
   }
 
   async #hasOrigin(repoPath: string): Promise<boolean> {
@@ -167,6 +225,17 @@ export class PlanGit implements PlanGitPort {
   #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
     return runCommand(this.#gh, args, { cwd, env: { ...this.#env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }, timeoutMs: this.#timeout });
   }
+}
+
+/**
+ * D121: a reflog entry that made a commit of the branch's own: `commit` / `commit (amend)`,
+ * `cherry-pick`, `revert`, `am`, or a rebase / pull --rebase that ended on a commit other than the
+ * one it went onto. A fast-forward, a reset, a merge commit or the branch's creation is not.
+ */
+function isOwnEntry(entry: { readonly sha: string; readonly subject: string }): boolean {
+  if (/^commit( \(amend\))?: /.test(entry.subject) || /^(cherry-pick|revert|am)\b/.test(entry.subject)) return true;
+  const rebase = /\(finish\): .* onto ([0-9a-f]{40,64})$/.exec(entry.subject);
+  return rebase !== null && rebase[1] !== entry.sha;
 }
 
 function parsePr(result: RunResult): PlanRepoState['pr'] {
@@ -185,5 +254,6 @@ function parsePr(result: RunResult): PlanRepoState['pr'] {
     baseRefName: typeof value['baseRefName'] === 'string' ? value['baseRefName'] : null,
     checks: checksFromRollup(value['statusCheckRollup'], sha),
     mergeable: typeof value['mergeable'] === 'string' ? value['mergeable'].toUpperCase() : null,
+    headRefOid: sha,
   };
 }
