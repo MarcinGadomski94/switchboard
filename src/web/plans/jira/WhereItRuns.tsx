@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Folder, ModelSettings } from '../../../core/api.ts';
 import { DEFAULT_MODEL_CHOICE, type ModelChoice } from '../../../core/model-choice.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
@@ -13,7 +13,11 @@ import { defaultFolder, folderById, folderCheckLine } from '../../folders/folder
 import { useSavedFolders } from '../../folders/useFolders.ts';
 import { NO_MODEL_SETTINGS, folderChoices, formModel, formModelOptions, formModelPicker, pickFormEffort, pickFormModel, resolveFormFolder } from '../../modals/new-session.ts';
 import { ModelChoicePicker } from '../../views/session/ModelPicker.tsx';
-import type { JiraImportPlace } from './place.ts';
+import { defaultPlanSidebarFolder, planSidebarFolderProblem } from '../../../core/plans-jira.ts';
+import { folderDepth } from '../../../core/sidebar-layout.ts';
+import { useSessionListOf } from '../../api/session-list.ts';
+import { useSidebarLayout } from '../../shell/SidebarSessions.tsx';
+import { type JiraImportPlace, sidebarChoiceKey } from './place.ts';
 
 /** What the section resolved: the folder as saved on that machine, the CLI and the model choice the session starts with. */
 export interface ResolvedPlace {
@@ -35,11 +39,14 @@ export function WhereItRuns({
   place,
   onChange,
   onResolved,
+  onSidebar,
   disabled = false,
 }: {
   readonly place: JiraImportPlace;
   readonly onChange: (patch: Partial<JiraImportPlace>) => void;
   readonly onResolved: (resolved: ResolvedPlace) => void;
+  /** D119: the sidebar folder picked (or suggested) for the plan's own subfolder. */
+  readonly onSidebar: (sidebarFolderId: string | null) => void;
   readonly disabled?: boolean;
 }) {
   const machine = place.machine;
@@ -77,6 +84,24 @@ export function WhereItRuns({
     // `folder` and `choice` are compared by what they name.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folderId, folder?.kind, provider, modelKey, ready, onResolved]);
+
+  // D119: the sidebar folder the plan's own subfolder "Plan · …" goes into. This machine's layout (the one the
+  // developer sees; the shared one when D71 sharing is on), also for a plan on a paired machine: its session is
+  // placed here by its remote id. The default follows the working folder until the developer picks one by hand.
+  const { layout } = useSidebarLayout();
+  const listed = useSessionListOf();
+  const [pickedSidebar, setPickedSidebar] = useState<{ readonly id: string | null } | null>(null);
+  const lastSidebar = folderId ? place.sidebarFolders[sidebarChoiceKey(machine, folderId)] : undefined;
+  const suggestedSidebar = useMemo(
+    () => defaultPlanSidebarFolder({ layout, sessions: listed.data ?? [], machine, workingFolder: folder ? { id: folder.id, path: folder.canonicalPath } : null, lastChoice: lastSidebar }),
+    // `folder` is compared by what it names.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layout, listed.data, machine, folderId, folder?.canonicalPath, lastSidebar],
+  );
+  const sidebarFolderId = pickedSidebar !== null && (pickedSidebar.id === null || planSidebarFolderProblem(layout, pickedSidebar.id) === null) ? pickedSidebar.id : suggestedSidebar;
+  useEffect(() => {
+    onSidebar(sidebarFolderId);
+  }, [sidebarFolderId, onSidebar]);
 
   const choices = folderChoices(list ?? []);
   const checkLine = folderCheckLine(folder?.check ?? null);
@@ -147,6 +172,26 @@ export function WhereItRuns({
         ) : null}
         {folder?.kind === 'plain' ? <em className="sb-jira-error">A plan merges into a target branch: pick a git repository or a workspace.</em> : null}
       </div>
+      <label className="sb-jira-field">
+        <span>Sidebar folder</span>
+        <select
+          data-testid="jira-where-sidebar"
+          value={sidebarFolderId ?? ''}
+          disabled={disabled}
+          onChange={(event) => setPickedSidebar({ id: event.target.value === '' ? null : event.target.value })}
+        >
+          <option value="">Sidebar root</option>
+          {layout.folders.map((entry) => {
+            const full = planSidebarFolderProblem(layout, entry.id) !== null;
+            return (
+              <option key={entry.id} value={entry.id} disabled={full} title={full ? 'Too deep for one more folder' : entry.name}>
+                {`${'\u00a0\u00a0\u00a0'.repeat(Math.max(0, folderDepth(layout, entry.id) - 1))}${entry.name}`}
+              </option>
+            );
+          })}
+        </select>
+        <em className="sb-jira-muted">The plan gets its own subfolder here, with the session first; its runs start next to it.</em>
+      </label>
       <div className="sb-jira-row">
         <div className="sb-jira-field">
           <span>CLI</span>

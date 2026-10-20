@@ -6,7 +6,7 @@ import { machineApi, onDeviceOrigin } from '../../api/client.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { JiraApiError, jiraApi } from './api.ts';
 import { JiraCredentialsForm } from './JiraCredentialsForm.tsx';
-import { type JiraImportPlace, loadLastPlace, saveLastPlace } from './place.ts';
+import { type JiraImportPlace, loadLastPlace, saveLastPlace, sidebarChoiceKey } from './place.ts';
 import { type ResolvedPlace, WhereItRuns } from './WhereItRuns.tsx';
 import './jira.css';
 
@@ -96,6 +96,9 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
     setError(null);
   }, []);
   const onResolved = useCallback((next: ResolvedPlace) => setResolved(next), []);
+  // D119: the sidebar folder of the plan's own subfolder (kept apart: it settles after the folder does).
+  const [sidebarFolderId, setSidebarFolderId] = useState<string | null>(null);
+  const onSidebar = useCallback((next: string | null) => setSidebarFolderId(next), []);
 
   useEffect(() => {
     if (!askRepos) return;
@@ -173,8 +176,17 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
           ...(resolved ? { provider: resolved.provider } : {}),
           ...(resolved?.model ? { model: resolved.model.model, effort: resolved.model.effort } : {}),
           ...(place.profileId ? { profileId: place.profileId } : {}),
+          // D119: the plan's own subfolder goes into this sidebar folder (null = the root).
+          sidebarFolderId,
         });
-        saveLastPlace({ ...place, folder: folder ?? null, provider: resolved?.provider ?? place.provider, repos: [], baseBranch: base.trim() === '' ? place.baseBranch : base });
+        saveLastPlace({
+          ...place,
+          folder: folder ?? null,
+          provider: resolved?.provider ?? place.provider,
+          repos: [],
+          baseBranch: base.trim() === '' ? place.baseBranch : base,
+          sidebarFolders: folder ? { ...place.sidebarFolders, [sidebarChoiceKey(place.machine, folder)]: sidebarFolderId } : place.sidebarFolders,
+        });
         onImported(answer.plan);
         return;
       }
@@ -227,7 +239,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
               {busy === 'preview' ? 'Reading…' : 'Preview'}
             </button>
           </form>
-          {inFolder ? <WhereItRuns place={place} onChange={changePlace} onResolved={onResolved} disabled={busy !== null} /> : null}
+          {inFolder ? <WhereItRuns place={place} onChange={changePlace} onResolved={onResolved} onSidebar={onSidebar} disabled={busy !== null} /> : null}
           {inFolder && onUseSession ? (
             <button type="button" className="sb-jira-link" data-testid="jira-use-session" disabled={busy !== null} onClick={onUseSession}>
               Use an existing session instead

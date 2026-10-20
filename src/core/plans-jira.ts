@@ -887,6 +887,8 @@ export interface PlanFolderSession {
  * 2. none → the developer's last choice for that working folder (`lastChoice`: a folder id
  *    while it still exists, `null` = the root; `undefined` = none remembered);
  * 3. otherwise the root.
+ *
+ * A folder too deep to hold the plan's subfolder (D58) gives the nearest folder above it that can.
  */
 export function defaultPlanSidebarFolder(input: {
   readonly layout: SidebarLayout;
@@ -922,8 +924,17 @@ export function defaultPlanSidebarFolder(input: {
     }
     let best: { id: string; count: number; latest: number } | null = null;
     for (const [id, entry] of tally) if (!best || entry.count > best.count || (entry.count === best.count && entry.latest > best.latest)) best = { id, ...entry };
-    if (best) return best.id;
+    if (best) return roomy(layout, best.id);
   }
-  if (input.lastChoice !== undefined && input.lastChoice !== null && byId.has(input.lastChoice)) return input.lastChoice;
+  if (input.lastChoice !== undefined && input.lastChoice !== null && byId.has(input.lastChoice)) return roomy(layout, input.lastChoice);
   return null;
+}
+
+/** `id`, or the nearest folder above it that can hold one more level ({@link planSidebarFolderProblem}); `null` = the root. */
+function roomy(layout: SidebarLayout, id: string): string | null {
+  let at: string | null = id;
+  for (let guard = 0; at !== null && planSidebarFolderProblem(layout, at) !== null && guard <= layout.folders.length; guard += 1) {
+    at = layout.folders.find((folder) => folder.id === at)?.parentId ?? null;
+  }
+  return at;
 }

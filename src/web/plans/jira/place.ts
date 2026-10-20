@@ -17,13 +17,23 @@ export interface JiraImportPlace {
   readonly profileId: string | null;
   readonly repos: readonly string[];
   readonly baseBranch: string;
+  /**
+   * D119: the sidebar folder the developer last put a plan of each working folder in, keyed
+   * {@link sidebarChoiceKey} (machine and saved folder): a sidebar folder id, `null` = the root.
+   */
+  readonly sidebarFolders: Readonly<Record<string, string | null>>;
+}
+
+/** D119: the key of a working folder (that machine's saved folder) in {@link JiraImportPlace.sidebarFolders}. */
+export function sidebarChoiceKey(machine: string | null, folder: string): string {
+  return `${machine ?? ''}|${folder}`;
 }
 
 /** The `localStorage` key of the last import's place. */
 export const LAST_PLACE_KEY = 'switchboard.plans.jiraImport.place';
 
 /** A first import: this machine, the default folder, the default CLI and model, `dev`. */
-export const DEFAULT_PLACE: JiraImportPlace = { machine: null, folder: null, provider: null, model: null, profileId: null, repos: [], baseBranch: 'dev' };
+export const DEFAULT_PLACE: JiraImportPlace = { machine: null, folder: null, provider: null, model: null, profileId: null, repos: [], baseBranch: 'dev', sidebarFolders: {} };
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
@@ -54,7 +64,16 @@ export function parsePlace(raw: string | null): JiraImportPlace {
     profileId: text(record['profileId']),
     repos: [...new Set(repos)],
     baseBranch: text(record['baseBranch']) ?? DEFAULT_PLACE.baseBranch,
+    sidebarFolders: sidebarChoices(record['sidebarFolders']),
   };
+}
+
+/** D119: the remembered sidebar folders (anything that is not a folder id or `null` is dropped). */
+function sidebarChoices(value: unknown): Record<string, string | null> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const out: Record<string, string | null> = {};
+  for (const [key, choice] of Object.entries(value as Record<string, unknown>)) if (choice === null || (typeof choice === 'string' && choice !== '')) out[key] = choice;
+  return out;
 }
 
 /** The last import's place (this browser). */

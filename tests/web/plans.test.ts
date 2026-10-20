@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PLAN_PICK_REPOS_REASON, type Plan, type PlanItem } from '../../src/core/plans.ts';
-import { DEFAULT_PLACE, parsePlace } from '../../src/web/plans/jira/place.ts';
+import { DEFAULT_PLACE, parsePlace, sidebarChoiceKey } from '../../src/web/plans/jira/place.ts';
 import {
   GRAPH,
   STATE_LOOK,
@@ -366,7 +366,13 @@ describe('D112 · the last Jira import\'s place', () => {
     expect(parsePlace('not json')).toEqual(DEFAULT_PLACE);
     expect(parsePlace('[]')).toEqual(DEFAULT_PLACE);
     const kept = { machine: 'm2', folder: 'f1', provider: 'codex', model: { model: 'gpt-x', effort: 'high' }, profileId: 'p1', repos: ['mobile', 'mobile', 'web-front'], baseBranch: 'main' };
-    expect(parsePlace(JSON.stringify(kept))).toEqual({ ...kept, repos: ['mobile', 'web-front'] });
+    expect(parsePlace(JSON.stringify(kept))).toEqual({ ...kept, repos: ['mobile', 'web-front'], sidebarFolders: {} });
     expect(parsePlace(JSON.stringify({ provider: 'nope', model: 'x', repos: 'mobile', baseBranch: '' }))).toEqual(DEFAULT_PLACE);
+  });
+
+  it('D119: keeps the last sidebar folder per working folder (a folder id or null = the root)', () => {
+    const kept = { sidebarFolders: { [sidebarChoiceKey(null, 'f1')]: 'sf1', [sidebarChoiceKey('m2', 'f1')]: null, bad: 7, empty: '' } };
+    expect(parsePlace(JSON.stringify(kept)).sidebarFolders).toEqual({ '|f1': 'sf1', 'm2|f1': null });
+    expect(parsePlace(JSON.stringify({ sidebarFolders: [] })).sidebarFolders).toEqual({});
   });
 });

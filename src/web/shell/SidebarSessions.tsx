@@ -68,7 +68,7 @@ function layoutErrorText(caught: unknown): string {
 }
 
 /** What {@link useSidebarLayout} gives the list. */
-interface SidebarLayoutControl {
+export interface SidebarLayoutControl {
   readonly layout: SidebarLayout;
   /** Runs one write; its answer (the whole new layout) replaces the shown one. */
   readonly run: (call: () => Promise<SidebarLayout>) => Promise<boolean>;
@@ -79,8 +79,9 @@ interface SidebarLayoutControl {
  * D54: the stored layout (`GET /api/sidebar`), kept current by every write's
  * answer and by `sidebarLayoutChanged` (another tab, the installed app), and
  * read again whenever the `/hub` stream (re)opens (a change may have been missed).
+ * D119: the Import from Jira dialog's sidebar-folder picker reads it too.
  */
-function useSidebarLayout(): SidebarLayoutControl {
+export function useSidebarLayout(): SidebarLayoutControl {
   const [layout, setLayout] = useState<SidebarLayout>(EMPTY_SIDEBAR_LAYOUT);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {

@@ -105,6 +105,11 @@ describe('defaultPlanSidebarFolder', () => {
     expect(defaultPlanSidebarFolder({ layout, sessions, machine: 'peer', workingFolder: WORK })).toBe('misc');
   });
 
+  it('a folder too deep for one more level gives the nearest one above it', () => {
+    const deep: SidebarLayout = { pinned: [], folders: [folder('l1', 'L1', []), folder('l2', 'L2', [], 'l1'), folder('l3', 'L3', [], 'l2'), folder('l4', 'L4', [], 'l3'), folder('l5', 'L5', ['a1'], 'l4')] };
+    expect(defaultPlanSidebarFolder({ layout: deep, sessions: [session('a1')], machine: null, workingFolder: WORK })).toBe('l4');
+  });
+
   it('none → the last choice while that folder exists, else the root', () => {
     expect(defaultPlanSidebarFolder({ layout, sessions: [], machine: null, workingFolder: WORK, lastChoice: 'ops' })).toBe('ops');
     expect(defaultPlanSidebarFolder({ layout, sessions: [], machine: null, workingFolder: WORK, lastChoice: 'gone' })).toBeNull();

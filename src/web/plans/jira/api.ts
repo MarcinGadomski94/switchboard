@@ -59,6 +59,8 @@ export interface JiraFolderImportBody extends JiraImportBody {
   readonly model?: string | null;
   readonly effort?: string | null;
   readonly profileId?: string;
+  /** D119: the sidebar folder the plan's own subfolder "Plan · …" goes into (`null` = the top level; omitted = none). */
+  readonly sidebarFolderId?: string | null;
 }
 
 /** The answer of an import. */
