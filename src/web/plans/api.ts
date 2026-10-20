@@ -85,6 +85,8 @@ export const plansApi = {
   updateItem: (id: string, itemId: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/items/${enc(itemId)}`, body),
   removeItem: (id: string, itemId: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/items/${enc(itemId)}`),
   retryItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/retry`),
+  /** D121: Reopen a done item of a running or paused plan (it runs again; its dependents that started early are flagged). */
+  reopenItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/reopen`),
   /** Mark done (also the developer's confirmation of a held item of a plan without a merge step). */
   markItemDone: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/done`),
   /** D102: the Merge step of a ready-to-merge item (merge locally into the target; open its PR; send it back with a comment). */

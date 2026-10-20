@@ -961,6 +961,43 @@
   }
 }
 
+/* D121: a dependent that started before the item it waits on was really merged. */
+.sb-plan-row__warning,
+.sb-plan-detail__note--warning {
+  color: var(--status-need);
+}
+
+/* D121: a done row's ⋯ with Reopen. */
+.sb-plan-row__more {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sb-plan-row__more > .sb-plan-btn {
+  min-width: 32px;
+  justify-content: center;
+}
+
+.sb-plan-row__menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  display: flex;
+  padding: 4px;
+  border: 1px solid var(--border-row);
+  border-radius: 6px;
+  background: var(--bg-card-2);
+}
+
+@media (pointer: coarse) {
+  .sb-plan-row__more > .sb-plan-btn {
+    min-width: 44px;
+  }
+}
+
 /* D120: the plan's "1 stopped" chip (its items' agents ended their turn without finishing). */
 .sb-plan-stopped-chip {
   color: var(--status-fail);

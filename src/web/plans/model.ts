@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_EARLY_START_PREFIX, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -73,6 +73,20 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
     case 'blocked':
       return 'blocked';
   }
+}
+
+/** D121: the warning on an item that started before an item it waits on was really merged (part of its note), `null` = none. */
+export function earlyStartWarning(item: Pick<PlanItem, 'note'>): string | null {
+  const note = item.note ?? '';
+  const at = note.indexOf(PLAN_EARLY_START_PREFIX);
+  if (at < 0) return null;
+  const end = note.indexOf('; ', at);
+  return note.slice(at, end < 0 ? undefined : end);
+}
+
+/** D121: whether done item `item` can be reopened here (a running or paused plan of this machine). */
+export function canReopen(plan: Pick<Plan, 'state' | 'machine'>, item: Pick<PlanItem, 'state'>): boolean {
+  return item.state === 'done' && (plan.state === 'running' || plan.state === 'paused') && plan.machine === null;
 }
 
 /** D120: the status line and chip of a `stopped` item (its agent ended its turn without finishing). */
