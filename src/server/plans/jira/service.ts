@@ -203,6 +203,17 @@ interface ImportChecked {
 const MARKED_DONE = 'marked done by the developer';
 
 /**
+ * D116: the target branch an item was really merged into (an agent's or the developer's Merge), or `null`
+ * when nothing was merged: the item is not done, the developer marked it done, the plan has no target,
+ * or its merge mode is `none` (no merge step). Gates both the "Merged into" comment and the Done transition.
+ */
+function mergedIntoTarget(plan: Plan, item: PlanItem): string | null {
+  if (item.storedState !== 'done' || item.note === MARKED_DONE) return null;
+  if (plan.targetBranch === null || plan.mergeMode === null || plan.mergeMode === 'none') return null;
+  return plan.targetBranch;
+}
+
+/**
  * D99 · Plans · Jira (`docs/plans.md` → *Jira import and status sync*): the import (an epic's
  * children → a draft plan through the core's {@link PlanService.createFromExternal} seam) and
  * the per-plan status sync (`off` / `read-only` / `write`). The write mode follows
@@ -903,11 +914,11 @@ export class PlanJiraService {
       const done = await (await this.#jdb()).write(row.itemId, event);
       if (current.questionOpen || done?.state === 'pending') await pass.comment(current, event, JIRA_COMMENTS.question());
     }
-    // 4. Merged into the target: a comment.
-    if (item.storedState === 'done' && item.note !== MARKED_DONE && pass.plan.targetBranch !== null) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(pass.plan.targetBranch));
-    // 5. D116: then Done, when the plan asks for it, after a real merge (an agent's or the developer's Merge;
-    // never Mark done, never a plan without a merge step), once the comment is no longer pending (it comes first).
-    if (pass.record.doneOnMerge && item.storedState === 'done' && item.note !== MARKED_DONE && pass.plan.targetBranch !== null && pass.plan.mergeMode !== null && pass.plan.mergeMode !== 'none') {
+    // 4. Merged into the target (a real merge only, see mergedIntoTarget): a comment.
+    const target = mergedIntoTarget(pass.plan, item);
+    if (target !== null) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(target));
+    // 5. D116: then Done, when the plan asks for it, after the same real merge, once the comment is no longer pending (it comes first).
+    if (pass.record.doneOnMerge && target !== null) {
       const comment = await (await this.#jdb()).write(row.itemId, 'merged');
       if (comment && comment.state !== 'pending') await pass.transition(current, `done:${item.id}`, transitions.done, `merged into ${pass.plan.targetBranch}`, true);
     }

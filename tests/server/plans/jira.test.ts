@@ -560,11 +560,12 @@ describe('D116 · Move to Done when merged into the feature branch', () => {
     expect(commentsOf(r, 'PROJ-15').some((text) => text.startsWith('Merged into'))).toBe(false);
   });
 
-  it('a plan without a merge step (mergeMode none) never moves a ticket to Done', async () => {
+  it('a plan without a merge step (mergeMode none, with a target) neither comments "Merged into" nor moves a ticket to Done', async () => {
     const r = await setup();
     const { planId } = await importEpic(r, 'write');
     await r.plans.startPlan(planId, { mergeMode: 'none' });
     await settle(r);
+    expect((await r.plans.get(planId)).targetBranch).toBe('feature/PROJ-10-acme-checkout');
     const p11 = await item(r, planId, 'PROJ-11');
     await r.todos.update(r.sourceId, p11.todoId, { state: 'done' }, 'agent');
     await status(r, p11.runSessionId as string, 'idle');
@@ -572,6 +573,19 @@ describe('D116 · Move to Done when merged into the feature branch', () => {
     r.bus.publish('planChanged', { planId, state: 'running' });
     await settle(r);
     expect(r.fake.issues.get('PROJ-11')?.status).toBe('In Progress');
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(0);
+    expect(commentsOf(r, 'PROJ-11').some((text) => text.startsWith('Merged into'))).toBe(false);
+    expect((await jiraState(r, planId)).activity.map((entry) => entry.text).some((text) => text.includes('Merged into'))).toBe(false);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('an agents-mode merge still comments "Merged into <target>" (Done off: the comment only)', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write', { doneOnMerge: false });
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    await agentMerges11(r, planId);
+    expect(commentsOf(r, 'PROJ-11').filter((text) => text.startsWith('Merged into feature/PROJ-10-acme-checkout.'))).toHaveLength(1);
     expect(donePosts(r, 'PROJ-11')).toHaveLength(0);
   });
 
