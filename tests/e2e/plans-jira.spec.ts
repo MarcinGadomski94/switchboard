@@ -173,3 +173,64 @@ test('the plan shows the proposed order; ✓ adds the dependency, ✕ rejects; S
   await expect(page.getByText('Plans', { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId('experimental-plans-jira')).toHaveCount(0);
 });
+
+test('a workspace session without solutions: Create plan says to pick the repositories, then creates the plan with them (never a silent no-op)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto(`${server.baseUrl}/inbox`);
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
+  // D38: a workspace session may start without solutions (the agent determines them); the plan's target branch needs repos.
+  const started = await call(page, 'POST', '/api/sessions', { name: 'epic-no-solutions', task: 'Reply with just OK.', workType: 'feature', mode: 'single', solutions: [], phase: 'ui-first', coordination: 'none', qa: null, worktrees: false, ultracode: false });
+  expect(started.status, started.text).toBe(201);
+  const sessionId = started.body.id as string;
+
+  await page.goto(`${server.baseUrl}/plans`);
+  await page.getByTestId('plans-import-jira').click();
+  const picker = page.getByTestId('plan-jira-source-dialog');
+  await picker.getByTestId('plan-jira-source-session').selectOption(sessionId);
+  await picker.getByTestId('plan-jira-source-continue').click();
+  const dialog = page.getByTestId('jira-import');
+  await dialog.getByTestId('jira-epic').fill('PROJ-10');
+  await dialog.getByTestId('jira-preview').click();
+  await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
+
+  // Create plan cannot be pressed yet, and the footer says why.
+  await expect(dialog.getByTestId('jira-create')).toBeDisabled();
+  await expect(dialog.getByTestId('jira-create-blocked')).toHaveText('Pick the repositories the target branch lives in.');
+  await expect(dialog.getByTestId('jira-create-blocked')).toBeInViewport();
+  const repos = dialog.getByTestId('jira-repos');
+  await expect(repos.getByRole('checkbox')).toHaveCount(2);
+  await repos.getByTestId('jira-repo-mobile').check();
+  await expect(dialog.getByTestId('jira-create-blocked')).toHaveCount(0);
+  await dialog.getByTestId('jira-create').click();
+
+  // The draft opens with the imported items, dependencies and the epic link.
+  await expect(page.getByTestId('plan-title')).toHaveText('PROJ-10 Acme checkout');
+  const planId = (await page.getByTestId('plan-page').getAttribute('data-plan-id')) as string;
+  const plan = (await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}`)).body;
+  expect(plan).toMatchObject({ state: 'draft', repos: ['mobile'], targetBranch: 'feature/PROJ-10-acme-checkout', external: { system: 'jira', key: 'PROJ-10' } });
+  expect(plan.items.map((item: { key: string }) => item.key)).toEqual(['PROJ-11', 'PROJ-12', 'PROJ-13', 'PROJ-14', 'PROJ-15']);
+  expect(plan.edges).toHaveLength(3);
+  expect((await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}/jira`)).body).toMatchObject({ epicKey: 'PROJ-10', sync: 'off' });
+});
+
+test("a refused Create plan shows the server's reason by the button, even with the form scrolled", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 480 });
+  await page.goto(`${server.baseUrl}/inbox`);
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
+  const sessionId = await session(page, 'epic-refused');
+  await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
+  await page.getByTestId('dev-open-import').click();
+  const dialog = page.getByTestId('jira-import');
+  await dialog.getByTestId('jira-epic').fill('PROJ-10');
+  await dialog.getByTestId('jira-preview').click();
+  await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
+  // The session names its solution: no repositories to pick.
+  await expect(dialog.getByTestId('jira-repos')).toHaveCount(0);
+  await dialog.getByTestId('jira-target').fill('not a branch');
+  await dialog.getByTestId('jira-create').click();
+  const refused = dialog.getByTestId('jira-create-error');
+  await expect(refused).toBeVisible();
+  await expect(refused).toBeInViewport();
+  await expect(dialog.getByTestId('jira-target-error')).toBeVisible();
+  await expect(page.getByTestId('dev-imported')).toHaveCount(0);
+});

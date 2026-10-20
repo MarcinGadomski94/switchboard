@@ -48,6 +48,11 @@
   border-top: 1px solid var(--border-divider);
 }
 
+.sb-jira-foot-note {
+  flex: 1;
+  min-width: 0;
+}
+
 .sb-jira-body {
   display: flex;
   flex-direction: column;

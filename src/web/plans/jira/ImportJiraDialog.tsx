@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import { DEFAULT_JIRA_TRANSITIONS, JIRA_SYNC_MODES, type JiraPreview, type JiraSyncMode } from '../../../core/plans-jira.ts';
-import { onDeviceOrigin } from '../../api/client.ts';
+import { machineApi, onDeviceOrigin } from '../../api/client.ts';
+import { useSessionListOf } from '../../api/session-list.ts';
 import { JiraApiError, jiraApi } from './api.ts';
 import { JiraCredentialsForm } from './JiraCredentialsForm.tsx';
 import './jira.css';
@@ -34,6 +35,11 @@ const SYNC_LABELS: Readonly<Record<JiraSyncMode, string>> = {
  * target and base branch and its Jira sync (`off` by default, the transition names for
  * `write`) → **Create plan**: a draft; the merge mode is chosen at Start. Without Jira set up it
  * says how (and, on this computer's own UI, offers the credentials form).
+ *
+ * A workspace session started without solutions (D38) names no repos, and an epic's plan needs
+ * them for its target branch: the dialog then asks for the **repositories** (the workspace's
+ * solutions, read-only ones left out). Create plan never fails silently: while it cannot be
+ * pressed the footer says why, and a refused create shows the server's reason next to it.
  */
 export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImported, onClose }: ImportJiraDialogProps) {
   const [epic, setEpic] = useState(initialEpic ?? '');
@@ -45,8 +51,38 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
   const [inProgress, setInProgress] = useState(DEFAULT_JIRA_TRANSITIONS.inProgress);
   const [inReview, setInReview] = useState(DEFAULT_JIRA_TRANSITIONS.inReview);
   const [error, setError] = useState<JiraApiError | null>(null);
+  /** Which call {@link error} came from: a create's refusal shows by the button, a preview's above the preview. */
+  const [errorFrom, setErrorFrom] = useState<'preview' | 'create'>('preview');
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
+  const [pickedRepos, setPickedRepos] = useState<readonly string[]>([]);
+  const [repoChoices, setRepoChoices] = useState<readonly string[] | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
+  const sessions = useSessionListOf();
+  const source = sessions.data?.find((session) => session.id === sourceSessionId) ?? null;
+  // D38: a workspace session may have no solutions yet; the plan's target branch needs repos (the server refuses with field `repos`).
+  const askRepos = repos === undefined && ((source !== null && source.folderKind === 'workspace' && source.solutions.length === 0) || error?.fields['repos'] !== undefined);
+  const sourceMachine = source?.machine?.id ?? null;
+  const sourceFolder = source?.folderPath ?? null;
+
+  useEffect(() => {
+    if (!askRepos) return;
+    let cancelled = false;
+    machineApi(sourceMachine)
+      .solutions(sourceFolder ?? undefined)
+      .then(
+        (groups) => {
+          if (cancelled) return;
+          const names = groups.flatMap((group) => group.solutions.filter((solution) => solution.rule !== 'read-only').map((solution) => solution.name));
+          setRepoChoices([...new Set(names)]);
+        },
+        () => {
+          if (!cancelled) setRepoChoices([]);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [askRepos, sourceMachine, sourceFolder]);
 
   useEffect(() => {
     input.current?.focus();
@@ -57,7 +93,10 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const fail = (caught: unknown) => setError(caught instanceof JiraApiError ? caught : new JiraApiError(0, null, caught instanceof Error ? caught.message : 'failed'));
+  const fail = (caught: unknown, from: 'preview' | 'create') => {
+    setErrorFrom(from);
+    setError(caught instanceof JiraApiError ? caught : new JiraApiError(0, null, caught instanceof Error ? caught.message : 'failed'));
+  };
 
   const runPreview = async () => {
     setBusy('preview');
@@ -69,7 +108,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
       setTarget(answer.suggestedTargetBranch);
     } catch (caught) {
       setPreview(null);
-      fail(caught);
+      fail(caught, 'preview');
     } finally {
       setBusy(null);
     }
@@ -86,18 +125,21 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
         targetBranch: target,
         baseBranch: base,
         sync,
-        ...(repos ? { repos } : {}),
+        ...(repos ? { repos } : askRepos ? { repos: pickedRepos } : {}),
         ...(sync === 'write' ? { transitions: { inProgress, inReview } } : {}),
       });
       onImported(answer.plan);
     } catch (caught) {
-      fail(caught);
+      fail(caught, 'create');
     } finally {
       setBusy(null);
     }
   };
 
   const notConfigured = error?.code === 'jira-not-configured';
+  // Why Create plan cannot be pressed now (shown by the button, so it never looks like a dead click).
+  const blocked = !preview || busy !== null ? null : target.trim() === '' ? "Give the target branch (the epic's feature branch)." : askRepos && pickedRepos.length === 0 ? 'Pick the repositories the target branch lives in.' : null;
+  const createError = error !== null && errorFrom === 'create' && !notConfigured ? error : null;
   const unlinked = new Set(preview?.unlinked ?? []);
 
   return (
@@ -130,7 +172,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
               <p>{error.message}</p>
               {onDeviceOrigin() ? <p className="sb-jira-muted">Set it up on the computer that owns this session.</p> : <JiraCredentialsForm onChanged={(status) => status.configured && setError(null)} />}
             </div>
-          ) : error && !error.fields['targetBranch'] && !error.fields['title'] ? (
+          ) : error && errorFrom === 'preview' ? (
             <div className="sb-jira-error" role="alert" data-testid="jira-error">
               {error.message}
             </div>
@@ -214,6 +256,25 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                     <input data-testid="jira-base" value={base} onChange={(event) => setBase(event.target.value)} />
                   </label>
                 </div>
+                {askRepos ? (
+                  <fieldset className="sb-jira-sync" data-testid="jira-repos">
+                    <legend>Repositories (the session uses none yet: the target branch lives in these)</legend>
+                    {repoChoices === null ? <span className="sb-jira-muted">Reading the workspace's solutions…</span> : null}
+                    {repoChoices !== null && repoChoices.length === 0 ? <span className="sb-jira-muted">No solution repositories found in the session's workspace.</span> : null}
+                    {(repoChoices ?? []).map((name) => (
+                      <label key={name}>
+                        <input
+                          type="checkbox"
+                          data-testid={`jira-repo-${name}`}
+                          checked={pickedRepos.includes(name)}
+                          onChange={(event) => setPickedRepos(event.target.checked ? [...pickedRepos, name] : pickedRepos.filter((picked) => picked !== name))}
+                        />
+                        {name}
+                      </label>
+                    ))}
+                    {error?.fields['repos'] ? <em className="sb-jira-error">{error.fields['repos']}</em> : null}
+                  </fieldset>
+                ) : null}
                 <fieldset className="sb-jira-sync" data-testid="jira-sync">
                   <legend>Jira status sync</legend>
                   {JIRA_SYNC_MODES.map((mode) => (
@@ -241,10 +302,19 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
           ) : null}
         </div>
         <footer className="sb-jira-foot">
+          {createError ? (
+            <span className="sb-jira-error sb-jira-foot-note" role="alert" data-testid="jira-create-error">
+              {createError.message}
+            </span>
+          ) : blocked ? (
+            <span className="sb-jira-muted sb-jira-foot-note" data-testid="jira-create-blocked">
+              {blocked}
+            </span>
+          ) : null}
           <button type="button" className="sb-jira-btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="sb-jira-btn sb-jira-btn-primary" data-testid="jira-create" disabled={!preview || busy !== null || target.trim() === ''} onClick={() => void create()}>
+          <button type="button" className="sb-jira-btn sb-jira-btn-primary" data-testid="jira-create" disabled={!preview || busy !== null || blocked !== null} onClick={() => void create()}>
             {busy === 'create' ? 'Creating…' : 'Create plan'}
           </button>
         </footer>
