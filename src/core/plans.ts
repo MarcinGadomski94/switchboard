@@ -681,7 +681,17 @@ export interface PlanItemBriefInput {
   readonly branch: string | null;
   readonly developerMerges: boolean;
   readonly todo: { readonly id: string; readonly title: string; readonly description: string | null; readonly plan: string | null };
+  /**
+   * D118: a block read from the plan's external list when the run starts (a Jira plan's "Jira
+   * context"), put after the brief and before the merge rule; `null` / omitted = none.
+   */
+  readonly context?: string | null;
+  /** D118: the todo's description is the external list's own text and {@link context} has it fresh: leave it out. */
+  readonly omitDescription?: boolean;
 }
+
+/** D118: the longest first message of an item's run with a context block (the block gets what the brief leaves). */
+export const PLAN_RUN_MESSAGE_MAX = 40_000;
 
 /** The merge rule lines of a brief (also sent again when the plan's mode or the item's hold changes). */
 export function planMergeRule(input: { readonly targetBranch: string; readonly branch: string; readonly developerMerges: boolean }): string {
@@ -704,9 +714,10 @@ export function planItemBrief(input: PlanItemBriefInput): string {
         ? `Your branch is ${input.branch}.`
         : `Your branch is ${input.branch}, cut from ${input.targetBranch}.`;
   const lines: string[] = [head, `This is ${input.key ? `${input.key}, ` : ''}an item of the plan "${input.planTitle}". ${where}`];
-  if (input.todo.description && input.todo.description.trim() !== '') lines.push(input.todo.description.trim());
+  if (input.todo.description && input.todo.description.trim() !== '' && input.omitDescription !== true) lines.push(input.todo.description.trim());
   if (todoHasPlan(input.todo.plan)) lines.push(`Plan and acceptance criteria:\n${(input.todo.plan as string).trim()}`);
   if (input.notes && input.notes.trim() !== '') lines.push(`Notes for every item of this plan:\n${input.notes.trim()}`);
+  if (input.context && input.context.trim() !== '') lines.push(input.context.trim());
   if (input.noMerge === true || input.targetBranch === null) {
     // D99 follow-up 2026-10-15: a plan without a merge step: the item is done when its todo is.
     lines.push(

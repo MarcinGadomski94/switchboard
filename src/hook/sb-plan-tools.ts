@@ -3,7 +3,8 @@
  * helper and agent token): `plan_create`, `plan_add_item`, `plan_add_dependency`,
  * `plan_status`, `plan_start`, `plan_set_solutions` (D115: the agent picks its items'
  * repositories, applied at once), and the Jira lane's `plan_propose_dependencies` (proposals the
- * developer accepts on the plan; `src/core/plans-jira.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
+ * developer accepts on the plan; `src/core/plans-jira.ts`) and (D118) the read-only
+ * `plan_jira_context` (`src/core/plans-jira-context.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
  * once at start (`registerPlanToolsIfOn`) and registers them only when it answers 200
  * (Plans on and `plans.db` open); 404 `plans-off`, 503, an older Switchboard or no answer
  * register nothing. The routes check again on every call. Names, descriptions and
@@ -14,6 +15,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { PLAN_CONCURRENCY_MAX, PLAN_ITEMS_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planStatusText } from '../core/plans.ts';
 import { EDGE_PROPOSALS_MAX, PLAN_PROPOSE_TOOL } from '../core/plans-jira.ts';
+import { JIRA_CONTEXT_PARTS, PLAN_JIRA_CONTEXT_TOOL } from '../core/plans-jira-context.ts';
 import { TODO_ESTIMATE_MAX, TODO_PRIORITIES, type TodoToolDefinition } from '../core/todos.ts';
 import type { AgentApi, ApiAnswer, ToolInput } from './sb-mcp.ts';
 
@@ -212,6 +214,20 @@ export async function planProposeDependencies(api: AgentApi, input: ToolInput): 
   });
 }
 
+/** D118 · `plan_jira_context`: the plan's Jira context, read from Jira now (read-only). */
+export async function planJiraContext(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  const query = new URLSearchParams();
+  if (typeof input['item'] === 'string' && input['item'].trim() !== '') query.set('item', input['item'].trim());
+  if (typeof input['part'] === 'string' && input['part'] !== '') query.set('part', input['part']);
+  const tail = query.size > 0 ? `?${query.toString()}` : '';
+  const route = id === '' ? `/agent/v1/plans/jira/context${tail}` : planRoute(id, `/jira/context${tail}`);
+  return request(api, 'GET', route, undefined, (answer) => {
+    const text = record(answer)['text'];
+    return typeof text === 'string' ? textResult(text) : textResult('Switchboard did not answer with the Jira context.', true);
+  });
+}
+
 /** Tool `name`'s definition in {@link PLAN_TOOLS}. */
 function tool(name: string): TodoToolDefinition {
   const found = PLAN_TOOLS.find((candidate) => candidate.name === name);
@@ -368,6 +384,22 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       annotations: { title: PLAN_PROPOSE_TOOL.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => planProposeDependencies(api, input)),
+  );
+  // D118: read-only (src/core/plans-jira-context.ts); the route answers only the plan's source and item run sessions.
+  const contextAbout = (key: string): string => String(record(record(PLAN_JIRA_CONTEXT_TOOL.inputSchema['properties'])[key])['description'] ?? '');
+  server.registerTool(
+    PLAN_JIRA_CONTEXT_TOOL.name,
+    {
+      title: PLAN_JIRA_CONTEXT_TOOL.annotations.title,
+      description: PLAN_JIRA_CONTEXT_TOOL.description,
+      inputSchema: z.looseObject({
+        plan_id: z.string().describe(contextAbout('plan_id')).optional(),
+        item: z.string().describe(contextAbout('item')).optional(),
+        part: z.enum(JIRA_CONTEXT_PARTS).describe(contextAbout('part')).optional(),
+      }).meta({ additionalProperties: false }),
+      annotations: { title: PLAN_JIRA_CONTEXT_TOOL.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    (input) => planJiraContext(api, input),
   );
 
 }

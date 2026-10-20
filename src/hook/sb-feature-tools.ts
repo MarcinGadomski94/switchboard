@@ -27,6 +27,7 @@ import { MEMORY_TOOLS } from '../core/memory.ts';
 // Plans (D99) hook: the `plans` set (docs/plans-removal.md).
 import { PLAN_TOOLS } from '../core/plans.ts';
 import { PLAN_PROPOSE_TOOL } from '../core/plans-jira.ts';
+import { PLAN_JIRA_CONTEXT_TOOL } from '../core/plans-jira-context.ts';
 // Team (D100) hook: the `team` set (docs/team-removal.md).
 import { registerAccessTool } from '../core/team-access-tools.ts';
 import { TEAM_TOOLS, registerTeamTools } from '../core/team-tools.ts';
@@ -62,7 +63,7 @@ export const FEATURE_TOOL_SETS: readonly FeatureToolSet[] = [
       registerAccessTool(server, api);
     },
   },
-  { name: 'plans', label: 'Plans', probe: '/agent/v1/plans', tools: [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name], offReason: 'Plans is off', register: registerPlanTools },
+  { name: 'plans', label: 'Plans', probe: '/agent/v1/plans', tools: [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name], offReason: 'Plans is off', register: registerPlanTools },
   { name: 'memory', label: 'Project memory', probe: '/agent/v1/memory', tools: MEMORY_TOOLS.map((tool) => tool.name), offReason: 'Project memory is off, or this session has no project folder', register: registerMemoryTools },
 ];
 

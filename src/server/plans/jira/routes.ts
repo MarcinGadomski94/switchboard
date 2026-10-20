@@ -41,6 +41,11 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
 /** The agent's route (the `plan_propose_dependencies` tool; the session's agent token, checked by `security.ts`). */
 export const PLAN_PROPOSE_AGENT_ROUTE = '/agent/v1/plans/:planId/proposals';
 
+/** D118: the agent's routes of the `plan_jira_context` tool (read-only; the session's agent token). */
+export const PLAN_JIRA_CONTEXT_AGENT_ROUTE = '/agent/v1/plans/:planId/jira/context';
+/** D118: the same without a plan id: the run session's own plan and item. */
+export const PLAN_JIRA_CONTEXT_OWN_ROUTE = '/agent/v1/plans/jira/context';
+
 function agentSession(request: FastifyRequest): string {
   const value = request.headers[AGENT_SESSION_HEADER];
   return typeof value === 'string' ? value : '';
@@ -74,6 +79,9 @@ function agentSession(request: FastifyRequest): string {
  *   `POST /api/plans/{id}/proposals/{proposalId}/accept | reject`, `…/proposals/accept-all | reject-all`
  *   → `{ proposals, refused }` (a single refused Accept: 409 `cycle`); the agent's
  *   `POST /agent/v1/plans/{planId}/proposals` `{ proposals: [{ from, to, reason }] }` → 201 `{ added, skipped }`.
+ * - D118: the agent's `GET /agent/v1/plans/{planId}/jira/context?item=&part=` and
+ *   `GET /agent/v1/plans/jira/context?item=&part=` (a run session's own plan) → `{ planId, epicKey, item, text }`
+ *   (the `plan_jira_context` tool: read from Jira now; the plan's source or item run sessions only).
  * - D115: `POST /api/plans/{id}/solutions/ask` (Ask again: the plan's agent picks the repositories
  *   of the items without any) → `{ asked, sessionId, items }`; 409 `nothing-to-pick` / `not-sent`.
  *
@@ -228,6 +236,22 @@ export async function registerPlanJiraRoutes(
       }
     });
   }
+
+  // D118: the plan_jira_context tool: the plan's source session or one of its item run sessions.
+  app.get<{ Querystring: { item?: string; part?: string } }>(PLAN_JIRA_CONTEXT_OWN_ROUTE, async (request, reply) => {
+    try {
+      return await jira.agentContext(agentSession(request), null, request.query ?? {});
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+  app.get<{ Params: { planId: string }; Querystring: { item?: string; part?: string } }>(PLAN_JIRA_CONTEXT_AGENT_ROUTE, async (request, reply) => {
+    try {
+      return await jira.agentContext(agentSession(request), request.params.planId, request.query ?? {});
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
 
   app.post<{ Params: { planId: string } }>(PLAN_PROPOSE_AGENT_ROUTE, async (request, reply) => {
     try {
