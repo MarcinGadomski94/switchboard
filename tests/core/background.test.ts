@@ -498,6 +498,73 @@ describe('a resumed background agent (SendMessage, 2026-10-16)', () => {
     expect(tracker.resulted('toolu_s1', { text: 'Delivered.', isError: false })).toBe(true);
     expect(tracker.list().map((task) => task.id)).toEqual(['a1b2c3d4']);
   });
+
+  describe('D123: a refused SendMessage is no resume (2026-10-20)', () => {
+    const at = () => new Date('2026-10-20T10:00:00.000Z');
+    const REFUSED = '{"success":false,"message":"Agent a0000000000000001 was stopped by the user and won\'t be resumed. Treat its work as cancelled; only launch a new agent if the user explicitly asks."}';
+    const RESUMED = '{"success":true,"message":"Resuming agent a000000","resumedAgentId":"a0000000000000002"}';
+    const QUEUED = '{"success":true,"message":"Message queued for delivery to a0000000000000003 at its next tool round. If it finishes first, it is resumed with the message and notifies again, as the agent does."}';
+
+    function launch(tracker: BackgroundTracker, id: string): void {
+      tracker.called(`toolu_launch_${id}`, 'Agent', { prompt: 'Audit', run_in_background: true });
+      tracker.resulted(`toolu_launch_${id}`, { text: `Async agent launched successfully.\nagentId: ${id}`, isError: false });
+    }
+
+    it('the refused shape (JSON text, or its structured detail) adds no run, though its words say "Agent … resumed"', () => {
+      const tracker = new BackgroundTracker({ now: at });
+      tracker.called('toolu_r1', 'SendMessage', { to: 'a0000000000000001', message: 'Continue.' });
+      expect(tracker.resulted('toolu_r1', { text: REFUSED, isError: false })).toBe(false);
+      tracker.called('toolu_r2', 'SendMessage', { to: 'a0000000000000001', message: 'Continue.' });
+      expect(tracker.resulted('toolu_r2', { text: 'refused', isError: false, detail: JSON.parse(REFUSED) })).toBe(false);
+      expect(tracker.list()).toEqual([]);
+    });
+
+    it('the wording fallback never counts a negation', () => {
+      for (const text of [
+        "Agent a0000000000000001 won't be resumed.",
+        'Agent a0000000000000001 will not be resumed.',
+        'Agent a0000000000000001 was not resumed.',
+        'Agent a0000000000000001 was stopped by the user; resuming the agent is not possible.',
+      ]) {
+        const tracker = new BackgroundTracker({ now: at });
+        tracker.called('toolu_w', 'SendMessage', { to: 'a0000000000000001', message: 'Continue.' });
+        expect(tracker.resulted('toolu_w', { text, isError: false }), text).toBe(false);
+      }
+    });
+
+    it('the resumed shape is a run under its resumedAgentId', () => {
+      const tracker = new BackgroundTracker({ now: at });
+      tracker.called('toolu_m', 'SendMessage', { to: 'worker', message: 'Continue.' });
+      expect(tracker.resulted('toolu_m', { text: RESUMED, isError: false })).toBe(true);
+      expect(tracker.list().map((task) => [task.id, task.kind, task.toolUseId])).toEqual([['a0000000000000002', 'agent', 'toolu_m']]);
+    });
+
+    it('the queued shape adds no run while the agent\'s run is pending (that run goes on, unchanged)', () => {
+      const tracker = new BackgroundTracker({ now: at });
+      launch(tracker, 'a0000000000000003');
+      tracker.called('toolu_q', 'SendMessage', { to: 'a0000000000000003', message: 'Also check X.' });
+      expect(tracker.resulted('toolu_q', { text: QUEUED, isError: false })).toBe(false);
+      expect(tracker.list().map((task) => [task.id, task.toolUseId])).toEqual([['a0000000000000003', 'toolu_launch_a0000000000000003']]);
+      expect(tracker.notified('a0000000000000003', 'toolu_launch_a0000000000000003')).toBe(true);
+      expect(tracker.list()).toEqual([]);
+    });
+
+    it('the queued shape is a run when the agent\'s run has ended (the CLI resumes it with the message)', () => {
+      const tracker = new BackgroundTracker({ now: at });
+      launch(tracker, 'a0000000000000003');
+      tracker.notified('a0000000000000003', 'toolu_launch_a0000000000000003');
+      tracker.called('toolu_q', 'SendMessage', { to: 'a0000000000000003', message: 'Also check X.' });
+      expect(tracker.resulted('toolu_q', { text: QUEUED, isError: false })).toBe(true);
+      expect(tracker.list().map((task) => [task.id, task.toolUseId])).toEqual([['a0000000000000003', 'toolu_q']]);
+    });
+
+    it('an error result is no run, even with resuming words', () => {
+      const tracker = new BackgroundTracker({ now: at });
+      tracker.called('toolu_e', 'SendMessage', { to: 'a0000000000000001', message: 'Continue.' });
+      expect(tracker.resulted('toolu_e', { text: 'Resuming agent a0000000000000001 failed.', isError: true })).toBe(false);
+      expect(tracker.list()).toEqual([]);
+    });
+  });
 });
 
 

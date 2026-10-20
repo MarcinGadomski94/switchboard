@@ -104,6 +104,34 @@ const SEND_MESSAGE = 'SendMessage';
 const AGENT_RESUMED = /\bresum(?:ed|ing)\b[^\n]*\bagent\b|\bagent\b[^\n]*\bresum(?:ed|ing)\b|Async agent launched|running in the background/i;
 const RESUMED_STATUSES: readonly unknown[] = ['async_launched', 'resumed', 'running'];
 
+/**
+ * D123 (2026-10-20): a `SendMessage` result that refuses the resume ("Agent … was stopped by
+ * the user and won't be resumed", "will not be resumed", "not resumed"): never a start, even
+ * though its words name an agent and "resumed".
+ */
+const RESUME_REFUSED = /\b(?:won['’]?t|will\s+not|not|never|cannot|can['’]?t)\s+(?:be\s+)?resum(?:ed|ing|e)\b|\bstopped by the user\b/i;
+
+/** D123: a message queued for a still running agent ("Message queued for delivery to <id> …"); group 1 = the id. */
+const MESSAGE_QUEUED = /\bqueued for delivery to ([A-Za-z0-9_-]+)/i;
+
+/** D123: what a `SendMessage` result says about the agent it addressed. */
+type SendMessageOutcome =
+  /** The CLI refused it (`success: false`, or refusing words): no run, whatever else the line says. */
+  | { readonly kind: 'refused' }
+  /** A run under `id`; `queued` = the message waits for a run that may still be pending. */
+  | { readonly kind: 'start'; readonly id: string; readonly queued: boolean };
+
+/** D123: the JSON object a `SendMessage` result's text may be (`{"success":…,"message":…}`), else `null`. */
+function jsonObject(text: string): Readonly<Record<string, unknown>> | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    return record(JSON.parse(trimmed));
+  } catch {
+    return null;
+  }
+}
+
 /** An async `Agent` / `Task` launch; the `agentId: <id>` in its text. */
 const AGENT_LAUNCHED = 'Async agent launched successfully';
 const AGENT_ID = /agentId: ([A-Za-z0-9_-]+)/;
@@ -312,14 +340,39 @@ export interface BackgroundResult {
   readonly detail?: unknown;
 }
 
+/**
+ * 2026-10-16 / D123: what a `SendMessage` result means for a background agent. The
+ * structured result wins over the words: the line's `tool_use_result`, else the text
+ * when it is a JSON object. `success: false` is a refusal; `resumedAgentId`, or a
+ * `status` in {@link RESUMED_STATUSES}, a run under that agent's id; a message
+ * "queued for delivery" a run that may be the one already pending. Only then the
+ * words: refusing ones ({@link RESUME_REFUSED}) never count, resuming ones
+ * ({@link AGENT_RESUMED}) do. `null`: no agent run (a message to a teammate, …).
+ */
+function sendMessageOutcome(result: BackgroundResult, input: Readonly<Record<string, unknown>>, toolUseId: string): SendMessageOutcome | null {
+  if (result.isError) return null;
+  const detail = record(result.detail);
+  const json = jsonObject(result.text);
+  const field = (key: string): unknown => detail?.[key] ?? json?.[key];
+  if (field('success') === false) return { kind: 'refused' };
+  const message = str(field('message')) ?? result.text;
+  const agentId = (): string => str(field('agentId')) ?? AGENT_ID.exec(message)?.[1] ?? str(input['to']) ?? toolUseId;
+  const resumed = str(field('resumedAgentId'));
+  if (resumed !== null) return { kind: 'start', id: resumed, queued: false };
+  if (RESUMED_STATUSES.includes(field('status'))) return { kind: 'start', id: agentId(), queued: false };
+  const queued = MESSAGE_QUEUED.exec(message);
+  if (queued) return { kind: 'start', id: str(field('agentId')) ?? str(input['to']) ?? queued[1] ?? toolUseId, queued: true };
+  if (RESUME_REFUSED.test(message)) return { kind: 'refused' };
+  return AGENT_RESUMED.test(message) ? { kind: 'start', id: agentId(), queued: false } : null;
+}
+
 /** What a confirmed start adds: the task's id, or `null` when the result does not confirm a background start. */
 function startedId(kind: BackgroundTaskKind, result: BackgroundResult, input: Readonly<Record<string, unknown>>, toolUseId: string, name = ''): string | null {
   if (result.isError) return null;
   const detail = record(result.detail);
   if (name === SEND_MESSAGE) {
-    // 2026-10-16: a resumed background agent: a pending run under the agent's id.
-    if (!RESUMED_STATUSES.includes(detail?.['status']) && !AGENT_RESUMED.test(result.text)) return null;
-    return str(detail?.['agentId']) ?? AGENT_ID.exec(result.text)?.[1] ?? str(input['to']) ?? toolUseId;
+    const outcome = sendMessageOutcome(result, input, toolUseId);
+    return outcome?.kind === 'start' ? outcome.id : null;
   }
   switch (kind) {
     case 'bash': {
@@ -458,6 +511,10 @@ export class BackgroundTracker {
     const start = this.#held.get(toolUseId) ?? null;
     this.#held.delete(toolUseId);
     if (call.ended) return false;
+    // D123: a SendMessage the CLI refused starts nothing; one queued for a run still pending adds none (that run goes on).
+    const message = call.name === SEND_MESSAGE ? sendMessageOutcome(result, call.input, toolUseId) : null;
+    if (message?.kind === 'refused') return false;
+    if (message?.kind === 'start' && message.queued && this.#pending(message.id, null)) return false;
     const confirmed = startedId(call.kind, result, call.input, toolUseId, call.name);
     const reported = start !== null && !result.isError && !(call.kind === 'bash' && ENDS_WITH_TURN.test(result.text)) ? start.taskId : null;
     const id = confirmed ?? reported;
