@@ -123,6 +123,14 @@ export function parseJiraComment(raw: unknown): JiraContextComment | null {
   return { author: str(record(entry['author'])?.['displayName']), created: str(entry['created']), text };
 }
 
+/** Switchboard's own sync comments end with `[switchboard:<plan>:<item>:<event>]` (`jiraCommentMarker`): noise for the agents, left out of every context and count. */
+const OWN_MARKER = /\[switchboard:[^\]:\s]+:[^\]:\s]+:[^\]]+\]\s*$/;
+
+/** Whether a comment's text is one of Switchboard's own sync comments. */
+export function isSwitchboardComment(text: string): boolean {
+  return OWN_MARKER.test(text);
+}
+
 /** A remote link of `GET /rest/api/3/issue/{key}/remotelink` (`{ object: { url, title } }`), `null` without a URL. */
 export function parseJiraRemoteLink(raw: unknown): JiraContextRemoteLink | null {
   const object = record(record(raw)?.['object']);
@@ -187,8 +195,11 @@ export function buildJiraIssueContext(input: JiraIssueContextInput): JiraIssueCo
   const base = jiraPreviewItem(issue, input.baseUrl, input.acceptanceField, false);
   const embedded = record(issue.fields['comment']);
   const rawComments = input.comments ?? list(embedded?.['comments']);
-  const comments = rawComments.map(parseJiraComment).filter((entry): entry is JiraContextComment => entry !== null);
-  const total = input.commentsTotal ?? (typeof embedded?.['total'] === 'number' ? embedded['total'] : comments.length);
+  const parsed = rawComments.map(parseJiraComment).filter((entry): entry is JiraContextComment => entry !== null);
+  // Switchboard's own sync comments are left out (and not counted).
+  const comments = parsed.filter((entry) => !isSwitchboardComment(entry.text));
+  const own = parsed.length - comments.length;
+  const total = (input.commentsTotal ?? (typeof embedded?.['total'] === 'number' ? embedded['total'] : parsed.length)) - own;
   const subtasks: JiraContextSubtask[] = input.subtasks
     ? input.subtasks.map((sub) => ({ key: sub.key, summary: str(sub.fields['summary']) ?? sub.key, status: str(record(sub.fields['status'])?.['name']), description: adfToText(sub.fields['description']) }))
     : list(issue.fields['subtasks'])
@@ -225,7 +236,11 @@ export function buildJiraIssueContext(input: JiraIssueContextInput): JiraIssueCo
 export function jiraContextCounts(issue: JiraIssueInput, exclude: ReadonlySet<string>, remoteLinks: number): JiraContextCounts {
   const comment = record(issue.fields['comment']);
   return {
-    comments: typeof comment?.['total'] === 'number' ? comment['total'] : list(comment?.['comments']).length,
+    comments: (() => {
+      const parsed = list(comment?.['comments']).map(parseJiraComment);
+      const own = parsed.filter((entry) => entry !== null && isSwitchboardComment(entry.text)).length;
+      return Math.max(0, (typeof comment?.['total'] === 'number' ? comment['total'] : parsed.length) - own);
+    })(),
     subtasks: list(issue.fields['subtasks']).length,
     links: remoteLinks + jiraOutsideLinks(issue, exclude).length,
     attachments: list(issue.fields['attachment']).length,

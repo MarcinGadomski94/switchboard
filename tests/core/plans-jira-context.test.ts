@@ -3,6 +3,7 @@ import {
   JIRA_RUN_EPIC_MAX,
   type JiraIssueContext,
   buildJiraIssueContext,
+  isSwitchboardComment,
   jiraContextCounts,
   jiraCountsText,
   jiraOutsideLinks,
@@ -130,6 +131,23 @@ describe('D118 · an issue context from Jira REST v3', () => {
     expect(context.subtasks).toEqual([{ key: 'PROJ-21', summary: 'Cart empty state', status: 'To Do', description: 'Show "Your cart is empty".' }]);
     expect(context.comments.map((entry) => entry.text)).toEqual(['Added after the import.']);
     expect(context.commentsTotal).toBe(7);
+  });
+
+  it("leaves Switchboard's own sync comments (the [switchboard:…] marker) out of the context and the counts", () => {
+    const issue = cartIssue();
+    const marker = '[switchboard:9f2c:a1b2:pr-comment:https://git.acme.example/acme/acme-front/pull/7]';
+    const own = comment('c3', 'Switchboard Bot', '2026-10-03T08:00:00.000+0000', `Pull request opened: https://git.acme.example/acme/acme-front/pull/7 ${marker}`);
+    const embedded = issue.fields['comment'] as { comments: unknown[]; total: number };
+    const withOwn: JiraIssueInput = { key: issue.key, fields: { ...issue.fields, comment: { ...embedded, comments: [...embedded.comments, own], total: 3 } } };
+    expect(isSwitchboardComment(`Merged into feature/PROJ-10. [switchboard:9f2c:a1b2:merged]`)).toBe(true);
+    expect(isSwitchboardComment('We talked about [switchboard] yesterday.')).toBe(false);
+    const fromEmbedded = buildJiraIssueContext({ issue: withOwn, baseUrl: BASE, acceptanceField: null, exclude: INSIDE });
+    expect(fromEmbedded.comments.map((entry) => entry.author)).toEqual(['Ada Acme', 'Grace Acme']);
+    expect(fromEmbedded.commentsTotal).toBe(2);
+    const fromList = buildJiraIssueContext({ issue, baseUrl: BASE, acceptanceField: null, exclude: INSIDE, comments: [...embedded.comments, own], commentsTotal: 3 });
+    expect(fromList.commentsTotal).toBe(2);
+    expect(renderJiraIssueContext(fromList, { heading: 'Ticket', max: 20_000 }).text).not.toContain('switchboard:');
+    expect(jiraContextCounts(withOwn, INSIDE, 0).comments).toBe(2);
   });
 
   it("names linked tickets outside the epic with the phrase Jira shows on this ticket (D117's rule for every type)", () => {
