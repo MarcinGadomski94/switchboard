@@ -108,6 +108,13 @@ back to the list). The header's tab count is the number of artifacts. Live: the
 `/hub` event `artifactsChanged` reloads the list; an open artifact follows its
 newest version until another version is picked.
 
+D113: while the list loads it shows three placeholder rows (`aria-busy`;
+"Loading artifacts…" for screen readers). A paired machine's session is read
+there through the proxy, so it says **Loading artifacts from <machine>…** with a
+spinner; if that read fails because the machine cannot be reached it says
+"<machine> cannot be reached — its artifacts cannot be shown now." with **Try
+again** (any other failure: the server's message, and Try again).
+
 The viewer: the title; kind, version, who saved it, when, size; **Version**
 (Latest, or any version); **Rendered / Source / Compare** (text kinds; Compare
 once there are two versions: a line diff of the version on screen against
@@ -141,6 +148,24 @@ and a session picker (`session=`); search (`q`) matches the title, kind,
 language, session name and title, and machine. `n of m` counts what is shown of
 everything. A row opens its session's Artifacts tab on that artifact. Live on
 `artifactsChanged` (and `sessionUpdated`, for renamed sessions).
+
+### Loading and syncing (D113)
+- **First load:** six placeholder rows (the session view's skeleton shapes,
+  `.sb-skel`) and `Loading…` in place of the count; the page is `aria-busy` and
+  says "Loading artifacts…" once for screen readers. A failed first load says
+  so with **Try again** instead of keeping the placeholders.
+- **A re-query** (a kind, a session, a search) keeps the rows on screen; a small
+  spinner by the count shows until the answer replaces them.
+- **Paired machines:** the merged list is this machine's rows plus each paired
+  machine's copy as last known, so a machine whose copy has not arrived yet (or
+  is being fetched again for more than a moment) gets a chip under the filters,
+  **Syncing with <machine>…** with a spinner. Nothing waits for it: the local
+  rows (and the machine's last known ones) are already listed. When its copy
+  arrives the chip goes and the list reads again, so its rows merge in. A
+  machine that cannot be reached gets a static chip, "<machine> is offline — its
+  artifacts may be out of date" (or why: refused the pairing, no address). A
+  polite live region says "Syncing with <machine>…" and then "Synced with
+  <machine>.". How the page learns this: `docs/peers.md` → *List sync (D113)*.
 
 ### Deleting from the lists (D111)
 - **A row's ⋯ → Delete…** on the Artifacts page and in a session's Artifacts
