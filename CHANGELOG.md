@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.26.0 (2026-10-20)
+
+### Plans
+- **Import from Jira no longer asks you to pick a session:** choose where it runs (machine, folder, CLI, model, and the repositories of a workspace; remembered for next time), and Create plan starts a new "Plan · <plan title>" session there that owns the plan and proposes the missing order. "Use an existing session instead" keeps the old way, and a session's Plan strip works as before. Nothing is left behind when an import is cancelled or fails.
+
+### Artifacts and Inbox
+- **Loading and syncing states:** the Artifacts page, the Inbox and a session's Artifacts tab show placeholders while they load (with Try again if loading fails), "Syncing with <machine>…" while a paired computer's copy is on its way, and a note when that computer is offline. Its items merge in on their own when they arrive.
+
+### Fixed
+- **Messages you send while the agent is working** clear from the message box and show as queued right away, and no longer come back into the box after you leave and return to the session. A refused message is put back with the reason.
+- **Create plan after Import from Jira no longer does nothing:** a session without repositories asks you to pick them, and any reason the plan can't be created is shown next to the button.
+- **After a paired computer reconnects,** the Inbox count is updated again once its items arrive.
+
 ## 1.25.0 (2026-10-19)
 
 ### Artifacts
