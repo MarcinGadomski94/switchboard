@@ -3,7 +3,7 @@ import type { ApiContext } from '../routes.ts';
 import { planEnvironment } from './environment.ts';
 import { PlanGit } from './git.ts';
 import { registerPlanRoutes } from './routes.ts';
-import { PlanService, pickReposTimeoutFromEnv } from './service.ts';
+import { PlanService, pickReposTimeoutFromEnv, stoppedGraceFromEnv } from './service.ts';
 import { installPlansJira } from './jira/install.ts';
 import { ciSettingsOf } from '../settings/settings.ts';
 
@@ -36,6 +36,8 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
       git: new PlanGit({ gh: context.config.ghCommand, prs: (repoPath, branch) => context.ci.read(repoPath, branch) }),
       // D115 follow-ups: test servers shorten the "not picked in time" wait (`SWITCHBOARD_PLAN_PICK_REPOS_MS`, docs/configuration.md).
       ...(pickReposTimeoutFromEnv() !== null ? { pickReposTimeoutMs: pickReposTimeoutFromEnv() as number } : {}),
+      // D120: test servers shorten the grace period before an item shows stopped (`SWITCHBOARD_PLAN_STOPPED_GRACE_MS`, docs/configuration.md).
+      ...(stoppedGraceFromEnv() !== null ? { stoppedGraceMs: stoppedGraceFromEnv() as number } : {}),
       env: planEnvironment({
         context: { store: context.store, providers: context.providers, supervisor: context.supervisor, worktrees: context.worktrees, folders: context.folders, todos: context.todos, attachments: context.attachments, clis: context.clis },
         accounts: context.accounts,

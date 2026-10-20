@@ -95,6 +95,8 @@ interface Rig {
   readonly notices: Array<{ kind: string; title: string }>;
   /** D102: the Inbox's "Ready to merge" items raised (`+ title`) and closed (`- itemId outcome`). */
   readonly mergeNotices: string[];
+  /** D120: the Inbox's "Stopped" items raised (`+ title | detail`) and closed (`- itemId outcome`). */
+  readonly stoppedNotices: string[];
   readonly changed: string[];
   readonly errors: unknown[];
   held: string | null;
@@ -143,10 +145,16 @@ function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
     async closeMergeNotice(itemId, outcome) {
       r.mergeNotices.push(`- ${itemId} ${outcome}`);
     },
+    async stoppedNotice(input) {
+      r.stoppedNotices.push(`+ ${input.title} | ${input.dedupe}`);
+    },
+    async closeStoppedNotices(itemId, outcome) {
+      r.stoppedNotices.push(`- ${itemId} ${outcome}`);
+    },
   };
 }
 
-async function setup(options: { pollMs?: number } = {}): Promise<Rig> {
+async function setup(options: { pollMs?: number; stoppedGraceMs?: number } = {}): Promise<Rig> {
   const dir = await makeTempDir('plans');
   const clock = new FakeClock(new Date('2026-10-13T10:00:00Z'));
   const store = await openTempStore(dir, { now: () => clock.now() });
@@ -155,12 +163,12 @@ async function setup(options: { pollMs?: number } = {}): Promise<Rig> {
   await store.settings.set(PLANS_SETTING, true);
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new FakeGit();
-  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
+  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
   bus.subscribe((message) => {
     if (message.name === 'planChanged') base.changed.push(message.payload.planId);
   });
   const partial = base as unknown as Rig;
-  partial.plans = new PlanService({ dataDir: dir, store, bus, todos, git: base.git, merger: base.merger, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
+  partial.plans = new PlanService({ dataDir: dir, store, bus, todos, git: base.git, merger: base.merger, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, ...(options.stoppedGraceMs !== undefined ? { stoppedGraceMs: options.stoppedGraceMs } : {}), onError: (error) => base.errors.push(error) });
   await partial.plans.start();
   rig = partial;
   return partial;
@@ -833,3 +841,119 @@ describe('D99 follow-up 2026-10-15 · plans for anything', () => {
     expect((await r.plans.startPlan(plan.id, { mergeMode: 'agents' })).mergeMode).toBe('agents');
   });
 });
+
+describe('D120 · an item whose agent ended its turn without finishing is stopped', () => {
+  /** The item's agent writes its last message and its turn ends (idle) with its todo still open. */
+  async function agentStops(r: Rig, planId: string, itemId: string, text: string, state: BranchState = { hasWork: true }): Promise<string> {
+    const current = await item(r, planId, itemId);
+    const sessionId = current.runSessionId as string;
+    r.git.branches.set(current.branch as string, state);
+    await r.store.events.append({ sessionId, kind: 'text', label: 'text', payload: { type: 'assistant', text } });
+    await r.store.sessions.update(sessionId, { lastActivityAt: r.clock.now().toISOString() });
+    await status(r, sessionId, 'idle');
+    return sessionId;
+  }
+
+  async function advance(r: Rig, ms: number): Promise<void> {
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + ms), () => settle(r));
+    await settle(r);
+  }
+
+  it('turns stopped after the grace period with the agent\'s last message; one Inbox item; waiting-you; the slot is held and dependents wait; back to running when it works again', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { maxConcurrency: 1 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const message = 'The item isn\'t finished yet, so I haven\'t marked the todo done. The code is pushed in a PR and the integration tests pass in CI.\n\nLeft: one CI check failed for an unrelated infrastructure reason and needs a re-run; then merge the PR once green; then mark the todo done.';
+    const sessionId = await agentStops(r, plan.id, ids.A, message, { hasWork: true, pr: { state: 'OPEN', checks: { state: 'red', summary: '1 failed: infra', sha: 'abc' } } });
+    // Within the grace period: still running, nothing raised; a timer looks again when it is over.
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toEqual([]);
+    expect(r.clock.delays()).toContain(120_000);
+    await advance(r, 60_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    // Past it: stopped, the excerpt as the reason, one Inbox item.
+    await advance(r, 60_000);
+    const a = await item(r, plan.id, ids.A);
+    expect(a).toMatchObject({ state: 'stopped', storedState: 'running', stoppedSince: '2026-10-13T10:00:00.000Z' });
+    expect(a.reason).toBe(message.replace(/\s+/g, ' '));
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toEqual([`+ Stopped: PROJ-1 Item A (Acme epic) | plan-stopped:${ids.A}:2026-10-13T10:00:00.000Z`]);
+    const raisedAt = r.stoppedNotices.length;
+    // Its span is waiting-you; it keeps its slot (max 1: nothing else starts) and its dependents wait (not blocked).
+    const viewed = await r.plans.get(plan.id);
+    expect(viewed.items.find((entry) => entry.id === ids.A)?.spans.at(-1)).toMatchObject({ kind: 'waiting-you', endedAt: null });
+    expect(viewed.items.find((entry) => entry.id === ids.B)).toMatchObject({ state: 'waiting', reason: 'waiting on PROJ-1' });
+    expect(started(r)).toEqual(['PROJ-1']);
+    expect(viewed.estimatedMinutesLeft).not.toBeNull();
+    // More cycles (the checks poll, a todo change) raise nothing more.
+    r.plans.pollChecks();
+    await advance(r, 120_000);
+    expect(r.stoppedNotices).toHaveLength(raisedAt);
+
+    // The developer replies: it works again → running, the Inbox item closes.
+    await status(r, sessionId, 'run');
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    expect(r.stoppedNotices.at(-1)).toBe(`- ${ids.A} running`);
+    const spans = (await item(r, plan.id, ids.A)).spans;
+    expect(spans.at(-1)).toMatchObject({ kind: 'running', endedAt: null });
+
+    // It stops again: a new episode, a new Inbox item.
+    await advance(r, 60_000);
+    await agentStops(r, plan.id, ids.A, 'Still waiting for the re-run.');
+    await advance(r, 120_000);
+    expect(await item(r, plan.id, ids.A)).toMatchObject({ state: 'stopped', reason: 'Still waiting for the re-run.' });
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toHaveLength(2);
+
+    // The developer re-runs the check and replies; it finishes: merged → done, the Inbox item closes, the dependents start.
+    await status(r, sessionId, 'run');
+    await r.todos.update(r.sourceId, a.todoId, { state: 'done' }, 'agent');
+    await agentMerges(r, plan.id, ids.A);
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(r.stoppedNotices.filter((line) => line.startsWith(`- ${ids.A}`)).at(-1)).toBe(`- ${ids.A} running`);
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toHaveLength(2);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2']);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('a turn end followed by marking the todo done within the grace period never shows stopped', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { holdD: true });
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    await agentStops(r, plan.id, ids.A, 'Done, marking the todo now.');
+    await advance(r, 30_000);
+    const a = await item(r, plan.id, ids.A);
+    await r.todos.update(r.sourceId, a.todoId, { state: 'done' }, 'agent');
+    await settle(r);
+    await advance(r, 180_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('ready-to-merge');
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toEqual([]);
+  });
+
+  it('green PRs while idle wait for your merge (not stopped); red checks while idle are stopped; a question stays a question', async () => {
+    const r = await setup({ stoppedGraceMs: 1_000 });
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    await agentStops(r, plan.id, ids.A, 'PR is open and green.', { hasWork: true, pr: { state: 'OPEN', checks: { state: 'green', summary: null, sha: 'abc' } } });
+    await advance(r, 5_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('ready-to-merge');
+    await r.plans.mergeItem(plan.id, ids.A);
+    await settle(r);
+    // B: red checks while idle.
+    await agentStops(r, plan.id, ids.B, 'A check failed; I may not re-run it.', { hasWork: true, pr: { state: 'OPEN', checks: { state: 'red', summary: '1 failed: infra', sha: 'def' } } });
+    await advance(r, 5_000);
+    expect(await item(r, plan.id, ids.B)).toMatchObject({ state: 'stopped', reason: 'A check failed; I may not re-run it.' });
+    // C asks a question: question, not stopped.
+    const c = await item(r, plan.id, ids.C);
+    await status(r, c.runSessionId as string, 'need');
+    await advance(r, 5_000);
+    expect((await item(r, plan.id, ids.C)).state).toBe('question');
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toEqual([`+ Stopped: PROJ-2 Item B (Acme epic) | plan-stopped:${ids.B}:${(await item(r, plan.id, ids.B)).stoppedSince}`]);
+    // Deleting the plan closes its open Stopped item.
+    await r.plans.remove(plan.id, { stop: true });
+    expect(r.stoppedNotices.at(-1)).toBe(`- ${ids.B} plan-ended`);
+    expect(r.errors).toEqual([]);
+  });
+});
+

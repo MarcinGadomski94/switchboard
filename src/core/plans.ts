@@ -65,6 +65,12 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  * - `ready`: every dependency is done; it starts when a slot is free (and the plan runs);
  * - `running`: its run session works on it (including while its PR's checks run);
  * - `question`: its session waits for the developer (a question or a permission request, in the Inbox);
+ * - `stopped` (D120): its session's turn is over and it is not working (no subagent, no GitHub
+ *   Actions wait, no counted background work: its status is not `run`), its todo is not done,
+ *   and nothing else covers it (a question, the developer's merge or confirmation, a second
+ *   conflict) for at least {@link PLAN_STOPPED_GRACE_MS}: the agent ended its turn without
+ *   finishing ("Stopped — needs you"). It keeps its slot and its dependents wait; it goes back to
+ *   `running` once its session works again;
  * - `ready-to-merge` (D102): its run finished (its todo is done, or its PR is open with green
  *   checks) and it waits for the developer's Merge ("Waiting for your merge");
  * - `to-confirm` (D99 follow-up 2026-10-15): a held item of a plan without a merge step (`none`)
@@ -73,7 +79,7 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  * - `blocked`: it failed (discarded, could not start), its session stopped with an error, a
  *   conflict went to the developer, or a dependency is blocked; {@link PlanItem.reason} says why.
  */
-export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'ready-to-merge', 'to-confirm', 'done', 'blocked'] as const;
+export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'stopped', 'ready-to-merge', 'to-confirm', 'done', 'blocked'] as const;
 /** One of {@link PLAN_ITEM_STATES}. */
 export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
 
@@ -88,6 +94,26 @@ export type PlanWaitingOn = 'merge' | 'checks' | 'question' | 'conflict' | 'conf
 
 /** The state of an item's PR checks: `pending` (running), `green`, `red`, `none` (no checks configured: counts as green). D109: the shared watcher's {@link PrChecksState}. */
 export type PlanChecksState = PrChecksState;
+
+/**
+ * D120: how long an item's session must have been idle with its todo open before the item shows
+ * `stopped` (so the usual "turn ends, then the todo is marked done" does not flash red). Test
+ * servers shorten it (`SWITCHBOARD_PLAN_STOPPED_GRACE_MS`).
+ */
+export const PLAN_STOPPED_GRACE_MS = 2 * 60_000;
+
+/** D120: at most this many characters of the agent's last message are the reason of a `stopped` item. */
+export const PLAN_STOPPED_EXCERPT_MAX = 300;
+
+/** D120: a `stopped` item's reason when its agent's last message cannot be read. */
+export const PLAN_STOPPED_NO_MESSAGE = 'its agent ended its turn without finishing its todo';
+
+/** D120: an agent's last message cut for a `stopped` item's reason (whitespace folded, at most {@link PLAN_STOPPED_EXCERPT_MAX} characters). */
+export function stoppedExcerpt(text: string | null | undefined): string {
+  const folded = (text ?? '').replace(/\s+/g, ' ').trim();
+  if (folded === '') return PLAN_STOPPED_NO_MESSAGE;
+  return folded.length > PLAN_STOPPED_EXCERPT_MAX ? `${folded.slice(0, PLAN_STOPPED_EXCERPT_MAX - 1).trimEnd()}…` : folded;
+}
 
 /** Defaults. */
 export const DEFAULT_PLAN_CONCURRENCY = 3;
@@ -173,12 +199,17 @@ export interface PlanItem {
   readonly doneAt: string | null;
   /** Its history, oldest first (at most {@link PLAN_ITEM_SPANS_MAX}, the newest); additive. */
   readonly spans: readonly PlanItemSpan[];
+  /**
+   * D120: a `stopped` item: since when its session has been idle with its todo open (its {@link reason}
+   * is the agent's last message, cut); `null` otherwise. Additive: absent from older machines.
+   */
+  readonly stoppedSince?: string | null;
 }
 
 /**
  * What an item was doing over a span of time (the Plans page's Timeline; `docs/plans.md` → *Item history*):
  * - `running`: its agent works (including while its PR's checks run);
- * - `waiting-you`: a question, its merge (`ready-to-merge`), a second conflict or a stopped session waits for the developer;
+ * - `waiting-you`: a question, its merge (`ready-to-merge`), a second conflict, a session stopped with an error, or (D120) an agent that ended its turn without finishing (`stopped`) waits for the developer;
  * - `waiting-dependency`: an item it runs after is not done (or is blocked);
  * - `paused-usage`: it is ready, but new starts are held by the usage threshold;
  * - `paused-plan`: the plan is paused (by the developer, or because Plans was switched off).
@@ -207,6 +238,7 @@ export function planItemSpanKind(plan: { readonly state: PlanState; readonly hel
     case 'running':
       return 'running';
     case 'question':
+    case 'stopped':
     case 'ready-to-merge':
     case 'to-confirm':
       return 'waiting-you';
@@ -400,6 +432,10 @@ export interface PlanItemFacts {
   readonly doneAt: string | null;
   /** The run session's status now (`null` = no run session, or it is gone). */
   readonly sessionStatus: SessionStatus | null;
+  /** D120: whether its todo is done (absent = unknown: never `stopped`). */
+  readonly todoDone?: boolean;
+  /** D120: since when its run session has been idle (its last activity); absent / `null` = unknown. */
+  readonly idleSince?: string | null;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -422,8 +458,25 @@ function minutesBetween(from: string, to: number): number {
   return Math.max(0, Math.round((to - Date.parse(from)) / 60_000));
 }
 
+/**
+ * D120: since when item `item` has been stopped: its stored state is `running`, its session's turn
+ * is over and it is not working (the session's status is `done`, `idle` or `paused`: a subagent, a
+ * GitHub Actions wait or counted background work keeps it `run`, 1.23), its todo is not done, and
+ * nothing else covers it (the developer's merge or confirmation, a second conflict). Answers the
+ * time its session went idle, else `null`. The grace period ({@link PLAN_STOPPED_GRACE_MS}) is the
+ * caller's: {@link planView} shows `stopped` only once it has passed.
+ */
+export function stoppedSince(item: Pick<PlanItemFacts, 'state' | 'sessionStatus' | 'todoDone' | 'idleSince' | 'waitingOn' | 'conflicts' | 'hold' | 'startedAt'>, mode: PlanMergeMode | null): string | null {
+  if (item.state !== 'running' || item.todoDone !== false) return null;
+  if (item.sessionStatus !== 'done' && item.sessionStatus !== 'idle' && item.sessionStatus !== 'paused') return null;
+  if (item.waitingOn === 'conflict' && item.conflicts >= 2) return null;
+  if (developerMerges(mode, item) && item.waitingOn === 'merge') return null;
+  if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return null;
+  return item.idleSince ?? item.startedAt ?? null;
+}
+
 /** An item's own view state and reason, before its dependencies are looked at. */
-function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string | null): { state: PlanItemState; reason: string | null } | null {
+function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string | null, now: number, graceMs: number): { state: PlanItemState; reason: string | null; stoppedSince?: string } | null {
   switch (item.state) {
     case 'done':
       return { state: 'done', reason: null };
@@ -435,6 +488,11 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
       if (item.sessionStatus === 'need') return { state: 'question', reason: 'its session waits for your answer in the Inbox' };
       if (developerMerges(mode, item) && item.waitingOn === 'merge') return { state: 'ready-to-merge', reason: 'waiting for your merge' };
       if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return { state: 'to-confirm', reason: 'its todo is done: waiting for you to confirm it' };
+      {
+        // D120: its agent ended its turn without finishing, longer ago than the grace period.
+        const since = stoppedSince(item, mode);
+        if (since !== null && now - Date.parse(since) >= graceMs) return { state: 'stopped', reason: PLAN_STOPPED_NO_MESSAGE, stoppedSince: since };
+      }
       return { state: 'running', reason: null };
     case 'pending':
       return null;
@@ -452,6 +510,8 @@ export interface PlanViewInput {
   readonly now: number;
   /** D115: the plan's agent picks each item's repositories: a pending item without solutions waits ({@link PLAN_PICK_REPOS_REASON}). */
   readonly reposPerItem?: boolean;
+  /** D120: the grace period before an idle item with its todo open shows `stopped` (default {@link PLAN_STOPPED_GRACE_MS}). */
+  readonly stoppedGraceMs?: number;
 }
 
 /** The computed part of a {@link Plan}: the items' view states, the critical path, progress and the time left. */
@@ -475,10 +535,10 @@ export function planView(input: PlanViewInput): PlanViewModel {
   const ids = [...input.items].sort((a, b) => a.position - b.position).map((item) => item.id);
   const byId = new Map(input.items.map((item) => [item.id, item]));
   const order = topologicalOrder(ids, input.edges) ?? ids;
-  const views = new Map<string, { state: PlanItemState; reason: string | null }>();
+  const views = new Map<string, { state: PlanItemState; reason: string | null; stoppedSince?: string }>();
   for (const id of order) {
     const item = byId.get(id) as PlanItemFacts;
-    const own = ownState(item, input.mode, input.targetBranch);
+    const own = ownState(item, input.mode, input.targetBranch, input.now, input.stoppedGraceMs ?? PLAN_STOPPED_GRACE_MS);
     if (own) {
       views.set(id, own);
       continue;
@@ -554,7 +614,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
 
   const items: PlanItem[] = ids.map((id) => {
     const item = byId.get(id) as PlanItemFacts;
-    const view = views.get(id) as { state: PlanItemState; reason: string | null };
+    const view = views.get(id) as { state: PlanItemState; reason: string | null; stoppedSince?: string };
     const actualMinutes = item.startedAt ? (item.doneAt ? minutesBetween(item.startedAt, Date.parse(item.doneAt)) : item.state === 'running' ? minutesBetween(item.startedAt, input.now) : null) : null;
     return {
       id,
@@ -584,6 +644,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
       mergedAt: item.mergedAt,
       doneAt: item.doneAt,
       spans: [],
+      stoppedSince: view.stoppedSince ?? null,
     };
   });
   return {
@@ -830,7 +891,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_status',
     description:
-      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
+      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, stopped (its agent ended its turn without finishing: its last message is the reason), ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
     inputSchema: { type: 'object', properties: { plan_id: PLAN_ID }, additionalProperties: false },
     annotations: { title: 'Plan status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },

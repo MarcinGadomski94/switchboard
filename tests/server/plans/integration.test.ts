@@ -63,7 +63,7 @@ afterEach(async () => {
   rig = undefined;
 });
 
-function makePlans(r: Omit<Rig, 'plans'>): PlanService {
+function makePlans(r: Omit<Rig, 'plans'>, options: { stoppedGraceMs?: number } = {}): PlanService {
   return new PlanService({
     dataDir: r.s.root,
     store: r.s.store,
@@ -80,11 +80,12 @@ function makePlans(r: Omit<Rig, 'plans'>): PlanService {
       },
     }),
     pollMs: 3_600_000,
+    ...(options.stoppedGraceMs !== undefined ? { stoppedGraceMs: options.stoppedGraceMs } : {}),
     onError: (error) => r.s.errors.push(error),
   });
 }
 
-async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
+async function setup(options: { origin?: boolean; stoppedGraceMs?: number } = {}): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
   await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
@@ -96,7 +97,7 @@ async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
   const todos = new TodoService({ store: s.store, bus });
   const systemItems = new SystemItemService({ store: s.store, bus });
   const partial = { s, g, bus, repoPath, systemItems, todos, worktrees, folders } as unknown as Rig;
-  partial.plans = makePlans(partial);
+  partial.plans = makePlans(partial, options.stoppedGraceMs !== undefined ? { stoppedGraceMs: options.stoppedGraceMs } : {});
   token = generateToken();
   await openApp(partial);
   await partial.plans.start();
@@ -507,6 +508,47 @@ describe('D99 · a plan on the real path', () => {
     expect((started.content[0] as { text: string }).text).toContain('(agents merge: acknowledged)');
     expect(await plan(id)).toMatchObject({ state: 'running', mergeMode: 'agents', allowProtectedTarget: true, targetBranch: 'main' });
     expect((await call('POST', `/api/plans/${id}/cancel`)).statusCode).toBe(200);
+  }, 60_000);
+
+  it('D120: an item whose agent ended its turn without finishing turns stopped: one "Stopped" Inbox item, waiting-you, the slot held, the dependent waiting; a reply makes it run again and closes the item', async () => {
+    const r = await setup({ stoppedGraceMs: 300 });
+    const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'], 'PROJ-3': [] }, { maxConcurrency: 1 });
+    await startPlan(created.id, 'agents');
+    // The run's first turn ends (fake claude answers the brief) without marking its todo done.
+    const stopped = await settledItem(created.id, 'PROJ-1', 'stopped');
+    expect(stopped.storedState).toBe('running');
+    expect(typeof stopped.reason).toBe('string');
+    expect(stopped.reason).not.toBe('');
+    expect(stopped.stoppedSince).not.toBeNull();
+    // One Inbox item: "Stopped: <item> (<plan>)", Open session (its run session) and Dismiss.
+    const listStopped = async () => ((await call('GET', '/api/inbox')).json() as Array<{ id: string; title: string; label: string; detail: string; sessionId: string | null; actions?: Array<{ id: string; label: string }> }>).filter((entry) => entry.label === 'Stopped');
+    const inboxItem = await until(async () => (await listStopped())[0], 'the Stopped item');
+    expect(inboxItem).toMatchObject({ title: 'Stopped: PROJ-1 Work PROJ-1 (Acme epic)', sessionId: stopped.runSessionId, actions: [{ id: 'open-session', label: 'Open session' }, { id: 'dismiss', label: 'Dismiss' }] });
+    expect(inboxItem.detail.startsWith(stopped.reason as string)).toBe(true);
+    // More cycles raise no second one; the span is waiting-you; the slot is held (max 1) and the dependent waits.
+    r.plans.kick();
+    await r.plans.idle();
+    expect(await listStopped()).toHaveLength(1);
+    const now = await plan(created.id);
+    const one = now.items.find((entry) => entry.key === 'PROJ-1') as PlanItem;
+    expect(one.spans.at(-1)).toMatchObject({ kind: 'waiting-you', endedAt: null });
+    expect(now.items.find((entry) => entry.key === 'PROJ-2')).toMatchObject({ state: 'waiting' });
+    expect(now.items.find((entry) => entry.key === 'PROJ-3')).toMatchObject({ state: 'ready' });
+
+    // The developer replies: the session works again → running; the Inbox item closes by itself.
+    const sent = await call('POST', `/api/sessions/${stopped.runSessionId as string}/messages`, { text: 'Please re-run the check.' });
+    expect(sent.statusCode, sent.body).toBeLessThan(300);
+    await until(async () => ((await r.s.store.systemItems.get(inboxItem.id))?.state === 'closed' ? true : undefined), 'the Stopped item closed');
+    expect((await r.s.store.systemItems.get(inboxItem.id))?.closedAction).toBe('running');
+    // Its turn ends again without the todo: a new episode, a new item; Dismiss closes it and it stays closed.
+    const again = await until(async () => (await listStopped()).find((entry) => entry.id !== inboxItem.id), 'a second Stopped item');
+    const dismissed = await call('POST', `/api/inbox/${again.id}/actions/dismiss`);
+    expect(dismissed.statusCode, dismissed.body).toBe(204);
+    r.plans.kick();
+    await r.plans.idle();
+    expect(await listStopped()).toEqual([]);
+    expect((await itemOf(created.id, 'PROJ-1')).state).toBe('stopped');
+    expect(r.s.errors).toEqual([]);
   }, 60_000);
 });
 

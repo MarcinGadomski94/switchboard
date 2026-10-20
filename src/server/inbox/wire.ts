@@ -256,6 +256,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-confirm': 'Confirm done',
   // D115 follow-ups 2026-10-20: a plan's items wait for its agent to pick their repositories.
   'plan-pick-repos': 'Pick repositories',
+  // D120: a plan item's agent ended its turn without finishing its todo.
+  'plan-stopped': 'Stopped',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
   'memory-proposals': 'Memory',
   // Project memory (D107) hook (follow-up 2026-10-16): a moved member's memory could not be copied.

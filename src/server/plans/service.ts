@@ -21,6 +21,7 @@ import {
   type PlanWaitingOn,
   type PlansState,
   PLAN_ITEM_SPANS_MAX,
+  PLAN_STOPPED_GRACE_MS,
   planItemSpanKind,
   PLANS_OFF_REASON,
   PLANS_SETTING,
@@ -43,6 +44,8 @@ import {
   planView,
   protectedTargetRefusal,
   readyItems,
+  stoppedExcerpt,
+  stoppedSince,
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
 import { type PlanItemOutcome, type PlanItemRef, registerPlanHooks } from './hooks.ts';
@@ -148,6 +151,13 @@ export interface PlanEnvironment {
   /** D115 follow-ups: closes plan `planId`'s open "wait for repositories" items with `outcome`. */
   closePickReposNotices?(planId: string, outcome: string): Promise<void>;
   /**
+   * D120: raises the Inbox's "Stopped: <item> (<plan>)" item (Open session, Dismiss; once per
+   * `dedupe`, one per stop episode). Absent (tests' fakes): none is raised.
+   */
+  stoppedNotice?(input: PlanStoppedNotice): Promise<void>;
+  /** D120: closes plan item `itemId`'s open "Stopped" items with `outcome` (it works again, it ended, the plan ended). */
+  closeStoppedNotices?(itemId: string, outcome: string): Promise<void>;
+  /**
    * D117 follow-up: stops a run session's current turn the way the session's Stop does
    * (`POST /api/sessions/{id}/interrupt`, the supervisor's interrupt; the process and the session
    * stay). A hooked terminal session cannot be stopped from here (`hooked`). Absent (tests' fakes): nothing is stopped.
@@ -164,6 +174,16 @@ export interface PlanDeleteResult {
   readonly cancelled: boolean;
   /** The item run sessions whose turn was running, and what stopping each did. */
   readonly stopped: ReadonlyArray<{ readonly itemId: string; readonly sessionId: string; readonly outcome: PlanStopOutcome }>;
+}
+
+/** D120: what the Inbox's "Stopped" item says (the item's run session is its session: Open session goes there). */
+export interface PlanStoppedNotice {
+  readonly sessionId: string;
+  readonly planId: string;
+  readonly itemId: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly dedupe: string;
 }
 
 /** D115 follow-ups: what the Inbox's "wait for repositories" item says. */
@@ -229,6 +249,16 @@ export function pickReposTimeoutFromEnv(env: Readonly<Record<string, string | un
   return Number.isFinite(ms) && ms >= 200 ? ms : null;
 }
 
+/**
+ * D120, **tests only**: `SWITCHBOARD_PLAN_STOPPED_GRACE_MS` (whole ms, ≥ 100) replaces the 2-minute
+ * grace period before an idle item with its todo open shows `stopped`; `null` = the default.
+ */
+export function stoppedGraceFromEnv(env: Readonly<Record<string, string | undefined>> = process.env): number | null {
+  const raw = env['SWITCHBOARD_PLAN_STOPPED_GRACE_MS']?.trim() ?? '';
+  const ms = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isFinite(ms) && ms >= 100 ? ms : null;
+}
+
 /** "15 minutes" / "2 seconds": how long a wait reads. */
 function waitText(ms: number): string {
   if (ms >= 60_000) {
@@ -274,6 +304,8 @@ export interface PlanServiceOptions {
   readonly pickReposTimeoutMs?: number;
   /** D115 follow-ups: the batching window of the automatic repositories ask (default {@link PICK_REPOS_DEBOUNCE_MS}). */
   readonly pickReposDebounceMs?: number;
+  /** D120: the grace period before an idle item with its todo open shows `stopped` (default {@link PLAN_STOPPED_GRACE_MS}). */
+  readonly stoppedGraceMs?: number;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -373,6 +405,13 @@ export class PlanService {
   readonly #askListeners = new Set<(event: ReposAskEvent) => Promise<void> | void>();
   /** D118: the external list's context (the Jira lane), `null` = none. */
   #contextSource: PlanContextSource | null = null;
+  readonly #stoppedGraceMs: number;
+  /** D120: items shown `stopped` whose Inbox item was raised → the episode (since when its session is idle). */
+  readonly #stopped = new Map<string, string>();
+  /** D120: items whose stale "Stopped" Inbox items were closed since Plans activated (a restart forgets {@link #stopped}). */
+  readonly #stoppedSwept = new Set<string>();
+  /** D120: per item, the timer that looks again once its grace period is over. */
+  readonly #stoppedTimers = new Map<string, { readonly at: number; readonly handle: unknown }>();
 
   constructor(options: PlanServiceOptions) {
     this.#dataDir = options.dataDir;
@@ -386,6 +425,7 @@ export class PlanService {
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS;
     this.#pickReposTimeoutMs = options.pickReposTimeoutMs ?? PICK_REPOS_TIMEOUT_MS;
     this.#pickReposDebounceMs = options.pickReposDebounceMs ?? PICK_REPOS_DEBOUNCE_MS;
+    this.#stoppedGraceMs = options.stoppedGraceMs ?? PLAN_STOPPED_GRACE_MS;
     this.#onError = options.onError ?? ((error) => console.error('switchboard plans:', error));
   }
 
@@ -619,6 +659,10 @@ export class PlanService {
     for (const timer of [...this.#askChecks.values(), ...this.#askSoon.values()]) this.#clock.clearTimeout(timer);
     this.#askChecks.clear();
     this.#askSoon.clear();
+    for (const timer of this.#stoppedTimers.values()) this.#clock.clearTimeout(timer.handle);
+    this.#stoppedTimers.clear();
+    this.#stopped.clear();
+    this.#stoppedSwept.clear();
   }
 
   /** `GET /api/plans/state`: the switch (answered also while Plans is off). */
@@ -628,7 +672,7 @@ export class PlanService {
 
   /** Listeners and timers running (tests: none while off). */
   activeTimers(): number {
-    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size;
+    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size + this.#stoppedTimers.size;
   }
 
   /** The plans repository. @throws {PlanError} 404 `plans-off` while Plans is off, 503 `plans-unavailable` while `plans.db` is broken. */
@@ -775,10 +819,16 @@ export class PlanService {
         title: todo?.title ?? item.title,
         estimateMinutes: todo ? todo.estimateMinutes : item.estimateMinutes,
         sessionStatus: session ? session.status : null,
+        // D120: a turn over with the todo open is `stopped` once the grace period has passed.
+        todoDone: todo ? todo.state === 'done' : undefined,
+        idleSince: session ? session.lastActivityAt : null,
       });
     }
     const perItem = reposPerItem(plan);
-    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime(), reposPerItem: perItem });
+    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime(), reposPerItem: perItem, stoppedGraceMs: this.#stoppedGraceMs });
+    // D120: a stopped item's reason is its agent's last message (cut).
+    const reasons = new Map<string, string>();
+    for (const item of model.items) if (item.state === 'stopped' && item.runSessionId) reasons.set(item.id, stoppedExcerpt(await this.#lastAgentMessage(item.runSessionId)));
     // D99 follow-up 2026-10-15: a plan without a merge step waits on the developer's confirmation, stored like the Merge.
     const waitingOn = (on: PlanWaitingOn | null): PlanWaitingOn | null => (plan.mergeMode === 'none' && on === 'merge' ? 'confirm' : on);
     return {
@@ -798,7 +848,7 @@ export class PlanService {
       external: plan.external,
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
-      items: model.items.map((item) => ({ ...item, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),
+      items: model.items.map((item) => ({ ...item, reason: reasons.get(item.id) ?? item.reason, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),
       edges,
       criticalPath: model.criticalPath,
       progress: model.progress,
@@ -919,7 +969,12 @@ export class PlanService {
       }
     }
     if (plan.state === 'running') throw new PlanError(409, 'running', 'the plan is running: pause or cancel it first');
-    for (const item of await this.#repo().items(planId)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
+    for (const item of await this.#repo().items(planId)) {
+      if (item.runSessionId) this.#runs.delete(item.runSessionId);
+      // D120: its "Stopped" Inbox items go with it.
+      this.#clearStoppedTimer(item.id);
+      if (this.#stopped.delete(item.id)) await this.#env.closeStoppedNotices?.(item.id, 'deleted').catch((error: unknown) => this.#onError(error));
+    }
     await this.#dropReposAsk(plan, 'deleted');
     await this.#repo().delete(planId);
     this.#bus.publish('planChanged', { planId, state: null });
@@ -1779,6 +1834,8 @@ export class PlanService {
       }
       if (await this.#refresh(planAtStart, item)) changed = true;
     }
+    // D120: an item whose agent ended its turn without finishing shows `stopped` once its grace period is over.
+    if (await this.#watchStopped(planAtStart)) changed = true;
     const plan = (await this.#repo().get(planAtStart.id)) as PlanRecord;
     let items = await this.#repo().items(plan.id);
     const edges = await this.#repo().edges(plan.id);
@@ -2108,9 +2165,104 @@ export class PlanService {
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
   }
 
+  /**
+   * D120: looks at the plan's running items for a turn that is over with the todo open: past its
+   * grace period it is `stopped` (answers `true` when that changed, so the plan is published and
+   * {@link #syncStopped} raises the Inbox item); within it, a timer looks again when it is over.
+   */
+  async #watchStopped(plan: PlanRecord): Promise<boolean> {
+    let changed = false;
+    const now = this.#clock.now().getTime();
+    for (const item of await this.#repo().items(plan.id)) {
+      const session = item.state === 'running' && item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
+      const todo = session ? await this.#store.todos.get(item.todoId) : null;
+      const since = session ? stoppedSince({ ...item, sessionStatus: session.status, todoDone: todo ? todo.state === 'done' : undefined, idleSince: session.lastActivityAt }, plan.mergeMode) : null;
+      const due = since === null ? null : Date.parse(since) + this.#stoppedGraceMs;
+      if (due === null || due <= now) this.#clearStoppedTimer(item.id);
+      if (since === null || due === null) {
+        if (this.#stopped.has(item.id)) changed = true;
+        continue;
+      }
+      if (due <= now) {
+        if (this.#stopped.get(item.id) !== since) changed = true;
+        continue;
+      }
+      // A new episode within its grace period (it worked and went idle again between two looks): it runs now.
+      if (this.#stopped.has(item.id) && this.#stopped.get(item.id) !== since) changed = true;
+      const armed = this.#stoppedTimers.get(item.id);
+      if (armed?.at === due) continue;
+      this.#clearStoppedTimer(item.id);
+      const handle = this.#clock.setTimeout(() => {
+        this.#stoppedTimers.delete(item.id);
+        this.kick();
+      }, due - now);
+      this.#stoppedTimers.set(item.id, { at: due, handle });
+    }
+    return changed;
+  }
+
+  #clearStoppedTimer(itemId: string): void {
+    const timer = this.#stoppedTimers.get(itemId);
+    if (timer === undefined) return;
+    this.#clock.clearTimeout(timer.handle);
+    this.#stoppedTimers.delete(itemId);
+  }
+
+  /**
+   * D120: the Inbox follows the items' `stopped` state: an item that became stopped (a new episode:
+   * since when its session is idle) raises "Stopped: <item> (<plan>)" once; one that left it (it works
+   * again, it is done or failed, the plan ended) has its item closed. After a restart the open
+   * items of the items that are not stopped are closed once.
+   */
+  async #syncStopped(plan: PlanRecord, view: Plan): Promise<void> {
+    const active = plan.state === 'running' || plan.state === 'paused';
+    for (const item of view.items) {
+      const since = active && item.state === 'stopped' ? (item.stoppedSince ?? null) : null;
+      if (since !== null) {
+        if (this.#stopped.get(item.id) === since) continue;
+        // A new episode: the previous one's item goes first.
+        if (this.#stopped.has(item.id)) await this.#env.closeStoppedNotices?.(item.id, 'running').catch((error: unknown) => this.#onError(error));
+        this.#stopped.set(item.id, since);
+        this.#stoppedSwept.add(item.id);
+        if (!item.runSessionId || !this.#env.stoppedNotice) continue;
+        const todo = await this.#store.todos.get(item.todoId);
+        const title = todo?.title ?? item.title;
+        const label = item.key !== null && !title.startsWith(item.key) ? `${item.key} ${title}` : title;
+        await this.#env
+          .stoppedNotice({
+            sessionId: item.runSessionId,
+            planId: plan.id,
+            itemId: item.id,
+            title: `Stopped: ${label} (${plan.title})`,
+            detail: `${item.reason ?? ''}\n\nIts agent ended its turn without marking its todo done. Open the session to read it all and reply; the item runs again once its agent works.`,
+            dedupe: `plan-stopped:${item.id}:${since}`,
+          })
+          .catch((error: unknown) => this.#onError(error));
+        continue;
+      }
+      // Not stopped: close its item once it was (or, after a restart, once per started item: a pending one never had any).
+      if (!this.#stopped.has(item.id) && (this.#stoppedSwept.has(item.id) || item.storedState === 'pending')) continue;
+      this.#stopped.delete(item.id);
+      this.#stoppedSwept.add(item.id);
+      await this.#env.closeStoppedNotices?.(item.id, item.state === 'stopped' ? 'plan-ended' : item.state).catch((error: unknown) => this.#onError(error));
+    }
+  }
+
+  /** D120: the newest text of a run session's agent (not a progress note), `null` when there is none. */
+  async #lastAgentMessage(sessionId: string): Promise<string | null> {
+    const events = await this.#store.events.assistantTextsNewestFirst(sessionId, { agentId: null, words: [], limit: 20 });
+    for (const event of events) {
+      const payload = event.payload as { readonly text?: unknown; readonly note?: unknown } | null;
+      if (payload && payload.note !== true && typeof payload.text === 'string' && payload.text.trim() !== '') return payload.text;
+    }
+    return null;
+  }
+
   async #publish(planId: string): Promise<void> {
     const plan = await this.#repo().get(planId);
     if (plan) await this.#syncSpans(this.#repo(), plan);
+    // D120: the "Stopped" Inbox items follow the items.
+    if (plan) await this.#syncStopped(plan, await this.#view(plan)).catch((error: unknown) => this.#onError(error));
     // D115 follow-ups: every item has its repositories (or the plan ended): the ask is settled and its Inbox item goes.
     if (plan) await this.#settleReposAsk(plan).catch((error: unknown) => this.#onError(error));
     this.#bus.publish('planChanged', { planId, state: plan?.state ?? null });

@@ -166,5 +166,14 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     async closePickReposNotices(planId, outcome) {
       await systemItems.closePlanPickReposNotices(planId, outcome);
     },
+
+    // D120: "Stopped: <item> (<plan>)" (Open session is a link to the item's run session; Dismiss).
+    async stoppedNotice(input) {
+      await systemItems.planStoppedNotice(input);
+    },
+
+    async closeStoppedNotices(itemId, outcome) {
+      await systemItems.closePlanStoppedNotices(itemId, outcome);
+    },
   };
 }

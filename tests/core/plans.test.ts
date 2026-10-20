@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   PLAN_PICK_REPOS_REASON,
+  PLAN_STOPPED_GRACE_MS,
+  PLAN_STOPPED_NO_MESSAGE,
   PLAN_TOOLS,
   type PlanItemFacts,
   pickReposMessage,
@@ -14,6 +16,8 @@ import {
   planView,
   protectedTargetRefusal,
   readyItems,
+  stoppedExcerpt,
+  stoppedSince,
   topologicalOrder,
 } from '../../src/core/plans.ts';
 import { AGENT_MCP_INSTRUCTIONS } from '../../src/core/todos.ts';
@@ -196,5 +200,65 @@ describe('D99 · plan graph rules', () => {
     const dev = planItemBrief({ planTitle: 'Fixes', targetBranch: 'dev', notes: null, key: null, branch: 'todo/x', developerMerges: false, todo: { id: 't1', title: 'Fix', description: null, plan: null } });
     expect(dev).toContain('gh pr create --base dev');
     expect(dev).toContain('Never merge into any branch other than dev');
+  });
+
+  describe('D120 · stopped: its agent ended its turn without finishing', () => {
+    const IDLE = '2026-10-13T11:50:00Z';
+    // A started item whose run session is idle since 11:50 with its todo open.
+    const idle = (patch: Partial<PlanItemFacts> = {}): PlanItemFacts =>
+      fact('1', { state: 'running', runSessionId: 's1', sessionStatus: 'idle', todoDone: false, idleSince: IDLE, startedAt: '2026-10-13T11:00:00Z', ...patch });
+    const view = (item: PlanItemFacts, options: { mode?: 'agents' | 'agents-with-holds' | 'developer' | 'none'; now?: number; grace?: number } = {}) =>
+      planView({ mode: options.mode ?? 'agents', targetBranch: 'feature/PROJ-100', maxConcurrency: 3, edges: [{ from: '1', to: '2' }], now: options.now ?? NOW, items: [item, fact('2')], ...(options.grace !== undefined ? { stoppedGraceMs: options.grace } : {}) }).items;
+
+    it('idle, todo open, past the grace period → stopped (red, waiting-you; its dependent keeps waiting)', () => {
+      const [first, second] = view(idle());
+      expect(first).toMatchObject({ state: 'stopped', reason: PLAN_STOPPED_NO_MESSAGE, stoppedSince: IDLE, storedState: 'running' });
+      expect(second).toMatchObject({ state: 'waiting', reason: 'waiting on PROJ-1' });
+      expect(planItemSpanKind({ state: 'running', heldReason: null }, first as never)).toBe('waiting-you');
+      // done / paused session statuses count as a turn that is over too.
+      expect(view(idle({ sessionStatus: 'done' }))[0]?.state).toBe('stopped');
+      expect(view(idle({ sessionStatus: 'paused' }))[0]?.state).toBe('stopped');
+    });
+
+    it('within the grace period → running; the grace period is 2 minutes by default and can be shortened', () => {
+      expect(PLAN_STOPPED_GRACE_MS).toBe(120_000);
+      const justNow = idle({ idleSince: new Date(NOW - 60_000).toISOString() });
+      expect(view(justNow)[0]).toMatchObject({ state: 'running', stoppedSince: null });
+      expect(view(justNow, { grace: 30_000 })[0]?.state).toBe('stopped');
+      expect(view(justNow, { now: NOW + 60_000 })[0]?.state).toBe('stopped');
+    });
+
+    it('working (a turn, subagents, a GitHub Actions wait or counted background work keep the status run) → running; working again → running', () => {
+      expect(view(idle({ sessionStatus: 'run' }))[0]?.state).toBe('running');
+      expect(stoppedSince(idle({ sessionStatus: 'run' }), 'agents')).toBeNull();
+    });
+
+    it('a question → question; an error → blocked; a todo done → not stopped', () => {
+      expect(view(idle({ sessionStatus: 'need' }))[0]?.state).toBe('question');
+      expect(view(idle({ sessionStatus: 'fail' }))[0]?.state).toBe('blocked');
+      expect(view(idle({ todoDone: true }))[0]?.state).toBe('running');
+      // Unknown todo (an older caller): never stopped.
+      expect(view(idle({ todoDone: undefined }))[0]?.state).toBe('running');
+    });
+
+    it('green PRs while idle (waiting for your merge) → ready-to-merge; red checks while idle → stopped', () => {
+      expect(view(idle({ waitingOn: 'merge' }), { mode: 'developer' })[0]?.state).toBe('ready-to-merge');
+      expect(view(idle({ waitingOn: 'checks', checks: { state: 'red', summary: '1 failed: build', sha: 'abc' } }), { mode: 'developer' })[0]?.state).toBe('stopped');
+      expect(view(idle({ waitingOn: 'checks', checks: { state: 'red', summary: '1 failed: build', sha: 'abc' } }))[0]?.state).toBe('stopped');
+      // A second conflict stays blocked; a held item of a plan without a merge step waits for your confirmation.
+      expect(view(idle({ waitingOn: 'conflict', conflicts: 2 }))[0]?.state).toBe('blocked');
+      expect(view(idle({ hold: true, waitingOn: 'merge' }), { mode: 'none' })[0]?.state).toBe('to-confirm');
+      // A plan without a merge step: idle with the todo open is stopped too.
+      expect(view(idle(), { mode: 'none' })[0]?.state).toBe('stopped');
+    });
+
+    it('since: its idle time, else its start; the excerpt folds whitespace and is cut at 300 characters', () => {
+      expect(stoppedSince(idle({ idleSince: null }), 'agents')).toBe('2026-10-13T11:00:00Z');
+      expect(stoppedExcerpt('  The item is not finished.\n\nLeft: re-run a check.  ')).toBe('The item is not finished. Left: re-run a check.');
+      expect(stoppedExcerpt('')).toBe(PLAN_STOPPED_NO_MESSAGE);
+      const long = stoppedExcerpt('x'.repeat(500));
+      expect(long).toHaveLength(300);
+      expect(long.endsWith('…')).toBe(true);
+    });
   });
 });

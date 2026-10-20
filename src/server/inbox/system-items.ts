@@ -48,6 +48,17 @@ export const PLAN_PICK_REPOS_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/**
+ * D120: kind of a plan item's "Stopped: <item> (<plan>)" item (its agent ended its turn without
+ * finishing its todo) and its actions: **Open session** (a link to the item's run session, like the
+ * PR watcher's) and **Dismiss**.
+ */
+export const PLAN_STOPPED = 'plan-stopped';
+export const PLAN_STOPPED_ACTIONS: readonly InboxAction[] = [
+  { id: 'open-session', label: 'Open session' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -514,6 +525,49 @@ export class SystemItemService {
         if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
       }
     }
+    return closed;
+  }
+
+  /**
+   * Plans (D99) hook (D120, `docs/plans.md` → *Stopped items*): "Stopped: <item> (<plan>)", a plan
+   * item whose agent ended its turn without finishing its todo, with the agent's last message (cut)
+   * as the detail: **Open session** (a link to the item's run session, `sessionId`) and **Dismiss**.
+   * Once per `dedupe` (one per stop episode, open or closed); Plans closes it when the item leaves `stopped`.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async planStoppedNotice(input: { readonly sessionId: string; readonly planId: string; readonly itemId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: PLAN_STOPPED,
+        source: 'plans',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: PLAN_STOPPED_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, planId: input.planId, itemId: input.itemId, route: `/plans/${encodeURIComponent(input.planId)}` },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** Plans (D99) hook (D120): closes the open "Stopped" items of plan item `itemId` with `outcome`; answers how many. */
+  async closePlanStoppedNotices(itemId: string, outcome: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== PLAN_STOPPED || !isPayload(item.payload) || item.payload['itemId'] !== itemId) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
     return closed;
   }
 
