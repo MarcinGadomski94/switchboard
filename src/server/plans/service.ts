@@ -33,6 +33,7 @@ import {
   isBranchName,
   itemLabel,
   normalizeItemKey,
+  pickReposMessage,
   planChecksMessage,
   planConflictMessage,
   planItemBranch,
@@ -138,6 +139,70 @@ export interface PlanEnvironment {
   ciSendsFailures?(): Promise<boolean>;
   /** D109: a PR was opened for a run session's branch (Open PR): the shared watcher reads it now. */
   prOpened?(sessionId: string): Promise<void>;
+  /**
+   * D115 follow-ups: raises the Inbox's "<n> items of <plan> wait for repositories" item (Ask again,
+   * Open plan, Dismiss; one open item per plan). Absent (tests' fakes): none is raised.
+   */
+  pickReposNotice?(input: PlanPickReposNotice): Promise<void>;
+  /** D115 follow-ups: closes plan `planId`'s open "wait for repositories" items with `outcome`. */
+  closePickReposNotices?(planId: string, outcome: string): Promise<void>;
+}
+
+/** D115 follow-ups: what the Inbox's "wait for repositories" item says. */
+export interface PlanPickReposNotice {
+  readonly sessionId: string;
+  readonly planId: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly dedupe: string;
+}
+
+/**
+ * D115 follow-ups: how the plan's agent was asked to pick its items' repositories: `import` (the
+ * Jira import's message), `auto` (items without repositories were added: one message for a burst),
+ * `again` (Ask again, on the plan page or in the Inbox), `agent` (the agent added them itself: the
+ * tool's answer told it).
+ */
+export type ReposAskVia = 'import' | 'auto' | 'again' | 'agent';
+
+/**
+ * D115 follow-ups: what happened to the repositories ask (the Jira lane writes its activity lines
+ * from these): `asked` (sent, the check is armed), `failed` (could not be sent), `late` (the check
+ * found items still waiting). `labels` are the waiting items' keys or titles.
+ */
+export interface ReposAskEvent {
+  readonly kind: 'asked' | 'failed' | 'late';
+  readonly planId: string;
+  readonly via: ReposAskVia | null;
+  readonly items: number;
+  readonly labels: readonly string[];
+  readonly message: string | null;
+}
+
+/** D115: how long after the ask the plan's agent may take to pick the repositories before the Inbox says it has not. */
+export const PICK_REPOS_TIMEOUT_MS = 15 * 60_000;
+
+/** D115 follow-ups: items without repositories added within this long of each other are asked about in one message. */
+export const PICK_REPOS_DEBOUNCE_MS = 2_000;
+
+/**
+ * D115 follow-ups, **tests only**: `SWITCHBOARD_PLAN_PICK_REPOS_MS` (whole ms, ≥ 200) replaces the
+ * 15-minute wait before "not picked in time"; `null` = the default.
+ */
+export function pickReposTimeoutFromEnv(env: Readonly<Record<string, string | undefined>> = process.env): number | null {
+  const raw = env['SWITCHBOARD_PLAN_PICK_REPOS_MS']?.trim() ?? '';
+  const ms = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isFinite(ms) && ms >= 200 ? ms : null;
+}
+
+/** "15 minutes" / "2 seconds": how long a wait reads. */
+function waitText(ms: number): string {
+  if (ms >= 60_000) {
+    const minutes = Math.round(ms / 60_000);
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return `${seconds} second${seconds === 1 ? '' : 's'}`;
 }
 
 /** D102: what the Inbox's "Ready to merge" item says and acts on. */
@@ -171,6 +236,10 @@ export interface PlanServiceOptions {
   readonly clock?: SchedulerClock;
   /** How often the checks of items waiting on them are read again (default 60 s). */
   readonly pollMs?: number;
+  /** D115 follow-ups: the wait after the repositories ask before "not picked in time" (default {@link PICK_REPOS_TIMEOUT_MS}). */
+  readonly pickReposTimeoutMs?: number;
+  /** D115 follow-ups: the batching window of the automatic repositories ask (default {@link PICK_REPOS_DEBOUNCE_MS}). */
+  readonly pickReposDebounceMs?: number;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -261,6 +330,13 @@ export class PlanService {
   #offCi: (() => void) | null = null;
   /** The switch changes, one at a time. */
   #switching: Promise<void> = Promise.resolve();
+  readonly #pickReposTimeoutMs: number;
+  readonly #pickReposDebounceMs: number;
+  /** D115 follow-ups: per plan, the "not picked in time" check of its repositories ask (from `plans.repos_asked_at`). */
+  readonly #askChecks = new Map<string, unknown>();
+  /** D115 follow-ups: per plan, the automatic ask waiting for a burst of added items to end. */
+  readonly #askSoon = new Map<string, unknown>();
+  readonly #askListeners = new Set<(event: ReposAskEvent) => Promise<void> | void>();
 
   constructor(options: PlanServiceOptions) {
     this.#dataDir = options.dataDir;
@@ -272,6 +348,8 @@ export class PlanService {
     this.#env = options.env;
     this.#clock = options.clock ?? SYSTEM_CLOCK;
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+    this.#pickReposTimeoutMs = options.pickReposTimeoutMs ?? PICK_REPOS_TIMEOUT_MS;
+    this.#pickReposDebounceMs = options.pickReposDebounceMs ?? PICK_REPOS_DEBOUNCE_MS;
     this.#onError = options.onError ?? ((error) => console.error('switchboard plans:', error));
   }
 
@@ -294,6 +372,16 @@ export class PlanService {
           return null;
         } catch (error) {
           if (error instanceof PlanError) return error.conflicts.length > 0 ? `${error.message}: ${error.conflicts.join(', ')}` : error.message;
+          throw error;
+        }
+      },
+      // D115 follow-ups: the Inbox's "wait for repositories" item's Ask again.
+      inboxAskRepos: async (planId) => {
+        try {
+          await this.askForRepos(planId, 'again');
+          return null;
+        } catch (error) {
+          if (error instanceof PlanError) return error.message;
           throw error;
         }
       },
@@ -399,6 +487,8 @@ export class PlanService {
     }
     this.#unsubscribe = this.#bus.subscribe((message) => this.#onMessage(message));
     this.#armPoll();
+    // D115 follow-ups: a repositories ask sent before a restart (or while Plans was off) is checked when it is due.
+    for (const plan of await repo.list()) if (plan.reposAskedAt !== null) this.#armAskCheck(plan.id, this.#askDueIn(plan.reposAskedAt));
     this.kick();
   }
 
@@ -478,6 +568,7 @@ export class PlanService {
       if (await this.#store.sessions.get(sessionId)) continue;
       for (const plan of await repo.list({ sourceSessionId: sessionId })) {
         for (const item of await repo.items(plan.id)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
+        await this.#dropReposAsk(plan, 'deleted');
         await repo.delete(plan.id);
         this.#bus.publish('planChanged', { planId: plan.id, state: null });
       }
@@ -489,6 +580,9 @@ export class PlanService {
     this.#unsubscribe = null;
     if (this.#poll !== null) this.#clock.clearTimeout(this.#poll);
     this.#poll = null;
+    for (const timer of [...this.#askChecks.values(), ...this.#askSoon.values()]) this.#clock.clearTimeout(timer);
+    this.#askChecks.clear();
+    this.#askSoon.clear();
   }
 
   /** `GET /api/plans/state`: the switch (answered also while Plans is off). */
@@ -498,7 +592,7 @@ export class PlanService {
 
   /** Listeners and timers running (tests: none while off). */
   activeTimers(): number {
-    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0);
+    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size;
   }
 
   /** The plans repository. @throws {PlanError} 404 `plans-off` while Plans is off, 503 `plans-unavailable` while `plans.db` is broken. */
@@ -766,6 +860,7 @@ export class PlanService {
     const plan = await this.#plan(planId);
     if (plan.state === 'running') throw new PlanError(409, 'running', 'the plan is running: pause or cancel it first');
     for (const item of await this.#repo().items(planId)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
+    await this.#dropReposAsk(plan, 'deleted');
     await this.#repo().delete(planId);
     this.#bus.publish('planChanged', { planId, state: null });
   }
@@ -815,6 +910,12 @@ export class PlanService {
     await this.#repo().touch(planId);
     await this.#publish(planId);
     this.kick();
+    // D115 follow-ups: an item without repositories in a plan whose agent picks them: the agent is asked
+    // (one message for a burst of added items), or, when it added the item itself, the tool's answer tells it.
+    if (reposPerItem(plan) && solutions.length === 0) {
+      if (by === 'agent') await this.reposAsked(planId, 'agent');
+      else this.#askSoonFor(planId);
+    }
     return { plan: await this.get(planId), itemId: item.id };
   }
 
@@ -1025,6 +1126,210 @@ export class PlanService {
     await this.#publish(planId);
     this.kick();
     return { plan: await this.get(planId), set };
+  }
+
+  // ── the repositories ask (D115 follow-ups 2026-10-20) ────────────────────
+
+  /** Follows the repositories ask (the Jira lane's activity lines); answers the unsubscribe. */
+  onReposAsk(listener: (event: ReposAskEvent) => Promise<void> | void): () => void {
+    this.#askListeners.add(listener);
+    return () => {
+      this.#askListeners.delete(listener);
+    };
+  }
+
+  /** Tells the listeners (awaited: a Jira plan's activity line is there when the call answers). */
+  async #emitAsk(event: ReposAskEvent): Promise<void> {
+    for (const listener of this.#askListeners) {
+      try {
+        await listener(event);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+  }
+
+  /**
+   * The ask to the plan's agent ({@link pickReposMessage}) for the items still waiting for their
+   * repositories, `null` when none waits. `also` = it follows the ask for the missing order.
+   */
+  async reposAskText(planId: string, also = false): Promise<{ readonly text: string; readonly items: number } | null> {
+    const plan = await this.#plan(planId);
+    const waiting = waitingForRepos(plan, await this.#repo().items(planId));
+    if (waiting.length === 0) return null;
+    const items = [];
+    for (const item of waiting) {
+      const todo = await this.#store.todos.get(item.todoId);
+      items.push({ label: itemLabel(item), id: item.id, todoId: item.todoId, title: todo?.title ?? item.title, description: todo?.description ?? null });
+    }
+    return { text: pickReposMessage({ planId: plan.id, planTitle: plan.title, solutions: await this.solutionChoices(planId), items, also }), items: waiting.length };
+  }
+
+  /**
+   * D115 · `POST /api/plans/{id}/solutions/ask` (**Ask again**, on the plan page and in the Inbox)
+   * and (`auto`) the ask after items without repositories were added: sends the plan's source
+   * session {@link reposAskText} and arms the "not picked in time" check. Refused: 409 `finished`,
+   * 409 `nothing-to-pick` (no item waits), 409 `not-sent` (the message could not be sent: the
+   * Inbox says so too).
+   */
+  async askForRepos(planId: string, via: 'again' | 'auto' = 'again'): Promise<{ readonly asked: true; readonly sessionId: string; readonly items: number }> {
+    const plan = await this.#plan(planId);
+    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
+    const ask = await this.reposAskText(planId);
+    if (!ask) throw new PlanError(409, 'nothing-to-pick', 'no item of the plan waits for its repositories');
+    try {
+      await this.#env.send(plan.sourceSessionId, ask.text);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'failed';
+      await this.reposAskFailed(planId, message, via);
+      throw new PlanError(409, 'not-sent', `the plan's session could not be asked: ${message}`);
+    }
+    await this.reposAsked(planId, via);
+    return { asked: true, sessionId: plan.sourceSessionId, items: ask.items };
+  }
+
+  /**
+   * The ask was sent (or, `agent`, the tool's answer told the agent): its time is stored
+   * (`plans.repos_asked_at`, so the check survives a restart) and the check armed. Any other way
+   * also closes the plan's open "wait for repositories" Inbox item (a fresh ask waits now).
+   */
+  async reposAsked(planId: string, via: ReposAskVia): Promise<void> {
+    const repo = this.#repo();
+    const plan = await this.#plan(planId);
+    const waiting = waitingForRepos(plan, await repo.items(planId));
+    if (waiting.length === 0) return;
+    await repo.setReposAsk(planId, { askedAt: this.#nowIso() });
+    this.#armAskCheck(planId, this.#pickReposTimeoutMs);
+    if (via !== 'agent' && plan.reposAskRaised) {
+      await repo.setReposAsk(planId, { raised: false });
+      await this.#env.closePickReposNotices?.(planId, 'asked-again');
+    }
+    await this.#emitAsk({ kind: 'asked', planId, via, items: waiting.length, labels: waiting.map((item) => itemLabel(item)), message: null });
+  }
+
+  /** The ask could not be sent (`message`): no check waits; the Inbox says so (with Ask again). */
+  async reposAskFailed(planId: string, message: string, via: ReposAskVia): Promise<void> {
+    const repo = this.#repo();
+    const plan = await this.#plan(planId);
+    this.#clearAskCheck(planId);
+    await repo.setReposAsk(planId, { askedAt: null });
+    const waiting = waitingForRepos(plan, await repo.items(planId));
+    if (waiting.length === 0) return;
+    await this.#raisePickRepos(plan, waiting, `The plan's agent could not be asked to pick the repositories of ${waiting.map((item) => itemLabel(item)).join(', ')}: ${message}. Use Ask again, or set them yourself on the plan.`);
+    await this.#emitAsk({ kind: 'failed', planId, via, items: waiting.length, labels: waiting.map((item) => itemLabel(item)), message });
+  }
+
+  /**
+   * The "not picked in time" check (its timer; tests call it): once the ask is due (`force`: now),
+   * a plan whose items still wait raises the Inbox item. Answers how many wait (0 = nothing raised).
+   */
+  async checkReposAsk(planId: string, force = false): Promise<number> {
+    if (!this.#db) return 0;
+    const repo = this.#repo();
+    const plan = await repo.get(planId);
+    if (!plan || plan.reposAskedAt === null) return 0;
+    const dueIn = this.#askDueIn(plan.reposAskedAt);
+    if (!force && dueIn > 0) {
+      this.#armAskCheck(planId, dueIn);
+      return 0;
+    }
+    this.#clearAskCheck(planId);
+    await repo.setReposAsk(planId, { askedAt: null });
+    if (plan.state === 'done' || plan.state === 'cancelled') return 0;
+    const waiting = waitingForRepos(plan, await repo.items(planId));
+    if (waiting.length === 0) return 0;
+    const labels = waiting.map((item) => itemLabel(item));
+    await this.#raisePickRepos(plan, waiting, `The plan's agent has not picked the repositories of ${labels.join(', ')} ${waitText(this.#pickReposTimeoutMs)} after the ask. Use Ask again, or set them yourself on the plan.`);
+    await this.#emitAsk({ kind: 'late', planId, via: null, items: waiting.length, labels, message: null });
+    return waiting.length;
+  }
+
+  /** How long the "not picked in time" wait has (from the stored ask time), never below 0. */
+  #askDueIn(askedAt: string): number {
+    const at = Date.parse(askedAt);
+    return Number.isFinite(at) ? Math.max(0, at + this.#pickReposTimeoutMs - this.#clock.now().getTime()) : 0;
+  }
+
+  async #raisePickRepos(plan: PlanRecord, waiting: readonly PlanItemRecord[], detail: string): Promise<void> {
+    if (!this.#env.pickReposNotice) return;
+    const n = waiting.length;
+    await this.#env.pickReposNotice({
+      sessionId: plan.sourceSessionId,
+      planId: plan.id,
+      title: `${n} item${n === 1 ? '' : 's'} of "${plan.title}" wait${n === 1 ? 's' : ''} for repositories`,
+      detail,
+      dedupe: `plan-pick-repos:${plan.id}:${this.#nowIso()}`,
+    });
+    await this.#repo().setReposAsk(plan.id, { raised: true });
+  }
+
+  #armAskCheck(planId: string, ms: number): void {
+    this.#clearAskCheck(planId);
+    if (this.#closed || !this.#db) return;
+    const timer = this.#clock.setTimeout(() => {
+      if (this.#askChecks.get(planId) === timer) this.#askChecks.delete(planId);
+      void this.checkReposAsk(planId).catch((error: unknown) => this.#onError(error));
+    }, ms);
+    this.#askChecks.set(planId, timer);
+  }
+
+  #clearAskCheck(planId: string): void {
+    const timer = this.#askChecks.get(planId);
+    if (timer !== undefined) this.#clock.clearTimeout(timer);
+    this.#askChecks.delete(planId);
+  }
+
+  /** The automatic ask, once no item has been added for {@link PICK_REPOS_DEBOUNCE_MS}: one message for a burst. */
+  #askSoonFor(planId: string): void {
+    if (this.#closed || !this.#db) return;
+    const before = this.#askSoon.get(planId);
+    if (before !== undefined) this.#clock.clearTimeout(before);
+    const timer = this.#clock.setTimeout(() => {
+      if (this.#askSoon.get(planId) === timer) this.#askSoon.delete(planId);
+      void this.#autoAsk(planId).catch((error: unknown) => this.#onError(error));
+    }, this.#pickReposDebounceMs);
+    this.#askSoon.set(planId, timer);
+  }
+
+  /** Runs the automatic asks waiting for their burst to end now (tests). */
+  async flushReposAsks(): Promise<void> {
+    const planIds = [...this.#askSoon.keys()];
+    for (const planId of planIds) {
+      this.#clock.clearTimeout(this.#askSoon.get(planId));
+      this.#askSoon.delete(planId);
+      await this.#autoAsk(planId);
+    }
+  }
+
+  async #autoAsk(planId: string): Promise<void> {
+    if (!this.#db) return;
+    const plan = await this.#repo().get(planId);
+    if (!plan || plan.state === 'done' || plan.state === 'cancelled') return;
+    if (waitingForRepos(plan, await this.#repo().items(planId)).length === 0) return;
+    try {
+      await this.askForRepos(planId, 'auto');
+    } catch (error) {
+      // A refusal is already in the Inbox (not sent) or means nothing waits any more.
+      if (!(error instanceof PlanError)) throw error;
+    }
+  }
+
+  /** Every item has its repositories, or the plan ended: no check waits and its Inbox item goes. */
+  async #settleReposAsk(plan: PlanRecord): Promise<void> {
+    if (plan.reposAskedAt === null && !plan.reposAskRaised) return;
+    const finished = plan.state === 'done' || plan.state === 'cancelled';
+    if (!finished && waitingForRepos(plan, await this.#repo().items(plan.id)).length > 0) return;
+    await this.#dropReposAsk(plan, finished ? plan.state : 'picked');
+  }
+
+  async #dropReposAsk(plan: PlanRecord, outcome: string): Promise<void> {
+    this.#clearAskCheck(plan.id);
+    const soon = this.#askSoon.get(plan.id);
+    if (soon !== undefined) this.#clock.clearTimeout(soon);
+    this.#askSoon.delete(plan.id);
+    if (plan.reposAskedAt === null && !plan.reposAskRaised) return;
+    await this.#repo().setReposAsk(plan.id, { askedAt: null, raised: false });
+    if (plan.reposAskRaised) await this.#env.closePickReposNotices?.(plan.id, outcome);
   }
 
   // ── control ─────────────────────────────────────────────────────────────
@@ -1700,6 +2005,8 @@ export class PlanService {
   async #publish(planId: string): Promise<void> {
     const plan = await this.#repo().get(planId);
     if (plan) await this.#syncSpans(this.#repo(), plan);
+    // D115 follow-ups: every item has its repositories (or the plan ended): the ask is settled and its Inbox item goes.
+    if (plan) await this.#settleReposAsk(plan).catch((error: unknown) => this.#onError(error));
     this.#bus.publish('planChanged', { planId, state: plan?.state ?? null });
   }
 
@@ -1736,6 +2043,11 @@ export class PlanService {
  */
 function reposPerItem(plan: Pick<PlanRecord, 'targetBranch' | 'repos'>): boolean {
   return plan.targetBranch !== null && plan.repos.length === 0;
+}
+
+/** D115: the items whose repositories the plan's agent still has to pick (pending, none yet; a plan that picks them per item). */
+function waitingForRepos(plan: Pick<PlanRecord, 'targetBranch' | 'repos'>, items: readonly PlanItemRecord[]): PlanItemRecord[] {
+  return reposPerItem(plan) ? [...items].sort((a, b) => a.position - b.position).filter((item) => item.state === 'pending' && item.solutions.length === 0) : [];
 }
 
 /** The plan's repos: its own, or (D115, picked per item) the union of its items' solutions, in item order. */

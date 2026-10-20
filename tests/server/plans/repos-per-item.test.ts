@@ -13,7 +13,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Folder, Session } from '../../../src/core/api.ts';
+import type { Folder, InboxItem, Session } from '../../../src/core/api.ts';
 import { PLANS_SETTING, PLAN_PICK_REPOS_REASON, type Plan } from '../../../src/core/plans.ts';
 import type { PlanJiraState } from '../../../src/core/plans-jira.ts';
 import { peerAnswerKind } from '../../../src/core/peer-wire.ts';
@@ -62,6 +62,17 @@ function call(r: Rig, method: InjectOptions['method'], url: string, payload?: un
   });
 }
 
+/** The app over the world's store, supervisor and data folder (built again for a restart). */
+async function makeApp(s: SupervisorWorld, g: GitWorld, token: string): Promise<FastifyInstance> {
+  const worktrees = g.manager({ sessions: s.supervisor });
+  const bus = new HubBus();
+  const folders = await FolderService.open({ store: s.store });
+  const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: s.root }, platform: 'linux', home: s.root, cwd: s.root });
+  const app = await buildApp({ config: { ...base, port: PORT }, token, store: s.store, webRoot: s.root, supervisor: s.supervisor, worktrees, providers: { diff: worktrees }, bus, folders, agentTools: false });
+  await app.ready();
+  return app;
+}
+
 async function setup(): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
   await s.store.settings.set(PLANS_SETTING, true);
@@ -70,13 +81,8 @@ async function setup(): Promise<Rig> {
   // A read-only solution (the router's deprecated/ folder): never a write target.
   await g.makeRepo(path.join(s.workspace, 'deprecated', 'microfrontends', 'old-front'));
   const repoPath = await g.makeRepo(path.join(s.root, 'acme'));
-  const worktrees = g.manager({ sessions: s.supervisor });
-  const bus = new HubBus();
-  const folders = await FolderService.open({ store: s.store });
   const token = generateToken();
-  const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: s.root }, platform: 'linux', home: s.root, cwd: s.root });
-  const app = await buildApp({ config: { ...base, port: PORT }, token, store: s.store, webRoot: s.root, supervisor: s.supervisor, worktrees, providers: { diff: worktrees }, bus, folders, agentTools: false });
-  await app.ready();
+  const app = await makeApp(s, g, token);
   const fake = await startFakeJira();
   const partial = { s, g, app, token, fake } as Rig;
   rig = partial;
@@ -305,5 +311,203 @@ describe('D115 · the plan\'s agent picks the repositories', () => {
     const generic = await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Acme cleanup', targetBranch: 'feature/acme-cleanup' });
     expect(generic.statusCode, generic.body).toBe(201);
     expect((generic.json() as Plan).reposPerItem).toBe(true);
+  });
+});
+
+// ── D115 follow-ups 2026-10-20: the ask goes out by itself, and a late or failed one reaches the Inbox ──
+
+const ASK = 'Please pick the repositories of the plan';
+
+/** A session started in `folder` (a Simple start with a first message). */
+async function startSession(r: Rig, folder: Folder, name: string): Promise<Session> {
+  const started = await call(r, 'POST', '/api/sessions', { simple: true, name, title: name, task: 'Hello', folder: folder.id, worktrees: false });
+  expect(started.statusCode, started.body).toBe(201);
+  return started.json() as Session;
+}
+
+/** How many times the session was sent the repositories ask. */
+async function asksOf(r: Rig, sessionId: string): Promise<number> {
+  const texts = (await r.s.store.events.list(sessionId)).map((event) => JSON.stringify(event.payload));
+  return texts.filter((text) => text.includes(ASK)).length;
+}
+
+/** The open "wait for repositories" Inbox items of plan `planId`. */
+async function pickItems(r: Rig, planId: string): Promise<InboxItem[]> {
+  const inbox = (await call(r, 'GET', '/api/inbox')).json() as InboxItem[];
+  return inbox.filter((item) => item.kind === 'system' && item.label === 'Pick repositories' && item.route === `/plans/${planId}`);
+}
+
+describe('D115 follow-ups · the repositories ask goes out by itself and never stalls silently', () => {
+  it('New plan in a workspace without repos: the items added in a row are asked about in one message', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const created = await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Acme checkout', targetBranch: 'feature/PROJ-10-acme-checkout' });
+    expect(created.statusCode, created.body).toBe(201);
+    const plan = created.json() as Plan;
+    expect(plan.reposPerItem).toBe(true);
+    for (const title of ['Cart API', 'Checkout page', 'Receipt email']) {
+      const added = await call(r, 'POST', `/api/plans/${plan.id}/items`, { todo: { title } });
+      expect(added.statusCode, added.body).toBe(201);
+    }
+    // The burst ends (the service waits PICK_REPOS_DEBOUNCE_MS; the test runs it now): one message for all three.
+    const service = planServiceOf(r.app);
+    await service?.flushReposAsks();
+    const text = await until(async () => {
+      const all = await messagesOf(r, source.id);
+      return all.includes(ASK) ? all : undefined;
+    }, 'the ask in the source session', 20_000);
+    for (const title of ['Cart API', 'Checkout page', 'Receipt email']) expect(text).toContain(title);
+    expect(text).toContain('plan_set_solutions');
+    expect(await asksOf(r, source.id)).toBe(1);
+    // No Inbox item while the agent still has time.
+    expect(await pickItems(r, plan.id)).toEqual([]);
+  });
+
+  it('plan_create and plan_add_item from the plan\'s own agent: the tool\'s answer is the ask (no message), and the check is armed', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const tools = await helper(helperApi(r, source.id));
+    try {
+      const created = await tools.callTool('plan_create', { title: 'Acme checkout', target_branch: 'feature/PROJ-10-acme-checkout', base_branch: 'main' });
+      expect(created.isError, created.text).toBe(false);
+      expect(created.text).toContain('picked per item, by you');
+      expect(created.text).toMatch(/solutions you can pick from: [^.]*web-front/);
+      expect(created.text).not.toMatch(/solutions you can pick from: [^.]*old-front/);
+      const planId = /\[([0-9a-f]+)\]/.exec(created.text)?.[1] as string;
+      const added = await tools.callTool('plan_add_item', { plan_id: planId, title: 'Cart API' });
+      expect(added.isError, added.text).toBe(false);
+      expect(added.text).toContain('plan_set_solutions');
+      expect(added.text).toMatch(/solutions you can pick from: [^.]*mobile/);
+      // With solutions given, nothing to pick.
+      const picked = await tools.callTool('plan_add_item', { plan_id: planId, title: 'Checkout page', solutions: ['web-front'] });
+      expect(picked.isError, picked.text).toBe(false);
+      expect(picked.text).not.toContain('picked per item, by you');
+      const service = planServiceOf(r.app);
+      await service?.flushReposAsks();
+      expect(await asksOf(r, source.id)).toBe(0);
+      // The check is armed all the same: when it is due, the Inbox says so.
+      expect(await service?.checkReposAsk(planId, true)).toBe(1);
+      const items = await pickItems(r, planId);
+      expect(items).toHaveLength(1);
+      expect(items[0]?.title).toBe('1 item of "Acme checkout" waits for repositories');
+    } finally {
+      await tools.close();
+    }
+  });
+
+  it('no ask for a plan with repos of its own or a repo folder\'s plan', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const limited = await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Mobile only', targetBranch: 'feature/PROJ-20-mobile', repos: ['mobile'] });
+    expect(limited.statusCode, limited.body).toBe(201);
+    expect((limited.json() as Plan).reposPerItem).toBe(false);
+    expect((await call(r, 'POST', `/api/plans/${(limited.json() as Plan).id}/items`, { todo: { title: 'Push tokens' } })).statusCode).toBe(201);
+    const repoSource = await startSession(r, r.repoFolder, 'repo-source');
+    const repoPlan = await call(r, 'POST', '/api/plans', { sourceSessionId: repoSource.id, title: 'Acme repo', targetBranch: 'feature/PROJ-30-acme' });
+    expect(repoPlan.statusCode, repoPlan.body).toBe(201);
+    expect((repoPlan.json() as Plan).reposPerItem).toBe(false);
+    expect((await call(r, 'POST', `/api/plans/${(repoPlan.json() as Plan).id}/items`, { todo: { title: 'Readme' } })).statusCode).toBe(201);
+    const service = planServiceOf(r.app);
+    expect(service?.activeTimers()).toBe(2); // the bus listener and the checks' poll: no ask, no check
+    await service?.flushReposAsks();
+    expect(await asksOf(r, source.id)).toBe(0);
+    expect(await asksOf(r, repoSource.id)).toBe(0);
+  });
+
+  it('not picked in time → a Needs-you Inbox item with Ask again, which re-arms the check; it goes once every item has repositories', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const plan = (await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Acme checkout', targetBranch: 'feature/PROJ-10-acme-checkout' })).json() as Plan;
+    const first = ((await call(r, 'POST', `/api/plans/${plan.id}/items`, { todo: { title: 'Cart API' } })).json() as { itemId: string }).itemId;
+    const second = ((await call(r, 'POST', `/api/plans/${plan.id}/items`, { todo: { title: 'Checkout page' } })).json() as { itemId: string }).itemId;
+    const service = planServiceOf(r.app);
+    await service?.flushReposAsks();
+    expect(await asksOf(r, source.id)).toBe(1);
+    // Not due yet: nothing.
+    expect(await service?.checkReposAsk(plan.id)).toBe(0);
+    expect(await pickItems(r, plan.id)).toEqual([]);
+    // Due: the Inbox item says which plan and how many items wait.
+    expect(await service?.checkReposAsk(plan.id, true)).toBe(2);
+    let items = await pickItems(r, plan.id);
+    expect(items).toHaveLength(1);
+    const notice = items[0] as InboxItem;
+    expect(notice).toMatchObject({ source: 'plans', status: 'need', title: '2 items of "Acme checkout" wait for repositories', sessionId: source.id });
+    expect(notice.detail).toContain('"Cart API", "Checkout page"');
+    expect(notice.actions?.map((action) => action.label)).toEqual(['Ask again', 'Open plan', 'Dismiss']);
+
+    // Ask again (from the Inbox, as a phone or a paired machine would through the same route): asked, the item closes, the check is armed again.
+    const again = await call(r, 'POST', `/api/inbox/${notice.id}/actions/plan-ask-repos`);
+    expect(again.statusCode, again.body).toBe(204);
+    expect(await pickItems(r, plan.id)).toEqual([]);
+    await until(async () => ((await asksOf(r, source.id)) === 2 ? true : undefined), 'the second ask', 20_000);
+    expect(await service?.checkReposAsk(plan.id)).toBe(0); // armed again: not due
+    expect(await service?.checkReposAsk(plan.id, true)).toBe(2);
+    items = await pickItems(r, plan.id);
+    expect(items).toHaveLength(1);
+
+    // One item gets its repositories: still one waits, the item stays.
+    expect((await call(r, 'PUT', `/api/plans/${plan.id}/items/${first}`, { solutions: ['web-front'] })).statusCode).toBe(200);
+    expect(await pickItems(r, plan.id)).toHaveLength(1);
+    // The agent picks the rest: the item goes.
+    const tools = await helper(helperApi(r, source.id));
+    try {
+      const set = await tools.callTool('plan_set_solutions', { plan_id: plan.id, items: [{ item: second, solutions: ['mobile'] }] });
+      expect(set.isError, set.text).toBe(false);
+    } finally {
+      await tools.close();
+    }
+    expect(await pickItems(r, plan.id)).toEqual([]);
+    expect(await service?.checkReposAsk(plan.id, true)).toBe(0);
+  });
+
+  it('a failed send → the Inbox item at once (every plan, and the Jira plan\'s activity too)', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const plan = (await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Acme checkout', targetBranch: 'feature/PROJ-10-acme-checkout' })).json() as Plan;
+    expect((await call(r, 'POST', `/api/plans/${plan.id}/items`, { todo: { title: 'Cart API' } })).statusCode).toBe(201);
+    expect((await call(r, 'POST', `/api/sessions/${source.id}/close`, { confirm: true })).statusCode).toBe(200);
+    await planServiceOf(r.app)?.flushReposAsks();
+    const items = await pickItems(r, plan.id);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.detail).toContain('could not be asked');
+    // Ask again from the plan page: refused (not sent); still one item (the newer one).
+    const failed = await call(r, 'POST', `/api/plans/${plan.id}/solutions/ask`);
+    expect(failed.statusCode).toBe(409);
+    expect(failed.json().error).toBe('not-sent');
+    expect(await pickItems(r, plan.id)).toHaveLength(1);
+  });
+
+  it('the asked time is kept in plans.db: after a restart the check still runs and raises the Inbox item', async () => {
+    const r = await setup();
+    const source = await startSession(r, r.workspaceFolder, 'source');
+    const plan = (await call(r, 'POST', '/api/plans', { sourceSessionId: source.id, title: 'Acme checkout', targetBranch: 'feature/PROJ-10-acme-checkout' })).json() as Plan;
+    expect((await call(r, 'POST', `/api/plans/${plan.id}/items`, { todo: { title: 'Cart API' } })).statusCode).toBe(201);
+    await planServiceOf(r.app)?.flushReposAsks();
+    expect(await asksOf(r, source.id)).toBe(1);
+    // Switchboard stops (the in-memory timer goes with it) and starts again on the same data folder, with a short wait.
+    await r.app.close();
+    process.env['SWITCHBOARD_PLAN_PICK_REPOS_MS'] = '300';
+    try {
+      r.app = await makeApp(r.s, r.g, r.token);
+    } finally {
+      delete process.env['SWITCHBOARD_PLAN_PICK_REPOS_MS'];
+    }
+    const items = await until(async () => {
+      const found = await pickItems(r, plan.id);
+      return found.length > 0 ? found : undefined;
+    }, 'the Inbox item after the restart', 20_000);
+    expect(items[0]?.title).toBe('1 item of "Acme checkout" waits for repositories');
+  });
+
+  it('a Jira plan: Ask again and the late check are lines of its activity; the Inbox item is raised too', async () => {
+    const r = await setup();
+    const answer = await call(r, 'POST', '/api/plans/jira/import', { ...IMPORT, folder: r.workspaceFolder.id });
+    const { plan } = answer.json() as { plan: Plan };
+    expect(await planServiceOf(r.app)?.checkReposAsk(plan.id, true)).toBe(5);
+    const jira = (await call(r, 'GET', `/api/plans/${plan.id}/jira`)).json() as PlanJiraState;
+    expect(jira.activity.some((line) => line.kind === 'error' && line.text.includes('has not picked the repositories of 5 item(s)'))).toBe(true);
+    const items = await pickItems(r, plan.id);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.title).toBe(`5 items of "${plan.title}" wait for repositories`);
   });
 });

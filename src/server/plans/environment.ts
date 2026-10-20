@@ -151,5 +151,14 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     async closeMergeNotice(itemId, outcome) {
       await systemItems.closePlanMergeNotices(itemId, outcome);
     },
+
+    // D115 follow-ups: "<n> items of <plan> wait for repositories" (Ask again runs through the Plans hook, `plansInboxAskRepos`).
+    async pickReposNotice(input) {
+      await systemItems.planPickReposNotice(input);
+    },
+
+    async closePickReposNotices(planId, outcome) {
+      await systemItems.closePlanPickReposNotices(planId, outcome);
+    },
   };
 }

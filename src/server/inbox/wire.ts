@@ -254,6 +254,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-ready-to-merge': 'Ready to merge',
   // D99 follow-up 2026-10-15: a held item of a plan without a merge step waits for the developer's confirmation.
   'plan-confirm': 'Confirm done',
+  // D115 follow-ups 2026-10-20: a plan's items wait for its agent to pick their repositories.
+  'plan-pick-repos': 'Pick repositories',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
   'memory-proposals': 'Memory',
   // Project memory (D107) hook (follow-up 2026-10-16): a moved member's memory could not be copied.

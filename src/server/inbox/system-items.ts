@@ -13,7 +13,7 @@ import type { HubBus } from '../hub/bus.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { inboxCount, sessionBranches } from './wire.ts';
 // Plans (D99) hook (D102): the "Ready to merge" item's Merge.
-import { plansInboxMerge } from '../plans/hooks.ts';
+import { plansInboxAskRepos, plansInboxMerge } from '../plans/hooks.ts';
 // Project memory (D107) hook: a moved member's memory copy, Retry / Keep on this PC (docs/memory-removal.md).
 import { MEMORY_COPY_KEEP, MEMORY_COPY_RETRY, memoryInboxAction } from '../memory/hooks.ts';
 
@@ -34,6 +34,18 @@ export const OPEN_PLAN = 'open-plan';
 export const PLAN_READY_TO_MERGE_ACTIONS: readonly InboxAction[] = [
   { id: PLAN_MERGE, label: 'Merge' },
   { id: OPEN_PLAN, label: 'Open plan' },
+];
+
+/**
+ * D115 follow-ups 2026-10-20: kind of a plan's "N items wait for repositories" item (its agent did not
+ * pick them in time, or could not be asked), its **Ask again** and the item's actions.
+ */
+export const PLAN_PICK_REPOS = 'plan-pick-repos';
+export const PLAN_ASK_REPOS = 'plan-ask-repos';
+export const PLAN_PICK_REPOS_ACTIONS: readonly InboxAction[] = [
+  { id: PLAN_ASK_REPOS, label: 'Ask again' },
+  { id: OPEN_PLAN, label: 'Open plan' },
+  { id: 'dismiss', label: 'Dismiss' },
 ];
 
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -453,6 +465,58 @@ export class SystemItemService {
     return created;
   }
 
+  /**
+   * Plans (D99) hook (D115 follow-ups 2026-10-20, `docs/plans.md` → *Repositories picked by the
+   * plan's agent*): "<n> items of <plan> wait for repositories": the plan's agent did not pick them
+   * in time, or could not be asked. **Ask again** (asks the agent again through
+   * {@link plansInboxAskRepos}, which re-arms the check), **Open plan** (a link), **Dismiss**.
+   * One open item per plan: a newer one closes the older (`superseded`); Plans closes it once every
+   * item has its repositories.
+   * @returns the new item, or `null` when this `dedupe` key already raised one.
+   */
+  async planPickReposNotice(input: { readonly sessionId: string; readonly planId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    await this.#closePickRepos(input.planId, 'superseded', input.dedupe);
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: PLAN_PICK_REPOS,
+        source: 'plans',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: PLAN_PICK_REPOS_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, planId: input.planId, route: `/plans/${encodeURIComponent(input.planId)}` },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    await this.#publishInbox();
+    return created;
+  }
+
+  /** Plans (D99) hook (D115 follow-ups): closes plan `planId`'s open "wait for repositories" items with `outcome`; answers how many. */
+  async closePlanPickReposNotices(planId: string, outcome: string): Promise<number> {
+    const closed = await this.#closePickRepos(planId, outcome, null);
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  async #closePickRepos(planId: string, outcome: string, keep: string | null): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== PLAN_PICK_REPOS || !isPayload(item.payload) || item.payload['planId'] !== planId) continue;
+      if (keep !== null && item.payload['dedupe'] === keep) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    return closed;
+  }
+
   /** Plans (D99) hook (D102): closes the open "Ready to merge" items of plan item `itemId` with `outcome`; answers how many. */
   async closePlanMergeNotices(itemId: string, outcome: string): Promise<number> {
     let closed = 0;
@@ -680,6 +744,14 @@ export class SystemItemService {
       const itemId = isPayload(item.payload) ? item.payload['itemId'] : null;
       if (typeof planId !== 'string' || typeof itemId !== 'string') throw new SystemItemError('gone', 'the plan item is no longer known');
       const refused = await plansInboxMerge(this.#store, planId, itemId);
+      if (refused !== null) throw new SystemItemError('refused', refused);
+      return;
+    }
+    // D115 follow-ups: a plan's "wait for repositories" item asks the plan's agent again.
+    if (action === PLAN_ASK_REPOS) {
+      const planId = isPayload(item.payload) ? item.payload['planId'] : null;
+      if (typeof planId !== 'string') throw new SystemItemError('gone', 'the plan is no longer known');
+      const refused = await plansInboxAskRepos(this.#store, planId);
       if (refused !== null) throw new SystemItemError('refused', refused);
       return;
     }

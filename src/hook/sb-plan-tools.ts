@@ -74,15 +74,38 @@ export async function planCreate(api: AgentApi, input: ToolInput): Promise<CallT
   if (input['max_concurrency'] !== undefined) body['maxConcurrency'] = input['max_concurrency'];
   if (input['usage_threshold'] !== undefined) body['usageThreshold'] = input['usage_threshold'];
   if (Object.keys(answers).length > 0) body['answers'] = answers;
-  return request(api, 'POST', '/agent/v1/plans', body, (answer) =>
-    isPlan(answer)
-      ? textResult(
-          answer.targetBranch === null
-            ? `Created plan [${answer.id}] "${answer.title}" (a draft) without a target branch: no merge step, an item is done when its todo is done; up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then call plan_start (its merge mode is none).`
-            : `Created plan [${answer.id}] "${answer.title}" (a draft): ${answer.targetBranch} → ${answer.baseBranch}, repos ${answer.repos.join(', ')}, up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then ask the developer for the merge mode and call plan_start.`,
-        )
-      : textResult('Switchboard did not answer with the plan.', true),
-  );
+  return request(api, 'POST', '/agent/v1/plans', body, (answer) => {
+    if (!isPlan(answer)) return textResult('Switchboard did not answer with the plan.', true);
+    if (answer.targetBranch === null) {
+      return textResult(`Created plan [${answer.id}] "${answer.title}" (a draft) without a target branch: no merge step, an item is done when its todo is done; up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then call plan_start (its merge mode is none).`);
+    }
+    // D115 follow-ups: a workspace plan without repos: this agent picks each item's repositories (the tool's answer is the ask).
+    if (answer.reposPerItem === true) {
+      return textResult(
+        [
+          `Created plan [${answer.id}] "${answer.title}" (a draft): ${answer.targetBranch} → ${answer.baseBranch}, up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then ask the developer for the merge mode and call plan_start.`,
+          pickReposHint(answer.id, solutionChoicesOf(answer)),
+        ].join('\n\n'),
+      );
+    }
+    return textResult(`Created plan [${answer.id}] "${answer.title}" (a draft): ${answer.targetBranch} → ${answer.baseBranch}, repos ${answer.repos.join(', ')}, up to ${answer.maxConcurrency} at once. Add items with plan_add_item, order them with plan_add_dependency, then ask the developer for the merge mode and call plan_start.`);
+  });
+}
+
+/** D115 follow-ups: the workspace's solutions the server named (`solutionChoices`), `null` when it named none. */
+function solutionChoicesOf(answer: unknown): string[] | null {
+  const value = record(answer)['solutionChoices'];
+  return Array.isArray(value) ? value.filter((name): name is string => typeof name === 'string') : null;
+}
+
+/**
+ * D115 follow-ups: the ask to the plan's own agent, as the tool's answer (no separate message): it
+ * picks each item's repositories itself; an item without any waits, and the developer hears about
+ * it in the Inbox when none are picked in time.
+ */
+function pickReposHint(planId: string, solutions: readonly string[] | null): string {
+  const list = solutions === null ? '' : ` The workspace's solutions you can pick from: ${solutions.length > 0 ? solutions.join(', ') : '(none found: say so to the developer)'}.`;
+  return `This plan's repositories are picked per item, by you: give plan_add_item the solutions each item works in, or call plan_set_solutions with plan_id ${planId} once the items are in. An item without any waits and never starts; if none are picked in time, the developer is told in the Inbox.${list}`;
 }
 
 /** D99 · `plan_add_item`: an existing todo or a new one. */
@@ -106,7 +129,10 @@ export async function planAddItem(api: AgentApi, input: ToolInput): Promise<Call
     const itemId = value['itemId'];
     if (!isPlan(plan) || typeof itemId !== 'string') return textResult('Switchboard did not answer with the plan.', true);
     const item = plan.items.find((candidate) => candidate.id === itemId);
-    return textResult(`Added [${itemId}]${item?.key ? ` ${item.key}` : ''} ${item?.title ?? ''} to plan [${plan.id}].\n\n${planStatusText(plan)}`);
+    const added = `Added [${itemId}]${item?.key ? ` ${item.key}` : ''} ${item?.title ?? ''} to plan [${plan.id}].`;
+    // D115 follow-ups: added without repositories in a plan whose agent picks them: the answer is the ask.
+    const waits = plan.reposPerItem === true && item !== undefined && item.solutions.length === 0;
+    return textResult([added, ...(waits ? [pickReposHint(plan.id, solutionChoicesOf(answer))] : []), planStatusText(plan)].join('\n\n'));
   });
 }
 

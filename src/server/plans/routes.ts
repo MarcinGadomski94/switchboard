@@ -40,7 +40,9 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * The agent's (the `plan_*` MCP tools), only with the session's agent token, over the plans
  * whose source is that session: `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
  * `POST /agent/v1/plans/{planId}/items | edges | start`; D115: `POST /agent/v1/plans/{planId}/solutions`
- * `{ items: [{ item, solutions }] }` → `{ plan, set }`.
+ * `{ items: [{ item, solutions }] }` → `{ plan, set }`. D115 follow-ups: in a plan whose repositories
+ * are picked per item, `POST /agent/v1/plans` and an item added without solutions also answer
+ * `solutionChoices` (the workspace's writable solutions).
  *
  * Experimental (`docs/plans.md` → *The switch*): while Plans is off every route answers 404
  * `plans-off` except `GET /api/plans/state` (the switch); while `plans.db` is broken, 503
@@ -196,7 +198,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
 
   app.post('/agent/v1/plans', async (request, reply) => {
     try {
-      return reply.code(201).send(await plans.create({ ...body(request), sourceSessionId: agentSession(request) }));
+      const plan = await plans.create({ ...body(request), sourceSessionId: agentSession(request) });
+      // D115 follow-ups: a plan whose agent picks each item's repositories names the workspace's solutions (the tool's answer tells the agent).
+      return reply.code(201).send(plan.reposPerItem === true ? { ...plan, solutionChoices: await plans.solutionChoices(plan.id) } : plan);
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -214,7 +218,11 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/items', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return reply.code(201).send(await plans.addItem(request.params.planId, request.body, 'agent'));
+      const added = await plans.addItem(request.params.planId, request.body, 'agent');
+      // D115 follow-ups: an item added without repositories in such a plan: the answer names the solutions to pick from.
+      const item = added.plan.items.find((candidate) => candidate.id === added.itemId);
+      const waits = added.plan.reposPerItem === true && item !== undefined && item.solutions.length === 0;
+      return reply.code(201).send(waits ? { ...added, solutionChoices: await plans.solutionChoices(request.params.planId) } : added);
     } catch (error) {
       return sendPlanError(reply, error);
     }

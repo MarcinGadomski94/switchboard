@@ -10,6 +10,8 @@ export interface PlanHooks {
   sessionContinued(from: string, to: string): Promise<void>;
   /** D102: the Inbox's "Ready to merge" item's Merge: answers `null` when merged, else why not. */
   inboxMerge(planId: string, itemId: string): Promise<string | null>;
+  /** D115 follow-ups: the Inbox's "wait for repositories" item's Ask again: answers `null` when asked, else why not (absent: refused). */
+  inboxAskRepos?(planId: string): Promise<string | null>;
   /** D108: every plan item that ended (merged, failed, blocked), for Insights; `null` while Plans is off or `plans.db` is unavailable. */
   outcomes(): Promise<PlanItemOutcome[] | null>;
   /** Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16: the plan items of these todos (Team's sidebar member rows name them); empty while off. */
@@ -59,6 +61,17 @@ export async function plansFollowContinuation(store: object, from: string, to: s
 export async function plansInboxMerge(store: object, planId: string, itemId: string): Promise<string | null> {
   const hooks = registry.get(store);
   return hooks ? hooks.inboxMerge(planId, itemId) : 'Plans is off: switch it on in Settings → Experimental';
+}
+
+/**
+ * D115 follow-ups seam (the Inbox's "wait for repositories" item, `system-items.ts`): asks plan
+ * `planId`'s agent again to pick its items' repositories. Answers `null` when asked, else the
+ * refusal's message (Plans off included).
+ */
+export async function plansInboxAskRepos(store: object, planId: string): Promise<string | null> {
+  const hooks = registry.get(store);
+  if (!hooks) return 'Plans is off: switch it on in Settings → Experimental';
+  return hooks.inboxAskRepos ? hooks.inboxAskRepos(planId) : 'this Switchboard cannot ask the plan\'s agent';
 }
 
 /** Settings seam: the Plans switch changed. */

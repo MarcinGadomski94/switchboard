@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
-import { type Plan, type PlanItem, itemLabel, pickReposMessage } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
 import {
   DEFAULT_JIRA_TRANSITIONS,
   JIRA_COMMENTS,
@@ -31,7 +31,7 @@ import type { Store } from '../../db/store.ts';
 import type { HubBus, HubMessage } from '../../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../../schedules/scheduler.ts';
 import type { TodoService } from '../../todos/service.ts';
-import { PlanError, type PlanService } from '../service.ts';
+import { PlanError, type PlanService, type ReposAskEvent } from '../service.ts';
 import { JiraClient, JiraError } from './client.ts';
 import type { JiraCredentialSource } from './credentials.ts';
 import type { PlanJiraItemRecord, PlanJiraRecord, PlanJiraStore } from './store.ts';
@@ -142,8 +142,6 @@ export interface JiraImportResult {
   readonly askedForRepos: boolean;
 }
 
-/** D115: how long after the ask the plan's agent may take to pick the repositories before the plan's activity says it has not. */
-export const PICK_REPOS_TIMEOUT_MS = 15 * 60_000;
 
 /** D115: the items of a plan whose repositories the plan's agent still has to pick. */
 export function itemsWithoutRepos(plan: Pick<Plan, 'reposPerItem' | 'items'>): PlanItem[] {
@@ -216,8 +214,8 @@ export class PlanJiraService {
   #timer: unknown = null;
   /** The timer's refresh in flight. */
   #ticking: Promise<void> | null = null;
-  /** D115: per plan, the check that its agent picked the repositories after the ask. */
-  readonly #repoChecks = new Map<string, unknown>();
+  /** D115 follow-ups: stops following the plans' repositories ask. */
+  #offReposAsk: (() => void) | null = null;
   #closed = false;
 
   constructor(options: PlanJiraServiceOptions) {
@@ -233,6 +231,8 @@ export class PlanJiraService {
   start(): void {
     if (this.#unsubscribe || this.#closed) return;
     this.#unsubscribe = this.#options.bus.subscribe((message) => this.#onMessage(message));
+    // D115 follow-ups: the plans' repositories ask (sent, failed, not answered in time) is a line of a Jira plan's activity.
+    this.#offReposAsk = this.#options.plans.onReposAsk((event) => this.#reposAskLine(event));
     this.#arm();
   }
 
@@ -243,8 +243,8 @@ export class PlanJiraService {
     this.#unsubscribe = null;
     if (this.#timer !== null) this.#clock.clearTimeout(this.#timer);
     this.#timer = null;
-    for (const timer of this.#repoChecks.values()) this.#clock.clearTimeout(timer);
-    this.#repoChecks.clear();
+    this.#offReposAsk?.();
+    this.#offReposAsk = null;
     await this.idle();
   }
 
@@ -510,10 +510,17 @@ export class PlanJiraService {
         .then(() => true)
         .catch(async (error: unknown) => {
           const what = order && repos ? 'propose the missing order and pick the repositories' : order ? 'propose the missing order' : 'pick the repositories';
-          await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'error', text: `Could not ask the session to ${what}: ${error instanceof Error ? error.message : 'failed'}${repos ? ' (use Ask again on the plan)' : ''}` });
+          const message = error instanceof Error ? error.message : 'failed';
+          await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'error', text: `Could not ask the session to ${what}: ${message}${repos ? ' (use Ask again on the plan)' : ''}` });
+          // D115 follow-ups: the Inbox says so too (with Ask again).
+          if (repos) await this.#options.plans.reposAskFailed(created.plan.id, message, 'import');
           return false;
         });
-      if (asked && repos) await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'ask-repos', text: `Asked the plan's agent to pick the repositories of ${itemsWithoutRepos(created.plan).length} item(s)` });
+      if (asked && repos) {
+        await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'ask-repos', text: `Asked the plan's agent to pick the repositories of ${itemsWithoutRepos(created.plan).length} item(s)` });
+        // D115 follow-ups: the "not picked in time" check is kept in plans.db (it survives a restart).
+        await this.#options.plans.reposAsked(created.plan.id, 'import');
+      }
     }
     this.#options.bus.publish('planChanged', { planId: created.plan.id, state: created.plan.state });
     return { plan: created.plan, jira: await this.#state(created.plan), preview, askedForOrder: asked && order, askedForRepos: asked && repos };
@@ -660,9 +667,8 @@ export class PlanJiraService {
 
   /**
    * Sends the plan's source session the ask: the missing order ({@link proposeOrderMessage}) and/or
-   * (D115) the items' repositories ({@link pickReposMessage}), in one message. After a sent ask for
-   * the repositories, a check {@link PICK_REPOS_TIMEOUT_MS} later notes in the plan's activity when
-   * its agent has not picked them.
+   * (D115) the items' repositories (the core's {@link PlanService.reposAskText}), in one message.
+   * The import then tells the core it was sent (its "not picked in time" check) or failed.
    */
   async #ask(plan: Plan, what: { readonly order: boolean; readonly repos: boolean } = { order: true, repos: false }): Promise<void> {
     if (!this.#options.send) throw new PlanJiraError(409, 'no-messages', 'this Switchboard cannot send the session a message');
@@ -680,30 +686,28 @@ export class PlanJiraService {
       );
     }
     if (what.repos) {
-      const items = [];
-      for (const item of itemsWithoutRepos(plan)) {
-        const todo = await this.#options.store.todos.get(item.todoId);
-        items.push({ label: itemLabel(item), id: item.id, todoId: item.todoId, title: todo?.title ?? item.title, description: todo?.description ?? null });
-      }
-      parts.push(pickReposMessage({ planId: plan.id, planTitle: plan.title, solutions: await this.#options.plans.solutionChoices(plan.id), items, also: what.order }));
+      const ask = await this.#options.plans.reposAskText(plan.id, what.order);
+      if (ask) parts.push(ask.text);
     }
     await this.#options.send(plan.sourceSessionId, parts.join('\n\n'));
-    if (what.repos) this.#armRepoCheck(plan.id);
   }
 
-  /** D115: {@link PICK_REPOS_TIMEOUT_MS} after an ask, a plan whose items still wait for their repositories says so in its activity (once per ask). */
-  #armRepoCheck(planId: string): void {
-    if (this.#closed) return;
-    const before = this.#repoChecks.get(planId);
-    if (before !== undefined) this.#clock.clearTimeout(before);
-    const timer = this.#clock.setTimeout(() => {
-      if (this.#repoChecks.get(planId) === timer) this.#repoChecks.delete(planId);
-      void this.checkRepos(planId).catch((error: unknown) => this.#onError(error));
-    }, PICK_REPOS_TIMEOUT_MS);
-    this.#repoChecks.set(planId, timer);
+  /** D115 follow-ups: the core's repositories ask as a line of a Jira plan's activity (the import writes its own). */
+  async #reposAskLine(event: ReposAskEvent): Promise<void> {
+    if (event.via === 'import' || event.via === 'agent') return;
+    if (!(await this.#enabled())) return;
+    if (event.kind === 'late') {
+      await this.checkRepos(event.planId);
+      return;
+    }
+    const db = await this.#jdb();
+    if (!(await db.plan(event.planId))) return;
+    if (event.kind === 'failed') await db.addActivity(event.planId, { itemId: null, key: null, kind: 'error', text: `Could not ask the session to pick the repositories: ${event.message ?? 'failed'}` });
+    else await db.addActivity(event.planId, { itemId: null, key: null, kind: 'ask-repos', text: `Asked the plan's agent${event.via === 'again' ? ' again' : ''} to pick the repositories of ${event.items} item(s)` });
+    this.#options.bus.publish('planChanged', { planId: event.planId, state: (await this.#options.plans.get(event.planId).catch(() => null))?.state ?? null });
   }
 
-  /** D115 (the timer; tests call it): notes in a Jira plan's activity that its agent has not picked the repositories of some items yet. Answers how many wait. */
+  /** D115 (the core's "not picked in time" check; tests call it): notes in a Jira plan's activity that its agent has not picked the repositories of some items yet. Answers how many wait. */
   async checkRepos(planId: string): Promise<number> {
     if (!(await this.#enabled())) return 0;
     const plan = await this.#options.plans.get(planId).catch(() => null);
@@ -712,37 +716,21 @@ export class PlanJiraService {
     if (waiting.length === 0) return 0;
     const db = await this.#jdb();
     if (await db.plan(planId)) {
-      await db.addActivity(planId, { itemId: null, key: null, kind: 'error', text: `The plan's agent has not picked the repositories of ${waiting.length} item(s) ${Math.round(PICK_REPOS_TIMEOUT_MS / 60_000)} minutes after the ask (${waiting.map((item) => itemLabel(item)).join(', ')}): use Ask again on the plan, or set them yourself` });
+      await db.addActivity(planId, { itemId: null, key: null, kind: 'error', text: `The plan's agent has not picked the repositories of ${waiting.length} item(s) in time after the ask (${waiting.map((item) => itemLabel(item)).join(', ')}): use Ask again on the plan or in the Inbox, or set them yourself` });
       this.#options.bus.publish('planChanged', { planId, state: plan.state });
     }
     return waiting.length;
   }
 
   /**
-   * D115 · `POST /api/plans/{id}/solutions/ask`: the plan page's **Ask again**: asks the plan's
-   * source session again to pick the repositories of the items that have none (any plan whose
-   * repositories are picked per item, before it is done). Refused: 409 `nothing-to-pick` when no
-   * item waits for them; 409 `not-sent` when the message could not be sent (also a line of a Jira
-   * plan's activity).
+   * D115 · `POST /api/plans/{id}/solutions/ask`: the plan page's **Ask again** (the Inbox's runs
+   * through the Plans hook): the core asks the plan's source session again to pick the
+   * repositories of the items that have none and re-arms its check (refusals: 409 `finished`,
+   * `nothing-to-pick`, `not-sent`). A Jira plan's activity gets the line.
    */
   async askForRepos(planId: string): Promise<{ readonly asked: true; readonly sessionId: string; readonly items: number }> {
     await this.#gate();
-    const plan = await this.#plan(planId);
-    if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanJiraError(409, 'finished', `the plan is ${plan.state}`);
-    const waiting = itemsWithoutRepos(plan);
-    if (waiting.length === 0) throw new PlanJiraError(409, 'nothing-to-pick', 'no item of the plan waits for its repositories');
-    const record = await (await this.#jdb()).plan(planId);
-    try {
-      await this.#ask(plan, { order: false, repos: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'failed';
-      if (record) await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'error', text: `Could not ask the session to pick the repositories: ${message}` });
-      if (error instanceof PlanJiraError) throw error;
-      throw new PlanJiraError(409, 'not-sent', `the plan's session could not be asked: ${message}`);
-    }
-    if (record) await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'ask-repos', text: `Asked the plan's agent again to pick the repositories of ${waiting.length} item(s)` });
-    this.#options.bus.publish('planChanged', { planId, state: plan.state });
-    return { asked: true, sessionId: plan.sourceSessionId, items: waiting.length };
+    return this.#options.plans.askForRepos(planId, 'again');
   }
 
   /** `POST /api/plans/{id}/proposals/ask`: the developer's **Propose order** on a draft plan. */
