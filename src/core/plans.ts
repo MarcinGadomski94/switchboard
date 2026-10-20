@@ -692,6 +692,48 @@ export function planItemBranch(key: string | null, slug: string): string {
   return key ? `${key}-${slug}` : `todo/${slug}`;
 }
 
+// ── D122: Plan PRs and commits reference only their own ticket ────────────
+
+/** D122: a ticket key anywhere in a text (`PROJ-123`), as tracker automations find them. */
+const TICKET_KEY_IN_TEXT = /\b[A-Z][A-Z0-9]*-[0-9]+\b/g;
+
+/**
+ * D122: `text` without any ticket key other than `ownKey` (`null` = keep none): a tracker's
+ * automation acts on every key it finds in a PR, a branch or a commit (a merged PR naming another
+ * ticket moves that ticket to Done). Spaces and stray separators left behind are folded.
+ */
+export function withoutOtherKeys(text: string, ownKey: string | null): string {
+  const stripped = text.replace(TICKET_KEY_IN_TEXT, (key) => (key === ownKey ? key : ''));
+  if (stripped === text) return text;
+  return stripped
+    .replace(/\(\s*\)|\[\s*\]/g, '')
+    .replace(/\s+([,.;:)\]])/g, '$1')
+    .replace(/([(\[])\s+/g, '$1')
+    .replace(/^[\s,.;:\-–—/]+|[\s,;:\-–—/]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** D122: the ticket keys in `text` other than `ownKey` (tests and checks). */
+export function otherKeysIn(text: string, ownKey: string | null): string[] {
+  return [...new Set((text.match(TICKET_KEY_IN_TEXT) ?? []).filter((key) => key !== ownKey))];
+}
+
+/**
+ * D122: the brief's rule on ticket keys (next to the D118 context, which names other tickets the
+ * agent needs to know about): the PR title and description, the branch name and every commit
+ * message name only the item's own key.
+ */
+export function planOwnKeyRule(key: string | null): string {
+  const own = key ? `only this item's own ticket key, ${key}` : 'no ticket key at all (this item has none of its own)';
+  return `Ticket keys: the pull request title, the pull request description, the branch name and every commit message may name ${own}, never any other key (not the epic, not a dependency, not a related ticket), because the tracker's automation acts on every key it finds (a merged pull request that names another ticket moves that ticket to Done). If you need to refer to other work, describe it without its key.`;
+}
+
+/** D122: the message of the developer's Merge commit (no target branch name: it may carry the epic's key). */
+export function planMergeMessage(key: string | null): string {
+  return key ? `Merge ${key} into the plan's target` : "Merge a plan item into the plan's target";
+}
+
 // ── D121: a fresh item branch is never "merged"; falsely done items are reopened ──
 
 /** D102: the note of an item the developer merged with the Merge step. */
@@ -817,7 +859,10 @@ export function planItemBrief(input: PlanItemBriefInput): string {
   if (input.todo.description && input.todo.description.trim() !== '' && input.omitDescription !== true) lines.push(input.todo.description.trim());
   if (todoHasPlan(input.todo.plan)) lines.push(`Plan and acceptance criteria:\n${(input.todo.plan as string).trim()}`);
   if (input.notes && input.notes.trim() !== '') lines.push(`Notes for every item of this plan:\n${input.notes.trim()}`);
-  if (input.context && input.context.trim() !== '') lines.push(input.context.trim());
+  // D122: the rule on ticket keys sits right next to the D118 context (which names the other tickets).
+  const keyRule = planOwnKeyRule(input.key);
+  if (input.context && input.context.trim() !== '') lines.push(`${input.context.trim()}\n\n${keyRule}`);
+  else lines.push(keyRule);
   if (input.noMerge === true || input.targetBranch === null) {
     // D99 follow-up 2026-10-15: a plan without a merge step: the item is done when its todo is.
     lines.push(

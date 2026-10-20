@@ -47,8 +47,10 @@ import {
   doneByGitDetection,
   planEarlyStartWarning,
   planJiraToldNote,
+  planMergeMessage,
   planMergedByYouNote,
   planReopenedWhy,
+  withoutOtherKeys,
   protectedTargetRefusal,
   readyItems,
   stoppedExcerpt,
@@ -1754,7 +1756,10 @@ export class PlanService {
       const todo = await this.#store.todos.get(item.todoId);
       const title = todo?.title ?? item.title;
       let url: string | null = null;
-      for (const input of inputs) url = await this.#merger.openPullRequest(input, title, `${item.key ? `${item.key}: ` : ''}${title}\n\nAn item of the plan "${plan.title}". Opened from Switchboard's Plans page.`);
+      // D122: the PR's title and description name only the item's own key (not the plan's title: it may carry the epic's).
+      const own = withoutOtherKeys(title, item.key);
+      const prTitle = item.key && !own.startsWith(item.key) ? `${item.key}: ${own}` : own;
+      for (const input of inputs) url = await this.#merger.openPullRequest(input, prTitle, `${prTitle}\n\nAn item of a Switchboard plan. Opened from Switchboard's Plans page.`);
       if (url !== null) await this.#repo().updateItem(item.id, { prUrl: url });
       // D109: the shared PR watcher follows it from now (its checks, review, merged).
       if (url !== null && item.runSessionId) await this.#env.prOpened?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
@@ -1809,7 +1814,8 @@ export class PlanService {
       if (item.branch !== null && plan.targetBranch !== null) {
         for (const record of await this.#store.worktrees.list({ sessionId: item.runSessionId })) {
           if (record.branch !== item.branch) continue;
-          inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch });
+          // D122: the merge commit names only the item's own key (the target's name may carry the epic's).
+          inputs.push({ repo: record.repo, dir: record.path, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, message: planMergeMessage(item.key) });
         }
       }
       if (needsBranch && inputs.length === 0) throw new PlanError(409, 'no-branch', `${itemLabel(item)} has no worktree branch to merge (it ran in the source folder): merge it yourself, then Mark done`);
@@ -1995,7 +2001,8 @@ export class PlanService {
       if (tip) cut[repo.name] = tip;
     }
     const from = target === null ? null : cutFrom;
-    const branch = planItemBranch(item.key, shortNameFromTitle(todo.title, []));
+    // D122: the branch names only the item's own key (another key in its title is left out of the slug).
+    const branch = planItemBranch(item.key, shortNameFromTitle(withoutOtherKeys(todo.title, item.key) || todo.title, []));
     const developer = developerMerges(plan.mergeMode, item);
     const answers = plan.answers;
     const full = kind === 'workspace' && answers !== null && answers.workType !== null && answers.mode !== null && answers.phase !== null;

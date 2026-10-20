@@ -2,7 +2,8 @@
  * D121 · Plans: a fresh item branch is never "merged"; falsely done items are reopened. The plan
  * core is real (store, TodoService, PlanService) over real temp git repos (`makeGitWorld`, the
  * real {@link PlanGit} and {@link BranchMergeGit}, fake gh); the run environment makes the item's
- * worktree the way a run does (cut from the target).
+ * worktree the way a run does (cut from the target). D122: the developer's Merge commit names
+ * only the item's own key.
  */
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -333,5 +334,27 @@ describe('D121 · manual Reopen', () => {
     await expect(r.plans.reopenItem(plan.id, a.id)).rejects.toMatchObject({ status: 409, code: 'not-done' });
     await r.plans.cancel(plan.id);
     await expect(r.plans.reopenItem(plan.id, a.id)).rejects.toBeInstanceOf(PlanError);
+  });
+});
+
+describe("D122 · the developer's Merge commit names only the item's own key", () => {
+  it('the merge commit message has no epic key (the target branch carries it)', async () => {
+    const r = await setup();
+    const plan = await chain(r, 'developer');
+    const a = await item(r, plan.id, 'PROJ-1');
+    const dir = path.join(r.w.root, 'wt', a.branch as string);
+    await r.w.commit(dir, 'a.txt', 'a\n', 'PROJ-1 work');
+    // The target moved on: a real merge commit (not a fast-forward).
+    await r.w.commit(r.targetDir, 'other.txt', 'other\n', 'other work');
+    await r.todos.update(r.sourceId, a.todoId, { state: 'done' }, 'agent');
+    await status(r, a.runSessionId as string, 'idle');
+    expect((await item(r, plan.id, 'PROJ-1')).state).toBe('ready-to-merge');
+    await r.plans.mergeItem(plan.id, a.id);
+    await settle(r);
+    expect((await item(r, plan.id, 'PROJ-1')).state).toBe('done');
+    const message = await r.w.git(r.repo, 'log', '-1', '--format=%B', TARGET);
+    expect(message.trim()).toBe("Merge PROJ-1 into the plan's target");
+    expect(message).not.toContain('PROJ-10');
+    expect(r.errors).toEqual([]);
   });
 });

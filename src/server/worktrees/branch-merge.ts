@@ -50,6 +50,11 @@ export interface BranchMergeInput {
   readonly branch: string;
   /** The branch it is merged into. */
   readonly target: string;
+  /**
+   * D122: the merge commit's message; absent = git's own ("Merge branch '<branch>' into <target>").
+   * Plans gives one without the target's name, which may carry another ticket's key (the epic's).
+   */
+  readonly message?: string;
 }
 
 /** A checked merge of one repo ({@link BranchMergeGit.check}). */
@@ -146,7 +151,7 @@ export class BranchMergeGit {
     const { input } = plan;
     if (plan.kind === 'up-to-date') return `${input.repo}: ${input.branch} is already in ${input.target}`;
     if (plan.checkedOutAt !== null) {
-      const merged = await this.#run(plan.checkedOutAt, ['merge', '--no-edit', '--no-stat', input.branch]);
+      const merged = await this.#run(plan.checkedOutAt, ['merge', '--no-edit', '--no-stat', ...(input.message !== undefined ? ['-m', input.message] : []), input.branch]);
       if (!succeeded(merged)) {
         const unmerged = await this.#run(plan.checkedOutAt, ['diff', '--name-only', '--diff-filter=U']);
         await this.#run(plan.checkedOutAt, ['merge', '--abort']);
@@ -164,7 +169,7 @@ export class BranchMergeGit {
       return `${input.repo}: fast-forwarded ${input.target} to ${input.branch}`;
     }
     if (plan.tree === null) throw new BranchMergeError('git-failed', `${input.repo}: git merge-tree wrote no tree`);
-    const commit = await this.#run(input.repoPath, ['commit-tree', plan.tree, '-p', plan.targetTip, '-p', plan.head, '-m', `Merge branch '${input.branch}' into ${input.target}`]);
+    const commit = await this.#run(input.repoPath, ['commit-tree', plan.tree, '-p', plan.targetTip, '-p', plan.head, '-m', input.message ?? `Merge branch '${input.branch}' into ${input.target}`]);
     if (!succeeded(commit) || commit.stdout.trim() === '') throw new BranchMergeError('git-failed', `git commit-tree failed in ${input.repoPath}: ${failureText(commit)}`);
     await this.#updateRef(input.repoPath, ref, commit.stdout.trim(), old);
     return `${input.repo}: merged ${input.branch} into ${input.target}`;
