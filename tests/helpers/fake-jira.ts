@@ -21,7 +21,7 @@ export interface FakeIssue {
   estimateSeconds?: number | null;
   /** Fields by id (e.g. `customfield_10050` = acceptance criteria). */
   custom?: Record<string, unknown>;
-  /** "this blocks <key>". */
+  /** "this blocks <key>" (Jira's UI on this issue): each <key> waits on this one. */
   blocks?: string[];
   /** Transition ids this issue cannot take (a missing transition). */
   without?: string[];
@@ -96,8 +96,10 @@ export function acmeEpic(): FakeIssue[] {
 
 function issueJson(issue: FakeIssue, all: Map<string, FakeIssue>, fields: string[] | null): Record<string, unknown> {
   const links: unknown[] = [];
-  for (const target of issue.blocks ?? []) links.push({ id: `${issue.key}>${target}`, type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, outwardIssue: { key: target } });
-  for (const other of all.values()) if ((other.blocks ?? []).includes(issue.key)) links.push({ id: `${other.key}>${issue.key}`, type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, inwardIssue: { key: other.key } });
+  // Real Jira's shape (D117): an entry carries the OTHER issue, under the opposite side's verb.
+  // "X blocks Y" is `inwardIssue: Y` on X and `outwardIssue: X` on Y.
+  for (const target of issue.blocks ?? []) links.push({ id: `${issue.key}>${target}`, type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, inwardIssue: { key: target } });
+  for (const other of all.values()) if ((other.blocks ?? []).includes(issue.key)) links.push({ id: `${other.key}>${issue.key}`, type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, outwardIssue: { key: other.key } });
   // A link of another type, never a dependency.
   links.push({ id: `${issue.key}~rel`, type: { name: 'Relates', inward: 'relates to', outward: 'relates to' }, outwardIssue: { key: 'PROJ-10' } });
   const every: Record<string, unknown> = {

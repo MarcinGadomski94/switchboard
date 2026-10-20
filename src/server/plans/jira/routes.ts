@@ -28,6 +28,7 @@ export const PLAN_JIRA_ROUTES: ReadonlyArray<readonly [method: string, url: stri
   ['GET', '/api/plans/:id/jira'],
   ['PUT', '/api/plans/:id/jira'],
   ['POST', '/api/plans/:id/jira/refresh'],
+  ['POST', '/api/plans/:id/jira/dependencies'],
   ['GET', '/api/plans/:id/proposals'],
   ['POST', '/api/plans/:id/proposals/ask'],
   ['POST', '/api/plans/:id/solutions/ask'],
@@ -64,6 +65,9 @@ function agentSession(request: FastifyRequest): string {
  *   through `/api/machines/{id}/api/plans/jira/…` and run there.
  * - `GET|PUT /api/plans/{id}/jira` (`{ sync?, transitions?, doneOnMerge? }`) → `PlanJiraState`;
  *   `POST /api/plans/{id}/jira/refresh` → `PlanJiraState`.
+ * - D117: `POST /api/plans/{id}/jira/dependencies` `{ apply?, fingerprint? }` → `JiraRelinkDiff`
+ *   (Re-read dependencies from Jira on a draft: the change, then `apply: true` makes it; 409
+ *   `not-draft` once started, 409 `changed` for a stale fingerprint).
  *
  * - Proposed order (D99-Jira-q1): `GET /api/plans/{id}/proposals` → `PlanEdgeProposal[]`;
  *   `POST /api/plans/{id}/proposals/ask` (Propose order: the source session is asked; a draft);
@@ -169,6 +173,15 @@ export async function registerPlanJiraRoutes(
   app.post<{ Params: { id: string } }>('/api/plans/:id/jira/refresh', async (request, reply) => {
     try {
       return await jira.refreshNow(request.params.id);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  // D117: Re-read dependencies from Jira (a draft; a read of Jira).
+  app.post<{ Params: { id: string } }>('/api/plans/:id/jira/dependencies', async (request, reply) => {
+    try {
+      return await jira.rereadDependencies(request.params.id, request.body);
     } catch (error) {
       return send(reply, error);
     }

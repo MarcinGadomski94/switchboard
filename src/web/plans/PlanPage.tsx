@@ -345,7 +345,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           <button type="button" className="sb-button sb-plan-jira__toggle" data-testid="plan-jira-toggle" aria-expanded={jiraOpen} onClick={() => setJiraOpen(!jiraOpen)}>
             {jiraOpen ? '▾' : '▸'} Jira · {plan.external.key}
           </button>
-          {jiraOpen ? <PlanJiraPanel planId={plan.id} /> : null}
+          {jiraOpen ? <PlanJiraPanel planId={plan.id} draft={plan.state === 'draft'} /> : null}
         </section>
       ) : null}
 

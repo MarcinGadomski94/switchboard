@@ -1,7 +1,7 @@
 import type { Session } from '../../../core/api.ts';
 import type { Plan } from '../../../core/plans.ts';
 import { onMachine } from '../../api/client.ts';
-import type { JiraConnectionStatus, JiraPreview, JiraSyncMode, JiraTransitionNames, PlanEdgeProposal, PlanJiraState } from '../../../core/plans-jira.ts';
+import type { JiraConnectionStatus, JiraPreview, JiraRelinkDiff, JiraSyncMode, JiraTransitionNames, PlanEdgeProposal, PlanJiraState } from '../../../core/plans-jira.ts';
 
 /** A refused call: the HTTP status and the answer's `error` / `message` / field errors. */
 export class JiraApiError extends Error {
@@ -83,6 +83,8 @@ export const jiraApi = {
   state: (planId: string) => call<PlanJiraState>('GET', `/api/plans/${enc(planId)}/jira`),
   update: (planId: string, body: { readonly sync?: JiraSyncMode; readonly transitions?: Partial<JiraTransitionNames>; readonly doneOnMerge?: boolean }) => call<PlanJiraState>('PUT', `/api/plans/${enc(planId)}/jira`, body),
   refresh: (planId: string) => call<PlanJiraState>('POST', `/api/plans/${enc(planId)}/jira/refresh`),
+  /** D117: Re-read dependencies from Jira on a draft: the change (`apply` false), or make it (with the fingerprint the developer saw). */
+  rereadDependencies: (planId: string, body: { readonly apply?: boolean; readonly fingerprint?: string } = {}) => call<JiraRelinkDiff>('POST', `/api/plans/${enc(planId)}/jira/dependencies`, body),
   proposals: (planId: string) => call<PlanEdgeProposal[]>('GET', `/api/plans/${enc(planId)}/proposals`),
   askForOrder: (planId: string) => call<{ readonly asked: true; readonly sessionId: string }>('POST', `/api/plans/${enc(planId)}/proposals/ask`),
   /** D115: Ask again: the plan's agent picks the repositories of the items without any. */

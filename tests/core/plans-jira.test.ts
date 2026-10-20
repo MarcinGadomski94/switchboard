@@ -1,6 +1,6 @@
 /** D99-Jira · the pure rules (`src/core/plans-jira.ts`) and the lane's route classification (D73 devices, D48 peers). */
 import { describe, expect, it } from 'vitest';
-import { adfToText, findTransition, jiraDrift, jiraItemTodo, normalizeJiraBaseUrl, parseEpicKey, splitAcceptanceCriteria } from '../../src/core/plans-jira.ts';
+import { type JiraIssueInput, adfToText, blocksLinks, buildJiraPreview, findTransition, jiraDrift, jiraItemTodo, normalizeJiraBaseUrl, parseEpicKey, splitAcceptanceCriteria } from '../../src/core/plans-jira.ts';
 import { peerAnswerKind } from '../../src/core/peer-wire.ts';
 import { TODO_DESCRIPTION_MAX } from '../../src/core/todos.ts';
 import { DEVICE_ALLOWED, DEVICE_REFUSED, matchesRule } from '../../src/server/devices/local-only.ts';
@@ -76,5 +76,56 @@ describe('D99-Jira · route classification', () => {
     expect(peerAnswerKind('POST', '/api/sessions/s1/plans/jira/import')).toBe('plan-item');
     expect(peerAnswerKind('GET', '/api/plans/p1/jira')).toBe('none');
     expect(peerAnswerKind('POST', '/api/plans/p1/jira/refresh')).toBe('none');
+  });
+});
+
+describe('D117 · Jira "Blocks" direction (real REST v3 shape)', () => {
+  const BLOCKS = { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' };
+  const issue = (key: string, links: unknown[], parent = 'PROJ-1'): JiraIssueInput => ({ key, fields: { summary: `Acme ${key}`, issuelinks: links, parent: { key: parent } } });
+  // "X blocks Y": on X the entry carries Y under `inwardIssue`; on Y it carries X under `outwardIssue`.
+  const blocks = (other: string) => ({ type: BLOCKS, inwardIssue: { key: other } });
+  const blockedBy = (other: string) => ({ type: BLOCKS, outwardIssue: { key: other } });
+  const preview = (children: JiraIssueInput[]) => buildJiraPreview({ baseUrl: 'https://acme.atlassian.net', epic: { key: 'PROJ-1', fields: { summary: 'Acme epic' } }, children, acceptanceField: null });
+
+  it('reads each side of one link the way Jira shows it', () => {
+    // X = PROJ-2 ("Acme tracking vocabulary": X blocks Y), Y = PROJ-3 ("Y is blocked by X").
+    expect(blocksLinks(issue('PROJ-2', [blocks('PROJ-3')]))).toEqual([{ from: 'PROJ-2', to: 'PROJ-3' }]);
+    expect(blocksLinks(issue('PROJ-3', [blockedBy('PROJ-2')]))).toEqual([{ from: 'PROJ-2', to: 'PROJ-3' }]);
+  });
+
+  it('turns the real-shaped pair (both sides of one link) into a single edge "Y after X"', () => {
+    const result = preview([issue('PROJ-2', [blocks('PROJ-3')]), issue('PROJ-3', [blockedBy('PROJ-2')])]);
+    expect(result.edges).toEqual([{ from: 'PROJ-2', to: 'PROJ-3', text: 'PROJ-3 waits on PROJ-2' }]);
+    expect(result.cycles).toEqual([]);
+  });
+
+  it('collapses a link read from both sides (and listed twice) into one edge', () => {
+    const result = preview([issue('PROJ-2', [blocks('PROJ-3'), blocks('PROJ-3')]), issue('PROJ-3', [blockedBy('PROJ-2'), blockedBy('PROJ-2')])]);
+    expect(result.edges.map((edge) => edge.text)).toEqual(['PROJ-3 waits on PROJ-2']);
+  });
+
+  it('a chain backend → front → E2E: only the first is ready, the end-of-chain item is the last to be', () => {
+    // PROJ-2 backend blocks PROJ-3 front, which blocks PROJ-4 E2E tests.
+    const children = [issue('PROJ-2', [blocks('PROJ-3')]), issue('PROJ-3', [blockedBy('PROJ-2'), blocks('PROJ-4')]), issue('PROJ-4', [blockedBy('PROJ-3')])];
+    const { edges } = preview(children);
+    expect(edges.map((edge) => edge.text)).toEqual(['PROJ-3 waits on PROJ-2', 'PROJ-4 waits on PROJ-3']);
+    const waiting = (done: Set<string>) => ['PROJ-2', 'PROJ-3', 'PROJ-4'].filter((key) => !done.has(key) && edges.filter((edge) => edge.to === key).every((edge) => done.has(edge.from)));
+    expect(waiting(new Set())).toEqual(['PROJ-2']);
+    expect(waiting(new Set(['PROJ-2']))).toEqual(['PROJ-3']);
+    expect(waiting(new Set(['PROJ-2', 'PROJ-3']))).toEqual(['PROJ-4']);
+  });
+
+  it('notes links outside the epic in the right direction', () => {
+    // PROJ-2 is blocked by PROJ-90 (outside) and blocks PROJ-91 (outside).
+    const result = preview([issue('PROJ-2', [blockedBy('PROJ-90'), blocks('PROJ-91')])]);
+    expect(result.edges).toEqual([]);
+    expect(result.externalLinks).toEqual([
+      { key: 'PROJ-2', other: 'PROJ-90', relation: 'waits-on', text: 'PROJ-2 waits on PROJ-90 (outside the epic)' },
+      { key: 'PROJ-2', other: 'PROJ-91', relation: 'blocks', text: 'PROJ-2 blocks PROJ-91 (outside the epic)' },
+    ]);
+  });
+
+  it('ignores links of other types', () => {
+    expect(blocksLinks(issue('PROJ-2', [{ type: { name: 'Relates', inward: 'relates to', outward: 'relates to' }, inwardIssue: { key: 'PROJ-3' } }]))).toEqual([]);
   });
 });

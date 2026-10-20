@@ -182,7 +182,7 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D112: the same import from a folder (a new session owns the plan).
   ['POST', /^\/api\/plans\/jira\/(?:preview|import)$/],
   ['GET|PUT', /^\/api\/plans\/[^/]+\/jira$/],
-  ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
+  ['POST', /^\/api\/plans\/[^/]+\/jira\/(?:refresh|dependencies)$/],
   // Plans (D99) hook: proposed order (read, Propose order, accept / reject one or all); a phone may (developer ruling 2026-10-13).
   ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],

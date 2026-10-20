@@ -25,7 +25,7 @@ import type { BranchMergeInput, BranchMergePlan } from '../../../src/server/work
 import { type PlanEnvironment, PlanError, type PlanMergePort, PlanService } from '../../../src/server/plans/service.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { FakeClock } from '../../helpers/clock.ts';
-import { type FakeJira, commentText, startFakeJira } from '../../helpers/fake-jira.ts';
+import { type FakeIssue, type FakeJira, commentText, startFakeJira } from '../../helpers/fake-jira.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -117,7 +117,7 @@ afterEach(async () => {
   rig = undefined;
 });
 
-async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
+async function setup(options: { env?: 'fake' | 'none'; issues?: FakeIssue[] } = {}): Promise<Rig> {
   const dir = await makeTempDir('plans-jira');
   const clock = new FakeClock(new Date('2026-10-13T10:00:00Z'));
   const store = await openTempStore(dir, { now: () => clock.now() });
@@ -149,7 +149,7 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
   await store.settings.set(PLANS_SETTING, true);
   const plans = new PlanService({ dataDir: dir, store, bus, todos, git, merger: new FakeMerger(git), env, clock, onError: (error) => errors.push(error) });
   await plans.start();
-  const fake = await startFakeJira();
+  const fake = await startFakeJira(options.issues);
   const keychain = new MemoryKeychain();
   const credentials = new JiraCredentialSource({ env: options.env === 'none' ? {} : { ATL_BASE_URL: fake.url, ATL_USER: fake.email, ATL_TOKEN: fake.token }, store: keychain });
   const db = await openDatabase(`${dir}/plans.db`);
@@ -793,5 +793,91 @@ describe('D99-Jira-q1 · proposed order (unit)', () => {
     const pending = all.body.proposals[1].id as string;
     expect((await call(r, 'POST', `/api/plans/${planId}/proposals/${pending}/reject`)).body.proposals[1].state).toBe('rejected');
     expect((await call(r, 'POST', `/api/plans/${planId}/proposals/${pending}/accept`)).body.error).toBe('decided');
+  });
+});
+
+/** D117: a chain epic: backend → front → E2E tests (each blocks the next), plus an unlinked docs item. */
+function chainEpic(): FakeIssue[] {
+  return [
+    { key: 'PROJ-20', summary: 'Acme tracking', description: null, status: 'To Do', parent: null, comments: [] },
+    { key: 'PROJ-21', summary: 'Acme tracking vocabulary', description: null, status: 'To Do', parent: 'PROJ-20', blocks: ['PROJ-22'], comments: [] },
+    { key: 'PROJ-22', summary: 'Acme tracking front', description: null, status: 'To Do', parent: 'PROJ-20', blocks: ['PROJ-23'], comments: [] },
+    { key: 'PROJ-23', summary: 'Acme tracking E2E tests', description: null, status: 'To Do', parent: 'PROJ-20', comments: [] },
+    { key: 'PROJ-24', summary: 'Acme tracking docs', description: null, status: 'To Do', parent: 'PROJ-20', comments: [] },
+  ];
+}
+
+describe('D117 · Jira "Blocks" direction', () => {
+  const states = async (r: Rig, planId: string) => Object.fromEntries((await r.plans.get(planId)).items.map((entry) => [entry.key, entry.state]));
+
+  it('the fake answers real Jira\'s shape: "X blocks Y" is inwardIssue Y on X and outwardIssue X on Y', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const answer = await fetch(`${r.fake.url}/rest/api/3/issue/PROJ-21?fields=issuelinks`, { headers: { authorization: `Basic ${Buffer.from(`${r.fake.email}:${r.fake.token}`).toString('base64')}` } });
+    const links = ((await answer.json()) as { fields: { issuelinks: Array<Record<string, unknown>> } }).fields.issuelinks.filter((link) => (link['type'] as { name: string }).name === 'Blocks');
+    expect(links.map((link) => [link['inwardIssue'], link['outwardIssue']])).toEqual([[{ key: 'PROJ-22' }, undefined]]);
+  });
+
+  it('imports a chain epic with only its first item ready and the end-of-chain E2E item last', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const answer = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    expect(answer.status, answer.text).toBe(201);
+    expect((answer.body.preview as JiraPreview).edges.map((edge) => edge.text)).toEqual(['PROJ-22 waits on PROJ-21', 'PROJ-23 waits on PROJ-22']);
+    expect(await states(r, answer.body.plan.id)).toEqual({ 'PROJ-21': 'ready', 'PROJ-22': 'waiting', 'PROJ-23': 'waiting', 'PROJ-24': 'ready' });
+  });
+
+  it('Re-read dependencies replaces the backwards Jira edges on a draft, keeps the developer\'s, and is refused once started', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const planId: string = imported.body.plan.id;
+    const ids: Record<string, string> = Object.fromEntries(imported.body.plan.items.map((entry: { key: string; id: string }) => [entry.key, entry.id]));
+    // A plan imported before the fix: every Jira edge backwards; plus the developer's own edge (docs after the E2E tests).
+    await r.plans.removeEdge(planId, ids['PROJ-21'] as string, ids['PROJ-22'] as string);
+    await r.plans.removeEdge(planId, ids['PROJ-22'] as string, ids['PROJ-23'] as string);
+    await r.plans.addEdge(planId, { from: ids['PROJ-23'], to: ids['PROJ-22'] });
+    await r.plans.addEdge(planId, { from: ids['PROJ-22'], to: ids['PROJ-21'] });
+    await r.plans.addEdge(planId, { from: ids['PROJ-23'], to: ids['PROJ-24'] });
+    expect(await states(r, planId)).toMatchObject({ 'PROJ-21': 'waiting', 'PROJ-23': 'ready' });
+
+    const url = `/api/plans/${planId}/jira/dependencies`;
+    const preview = await call(r, 'POST', url, {});
+    expect(preview.status, preview.text).toBe(200);
+    expect(preview.body).toMatchObject({ applied: false, unchanged: 0 });
+    expect(preview.body.removed.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-22 waits on PROJ-23', 'PROJ-21 waits on PROJ-22']);
+    expect(preview.body.added.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-22 waits on PROJ-21', 'PROJ-23 waits on PROJ-22']);
+    expect(preview.body.kept.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-24 waits on PROJ-23']);
+    // Nothing changed yet, and Jira was only read.
+    expect((await r.plans.get(planId)).edges).toHaveLength(3);
+    expect(r.fake.calls(/^(POST|PUT|DELETE) /)).toEqual([]);
+
+    expect((await call(r, 'POST', url, { apply: true, fingerprint: 'stale' })).body.error).toBe('changed');
+    const applied = await call(r, 'POST', url, { apply: true, fingerprint: preview.body.fingerprint });
+    expect(applied.status, applied.text).toBe(200);
+    expect(applied.body.applied).toBe(true);
+    expect(await states(r, planId)).toEqual({ 'PROJ-21': 'ready', 'PROJ-22': 'waiting', 'PROJ-23': 'waiting', 'PROJ-24': 'waiting' });
+    const edges = (await r.plans.get(planId)).edges.map((edge) => `${edge.from}>${edge.to}`).sort();
+    expect(edges).toEqual([`${ids['PROJ-21']}>${ids['PROJ-22']}`, `${ids['PROJ-22']}>${ids['PROJ-23']}`, `${ids['PROJ-23']}>${ids['PROJ-24']}`].sort());
+    const activity = (await call(r, 'GET', `/api/plans/${planId}/jira`)).body as PlanJiraState;
+    expect(activity.activity[0]?.text).toBe('Re-read dependencies from PROJ-20: 2 removed, 2 added, 1 of yours kept');
+    // Again: nothing left to change.
+    expect((await call(r, 'POST', url, {})).body).toMatchObject({ removed: [], added: [], unchanged: 2 });
+    expect(r.fake.calls(/^(POST|PUT|DELETE) /)).toEqual([]);
+
+    await r.plans.startPlan(planId, { mergeMode: 'developer' });
+    const refused = await call(r, 'POST', url, { apply: true });
+    expect([refused.status, refused.body.error]).toEqual([409, 'not-draft']);
+  });
+
+  it('keeps an accepted proposal even when it contradicts Jira (the Jira link is left out as a cycle)', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const planId: string = imported.body.plan.id;
+    const ids: Record<string, string> = Object.fromEntries(imported.body.plan.items.map((entry: { key: string; id: string }) => [entry.key, entry.id]));
+    await r.plans.removeEdge(planId, ids['PROJ-21'] as string, ids['PROJ-22'] as string);
+    await r.jira.propose(r.sourceId, planId, { proposals: [{ from: 'PROJ-22', to: 'PROJ-21', reason: 'Acme front defines the vocabulary' }] });
+    expect((await call(r, 'POST', `/api/plans/${planId}/proposals/accept-all`)).status).toBe(200);
+    const preview = await call(r, 'POST', `/api/plans/${planId}/jira/dependencies`, {});
+    expect(preview.body.removed).toEqual([]);
+    expect(preview.body.kept.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-21 waits on PROJ-22']);
+    expect(preview.body.cycles.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-22 waits on PROJ-21']);
   });
 });

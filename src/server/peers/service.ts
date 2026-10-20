@@ -264,7 +264,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/plans\/jira\/(?:preview|import)$/],
   ['GET', /^\/api\/plans\/[^/]+\/jira$/],
   ['PUT', /^\/api\/plans\/[^/]+\/jira$/],
-  ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
+  ['POST', /^\/api\/plans\/[^/]+\/jira\/(?:refresh|dependencies)$/],
   // Plans (D99) hook: proposed order, on the machine that owns the plan.
   ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],

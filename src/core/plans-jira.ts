@@ -347,7 +347,19 @@ export function isBlocksLink(type: unknown): boolean {
   return name === 'blocks' || outward === 'blocks' || inward === 'is blocked by';
 }
 
-/** The "blocks" links of an issue, as "`to` waits on `from`" pairs (both directions read). */
+/**
+ * The "blocks" links of an issue, as "`to` waits on `from`" pairs (both directions read).
+ *
+ * Jira REST v3 (`fields=issuelinks`; D117, the D99 direction fix): a link entry on an issue
+ * carries the **other** issue, under the side that other issue is on, and Jira shows the
+ * **opposite** side's verb. For the type `{ name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }`:
+ * - on X ("X blocks Y" in Jira's UI) the entry is `{ inwardIssue: Y }`: Y waits on X;
+ * - on Y ("Y is blocked by X") the entry is `{ outwardIssue: X }`: Y waits on X.
+ *
+ * So on issue I, `outwardIssue: O` means "I is blocked by O" (I waits on O) and
+ * `inwardIssue: N` means "I blocks N" (N waits on I). Both sides of one link give the same
+ * pair; {@link buildJiraPreview} keeps it once.
+ */
 export function blocksLinks(issue: JiraIssueInput): Array<{ readonly from: string; readonly to: string }> {
   const out: Array<{ from: string; to: string }> = [];
   const links = Array.isArray(issue.fields['issuelinks']) ? (issue.fields['issuelinks'] as unknown[]) : [];
@@ -356,10 +368,10 @@ export function blocksLinks(issue: JiraIssueInput): Array<{ readonly from: strin
     if (!link || !isBlocksLink(link['type'])) continue;
     const outward = nameOf(link['outwardIssue'], 'key');
     const inward = nameOf(link['inwardIssue'], 'key');
-    // "issue blocks outward": the outward issue waits on this one.
-    if (outward) out.push({ from: issue.key, to: outward.toUpperCase() });
-    // "inward blocks issue": this one waits on the inward issue.
-    if (inward) out.push({ from: inward.toUpperCase(), to: issue.key });
+    // `outwardIssue: O` = "this issue is blocked by O": this one waits on O.
+    if (outward) out.push({ from: outward.toUpperCase(), to: issue.key });
+    // `inwardIssue: N` = "this issue blocks N": N waits on this one.
+    if (inward) out.push({ from: issue.key, to: inward.toUpperCase() });
   }
   return out;
 }
@@ -491,6 +503,103 @@ export function buildJiraPreview(input: JiraPreviewInput): JiraPreview {
     suggestedTargetBranch: `feature/${input.epic.key}${titleSlug ? `-${titleSlug}` : ''}`,
     proposeAvailable: false,
   };
+}
+
+// ── re-read dependencies (D117) ──────────────────────────────────────────
+
+/** A dependency of a plan as the re-read shows it: item ids, and "PROJ-12 waits on PROJ-11". */
+export interface JiraRelinkEdge extends PlanEdge {
+  readonly text: string;
+}
+
+/**
+ * D117 · `POST /api/plans/{id}/jira/dependencies`: what **Re-read dependencies from Jira** changes
+ * on a draft Jira plan (`apply: false`), or changed (`apply: true`). Edges are by item id.
+ */
+export interface JiraRelinkDiff {
+  /** Dependencies that contradict Jira (the reverse of a Jira "blocks" link): removed. */
+  readonly removed: readonly JiraRelinkEdge[];
+  /** Jira "blocks" links the plan does not have yet: added. */
+  readonly added: readonly JiraRelinkEdge[];
+  /** Jira links the plan already has the right way round. */
+  readonly unchanged: number;
+  /** The developer's and the accepted proposals' dependencies: never touched. */
+  readonly kept: readonly JiraRelinkEdge[];
+  /** Jira links left out because they would close a cycle with a kept dependency. */
+  readonly cycles: readonly JiraRelinkEdge[];
+  /** Identifies this diff; `apply` with a stale one answers 409 `changed`. */
+  readonly fingerprint: string;
+  readonly applied: boolean;
+}
+
+/** Input of {@link jiraRelinkDiff}. */
+export interface JiraRelinkInput {
+  /** The plan's items: id, label ("PROJ-12"), and its Jira key (`null` for an item added by hand). */
+  readonly items: ReadonlyArray<{ readonly id: string; readonly label: string; readonly key: string | null }>;
+  /** The plan's dependencies now (item ids). */
+  readonly edges: readonly PlanEdge[];
+  /** The epic's dependencies as Jira says now ({@link JiraPreview.edges}, by key). */
+  readonly jira: readonly PlanEdge[];
+  /** Jira links the preview left out as a cycle ({@link JiraPreview.cycles}, by key): a plan dependency equal to one is still Jira's. */
+  readonly jiraCycles?: readonly PlanEdge[];
+  /** Accepted proposals (item ids): kept even when they contradict Jira. */
+  readonly proposals: readonly PlanEdge[];
+}
+
+/**
+ * D117 · the re-read's rule. Plans do not record where a dependency came from, so: a plan
+ * dependency that **is** a Jira link stays; one that is the **reverse** of a Jira link is what the
+ * pre-D117 import made (it read every link backwards) and is removed, unless it is an accepted
+ * proposal; anything else (added by hand, an accepted proposal, a link since removed in Jira) is
+ * kept. Then each Jira link the plan lacks is added, in ticket order, unless it would close a
+ * cycle with what is kept (reported). Links to items no longer in the plan are skipped.
+ */
+export function jiraRelinkDiff(input: JiraRelinkInput): Omit<JiraRelinkDiff, 'fingerprint' | 'applied'> {
+  const byKey = new Map(input.items.filter((item) => item.key !== null).map((item) => [item.key as string, item.id]));
+  const label = new Map(input.items.map((item) => [item.id, item.label]));
+  const view = (edge: PlanEdge): JiraRelinkEdge => ({ from: edge.from, to: edge.to, text: `${label.get(edge.to) ?? edge.to} waits on ${label.get(edge.from) ?? edge.from}` });
+  const id = (edge: PlanEdge) => `${edge.from}>${edge.to}`;
+  const toIds = (links: readonly PlanEdge[]): PlanEdge[] => {
+    const out: PlanEdge[] = [];
+    for (const link of links) {
+      const from = byKey.get(link.from);
+      const to = byKey.get(link.to);
+      if (from && to && !out.some((edge) => edge.from === from && edge.to === to)) out.push({ from, to });
+    }
+    return out;
+  };
+  const jira = toIds(input.jira);
+  const jiraIds = new Set([...jira, ...toIds(input.jiraCycles ?? [])].map(id));
+  const proposed = new Set(input.proposals.map(id));
+  const removed: JiraRelinkEdge[] = [];
+  const kept: JiraRelinkEdge[] = [];
+  const current: PlanEdge[] = [];
+  let unchanged = 0;
+  for (const edge of input.edges) {
+    if (jiraIds.has(id(edge))) {
+      unchanged += 1;
+      current.push(edge);
+    } else if (jiraIds.has(id({ from: edge.to, to: edge.from })) && !proposed.has(id(edge))) {
+      removed.push(view(edge));
+    } else {
+      kept.push(view(edge));
+      current.push(edge);
+    }
+  }
+  const added: JiraRelinkEdge[] = [];
+  const cycles: JiraRelinkEdge[] = [];
+  const have = new Set(current.map(id));
+  for (const edge of jira) {
+    if (have.has(id(edge))) continue;
+    if (findCycle(current, edge.from, edge.to)) {
+      cycles.push(view(edge));
+      continue;
+    }
+    current.push(edge);
+    have.add(id(edge));
+    added.push(view(edge));
+  }
+  return { removed, added, unchanged, kept, cycles };
 }
 
 /** Cuts `text` to `max` characters, ending with "…" when it was longer. */

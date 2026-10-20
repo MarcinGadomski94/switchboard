@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
 import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
 import {
@@ -9,6 +9,7 @@ import {
   JIRA_REFRESH_MS,
   JIRA_SYNC_MODES,
   type JiraPreview,
+  type JiraRelinkDiff,
   type JiraSyncMode,
   type JiraTransitionNames,
   EDGE_PROPOSALS_MAX,
@@ -25,6 +26,7 @@ import {
   jiraDrift,
   jiraItemTodo,
   jiraPreviewItem,
+  jiraRelinkDiff,
   parseEpicKey,
   statusCategoryOf,
 } from '../../../core/plans-jira.ts';
@@ -637,6 +639,48 @@ export class PlanJiraService {
     await this.#refresh(record, plan, 'developer');
     this.#options.bus.publish('planChanged', { planId, state: plan.state });
     return this.#state(await this.#plan(planId));
+  }
+
+  /**
+   * D117 · `POST /api/plans/{id}/jira/dependencies` `{ apply?, fingerprint? }`: **Re-read
+   * dependencies from Jira** on a draft Jira plan (a read of Jira; nothing is written there).
+   * Reads the epic's "blocks" links again with the corrected direction and answers the change
+   * ({@link jiraRelinkDiff}: dependencies that are the reverse of a Jira link go, Jira links the
+   * plan lacks come; the developer's and accepted proposals' dependencies stay). `apply: true`
+   * makes it (with the `fingerprint` of the diff the developer saw: a different one is 409
+   * `changed`), notes it in the Jira activity and publishes `planChanged`. 409 `not-draft` once
+   * the plan has started.
+   */
+  async rereadDependencies(planId: string, body: unknown): Promise<JiraRelinkDiff> {
+    await this.#gate();
+    const input = isRecord(body) ? body : {};
+    const apply = input['apply'] === true;
+    const plan = await this.#plan(planId);
+    const record = await this.#record(planId);
+    if (plan.state !== 'draft') throw new PlanJiraError(409, 'not-draft', 'dependencies are re-read from Jira only before the plan starts');
+    const preview = await this.#preview(await this.#client(), record.epicKey);
+    const rows = await (await this.#jdb()).items(planId);
+    const keyOf = new Map(rows.map((row) => [row.itemId, row.key]));
+    const proposals = (await (await this.#jdb()).proposals(planId)).filter((entry) => entry.state === 'accepted').map((entry) => ({ from: entry.fromItemId, to: entry.toItemId }));
+    const diff = jiraRelinkDiff({
+      items: plan.items.map((item) => ({ id: item.id, label: itemLabel(item), key: keyOf.get(item.id) ?? null })),
+      edges: plan.edges,
+      jira: preview.edges,
+      jiraCycles: preview.cycles,
+      proposals,
+    });
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify([diff.removed.map((edge) => `${edge.from}>${edge.to}`), diff.added.map((edge) => `${edge.from}>${edge.to}`)]))
+      .digest('hex')
+      .slice(0, 16);
+    if (!apply) return { ...diff, fingerprint, applied: false };
+    if (typeof input['fingerprint'] === 'string' && input['fingerprint'] !== fingerprint) throw new PlanJiraError(409, 'changed', 'Jira or the plan changed since the preview: look at the changes again');
+    for (const edge of diff.removed) await this.#options.plans.removeEdge(planId, edge.from, edge.to);
+    for (const edge of diff.added) await this.#options.plans.addEdge(planId, { from: edge.from, to: edge.to });
+    const parts = [`${diff.removed.length} removed`, `${diff.added.length} added`, diff.cycles.length > 0 ? `${diff.cycles.length} left out (cycle)` : null, diff.kept.length > 0 ? `${diff.kept.length} of yours kept` : null].filter(Boolean);
+    await (await this.#jdb()).addActivity(planId, { itemId: null, key: record.epicKey, kind: 'import', text: `Re-read dependencies from ${record.epicKey}: ${parts.join(', ')}` });
+    this.#options.bus.publish('planChanged', { planId, state: plan.state });
+    return { ...diff, fingerprint, applied: true };
   }
 
   /**
