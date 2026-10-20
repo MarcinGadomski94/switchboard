@@ -136,7 +136,7 @@ A plan can be made from a Jira epic: its child issues become the items, their "b
    - one item per child: `ref` and `key` = the issue key, title "KEY Summary", the todo's description = the ticket's description, then "Acceptance criteria:" with them, then a line with the ticket's link, components and assignee (cut to the todo's 4,000 characters, the acceptance criteria kept first), the estimate in minutes, **no solutions** (the components are shown as a hint; the developer picks the solutions on the plan);
    - the preview's dependencies;
    - `external: { system: 'jira', key: <epic> }`;
-   - the title, target branch, base branch and repos from the dialog (title and target pre-filled: "PROJ-10 Acme checkout", `feature/PROJ-10-acme-checkout`).
+   - the title, target branch, base branch and repos from the dialog (title and target pre-filled: "PROJ-10 Acme checkout", `feature/PROJ-10-acme-checkout`); a workspace session without solutions has no repos of its own, so the dialog asks for them).
 
    The plan is a **draft**; its merge mode is chosen at Start (the core requires it). A failure of the core (no target branch, a forbidden branch, too many items) creates nothing.
 
