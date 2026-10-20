@@ -125,7 +125,9 @@ test('answer a question in the detail; running → ready to merge → merged →
   await world.itemIn(page, planId, 'PROJ-3', 'question');
   await expect(card('PROJ-3')).toHaveAttribute('data-state', 'question');
   await expect(card('PROJ-3').getByTestId('plan-card-status')).toHaveText('needs your answer');
-  await card('PROJ-3').click();
+  // D120: a card with a run session opens it; its ⓘ (the button right after it) shows the detail.
+  const details = (key: string) => card(key).locator('xpath=following-sibling::*[1][@data-testid="plan-card-details"]');
+  await details('PROJ-3').click();
   const detail = page.getByTestId('plan-detail');
   await expect(detail.getByTestId('question-card')).toBeVisible({ timeout: 15_000 });
   const questions = detail.getByTestId('question');
@@ -140,7 +142,7 @@ test('answer a question in the detail; running → ready to merge → merged →
   await world.itemIn(page, planId, 'PROJ-1', 'ready-to-merge');
   await expect(card('PROJ-1')).toHaveAttribute('data-state', 'ready-to-merge');
   await expect(card('PROJ-2')).toHaveAttribute('data-state', 'waiting');
-  await card('PROJ-1').click();
+  await details('PROJ-1').click();
   await expect(detail.getByTestId('plan-detail-merge-step')).toBeVisible();
   await expect(card('PROJ-1').getByTestId('plan-card-status')).toHaveText('waiting for your merge');
   await expect(detail.getByTestId('plan-detail-merge')).toBeEnabled({ timeout: 15_000 });
@@ -192,7 +194,8 @@ test('phone: the List and a full-screen detail', async ({ page }) => {
   await expect(page.getByTestId('plan-row')).toHaveCount(3);
   await expect(page.locator('[data-testid="plan-row"][data-state="done"]')).toContainText('done · merged');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await page.locator('[data-testid="plan-row"]').filter({ hasText: 'PROJ-2' }).locator('.sb-plan-row__main').click();
+  // D120: a row with a run session opens it; Details shows the detail.
+  await page.locator('[data-testid="plan-row"]').filter({ hasText: 'PROJ-2' }).getByTestId('plan-row-details').click();
   await expect(page.getByTestId('plan-detail')).toBeVisible();
   await expect(page.getByTestId('plan-list')).toHaveCount(0);
   await page.getByTestId('plan-detail-back').click();

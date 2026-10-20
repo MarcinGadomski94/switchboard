@@ -613,8 +613,40 @@
   background: var(--bg-selected-card);
 }
 
-.sb-plan-card[aria-pressed='true'] {
+.sb-plan-card[aria-pressed='true'],
+.sb-plan-card[data-selected] {
   box-shadow: 0 0 0 1px var(--text-2);
+}
+
+/* D120: a card that opens its session leaves room for its ⓘ (the detail). */
+.sb-plan-card[data-opens-session] .sb-plan-card__meta {
+  padding-right: 18px;
+}
+
+.sb-plan-card__details {
+  position: absolute;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sb-plan-card__details:hover,
+.sb-plan-card__details:focus-visible,
+.sb-plan-card__details[aria-pressed='true'] {
+  color: var(--text-strong);
+  border-color: var(--border-control);
+  background: var(--bg-card);
 }
 
 .sb-plan-card[data-critical] {
@@ -911,6 +943,28 @@
   font: 10.5px var(--font-mono);
   color: var(--muted-3);
   white-space: nowrap;
+}
+
+/* D120: the row opens its session; its ⓘ shows the detail. */
+.sb-plan-row__details {
+  flex: none;
+  min-width: 32px;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+  font-size: 14px;
+}
+
+@media (pointer: coarse) {
+  .sb-plan-row__details {
+    min-width: 44px;
+  }
+}
+
+/* D120: the plan's "1 stopped" chip (its items' agents ended their turn without finishing). */
+.sb-plan-stopped-chip {
+  color: var(--status-fail);
+  border-color: color-mix(in srgb, var(--status-fail), transparent 55%);
 }
 
 /* ── the detail ──────────────────────────────────────────────────────── */

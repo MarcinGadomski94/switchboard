@@ -4,7 +4,7 @@ import { Link, useRouter } from '../router.tsx';
 import { JiraSourceDialog, NewPlanDialog } from './dialogs.tsx';
 import { ImportJiraDialog } from './jira/index.ts';
 import { PlanRowMenu } from './PlanDelete.tsx';
-import { mergeModeChip, planStateText, progressText, targetChip, timeLeftText } from './model.ts';
+import { STOPPED_LABEL, mergeModeChip, planStateText, progressText, stoppedChip, targetChip, timeLeftText } from './model.ts';
 import { putPlan, usePlans } from './store.ts';
 import './plans.css';
 
@@ -87,6 +87,12 @@ export function PlansPage() {
                   {planStateText(plan)}
                 </span>
                 {plan.machine ? <span className="sb-plan-chip">{plan.machine.name}</span> : null}
+                {/* D120: items whose agents ended their turn without finishing need you. */}
+                {stoppedChip(plan) ? (
+                  <span className="sb-plan-chip sb-plan-stopped-chip" data-testid="plan-summary-stopped" title={STOPPED_LABEL}>
+                    ■ {stoppedChip(plan)}
+                  </span>
+                ) : null}
               </span>
               <span className="sb-plan-summary__line">
                 <span className="sb-plan-branch">{targetChip(plan)}</span>

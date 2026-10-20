@@ -8,7 +8,8 @@ import { canonicalColors, writeReport } from './harness.ts';
  * D99 · the Plans page's visual check. Not in the prototype: the design is the developer's
  * approved clickable mockup (`docs/plans-ui.md` → *The Plans page*), so this spec checks the
  * design's rules rather than a pixel diff: each card's left border colour and icon by state
- * (waiting grey, running blue, question amber, ready to merge violet, done green, blocked red),
+ * (waiting grey, running blue, question amber, ready to merge violet, done green, blocked red,
+ * D120 stopped red with ■ and the "1 stopped" chips),
  * the ⚑ you flag of hold items, the critical path (amber 2 px edges, dashed card outlines),
  * the final dashed ◇ node, the Timeline's segment colours, the layout per size (desktop:
  * graph and detail; tablet: the graph scrolls sideways inside its box, the page does not;
@@ -35,7 +36,8 @@ const shots: Record<string, Buffer> = {};
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
-  world = await startPlansWorld();
+  // D120: a short grace period, so the item whose agent ends its turn without finishing shows stopped soon.
+  world = await startPlansWorld({ SWITCHBOARD_PLAN_STOPPED_GRACE_MS: '8000' });
 });
 
 test.afterAll(async () => {
@@ -59,6 +61,8 @@ async function overflow(page: Page): Promise<number> {
 }
 
 const card = (key: string): string => `[data-testid="plan-card"][data-key="${key}"]`;
+/** D120: a card with a run session opens it; its ⓘ (right after it) shows the detail. */
+const details = (key: string): string => `${card(key)} + [data-testid="plan-card-details"]`;
 
 test('a plan in every state', async ({ page }) => {
   test.setTimeout(180_000);
@@ -80,6 +84,7 @@ test('a plan in every state', async ({ page }) => {
   await add('PROJ-3160', 'Order summary [fake:hold 600]', 120, ['PROJ-3151']);
   await add('PROJ-3165', 'Wire checkout to the API', 60, ['PROJ-3152', 'PROJ-3157']);
   await add('PROJ-3172', 'Checkout E2E', 45, ['PROJ-3165', 'PROJ-3160']);
+  await add('PROJ-3175', 'Flaky check [fake:say "Not finished: one CI check needs a re-run."]', 30);
   const started = await world.call(page, 'POST', `/api/plans/${id}/start`, { mergeMode: 'agents-with-holds' });
   expect(started.status, JSON.stringify(started.body)).toBe(200);
 
@@ -97,21 +102,24 @@ test('a plan in every state', async ({ page }) => {
   await world.itemIn(page, id, 'PROJ-3152', 'ready-to-merge');
   await world.itemIn(page, id, 'PROJ-3157', 'question');
   await world.itemIn(page, id, 'PROJ-3160', 'running');
+  await world.itemIn(page, id, 'PROJ-3175', 'stopped');
   plan = await world.plan(page, id);
-  expect(plan.items.map((item) => `${item.key}:${item.state}`)).toEqual(['PROJ-3151:done', 'PROJ-3170:blocked', 'PROJ-3152:ready-to-merge', 'PROJ-3157:question', 'PROJ-3160:running', 'PROJ-3165:waiting', 'PROJ-3172:waiting']);
+  expect(plan.items.map((item) => `${item.key}:${item.state}`)).toEqual(['PROJ-3151:done', 'PROJ-3170:blocked', 'PROJ-3152:ready-to-merge', 'PROJ-3157:question', 'PROJ-3160:running', 'PROJ-3165:waiting', 'PROJ-3172:waiting', 'PROJ-3175:stopped']);
 });
 
 test('desktop: the graph, its colours and the critical path; the detail; the timeline; the list; the dialog', async ({ page }) => {
   await page.setViewportSize(SIZES.desktop);
   await openWithHub(page, `${world.baseUrl}/plans`);
   await expect(page.getByTestId('plan-summary')).toHaveCount(1);
+  await expect(page.getByTestId('plan-summary-stopped')).toHaveText('■ 1 stopped');
   lines.push('## Desktop (1440 × 900)', '');
   await shoot(page, 'plans-list-desktop.png');
 
   await page.goto(`${world.baseUrl}/plans/${plan.id}`);
-  await expect(page.getByTestId('plan-card')).toHaveCount(7);
+  await expect(page.getByTestId('plan-card')).toHaveCount(8);
   await expect(page.getByTestId('plan-mode-chip')).toHaveText('Merge: agents · hold ⚑ 3151, 3170, 3152');
-  await expect(page.getByTestId('plan-progress')).toContainText('1/7 done');
+  await expect(page.getByTestId('plan-progress')).toContainText('1/8 done');
+  await expect(page.getByTestId('plan-stopped')).toHaveText('■ 1 stopped');
   const [idle, run, need, done, fail, merge] = await canonicalColors(page, ['#5a5955', 'oklch(0.72 0.12 250)', 'oklch(0.8 0.14 70)', 'oklch(0.74 0.13 150)', 'oklch(0.68 0.17 25)', 'oklch(0.75 0.12 310)']);
   const expected: Record<string, [string | null | undefined, string]> = {
     'PROJ-3151': [done, '✔'],
@@ -120,6 +128,7 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
     'PROJ-3157': [need, '?'],
     'PROJ-3160': [run, '●'],
     'PROJ-3165': [idle, '○'],
+    'PROJ-3175': [fail, '■'],
   };
   for (const [key, [colour, icon]] of Object.entries(expected)) {
     expect(await style(page, card(key), 'border-left-color'), key).toBe(colour);
@@ -130,7 +139,10 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await expect(page.locator(card('PROJ-3151')).getByTestId('plan-card-hold')).toHaveText('⚑ you');
   await expect(page.locator(card('PROJ-3157')).getByTestId('plan-card-status')).toHaveText('needs your answer');
   await expect(page.locator(card('PROJ-3165')).getByTestId('plan-card-status')).toHaveText('waiting on 3152, 3157');
-  lines.push(`- card left borders: done ${done}, blocked ${fail}, ready to merge ${merge}, question ${need}, running ${run}, waiting ${idle}`);
+  await expect(page.locator(card('PROJ-3175')).getByTestId('plan-card-status')).toHaveText('Stopped — needs you');
+  expect(await style(page, `${card('PROJ-3175')} [data-testid="plan-card-status"]`, 'color')).toBe(fail);
+  await expect(page.getByTestId('plan-legend')).toContainText('■ stopped');
+  lines.push(`- card left borders: done ${done}, blocked ${fail}, stopped ${fail} (■, "Stopped — needs you"), ready to merge ${merge}, question ${need}, running ${run}, waiting ${idle}; the "■ 1 stopped" chip on the plan and its list card`);
 
   // The critical path: amber 2 px edges and dashed outlines.
   const onPath = plan.criticalPath.itemIds;
@@ -165,22 +177,28 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   if (wide) await shoot(page, 'plans-graph-end-desktop.png');
   await scroller.evaluate((el) => el.scrollTo({ left: 0 }));
 
-  await page.locator(card('PROJ-3152')).click();
+  await page.locator(details('PROJ-3152')).click();
   await expect(page.getByTestId('plan-detail-merge-step')).toBeVisible();
   await page.getByTestId('plan-graph').scrollIntoViewIfNeeded();
   await shoot(page, 'plans-graph-desktop.png');
   await page.getByTestId('plan-detail').scrollIntoViewIfNeeded();
   await shoot(page, 'plans-detail-merge-desktop.png');
-  await page.locator(card('PROJ-3157')).click();
+  await page.locator(details('PROJ-3157')).click();
   await expect(page.getByTestId('plan-detail').getByTestId('question-card')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('plan-detail').scrollIntoViewIfNeeded();
   await shoot(page, 'plans-detail-question-desktop.png');
-  await page.locator(card('PROJ-3170')).click();
+  await page.locator(details('PROJ-3170')).click();
   expect(await style(page, '[data-testid="plan-detail-reason"]', 'border-left-color')).toBe(fail);
+  // D120: the stopped item's detail: "Stopped: <its agent's last message>" on a red rule, and Open session.
+  await page.locator(details('PROJ-3175')).click();
+  await expect(page.getByTestId('plan-detail-stopped-reason')).toHaveText('Stopped: Not finished: one CI check needs a re-run.');
+  expect(await style(page, '[data-testid="plan-detail-stopped-reason"]', 'border-left-color')).toBe(fail);
+  await page.getByTestId('plan-detail').scrollIntoViewIfNeeded();
+  await shoot(page, 'plans-detail-stopped-desktop.png');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 
   await page.getByTestId('plan-tab-timeline').click();
-  await expect(page.getByTestId('plan-timeline-row')).toHaveCount(7);
+  await expect(page.getByTestId('plan-timeline-row')).toHaveCount(8);
   expect(await style(page, '[data-testid="plan-segment"][data-kind="working"]', 'background-color')).toBe(run);
   expect(await style(page, '[data-testid="plan-segment"][data-kind="you"]', 'background-color')).toBe(need);
   expect(await style(page, '[data-testid="plan-segment"][data-kind="projected"]', 'border-top-style')).toBe('dashed');
@@ -189,7 +207,7 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await shoot(page, 'plans-timeline-desktop.png');
 
   await page.getByTestId('plan-tab-list').click();
-  await expect(page.getByTestId('plan-row')).toHaveCount(7);
+  await expect(page.getByTestId('plan-row')).toHaveCount(8);
   await expect(page.getByTestId('plan-row-answer')).toHaveCount(1);
   await expect(page.getByTestId('plan-row-merge')).toHaveCount(1);
   await shoot(page, 'plans-list-view-desktop.png');
@@ -205,7 +223,7 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
 test('tablet: the graph scrolls sideways inside its box', async ({ page }) => {
   await page.setViewportSize(SIZES.tablet);
   await openWithHub(page, `${world.baseUrl}/plans/${plan.id}`);
-  await expect(page.getByTestId('plan-card')).toHaveCount(7);
+  await expect(page.getByTestId('plan-card')).toHaveCount(8);
   const box = await page.getByTestId('plan-graph').evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth, overflowX: getComputedStyle(el).overflowX }));
   expect(box.overflowX).toBe('auto');
   expect(box.scroll).toBeGreaterThan(box.client);
@@ -223,12 +241,13 @@ test('tablet: the graph scrolls sideways inside its box', async ({ page }) => {
 test('phone: the List, then a full-screen detail', async ({ page }) => {
   await page.setViewportSize(SIZES.phone);
   await openWithHub(page, `${world.baseUrl}/plans/${plan.id}`);
-  await expect(page.getByTestId('plan-row')).toHaveCount(7);
+  await expect(page.getByTestId('plan-row')).toHaveCount(8);
   await expect(page.getByTestId('plan-graph')).toHaveCount(0);
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   lines.push('## Phone (390 × 844)', '');
   await shoot(page, 'plans-list-phone.png');
-  await page.locator('[data-testid="plan-row"]').filter({ hasText: 'PROJ-3157' }).locator('.sb-plan-row__main').click();
+  // D120: the row opens its session; Answer (a question's) shows the detail.
+  await page.locator('[data-testid="plan-row"]').filter({ hasText: 'PROJ-3157' }).getByTestId('plan-row-answer').click();
   await expect(page.getByTestId('plan-detail').getByTestId('question-card')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('plan-detail-back')).toBeVisible();
   expect(await overflow(page)).toBeLessThanOrEqual(0);

@@ -19,9 +19,11 @@ import { useSessionListOf } from '../api/session-list.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import {
   STATE_LOOK,
+  STOPPED_LABEL,
   canEditDependencies,
   editHint,
   inlineAction,
+  itemSessionId,
   itemsWaitingForRepos,
   limitsChip,
   mergeModeChip,
@@ -30,6 +32,7 @@ import {
   refuseEdge,
   repoLine,
   statusLine,
+  stoppedChip,
   targetChip,
   timeLeftText,
 } from './model.ts';
@@ -49,7 +52,7 @@ const TABS: readonly { readonly id: PlanTab; readonly label: string }[] = [
 type Open = 'start' | 'mode' | 'limits' | 'add' | null;
 
 /** The List view (also the phone's layout): compact rows with an inline Answer / Merge. */
-function PlanList({ plan, selectedId, onSelect, onMerged }: { readonly plan: Plan; readonly selectedId: string | null; readonly onSelect: (itemId: string) => void; readonly onMerged: () => void }) {
+function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly plan: Plan; readonly selectedId: string | null; readonly onSelect: (itemId: string) => void; readonly onOpen: (item: PlanItem) => void; readonly onMerged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -58,9 +61,18 @@ function PlanList({ plan, selectedId, onSelect, onMerged }: { readonly plan: Pla
       {plan.items.map((item) => {
         const look = STATE_LOOK[item.state];
         const action = inlineAction(item);
+        // D120: a row opens the item's run session; Details shows its detail (an item without a session: the row does).
+        const opensSession = itemSessionId(item) !== null;
         return (
           <div key={item.id} className="sb-plan-row" data-testid="plan-row" data-item-id={item.id} data-state={item.state} aria-selected={selectedId === item.id}>
-            <button type="button" className="sb-button sb-plan-row__main" onClick={() => onSelect(item.id)}>
+            <button
+              type="button"
+              className="sb-button sb-plan-row__main"
+              data-opens-session={opensSession || undefined}
+              title={opensSession ? 'Open its session' : undefined}
+              aria-label={opensSession ? `${item.key ? `${item.key} ` : ''}${item.title}: ${statusLine(item, plan.items)}. Open its session` : undefined}
+              onClick={() => (opensSession ? onOpen(item) : onSelect(item.id))}
+            >
               <span className="sb-plan-row__icon" style={{ color: look.color }} aria-hidden="true">
                 {look.icon}
               </span>
@@ -71,6 +83,11 @@ function PlanList({ plan, selectedId, onSelect, onMerged }: { readonly plan: Pla
               </span>
               <span className="sb-plan-row__repo">{repoLine(item, plan)}</span>
             </button>
+            {opensSession && action !== 'answer' ? (
+              <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost sb-plan-row__details" data-testid="plan-row-details" aria-label={`Details of ${item.key ?? item.title}`} title="Details" aria-pressed={selectedId === item.id} onClick={() => onSelect(item.id)}>
+                ⓘ
+              </button>
+            ) : null}
             {action === 'answer' ? (
               <button type="button" className="sb-button sb-plan-btn" data-testid="plan-row-answer" onClick={() => onSelect(item.id)}>
                 Answer
@@ -173,9 +190,15 @@ export function PlanPage({ planId }: { readonly planId: string }) {
     }
   };
 
+  // D120: one click to the item's run session (a paired machine's too: `r~<machine>~<id>`); its detail is a second affordance.
+  const openSession = (item: PlanItem): void => {
+    const sessionId = itemSessionId(item);
+    if (sessionId) navigate({ view: 'session', id: sessionId, tab: 'chat' });
+    else setSelectedId(item.id);
+  };
   const pickCard = (item: PlanItem): void => {
     if (!editing) {
-      setSelectedId(item.id);
+      openSession(item);
       return;
     }
     if (editFirst === null) {
@@ -263,6 +286,11 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           <span className="sb-plan-state" data-state={plan.state} data-testid="plan-state">
             {planStateText(plan)}
           </span>
+          {stoppedChip(plan) ? (
+            <span className="sb-plan-chip sb-plan-stopped-chip" data-testid="plan-stopped" title={STOPPED_LABEL}>
+              ■ {stoppedChip(plan)}
+            </span>
+          ) : null}
         </div>
         <div className="sb-plan-progress sb-plan-progress--header" data-testid="plan-progress">
           <span className="sb-plan-progress__text">{progressText(plan)}</span>
@@ -375,16 +403,16 @@ export function PlanPage({ planId }: { readonly planId: string }) {
         {!remote ? <PlanEdgeProposals planId={plan.id} /> : null}
         {view === 'graph' ? (
           <>
-            <PlanGraph plan={plan} selectedId={selectedId} critical={critical} editing={editing} editFirst={editFirst} onCard={pickCard} onEdge={removeEdge} />
+            <PlanGraph plan={plan} selectedId={selectedId} critical={critical} editing={editing} editFirst={editFirst} onCard={pickCard} onDetails={(item) => setSelectedId(item.id)} onEdge={removeEdge} />
             <GraphLegend critical={critical} />
           </>
         ) : null}
         {view === 'timeline' ? <PlanTimeline plan={plan} now={now} selectedId={selectedId} onSelect={setSelectedId} /> : null}
-        {view === 'list' ? <PlanList plan={plan} selectedId={selectedId} onSelect={setSelectedId} onMerged={() => changed()} /> : null}
+        {view === 'list' ? <PlanList plan={plan} selectedId={selectedId} onSelect={setSelectedId} onOpen={openSession} onMerged={() => changed()} /> : null}
         {detail ??
           (phone ? null : (
             <div className="sb-plan-detail sb-plan-detail--empty" data-testid="plan-detail-empty">
-              Click a ticket to see it here.
+              Click a ticket to open its session; ⓘ shows its details here.
             </div>
           ))}
       </div>

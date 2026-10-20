@@ -6,7 +6,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { Link } from '../router.tsx';
 import { plansApi, refusalText } from './api.ts';
-import { STATE_LOOK, doneText, statusLine, waitingText, worktreeName } from './model.ts';
+import { STATE_LOOK, doneText, statusLine, stoppedReason, waitingText, worktreeName } from './model.ts';
 
 /** The external ref the Jira lane may give a browse URL with (`url`); without one there is no ↗ link. */
 function jiraLink(plan: Plan, item: PlanItem): string | null {
@@ -119,7 +119,8 @@ export function PlanDetail({
         <span className="sb-plan-detail__worktree" title="Its worktree branch">
           ⎇ {worktreeName(item)}
         </span>
-        {item.runSessionId && !remote ? (
+        {/* D120: also a paired machine's item (its run session's id is `r~<machine>~<id>`). */}
+        {item.runSessionId ? (
           <Link to={{ view: 'session', id: item.runSessionId, tab: 'chat' }} className="sb-plan-link" data-testid="plan-detail-open-session">
             Open session
           </Link>
@@ -242,6 +243,22 @@ export function PlanDetail({
               </div>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {item.state === 'stopped' ? (
+        <div className="sb-plan-detail__body" data-testid="plan-detail-stopped">
+          <div className="sb-plan-detail__reason" data-testid="plan-detail-stopped-reason">
+            {stoppedReason(item)}
+          </div>
+          <div className="sb-plan-detail__text">Its agent ended its turn without marking its todo done. Reply in its session; the item runs again once its agent works.</div>
+          {item.runSessionId ? (
+            <div className="sb-plan-detail__actions">
+              <Link to={{ view: 'session', id: item.runSessionId, tab: 'chat' }} className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-stopped-open">
+                Open session
+              </Link>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

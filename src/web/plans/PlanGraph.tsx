@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { Plan, PlanItem } from '../../core/plans.ts';
-import { GRAPH, STATE_LOOK, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, repoLine, statusLine } from './model.ts';
+import { GRAPH, STATE_LOOK, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, itemSessionId, repoLine, statusLine } from './model.ts';
 
 /**
  * D99 · the plan's Graph view (`docs/plans-ui.md` → *Graph*): a left-to-right DAG, layers by the
  * longest path (`graphLayout`), ~190 px cards with a coloured left border by state (icon, key,
  * title, status line, mono "repo · ~estimate"), SVG curves with arrowheads, the critical path
  * in amber (2 px edges, dashed card outlines) when shown, a final dashed ◇ node
- * "epic → dev · yours", and the legend under it. A click selects a card; in the dependency
- * editor a click picks it and a click on an edge removes it.
+ * "epic → dev · yours", and the legend under it. D120: a click on a card opens the item's run
+ * session when it has one (its ⓘ shows the detail), else selects it; in the dependency editor a
+ * click picks it and a click on an edge removes it.
  */
 export function PlanGraph({
   plan,
@@ -17,6 +18,7 @@ export function PlanGraph({
   editing,
   editFirst,
   onCard,
+  onDetails,
   onEdge,
 }: {
   readonly plan: Plan;
@@ -25,6 +27,8 @@ export function PlanGraph({
   readonly editing: boolean;
   readonly editFirst: string | null;
   readonly onCard: (item: PlanItem) => void;
+  /** D120: the card's ⓘ (an item with a run session, whose click opens the session): shows its detail. */
+  readonly onDetails: (item: PlanItem) => void;
   readonly onEdge: (from: string, to: string) => void;
 }) {
   const layout = graphLayout(plan.items, plan.edges);
@@ -107,39 +111,60 @@ export function PlanGraph({
             const node = at.get(item.id);
             if (!node) return null;
             const look = STATE_LOOK[item.state];
+            // D120: a click opens the item's run session; ⓘ shows its detail (an item without a session: the click does).
+            const opensSession = !editing && itemSessionId(item) !== null;
             return (
-              <button
-                type="button"
-                key={item.id}
-                className="sb-button sb-plan-card"
-                data-testid="plan-card"
-                data-item-id={item.id}
-                data-state={item.state}
-                data-key={item.key ?? undefined}
-                data-critical={onPath.has(item.id) || undefined}
-                data-picked={editFirst === item.id || undefined}
-                aria-pressed={selectedId === item.id}
-                style={{ left: node.x, top: node.y, width: GRAPH.cardWidth, height: GRAPH.cardHeight, borderLeftColor: look.color }}
-                title={item.title}
-                onClick={() => onCard(item)}
-              >
-                <span className="sb-plan-card__head">
-                  <span className="sb-plan-card__icon" style={{ color: look.color }} aria-hidden="true">
-                    {look.icon}
-                  </span>
-                  {item.key ? <span className="sb-plan-card__key">{item.key}</span> : null}
-                  {item.hold ? (
-                    <span className="sb-plan-card__hold" data-testid="plan-card-hold" title="You merge this one">
-                      ⚑ you
+              <Fragment key={item.id}>
+                <button
+                  type="button"
+                  className="sb-button sb-plan-card"
+                  data-testid="plan-card"
+                  data-item-id={item.id}
+                  data-state={item.state}
+                  data-key={item.key ?? undefined}
+                  data-critical={onPath.has(item.id) || undefined}
+                  data-picked={editFirst === item.id || undefined}
+                  data-opens-session={opensSession || undefined}
+                  data-selected={selectedId === item.id || undefined}
+                  aria-pressed={opensSession ? undefined : selectedId === item.id}
+                  aria-label={opensSession ? `${item.key ? `${item.key} ` : ''}${item.title}: ${statusLine(item, plan.items)}. Open its session` : undefined}
+                  style={{ left: node.x, top: node.y, width: GRAPH.cardWidth, height: GRAPH.cardHeight, borderLeftColor: look.color }}
+                  title={opensSession ? `${item.title} — open its session` : item.title}
+                  onClick={() => onCard(item)}
+                >
+                  <span className="sb-plan-card__head">
+                    <span className="sb-plan-card__icon" style={{ color: look.color }} aria-hidden="true">
+                      {look.icon}
                     </span>
-                  ) : null}
-                </span>
-                <span className="sb-plan-card__title">{item.title}</span>
-                <span className="sb-plan-card__status" data-testid="plan-card-status" style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
-                  {statusLine(item, plan.items)}
-                </span>
-                <span className="sb-plan-card__meta">{repoLine(item, plan)}</span>
-              </button>
+                    {item.key ? <span className="sb-plan-card__key">{item.key}</span> : null}
+                    {item.hold ? (
+                      <span className="sb-plan-card__hold" data-testid="plan-card-hold" title="You merge this one">
+                        ⚑ you
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="sb-plan-card__title">{item.title}</span>
+                  <span className="sb-plan-card__status" data-testid="plan-card-status" style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
+                    {statusLine(item, plan.items)}
+                  </span>
+                  <span className="sb-plan-card__meta">{repoLine(item, plan)}</span>
+                </button>
+                {opensSession ? (
+                  <button
+                    type="button"
+                    className="sb-button sb-plan-card__details"
+                    data-testid="plan-card-details"
+                    data-item-id={item.id}
+                    aria-pressed={selectedId === item.id}
+                    aria-label={`Details of ${item.key ?? item.title}`}
+                    title="Details"
+                    style={{ left: node.x + GRAPH.cardWidth - 26, top: node.y + GRAPH.cardHeight - 24 }}
+                    onClick={() => onDetails(item)}
+                  >
+                    ⓘ
+                  </button>
+                ) : null}
+              </Fragment>
             );
           })}
           <div className="sb-plan-final" data-testid="plan-final" style={{ left: layout.final.x, top: layout.final.y, width: GRAPH.cardWidth, height: GRAPH.cardHeight }}>

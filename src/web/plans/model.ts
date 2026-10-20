@@ -26,6 +26,8 @@ export const STATE_LOOK: Readonly<Record<PlanItemState, StateLook>> = {
   ready: { icon: '◌', color: 'var(--muted-1)', word: 'ready' },
   running: { icon: '●', color: 'var(--status-run)', word: 'running' },
   question: { icon: '?', color: 'var(--status-need)', word: 'question' },
+  // D120: its agent ended its turn without finishing: red, it needs you.
+  stopped: { icon: '■', color: 'var(--status-fail)', word: 'stopped' },
   'ready-to-merge': { icon: '◐', color: MERGE_COLOR, word: 'ready to merge' },
   'to-confirm': { icon: '◐', color: MERGE_COLOR, word: 'to confirm' },
   done: { icon: '✔', color: 'var(--status-done)', word: 'done' },
@@ -60,6 +62,8 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
       return item.waitingOn === 'checks' ? 'running · checks' : 'running';
     case 'question':
       return 'needs your answer';
+    case 'stopped':
+      return STOPPED_LABEL;
     case 'ready-to-merge':
       return 'waiting for your merge';
     case 'to-confirm':
@@ -69,6 +73,33 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
     case 'blocked':
       return 'blocked';
   }
+}
+
+/** D120: the status line and chip of a `stopped` item (its agent ended its turn without finishing). */
+export const STOPPED_LABEL = 'Stopped — needs you';
+
+/** D120: a stopped item's reason line: "Stopped: <the agent's last message, cut>". */
+export function stoppedReason(item: Pick<PlanItem, 'reason'>): string {
+  return `Stopped: ${item.reason ?? 'its agent ended its turn without finishing its todo'}`;
+}
+
+/** D120: how many of a plan's items are stopped. */
+export function stoppedCount(plan: Pick<Plan, 'items'>): number {
+  return plan.items.filter((item) => item.state === 'stopped').length;
+}
+
+/** D120: the plan's summary chip, "1 stopped" / "2 stopped"; `null` when none is. */
+export function stoppedChip(plan: Pick<Plan, 'items'>): string | null {
+  const count = stoppedCount(plan);
+  return count === 0 ? null : `${count} stopped`;
+}
+
+/**
+ * D120: where a click on an item goes: its run session (`r~<machine>~<id>` for a paired machine's
+ * plan, as the plan answers it) when it has one, else `null` (the click shows its detail, as before).
+ */
+export function itemSessionId(item: Pick<PlanItem, 'runSessionId'>): string | null {
+  return item.runSessionId ?? null;
 }
 
 /** D115: no repositories yet (a plan whose agent picks them per item). */

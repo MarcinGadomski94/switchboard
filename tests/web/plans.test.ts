@@ -4,6 +4,7 @@ import { DEFAULT_PLACE, parsePlace, sidebarChoiceKey } from '../../src/web/plans
 import {
   GRAPH,
   STATE_LOOK,
+  STOPPED_LABEL,
   criticalEdgeKeys,
   doneText,
   durationShort,
@@ -11,6 +12,7 @@ import {
   finishText,
   graphLayout,
   inlineAction,
+  itemSessionId,
   itemsWaitingForRepos,
   limitsChip,
   mergeModeChip,
@@ -21,6 +23,9 @@ import {
   runningCount,
   shortLabel,
   statusLine,
+  stoppedChip,
+  stoppedCount,
+  stoppedReason,
   targetChip,
   timeLeftText,
   timeline,
@@ -105,6 +110,28 @@ describe('the state look', () => {
     expect(STATE_LOOK['ready-to-merge']).toMatchObject({ icon: '◐', color: 'oklch(0.75 0.12 310)' });
     expect(STATE_LOOK.done).toMatchObject({ icon: '✔', color: 'var(--status-done)' });
     expect(STATE_LOOK.blocked).toMatchObject({ icon: '✖', color: 'var(--status-fail)' });
+    // D120: stopped is red, with its own icon.
+    expect(STATE_LOOK.stopped).toEqual({ icon: '■', color: 'var(--status-fail)', word: 'stopped' });
+    expect(Object.keys(STATE_LOOK)).toEqual(['waiting', 'ready', 'running', 'question', 'stopped', 'ready-to-merge', 'to-confirm', 'done', 'blocked']);
+  });
+
+  it('D120: a stopped item: its status line, reason, the plan\'s count and where a click goes', () => {
+    const a = item('1', { state: 'stopped', reason: 'Not finished yet: one check needs a re-run.', runSessionId: 'r~m1~s9' });
+    const b = item('2', { state: 'stopped', reason: null });
+    const c = item('3', { state: 'waiting' });
+    const p = plan([a, b, c], []);
+    expect(statusLine(a, p.items)).toBe('Stopped — needs you');
+    expect(STOPPED_LABEL).toBe('Stopped — needs you');
+    expect(stoppedReason(a)).toBe('Stopped: Not finished yet: one check needs a re-run.');
+    expect(stoppedReason(b)).toBe('Stopped: its agent ended its turn without finishing its todo');
+    expect(stoppedCount(p)).toBe(2);
+    expect(stoppedChip(p)).toBe('2 stopped');
+    expect(stoppedChip(plan([a], []))).toBe('1 stopped');
+    expect(stoppedChip(plan([c], []))).toBeNull();
+    // A paired machine's run session keeps its r~<machine>~<id> form; no session = the detail.
+    expect(itemSessionId(a)).toBe('r~m1~s9');
+    expect(itemSessionId(c)).toBeNull();
+    expect(inlineAction(a)).toBeNull();
   });
 
   it('writes the status line', () => {
