@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { InboxItem } from '../../core/api.ts';
-import type { Plan, PlanItem } from '../../core/plans.ts';
+import { type Plan, type PlanItem, PLAN_PICK_REPOS_REASON } from '../../core/plans.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -21,6 +21,7 @@ import {
   canEditDependencies,
   editHint,
   inlineAction,
+  itemsWaitingForRepos,
   limitsChip,
   mergeModeChip,
   planStateText,
@@ -205,11 +206,26 @@ export function PlanPage({ planId }: { readonly planId: string }) {
       setBusy(false);
     }
   };
+  // D115: Ask again: the plan's agent picks the repositories of the items without any.
+  const askForRepos = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const answer = await jiraApi.askForRepos(plan.id);
+      const source = (sessions.data ?? []).find((session) => session.id === plan.sourceSessionId);
+      toast(`Asked ${source ? displayTitle(source) : "the plan's session"} to pick the repositories of ${answer.items} item${answer.items === 1 ? '' : 's'}`);
+    } catch (caught) {
+      setError(refusalText(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
   const removeEdge = (from: string, to: string): void => {
     void plansApi.removeEdge(plan.id, from, to).then(changed, (caught: unknown) => toast(refusalText(caught)));
   };
   const first = editFirst ? (plan.items.find((item) => item.id === editFirst) ?? null) : null;
   const finished = plan.state === 'done' || plan.state === 'cancelled';
+  const waitingForRepos = finished ? [] : itemsWaitingForRepos(plan);
   const showDetail = selected !== null;
   const detail = selected ? <PlanDetail plan={plan} item={selected} inbox={inbox.data ?? ([] as InboxItem[])} onChanged={changed} onBack={phone ? () => setSelectedId(null) : null} /> : null;
 
@@ -305,6 +321,16 @@ export function PlanPage({ planId }: { readonly planId: string }) {
         {plan.held && plan.state === 'running' ? (
           <div className="sb-plan-held" data-testid="plan-held">
             New starts held: {plan.held}
+          </div>
+        ) : null}
+        {waitingForRepos.length > 0 ? (
+          <div className="sb-plan-held sb-plan-repos" data-testid="plan-repos-waiting">
+            <span>
+              {waitingForRepos.length} item{waitingForRepos.length === 1 ? '' : 's'}: {PLAN_PICK_REPOS_REASON}.
+            </span>
+            <button type="button" className="sb-button sb-plan-btn" data-testid="plan-repos-ask" disabled={busy} onClick={() => void askForRepos()}>
+              Ask again
+            </button>
           </div>
         ) : null}
       </header>

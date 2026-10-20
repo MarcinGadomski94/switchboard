@@ -43,14 +43,15 @@ const SYNC_LABELS: Readonly<Record<JiraSyncMode, string>> = {
  * `write`) → **Create plan**: a draft; the merge mode is chosen at Start. Without Jira set up it
  * says how (and, on this computer's own UI, offers the credentials form).
  *
- * A workspace session started without solutions (D38) names no repos, and an epic's plan needs
- * them for its target branch: the dialog then asks for the **repositories** (the workspace's
- * solutions, read-only ones left out). Create plan never fails silently: while it cannot be
- * pressed the footer says why, and a refused create shows the server's reason next to it.
+ * D115: a workspace (a folder, or a session started without solutions, D38) needs no
+ * repositories: the plan's agent picks each item's repositories after the import, and the Plan
+ * section says so. An optional, collapsed **Limit to repositories…** lets the developer name them
+ * instead (the workspace's solutions, read-only ones left out; every item then works in those).
+ * Create plan never fails silently: while it cannot be pressed the footer says why, and a refused
+ * create shows the server's reason next to it.
  *
  * D112: without a session it asks **Where it runs** instead (machine, folder, CLI and account,
- * model; a workspace's repositories in the Plan section), pre-filled from the last import in
- * this browser. Create plan then starts a new session "Plan · <plan title>" (the epic summary when the title
+ * model), pre-filled from the last import in this browser. Create plan then starts a new session "Plan · <plan title>" (the epic summary when the title
  * is empty) there that owns the plan
  * (`POST /api/plans/jira/import`, on that machine); **Use an existing session instead** goes back
  * to picking a session.
@@ -71,13 +72,15 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
   /** Which call {@link error} came from: a create's refusal shows by the button, a preview's above the preview. */
   const [errorFrom, setErrorFrom] = useState<'preview' | 'create'>('preview');
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
-  const [pickedRepos, setPickedRepos] = useState<readonly string[]>(() => (inFolder ? place.repos : []));
+  // D115: empty = the plan's agent picks each item's repositories (never pre-filled from an earlier import).
+  const [pickedRepos, setPickedRepos] = useState<readonly string[]>([]);
+  const [reposOpen, setReposOpen] = useState(false);
   const [repoChoices, setRepoChoices] = useState<readonly string[] | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const sessions = useSessionListOf();
   const source = inFolder ? null : (sessions.data?.find((session) => session.id === sourceSessionId) ?? null);
-  // D38: a workspace session may have no solutions yet; the plan's target branch needs repos (the server refuses with field `repos`).
-  // D112: a new session in a workspace folder runs on the repositories picked here.
+  // D38: a workspace session may have no solutions yet; D112: a new session in a workspace folder.
+  // D115: the plan's agent then picks each item's repositories; the developer may limit them here instead (optional).
   const askRepos = inFolder
     ? resolved?.folder?.kind === 'workspace' || error?.fields['repos'] !== undefined
     : repos === undefined && ((source !== null && source.folderKind === 'workspace' && source.solutions.length === 0) || error?.fields['repos'] !== undefined);
@@ -153,7 +156,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
       targetBranch: target,
       baseBranch: base,
       sync,
-      ...(repos ? { repos } : askRepos ? { repos: pickedRepos } : {}),
+      ...(repos ? { repos } : askRepos && pickedRepos.length > 0 ? { repos: pickedRepos } : {}),
       ...(sync === 'write' ? { transitions: { inProgress, inReview } } : {}),
     };
     try {
@@ -167,7 +170,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
           ...(resolved?.model ? { model: resolved.model.model, effort: resolved.model.effort } : {}),
           ...(place.profileId ? { profileId: place.profileId } : {}),
         });
-        saveLastPlace({ ...place, folder: folder ?? null, provider: resolved?.provider ?? place.provider, repos: askRepos ? pickedRepos : [], baseBranch: base.trim() === '' ? place.baseBranch : base });
+        saveLastPlace({ ...place, folder: folder ?? null, provider: resolved?.provider ?? place.provider, repos: [], baseBranch: base.trim() === '' ? place.baseBranch : base });
         onImported(answer.plan);
         return;
       }
@@ -191,7 +194,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
         : resolved.folder.kind === 'plain'
           ? 'Pick a git repository or a workspace: the target branch needs one.'
           : null;
-  const blocked = !preview || busy !== null ? null : target.trim() === '' ? "Give the target branch (the epic's feature branch)." : (placeBlocked ?? (askRepos && pickedRepos.length === 0 ? 'Pick the repositories the target branch lives in.' : null));
+  const blocked = !preview || busy !== null ? null : target.trim() === '' ? "Give the target branch (the epic's feature branch)." : placeBlocked;
   const createError = error !== null && errorFrom === 'create' && !notConfigured ? error : null;
   const unlinked = new Set(preview?.unlinked ?? []);
 
@@ -316,8 +319,13 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                   </label>
                 </div>
                 {askRepos ? (
-                  <fieldset className="sb-jira-sync" data-testid="jira-repos">
-                    <legend>{inFolder ? 'Repositories (the target branch lives in these; the new session works on them)' : 'Repositories (the session uses none yet: the target branch lives in these)'}</legend>
+                  <p className="sb-jira-muted" data-testid="jira-repos-agent-note">
+                    {pickedRepos.length === 0 ? "The plan's agent picks each item's repositories after the import; an item starts once it has them." : 'Every item works in the repositories picked below.'}
+                  </p>
+                ) : null}
+                {askRepos ? (
+                  <details className="sb-jira-sync sb-jira-repos" data-testid="jira-repos" open={reposOpen || error?.fields['repos'] !== undefined} onToggle={(event) => setReposOpen(event.currentTarget.open)}>
+                    <summary data-testid="jira-repos-toggle">Limit to repositories… (optional)</summary>
                     {repoChoices === null ? <span className="sb-jira-muted">Reading the workspace's solutions…</span> : null}
                     {repoChoices !== null && repoChoices.length === 0 ? <span className="sb-jira-muted">{inFolder ? 'No solution repositories found in this workspace.' : "No solution repositories found in the session's workspace."}</span> : null}
                     {(repoChoices ?? []).map((name) => (
@@ -332,7 +340,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
                       </label>
                     ))}
                     {error?.fields['repos'] ? <em className="sb-jira-error">{error.fields['repos']}</em> : null}
-                  </fieldset>
+                  </details>
                 ) : null}
                 <fieldset className="sb-jira-sync" data-testid="jira-sync">
                   <legend>Jira status sync</legend>

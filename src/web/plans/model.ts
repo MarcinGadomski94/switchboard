@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_FORBIDDEN_TARGETS, findCycle } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -49,6 +49,8 @@ export function shortLabel(item: Pick<PlanItem, 'key' | 'title'>, items: readonl
 export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
   switch (item.state) {
     case 'waiting': {
+      // D115: the plan's agent has not picked its repositories yet.
+      if (item.reason === PLAN_PICK_REPOS_REASON) return 'waiting for repositories';
       const open = item.dependsOn.map((id) => items.find((other) => other.id === id)).filter((dep): dep is PlanItem => dep !== undefined && dep.state !== 'done');
       return open.length > 0 ? `waiting on ${open.map((dep) => shortLabel(dep, items)).join(', ')}` : 'waiting';
     }
@@ -69,9 +71,24 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
   }
 }
 
+/** D115: no repositories yet (a plan whose agent picks them per item). */
+export const NO_REPOS_YET = 'no repos yet';
+
+/** The repository an item shows under: `own` when it has solutions, else the plan's one repo, "all repos", or (D115) {@link NO_REPOS_YET}. */
+function itemRepo(item: Pick<PlanItem, 'solutions'>, plan: Pick<Plan, 'repos'> & Partial<Pick<Plan, 'reposPerItem'>>, own: string): string {
+  if (item.solutions.length > 0) return own;
+  if (plan.reposPerItem === true) return NO_REPOS_YET;
+  return plan.repos.length === 1 ? (plan.repos[0] as string) : 'all repos';
+}
+
+/** D115: the items of a plan whose repositories its agent still has to pick (the plan page's "Ask again" line). */
+export function itemsWaitingForRepos(plan: Pick<Plan, 'items'> & Partial<Pick<Plan, 'reposPerItem'>>): PlanItem[] {
+  return plan.reposPerItem === true ? plan.items.filter((item) => item.storedState === 'pending' && item.solutions.length === 0) : [];
+}
+
 /** The repo and estimate line of a card: `acme · ~45m` (`all repos` without solutions; `~?` without an estimate). */
-export function repoLine(item: Pick<PlanItem, 'solutions' | 'estimateMinutes'>, plan: Pick<Plan, 'repos'>): string {
-  const repo = item.solutions.length > 0 ? item.solutions.join(', ') : plan.repos.length === 1 ? (plan.repos[0] as string) : 'all repos';
+export function repoLine(item: Pick<PlanItem, 'solutions' | 'estimateMinutes'>, plan: Pick<Plan, 'repos'> & Partial<Pick<Plan, 'reposPerItem'>>): string {
+  const repo = itemRepo(item, plan, item.solutions.join(', '));
   return `${repo} · ${item.estimateMinutes === null ? '~?' : `~${durationShort(item.estimateMinutes)}`}`;
 }
 
@@ -292,6 +309,7 @@ export function canEditDependencies(plan: Pick<Plan, 'state' | 'machine'>): bool
 
 /** A waiting item's line: "Starts by itself when 3157 and 3160 are done." */
 export function waitingText(item: PlanItem, items: readonly PlanItem[]): string {
+  if (item.reason === PLAN_PICK_REPOS_REASON) return `${PLAN_PICK_REPOS_REASON}. It starts by itself once it has them (and the items it runs after are done).`;
   const open = item.dependsOn.map((id) => items.find((other) => other.id === id)).filter((dep): dep is PlanItem => dep !== undefined && dep.state !== 'done');
   if (open.length === 0) return 'Starts by itself when a slot is free.';
   const names = open.map((dep) => shortLabel(dep, items));
@@ -464,7 +482,7 @@ export function timeline(plan: Plan, now: number): Timeline {
         projectedEnd.set(item.id, end);
         projectedFinish = Math.max(projectedFinish ?? 0, end);
       }
-      const repo = item.solutions.length > 0 ? (item.solutions[0] as string) : plan.repos.length === 1 ? (plan.repos[0] as string) : 'all repos';
+      const repo = itemRepo(item, plan, item.solutions[0] as string);
       rows.set(item.id, { itemId: item.id, repo, segments });
       continue;
     }
@@ -510,7 +528,7 @@ export function timeline(plan: Plan, now: number): Timeline {
       projectedEnd.set(item.id, end);
       projectedFinish = Math.max(projectedFinish ?? 0, end);
     }
-    const repo = item.solutions.length > 0 ? (item.solutions[0] as string) : plan.repos.length === 1 ? (plan.repos[0] as string) : 'all repos';
+    const repo = itemRepo(item, plan, item.solutions[0] as string);
     rows.set(item.id, { itemId: item.id, repo, segments });
   }
   const groups: { repo: string; rows: TimelineRow[] }[] = [];

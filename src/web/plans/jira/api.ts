@@ -83,6 +83,8 @@ export const jiraApi = {
   refresh: (planId: string) => call<PlanJiraState>('POST', `/api/plans/${enc(planId)}/jira/refresh`),
   proposals: (planId: string) => call<PlanEdgeProposal[]>('GET', `/api/plans/${enc(planId)}/proposals`),
   askForOrder: (planId: string) => call<{ readonly asked: true; readonly sessionId: string }>('POST', `/api/plans/${enc(planId)}/proposals/ask`),
+  /** D115: Ask again: the plan's agent picks the repositories of the items without any. */
+  askForRepos: (planId: string) => call<{ readonly asked: true; readonly sessionId: string; readonly items: number }>('POST', `/api/plans/${enc(planId)}/solutions/ask`),
   decide: (planId: string, proposalId: string | 'all', action: 'accept' | 'reject') =>
     call<{ readonly proposals: PlanEdgeProposal[]; readonly refused: ReadonlyArray<{ readonly id: string; readonly text: string; readonly reason: string }> }>(
       'POST',

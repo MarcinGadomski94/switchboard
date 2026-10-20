@@ -252,6 +252,14 @@
   color: var(--status-need);
 }
 
+/* D115: items waiting for the plan's agent to pick their repositories, with Ask again. */
+.sb-plan-repos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .sb-plan-btn {
   font-size: 12px;
   line-height: normal;

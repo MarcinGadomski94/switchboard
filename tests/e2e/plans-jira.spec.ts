@@ -174,11 +174,11 @@ test('the plan shows the proposed order; ✓ adds the dependency, ✕ rejects; S
   await expect(page.getByTestId('experimental-plans-jira')).toHaveCount(0);
 });
 
-test('a workspace session without solutions: Create plan says to pick the repositories, then creates the plan with them (never a silent no-op)', async ({ page }) => {
+test("a workspace session without solutions: Create plan needs no repositories; the plan's agent picks them (D115)", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto(`${server.baseUrl}/inbox`);
   expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
-  // D38: a workspace session may start without solutions (the agent determines them); the plan's target branch needs repos.
+  // D38: a workspace session may start without solutions (the agent determines them); D115: so does its plan's agent, per item.
   const started = await call(page, 'POST', '/api/sessions', { name: 'epic-no-solutions', task: 'Reply with just OK.', workType: 'feature', mode: 'single', solutions: [], phase: 'ui-first', coordination: 'none', qa: null, worktrees: false, ultracode: false });
   expect(started.status, started.text).toBe(201);
   const sessionId = started.body.id as string;
@@ -195,21 +195,21 @@ test('a workspace session without solutions: Create plan says to pick the reposi
   await dialog.getByTestId('jira-preview').click();
   await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
 
-  // Create plan cannot be pressed yet, and the footer says why.
-  await expect(dialog.getByTestId('jira-create')).toBeDisabled();
-  await expect(dialog.getByTestId('jira-create-blocked')).toHaveText('Pick the repositories the target branch lives in.');
-  await expect(dialog.getByTestId('jira-create-blocked')).toBeInViewport();
-  const repos = dialog.getByTestId('jira-repos');
-  await expect(repos.getByRole('checkbox')).toHaveCount(2);
-  await repos.getByTestId('jira-repo-mobile').check();
+  // Nothing blocks Create plan: the note says the plan's agent picks the repositories; limiting them is optional (collapsed).
+  await expect(dialog.getByTestId('jira-repos-agent-note')).toBeVisible();
   await expect(dialog.getByTestId('jira-create-blocked')).toHaveCount(0);
+  await expect(dialog.getByTestId('jira-create')).toBeEnabled();
+  const repos = dialog.getByTestId('jira-repos');
+  await dialog.getByTestId('jira-repos-toggle').click();
+  await expect(repos.getByRole('checkbox')).toHaveCount(2);
   await dialog.getByTestId('jira-create').click();
 
   // The draft opens with the imported items, dependencies and the epic link.
   await expect(page.getByTestId('plan-title')).toHaveText('PROJ-10 Acme checkout');
   const planId = (await page.getByTestId('plan-page').getAttribute('data-plan-id')) as string;
   const plan = (await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}`)).body;
-  expect(plan).toMatchObject({ state: 'draft', repos: ['mobile'], targetBranch: 'feature/PROJ-10-acme-checkout', external: { system: 'jira', key: 'PROJ-10' } });
+  expect(plan).toMatchObject({ state: 'draft', repos: [], reposPerItem: true, targetBranch: 'feature/PROJ-10-acme-checkout', external: { system: 'jira', key: 'PROJ-10' } });
+  await expect(page.getByTestId('plan-repos-waiting')).toContainText("Waiting for the plan's agent to pick repositories");
   expect(plan.items.map((item: { key: string }) => item.key)).toEqual(['PROJ-11', 'PROJ-12', 'PROJ-13', 'PROJ-14', 'PROJ-15']);
   expect(plan.edges).toHaveLength(3);
   expect((await call(page, 'GET', `/api/plans/${encodeURIComponent(planId)}/jira`)).body).toMatchObject({ epicKey: 'PROJ-10', sync: 'off' });

@@ -209,6 +209,13 @@
   color: var(--text-2);
 }
 
+/* D115: the optional "Limit to repositories…" (collapsed: the plan's agent picks them). */
+.sb-jira-repos summary {
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
 .sb-jira-sync label,
 .sb-jira-inline {
   display: flex;

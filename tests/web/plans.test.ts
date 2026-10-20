@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Plan, PlanItem } from '../../src/core/plans.ts';
+import { PLAN_PICK_REPOS_REASON, type Plan, type PlanItem } from '../../src/core/plans.ts';
 import { DEFAULT_PLACE, parsePlace } from '../../src/web/plans/jira/place.ts';
 import {
   GRAPH,
@@ -11,6 +11,7 @@ import {
   finishText,
   graphLayout,
   inlineAction,
+  itemsWaitingForRepos,
   limitsChip,
   mergeModeChip,
   planStateText,
@@ -341,6 +342,21 @@ describe('timeline from the history (PlanItem.spans)', () => {
     const p = plan([item('1', { state: 'waiting', spans: [{ kind: 'paused-plan', startedAt: iso(0), endedAt: null }] })], [], { state: 'paused', startedAt: iso(0), pausedReason: 'Plans was switched off' });
     const segment = timeline(p, T0 + 3_600_000).groups[0]?.rows[0]?.segments[0];
     expect(segment).toMatchObject({ kind: 'paused', note: 'Plans was switched off' });
+  });
+});
+
+describe('D115 · items waiting for the plan\'s agent to pick repositories', () => {
+  it('shows the wait on the card, in the detail and in the repo line; lists the waiting items', () => {
+    const waiting = item('1', { state: 'waiting', reason: PLAN_PICK_REPOS_REASON });
+    const picked = item('2', { state: 'ready', solutions: ['web-front'] });
+    const p = plan([waiting, picked], [], { repos: ['web-front'], reposPerItem: true });
+    expect(statusLine(waiting, p.items)).toBe('waiting for repositories');
+    expect(waitingText(waiting, p.items)).toContain(PLAN_PICK_REPOS_REASON);
+    expect(repoLine(waiting, p)).toBe('no repos yet · ~1h');
+    expect(repoLine(picked, p)).toBe('web-front · ~1h');
+    expect(itemsWaitingForRepos(p).map((entry) => entry.id)).toEqual(['1']);
+    // A plan with repos of its own (or an older machine's, without the field) has none waiting.
+    expect(itemsWaitingForRepos(plan([waiting], []))).toEqual([]);
   });
 });
 
