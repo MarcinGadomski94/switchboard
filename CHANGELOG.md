@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.32.0 (2026-10-21)
+
+### Machines
+- **Battery and power draw:** the sidebar footer shows a laptop's battery (🔋64% · 2h10 left, ⚡81% · 35m to full, 🔌 on AC) and its current draw, and a desktop's estimated total ("~210 W": the graphics card measured with nvidia-smi where available, the CPU estimated from its load, plus a baseline; adjustable in Settings → Machines → Power estimate). Paired machines share it: it shows in Settings → Machines and on their machine tags. Phones report nothing. Read-only system queries only, at most every 30 seconds, never admin or sudo.
+
 ## 1.31.0 (2026-10-21)
 
 ### Sessions
