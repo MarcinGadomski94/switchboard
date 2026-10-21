@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.31.0 (2026-10-21)
+
+### Sessions
+- **Sessions say when they're waiting for you.** Agents end each turn with the new `turn_status` tool (done, waiting for you, or blocked, with a one-line ask); a turn that ends without it is read from its last message (a final question, "shall I…", open questions, a "You: …" item). Such a session shows **Needs you** with its ask in the sidebar and header (with **Not waiting** for a wrong guess), raises an Inbox item and a push, counts as needs-you in Team, and shows amber "Needs you" on its plan item instead of the red Stopped. It clears when the next turn starts.
+
+### Fixed
+- **Reopen on a plan item** now works from a phone and from a paired machine.
+
 ## 1.30.0 (2026-10-20)
 
 ### Fixed
