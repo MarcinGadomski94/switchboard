@@ -1311,6 +1311,18 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - ASSUMED (D124-chats): a chat (D106) is never text-checked (every chat reply waits for the developer by nature, so it would always read "needs you"); its agent's `turn_status` still counts.
   - ASSUMED (D124-hooked): a hooked terminal session's Stop hook carries `last_assistant_message` (current Claude Code); without it the text check does not run for that session (its `turn_status` still works).
 
+## Machine power (added 2026-10-21)
+
+- **D125 Each Switchboard host shows its power and shares it with its paired machines: a laptop its battery, a desktop an estimated total.** Developer request, 2026-10-21: "If a computer hosting switchboard is a laptop, it would be nice to share the state of battery and remaining time basing on the usage. For PCs, you can show current wattage usage of the system. Would be nice if thise stats would be shared when machines are paired. We dont need to show the phone device info as its not a hosted of switchboard". Decision: **desktops: an estimated total** (developer, 2026-10-21). Details: `docs/power.md`; `docs/peers.md` → *Machine power (D125)*; contract → *Machine power (D125)*.
+  - **Laptops (any OS):** battery %, charging or discharging, the OS's own time estimate (to empty, or to full while charging) and the draw in W when readable. macOS `pmset -g batt` + `ioreg -rn AppleSmartBattery`; Windows one PowerShell call (`Win32_Battery` + `root/wmi` `BatteryStatus`); Linux `/sys/class/power_supply`. No sudo, no admin.
+  - **Desktops: an estimated total**, shown as "~210 W (estimated)" with the parts in the tooltip: the GPU measured where possible without admin (`nvidia-smi`, Linux amdgpu hwmon), the CPU from its use (`idle + util × (max − idle)`, defaults by core count; a readable Linux RAPL counter replaces it), and a fixed baseline for the rest (40 W; Apple silicon 15 W). The three numbers are adjustable per machine in Settings → Machines → *Power estimate* (the `power.estimate` setting, no migration). Always labelled estimated, never presented as measured. A Mac desktop works the same way (no `powermetrics`).
+  - **Sampling:** on demand, at most every 30 s, never overlapping, each command with a time limit; a missing source (no battery, no `nvidia-smi`, …) is not asked again for an hour; nothing is stored.
+  - **Where it shows:** the sidebar footer (a PWR line under RAM; shorter on phones), Settings → Machines (this machine and each paired machine), the machine tags of a paired machine's sessions. Phones (paired devices) are not hosts: they report and show nothing of their own.
+  - **Peers:** additive `machinePower` on the peer event stream; the other machine shows it as `Machine.power` (with `machineState`) while the machine is online. An older machine simply shows nothing.
+  - **What's new:** "Battery and power draw" (1.32.0), two steps (the footer line, the Power estimate).
+  - ASSUMED (D125-defaults): the default CPU idle / max watts by logical core count (≤ 4: 5 / 35, ≤ 8: 8 / 65, ≤ 16: 12 / 125, more: 20 / 200; Apple silicon 4 / 5 + 2.5 per core) and the baselines (40 W, Apple silicon 15 W) are rough typical values, to be tuned per machine in Settings.
+  - ASSUMED (D125-ac-draw): on AC a laptop shows a draw only where the OS reports the system's own draw (a Mac's `SystemPowerIn`); a charge rate is never shown as the draw.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

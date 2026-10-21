@@ -50,6 +50,7 @@ Types live in `src/core/api.ts`. The folder check and the saved list are the `/a
   - **Windows** (and any other OS): `os.totalmem() − os.freemem()`.
   - **Fallback:** when the read fails (no `vm_stat`, it exits non-zero or times out, `/proc/meminfo` unreadable, a counter or the page size missing, `MemAvailable` absent on kernels before 3.14) `ramUsed` is `total − free` again, until a later read succeeds. Nothing is logged.
   - **Cadence:** the read runs in the background and never blocks a request: the probe starts one when it is created, and a `system()` call starts the next one when the last started ≥ 2 s ago (`MEMORY_READ_INTERVAL_MS`), answering from the last finished read (the one after the previous 5 s `system` tick). The route and the hub share reads. The value is capped at `ramTotal`.
+- `power` (D125, `src/server/system/power.ts`): the power sampler's last reading (a laptop's battery, or an estimated total without one), omitted before the first sample; `docs/power.md`.
 - Usage (`usagePct`, `usageResetsAt`, `usageWindows`, `usageWarnings`) is added by the meter in normal runs (`docs/usage.md`, M9.2 / D17); the probe itself reports none.
 - An app built without a system provider answers `503 system-unavailable`; the route never runs a CLI of its own.
 

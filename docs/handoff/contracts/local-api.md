@@ -1535,6 +1535,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder; D71: carries `loose`; also published when a merge from a paired machine changed the layout — the layout itself travels by `POST /peer/v1/sidebar`, not by this event) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
+| machinePower | PowerStatus (additive, D125: this machine's power reading changed; forwarded between peers, where the receiver keeps it as `Machine.power` and never republishes it) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
 
 
@@ -2024,4 +2025,21 @@ POST /agent/v1/turn-status   (x-switchboard-session: 0b7c…, Authorization: Bea
 
 GET /api/sessions/0b7c…
 → 200 { "id": "0b7c…", "status": "need", "turnWait": { "status": "waiting_for_you", "ask": "Pick the region for the Acme tenant: EU or US", "source": "declared", "at": "2026-10-21T10:00:00.000Z" }, "…": "…" }
+```
+
+## Machine power (D125, 2026-10-21, additive)
+Developer request D125 (`docs/decisions.md`; details `docs/power.md`): each Switchboard host reports its own power, a laptop its battery and a machine without one an estimated total, and shares it with its paired machines. Types in `src/core/power.ts`: `PowerStatus`, `PowerParts`, `PowerEstimateSettings`.
+
+- **`SystemInfo.power`** (additive, `GET /api/system` and the `system` event): `PowerStatus` `{ kind: "battery" | "estimated" | "none", percent?, charging?, pluggedIn?, minutesLeft?, minutesToFull?, watts?, adapterWatts?, parts?: { gpu?, gpuCount?, cpu?, cpuPct?, cpuMeasured?, base? }, at }`. Omitted before the first sample (at most every 30 s, on demand) and in the demo. `estimated` is always an estimate (GPU measured where possible + CPU from its use + a fixed base).
+- **`Machine.power`** (additive, `GET /api/machines` and `machineState`): the paired machine's own reading, only while it is `online` or `reconnecting`; absent from older machines. Phones (devices) report none.
+- **`/hub` `machinePower`** (additive): `PowerStatus`, this machine's reading when it says something new. On the peer stream (`PEER_HUB_EVENTS`): sent once when the stream opens and on each change; the receiver never republishes it.
+- **Settings** (additive): `power.estimate` (editable) `{ cpuIdleW, cpuMaxW, baseW }`, each a number of watts 0–2000 or `null` (this machine's default), `cpuIdleW` ≤ `cpuMaxW` when both are set (else 422); `power.estimateDefaults` (read-only) `{ cpuIdleW, cpuMaxW, baseW }`, this machine's defaults.
+- **Tests only:** `SWITCHBOARD_POWER_TEST_FILE` (a JSON `PowerStatus` reported instead of reading the machine, read again each sample), `SWITCHBOARD_POWER_SAMPLE_MS` (the sample gap, 100–600000).
+
+```json
+GET /api/system
+→ 200 { "cli": "…", "cpu": 12, "ramUsed": 1, "ramTotal": 2, "processes": 0, "power": { "kind": "battery", "percent": 64, "charging": false, "pluggedIn": false, "minutesLeft": 130, "watts": 9.5, "at": "2026-10-21T10:00:00.000Z" }, "…": "…" }
+
+GET /api/machines
+→ 200 { "self": { "…": "…" }, "machines": [{ "id": "k3v7q2m9x4ab", "name": "acme-desktop", "state": "online", "power": { "kind": "estimated", "watts": 210, "parts": { "gpu": 120, "gpuCount": 1, "cpu": 50, "cpuPct": 35, "base": 40 }, "at": "2026-10-21T10:00:00.000Z" }, "…": "…" }], "…": "…" }
 ```
