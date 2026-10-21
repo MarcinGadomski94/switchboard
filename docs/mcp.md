@@ -85,6 +85,9 @@ The MCP routes are on `PEER_API_ALLOW`, so the page manages a paired machine's s
 ## Switchboard's own server (D68)
 Every session Switchboard starts gets a built-in `switchboard` server (its todo tools, `docs/todos.md`), passed to the CLI at spawn (`--mcp-config`). It is in none of the config files this page reads, and the page's helper process starts without it, so it is not listed here and cannot be edited or removed from this page.
 
+### How the turn ends: `turn_status` (D124)
+`turn_status { status: 'done' | 'waiting_for_you' | 'blocked', ask? }` (`src/core/turn-status.ts`, registered in `src/hook/sb-mcp.ts`, always on): the agent calls it as the **last action of every turn that ends without a question card**: `done` when the task is finished, `waiting_for_you` when it needs the developer's answer, decision or action, `blocked` when it cannot go on (a permission, an external dependency), with a one-line `ask` (at most 300 characters, required for the last two). The helper refuses, sending nothing, without an ask or with an unknown status; else it calls `POST /agent/v1/turn-status` (the session the agent token belongs to). Switchboard stores it on the session for the turn it was made in (`sessions.turn_wait`) and a new turn clears it; the session then reads **needs you** with the ask (`docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*). The D64 standing instruction carries one line asking for it; the tool's description says the rest. A CLI without the tool (or an agent that forgets it) falls back on the text check of its last message.
+
 ### Tools that appear without a restart (2026-10-16)
 The feature tools of the `switchboard` server (Team's `team_*` and `request_access`, Plans' `plan_*`, Project memory's `memory_*`) depend on state that changes while a process runs. The helper (`src/hook/sb-feature-tools.ts`) therefore keeps them in step:
 
@@ -118,6 +121,7 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `loop_pause` | always | false | false | true | false |
 | `loop_resume` | always | false | false | true | false |
 | `loop_cancel` | always | false | true | true | false |
+| `turn_status` | always | false | false | true | false |
 | `team_handoff` | Team (member) | false | false | false | false |
 | `team_members` | Team (member) | true | false | true | false |
 | `team_report` | Team (member) | false | false | false | false |

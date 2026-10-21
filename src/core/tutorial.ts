@@ -104,6 +104,9 @@ const V1_24 = '1.24.0';
 /** The version D111 (deleting artifacts from the lists) ships in. */
 const V1_25 = '1.25.0';
 
+/** The version D124 (sessions that wait for you at a turn's end) ships in. */
+const V1_31 = '1.31.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -1008,6 +1011,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['artifacts-select', 'artifacts'],
         route: { view: 'artifacts' },
         missing: 'Artifacts sits in the sidebar; its rows get a ⋯ and a checkbox once an agent has saved one.',
+      },
+    ],
+  },
+  {
+    id: 'turn-status',
+    decision: 'D124',
+    version: V1_31,
+    title: 'Sessions that wait for you',
+    steps: [
+      {
+        id: 'needs-you',
+        title: 'Done, or waiting for you?',
+        what: "A session whose agent ended its turn with a question for you, or said it is waiting or blocked, now shows amber \"needs you\" with what it asks, in its row and header, with an Inbox item \"Waiting for you\". When Switchboard only read it from the agent's last message, it says \"detected\". Your reply clears it.",
+        todo: ['Look for the amber ask under a session in the sidebar.', 'Open the session and reply, or press Not waiting when it is not waiting for you.'],
+        anchors: ['sessions'],
+        drawer: true,
+        missing: 'Start a session: when its agent ends a turn waiting for you, its row and header say so.',
       },
     ],
   },

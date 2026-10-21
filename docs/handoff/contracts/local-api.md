@@ -2001,3 +2001,27 @@ POST /api/sessions/5d1e…/todos/import
 { "query": { "source": "github", "repo": "acme/web-front", "label": "bug", "mine": true }, "keys": ["acme/web-front#21"] }
 → 201 { "sessionId": "5d1e…", "todos": [{ "title": "#21 Checkout button overlaps the footer", "description": "On 360 px the button sits on the footer.\n\nGitHub: https://github.com/acme/web-front/issues/21", "…": "…" }], "…": "…" }
 ```
+
+## Turn status: waiting for you at a turn's end (D124, 2026-10-21, additive)
+Developer request D124 (`docs/decisions.md`; details `docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*): a session whose turn is over and not working, and whose last turn waits for the developer (the agent's `turn_status`, else the text check of its last message), reads `need` with an ask. Types in `src/core/api.ts`: `TurnWait`, `TurnStatus`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /agent/v1/turn-status | `{ status: "done" \| "waiting_for_you" \| "blocked", ask? }` (`ask` ≤ 300 characters, one line; required for the last two) | 200 `TurnWait` · 401 (another session's agent token) · 404 `not-found` · 409 `closed` · 422 `invalid` |
+| POST | /api/sessions/{id}/not-waiting | `{ at? }` (the episode's `turnWait.at`; absent = the current one) | 200 Session (`sessionUpdated` is published) · 404 `not-found` |
+
+- **`Session.turnWait`** (additive): `TurnWait` `{ status, ask, source: "declared" | "detected", at }` or `null` / absent. **`Session.status`** is the read status: `need` when the stored status is `done` / `idle` / `paused` and `turnWait.status` is `waiting_for_you` / `blocked` (the session is not closed); the stored status (`sessions.status`) is unchanged. Cleared when a new turn starts, by Not waiting and by a Dismiss of its Inbox item.
+- **Inbox** (system, source the session's title): kind `turn-waiting`, label "Waiting for you" ("Waiting for you · detected" for a text-check one), status `need`, the ask as `detail`, actions `open-session` (a link: the API answers 409 `refused`) and `dismiss` (also clears the session's wait for that turn). **`InboxItem.systemKind`** (additive): `turn-waiting` on such an item only.
+- **Plans:** `PlanItemState` gains `needs-you` (additive): its run session's turn waits for the developer; `reason` = the ask.
+- **MCP:** the `switchboard` server's tool `turn_status` (`docs/mcp.md`).
+- **Peers (D48):** `POST /api/sessions/{id}/not-waiting` is on `PEER_API_ALLOW` (answers mapped as a `session`); the item's Dismiss is an Inbox action as before. **Devices (D73):** on `DEVICE_ALLOWED`.
+- No new `/hub` event: a change publishes `sessionUpdated` (and `inboxChanged` for the item).
+
+```json
+POST /agent/v1/turn-status   (x-switchboard-session: 0b7c…, Authorization: Bearer <agent token>)
+{ "status": "waiting_for_you", "ask": "Pick the region for the Acme tenant: EU or US" }
+→ 200 { "status": "waiting_for_you", "ask": "Pick the region for the Acme tenant: EU or US", "source": "declared", "at": "2026-10-21T10:00:00.000Z" }
+
+GET /api/sessions/0b7c…
+→ 200 { "id": "0b7c…", "status": "need", "turnWait": { "status": "waiting_for_you", "ask": "Pick the region for the Acme tenant: EU or US", "source": "declared", "at": "2026-10-21T10:00:00.000Z" }, "…": "…" }
+```
