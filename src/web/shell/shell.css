@@ -444,6 +444,22 @@
   white-space: nowrap;
 }
 
+/* D124: a session whose turn ended waiting for you shows its ask (amber) in place of the mode line. */
+.sb-session-ask {
+  color: var(--status-need);
+}
+
+/* D124: a detected (text-checked) wait: a small dashed ring before the ask (the tooltip says why). */
+.sb-session-ask-detected {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: 1px dashed currentColor;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+
 /* M9.3: a session without work type / mode / phase keeps its second line, so every row is as tall as the prototype's (49px). */
 .sb-session-mode:empty::before {
   content: '\200b';

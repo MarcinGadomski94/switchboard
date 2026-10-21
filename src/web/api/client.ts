@@ -213,6 +213,8 @@ export const api = {
   freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
   /** D91: give the session's process the current standing instruction (idle → restarted, busy → after its turn). */
   reloadInstruction: (id: string) => request<InstructionReloadResult<Session>>('POST', `/api/sessions/${enc(id)}/reload-instruction`, {}),
+  /** D124: the session's needs-you line → Not waiting (clears a false "needs you" for that turn: `at` = its episode). */
+  notWaiting: (id: string, at: string | null) => request<Session>('POST', `/api/sessions/${enc(id)}/not-waiting`, at ? { at } : {}),
   /** D91: Settings → Apply to open sessions (this machine's). */
   applyInstruction: () => request<InstructionApplyResult>('POST', '/api/settings/standing-instruction/apply', {}),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */

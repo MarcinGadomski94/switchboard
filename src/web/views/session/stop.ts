@@ -6,12 +6,16 @@
 import type { BackgroundTask } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
 import { stoppableTask } from '../../../core/stop-turn.ts';
+import type { TurnWait } from '../../../core/derive/turn-status.ts';
+import { turnBusy } from './needs-you.ts';
 
 /** What {@link canStop} reads of the session. */
 export interface StoppableSession {
   /** A live supervised process (`Session.live`). */
   readonly live: boolean;
   readonly status: SessionStatus;
+  /** D124: the turn's own wait for the developer (a `need` that is no open question: nothing to stop). */
+  readonly turnWait?: TurnWait | null;
   /** D19 / D30: what the running turn does; state `background` = no turn runs, only background work waits. */
   readonly activity?: { readonly state: string; readonly background?: readonly BackgroundTask[] } | null;
   /** D48 P4: a hooked terminal session: its turns are stopped in the terminal, never from here. */
@@ -27,7 +31,8 @@ export interface StoppableSession {
  */
 export function canStop(session: StoppableSession | null): boolean {
   if (!session || !session.live || session.hooked === true) return false;
-  if (session.status !== 'run' && session.status !== 'need') return false;
+  // D124: a turn that ended waiting for you (its ask) is over: nothing to stop.
+  if (!turnBusy(session)) return false;
   return session.activity?.state !== 'background';
 }
 

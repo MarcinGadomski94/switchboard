@@ -35,6 +35,7 @@ import { type ComposerDraft, draftField, parseDraftValue } from '../../../core/d
 import { initialDraft, useDraft } from '../../drafts/useDraft.ts';
 import { draftsOnce, knownDraft, readDrafts, rememberDraft } from '../../drafts/session-drafts.ts';
 import { pageClientId } from '../../pwa/presence.ts';
+import { turnBusy } from './needs-you.ts';
 import {
   OUTGOING_SETTLE_MS,
   type OutgoingMessage,
@@ -132,7 +133,8 @@ export function ChatTab({ sessionId, session, events, eventsState, placeholder =
  */
 function sendQueued(session: SessionDetail | null): QueuedReason | null {
   if (!session) return null;
-  if (session.status === 'run' || session.status === 'need') return 'turn';
+  // D124: a turn that ended waiting for you is over: the reply goes at once.
+  if (turnBusy(session)) return 'turn';
   return session.live ? null : 'resume';
 }
 

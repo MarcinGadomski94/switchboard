@@ -31,6 +31,7 @@ import { MachineTag } from '../components/MachineTag.tsx';
 import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link, useRouter } from '../router.tsx';
+import { DETECTED_HINT, needsYouOf } from '../views/session/needs-you.ts';
 import { formatAge, modeLine, statusColor } from './format.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
@@ -354,6 +355,18 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  * subfolder. The layout is stored by the service and live in every tab
  * (`sidebarLayoutChanged`).
  */
+/** D124: a row's needs-you line in place of the mode line (its turn ended waiting for you), `null` otherwise. */
+function askLine(session: SessionListItem): ReactNode {
+  const wait = needsYouOf(session);
+  if (!wait) return null;
+  return (
+    <span className="sb-session-ask" data-testid="session-row-ask" data-source={wait.source} title={wait.source === 'detected' ? `${wait.ask ?? ''}\n\n${DETECTED_HINT}` : (wait.ask ?? undefined)}>
+      {wait.source === 'detected' ? <span className="sb-session-ask-detected" aria-label="detected" /> : null}
+      {wait.ask}
+    </span>
+  );
+}
+
 export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now }: SidebarSessionsProps) {
   // D106: SESSIONS folds to its header like TOOLS (D101).
   const [collapsed, toggleCollapsed] = useSectionCollapsed('ui.sessionsCollapsed');
@@ -873,7 +886,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
               </span>
             ) : null}
             <FolderTag name={tagOf(session)} title={session.folderPath} />
-            <SessionActivityOr activity={activity}>{modeLine(session)}</SessionActivityOr>
+            <SessionActivityOr activity={activity}>{askLine(session) ?? modeLine(session)}</SessionActivityOr>
           </div>
         </div>
         {/* D33: after the row's own parts, so the prototype's child paths (dot, body) are unchanged. */}

@@ -21,6 +21,7 @@ import { moveLinkId, movedToLabel, takenOverLabel } from '../../../core/takeover
 import { continuedInLabel } from '../../../core/fresh-session.ts';
 import { CHAT_BADGE, CHAT_LOCKED_HINT, CHAT_MODE_LABEL, continuedAsLabel, isChat } from '../../../core/chats.ts';
 import { useChatMenu } from './ChatMenu.tsx';
+import { DETECTED_HINT, NOT_WAITING_HINT, needsYouOf, needsYouWord } from './needs-you.ts';
 import { statusColor } from '../../shell/format.ts';
 import {
   ATTACH_ANYWAY,
@@ -168,7 +169,7 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  */
 export function SessionHeader({ sessionId, session, missing, loadError = null, placeholder = false, tab, files, artifacts, onChanged }: SessionHeaderProps) {
   const { navigate } = useRouter();
-  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | 'reopen' | null>(null);
+  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | 'reopen' | 'not-waiting' | null>(null);
   // D33: closed from the session view: the Inbox opens (the sidebar follows `sessionUpdated`).
   const closer = useCloseSession(() => navigate({ view: 'inbox' }));
   const closed = session ? isClosed(session) : false;
@@ -209,6 +210,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
     }
   };
 
+  // D124: the needs-you line (its turn ended waiting for you).
+  const needsYou = needsYouOf(session);
   // D48 P4: a hooked terminal session: what hooks cannot do is not offered (the note says where it stays).
   const hooked = session?.hooked === true;
   // D106: a chat: plan mode locked, no terminal, Remote Control, take-over or undo; its own ⋯ menu.
@@ -555,6 +558,30 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               {CANCEL}
             </button>
           </div>
+        </div>
+      ) : null}
+      {/* D124: its turn ended waiting for you (its turn_status, or the text check: "detected"); Not waiting clears a false one. */}
+      {needsYou ? (
+        <div className="sb-sv-needs-you" role="status" data-testid="session-needs-you" data-source={needsYou.source}>
+          <span className="sb-sv-needs-you-word">{needsYouWord(needsYou)}</span>
+          <span className="sb-sv-needs-you-ask" data-testid="session-needs-you-ask">
+            {needsYou.ask}
+          </span>
+          {needsYou.source === 'detected' ? (
+            <span className="sb-sv-needs-you-detected" data-testid="session-needs-you-detected" title={DETECTED_HINT}>
+              detected
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="sb-button sb-sv-outlined sb-sv-needs-you-clear"
+            data-testid="session-not-waiting"
+            title={NOT_WAITING_HINT}
+            disabled={busy !== null}
+            onClick={() => void run('not-waiting', () => api.notWaiting(sessionId, needsYou.at))}
+          >
+            Not waiting
+          </button>
         </div>
       ) : null}
       {shownError ? (

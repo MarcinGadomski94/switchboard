@@ -1,6 +1,7 @@
 import type { Session } from '../../../core/api.ts';
 import { FRESH_BUSY_REASON, FRESH_HOOKED_REASON } from '../../../core/fresh-session.ts';
 import { isClosed } from '../../../core/session-close.ts';
+import { turnBusy } from './needs-you.ts';
 
 /**
  * D83 · the fresh-session offer above the composer (`docs/fresh-session.md`): which
@@ -62,8 +63,8 @@ export function freshEligible(session: Pick<Session, 'hooked' | 'closedAt' | 'at
 }
 
 /** A turn runs (or waits for the developer): the offer waits for its end. */
-export function freshBusy(session: Pick<Session, 'status'> | null, activity: unknown): boolean {
-  return session !== null && (session.status === 'run' || session.status === 'need' || (activity !== null && activity !== undefined));
+export function freshBusy(session: Pick<Session, 'status' | 'turnWait'> | null, activity: unknown): boolean {
+  return session !== null && (turnBusy(session) || (activity !== null && activity !== undefined));
 }
 
 /**
@@ -72,14 +73,14 @@ export function freshBusy(session: Pick<Session, 'status'> | null, activity: unk
  * a hooked terminal session, while a turn runs, or while a switch or continuation runs.
  */
 export function freshActionState(
-  session: Pick<Session, 'hooked' | 'closedAt' | 'attached' | 'status' | 'providerSwitch' | 'accountSwitching' | 'movedTo' | 'freshContinue'>,
+  session: Pick<Session, 'hooked' | 'closedAt' | 'attached' | 'status' | 'turnWait' | 'providerSwitch' | 'accountSwitching' | 'movedTo' | 'freshContinue'>,
 ): { readonly shown: boolean; readonly disabledReason: string | null } {
   if (isClosed(session) || session.movedTo) return { shown: false, disabledReason: null };
   if (session.hooked === true) return { shown: true, disabledReason: FRESH_HOOKED_REASON };
   if (session.attached === false) return { shown: true, disabledReason: 'The session continues in a terminal: attach it here first.' };
   if (session.freshContinue) return { shown: true, disabledReason: 'Already continuing in a fresh session.' };
   if (session.providerSwitch || session.accountSwitching === true) return { shown: true, disabledReason: 'A switch is running: wait for it to finish.' };
-  if (session.status === 'run' || session.status === 'need') return { shown: true, disabledReason: FRESH_BUSY_REASON };
+  if (turnBusy(session)) return { shown: true, disabledReason: FRESH_BUSY_REASON };
   return { shown: true, disabledReason: null };
 }
 
