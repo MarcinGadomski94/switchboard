@@ -59,6 +59,17 @@ export const PLAN_STOPPED_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/**
+ * D124: kind of a session's "Waiting for you: <session>" item (its turn ended waiting for the
+ * developer: its `turn_status` or the text check), with the ask as its detail: **Open session**
+ * (a link) and **Dismiss** (also clears the session's "needs you" for that turn: a false positive).
+ */
+export const TURN_WAITING = 'turn-waiting';
+export const TURN_WAITING_ACTIONS: readonly InboxAction[] = [
+  { id: 'open-session', label: 'Open session' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -219,6 +230,8 @@ export class SystemItemService {
   readonly #busy = new Set<string>();
   #runner: ScheduleRunner | null;
   #ci: CiActions | null = null;
+  /** D124: clears a session's turn wait (`at` = that episode) when its "Waiting for you" item is dismissed. */
+  #notWaiting: ((sessionId: string, at: string | null) => Promise<unknown>) | null = null;
   #unsubscribe: (() => void) | null = null;
   #unsubscribeParent: (() => void) | null = null;
   #unsubscribeClosed: (() => void) | null = null;
@@ -571,6 +584,64 @@ export class SystemItemService {
     return closed;
   }
 
+  /** D124: what a Dismiss of a "Waiting for you" item clears (the session's turn wait for that episode). */
+  useNotWaiting(clear: ((sessionId: string, at: string | null) => Promise<unknown>) | null): void {
+    this.#notWaiting = clear;
+  }
+
+  /**
+   * D124 (`docs/inbox.md` → *Waiting for you*): "Waiting for you: <session>", a session whose turn
+   * ended waiting for the developer, with the ask as the detail: **Open session** and **Dismiss**.
+   * Once per `dedupe` (one per turn episode, open or closed); {@link closeTurnWaitingNotices} closes
+   * it when a new turn starts.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async turnWaitingNotice(input: { readonly sessionId: string; readonly title: string; readonly source: string; readonly detail: string; readonly dedupe: string; readonly at: string; readonly detected: boolean }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: TURN_WAITING,
+        source: input.source,
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: TURN_WAITING_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, at: input.at, detected: input.detected },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D124: closes session `sessionId`'s open "Waiting for you" items (but the one of `keep`) with `outcome`; answers how many. */
+  async closeTurnWaitingNotices(sessionId: string, outcome: string, keep: string | null = null): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== TURN_WAITING || item.sessionId !== sessionId) continue;
+      if (keep !== null && isPayload(item.payload) && item.payload['dedupe'] === keep) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  /** D124: the sessions with an open "Waiting for you" item, and its key (the watcher's start). */
+  async openTurnWaitingNotices(): Promise<Map<string, string>> {
+    const open = new Map<string, string>();
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind === TURN_WAITING && item.sessionId && isPayload(item.payload) && typeof item.payload['dedupe'] === 'string') open.set(item.sessionId, item.payload['dedupe']);
+    }
+    return open;
+  }
+
   /** Plans (D99) hook (D102): closes the open "Ready to merge" items of plan item `itemId` with `outcome`; answers how many. */
   async closePlanMergeNotices(itemId: string, outcome: string): Promise<number> {
     let closed = 0;
@@ -792,6 +863,11 @@ export class SystemItemService {
   }
 
   async #perform(item: SystemItemRecord, action: string): Promise<void> {
+    // D124: dismissing "Waiting for you" says the session is not waiting (a false positive): its turn wait goes.
+    if (item.kind === TURN_WAITING && action === 'dismiss') {
+      if (item.sessionId && this.#notWaiting) await this.#notWaiting(item.sessionId, isPayload(item.payload) && typeof item.payload['at'] === 'string' ? item.payload['at'] : null);
+      return;
+    }
     // Plans (D99) hook (D102): a plan item's Merge from its "Ready to merge" item.
     if (action === PLAN_MERGE) {
       const planId = isPayload(item.payload) ? item.payload['planId'] : null;

@@ -957,3 +957,40 @@ describe('D120 · an item whose agent ended its turn without finishing is stoppe
   });
 });
 
+describe('D124 · an item whose agent ended its turn waiting for you shows needs-you, not stopped', () => {
+  async function advance(r: Rig, ms: number): Promise<void> {
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + ms), () => settle(r));
+    await settle(r);
+  }
+
+  it('amber needs-you with the ask in place of the red stopped, no Stopped Inbox item; back to running on a new turn; a plain end is still stopped', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { maxConcurrency: 1 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const current = await item(r, plan.id, ids.A);
+    const sessionId = current.runSessionId as string;
+    r.git.branches.set(current.branch as string, { hasWork: true });
+    await r.store.events.append({ sessionId, kind: 'text', label: 'text', payload: { type: 'assistant', text: 'Should I keep the old endpoint?' } });
+    await r.store.sessions.update(sessionId, { lastActivityAt: r.clock.now().toISOString(), turnWait: { status: 'waiting_for_you', ask: 'Should I keep the old endpoint?', source: 'detected', at: r.clock.now().toISOString() } });
+    await status(r, sessionId, 'idle');
+    // Long past the D120 grace period: needs-you (its ask as the reason), never stopped, and no Stopped Inbox item.
+    await advance(r, 240_000);
+    const a = await item(r, plan.id, ids.A);
+    expect(a).toMatchObject({ state: 'needs-you', storedState: 'running', reason: 'Should I keep the old endpoint?' });
+    expect(a.spans.at(-1)).toMatchObject({ kind: 'waiting-you', endedAt: null });
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toEqual([]);
+    // The developer replies: a new turn clears the wait, it works again.
+    await r.store.sessions.update(sessionId, { turnWait: null });
+    await status(r, sessionId, 'run');
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    // A turn that ends without a waiting signal is D120's stopped as before.
+    await r.store.sessions.update(sessionId, { lastActivityAt: r.clock.now().toISOString() });
+    await status(r, sessionId, 'idle');
+    await advance(r, 240_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('stopped');
+    expect(r.stoppedNotices.filter((line) => line.startsWith('+ '))).toHaveLength(1);
+    expect(r.errors).toEqual([]);
+  });
+});
+

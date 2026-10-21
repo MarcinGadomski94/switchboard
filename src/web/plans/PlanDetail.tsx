@@ -6,7 +6,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { Link } from '../router.tsx';
 import { plansApi, refusalText } from './api.ts';
-import { STATE_LOOK, canReopen, doneText, earlyStartWarning, statusLine, stoppedReason, waitingText, worktreeName } from './model.ts';
+import { STATE_LOOK, canReopen, doneText, earlyStartWarning, needsYouReason, statusLine, stoppedReason, waitingText, worktreeName } from './model.ts';
 
 /** The external ref the Jira lane may give a browse URL with (`url`); without one there is no ↗ link. */
 function jiraLink(plan: Plan, item: PlanItem): string | null {
@@ -248,6 +248,22 @@ export function PlanDetail({
               </div>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {item.state === 'needs-you' ? (
+        <div className="sb-plan-detail__body" data-testid="plan-detail-needs-you">
+          <div className="sb-plan-detail__reason sb-plan-detail__reason--need" data-testid="plan-detail-needs-you-reason">
+            {needsYouReason(item)}
+          </div>
+          <div className="sb-plan-detail__text">Its agent ended its turn waiting for you. Reply in its session; the item runs again once its agent works.</div>
+          {item.runSessionId ? (
+            <div className="sb-plan-detail__actions">
+              <Link to={{ view: 'session', id: item.runSessionId, tab: 'chat' }} className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-needs-you-open">
+                Open session
+              </Link>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

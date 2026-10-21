@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { Plan, PlanItem } from '../../core/plans.ts';
-import { GRAPH, STATE_LOOK, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, itemSessionId, repoLine, statusLine } from './model.ts';
+import { GRAPH, STATE_LOOK, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, itemSessionId, cardStatusLine, repoLine } from './model.ts';
 
 /**
  * D99 · the plan's Graph view (`docs/plans-ui.md` → *Graph*): a left-to-right DAG, layers by the
@@ -127,7 +127,7 @@ export function PlanGraph({
                   data-opens-session={opensSession || undefined}
                   data-selected={selectedId === item.id || undefined}
                   aria-pressed={opensSession ? undefined : selectedId === item.id}
-                  aria-label={opensSession ? `${item.key ? `${item.key} ` : ''}${item.title}: ${statusLine(item, plan.items)}. Open its session` : undefined}
+                  aria-label={opensSession ? `${item.key ? `${item.key} ` : ''}${item.title}: ${cardStatusLine(item, plan.items)}. Open its session` : undefined}
                   style={{ left: node.x, top: node.y, width: GRAPH.cardWidth, height: GRAPH.cardHeight, borderLeftColor: look.color }}
                   title={opensSession ? `${item.title} — open its session` : item.title}
                   onClick={() => onCard(item)}
@@ -144,8 +144,8 @@ export function PlanGraph({
                     ) : null}
                   </span>
                   <span className="sb-plan-card__title">{item.title}</span>
-                  <span className="sb-plan-card__status" data-testid="plan-card-status" style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
-                    {statusLine(item, plan.items)}
+                  <span className="sb-plan-card__status" data-testid="plan-card-status" title={item.state === 'needs-you' ? (item.reason ?? undefined) : undefined} style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
+                    {cardStatusLine(item, plan.items)}
                   </span>
                   <span className="sb-plan-card__meta">{repoLine(item, plan)}</span>
                 </button>

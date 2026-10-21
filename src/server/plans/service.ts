@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { effectiveSessionStatus, turnWaits } from '../../core/derive/turn-status.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES, WORK_TYPES } from '../../core/model.ts';
 import { shortNameFromTitle } from '../../core/session-title.ts';
@@ -783,7 +784,8 @@ export class PlanService {
         if (!run) return;
         const status = message.payload.status;
         if (status === run.status) return;
-        const turnEnded = run.status === 'run' && (status === 'idle' || status === 'done');
+        // D124: a turn that ended waiting for the developer reads `need` (its turn wait), and is a turn's end too.
+        const turnEnded = run.status === 'run' && (status === 'idle' || status === 'done' || (status === 'need' && turnWaits(message.payload.turnWait)));
         run.status = status;
         this.#dirty.set(run.itemId, turnEnded || this.#dirty.get(run.itemId) === true);
         this.kick();
@@ -862,7 +864,9 @@ export class PlanService {
         ...item,
         title: todo?.title ?? item.title,
         estimateMinutes: todo ? todo.estimateMinutes : item.estimateMinutes,
-        sessionStatus: sessionless ? 'done' : session ? session.status : null,
+        // D124: a turn over and not working that waits for the developer reads `need`, with its ask (`needs-you`, not D120's `stopped`).
+        sessionStatus: sessionless ? 'done' : session ? effectiveSessionStatus(session.status, session.turnWait, session.closedAt !== null) : null,
+        sessionAsk: !sessionless && session && session.closedAt === null && turnWaits(session.turnWait) ? (session.turnWait.ask ?? null) : null,
         // D120: a turn over with the todo open is `stopped` once the grace period has passed.
         todoDone: todo ? todo.state === 'done' : undefined,
         idleSince: sessionless ? null : session ? session.lastActivityAt : null,

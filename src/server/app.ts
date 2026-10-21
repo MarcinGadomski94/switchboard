@@ -40,6 +40,7 @@ import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { type ApiContext, registerApiRoutes } from './routes.ts';
+import { TurnWaitingInbox } from './inbox/turn-waiting.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { installTeam } from './team/install.ts';
 import { withTeamAccessServers } from './team/hooks.ts';
@@ -349,7 +350,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   let hooks = options.hooks;
   if (!hooks) {
-    const own = new HookService({ config, store: options.store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
+    // D124: a hooked session's prompts and Stops decide its turn wait too.
+    const own = new HookService({ config, store: options.store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE), turnStatus: supervisor.turnStatus });
     app.addHook('onClose', async () => {
       await own.close();
     });
@@ -389,6 +391,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     todos = own;
   }
+  // D124: one "Waiting for you" Inbox item per needs-you episode of a session (its turn_status or the text check); its Dismiss clears the wait.
+  const turnWaiting = new TurnWaitingInbox({ bus, systemItems });
+  systemItems.useNotWaiting((sessionId, at) => supervisor.turnStatus.notWaiting(sessionId, at));
+  app.addHook('onReady', async () => {
+    await turnWaiting.start();
+  });
+  app.addHook('preClose', async () => {
+    await turnWaiting.stop();
+  });
   // D75: one reminder to the agent to finish a started todo when a turn ends with it still in progress (Settings → Sessions).
   const reminder = new TodoReminder({
     bus,

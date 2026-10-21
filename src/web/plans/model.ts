@@ -28,6 +28,8 @@ export const STATE_LOOK: Readonly<Record<PlanItemState, StateLook>> = {
   question: { icon: '?', color: 'var(--status-need)', word: 'question' },
   // D120: its agent ended its turn without finishing: red, it needs you.
   stopped: { icon: '■', color: 'var(--status-fail)', word: 'stopped' },
+  // D124: its agent ended its turn waiting for you (an ask): amber.
+  'needs-you': { icon: '!', color: 'var(--status-need)', word: 'needs you' },
   'ready-to-merge': { icon: '◐', color: MERGE_COLOR, word: 'ready to merge' },
   'to-confirm': { icon: '◐', color: MERGE_COLOR, word: 'to confirm' },
   done: { icon: '✔', color: 'var(--status-done)', word: 'done' },
@@ -64,6 +66,8 @@ export function statusLine(item: PlanItem, items: readonly PlanItem[]): string {
       return 'needs your answer';
     case 'stopped':
       return STOPPED_LABEL;
+    case 'needs-you':
+      return NEEDS_YOU_LABEL;
     case 'ready-to-merge':
       return 'waiting for your merge';
     case 'to-confirm':
@@ -91,6 +95,19 @@ export function canReopen(plan: Pick<Plan, 'state' | 'machine'>, item: Pick<Plan
 
 /** D120: the status line and chip of a `stopped` item (its agent ended its turn without finishing). */
 export const STOPPED_LABEL = 'Stopped — needs you';
+
+/** D124: the status line of a `needs-you` item (its agent ended its turn waiting for you). */
+export const NEEDS_YOU_LABEL = 'Needs you';
+
+/** D124: a `needs-you` item's line with its ask: "Needs you: <ask>" (the graph card, the detail). */
+export function needsYouReason(item: Pick<PlanItem, 'reason'>): string {
+  return item.reason ? `${NEEDS_YOU_LABEL}: ${item.reason}` : NEEDS_YOU_LABEL;
+}
+
+/** The graph card's status line: {@link statusLine}, with the ask of a `needs-you` item (D124; the card cuts it). */
+export function cardStatusLine(item: PlanItem, items: readonly PlanItem[]): string {
+  return item.state === 'needs-you' ? needsYouReason(item) : statusLine(item, items);
+}
 
 /** D120: a stopped item's reason line: "Stopped: <the agent's last message, cut>". */
 export function stoppedReason(item: Pick<PlanItem, 'reason'>): string {
@@ -460,7 +477,7 @@ function parse(value: string | null): number | null {
 
 /** What a running item waits on that is the developer's: a question, its merge, a conflict sent to the Inbox. */
 function waitsOnYou(item: PlanItem): string | null {
-  if (item.state === 'question') return 'question';
+  if (item.state === 'question' || item.state === 'needs-you') return 'question';
   if (item.state === 'ready-to-merge') return 'merge';
   if (item.state === 'to-confirm') return 'confirm';
   if (item.waitingOn === 'question' || item.waitingOn === 'merge' || item.waitingOn === 'conflict' || item.waitingOn === 'confirm') return item.waitingOn;

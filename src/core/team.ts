@@ -637,7 +637,8 @@ export function returnNote(role: string, team: string): string {
 
 /** "Tracker · question". */
 export function needsYouLabel(memberName: string, kind: string): string {
-  const what: Record<string, string> = { questions: 'question', permission: 'permission', system: 'system', gate: 'approval', budget: 'budget', access: 'access', charter: 'charter' };
+  // D124: `waiting` = its turn ended waiting for the developer (the "Waiting for you" Inbox item).
+  const what: Record<string, string> = { questions: 'question', permission: 'permission', system: 'system', waiting: 'waiting for you', gate: 'approval', budget: 'budget', access: 'access', charter: 'charter' };
   return `${memberName} · ${what[kind] ?? kind}`;
 }
 

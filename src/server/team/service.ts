@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { effectiveSessionStatus } from '../../core/derive/turn-status.ts';
 import type { InboxItem, OwnedLoop, Session, SessionModelInput, SessionTodo } from '../../core/api.ts';
 import { type BackgroundWait, backgroundWait } from '../../core/derive/background.ts';
 import { HybridClock } from '../../core/hlc.ts';
@@ -510,7 +511,8 @@ export class TeamService {
       const activity = this.#o.supervisor.activity(member.sessionId);
       return {
         reachable: true,
-        status: STATUSES.has(record.status) ? (record.status as SessionStatusLike) : 'idle',
+        // D124: a turn over and not working that waits for the developer (its turn_status or the text check) reads `need`.
+        status: STATUSES.has(record.status) ? (effectiveSessionStatus(record.status, record.turnWait) as SessionStatusLike) : 'idle',
         title: record.title ?? record.name,
         lastActivityAt: record.lastActivityAt,
         turnStartedAt: activity?.turnStartedAt ?? null,
@@ -1578,7 +1580,7 @@ export class TeamService {
     for (const item of inbox) {
       const member = item.sessionId ? bySession.get(item.sessionId) : undefined;
       if (!member) continue;
-      out.push({ id: item.id, source: 'inbox', kind: item.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, item.kind), title: item.title, detail: item.detail, createdAt: item.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), inbox: item });
+      out.push({ id: item.id, source: 'inbox', kind: item.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, item.systemKind === 'turn-waiting' ? 'waiting' : item.kind), title: item.title, detail: item.detail, createdAt: item.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), inbox: item });
     }
     const byId = new Map(members.map((member) => [member.id, member]));
     for (const request of this.#need().requests()) {

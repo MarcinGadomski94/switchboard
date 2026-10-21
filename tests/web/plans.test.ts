@@ -114,7 +114,9 @@ describe('the state look', () => {
     expect(STATE_LOOK.blocked).toMatchObject({ icon: '✖', color: 'var(--status-fail)' });
     // D120: stopped is red, with its own icon.
     expect(STATE_LOOK.stopped).toEqual({ icon: '■', color: 'var(--status-fail)', word: 'stopped' });
-    expect(Object.keys(STATE_LOOK)).toEqual(['waiting', 'ready', 'running', 'question', 'stopped', 'ready-to-merge', 'to-confirm', 'done', 'blocked']);
+    // D124: needs-you is amber (its agent ended its turn waiting for you).
+    expect(STATE_LOOK['needs-you']).toEqual({ icon: '!', color: 'var(--status-need)', word: 'needs you' });
+    expect(Object.keys(STATE_LOOK)).toEqual(['waiting', 'ready', 'running', 'question', 'stopped', 'needs-you', 'ready-to-merge', 'to-confirm', 'done', 'blocked']);
   });
 
   it('D120: a stopped item: its status line, reason, the plan\'s count and where a click goes', () => {

@@ -84,6 +84,14 @@ export function inboxNotice(item: InboxItem): PushNotice {
       payload: { kind: 'questions', title: shortText(`${who} needs you`, 80), body: shortText(first || item.label), url, tag: `inbox-${item.id}` },
     };
   }
+  // D124: a session's turn waits for the developer: announced like a question ("<session> needs you", the ask).
+  if (item.kind === 'system' && item.systemKind === 'turn-waiting') {
+    return {
+      kind: 'questions',
+      urgency: 'high',
+      payload: { kind: 'questions', title: shortText(`${item.machine ? `${item.source} · ${item.machine.name}` : item.source} needs you`, 80), body: shortText(item.detail || item.title), url, tag: `inbox-${item.id}` },
+    };
+  }
   return {
     kind: 'inbox',
     urgency: 'normal',

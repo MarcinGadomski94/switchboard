@@ -1115,6 +1115,11 @@
   padding: 4px 0 4px 10px;
 }
 
+/* D124: a needs-you item's ask (amber, not the stopped red). */
+.sb-plan-detail__reason--need {
+  border-left-color: var(--status-need);
+}
+
 .sb-plan-detail__sendback {
   display: flex;
   flex-direction: column;

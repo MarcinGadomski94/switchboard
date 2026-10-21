@@ -1,6 +1,7 @@
 import type { Session } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { isRemoteId } from '../../core/peers.ts';
+import { turnWaits } from '../../core/derive/turn-status.ts';
 import { todoReminderMessage } from '../../core/todos.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 import type { TodoService } from './service.ts';
@@ -31,13 +32,17 @@ export interface TodoReminderOptions {
  * change it during that turn, Switchboard sends the session **one** reminder message for
  * that item ({@link todoReminderMessage}), at most once per item per start (recorded as
  * `reminded_at`). A hooked terminal session gets it only while its waiter is held; a
- * paired machine's sessions are reminded by their own machine.
+ * paired machine's sessions are reminded by their own machine. D124: a turn that ends waiting for
+ * the developer (its `turn_status` `waiting_for_you` / `blocked`, or the text check: the session
+ * reads `need`, not `idle` / `done`) gets no reminder.
  */
 export class TodoReminder {
   readonly #options: TodoReminderOptions;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #status = new Map<string, SessionStatus>();
+  /** D124: the sessions whose `need` is their last turn's wait for the developer (not an open question). */
+  readonly #turnWait = new Set<string>();
   /** Session id → when its current (or last) turn began (epoch ms). */
   readonly #turnStart = new Map<string, number>();
   /** One check at a time per session (two quick turn ends never send the same reminder twice). */
@@ -75,12 +80,24 @@ export class TodoReminder {
     if (isRemoteId(session.id)) return;
     const before = this.#status.get(session.id);
     this.#status.set(session.id, session.status);
-    if (before === session.status) return;
-    if (session.status === 'run') {
-      // A turn began (from idle / done; `need` → `run` continues the same turn).
-      if (before !== 'need') this.#turnStart.set(session.id, this.#now());
+    // D124: a `need` that is the turn's own wait for the developer (its turn_status or the text check), not an open question.
+    const turnWait = session.status === 'need' && turnWaits(session.turnWait);
+    if (before === session.status) {
+      if (turnWait) this.#turnWait.add(session.id);
       return;
     }
+    if (session.status === 'run') {
+      // A turn began (from idle / done, D124: or from a turn that ended waiting for the developer; a question's `need` → `run` continues the same turn).
+      if (before !== 'need' || this.#turnWait.has(session.id)) this.#turnStart.set(session.id, this.#now());
+      this.#turnWait.delete(session.id);
+      return;
+    }
+    // D124: a turn that ended waiting for the developer (`run` → `need`) gets no reminder: the agent asked something.
+    if (turnWait) {
+      this.#turnWait.add(session.id);
+      return;
+    }
+    this.#turnWait.delete(session.id);
     if (before === 'run' && (session.status === 'idle' || session.status === 'done') && session.closedAt == null) this.#queue(session.id);
   }
 

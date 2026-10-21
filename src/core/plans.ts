@@ -71,6 +71,11 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  *   conflict) for at least {@link PLAN_STOPPED_GRACE_MS}: the agent ended its turn without
  *   finishing ("Stopped — needs you"). It keeps its slot and its dependents wait; it goes back to
  *   `running` once its session works again;
+ * - `needs-you` (D124): its session's turn is over and not working, and the turn waits for the
+ *   developer (its agent's `turn_status` `waiting_for_you` / `blocked`, or the text check of its
+ *   last message): amber "Needs you" with the ask as its reason, in place of D120's `stopped`
+ *   (and without its Inbox item: the session raises "Waiting for you"). It keeps its slot like
+ *   `stopped` and goes back to `running` once its session works again;
  * - `ready-to-merge` (D102): its run finished (its todo is done, or its PR is open with green
  *   checks) and it waits for the developer's Merge ("Waiting for your merge");
  * - `to-confirm` (D99 follow-up 2026-10-15): a held item of a plan without a merge step (`none`)
@@ -79,7 +84,7 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  * - `blocked`: it failed (discarded, could not start), its session stopped with an error, a
  *   conflict went to the developer, or a dependency is blocked; {@link PlanItem.reason} says why.
  */
-export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'stopped', 'ready-to-merge', 'to-confirm', 'done', 'blocked'] as const;
+export const PLAN_ITEM_STATES = ['waiting', 'ready', 'running', 'question', 'stopped', 'needs-you', 'ready-to-merge', 'to-confirm', 'done', 'blocked'] as const;
 /** One of {@link PLAN_ITEM_STATES}. */
 export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
 
@@ -239,6 +244,7 @@ export function planItemSpanKind(plan: { readonly state: PlanState; readonly hel
       return 'running';
     case 'question':
     case 'stopped':
+    case 'needs-you':
     case 'ready-to-merge':
     case 'to-confirm':
       return 'waiting-you';
@@ -436,6 +442,11 @@ export interface PlanItemFacts {
   readonly todoDone?: boolean;
   /** D120: since when its run session has been idle (its last activity); absent / `null` = unknown. */
   readonly idleSince?: string | null;
+  /**
+   * D124: the ask of its run session's turn that ended waiting for the developer (with
+   * `sessionStatus` `need`); absent / `null` = none (a `need` is then a question or a permission).
+   */
+  readonly sessionAsk?: string | null;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -485,6 +496,8 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
     case 'running':
       if (item.sessionStatus === 'fail') return { state: 'blocked', reason: 'its session stopped with an error' };
       if (item.waitingOn === 'conflict' && item.conflicts >= 2) return { state: 'blocked', reason: `its branch conflicts with ${targetBranch ?? 'its base'} again: waiting for you in the Inbox` };
+      // D124: a turn that ended waiting for the developer (its turn_status or the text check): amber, with the ask.
+      if (item.sessionStatus === 'need' && item.sessionAsk) return { state: 'needs-you', reason: item.sessionAsk };
       if (item.sessionStatus === 'need') return { state: 'question', reason: 'its session waits for your answer in the Inbox' };
       if (developerMerges(mode, item) && item.waitingOn === 'merge') return { state: 'ready-to-merge', reason: 'waiting for your merge' };
       if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return { state: 'to-confirm', reason: 'its todo is done: waiting for you to confirm it' };
@@ -975,7 +988,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_status',
     description:
-      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, stopped (its agent ended its turn without finishing: its last message is the reason), ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
+      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, stopped (its agent ended its turn without finishing: its last message is the reason), needs-you (its agent ended its turn waiting for the developer: its ask is the reason), ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
     inputSchema: { type: 'object', properties: { plan_id: PLAN_ID }, additionalProperties: false },
     annotations: { title: 'Plan status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },

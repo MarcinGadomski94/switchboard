@@ -258,6 +258,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-pick-repos': 'Pick repositories',
   // D120: a plan item's agent ended its turn without finishing its todo.
   'plan-stopped': 'Stopped',
+  // D124: a session's turn ended waiting for the developer (its turn_status, or the text check: "· detected").
+  'turn-waiting': 'Waiting for you',
   // D121: a plan item marked merged without its branch in the target was reopened.
   'plan-reopened': 'Reopened',
   // Project memory (D107) hook: a folder's open memory proposals (docs/memory-removal.md).
@@ -298,7 +300,9 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     source: record.source,
     status: record.status,
     title: record.title,
-    label: SYSTEM_ITEM_LABELS[record.kind] ?? record.kind,
+    label: `${SYSTEM_ITEM_LABELS[record.kind] ?? record.kind}${record.kind === 'turn-waiting' && isRecord(record.payload) && record.payload['detected'] === true ? ' · detected' : ''}`,
+    // D124: a "Waiting for you" item says its kind (the push and Team read it).
+    ...(record.kind === 'turn-waiting' ? { systemKind: record.kind } : {}),
     detail: record.detail,
     createdAt: record.createdAt,
     branches: record.branches.map((branch) => ({ solution: branch.solution, branch: branch.branch })),

@@ -89,7 +89,7 @@ function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly p
                 ) : null}
                 {item.title}
               </span>
-              <span className="sb-plan-row__status" style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
+              <span className="sb-plan-row__status" title={item.state === 'needs-you' ? (item.reason ?? undefined) : undefined} style={{ color: item.state === 'waiting' || item.state === 'ready' ? undefined : look.color }}>
                 {statusLine(item, plan.items)}
               </span>
               <span className="sb-plan-row__repo">{repoLine(item, plan)}</span>
