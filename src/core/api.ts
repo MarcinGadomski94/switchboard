@@ -26,6 +26,7 @@ import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
+import type { PowerStatus } from './power.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
@@ -2162,6 +2163,12 @@ export interface SystemInfo {
   readonly ramUsed: number;
   readonly ramTotal: number;
   readonly processes: number;
+  /**
+   * Additive (D125, `docs/power.md`): this machine's power as last sampled (at
+   * most every 30 s): a laptop's battery, or an estimated total on a machine
+   * without one. Omitted before the first sample and where nothing reads it (demo).
+   */
+  readonly power?: PowerStatus;
   /** Omitted when unknown (never invented, ARCHITECTURE → Usage meter). */
   readonly usagePct?: number;
   /** Additive: when the window behind `usagePct` resets (the footer's "40% · 2h05"). */
@@ -2526,6 +2533,13 @@ export interface HubEvents {
    * `GET /api/sessions/{id}/ci` again. Forwarded between peers (a peer's with its remote session id).
    */
   readonly ciChanged: CiChanged;
+  /**
+   * Additive (D125, `docs/power.md`): this machine's power reading changed (a
+   * sample said something new; at most every 30 s while someone listens).
+   * Forwarded between peers: the receiving machine keeps it as that machine's
+   * `Machine.power` (published with `machineState`) and never republishes it.
+   */
+  readonly machinePower: PowerStatus;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2567,6 +2581,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'memoryChanged',
   // D109.
   'ciChanged',
+  // D125.
+  'machinePower',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

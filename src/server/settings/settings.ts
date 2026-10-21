@@ -1,4 +1,5 @@
 import { open } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {
   currentStandingInstruction,
@@ -18,6 +19,7 @@ import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-sessi
 import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
+import { defaultPowerEstimate, parsePowerEstimateSettings, readPowerEstimateSettings } from '../../core/power.ts';
 import type { ServerConfig } from '../config.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
 import type { SettingRepository } from '../db/repos/settings.ts';
@@ -37,6 +39,7 @@ const READ_ONLY_KEYS: readonly SettingKey[] = [
   'workspace.root',
   'workspace.router',
   'github.prPollMinutes',
+  'power.estimateDefaults',
 ];
 
 /** Result of {@link validateSettingsPatch}. */
@@ -110,6 +113,15 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
         continue;
       }
       value[key] = parsed.table;
+      continue;
+    } else if (key === 'power.estimate') {
+      // D125: the power estimate's watts (each null = the default).
+      const parsed = parsePowerEstimateSettings(raw);
+      if (!parsed.ok) {
+        errors.push({ field: key, message: parsed.message });
+        continue;
+      }
+      value[key] = parsed.settings;
       continue;
     } else if (key === 'sessions.modelRules') {
       // D82: the rules' shape here; whether each model / profile exists is the route's async check (`checkModelRules`).
@@ -188,6 +200,8 @@ export async function readSettings(
       if (key === 'sessions.modelRules') return [key, readModelRules(value)];
       // D108: a broken stored table reads as the example prices.
       if (key === 'insights.prices') return [key, readPriceTable(value)];
+      // D125: unusable watts read as the default.
+      if (key === 'power.estimate') return [key, readPowerEstimateSettings(value)];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
@@ -199,6 +213,7 @@ export async function readSettings(
     'workspace.root': defaultFolder?.path ?? null,
     'workspace.router': defaultFolder?.kind === 'workspace' ? await routerTitle(defaultFolder.path) : null,
     'github.prPollMinutes': DEFAULT_PR_POLL_MS / 60_000,
+    'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
   };
 }
 

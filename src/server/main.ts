@@ -26,6 +26,8 @@ import { PeerService } from './peers/service.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
+import { PowerSampler } from './system/power.ts';
+import { readPowerEstimateSettings } from '../core/power.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import { HookService } from './hooks/service.ts';
 import { ToolProxies, settingsProxyPorts } from './tools/proxies.ts';
@@ -83,7 +85,18 @@ async function main(): Promise<void> {
     // "Start at login" (M9.1): the per-user service definition of this OS (docs/service.md).
     const loginService = createLoginService({ config, settings: store.settings, redirect: serviceRedirect });
     // CLI / gh sign-in + machine metrics (M5.3, gap #11) through the configured commands.
-    const system = new SystemProbe({ claudeCommand: config.claudeCommand, ghCommand: config.ghCommand, cwd: config.dataDir, processCount: () => supervisor.liveCount });
+    // D125 (docs/power.md): the battery, or an estimated total without one; sampled on demand (at most every 30 s), read-only, no admin.
+    const power = config.demo
+      ? null
+      : new PowerSampler({
+          cwd: config.dataDir,
+          estimateSettings: async () => readPowerEstimateSettings(await store.settings.get('power.estimate')),
+          onChange: (reading) => bus.publish('machinePower', reading),
+          onError: (error) => console.error('switchboard power:', error),
+          ...(config.powerTestFile ? { testFile: config.powerTestFile } : {}),
+          ...(config.powerSampleMs ? { intervalMs: config.powerSampleMs } : {}),
+        });
+    const system = new SystemProbe({ claudeCommand: config.claudeCommand, ghCommand: config.ghCommand, cwd: config.dataDir, processCount: () => supervisor.liveCount, ...(power ? { power } : {}) });
     // D15 (docs/tools.md → Framing proxy): each tool with a URL behind its own loopback framing proxy; the demo runs none.
     const toolProxies = config.demo
       ? null
@@ -144,7 +157,7 @@ async function main(): Promise<void> {
     const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders, clis }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
     // D48 (docs/peers.md): paired machines and the optional peer listener; started once the UI port is ours. The demo has none.
-    const peers = new PeerService({ config, store, bus, token });
+    const peers = new PeerService({ config, store, bus, token, ...(power ? { power } : {}) });
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });

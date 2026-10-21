@@ -146,11 +146,16 @@ export async function pair(host: PeerNode, adder: PeerNode, hostAddress: string)
 }
 
 /** Two nodes with repos, both listeners on, `b` paired with `a` and both online; returns their machine ids. */
-export async function pairedNodes(root: string, env: Record<string, string> = {}): Promise<{ readonly a: PeerNode; readonly b: PeerNode; readonly aId: string; readonly bId: string }> {
-  const a = await startPeerNode(root, 'a', { repo: true, env });
+export async function pairedNodes(
+  root: string,
+  env: Record<string, string> = {},
+  /** D125: extra env of one node only (its own power reading). */
+  perNode: { readonly a?: Record<string, string>; readonly b?: Record<string, string> } = {},
+): Promise<{ readonly a: PeerNode; readonly b: PeerNode; readonly aId: string; readonly bId: string }> {
+  const a = await startPeerNode(root, 'a', { repo: true, env: { ...env, ...perNode.a } });
   let b: PeerNode;
   try {
-    b = await startPeerNode(root, 'b', { repo: true, env });
+    b = await startPeerNode(root, 'b', { repo: true, env: { ...env, ...perNode.b } });
   } catch (error) {
     await a.server.stop();
     throw error;

@@ -12,6 +12,7 @@ import { FRESH_OFFER_DEFAULT_PCT } from './fresh-session.ts';
 import { type ModelRule, readModelRules } from './model-routing.ts';
 import { EXAMPLE_PRICES, type PriceTable, readPriceTable } from './insights.ts';
 import { type CiMergeMethod, isCiMergeMethod } from './ci.ts';
+import { POWER_ESTIMATE_UNSET, type PowerEstimateModel, type PowerEstimateSettings, readPowerEstimateSettings } from './power.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
 export interface KnownSettings {
@@ -107,6 +108,14 @@ export interface KnownSettings {
   readonly 'ci.logTailLines': number;
   /** D109: how Merge PR merges (`repo` = the repository's default, else squash). Editable, default `repo`. */
   readonly 'ci.mergeMethod': CiMergeMethod;
+  /**
+   * D125: Settings → Machines → *Power estimate* (`docs/power.md`): this machine's CPU idle
+   * and max watts and the rest of the system, used only while it has no battery; `null` =
+   * the default ({@link KnownSettings['power.estimateDefaults']}). Editable, default all `null`.
+   */
+  readonly 'power.estimate': PowerEstimateSettings;
+  /** D125: this machine's default estimate (by its core count; Apple silicon lower). Read-only. */
+  readonly 'power.estimateDefaults': PowerEstimateModel;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -194,7 +203,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -235,6 +244,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'ci.maxAttempts': 3,
   'ci.logTailLines': 150,
   'ci.mergeMethod': 'repo',
+  // D125: every part at this machine's default.
+  'power.estimate': POWER_ESTIMATE_UNSET,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -244,6 +255,13 @@ export const WARN_AT_PCT_MAX = 100;
 /** `true` if `key` is an editable setting. */
 export function isEditableSetting(key: string): key is EditableSettingKey {
   return (EDITABLE_SETTINGS as readonly string[]).includes(key);
+}
+
+/** D125: a `power.estimateDefaults` value (zeros when missing: the UI then shows no default). */
+function readPowerEstimateModel(value: unknown): PowerEstimateModel {
+  const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const watt = (key: string): number => (typeof record[key] === 'number' && Number.isFinite(record[key]) ? (record[key] as number) : 0);
+  return { cpuIdleW: watt('cpuIdleW'), cpuMaxW: watt('cpuMaxW'), baseW: watt('baseW') };
 }
 
 /** The known values of a `GET /api/settings` body (anything missing or of the wrong type reads as the default / unknown). */
@@ -281,6 +299,8 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'ci.maxAttempts': num('ci.maxAttempts', SETTING_DEFAULTS['ci.maxAttempts']),
     'ci.logTailLines': num('ci.logTailLines', SETTING_DEFAULTS['ci.logTailLines']),
     'ci.mergeMethod': isCiMergeMethod(value['ci.mergeMethod']) ? value['ci.mergeMethod'] : SETTING_DEFAULTS['ci.mergeMethod'],
+    'power.estimate': readPowerEstimateSettings(value['power.estimate']),
+    'power.estimateDefaults': readPowerEstimateModel(value['power.estimateDefaults']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

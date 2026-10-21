@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { SystemInfo } from '../../core/api.ts';
+import type { PowerStatus } from '../../core/power.ts';
 import { type RunResult, runCommand, succeeded } from '../exec.ts';
 import type { SystemProvider } from '../providers.ts';
 import { childEnv } from '../supervisor/argv.ts';
@@ -60,6 +61,12 @@ export interface SystemProbeOptions {
    * failed read → `total − free`.
    */
   readonly memoryInUse?: MemoryInUseReader;
+  /**
+   * D125 (`docs/power.md`): this machine's power sampler; each `system()` answers
+   * its last reading (`power`) and lets it start a new sample when one is due.
+   * Absent = no `power` field.
+   */
+  readonly power?: { current(): PowerStatus | null };
 }
 
 function cpuSample(cpus: readonly os.CpuInfo[]): CpuSample {
@@ -126,6 +133,7 @@ export async function resolveExecutable(command: string, env: NodeJS.ProcessEnv 
  *   from the last one (started at construction, then at most every
  *   {@link MEMORY_READ_INTERVAL_MS}) and never waits for it.
  * - `processes`: live supervised `claude` processes.
+ * - `power` (D125): the power sampler's last reading (`./power.ts`), when one is wired.
  * - Usage fields are added by the meter (`withUsage`, M9.2 / D17).
  * The three commands run with `shell: false`, never make a model call, and are
  * reused for {@link CLI_CHECK_CACHE_MS}; `fresh` checks again.
@@ -166,6 +174,7 @@ export class SystemProbe implements SystemProvider {
       ramUsed: Math.min(memory.total, Math.max(0, used)),
       ramTotal: memory.total,
       processes: this.#options.processCount(),
+      ...this.#power(),
     };
   }
 
@@ -234,6 +243,11 @@ export class SystemProbe implements SystemProvider {
     if (command.length !== 1) return command.join(' ');
     const only = command[0] as string;
     return (await resolveExecutable(only, env, this.#options.cwd)) ?? only;
+  }
+
+  #power(): { power?: PowerStatus } {
+    const power = this.#options.power?.current() ?? null;
+    return power ? { power } : {};
   }
 
   #cpu(): number {

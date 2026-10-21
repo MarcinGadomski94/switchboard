@@ -6,6 +6,7 @@ import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Se
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
 // Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
+import { type PowerStatus, readPowerStatus } from '../../core/power.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -325,6 +326,13 @@ export interface PeerServiceOptions {
   readonly timings?: PeerTimings;
   /** Connection state changes and failed attempts (default: `console.info` / `console.warn`). Never a token. */
   readonly log?: (level: 'info' | 'warn', message: string) => void;
+  /**
+   * D125 (`docs/power.md`): this machine's power sampler. A peer's stream gets
+   * the last reading when it opens and asks for a fresh one at each keepalive
+   * (at most every 30 s); new readings go out as `machinePower`. Absent = this
+   * machine reports no power.
+   */
+  readonly power?: { current(): PowerStatus | null };
 }
 
 /** Fix · peer reconnects: tunable timings of the peer connections. */
@@ -392,6 +400,10 @@ export class PeerService implements PeerHandlers {
   /** D52: when each `<machine> <kind>` list was last fetched (ms), and the fetch in flight. */
   readonly #listFetched = new Map<string, number>();
   readonly #listRefresh = new Map<string, Promise<boolean>>();
+  /** D125: this machine's power sampler (`null`: reports none). */
+  readonly #power: { current(): PowerStatus | null } | null;
+  /** D125: each paired machine's power as it last reported it (`machinePower` on its stream). */
+  readonly #peerPower = new Map<string, PowerStatus>();
   /** D113: per `<machine> <list>` (artifacts, inbox): a fetch is running, and when the last one arrived (ms). */
   readonly #listSync = new Map<string, { syncing: boolean; syncedAt: number | null }>();
   /** D113: machines whose Inbox has not arrived since they came online (its count is published when it does). */
@@ -408,6 +420,7 @@ export class PeerService implements PeerHandlers {
     this.#token = options.token;
     this.#onError = options.onError ?? ((error) => console.error('switchboard peers:', error));
     this.#version = options.version ?? '0.1.0';
+    this.#power = options.power ?? null;
     this.#timings = options.timings ?? options.config.peerTimings ?? {};
     this.#log =
       options.log ??
@@ -615,7 +628,14 @@ export class PeerService implements PeerHandlers {
       },
       sidebarSync: this.#sidebar.view(record.id),
       listSync: this.#listSyncView(record.id),
+      ...this.#powerView(record.id, connection?.state),
     };
+  }
+
+  /** D125: a machine's power while it is online or reconnecting (a stale reading of an unreachable machine is not shown). */
+  #powerView(id: string, state: MachineState | undefined): { power?: PowerStatus } {
+    const power = this.#peerPower.get(id);
+    return power && (state === 'online' || state === 'reconnecting') ? { power } : {};
   }
 
   /** D113: the machine's synced lists as `GET /api/machines` shows them. */
@@ -835,6 +855,7 @@ export class PeerService implements PeerHandlers {
     this.#records.delete(id);
     this.#savedLists.delete(id);
     for (const list of PEER_SYNCED_LISTS) this.#listSync.delete(`${id} ${list}`);
+    this.#peerPower.delete(id);
     this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
     this.#saveTimers.delete(id);
@@ -962,6 +983,15 @@ export class PeerService implements PeerHandlers {
     }
     if (name === 'inboxChanged') {
       void this.#publishInboxCount();
+      return;
+    }
+    if (name === 'machinePower') {
+      // D125: the machine's own power reading: kept as its Machine.power (machineState), never republished.
+      const power = readPowerStatus(payload);
+      if (power) {
+        this.#peerPower.set(id, power);
+        this.#publishMachine(id);
+      }
       return;
     }
     if (name === 'artifactsChanged') {
@@ -1392,7 +1422,13 @@ export class PeerService implements PeerHandlers {
       if (deltas && message.name === 'sessionUpdated') write(formatEvent('sessionUpdated', deltas.encode(message.payload)));
       else write(formatEvent(message.name, message.payload));
     });
-    const keepalive = setInterval(() => write(KEEPALIVE_FRAME), 10_000);
+    // D125: this machine's power: the last reading now, and a fresh sample asked for at each keepalive (at most every 30 s).
+    const power = this.#power?.current() ?? null;
+    if (power) write(formatEvent('machinePower', power));
+    const keepalive = setInterval(() => {
+      write(KEEPALIVE_FRAME);
+      this.#power?.current();
+    }, 10_000);
     keepalive.unref();
     let closed = false;
     const stream: InboundStream = {

@@ -90,6 +90,17 @@ export interface ServerConfig {
    * browser vendors' push services (the fake push service). Default none.
    */
   readonly pushTestEndpoints: readonly string[];
+  /**
+   * D125, **tests only**: `SWITCHBOARD_POWER_TEST_FILE`, a JSON file holding the
+   * power reading this machine reports (read again at every sample) instead of
+   * reading the battery / GPU. Absent = the real readings.
+   */
+  readonly powerTestFile?: string;
+  /**
+   * D125: `SWITCHBOARD_POWER_SAMPLE_MS`, the shortest gap between power samples
+   * (whole milliseconds, 100–600000; default 30 s). Meant for tests.
+   */
+  readonly powerSampleMs?: number;
 }
 
 /** D73: a test origin of the device listener (loopback http with a port), else a {@link ConfigError}. */
@@ -123,6 +134,12 @@ function parsePeerTimings(env: NodeJS.ProcessEnv): ServerConfig['peerTimings'] {
   const stallMs = parsePeerMs('SWITCHBOARD_PEER_STALL_MS', env['SWITCHBOARD_PEER_STALL_MS']);
   const holdMs = parsePeerMs('SWITCHBOARD_PEER_HOLD_MS', env['SWITCHBOARD_PEER_HOLD_MS']);
   return { ...(graceMs === undefined ? {} : { graceMs }), ...(stallMs === undefined ? {} : { stallMs }), ...(holdMs === undefined ? {} : { holdMs }) };
+}
+
+/** D125: `SWITCHBOARD_POWER_SAMPLE_MS` (the field, or nothing when unset). */
+function powerSampleMs(raw: string | undefined): { powerSampleMs?: number } {
+  const value = parsePeerMs('SWITCHBOARD_POWER_SAMPLE_MS', raw);
+  return value === undefined ? {} : { powerSampleMs: value };
 }
 
 /** Thrown when an environment variable has an unusable value. */
@@ -247,5 +264,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     peerTestHooks: env['SWITCHBOARD_PEER_TEST_HOOKS'] === '1',
     deviceTestOrigin: parseDeviceTestOrigin(env['SWITCHBOARD_DEVICE_TEST_ORIGIN']),
     pushTestEndpoints: parsePushTestEndpoints(env['SWITCHBOARD_PUSH_TEST_ENDPOINTS']),
+    ...(env['SWITCHBOARD_POWER_TEST_FILE']?.trim() ? { powerTestFile: path.resolve(cwd, env['SWITCHBOARD_POWER_TEST_FILE'].trim()) } : {}),
+    ...powerSampleMs(env['SWITCHBOARD_POWER_SAMPLE_MS']),
   };
 }

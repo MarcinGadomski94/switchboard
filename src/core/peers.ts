@@ -7,6 +7,8 @@
  * pairing-code format. Everything here is side-effect free.
  */
 
+import type { PowerStatus } from './power.ts';
+
 /** How the local service sees a paired machine right now. */
 export type MachineState =
   /** Connected: the peer's live event stream is open. */
@@ -45,6 +47,13 @@ export interface Machine {
   readonly sidebarSync?: MachineSidebarSync;
   /** Additive (D113): where the copies of its lists merged into this machine's pages stand; absent from older services. */
   readonly listSync?: MachineListSync;
+  /**
+   * Additive (D125, `docs/power.md`): the machine's own power reading (battery,
+   * or an estimated total), as it last reported it over its event stream; only
+   * while it is online or reconnecting. Absent from older machines (they report
+   * none) and for phones (paired devices are not machines).
+   */
+  readonly power?: PowerStatus;
 }
 
 /** D113: a paired machine's list that a local page merges in (the Artifacts page, the Inbox). */

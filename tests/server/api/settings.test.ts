@@ -1,5 +1,7 @@
 import { EXAMPLE_PRICES } from '../../../src/core/insights.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import { defaultPowerEstimate } from '../../../src/core/power.ts';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -106,6 +108,9 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'ci.maxAttempts': 3,
       'ci.logTailLines': 150,
       'ci.mergeMethod': 'repo',
+      // D125: the power estimate, every part at this machine's default (by its cores).
+      'power.estimate': { cpuIdleW: null, cpuMaxW: null, baseW: null },
+      'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,
@@ -326,6 +331,19 @@ describe('settings helpers (M8.2)', () => {
     expect(validateSettingsPatch({ 'usage.warnAtPct': 1 }).ok).toBe(true);
   });
 
+  it('D125 · power.estimate: watts (null = default) are stored; the defaults are read-only; bad values 422', async () => {
+    await setup();
+    const saved = await call('PUT', '/api/settings', { 'power.estimate': { cpuIdleW: 10, cpuMaxW: 95, baseW: null } });
+    expect(saved.statusCode).toBe(200);
+    expect((saved.json() as KnownSettings)['power.estimate']).toEqual({ cpuIdleW: 10, cpuMaxW: 95, baseW: null });
+    expect(await store!.settings.get('power.estimate')).toEqual({ cpuIdleW: 10, cpuMaxW: 95, baseW: null });
+    for (const bad of [{ cpuIdleW: 100, cpuMaxW: 50 }, { baseW: -5 }, { baseW: 'x' }, 40]) {
+      expect((await call('PUT', '/api/settings', { 'power.estimate': bad })).statusCode, JSON.stringify(bad)).toBe(422);
+    }
+    const readOnly = await call('PUT', '/api/settings', { 'power.estimateDefaults': { cpuIdleW: 1, cpuMaxW: 2, baseW: 3 } });
+    expect(readOnly.statusCode).toBe(422);
+  });
+
   it('readKnownSettings (UI side) falls back to defaults / unknown for missing or mistyped values', () => {
     expect(readKnownSettings(null)).toEqual({
       ...SETTING_DEFAULTS,
@@ -334,6 +352,8 @@ describe('settings helpers (M8.2)', () => {
       'workspace.root': null,
       'workspace.router': null,
       'github.prPollMinutes': 0,
+      // D125: no defaults reported → zeros (the UI shows none).
+      'power.estimateDefaults': { cpuIdleW: 0, cpuMaxW: 0, baseW: 0 },
     });
     expect(readKnownSettings({ 'sessions.ultracode': 'yes', 'workspace.root': '/w', 'usage.warnAtPct': 80 })).toMatchObject({
       'sessions.ultracode': false,

@@ -216,6 +216,8 @@ export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(
   'ciChanged',
   // Project memory (D107) hook (follow-up 2026-10-16): streamed so a machine with a pending member-memory copy retries when memory is switched on here; the receiver never republishes it (peerHubEvent answers null).
   'memoryChanged',
+  // D125: the machine's power reading; the receiver keeps it as `Machine.power` and never republishes it (peerHubEvent answers null).
+  'machinePower',
 ]);
 
 /**
