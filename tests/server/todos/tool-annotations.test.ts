@@ -9,6 +9,7 @@ import { PLAN_PROPOSE_TOOL } from '../../../src/core/plans-jira.ts';
 import { PLAN_JIRA_CONTEXT_TOOL } from '../../../src/core/plans-jira-context.ts';
 import { TEAM_TOOLS } from '../../../src/core/team-tools.ts';
 import { TODO_TOOLS } from '../../../src/core/todos.ts';
+import { TURN_STATUS_TOOL } from '../../../src/core/turn-status.ts';
 import { FEATURE_TOOL_SETS, FeatureTools } from '../../../src/hook/sb-feature-tools.ts';
 import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 
@@ -40,6 +41,8 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   loop_pause: [false, false, true, false],
   loop_resume: [false, false, true, false],
   loop_cancel: [false, true, true, false],
+  // D124: how the turn ends (stores the session's turn wait; the same call twice changes nothing).
+  turn_status: [false, false, true, false],
   team_handoff: [false, false, false, false],
   team_members: [true, false, true, false],
   team_report: [false, false, false, false],
@@ -104,7 +107,7 @@ describe('tool annotations', () => {
 
   it('the hints written out where each tool is registered match its definition in src/core', async () => {
     const defined = new Map<string, Record<string, unknown>>([
-      ...[...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, ...PLAN_TOOLS, PLAN_PROPOSE_TOOL, PLAN_JIRA_CONTEXT_TOOL, ...MEMORY_TOOLS].map((tool) => [tool.name, { ...tool.annotations }] as const),
+      ...[...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, TURN_STATUS_TOOL, ...PLAN_TOOLS, PLAN_PROPOSE_TOOL, PLAN_JIRA_CONTEXT_TOOL, ...MEMORY_TOOLS].map((tool) => [tool.name, { ...tool.annotations }] as const),
       ...TEAM_TOOLS.map((tool) => [tool.name, { title: tool.title, ...tool.annotations }] as const),
     ]);
     for (const tool of await listEveryTool()) {

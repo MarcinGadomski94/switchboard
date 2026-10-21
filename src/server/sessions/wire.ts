@@ -2,6 +2,7 @@ import { sessionProfileId } from '../../core/accounts.ts';
 import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionFreshContinue, SessionLink, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
+import { effectiveSessionStatus } from '../../core/derive/turn-status.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -177,7 +178,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     id: record.id,
     name: record.name,
     claudeSessionId: record.claudeSessionId,
-    status: record.status,
+    // D124: a turn over, not working, that waits for the developer (its turn_status or the text check) reads `need`.
+    status: effectiveSessionStatus(record.status, record.turnWait, record.closedAt !== null),
     workType: record.workType,
     mode: record.mode,
     phase: record.phase,
@@ -241,6 +243,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     ...(record.kind === 'chat' ? { kind: 'chat' as const, lookAt: record.lookAt } : {}),
     // D91: its running process uses an older standing instruction; a reload waits for the turn's end.
     ...(await instructionState(store, record)),
+    // D124: how its last turn ended (the ask of a needs-you, `detected` or `declared`).
+    turnWait: record.closedAt === null ? record.turnWait : null,
   };
 }
 

@@ -9,6 +9,7 @@ import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
+import { TurnStatusService } from '../sessions/turn-status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserLoopMark, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
 import { type Withdrawn, withoutQueued } from '../../core/derive/queued.ts';
 import { type Attachment, attachmentsLabel, messageWithFiles } from '../../core/attachments.ts';
@@ -576,6 +577,8 @@ export interface TurnCheckpoints {
 /** One live `claude` process of a session. */
 interface Live {
   readonly sessionId: string;
+  /** D124: when the stdout line being handled arrived (epoch ms). */
+  lineAt?: number;
   /** D62: the CLI itself (Claude Code) or a bridge to it (Codex CLI, OpenCode); stream-json either way. */
   readonly proc: AgentProcess;
   /** D62: which CLI this process is. */
@@ -694,6 +697,11 @@ export class SessionSupervisor {
    * makes it re-probe its feature tools (`src/server/todos/agent-tools.ts`).
    */
   readonly agentTools = new AgentToolsRegistry();
+  /**
+   * D124: the sessions' turn waits (the agent's `turn_status`, the text check at a turn's end,
+   * Not waiting; `docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*).
+   */
+  readonly turnStatus: TurnStatusService;
   /** 2026-10-16: asks waiting for the turn's end, then the restart that gives the process their tool (in order, by session). */
   readonly #toolAsks = new Map<string, { readonly text: string; readonly origin: UserMessageOrigin; readonly tool: string }[]>();
   readonly #toolRefreshWaitMs: number;
@@ -730,6 +738,7 @@ export class SessionSupervisor {
       onError: (error) => this.#onError(error),
     });
     registerWorkflowSource(this.#store, this.#workflows);
+    this.turnStatus = new TurnStatusService({ store: this.#store, publish: (sessionId) => this.#emitSession(sessionId), onError: (error) => this.#onError(error) });
     // D62 P5: `Session.providerSwitch`.
     registerSwitchSource(this.#store, {
       current: (sessionId) => this.currentSwitch(sessionId),
@@ -3141,6 +3150,12 @@ export class SessionSupervisor {
       // 2026-10-16: the background waits' window and stale guard (*Waiting on background work*).
       backgroundWaitMs: this.#backgroundWaitMs,
       backgroundQuietMs: this.#subagentQuietMs,
+      // D124: a new turn clears the last turn's wait for the developer (one declared before it started: a
+      // `turn_status` that reached Switchboard while the turn's `init` still waited in the queue is this turn's); a turn's end decides it.
+      onTurnStart: async (from) => {
+        await this.turnStatus.turnStarted(session.id, from === 'stream' && holder.live?.lineAt !== undefined ? new Date(holder.live.lineAt) : undefined);
+      },
+      onTurnEnd: (end) => this.turnStatus.turnEnded(session.id, end),
     });
     let teleport: TeleportState | null = null;
     if (start.kind === 'teleport') {
@@ -3186,7 +3201,9 @@ export class SessionSupervisor {
       ...(prepared.kind === 'chat' ? { readOnly: { lookAt: prepared.lookAt } } : {}),
       onLine: (line) => {
         const live = holder.live;
-        if (live) void this.#enqueue(live, () => this.#onLine(live, teamAccess.mask(line)));
+        // D124: when the line arrived (a turn's start is then, not when the queue reaches it).
+        const at = Date.now();
+        if (live) void this.#enqueue(live, () => this.#onLine(live, teamAccess.mask(line), at));
       },
       onNativeId: (id) => {
         void this.#store.providers.rememberNative(session.id, provider, id).catch((error: unknown) => this.#onError(error));
@@ -3316,7 +3333,8 @@ export class SessionSupervisor {
     if (checkpoints && capture !== null && eventId !== null) void checkpoints.record(capture, eventId).catch((error: unknown) => this.#onError(error));
   }
 
-  async #onLine(live: Live, line: string): Promise<void> {
+  async #onLine(live: Live, line: string, at: number = Date.now()): Promise<void> {
+    live.lineAt = at;
     const message = parseStreamLine(line);
     // D106: a chat never asks the developer to allow a tool: anything that asks (an edit, a command, leaving plan mode)
     // is refused at once, before it reaches the recorder or the Inbox. Questions (AskUserQuestion) go on as usual.

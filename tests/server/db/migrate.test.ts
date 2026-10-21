@@ -1102,9 +1102,9 @@ describe('0025 session take-over (D65)', () => {
       for (const session of sessions) expect([session.movedTo, session.movedFrom]).toEqual([null, null]);
       // Every column the sessions had keeps its value.
       const after = dump(store.db);
-      // D76 (0032), D83 (0036) and D106 (0044) add more columns later.
+      // D76 (0032), D83 (0036), D106 (0044) and D124 (0047) add more columns later.
       const strip = (rows: readonly unknown[] | undefined) =>
-        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined, kind: undefined, look_at: undefined }));
+        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined, kind: undefined, look_at: undefined, turn_wait: undefined }));
       expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
       // The two moves round-trip.
       const one = sessions[0]!;
@@ -1113,6 +1113,30 @@ describe('0025 session take-over (D65)', () => {
       expect((await store.sessions.get(one.id))?.movedTo).toEqual(move);
       await store.sessions.update(one.id, { movedTo: null, movedFrom: move });
       expect(await store.sessions.get(one.id)).toMatchObject({ movedTo: null, movedFrom: move });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0047 turn wait (D124)', () => {
+  it('adds turn_wait (NULL for every session that is there); the repository keeps it as JSON', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd124', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 47) });
+    try {
+      await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older-124' });
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 47).map((m) => m.version));
+      const [older] = await store.sessions.list();
+      expect(older?.turnWait).toBeNull();
+      const wait = { status: 'blocked' as const, ask: 'Approve the deploy', source: 'declared' as const, at: '2026-10-21T10:00:00.000Z' };
+      await store.sessions.update(older!.id, { turnWait: wait });
+      expect((await store.sessions.get(older!.id))?.turnWait).toEqual(wait);
     } finally {
       await store.close();
     }

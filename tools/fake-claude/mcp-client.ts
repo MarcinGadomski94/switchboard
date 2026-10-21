@@ -89,6 +89,17 @@ export class FakeMcpClient {
     this.#tools = answer.tools.map((tool) => tool.name);
   }
 
+  /** D124: calls tool `name` of the server; its text content and whether it is an error (a failed call is an error text). */
+  async call(name: string, args: Readonly<Record<string, unknown>>): Promise<{ readonly text: string; readonly isError: boolean }> {
+    try {
+      const answer = await this.#client.callTool({ name, arguments: { ...args } });
+      const content = Array.isArray(answer.content) ? (answer.content as Array<{ type?: string; text?: string }>) : [];
+      return { text: content.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n'), isError: answer.isError === true };
+    } catch (error) {
+      return { text: error instanceof Error ? error.message : String(error), isError: true };
+    }
+  }
+
   /** The tool names as last listed. */
   tools(): string[] {
     return [...this.#tools];

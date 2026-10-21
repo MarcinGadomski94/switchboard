@@ -85,9 +85,18 @@ describe('texts', () => {
   });
 
   it('D94 · the standing instruction: one short line added; the 1.14 default reads as the new one', () => {
-    expect(DEFAULT_STANDING_INSTRUCTION.endsWith(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.')).toBe(true);
-    const d89 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1) as string;
+    expect(DEFAULT_STANDING_INSTRUCTION).toContain(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.');
+    // D124 added the turn_status line after it: the D89 default is the one before the D94 default.
+    expect(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1)?.endsWith(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.')).toBe(true);
+    const d89 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-2) as string;
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(d89)).toBe(true);
     expect(currentStandingInstruction(d89)).toBe(DEFAULT_STANDING_INSTRUCTION);
+  });
+
+  it('D124 · the standing instruction: one short turn_status line added; the 1.30 default reads as the new one', () => {
+    expect(DEFAULT_STANDING_INSTRUCTION.endsWith(' End every turn without a question card with the switchboard turn_status tool.')).toBe(true);
+    const d94 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1) as string;
+    expect(DEFAULT_STANDING_INSTRUCTION.startsWith(d94)).toBe(true);
+    expect(currentStandingInstruction(d94)).toBe(DEFAULT_STANDING_INSTRUCTION);
   });
 });

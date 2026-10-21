@@ -19,6 +19,7 @@ import type { AccountProfile, AccountSettings } from './accounts.ts';
 import type { PeerOnlyAccount } from './shared-accounts.ts';
 import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
+import type { TurnWait } from './derive/turn-status.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
@@ -55,6 +56,7 @@ export type { Attachment, AttachmentDelivery, AttachmentKind } from './attachmen
 import type { PlanChanged } from './plans.ts';
 export type { Plan, PlanAnswers, PlanChanged, PlanChecks, PlanEdge, PlanExternalRef, PlanItem, PlanItemState, PlanMergeMode, PlanState, PlansState } from './plans.ts';
 export type { SessionChip } from './derive/chips.ts';
+export type { TurnStatus, TurnWait } from './derive/turn-status.ts';
 export type { StatusTableFormat } from './derive/status-table.ts';
 export type { SidebarFolder, SidebarFolderCreate, SidebarFolderMove, SidebarFolderPatch, SidebarLayout, SidebarPlace, SidebarPlaceInput } from './sidebar-layout.ts';
 
@@ -845,6 +847,14 @@ export interface Session {
   readonly instructionOutdated?: boolean;
   /** Additive (D91): a reload waits for the running turn (or the developer's answer) to end. */
   readonly instructionPending?: boolean;
+  /**
+   * Additive (D124, `docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*):
+   * how its last turn ended when that matters to the developer: the agent's `turn_status`
+   * (`source: declared`) or the text check (`source: detected`); `null` / absent = nothing. With
+   * `waiting_for_you` / `blocked` and the turn over and not working, {@link status} reads `need`
+   * and `ask` is its status line.
+   */
+  readonly turnWait?: TurnWait | null;
 }
 
 /** Additive (D83): the other session of a continuation. */
@@ -1544,6 +1554,8 @@ export interface InboxItem {
   readonly url?: string;
   /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
   readonly teamRole?: string;
+  /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item; absent on every other item. */
+  readonly systemKind?: string;
 }
 
 /**

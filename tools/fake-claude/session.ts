@@ -109,11 +109,16 @@ interface UserMessage {
 }
 
 /** A `[fake:tool]` call in progress. */
+/** D124: the prefix the CLI gives the `switchboard` MCP server's tools. */
+const SWITCHBOARD_MCP_PREFIX = 'mcp__switchboard__';
+
 interface ToolSpec {
   name: string;
   input: JsonObject;
   /** D38 `[fake:worktree-add]`: the real result of the call (default: `toolResultText`, no error). */
   result?: { readonly text: string; readonly isError: boolean };
+  /** D124: the `switchboard` MCP tool to call for the result (`FAKE_CLAUDE_MCP_RUN=1`), when the turn reaches it. */
+  mcp?: string;
 }
 
 /**
@@ -178,6 +183,11 @@ export interface RunnerOptions {
   exit(code: number): Promise<void>;
   /** 2026-10-16: the running `switchboard` MCP server's tools (`FAKE_CLAUDE_MCP_RUN=1`), logged with each user message. */
   mcpTools?: () => readonly string[];
+  /**
+   * D124: calls a tool of the running `switchboard` MCP server (`FAKE_CLAUDE_MCP_RUN=1`): a
+   * `[fake:tool mcp__switchboard__<tool> {…}]` really calls it, its answer is the tool_result.
+   */
+  mcpCall?: (tool: string, args: Readonly<Record<string, unknown>>) => Promise<{ readonly text: string; readonly isError: boolean }>;
 }
 
 /** Recorded fixtures every run needs synchronously (loaded once at start). */
@@ -855,6 +865,8 @@ export class Runner {
     } else if (toolCall !== null) {
       steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
       tool = { name: toolCall.name, input: toolCall.input };
+      // D124: a `switchboard` MCP tool is really called when its server runs (FAKE_CLAUDE_MCP_RUN=1), when the turn reaches its result (after `init` and the call), as the CLI does.
+      if (toolCall.name.startsWith(SWITCHBOARD_MCP_PREFIX) && this.o.mcpCall) tool = { ...tool, mcp: toolCall.name.slice(SWITCHBOARD_MCP_PREFIX.length) };
       scenario = 'tx-main';
       turnIndex = 0;
     } else if (writePath !== null && (this.args.disallowedTools.includes('Write') || this.permissionMode === 'plan')) {
@@ -1139,6 +1151,10 @@ export class Runner {
       const step = steps[i] as PlayStep;
       switch (step.t) {
         case 'line':
+          // D124: a `switchboard` MCP tool runs now, between its call and its result (the lines before it are written).
+          if (turn.tool?.mcp !== undefined && turn.tool.result === undefined && step.line['type'] === 'user' && this.o.mcpCall) {
+            turn.tool.result = await this.o.mcpCall(turn.tool.mcp, turn.tool.input);
+          }
           this.absorbAt(this.emit(step.line, turn));
           break;
         case 'decided':

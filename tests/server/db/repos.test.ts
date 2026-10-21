@@ -104,6 +104,8 @@ describe('sessions', () => {
       // D106 (0044): a development session, no folders to look at.
       kind: 'session',
       lookAt: [],
+      // D124 (0047): no turn waits for the developer.
+      turnWait: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

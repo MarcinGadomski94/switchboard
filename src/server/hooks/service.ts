@@ -31,6 +31,7 @@ import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
 import { type StopHow, type StopProcessOptions, processAlive, stopProcess } from './terminal-stop.ts';
 import { type TerminalLiveness, judgeTerminal } from '../../core/hooked-continue.ts';
+import type { TurnStatusService } from '../sessions/turn-status.ts';
 
 /**
  * D48 P4 "hook into hand-started terminal sessions" (`docs/peers.md` → *Hooked
@@ -153,6 +154,11 @@ export interface HookServiceOptions {
   readonly onError?: (error: unknown) => void;
   /** D65: how a hooked terminal's `claude` is stopped (tests shorten the grace time / replace the signal). */
   readonly stop?: StopProcessOptions;
+  /**
+   * D124: the sessions' turn waits: a UserPromptSubmit clears the last turn's, a Stop decides it
+   * (its `turn_status`, else the text check of the Stop's `last_assistant_message`).
+   */
+  readonly turnStatus?: Pick<TurnStatusService, 'turnStarted' | 'turnEnded'>;
 }
 
 /** A refusal of a hooks action, sent as `{ error, message }`. */
@@ -192,6 +198,7 @@ function kebab(text: string): string {
 
 /** The D48 P4 service of this machine. */
 export class HookService {
+  readonly #turnStatus: Pick<TurnStatusService, 'turnStarted' | 'turnEnded'> | null;
   readonly #config: ServerConfig;
   readonly #store: Store;
   readonly #bus: HubBus;
@@ -244,6 +251,7 @@ export class HookService {
   readonly #saveImage: { readonly saveImage: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> };
 
   constructor(options: HookServiceOptions) {
+    this.#turnStatus = options.turnStatus ?? null;
     this.#config = options.config;
     this.#store = options.store;
     const attachments = new AttachmentService({ dataDir: options.config.dataDir, store: options.store });
@@ -919,6 +927,12 @@ export class HookService {
     const record = await this.#hookedRecord(cs);
     if (record) {
       if (terminal.transcriptPath && terminal.transcriptPath !== record.transcriptPath) await this.#store.sessions.update(record.id, { transcriptPath: terminal.transcriptPath });
+      // D124: a prompt starts a turn (its wait is over); a Stop ends it (done or waiting for the developer).
+      if (input['hook_event_name'] === 'UserPromptSubmit') await this.#turnStatus?.turnStarted(record.id);
+      else if (input['hook_event_name'] === 'Stop') {
+        const text = typeof input['last_assistant_message'] === 'string' ? input['last_assistant_message'] : null;
+        await this.#turnStatus?.turnEnded(record.id, { outcome: 'success', text });
+      }
       await this.#setStatus(record.id, this.#statusOf(terminal));
       this.#scheduleSync(record.id);
     }

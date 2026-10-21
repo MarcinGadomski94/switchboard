@@ -98,6 +98,17 @@ export interface RecorderOptions {
    * `workflow_progress`, a task's end. Called in stream order.
    */
   readonly onWorkflow?: (signal: WorkflowSignal) => void;
+  /**
+   * D124: a turn starts (`message`: a message is written to stdin; `stream`: the CLI opens a turn,
+   * its `system/init`): the session's turn wait is cleared. Awaited in order.
+   */
+  readonly onTurnStart?: (from: 'message' | 'stream') => Promise<void>;
+  /**
+   * D124: the main turn ended (its `result`; not one Switchboard interrupted to stop the process),
+   * with its outcome and last text: the session's turn wait is decided. Awaited before the status
+   * is derived again.
+   */
+  readonly onTurnEnd?: (end: { readonly outcome: TurnOutcome; readonly text: string | null }) => Promise<void>;
 }
 
 /** D51: one thing the stream says about a Workflow run ({@link RecorderOptions.onWorkflow}). */
@@ -276,6 +287,8 @@ export class StreamRecorder {
   #context: ContextState;
   readonly #onContext: (() => void) | undefined;
   readonly #onWorkflow: ((signal: WorkflowSignal) => void) | undefined;
+  readonly #onTurnStart: ((from: 'message' | 'stream') => Promise<void>) | undefined;
+  readonly #onTurnEnd: ((end: { readonly outcome: TurnOutcome; readonly text: string | null }) => Promise<void>) | undefined;
   readonly #now: () => Date;
   readonly #profileId: string;
 
@@ -307,6 +320,8 @@ export class StreamRecorder {
     this.#context = readContextState(options.session.context);
     this.#onContext = options.onContext;
     this.#onWorkflow = options.onWorkflow;
+    this.#onTurnStart = options.onTurnStart;
+    this.#onTurnEnd = options.onTurnEnd;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -615,6 +630,8 @@ export class StreamRecorder {
     // D50: a new message ends the stop: a later interrupted result is a failure again.
     this.#stopRequested = false;
     this.#pendingTurns++;
+    // D124: a new turn is coming: the last turn's wait for the developer is over.
+    await this.#onTurnStart?.('message');
     // D57: the attachments' listing (no bytes) and, when the attached files' lines were added, the text as sent.
     const attachments = options.attachments ?? [];
     const sentText = options.sentText !== undefined && options.sentText !== text ? options.sentText : undefined;
@@ -865,6 +882,8 @@ export class StreamRecorder {
       // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
       this.#openTurn();
       this.#startTurn();
+      // D124: any new turn clears the last turn's wait for the developer.
+      await this.#onTurnStart?.('stream');
     }
     const patch: { observedPermissionMode?: string | null; cliVersion?: string | null } = {};
     if (message.permissionMode !== this.#observedMode) {
@@ -1115,6 +1134,8 @@ export class StreamRecorder {
     if (this.#stopRequested && isInterruptedResult(message)) {
       // D50: the turn the developer stopped: the session is idle, ready for the next message.
       this.#lastOutcome = 'stopped';
+      // D124: a stopped turn is not text-checked (a declaration made in it still counts).
+      await this.#onTurnEnd?.({ outcome: 'stopped', text: null });
       if (this.#stopLineWritten) return;
       this.#stopLineWritten = true;
       await this.#append('text', STOPPED_LABEL, {
@@ -1137,6 +1158,8 @@ export class StreamRecorder {
       return;
     }
     this.#lastOutcome = message.isError ? 'error' : 'success';
+    // D124: done or waiting for the developer: its turn_status, else the text check of its last text.
+    await this.#onTurnEnd?.({ outcome: this.#lastOutcome, text: message.text });
     const label = message.isError
       ? [message.subtype, message.errors[0]].filter(Boolean).join(': ')
       : textLabel(message.text ?? '') || 'Done';

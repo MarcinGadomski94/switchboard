@@ -3,6 +3,7 @@ import type { SessionModelOption, TodoLink } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
 import type { ContextState } from '../../../core/context-meter.ts';
+import type { TurnWait } from '../../../core/derive/turn-status.ts';
 import type { SessionKind } from '../../../core/chats.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
@@ -160,6 +161,12 @@ export interface SessionRecord {
   readonly kind: SessionKind;
   /** D106 (0044): the folders a chat may read (canonical, absolute; extra read-only directories of its CLI); `[]` for a session. */
   readonly lookAt: string[];
+  /**
+   * D124 (0047): how its last turn ended when that matters to the developer: the agent's
+   * `turn_status` declaration or the text check's detected wait (`src/core/derive/turn-status.ts`);
+   * `null` = nothing (cleared when a new turn starts). Read through `effectiveSessionStatus`.
+   */
+  readonly turnWait: TurnWait | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -250,6 +257,7 @@ const SPEC: TableSpec<SessionRecord> = {
     continuedFrom: ['continued_from', 'text'],
     kind: ['kind', 'text'],
     lookAt: ['look_at', 'json'],
+    turnWait: ['turn_wait', 'json'],
   },
 };
 

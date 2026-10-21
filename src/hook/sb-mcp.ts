@@ -14,7 +14,8 @@
  * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only), and
  * D89's `artifact_save`, `artifact_list`, `artifact_get` (`/agent/v1/artifacts`), and
  * D94's `loop_create`, `loop_list`, `loop_update`, `loop_pause`, `loop_resume`,
- * `loop_cancel` (`/agent/v1/loops`: loops Switchboard fires itself).
+ * `loop_cancel` (`/agent/v1/loops`: loops Switchboard fires itself), and D124's `turn_status`
+ * (`/agent/v1/turn-status`: how the turn ends, done or waiting for the developer).
  * Names, descriptions, annotations and the instructions come from
  * `src/core/todos.ts` ({@link TODO_TOOLS}) and `src/core/artifacts.ts`
  * ({@link ARTIFACT_TOOLS}); the zod input schemas here carry the
@@ -34,6 +35,8 @@ import { FeatureTools, ListedToolsTransport } from './sb-feature-tools.ts';
 import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
 import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
+import { TURN_ASK_MAX, TURN_STATUSES } from '../core/derive/turn-status.ts';
+import { TURN_STATUS_TOOL, turnStatusAnswer } from '../core/turn-status.ts';
 import {
   AGENT_MCP_INSTRUCTIONS,
   AGENT_MCP_MARKER,
@@ -397,9 +400,24 @@ export async function loopCancel(api: AgentApi, input: ToolInput): Promise<CallT
   return request(api, 'DELETE', loopRoute(id), undefined, () => textResult(`Cancelled loop ${id}: it will not fire again.`));
 }
 
-/** Tool `name`'s definition in {@link TODO_TOOLS}, (D89) {@link ARTIFACT_TOOLS} or (D94) {@link LOOP_TOOLS}. */
+// ── D124: how the turn ends ─────────────────────────────────────────────
+
+/** D124 · `turn_status`: done / waiting_for_you / blocked, with a one-line ask for the last two. */
+export async function turnStatus(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const status = input['status'];
+  if (typeof status !== 'string' || !(TURN_STATUSES as readonly string[]).includes(status)) return textResult(`Give status: ${TURN_STATUSES.join(', ')}.`, true);
+  const ask = typeof input['ask'] === 'string' ? input['ask'].trim() : '';
+  if (status !== 'done' && ask === '') return textResult(`Give ask with ${status}: one line saying what the developer must do or answer.`, true);
+  if (ask.length > TURN_ASK_MAX) return textResult(`Keep ask to one line of at most ${TURN_ASK_MAX} characters.`, true);
+  return request(api, 'POST', '/agent/v1/turn-status', { status, ...(ask !== '' ? { ask } : {}) }, (body) => {
+    const wait = record(body);
+    return textResult(turnStatusAnswer({ status: status as 'done' | 'waiting_for_you' | 'blocked', ask: typeof wait['ask'] === 'string' ? wait['ask'] : ask || null }));
+  });
+}
+
+/** Tool `name`'s definition in {@link TODO_TOOLS}, (D89) {@link ARTIFACT_TOOLS}, (D94) {@link LOOP_TOOLS} or (D124) {@link TURN_STATUS_TOOL}. */
 function tool(name: string): TodoToolDefinition {
-  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS].find((candidate) => candidate.name === name);
+  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, TURN_STATUS_TOOL].find((candidate) => candidate.name === name);
   if (!found) throw new Error(`no tool ${name} in TODO_TOOLS / ARTIFACT_TOOLS`);
   return found;
 }
@@ -467,7 +485,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
 
 /**
  * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
- * {@link AGENT_MCP_INSTRUCTIONS}) and its sixteen tools (D75: `todo_start`; D89: the three artifact tools; D94: the six loop tools), calling `api`. Connect it to a
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its seventeen tools (D75: `todo_start`; D89: the three artifact tools; D94: the six loop tools; D124: `turn_status`), calling `api`. Connect it to a
  * transport (a `StdioServerTransport` in the helper process).
  */
 export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
@@ -627,6 +645,19 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
     'loop_cancel',
     { title: loopCancelTool.annotations.title, description: loopCancelTool.description, inputSchema: inputSchema('loop_cancel', { id: field.text('loop_cancel', 'id') }), annotations: { title: loopCancelTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => loopCancel(api, input)),
+  );
+
+  // D124: how the turn ends (done / waiting for the developer / blocked).
+  const turn = tool('turn_status');
+  server.registerTool(
+    'turn_status',
+    {
+      title: turn.annotations.title,
+      description: turn.description,
+      inputSchema: inputSchema('turn_status', { status: z.enum(TURN_STATUSES as unknown as [string, ...string[]]).describe(about('turn_status', 'status')).optional(), ask: z.string().max(TURN_ASK_MAX).describe(about('turn_status', 'ask')).optional() }),
+      annotations: { title: turn.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => turnStatus(api, input)),
   );
 
   return server;

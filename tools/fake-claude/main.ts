@@ -91,7 +91,7 @@ async function main(argv: readonly string[]): Promise<void> {
       // 2026-10-16: opt-in, the `switchboard` MCP server of --mcp-config runs as the real CLI runs it (mcp-client.ts).
       const mcp = await FakeMcpClient.start(command.args.mcpConfig, process.env);
       const runner = new Runner({
-        ...(mcp ? { mcpTools: () => mcp.tools() } : {}),
+        ...(mcp ? { mcpTools: () => mcp.tools(), mcpCall: (tool: string, args: Readonly<Record<string, unknown>>) => mcp.call(tool, args) } : {}),
         args: command.args,
         env: process.env,
         cwd,

@@ -122,6 +122,8 @@ const SESSION_KEYS = keys<Session>()([
   // D91
   'instructionOutdated',
   'instructionPending',
+  // additive, D124 (how its last turn ended: the agent's turn_status or the text check)
+  'turnWait',
   // additive, D95 follow-up (only on a delta stream's updates; not on this plain one)
   'agentsDelta',
   // additive, D95-q3 (only on a delta stream's updates)

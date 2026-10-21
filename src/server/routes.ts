@@ -65,6 +65,7 @@ import { registerInsightsRoutes } from './api/insights.ts';
 import type { InsightsService } from './insights/service.ts';
 import type { PrWatcher } from './ci/watcher.ts';
 import { registerCiRoutes } from './api/ci.ts';
+import { registerTurnStatusRoutes } from './api/turn-status.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -174,6 +175,8 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerTutorialRoutes(app, context);
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);
+  // D124: the agent's turn_status and a session's Not waiting.
+  await registerTurnStatusRoutes(app, context);
   await registerSearchRoutes(app, context);
   await registerInsightsRoutes(app, context);
   await registerHubRoutes(app, context);
