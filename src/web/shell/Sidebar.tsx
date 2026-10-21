@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SystemInfo, Tool } from '../../core/api.ts';
+import { type PowerStatus, powerView } from '../../core/power.ts';
+import '../components/power.css';
 import { openSessions } from '../../core/session-close.ts';
 import { useLiveActivities } from '../activity/useActivity.ts';
 import { api } from '../api/client.ts';
@@ -98,6 +100,30 @@ export function MeterRow({ label, meter, name }: { readonly label: string; reado
         <div className="sb-meter-fill" style={{ width: `${meter.pct}%` }} />
       </div>
       <span className="sb-meter-value">{meter.text}</span>
+    </div>
+  );
+}
+
+/**
+ * D125 (`docs/power.md`): the footer's power line under RAM: a laptop's battery
+ * (`🔋 64% · 2h10`, `⚡ 81% · 35m to full`, shorter on phones) or a desktop's
+ * estimated total (`~210 W`); the tooltip has the details, screen readers get a
+ * sentence. Nothing without a reading.
+ */
+export function PowerRow({ power }: { readonly power: PowerStatus | undefined }) {
+  const view = powerView(power);
+  if (!view) return null;
+  return (
+    <div className="sb-power" data-testid="power-meter" data-state={view.state} data-tour="power" title={view.title}>
+      <span aria-hidden="true">PWR</span>
+      <span className="sb-power-value" aria-hidden="true">
+        {view.icon ? <span className="sb-power-icon">{view.icon}</span> : null}
+        <span className="sb-power-long">{view.text}</span>
+        <span className="sb-power-short">{view.short}</span>
+      </span>
+      <span className="sb-power-sr" data-testid="power-meter-label">
+        {view.label}
+      </span>
     </div>
   );
 }
@@ -402,6 +428,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         </div>
         <MeterRow label="CPU" name="cpu" meter={cpuMeter(info)} />
         <MeterRow label="RAM" name="ram" meter={ramMeter(info)} />
+        <PowerRow power={info?.power} />
         {/* D66: the usage grid (one line per account, the 5-hour and the weekly window) replaces D17's rows and D63's line. */}
         <div className="sb-usage" data-testid="usage-meters" data-tour="usage">
           <div className="sb-usage-head" data-testid="usage-grid-header" aria-hidden="true">

@@ -113,3 +113,34 @@
 .sb-mach-sync-label {
   color: #d7d6d1;
 }
+
+/* D125: the power line and the Power estimate row (docs/power.md). */
+.sb-mach-power-own {
+  display: block;
+  margin-top: 4px;
+}
+
+.sb-mach-power-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.sb-mach-power-field {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #a9a8a3;
+}
+
+.sb-mach-power-field .sb-set-input {
+  width: 72px;
+}
+
+.sb-mach-power-unit {
+  font-family: var(--font-mono, 'Geist Mono', monospace);
+  font-size: 11px;
+}

@@ -573,8 +573,12 @@ export interface PowerView {
   readonly icon: string | null;
   /** The footer's text: `64% · 2h10`, `81% · 35m to full`, `100% · on AC`, `~210 W`. */
   readonly text: string;
-  /** The same, shorter (phones, tags): `81% · 35m`, `~210 W`. */
+  /** The same, shorter (phones): `81% · 35m`, `~210 W`. */
   readonly short: string;
+  /** The machine tags' indicator: `🔋64%`, `⚡81%`, `🔌100%`, `~210 W`. */
+  readonly badge: string;
+  /** Settings → Machines: the text with the draw / the estimate's label (`64% · 2h10 · 9.5 W`, `~210 W (estimated)`). */
+  readonly line: string;
   /** The tooltip, one fact per line. */
   readonly title: string;
   /** For screen readers: `Battery 64%, discharging, 2 hours 10 minutes left`. */
@@ -593,12 +597,22 @@ export function powerView(power: PowerStatus | null | undefined): PowerView | nu
     if (parts.cpu !== undefined) lines.push(parts.cpuMeasured ? `CPU: ${parts.cpu} W (measured package power)` : `CPU: ${parts.cpu} W (estimated from ${parts.cpuPct ?? 0}% CPU)`);
     if (parts.base !== undefined) lines.push(`Rest of the system: ${parts.base} W (fixed)`);
     lines.push('Settings → Machines → Power estimate');
-    return { state: 'estimated', icon: null, text: `~${power.watts} W`, short: `~${power.watts} W`, title: lines.join('\n'), label: `Estimated power draw about ${power.watts} watts` };
+    return {
+      state: 'estimated',
+      icon: null,
+      text: `~${power.watts} W`,
+      short: `~${power.watts} W`,
+      badge: `~${power.watts} W`,
+      line: `~${power.watts} W (estimated)`,
+      title: lines.join('\n'),
+      label: `Estimated power draw about ${power.watts} watts`,
+    };
   }
   if (power.percent === undefined) return null;
   const pct = `${power.percent}%`;
   const draw = power.watts !== undefined ? `Draw: ${power.watts} W` : null;
   const adapter = power.adapterWatts !== undefined ? `Adapter: ${power.adapterWatts} W` : null;
+  const withDraw = (text: string): string => (power.watts !== undefined ? `${text} · ${power.watts} W` : text);
   if (power.charging) {
     const time = power.minutesToFull !== undefined ? formatPowerMinutes(power.minutesToFull) : null;
     const lines = [`Battery ${pct} · charging`, time ? `${time} to full` : 'Time to full: not known yet', draw, adapter].filter((line): line is string => line !== null);
@@ -607,13 +621,24 @@ export function powerView(power: PowerStatus | null | undefined): PowerView | nu
       icon: '⚡',
       text: time ? `${pct} · ${time} to full` : pct,
       short: time ? `${pct} · ${time}` : pct,
+      badge: `⚡${pct}`,
+      line: withDraw(time ? `${pct} · charging, ${time} to full` : `${pct} · charging`),
       title: lines.join('\n'),
       label: `Battery ${pct}, charging${power.minutesToFull !== undefined ? `, ${spokenMinutes(power.minutesToFull)} to full` : ''}`,
     };
   }
   if (power.pluggedIn) {
     const lines = [`Battery ${pct} · on AC, not charging`, draw, adapter].filter((line): line is string => line !== null);
-    return { state: 'plugged', icon: '🔌', text: `${pct} · on AC`, short: pct, title: lines.join('\n'), label: `Battery ${pct}, on AC power, not charging` };
+    return {
+      state: 'plugged',
+      icon: '🔌',
+      text: `${pct} · on AC`,
+      short: pct,
+      badge: `🔌${pct}`,
+      line: withDraw(`${pct} · on AC`),
+      title: lines.join('\n'),
+      label: `Battery ${pct}, on AC power, not charging`,
+    };
   }
   const time = power.minutesLeft !== undefined ? formatPowerMinutes(power.minutesLeft) : null;
   const lines = [`Battery ${pct} · discharging`, time ? `${time} left (the OS's estimate)` : 'Time left: not known yet', draw].filter((line): line is string => line !== null);
@@ -622,6 +647,8 @@ export function powerView(power: PowerStatus | null | undefined): PowerView | nu
     icon: '🔋',
     text: time ? `${pct} · ${time}` : pct,
     short: time ? `${pct} · ${time}` : pct,
+    badge: `🔋${pct}`,
+    line: withDraw(time ? `${pct} · ${time} left` : pct),
     title: lines.join('\n'),
     label: `Battery ${pct}, discharging${power.minutesLeft !== undefined ? `, ${spokenMinutes(power.minutesLeft)} left` : ''}`,
   };

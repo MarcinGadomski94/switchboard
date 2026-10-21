@@ -51,7 +51,7 @@ export const TEST_SERVICE_HOME = path.join(os.tmpdir(), `switchboard-test-servic
  * tutorial's tours do not open by themselves. The per-user
  * service redirected to {@link TEST_SERVICE_HOME} with tools/fake-servicectl as the
  * manager (the two are set together), so no test server reads or registers the
- * real login service.
+ * real login service. D125: no power reading (`tests/fixtures/power-none.json`).
  */
 export function testServerDefaults(): Record<string, string> {
   return {
@@ -76,6 +76,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_PEER_GRACE_MS: '3000',
     // D100-T2: a test server never reads or writes the OS keychain (Team access values go to an in-memory store).
     SWITCHBOARD_TEST_SECRET_STORE: 'memory',
+    // D125: no power reading (never this machine's real battery / GPU, which differ per machine); power specs set their own.
+    SWITCHBOARD_POWER_TEST_FILE: path.join(REPO_ROOT, 'tests', 'fixtures', 'power-none.json'),
   };
 }
 

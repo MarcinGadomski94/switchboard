@@ -15,6 +15,11 @@
   color: #8ab4e8;
 }
 
+/* D125: room for the power indicator after the name. */
+.sb-machine-tag[data-power] {
+  max-width: 220px;
+}
+
 .sb-machine-tag[data-state]:not([data-state='online']) {
   border-color: var(--border-control);
   color: #8a8984;

@@ -587,6 +587,35 @@
   align-items: center;
 }
 
+/* D125 (docs/power.md): the power line under RAM, in the meters' label column. */
+.sb-power {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  position: relative;
+}
+
+.sb-power-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-power-short {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .sb-power-long {
+    display: none;
+  }
+
+  .sb-power-short {
+    display: inline;
+  }
+}
+
 .sb-meter-track {
   height: 4px;
   border-radius: 2px;

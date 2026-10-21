@@ -107,6 +107,9 @@ const V1_25 = '1.25.0';
 /** The version D124 (sessions that wait for you at a turn's end) ships in. */
 const V1_31 = '1.31.0';
 
+/** The version D125 (machine power: battery or an estimated draw, shared with paired machines) ships in. */
+const V1_32 = '1.32.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -1028,6 +1031,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['sessions'],
         drawer: true,
         missing: 'Start a session: when its agent ends a turn waiting for you, its row and header say so.',
+      },
+    ],
+  },
+  {
+    id: 'machine-power',
+    decision: 'D125',
+    version: V1_32,
+    title: 'Battery and power draw',
+    steps: [
+      {
+        id: 'footer',
+        title: 'Battery, or the estimated draw',
+        what: 'Under CPU and RAM: on a laptop its battery (🔋 discharging with the time left, ⚡ charging with the time to full); on a desktop an estimated total in watts (the GPU where it can be read, the CPU from its use, and a fixed baseline). Hover it for the details. A paired machine shows its own next to its name in Settings → Machines and on its sessions\' machine tags.',
+        todo: ['Hover the PWR line for the details.', 'Pair another machine to see its battery or draw too.'],
+        anchors: ['power'],
+        drawer: true,
+        missing: 'The power line sits under RAM at the bottom of the sidebar once this machine has a reading.',
+      },
+      {
+        id: 'estimate',
+        title: 'Tune the desktop estimate',
+        what: "A desktop's draw is an estimate, never a measurement: CPU idle + CPU use × (max − idle) + the rest of the system, plus the GPU where it can be read. Set this machine's numbers here; an empty field keeps its default.",
+        todo: ['Open Settings → Machines → Power estimate.', 'Enter the CPU idle and max watts and the rest of the system, then Save.'],
+        anchors: ['power-estimate', 'settings-content'],
+        route: { view: 'settings', section: 'machines' },
+        missing: 'Power estimate is in Settings → Machines.',
       },
     ],
   },

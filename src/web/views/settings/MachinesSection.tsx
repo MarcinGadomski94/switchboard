@@ -9,6 +9,9 @@ import { machineStatusView } from '../../components/machine-status.ts';
 import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText, sidebarSyncText } from './machines.ts';
 import { Row, SectionTitle } from './rows.tsx';
 import { MachineHooks } from './MachineHooks.tsx';
+import { PowerLine } from '../../components/Power.tsx';
+import { PowerEstimateRow } from './PowerEstimateRow.tsx';
+import type { SystemInfo } from '../../../core/api.ts';
 import './machines.css';
 
 /**
@@ -29,9 +32,16 @@ function errorText(caught: unknown, fallback: string): string {
  * / no address), Rename and Remove; D48 P4: for this machine and each online
  * one, its terminal hooks and "Hook into…" (`MachineHooks`); D71: per machine,
  * the "Share sidebar layout" switch (off by default) and what it is doing.
+ * D125: this machine's and each online machine's power line, and this
+ * machine's *Power estimate* (used while it has no battery).
  */
 export function MachinesSection() {
   const view = useApi(api.machines);
+  // D125: this machine's power (the footer's reading), live with the `system` event.
+  const system = useApi(api.system);
+  const [liveSystem, setLiveSystem] = useState<SystemInfo | null>(null);
+  useHubEvent('system', setLiveSystem);
+  const ownPower = (liveSystem ?? system.data)?.power;
   // Fix · peer reconnects: every connection change (state, an attempt, the next try) shows at once.
   useHubEvent('machineState', (machine) => {
     rememberMachine(machine);
@@ -89,6 +99,12 @@ export function MachinesSection() {
             description={
               <>
                 <span data-testid="machines-self-id">{`id ${data.self.id}`}</span>
+                {/* D125: this machine's battery, or its estimated draw. */}
+                {ownPower ? (
+                  <span className="sb-mach-power-own">
+                    <PowerLine power={ownPower} testId="machines-self-power" />
+                  </span>
+                ) : null}
                 {/* D48 P4: this machine's own terminal sessions and hooks. */}
                 <MachineHooks machine={null} name={data.self.name} />
               </>
@@ -98,6 +114,7 @@ export function MachinesSection() {
               {data.self.name}
             </span>
           </Row>
+          <PowerEstimateRow />
           <Row id="peer-listener" label="Peer listener" description={<span data-testid="machines-listener-desc">{listenerDescription(data.listener)}</span>}>
             <button
               type="button"
@@ -227,6 +244,12 @@ function MachineRow({
         <div className="sb-set-row-desc" data-mono="" data-testid="machine-detail">
           {machineDetail(machine)}
         </div>
+        {/* D125: the machine's own power reading, while it is online (an older machine reports none). */}
+        {machine.power && machine.state === 'online' ? (
+          <div className="sb-set-row-desc">
+            <PowerLine power={machine.power} testId="machine-power-line" />
+          </div>
+        ) : null}
         {status ? (
           <div className="sb-set-row-desc sb-mach-status" data-testid="machine-status" role="status">
             <span data-testid="machine-status-text">{status.line}</span>

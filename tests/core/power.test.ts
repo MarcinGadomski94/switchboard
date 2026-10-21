@@ -206,13 +206,15 @@ describe('D125 · the wire and the UI text', () => {
       state: 'discharging',
       icon: '🔋',
       text: '64% · 2h10',
+      badge: '🔋64%',
+      line: '64% · 2h10 left · 9.5 W',
       label: 'Battery 64%, discharging, 2 hours 10 minutes left',
       title: "Battery 64% · discharging\n2h10 left (the OS's estimate)\nDraw: 9.5 W",
     });
-    expect(powerView({ kind: 'battery', percent: 81, charging: true, pluggedIn: true, minutesToFull: 35, at: AT })).toMatchObject({ state: 'charging', icon: '⚡', text: '81% · 35m to full', short: '81% · 35m' });
+    expect(powerView({ kind: 'battery', percent: 81, charging: true, pluggedIn: true, minutesToFull: 35, at: AT })).toMatchObject({ state: 'charging', icon: '⚡', text: '81% · 35m to full', short: '81% · 35m', badge: '⚡81%' });
     expect(powerView({ kind: 'battery', percent: 100, charging: false, pluggedIn: true, at: AT })).toMatchObject({ state: 'plugged', text: '100% · on AC' });
     const desktop = powerView({ kind: 'estimated', watts: 210, parts: { gpu: 120, gpuCount: 1, cpu: 50, cpuPct: 35, base: 40 }, at: AT });
-    expect(desktop).toMatchObject({ state: 'estimated', icon: null, text: '~210 W', label: 'Estimated power draw about 210 watts' });
+    expect(desktop).toMatchObject({ state: 'estimated', icon: null, text: '~210 W', badge: '~210 W', line: '~210 W (estimated)', label: 'Estimated power draw about 210 watts' });
     expect(desktop?.title).toBe('~210 W (estimated, not measured)\nGPU: 120 W (measured)\nCPU: 50 W (estimated from 35% CPU)\nRest of the system: 40 W (fixed)\nSettings → Machines → Power estimate');
     expect(powerView({ kind: 'none', at: AT })).toBeNull();
     expect(powerView(undefined)).toBeNull();
