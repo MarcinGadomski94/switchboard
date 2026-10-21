@@ -233,12 +233,13 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D108: that machine's Insights (its own data) and its rows of a period (the merged view's pull).
   ['GET', /^\/api\/insights(?:\/rows)?$/],
   // Plans (D99) hook: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
+  // D121: an item's Reopen too, like retry and Mark done.
   ['GET', /^\/api\/plans(?:\/[^/]+)?$/],
   ['POST', /^\/api\/plans$/],
   ['PUT', /^\/api\/plans\/[^/]+(?:\/(?:mode|holds|items\/[^/]+))?$/],
   ['DELETE', /^\/api\/plans\/[^/]+(?:\/items\/[^/]+|\/edges\/[^/]+\/[^/]+)?$/],
   ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
-  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|merge|open-pr|send-back)$/],
+  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|reopen|merge|open-pr|send-back)$/],
   // Team (D100) hook (docs/team.md → Sync): the team exchange, and acting on a member on the machine that runs it
   // (adopt one of its sessions, edit, pause / resume, return, remove, move, approve its requests, hand-offs).
   ['POST', /^\/api\/team\/sync$/],
