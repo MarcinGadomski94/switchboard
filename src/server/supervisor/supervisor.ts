@@ -66,6 +66,7 @@ import { CONTINUED_DIVIDER } from '../../core/hooked-continue.ts';
 import { INSTRUCTION_UPDATED_DIVIDER, type InstructionReloadOutcome } from '../../core/standing-instruction.ts';
 import { withSolutions } from '../../core/session-solutions.ts';
 import { TOOLS_UPDATED_DIVIDER } from '../../core/todos.ts';
+import { AGENT_BUILD_ENV, SESSION_MARKER_ENV } from '../../core/processes.ts';
 import { AgentToolsRegistry } from '../todos/agent-tools.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
@@ -820,6 +821,11 @@ export class SessionSupervisor {
   /** The live process's pid, or `null`. */
   pid(sessionId: string): number | null {
     return this.#live.get(sessionId)?.proc.pid ?? null;
+  }
+
+  /** D127: the sessions with a live process (the process tracker's roots where environments cannot be read). */
+  liveSessionIds(): string[] {
+    return [...this.#live.keys()];
   }
 
   /**
@@ -3191,7 +3197,8 @@ export class SessionSupervisor {
       nativeId,
       permissionMode,
       cwd,
-      env: { ...childEnv(this.#env), ...profileEnv, ...teamAccess.env },
+      // D127: the build defaults (no lingering .NET build servers) and the session's marker, inherited by everything its agent starts.
+      env: { ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.
@@ -3690,4 +3697,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'chat-refused': 'Refused in a chat',
   'look-at-updated': LOOK_AT_UPDATED_DIVIDER,
   'tools-updated': TOOLS_UPDATED_DIVIDER,
+  'processes-stopped': 'Stopped processes the session left running',
 };

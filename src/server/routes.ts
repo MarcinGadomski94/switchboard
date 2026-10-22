@@ -66,6 +66,8 @@ import type { InsightsService } from './insights/service.ts';
 import type { PrWatcher } from './ci/watcher.ts';
 import { registerCiRoutes } from './api/ci.ts';
 import { registerTurnStatusRoutes } from './api/turn-status.ts';
+import { registerProcessRoutes } from './api/processes.ts';
+import type { ProcessService } from './processes/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -132,6 +134,8 @@ export interface ApiContext {
   readonly search: SearchService;
   /** D108: the Insights page (docs/insights.md). */
   readonly insights: InsightsService;
+  /** D127: the processes sessions leave running: tracking, Stop / Keep, the automatic stop (docs/processes.md). */
+  readonly processes: ProcessService;
 }
 
 /**
@@ -177,6 +181,8 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerLoopRoutes(app, context);
   // D124: the agent's turn_status and a session's Not waiting.
   await registerTurnStatusRoutes(app, context);
+  // D127: the processes sessions leave running (and the agent's process_keep).
+  await registerProcessRoutes(app, context);
   await registerSearchRoutes(app, context);
   await registerInsightsRoutes(app, context);
   await registerHubRoutes(app, context);

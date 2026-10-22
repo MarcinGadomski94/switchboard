@@ -231,6 +231,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
   // D97: that machine's search (its own index; a peer-injected search never fans out further).
   ['GET', /^\/api\/search$/],
+  // D127: the processes its sessions left running (listed, stopped and kept on that machine; a peer's own request never fans out).
+  ['GET', /^\/api\/processes$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/processes$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/processes\/\d+\/stop$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/processes\/\d+\/keep$/],
   // D108: that machine's Insights (its own data) and its rows of a period (the merged view's pull).
   ['GET', /^\/api\/insights(?:\/rows)?$/],
   // Plans (D99) hook: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.

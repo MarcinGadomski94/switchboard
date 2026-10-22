@@ -88,6 +88,25 @@ export function echoEnvToken(text: string): string | null {
   return /\[fake:echo-env\s+([A-Z][A-Z0-9_]{0,63})\]/.exec(text)?.[1] ?? null;
 }
 
+/** D127: the longest `[fake:leave-process <seconds>]` (ten minutes: a leftover always ends by itself). */
+export const LEAVE_PROCESS_MAX_S = 600;
+
+/**
+ * D127 `[fake:leave-process <seconds>]` in a stdin user message: the `tx-main` tool turn with
+ * a Bash call that leaves a process running, and the fake really starts one: a `node -e`
+ * sleeper in the background of a shell that exits at once (so it outlives its parent, as a
+ * build server does), with the fake's own environment (so it carries the session's marker),
+ * which ends by itself after `<seconds>` (1 – 600). The
+ * tool_result names its pid. Tests of the process tracker (`docs/processes.md`) use it.
+ * @returns the seconds, `null` without a token, `{ error }` for a malformed one.
+ */
+export function leaveProcessToken(text: string): number | { readonly error: string } | null {
+  const match = /\[fake:leave-process\s+(\d+)\]/.exec(text);
+  if (!match) return /\[fake:leave-process(?:\s|\])/.test(text) ? { error: 'expected [fake:leave-process <seconds>]' } : null;
+  const seconds = Number(match[1]);
+  return seconds >= 1 && seconds <= LEAVE_PROCESS_MAX_S ? seconds : { error: `expected [fake:leave-process <seconds>] with 1–${LEAVE_PROCESS_MAX_S} seconds` };
+}
+
 /** Longest `[fake:hold <seconds>]` (ten minutes). */
 export const MAX_HOLD_SECONDS = 600;
 

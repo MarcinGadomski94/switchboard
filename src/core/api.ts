@@ -2201,6 +2201,8 @@ export interface SystemInfo {
    * while it has only one (the footer grid's line label then). Omitted when none is.
    */
   readonly activeAccounts?: readonly ActiveAccount[];
+  /** Additive (D127, `docs/processes.md`): the processes sessions left running on this machine (count, memory); omitted before the first sample. */
+  readonly trackedProcesses?: TrackedProcessTotals;
 }
 
 /** Additive (D66): one CLI's active account in `SystemInfo.activeAccounts`. */
@@ -2933,4 +2935,80 @@ export interface CaptureTodoInput {
 /** D68: body of `PUT /api/sessions/{id}/todos/order`: every item id of the session, in the new order. */
 export interface TodoOrderInput {
   readonly ids: readonly string[];
+}
+
+// ── D127: the processes a session leaves running (docs/processes.md) ──────
+
+/** D127: what a session's process is (`classifyProcess`). */
+export type SessionProcessKind = 'build-server' | 'test-host' | 'dev-server' | 'other';
+
+/** D127: one process a session's agent started that still runs (not the CLI itself, not its own helpers). */
+export interface SessionProcess {
+  readonly pid: number;
+  readonly ppid: number;
+  /** A short name: `MSBuild node`, `VBCSCompiler`, `testhost`, `node vite`, `dotnet App.dll`. */
+  readonly name: string;
+  readonly kind: SessionProcessKind;
+  /** Resident memory (bytes; the working set on Windows). */
+  readonly rssBytes: number;
+  /** When it started (ISO). */
+  readonly startedAt: string;
+  /** CPU % as `ps` reports it (macOS / Linux); `null` on Windows. */
+  readonly cpuPct: number | null;
+  /** Its command line for display (the home folder as `~`, at most 300 characters). */
+  readonly command: string;
+  /** Marked Keep: never stopped automatically. */
+  readonly keep: boolean;
+  /** Who marked it Keep (`null` when not kept). */
+  readonly keptBy: 'developer' | 'agent' | null;
+  /** The agent's (or the developer's) one-line reason, `null` without one. */
+  readonly keepReason: string | null;
+}
+
+/** D127: how a session's processes are found: its marker in their environment, its CLI's process tree, or not at all. */
+export type ProcessTracking = 'marker' | 'tree' | 'none';
+
+/** D127: `GET /api/sessions/{id}/processes`: a session's leftover processes and when they stop by themselves. */
+export interface SessionProcesses {
+  readonly sessionId: string;
+  /** The session's title (else its name), for the Processes page. */
+  readonly title: string;
+  readonly processes: readonly SessionProcess[];
+  /** The sum of their memory (bytes). */
+  readonly rssBytes: number;
+  readonly tracking: ProcessTracking;
+  /** The session works now (a turn, subagents, a waited-on background task): nothing is stopped automatically. */
+  readonly working: boolean;
+  readonly closed: boolean;
+  /** When the idle stop takes the processes not kept (ISO), `null` when it will not (working, delay off, nothing to stop). */
+  readonly stopsAt: string | null;
+  /** When they were last sampled (ISO), `null` before the first sample. */
+  readonly sampledAt: string | null;
+  /** Additive: the paired machine the session runs on (the Processes page, namespaced ids). */
+  readonly machine?: SessionMachine;
+}
+
+/** D127: `GET /api/processes`: every session's processes (this machine's and, from the UI, each paired machine's). */
+export interface ProcessesOverview {
+  /** Sessions with at least one process, the most memory first. */
+  readonly sessions: readonly SessionProcesses[];
+  readonly count: number;
+  readonly rssBytes: number;
+  /** The idle delay in minutes (Settings → Processes; 0 = off). */
+  readonly idleStopMinutes: number;
+  readonly sampledAt: string | null;
+  /** Paired machines that could not be asked, and why. */
+  readonly unavailable?: readonly { readonly machine: SessionMachine; readonly reason: string }[];
+}
+
+/** D127: body of `PUT /api/sessions/{id}/processes/{pid}/keep`. */
+export interface ProcessKeepInput {
+  readonly keep: boolean;
+  readonly reason?: string | null;
+}
+
+/** D127: `SystemInfo.trackedProcesses`: this machine's tracked processes, for the sidebar footer. */
+export interface TrackedProcessTotals {
+  readonly count: number;
+  readonly rssBytes: number;
 }

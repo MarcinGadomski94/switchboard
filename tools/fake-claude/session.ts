@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -36,6 +37,7 @@ import {
   sayLongToken,
   sayToken,
   echoEnvToken,
+  leaveProcessToken,
   noteToken,
   scenarioToken,
   toolResultText,
@@ -818,6 +820,8 @@ export class Runner {
     const worktreeAdd = msg.fired ? null : worktreeAddToken(msg.text, this.o.cwd);
     const writePath = msg.fired || worktreeAdd !== null ? null : writeToken(msg.text);
     const echoEnv = msg.fired || writePath !== null || worktreeAdd !== null ? null : echoEnvToken(msg.text);
+    /** D127: `[fake:leave-process <seconds>]`: a Bash call that leaves a detached process running. */
+    const leave = msg.fired || writePath !== null || worktreeAdd !== null || echoEnv !== null ? null : leaveProcessToken(msg.text);
     const toolCall = msg.fired || writePath !== null || worktreeAdd !== null || echoEnv !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
     const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || echoEnv !== null ? null : backgroundToken(msg.text);
@@ -851,6 +855,17 @@ export class Runner {
       // D100-T2: a Bash call that prints an environment variable (its value as the tool_result).
       steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
       tool = { name: 'Bash', input: { command: `printenv ${echoEnv}`, description: 'Print an environment variable' }, result: { text: this.o.env[echoEnv] ?? '', isError: false } };
+      scenario = 'tx-main';
+      turnIndex = 0;
+    } else if (leave !== null && typeof leave !== 'number') {
+      await this.crash(`fake-claude: ${leave.error}`);
+      return 'crash';
+    } else if (leave !== null) {
+      // D127: a process the agent leaves running (through a shell, as a CLI's Bash tool runs it; with this process's environment: the session's marker).
+      const code = `setTimeout(() => {}, ${leave * 1000})`;
+      const pid = await leaveProcess(code, this.o.cwd, this.o.env);
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: 'Bash', input: { command: `node -e "${code}" &`, description: 'Leave a process running' }, result: { text: `Started a process that keeps running (pid ${pid ?? 'unknown'})`, isError: false } };
       scenario = 'tx-main';
       turnIndex = 0;
     } else if (toolCall !== null && 'error' in toolCall) {
@@ -1824,4 +1839,25 @@ export class Runner {
     this.o.writeStderr(message.endsWith('\n') ? message : `${message}\n`);
     await this.o.exit(code);
   }
+}
+
+/**
+ * D127 `[fake:leave-process]`: starts `node -e <code>` in the background of a shell that exits at
+ * once (`sh -c '… &'`), so the process outlives its parent (reparented, as a build server is) and
+ * carries `env`; Windows has no `sh`: a detached node instead. Resolves its pid (`null` on failure).
+ */
+function leaveProcess(code: string, cwd: string, env: NodeJS.ProcessEnv): Promise<number | null> {
+  if (process.platform === 'win32') {
+    const child = spawn(process.execPath, ['-e', code], { cwd, env, detached: true, stdio: 'ignore', shell: false, windowsHide: true });
+    child.on('error', () => undefined);
+    child.unref();
+    return Promise.resolve(child.pid ?? null);
+  }
+  return new Promise((resolve) => {
+    const shell = spawn('/bin/sh', ['-c', '"$0" -e "$1" </dev/null >/dev/null 2>&1 & echo $!', process.execPath, code], { cwd, env, stdio: ['ignore', 'pipe', 'ignore'], shell: false });
+    let out = '';
+    shell.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
+    shell.once('error', () => resolve(null));
+    shell.once('close', () => resolve(Number(out.trim()) || null));
+  });
 }

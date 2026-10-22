@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { usageWindowLabel } from '../core/usage.ts';
-import { buildApp, createCliStatus, createPrWatcher, createSessionServices, createWorktreeManager } from './app.ts';
+import { appProcesses, buildApp, createCliStatus, createPrWatcher, createSessionServices, createWorktreeManager } from './app.ts';
 import { ciTiming } from './ci/watcher.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
@@ -207,6 +207,8 @@ async function main(): Promise<void> {
     if (!config.demo) await devices.start().catch((error: unknown) => app.log.error(error, 'devices failed to start'));
     // D48 P4: the hooked sessions' transcript and liveness polls.
     if (!config.demo) hooks.start();
+    // D127 (docs/processes.md): the sessions' leftover processes, sampled every 30 s and stopped when closed / idle.
+    if (!config.demo) appProcesses(app)?.start();
     // D55: check GitHub releases now and every hour.
     updates?.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.

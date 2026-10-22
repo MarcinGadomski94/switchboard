@@ -480,6 +480,22 @@ export class HookService {
   }
 
   /**
+   * D127 (`docs/processes.md` → *Hooked sessions*): the hooked sessions whose terminal
+   * `claude` pid the hooks reported and that have not ended: the roots of their process
+   * trees. Not verified against the registry (that runs a CLI): the tracker only takes a
+   * root whose command line names claude.
+   */
+  async terminalRoots(): Promise<Array<{ readonly sessionId: string; readonly pid: number }>> {
+    const out: Array<{ readonly sessionId: string; readonly pid: number }> = [];
+    for (const terminal of this.#terminals.values()) {
+      if (terminal.pid === null || terminal.ended || !Number.isInteger(terminal.pid) || terminal.pid <= 1) continue;
+      const record = await this.#store.sessions.getByClaudeSessionId(terminal.claudeSessionId);
+      if (record?.hooked) out.push({ sessionId: record.id, pid: terminal.pid });
+    }
+    return out;
+  }
+
+  /**
    * D65: stops a hooked session's terminal `claude` (`terminal-stop.ts`: SIGTERM /
    * `taskkill`, the force after a grace time). Only the verified process
    * ({@link terminalPid}) is touched; a terminal that is already gone is `gone`.

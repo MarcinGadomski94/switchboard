@@ -17,6 +17,7 @@ import {
 } from '../../core/settings.ts';
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
+import { IDLE_STOP_MAX_MINUTES, IDLE_STOP_MIN_MINUTES } from '../../core/processes.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
 import { defaultPowerEstimate, parsePowerEstimateSettings, readPowerEstimateSettings } from '../../core/power.ts';
@@ -85,6 +86,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       const { min, max } = CI_LIMITS[key as keyof typeof CI_LIMITS];
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < min || raw > max) {
         errors.push({ field: key, message: `${key} must be a whole number ${min}–${max}` });
+        continue;
+      }
+    } else if (key === 'processes.idleStopMinutes') {
+      // D127: the idle stop of a session's leftover processes (0 = off).
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < IDLE_STOP_MIN_MINUTES || raw > IDLE_STOP_MAX_MINUTES) {
+        errors.push({ field: key, message: `${key} must be a whole number ${IDLE_STOP_MIN_MINUTES}–${IDLE_STOP_MAX_MINUTES} (0 = off)` });
         continue;
       }
     } else if (key === 'ci.mergeMethod') {
