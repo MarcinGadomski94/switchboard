@@ -45,7 +45,7 @@ interface Loaded {
  * artifact saved on purpose, in every session (this machine's and, D48, the paired
  * machines'), newest first: kind · title · session · versions · saved by · age.
  * Search (title, kind, language, session, machine), the kind filters (All · Docs ·
- * Code · HTML · Diagrams · Images · Tables) and a session filter, all applied by
+ * Code · HTML · Diagrams · Images · PDFs · Tables) and a session filter, all applied by
  * `GET /api/artifacts?q=&kind=&session=`. A row opens the session's Artifacts tab
  * on that artifact. Live: `artifactsChanged` reloads it.
  *

@@ -66,7 +66,7 @@ test('a fresh install: the columns, the kind filters and the empty note', async 
   const view = page.getByTestId('view-artifacts');
   await expect(view.locator('.sb-art-title')).toHaveText('Artifacts');
   await expect(page.getByTestId('artifacts-count')).toHaveText('0 of 0');
-  await expect(page.getByTestId('artifacts-filter')).toHaveText(['All', 'Docs', 'Code', 'HTML', 'Diagrams', 'Images', 'Tables']);
+  await expect(page.getByTestId('artifacts-filter')).toHaveText(['All', 'Docs', 'Code', 'HTML', 'Diagrams', 'Images', 'PDFs', 'Tables']);
   await expect(view.locator('.sb-art-cols > span')).toHaveText(['Kind', 'Title', 'Session', 'Versions', 'Saved by', 'Age']);
   await expect(page.getByTestId('artifacts-empty')).toContainText('No artifacts yet.');
   await expect(page.getByTestId('nav-artifacts')).toHaveAttribute('aria-current', 'page');

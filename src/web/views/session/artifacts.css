@@ -429,3 +429,38 @@
   margin-left: 4px;
   text-decoration: underline;
 }
+
+/* D126: a PDF on a phone or a touch screen (and the fallback without a PDF viewer): a card that opens it in a new tab. */
+.sb-artv-pdf-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.sb-artv-pdf-icon {
+  padding: 10px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: 6px;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.sb-artv-pdf-name {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.sb-artv-pdf-open {
+  min-height: 40px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}

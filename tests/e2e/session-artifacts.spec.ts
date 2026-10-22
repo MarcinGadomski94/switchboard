@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { type Page, expect, test } from '@playwright/test';
 import type { ArtifactSaveResult } from '../../src/core/api.ts';
+import { minimalPdf } from '../helpers/pdf.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
@@ -180,6 +181,66 @@ test('CSV as a table, a file copied from the session\'s folder, Full screen and 
   await page.getByTestId('artifact-delete-yes').click();
   await expect(page.getByTestId('artifact-row')).toHaveCount(1);
   await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts$`));
+});
+
+test('D126 · a PDF: the browser\'s viewer in the page, Download and Open in new tab, no Compare; its tag and filter; a phone gets Open PDF', async ({ page }) => {
+  await writeFile(path.join(world.workspace, 'acme-report.pdf'), minimalPdf('Acme report'));
+  await writeFile(path.join(world.workspace, 'acme-report-2.pdf'), minimalPdf('Acme report, revised'));
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'pdf-run', 'Hi.');
+  await waitDone(page, id);
+  const pdf = await agentSaves(id, { title: 'Acme report', kind: 'pdf', path: 'acme-report.pdf' });
+  await agentSaves(id, { id: pdf.artifact.id, title: 'Acme report', kind: 'pdf', path: 'acme-report-2.pdf' });
+  const raw = `/api/sessions/${id}/artifacts/${pdf.artifact.id}/versions/2/raw`;
+
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts`);
+  await expect(page.getByTestId('artifact-row').filter({ hasText: 'Acme report' }).getByTestId('artifact-tag')).toHaveText('PDF');
+  await expect(page.getByTestId('artifact-row').filter({ hasText: 'Acme report' }).getByTestId('artifact-meta')).toHaveText(/^v2 · \d+ B · agent$/);
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${pdf.artifact.id}`);
+  const viewer = page.getByTestId('artifact-viewer');
+  await expect(viewer).toHaveAttribute('data-kind', 'pdf');
+  await expect(viewer.getByTestId('artifact-sub')).toContainText('PDF · v2 saved by agent');
+  // The browser's own viewer: an <object> of the served file, typed application/pdf (its drawing is the browser's, not asserted).
+  const frame = viewer.getByTestId('artifact-pdf');
+  await expect(frame).toHaveAttribute('data', raw);
+  await expect(frame).toHaveAttribute('type', 'application/pdf');
+  await expect(viewer.getByTestId('artifact-download')).toHaveAttribute('href', `${raw}?download`);
+  const open = viewer.getByTestId('artifact-open-tab');
+  await expect(open).toHaveText('Open in new tab');
+  await expect(open).toHaveAttribute('href', raw);
+  await expect(open).toHaveAttribute('target', '_blank');
+  // Binary like an image: no Rendered / Source / Compare, no Copy; the version picker still works.
+  await expect(viewer.getByTestId('artifact-mode-diff')).toHaveCount(0);
+  await expect(viewer.getByTestId('artifact-mode-source')).toHaveCount(0);
+  await expect(viewer.getByTestId('artifact-copy')).toHaveCount(0);
+  await viewer.getByTestId('artifact-version').selectOption('1');
+  await expect(frame).toHaveAttribute('data', `/api/sessions/${id}/artifacts/${pdf.artifact.id}/versions/1/raw`);
+  // Served as a PDF, inline, nosniff, under a CSP without sandbox.
+  const served = await page.request.get(`${world.baseUrl}${raw}`);
+  expect(served.headers()['content-type']).toBe('application/pdf');
+  expect(served.headers()['content-disposition']).toMatch(/^inline; /);
+  expect(served.headers()['x-content-type-options']).toBe('nosniff');
+  expect(served.headers()['content-security-policy']).not.toContain('sandbox');
+
+  // The Artifacts page: the PDF tag and the PDFs filter.
+  await page.goto(`${world.baseUrl}/artifacts`);
+  await page.getByTestId('artifacts-filter').filter({ hasText: /^PDFs$/ }).click();
+  await expect(page.getByTestId('view-artifacts')).toHaveAttribute('data-filter', 'PDFs');
+  await expect(page.getByTestId('artifact-row')).toHaveCount(1);
+  await expect(page.getByTestId('artifact-row')).toHaveAttribute('data-kind', 'pdf');
+  await expect(page.getByTestId('artifact-row').locator('.sb-art-type')).toHaveText('PDF');
+
+  // A phone: no embedded viewer, an Open PDF card that opens the file in a new tab.
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${pdf.artifact.id}`);
+  await expect(page.getByTestId('artifact-pdf')).toHaveCount(0);
+  const card = page.getByTestId('artifact-viewer').getByTestId('artifact-pdf-card');
+  await expect(card).toBeVisible();
+  const openPdf = card.getByTestId('artifact-pdf-open');
+  await expect(openPdf).toHaveText('Open PDF');
+  await expect(openPdf).toHaveAttribute('href', raw);
+  await expect(openPdf).toHaveAttribute('target', '_blank');
+  await expect(openPdf).toBeInViewport();
 });
 
 test('the developer saves an agent message (⋯) and a code block from the chat', async ({ page }) => {

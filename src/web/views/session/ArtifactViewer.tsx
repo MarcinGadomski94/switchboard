@@ -1,9 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Artifact, ArtifactDetail } from '../../../core/api.ts';
-import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, lineDiff, parseCsv } from '../../../core/artifacts.ts';
+import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, isTextKind, lineDiff, parseCsv } from '../../../core/artifacts.ts';
 import { ApiError, api, artifactRawUrl } from '../../api/client.ts';
 import { formatAge } from '../../shell/format.ts';
+import { useCoarsePointer, useLayout } from '../../shell/useLayout.ts';
 import { ArtifactDeleteConfirm } from './ArtifactDelete.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import { KIND_LABELS, type ViewerMode, authorLabel, renderedMarkdown, viewerModes } from './artifacts.ts';
@@ -34,7 +35,10 @@ function errorText(caught: unknown): string {
  * Mermaid drawn in a sandboxed frame (D89 ruling), HTML in a
  * sandboxed frame (`allow-scripts`, never `allow-same-origin`; the served page
  * carries its own sandbox CSP), SVG and images as `<img>` of the served file
- * (never inline in the page), CSV as a table (the first rows).
+ * (never inline in the page), CSV as a table (the first rows); D126: a PDF in the
+ * browser's own PDF viewer (a frame of the served file), with Open in new tab; on a
+ * phone or a touch screen an Open PDF card instead (iOS Safari draws only a PDF's
+ * first page in a frame).
  */
 export function ArtifactViewer({ sessionId, artifact, blocked, onBack, onDeleted }: ArtifactViewerProps) {
   // `null` = follow the newest version (a new save shows at once).
@@ -185,7 +189,7 @@ export function ArtifactViewer({ sessionId, artifact, blocked, onBack, onDeleted
           </label>
         ) : null}
         <div className="sb-artv-actions">
-          {artifact.kind !== 'image' ? (
+          {isTextKind(artifact.kind) ? (
             <button type="button" className="sb-button sb-artv-action" data-testid="artifact-copy" disabled={content === null} onClick={copy}>
               {copied ? 'Copied' : 'Copy'}
             </button>
@@ -193,6 +197,11 @@ export function ArtifactViewer({ sessionId, artifact, blocked, onBack, onDeleted
           <a className="sb-artv-action" data-testid="artifact-download" href={artifactRawUrl(sessionId, artifact.id, n, true)} download>
             Download
           </a>
+          {artifact.kind === 'pdf' ? (
+            <a className="sb-artv-action" data-testid="artifact-open-tab" href={artifactRawUrl(sessionId, artifact.id, n)} target="_blank" rel="noopener noreferrer">
+              Open in new tab
+            </a>
+          ) : null}
           <button type="button" className="sb-button sb-artv-action" data-testid="artifact-fullscreen" onClick={() => setFullScreen(true)}>
             Full screen
           </button>
@@ -239,6 +248,7 @@ interface ArtifactBodyProps {
 function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, loading }: ArtifactBodyProps) {
   const src = artifactRawUrl(sessionId, artifact.id, n);
   if (artifact.kind === 'image') return <img className="sb-artv-image" data-testid="artifact-image" src={src} alt={artifact.title} />;
+  if (artifact.kind === 'pdf') return <PdfView src={src} title={artifact.title} />;
   if (artifact.kind === 'svg' && mode === 'rendered') return <img className="sb-artv-image" data-testid="artifact-svg" src={src} alt={artifact.title} />;
   if (artifact.kind === 'html' && mode === 'rendered') {
     // D89: scripts run, but in an opaque origin: no cookie, no storage, no API, no navigation of the app.
@@ -260,6 +270,37 @@ function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, load
   if (artifact.kind === 'csv') return <CsvTable text={content} />;
   const markdown = renderedMarkdown(artifact.kind, artifact.language, content);
   return <ChatMarkdown text={markdown ?? content} testId="artifact-markdown" />;
+}
+
+/**
+ * D126: a PDF in the browser's own viewer: an `<object>` of the served file
+ * (`application/pdf`, inline; never sandboxed: a sandboxed document stops Chrome's
+ * and Firefox's viewers). On a phone or a touch screen (iOS Safari draws only the
+ * first page of an embedded PDF, and the frame is cramped there) a card with
+ * **Open PDF** instead, which opens the file in a new tab, where the phone's own
+ * viewer shows every page. The same card is the `<object>`'s fallback, for a
+ * browser without a PDF viewer.
+ */
+function PdfView({ src, title }: { readonly src: string; readonly title: string }) {
+  const phone = useLayout() === 'phone';
+  const touch = useCoarsePointer();
+  const card = (
+    <div className="sb-artv-pdf-card" data-testid="artifact-pdf-card">
+      <div className="sb-artv-pdf-icon" aria-hidden="true">
+        PDF
+      </div>
+      <div className="sb-artv-pdf-name">{title}</div>
+      <a className="sb-button sb-artv-pdf-open" data-testid="artifact-pdf-open" href={src} target="_blank" rel="noopener noreferrer">
+        Open PDF
+      </a>
+    </div>
+  );
+  if (phone || touch) return card;
+  return (
+    <object className="sb-artv-frame sb-artv-pdf" data-testid="artifact-pdf" data={src} type="application/pdf" aria-label={title}>
+      {card}
+    </object>
+  );
 }
 
 /** D89: a CSV as a table (the first row is the header), at most {@link ARTIFACT_CSV_ROWS_MAX} rows. */

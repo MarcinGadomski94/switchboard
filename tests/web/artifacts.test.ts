@@ -14,6 +14,9 @@ describe('D89 · artifact rows and the viewer', () => {
     expect(viewerModes('markdown', 1)).toEqual(['rendered', 'source']);
     expect(viewerModes('html', 2)).toEqual(['rendered', 'source', 'diff']);
     expect(viewerModes('image', 4)).toEqual(['rendered']);
+    // D126: a PDF only renders (no Source, no Compare).
+    expect(viewerModes('pdf', 3)).toEqual(['rendered']);
+    expect(kindTag({ kind: 'pdf', language: null })).toBe('PDF');
   });
 
   it('renders code as one highlighted block, Markdown as it is (Mermaid draws in its frame)', () => {
@@ -34,7 +37,8 @@ describe('D89 · artifact rows and the viewer', () => {
 
   it('the page\'s kind filters cover every kind once', () => {
     const covered = KIND_FILTERS.flatMap((filter) => filter.kinds ?? []);
-    expect([...covered].sort()).toEqual(['code', 'csv', 'html', 'image', 'markdown', 'mermaid', 'svg']);
+    expect([...covered].sort()).toEqual(['code', 'csv', 'html', 'image', 'markdown', 'mermaid', 'pdf', 'svg']);
+    expect(KIND_FILTERS.find((filter) => filter.label === 'PDFs')?.kinds).toEqual(['pdf']);
   });
 
   /** The router module, imported at run time (the server tsconfig has no JSX; Vitest transforms it). */

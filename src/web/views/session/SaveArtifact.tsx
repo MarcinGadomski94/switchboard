@@ -1,7 +1,7 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ArtifactKind, ArtifactSaveResult } from '../../../core/api.ts';
-import { ARTIFACT_KINDS, checkArtifactLanguage, checkArtifactTitle, textContentProblem } from '../../../core/artifacts.ts';
+import { ARTIFACT_KINDS, checkArtifactLanguage, checkArtifactTitle, isTextKind, textContentProblem } from '../../../core/artifacts.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { Link } from '../../router.tsx';
 import { KIND_LABELS } from './artifacts.ts';
@@ -17,8 +17,8 @@ export interface ArtifactDraft {
   readonly content: string;
 }
 
-/** The kinds the developer may save from the chat (an image is the agent's, from a file). */
-const TEXT_KINDS = ARTIFACT_KINDS.filter((kind) => kind !== 'image');
+/** The kinds the developer may save from the chat (an image or a PDF is the agent's, from a file). */
+const TEXT_KINDS = ARTIFACT_KINDS.filter(isTextKind);
 
 /**
  * D89 · Save as artifact (`docs/artifacts.md` → *Saving from the chat*): the

@@ -17,6 +17,7 @@ export const KIND_LABELS: Readonly<Record<ArtifactKind, string>> = {
   mermaid: 'Mermaid',
   svg: 'SVG',
   image: 'Image',
+  pdf: 'PDF',
   csv: 'CSV',
 };
 
@@ -33,7 +34,7 @@ export function artifactMeta(artifact: Pick<Artifact, 'versions' | 'size' | 'cre
 /** The viewer's modes: `rendered` (each kind as it is meant to be seen), `source` (the text), `diff` (two versions, text kinds). */
 export type ViewerMode = 'rendered' | 'source' | 'diff';
 
-/** The modes a kind offers: text kinds all three (diff once there are two versions); an image only rendered. */
+/** The modes a kind offers: text kinds all three (diff once there are two versions); an image or (D126) a PDF only rendered. */
 export function viewerModes(kind: ArtifactKind, versions: number): ViewerMode[] {
   if (!isTextKind(kind)) return ['rendered'];
   return versions > 1 ? ['rendered', 'source', 'diff'] : ['rendered', 'source'];
@@ -54,6 +55,7 @@ export const KIND_FILTERS: readonly { readonly label: string; readonly kinds: re
   { label: 'HTML', kinds: ['html'] },
   { label: 'Diagrams', kinds: ['mermaid', 'svg'] },
   { label: 'Images', kinds: ['image'] },
+  { label: 'PDFs', kinds: ['pdf'] },
   { label: 'Tables', kinds: ['csv'] },
 ];
 
