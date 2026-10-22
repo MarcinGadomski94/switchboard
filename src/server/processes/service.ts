@@ -13,6 +13,8 @@ import {
   advanceTree,
   autoStopAt,
   autoStopReason,
+  autoStoppable,
+  descendsFrom,
   classifyProcess,
   processName,
   sameProcess,
@@ -64,6 +66,8 @@ interface SessionState {
   /** Every row of the session (the CLI and its helpers included): the stop's subtree is read from them. */
   readonly rows: readonly ListedProcess[];
   readonly leftovers: readonly ListedProcess[];
+  /** The session's CLI (live, hooked terminal, else its last pid) when it is among the rows (running), else `null`. */
+  readonly rootPid: number | null;
 }
 
 /** What the service reads about the sessions (the supervisor and the hooks in the app; stand-ins in tests). */
@@ -290,7 +294,8 @@ export class ProcessService {
         .map((row) => ({ ...row, command: commands.get(row.pid) ?? row.command }));
       const rootPid = this.#options.sessions.livePid(id) ?? roots.get(id)?.pid ?? record.pid;
       const leftovers = sessionLeftovers(sessionRows, rootPid);
-      states.set(id, { tracking: tracking.get(id) ?? 'none', rows: sessionRows, leftovers });
+      const running = rootPid !== null && sessionRows.some((row) => row.pid === rootPid);
+      states.set(id, { tracking: tracking.get(id) ?? 'none', rows: sessionRows, leftovers, rootPid: running ? rootPid : null });
     }
     return states;
   }
@@ -338,6 +343,16 @@ export class ProcessService {
       out.add(pid);
     }
     return out;
+  }
+
+  /**
+   * What an automatic stop of the session would take: its leftovers but the kept ones (and their
+   * family), and, under a CLI that still runs, an `other` process (it may be one of the CLI's
+   * own, an MCP server behind a shell): only the developer stops those.
+   */
+  #autoTargets(sessionId: string, state: SessionState): ListedProcess[] {
+    const keep = this.#protected(sessionId, state);
+    return state.leftovers.filter((row) => !keep.has(row.pid) && autoStoppable(classifyProcess(row.command), descendsFrom(state.rows, row.pid, state.rootPid)));
   }
 
   // ── views ──────────────────────────────────────────────────────────────
@@ -397,7 +412,7 @@ export class ProcessService {
     const processes = (state?.leftovers ?? []).map((row) => this.#view(record.id, row)).sort((a, b) => b.rssBytes - a.rssBytes);
     const working = this.#working(record);
     const closed = record.closedAt !== null;
-    const anyToStop = processes.some((process) => !process.keep);
+    const anyToStop = state !== undefined && this.#autoTargets(record.id, state).length > 0;
     const at = anyToStop && !closed ? autoStopAt({ working, idleSinceMs: this.#idleSince(record), delayMs }) : null;
     return {
       sessionId: record.id,
@@ -519,8 +534,7 @@ export class ProcessService {
       if (state.leftovers.length === 0) continue;
       const reason = autoStopReason({ closed: record.closedAt !== null, working, idleSinceMs: this.#idleSince(record), nowMs: now, delayMs });
       if (!reason) continue;
-      const keep = this.#protected(id, state);
-      const targets = state.leftovers.filter((row) => !keep.has(row.pid) && !this.#stopping.has(row.pid));
+      const targets = this.#autoTargets(id, state).filter((row) => !this.#stopping.has(row.pid));
       if (targets.length === 0) continue;
       const cause: StopCause = reason === 'closed' ? { kind: 'closed' } : { kind: 'idle', minutes: Math.round(delayMs / 60_000) };
       await this.#stopRows(id, targets, cause);

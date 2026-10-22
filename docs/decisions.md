@@ -1365,7 +1365,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **What's new:** "Processes sessions leave running" (1.34.0), two steps (the footer line, Settings → Processes).
   - ASSUMED (D127-delay-zero): the delay 0 turns off the idle stop only; closing a session still stops its processes.
   - ASSUMED (D127-keep-family): a kept process also protects its ancestors and descendants among the session's processes from the automatic stop (stopping `npm run dev` would end the kept `vite`); the developer's own Stop stops the process and what runs under it, kept or not.
-  - ASSUMED (D127-helpers): a direct child of a running CLI that is not a shell is the CLI's own helper (an MCP server) and is not listed; a CLI's tools run commands in a shell. Once the CLI is gone, whatever it left is listed.
+  - ASSUMED (D127-helpers): a direct child of a running CLI that is not a shell is the CLI's own helper (an MCP server) and is not listed; a CLI's tools run commands in a shell (a shell under such a helper is the agent's work again: a CLI behind a launcher). Under a CLI that still runs, an `other` process is listed but never stopped automatically (it may be an MCP server behind a shell wrapper); only build servers, test hosts and dev servers there are. Once the CLI is gone, whatever it left is listed and stopped.
   - ASSUMED (D127-hooked-root): a hooked session's root is the pid its hooks reported, taken only when that process's command line names claude (the registry is not asked every 30 s).
 
 ## Resolved spec gaps (accepted as proposed)

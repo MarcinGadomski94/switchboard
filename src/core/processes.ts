@@ -313,8 +313,10 @@ export function advanceTree(known: readonly KnownProcess[], rows: readonly Liste
  * The processes of one session worth listing, from its rows (every process that carries its
  * marker or is in its tree, the CLI itself included): never the CLI (`rootPid`), never
  * Switchboard's own MCP helpers, and, while the CLI runs, never its own helpers (a direct
- * child that is not a shell, e.g. an MCP server, with everything under it): those end with
- * the CLI. What the agent's commands started (under a shell, or detached) stays.
+ * child that is not a shell, e.g. an MCP server, with what runs under it): those end with
+ * the CLI. A shell under such a helper is the agent's work again (a CLI launched through a
+ * launcher runs its tools' shells one level down). What the agent's commands started (under a
+ * shell, or detached) stays.
  */
 export function sessionLeftovers(rows: readonly ListedProcess[], rootPid: number | null): ListedProcess[] {
   const rootAlive = rootPid !== null && rows.some((row) => row.pid === rootPid);
@@ -327,13 +329,37 @@ export function sessionLeftovers(rows: readonly ListedProcess[], rootPid: number
   while (grew) {
     grew = false;
     for (const row of rows) {
-      if (!excluded.has(row.pid) && excluded.has(row.ppid) && row.ppid !== rootPid) {
+      if (!excluded.has(row.pid) && excluded.has(row.ppid) && row.ppid !== rootPid && !isShellCommand(row.command)) {
         excluded.add(row.pid);
         grew = true;
       }
     }
   }
   return rows.filter((row) => !excluded.has(row.pid));
+}
+
+/** `true` when `pid` runs under `rootPid` (its parent chain in `rows` reaches it). */
+export function descendsFrom(rows: readonly Pick<ListedProcess, 'pid' | 'ppid'>[], pid: number, rootPid: number | null): boolean {
+  if (rootPid === null) return false;
+  const byPid = new Map(rows.map((row) => [row.pid, row.ppid] as const));
+  const seen = new Set<number>();
+  let current = byPid.get(pid);
+  while (current !== undefined && !seen.has(current)) {
+    if (current === rootPid) return true;
+    seen.add(current);
+    current = byPid.get(current);
+  }
+  return false;
+}
+
+/**
+ * Whether the automatic stop may take a leftover: a detached one (or any once the CLI is gone)
+ * always; one still under the running CLI only when it is a build server, a test host or a dev
+ * server, so an `other` process there (an MCP server the CLI started through a shell, say) is
+ * listed but only ever stopped by hand.
+ */
+export function autoStoppable(kind: SessionProcessKind, underLiveCli: boolean): boolean {
+  return !underLiveCli || kind !== 'other';
 }
 
 /** The pids of `pid` and everything under it in `rows`, `pid` first. */

@@ -60,7 +60,7 @@ A session's processes are those that carry its marker or sit in its tree. The tr
 
 - **the CLI itself** (its live pid, else the last pid stored on the session);
 - **Switchboard's own MCP helpers** (`sb-mcp`, `sb-access-mcp`);
-- **the CLI's own helpers while it runs**: a direct child of the CLI that is not a shell, such as an MCP server, and everything under it. These end with the CLI. A CLI's tools run commands in a shell, so what the agent started stays listed.
+- **the CLI's own helpers while it runs**: a direct child of the CLI that is not a shell, such as an MCP server, and what runs under it. These end with the CLI. A CLI's tools run commands in a shell, so what the agent started stays listed. A shell under such a helper counts as the agent's work again, which covers a CLI started through a launcher (launcher → CLI → tool shell).
 
 Markers of sessions that are not in this Switchboard's own database belong to another Switchboard, for example a test instance, and are ignored.
 
@@ -98,6 +98,7 @@ The rules:
 - A dev server the agent only left running is not a wait. So it is stopped too, unless kept.
 - **Never** while the session works or waits on a background task. A closed session that somehow still works is not touched either.
 - **Delay 0** turns the idle stop off. A close still stops the processes.
+- **Under a CLI that still runs,** only build servers, test hosts and dev servers stop by themselves. An `other` process there may be one of the CLI's own, for example an MCP server started through a shell wrapper. It is listed, but only the developer's Stop ends it. Detached processes (ppid 1, or a parent that is gone) and everything left once the CLI has exited stop whatever their kind.
 - **Keep** protects the process, its ancestors among the session's processes and everything under it. Stopping `npm run dev` would end the kept `vite`.
 
 How a process is stopped:

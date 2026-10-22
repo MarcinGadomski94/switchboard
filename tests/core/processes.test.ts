@@ -4,6 +4,8 @@ import {
   AGENT_BUILD_ENV,
   SESSION_MARKER_ENV,
   advanceTree,
+  autoStoppable,
+  descendsFrom,
   autoStopAt,
   autoStopReason,
   classifyProcess,
@@ -190,6 +192,29 @@ describe('D127 · Windows: Win32_Process and the tree', () => {
     // Once the CLI is gone, whatever it left is listed (an MCP server that outlived it too).
     expect(sessionLeftovers(rows.filter((row) => row.pid !== 4000), 4000).map((row) => row.pid)).toEqual([4100, 4200, 4300]);
     expect(subtreeOf(rows, 4100)).toEqual([4100, 4200]);
+  });
+
+  it('a CLI behind a launcher: its helpers are left out, the shells its tools run (and what they start) stay', () => {
+    const row = (pid: number, ppid: number, command: string) => ({ pid, ppid, rssBytes: 1, startedAtMs: 0, cpuPct: null, command, marker: S1 });
+    const rows = [
+      row(10, 1, 'node /usr/local/bin/claude --print'),
+      row(11, 10, '/Users/dev/.local/share/claude/versions/2.1.300'),
+      row(12, 11, 'node /Users/dev/mcp/server.js'),
+      row(13, 11, COMMANDS.shell),
+      row(14, 13, COMMANDS.dotnetTest),
+      row(15, 12, 'node /Users/dev/mcp/worker.js'),
+    ];
+    expect(sessionLeftovers(rows, 10).map((r) => r.pid)).toEqual([13, 14]);
+    expect(descendsFrom(rows, 14, 10)).toBe(true);
+    expect(descendsFrom(rows, 14, null)).toBe(false);
+    expect(descendsFrom([row(20, 1, 'x')], 20, 10)).toBe(false);
+  });
+
+  it('under a running CLI only build servers, test hosts and dev servers stop by themselves', () => {
+    expect(autoStoppable('other', true)).toBe(false);
+    expect(autoStoppable('dev-server', true)).toBe(true);
+    expect(autoStoppable('build-server', true)).toBe(true);
+    expect(autoStoppable('other', false)).toBe(true);
   });
 
   it("never lists Switchboard's own MCP helper", () => {
