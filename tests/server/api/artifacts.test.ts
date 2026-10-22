@@ -3,9 +3,9 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEvents } from '../../../src/core/api.ts';
-import { ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
+import { ARTIFACT_PDF_MAX, ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
-import { HTML_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
+import { HTML_ARTIFACT_CSP, PDF_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
 import { DEVICE_ALLOWED, matchesRule } from '../../../src/server/devices/local-only.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -15,6 +15,7 @@ import { HubBus } from '../../../src/server/hub/bus.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
+import { minimalPdf } from '../../helpers/pdf.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
@@ -29,6 +30,8 @@ import { openTempStore } from '../../helpers/store.ts';
 const PORT = 4910; // inject() opens no socket; the port feeds the Host check only
 const HOST = `127.0.0.1:${PORT}`;
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+const PDF = minimalPdf('Acme quarterly report');
+const PDF_V2 = minimalPdf('Acme quarterly report, revised');
 
 let tmp: string;
 let work: string;
@@ -67,6 +70,11 @@ beforeAll(async () => {
   await writeFile(path.join(work, 'docs', 'report.md'), '# Report\n\nAll green.\n');
   await writeFile(path.join(work, 'shot.png'), PNG);
   await writeFile(path.join(work, 'bin.dat'), Buffer.from([1, 0, 2]));
+  await writeFile(path.join(work, 'report.pdf'), PDF);
+  await writeFile(path.join(work, 'report-v2.pdf'), PDF_V2);
+  await writeFile(path.join(work, 'fake.pdf'), '<!doctype html><script>alert(1)</script>');
+  // One byte over the PDF limit, with a real header (only the size refuses it).
+  await writeFile(path.join(work, 'huge.pdf'), Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(ARTIFACT_PDF_MAX + 1 - 9)]));
   await writeFile(path.join(tmp, 'secret.txt'), 'outside');
   await symlink(path.join(tmp, 'secret.txt'), path.join(work, 'link.txt'));
   store = await openTempStore(tmp, { now: () => new Date((clock += 60_000)) });
@@ -155,7 +163,7 @@ describe('D89 · saving', () => {
       { kind: 'markdown', content: 'x' },
       { title: 'a\nb', kind: 'markdown', content: 'x' },
       { title: 'x'.repeat(121), kind: 'markdown', content: 'x' },
-      { title: 'x', kind: 'pdf', content: 'x' },
+      { title: 'x', kind: 'docx', content: 'x' },
       { title: 'x', kind: 'markdown', content: '   ' },
       { title: 'x', kind: 'svg', content: '<div>no svg</div>' },
       { title: 'x', kind: 'code', language: 'not a language!', content: 'x' },
@@ -219,6 +227,76 @@ describe('D89 · saving', () => {
     expect(((await agent('GET', `/agent/v1/artifacts/${plan.id}?version=1`)).body as ArtifactDetail).version.content).toBe('# Plan\n\n1. Ship\n');
     const forged = await app.inject({ method: 'GET', url: '/agent/v1/artifacts', headers: { host: HOST, authorization: `Bearer ${agentTokenFor(token, other)}`, [AGENT_SESSION_HEADER]: session } });
     expect(forged.statusCode).toBe(401);
+  });
+});
+
+describe('D126 · pdf artifacts', () => {
+  let pdfId = '';
+
+  it('the agent saves a PDF from path: a file in the data folder, application/pdf, the title indexed for search', async () => {
+    const saved = await agent('POST', '/agent/v1/artifacts', { title: 'Quarterly report', kind: 'pdf', path: 'report.pdf' });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    const result = saved.body as ArtifactSaveResult;
+    expect(result).toMatchObject({ version: 1, created: true, artifact: { kind: 'pdf', title: 'Quarterly report', size: PDF.length, language: null } });
+    pdfId = result.artifact.id;
+    expect(await readdir(path.join(tmp, 'artifacts', pdfId))).toEqual(['1.pdf']);
+    const detail = (await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}`)).body as ArtifactDetail;
+    expect(detail.version).toMatchObject({ n: 1, content: null, size: PDF.length });
+    // D97: the title is in the search index (no text is extracted from the PDF).
+    const item = await store.db.prepare("SELECT title, body FROM search_items WHERE kind = 'artifact' AND ref = ?").get(pdfId);
+    expect(item).toEqual({ title: 'Quarterly report', body: '' });
+  });
+
+  it('refuses a PDF without path, a file that is not a PDF and one over 25 MB', async () => {
+    for (const [body, status, words] of [
+      [{ title: 'x', kind: 'pdf', content: '%PDF-1.4' }, 422, 'needs path'],
+      [{ title: 'x', kind: 'pdf', path: 'fake.pdf' }, 422, 'not a PDF'],
+      [{ title: 'x', kind: 'pdf', path: 'shot.png' }, 422, 'not a PDF'],
+      [{ title: 'x', kind: 'pdf', path: 'huge.pdf' }, 413, 'larger than 25 MB'],
+    ] as const) {
+      const refused = await agent('POST', '/agent/v1/artifacts', body);
+      expect(refused.status, JSON.stringify(body)).toBe(status);
+      expect(String((refused.body as { message: string }).message), JSON.stringify(body)).toContain(words);
+    }
+    // The developer's Save as artifact cannot give a path, so cannot save a PDF.
+    expect((await ui('POST', `/api/sessions/${session}/artifacts`, { title: 'x', kind: 'pdf', content: '%PDF-1.4' })).status).toBe(422);
+    // A new version keeps its kind both ways.
+    expect((await agent('POST', '/agent/v1/artifacts', { id: pdfId, title: 'x', kind: 'image', path: 'shot.png' })).status).toBe(422);
+  });
+
+  it('serves a PDF inline as application/pdf with nosniff, under a CSP without sandbox; ?download names it .pdf', async () => {
+    const raw = await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}/versions/1/raw`);
+    expect(raw.status).toBe(200);
+    expect(raw.headers['content-type']).toBe('application/pdf');
+    expect(raw.headers['content-disposition']).toMatch(/^inline; filename="Quarterly report.pdf"/);
+    expect(raw.headers['x-content-type-options']).toBe('nosniff');
+    expect(raw.headers['content-security-policy']).toBe(PDF_ARTIFACT_CSP);
+    expect(PDF_ARTIFACT_CSP).not.toContain('sandbox');
+    expect(PDF_ARTIFACT_CSP).toContain("frame-ancestors 'self'");
+    expect(Buffer.compare(raw.raw, PDF)).toBe(0);
+    const download = await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}/versions/1/raw?download`);
+    expect(download.headers['content-type']).toBe('application/pdf');
+    expect(download.headers['content-disposition']).toContain('attachment; filename="Quarterly report.pdf"');
+    // `?render` is Mermaid's only.
+    expect((await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}/versions/1/raw?render`)).headers['content-type']).toBe('application/pdf');
+  });
+
+  it('a new version is a new file; each version keeps its bytes', async () => {
+    const again = await agent('POST', '/agent/v1/artifacts', { id: pdfId, title: 'Quarterly report', kind: 'pdf', path: 'report-v2.pdf' });
+    expect(again.body).toMatchObject({ version: 2, created: false, artifact: { id: pdfId, versions: 2, size: PDF_V2.length } });
+    expect((await readdir(path.join(tmp, 'artifacts', pdfId))).sort()).toEqual(['1.pdf', '2.pdf']);
+    expect(Buffer.compare((await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}/versions/1/raw`)).raw, PDF)).toBe(0);
+    expect(Buffer.compare((await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}/versions/2/raw`)).raw, PDF_V2)).toBe(0);
+    const detail = (await ui('GET', `/api/sessions/${session}/artifacts/${pdfId}?version=1`)).body as ArtifactDetail;
+    expect(detail.versionList.map((v) => v.size)).toEqual([PDF.length, PDF_V2.length]);
+    expect(((await ui('GET', '/api/artifacts?kind=pdf')).body as ArtifactListItem[]).map((a) => a.id)).toEqual([pdfId]);
+  });
+
+  it('delete removes the versions and the files', async () => {
+    expect((await ui('DELETE', `/api/sessions/${session}/artifacts/${pdfId}`)).status).toBe(204);
+    expect(await readdir(path.join(tmp, 'artifacts'))).not.toContain(pdfId);
+    expect(await store.artifacts.versions(pdfId)).toEqual([]);
+    expect(await store.db.prepare("SELECT 1 FROM search_items WHERE kind = 'artifact' AND ref = ?").get(pdfId)).toBeUndefined();
   });
 });
 

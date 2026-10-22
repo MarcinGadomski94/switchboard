@@ -586,7 +586,7 @@ describe('artifacts (D89, 0039)', () => {
     expect(await store.artifacts.delete(plan.id)).toBe(true);
     expect(await store.artifacts.get(plan.id)).toBeNull();
     expect(Number(store.db.prepare('SELECT count(*) AS n FROM artifact_versions WHERE artifact_id = ?').get(plan.id)?.['n'])).toBe(0);
-    await expect(store.artifacts.create({ id: 'a000000012', sessionId: s.id, title: 'x', kind: 'pdf' as never, language: null, version: text('x') })).rejects.toThrow(/CHECK/);
+    await expect(store.artifacts.create({ id: 'a000000012', sessionId: s.id, title: 'x', kind: 'docx' as never, language: null, version: text('x') })).rejects.toThrow(/CHECK/);
     // A version is text or a file, never both or neither.
     await expect(store.artifacts.create({ id: 'a000000013', sessionId: s.id, title: 'x', kind: 'image', language: null, version: { content: null, file: null, mediaType: null, size: 0, createdBy: 'agent' } })).rejects.toThrow(/CHECK/);
   });

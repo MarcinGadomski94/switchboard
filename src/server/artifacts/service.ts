@@ -5,6 +5,9 @@ import type { Artifact, ArtifactAuthor, ArtifactDetail, ArtifactKind, ArtifactLi
 import {
   ARTIFACT_IMAGE_MAX,
   ARTIFACT_IMAGE_TYPES,
+  ARTIFACT_KINDS,
+  ARTIFACT_PDF_MAX,
+  ARTIFACT_PDF_TYPE,
   ARTIFACT_TEXT_MAX,
   ARTIFACT_VERSIONS_MAX,
   ARTIFACTS_PER_SESSION_MAX,
@@ -12,6 +15,7 @@ import {
   checkArtifactLanguage,
   checkArtifactTitle,
   isArtifactKind,
+  isPdfBytes,
   textContentProblem,
   utf8Size,
 } from '../../core/artifacts.ts';
@@ -22,7 +26,7 @@ import type { Store } from '../db/store.ts';
 import { toArtifact } from '../sessions/wire.ts';
 import type { HubBus } from '../hub/bus.ts';
 
-/** The data folder's subfolder for image versions: `<dataDir>/artifacts/<id>/<n>.<ext>`. */
+/** The data folder's subfolder for image (and, D126, PDF) versions: `<dataDir>/artifacts/<id>/<n>.<ext>`. */
 export const ARTIFACTS_DIR = 'artifacts';
 
 /** An artifact id as {@link ArtifactService} makes them (10 hex characters); anything else names no artifact. */
@@ -122,7 +126,7 @@ type SaveBody = Readonly<Record<string, unknown>>;
  * them through `/agent/v1/artifacts` (`artifact_save`), the developer through
  * `POST /api/sessions/{id}/artifacts` (Save as artifact). A save with the id of one
  * of the session's artifacts adds a version. Text versions live in the database;
- * image versions in `<dataDir>/artifacts/<id>/<n>.<ext>` (folder 0700, files 0600).
+ * image and (D126) PDF versions in `<dataDir>/artifacts/<id>/<n>.<ext>` (folder 0700, files 0600).
  * A `path` (the agent's only) is copied at save time, and only from inside the
  * session's working folders (its folder, its working folder, its worktrees),
  * symbolic links resolved first. Every change publishes `artifactsChanged` and the
@@ -226,7 +230,7 @@ export class ArtifactService {
     const title = checkArtifactTitle(input['title']);
     if (!title.ok) throw new ArtifactError(422, 'invalid', title.message);
     const kind = input['kind'];
-    if (!isArtifactKind(kind)) throw new ArtifactError(422, 'invalid', 'kind must be one of markdown, code, html, mermaid, svg, image, csv');
+    if (!isArtifactKind(kind)) throw new ArtifactError(422, 'invalid', `kind must be one of ${ARTIFACT_KINDS.join(', ')}`);
     const language = checkArtifactLanguage(input['language']);
     if (!language.ok) throw new ArtifactError(422, 'invalid', language.message);
     const id = typeof input['id'] === 'string' && input['id'].trim() !== '' ? input['id'].trim().replace(/^\[|\]$/g, '') : null;
@@ -240,8 +244,8 @@ export class ArtifactService {
     const artifactId = existing?.id ?? (await this.#freshId());
     const n = existing ? existing.versions + 1 : 1;
     let version: ArtifactVersionInput;
-    if (content.kind === 'image') {
-      const relative = path.join(ARTIFACTS_DIR, artifactId, `${n}.${artifactExtension('image', null, content.mediaType)}`);
+    if (content.kind === 'file') {
+      const relative = path.join(ARTIFACTS_DIR, artifactId, `${n}.${artifactExtension(kind, null, content.mediaType)}`);
       await mkdir(path.join(this.#root, artifactId), { recursive: true, mode: 0o700 });
       await writeFile(path.join(this.#dataDir, relative), content.bytes, { mode: 0o600 });
       version = { content: null, file: relative.split(path.sep).join('/'), mediaType: content.mediaType, size: content.bytes.length, createdBy: author };
@@ -264,13 +268,13 @@ export class ArtifactService {
     }
   }
 
-  /** The version's text or image bytes, from `content` or (the agent's) `path`. */
+  /** The version's text, or its file's bytes (an image; D126 a PDF), from `content` or (the agent's) `path`. */
   async #content(
     session: SessionRecord,
     kind: ArtifactKind,
     input: SaveBody,
     author: ArtifactAuthor,
-  ): Promise<{ readonly kind: 'text'; readonly text: string } | { readonly kind: 'image'; readonly bytes: Buffer; readonly mediaType: string }> {
+  ): Promise<{ readonly kind: 'text'; readonly text: string } | { readonly kind: 'file'; readonly bytes: Buffer; readonly mediaType: string }> {
     const hasContent = typeof input['content'] === 'string';
     const hasPath = typeof input['path'] === 'string' && input['path'].trim() !== '';
     if (hasContent && hasPath) throw new ArtifactError(422, 'invalid', 'give content or path, not both');
@@ -280,7 +284,14 @@ export class ArtifactService {
       const bytes = await this.#readSessionFile(session, input['path'] as string, ARTIFACT_IMAGE_MAX);
       const sniffed = sniffType(bytes);
       if (!sniffed || !ARTIFACT_IMAGE_TYPES[sniffed]) throw new ArtifactError(422, 'invalid', 'the file is not a png, jpg, gif or webp image');
-      return { kind: 'image', bytes, mediaType: sniffed };
+      return { kind: 'file', bytes, mediaType: sniffed };
+    }
+    if (kind === 'pdf') {
+      // D126: like an image: by path only, its own size limit, checked by its header.
+      if (!hasPath) throw new ArtifactError(422, 'invalid', 'a pdf artifact needs path: a PDF file in the session\'s working folders');
+      const bytes = await this.#readSessionFile(session, input['path'] as string, ARTIFACT_PDF_MAX);
+      if (!isPdfBytes(bytes)) throw new ArtifactError(422, 'invalid', 'the file is not a PDF (it does not start with %PDF-)');
+      return { kind: 'file', bytes, mediaType: ARTIFACT_PDF_TYPE };
     }
     let text: string;
     if (hasPath) {
@@ -323,7 +334,7 @@ export class ArtifactService {
     return readFile(real);
   }
 
-  /** Deletes an artifact with every version (and its image files). */
+  /** Deletes an artifact with every version (and its image or PDF files). */
   async remove(sessionId: string, artifactId: string): Promise<void> {
     await this.#session(sessionId);
     const record = await this.#artifact(sessionId, artifactId);

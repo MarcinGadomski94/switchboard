@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ARTIFACT_IMAGE_MAX,
   ARTIFACT_KINDS,
+  ARTIFACT_PDF_MAX,
+  ARTIFACT_PDF_TYPE,
   ARTIFACT_TEXT_MAX,
   ARTIFACT_TOOLS,
   artifactExtension,
@@ -11,6 +14,9 @@ import {
   checkArtifactTitle,
   codeFence,
   isArtifactKind,
+  isPdfBytes,
+  isTextKind,
+  kindTag,
   lineDiff,
   messageArtifactTitle,
   parseCsv,
@@ -22,9 +28,11 @@ import { AGENT_MCP_INSTRUCTIONS } from '../../src/core/todos.ts';
 
 describe('D89 · fields', () => {
   it('kinds, titles and languages', () => {
-    expect(ARTIFACT_KINDS).toEqual(['markdown', 'code', 'html', 'mermaid', 'svg', 'image', 'csv']);
+    expect(ARTIFACT_KINDS).toEqual(['markdown', 'code', 'html', 'mermaid', 'svg', 'image', 'pdf', 'csv']);
     expect(isArtifactKind('csv')).toBe(true);
-    expect(isArtifactKind('pdf')).toBe(false);
+    expect(isArtifactKind('pdf')).toBe(true);
+    expect(isArtifactKind('PDF')).toBe(false);
+    expect(isArtifactKind('docx')).toBe(false);
     expect(checkArtifactTitle('  Plan  ')).toEqual({ ok: true, value: 'Plan' });
     for (const bad of ['', '  ', 'a\nb', 'x'.repeat(121), 3]) expect(checkArtifactTitle(bad).ok, String(bad)).toBe(false);
     expect(checkArtifactLanguage(' TS ')).toEqual({ ok: true, value: 'ts' });
@@ -50,6 +58,40 @@ describe('D89 · fields', () => {
     expect(artifactExtension('image', null, 'image/jpeg')).toBe('jpg');
     expect(artifactFileName('Plan: v2 / final', 'md')).toBe('Plan_ v2 _ final.md');
     expect(artifactFileName('...', 'md')).toBe('artifact.md');
+  });
+});
+
+describe('D126 · pdf artifacts', () => {
+  it('a pdf is binary like an image: no source view, no diff', () => {
+    expect(isTextKind('pdf')).toBe(false);
+    expect(isTextKind('image')).toBe(false);
+    expect(isTextKind('markdown')).toBe(true);
+  });
+
+  it('the %PDF- header decides', () => {
+    expect(isPdfBytes(Buffer.from('%PDF-1.4\n%âãÏÓ\n'))).toBe(true);
+    expect(isPdfBytes(Buffer.from('%PDF-'))).toBe(true);
+    expect(isPdfBytes(Buffer.from('%PDF'))).toBe(false);
+    expect(isPdfBytes(Buffer.from(' %PDF-1.4'))).toBe(false);
+    expect(isPdfBytes(Buffer.from('<html>%PDF-1.4'))).toBe(false);
+    expect(isPdfBytes(new Uint8Array())).toBe(false);
+  });
+
+  it('extension, media type, tag and limit', () => {
+    expect(artifactExtension('pdf')).toBe('pdf');
+    expect(artifactExtension('pdf', null, 'application/octet-stream')).toBe('pdf');
+    expect(ARTIFACT_PDF_TYPE).toBe('application/pdf');
+    expect(kindTag({ kind: 'pdf', language: null })).toBe('PDF');
+    expect(ARTIFACT_PDF_MAX).toBe(25 * 1024 * 1024);
+    expect(ARTIFACT_PDF_MAX).toBeGreaterThan(ARTIFACT_IMAGE_MAX);
+  });
+
+  it('artifact_save offers pdf and tells the agent to save a PDF as it is', () => {
+    const save = ARTIFACT_TOOLS.find((tool) => tool.name === 'artifact_save')!;
+    const kind = (save.inputSchema as { properties: { kind: { enum: string[]; description: string } } }).properties.kind;
+    expect(kind.enum).toContain('pdf');
+    expect(kind.description).toContain('pdf (give path to a PDF file the session made)');
+    expect(save.description).toContain('do not convert it to HTML');
   });
 });
 

@@ -744,8 +744,8 @@ describe('0022 plain folders (D59)', () => {
     const plain = shipped.find((m) => m.name === 'plain_folders');
     expect(plain?.version).toBe(22);
     expect(needsForeignKeysOff(plain as Migration)).toBe(true);
-    // D71's 0029 rebuilds the sidebar tables the same way.
-    expect(shipped.filter((m) => needsForeignKeysOff(m)).map((m) => m.version)).toEqual([22, 29]);
+    // D71's 0029 rebuilds the sidebar tables the same way; D126's 0048 artifacts_saved.
+    expect(shipped.filter((m) => needsForeignKeysOff(m)).map((m) => m.version)).toEqual([22, 29, 48]);
   });
 
   it('a fresh database: folders.kind takes plain (and nothing else new); the indexes and the references to folders are kept', async () => {
@@ -1137,6 +1137,51 @@ describe('0047 turn wait (D124)', () => {
       const wait = { status: 'blocked' as const, ask: 'Approve the deploy', source: 'declared' as const, at: '2026-10-21T10:00:00.000Z' };
       await store.sessions.update(older!.id, { turnWait: wait });
       expect((await store.sessions.get(older!.id))?.turnWait).toEqual(wait);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0048 artifact pdf (D126)', () => {
+  it('rebuilds artifacts_saved to allow pdf: every row, version and search entry kept; the triggers and foreign keys work again', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd126', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 48) });
+    let sessionId = '';
+    try {
+      sessionId = (await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older-126' })).id;
+      await earlier.artifacts.create({ id: 'a000000001', sessionId, title: 'Acme plan', kind: 'markdown', language: null, version: { content: '# Plan', file: null, mediaType: null, size: 6, createdBy: 'agent' } });
+      await earlier.artifacts.addVersion('a000000001', { title: 'Acme plan v2', language: null, version: { content: '# Plan 2', file: null, mediaType: null, size: 8, createdBy: 'agent' } });
+      await earlier.artifacts.create({ id: 'a000000002', sessionId, title: 'Screen', kind: 'image', language: null, version: { content: null, file: 'artifacts/a000000002/1.png', mediaType: 'image/png', size: 8, createdBy: 'agent' } });
+      await expect(earlier.artifacts.create({ id: 'a000000003', sessionId, title: 'x', kind: 'pdf', language: null, version: { content: null, file: 'artifacts/a000000003/1.pdf', mediaType: 'application/pdf', size: 8, createdBy: 'agent' } })).rejects.toThrow(/CHECK/);
+    } finally {
+      await earlier.close();
+    }
+    const before = new DatabaseSync(file);
+    const rowsBefore = before.prepare('SELECT rowid, * FROM artifacts_saved ORDER BY id').all();
+    const searchBefore = before.prepare("SELECT id, kind, ref, session_id, title, body, ts FROM search_items WHERE kind = 'artifact' ORDER BY ref").all();
+    before.close();
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 48).map((m) => m.version));
+      expect(store.db.prepare('SELECT rowid, * FROM artifacts_saved ORDER BY id').all()).toEqual(rowsBefore);
+      expect(store.db.prepare("SELECT id, kind, ref, session_id, title, body, ts FROM search_items WHERE kind = 'artifact' ORDER BY ref").all()).toEqual(searchBefore);
+      expect([(await store.artifacts.version('a000000001', 1))?.content, (await store.artifacts.version('a000000001', 2))?.content]).toEqual(['# Plan', '# Plan 2']);
+      expect(store.db.prepare('PRAGMA foreign_key_list(artifact_versions)').all().map((row) => (row as { table: string }).table)).toEqual(['artifacts_saved']);
+      // A pdf is allowed now; anything else still is not.
+      await store.artifacts.create({ id: 'a000000003', sessionId, title: 'Acme report', kind: 'pdf', language: null, version: { content: null, file: 'artifacts/a000000003/1.pdf', mediaType: 'application/pdf', size: 8, createdBy: 'agent' } });
+      await expect(store.artifacts.create({ id: 'a000000004', sessionId, title: 'x', kind: 'docx' as 'pdf', language: null, version: { content: null, file: 'f', mediaType: null, size: 1, createdBy: 'agent' } })).rejects.toThrow(/CHECK/);
+      // The search triggers again: a new artifact, a new version, a delete.
+      expect(store.db.prepare("SELECT title, body FROM search_items WHERE kind = 'artifact' AND ref = 'a000000003'").get()).toEqual({ title: 'Acme report', body: '' });
+      await store.artifacts.addVersion('a000000001', { title: 'Acme plan v3', language: null, version: { content: '# Plan 3', file: null, mediaType: null, size: 8, createdBy: 'developer' } });
+      expect(store.db.prepare("SELECT title, body FROM search_items WHERE kind = 'artifact' AND ref = 'a000000001'").get()).toEqual({ title: 'Acme plan v3', body: '# Plan 3' });
+      await store.artifacts.delete('a000000001');
+      expect(store.db.prepare("SELECT 1 FROM search_items WHERE kind = 'artifact' AND ref = 'a000000001'").get()).toBeUndefined();
+      expect(store.db.prepare("SELECT COUNT(*) AS n FROM artifact_versions WHERE artifact_id = 'a000000001'").get()).toEqual({ n: 0 });
+      // The session's delete still sets session_id NULL.
+      await store.sessions.delete(sessionId);
+      expect((await store.artifacts.get('a000000003'))?.sessionId).toBeNull();
     } finally {
       await store.close();
     }

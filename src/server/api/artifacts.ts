@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ArtifactKind, ArtifactListItem } from '../../core/api.ts';
-import { ARTIFACT_SAVE_BODY_MAX, artifactExtension, artifactFileName, isArtifactKind } from '../../core/artifacts.ts';
+import { ARTIFACT_PDF_TYPE, ARTIFACT_SAVE_BODY_MAX, artifactExtension, artifactFileName, isArtifactKind } from '../../core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../core/todos.ts';
 import { ArtifactError } from '../artifacts/service.ts';
 import type { ApiContext } from '../routes.ts';
@@ -28,9 +28,21 @@ export const HTML_ARTIFACT_CSP =
 export const STATIC_ARTIFACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox; frame-ancestors 'self'";
 
 /**
+ * D126: the CSP of a `pdf` version: only the app may frame it, nothing more. No
+ * `sandbox` (Chrome and Firefox refuse to start their PDF viewer in a sandboxed
+ * document) and no `default-src` / `object-src` (Chrome's viewer is an embed in a
+ * document the browser makes under this CSP, Firefox's is pdf.js under it: a
+ * fetch-directive could block them). A PDF never runs as a page: it is served as
+ * `application/pdf` with `nosniff`, so no browser reads it as HTML (the same
+ * reasoning as the D57 PDF attachments, which carry no CSP at all).
+ */
+export const PDF_ARTIFACT_CSP = "frame-ancestors 'self'";
+
+/**
  * D89 (`docs/security.md` → *Artifacts*): the headers a version is served with:
  * `html` as `text/html` under {@link HTML_ARTIFACT_CSP}; `svg` as `image/svg+xml`
- * and images as their sniffed type, under {@link STATIC_ARTIFACT_CSP}; every other
+ * and images as their sniffed type, under {@link STATIC_ARTIFACT_CSP}; D126: a
+ * PDF as `application/pdf` under {@link PDF_ARTIFACT_CSP}; every other
  * text as `text/plain` (never rendered by the browser). `?download` makes it an
  * attachment named after the title (`text/csv` for a CSV). Always `nosniff`.
  */
@@ -47,14 +59,16 @@ export function artifactHeaders(
         ? 'image/svg+xml'
         : artifact.kind === 'image'
           ? (mediaType ?? 'application/octet-stream')
-          : artifact.kind === 'csv' && download
+          : artifact.kind === 'pdf'
+            ? ARTIFACT_PDF_TYPE
+            : artifact.kind === 'csv' && download
             ? 'text/csv; charset=utf-8'
             : 'text/plain; charset=utf-8';
   return {
     'content-type': type,
     'content-disposition': contentDisposition(download ? 'attachment' : 'inline', name),
     'x-content-type-options': 'nosniff',
-    'content-security-policy': artifact.kind === 'html' ? HTML_ARTIFACT_CSP : STATIC_ARTIFACT_CSP,
+    'content-security-policy': artifact.kind === 'html' ? HTML_ARTIFACT_CSP : artifact.kind === 'pdf' ? PDF_ARTIFACT_CSP : STATIC_ARTIFACT_CSP,
     'cache-control': 'private, max-age=3600',
     'cross-origin-resource-policy': 'same-origin',
   };

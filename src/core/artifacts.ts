@@ -12,17 +12,17 @@
 import type { Artifact, ArtifactKind } from './api.ts';
 import type { TodoToolDefinition } from './todos.ts';
 
-/** D89: the kinds, in the order the UI lists them. */
-export const ARTIFACT_KINDS: readonly ArtifactKind[] = ['markdown', 'code', 'html', 'mermaid', 'svg', 'image', 'csv'];
+/** D89: the kinds, in the order the UI lists them (D126 added `pdf`). */
+export const ARTIFACT_KINDS: readonly ArtifactKind[] = ['markdown', 'code', 'html', 'mermaid', 'svg', 'image', 'pdf', 'csv'];
 
 /** D89: `true` for one of {@link ARTIFACT_KINDS}. */
 export function isArtifactKind(value: unknown): value is ArtifactKind {
   return typeof value === 'string' && (ARTIFACT_KINDS as readonly string[]).includes(value);
 }
 
-/** D89: `true` for a kind stored as text (every kind but `image`): it has a source view and a version diff. */
+/** D89: `true` for a kind stored as text (every kind but `image` and, D126, `pdf`): it has a source view and a version diff. */
 export function isTextKind(kind: ArtifactKind): boolean {
-  return kind !== 'image';
+  return kind !== 'image' && kind !== 'pdf';
 }
 
 /** D89: the largest text version (UTF-8 bytes): 2 MiB. */
@@ -30,6 +30,22 @@ export const ARTIFACT_TEXT_MAX = 2 * 1024 * 1024;
 
 /** D89: the largest image version (bytes): 10 MiB. */
 export const ARTIFACT_IMAGE_MAX = 10 * 1024 * 1024;
+
+/**
+ * D126: the largest PDF version (bytes): 25 MiB. Its own limit, not the image's
+ * (10 MiB): a report with screenshots or scans passes 10 MB easily, and the file is
+ * copied from `path`, never sent in a save's body.
+ */
+export const ARTIFACT_PDF_MAX = 25 * 1024 * 1024;
+
+/** D126: the media type of a `pdf` version. */
+export const ARTIFACT_PDF_TYPE = 'application/pdf';
+
+/** D126: `true` when the bytes start with the PDF header `%PDF-` (the check a `pdf` save makes). */
+export function isPdfBytes(bytes: Uint8Array): boolean {
+  const magic = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
+  return bytes.length >= magic.length && magic.every((byte, index) => bytes[index] === byte);
+}
 
 /** D89: the body limit of a save (`POST`): a 2 MiB text as JSON, escapes included, with room to spare. */
 export const ARTIFACT_SAVE_BODY_MAX = 3 * ARTIFACT_TEXT_MAX + 64 * 1024;
@@ -137,7 +153,7 @@ const CODE_EXTENSIONS: Readonly<Record<string, string>> = {
   terraform: 'tf',
 };
 
-/** D89: the file extension of a version: by kind; `code` by its language; `image` by its media type. */
+/** D89: the file extension of a version: by kind; `code` by its language; `image` by its media type; D126: `pdf` always `pdf`. */
 export function artifactExtension(kind: ArtifactKind, language: string | null = null, mediaType: string | null = null): string {
   switch (kind) {
     case 'markdown':
@@ -152,6 +168,8 @@ export function artifactExtension(kind: ArtifactKind, language: string | null = 
       return 'csv';
     case 'image':
       return (mediaType && ARTIFACT_IMAGE_TYPES[mediaType]) || 'bin';
+    case 'pdf':
+      return 'pdf';
     case 'code':
       return (language && CODE_EXTENSIONS[language]) || 'txt';
   }
@@ -337,6 +355,7 @@ export const KIND_TAGS: Readonly<Record<ArtifactKind, string>> = {
   mermaid: 'DIAGRAM',
   svg: 'SVG',
   image: 'IMAGE',
+  pdf: 'PDF',
   csv: 'TABLE',
 };
 
@@ -374,7 +393,7 @@ export const ARTIFACT_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'artifact_save',
     description:
-      "Save a deliverable the developer should see as an artifact in Switchboard (a report, plan, doc, diagram, mockup or table), shown in the session's Artifacts tab. Not for ordinary file edits. To revise one, pass its id: that adds a new version of the same artifact; do not create near-duplicates. Give content (the text), or path (a file in the session's working folders, copied now; required for image). Returns the artifact id and version.",
+      "Save a deliverable the developer should see as an artifact in Switchboard (a report, plan, doc, diagram, mockup or table), shown in the session's Artifacts tab. Not for ordinary file edits. To revise one, pass its id: that adds a new version of the same artifact; do not create near-duplicates. Give content (the text), or path (a file in the session's working folders, copied now; required for image and pdf). A PDF is saved as it is (kind pdf with its path): do not convert it to HTML or Markdown first. Returns the artifact id and version.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -382,10 +401,10 @@ export const ARTIFACT_TOOLS: readonly TodoToolDefinition[] = [
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'markdown (docs, reports, plans), code (one source file; give language), html (a self-contained page or mockup: it runs sandboxed, without network), mermaid (diagram source), svg, image (png / jpg / gif / webp, by path), csv (a table).',
+          description: 'markdown (docs, reports, plans), code (one source file; give language), html (a self-contained page or mockup: it runs sandboxed, without network), mermaid (diagram source), svg, image (png / jpg / gif / webp, by path), pdf (give path to a PDF file the session made), csv (a table).',
         },
         content: { type: 'string', description: `The artifact's text (at most ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB). Give content or path.` },
-        path: { type: 'string', description: `A file to copy in instead of content (absolute, or relative to the session's working folder; it must be inside the session's working folders). Text up to ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB, images up to ${ARTIFACT_IMAGE_MAX / 1024 / 1024} MB.` },
+        path: { type: 'string', description: `A file to copy in instead of content (absolute, or relative to the session's working folder; it must be inside the session's working folders). Text up to ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB, images up to ${ARTIFACT_IMAGE_MAX / 1024 / 1024} MB, PDFs up to ${ARTIFACT_PDF_MAX / 1024 / 1024} MB.` },
         language: { type: 'string', description: 'For kind code: the language (ts, python, sql, …).' },
         id: { ...ARTIFACT_ID, description: 'To save a new version of an existing artifact of this session: its id. Leave it out to create a new artifact.' },
       },

@@ -1226,7 +1226,7 @@ export function offeredDiffScope(scope: DiffScope, targets: { readonly worktrees
 }
 
 /** D89: what an artifact is (`docs/artifacts.md`). */
-export type ArtifactKind = 'markdown' | 'code' | 'html' | 'mermaid' | 'svg' | 'image' | 'csv';
+export type ArtifactKind = 'markdown' | 'code' | 'html' | 'mermaid' | 'svg' | 'image' | 'pdf' | 'csv';
 
 /** D89: who saved an artifact (or one of its versions): the session's agent (`artifact_save`) or the developer (Save as artifact). */
 export type ArtifactAuthor = 'agent' | 'developer';

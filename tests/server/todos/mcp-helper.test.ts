@@ -212,7 +212,7 @@ describe('MCP messages', () => {
     expect((await call('artifact_list', {})).content[0]?.text).toBe("This session's artifacts (1), newest first:\n[a1b2c3d4e5] Plan · markdown · v1 · 7 B");
     expect((await call('artifact_get', { id: 'a1b2c3d4e5', version: 1 })).content[0]?.text).toBe('[a1b2c3d4e5] Plan · markdown · v1 · 7 B\nShowing version 1 of 1 (7 B).\n\n# Plan\n');
     // What is missing is said and nothing is sent.
-    for (const args of [{ kind: 'markdown', content: 'x' }, { title: 'x', kind: 'pdf', content: 'x' }, { title: 'x', kind: 'markdown' }]) expect((await call('artifact_save', args)).isError, JSON.stringify(args)).toBe(true);
+    for (const args of [{ kind: 'markdown', content: 'x' }, { title: 'x', kind: 'docx', content: 'x' }, { title: 'x', kind: 'markdown' }]) expect((await call('artifact_save', args)).isError, JSON.stringify(args)).toBe(true);
     expect((await call('artifact_get', {})).isError).toBe(true);
     expect(calls).toEqual([
       ['POST', '/agent/v1/artifacts', { title: 'Plan', kind: 'markdown', content: '# Plan\n' }],

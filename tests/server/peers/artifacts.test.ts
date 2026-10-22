@@ -1,10 +1,14 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, Session, SessionDetail } from '../../../src/core/api.ts';
 import { remoteId } from '../../../src/core/peers.ts';
 import { peerAnswerKind } from '../../../src/core/peer-wire.ts';
+import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
+import { PDF_ARTIFACT_CSP } from '../../../src/server/api/artifacts.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
+import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
+import { minimalPdf } from '../../helpers/pdf.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, pairedNodes, waitFor } from '../../helpers/peers.ts';
 
@@ -95,5 +99,41 @@ describe('D89 · a peer\'s artifacts', () => {
     expect((await b.call('DELETE', `/api/sessions/${encodeURIComponent(id)}/artifacts/${pageId}`)).status).toBe(204);
     expect(((await a.call('GET', `/api/sessions/${localId}/artifacts`)).body as Artifact[]).map((x) => x.title)).toEqual(['Notes']);
     await waitFor('B\'s page follows the delete', async () => ((await b.call('GET', '/api/artifacts')).body as ArtifactListItem[]).length === 1);
+  }, 60_000);
+
+  it('D126: a PDF artifact on A is served to B through the proxy as application/pdf, inline, nosniff, its CSP kept', async () => {
+    const { a, b, aId } = await pairedNodes(tmp);
+    nodes.push(a, b);
+    const created = await a.call('POST', '/api/sessions', { name: 'pdf-on-a', task: 'Hi.', folder: a.folderId, worktrees: false, ultracode: false });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const session = created.body as Session;
+    const pdf = minimalPdf('Acme report on A');
+    await writeFile(path.join(session.cwd ?? a.repo!, 'report.pdf'), pdf);
+    // The agent of A's session saves it (artifact_save with a path).
+    const tokenA = (await readFile(path.join(a.dataDir, 'sb_token'), 'utf8')).trim();
+    const saved = await fetch(`${a.baseUrl}/agent/v1/artifacts`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${agentTokenFor(tokenA, session.id)}`, [AGENT_SESSION_HEADER]: session.id, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Acme report', kind: 'pdf', path: 'report.pdf' }),
+    });
+    const result = (await saved.json()) as ArtifactSaveResult;
+    expect(saved.status, JSON.stringify(result)).toBe(201);
+    const id = remoteId(aId, session.id);
+    const tokenB = (await readFile(path.join(b.dataDir, 'sb_token'), 'utf8')).trim();
+    const raw = await waitFor('B reads A\'s PDF', async () => {
+      const answer = await fetch(`${b.baseUrl}/api/sessions/${encodeURIComponent(id)}/artifacts/${result.artifact.id}/versions/1/raw`, { headers: { cookie: `sb_token=${tokenB}` } });
+      return answer.status === 200 ? answer : null;
+    });
+    expect(raw.headers.get('content-type')).toBe('application/pdf');
+    expect(raw.headers.get('content-disposition')).toMatch(/^inline; filename="Acme report.pdf"/);
+    expect(raw.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(raw.headers.get('content-security-policy')).toBe(PDF_ARTIFACT_CSP);
+    expect(Buffer.compare(Buffer.from(await raw.arrayBuffer()), pdf)).toBe(0);
+    // B's Artifacts page lists it under the PDFs filter.
+    const listed = await waitFor('B lists A\'s PDF', async () => {
+      const items = (await b.call('GET', '/api/artifacts?kind=pdf')).body as ArtifactListItem[];
+      return items.length === 1 ? items : null;
+    });
+    expect(listed[0]).toMatchObject({ kind: 'pdf', title: 'Acme report', sessionId: id, machine: { id: aId } });
   }, 60_000);
 });
