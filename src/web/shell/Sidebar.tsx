@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ProcessesFooterLine } from '../processes/ProcessList.tsx';
 import type { SystemInfo, Tool } from '../../core/api.ts';
 import { type PowerStatus, powerView } from '../../core/power.ts';
 import '../components/power.css';
@@ -429,6 +430,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         <MeterRow label="CPU" name="cpu" meter={cpuMeter(info)} />
         <MeterRow label="RAM" name="ram" meter={ramMeter(info)} />
         <PowerRow power={info?.power} />
+        {/* D127: "procs 4.5 GB" while sessions left processes running; opens Settings → Processes. */}
+        <ProcessesFooterLine totals={info?.trackedProcesses} />
         {/* D66: the usage grid (one line per account, the 5-hour and the weekly window) replaces D17's rows and D63's line. */}
         <div className="sb-usage" data-testid="usage-meters" data-tour="usage">
           <div className="sb-usage-head" data-testid="usage-grid-header" aria-hidden="true">

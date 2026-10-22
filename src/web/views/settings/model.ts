@@ -24,6 +24,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'ci', label: 'CI & pull requests' },
   // D62 (docs/providers.md): the CLIs sessions run on; after the prototype's seven.
   { key: 'clis', label: 'CLIs' },
+  // D127 (docs/processes.md): what sessions left running (build servers, test hosts, dev servers) and the idle stop.
+  { key: 'processes', label: 'Processes' },
   // D63 (docs/accounts.md): more than one login per CLI, switched automatically on usage limits.
   { key: 'accounts', label: 'Accounts' },
   // D48 (docs/peers.md): paired machines; after the prototype's seven.

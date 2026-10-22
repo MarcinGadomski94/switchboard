@@ -18,6 +18,7 @@ import { SessionPlanTab } from '../../plans/PlansNav.tsx';
 // Project memory (D107) hook: the session's "Memory: N entries" line (docs/memory-removal.md).
 import { SessionMemoryLine } from '../../memory/MemoryNav.tsx';
 import { isChat } from '../../../core/chats.ts';
+import { SessionProcessesSection } from '../../processes/ProcessList.tsx';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
 const finishedExpanded = new Map<string, boolean>();
@@ -151,6 +152,8 @@ export function RightPanel({
               </button>
             ) : null}
           </div>
+          {/* D127: what the session's agent left running (build servers, test hosts, dev servers), with Stop / Keep; nothing while it has none. */}
+          <SessionProcessesSection sessionId={sessionId} />
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
           {/* D106: a chat is never continued in a terminal (its CLI could leave plan mode there). */}
