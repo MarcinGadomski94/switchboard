@@ -18,6 +18,13 @@ export interface InlineTitleProps {
   readonly as?: 'div' | 'span';
   /** The rename was saved (the server's answer). */
   readonly onRenamed?: (session: Session) => void;
+  /**
+   * D106 follow-up (rename a chat): a menu's **Rename…** opens the editor too.
+   * Each new non-zero value opens it (a counter the menu bumps); `0` / absent: only the gesture.
+   */
+  readonly editRequest?: number;
+  /** The field's accessible name (default *Session title*; a chat's is *Chat title*). */
+  readonly fieldLabel?: string;
 }
 
 /**
@@ -29,7 +36,7 @@ export interface InlineTitleProps {
  * the field stays open. Rules: `title-edit.ts`. Inside a link (the sidebar row)
  * clicks in the field do not navigate.
  */
-export function InlineTitle({ session, gesture, className, testId, as = 'span', onRenamed }: InlineTitleProps) {
+export function InlineTitle({ session, gesture, className, testId, as = 'span', onRenamed, editRequest = 0, fieldLabel = 'Session title' }: InlineTitleProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,12 +47,23 @@ export function InlineTitle({ session, gesture, className, testId, as = 'span', 
   const shownByProps = displayTitle(session);
   useEffect(() => setSaved(null), [shownByProps]);
 
-  const open = (event: MouseEvent): void => {
-    event.preventDefault();
+  const begin = (): void => {
     closing.current = false;
     setError(null);
     setDraft(saved ?? titleDraft(session));
   };
+  const open = (event: MouseEvent): void => {
+    event.preventDefault();
+    begin();
+  };
+  // A menu's Rename… (a new request opens the editor; the first render's value does not).
+  const seenRequest = useRef(editRequest);
+  useEffect(() => {
+    if (editRequest === seenRequest.current) return;
+    seenRequest.current = editRequest;
+    if (editRequest !== 0) begin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new request opens it
+  }, [editRequest]);
   const close = (): void => {
     closing.current = true;
     setDraft(null);
@@ -99,7 +117,7 @@ export function InlineTitle({ session, gesture, className, testId, as = 'span', 
       <input
         className="sb-title-input"
         data-testid="title-input"
-        aria-label="Session title"
+        aria-label={fieldLabel}
         aria-invalid={error ? true : undefined}
         aria-busy={busy || undefined}
         value={draft}
