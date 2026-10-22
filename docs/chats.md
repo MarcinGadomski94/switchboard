@@ -44,16 +44,27 @@ D100's team charter never applies (a chat is never a member). The switchboard MC
 
 ## Sidebar
 
-The **CHATS** section sits above SESSIONS (after the Team entry) and **always shows** (ruling 2026-10-14), also with no chats: its header with a ▾ / ▸ toggle, the count and **+ New chat**, then one row per open chat (newest first): dot, title, age, and *plan mode* (· *N folders*) or *continued as <session>*; the row's × closes it. SESSIONS never lists chats, nor does any folder or pin of the sidebar layout. The list is at most a third of the window high and scrolls.
+The **CHATS** section sits above SESSIONS (after the Team entry) and **always shows** (ruling 2026-10-14), also with no chats: its header with a ▾ / ▸ toggle, the count and **+ New chat**, then one row per open chat (newest first): dot, title, age, and *plan mode* (· *N folders*) or *continued as <session>*; the row's × closes it and its **⋯** has **Rename…** (on a touch screen also Close, as the × needs a hover); a double-click on the title renames it too (see *Rename*). SESSIONS never lists chats, nor does any folder or pin of the sidebar layout. The list is at most a third of the window high and scrolls.
 
 **Folding:** the CHATS and SESSIONS headers each fold their list (▾ / ▸, the count stays), kept per install as `ui.chatsCollapsed` / `ui.sessionsCollapsed` like D101's TOOLS, default expanded (`docs/sidebar.md` → *SESSIONS and CHATS (D106)*). The visual oracle changes by design: `docs/visual/README.md` → *D106*.
 
 ## The chat's header
 
-- The title, then a **chat** badge.
-- Actions: the account and model pickers, the locked **🔒 Plan mode** chip, Close / Reopen, Pause / Resume, and a **⋯** with **Continue as session…**, **Look at folders…** (disabled while closed) and **Delete chat…** (asks first).
+- The title (a click renames it, see *Rename*), then a **chat** badge.
+- Actions: the account and model pickers, the locked **🔒 Plan mode** chip, Close / Reopen, Pause / Resume, and a **⋯** with **Rename…**, **Continue as session…**, **Look at folders…** (disabled while closed) and **Delete chat…** (asks first).
 - Not shown for a chat: the CLI switcher, Remote, take-over, Undo last turn, Continue in terminal, the Diff tab (the tabs are Chat · Timeline · Artifacts), the right panel's Terminal handoff card and Plans tab.
 - The root line reads `<scratch folder> · chat scratch folder`.
+
+## Rename
+
+Developer request 2026-10-22: "also add a possibility to rename the chats". A chat is a session of kind `chat`, so it is renamed **exactly like a session (D22)**: the same `InlineTitle` editor and the same route, nothing new on the server.
+
+- **Where:** the sidebar row's ⋯ → **Rename…** (`sidebar-chat-menu-rename`) or a double-click on the row's title; the chat header's title (a click) or its ⋯ → **Rename…** (`chat-rename`). The ⋯ items make it reachable from the keyboard and on a phone (the drawer's row ⋯ shows without a hover there).
+- **Editing:** the title turns into a field with the text selected (accessible name *Chat title*). Enter or leaving the field saves, Esc cancels; the text is trimmed; an emptied field clears the title so the chat shows its own name again (the session rule); over 80 characters is refused by the server and shown under the field (`TITLE_RULE`).
+- **Saved:** `PUT /api/sessions/{id}/title`, which publishes `sessionUpdated` (other tabs, phones and paired machines update). A paired machine's chat is renamed on its own machine: the route is on `PEER_API_ALLOW` and forwarded like a session's.
+- **It sticks:** the first-message title is written once when the chat starts (`chatTitleFromMessage`); nothing writes `title` afterwards (the CLI's own `ai-title` is never copied into it), so a rename is kept over later turns, restarts and look-at changes. No "set by the developer" flag is needed.
+- **Continue as session:** the new session has its own title (the form's field, as before); the links read the chat's current title: the form's *Continues the chat “<title>”*, the new session's **Continued from the chat <title>** divider and `continuedFrom.title`.
+- **Search (D97):** the title is in the index through the sessions trigger (0042, `UPDATE OF title`), so the new title is found at once.
 
 ## Continue as session
 
@@ -84,8 +95,9 @@ A one-step mini-tour **Chats** (`chats`, D106) under version **1.19.0** (`V1_19`
 
 ## Tests
 
-- `tests/server/chats/chats.test.ts` (fake-claude, fake-codex, fake-opencode, the real routes): no shell on any CLI (Claude Code's `--disallowedTools` names Bash and the other shell tools, and a `Bash` call is never made; Codex's app-server starts with its shell features off; OpenCode's bash denied); plan mode in the scratch folder with the chat instruction and no AGENTS.md / router questions; edits not offered (fake-claude honours `--disallowedTools Write`) and permission requests refused; plan mode set back; terminal and Remote refused; look-at folders (`--add-dir`, restart); the MCP flags; the title; excluded from Team suggestions, Plans and Solutions; delete removes the scratch folder; Continue as session; route classification; Codex's read-only sandbox; OpenCode's rules and plan agent.
+- `tests/server/chats/chats.test.ts` (fake-claude, fake-codex, fake-opencode, the real routes): no shell on any CLI (Claude Code's `--disallowedTools` names Bash and the other shell tools, and a `Bash` call is never made; Codex's app-server starts with its shell features off; OpenCode's bash denied); plan mode in the scratch folder with the chat instruction and no AGENTS.md / router questions; edits not offered (fake-claude honours `--disallowedTools Write`) and permission requests refused; plan mode set back; terminal and Remote refused; look-at folders (`--add-dir`, restart); the MCP flags; the title; excluded from Team suggestions, Plans and Solutions; delete removes the scratch folder; Continue as session; rename (the title route, `sessionUpdated`, kept over later turns and a restart, found by search, the continued session's link); route classification; Codex's read-only sandbox; OpenCode's rules and plan agent.
+- `tests/server/peers/proxy.test.ts`: a paired machine's chat renamed from the other machine.
 - `tests/server/db/migrate.test.ts` (0044), `tests/server/db/repos.test.ts` (the defaults).
-- `tests/e2e/chats.spec.ts`: New chat from the sidebar and from ⌘K, the CHATS section (also with no chats), the badge and the locked hint, no Diff tab, Continue as session, folding SESSIONS and CHATS (kept across a reload; ⌘K → Chats unfolds) (`CHATS_SHOTS=<dir>` writes screenshots).
+- `tests/e2e/chats.spec.ts`: New chat from the sidebar and from ⌘K, the CHATS section (also with no chats), the badge and the locked hint, no Diff tab, Continue as session, folding SESSIONS and CHATS (kept across a reload; ⌘K → Chats unfolds), rename from the row ⋯ (keyboard), a double-click and the header (click and ⋯), Esc, an emptied field, after a reload, and at 360 px on a touch screen (`CHATS_SHOTS=<dir>` writes screenshots).
 - `tests/web/nav-grid.test.ts`: the three section states' store (`ui.sessionsCollapsed`, `ui.chatsCollapsed`).
 - The shell / full-pass visual specs: `docs/visual/README.md` → *D106*.
