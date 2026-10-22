@@ -15,7 +15,8 @@
  * D89's `artifact_save`, `artifact_list`, `artifact_get` (`/agent/v1/artifacts`), and
  * D94's `loop_create`, `loop_list`, `loop_update`, `loop_pause`, `loop_resume`,
  * `loop_cancel` (`/agent/v1/loops`: loops Switchboard fires itself), and D124's `turn_status`
- * (`/agent/v1/turn-status`: how the turn ends, done or waiting for the developer).
+ * (`/agent/v1/turn-status`: how the turn ends, done or waiting for the developer), and D127's
+ * `process_keep` (`/agent/v1/processes/keep`: a process the developer needs kept running).
  * Names, descriptions, annotations and the instructions come from
  * `src/core/todos.ts` ({@link TODO_TOOLS}) and `src/core/artifacts.ts`
  * ({@link ARTIFACT_TOOLS}); the zod input schemas here carry the
@@ -32,11 +33,12 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 // Team (D100), Plans (D99) and Project memory (D107) hooks: their tools, probed and kept in step live (docs/mcp.md → Tools that appear without a restart).
 import { FeatureTools, ListedToolsTransport } from './sb-feature-tools.ts';
-import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
+import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionProcess, SessionTodo, SessionTodoList } from '../core/api.ts';
 import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
 import { TURN_ASK_MAX, TURN_STATUSES } from '../core/derive/turn-status.ts';
 import { TURN_STATUS_TOOL, turnStatusAnswer } from '../core/turn-status.ts';
+import { PROCESS_KEEP_REASON_MAX, PROCESS_KEEP_TOOL, processKeepAnswer } from '../core/process-keep.ts';
 import {
   AGENT_MCP_INSTRUCTIONS,
   AGENT_MCP_MARKER,
@@ -415,9 +417,27 @@ export async function turnStatus(api: AgentApi, input: ToolInput): Promise<CallT
   });
 }
 
-/** Tool `name`'s definition in {@link TODO_TOOLS}, (D89) {@link ARTIFACT_TOOLS}, (D94) {@link LOOP_TOOLS} or (D124) {@link TURN_STATUS_TOOL}. */
+// ── D127: a process the agent leaves for the developer ──────────────────
+
+/** D127 · `process_keep`: keep one of the session's processes running (by pid or a part of its command line), or hand it back. */
+export async function processKeep(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const keep = input['keep'];
+  if (typeof keep !== 'boolean') return textResult('Give keep: true to keep the process running, false to hand it back.', true);
+  const pid = typeof input['pid'] === 'number' && Number.isInteger(input['pid']) && input['pid'] > 0 ? input['pid'] : null;
+  const match = typeof input['match'] === 'string' ? input['match'].trim() : '';
+  if (pid === null && match === '') return textResult('Give pid (the process id) or match (part of its command line).', true);
+  const reason = typeof input['reason'] === 'string' ? input['reason'].trim() : '';
+  if (reason.length > PROCESS_KEEP_REASON_MAX) return textResult(`Keep reason to one line of at most ${PROCESS_KEEP_REASON_MAX} characters.`, true);
+  return request(api, 'POST', '/agent/v1/processes/keep', { keep, ...(pid !== null ? { pid } : { match }), ...(reason !== '' ? { reason } : {}) }, (body) => {
+    const processes = record(body)['processes'];
+    if (!Array.isArray(processes)) return textResult('Switchboard did not answer with the processes.', true);
+    return textResult(processKeepAnswer(processes as SessionProcess[], keep));
+  });
+}
+
+/** Tool `name`'s definition in {@link TODO_TOOLS}, (D89) {@link ARTIFACT_TOOLS}, (D94) {@link LOOP_TOOLS}, (D124) {@link TURN_STATUS_TOOL} or (D127) {@link PROCESS_KEEP_TOOL}. */
 function tool(name: string): TodoToolDefinition {
-  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, TURN_STATUS_TOOL].find((candidate) => candidate.name === name);
+  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS, TURN_STATUS_TOOL, PROCESS_KEEP_TOOL].find((candidate) => candidate.name === name);
   if (!found) throw new Error(`no tool ${name} in TODO_TOOLS / ARTIFACT_TOOLS`);
   return found;
 }
@@ -485,7 +505,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
 
 /**
  * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
- * {@link AGENT_MCP_INSTRUCTIONS}) and its seventeen tools (D75: `todo_start`; D89: the three artifact tools; D94: the six loop tools; D124: `turn_status`), calling `api`. Connect it to a
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its eighteen tools (D75: `todo_start`; D89: the three artifact tools; D94: the six loop tools; D124: `turn_status`; D127: `process_keep`), calling `api`. Connect it to a
  * transport (a `StdioServerTransport` in the helper process).
  */
 export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
@@ -658,6 +678,24 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       annotations: { title: turn.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => turnStatus(api, input)),
+  );
+
+  // D127: keep a process the developer needs running (never stopped automatically), or hand it back.
+  const keep = tool('process_keep');
+  server.registerTool(
+    'process_keep',
+    {
+      title: keep.annotations.title,
+      description: keep.description,
+      inputSchema: inputSchema('process_keep', {
+        pid: z.int().min(1).max(4_294_967_295).describe(about('process_keep', 'pid')).optional(),
+        match: z.string().describe(about('process_keep', 'match')).optional(),
+        keep: z.boolean().describe(about('process_keep', 'keep')).optional(),
+        reason: z.string().max(PROCESS_KEEP_REASON_MAX).describe(about('process_keep', 'reason')).optional(),
+      }),
+      annotations: { title: keep.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => processKeep(api, input)),
   );
 
   return server;
