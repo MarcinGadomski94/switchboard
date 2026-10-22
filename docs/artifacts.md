@@ -38,7 +38,9 @@ the server's `instructions` and the standing instruction (below) say the same.
 relative to the session's working folder, and (symbolic links resolved) inside
 the session's folder, its working folder or one of its worktrees; anything else
 is refused. The helper never reads the file: Switchboard does. An `image` needs a
-`path` (a png, jpg, gif or webp, recognised by its bytes).
+`path` (a png, jpg, gif or webp, recognised by its bytes); so does a `pdf` (D126:
+a file that starts with `%PDF-`). The tool's description tells the agent that a
+PDF is saved as it is, so it no longer converts one to an HTML page.
 
 The agent routes are `GET /agent/v1/artifacts`, `POST /agent/v1/artifacts` and
 `GET /agent/v1/artifacts/{id}[?version=n]`, behind the session's agent token
@@ -76,11 +78,15 @@ characters (the new default is 731).
 | `mermaid` | text | drawn by Mermaid inside a sandboxed frame; source if it cannot be parsed (*Mermaid*, below) |
 | `svg` | text | as an `<img>` of the served file, never inline in the page |
 | `image` | file | as an `<img>` of the served file |
+| `pdf` (D126) | file | in the browser's own PDF viewer; on phones and touch screens an **Open PDF** card (*PDF*, below) |
 | `csv` | text | as a table, the first 500 rows (the header row included) |
 
 - **Title**: one line, at most 120 characters. **Language**: a short name
   (`ts`, `c++`, `f#`), lower-cased.
-- **Size**: text up to 2 MB (UTF-8), images up to 10 MB. A save's body is up to
+- **Size**: text up to 2 MB (UTF-8), images up to 10 MB, PDFs up to 25 MB (D126:
+  their own limit, `ARTIFACT_PDF_MAX`, not the image one: a report with
+  screenshots or scans passes 10 MB easily, and a PDF only ever comes from
+  `path`, never in a save's body). A save's body is up to
   about 6 MB of JSON (escapes included).
 - **Versions** are numbered from 1; a save with `id` adds the next one (its title
   and language may change, its kind may not). At most **100 versions** per
@@ -95,8 +101,10 @@ characters (the new default is 731).
 Migration **0039** (`docs/database.md`): `artifacts_saved` (id, session id, title,
 kind, language, created by, created / updated) and `artifact_versions` (n, the
 text **or** a file, the image's media type, size, created by, created at).
-Images live in the data folder as `artifacts/<id>/<n>.<ext>` (folder 0700, files
-0600). Ids are 10 random hex characters. The old derived `artifacts` table (0001)
+Images and PDFs live in the data folder as `artifacts/<id>/<n>.<ext>` (folder 0700, files
+0600; a PDF's media type is `application/pdf`). Migration **0048** (D126) rebuilt
+`artifacts_saved` to let its `kind` CHECK accept `pdf` (SQLite cannot change a
+CHECK in place); every row, rowid and search entry was kept. Ids are 10 random hex characters. The old derived `artifacts` table (0001)
 stays in the schema, unused: nothing writes or reads it any more (conservative:
 no migration drops it).
 
@@ -118,9 +126,10 @@ again** (any other failure: the server's message, and Try again).
 The viewer: the title; kind, version, who saved it, when, size; **Version**
 (Latest, or any version); **Rendered / Source / Compare** (text kinds; Compare
 once there are two versions: a line diff of the version on screen against
-another, `+added −removed`); **Copy** (the text), **Download** (`?download`,
+another, `+added −removed`; never for an image or a PDF, whose new version is a
+new file); **Copy** (the text), **Download** (`?download`,
 named after the title with the kind's extension: `.md`, `.html`, `.mmd`,
-`.svg`, `.csv`, the language's for code), **Full screen** (Esc closes),
+`.svg`, `.csv`, `.pdf`, the language's for code), **Open in new tab** (a PDF only), **Full screen** (Esc closes),
 **Delete** (asks first).
 
 ### Mermaid
@@ -130,6 +139,23 @@ named after the title with the kind's extension: `.md`, `.html`, `.mmd`,
 - A source Mermaid cannot parse shows as its source with the error's first line, inside the same frame; Source shows the text; Download stays the `.mmd`.
 - **Release size:** `dist/web` grows by 5.49 MB (`mermaid.min.js`), about **+1.57 MB** in the `.tar.gz` (gzip -6); nothing is added to the installed `node_modules` (the updater installs with `npm ci --omit=dev`).
 - A build without the bundle (tests that run without `dist/web`) shows the source with "this build has no Mermaid renderer".
+
+### PDF (D126)
+- **Desktop:** the browser's own PDF viewer, an `<object type="application/pdf">`
+  of the version's raw route (not sandboxed: a sandboxed document stops Chrome's
+  and Firefox's viewers). No PDF library is bundled (no pdf.js): every desktop
+  browser has a viewer, and the phones are handled below.
+- **Phones and touch screens** (`(max-width: 767px)` or `(pointer: coarse)`): iOS
+  Safari draws only the first page of an embedded PDF, so the viewer shows a
+  card with the title and **Open PDF**, which opens the raw route in a new tab,
+  where the phone's own viewer shows every page. A first-page preview would need
+  pdf.js, so there is none. The same card is the `<object>`'s fallback in a
+  browser without a PDF viewer.
+- **Served** as `application/pdf`, `inline` (Download: `attachment`, `.pdf`),
+  `X-Content-Type-Options: nosniff`, and `Content-Security-Policy: frame-ancestors
+  'self'` only (`docs/security.md` → *Artifacts*).
+- **Search** (D97) indexes a PDF's title, like an image's; no text is extracted
+  from the file (that would need a PDF parser).
 
 ### HTML
 An `html` version runs in `<iframe sandbox="allow-scripts">` (never
@@ -143,7 +169,8 @@ Details: `docs/security.md` → *Artifacts*.
 session's artifacts, this machine's and the paired machines', newest first:
 **Kind · Title · Session · Versions · Saved by · Age**; a paired machine's carry
 its machine tag, another folder's the folder tag (D14). Filters: **All · Docs ·
-Code · HTML · Diagrams · Images · Tables** (`kind=`, kinds separated by commas)
+Code · HTML · Diagrams · Images · PDFs · Tables** (D126: PDFs have their own chip;
+grouping them with Images would hide them under a word that does not say PDF) (`kind=`, kinds separated by commas)
 and a session picker (`session=`); search (`q`) matches the title, kind,
 language, session name and title, and machine. `n of m` counts what is shown of
 everything. A row opens its session's Artifacts tab on that artifact. Live on
@@ -195,7 +222,8 @@ everything. A row opens its session's Artifacts tab on that artifact. Live on
 ## Paired machines and devices
 - **Peers (D48):** a paired machine's session's artifacts go through the proxy
   like every session route: the list, one artifact, a version's bytes (passed on
-  as bytes with their serving headers, the CSP included), Save as artifact,
+  as bytes with their serving headers, the CSP included: a PDF arrives as
+`application/pdf`, inline, `nosniff`, so it shows in the viewer there too), Save as artifact,
   Delete; D111: Delete of one whose session is gone there
   (`DELETE /api/artifacts/{artifactId}` on `PEER_API_ALLOW`). Their ids come back namespaced (`r~<machine>~<id>` session ids; the
   artifact ids stay). The Artifacts page lists the paired machines' artifacts as
