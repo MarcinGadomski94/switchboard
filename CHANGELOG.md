@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.34.0 (2026-10-22)
+
+### Sessions
+- **Control over the processes agents leave running:** Switchboard tracks the build servers, test hosts and dev servers each session starts (even after they detach), lists them in the session's Processes section and in Settings → Processes (also a paired machine's), with Stop and Keep, and a "procs" total in the sidebar footer. A session's leftovers are stopped when it is closed or has been idle for 10 minutes (adjustable), never while it works and never a kept one; agents can keep a dev server for you with the new `process_keep` tool. Agents' .NET builds no longer leave MSBuild nodes or the compiler server behind (`MSBUILDDISABLENODEREUSE`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`, `UseSharedCompilation=false`, for Switchboard's own agents only).
+- **Rename chats** from their sidebar row (⋯ → Rename…, or double-click) or their header.
+
+### Docs
+- **A shorter, current README** with install commands that paste cleanly (no comments: macOS zsh ran them as commands); the longer setup and development notes moved to docs/setup.md.
+
 ## 1.33.0 (2026-10-22)
 
 ### Artifacts
