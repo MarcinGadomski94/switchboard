@@ -70,6 +70,8 @@ describe('SessionSupervisor · start (argv, env, cwd, first message)', () => {
     expect(spawned?.cwd).toBe(w.workspace);
     expect(spawned?.claudeEnvKeys).toEqual(['CLAUDE_CONFIG_DIR', 'CLAUDE_UNRELATED']);
     expect(spawned?.env?.['CLAUDE_CONFIG_DIR']).toBe(w.configDir);
+    // D127: the session's marker (its processes are tracked by it) and the .NET build defaults (no lingering build servers).
+    expect(spawned?.env).toMatchObject({ SWITCHBOARD_SESSION: session.id, MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_USE_MSBUILD_SERVER: '0', UseSharedCompilation: 'false' });
     const stdin = await stdinOf(w.logFile, spawned?.pid ?? -1);
     expect(stdin[0]).toEqual({ type: 'user', message: { role: 'user', content: newSession().task } });
 

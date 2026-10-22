@@ -18,6 +18,7 @@ import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import { CleanupSection } from './settings/CleanupSection.tsx';
 import { TutorialSection } from './settings/TutorialSection.tsx';
 import { CiSection } from './settings/CiSection.tsx';
+import { ProcessesSection } from './settings/ProcessesSection.tsx';
 // Team (D100) hook and Plans (D99) hook: the shared Experimental section (docs/team-removal.md, docs/plans-removal.md).
 import { ExperimentalSection } from './settings/ExperimentalSection.tsx';
 import './settings.css';
@@ -42,6 +43,8 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
       return <CiSection settings={settings} save={save} />;
     case 'clis':
       return <ClisSection />;
+    case 'processes':
+      return <ProcessesSection settings={settings} save={save} />;
     case 'accounts':
       return <AccountsSection />;
     case 'machines':

@@ -1,0 +1,184 @@
+/* D127 (docs/processes.md): the Processes section of the session panel, Settings → Processes and the footer line. */
+
+.sb-procs-section {
+  padding-bottom: 6px;
+}
+
+.sb-procs {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-proc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-proc[data-keep='true'] .sb-proc-name::after {
+  content: ' · kept';
+  color: var(--status-done);
+}
+
+.sb-proc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sb-proc-kind {
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  color: var(--muted-1);
+}
+
+.sb-proc[data-kind='build-server'] .sb-proc-kind {
+  color: var(--status-need);
+}
+
+.sb-proc[data-kind='test-host'] .sb-proc-kind {
+  color: var(--status-run);
+}
+
+.sb-proc[data-kind='dev-server'] .sb-proc-kind {
+  color: var(--status-done);
+}
+
+.sb-proc-ram,
+.sb-proc-age {
+  color: var(--muted-1);
+  text-align: right;
+  min-width: 3.5em;
+}
+
+.sb-proc-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sb-proc-btn {
+  font: 500 11px var(--font-ui);
+  padding: 2px 7px;
+  border: 1px solid var(--border-control);
+  border-radius: 5px;
+  color: var(--text-2);
+}
+
+.sb-proc-btn:hover:not(:disabled) {
+  background: var(--bg-selected-row);
+}
+
+.sb-proc-btn[aria-pressed='true'] {
+  border-color: var(--status-done);
+  color: var(--status-done);
+}
+
+.sb-proc-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-procs-note,
+.sb-proc-error {
+  padding: 4px 16px 0;
+  font: 400 11.5px var(--font-ui);
+  color: var(--muted-2);
+}
+
+.sb-proc-error {
+  color: var(--status-fail);
+}
+
+/* Settings → Processes. */
+.sb-procs-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.sb-procs-overview .sb-procs,
+.sb-procs-overview .sb-procs-note,
+.sb-procs-overview .sb-proc-error {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sb-procs-total {
+  font: 500 12.5px var(--font-ui);
+  color: var(--text-2);
+}
+
+.sb-procs-group {
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  background: var(--bg-card);
+  padding: 8px 12px 10px;
+}
+
+.sb-procs-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.sb-procs-group-title {
+  font: 500 13px var(--font-ui);
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb-procs-group-ram {
+  margin-left: auto;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-1);
+}
+
+/* The sidebar footer's line ("procs 4.5 GB"). */
+.sb-procs-footer {
+  display: block;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-procs-footer:hover {
+  color: var(--text-2);
+}
+
+/* Phones: the age folds away; the buttons keep a 44 px touch area. */
+@media (max-width: 767px) {
+  .sb-proc {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+  }
+
+  .sb-proc-age {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb-proc-btn {
+    min-height: 32px;
+    padding: 4px 10px;
+  }
+}

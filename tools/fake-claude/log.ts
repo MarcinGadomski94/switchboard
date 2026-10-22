@@ -1,5 +1,8 @@
 import { appendFile } from 'node:fs/promises';
 
+/** D127: the process tracker's marker and the .NET build defaults Switchboard sets (never secrets): logged with their values. */
+const LOGGED_KEYS = new Set(['SWITCHBOARD_SESSION', 'MSBUILDDISABLENODEREUSE', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'UseSharedCompilation']);
+
 /**
  * `FAKE_CLAUDE_LOG=<file>`: appends one JSON line per event so tests can assert
  * what the supervisor sent. `{"kind":"argv",pid,cwd,argv,env,claudeEnvKeys}` at
@@ -27,15 +30,16 @@ export class Logger {
   }
 
   /**
-   * Logs argv and cwd. `env` has the values of `CLAUDE_CONFIG_DIR` and every
-   * `FAKE_CLAUDE_*`; `claudeEnvKeys` lists the names (only) of every `CLAUDE*`
+   * Logs argv and cwd. `env` has the values of `CLAUDE_CONFIG_DIR`, every
+   * `FAKE_CLAUDE_*` and (D127) `SWITCHBOARD_SESSION`, `MSBUILDDISABLENODEREUSE`,
+   * `DOTNET_CLI_USE_MSBUILD_SERVER`, `UseSharedCompilation`; `claudeEnvKeys` lists the names (only) of every `CLAUDE*`
    * variable, so a test can check that `CLAUDECODE` / `CLAUDE_CODE_*` were dropped
    * without secrets landing in the log.
    */
   argv(argv: readonly string[], cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
     const logged: Record<string, string> = {};
     for (const [key, value] of Object.entries(env)) {
-      if (value !== undefined && (key === 'CLAUDE_CONFIG_DIR' || key.startsWith('FAKE_CLAUDE_'))) logged[key] = value;
+      if (value !== undefined && (key === 'CLAUDE_CONFIG_DIR' || key.startsWith('FAKE_CLAUDE_') || LOGGED_KEYS.has(key))) logged[key] = value;
     }
     const claudeEnvKeys = Object.keys(env).filter((key) => key.startsWith('CLAUDE')).sort();
     return this.append({ kind: 'argv', cwd, argv, env: logged, claudeEnvKeys });

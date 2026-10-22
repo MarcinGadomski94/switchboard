@@ -2043,3 +2043,37 @@ GET /api/system
 GET /api/machines
 → 200 { "self": { "…": "…" }, "machines": [{ "id": "k3v7q2m9x4ab", "name": "acme-desktop", "state": "online", "power": { "kind": "estimated", "watts": 210, "parts": { "gpu": 120, "gpuCount": 1, "cpu": 50, "cpuPct": 35, "base": 40 }, "at": "2026-10-21T10:00:00.000Z" }, "…": "…" }], "…": "…" }
 ```
+
+## Session processes (D127, 2026-10-22, additive)
+Developer request D127 (`docs/decisions.md`; details `docs/processes.md`): the processes a session's agent leaves running (build servers, test hosts, dev servers) are tracked per session, listed, stopped by the developer, kept, and stopped automatically when the session is closed or idle. Types in `src/core/api.ts`: `SessionProcess`, `SessionProcessKind`, `SessionProcesses`, `ProcessTracking`, `ProcessesOverview`, `ProcessKeepInput`, `TrackedProcessTotals`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/processes[?fresh=1] | — | 200 `ProcessesOverview`: this machine's sessions with processes and (not for a peer's own request) each online paired machine's, their ids namespaced (`r~<machine>~<id>`) with `machine`; `unavailable` names a machine that could not be asked |
+| GET | /api/sessions/{id}/processes[?fresh=1] | — | 200 `SessionProcesses` · 404 `not-found` |
+| POST | /api/sessions/{id}/processes/{pid}/stop | — | 200 `SessionProcesses` (after the stop: the process and what runs under it; noted on the timeline) · 404 `not-found` (not one of the session's processes now) · 422 `invalid` (not a pid) · 503 `unavailable` (the processes could not be listed) |
+| PUT | /api/sessions/{id}/processes/{pid}/keep | `ProcessKeepInput` `{ keep: boolean, reason? }` (reason ≤ 200 characters) | 200 `SessionProcesses` · 404 `not-found` · 422 `invalid` |
+| POST | /agent/v1/processes/keep | `{ pid? , match?, keep: boolean, reason? }` (pid or match) | 200 `{ processes: SessionProcess[], keep }` (the ones changed) · 401 (another session's agent token) · 404 `not-found` (nothing of this session matched; the message lists its processes) · 422 `invalid` |
+
+- `?fresh=1` samples first when the last sample is older than 2 s; otherwise the last sample (every 30 s) answers.
+- **`SessionProcess`**: `{ pid, ppid, name, kind: "build-server" | "test-host" | "dev-server" | "other", rssBytes, startedAt, cpuPct (null on Windows), command (home as ~, ≤ 300 characters), keep, keptBy: "developer" | "agent" | null, keepReason }`.
+- **`SessionProcesses`**: `{ sessionId, title, processes (most memory first), rssBytes, tracking: "marker" | "tree" | "none", working, closed, stopsAt (ISO, when the idle stop takes the processes not kept; null while working, with the delay off, or nothing to stop), sampledAt, machine? }`.
+- **`ProcessesOverview`**: `{ sessions, count, rssBytes, idleStopMinutes, sampledAt, unavailable? }`.
+- **`SystemInfo.trackedProcesses`** (additive, `GET /api/system` and the `system` event): `{ count, rssBytes }`, this machine's tracked processes (the sidebar footer); omitted before the first sample.
+- **Settings** (additive): `processes.idleStopMinutes` (editable), a whole number 0–1440, default 10; 0 = never for being idle.
+- **Events:** a stop records a lifecycle event (kind `text`), `{ type: "lifecycle", action: "processes-stopped", message, reason: "idle" | "closed" | "developer", stoppedProcesses: [{ pid, name, kind, rssBytes }] }`, label e.g. "Stopped 6 build servers (1.9 GB) after 10 min idle". `LifecycleAction` gains `processes-stopped` (additive).
+- **Peers (D48):** the four `/api` routes are on `PEER_API_ALLOW` (a session route with a remote id is forwarded: listed, stopped and kept on that machine; answers are not mapped). **Devices (D73):** on `DEVICE_ALLOWED`.
+- **MCP:** the `switchboard` server's tool `process_keep` (`docs/mcp.md`).
+- **Spawned CLIs** (additive): every CLI Switchboard spawns gets `SWITCHBOARD_SESSION=<session id>`, `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_USE_MSBUILD_SERVER=0` and `UseSharedCompilation=false` in its environment.
+- No new `/hub` event: the views read again (every 15 s while open, and after Stop / Keep); the timeline note arrives as an `event`.
+
+```json
+GET /api/sessions/0b7c…/processes
+→ 200 { "sessionId": "0b7c…", "title": "Acme checkout", "processes": [
+         { "pid": 4242, "ppid": 1, "name": "MSBuild node", "kind": "build-server", "rssBytes": 262144000, "startedAt": "2026-10-22T09:40:00.000Z", "cpuPct": 0, "command": "/usr/local/share/dotnet/dotnet /usr/local/share/dotnet/sdk/9.0.305/MSBuild.dll /nologo /nodemode:1 /nodeReuse:true", "keep": false, "keptBy": null, "keepReason": null }
+       ], "rssBytes": 262144000, "tracking": "marker", "working": false, "closed": false, "stopsAt": "2026-10-22T10:10:00.000Z", "sampledAt": "2026-10-22T10:00:00.000Z" }
+
+POST /agent/v1/processes/keep   (x-switchboard-session: 0b7c…, Authorization: Bearer <agent token>)
+{ "match": "vite", "keep": true, "reason": "dev server for the review at http://localhost:5173" }
+→ 200 { "keep": true, "processes": [{ "pid": 5150, "name": "node vite", "kind": "dev-server", "keep": true, "keptBy": "agent", "keepReason": "dev server for the review at http://localhost:5173", "…": "…" }] }
+```

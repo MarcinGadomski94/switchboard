@@ -68,6 +68,9 @@ import type { PlanService } from './plans/service.ts';
 import { installMemory } from './memory/install.ts';
 import { CiGh } from './ci/gh.ts';
 import { PrWatcher, ciPollMs } from './ci/watcher.ts';
+import { ProcessService } from './processes/service.ts';
+import { processSessions, withTrackedProcesses } from './processes/wire.ts';
+import { platformScanner } from './processes/scan.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -215,6 +218,17 @@ export interface RegisteredRoute {
 
 const REGISTERED_ROUTES = new WeakMap<FastifyInstance, RegisteredRoute[]>();
 
+const APP_PROCESSES = new WeakMap<FastifyInstance, ProcessService>();
+
+/**
+ * D127: the app's process tracker. Not started by {@link buildApp} (tests list on demand only);
+ * main.ts starts it once the port is ours, as it does the scheduler: a second instance that
+ * cannot bind never stops anything.
+ */
+export function appProcesses(app: FastifyInstance): ProcessService | undefined {
+  return APP_PROCESSES.get(app);
+}
+
 /** D73: the routes {@link buildApp} registered on `app` (tests: every `/api` route must be classified for devices). */
 export function registeredRoutes(app: FastifyInstance): readonly RegisteredRoute[] {
   return REGISTERED_ROUTES.get(app) ?? [];
@@ -276,7 +290,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     systemItems = own;
   }
-  const providers = options.providers ?? {};
+  // D127: the processes sessions leave running (the hooked sessions' roots once the hooks exist, below).
+  let hooksForProcesses: HookService | null = null;
+  const processes = new ProcessService({ store: options.store, scanner: platformScanner(), sessions: processSessions(supervisor, () => hooksForProcesses) });
+  APP_PROCESSES.set(app, processes);
+  app.addHook('preClose', async () => {
+    await processes.close();
+  });
+  // D127: the system reads (`GET /api/system`, the hub's `system` ticks) carry the footer's tracked-process totals.
+  const providers = withTrackedProcesses(options.providers ?? {}, processes);
   const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
   options.usage?.watchViewers(() => hub.clientCount);
   const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });
@@ -357,6 +379,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     hooks = own;
   }
+  hooksForProcesses = hooks;
   // D48 P4: answers and messages of a hooked session go through its hooks; everything else through the supervisor.
   questions.bind(sessionsWithHooks(supervisor, hooks));
   // D52: a hooked terminal session's loops are derived from its imported events, like a supervised session's.
@@ -587,7 +610,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ci = own;
   }
   systemItems.useCi(ci);
-  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights };
+  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, processes };
   await registerApiRoutes(app, apiContext);
   // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
   await installTeam(app, apiContext);

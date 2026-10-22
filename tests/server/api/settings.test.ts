@@ -110,6 +110,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'ci.mergeMethod': 'repo',
       // D125: the power estimate, every part at this machine's default (by its cores).
       'power.estimate': { cpuIdleW: null, cpuMaxW: null, baseW: null },
+      // D127: the idle stop of a session's leftover processes (minutes; 0 = off).
+      'processes.idleStopMinutes': 10,
       'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,

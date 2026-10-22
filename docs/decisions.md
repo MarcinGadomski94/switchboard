@@ -1338,6 +1338,37 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **What's new:** none (an addition to an existing feature, as D112 / D119).
   - ASSUMED (D126-object): `<object>` rather than `<iframe>`, so a browser without a PDF viewer shows the Open PDF card as its fallback instead of a download prompt.
 
+## Processes sessions leave running (added 2026-10-22)
+
+- **D127 Switchboard controls the processes agent sessions leave running: agents build .NET without lingering build servers, each session's processes are tracked and listed, and they are stopped when the session is closed or idle.** Developer report, 2026-10-22: "I think that switchboard is turning on dotnet for debugging c# solutions, but never closes them. that fills up my RAM quite quickly (fx I have plenty of dotnet solutions running, one of them is like 8gb in ram) - can we have a control over what agents turn on and turn it off automatically after its not needed anymore?" Seen on the developer's Mac the same day (read-only `ps`): eleven MSBuild worker nodes (`/nodemode:1 /nodeReuse:true`, ~190–300 MB each, ppid 1, 10–27 minutes old), one Roslyn compiler server (`VBCSCompiler`, 1.8 GB) under one of them, and an active `dotnet test` whose test host was 8.5 GB (a session still working). The idle build servers pile up across many agents' builds in many worktrees. Decisions (developer, 2026-10-22). Details: `docs/processes.md`; `docs/settings.md`, `docs/mcp.md` → *`process_keep`*; contract → *Session processes (D127)*.
+  - **1. No build-server reuse for agent sessions.** Every CLI Switchboard spawns (all providers) gets `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_USE_MSBUILD_SERVER=0` and `UseSharedCompilation=false`. The last one is the documented MSBuild property of the Csc / Vbc tasks; MSBuild reads environment variables as properties, so it keeps the Roslyn compiler server (`VBCSCompiler`) from starting. No variable is named for VBCSCompiler itself. Only Switchboard's own spawns: never the developer's global environment, shell profiles, terminals or IDE. Hooked terminal sessions cannot get it. Trade-off: agents' .NET builds are slower (nodes and compiler start fresh each build).
+  - **2. Each session's processes are tracked.** The spawned CLI also gets `SWITCHBOARD_SESSION=<session id>`, which its descendants inherit even once detached.
+    - Every 30 s a read-only listing finds the processes: macOS `ps -E`, Linux `/proc/<pid>/environ`, both readable without root for one's own processes.
+    - Windows cannot read another process's environment without native code. There the process tree from the session's CLI is followed (`Win32_Process` parent pid + creation time), keeping known descendants after their parent exits and guarding against reused pids.
+    - Left out: the CLI itself, Switchboard's own MCP helpers, and the CLI's own helpers while it runs (a direct child that is not a shell).
+    - Classified as `build-server`, `test-host`, `dev-server` (D30's long-running patterns) or `other`, with name, RSS, age, CPU % where cheap and the command line.
+    - Hooked sessions: by tree from their terminal's reported pid, best effort.
+  - **3. The UI.**
+    - A **Processes** section in the session's right panel (name, kind, RAM, age, Stop, Keep).
+    - Settings → **Processes** (the idle delay and every session's processes, paired machines' too, with totals).
+    - A `procs <memory>` line in the sidebar footer while any are tracked, opening it.
+    - Phone widths (the panel's bottom sheet) and paired machines (their sessions' routes are forwarded: listed and stopped there).
+  - **4. Auto-stop.**
+    - A session's processes (not those marked Keep) are stopped when it is **closed** (at once), or when it has been **idle for 10 minutes**: its turn over and not working by the 1.23 rules, so no running subagents, no waited-on background task, derived status not `run`.
+    - This applies to build servers, test hosts and dev servers.
+    - Never while its turn runs or it waits on a background task.
+    - SIGTERM (the process and what runs under it), SIGKILL after 5 s; Windows `taskkill /PID <pid> /T`, then `/F`.
+    - Never a process without the session's marker or tree link, never Rider's, the developer's own or their running Switchboard. Each pid is checked again right before it is signalled.
+    - Each stop is noted on the session's timeline ("Stopped 6 build servers (1.9 GB) after 10 min idle").
+    - The delay is the setting `processes.idleStopMinutes` (default 10, 0 = off).
+  - **5. `process_keep`.** A new always-on tool of the built-in `switchboard` MCP server, `{ pid | match, keep, reason? }`, for the caller session's own processes only. It has a title and all four hints explicit: read-only false, destructive false, idempotent true, open-world false. Its description tells agents to keep a server only when the developer needs it running.
+  - **6. Docs:** `docs/processes.md` (new), `docs/settings.md`, `docs/mcp.md`, the contract.
+  - **What's new:** "Processes sessions leave running" (1.34.0), two steps (the footer line, Settings → Processes).
+  - ASSUMED (D127-delay-zero): the delay 0 turns off the idle stop only; closing a session still stops its processes.
+  - ASSUMED (D127-keep-family): a kept process also protects its ancestors and descendants among the session's processes from the automatic stop (stopping `npm run dev` would end the kept `vite`); the developer's own Stop stops the process and what runs under it, kept or not.
+  - ASSUMED (D127-helpers): a direct child of a running CLI that is not a shell is the CLI's own helper (an MCP server) and is not listed; a CLI's tools run commands in a shell (a shell under such a helper is the agent's work again: a CLI behind a launcher). Under a CLI that still runs, an `other` process is listed but never stopped automatically (it may be an MCP server behind a shell wrapper); only build servers, test hosts and dev servers there are. Once the CLI is gone, whatever it left is listed and stopped.
+  - ASSUMED (D127-hooked-root): a hooked session's root is the pid its hooks reported, taken only when that process's command line names claude (the registry is not asked every 30 s).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

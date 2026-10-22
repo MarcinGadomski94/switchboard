@@ -110,6 +110,9 @@ const V1_31 = '1.31.0';
 /** The version D125 (machine power: battery or an estimated draw, shared with paired machines) ships in. */
 const V1_32 = '1.32.0';
 
+/** The version D127 (the processes sessions leave running: tracked, listed, stopped when idle or closed) ships in. */
+const V1_34 = '1.34.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -1057,6 +1060,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['power-estimate', 'settings-content'],
         route: { view: 'settings', section: 'machines' },
         missing: 'Power estimate is in Settings → Machines.',
+      },
+    ],
+  },
+  {
+    id: 'processes',
+    decision: 'D127',
+    version: V1_34,
+    title: 'Processes sessions leave running',
+    steps: [
+      {
+        id: 'footer',
+        title: 'What sessions left running',
+        what: "Builds, test runs and dev servers an agent starts can outlive its turn (a .NET build server, a test host, a vite or dotnet watch). Switchboard tracks them per session: the line under RAM sums their memory while there are any, and each session's right panel lists its own under Processes, with Stop and Keep.",
+        todo: ['Click the procs line at the bottom of the sidebar.', "Open a session's right panel to see its Processes."],
+        anchors: ['processes-footer'],
+        drawer: true,
+        missing: 'The procs line sits under RAM at the bottom of the sidebar while sessions have processes running.',
+      },
+      {
+        id: 'settings',
+        title: 'Stopped by themselves',
+        what: 'A session\'s leftovers stop when it is closed, and once it has been idle for the delay set here (10 min by default; never while it works or waits on a background task). Keep a process to leave it running; an agent can keep a dev server it leaves for you. Sessions also build .NET without build servers that linger.',
+        todo: ['Open Settings → Processes.', 'Pick the idle delay, or Keep a process you still need.'],
+        anchors: ['processes-settings', 'settings-content'],
+        route: { view: 'settings', section: 'processes' },
+        missing: 'Processes is in Settings; its list fills while sessions have processes running.',
       },
     ],
   },

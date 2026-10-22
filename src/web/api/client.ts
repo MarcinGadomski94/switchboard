@@ -1,3 +1,4 @@
+import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
 import type { InsightsAnswer } from '../../core/insights.ts';
@@ -213,6 +214,14 @@ export const api = {
   freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
   /** D91: give the session's process the current standing instruction (idle → restarted, busy → after its turn). */
   reloadInstruction: (id: string) => request<InstructionReloadResult<Session>>('POST', `/api/sessions/${enc(id)}/reload-instruction`, {}),
+  /** D127: the processes the session left running (`fresh` samples first); a peer's session id is forwarded (listed there). */
+  sessionProcesses: (id: string, fresh = false) => request<SessionProcesses>('GET', `/api/sessions/${enc(id)}/processes${fresh ? '?fresh=1' : ''}`),
+  /** D127: Stop: the process and what runs under it. */
+  stopProcess: (id: string, pid: number) => request<SessionProcesses>('POST', `/api/sessions/${enc(id)}/processes/${pid}/stop`, {}),
+  /** D127: Keep (never stopped automatically) or hand back. */
+  keepProcess: (id: string, pid: number, keep: boolean) => request<SessionProcesses>('PUT', `/api/sessions/${enc(id)}/processes/${pid}/keep`, { keep } satisfies ProcessKeepInput),
+  /** D127: every session's processes, this machine's and each paired machine's (Settings → Processes). */
+  processes: (fresh = false) => request<ProcessesOverview>('GET', `/api/processes${fresh ? '?fresh=1' : ''}`),
   /** D124: the session's needs-you line → Not waiting (clears a false "needs you" for that turn: `at` = its episode). */
   notWaiting: (id: string, at: string | null) => request<Session>('POST', `/api/sessions/${enc(id)}/not-waiting`, at ? { at } : {}),
   /** D91: Settings → Apply to open sessions (this machine's). */

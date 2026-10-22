@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D85) the
  * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), (D107) project memory (read, approve, reject, edit, pin), (D109) Import issues… and a session's PR status (Merge PR is an Inbox action), and (D91) a
- * session's Reload instruction (Settings' Apply to open sessions stays on the desktop), and (D124) a session's Not waiting.
+ * session's Reload instruction (Settings' Apply to open sessions stays on the desktop), (D124) a session's Not waiting, and (D127) the processes sessions left running (read, Stop, Keep).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -49,6 +49,11 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/reload-instruction$/],
   // D124: a session's Not waiting (clears a false "needs you" for its turn; normal use).
   ['POST', /^\/api\/sessions\/[^/]+\/not-waiting$/],
+  // D127: the processes sessions left running (read, Stop, Keep; normal use, also on a phone).
+  ['GET', /^\/api\/processes$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/processes$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/processes\/[^/]+\/stop$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/processes\/[^/]+\/keep$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   // D103: Edit / Remove of a message held for an account with allowance (normal use, like editing a queued message).

@@ -284,7 +284,9 @@ export type LifecycleAction =
   /** D106: the chat's folders to look at changed and its process restarted (`--resume`, no message) to read them. */
   | 'look-at-updated'
   /** 2026-10-16: the process was restarted (`--resume`, no message) so its CLI lists a Switchboard tool an ask needs (the chat's divider "Switchboard tools updated"; `docs/mcp.md`). */
-  | 'tools-updated';
+  | 'tools-updated'
+  /** D127: processes the session left running were stopped (idle, closed, or the developer's Stop; `stoppedProcesses`, `reason`; `docs/processes.md`). */
+  | 'processes-stopped';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -320,6 +322,8 @@ export interface LifecyclePayload {
   /** D83 (`continued-from` / `continued-in`): the other session of the continuation (its id on the same machine; a peer's is namespaced in the UI) and its title then. */
   readonly linkedSessionId?: string;
   readonly linkedTitle?: string;
+  /** D127 (`processes-stopped`): what was stopped (`reason` = `idle` / `closed` / `developer`). */
+  readonly stoppedProcesses?: ReadonlyArray<{ readonly pid: number; readonly name: string; readonly kind: string; readonly rssBytes: number }>;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */
