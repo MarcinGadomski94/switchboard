@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { NewSessionPrefill, Session } from '../../../core/api.ts';
-import { CONTINUE_AS_SESSION_LABEL, LOOK_AT_FOLDERS_LABEL } from '../../../core/chats.ts';
+import { CONTINUE_AS_SESSION_LABEL, LOOK_AT_FOLDERS_LABEL, RENAME_CHAT_LABEL } from '../../../core/chats.ts';
 import { parseRemoteId } from '../../../core/peers.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ApiError, api } from '../../api/client.ts';
@@ -31,13 +31,14 @@ export function continuePrefill(chat: Session, savedFolders: ReadonlyArray<{ rea
 }
 
 /**
- * D106 · a chat header's ⋯ (`docs/chats.md` → *The chat's header*): **Continue as
+ * D106 · a chat header's ⋯ (`docs/chats.md` → *The chat's header*): **Rename…**
+ * (`onRename`: the header's title turns into its field, 2026-10-22), **Continue as
  * session…** (the New-session form, pre-filled, carrying the chat over), **Look at
  * folders…** (the folders it may read) and **Delete chat…** (asks first; the chat,
  * its conversation and its scratch folder go). `button` goes in the header's top row,
  * `panel` (the delete confirmation and a refusal) under it.
  */
-export function useChatMenu(session: Session | null, sessionId: string): { readonly button: ReactNode; readonly panel: ReactNode } {
+export function useChatMenu(session: Session | null, sessionId: string, onRename?: () => void): { readonly button: ReactNode; readonly panel: ReactNode } {
   const modals = useModals();
   const { navigate } = useRouter();
   const saved = useSavedFolders();
@@ -118,6 +119,7 @@ export function useChatMenu(session: Session | null, sessionId: string): { reado
       </button>
       {open ? (
         <div className="sb-chat-menu" role="menu" data-testid="chat-menu-list">
+          {onRename ? item(RENAME_CHAT_LABEL, 'chat-rename', onRename) : null}
           {item(CONTINUE_AS_SESSION_LABEL, 'chat-continue-as-session', () => modals.open('new-session', { prefill: continuePrefill(session, saved.data ?? []), machine: session.machine?.id ?? null }))}
           {item(LOOK_AT_FOLDERS_LABEL, 'chat-look-at', () => modals.open('look-at', { chat: { id: sessionId, title, lookAt: session.lookAt ?? [] } }), closed, closed ? 'Reopen the chat first' : undefined)}
           {item(DELETE_CHAT_LABEL, 'chat-delete', () => setConfirming(true))}

@@ -1,12 +1,16 @@
+import { useCallback, useState } from 'react';
 import type { SessionActivity, SessionListItem } from '../../core/api.ts';
-import { continuedAsLabel } from '../../core/chats.ts';
+import { RENAME_CHAT_LABEL, continuedAsLabel } from '../../core/chats.ts';
+import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { SessionActivityOr } from '../activity/ActivityViews.tsx';
 import type { CloseSessionControl } from '../components/CloseSession.tsx';
+import { InlineTitle } from '../components/InlineTitle.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, statusColor } from './format.ts';
-import { SessionCloseButton } from './SidebarSessions.tsx';
+import { Menu, MenuButton, type MenuItem, SessionCloseButton } from './SidebarSessions.tsx';
+import { useCoarsePointer } from './useLayout.ts';
 import { useSectionCollapsed } from './useToolsCollapsed.ts';
 
 /** The id of the CHATS list (its header's toggle controls it). */
@@ -38,9 +42,31 @@ function chatLine(chat: SessionListItem): string {
  * count (kept per install as `ui.chatsCollapsed`, like D101's TOOLS) and "+ New chat";
  * then one row per open chat (dot, title, age, "plan mode" or "continued as <session>";
  * the row's × closes it). SESSIONS never lists chats.
+ *
+ * Rename (developer request 2026-10-22, `docs/chats.md` → *Rename*): like a session row,
+ * a double-click on the title edits it in place (D22's `InlineTitle`), and the row's ⋯
+ * has **Rename…** (keyboard and touch); on a touch screen the ⋯ also closes the chat.
  */
 export function SidebarChats({ chats, loaded, activityOf, closer, isCurrent, now, onNew }: SidebarChatsProps) {
   const [collapsed, toggle] = useSectionCollapsed('ui.chatsCollapsed');
+  const coarse = useCoarsePointer();
+  /** The open row menu (its chat and ⋯ button). */
+  const [menu, setMenu] = useState<{ readonly id: string; readonly anchor: HTMLElement } | null>(null);
+  /** Rename… : the chat whose title opens for editing, and a counter so a second Rename… opens it again. */
+  const [renaming, setRenaming] = useState<{ readonly id: string; readonly request: number }>({ id: '', request: 0 });
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const menuChat = menu ? chats.find((chat) => chat.id === menu.id) : undefined;
+  const menuItems = (chat: SessionListItem): MenuItem[] => {
+    const items: MenuItem[] = [{ label: RENAME_CHAT_LABEL, testId: 'sidebar-chat-menu-rename', run: () => setRenaming((r) => ({ id: chat.id, request: r.request + 1 })) }];
+    if (coarse) items.push({ label: CLOSE_TOOLTIP, testId: 'sidebar-chat-menu-close', run: () => closer.request({ ...chat, activity: activityOf(chat.id) ?? chat.activity }) });
+    return items.map((item) => ({
+      ...item,
+      run: () => {
+        setMenu(null);
+        item.run();
+      },
+    }));
+  };
   return (
     <div className="sb-chats" data-testid="sidebar-chats-section" data-collapsed={collapsed ? 'true' : undefined}>
       <div className="sb-section-label sb-chats-head" data-testid="sidebar-chats-head" tabIndex={-1}>
@@ -65,7 +91,8 @@ export function SidebarChats({ chats, loaded, activityOf, closer, isCurrent, now
               <span className="sb-session-dot" data-activity={activity?.state} style={{ background: statusColor(activity?.state === 'background' ? 'run' : chat.status) }} />
               <div className="sb-session-body">
                 <div className="sb-session-head">
-                  <span className="sb-session-name">{displayTitle(chat)}</span>
+                  {/* D22's rename in place (a double-click, or the ⋯ → Rename…). */}
+                  <InlineTitle session={chat} gesture="double-click" className="sb-session-name" fieldLabel="Chat title" editRequest={renaming.id === chat.id ? renaming.request : 0} />
                   <span className="sb-session-age">{formatAge(chat.lastActivityAt ?? chat.createdAt, now)}</span>
                 </div>
                 <div className="sb-session-mode">
@@ -78,10 +105,12 @@ export function SidebarChats({ chats, loaded, activityOf, closer, isCurrent, now
                 </div>
               </div>
               <SessionCloseButton session={chat} busy={closer.busyId === chat.id} onClose={() => closer.request({ ...chat, activity: activity ?? chat.activity })} />
+              <MenuButton label={`More for ${displayTitle(chat)}`} testId="sidebar-chat-menu" className="sb-session-more" onOpen={(anchor) => setMenu({ id: chat.id, anchor })} />
             </Link>
           );
         })}
       </div>
+      {menu && menuChat ? <Menu key={menu.id} anchor={menu.anchor} label={`${displayTitle(menuChat)}: chat`} items={menuItems(menuChat)} onClose={closeMenu} /> : null}
     </div>
   );
 }

@@ -4,9 +4,11 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
 import { CHAT_DISALLOWED_TOOLS, chatTitleFromMessage } from '../../../src/core/chats.ts';
+import type { SearchAnswer } from '../../../src/core/search.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { chatScratchDir } from '../../../src/server/chats/start.ts';
 import { loadConfig } from '../../../src/server/config.ts';
+import { type HubMessage, HubBus } from '../../../src/server/hub/bus.ts';
 import type { SessionRecord } from '../../../src/server/db/repos/sessions.ts';
 import { PEER_API_ALLOW } from '../../../src/server/peers/service.ts';
 import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
@@ -29,6 +31,8 @@ const PORT = 4962; // inject() opens no socket; the port feeds the Host check on
 let world: SupervisorWorld | undefined;
 let app: FastifyInstance | undefined;
 let token = '';
+/** What the hub published (the rename test reads `sessionUpdated`). */
+let published: HubMessage[] = [];
 
 afterEach(async () => {
   await app?.close();
@@ -45,7 +49,10 @@ async function setup(): Promise<{ w: SupervisorWorld; folderId: string }> {
   await writeFile(path.join(w.workspace, 'AGENTS.md'), '# Router\nAsk the session-start questions first.\n');
   const folder = await seedFolder(w.store, w.workspace);
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
-  app = await buildApp({ config: { ...base, port: PORT }, token, store: w.store, webRoot: w.root, supervisor: w.supervisor });
+  const bus = new HubBus();
+  published = [];
+  bus.subscribe((message) => published.push(message));
+  app = await buildApp({ config: { ...base, port: PORT }, token, store: w.store, webRoot: w.root, supervisor: w.supervisor, bus });
   await app.ready();
   return { w, folderId: folder.id };
 }
@@ -257,11 +264,53 @@ describe('D106 · chats', () => {
     expect(bad.statusCode).toBe(422);
   });
 
+  it('Rename (2026-10-22): a chat is renamed through the session title route, publishes sessionUpdated, keeps the title over later turns and a restart, is found by it, and a continued session links to it by the new title', async () => {
+    const { w, folderId } = await setup();
+    const chat = await startChat({ message: 'Plan the Acme invoice export.' });
+    expect(chat.title).toBe('Plan the Acme invoice export.');
+    await waitForStatus(w.store, chat.id, ['done']);
+
+    // Trimmed; the session rule's cap (80) applies; an empty title clears to the name, like a session.
+    const renamed = await call('PUT', `/api/sessions/${chat.id}/title`, { title: '  Acme ledger plan  ' });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+    expect(renamed.json()).toMatchObject({ id: chat.id, kind: 'chat', title: 'Acme ledger plan', displayTitle: 'Acme ledger plan' });
+    expect(published.some((m) => m.name === 'sessionUpdated' && (m.payload as Session).id === chat.id && (m.payload as Session).title === 'Acme ledger plan')).toBe(true);
+    expect((await call('PUT', `/api/sessions/${chat.id}/title`, { title: 'x'.repeat(81) })).statusCode).toBe(422);
+
+    // No auto-title: a later turn and a restart of its process keep the developer's title.
+    await call('POST', `/api/sessions/${chat.id}/messages`, { text: 'Go deeper on the ledger.' });
+    await waitForStatus(w.store, chat.id, ['done']);
+    await call('PUT', `/api/chats/${chat.id}/look-at`, { lookAt: [w.workspace] });
+    await waitForStatus(w.store, chat.id, ['done', 'idle']);
+    expect(((await w.store.sessions.get(chat.id)) as SessionRecord).title).toBe('Acme ledger plan');
+    const listed = (await call('GET', '/api/sessions')).json() as Session[];
+    expect(listed.find((s) => s.id === chat.id)?.displayTitle).toBe('Acme ledger plan');
+
+    // Search (D97) finds it by the new title.
+    const found = (await call('GET', '/api/search?q=ledger&scope=conversations')).json() as SearchAnswer;
+    const titleHit = found.groups.flatMap((g) => g.results).find((r) => r.chat && r.title.map((part) => part.text).join('') === 'Acme ledger plan');
+    expect(titleHit, JSON.stringify(found)).toBeDefined();
+
+    // Continue as session: the link and its divider carry the renamed title.
+    const answer = await call('POST', '/api/sessions', { simple: true, name: 'ledger-work', title: 'Ledger work', task: 'Implement it.', folder: folderId, fromChat: chat.id });
+    expect(answer.statusCode, answer.body).toBe(201);
+    const session = answer.json() as Session;
+    expect(session.continuedFrom).toEqual({ sessionId: chat.id, title: 'Acme ledger plan' });
+    expect((await w.store.events.list(session.id)).some((event) => event.label === 'Continued from the chat Acme ledger plan')).toBe(true);
+    await waitForStatus(w.store, session.id, ['done']);
+
+    // Cleared: the chat shows its name again (as a session does).
+    const cleared = await call('PUT', `/api/sessions/${chat.id}/title`, { title: '' });
+    expect(cleared.json()).toMatchObject({ title: null, displayTitle: chat.name });
+  });
+
   it('routes are classified: peers and devices may use the chat routes', () => {
     for (const [method, url] of [
       ['POST', '/api/chats'],
       ['PUT', '/api/chats/abc/look-at'],
       ['DELETE', '/api/chats/abc'],
+      // Rename: the session title route (a peer's chat is renamed on its machine).
+      ['PUT', '/api/sessions/abc/title'],
     ] as const) {
       expect(PEER_API_ALLOW.some(([m, pattern]) => m === method && pattern.test(url)), `${method} ${url}`).toBe(true);
       expect(isLocalOnly(method, url), `${method} ${url}`).toBe(false);

@@ -153,7 +153,7 @@ function MoreGlyph() {
 }
 
 /** D54: the ⋯ that opens a row's or a folder's menu; clicks never follow the row's link. */
-function MenuButton({ label, testId, className, onOpen }: { readonly label: string; readonly testId: string; readonly className: string; readonly onOpen: (anchor: HTMLElement) => void }) {
+export function MenuButton({ label, testId, className, onOpen }: { readonly label: string; readonly testId: string; readonly className: string; readonly onOpen: (anchor: HTMLElement) => void }) {
   return (
     <button
       type="button"
@@ -178,7 +178,7 @@ function MenuButton({ label, testId, className, onOpen }: { readonly label: stri
 }
 
 /** One entry of a {@link Menu}. */
-interface MenuItem {
+export interface MenuItem {
   readonly label: string;
   readonly testId: string;
   readonly run: () => void;
@@ -199,7 +199,7 @@ interface MenuItem {
  * outside closes it, and so does scrolling the list (or the sidebar / page around
  * it), which would leave the menu away from its row.
  */
-function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement; readonly label: string; readonly items: readonly MenuItem[]; readonly onClose: () => void }) {
+export function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement; readonly label: string; readonly items: readonly MenuItem[]; readonly onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const rect = anchor.getBoundingClientRect();
   const width = 196;

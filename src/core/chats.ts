@@ -70,6 +70,9 @@ export const CONTINUE_AS_SESSION_LABEL = 'Continue as session…';
 /** The ⋯ menu item (and the New-chat field) for the folders a chat may read. */
 export const LOOK_AT_FOLDERS_LABEL = 'Look at folders…';
 
+/** The ⋯ menu item (the sidebar row's and the header's) that edits the chat's title in place (rename, 2026-10-22). */
+export const RENAME_CHAT_LABEL = 'Rename…';
+
 /** Why a chat is not continued in a terminal (the terminal's CLI could leave plan mode). */
 export const CHAT_TERMINAL_REFUSAL = 'a chat stays in Switchboard: continue it as a session to work in a terminal';
 

@@ -216,7 +216,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const hooked = session?.hooked === true;
   // D106: a chat: plan mode locked, no terminal, Remote Control, take-over or undo; its own ⋯ menu.
   const chat = isChat(session);
-  const chatMenu = useChatMenu(session, sessionId);
+  // D106 rename (2026-10-22): the chat's ⋯ → Rename… opens the title's field (a counter: each pick opens it).
+  const [renameRequest, setRenameRequest] = useState(0);
+  const chatMenu = useChatMenu(session, sessionId, () => setRenameRequest((n) => n + 1));
   // D48 ruling D48-cache-persist: an unreachable machine's session shows its last known state; every action waits for the reconnection.
   // Fix · peer reconnects: the machine's live state (a block lifts the moment it is back); `reconnecting` blocks nothing.
   const machine = useLiveMachine(session?.machine);
@@ -379,7 +381,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         {compact ? <SessionDrawerButton /> : null}
         <span className="sb-sv-dot" data-testid="session-dot" style={{ background: statusColor(session?.status ?? 'idle') }} />
         {session ? (
-          <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
+          <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} {...(chat ? { editRequest: renameRequest, fieldLabel: 'Chat title' } : {})} />
         ) : (
           // D45: nothing while the session loads (its placeholder once it is late); the id when it could not be loaded.
           <div className="sb-sv-name" data-testid="session-name">

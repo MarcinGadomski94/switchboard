@@ -3,6 +3,7 @@ import { type Page, expect, test } from '@playwright/test';
 import type { Session, SessionDetail } from '../../src/core/api.ts';
 import { CHAT_LOCKED_HINT } from '../../src/core/chats.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
+import { openDrawer, touchContext } from './responsive-world.ts';
 
 /**
  * D106 on the real path (D13, fake-claude): a chat started from the sidebar and from
@@ -184,4 +185,140 @@ test('SESSIONS and CHATS fold to their headers (▾ / ▸, with their counts), k
   await page.getByTestId('sessions-toggle').click();
   await expect(page.getByTestId('sidebar-sessions')).toBeVisible();
   await expect.poll(() => setting('ui.sessionsCollapsed')).toBe(false);
+});
+
+/** Starts a chat through the API and waits for its first turn to end. */
+async function chatDone(page: Page, message: string): Promise<Session> {
+  const chat = await api<Session>(page, 'POST', '/api/chats', { message });
+  await expect.poll(async () => (await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`)).status, { timeout: 15_000 }).toBe('done');
+  return chat;
+}
+
+test('Rename (2026-10-22) from the sidebar row ⋯: Rename… edits the title in place; Esc cancels; Enter saves (trimmed); it persists after a reload; a double-click edits too', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/`);
+  const chat = await chatDone(page, 'Plan the Acme invoices');
+  await openWithHub(page, `${world.baseUrl}/`);
+  const row = page.getByTestId('sidebar-chats').locator(`a.sb-chat-row[data-session-id="${chat.id}"]`);
+  await expect(row.locator('.sb-session-name')).toHaveText('Plan the Acme invoices');
+
+  // Keyboard only: focus the row's ⋯, open it, Enter on Rename….
+  await row.getByTestId('sidebar-chat-menu').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('sidebar-chat-menu-rename')).toBeFocused();
+  await page.keyboard.press('Enter');
+  const input = row.getByTestId('title-input');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Plan the Acme invoices');
+  await expect(input).toHaveAttribute('aria-label', 'Chat title');
+  // Esc cancels: nothing saved.
+  await input.fill('Discarded');
+  await page.keyboard.press('Escape');
+  await expect(row.getByTestId('title-input')).toHaveCount(0);
+  await expect(row.locator('.sb-session-name')).toHaveText('Plan the Acme invoices');
+  expect((await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`)).title).toBe('Plan the Acme invoices');
+
+  // Enter saves, trimmed; the URL stays (the row's link is not followed).
+  const before = page.url();
+  await row.hover();
+  await row.getByTestId('sidebar-chat-menu').click();
+  await page.getByTestId('sidebar-chat-menu-rename').click();
+  await row.getByTestId('title-input').fill('  Acme invoice plan  ');
+  await page.keyboard.press('Enter');
+  await expect(row.locator('.sb-session-name')).toHaveText('Acme invoice plan');
+  expect(page.url()).toBe(before);
+  await expect.poll(async () => (await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`)).title).toBe('Acme invoice plan');
+
+  // A reload keeps it.
+  await openWithHub(page, `${world.baseUrl}/`);
+  await expect(row.locator('.sb-session-name')).toHaveText('Acme invoice plan');
+
+  // A double-click on the title edits it too (like a session row).
+  await row.locator('.sb-session-name').dblclick();
+  await row.getByTestId('title-input').fill('Acme invoices, round two');
+  await page.keyboard.press('Enter');
+  await expect(row.locator('.sb-session-name')).toHaveText('Acme invoices, round two');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-renamed-sidebar.png` });
+});
+
+test('Rename (2026-10-22) from the chat header: a click on the title and ⋯ → Rename…; Esc cancels; an emptied field reverts; persists after a reload', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/`);
+  const chat = await chatDone(page, 'Plan the Acme search');
+  await openWithHub(page, `${world.baseUrl}/sessions/${chat.id}`);
+  const name = page.getByTestId('session-name');
+  await expect(name).toHaveText('Plan the Acme search');
+
+  // A click on the title: Esc cancels.
+  await name.click();
+  const input = page.getByTestId('session-header').getByTestId('title-input');
+  await expect(input).toBeFocused();
+  await input.fill('Not this');
+  await page.keyboard.press('Escape');
+  await expect(name).toHaveText('Plan the Acme search');
+
+  // ⋯ → Rename…: Enter saves.
+  await page.getByTestId('chat-menu').click();
+  await page.getByTestId('chat-rename').click();
+  await expect(input).toBeFocused();
+  await input.fill('Acme search plan');
+  await page.keyboard.press('Enter');
+  await expect(name).toHaveText('Acme search plan');
+  // The sidebar row follows (sessionUpdated).
+  await expect(page.getByTestId('sidebar-chats').locator(`a.sb-chat-row[data-session-id="${chat.id}"] .sb-session-name`)).toHaveText('Acme search plan');
+
+  // An emptied field on a titled chat clears the title: back to the chat's own name (the session rule).
+  await name.click();
+  await input.fill('   ');
+  await page.keyboard.press('Enter');
+  const cleared = await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`);
+  await expect.poll(async () => (await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`)).title).toBeNull();
+  await expect(name).toHaveText(cleared.name);
+
+  // Named again, then a reload keeps it.
+  await name.click();
+  await input.fill('Acme search plan');
+  await page.keyboard.press('Enter');
+  await expect(name).toHaveText('Acme search plan');
+  await openWithHub(page, `${world.baseUrl}/sessions/${chat.id}`);
+  await expect(page.getByTestId('session-name')).toHaveText('Acme search plan');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-renamed-header.png` });
+});
+
+test('Rename (2026-10-22) at phone width (360, touch): the row ⋯ → Rename… in the drawer; the header ⋯ → Rename…', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const context = await touchContext(browser, { name: 'phone portrait', width: 360, height: 740 });
+  const page = await context.newPage();
+  try {
+    await openWithHub(page, `${world.baseUrl}/`);
+    const chat = await chatDone(page, 'Plan the Acme phone app');
+    await openWithHub(page, `${world.baseUrl}/sessions/${chat.id}`);
+    await openDrawer(page);
+    const row = page.getByTestId('sidebar-chats').locator(`a.sb-chat-row[data-session-id="${chat.id}"]`);
+    await row.getByTestId('sidebar-chat-menu').tap();
+    // On a touch screen the menu also closes the chat (the × needs a hover).
+    await expect(page.getByTestId('sidebar-chat-menu-close')).toBeVisible();
+    await page.getByTestId('sidebar-chat-menu-rename').tap();
+    const input = row.getByTestId('title-input');
+    await expect(input).toBeVisible();
+    const box = await input.boundingBox();
+    expect(box && box.x + box.width <= 360).toBe(true);
+    await input.fill('Acme phone plan');
+    await page.keyboard.press('Enter');
+    await expect(row.locator('.sb-session-name')).toHaveText('Acme phone plan');
+    await expect.poll(async () => (await api<SessionDetail>(page, 'GET', `/api/sessions/${chat.id}`)).title).toBe('Acme phone plan');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-renamed-phone.png` });
+
+    // The header's ⋯ → Rename… (the drawer closed).
+    await page.keyboard.press('Escape');
+    await openWithHub(page, `${world.baseUrl}/sessions/${chat.id}`);
+    await page.getByTestId('chat-menu').tap();
+    await page.getByTestId('chat-rename').tap();
+    const field = page.getByTestId('session-header').getByTestId('title-input');
+    await field.fill('Acme phone plan v2');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('session-name')).toHaveText('Acme phone plan v2');
+  } finally {
+    await context.close();
+  }
 });

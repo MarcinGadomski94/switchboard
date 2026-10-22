@@ -238,3 +238,19 @@ describe('D48 P3: start a session on a peer', () => {
     expect(refused.status).toBe(422);
   });
 });
+
+describe('D106 rename (2026-10-22): a peer\'s chat', () => {
+  it('is renamed on its own machine through the session title route; B lists and A keeps the new title', async () => {
+    const { a, b, aId } = await world();
+    const created = await a.call('POST', '/api/chats', { message: 'Plan the Acme rollout.' });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const local = created.body as Session;
+    const id = remoteId(aId, local.id);
+    await waitFor('A\'s chat listed on B', async () => ((await b.call('GET', '/api/sessions')).body as Session[]).some((entry) => entry.id === id));
+    const renamed = await b.call('PUT', `/api/sessions/${encodeURIComponent(id)}/title`, { title: 'Acme rollout plan' });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    expect(renamed.body).toMatchObject({ id, kind: 'chat', title: 'Acme rollout plan', machine: { id: aId } });
+    expect(((await a.call('GET', `/api/sessions/${local.id}`)).body as SessionDetail).title).toBe('Acme rollout plan');
+    await waitFor('B lists the new title', async () => ((await b.call('GET', '/api/sessions')).body as Session[]).find((entry) => entry.id === id)?.displayTitle === 'Acme rollout plan');
+  });
+});
