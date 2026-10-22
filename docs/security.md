@@ -2,6 +2,22 @@
 
 Switchboard is a local service with the power to start `claude` processes and run git in the developer's repos, so any web page the developer visits must be unable to use it. The rules come from `docs/handoff/ARCHITECTURE.md` → *Security* and `docs/decisions.md` gap #20. Code: `src/server/security.ts`, `src/server/listen.ts`, `src/server/web.ts`, `src/server/token.ts`.
 
+## Overview
+The whole security model in short; the sections below give the details.
+
+- The server listens on **127.0.0.1 only**. Every request must name `127.0.0.1:<port>` or `localhost:<port>` as its Host (this stops DNS rebinding). A browser Origin must be exactly Switchboard's own.
+- Every API call needs the **`sb_token` cookie**. It is `HttpOnly`, `SameSite=Strict`, and only set when you open the page yourself (typed URL, bookmark, reload), never from another site.
+- The optional **peer listener** (Machines) is a second socket bound only to the Tailscale address. It serves only the peer API, and every call needs that machine's own pairing token (stored hashed); no page, no settings, no folders, no tools.
+- The optional **device listener** (Devices, off by default) also binds **127.0.0.1** only; `tailscale serve` publishes it to your tailnet over HTTPS. It never trusts loopback: every request must name the devices' `*.ts.net` origin and carry a paired device's own credential (an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, stored hashed, revocable); an unpaired device gets only the pairing page, and devices cannot administer the machine. Pairing codes are single use, expire in 10 minutes and are rate-limited. Push notifications are end-to-end encrypted and go only to the browser vendors' push services.
+- **Terminal hooks** (Machines → Install hooks) call Switchboard only on 127.0.0.1 with a separate hook token (a file only you can read); installing and removing them backs up your `~/.claude/settings.json` first and touches only Switchboard's own entries.
+- Child processes are spawned with argument arrays, never through a shell.
+- Switchboard never reads or passes on your claude.ai credentials, or any other CLI's (Codex, OpenCode) or account's: sign-in and sign-out are each CLI's own commands, and it only runs the CLIs you signed in to. Account profile folders and handover exports stay in the data folder (mode 0700 / 0600).
+- **Attachments** are stored only in the data folder (never in a repo or the database), typed by their bytes, and never rendered inline unless they are PNG, JPEG, GIF, WebP or PDF.
+- **No telemetry.** Switchboard sends nothing to its author; the only network calls it makes itself are GitHub update checks and, only once you enable them on a paired device, encrypted push notifications through that device's browser vendor. See the [privacy policy](../PRIVACY.md).
+- **Team access and the Jira connection** (experimental): their secrets are kept in the OS keychain and never sent to paired machines; a Team member's keys go only to that member, and the Jira credentials are never logged or answered by the API.
+- **MCP servers:** secrets never reach the browser; env and header values are masked, and servers are changed only through the CLI's own commands.
+- **Updates** come only from the configured GitHub repository's releases, over HTTPS, and are installed only after their SHA-256 checksum matches; the archive is unpacked by Node itself (no links, no paths outside its folder), and nothing from it runs except `npm ci --omit=dev` and the new server.
+
 ## Bind address
 - The UI service listens on **127.0.0.1 only**. There is no host setting. (D48 adds one more, separate socket: the optional peer listener, bound only to the Tailscale address; *Peer listener (D48)* below. D73 adds the optional device listener, also on **127.0.0.1**, published to the tailnet by `tailscale serve`; *Device listener (D73)* below.) `listenLoopback` refuses any other address (`0.0.0.0`, `::`, a LAN address, `localhost` (which can also bind `::1`), `::1`, other `127.x`) before a socket is opened, then checks the address the socket actually bound and closes the server if it is not 127.0.0.1.
 - Port: `SWITCHBOARD_PORT`, default 13001. Tests use 127.0.0.1:4871–4879 only.

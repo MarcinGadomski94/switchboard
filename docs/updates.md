@@ -62,23 +62,22 @@ None of the login services restarts Switchboard when it exits (M9.1: `KeepAlive`
 The helper retries its last command 5 times (2 s apart) and logs to `<dataDir>/logs/update.log`. Live sessions resume through the existing restart recovery (`docs/supervisor.md` → *Restart recovery*: sessions that were running get "Switchboard restarted. Continue.").
 
 ## Rollback
-The previous install stays (Settings → Updates → Previous version shows its folder). To go back:
+The previous install stays (Settings → Updates → Previous version shows its folder, e.g. `~/Library/Application Support/Switchboard/versions/1.1.0`, or where 1.0.0 was unpacked). To go back, go to that folder and point Start at login at it, which also starts it (launchd / systemd / schtasks):
 ```sh
-cd "<previous folder>"          # e.g. ~/Library/Application Support/Switchboard/versions/1.1.0, or where 1.0.0 was unpacked
-npm run service:install -- --start   # points Start at login at this folder and starts it (launchd / systemd / schtasks)
-# or, without the login service: stop Switchboard, then  npm start  in that folder
+cd "<previous folder>"
+npm run service:install -- --start
 ```
+Without the login service: stop Switchboard, then run `npm start` in that folder.
 A rollback over a version that added a **database migration** is refused at start ("the database has migration … which this build does not know; it was made by a newer Switchboard", M1.3): check `docs/database.md` of the newer version; going back then needs the database of before the update (Switchboard keeps no copy of it; ASSUMED D55-no-db-backup).
 
 ## Release packages
 The updater accepts exactly the layout of 1.0.0 (`src/core/release.ts`): assets `switchboard-<v>.tar.gz` and `switchboard-<v>.tar.gz.sha256` (`<sha256>  switchboard-<v>.tar.gz`), the tarball a ustar archive whose every entry sits under `switchboard-<v>/`: the `git archive` of the release commit **without** `tests/`, `.loop/`, `docs/visual/`, `playwright.config.ts`, `vitest.config.ts`, `tsconfig.e2e.json`, **plus** the built UI in `dist/web`. Installs run `npm ci --omit=dev && npm start`.
 
-`npm run release:package -- [--ref <ref>] [--out <folder>] [--skip-build] [--allow-dirty]` (`tools/release/package.ts`) writes both files into `dist/release/`: it refuses a dirty tree (unless `--allow-dirty`), builds the UI (`vite build`, unless `--skip-build`), reads `git archive --format=tar <ref>` (default `HEAD`) with the same tar reader, drops the excluded paths, adds `dist/web`, writes the gzip'd tar with the same writer (long paths through ustar's prefix or a pax header) and the checksum; the version is `package.json`'s. It warns when the tag `v<version>` is missing or not the ref. Then publish:
+`npm run release:package -- [--ref <ref>] [--out <folder>] [--skip-build] [--allow-dirty]` (`tools/release/package.ts`) writes both files into `dist/release/`: it refuses a dirty tree (unless `--allow-dirty`), builds the UI (`vite build`, unless `--skip-build`), reads `git archive --format=tar <ref>` (default `HEAD`) with the same tar reader, drops the excluded paths, adds `dist/web`, writes the gzip'd tar with the same writer (long paths through ustar's prefix or a pax header) and the checksum; the version is `package.json`'s. It warns when the tag `v<version>` is missing or not the ref.
+To publish, bump `package.json` and the lock with `npm version <x.y.z> --no-git-tag-version`, add the CHANGELOG entry, commit and push. Then, with `V` set to the new version (`V=x.y.z`) and `NOTES` to the release-notes file:
 ```sh
-npm version <x.y.z> --no-git-tag-version   # bump package.json + lock, add the CHANGELOG entry, commit, push
 npm run release:package
-gh release create v<x.y.z> dist/release/switchboard-<x.y.z>.tar.gz dist/release/switchboard-<x.y.z>.tar.gz.sha256 \
-  --title "Switchboard <x.y.z>" --notes-file <notes.md>
+gh release create "v$V" "dist/release/switchboard-$V.tar.gz" "dist/release/switchboard-$V.tar.gz.sha256" --title "Switchboard $V" --notes-file "$NOTES"
 ```
 The release notes (the body) are what "What's new" shows. Never mark an installable release as a pre-release or draft: the updater ignores those.
 
