@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.0 (2026-10-22)
+
+### Artifacts
+- **PDF artifacts:** agents save a PDF as it is (`artifact_save` kind `pdf` with the file's path, up to 25 MB) instead of converting it to HTML. It opens in the browser's own PDF viewer with Download and Open in new tab; phones and touch screens get an Open PDF button. The Artifacts page has a PDFs filter, versions work like images, and a paired machine's PDFs open the same way.
+
 ## 1.32.0 (2026-10-21)
 
 ### Machines
