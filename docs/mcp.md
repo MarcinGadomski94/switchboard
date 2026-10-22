@@ -91,6 +91,9 @@ Every session Switchboard starts gets a built-in `switchboard` server (its todo 
 ### How the turn ends: `turn_status` (D124)
 `turn_status { status: 'done' | 'waiting_for_you' | 'blocked', ask? }` (`src/core/turn-status.ts`, registered in `src/hook/sb-mcp.ts`, always on): the agent calls it as the **last action of every turn that ends without a question card**: `done` when the task is finished, `waiting_for_you` when it needs the developer's answer, decision or action, `blocked` when it cannot go on (a permission, an external dependency), with a one-line `ask` (at most 300 characters, required for the last two). The helper refuses, sending nothing, without an ask or with an unknown status; else it calls `POST /agent/v1/turn-status` (the session the agent token belongs to). Switchboard stores it on the session for the turn it was made in (`sessions.turn_wait`) and a new turn clears it; the session then reads **needs you** with the ask (`docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*). The D64 standing instruction carries one line asking for it; the tool's description says the rest. A CLI without the tool (or an agent that forgets it) falls back on the text check of its last message.
 
+### A process the developer needs: `process_keep` (D127)
+`process_keep { pid | match, keep, reason? }` (`src/core/process-keep.ts`, registered in `src/hook/sb-mcp.ts`, always on; `docs/processes.md`): Switchboard stops what a session leaves running (build servers, test hosts, dev servers) when the session is closed or has been idle for the delay; a kept process never is. The agent keeps one by `pid`, or by `match` (a case-insensitive part of the command line or the short name; every process of the session that matches), with an optional one-line `reason` (at most 200 characters, shown in the row's tooltip); `keep: false` hands it back to the automatic stop. Its description tells the agent to keep a server **only when the developer needs it running** after the turn, and to say so in its reply. The helper refuses, sending nothing, without `keep` or without `pid` / `match`; else it calls `POST /agent/v1/processes/keep`, which acts only on the processes of the session the agent token belongs to (404 with the session's process list when nothing matches).
+
 ### Tools that appear without a restart (2026-10-16)
 The feature tools of the `switchboard` server (Team's `team_*` and `request_access`, Plans' `plan_*`, Project memory's `memory_*`) depend on state that changes while a process runs. The helper (`src/hook/sb-feature-tools.ts`) therefore keeps them in step:
 
@@ -125,6 +128,7 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `loop_resume` | always | false | false | true | false |
 | `loop_cancel` | always | false | true | true | false |
 | `turn_status` | always | false | false | true | false |
+| `process_keep` | always | false | false | true | false |
 | `team_handoff` | Team (member) | false | false | false | false |
 | `team_members` | Team (member) | true | false | true | false |
 | `team_report` | Team (member) | false | false | false | false |
