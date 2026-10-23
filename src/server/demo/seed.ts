@@ -295,12 +295,12 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
               question: q.text,
               header: q.source,
               options: q.options.map((label) => ({ label, description: '' })),
-              multiSelect: false,
+              multiSelect: q.multiSelect === true,
             })),
           },
           createdAt: lastActivity,
         },
-        s.questions.map((q) => ({ source: q.source, text: q.text, options: q.options.map((label) => ({ label })) })),
+        s.questions.map((q) => ({ source: q.source, text: q.text, options: q.options.map((label) => ({ label })), multiSelect: q.multiSelect === true })),
       );
     }
   }

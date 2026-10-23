@@ -1464,12 +1464,24 @@ export interface Question {
   readonly options: readonly QuestionOption[];
   readonly multiSelect: boolean;
   readonly state: QuestionState;
-  /** The picked option's index; `null` until answered, and for an own answer (D39). */
+  /**
+   * The picked option's index; `null` until answered, and for an own answer (D39).
+   * D128: for a multi-select answer, the first picked index (every pick is in
+   * `answerIndexes`), so older clients still show one.
+   */
   readonly answerIndex: number | null;
   readonly answeredAt: string | null;
   /**
+   * Additive (D128): a multi-select answer's picked option indexes, ascending (`[]`
+   * when the answer is only own words, in `answerText`). `null` for a single-select
+   * question, while unanswered, and for answers stored before D128. Optional here
+   * so older payloads and fixtures still type-check; the server always sends it.
+   */
+  readonly answerIndexes?: readonly number[] | null;
+  /**
    * Additive (D39): the developer's own answer ("Other…"), verbatim as it went to
-   * the CLI (trimmed); `answerIndex` is then `null`. `null` for an option answer
+   * the CLI (trimmed); `answerIndex` is then `null`. D128: for a multi-select answer,
+   * the own words given alongside the picks in `answerIndexes` (if any). `null` for an option answer
    * and while unanswered. Optional here so older payloads and fixtures still
    * type-check; the server always sends it.
    */
@@ -1627,15 +1639,18 @@ export interface PermissionRequest {
 /**
  * One answer of {@link AnswerBatch}: exactly one of `answerIndex` (a picked option)
  * and, additive (D39), `text` (the developer's own words, 1–2000 characters once
- * trimmed; `src/core/own-answer.ts`).
+ * trimmed; `src/core/own-answer.ts`). Additive (D128), a multi-select question
+ * only: `answerIndexes` (one or more picked options, unique) with `text` optional
+ * alongside; `[]` with a `text` is the own words alone.
  */
 export interface BatchAnswer {
   readonly questionId: string;
   readonly answerIndex?: number;
   readonly text?: string;
+  readonly answerIndexes?: readonly number[];
 }
 
-/** `POST /api/questions/batch/{batchId}/answers` body (contract; D39 adds `text`). */
+/** `POST /api/questions/batch/{batchId}/answers` body (contract; D39 adds `text`, D128 `answerIndexes`). */
 export interface AnswerBatch {
   readonly answers: readonly BatchAnswer[];
 }

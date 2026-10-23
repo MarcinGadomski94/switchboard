@@ -1143,6 +1143,40 @@ describe('0047 turn wait (D124)', () => {
   });
 });
 
+describe('0049 question multi answers (D128)', () => {
+  it('on a 0048 database: adds answer_indexes / answer_own (NULL for the questions there, which keep their answers); a multi-select answer survives a reopen', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd128', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version <= 48) });
+    let single = '';
+    let multi = '';
+    try {
+      const session = await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older-128' });
+      const one = await earlier.questions.createBatch({ id: 'b-old', sessionId: session.id, input: {} }, [{ source: 'main', text: 'Color?', options: [{ label: 'Red' }, { label: 'Blue' }] }]);
+      single = one.questions[0]!.id;
+      await earlier.questions.answer('b-old', [{ questionId: single, answerIndex: 1 }]);
+      const two = await earlier.questions.createBatch({ id: 'b-new', sessionId: session.id, input: {} }, [{ source: 'main', text: 'Parts?', options: [{ label: 'Code' }, { label: 'Tests' }, { label: 'Docs' }], multiSelect: true }]);
+      multi = two.questions[0]!.id;
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 49).map((m) => m.version));
+      expect(await store.questions.getQuestion(single)).toMatchObject({ answerIndex: 1, answerLabel: 'Blue', answerIndexes: null, answerOwn: null });
+      await store.questions.answer('b-new', [{ questionId: multi, answerIndexes: [2, 0], text: 'the changelog, too' }]);
+    } finally {
+      await store.close();
+    }
+    const reopened = await openStore(file);
+    try {
+      expect(await reopened.questions.getQuestion(multi)).toMatchObject({ answerIndex: 0, answerIndexes: [0, 2], answerOwn: 'the changelog, too', answerLabel: 'Code, Docs, "the changelog, too"' });
+    } finally {
+      await reopened.close();
+    }
+  });
+});
+
 describe('0048 artifact pdf (D126)', () => {
   it('rebuilds artifacts_saved to allow pdf: every row, version and search entry kept; the triggers and foreign keys work again', async () => {
     const shipped = await loadMigrations();

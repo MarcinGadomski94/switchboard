@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AnswerDelivery, QuestionState } from '../../../core/model.ts';
 import type { AnsweredOn } from '../../../core/remote-control.ts';
+import { joinAnswerItems } from '../../../core/multi-answer.ts';
 import { type RepoContext, placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
 import { StoreError, Table, type TableSpec, defined } from '../table.ts';
@@ -52,14 +53,28 @@ export interface QuestionRecord {
   readonly header: string | null;
   readonly options: QuestionOption[];
   readonly multiSelect: boolean;
-  /** The chosen option's index; `null` until answered and for an own answer (D39). */
+  /**
+   * The chosen option's index; `null` until answered and for an own answer (D39).
+   * D128: for a multi-select answer, the first picked index (`null` when only own
+   * words were given); every pick is in {@link answerIndexes}.
+   */
   readonly answerIndex: number | null;
   /**
    * The answer as written into `answers`: the chosen option's label, or (D39, with
    * `answerIndex` `null`) the developer's own words, trimmed ({@link ownAnswerOf}).
+   * D128: for a multi-select answer, the picked labels and the own words joined
+   * the CLI's way (`joinAnswerItems`).
    */
   readonly answerLabel: string | null;
   readonly answeredAt: string | null;
+  /**
+   * D128 (0049): a multi-select answer's picked option indexes, ascending (`[]`
+   * when it is only own words); `null` for a single-select answer, an unanswered
+   * question and rows answered before 0049. Optional so older fixtures type-check.
+   */
+  readonly answerIndexes?: number[] | null;
+  /** D128 (0049): the own words given with a multi-select answer, trimmed; `null` otherwise. */
+  readonly answerOwn?: string | null;
 }
 
 /** A new batch for {@link QuestionRepository.createBatch}. */
@@ -86,15 +101,30 @@ export interface QuestionCreate {
  * developer's own words (`text`, already checked and trimmed by the caller).
  */
 export type QuestionAnswer =
-  | { readonly questionId: string; readonly answerIndex: number; readonly text?: undefined }
-  | { readonly questionId: string; readonly text: string; readonly answerIndex?: undefined };
+  | { readonly questionId: string; readonly answerIndex: number; readonly text?: undefined; readonly answerIndexes?: undefined }
+  | { readonly questionId: string; readonly text: string; readonly answerIndex?: undefined; readonly answerIndexes?: undefined }
+  | MultiQuestionAnswer;
+
+/**
+ * D128: a multi-select question's answer: one or more picked option indexes
+ * (unique, in range) and optionally the developer's own words alongside them; at
+ * least one of the two.
+ */
+export interface MultiQuestionAnswer {
+  readonly questionId: string;
+  readonly answerIndexes: readonly number[];
+  readonly text?: string;
+  readonly answerIndex?: undefined;
+}
 
 /**
  * D39: a stored question's own answer (its `answer_label` with no `answer_index`),
  * or `null` for an option answer and while unanswered. No column of its own: the
  * label column already holds what went into `answers`.
  */
-export function ownAnswerOf(record: Pick<QuestionRecord, 'answerIndex' | 'answerLabel'>): string | null {
+export function ownAnswerOf(record: Pick<QuestionRecord, 'answerIndex' | 'answerLabel' | 'answerIndexes' | 'answerOwn'>): string | null {
+  // D128: a multi-select answer keeps its own words in their own column.
+  if (Array.isArray(record.answerIndexes)) return record.answerOwn ?? null;
   return record.answerIndex === null ? record.answerLabel : null;
 }
 
@@ -145,6 +175,8 @@ const QUESTION_SPEC: TableSpec<QuestionRecord> = {
     answerIndex: ['answer_index', 'int'],
     answerLabel: ['answer_label', 'text'],
     answeredAt: ['answered_at', 'text'],
+    answerIndexes: ['answer_indexes', 'json'],
+    answerOwn: ['answer_own', 'text'],
   },
 };
 
@@ -218,12 +250,13 @@ export class QuestionRepository {
 
   /**
    * Records answers: index + the option's label, or (D39) an own answer as the
-   * label with no index. When every question of the batch has an answer, the batch
+   * label with no index, or (D128) a multi-select answer: every picked index, the own
+   * words, and the CLI's joined answer string as the label. When every question of the batch has an answer, the batch
    * gets `answeredAt`, and an `open` batch becomes `answered`; a `stale` batch stays
    * `stale` (its answers go out as a user message).
    * @throws {StoreError} `not-found` for an unknown batch; `conflict` if the batch is
    * already answered; `invalid` for a question of another batch, an index out of
-   * range or an empty own answer.
+   * range, an empty own answer or (D128) a multi-select answer without a choice.
    */
   async answer(batchId: string, answers: readonly QuestionAnswer[]): Promise<QuestionBatchWithQuestions> {
     return transaction(this.#ctx.db, () => {
@@ -236,6 +269,26 @@ export class QuestionRepository {
         const { questionId } = answer;
         const question = byId.get(questionId);
         if (!question) throw new StoreError('invalid', `question ${questionId} is not in batch ${batchId}`);
+        if (answer.answerIndexes !== undefined) {
+          // D128: a multi-select answer: every pick (ascending) and the own words; the label is the CLI's answer string.
+          const indexes = [...new Set(answer.answerIndexes)].sort((a, b) => a - b);
+          const own = answer.text === undefined ? null : answer.text;
+          if (own !== null && (typeof own !== 'string' || own.trim() === '')) throw new StoreError('invalid', `the own answer to question ${questionId} is empty`);
+          if (indexes.length === 0 && own === null) throw new StoreError('invalid', `question ${questionId} needs at least one choice`);
+          const labels = indexes.map((index) => {
+            const option = Number.isInteger(index) ? question.options[index] : undefined;
+            if (!option) throw new StoreError('invalid', `answer index ${index} is out of range for question ${questionId}`);
+            return option.label;
+          });
+          this.#questions.update(questionId, {
+            answerIndex: indexes[0] ?? null,
+            answerIndexes: indexes,
+            answerOwn: own,
+            answerLabel: joinAnswerItems(own === null ? labels : [...labels, own]),
+            answeredAt: ts,
+          });
+          continue;
+        }
         if (answer.text !== undefined) {
           if (typeof answer.text !== 'string' || answer.text.trim() === '') throw new StoreError('invalid', `the own answer to question ${questionId} is empty`);
           this.#questions.update(questionId, { answerIndex: null, answerLabel: answer.text, answeredAt: ts });

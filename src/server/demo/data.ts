@@ -46,6 +46,8 @@ export interface DemoQuestion {
   readonly source: string;
   readonly text: string;
   readonly options: readonly string[];
+  /** D128: a multi-select question (several options, plus own words, may be picked); absent = single-select. */
+  readonly multiSelect?: boolean;
 }
 
 /** A changed file of a session (Diff tab). `branch` is `—` for workspace-root files. */

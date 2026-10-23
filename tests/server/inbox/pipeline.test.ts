@@ -47,7 +47,7 @@ const PORT = 4910; // inject() opens no socket; the port feeds the Host check on
 const HOST = `127.0.0.1:${PORT}`;
 
 /** The exact keys of the contract's Question (src/core/api.ts). */
-const QUESTION_KEYS = ['answerIndex', 'answerText', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'queued', 'sessionId', 'source', 'state', 'text'];
+const QUESTION_KEYS = ['answerIndex', 'answerIndexes', 'answerText', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'queued', 'sessionId', 'source', 'state', 'text'];
 
 interface Rig {
   readonly w: SupervisorWorld;
@@ -678,5 +678,131 @@ describe('M3.1 · pure rules', () => {
     expect(staleAnswersText(questions)).toBe('Answers to your earlier questions:\n"First?" = "x"\n"Second "quoted"?" = "z"');
     // D39: an own answer (no index, the text as the label) is listed verbatim too.
     expect(staleAnswersText([{ ...q('a', 'First?', ['x'], 0), answerLabel: 'My own\nwords' }])).toBe('Answers to your earlier questions:\n"First?" = "My own\nwords"');
+  });
+});
+
+describe('D128 · multi-select answers (answerIndexes: one or more options, own words alongside)', () => {
+  it('ask-multiselect: two options → one control_response whose answers value is the joined labels, byte for byte the recording; stored and reloaded', async () => {
+    const r = await setup('ask-multiselect');
+    const session = await startSession(r, 'Ask me a multi-select question.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    const q0 = questions[0] as QuestionRecord;
+    // Picked in any order; sent in option order.
+    const response = await call(r, 'POST', `/api/questions/batch/${batch.id}/answers`, { answers: [{ questionId: q0.id, answerIndexes: [2, 1] }] });
+    expect(response.statusCode, response.body).toBe(204);
+    const recorded = await recordedResponse('ask-multiselect');
+    const sent = await sentResponses(r.w.logFile, await pidOf(r, session.id));
+    // The recording chose "Tests, Docs" (M0.2): the real CLI took exactly this line.
+    expect(sent).toEqual([recorded.line.replace(recorded.requestId, batch.id)]);
+    await waitForStatus(r.w.store, session.id, ['done']);
+    const ask = (await r.w.store.events.list(session.id)).find((e) => (e.payload as ToolPayload).name === 'AskUserQuestion');
+    expect((ask?.payload as ToolPayload).result).toContain('"Which parts should I update?"="Tests, Docs"');
+
+    const stored = await r.w.store.questions.getQuestion(q0.id);
+    expect(stored).toMatchObject({ answerIndex: 1, answerIndexes: [1, 2], answerOwn: null, answerLabel: 'Tests, Docs' });
+    const detail = (await call(r, 'GET', `/api/sessions/${session.id}`)).json() as { questions: Question[] };
+    expect(detail.questions.map((q) => [q.state, q.answerIndex, q.answerIndexes, q.answerText])).toEqual([['answered', 1, [1, 2], null]]);
+  });
+
+  it('ask-multiselect: two options + own words → the own words join the list (quoted when they hold ", "); 400 / 422 cases write nothing; persisted', async () => {
+    const r = await setup('ask-multiselect');
+    const session = await startSession(r, 'Ask me a multi-select question.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    const q0 = questions[0] as QuestionRecord;
+    const url = `/api/questions/batch/${batch.id}/answers`;
+    const pid = await pidOf(r, session.id);
+
+    const refused: Array<[string, unknown, string]> = [
+      ['no choice', { answers: [{ questionId: q0.id, answerIndexes: [] }] }, 'answerIndexes'],
+      ['a repeated option', { answers: [{ questionId: q0.id, answerIndexes: [1, 1] }] }, 'answerIndexes'],
+      ['next to answerIndex', { answers: [{ questionId: q0.id, answerIndex: 0, answerIndexes: [1] }] }, 'answer'],
+      ['a blank own text', { answers: [{ questionId: q0.id, answerIndexes: [0], text: '  ' }] }, 'text'],
+    ];
+    for (const [what, body, field] of refused) {
+      const response = await call(r, 'POST', url, body);
+      expect(response.statusCode, what).toBe(422);
+      expect((response.json() as { errors: Array<{ questionId: string; field: string }> }).errors.map((e) => [e.questionId, e.field]), what).toEqual([[q0.id, field]]);
+    }
+    for (const [what, body] of [
+      ['out of range', { answers: [{ questionId: q0.id, answerIndexes: [0, 3] }] }],
+      ['not an integer', { answers: [{ questionId: q0.id, answerIndexes: [0.5] }] }],
+      ['not a list', { answers: [{ questionId: q0.id, answerIndexes: 1 }] }],
+    ] as Array<[string, unknown]>) {
+      expect((await call(r, 'POST', url, body)).statusCode, what).toBe(400);
+    }
+    expect((await rawStdin(r.w.logFile, pid)).filter((l) => l.includes('control_response'))).toEqual([]);
+
+    const typed = 'Only the changelog, and the README';
+    const answered = await call(r, 'POST', url, { answers: [{ questionId: q0.id, answerIndexes: [2, 0], text: `  ${typed} ` }] });
+    expect(answered.statusCode, answered.body).toBe(204);
+    const recorded = await recordedResponse('ask-multiselect');
+    const expected = JSON.parse(recorded.line.replace(recorded.requestId, batch.id)) as { response: { response: { updatedInput: { answers: Record<string, string> } } } };
+    expected.response.response.updatedInput.answers = { 'Which parts should I update?': `Code, Docs, "${typed}"` };
+    const sent = await sentResponses(r.w.logFile, pid);
+    expect(sent).toEqual([JSON.stringify(expected)]);
+    await waitForStatus(r.w.store, session.id, ['done']);
+
+    expect(await r.w.store.questions.getQuestion(q0.id)).toMatchObject({ answerIndex: 0, answerIndexes: [0, 2], answerOwn: typed, answerLabel: `Code, Docs, "${typed}"` });
+    const detail = (await call(r, 'GET', `/api/sessions/${session.id}`)).json() as { questions: Question[] };
+    expect(detail.questions.map((q) => [q.answerIndex, q.answerIndexes, q.answerText])).toEqual([[0, [0, 2], typed]]);
+  });
+
+  it('ask-2q: answerIndexes on a single-select question is 422 (field answerIndexes); the single shapes are unchanged', async () => {
+    const r = await setup('ask-2q');
+    const session = await startSession(r, 'Ask me two questions.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    const [q0, q1] = questions as [QuestionRecord, QuestionRecord];
+    const url = `/api/questions/batch/${batch.id}/answers`;
+    const response = await call(r, 'POST', url, { answers: [{ questionId: q0.id, answerIndexes: [0, 1] }, { questionId: q1.id, answerIndex: 0 }] });
+    expect(response.statusCode).toBe(422);
+    expect((response.json() as { errors: Array<{ questionId: string; field: string }> }).errors.map((e) => [e.questionId, e.field])).toEqual([[q0.id, 'answerIndexes']]);
+    // The recorded single answer still goes out byte for byte.
+    const ok = await call(r, 'POST', url, { answers: [{ questionId: q0.id, answerIndex: 1 }, { questionId: q1.id, answerIndex: 0 }] });
+    expect(ok.statusCode).toBe(204);
+    const recorded = await recordedResponse('ask-2q');
+    expect(await sentResponses(r.w.logFile, await pidOf(r, session.id))).toEqual([recorded.line.replace(recorded.requestId, batch.id)]);
+    expect((await r.w.store.questions.getQuestion(q0.id))?.answerIndexes).toBeNull();
+  });
+
+  it('a stale multi-select batch: the answers message lists every choice', async () => {
+    const r = await setup('ask-2q');
+    const session = await r.w.store.sessions.create({ name: 'stale-multi', claudeSessionId: 'c-stale-multi' });
+    const { questions } = await r.w.store.questions.createBatch(
+      { id: 'b-multi', sessionId: session.id, input: { questions: [{ question: 'Which parts should I update?', header: 'Parts', options: [{ label: 'Code' }, { label: 'Tests' }, { label: 'Docs' }], multiSelect: true }] } },
+      [{ source: 'main', text: 'Which parts should I update?', options: [{ label: 'Code' }, { label: 'Tests' }, { label: 'Docs' }], multiSelect: true }],
+    );
+    await r.w.store.questions.markStale('b-multi');
+    const response = await call(r, 'POST', '/api/questions/batch/b-multi/answers', { answers: [{ questionId: questions[0]?.id, answerIndexes: [0, 1], text: 'the changelog' }] });
+    expect(response.statusCode, response.body).toBe(204);
+    const pending = await r.w.store.pendingMessages.pending(session.id);
+    expect(pending.map((m) => m.text)).toEqual(['Answers to your earlier questions:\n"Which parts should I update?" = "Code, Tests, the changelog"']);
+  });
+
+  it('pure rules: validateAnswers normalises a multi-select question\'s answers; answersByText joins them the CLI\'s way', () => {
+    const q = (id: string, text: string, labels: string[], position: number, multiSelect: boolean): QuestionRecord => ({
+      id, batchId: 'b', sessionId: 's', position, source: 'main', text, header: null, options: labels.map((label) => ({ label })), multiSelect, answerIndex: null, answerLabel: null, answeredAt: null,
+    });
+    const questions = [q('m', 'Parts?', ['Code', 'Tests', 'Docs'], 0, true), q('s', 'Color?', ['Red', 'Blue'], 1, false)];
+    // The single shapes on a multi-select question take the multi shape.
+    expect(validateAnswers({ answers: [{ questionId: 'm', answerIndex: 2 }, { questionId: 's', answerIndex: 1 }] }, questions)).toEqual([
+      { questionId: 'm', answerIndexes: [2] },
+      { questionId: 's', answerIndex: 1 },
+    ]);
+    expect(validateAnswers({ answers: [{ questionId: 'm', text: ' mine ' }, { questionId: 's', answerIndex: 0 }] }, questions)).toEqual([
+      { questionId: 'm', answerIndexes: [], text: 'mine' },
+      { questionId: 's', answerIndex: 0 },
+    ]);
+    expect(validateAnswers({ answers: [{ questionId: 'm', answerIndexes: [2, 0], text: null }, { questionId: 's', answerIndex: 0, answerIndexes: null }] }, questions)).toEqual([
+      { questionId: 'm', answerIndexes: [0, 2] },
+      { questionId: 's', answerIndex: 0 },
+    ]);
+    expect(answersByText(questions, [{ questionId: 'm', answerIndexes: [0, 2], text: 'A "soft" one' }, { questionId: 's', answerIndex: 1 }])).toEqual({
+      'Parts?': 'Code, Docs, "A \\"soft\\" one"',
+      'Color?': 'Blue',
+    });
+    expect(answersByText(questions, [{ questionId: 'm', answerIndexes: [], text: 'mine' }, { questionId: 's', answerIndex: 0 }])).toEqual({ 'Parts?': 'mine', 'Color?': 'Red' });
   });
 });

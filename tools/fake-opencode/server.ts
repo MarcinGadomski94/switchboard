@@ -278,13 +278,17 @@ export async function serve(args: readonly string[], options: { readonly log: (e
       if ((await toolRun('write', { filePath: target, content: 'written by fake-opencode\n' }, 'Wrote file successfully.', { name: 'edit', pattern: target })) === 'aborted') return aborted();
     }
 
-    if (text.includes('[fake:ask]')) {
+    // D128: `[fake:ask-multi]` asks a `multiple: true` question.
+    const askMulti = text.includes('[fake:ask-multi]');
+    if (text.includes('[fake:ask]') || askMulti) {
       const requestID = id('que');
       const callID = id('call');
       emit('question.asked', {
         id: requestID,
         sessionID,
-        questions: [{ question: 'Which color should the button be?', header: 'Color', options: [{ label: 'Red', description: 'warm' }, { label: 'Blue', description: 'cool' }], multiple: false }],
+        questions: askMulti
+          ? [{ question: 'Which parts should I update?', header: 'Parts', options: [{ label: 'Code', description: '' }, { label: 'Tests', description: '' }, { label: 'Docs', description: '' }], multiple: true }]
+          : [{ question: 'Which color should the button be?', header: 'Color', options: [{ label: 'Red', description: 'warm' }, { label: 'Blue', description: 'cool' }], multiple: false }],
         tool: { messageID: assistant['id'], callID },
       });
       const answer = await ask(requestID, sessionID, turn);

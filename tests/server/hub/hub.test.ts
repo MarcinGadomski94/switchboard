@@ -169,6 +169,8 @@ const QUESTION_KEYS = keys<Question>()([
   'closedReason',
   // additive, D44 (answers waiting in the outbox)
   'queued',
+  // additive, D128 (every pick of a multi-select answer)
+  'answerIndexes',
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
@@ -516,6 +518,7 @@ describe('/hub · events (contract, field by field)', () => {
         answeredOn: null,
         closedReason: null,
         queued: null,
+        answerIndexes: null,
       },
       {
         id: 'q2',
@@ -533,6 +536,7 @@ describe('/hub · events (contract, field by field)', () => {
         answeredOn: null,
         closedReason: null,
         queued: null,
+        answerIndexes: null,
       },
     ];
     const batch: HubEvents['questionBatch'] = { sessionId: 's1', batchId: 'req_1', questions };

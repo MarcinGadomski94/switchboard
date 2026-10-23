@@ -146,6 +146,30 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
     }
   });
 
+  it('D128: a multi-select answer to a peer\'s question is forwarded intact (several options + own words reach that machine\'s agent)', async () => {
+    const { a, b, aId } = await world();
+    const local = await startOn(a, 'multi-on-a', '[fake:ask-multiselect] Ask me a multi-select question.');
+    const id = remoteId(aId, local.id);
+    const item = await waitFor('the remote multi-select batch in B\'s Inbox', async () => {
+      const inbox = (await b.call('GET', '/api/inbox')).body as InboxItem[];
+      return inbox.find((entry) => entry.kind === 'questions' && entry.sessionId === id) ?? null;
+    });
+    const question = item.questions?.[0];
+    expect(question?.multiSelect).toBe(true);
+    const answered = await b.call('POST', `/api/questions/batch/${encodeURIComponent(item.id)}/answers`, { answers: [{ questionId: question?.id, answerIndexes: [1, 2], text: 'the changelog' }] });
+    expect(answered.status, JSON.stringify(answered.body)).toBe(204);
+    // A's agent got every choice in one answer string; both machines show all of them.
+    const result = await waitFor('A\'s AskUserQuestion result', async () => {
+      const detail = (await a.call('GET', `/api/sessions/${local.id}`)).body as SessionDetail;
+      const ask = detail.events.find((event) => (event.payload as { name?: string }).name === 'AskUserQuestion');
+      const text = (ask?.payload as { result?: string } | undefined)?.result;
+      return typeof text === 'string' && text.length > 0 ? text : null;
+    });
+    expect(result).toContain('"Which parts should I update?"="Tests, Docs, the changelog"');
+    const remote = (await b.call('GET', `/api/sessions/${encodeURIComponent(id)}`)).body as SessionDetail;
+    expect(remote.questions.map((q) => [q.answerIndexes, q.answerText])).toEqual([[[1, 2], 'the changelog']]);
+  });
+
   it('an unreachable peer\'s sessions stay listed as unreachable; its calls answer 502', async () => {
     const { a, b, aId } = await world();
     const local = await startOn(a, 'kept', 'Say OK.');

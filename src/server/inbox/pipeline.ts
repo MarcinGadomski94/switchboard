@@ -2,6 +2,7 @@ import type { SessionActivity } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
+import { joinAnswerItems } from '../../core/multi-answer.ts';
 import { checkOwnAnswer } from '../../core/own-answer.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { SESSION_CLOSED_REASON, TURN_STOPPED_REASON } from '../../core/session-close.ts';
@@ -59,14 +60,18 @@ export interface QuestionSessions {
  * Why the pipeline refused a call; `code` maps to an HTTP status in the routes.
  * `invalid-answer` (D39, 422) = an answer entry that names one question but holds
  * no usable answer: both or neither of `answerIndex` / `text`, or a `text` that is
- * not 1–2000 characters once trimmed.
+ * not 1–2000 characters once trimmed. D128: also `answerIndexes` on a single-select
+ * question, next to an `answerIndex`, repeating an option, or with no choice at all.
  */
 export type InboxErrorCode = 'not-found' | 'invalid' | 'invalid-answer' | 'already-answered' | 'not-open' | 'busy' | 'unknown-action';
 
-/** D39: one refused answer of a 422 `invalid-answer`: the question and the field (`text`, or `answer` for both / neither). */
+/**
+ * D39: one refused answer of a 422 `invalid-answer`: the question and the field
+ * (`text`, or `answer` for both / neither; D128: `answerIndexes`).
+ */
 export interface AnswerFieldError {
   readonly questionId: string;
-  readonly field: 'text' | 'answer';
+  readonly field: 'text' | 'answer' | 'answerIndexes';
   readonly message: string;
 }
 
@@ -265,10 +270,11 @@ export class QuestionPipeline implements ControlRequestHandler {
    * `POST /api/questions/batch/{batchId}/answers`. Every question of the batch must
    * get exactly one answer: a valid `answerIndex` (`invalid` otherwise) or, D39, an
    * own answer `text` (`invalid-answer` when it is empty or too long, or when both
-   * or neither are given); a `multiSelect` question takes one of them, because the
-   * contract carries one index. An open batch is answered with one
-   * `control_response`: `allow` + the input unchanged + `answers{<question text>:
-   * <option label or own text>}`. A stale batch (or one whose request is gone) keeps
+   * or neither are given); D128: a `multiSelect` question may instead take
+   * `answerIndexes` (one or more options) with an own `text` alongside. An open
+   * batch is answered with one `control_response`: `allow` + the input unchanged +
+   * `answers{<question text>: <option label or own text>}`, a multi-select answer's
+   * labels and own text joined the CLI's way (`joinAnswerItems`). A stale batch (or one whose request is gone) keeps
    * its answers and sends them, questions and answers verbatim, as a user message:
    * now when the session has a live process, else with its next run.
    * @throws {InboxError} `not-found`, `invalid`, `invalid-answer`, `already-answered`, `busy`.
@@ -452,10 +458,19 @@ export function parseQuestions(input: unknown): Array<Omit<QuestionCreate, 'sour
  * one of its options or (D39) an own answer `text`, 1–2000 characters once trimmed
  * (`checkOwnAnswer`; returned trimmed). A `null` `answerIndex` / `text` counts as
  * not given.
+ *
+ * D128: a `multiSelect` question may take `{ questionId, answerIndexes, text? }`:
+ * unique option indexes (returned ascending) and optionally an own `text`, at
+ * least one choice in all. Its single shapes still work and are returned in the
+ * multi shape (`[answerIndex]`, or `[]` + `text`), so every multi-select answer is
+ * stored and sent alike.
  * @throws {InboxError} `invalid` (HTTP 400) for a body that is not that shape, an
- * unknown or repeated question, an index that is not an option, or a question
- * without an entry; then `invalid-answer` (HTTP 422, every refused entry in
- * `errors`) for an entry with both or neither, or an own answer out of bounds.
+ * unknown or repeated question, an index that is not an option (D128: also in
+ * `answerIndexes`, or `answerIndexes` that is not an array), or a question without
+ * an entry; then `invalid-answer` (HTTP 422, every refused entry in `errors`) for
+ * an entry with both or neither, an own answer out of bounds, or (D128)
+ * `answerIndexes` on a single-select question, next to `answerIndex`, with a
+ * repeated option or with no choice.
  */
 export function validateAnswers(body: unknown, questions: readonly QuestionRecord[]): QuestionAnswer[] {
   const list = typeof body === 'object' && body !== null ? (body as { answers?: unknown }).answers : undefined;
@@ -465,27 +480,34 @@ export function validateAnswers(body: unknown, questions: readonly QuestionRecor
   const answers: QuestionAnswer[] = [];
   const refused: AnswerFieldError[] = [];
   for (const entry of list as unknown[]) {
-    const { questionId, answerIndex, text } = asRecord(entry);
+    const { questionId, answerIndex, text, answerIndexes } = asRecord(entry);
     if (typeof questionId !== 'string' || !byId.has(questionId)) throw new InboxError('invalid', `unknown questionId ${String(questionId)}`);
     if (seen.has(questionId)) throw new InboxError('invalid', `question ${questionId} is answered twice`);
     seen.add(questionId);
     const question = byId.get(questionId) as QuestionRecord;
     const hasIndex = answerIndex !== undefined && answerIndex !== null;
     const hasText = text !== undefined && text !== null;
+    if (answerIndexes !== undefined && answerIndexes !== null) {
+      const multi = multiAnswerOf(question, answerIndexes, hasIndex, hasText ? text : undefined);
+      if ('field' in multi) refused.push(multi);
+      else answers.push(multi);
+      continue;
+    }
     if (hasIndex === hasText) {
       refused.push({ questionId, field: 'answer', message: `question ${questionId} needs exactly one of answerIndex and text` });
       continue;
     }
     if (hasText) {
       const own = checkOwnAnswer(text);
-      if (own.ok) answers.push({ questionId, text: own.text });
+      // D128: a multi-select question's answers all take the multi shape.
+      if (own.ok) answers.push(question.multiSelect ? { questionId, answerIndexes: [], text: own.text } : { questionId, text: own.text });
       else refused.push({ questionId, field: 'text', message: `question ${questionId}: ${own.message}` });
       continue;
     }
     if (typeof answerIndex !== 'number' || !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= question.options.length) {
       throw new InboxError('invalid', `answerIndex ${String(answerIndex)} is not an option of question ${questionId}`);
     }
-    answers.push({ questionId, answerIndex });
+    answers.push(question.multiSelect ? { questionId, answerIndexes: [answerIndex] } : { questionId, answerIndex });
   }
   const missing = questions.filter((question) => !seen.has(question.id)).length;
   if (missing > 0) throw new InboxError('invalid', `${seen.size} of ${questions.length} answered: every question needs an answer`);
@@ -494,25 +516,69 @@ export function validateAnswers(body: unknown, questions: readonly QuestionRecor
 }
 
 /**
+ * D128: one `answerIndexes` entry of a multi-select question checked: the answer
+ * (indexes unique and ascending, the own text trimmed), or the refused field.
+ * @throws {InboxError} `invalid` (400) when `answerIndexes` is not an array of option indexes.
+ */
+function multiAnswerOf(question: QuestionRecord, raw: unknown, hasIndex: boolean, text: unknown): QuestionAnswer | AnswerFieldError {
+  const questionId = question.id;
+  if (!question.multiSelect) return { questionId, field: 'answerIndexes', message: `question ${questionId} is single-select: answerIndexes is only for a multi-select question` };
+  if (hasIndex) return { questionId, field: 'answer', message: `question ${questionId} needs one of answerIndex and answerIndexes, not both` };
+  if (!Array.isArray(raw)) throw new InboxError('invalid', `answerIndexes of question ${questionId} must be a list of option indexes`);
+  for (const index of raw as unknown[]) {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= question.options.length) {
+      throw new InboxError('invalid', `answerIndexes ${JSON.stringify(raw)}: ${String(index)} is not an option of question ${questionId}`);
+    }
+  }
+  const indexes = raw as number[];
+  if (new Set(indexes).size !== indexes.length) return { questionId, field: 'answerIndexes', message: `question ${questionId}: answerIndexes repeats an option` };
+  let own: string | undefined;
+  if (text !== undefined) {
+    const checked = checkOwnAnswer(text);
+    if (!checked.ok) return { questionId, field: 'text', message: `question ${questionId}: ${checked.message}` };
+    own = checked.text;
+  }
+  if (indexes.length === 0 && own === undefined) return { questionId, field: 'answerIndexes', message: `question ${questionId} needs at least one choice` };
+  const sorted = [...indexes].sort((a, b) => a - b);
+  return own === undefined ? { questionId, answerIndexes: sorted } : { questionId, answerIndexes: sorted, text: own };
+}
+
+/** What one answer contributes to `answers`: its label(s) and (D39) own text, in order. */
+function answerItems(question: QuestionRecord, answer: QuestionAnswer): string[] {
+  if (answer.answerIndexes !== undefined) {
+    const labels = answer.answerIndexes.map((index) => question.options[index]?.label).filter((label): label is string => label !== undefined);
+    return answer.text === undefined ? labels : [...labels, answer.text];
+  }
+  if (answer.text !== undefined) return [answer.text];
+  const label = question.options[answer.answerIndex]?.label;
+  return label === undefined ? [] : [label];
+}
+
+/**
  * `answers` of the `control_response`: question text (verbatim) → the chosen
  * option's label or (D39) the own answer's text, verbatim (trimmed), in question
  * order. That is what the CLI's own "Other" sends: the typed text as the answer
- * string. Two questions with the same text (the CLI keys answers by text) get their
- * distinct answers joined with ", ", the CLI's own multi-value format.
+ * string. D128: a multi-select answer is its labels (option order) and then its own
+ * text as ONE string, joined the CLI's way (`joinAnswerItems`: `", "`, an item
+ * holding `", "` or `"` as a JSON string; VERIFIED, `docs/questions.md`). Two
+ * questions with the same text (the CLI keys answers by text) get their distinct
+ * answers joined with ", " (that way too when one of them is multi-select).
  */
 export function answersByText(questions: readonly QuestionRecord[], answers: readonly QuestionAnswer[]): Record<string, string> {
   const byId = new Map(answers.map((answer) => [answer.questionId, answer]));
-  const labels = new Map<string, string[]>();
+  const labels = new Map<string, { items: string[]; multi: boolean }>();
   for (const question of [...questions].sort((a, b) => a.position - b.position)) {
     const answer = byId.get(question.id);
-    const label = answer === undefined ? undefined : answer.text !== undefined ? answer.text : question.options[answer.answerIndex]?.label;
-    if (label === undefined) continue;
-    const list = labels.get(question.text) ?? [];
-    if (!list.includes(label)) list.push(label);
-    labels.set(question.text, list);
+    if (answer === undefined) continue;
+    const items = answerItems(question, answer);
+    if (items.length === 0) continue;
+    const entry = labels.get(question.text) ?? { items: [], multi: false };
+    for (const item of items) if (!entry.items.includes(item)) entry.items.push(item);
+    if (answer.answerIndexes !== undefined) entry.multi = true;
+    labels.set(question.text, entry);
   }
   const out: Record<string, string> = {};
-  for (const [text, list] of labels) out[text] = list.join(', ');
+  for (const [text, entry] of labels) out[text] = entry.multi ? joinAnswerItems(entry.items) : entry.items.join(', ');
   return out;
 }
 

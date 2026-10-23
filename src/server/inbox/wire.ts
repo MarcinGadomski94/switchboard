@@ -43,6 +43,8 @@ export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): 
     state: batch.state,
     answerIndex: record.answerIndex,
     answeredAt: record.answeredAt,
+    // D128: every pick of a multi-select answer.
+    answerIndexes: record.answerIndexes ?? null,
     // D39: the developer's own answer ("Other…"), verbatim.
     answerText: ownAnswerOf(record),
     // D24: answered on the phone (Remote Control) before Switchboard answered.

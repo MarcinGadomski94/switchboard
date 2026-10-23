@@ -125,6 +125,18 @@ describe('D62 · OpenCode through the bridge (fake-opencode)', () => {
     expect((await w.store.events.list(session.id)).at(-1)?.payload).toMatchObject({ text: 'You chose Red' });
   });
 
+  it('D128: a multiple question is a multi-select batch; the joined answer goes back as one label list (a quoted item stays whole)', async () => {
+    const seen: CanUseToolContext[] = [];
+    const { w, session } = await startOpencode('[fake:ask-multi]', { controlHandler: { canUseTool: (context) => void seen.push(context) } });
+    await waitForStatus(w.store, session.id, ['need']);
+    const request = seen[0]?.request;
+    expect((request?.input as { questions: Array<{ multiSelect: boolean }> }).questions[0]?.multiSelect).toBe(true);
+    const answers = { 'Which parts should I update?': 'Tests, Docs, "the changelog, too"' };
+    await w.supervisor.respond(session.id, request?.requestId ?? '', { behavior: 'allow', updatedInput: { ...request?.input, answers } });
+    await waitForStatus(w.store, session.id, ['done']);
+    expect((await opencodeLog(w.opencodeLog)).find((line) => line.kind === 'question-reply')?.answers).toEqual([['Tests', 'Docs', 'the changelog, too']]);
+  });
+
   it('Stop (D50): abort → the "Stopped" line, idle; a queued message comes back and never runs', async () => {
     const { w, session } = await startOpencode('[fake:hold 20]');
     await until(async () => (await prompts(w.opencodeLog)).length === 1, 'the prompt');

@@ -1,4 +1,5 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
+import { splitAnswerItems } from '../../core/multi-answer.ts';
 import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 
 /** A parsed JSON object. */
@@ -92,17 +93,16 @@ export function contentBlocks(content: unknown): { readonly text: string; readon
 
 /**
  * M3.1's answers (`updatedInput.answers`: question text → label, several labels
- * joined with ", ") as each CLI's question ids → labels.
+ * joined with ", ") as each CLI's question ids → labels. D128: a multi-select
+ * answer's items are read back the CLI's way (`splitAnswerItems`: an item holding
+ * `", "` or `"` arrives as a quoted JSON string and stays one item).
  */
 export function mapAnswers(questions: ReadonlyArray<{ readonly id: string; readonly text: string }>, byText: JsonRecord): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const question of questions) {
     const answer = str(byText[question.text]);
     if (answer === null) continue;
-    out[question.id] = answer
-      .split(', ')
-      .map((part) => part.trim())
-      .filter((part) => part !== '');
+    out[question.id] = splitAnswerItems(answer);
   }
   return out;
 }
