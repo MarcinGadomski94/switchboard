@@ -2,7 +2,8 @@
  * D99 · the plan tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`, D68's
  * helper and agent token): `plan_create`, `plan_add_item`, `plan_add_dependency`,
  * `plan_status`, `plan_start`, `plan_set_solutions` (D115: the agent picks its items'
- * repositories, applied at once), and the Jira lane's `plan_propose_dependencies` (proposals the
+ * repositories, applied at once), D129's `plan_update_item`, `plan_remove_item`,
+ * `plan_remove_dependency` and `plan_set_mode` (items already in the plan, the merge mode), and the Jira lane's `plan_propose_dependencies` (proposals the
  * developer accepts on the plan; `src/core/plans-jira.ts`) and (D118) the read-only
  * `plan_jira_context` (`src/core/plans-jira-context.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
  * once at start (`registerPlanToolsIfOn`) and registers them only when it answers 200
@@ -34,7 +35,7 @@ function failure(answer: ApiAnswer): CallToolResult {
   return textResult(typeof message === 'string' ? message : `Switchboard answered HTTP ${answer.status}.`, true);
 }
 
-async function request(api: AgentApi, method: 'GET' | 'POST', route: string, body: unknown, done: (body: unknown) => CallToolResult): Promise<CallToolResult> {
+async function request(api: AgentApi, method: 'GET' | 'POST' | 'PUT' | 'DELETE', route: string, body: unknown, done: (body: unknown) => CallToolResult): Promise<CallToolResult> {
   let answer: ApiAnswer;
   try {
     answer = await api(method, route, body);
@@ -175,6 +176,69 @@ export async function planStart(api: AgentApi, input: ToolInput): Promise<CallTo
   if (mode !== undefined) body['mergeMode'] = mode;
   if (input['allow_protected_target'] !== undefined) body['allowProtectedTarget'] = input['allow_protected_target'] === true;
   return request(api, 'POST', planRoute(id, '/start'), body, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
+}
+
+/** An item ref (id, `[id]` or key) as a path segment. */
+function itemSegment(ref: string): string {
+  return encodeURIComponent(ref.trim().replace(/^\[|\]$/g, ''));
+}
+
+function textOf(input: ToolInput, key: string): string {
+  return typeof input[key] === 'string' ? input[key].trim() : '';
+}
+
+/** D129 · `plan_update_item`: an item already in the plan (hold; its todo's title, description, estimate before it starts). */
+export async function planUpdateItem(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const item = textOf(input, 'item');
+  if (item === '') return textResult('Give item: the id or key of the item, as plan_status shows it.', true);
+  const body: Record<string, unknown> = {};
+  for (const [from, to] of [['hold', 'hold'], ['title', 'title'], ['description', 'description'], ['estimate_minutes', 'estimateMinutes']] as const) if (input[from] !== undefined) body[to] = input[from];
+  if (Object.keys(body).length === 0) return textResult('Give what changes: hold, title, description and / or estimate_minutes.', true);
+  return request(api, 'PUT', planRoute(id, `/items/${itemSegment(item)}`), body, (answer) => {
+    if (!isPlan(answer)) return textResult('Switchboard did not answer with the plan.', true);
+    const ref = item.replace(/^\[|\]$/g, '');
+    const changed = answer.items.find((candidate) => candidate.id === ref || (candidate.key !== null && candidate.key === ref.toUpperCase()));
+    const label = changed ? `[${changed.id}]${changed.key ? ` ${changed.key}` : ''} ${changed.title}` : item;
+    return textResult(`Updated ${label} (${Object.keys(body).join(', ')}).\n\n${planStatusText(answer)}`);
+  });
+}
+
+/** D129 · `plan_remove_item`: an item that has not started (its todo stays). */
+export async function planRemoveItem(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const item = textOf(input, 'item');
+  if (item === '') return textResult('Give item: the id or key of the item, as plan_status shows it.', true);
+  return request(api, 'DELETE', planRoute(id, `/items/${itemSegment(item)}`), undefined, (answer) =>
+    isPlan(answer) ? textResult(`Removed ${item} from plan [${answer.id}]; its todo stays in this session's list.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true),
+  );
+}
+
+/** D129 · `plan_remove_dependency`: `to` no longer waits for `from`. */
+export async function planRemoveDependency(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const from = textOf(input, 'from');
+  const to = textOf(input, 'to');
+  if (from === '' || to === '') return textResult('Give from (the item that goes first) and to (the one that waits for it), as ids or keys.', true);
+  return request(api, 'DELETE', planRoute(id, `/edges/${itemSegment(from)}/${itemSegment(to)}`), undefined, (answer) =>
+    isPlan(answer) ? textResult(`${to} no longer waits for ${from}.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true),
+  );
+}
+
+/** D129 · `plan_set_mode`: the developer's new merge mode (and acknowledgement), as `PUT /api/plans/{id}/mode`. */
+export async function planSetMode(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const mode = input['merge_mode'];
+  if (typeof mode !== 'string' || !(PLAN_MERGE_MODES as readonly string[]).includes(mode)) {
+    return textResult(`merge_mode is the developer's choice: ask them which one (${PLAN_MERGE_MODES.join(', ')}), then call plan_set_mode again. Never choose it yourself.`, true);
+  }
+  const body: Record<string, unknown> = { mergeMode: mode };
+  if (input['allow_protected_target'] !== undefined) body['allowProtectedTarget'] = input['allow_protected_target'] === true;
+  return request(api, 'PUT', planRoute(id, '/mode'), body, (answer) => (isPlan(answer) ? textResult(`The merge mode is ${answer.mergeMode ?? mode}.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
 /** D115 · `plan_set_solutions`: the agent picks its items' repositories; applied at once. */
@@ -363,6 +427,62 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       annotations: { title: setSolutionsTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     (input) => serial(() => planSetSolutions(api, input)),
+  );
+  // D129: items already in the plan (the developer's service methods and refusals).
+  const updateItemTool = tool('plan_update_item');
+  server.registerTool(
+    'plan_update_item',
+    {
+      title: updateItemTool.annotations.title,
+      description: updateItemTool.description,
+      inputSchema: inputSchema('plan_update_item', {
+        plan_id: field.text('plan_update_item', 'plan_id'),
+        item: field.text('plan_update_item', 'item'),
+        hold: z.boolean().describe(about('plan_update_item', 'hold')).optional(),
+        title: field.text('plan_update_item', 'title'),
+        description: field.text('plan_update_item', 'description'),
+        estimate_minutes: z.int().min(1).max(TODO_ESTIMATE_MAX).describe(about('plan_update_item', 'estimate_minutes')).optional(),
+      }),
+      annotations: { title: updateItemTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => planUpdateItem(api, input)),
+  );
+  const removeItemTool = tool('plan_remove_item');
+  server.registerTool(
+    'plan_remove_item',
+    {
+      title: removeItemTool.annotations.title,
+      description: removeItemTool.description,
+      inputSchema: inputSchema('plan_remove_item', { plan_id: field.text('plan_remove_item', 'plan_id'), item: field.text('plan_remove_item', 'item') }),
+      annotations: { title: removeItemTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => planRemoveItem(api, input)),
+  );
+  const removeDependencyTool = tool('plan_remove_dependency');
+  server.registerTool(
+    'plan_remove_dependency',
+    {
+      title: removeDependencyTool.annotations.title,
+      description: removeDependencyTool.description,
+      inputSchema: inputSchema('plan_remove_dependency', { plan_id: field.text('plan_remove_dependency', 'plan_id'), from: field.text('plan_remove_dependency', 'from'), to: field.text('plan_remove_dependency', 'to') }),
+      annotations: { title: removeDependencyTool.annotations.title, readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => planRemoveDependency(api, input)),
+  );
+  const setModeTool = tool('plan_set_mode');
+  server.registerTool(
+    'plan_set_mode',
+    {
+      title: setModeTool.annotations.title,
+      description: setModeTool.description,
+      inputSchema: inputSchema('plan_set_mode', {
+        plan_id: field.text('plan_set_mode', 'plan_id'),
+        merge_mode: z.enum(PLAN_MERGE_MODES).describe(about('plan_set_mode', 'merge_mode')).optional(),
+        allow_protected_target: z.boolean().describe(about('plan_set_mode', 'allow_protected_target')).optional(),
+      }),
+      annotations: { title: setModeTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    (input) => serial(() => planSetMode(api, input)),
   );
   // D99-Jira-q1: proposals only (src/core/plans-jira.ts).
   const proposeSchema = PLAN_PROPOSE_TOOL.inputSchema;

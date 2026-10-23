@@ -165,8 +165,8 @@ describe('D99 · plan graph rules', () => {
     expect(pickReposMessage({ planId: 'p1', planTitle: 'T', solutions: [], items: [], also: true })).toMatch(/^Also pick the repositories/);
   });
 
-  it('the MCP tools: six plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
-    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start', 'plan_set_solutions']);
+  it('the MCP tools: ten plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
+    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start', 'plan_set_solutions', 'plan_update_item', 'plan_remove_item', 'plan_remove_dependency', 'plan_set_mode']);
     const setSolutions = PLAN_TOOLS.find((tool) => tool.name === 'plan_set_solutions');
     expect(setSolutions?.inputSchema['required']).toEqual(['plan_id', 'items']);
     expect(setSolutions?.description).toContain('applied at once (it is not a proposal)');
@@ -182,6 +182,16 @@ describe('D99 · plan graph rules', () => {
     expect(create?.inputSchema['required']).toEqual(['title']);
     expect(create?.description).toContain('Plans are for anything');
     expect(PLAN_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['plan_status']);
+    // D129: items already in the plan; plan_add_item points there, plan_set_mode asks like plan_start.
+    expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_add_item')?.description).toContain('use plan_update_item; never add it again');
+    const update = PLAN_TOOLS.find((tool) => tool.name === 'plan_update_item');
+    expect(update?.inputSchema['required']).toEqual(['plan_id', 'item']);
+    expect(Object.keys(update?.inputSchema['properties'] as object)).toEqual(['plan_id', 'item', 'hold', 'title', 'description', 'estimate_minutes']);
+    expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_remove_dependency')?.inputSchema['required']).toEqual(['plan_id', 'from', 'to']);
+    const setMode = PLAN_TOOLS.find((tool) => tool.name === 'plan_set_mode');
+    expect(setMode?.inputSchema['required']).toEqual(['plan_id', 'merge_mode']);
+    expect(setMode?.description).toContain('ASK the developer before calling this');
+    expect(setMode?.description).toMatch(/allow_protected_target: true; never set it on your own/);
     // Experimental (D99): the server's instructions never name the plan tools (they exist only while Plans is on).
     expect(AGENT_MCP_INSTRUCTIONS).not.toContain('plan_');
   });

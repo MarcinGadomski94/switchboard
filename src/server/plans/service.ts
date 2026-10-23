@@ -1088,31 +1088,53 @@ export class PlanService {
     return { plan: await this.get(planId), itemId: item.id };
   }
 
-  /** `PUT /api/plans/{id}/items/{itemId}`: `key` and `solutions` (before it starts), `hold` (until it is merged). */
-  async updateItem(planId: string, itemId: string, body: unknown): Promise<Plan> {
+  /**
+   * `PUT /api/plans/{id}/items/{itemId}`: `key` and `solutions` (before it starts), `hold` (until it
+   * is merged); D129: its todo's `title`, `description` (`''` / `null` removes it) and
+   * `estimateMinutes` (`null` removes it), also only before it starts, edited as `by` through the
+   * todo service (its checks and refusals). Every check runs before anything is written.
+   */
+  async updateItem(planId: string, itemId: string, body: unknown, by: 'developer' | 'agent' = 'developer'): Promise<Plan> {
     const plan = await this.#plan(planId);
     const item = await this.#item(planId, itemId);
     const input = isRecord(body) ? body : {};
     const patch: PlanItemPatch = {};
-    if (input['key'] !== undefined || input['solutions'] !== undefined) {
-      if (item.state !== 'pending') throw new PlanError(409, 'started', 'the key and the solutions change only before the item starts');
+    const todoPatch: Record<string, unknown> = {};
+    for (const field of ['title', 'description', 'estimateMinutes'] as const) if (input[field] !== undefined) todoPatch[field] = input[field];
+    let solutions: string[] | null = null;
+    if (input['key'] !== undefined || input['solutions'] !== undefined || Object.keys(todoPatch).length > 0) {
+      if (item.state !== 'pending') {
+        const what = Object.keys(todoPatch).length > 0 ? "the item's title, description and estimate" : 'the key and the solutions';
+        throw new PlanError(409, 'started', `${what} change only before the item starts (${itemLabel(item)} is ${item.state})`);
+      }
       if (input['key'] !== undefined) {
         const key = normalizeItemKey(input['key']);
         if (key === undefined) throw invalid('key', 'the key must be a ticket key such as PROJ-123');
         Object.assign(patch, { key });
       }
-      if (input['solutions'] !== undefined) {
-        const solutions = await this.#checkSolutions(plan, input['solutions']);
-        await this.#joinRepos(plan, await this.#repo().items(planId), solutions);
-        Object.assign(patch, { solutions });
+      if (input['solutions'] !== undefined) solutions = await this.#checkSolutions(plan, input['solutions']);
+    }
+    const hold = input['hold'] === undefined ? undefined : checkBool(input['hold'], 'hold');
+    if (Object.keys(todoPatch).length > 0) {
+      try {
+        await this.#todos.update(plan.sourceSessionId, item.todoId, todoPatch, by);
+      } catch (error) {
+        if (error instanceof TodoError) throw new PlanError(error.status, error.code, error.message, error.status === 422 ? 'todo' : null);
+        throw error;
       }
     }
-    if (input['hold'] !== undefined) {
-      await this.#setHolds(plan, { [itemId]: checkBool(input['hold'], 'hold') });
+    if (solutions !== null) {
+      await this.#joinRepos(plan, await this.#repo().items(planId), solutions);
+      Object.assign(patch, { solutions });
+    }
+    if (hold !== undefined) {
+      await this.#setHolds(plan, { [itemId]: hold });
     }
     if (Object.keys(patch).length > 0) await this.#repo().updateItem(itemId, patch);
     await this.#repo().touch(planId);
     await this.#publish(planId);
+    // D129: a hold changes when a held item waits for the developer (as `setHolds`).
+    if (hold !== undefined) this.kick();
     return this.get(planId);
   }
 
@@ -1166,6 +1188,13 @@ export class PlanService {
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
+  }
+
+  /** D129 · the id of the item `ref` (an item id or a key) of plan `planId` (the agent's routes). @throws {PlanError} 422 on `item` for an unknown one. */
+  async resolveItem(planId: string, ref: string): Promise<string> {
+    await this.#plan(planId);
+    const [id] = this.#resolveRefs(await this.#repo().items(planId), [ref], 'item');
+    return id as string;
   }
 
   async #item(planId: string, itemId: string): Promise<PlanItemRecord> {

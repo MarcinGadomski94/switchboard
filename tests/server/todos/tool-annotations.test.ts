@@ -57,6 +57,11 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_status: [true, false, true, false],
   plan_start: [false, false, true, true],
   plan_set_solutions: [false, true, true, false],
+  // D129: items already in the plan, and the merge mode.
+  plan_update_item: [false, false, true, false],
+  plan_remove_item: [false, true, true, false],
+  plan_remove_dependency: [false, true, true, false],
+  plan_set_mode: [false, false, true, true],
   plan_propose_dependencies: [false, false, true, false],
   plan_jira_context: [true, false, true, true],
   memory_propose: [false, false, true, false],

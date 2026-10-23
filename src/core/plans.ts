@@ -949,7 +949,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_add_item',
     description:
-      "Add an item to a plan: an existing todo of this session (todo_id) or a new one (title, description, plan with the acceptance criteria, priority, estimate_minutes; it is added to this session's todo list). Optionally a ticket key (names the item's branch), hold (in the agents-with-holds mode the developer merges this one), its solutions (a subset of the plan's repos) and after (ids or keys of items it runs after). Returns the item id.",
+      "Add an item to a plan: an existing todo of this session (todo_id) or a new one (title, description, plan with the acceptance criteria, priority, estimate_minutes; it is added to this session's todo list). Optionally a ticket key (names the item's branch), hold (in the agents-with-holds mode the developer merges this one), its solutions (a subset of the plan's repos) and after (ids or keys of items it runs after). Returns the item id. Only for a todo that is not in the plan yet: to change an item that is already in the plan (its hold, title, description or estimate) use plan_update_item; never add it again.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -1037,6 +1037,72 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
     },
     // Destructive: it overwrites a pending item's solutions (docs/mcp.md → Tool annotations).
     annotations: { title: "Set plan items' repositories", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'plan_update_item',
+    description:
+      "Change an item that is already in a plan of this session (use this, not plan_add_item, for an item in the plan). hold: in the agents-with-holds mode the developer merges a held item from the Plans page (in a plan without a merge step, the developer confirms it); it can change while the plan is a draft, runs or is paused, until the item is merged or done, and a running item's session is told its new merge rule. Clearing a hold lets the item's agent merge it on its own: do that only when the developer asked. title, description and estimate_minutes change the item's todo, only before the item starts. To change its dependencies use plan_add_dependency and plan_remove_dependency. Switchboard refuses what it would refuse the developer, with the reason; nothing changes then.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        item: { type: 'string', description: 'The id or key of the item, as plan_status shows it.' },
+        hold: { type: 'boolean', description: 'true: the developer merges (or, without a merge step, confirms) this item; false: it follows the plan\'s merge mode. Until the item is merged or done.' },
+        title: { type: 'string', description: "The item's new title (its todo's): one short line naming the work. Only before the item starts." },
+        description: { type: 'string', description: "The item's new description (its todo's), for the developer; an empty string removes it. Only before the item starts." },
+        estimate_minutes: { type: 'integer', minimum: 1, maximum: 10_080, description: "The item's new estimate (its todo's): minutes an AI agent would take. Only before the item starts." },
+      },
+      required: ['plan_id', 'item'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Update a plan item', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'plan_remove_item',
+    description:
+      "Remove an item that has not started from a plan of this session; its dependencies go with it. Its todo stays in this session's todo list (todo_remove deletes it if it should go too). An item that runs or is done is refused.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        item: { type: 'string', description: 'The id or key of the item, as plan_status shows it.' },
+      },
+      required: ['plan_id', 'item'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Remove a plan item', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'plan_remove_dependency',
+    description: 'Remove a dependency of a plan of this session: item to no longer waits for item from (the reverse of plan_add_dependency, where to is item and from is after). A dependency that does not exist is refused.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        from: { type: 'string', description: 'The id or key of the item that goes first (plan_add_dependency\'s after).' },
+        to: { type: 'string', description: 'The id or key of the item that waits for it (plan_add_dependency\'s item).' },
+      },
+      required: ['plan_id', 'from', 'to'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Remove a plan dependency', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'plan_set_mode',
+    description:
+      "Change the merge mode of a plan of this session that is a draft, runs or is paused. It applies to the items not merged yet, and running items whose merge rule changed are told their new rule. merge_mode is the developer's decision: ASK the developer before calling this, and never change it on your own. The options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but held items wait for the developer's Merge), developer (the developer merges every item) and none (no merge step). A started plan keeps whether it has a merge step (none to a merging mode or back is refused). If the target is dev, develop, main, master, the default or a protected branch and the new mode is agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own. For an item's hold use plan_update_item.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        merge_mode: { type: 'string', enum: [...PLAN_MERGE_MODES], description: 'The merge mode the developer chose (ask them; never pick it yourself): agents, agents-with-holds, developer or none.' },
+        allow_protected_target: { type: 'boolean', description: 'The developer confirmed that agents may merge straight into a protected target (dev, develop, main, master, the default or a protected branch). Ask them first; never set it yourself. Needed only for agents / agents-with-holds on such a target.' },
+      },
+      required: ['plan_id', 'merge_mode'],
+      additionalProperties: false,
+    },
+    // Open-world like plan_start: the mode decides whether agents merge PRs, and the protected-target check asks gh.
+    annotations: { title: "Change a plan's merge mode", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
 ];
 

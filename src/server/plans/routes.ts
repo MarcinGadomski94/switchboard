@@ -41,7 +41,9 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * The agent's (the `plan_*` MCP tools), only with the session's agent token, over the plans
  * whose source is that session: `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
  * `POST /agent/v1/plans/{planId}/items | edges | start`; D115: `POST /agent/v1/plans/{planId}/solutions`
- * `{ items: [{ item, solutions }] }` → `{ plan, set }`. D115 follow-ups: in a plan whose repositories
+ * `{ items: [{ item, solutions }] }` → `{ plan, set }`. D129: `PUT|DELETE /agent/v1/plans/{planId}/items/{item}`
+ * (`item` an id or a key), `DELETE /agent/v1/plans/{planId}/edges/{from}/{to}`, `PUT /agent/v1/plans/{planId}/mode`:
+ * the developer's `updateItem` (as the agent), `removeItem`, `removeEdge` and `setMode`. D115 follow-ups: in a plan whose repositories
  * are picked per item, `POST /agent/v1/plans` and an item added without solutions also answer
  * `solutionChoices` (the workspace's writable solutions).
  *
@@ -257,6 +259,44 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
       return await plans.startPlan(request.params.planId, request.body);
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
+  // D129: the agent edits items already in its plan through the developer's service methods (the same checks and refusals).
+  app.put<{ Params: { planId: string; item: string } }>('/agent/v1/plans/:planId/items/:item', async (request, reply) => {
+    try {
+      await plans.agentPlan(agentSession(request), request.params.planId);
+      const itemId = await plans.resolveItem(request.params.planId, request.params.item);
+      return await plans.updateItem(request.params.planId, itemId, request.body, 'agent');
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
+  app.delete<{ Params: { planId: string; item: string } }>('/agent/v1/plans/:planId/items/:item', async (request, reply) => {
+    try {
+      await plans.agentPlan(agentSession(request), request.params.planId);
+      return await plans.removeItem(request.params.planId, await plans.resolveItem(request.params.planId, request.params.item));
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
+  app.delete<{ Params: { planId: string; from: string; to: string } }>('/agent/v1/plans/:planId/edges/:from/:to', async (request, reply) => {
+    try {
+      await plans.agentPlan(agentSession(request), request.params.planId);
+      return await plans.removeEdge(request.params.planId, request.params.from, request.params.to);
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
+  app.put<{ Params: { planId: string } }>('/agent/v1/plans/:planId/mode', async (request, reply) => {
+    try {
+      await plans.agentPlan(agentSession(request), request.params.planId);
+      return await plans.setMode(request.params.planId, request.body);
     } catch (error) {
       return sendPlanError(reply, error);
     }
