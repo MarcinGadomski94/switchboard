@@ -155,6 +155,15 @@ export interface PlanAnswers {
 }
 
 /** The list a plan came from (the Jira lane fills it; Switchboard only stores and shows it). */
+/**
+ * D130: a plan's runs' sidebar subfolder, chosen at Start (`docs/plans.md` → *The runs' sidebar
+ * subfolder*): the folder's id in the sidebar layout of the machine that owns the plan, and its name.
+ */
+export interface PlanSidebarFolderRef {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface PlanExternalRef {
   readonly system: 'jira';
   readonly key: string;
@@ -297,6 +306,11 @@ export interface Plan {
   readonly answers: PlanAnswers | null;
   readonly state: PlanState;
   readonly external: PlanExternalRef | null;
+  /**
+   * D130: the sidebar subfolder the plan's runs go into (chosen at Start), `null` = none (next to
+   * the source session). Additive: absent (a paired machine's older Switchboard) = none.
+   */
+  readonly sidebarFolder?: PlanSidebarFolderRef | null;
   /** Why new starts are held right now (paused, an account above the usage threshold); `null` = not held. */
   readonly held: string | null;
   /** Why Switchboard paused the plan ({@link PLANS_OFF_REASON}); `null` = the developer paused it, or it is not paused. */
@@ -995,13 +1009,14 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_start',
     description:
-      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended), developer (the developer merges every item from the Plans page) and none (no merging: an item is done when its agent marks its todo done; items marked hold wait for the developer to confirm them). A plan without a target branch can only be none (merge_mode may be left out then). If the target is dev, develop, main, master, the default or a protected branch and the developer picks agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own.",
+      "Start a plan: Switchboard starts the ready items as runs by itself. merge_mode is the developer's decision: ASK the developer which one they want before calling this, and never choose it yourself. Explain the options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but items marked hold wait for the developer's Merge; recommended), developer (the developer merges every item from the Plans page) and none (no merging: an item is done when its agent marks its todo done; items marked hold wait for the developer to confirm them). A plan without a target branch can only be none (merge_mode may be left out then). If the target is dev, develop, main, master, the default or a protected branch and the developer picks agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own. Together with the merge mode, ASK the developer for the sidebar subfolder the plan's runs go into (suggest the plan's title): pass its name as sidebar_folder (it is made inside the source session's sidebar folder, or reused when one with that name is there already); an empty string means no subfolder (the runs go next to this session); leave it out only when the developer has no preference to give.",
     inputSchema: {
       type: 'object',
       properties: {
         plan_id: PLAN_ID,
         merge_mode: { type: 'string', enum: [...PLAN_MERGE_MODES], description: 'The merge mode the developer chose (ask them; never pick it yourself): agents, agents-with-holds, developer or none. Required when the plan has a target branch; a plan without one is none.' },
         allow_protected_target: { type: 'boolean', description: 'The developer confirmed that agents may merge straight into a protected target (dev, develop, main, master, the default or a protected branch). Ask them first; never set it yourself. Needed only for agents / agents-with-holds on such a target.' },
+        sidebar_folder: { type: 'string', maxLength: 60, description: "The name of the sidebar subfolder the plan's runs go into, as the developer gave it (ask them; suggest the plan's title, at most 60 characters). Made inside this session's sidebar folder (the top level when it has none), or reused when a folder with that exact name is there already. An empty string = no subfolder (the runs go next to this session)." },
       },
       required: ['plan_id'],
       additionalProperties: false,

@@ -175,7 +175,9 @@ describe('D99 · plan graph rules', () => {
     expect(start?.inputSchema['required']).toEqual(['plan_id']);
     expect(start?.description).toContain('ASK the developer');
     expect(start?.description).toContain('never choose it yourself');
-    expect(Object.keys(start?.inputSchema['properties'] as object)).toEqual(['plan_id', 'merge_mode', 'allow_protected_target']);
+    expect(Object.keys(start?.inputSchema['properties'] as object)).toEqual(['plan_id', 'merge_mode', 'allow_protected_target', 'sidebar_folder']);
+    // D130: the agent asks for the runs' sidebar subfolder with the merge mode, suggesting the plan's title.
+    expect(start?.description).toContain("ASK the developer for the sidebar subfolder the plan's runs go into (suggest the plan's title)");
     expect(JSON.stringify(start?.inputSchema['properties'])).toContain('"none"');
     expect(start?.description).toMatch(/allow_protected_target: true; never set it on your own/);
     const create = PLAN_TOOLS.find((tool) => tool.name === 'plan_create');

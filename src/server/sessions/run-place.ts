@@ -1,7 +1,8 @@
-import type { Session } from '../../core/api.ts';
+import { randomUUID } from 'node:crypto';
+import type { Session, TodoLink } from '../../core/api.ts';
 import { parseRemoteId } from '../../core/peers.ts';
-import { placeRun } from '../../core/sidebar-layout.ts';
-import type { RecordChanges } from '../../core/sidebar-records.ts';
+import { isPlaced, placeRun, placeRunInFolder, runSubfolder } from '../../core/sidebar-layout.ts';
+import { type RecordChanges, liveFolderFor } from '../../core/sidebar-records.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 // Team (D100) hook (docs/team-removal.md): a member source's folder before it joined.
@@ -41,7 +42,8 @@ export interface RunPlacesOptions {
  * placed once, and only a new one ({@link RUN_PLACE_GRACE_MS}; not a run's D83 continuation, which
  * takes the old run's place); a placed run is left alone (a
  * later move by the developer wins). A chat source (D106) leaves the run at the root: chats are
- * not in SESSIONS.
+ * not in SESSIONS. D130: a run whose link names a sidebar folder (a plan's runs' subfolder) goes
+ * to the end of that folder instead.
  */
 export class RunPlaces {
   readonly #options: RunPlacesOptions;
@@ -73,8 +75,11 @@ export class RunPlaces {
     await this.#queue;
   }
 
-  /** Places run `runId` of source `sourceId` (both this machine's ids or both a peer's remote ids); answers whether the layout changed. */
-  async place(sourceId: string, runId: string): Promise<boolean> {
+  /**
+   * Places run `runId` of source `sourceId` (both this machine's ids or both a peer's remote ids); answers whether the layout changed.
+   * D130: `folder` (the run's `todoLink.sidebarFolder`, a plan's runs' subfolder) puts it at the end of that folder instead.
+   */
+  async place(sourceId: string, runId: string, folder: TodoLink['sidebarFolder'] = null): Promise<boolean> {
     this.#done.add(runId);
     const { store, remoteSessions } = this.#options;
     const remotes = remoteSessions();
@@ -82,6 +87,10 @@ export class RunPlaces {
     const source = remote ? remotes.find((session) => session.id === sourceId) : await store.sessions.get(sourceId);
     // D106: chats live in CHATS, never in the layout: the run stays at the root.
     if (source?.kind === 'chat') return false;
+    if (folder) {
+      const placed = await this.#placeInFolder(sourceId, runId, folder);
+      if (placed !== null) return placed;
+    }
     const runs = new Set<string>();
     if (!remote) for (const record of await store.sessions.list()) if (record.todoLink?.sourceSessionId === sourceId) runs.add(record.id);
     for (const session of remotes) if (session.todoLink?.sourceSessionId === sourceId) runs.add(session.id);
@@ -90,6 +99,34 @@ export class RunPlaces {
     const member = teamOriginalPlace(store, sourceId);
     const write = await store.sidebar.change((layout) => placeRun(layout, { sourceId, runId, runsOfSource: runs, listed, member }));
     if (!write) return false;
+    this.#options.bus.publish('sidebarLayoutChanged', write.layout);
+    this.#options.synced(write.changes);
+    return true;
+  }
+
+  /**
+   * D130: run `runId` into its plan's runs' subfolder: the folder by its id when this layout has it
+   * (moved anywhere: it goes there); a deleted one → the nearest live folder above it (D71's rule); a
+   * folder this layout never had (a paired machine's run, the layout not shared) → the folder so named
+   * next to the source, found or made ({@link runSubfolder}). `null` = place it next to the source
+   * instead (no live folder left, or none can be made there); else whether the layout changed.
+   */
+  async #placeInFolder(sourceId: string, runId: string, folder: { readonly id: string; readonly name: string }): Promise<boolean | null> {
+    const { store } = this.#options;
+    const live = liveFolderFor(await store.sidebar.records(), folder.id);
+    if (live.known && live.folderId === null) return null;
+    let fallBack = false;
+    const write = await store.sidebar.change((layout) => {
+      if (isPlaced(layout, runId)) return null;
+      if (live.known && live.folderId !== null && layout.folders.some((f) => f.id === live.folderId)) return placeRunInFolder(layout, runId, live.folderId);
+      const sub = runSubfolder(layout, { sourceId, name: folder.name, newId: randomUUID() });
+      if (!sub.ok) {
+        fallBack = true;
+        return null;
+      }
+      return placeRunInFolder(sub.layout ?? layout, runId, sub.folderId);
+    });
+    if (!write) return fallBack ? null : false;
     this.#options.bus.publish('sidebarLayoutChanged', write.layout);
     this.#options.synced(write.changes);
     return true;
@@ -105,6 +142,6 @@ export class RunPlaces {
     // fresh continuation (D83: it takes the old run's place, `FreshPlaces`) stays where it is.
     const created = Date.parse(session.createdAt);
     if (!Number.isFinite(created) || created < this.#since || session.movedFrom || session.continuedFrom) return;
-    this.#queue = this.#queue.then(() => this.place(from, session.id).then(() => undefined)).catch((error: unknown) => this.#onError(error));
+    this.#queue = this.#queue.then(() => this.place(from, session.id, session.todoLink?.sidebarFolder ?? null).then(() => undefined)).catch((error: unknown) => this.#onError(error));
   }
 }

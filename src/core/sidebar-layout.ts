@@ -269,6 +269,74 @@ export function placeRun(layout: SidebarLayout, input: RunPlaceInput): SidebarLa
   return placeSession(layout, { sessionId: runId, place: 'loose', index: afterRuns(loose, at + 1, runsOfSource) }, listed);
 }
 
+/**
+ * Cuts `text` (trimmed) to a sidebar folder name of at most {@link SIDEBAR_FOLDER_NAME_MAX}
+ * characters: whole when it fits; else at the last word break in its last third (else mid-word),
+ * with "…" (D130, the plan title as the runs' subfolder; the same cut as D119's).
+ */
+export function cutSidebarFolderName(text: string, max: number = SIDEBAR_FOLDER_NAME_MAX): string {
+  const trimmed = text.trim().replace(/\s+/gu, ' ');
+  if (trimmed.length <= max) return trimmed;
+  const room = trimmed.slice(0, max - 1);
+  const space = room.lastIndexOf(' ');
+  const cut = space >= Math.floor((max * 2) / 3) ? room.slice(0, space) : room;
+  return `${cut.replace(/[\s·,;:–-]+$/u, '')}…`;
+}
+
+/** D130: the sidebar folder a session sits in (`null` = the top level: loose, unplaced, pinned or not listed). */
+export function folderOfSession(layout: SidebarLayout, sessionId: string): string | null {
+  const where = placeOf(layout, sessionId);
+  return where !== null && where !== 'pinned' ? where.folderId : null;
+}
+
+/** D130: what {@link runSubfolder} answers. */
+export type RunSubfolder =
+  | {
+      readonly ok: true;
+      /** The folder the runs go into. */
+      readonly folderId: string;
+      readonly name: string;
+      /** The folder it sits in (`null` = the top level). */
+      readonly parentId: string | null;
+      /** The layout with the new folder; `null` = an existing folder was used (nothing to write). */
+      readonly layout: SidebarLayout | null;
+    }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * D130 (`docs/plans.md` → *The runs' sidebar subfolder*): the subfolder named `name` for the runs of
+ * session `sourceId`, inside the source's sidebar folder (the top level when the source is loose,
+ * unplaced or pinned):
+ *
+ * - the source's own folder already carries that exact name (a D119 "Plan · …" subfolder) → that
+ *   folder, as it is (no second one nested in it);
+ * - a folder with that exact name already sits at that level → reused (no " (2)": a re-start, or
+ *   a second plan with the same name, collects there);
+ * - else a new folder `newId` at the end of that level; refused when the source's folder is
+ *   {@link SIDEBAR_FOLDER_DEPTH_MAX} levels deep (D58).
+ */
+export function runSubfolder(layout: SidebarLayout, input: { readonly sourceId: string; readonly name: string; readonly newId: string }): RunSubfolder {
+  const parentId = folderOfSession(layout, input.sourceId);
+  const own = parentId === null ? undefined : layout.folders.find((folder) => folder.id === parentId);
+  if (own && own.name === input.name) return { ok: true, folderId: own.id, name: own.name, parentId: parentOf(own), layout: null };
+  const same = childFolders(layout, parentId).find((folder) => folder.name === input.name);
+  if (same) return { ok: true, folderId: same.id, name: same.name, parentId, layout: null };
+  const problem = checkFolderParent(layout, null, parentId);
+  if (problem) return { ok: false, message: problem.kind === 'not-found' ? `no sidebar folder ${problem.id}` : `the source session's sidebar folder cannot hold a subfolder: ${problem.message}` };
+  const added = addFolder(layout, input.newId, input.name, parentId);
+  return added ? { ok: true, folderId: input.newId, name: input.name, parentId, layout: added } : { ok: false, message: 'the subfolder could not be made' };
+}
+
+/**
+ * D130: run `runId` into folder `folderId`, at its end (later runs after earlier ones). `null`
+ * (nothing to change) when the run is placed already (a later move by the developer wins) or there
+ * is no such folder.
+ */
+export function placeRunInFolder(layout: SidebarLayout, runId: string, folderId: string): SidebarLayout | null {
+  if (isPlaced(layout, runId)) return null;
+  return placeSession(layout, { sessionId: runId, place: 'folder', folderId });
+}
+
 /** D58: the folder a folder sits in (`null` = top level). */
 export function parentOf(folder: SidebarFolder): string | null {
   return folder.parentId ?? null;

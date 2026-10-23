@@ -7,6 +7,9 @@ import { openSessions } from '../../core/session-close.ts';
 import { api } from '../api/client.ts';
 import { useSessionListOf } from '../api/session-list.ts';
 import { plansApi, refusalCode, refusalText } from './api.ts';
+import { planRunFolderDefault } from '../../core/plan-run-folder.ts';
+import { SIDEBAR_FOLDER_NAME_MAX } from '../../core/sidebar-layout.ts';
+import { useSidebarLayout } from '../shell/SidebarSessions.tsx';
 import { alwaysOnNote, isProtectedTargetName, mergeModeOptions, shortLabel } from './model.ts';
 
 /**
@@ -54,6 +57,11 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
   const [ack, setAck] = useState(plan.allowProtectedTarget);
   // The server knows protected / default branches the page cannot: its refusal shows the checkbox too.
   const [refusedTarget, setRefusedTarget] = useState(false);
+  // D130: the runs' sidebar subfolder (Start only), prefilled with the plan's title (or the source's D119 "Plan · …" folder); empty = none.
+  const { layout } = useSidebarLayout();
+  const suggestedFolder = useMemo(() => planRunFolderDefault(layout, plan.sourceSessionId, plan.title), [layout, plan.sourceSessionId, plan.title]);
+  const [folderName, setFolderName] = useState<string | null>(null);
+  const sidebarFolder = folderName ?? suggestedFolder;
   const open = plan.items.filter((item) => item.state !== 'done');
   const agents = mode === 'agents' || mode === 'agents-with-holds';
   const needsAck = agents && (isProtectedTargetName(plan.targetBranch) || refusedTarget);
@@ -64,7 +72,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
     try {
       const changed = Object.fromEntries(Object.entries(holds).filter(([id, hold]) => plan.items.find((item) => item.id === id)?.hold !== hold && plan.items.find((item) => item.id === id)?.state !== 'done'));
       if ((mode === 'agents-with-holds' || mode === 'none') && Object.keys(changed).length > 0) await plansApi.setHolds(plan.id, changed);
-      const extra = needsAck && ack ? { allowProtectedTarget: true } : {};
+      const extra = { ...(needsAck && ack ? { allowProtectedTarget: true } : {}), ...(purpose === 'start' ? { sidebarFolder: sidebarFolder.trim() } : {}) };
       const answer = purpose === 'start' ? await plansApi.start(plan.id, mode, extra) : await plansApi.setMode(plan.id, mode, extra);
       onDone(answer);
     } catch (caught) {
@@ -107,6 +115,21 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
           <span>
             ⚠ Agents will merge straight into <code>{plan.targetBranch}</code>
           </span>
+        </label>
+      ) : null}
+      {purpose === 'start' ? (
+        <label className="sb-plan-field" data-testid="plan-start-folder">
+          <span>Sidebar subfolder</span>
+          <input
+            type="text"
+            className="sb-plan-input"
+            data-testid="plan-start-folder-input"
+            maxLength={SIDEBAR_FOLDER_NAME_MAX}
+            value={sidebarFolder}
+            placeholder="None: runs go next to the plan's session"
+            onChange={(event) => setFolderName(event.target.value)}
+          />
+          <span className="sb-plan-muted">The plan's sessions go into this folder, inside the plan's session's folder (an existing one with this name is reused). Clear it to keep them next to the session.</span>
         </label>
       ) : null}
       <div className="sb-plan-note" data-testid="plan-mode-note">

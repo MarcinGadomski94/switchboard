@@ -102,6 +102,18 @@ function shownFolder(byId: ReadonlyMap<string, FolderRecord>, folderId: string |
   return null;
 }
 
+/**
+ * D130 (`docs/sidebar.md` → *Where runs appear*): where a run meant for folder `folderId` goes in
+ * these records: `known: false` when they never had that folder (a paired machine's own folder,
+ * the layout not shared); else the live folder it shows in (itself, or a deleted one's nearest live
+ * folder above, D71's rule; `null` = none left: the run goes next to its source instead).
+ */
+export function liveFolderFor(records: SidebarRecords, folderId: string): { readonly known: false } | { readonly known: true; readonly folderId: string | null } {
+  const byId = new Map(records.folders.map((folder) => [folder.id, folder]));
+  if (!byId.has(folderId)) return { known: false };
+  return { known: true, folderId: shownFolder(byId, folderId) };
+}
+
 function sorted<T>(items: readonly T[], key: (item: T) => string, id: (item: T) => string): T[] {
   return [...items].sort((a, b) => compareKeyed({ key: key(a), id: id(a) }, { key: key(b), id: id(b) }));
 }

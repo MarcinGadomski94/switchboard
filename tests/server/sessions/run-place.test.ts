@@ -5,6 +5,8 @@ import type { Folder, Session, SessionTodoList, TodoRunResult } from '../../../s
 import type { SidebarLayout } from '../../../src/core/sidebar-layout.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
+import { HubBus } from '../../../src/server/hub/bus.ts';
+import { RunPlaces } from '../../../src/server/sessions/run-place.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeGitWorld } from '../../helpers/git.ts';
 import { type SupervisorWorld, makeSupervisorWorld, until } from '../../helpers/supervisor.ts';
@@ -145,5 +147,26 @@ describe('runs go to the source\'s sidebar folder (D99 / D76 follow-up 2026-10-1
 
     const runId = await run(source, 'Check the board');
     await folderHolds(ops, [runId, other]);
+  }, 60_000);
+
+  it('D130: a run whose plan subfolder this layout never had (a paired machine\'s): the folder so named next to the source, found or made; a second run joins it', async () => {
+    const folder = await setup();
+    const source = await session(folder, 'source');
+    const runA = await session(folder, 'run-a');
+    const runB = await session(folder, 'run-b');
+    const acme = await folderOf('Acme');
+    await place({ sessionId: source, place: 'folder', folderId: acme });
+    const store = sw?.store;
+    if (!store) throw new Error('no store');
+    const changes: unknown[] = [];
+    const places = new RunPlaces({ bus: new HubBus(), store, listed: async () => [], remoteSessions: () => [], synced: (written) => changes.push(written) });
+    const peerFolder = { id: 'folder-of-the-other-machine', name: 'Acme epic' };
+    expect(await places.place(source, runA, peerFolder)).toBe(true);
+    const made = (await layout()).folders.find((f) => f.name === 'Acme epic');
+    expect(made).toMatchObject({ parentId: acme, sessionIds: [runA] });
+    expect(await places.place(source, runB, peerFolder)).toBe(true);
+    expect((await layout()).folders.filter((f) => f.name === 'Acme epic').map((f) => f.sessionIds)).toEqual([[runA, runB]]);
+    expect((await layout()).folders.find((f) => f.id === acme)?.sessionIds).toEqual([source]);
+    expect(changes).toHaveLength(2);
   }, 60_000);
 });

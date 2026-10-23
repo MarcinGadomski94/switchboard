@@ -149,6 +149,8 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `memory_propose` | Project memory | false | false | true | false |
 | `memory_list` | Project memory | true | false | true | false |
 
+D130: `plan_start` also takes `sidebar_folder` (the runs' sidebar subfolder's name, `''` = none; `docs/plans.md` → *The runs' sidebar subfolder (D130)*); its description tells the agent to ask the developer for it with the merge mode, suggesting the plan's title. Its hints are unchanged.
+
 `plan_start`, `plan_set_mode` and `plan_jira_context` are the open-world tools: the plan's runs work in git repositories and merge pull requests (D129's `plan_set_mode` decides whether agents merge them, and its protected-target check asks gh), and `plan_jira_context` (D118, read-only) reads the plan's tickets and epic from Jira (`docs/plans.md` → *Jira context (D118)*); its route answers only the plan's source session and its item run sessions. `tests/server/todos/tool-annotations.test.ts` lists every tool with all features on in a member's session and fails when a tool lacks a hint, a hint is not a boolean, a hint differs from this table, or the registered hints differ from the definition; a new tool needs a row there and here.
 
 ## Tests

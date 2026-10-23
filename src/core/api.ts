@@ -2815,6 +2815,13 @@ export interface TodoLink {
   /** The session whose list holds the item (a peer's carries its remote id). */
   readonly sourceSessionId: string;
   readonly todoId: string;
+  /**
+   * Additive (D130): the sidebar subfolder the run goes into instead of next to its source (a plan's
+   * runs' subfolder, chosen at its Start): the folder's id in the layout of the machine that owns the
+   * run, and its name (a paired machine without that folder finds or makes one so named next to the
+   * source). Absent / `null` = next to the source (`docs/sidebar.md` → *Where runs appear*).
+   */
+  readonly sidebarFolder?: { readonly id: string; readonly name: string } | null;
 }
 
 /** D76: the answer of `POST /api/sessions/{id}/todos/{todoId}/run` (201). */
