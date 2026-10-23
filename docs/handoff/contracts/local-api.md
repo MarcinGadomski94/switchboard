@@ -337,6 +337,24 @@ AnswerRefusal { "error": "invalid", "message": "question q2: an own answer must 
 Question      { …, "answerIndex": null, "answerText": "Medium, with rounded corners" | null }
 ```
 
+## Multi-select answers (D128, 2026-10-23, additive)
+Developer request D128 (`docs/decisions.md` → *Multi-select answers*): a `multiSelect` question takes one or more options, plus optionally the developer's own words alongside them. Additive; the shapes above keep their meaning, also on a multi-select question. Details: `docs/questions.md` → *Multi-select answers (D128)*. Migration `0049_question_multi_answers.sql`.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | /api/questions/batch/{batchId}/answers | `{ answers: [{ questionId, answerIndex } \| { questionId, text } \| { questionId, answerIndexes, text? }] }` | 204 · 400 `invalid` as before, and for `answerIndexes` that is not a list of option indexes of its question · 422 `invalid` as before, plus `field: "answerIndexes"` (on a single-select question; a repeated option; no choice at all: `[]` without `text`) and `field: "answer"` (`answerIndex` next to `answerIndexes`) · the other answers as before |
+
+- **A multi-select entry** `{ questionId, answerIndexes, text? }`: unique option indexes in any order, and optionally an own `text` (D39's rule: 1–2000 characters once trimmed). At least one choice in all. A `null` `answerIndexes` / `text` counts as not given. The single shapes still answer a multi-select question (one option, or own words alone) and are stored and sent as the same multi-select answer.
+- **What the CLI gets:** one string per question, as before: the picked labels in option order, then the own text, joined with `", "`, an item that contains `", "` or `"` written as a quoted JSON string (the CLI's own multi-select join; VERIFIED in the CLI 2.1.303 bundle, `docs/questions.md`). A stale batch's answers message has that string in place of the label.
+- **Question** gains `answerIndexes: number[] | null`: a multi-select answer's picks, ascending (`[]` when only own words were given); `null` for a single-select question, while unanswered and for answers stored before D128. For a multi-select answer `answerIndex` is the first pick (or `null`) so older clients still show one, and `answerText` is the own words given alongside (or `null`). Optional in `src/core/api.ts`; the server always sends it.
+- **Peers and devices:** same route, only the body grew; the peer API and the device allow-lists already pass it, and a paired machine's question is answered there with the body as sent. A paired machine before D128 refuses `answerIndexes` (422, both or neither); the card therefore sends the single shapes when one option alone, or own words alone, are picked.
+
+```json
+AnswerBatch   { "answers": [{ "questionId": "q1", "answerIndexes": [1, 2], "text": "the changelog" }] }
+answers       { "Which parts should I update?": "Tests, Docs, the changelog" }
+Question      { …, "multiSelect": true, "answerIndex": 1, "answerIndexes": [1, 2], "answerText": "the changelog" }
+```
+
 ## Collapsible panes (D41, 2026-09-29, additive)
 Developer ruling D41 (`docs/decisions.md` → *Collapsible panes*): the sidebar and the session view's right panel slide out and back in on request, and the choice is kept by the service, per install. Additive; no new route or `/hub` event, and the rows above keep their meaning. Details: `docs/panes.md`, `docs/settings.md`.
 
