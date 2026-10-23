@@ -113,6 +113,9 @@ const V1_32 = '1.32.0';
 /** The version D127 (the processes sessions leave running: tracked, listed, stopped when idle or closed) ships in. */
 const V1_34 = '1.34.0';
 
+/** The version D128 (multi-select questions take several answers) ships in. */
+const V1_35 = '1.35.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -1086,6 +1089,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['processes-settings', 'settings-content'],
         route: { view: 'settings', section: 'processes' },
         missing: 'Processes is in Settings; its list fills while sessions have processes running.',
+      },
+    ],
+  },
+  {
+    id: 'multi-select-answers',
+    decision: 'D128',
+    version: V1_35,
+    title: 'Pick several answers',
+    steps: [
+      {
+        id: 'choose-any',
+        title: 'Choose any',
+        what: 'When an agent asks a multi-select question, its card says "Choose any" and its options are checkboxes: tick as many as apply, and tick Other… to add your own words alongside them. The agent gets every choice.',
+        todo: ['Tick the options that apply (Space toggles one).', 'Tick Other… to add your own words, then press Send (or Enter).'],
+        anchors: ['question-card'],
+        route: { view: 'inbox' },
+        missing: 'Shown on a question card in the Inbox or the chat once an agent asks a multi-select question.',
       },
     ],
   },

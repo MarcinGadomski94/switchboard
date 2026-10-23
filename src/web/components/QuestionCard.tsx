@@ -2,18 +2,24 @@ import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from 'r
 import type { AnswerBatch, Question } from '../../core/api.ts';
 import { OWN_ANSWER_MAX } from '../../core/own-answer.ts';
 import {
+  MULTI_HINT,
   OTHER_LABEL,
   OWN_ANSWER_PLACEHOLDER,
   type QuestionPicks,
   answerBody,
   cancelOwn,
   confirmOwn,
+  editOwn,
   initialPicks,
+  isMultiPick,
   isOwnPick,
+  multiPickOf,
   ownAnswerKeyAction,
   pick,
   pickOther,
   questionCardView,
+  toggleOption,
+  toggleOther,
   typeOwn,
 } from './question-card.ts';
 import { type QuestionDraft, draftField, rawDraftId } from '../../core/drafts.ts';
@@ -55,7 +61,10 @@ function focusOther(from: HTMLElement): void {
  * (autofocus; Enter confirms, Shift+Enter adds a line, Esc cancels back to no
  * pick); the footer shows "k of n answered" and Send, which stays disabled (45%
  * opacity) until every question has an answer (an option, or own words). Styles
- * are the prototype's inline ones.
+ * are the prototype's inline ones. D128: a multi-select question shows "Choose
+ * any" and its options (and Other…) as checkboxes: Space toggles one, Enter sends
+ * the answers once Send is enabled; the own answer goes alongside the ticked
+ * options.
  */
 export function QuestionCard({ questions, variant = 'inbox', onSend, busy = false, error = null, note }: QuestionCardProps) {
   const batchId = questions[0]?.batchId ?? '';
@@ -94,6 +103,12 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
     kept.clear();
     void onSend(body);
   };
+  // D128: Enter on a multi-select checkbox sends (Space toggles it, as any checkbox).
+  const onCheckKey = (event: KeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    send();
+  };
   const onOwnKey = (questionId: string, event: KeyboardEvent<HTMLTextAreaElement>): void => {
     const action = ownAnswerKeyAction({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing });
     if (action === null) return;
@@ -113,17 +128,46 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
       data-testid="question-card"
       data-batch-id={batchId}
       data-read-only={readOnly ? 'true' : undefined}
+      data-tour={questions.some((question) => question.multiSelect) ? 'question-card' : undefined}
     >
       <div className="sb-qcard__head">{view.head}</div>
       {questions.map((question) => {
         const current = picks[question.id];
-        const own = isOwnPick(current) ? current : null;
+        const multi = question.multiSelect;
+        const ticked = multi ? multiPickOf(current) : null;
+        const own = multi ? (ticked?.own ?? null) : isOwnPick(current) ? current : null;
         return (
-          <div key={question.id} className="sb-qcard__question" data-testid="question" data-question-id={question.id}>
+          <div key={question.id} className={`sb-qcard__question${multi ? ' sb-qcard__question--multi' : ''}`} data-testid="question" data-question-id={question.id} data-multi={multi ? 'true' : undefined}>
             <div className="sb-qcard__source">{question.source}</div>
             <div className="sb-qcard__quote">“{question.text}”</div>
+            {multi ? (
+              <div className="sb-qcard__hint" data-testid="question-multi-hint">
+                {MULTI_HINT}
+              </div>
+            ) : null}
             <div className="sb-qcard__options" role="group" aria-label={question.text}>
               {question.options.map((option, index) => {
+                if (multi) {
+                  const checked = ticked?.indexes.includes(index) === true;
+                  return (
+                    <button
+                      key={`${index}:${option.label}`}
+                      type="button"
+                      role="checkbox"
+                      className="sb-button sb-qcard__option sb-qcard__check"
+                      data-testid="question-option"
+                      data-selected={checked ? 'true' : 'false'}
+                      aria-checked={checked}
+                      aria-disabled={readOnly ? true : undefined}
+                      title={option.description}
+                      onClick={() => update(toggleOption(picks, question.id, index))}
+                      onKeyDown={onCheckKey}
+                    >
+                      <span className="sb-qcard__box" aria-hidden="true" />
+                      {option.label}
+                    </button>
+                  );
+                }
                 const selected = current === index;
                 return (
                   <button
@@ -141,19 +185,38 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
                   </button>
                 );
               })}
-              <button
-                type="button"
-                className="sb-button sb-qcard__option sb-qcard__other"
-                data-testid="question-other"
-                data-selected={own ? 'true' : 'false'}
-                aria-pressed={own !== null}
-                aria-expanded={own?.editing === true}
-                aria-disabled={readOnly ? true : undefined}
-                title="Answer in your own words"
-                onClick={() => update(pickOther(picks, question.id))}
-              >
-                {OTHER_LABEL}
-              </button>
+              {multi ? (
+                <button
+                  type="button"
+                  role="checkbox"
+                  className="sb-button sb-qcard__option sb-qcard__check sb-qcard__other"
+                  data-testid="question-other"
+                  data-selected={own ? 'true' : 'false'}
+                  aria-checked={own !== null}
+                  aria-expanded={own?.editing === true}
+                  aria-disabled={readOnly ? true : undefined}
+                  title="Add your own words to the picks"
+                  onClick={() => update(toggleOther(picks, question.id))}
+                  onKeyDown={onCheckKey}
+                >
+                  <span className="sb-qcard__box" aria-hidden="true" />
+                  {OTHER_LABEL}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="sb-button sb-qcard__option sb-qcard__other"
+                  data-testid="question-other"
+                  data-selected={own ? 'true' : 'false'}
+                  aria-pressed={own !== null}
+                  aria-expanded={own?.editing === true}
+                  aria-disabled={readOnly ? true : undefined}
+                  title="Answer in your own words"
+                  onClick={() => update(pickOther(picks, question.id))}
+                >
+                  {OTHER_LABEL}
+                </button>
+              )}
             </div>
             {own?.editing ? (
               <textarea
@@ -176,7 +239,7 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
                 data-testid="question-own-answer"
                 title="Edit your answer"
                 aria-disabled={readOnly ? true : undefined}
-                onClick={() => update(pickOther(picks, question.id))}
+                onClick={() => update(multi ? editOwn(picks, question.id) : pickOther(picks, question.id))}
               >
                 {own.text}
               </button>
@@ -212,7 +275,12 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
 /** D88: the picks as the draft keeps them (by the question's raw id, so every machine's UI names them alike). */
 function draftPicks(picks: QuestionPicks): QuestionDraft['picks'] {
   const out: Record<string, QuestionDraft['picks'][string]> = {};
-  for (const [id, pick] of Object.entries(picks)) out[rawDraftId(id)] = typeof pick === 'number' ? pick : { text: pick.text, editing: pick.editing };
+  for (const [id, pick] of Object.entries(picks)) {
+    if (typeof pick === 'number') out[rawDraftId(id)] = pick;
+    // D128: a multi-select question's ticked options and its own answer.
+    else if (isMultiPick(pick)) out[rawDraftId(id)] = { indexes: [...pick.indexes], own: pick.own ? { text: pick.own.text, editing: pick.own.editing } : null };
+    else out[rawDraftId(id)] = { text: pick.text, editing: pick.editing };
+  }
   return out;
 }
 
@@ -223,7 +291,13 @@ function picksFromDraft(questions: readonly Question[], draft: QuestionDraft | n
   for (const question of questions) {
     const pick = draft.picks[rawDraftId(question.id)];
     if (pick === undefined) continue;
-    if (typeof pick === 'number') {
+    if (typeof pick === 'object' && 'indexes' in pick) {
+      // D128: restored closed, like a single own answer; only for a question that is still multi-select.
+      if (!question.multiSelect) continue;
+      const indexes = pick.indexes.filter((index) => index < question.options.length);
+      const own = pick.own && pick.own.text.trim() !== '' ? { text: pick.own.text, editing: false } : null;
+      if (indexes.length > 0 || own) out[question.id] = { indexes, own };
+    } else if (typeof pick === 'number') {
       if (pick < question.options.length) out[question.id] = pick;
     } else if (pick.text.trim() !== '') {
       // Restored closed (its text as the answer): an open field would take the focus from wherever the developer is.

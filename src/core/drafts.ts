@@ -98,8 +98,18 @@ export interface ComposerDraft {
   readonly attachments: readonly DraftAttachmentRef[];
 }
 
-/** One question's pick: an option index, or an own answer (D39) with whether its field was open. */
-export type QuestionDraftPick = number | { readonly text: string; readonly editing: boolean };
+/**
+ * One question's pick: an option index, or an own answer (D39) with whether its
+ * field was open, or (D128) a multi-select question's picks: the ticked option
+ * indexes and, when Other… is ticked, its own answer.
+ */
+export type QuestionDraftPick = number | { readonly text: string; readonly editing: boolean } | QuestionDraftMultiPick;
+
+/** D128: a multi-select question's draft picks. */
+export interface QuestionDraftMultiPick {
+  readonly indexes: readonly number[];
+  readonly own: { readonly text: string; readonly editing: boolean } | null;
+}
 
 /** `question:<batchId>`: picks by the question's raw id. */
 export interface QuestionDraft {
@@ -267,7 +277,15 @@ export function parseDraftValue(field: string, value: unknown): DraftValues[Draf
         if (id.length > 128) return null;
         if (typeof pick === 'number' && Number.isInteger(pick) && pick >= 0 && pick < 100) picks[id] = pick;
         else if (isRecord(pick) && typeof pick['text'] === 'string' && pick['text'].length <= 2000) picks[id] = { text: pick['text'], editing: pick['editing'] === true };
-        else return null;
+        else if (isRecord(pick) && Array.isArray(pick['indexes'])) {
+          // D128: a multi-select question's ticked options and its own answer (Other… ticked).
+          const indexes = pick['indexes'] as unknown[];
+          if (indexes.length > 100 || !indexes.every((index) => typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 100)) return null;
+          const own = pick['own'];
+          if (own === null || own === undefined) picks[id] = { indexes: [...new Set(indexes as number[])], own: null };
+          else if (isRecord(own) && typeof own['text'] === 'string' && own['text'].length <= 2000) picks[id] = { indexes: [...new Set(indexes as number[])], own: { text: own['text'], editing: own['editing'] === true } };
+          else return null;
+        } else return null;
       }
       return { picks };
     }

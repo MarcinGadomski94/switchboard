@@ -158,3 +158,46 @@
 .sb-qcard--readonly .sb-qcard__status a {
   color: var(--question-label);
 }
+
+/*
+ * D128: a multi-select question. "Choose any" under the question; its options and
+ * Other… are checkboxes: the pill look above plus a small box that fills with a
+ * tick when the option is picked, so several picks read clearly as several.
+ */
+.sb-qcard .sb-qcard__hint {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-1);
+}
+
+.sb-qcard .sb-qcard__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sb-qcard .sb-qcard__box {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1px solid oklch(0.55 0.04 70);
+  border-radius: 3px;
+}
+
+.sb-qcard .sb-qcard__check[data-selected='true'] .sb-qcard__box {
+  border-color: var(--question-label);
+  background: var(--question-label);
+}
+
+.sb-qcard .sb-qcard__check[data-selected='true'] .sb-qcard__box::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 3px;
+  height: 6px;
+  border: solid var(--question-bg);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
