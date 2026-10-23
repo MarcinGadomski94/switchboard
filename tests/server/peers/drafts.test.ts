@@ -51,18 +51,18 @@ describe("D88 on a peer's session (D48 proxy)", () => {
     const hub = await openHub({ port: b.server.port, cookie: `sb_token=${token}`, headers: { host: `127.0.0.1:${b.server.port}` } });
     streams.push(hub);
     expect(hub.status).toBe(200);
-    expect((await a.call('PUT', `/api/sessions/${local}/drafts/review:r1`, { value: { comment: 'from A' }, client: 'pageA' })).status).toBe(200);
+    expect((await a.call('PUT', `/api/sessions/${local}/drafts/todo-add`, { value: { title: 'from A', description: '', plan: '', priority: 'medium', estimate: '' }, client: 'pageA' })).status).toBe(200);
     const event = await hub.waitFor(
-      () => hub.payloads<{ sessionId: string; field: string; client: string | null }>('draftChanged').find((p) => p.field === 'review:r1'),
+      () => hub.payloads<{ sessionId: string; field: string; client: string | null }>('draftChanged').find((p) => p.field === 'todo-add'),
       'draftChanged from A',
       15_000,
     );
-    expect(event).toEqual({ sessionId: remoteId(aId, local), field: 'review:r1', client: 'pageA' });
+    expect(event).toEqual({ sessionId: remoteId(aId, local), field: 'todo-add', client: 'pageA' });
 
     expect((await b.call('DELETE', `/api/sessions/${id}/drafts/composer?client=pageB`)).status).toBe(204);
-    expect(((await a.call('GET', `/api/sessions/${local}/drafts`)).body as SessionDraft[]).map((d) => d.field)).toEqual(['review:r1']);
+    expect(((await a.call('GET', `/api/sessions/${local}/drafts`)).body as SessionDraft[]).map((d) => d.field)).toEqual(['todo-add']);
     // An emptied value through the proxy clears too (204 passed on).
-    expect((await b.call('PUT', `/api/sessions/${id}/drafts/review%3Ar1`, { value: { comment: '' } })).status).toBe(204);
+    expect((await b.call('PUT', `/api/sessions/${id}/drafts/todo-add`, { value: { title: '', description: '', plan: '', priority: 'medium', estimate: '' } })).status).toBe(204);
     expect((await a.call('GET', `/api/sessions/${local}/drafts`)).body).toEqual([]);
   });
 });
