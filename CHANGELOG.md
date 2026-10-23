@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.35.0 (2026-10-23)
+
+### Questions
+- **Pick several answers:** an agent's multi-select question now shows checkboxes ("Choose any"); tick any options and add your own words alongside, and the agent gets them all (in the Inbox, the chat and on phones).
+
+### Plans
+- **Agents can edit items already in their plan:** `plan_update_item` (set or clear a hold; a pending item's title, description and estimate), `plan_remove_item`, `plan_remove_dependency`, and `plan_set_mode` (after asking you).
+- **A named sidebar subfolder for a plan's runs:** Start asks for it (prefilled with the plan's title); the runs are collected there inside the source session's folder, and a folder with the same name is reused. `plan_start` takes `sidebar_folder` too.
+
 ## 1.34.0 (2026-10-22)
 
 ### Sessions
