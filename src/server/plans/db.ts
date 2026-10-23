@@ -148,6 +148,16 @@ ALTER TABLE plans ADD COLUMN repos_asked_at TEXT;
 ALTER TABLE plans ADD COLUMN repos_ask_raised INTEGER NOT NULL DEFAULT 0 CHECK (repos_ask_raised IN (0, 1));
 `,
   ),
+  makeMigration(
+    5,
+    'plans_sidebar_folder',
+    `-- D130 (docs/plans.md → The runs' sidebar subfolder): the sidebar subfolder chosen at Start for the plan's runs.
+-- plans.sidebar_folder: JSON {id, name}: the folder's id in this machine's sidebar layout (switchboard.db) and its
+--   name as chosen (for display, and for a paired machine that has no folder with that id); NULL = no subfolder
+--   (the runs go next to the source session, as before).
+ALTER TABLE plans ADD COLUMN sidebar_folder TEXT CHECK (sidebar_folder IS NULL OR (json_valid(sidebar_folder) AND json_type(sidebar_folder) = 'object'));
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */

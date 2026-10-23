@@ -46,6 +46,8 @@ export interface TodoRunOverrides {
    * a simple start. Ignored outside a workspace folder.
    */
   readonly answers: { readonly workType: WorkType; readonly mode: SessionMode; readonly phase: Phase; readonly coordination: Coordination | null } | null;
+  /** D130: the plan's runs' sidebar subfolder (the run's `todoLink.sidebarFolder`); absent / `null` = next to the source. */
+  readonly sidebarFolder?: { readonly id: string; readonly name: string } | null;
 }
 
 /** The answer of {@link runTodo}: the run, or a refusal to send as it is. */
@@ -203,7 +205,8 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
       worktreeBranch: 'session',
       // Linked before the process starts, so its agent can mark the item from its first turn.
       beforeSpawn: async (session) => {
-        await store.sessions.update(session.id, { todoLink: { sourceSessionId: sessionId, todoId } });
+        // Plans (D99) hook, D130: a plan item's run carries the plan's runs' sidebar subfolder (RunPlaces places it there).
+        await store.sessions.update(session.id, { todoLink: { sourceSessionId: sessionId, todoId, ...(overrides?.sidebarFolder ? { sidebarFolder: overrides.sidebarFolder } : {}) } });
         before = await todos.beginRun(sessionId, todoId, session.id);
       },
     });

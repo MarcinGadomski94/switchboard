@@ -1,4 +1,6 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { SIDEBAR_FOLDER_NAME_MAX, runSubfolder } from '../../core/sidebar-layout.ts';
+import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { effectiveSessionStatus, turnWaits } from '../../core/derive/turn-status.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES, WORK_TYPES } from '../../core/model.ts';
@@ -17,6 +19,7 @@ import {
   type PlanChecks,
   type PlanEdge,
   type PlanExternalRef,
+  type PlanSidebarFolderRef,
   type PlanItemFacts,
   type PlanMergeMode,
   type PlanWaitingOn,
@@ -328,6 +331,8 @@ export interface PlanServiceOptions {
   readonly bus: HubBus;
   readonly todos: TodoService;
   readonly git: PlanGitPort;
+  /** D130 · D71: the sidebar records a Start's runs' subfolder wrote go to the paired machines the layout is shared with (absent: nowhere). */
+  readonly sidebarSynced?: (changes: RecordChanges) => void;
   /** D102: the Merge step's git / gh (default {@link BranchMergeGit} with `gh` from PATH). */
   readonly merger?: PlanMergePort;
   readonly env: PlanEnvironment;
@@ -386,6 +391,19 @@ function invalid(field: string, message: string): PlanError {
 }
 
 /**
+ * D130: `sidebarFolder` of a Start: the runs' sidebar subfolder's name (trimmed, at most
+ * {@link SIDEBAR_FOLDER_NAME_MAX} characters); absent, `null` or empty = none (the runs go next to the source).
+ */
+function checkSidebarFolderName(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw invalid('sidebarFolder', "sidebarFolder is the name of the runs' sidebar subfolder, or empty for none");
+  const name = value.trim();
+  if (name === '') return null;
+  if (name.length > SIDEBAR_FOLDER_NAME_MAX) throw invalid('sidebarFolder', `a sidebar folder's name has at most ${SIDEBAR_FOLDER_NAME_MAX} characters`);
+  return name;
+}
+
+/**
  * D99 · Plans (`docs/plans.md`): the plans' store, validation and view model, and the
  * scheduler that starts ready items as todo runs and moves them to done. Event driven: a run
  * session's status (`sessionUpdated`), the source sessions' todo changes
@@ -409,6 +427,7 @@ export class PlanService {
   readonly #clock: SchedulerClock;
   readonly #pollMs: number;
   readonly #onError: (error: unknown) => void;
+  readonly #sidebarSynced: (changes: RecordChanges) => void;
   /** Run session → its item and the status last seen. */
   readonly #runs = new Map<string, { itemId: string; status: SessionStatus | null }>();
   /** Items to read from git at the next cycle; `true` = also check for a conflict (a turn ended). */
@@ -467,6 +486,7 @@ export class PlanService {
     this.#pickReposDebounceMs = options.pickReposDebounceMs ?? PICK_REPOS_DEBOUNCE_MS;
     this.#stoppedGraceMs = options.stoppedGraceMs ?? PLAN_STOPPED_GRACE_MS;
     this.#onError = options.onError ?? ((error) => console.error('switchboard plans:', error));
+    this.#sidebarSynced = options.sidebarSynced ?? (() => undefined);
   }
 
   // ── lifecycle ───────────────────────────────────────────────────────────
@@ -899,6 +919,7 @@ export class PlanService {
       answers: plan.answers,
       state: plan.state,
       external: plan.external,
+      sidebarFolder: plan.sidebarFolder,
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
       items: model.items.map((item) => ({ ...item, reason: reasons.get(item.id) ?? item.reason, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),
@@ -1583,9 +1604,15 @@ export class PlanService {
     const input = isRecord(body) ? body : {};
     const mode = checkMergeMode(input['mergeMode'], plan.targetBranch);
     const ack = input['allowProtectedTarget'] === undefined || input['allowProtectedTarget'] === null ? plan.allowProtectedTarget : checkBool(input['allowProtectedTarget'], 'allowProtectedTarget');
+    const folderName = checkSidebarFolderName(input['sidebarFolder']);
     if (plan.state !== 'draft') throw new PlanError(409, plan.state === 'paused' ? 'paused' : 'started', plan.state === 'paused' ? 'the plan is paused: resume it' : `the plan is ${plan.state}`);
     const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
+    // D130: refused before anything changes (a folder five levels deep cannot hold the subfolder).
+    if (folderName !== null) {
+      const dry = runSubfolder(await this.#store.sidebar.read(), { sourceId: plan.sourceSessionId, name: folderName, newId: randomUUID() });
+      if (!dry.ok) throw invalid('sidebarFolder', dry.message);
+    }
     if (plan.targetBranch !== null) {
       // D115: a plan whose repos are picked per item checks the ones picked so far (the others when they join).
       const names = planRepoNames(plan, items);
@@ -1596,10 +1623,37 @@ export class PlanService {
         if (!prepared.ok) throw new PlanError(409, 'no-target', prepared.message);
       }
     }
-    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso() });
+    const sidebarFolder = folderName === null ? null : await this.#runsSubfolder(plan.sourceSessionId, folderName);
+    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso(), ...(sidebarFolder ? { sidebarFolder } : {}) });
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
+  }
+
+  /**
+   * D130 (`docs/plans.md` → *The runs' sidebar subfolder*): finds or makes the runs' subfolder `name`
+   * inside the source session's sidebar folder ({@link runSubfolder}), one write through the D71
+   * layout store, published as `sidebarLayoutChanged` and handed to the shared-layout sync like a
+   * manual move. The source session stays where it is. 422 `sidebarFolder` when it cannot be made.
+   */
+  async #runsSubfolder(sourceSessionId: string, name: string): Promise<PlanSidebarFolderRef> {
+    let made: PlanSidebarFolderRef | null = null;
+    let refused: string | null = null;
+    const write = await this.#store.sidebar.change((layout) => {
+      const sub = runSubfolder(layout, { sourceId: sourceSessionId, name, newId: randomUUID() });
+      if (!sub.ok) {
+        refused = sub.message;
+        return null;
+      }
+      made = { id: sub.folderId, name: sub.name };
+      return sub.layout;
+    });
+    if (refused !== null) throw invalid('sidebarFolder', refused);
+    if (write) {
+      this.#bus.publish('sidebarLayoutChanged', write.layout);
+      this.#sidebarSynced(write.changes);
+    }
+    return made as unknown as PlanSidebarFolderRef;
   }
 
   /** Refuses (422 `target-forbidden`) an agent mode on a protected target: the developer's acknowledgement (`allowProtectedTarget`) is missing. */

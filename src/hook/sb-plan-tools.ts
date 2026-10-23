@@ -163,7 +163,7 @@ export async function planStatus(api: AgentApi, input: ToolInput): Promise<CallT
  * D99 · `plan_start`: the developer's merge mode (required with a target branch: the server
  * answers 422 `merge-mode-required`; a plan without a target is `none`); D99 follow-up
  * 2026-10-15: `allow_protected_target` is the developer's acknowledgement that agents merge
- * straight into a protected target.
+ * straight into a protected target. D130: `sidebar_folder`, the runs' sidebar subfolder the developer named.
  */
 export async function planStart(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   const id = planIdOf(input);
@@ -175,6 +175,12 @@ export async function planStart(api: AgentApi, input: ToolInput): Promise<CallTo
   const body: Record<string, unknown> = {};
   if (mode !== undefined) body['mergeMode'] = mode;
   if (input['allow_protected_target'] !== undefined) body['allowProtectedTarget'] = input['allow_protected_target'] === true;
+  // D130: the developer's sidebar subfolder for the runs ('' = none; left out = as before D130).
+  const folder = input['sidebar_folder'];
+  if (folder !== undefined && folder !== null) {
+    if (typeof folder !== 'string') return textResult("sidebar_folder is the name of the runs' sidebar subfolder the developer gave (or an empty string for none).", true);
+    body['sidebarFolder'] = folder;
+  }
   return request(api, 'POST', planRoute(id, '/start'), body, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
@@ -402,6 +408,7 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
         plan_id: field.text('plan_start', 'plan_id'),
         merge_mode: z.enum(PLAN_MERGE_MODES).describe(about('plan_start', 'merge_mode')).optional(),
         allow_protected_target: z.boolean().describe(about('plan_start', 'allow_protected_target')).optional(),
+        sidebar_folder: z.string().max(60).describe(about('plan_start', 'sidebar_folder')).optional(),
       }),
       annotations: { title: planStartTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },

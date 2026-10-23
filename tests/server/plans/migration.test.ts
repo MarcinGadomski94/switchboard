@@ -26,12 +26,30 @@ describe('D99 follow-up 2026-10-15 · plans.db migration 3', () => {
       [2, 'plan_item_spans'],
       [3, 'plans_any_target'],
       [4, 'plans_repos_ask'],
+      [5, 'plans_sidebar_folder'],
     ]);
     // Applied migrations are checksummed (even their comments): never edit them, add a new one.
     expect(PLANS_MIGRATIONS[0]?.checksum).toBe('09299d9f83949d7041a0fa60b82d19adc56546746ffb7dc612c1e10ed8c75152');
     expect(PLANS_MIGRATIONS[1]?.checksum).toBe('1cfc9e81157f586976506d6ac2c13bfed10dd950776fdcc4d1f25b5b8b0de803');
     // D115 follow-ups 2026-10-20: migration 3 is released too.
     expect(PLANS_MIGRATIONS[2]?.checksum).toBe('ba41d940c4acea0565f48d1ec6f54a72d3b6bcc06f57c823f2d1eee88bb7f358');
+    // D130: migration 4 is released too (1.33 / 1.34).
+    expect(PLANS_MIGRATIONS[3]?.checksum).toBe('f73bd0e7fa82262a9ef972c96661793764a9e35a0cb4f15ab99a99c236ddbdc0');
+  });
+
+  it('D130 · migration 5: a plan from a plans.db at migration 4 has no runs\' subfolder; the subfolder round-trips', async () => {
+    dir = await makeTempDir('plans-migration-5');
+    const old = await PlansDb.open(dir, () => NOW, PLANS_MIGRATIONS.slice(0, 4));
+    await old.plans.create({ id: 'p-old', title: 'Old epic', sourceSessionId: 's1', targetBranch: null, repos: [], baseBranch: 'dev', maxConcurrency: 3, usageThreshold: 85, answers: null, external: null });
+    old.close();
+    const upgraded = await PlansDb.open(dir, () => NOW);
+    try {
+      expect((await upgraded.plans.get('p-old'))?.sidebarFolder).toBeNull();
+      await upgraded.plans.update('p-old', { sidebarFolder: { id: 'f1', name: 'Acme epic' } });
+      expect((await upgraded.plans.get('p-old'))?.sidebarFolder).toEqual({ id: 'f1', name: 'Acme epic' });
+    } finally {
+      upgraded.close();
+    }
   });
 
   it('a plan from a plans.db at migration 2 reads unchanged after the upgrade; the new fields round-trip', async () => {

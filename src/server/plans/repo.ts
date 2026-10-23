@@ -1,5 +1,5 @@
 import type { StatementSync } from 'node:sqlite';
-import type { PlanAnswers, PlanChecks, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
+import type { PlanAnswers, PlanChecks, PlanSidebarFolderRef, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
 import type { RepoContext } from '../db/context.ts';
 import { transaction } from '../db/database.ts';
 
@@ -28,6 +28,8 @@ export interface PlanRecord {
   readonly reposAskedAt: string | null;
   /** D115 follow-ups (migration 4): an Inbox item says the repositories were not picked in time (or the ask failed). */
   readonly reposAskRaised: boolean;
+  /** D130 (migration 5): the runs' sidebar subfolder chosen at Start (its id in this machine's layout, its name), `null` = none. */
+  readonly sidebarFolder: PlanSidebarFolderRef | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly startedAt: string | null;
@@ -110,6 +112,7 @@ function planOf(row: Row): PlanRecord {
     pausedReason: text(row['paused_reason'] ?? null),
     reposAskedAt: text(row['repos_asked_at'] ?? null),
     reposAskRaised: Number(row['repos_ask_raised'] ?? 0) === 1,
+    sidebarFolder: json<PlanSidebarFolderRef | null>(row['sidebar_folder'] ?? null, null),
     createdAt: String(row['created_at']),
     updatedAt: String(row['updated_at']),
     startedAt: text(row['started_at'] ?? null),
@@ -177,6 +180,7 @@ const PLAN_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'tex
   pausedReason: ['paused_reason', 'text'],
   startedAt: ['started_at', 'text'],
   finishedAt: ['finished_at', 'text'],
+  sidebarFolder: ['sidebar_folder', 'json'],
 };
 
 const ITEM_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'text' | 'int' | 'json' | 'bool']>> = {

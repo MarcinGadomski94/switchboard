@@ -104,7 +104,7 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
 
     async run(input: PlanRunInput) {
       try {
-        const outcome = await runTodo(context, input.plan.sourceSessionId, input.todo.id, { branch: input.branch, from: input.from, repoPaths: input.repoPaths, task: input.task, answers: input.answers });
+        const outcome = await runTodo(context, input.plan.sourceSessionId, input.todo.id, { branch: input.branch, from: input.from, repoPaths: input.repoPaths, task: input.task, answers: input.answers, sidebarFolder: input.plan.sidebarFolder });
         if (!outcome.ok) return { ok: false as const, message: refusalText(outcome.body) };
         const own = await store.worktrees.list({ sessionId: outcome.result.session.id });
         return { ok: true as const, sessionId: outcome.result.session.id, branch: own[0]?.branch ?? null };

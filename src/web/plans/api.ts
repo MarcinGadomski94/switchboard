@@ -47,6 +47,8 @@ export interface NewPlanBody {
 /** D99 follow-up 2026-10-15: the developer's acknowledgement that agents merge straight into a protected target. */
 export interface StartOptions {
   readonly allowProtectedTarget?: boolean;
+  /** D130: the runs' sidebar subfolder's name (`''` = none). */
+  readonly sidebarFolder?: string;
 }
 
 /** The error code of a refusal (`{ error }`), `null` when there is none. */
