@@ -80,6 +80,11 @@ test('working, asking and done agents land live; a question answered on Home lea
   await expect(doneRow).toContainText('finisher');
   await expect(doneRow).toContainText('Done just now');
   await expect(page.getByTestId('v2-home-done-count')).toHaveText('1');
+  // A Done-today agent row peeks too (lane X); Escape closes the sheet.
+  await doneRow.click();
+  await expect(page.getByTestId('v2-agent-peek')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('v2-agent-peek')).toBeHidden();
 
   // Answer on Home: the card leaves; the toast offers Undo; the Needs-you page is clear and every count is gone.
   await card.locator('.v2-opt', { hasText: 'Staging' }).click();
@@ -97,9 +102,13 @@ test('working, asking and done agents land live; a question answered on Home lea
     .poll(async () => (await page.evaluate(async () => (await (await fetch('/api/inbox')).json()) as Array<{ sessionId: string | null }>)).filter((i) => i.sessionId === asker.id).length, { timeout: 15_000 })
     .toBe(0);
 
-  // A click on a working card opens the agent.
+  // A click on a working card peeks at the agent (lane X: the peek sheet, Home stays); Open full view opens it.
   await page.getByTestId('v2-nav-home').click();
   await workCard.click();
+  const peek = page.getByTestId('v2-agent-peek');
+  await expect(peek).toBeVisible();
+  await expect(page).toHaveURL(`${world.baseUrl}/`);
+  await peek.getByTestId('v2-agent-peek-full').click();
   await expect(page).toHaveURL(new RegExp(`/agents/${worker.id}$`));
 });
 
@@ -166,4 +175,9 @@ test('phone (390 × 844): Home in one column and the Needs-you tab, with the sam
   await expect(needsCard).toHaveCount(0);
   await expect(page.getByTestId('v2-needs-empty')).toBeVisible();
   await expect(page.getByTestId('v2-tab-needs').locator('.v2-dot-badge')).toHaveCount(0);
+  // On a phone a working agent opens its page (the prototype's phone chat), not the peek sheet.
+  await page.getByTestId('v2-tab-home').click();
+  await page.getByTestId('v2-working').getByTestId('v2-agent-row').first().click();
+  await expect(page).toHaveURL(/\/agents\/[^/]+$/);
+  await expect(page.getByTestId('v2-agent-peek')).toHaveCount(0);
 });

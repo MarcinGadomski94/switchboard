@@ -119,10 +119,40 @@ test('phone (390 × 844): + New fills the screen; a crew is made from it', async
   // The kinds scroll sideways; every one is a 44 px+ target.
   const kind = sheet.getByTestId('v2-new-kind-crew');
   await kind.scrollIntoViewIfNeeded();
-  await kind.click();
   expect((await kind.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-  await sheet.getByTestId('v2-new-crew-name').fill('Acme Growth');
-  await sheet.getByTestId('v2-new-go').click();
+  await kind.click();
+  // Crew is the Crews page's New crew dialog (lane X: one New crew), which takes over from the sheet.
+  const dialog = page.getByTestId('v2-new-crew');
+  await expect(dialog).toBeVisible();
   await expect(sheet).toHaveCount(0);
+  await dialog.getByTestId('v2-new-crew-name').fill('Acme Growth');
+  await dialog.getByTestId('v2-new-crew-go').click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/crews\/[^/]+$/);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'Acme Growth' })).toBeVisible();
+});
+
+test('Teammate opens the Crews page’s New teammate dialog; Project › Import from Jira opens the v2 import dialog', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  await page.getByTestId('v2-new').click();
+  const sheet = page.getByTestId('v2-new-sheet');
+  await sheet.getByTestId('v2-new-kind-teammate').click();
+  const mate = page.getByTestId('v2-new-teammate');
+  await expect(mate).toBeVisible();
+  await expect(sheet).toHaveCount(0);
+  // Its richer form: role templates, adopting an existing agent, the crew it joins.
+  await expect(mate.getByTestId('v2-new-teammate-role').first()).toBeVisible();
+  await expect(mate.getByTestId('v2-new-teammate-adopt')).toBeVisible();
+  await expect(mate.getByTestId('v2-new-teammate-crew')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(mate).toHaveCount(0);
+  // + New › Project › Import from Jira: the Projects page's v2 dialog (lane X: one Jira import), over the sheet.
+  await page.getByTestId('v2-new').click();
+  await page.getByTestId('v2-new-sheet').getByTestId('v2-new-kind-project').click();
+  await page.getByTestId('v2-new-jira').click();
+  const jira = page.getByTestId('v2-jira-import');
+  await expect(jira).toBeVisible();
+  await expect(jira.getByTestId('v2-jira-import-epic')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(jira).toHaveCount(0);
 });

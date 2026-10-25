@@ -1,10 +1,12 @@
-import { type CSSProperties, useMemo } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 import type { Plan, PlanItem } from '../../../core/plans.ts';
 import { GRAPH, axisTicks, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, shortLabel, timeline, timelineSummary } from '../../plans/model.ts';
 import { Button, Chip, Icon, IconButton, MenuButton, type MenuItem, StatusBadge } from '../components/index.ts';
-import { PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
+import { AGENTS_WORDS, PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
+import { Board, BoardActivity, BoardButtons, BoardCard, BoardLane, BoardProgress, BoardQuote } from '../shared/Board.tsx';
+import { boardFlipKey } from '../shared/board-model.ts';
 import { clock } from '../shared/time.ts';
-import { BOARD_COLUMNS, BOARD_COLUMN_LABELS, axisPercent, boardColumns, earlyStart, estimateLine, reopenedNotice, stepActions, stepLook, stepName } from './project-model.ts';
+import { BOARD_COLUMNS, axisPercent, boardColumns, earlyStart, estimateLine, reopenedNotice, stepActions, stepLook, stepName } from './project-model.ts';
 import type { StepActions } from './useStepActions.ts';
 
 /**
@@ -175,38 +177,77 @@ export function StepsView(props: ViewProps) {
   );
 }
 
-/** Board: Needs you · Working · Ready for approval · Done. */
+/** The words on a step's board card under its title: the ask (a quote) or what it is doing / waits on. */
+function CardBody({ plan, item, todoText }: { readonly plan: Plan; readonly item: PlanItem; readonly todoText?: string | null }) {
+  const look = stepLook(item, plan.items);
+  if (look.kind === 'stopped') return <BoardQuote tone="red">{look.detail ? `${look.label}. ${look.detail}` : look.label}</BoardQuote>;
+  if (look.kind === 'needs' || look.kind === 'question') return <BoardQuote>{look.detail ? `“${look.detail}”` : look.label}</BoardQuote>;
+  const text = look.kind === 'pick' ? look.label : (look.detail ?? (look.kind === 'running' ? (todoText ?? null) : null));
+  return text ? (
+    <BoardActivity live={look.kind === 'running'} testId="v2-step-detail">
+      {text}
+    </BoardActivity>
+  ) : null;
+}
+
+/**
+ * Board: the shared board (`../shared/Board.tsx`, the Agents board's look) with the project as
+ * its one lane (the prototype's `boardHTML(steps, plan)`): Needs you · Working · Ready for
+ * approval · Done. A card's click opens the step's agent (a peek), else its details.
+ */
 export function BoardView({ plan, actions, onDetails, onSendBack }: ViewProps) {
   const columns = boardColumns(plan.items);
+  const [closed, setClosed] = useState(false);
+  const counts = { needs: columns.needs.length, working: columns.working.length, ready: columns.ready.length, done: columns.done.length };
+  const flip = boardFlipKey([{ id: plan.id, cards: BOARD_COLUMNS.flatMap((column) => columns[column].map((item) => ({ id: item.id, column }))) }]);
+  const needs = columns.needs.length;
   return (
-    <div className="v2-p-pboard" data-testid="v2-project-board">
-      {BOARD_COLUMNS.map((column) => (
-        <section key={column} className="v2-p-pboard-col" data-column={column} aria-label={BOARD_COLUMN_LABELS[column]}>
-          <h3>
-            {BOARD_COLUMN_LABELS[column]} <span className="v2-p-pboard-n">{columns[column].length}</span>
-          </h3>
-          {columns[column].length === 0 ? <div className="v2-p-pboard-none">Nothing here.</div> : null}
-          {columns[column].map((item) => {
-            const look = stepLook(item, plan.items);
-            const name = stepName(item);
-            return (
-              <div key={item.id} className="v2-p-bcard" data-testid="v2-board-card" data-key={item.key ?? item.id} data-kind={look.kind} data-tone={STATUS[look.status].tone}>
-                <button type="button" className="v2-p-bcard-main" onClick={() => (actions.open(item) ? undefined : onDetails(item))}>
-                  <span className="v2-p-bcard-kind">STEP{item.key ? ` · ${shortLabel(item, plan.items)}` : ''}</span>
-                  <b>{item.title}</b>
-                  <StepSub plan={plan} item={item} />
-                </button>
-                <div className="v2-p-bcard-row">
-                  <StatusBadge status={look.status} label={look.label} size="s" />
-                  <span className="v2-grow" />
-                  <MenuButton items={stepMenu(plan, item, actions)} label={`Step actions for ${name}`} testId="v2-step-menu" />
-                </div>
-                <InlineButtons plan={plan} item={item} actions={actions} onSendBack={onSendBack} compact />
-              </div>
-            );
-          })}
-        </section>
-      ))}
+    <div data-testid="v2-project-board">
+      <Board counts={counts} flipKey={flip}>
+        <BoardLane
+          id={plan.id}
+          title={plan.title}
+          icon="projects"
+          iconClass="v2-plan-ic"
+          closed={closed}
+          onToggle={() => setClosed((value) => !value)}
+          needs={needs}
+          summary={
+            <>
+              <BoardProgress done={plan.progress.done} total={plan.progress.total} />
+              <span className="v2-muted" style={{ fontSize: 13 }}>
+                {AGENTS_WORDS.stepsDone(plan.progress.done, plan.progress.total)}
+              </span>
+            </>
+          }
+          cell={(column) =>
+            columns[column].map((item) => {
+              const look = stepLook(item, plan.items);
+              const name = stepName(item);
+              return (
+                <BoardCard
+                  key={item.id}
+                  column={column}
+                  flipId={item.id}
+                  testId="v2-board-card"
+                  kind={`Step${item.key ? ` · ${shortLabel(item, plan.items)}` : ''}`}
+                  title={item.title}
+                  status={<StatusBadge status={look.status} label={look.label} size="s" />}
+                  label={`${name}, ${look.label}${item.runSessionId ? ' · open its agent' : ''}`}
+                  onOpen={() => (actions.open(item) ? undefined : onDetails(item))}
+                  cardProps={{ 'data-key': item.key ?? item.id, 'data-kind': look.kind }}
+                >
+                  <CardBody plan={plan} item={item} />
+                  <BoardButtons>
+                    <InlineButtons plan={plan} item={item} actions={actions} onSendBack={onSendBack} />
+                    <MenuButton items={stepMenu(plan, item, actions)} label={`Step actions for ${name}`} testId="v2-step-menu" />
+                  </BoardButtons>
+                </BoardCard>
+              );
+            })
+          }
+        />
+      </Board>
     </div>
   );
 }

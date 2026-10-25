@@ -244,6 +244,15 @@ export function hitHref(result: SearchResult): string {
   }
 }
 
+/**
+ * D131 · lane X · the agent an agent-title hit peeks at (the peek sheet, as Home and the boards
+ * open an agent), `null` for every other hit: a message hit still jumps to the exact message
+ * (the prototype's search page: "Exact message"), a result, task or closed agent to its page.
+ */
+export function peekSessionOf(result: Pick<SearchResult, 'target'>): string | null {
+  return result.target.type === 'session' ? result.target.sessionId : null;
+}
+
 /** A message hit's "who": You or Agent (a tool line: its label). */
 export function whoOf(result: SearchResult): string {
   if (result.kind === 'message') return result.detail === 'You' ? SEARCH_WORDS.you : SEARCH_WORDS.agent;

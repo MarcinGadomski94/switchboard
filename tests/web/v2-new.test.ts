@@ -6,16 +6,15 @@ import {
   DEFAULT_AGENT_FORM,
   DEFAULT_ROUTINE_FORM,
   DEFAULT_TASK_FORM,
-  DEFAULT_TEAMMATE_FORM,
   NEW_KINDS,
   agentBody,
   agentProblems,
   chatBody,
   conversationProblems,
-  crewProblems,
   emptySheet,
   estimateLabel,
   foldersByRecent,
+  opensDialog,
   parseSteps,
   projectProblems,
   routineBody,
@@ -28,8 +27,6 @@ import {
   stepIndex,
   taskBody,
   taskProblems,
-  teammateBody,
-  teammateProblems,
 } from '../../src/web/v2/new/new-model.ts';
 
 const repo = { id: 'f1', path: '/x/acme-checkout', name: 'acme-checkout', displayName: 'acme-checkout', kind: 'repo' as const };
@@ -122,13 +119,9 @@ describe('+ New · task, routine, project, teammate, crew', () => {
     expect(projectProblems({ title: '', owner: '', steps: ' ' })).toEqual({ title: NEW_WORDS.errors.title, owner: NEW_WORDS.errors.agent, steps: NEW_WORDS.errors.steps });
   });
 
-  it('a teammate is adopted or made with its own agent', () => {
-    expect(teammateProblems(DEFAULT_TEAMMATE_FORM)).toEqual({ name: NEW_WORDS.errors.role, crew: NEW_WORDS.errors.crew });
-    const mate = { ...DEFAULT_TEAMMATE_FORM, name: 'Release helper', crew: 't1', owns: 'Store listings' };
-    expect(teammateBody(mate)).toMatchObject({ name: 'Release helper', teamId: 't1', charter: { owns: 'Store listings' }, session: { worktrees: false } });
-    expect(teammateBody({ ...mate, adopt: true, agent: 's9' })).toMatchObject({ sessionId: 's9', askCharter: true });
-    expect(teammateProblems({ ...mate, adopt: true })).toEqual({ agent: NEW_WORDS.errors.agent });
-    expect(crewProblems({ name: ' ', job: '' })).toEqual({ name: NEW_WORDS.errors.crewName });
+  it('Teammate and Crew hand over to the Crews dialogs (lane X: one New teammate / New crew); the rest are the sheet’s forms', () => {
+    expect(NEW_KINDS.filter(opensDialog)).toEqual(['teammate', 'crew']);
+    expect(NEW_KINDS.filter((kind) => !opensDialog(kind))).toEqual(['agent', 'conversation', 'task', 'project', 'routine']);
   });
 });
 
@@ -138,7 +131,6 @@ describe('+ New · drafts (the new-session machine draft)', () => {
       { ...emptySheet('task'), task: { ...DEFAULT_TASK_FORM, title: 'Empty cart', description: 'Below 400 px' } },
       { ...emptySheet('routine'), routine: { ...DEFAULT_ROUTINE_FORM, prompt: 'Check the page' } },
       { ...emptySheet('project'), project: { title: 'PROJ-200', owner: 's1', steps: 'One\nTwo' } },
-      { ...emptySheet('crew'), crew: { name: 'Acme Growth', job: 'Experiments' } },
       { ...emptySheet('agent'), agent: { ...DEFAULT_AGENT_FORM, form: { ...DEFAULT_FORM, task: 'Hello' } } },
     ];
     for (const sheet of cases) {
@@ -151,13 +143,15 @@ describe('+ New · drafts (the new-session machine draft)', () => {
     const task = sheetFromDraft(parseDraftValue<'new-session'>('new-session', sheetDraft(cases[0]!))!.form);
     expect(task.task.title).toBe('Empty cart');
     expect(task.task.description).toBe('Below 400 px');
-    const agent = sheetFromDraft(parseDraftValue<'new-session'>('new-session', sheetDraft(cases[4]!))!.form);
+    const agent = sheetFromDraft(parseDraftValue<'new-session'>('new-session', sheetDraft(cases[3]!))!.form);
     expect(agent.agent.form.task).toBe('Hello');
   });
 
   it('an empty sheet is not worth a draft; a classic draft opens as an agent', () => {
     expect(sheetHasText(emptySheet('agent'))).toBe(false);
     expect(sheetFromDraft({ task: 'from classic' }).kind).toBe('agent');
+    // A crew or teammate draft from before the Crews dialogs took over opens as an agent.
+    expect(sheetFromDraft({ newKind: 'crew', name: 'Acme Growth' }).kind).toBe('agent');
   });
 
   it('opens from a request with its text and computer', () => {

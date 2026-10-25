@@ -1,0 +1,349 @@
+/*
+ * D131 · lane X · the one v2 board (`Board.tsx`): column heads, swimlanes, cells and cards,
+ * used by the Agents board (lane A) and a project's Board view (lane P). Prototype: `.bd`,
+ * `.bd-cols`, `.bd-col-h`, `.lane2`, `.bcell`, `.bcard` (`docs/design/v2-prototype.html`).
+ */
+
+.sb2 .v2-bd {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 .v2-bd-groupby {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -4px 0 4px;
+  font-size: 14px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-bd-cols,
+.sb2 .v2-lane-g {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sb2 .v2-bd-cols {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--v2-bg);
+  padding: 2px 0 6px;
+}
+
+.sb2 .v2-bd-col-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 14px;
+  line-height: 1.25;
+  border-radius: 12px;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  font-weight: 650;
+  font-size: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sb2 .v2-bd-col-h::before,
+.sb2 .v2-bcard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--v2-cc);
+}
+
+.sb2 .v2-bd-col-h .v2-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-bd [data-col='needs'] {
+  --v2-cc: var(--v2-amber-dot);
+}
+
+.sb2 .v2-bd [data-col='working'] {
+  --v2-cc: var(--v2-blue);
+}
+
+.sb2 .v2-bd [data-col='ready'] {
+  --v2-cc: var(--v2-violet);
+}
+
+.sb2 .v2-bd [data-col='done'] {
+  --v2-cc: var(--v2-green);
+}
+
+.sb2 .v2-lane {
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-l);
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-lane-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 6px;
+  min-height: 52px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-lane-h h3 {
+  margin: 0;
+  font-size: 15.5px;
+}
+
+.sb2 .v2-lane-tog {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--v2-muted);
+  cursor: pointer;
+}
+
+.sb2 .v2-lane-tog:hover {
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-lane-tog svg {
+  transition: transform var(--v2-fast);
+}
+
+.sb2 .v2-lane[data-closed] .v2-lane-tog svg {
+  transform: rotate(-90deg);
+}
+
+.sb2 .v2-lane[data-closed] .v2-lane-g {
+  display: none;
+}
+
+.sb2 .v2-lane-g {
+  padding: 0 10px 10px;
+}
+
+.sb2 .v2-progress {
+  width: 120px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--v2-sunken);
+  overflow: hidden;
+  display: flex;
+}
+
+.sb2 .v2-progress b {
+  background: var(--v2-green);
+}
+
+.sb2 .v2-bcell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 56px;
+  border-radius: 12px;
+  padding: 2px;
+}
+
+.sb2 .v2-bcell .v2-none {
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  border: 1px dashed var(--v2-border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+
+.sb2 .v2-bcard {
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  box-shadow: var(--v2-shadow-1);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13.5px;
+  position: relative;
+  text-align: left;
+  color: inherit;
+}
+
+.sb2 .v2-bcard:hover {
+  border-color: var(--v2-border-strong);
+  box-shadow: var(--v2-shadow-2);
+}
+
+.sb2 .v2-bcard b.v2-t {
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.sb2 .v2-bcard .v2-brow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-bcard .v2-bact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v2-muted);
+  min-height: 20px;
+}
+
+.sb2 .v2-bcard .v2-bact span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-bcard .v2-bact .v2-bt {
+  margin-left: auto;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb2 .v2-bcard .v2-bact .v2-pulse {
+  flex: none;
+}
+
+.sb2 .v2-bcard .v2-bq {
+  background: var(--v2-amber-bg);
+  color: var(--v2-amber);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-weight: 550;
+  font-size: 13px;
+}
+
+/* The clamp sits on the inner text, so a 4th line never shows in the quote's padding. */
+.sb2 .v2-bcard .v2-bq-t {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sb2 .v2-bcard .v2-bq[data-tone='red'] {
+  background: var(--v2-red-bg);
+  color: var(--v2-red);
+}
+
+.sb2 .v2-bkind {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--v2-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sb2 .v2-bd-foot {
+  font-size: 13px;
+  color: var(--v2-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-bd-col-h .v2-count[data-tone='amber'] {
+  color: var(--v2-amber);
+  font-weight: 700;
+}
+
+.sb2 .v2-lane-pad {
+  width: 6px;
+  flex: none;
+}
+
+.sb2 .v2-bd .v2-flash {
+  animation: v2-bd-flash 1.4s ease-out;
+}
+
+@keyframes v2-bd-flash {
+  0% {
+    box-shadow: 0 0 0 3px var(--v2-accent);
+  }
+
+  100% {
+    box-shadow: none;
+  }
+}
+
+/*
+ * Tablet (768–1279): the columns shrink to 132 px (the prototype's tablet board shrinks them too),
+ * so the board fits next to the open folder tree at 1024. Narrower than that, the column heads and
+ * the lanes keep one shared minimum width and scroll sideways together inside the board.
+ */
+@media (max-width: 1279px) {
+  .sb2 .v2-bd {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .sb2 .v2-bd-col-h {
+    font-size: 13px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .sb2 .v2-bd-cols,
+  .sb2 .v2-lane-g {
+    grid-template-columns: repeat(4, minmax(132px, 1fr));
+  }
+
+  /* 4 × 132 + 3 gaps; a lane adds its 10 px padding each side and its border. */
+  .sb2 .v2-bd > .v2-bd-cols {
+    min-width: 558px;
+  }
+
+  .sb2 .v2-bd > .v2-lane {
+    min-width: 580px;
+  }
+
+  .sb2 .v2-lane-g {
+    padding: 0 8px 8px;
+  }
+
+  .sb2 .v2-bcard {
+    padding: 10px;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Touch screens: the card's buttons are 44 px targets. */
+@media (pointer: coarse) {
+  .sb2 .v2-bcard .v2-btn {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-bd .v2-flash {
+    animation: none;
+  }
+
+  .sb2 .v2-lane-tog svg {
+    transition: none;
+  }
+}

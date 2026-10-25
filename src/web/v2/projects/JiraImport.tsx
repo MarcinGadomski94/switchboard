@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Folder } from '../../../core/api.ts';
+import type { Plan } from '../../../core/plans.ts';
 import type { JiraPreview, JiraSyncMode } from '../../../core/plans-jira.ts';
 import { api } from '../../api/client.ts';
 import { jiraApi } from '../../plans/jira/api.ts';
@@ -12,9 +13,11 @@ import { useV2Router } from '../nav.tsx';
  * tickets and their order (nothing is created) → Create project. The project's own agent starts
  * in the folder picked here (D112, "Plan · <title>"); the agent picks each step's code projects
  * (D115). The classic dialog's CLI / model / account pickers and the sidebar folder (D119) are
- * left to their defaults here (`docs/design/v2-decisions.md`, lane P).
+ * left to their defaults here (`docs/design/v2-decisions.md`, lane P). It is also + New › Project ›
+ * Import from Jira (lane X: one v2 import dialog); there `onImported` takes over from the toast and
+ * the navigation.
  */
-export function JiraImportDialog({ onClose }: { readonly onClose: () => void }) {
+export function JiraImportDialog({ onClose, onImported }: { readonly onClose: () => void; readonly onImported?: (plan: Plan) => void }) {
   const [epic, setEpic] = useState('');
   const [preview, setPreview] = useState<JiraPreview | null>(null);
   const [title, setTitle] = useState('');
@@ -63,6 +66,10 @@ export function JiraImportDialog({ onClose }: { readonly onClose: () => void }) 
     try {
       const answer = await jiraApi.importIntoFolder(null, { epic: preview.epic.key, title: title.trim(), targetBranch: target.trim(), ...(folder ? { folder } : {}), sync, ...(sync === 'write' ? { doneOnMerge } : {}) });
       putPlan(answer.plan);
+      if (onImported) {
+        onImported(answer.plan);
+        return;
+      }
       toast({ text: `Created “${answer.plan.title}” with ${answer.plan.items.length} steps.` });
       onClose();
       navigate({ area: 'project', id: answer.plan.id });

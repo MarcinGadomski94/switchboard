@@ -1,6 +1,7 @@
 import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_NO_MESSAGE } from '../../../core/plans.ts';
 import { durationShort, earlyStartWarning, isProtectedTargetName, shortLabel, timeline } from '../../plans/model.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS, type V2Status } from '../glossary.ts';
+import type { BoardColumn } from '../shared/board-model.ts';
 
 /**
  * D131 · lane P · the Projects pages' pure rules (a v2 "project" is a plan, D99; a "step" is a
@@ -241,13 +242,8 @@ export function readProjectView(stored: string | null): ProjectView {
   return (PROJECT_VIEWS as readonly string[]).includes(stored ?? '') ? (stored as ProjectView) : 'steps';
 }
 
-/** The board's columns (Lane A's board: Needs you · Working · Ready for approval · Done). */
-export const BOARD_COLUMNS = ['needs', 'working', 'ready', 'done'] as const;
-/** One of {@link BOARD_COLUMNS}. */
-export type BoardColumn = (typeof BOARD_COLUMNS)[number];
-
-/** The column titles. */
-export const BOARD_COLUMN_LABELS: Readonly<Record<BoardColumn, string>> = { needs: 'Needs you', working: 'Working', ready: 'Ready for approval', done: 'Done' };
+/** The board's columns: the shared board's (`../shared/board-model.ts`: Needs you · Working · Ready for approval · Done). */
+export { BOARD_COLUMNS, type BoardColumn } from '../shared/board-model.ts';
 
 /** The column a step sits in (waiting steps sit with the working ones, as in the prototype). */
 export function boardColumn(item: Pick<PlanItem, 'state' | 'reason'>): BoardColumn {
@@ -390,4 +386,26 @@ export function canStart(plan: Pick<Plan, 'targetBranch' | 'items'>, mode: PlanM
 /** The subfolder field's check (D130: at most 60 characters). */
 export function checkSubfolder(name: string): string | null {
   return name.trim().length > 60 ? 'At most 60 characters.' : null;
+}
+
+// ── Lane X · boards: "What agents know" ──────────────────────────────────
+
+/** The bits of a session {@link projectNotesHref} reads (a `SessionListItem`). */
+export interface NotesSessionLike {
+  readonly id: string;
+  readonly folderPath: string | null;
+  readonly cwd: string | null;
+}
+
+/**
+ * D131 · lane X · where the project page's "What agents know" card leads: Notes scoped to the
+ * project's folder (`/notes?scope=<folder>`, the Notes page's `?scope=`), the folder being its own
+ * agent's (the plan's source session: its folder, else where it runs; Project memory's scope). A
+ * paired computer's project finds its agent under the remote id. Unknown → every note (`/notes`).
+ */
+export function projectNotesHref(plan: Pick<Plan, 'sourceSessionId' | 'machine'>, sessions: readonly NotesSessionLike[]): string {
+  const ids = [plan.sourceSessionId, ...(plan.machine ? [`r~${plan.machine.id}~${plan.sourceSessionId}`] : [])];
+  const source = sessions.find((session) => ids.includes(session.id)) ?? null;
+  const folder = source ? (source.folderPath ?? source.cwd) : null;
+  return folder ? `/notes?scope=${encodeURIComponent(folder)}` : '/notes';
 }

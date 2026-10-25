@@ -4,6 +4,7 @@ import { Button, Chip, Icon, Skeleton } from '../components/index.ts';
 import { HOME_WORDS, computerStateToV2 } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { AgentCard, AgentRow } from '../shared/agent-row.tsx';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock } from '../shared/time.ts';
 import { helpersOf } from './home-model.ts';
@@ -13,8 +14,8 @@ import { helpersOf } from './home-model.ts';
  * per agent whose turn runs, on every computer, newest activity first. The
  * activity line ticks (`useTick`), the helpers count follows the live activity,
  * the computer tag says where it runs; an offline computer's card is greyed with
- * the reason. A click opens the agent (`/agents/:id`: lane S exports no peek sheet
- * yet, see `docs/design/v2-decisions.md` → Lane H). A start from the box shows a
+ * the reason. A click peeks at the agent (`openPeek`, lane S; a phone opens its
+ * page), the card's Open goes to its full view. A start from the box shows a
  * skeleton card until its agent is in the list.
  */
 
@@ -29,6 +30,8 @@ export function WorkingNow({ working, loaded, pending, items, phone }: { readonl
   const { navigate } = useV2Router();
   const activityOf = useLiveActivities(working as SessionListItem[]);
   const now = useTick(1000);
+  // A card peeks (the prototype's "Click to peek without leaving Home"; a phone opens the agent); its Open goes to the full view.
+  const peek = useOpenAgent();
   const open = (id: string): void => navigate(`/agents/${encodeURIComponent(id)}`);
   const showPending = pending !== null && !working.some((session) => session.id === pending.sessionId);
   const approvalOf = (id: string): boolean => items.some((item) => item.agent?.sessionId === id && item.kind === 'approval');
@@ -73,7 +76,7 @@ export function WorkingNow({ working, loaded, pending, items, phone }: { readonl
       <div className="v2-home-plist" data-testid="v2-working">
         {skeleton}
         {working.map((session) => (
-          <AgentRow key={session.id} session={session} activity={activityOf(session.id)} onOpen={() => open(session.id)} now={now} />
+          <AgentRow key={session.id} session={session} activity={activityOf(session.id)} onOpen={() => peek(session.id)} now={now} />
         ))}
       </div>
     );
@@ -93,7 +96,7 @@ export function WorkingNow({ working, loaded, pending, items, phone }: { readonl
               session={session}
               activity={off ? null : activity}
               now={now}
-              onOpen={() => open(session.id)}
+              onOpen={() => peek(session.id)}
               footer={
                 <>
                   {helpers > 0 ? (

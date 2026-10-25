@@ -7,6 +7,7 @@ import { Button, Card, Dialog, EmptyState, Icon, MenuButton, type MenuItem, Segm
 import { AGENTS_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import { modKey, useShortcut } from '../shell/shortcuts.ts';
 import { AGENT_VIEWS, type AgentEntry, type AgentView, type GroupBy, PREF_KEYS, isAgentView, isGroupBy, offline } from './agents-model.ts';
 import { BoardView, ChatsView, ListView } from './AgentViews.tsx';
@@ -87,6 +88,15 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
     [data, navigate],
   );
 
+  const openAgentOf = useOpenAgent();
+  const peekAgent = useCallback(
+    (agent: AgentEntry) => {
+      data.markSeen(agent.id);
+      openAgentOf(agent.id);
+    },
+    [data, openAgentOf],
+  );
+
   const close = useCallback(
     async (agent: AgentEntry, confirm: boolean) => {
       try {
@@ -145,8 +155,8 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
   );
 
   const pageApi: AgentsPageApi = useMemo(
-    () => ({ actions, openAgent, openMove: setMoving, openFolderDialog: setFolderRequest, agentMenu, shareNote, advanced, activityOf }),
-    [actions, openAgent, agentMenu, shareNote, advanced, activityOf],
+    () => ({ actions, openAgent, peekAgent, openMove: setMoving, openFolderDialog: setFolderRequest, agentMenu, shareNote, advanced, activityOf }),
+    [actions, openAgent, peekAgent, agentMenu, shareNote, advanced, activityOf],
   );
 
   const phone = layoutKind === 'phone';

@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Plan, PlanItem } from '../../../core/plans.ts';
 import { plansApi, refusalText } from '../../plans/api.ts';
 import { useToast } from '../components/index.ts';
-import { useV2Router } from '../nav.tsx';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import { type StepActionId, stepName, stepOpens } from './project-model.ts';
 
 /**
@@ -10,7 +10,7 @@ import { type StepActionId, stepName, stepOpens } from './project-model.ts';
  * with the outcome (Undo where it can be undone: a hold), the refusal's words otherwise.
  */
 export interface StepActions {
-  /** Opens the step's agent (its run session); `false` when it has none (the caller shows its details). */
+  /** Opens the step's agent (its run session: the peek sheet, its page on a phone); `false` when it has none (the caller shows its details). */
   readonly open: (item: PlanItem) => boolean;
   readonly run: (item: PlanItem, action: StepActionId) => Promise<void>;
   readonly combine: (item: PlanItem) => Promise<void>;
@@ -21,18 +21,18 @@ export interface StepActions {
 /** The step actions of `plan`; `put` takes the plan an action answered. */
 export function useStepActions(plan: Plan, put: (plan: Plan) => void, onEdit: (item: PlanItem) => void): StepActions {
   const toast = useToast();
-  const { navigate } = useV2Router();
+  const openAgent = useOpenAgent();
 
   const open = useCallback(
     (item: PlanItem): boolean => {
       const target = stepOpens(item);
       if ('agent' in target) {
-        navigate({ area: 'agent', id: target.agent, tab: 'chat' });
+        openAgent(target.agent);
         return true;
       }
       return false;
     },
-    [navigate],
+    [openAgent],
   );
 
   const attempt = useCallback(

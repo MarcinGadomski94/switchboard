@@ -488,100 +488,6 @@
   transform: rotate(90deg);
 }
 
-/* Board */
-.sb2 .v2-p-pboard {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.sb2 .v2-p-pboard-col {
-  background: var(--v2-sunken);
-  border-radius: var(--v2-r-l);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 160px;
-}
-
-.sb2 .v2-p-pboard-col h3 {
-  margin: 0 0 2px;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sb2 .v2-p-pboard-n {
-  font-size: 12px;
-  font-weight: 650;
-  border-radius: 999px;
-  padding: 0 8px;
-  background: var(--v2-grey-bg);
-  color: var(--v2-grey);
-}
-
-.sb2 .v2-p-pboard-none {
-  color: var(--v2-muted);
-  font-size: 13px;
-}
-
-.sb2 .v2-p-bcard {
-  background: var(--v2-surface);
-  border: 1px solid var(--v2-border);
-  border-left: 3px solid var(--v2-border-strong);
-  border-radius: var(--v2-r);
-  padding: 10px 10px 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sb2 .v2-p-bcard[data-tone='blue'] {
-  border-left-color: var(--v2-blue);
-}
-
-.sb2 .v2-p-bcard[data-tone='amber'] {
-  border-left-color: var(--v2-amber-dot);
-}
-
-.sb2 .v2-p-bcard[data-tone='red'] {
-  border-left-color: var(--v2-red);
-}
-
-.sb2 .v2-p-bcard[data-tone='green'] {
-  border-left-color: var(--v2-green);
-}
-
-.sb2 .v2-p-bcard[data-tone='violet'] {
-  border-left-color: var(--v2-violet);
-}
-
-.sb2 .v2-p-bcard-main {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  text-align: left;
-  background: none;
-  border: 0;
-  padding: 0;
-}
-
-.sb2 .v2-p-bcard-kind {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--v2-muted);
-  font-weight: 650;
-}
-
-.sb2 .v2-p-bcard-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 /* Graph */
 .sb2 .v2-p-graph {
   padding: 16px;
@@ -931,13 +837,21 @@
   width: 100%;
 }
 
-/* ── tablet and phone ─────────────────────────────────────────────── */
-@media (max-width: 1279px) {
-  .sb2 .v2-p-pboard {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* "What agents know" (lane X): the prototype's `.setcard` link to the project's notes. */
+.sb2 .v2-p-know {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 14px 18px;
+  margin-top: 20px;
 }
 
+.sb2 .v2-p-know-text {
+  font-size: 14px;
+}
+
+/* ── tablet and phone ─────────────────────────────────────────────── */
 @media (max-width: 767px) {
   .sb2 .v2-p-ph .v2-btn {
     flex: 1 1 auto;
@@ -951,10 +865,6 @@
 
   .sb2 .v2-p-step-main {
     flex-basis: calc(100% - 44px);
-  }
-
-  .sb2 .v2-p-pboard {
-    grid-template-columns: 1fr;
   }
 
   .sb2 .v2-p-project-head {

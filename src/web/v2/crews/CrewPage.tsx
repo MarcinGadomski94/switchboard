@@ -12,6 +12,7 @@ import { CREW_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { AnswerCard } from '../shared/AnswerCard.tsx';
 import { useNeedsYou } from '../shared/needs-you.ts';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock } from '../shared/time.ts';
 import { AccessPanel } from './AccessPanel.tsx';
@@ -48,7 +49,8 @@ function workLine(member: TeamMember): string {
 /** The actions every teammate view shares. */
 function useTeammateActions(view: TeamView | null, crews: readonly TeamSummary[], setOverlay: (overlay: Overlay | null) => void) {
   const toast = useToast();
-  const { navigate } = useV2Router();
+  // Open chat peeks at the teammate's agent (its page on a phone).
+  const openAgent = useOpenAgent();
   const machines = useMachines();
   const moveTo = async (member: TeamMember, crewId: string): Promise<void> => {
     const before = (view?.members ?? []).map((entry) => entry.id);
@@ -93,7 +95,7 @@ function useTeammateActions(view: TeamView | null, crews: readonly TeamSummary[]
     const charterOpen = member.charterRequest ?? null;
     const computerWhy = moveComputerReason(member, machines);
     return [
-      { id: 'open', label: 'Open chat', icon: 'chat', onSelect: () => navigate({ area: 'agent', id: member.sessionRef, tab: 'chat' }) },
+      { id: 'open', label: 'Open chat', icon: 'chat', onSelect: () => openAgent(member.sessionRef) },
       { id: 'crew', label: CREW_WORDS.moveToCrew, icon: 'crew', kbd: 'M', ...(crews.length < 2 ? { disabledReason: 'Make another crew first.' } : {}), onSelect: () => setOverlay({ kind: 'crew', member }) },
       { id: 'computer', label: CREW_WORDS.moveToComputer, icon: 'desktop', ...(computerWhy ? { disabledReason: computerWhy } : {}), onSelect: () => setOverlay({ kind: 'computer', member }) },
       { separator: true, id: 'sep1' },

@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, type RefObject, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useMemo, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import type { TeamSummary } from '../../../core/team.ts';
@@ -7,8 +7,10 @@ import { AGENTS_WORDS, STATUS, computerProblem } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { AnswerCard } from '../shared/AnswerCard.tsx';
 import { AgentComputerTag, AgentRow, agentLine } from '../shared/agent-row.tsx';
+import { Board, BoardActivity, BoardButtons, BoardCard, BoardLane, BoardProgress, BoardQuote } from '../shared/Board.tsx';
+import { boardCounts, boardFlipKey } from '../shared/board-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
-import { type AgentEntry, type AgentSection, BOARD_COLUMNS, type BoardColumn, type BoardLane, GROUP_BYS, type GroupBy, boardLanes, cellOf, chatSections, columnOf, engineLabel, listSections, needy, offBoard, offline } from './agents-model.ts';
+import { type AgentEntry, type AgentSection, type BoardColumn, type BoardLane as BoardLaneModel, GROUP_BYS, type GroupBy, boardLanes, cellOf, chatSections, columnOf, engineLabel, listSections, needy, offBoard, offline } from './agents-model.ts';
 import { kindLabel, useAgentsPage } from './context.tsx';
 import { dragSource, isMoveKey } from './dnd.ts';
 
@@ -183,93 +185,56 @@ export function ChatsView({ agents, teams }: { readonly agents: readonly AgentEn
   );
 }
 
-const COLUMN_ICON: Readonly<Record<BoardColumn, string>> = { needs: 'hand', working: 'dot', ready: 'half', done: 'check-circle' };
-
-/** Moves the cards from where they were to where they are now (FLIP), unless the developer asked for reduced motion. */
-function useFlip(root: RefObject<HTMLDivElement | null>, key: unknown, layoutKey: unknown): void {
-  const last = useRef(new Map<string, DOMRect>());
-  const lastLayout = useRef(layoutKey);
-  useLayoutEffect(() => {
-    const el = root.current;
-    if (!el) return;
-    // A new grouping re-lays the whole board: no card "moved".
-    if (lastLayout.current !== layoutKey) {
-      lastLayout.current = layoutKey;
-      last.current = new Map();
-    }
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    const now = new Map<string, DOMRect>();
-    for (const card of el.querySelectorAll<HTMLElement>('[data-flip]')) {
-      const id = card.dataset['flip'] ?? '';
-      const box = card.getBoundingClientRect();
-      now.set(id, box);
-      const before = last.current.get(id);
-      if (!reduce && before && card.animate) {
-        const dx = before.left - box.left;
-        const dy = before.top - box.top;
-        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-          card.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 550, easing: 'cubic-bezier(.2,.8,.2,1)' });
-          card.classList.add('v2-flash');
-          window.setTimeout(() => card.classList.remove('v2-flash'), 1500);
-        }
-      }
-    }
-    last.current = now;
-  }, [root, key, layoutKey]);
-}
-
-/** Board: four columns, swimlanes (Project | Crew | Folder), live cards and a quick answer. */
+/** Board: the shared board (`../shared/Board.tsx`) with swimlanes grouped by Project | Crew | Folder, live cards and a quick answer. */
 export function BoardView({ agents, teams, plans, layout, groupBy, onGroupBy, closedLanes, onToggleLane }: { readonly agents: readonly AgentEntry[]; readonly teams: readonly TeamSummary[]; readonly plans: readonly Plan[]; readonly layout: SidebarLayout; readonly groupBy: GroupBy; readonly onGroupBy: (value: GroupBy) => void; readonly closedLanes: ReadonlySet<string>; readonly onToggleLane: (id: string) => void }) {
   const lanes = useMemo(() => boardLanes(agents, groupBy, { teams, plans, layout }), [agents, groupBy, teams, plans, layout]);
   const off = useMemo(() => offBoard(agents), [agents]);
-  const on = agents.filter((agent) => columnOf(agent.status) !== null);
-  const root = useRef<HTMLDivElement | null>(null);
-  const positions = lanes.map((lane) => `${lane.id}:${lane.items.map((a) => `${a.id}=${columnOf(a.status)}`).join(',')}`).join('|');
-  useFlip(root, positions, groupBy);
+  const counts = useMemo(() => boardCounts(agents, (agent) => columnOf(agent.status)), [agents]);
+  const flip = boardFlipKey(lanes.map((lane) => ({ id: lane.id, cards: lane.items.map((agent) => ({ id: agent.id, column: columnOf(agent.status) })) })));
   return (
-    <div className="v2-bd" ref={root} data-testid="v2-agents-board">
-      <div className="v2-bd-groupby">
-        <span>{AGENTS_WORDS.groupRowsBy}</span>
-        <Segmented options={GROUP_BYS.map((value) => ({ value, label: AGENTS_WORDS.groupBy[value] }))} value={groupBy} onChange={onGroupBy} label={AGENTS_WORDS.groupRowsBy} size="s" testId="v2-groupby" />
-      </div>
-      <div className="v2-bd-cols">
-        {BOARD_COLUMNS.map((column) => (
-          <div key={column} className="v2-bd-col-h" data-col={column} data-testid={`v2-bd-col-${column}`}>
-            <Icon name={COLUMN_ICON[column]} size="s" />
-            {AGENTS_WORDS.columns[column]}
-            <span className="v2-count">{on.filter((agent) => columnOf(agent.status) === column).length}</span>
-          </div>
-        ))}
-      </div>
+    <Board
+      testId="v2-agents-board"
+      colTestIds
+      counts={counts}
+      flipKey={flip}
+      layoutKey={groupBy}
+      toolbar={
+        <div className="v2-bd-groupby">
+          <span>{AGENTS_WORDS.groupRowsBy}</span>
+          <Segmented options={GROUP_BYS.map((value) => ({ value, label: AGENTS_WORDS.groupBy[value] }))} value={groupBy} onChange={onGroupBy} label={AGENTS_WORDS.groupRowsBy} size="s" testId="v2-groupby" />
+        </div>
+      }
+      foot={
+        <>
+          <Icon name="moon" size="s" />
+          {off.length ? AGENTS_WORDS.notOnBoard(off.map((agent) => agent.name)) : AGENTS_WORDS.allOnBoard}
+          <span className="v2-grow" />
+          <Icon name="refresh" size="s" />
+          {AGENTS_WORDS.cardsMove}
+        </>
+      }
+    >
       {lanes.map((lane) => (
         <Lane key={lane.id} lane={lane} closed={closedLanes.has(lane.id)} onToggle={() => onToggleLane(lane.id)} />
       ))}
-      <div className="v2-bd-foot" data-testid="v2-bd-foot">
-        <Icon name="moon" size="s" />
-        {off.length ? AGENTS_WORDS.notOnBoard(off.map((agent) => agent.name)) : AGENTS_WORDS.allOnBoard}
-        <span className="v2-grow" />
-        <Icon name="refresh" size="s" />
-        {AGENTS_WORDS.cardsMove}
-      </div>
-    </div>
+    </Board>
   );
 }
 
-function Lane({ lane, closed, onToggle }: { readonly lane: BoardLane; readonly closed: boolean; readonly onToggle: () => void }) {
-  const needs = lane.items.filter(needy).length;
+function Lane({ lane, closed, onToggle }: { readonly lane: BoardLaneModel; readonly closed: boolean; readonly onToggle: () => void }) {
   return (
-    <section className="v2-lane" {...(closed ? { 'data-closed': '' } : {})} data-lane={lane.id} data-testid="v2-lane">
-      <div className="v2-lane-h">
-        <button type="button" className="v2-lane-tog" onClick={onToggle} aria-expanded={!closed} aria-label={closed ? AGENTS_WORDS.expand(lane.title) : AGENTS_WORDS.collapse(lane.title)} data-testid="v2-lane-toggle">
-          <Icon name="chev-down" size="s" />
-        </button>
-        <Icon name={lane.icon} size="s" className={lane.icon === 'projects' ? 'v2-plan-ic' : undefined} />
-        <h3>{lane.title}</h3>
-        {lane.plan ? (
+    <BoardLane
+      id={lane.id}
+      title={lane.title}
+      icon={lane.icon}
+      {...(lane.icon === 'projects' ? { iconClass: 'v2-plan-ic' } : {})}
+      closed={closed}
+      onToggle={onToggle}
+      needs={lane.items.filter(needy).length}
+      summary={
+        lane.plan ? (
           <>
-            <span className="v2-progress" aria-label={AGENTS_WORDS.stepsDone(lane.plan.done, lane.plan.total)}>
-              <b style={{ width: `${lane.plan.total ? (lane.plan.done / lane.plan.total) * 100 : 0}%` }} />
-            </span>
+            <BoardProgress done={lane.plan.done} total={lane.plan.total} />
             <span className="v2-muted" style={{ fontSize: 13 }}>
               {AGENTS_WORDS.stepsDone(lane.plan.done, lane.plan.total)}
             </span>
@@ -278,42 +243,31 @@ function Lane({ lane, closed, onToggle }: { readonly lane: BoardLane; readonly c
           <span className="v2-muted" style={{ fontSize: 13 }}>
             {lane.items.length}
           </span>
-        )}
-        {closed && needs ? (
-          <span className="v2-nb">
-            <Icon name="hand" size="s" />
-            {needs}
-          </span>
-        ) : null}
-        <span className="v2-grow" />
-        {lane.plan ? (
-          <V2Link to={`/projects/${encodeURIComponent(lane.plan.id)}`} className="v2-btn" data-size="sm" style={{ textDecoration: 'none' }}>
-            <Icon name="projects" size="s" />
-            {AGENTS_WORDS.openProject}
-          </V2Link>
-        ) : null}
-        {lane.crewId ? (
-          <V2Link to={`/crews/${encodeURIComponent(lane.crewId)}`} className="v2-btn" data-size="sm" style={{ textDecoration: 'none' }}>
-            <Icon name="crew" size="s" />
-            {AGENTS_WORDS.openCrew}
-          </V2Link>
-        ) : null}
-      </div>
-      <div className="v2-lane-g">
-        {BOARD_COLUMNS.map((column) => {
-          const cell = cellOf(lane, column);
-          return (
-            <div key={column} className="v2-bcell" data-col={column} data-testid="v2-bcell">
-              {cell.length ? cell.map((agent) => <BoardCard key={agent.id} agent={agent} column={column} />) : <div className="v2-none">{AGENTS_WORDS.noneInCell}</div>}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+        )
+      }
+      actions={
+        <>
+          {lane.plan ? (
+            <V2Link to={`/projects/${encodeURIComponent(lane.plan.id)}`} className="v2-btn" data-size="sm" style={{ textDecoration: 'none' }}>
+              <Icon name="projects" size="s" />
+              {AGENTS_WORDS.openProject}
+            </V2Link>
+          ) : null}
+          {lane.crewId ? (
+            <V2Link to={`/crews/${encodeURIComponent(lane.crewId)}`} className="v2-btn" data-size="sm" style={{ textDecoration: 'none' }}>
+              <Icon name="crew" size="s" />
+              {AGENTS_WORDS.openCrew}
+            </V2Link>
+          ) : null}
+        </>
+      }
+      cell={(column) => cellOf(lane, column).map((agent) => <AgentBoardCard key={agent.id} agent={agent} column={column} />)}
+    />
   );
 }
 
-function BoardCard({ agent, column }: { readonly agent: AgentEntry; readonly column: BoardColumn }) {
+/** An agent's card: kind, computer, name, status, then its ask with the quick answer (popover) or its activity. A click peeks (`openPeek`). */
+function AgentBoardCard({ agent, column }: { readonly agent: AgentEntry; readonly column: BoardColumn }) {
   const page = useAgentsPage();
   const { items } = useNeedsYou();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
@@ -324,61 +278,41 @@ function BoardCard({ agent, column }: { readonly agent: AgentEntry; readonly col
   const activity = page.activityOf(agent.id);
   const line = agentLine(agent.session, activity, {});
   const kindWord = agent.kind === 'step' ? 'Step' : agent.kind === 'mate' ? `Teammate${agent.crew ? ` · ${agent.crew.name}` : ''}` : agent.kind === 'routine' ? 'Routine' : agent.kind === 'conv' ? 'Conversation' : 'Agent';
-  const keyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.target !== event.currentTarget) return;
-    if (isMoveKey(event)) {
-      event.preventDefault();
-      page.openMove(agent);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      page.openAgent(agent);
-    }
-  };
   return (
-    <div
-      className="v2-bcard"
-      data-col={column}
-      data-flip={agent.id}
-      data-session={agent.id}
-      data-testid="v2-bcard"
-      {...(off ? { 'data-off': '' } : {})}
-      {...dragSource(agent.id)}
-      role="button"
-      tabIndex={0}
-      aria-label={`${agent.name}, ${STATUS[agent.status].label}`}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest('button, a')) return;
-        page.openAgent(agent);
+    <BoardCard
+      column={column}
+      flipId={agent.id}
+      testId="v2-bcard"
+      kind={kindWord}
+      corner={<AgentComputerTag machine={agent.session.machine} short />}
+      title={agent.name}
+      status={<StatusBadge status={agent.status} size="s" />}
+      label={`${agent.name}, ${STATUS[agent.status].label}`}
+      off={off}
+      onOpen={() => page.peekAgent(agent)}
+      onKey={(event) => {
+        if (!isMoveKey(event)) return false;
+        event.preventDefault();
+        page.openMove(agent);
+        return true;
       }}
-      onKeyDown={keyDown}
+      cardProps={{ ...dragSource(agent.id), 'data-session': agent.id }}
     >
-      <div className="v2-brow">
-        <span className="v2-bkind">{kindWord}</span>
-        <span className="v2-grow" />
-        <AgentComputerTag machine={agent.session.machine} short />
-      </div>
-      <b className="v2-t">{agent.name}</b>
-      <div className="v2-brow">
-        <StatusBadge status={agent.status} size="s" />
-      </div>
       {ask ? (
         <>
           {ask.kind !== 'ready' && ask.kind !== 'approval' ? (
-            <div className="v2-bq" data-tone={agent.status === 'stopped' ? 'red' : 'amber'}>
-              {`“${ask.title}”`}
-            </div>
+            <BoardQuote tone={agent.status === 'stopped' ? 'red' : 'amber'}>{`“${ask.title}”`}</BoardQuote>
           ) : ask.kind === 'approval' ? (
             <div className="v2-bact" style={{ color: 'var(--v2-amber)', fontWeight: 600 }}>
               <Icon name="shield" size="s" />
               {AGENTS_WORDS.approvalWaiting}
             </div>
           ) : null}
-          <div className="v2-brow">
-            <span className="v2-grow" />
+          <BoardButtons>
             <Button ref={setAnchor} size="sm" variant={ask.kind === 'ready' ? 'primary' : 'default'} icon={ask.kind === 'ready' ? 'merge' : agent.status === 'stopped' ? 'octagon' : 'hand'} disabled={off || !item} title={off && agent.computer ? AGENTS_WORDS.offlineWhy(agent.computer.name) : undefined} onClick={() => setOpen(true)} data-testid="v2-bcard-answer">
               {ask.kind === 'ready' ? AGENTS_WORDS.review : agent.status === 'stopped' ? AGENTS_WORDS.decide : AGENTS_WORDS.answer}
             </Button>
-          </div>
+          </BoardButtons>
           <Popover open={open && item !== null} onClose={() => setOpen(false)} anchor={anchor} label={AGENTS_WORDS.quickAnswer} width={420} testId="v2-qpop">
             <div className="v2-qpop-h">
               <Icon name="hand" size="s" />
@@ -388,13 +322,10 @@ function BoardCard({ agent, column }: { readonly agent: AgentEntry; readonly col
           </Popover>
         </>
       ) : (
-        <div className="v2-bact" data-testid="v2-bcard-activity">
-          {line.tone === 'blue' ? <span className="v2-pulse" aria-hidden="true" /> : null}
-          <span>{line.text}</span>
-          {line.time ? <span className="v2-bt">{line.time}</span> : null}
-        </div>
+        <BoardActivity live={line.tone === 'blue'} time={line.time} testId="v2-bcard-activity">
+          {line.text}
+        </BoardActivity>
       )}
-    </div>
+    </BoardCard>
   );
 }
-

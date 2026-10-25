@@ -12,6 +12,8 @@ import type { TreeActions } from './useTreeActions.ts';
 export interface AgentsPageApi {
   readonly actions: TreeActions;
   readonly openAgent: (agent: AgentEntry) => void;
+  /** Peeks at the agent (the shared peek sheet; its page on a phone): the Board's cards. */
+  readonly peekAgent: (agent: AgentEntry) => void;
   readonly openMove: (agent: AgentEntry) => void;
   readonly openFolderDialog: (request: FolderDialogRequest) => void;
   readonly agentMenu: (agent: AgentEntry) => MenuItem[];

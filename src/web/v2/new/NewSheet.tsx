@@ -4,8 +4,6 @@ import { isChat } from '../../../core/chats.ts';
 import { draftField } from '../../../core/drafts.ts';
 import type { MachinesView } from '../../../core/peers.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
-import type { TeamSummary } from '../../../core/team.ts';
-import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { TODO_PRIORITY_LABELS } from '../../../core/todos.ts';
 import { COORDINATION_OPTIONS, MODE_OPTIONS, PHASE_OPTIONS, WORK_TYPE_OPTIONS, chipGroups, formFromPrefill, isPlainFolder, isRepoFolder, toggleSolution } from '../../modals/new-session.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
@@ -13,19 +11,19 @@ import { useApi } from '../../api/useApi.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '../../components/Attachments.tsx';
 import { attachmentsBlocker } from '../../components/attachments.ts';
-import { ImportJiraDialog } from '../../plans/jira/index.ts';
 import { plansApi, refusalText as planRefusal } from '../../plans/api.ts';
 import { pageClientId } from '../../pwa/presence.ts';
-import { refusalText as teamRefusal, teamApi } from '../../team/api.ts';
 import { Button, Checkbox, Dialog, Field, Icon, Kbd, Segmented, Select, Switch, TextArea, useToast } from '../components/index.ts';
 import { NEW_WORDS, THINKING_DEPTH } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
+import { JiraImportDialog } from '../projects/JiraImport.tsx';
 import { agentName } from '../shared/agent-line.ts';
 import { timeAgo } from '../shared/time.ts';
 import {
   type AgentForm,
   ESTIMATES,
   NEW_KINDS,
+  type DialogKindId,
   type NewKindId,
   ROUTINE_PRESETS,
   type SheetState,
@@ -33,13 +31,14 @@ import {
   agentProblems,
   chatBody,
   conversationProblems,
-  crewProblems,
   estimateLabel,
+  opensDialog,
   foldersByRecent,
   parseSteps,
   projectProblems,
   routineBody,
   routineProblems,
+  type SheetKindId,
   sheetDraft,
   sheetFromDraft,
   sheetFromRequest,
@@ -47,8 +46,6 @@ import {
   stepIndex,
   taskBody,
   taskProblems,
-  teammateBody,
-  teammateProblems,
 } from './new-model.ts';
 import './new.css';
 
@@ -56,7 +53,7 @@ const W = NEW_WORDS;
 
 /** What opened the sheet. */
 export interface SheetRequest {
-  readonly kind: NewKindId;
+  readonly kind: SheetKindId;
   readonly text?: string;
   readonly prefill?: NewSessionPrefill;
   readonly machine?: string | null;
@@ -96,7 +93,7 @@ function Label({ children, htmlFor }: { readonly children: ReactNode; readonly h
  * the form of the chosen kind, Save as draft and the start button. Mounted while
  * open; `request` is what opened it.
  */
-export function NewSheetBody({ request, onClose }: { readonly request: SheetRequest; readonly onClose: () => void }) {
+export function NewSheetBody({ request, onClose, onDialog }: { readonly request: SheetRequest; readonly onClose: () => void; readonly onDialog: (kind: DialogKindId) => void }) {
   const toast = useToast();
   const { navigate, route } = useV2Router();
   const fromRequest = (request.text ?? '') !== '' || request.prefill !== undefined;
@@ -137,7 +134,7 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
   const agent = sheet.agent;
   const machine = agent.machine;
   const setAgent = (patch: Partial<AgentForm>): void => setSheet((s) => ({ ...s, agent: { ...s.agent, ...patch } }));
-  const patch = <K extends 'task' | 'routine' | 'project' | 'teammate' | 'crew'>(key: K, value: Partial<SheetState[K]>): void => setSheet((s) => ({ ...s, [key]: { ...s[key], ...value } }));
+  const patch = <K extends 'task' | 'routine' | 'project'>(key: K, value: Partial<SheetState[K]>): void => setSheet((s) => ({ ...s, [key]: { ...s[key], ...value } }));
   const setForm = (patch: Partial<AgentForm['form']>): void => setSheet((s) => ({ ...s, agent: { ...s.agent, form: { ...s.agent.form, ...patch } } }));
 
   // Data.
@@ -149,9 +146,6 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
   const accounts = useApi(() => machineApi(machine).accounts().catch(() => null), [machine]);
   const provider = agent.form.provider ?? clis.data?.default ?? 'claude';
   const models = useApi(() => machineApi(machine).models(provider).catch(() => null), [machine, provider]);
-  const needsTeams = kind === 'teammate';
-  const teams = useApi((): Promise<TeamSummary[]> => (needsTeams ? teamApi.teams().catch(() => []) : Promise.resolve([])), [needsTeams]);
-  const templates = useApi((): Promise<TeamTemplate[]> => (needsTeams ? teamApi.templates().catch(() => []) : Promise.resolve([])), [needsTeams]);
 
   const sortedFolders = useMemo(() => foldersByRecent(folders.data ?? []), [folders.data]);
   // The form's folder: its own while it is listed, else the default, else the most recent.
@@ -175,7 +169,6 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
   const task = { ...sheet.task, agent: sheet.task.agent || defaultAgent };
   const routine = { ...sheet.routine, agent: sheet.routine.agent || defaultAgent };
   const project = { ...sheet.project, owner: sheet.project.owner || defaultAgent };
-  const teammate = { ...sheet.teammate, crew: sheet.teammate.crew || (teams.data?.[0]?.id ?? '') };
 
   const formAgent: AgentForm = { ...agent, form: { ...agent.form, folder: folderId }, askQuestions };
   const problems = (() => {
@@ -193,10 +186,6 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
         return Object.values(routineProblems(routine));
       case 'project':
         return Object.values(projectProblems(project));
-      case 'teammate':
-        return Object.values(teammateProblems(teammate));
-      case 'crew':
-        return Object.values(crewProblems(sheet.crew));
     }
   })();
   const fieldError = (message: string | undefined): string | null => (tried && message ? message : null);
@@ -257,19 +246,9 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
           finish(W.projectMade(plan.title), `/projects/${encodeURIComponent(plan.id)}`);
           break;
         }
-        case 'teammate': {
-          const member = await teamApi.addMember(teammateBody(teammate) as unknown as Parameters<typeof teamApi.addMember>[0]);
-          finish(W.teammateMade(member.name), `/crews/${encodeURIComponent(teammate.crew)}`);
-          break;
-        }
-        case 'crew': {
-          const crew = await teamApi.createTeam(sheet.crew.name.trim());
-          finish(W.crewMade(crew.name), `/crews/${encodeURIComponent(crew.id)}`);
-          break;
-        }
       }
     } catch (error) {
-      setFailure(kind === 'project' ? planRefusal(error) : kind === 'teammate' || kind === 'crew' ? teamRefusal(error) : refusal(error));
+      setFailure(kind === 'project' ? planRefusal(error) : refusal(error));
     } finally {
       setBusy(false);
     }
@@ -363,6 +342,11 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
               data-kind={id}
               data-testid={`v2-new-kind-${id}`}
               onClick={() => {
+                // Teammate and Crew are the Crews dialogs (lane P's): the sheet hands over to them.
+                if (opensDialog(id)) {
+                  onDialog(id);
+                  return;
+                }
                 setSheet((s) => ({ ...s, kind: id }));
                 setTried(false);
                 setFailure(null);
@@ -594,7 +578,7 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
             </div>
             <TextArea label={W.projectSteps} hint={W.projectStepsNote} rows={4} value={project.steps} onChange={(event) => patch('project', { steps: event.currentTarget.value })} error={fieldError(projectProblems(project).steps)} data-testid="v2-new-project-steps" />
             {jiraOpen ? (
-              <ImportJiraDialog
+              <JiraImportDialog
                 onClose={() => setJiraOpen(false)}
                 onImported={(plan) => {
                   setJiraOpen(false);
@@ -628,47 +612,6 @@ export function NewSheetBody({ request, onClose }: { readonly request: SheetRequ
           </>
         ) : null}
 
-        {kind === 'teammate' ? (
-          <>
-            <div className="v2-row v2-new-roles">
-              <span className="v2-muted">{W.roleFrom}</span>
-              {(templates.data ?? []).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="v2-new-chip"
-                  aria-pressed={teammate.templateId === t.id}
-                  title={t.summary}
-                  onClick={() => patch('teammate', { templateId: t.id, name: t.name, owns: t.charter.owns, produces: t.charter.produces, neverDoes: t.charter.neverDoes })}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-            <Checkbox label={W.adopt} checked={teammate.adopt} onChange={(event) => patch('teammate', { adopt: event.currentTarget.checked })} />
-            {teammate.adopt ? <Select label={W.adoptAgent} value={teammate.agent} onChange={(event) => patch('teammate', { agent: event.currentTarget.value })} options={agentOptions(agents)} error={fieldError(teammateProblems(teammate).agent)} /> : null}
-            <div className="v2-new-grid">
-              <Field label={W.role} value={teammate.name} data-testid="v2-new-role" onChange={(event) => patch('teammate', { name: event.currentTarget.value })} error={fieldError(teammateProblems(teammate).name)} />
-              <Select label={W.joinsCrew} value={teammate.crew} onChange={(event) => patch('teammate', { crew: event.currentTarget.value })} options={(teams.data ?? []).map((t) => ({ value: t.id, label: t.name }))} error={fieldError(teammateProblems(teammate).crew)} />
-            </div>
-            <Label>{W.jobDescription}</Label>
-            <div className="v2-new-grid">
-              <TextArea label={W.owns} rows={2} value={teammate.owns} onChange={(event) => patch('teammate', { owns: event.currentTarget.value })} />
-              <TextArea label={W.produces} rows={2} value={teammate.produces} onChange={(event) => patch('teammate', { produces: event.currentTarget.value })} />
-              <TextArea label={W.neverDoes} rows={2} value={teammate.neverDoes} onChange={(event) => patch('teammate', { neverDoes: event.currentTarget.value })} />
-              {!teammate.adopt ? (
-                <Select label={W.teammateFolder} value={teammate.folder} onChange={(event) => patch('teammate', { folder: event.currentTarget.value })} options={[{ value: '', label: '—' }, ...sortedFolders.map((f) => ({ value: f.id, label: f.displayName }))]} />
-              ) : null}
-            </div>
-          </>
-        ) : null}
-
-        {kind === 'crew' ? (
-          <>
-            <Field label={W.crewName} value={sheet.crew.name} data-autofocus="" data-testid="v2-new-crew-name" onChange={(event) => patch('crew', { name: event.currentTarget.value })} error={fieldError(crewProblems(sheet.crew).name)} />
-            <p className="v2-new-note">{W.crewNote}</p>
-          </>
-        ) : null}
       </div>
     </Dialog>
   );
