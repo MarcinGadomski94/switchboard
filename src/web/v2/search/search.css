@@ -1,0 +1,236 @@
+/* D131 · lane R · Search (the prototype's #s-search: .start, .filters/.fchip, .sec-h, .lrow, .ficon, .tag, mark). */
+.sb2 .v2-srch {
+  max-width: 980px;
+}
+
+.sb2 .v2-srch-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  border-radius: var(--v2-r-xl);
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-2);
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-srch-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  color: var(--v2-text);
+  outline: none;
+}
+
+.sb2 .v2-srch-box:focus-within {
+  border-color: var(--v2-accent);
+}
+
+.sb2 .v2-srch-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.sb2 .v2-srch-chips,
+.sb2 .v2-srch-selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb2 .v2-srch-chip {
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  border-radius: var(--v2-r-pill);
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--v2-text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb2 .v2-srch-chip[aria-pressed='true'] {
+  background: var(--v2-text);
+  color: var(--v2-bg);
+  border-color: var(--v2-text);
+}
+
+.sb2 .v2-srch-select {
+  flex: none;
+  width: auto;
+  min-height: 40px;
+}
+
+.sb2 .v2-srch-note {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13.5px;
+  color: var(--v2-muted);
+  margin: 12px 0 0;
+}
+
+.sb2 .v2-srch-note[data-kind='missing'] b {
+  color: var(--v2-text);
+}
+
+.sb2 .v2-srch-skel {
+  margin-top: 10px;
+}
+
+.sb2 .v2-srch-group {
+  margin-top: 18px;
+}
+
+.sb2 .v2-srch-group-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.sb2 .v2-srch-group-h h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.sb2 .v2-srch-count {
+  font-size: 13px;
+  font-weight: 650;
+  border-radius: var(--v2-r-pill);
+  padding: 1px 9px;
+  background: var(--v2-grey-bg);
+  color: var(--v2-grey);
+}
+
+.sb2 .v2-srch-link {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--v2-accent-text);
+  background: none;
+  border: 0;
+  padding: 8px;
+  min-height: 44px;
+}
+
+.sb2 .v2-srch-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sb2 .v2-srch-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--v2-border);
+  color: inherit;
+  text-decoration: none;
+}
+
+.sb2 .v2-srch-row:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-srch-row:hover {
+  background: var(--v2-surface-2);
+  text-decoration: none;
+}
+
+.sb2 .v2-srch-ficon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--v2-sunken);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-srch-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb2 .v2-srch-ttl {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-srch-who {
+  font-weight: 400;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-srch-sub {
+  font-size: 13.5px;
+  color: var(--v2-muted);
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-srch-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  border: 1px solid var(--v2-border);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  background: var(--v2-surface);
+  flex: none;
+}
+
+.sb2 .v2-mark {
+  background: var(--v2-amber-bg);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.sb2 .v2-srch-more {
+  margin-top: 12px;
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-srch-selects {
+    width: 100%;
+  }
+
+  .sb2 .v2-srch-select {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .sb2 .v2-srch-chip {
+    min-height: 44px;
+  }
+
+  .sb2 .v2-srch-tag {
+    display: none;
+  }
+
+  .sb2 .v2-srch-row {
+    gap: 10px;
+    padding: 12px;
+  }
+}
