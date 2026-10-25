@@ -5,6 +5,13 @@
 ## Scope
 Agent / conversation / task / project / routine / teammate / crew. Opened from anywhere with `openNew({ kind, text?, prefill?, machine? })`; the shell renders `<NewSheet />` once.
 
+## What is built (lane R)
+- `index.tsx`: `openNew`, `NewKind`, `NewRequest`, `NewSheet` (the shell renders it once).
+- `NewSheet.tsx`: the sheet (kinds, forms, Save as draft, ⌘↩); a full-screen sheet on a phone.
+- `new-model.ts` (pure, `tests/web/v2-new.test.ts`): the kinds, checks, API bodies, routine presets, project steps, the `new-session` draft.
+- APIs: `machineApi(machine).createSession` (Simple, or Full with the workspace questions), `api.createChat`, `api.addTodo`, `api.createLoop`, `plansApi.create` + `addItem` (or the classic `ImportJiraDialog`, D112), `teamApi.addMember` / `createTeam`, `api.putMachineDraft('new-session')`.
+- Decisions: `docs/design/v2-decisions.md` → Lane R → + New.
+
 ## Shared modules to use
 - `new/index.tsx` → `openNew`, `NewKind`, `NewRequest` (keep these exports)
 - `api.createSession`, `api.createChat`, `plansApi.create`, …
