@@ -1,0 +1,307 @@
+/* D131 · lane R · the + New sheet (the prototype's .types / .type / .folders / .folder / .nf / .adv). */
+.sb2 .v2-new-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb2 .v2-new-title .v2-muted {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.sb2 .v2-new-types {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sb2 .v2-new-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1.5px solid var(--v2-border);
+  border-radius: 14px;
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  text-align: left;
+  min-height: 96px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sb2 .v2-new-type:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-new-type[aria-pressed='true'] {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-new-type[aria-pressed='true'] svg {
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-new-type b {
+  font-size: 14.5px;
+}
+
+.sb2 .v2-new-type small {
+  color: var(--v2-muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.sb2 .v2-new-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--v2-text-2);
+  margin: 16px 0 8px;
+  display: block;
+}
+
+.sb2 .v2-new-folders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sb2 .v2-new-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--v2-border);
+  border-radius: 12px;
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  text-align: left;
+  min-height: 52px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sb2 .v2-new-folder[aria-pressed='true'] {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-new-folder small {
+  display: block;
+  color: var(--v2-muted);
+  font-size: 12.5px;
+}
+
+.sb2 .v2-new .v2-field-wrap {
+  margin-top: 12px;
+}
+
+.sb2 .v2-new-message[data-dragging='true'] {
+  outline: 2px dashed var(--v2-accent);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+.sb2 .v2-new-attach {
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sb2 .v2-new-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.sb2 .v2-new-switch-row {
+  margin-top: 14px;
+  gap: 10px;
+  align-items: center;
+}
+
+.sb2 .v2-new-put {
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.sb2 .v2-new-put .v2-field-wrap {
+  margin-top: 8px;
+}
+
+.sb2 .v2-new-adv {
+  margin-top: 16px;
+  border-top: 1px solid var(--v2-border);
+  padding-top: 10px;
+}
+
+.sb2 .v2-new-adv > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+  list-style: none;
+}
+
+.sb2 .v2-new-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sb2 .v2-new-adv > summary .v2-muted {
+  font-weight: 400;
+  font-size: 13.5px;
+}
+
+.sb2 .v2-new-adv > summary svg {
+  transition: transform var(--v2-fast, 120ms) ease;
+}
+
+.sb2 .v2-new-adv[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+.sb2 .v2-new-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.sb2 .v2-new-span {
+  grid-column: 1 / -1;
+}
+
+.sb2 .v2-new-chips,
+.sb2 .v2-new-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb2 .v2-new-roles {
+  margin-top: 12px;
+}
+
+.sb2 .v2-new-chip {
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  color: var(--v2-text-2);
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.sb2 .v2-new-chip[aria-pressed='true'] {
+  background: var(--v2-text);
+  color: var(--v2-bg);
+  border-color: var(--v2-text);
+}
+
+.sb2 .v2-new-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sb2 .v2-new-note {
+  color: var(--v2-muted);
+  font-size: 13.5px;
+  margin: 10px 0 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb2 .v2-new-jira {
+  margin-top: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-new-failure {
+  color: var(--v2-red);
+  font-size: 13px;
+  max-width: 280px;
+}
+
+.sb2 .v2-new-kbd {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-seg button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1279px) {
+  .sb2 .v2-new-types {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Phone: the sheet fills the screen; the kinds scroll sideways. */
+@media (max-width: 767px) {
+  .sb2 .v2-scrim:has(> [data-testid='v2-new-sheet']) {
+    padding-top: 0;
+  }
+
+  .sb2 .v2-modal[data-testid='v2-new-sheet'] {
+    width: 100vw !important;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-b {
+    flex: 1;
+    overflow: auto;
+    padding: 10px 16px 16px;
+  }
+
+  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-f {
+    border-radius: 0;
+    flex-wrap: wrap;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .sb2 .v2-new-types {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+
+  .sb2 .v2-new-type {
+    flex: 0 0 132px;
+    min-height: 88px;
+  }
+
+  .sb2 .v2-new-folders,
+  .sb2 .v2-new-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sb2 .v2-new-kbd {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-new-adv > summary svg {
+    transition: none;
+  }
+}

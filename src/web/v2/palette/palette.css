@@ -1,0 +1,90 @@
+/* D131 · lane R · the ⌘K palette (the prototype's .cmdk / .cmd-g / .cmd-i). */
+.sb2 .v2-modal[data-testid='v2-palette'] .v2-modal-b {
+  padding: 0;
+}
+
+.sb2 .v2-cmdk-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--v2-border);
+  padding: 18px 20px;
+  font: inherit;
+  font-size: 17px;
+  background: none;
+  color: var(--v2-text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sb2 .v2-cmdk-input:focus-visible {
+  box-shadow: inset 0 -2px 0 var(--v2-accent);
+}
+
+.sb2 .v2-cmdk-list {
+  padding: 8px 10px;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.sb2 .v2-cmdk-group {
+  margin: 8px 10px 4px;
+  font-size: 12px;
+  color: var(--v2-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.sb2 .v2-cmdk .v2-cmd {
+  color: var(--v2-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14.5px;
+}
+
+.sb2 .v2-cmdk .v2-cmd:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.sb2 .v2-cmd-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-cmd-hint {
+  color: var(--v2-muted);
+  margin-left: auto;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.sb2 .v2-cmdk-empty {
+  margin: 10px;
+}
+
+.sb2 .v2-cmdk-foot {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-top: 1px solid var(--v2-border);
+  background: var(--v2-surface-2);
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  border-radius: 0 0 20px 20px;
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-cmdk-foot {
+    display: none;
+  }
+
+  .sb2 .v2-cmd-hint {
+    max-width: 40%;
+  }
+}

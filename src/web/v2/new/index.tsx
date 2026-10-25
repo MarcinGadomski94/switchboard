@@ -1,9 +1,10 @@
 import type { NewSessionPrefill } from '../../../core/api.ts';
-import { Button, Dialog } from '../components/index.ts';
 import { openStore } from '../shared/open-store.ts';
+import { NewSheetBody } from './NewSheet.tsx';
+import type { NewKindId } from './new-model.ts';
 
 /** What the + New sheet can make (the prototype's types). */
-export type NewKind = 'agent' | 'conversation' | 'task' | 'project' | 'routine' | 'teammate' | 'crew';
+export type NewKind = NewKindId;
 
 /** How the sheet opens: the kind, and what to fill in (an Inbox "Fix it in a new agent", a start box's text). */
 export interface NewRequest {
@@ -15,24 +16,26 @@ export interface NewRequest {
 }
 
 const sheet = openStore<NewRequest>();
+let openings = 0;
+let current: { readonly request: NewRequest; readonly key: number } | null = null;
 
-/** D131 · opens the + New sheet from anywhere (the top bar's + New, Home's start box, an answer card). */
+/** D131 · opens the + New sheet from anywhere (the top bar's + New, Home's start box, an answer card, ⌘K). */
 export function openNew(request: NewRequest): void {
+  openings += 1;
+  current = { request, key: openings };
   sheet.open(request);
 }
 
 /**
- * D131 · the + New sheet (lane R): agent / conversation / task / project / routine
- * / teammate / crew. The shell renders it once; this stub only says what it will
- * be. See `README.md`.
+ * D131 · lane R · the + New sheet (`docs/design/v2-prototype.html` → `#m-new`):
+ * one sheet with the kinds Agent / Conversation / Task / Project / Routine /
+ * Teammate / Crew, each on its existing API, Save as draft (the `new-session`
+ * machine draft, D88) and ⌘↩. The shell renders it once; `NewSheet.tsx` is the
+ * body, `new-model.ts` its pure part.
  */
 export function NewSheet() {
   const request = sheet.use();
-  return (
-    <Dialog open={request !== null} onClose={sheet.close} title="Start something new" icon="plus" testId="v2-new-sheet" footer={<Button onClick={sheet.close}>Close</Button>}>
-      <p className="v2-muted" style={{ margin: 0 }}>
-        The new + New sheet ({request?.kind ?? 'agent'}) is coming with lane R. Until then, start it from the classic UI (Settings › Appearance › Theme).
-      </p>
-    </Dialog>
-  );
+  if (request === null) return null;
+  const key = current?.request === request ? current.key : 0;
+  return <NewSheetBody key={key} request={request} onClose={sheet.close} />;
 }

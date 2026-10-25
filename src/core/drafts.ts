@@ -193,7 +193,8 @@ function attachmentRef(value: unknown): DraftAttachmentRef | null {
 /** The New-session form's keys and what each may hold (`NewSessionForm` in `src/web/modals/new-session.ts`). */
 const NEW_SESSION_TEXT: Readonly<Record<string, number>> = { name: 200, task: DRAFT_TEXT_MAX, confluenceUrl: 2000, figmaUrls: 4000 };
 const NEW_SESSION_NULLABLE: Readonly<Record<string, number>> = { branch: 200, folder: 128, stack: 32, provider: 32, profileId: 128 };
-const NEW_SESSION_PICKS: Readonly<Record<string, number>> = { workType: 32, mode: 32, phase: 32, coordination: 32 };
+// D131 (v2's + New sheet): `newKind` = what the sheet was making (agent, task, routine, …); the classic form ignores it.
+const NEW_SESSION_PICKS: Readonly<Record<string, number>> = { workType: 32, mode: 32, phase: 32, coordination: 32, newKind: 32 };
 const NEW_SESSION_FLAGS: readonly string[] = ['worktrees', 'ultracode'];
 
 function newSessionForm(value: Record<string, unknown>): Record<string, unknown> | null {
