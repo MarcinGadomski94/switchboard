@@ -12,7 +12,8 @@ import type { StatusPill as Pill } from './status-model.ts';
  * D131 · the top bar (the prototype's `.topbar`): Search (⌘K: the palette; the
  * magnifier: the Search page, ⌘⇧F), the shortcuts list, a computer that is
  * offline or reconnecting, the status pill, Needs you with its count, + New. On a
- * phone: the brand, Search, the pill (usage only) and + New (the tabs hold the rest).
+ * phone: the brand, the pill (usage only), the palette (⌘K), Search and + New
+ * (the tabs hold the rest).
  */
 export function TopBar({ pill, needs, phone }: { readonly pill: Pill; readonly needs: number; readonly phone: boolean }) {
   const { navigate } = useV2Router();
@@ -28,6 +29,7 @@ export function TopBar({ pill, needs, phone }: { readonly pill: Pill; readonly n
         </div>
         <span className="v2-grow" />
         <StatusPill pill={pill} compact />
+        <IconButton icon="cmd" label={`${WORDS.quickOpen} (${modKey('K')})`} size="l" onClick={() => openPalette()} data-testid="v2-palette-open" />
         <IconButton icon="search" label={WORDS.searchEverything} size="l" onClick={() => navigate('/search')} data-testid="v2-search-open" />
         <IconButton icon="plus" label="New" size="l" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new" />
       </header>

@@ -102,6 +102,9 @@ export const WORDS = {
   notWaiting: 'Not waiting',
   allClear: 'All clear',
   allClearText: 'Nothing needs you right now. We’ll tell you here, in the chat and on your phone.',
+  // Lane X
+  /** The phone top bar's ⌘K button (the palette). */
+  quickOpen: 'Go to or do anything',
 } as const;
 
 /** Thinking depth (effort) in plain words, by the CLI's effort id. */

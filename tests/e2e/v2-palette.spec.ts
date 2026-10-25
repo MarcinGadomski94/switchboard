@@ -65,7 +65,7 @@ test('⌘K: "task …" adds a task to the agent on screen', async ({ page }) => 
   await openWithHub(page, `${world.baseUrl}/`);
   const agent = await world.startSession(page, 'tasks-owner', 'Hello');
   await page.goto(`${world.baseUrl}/agents/${agent.id}`);
-  await expect(page.getByTestId('v2-page-agent')).toBeVisible();
+  await expect(page.getByTestId('v2-agent-view')).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('v2-palette');
   await expect(palette).toBeVisible();
@@ -101,5 +101,24 @@ test('phone (390 × 844, a keyboard attached): ⌘K opens the palette, rows are 
   const first = palette.locator('.v2-cmd').first();
   expect((await first.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   await first.click();
+  await expect(page).toHaveURL(`${world.baseUrl}/crews`);
+});
+
+test('phone (390 × 844, touch only): the top bar\'s ⌘K button opens the palette (lane X)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWithHub(page, `${world.baseUrl}/`);
+  const open = page.getByTestId('v2-topbar').getByTestId('v2-palette-open');
+  await expect(open).toBeVisible();
+  const box = await open.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // The whole top bar fits the phone's width.
+  const bar = await page.getByTestId('v2-topbar').evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+  expect(bar.scroll).toBeLessThanOrEqual(bar.client);
+  await open.click();
+  const palette = page.getByTestId('v2-palette');
+  await expect(palette).toBeVisible();
+  await page.keyboard.type('crews');
+  await palette.locator('.v2-cmd').first().click();
   await expect(page).toHaveURL(`${world.baseUrl}/crews`);
 });
