@@ -17,7 +17,10 @@
 }
 
 .sb2 .v2-cmdk-input:focus-visible {
-  box-shadow: inset 0 -2px 0 var(--v2-accent);
+  outline: none;
+  border-radius: 0;
+  border-bottom-color: var(--v2-accent);
+  box-shadow: inset 0 -1px 0 var(--v2-accent);
 }
 
 .sb2 .v2-cmdk-list {

@@ -148,6 +148,7 @@ export function railAreaOf(route: V2Route): RailArea | null {
       return 'results';
     case 'settings':
     case 'tool':
+    case 'insights':
       return 'settings';
     default:
       return null;
