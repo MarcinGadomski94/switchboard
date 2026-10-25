@@ -12,6 +12,11 @@
   margin: 0;
 }
 
+/* Lane X: the title keeps a readable width; the view switch and buttons wrap under it on a tablet. */
+.sb2 .v2-ag-ph > .v2-grow {
+  flex: 1 1 360px;
+}
+
 .sb2 .v2-ag-ph .v2-page-sub {
   margin: 4px 0 0;
 }
