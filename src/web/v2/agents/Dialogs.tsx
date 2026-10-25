@@ -24,7 +24,6 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
   const list = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     setValue(initial);
-    window.setTimeout(() => list.current?.querySelector<HTMLInputElement>('input:checked, input:not(:disabled)')?.focus(), 30);
     // Only when another agent's dialog opens.
   }, [agent?.id]);
   if (!agent) return null;
@@ -66,14 +65,14 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
         {mate
           ? crews.map((crew) => (
               <label key={crew.id}>
-                <input type="radio" name="v2-move" value={crew.id} checked={value === crew.id} onChange={() => setValue(crew.id)} />
+                <input type="radio" name="v2-move" value={crew.id} checked={value === crew.id} onChange={() => setValue(crew.id)} {...(crew.id === initial ? { 'data-autofocus': '' } : {})} />
                 <Icon name="crew" size="s" />
                 <span className="v2-grow">{crew.name}</span>
               </label>
             ))
           : rows.map((row) => (
               <label key={row.value} style={{ paddingLeft: 10 + row.depth * 20 }} {...(row.disabled ? { 'data-disabled': '' } : {})} data-testid="v2-move-option">
-                <input type="radio" name="v2-move" value={row.value} checked={value === row.value} disabled={row.disabled !== null} onChange={() => setValue(row.value)} />
+                <input type="radio" name="v2-move" value={row.value} checked={value === row.value} disabled={row.disabled !== null} onChange={() => setValue(row.value)} {...(row.value === initial ? { 'data-autofocus': '' } : {})} />
                 <Icon name={row.value === 'loose' ? 'agents' : row.plan ? 'projects' : 'folder'} size="s" className={row.plan ? 'v2-plan-ic' : undefined} />
                 <span className="v2-grow">{row.label}</span>
                 <span className="v2-muted" style={{ fontSize: 12 }}>
