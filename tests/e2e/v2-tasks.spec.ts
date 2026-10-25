@@ -105,9 +105,12 @@ test('the board: quick add with Undo, Start here, Move to Done, details, delete 
   // Its agent finished the reply: Review.
   await expect(card(page, 'Empty-cart state')).toHaveAttribute('data-column', 'review', { timeout: 20_000 });
 
-  // ⋯ → Move to Done.
-  await card(page, 'Empty-cart state').getByTestId('v2-tasks-menu').click();
-  await page.getByRole('menuitem', { name: 'Move to Done' }).click();
+  // ⋯ → Move to Done. The agent may start filling in the captured tasks (D81) right after
+  // its reply, which moves the card back to In progress and re-renders it: retry the menu.
+  await expect(async () => {
+    if ((await page.getByRole('menuitem', { name: 'Move to Done' }).count()) === 0) await card(page, 'Empty-cart state').getByTestId('v2-tasks-menu').click({ timeout: 2_000 });
+    await page.getByRole('menuitem', { name: 'Move to Done' }).click({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
   const done = page.getByTestId('v2-tasks-col-done');
   await expect(done.getByTestId('v2-tasks-card')).toHaveCount(1);
   await expect(card(page, 'Empty-cart state').getByTestId('v2-tasks-estimate')).toContainText('took');

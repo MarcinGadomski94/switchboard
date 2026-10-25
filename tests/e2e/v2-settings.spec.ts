@@ -172,6 +172,18 @@ test.describe('one computer', () => {
     await expect(page.locator('.v2-classic-modal-layer .sb-overlay')).toBeVisible();
   });
 
+  test('Advanced › Sessions: Insights\' suggested rule (?suggestRule=) is added to Model by task, unsaved (lane X)', async ({ page }) => {
+    const rule = { priority: 'low', estimate: { kind: 'at-most', minutes: 30 }, provider: 'claude', model: 'sonnet' };
+    await page.goto(`${server.baseUrl}/settings/advanced/sessions?suggestRule=${encodeURIComponent(JSON.stringify(rule))}`);
+    const rules = page.getByTestId('model-rules');
+    await expect(rules.getByTestId('model-rule')).toHaveCount(1);
+    await expect(rules.getByTestId('model-rule').getByTestId('rule-priority')).toHaveValue('low');
+    // The address drops the suggestion (a reload does not add it twice) and nothing is saved by itself.
+    await expect(page).toHaveURL(`${server.baseUrl}/settings/advanced/sessions`);
+    const stored = await page.evaluate(async () => ((await (await fetch('/api/settings')).json()) as Record<string, unknown>)['sessions.modelRules']);
+    expect(stored).toEqual([]);
+  });
+
   test('Appearance: the theme switch to classic and back keeps the page, and the density is remembered', async ({ page }) => {
     await page.goto(`${server.baseUrl}/settings/appearance`);
     await page.getByTestId('v2-density-switch').getByRole('button', { name: 'Compact' }).click();
