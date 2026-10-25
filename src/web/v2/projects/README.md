@@ -5,6 +5,11 @@
 ## Scope
 The list, then Steps / Board / Graph / Timeline; approval modes, holds, Combine / Send back, Reopen, stopped and needs-you steps, Jira import, delete, the run subfolder.
 
+## Built (lane P, 2026-10-25)
+- `index.tsx` mounts `ProjectsPage` (`ProjectsPage.tsx`: cards with progress, time left, mode, Jira tag, needs-you / stopped counts; the Timeline; Import from Jira, `JiraImport.tsx`; New project → `openNew`) and `ProjectPage` (`ProjectPage.tsx`: the header with the approval mode, the acknowledgement, Start / Hold / Resume and the ⋯ menu; `views.tsx`: Steps / Board / Graph / Timeline; `dialogs.tsx`; `JiraSection.tsx`: From Jira, proposals).
+- Pure rules: `project-model.ts` (`tests/web/v2-projects.test.ts`); data: `useProject.ts` (the plan, live, its Jira state, proposals and tasks), actions: `useStepActions.ts`.
+- E2E: `tests/e2e/v2-projects.spec.ts`. Decisions: `docs/design/v2-decisions.md` → *Lane P*.
+
 ## Shared modules to use
 - `glossary.ts` → `planItemStateToV2`, `TERMS.project`, `TERMS.step`, `WORDS.combine`
 - `shared/AnswerCard.tsx` for a step's ready / stopped / pick items
