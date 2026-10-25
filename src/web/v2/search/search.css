@@ -28,6 +28,12 @@
 
 .sb2 .v2-srch-box:focus-within {
   border-color: var(--v2-accent);
+  box-shadow: var(--v2-shadow-2), 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-srch-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .sb2 .v2-srch-filters {
@@ -216,7 +222,7 @@
   }
 
   .sb2 .v2-srch-select {
-    flex: 1 1 0;
+    flex: 1 1 140px;
     min-width: 0;
     min-height: 44px;
   }

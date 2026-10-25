@@ -66,11 +66,21 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 
 ### Search
 
-- (search)
+- **ASSUMED** the four v2 groups map onto the D97 scopes: Messages = `conversations` (chat lines *and* agent-title hits; a title hit opens the agent), Results = `artifacts`, Tasks = `todos`, Closed agents = `history` (terminal conversations, classic History). A closed Switchboard agent's messages stay under Messages: the answer does not say whether a session is closed. (R, 2026-10-25)
+- **ASSUMED** the D97 API has no computer, folder or date parameter, so those three filters apply in the page to the rows the API returned (with Everything: the top 5 per group, as classic). With one of them on, a group's count is the rows shown, not the server's total; pick a type to page further (Show more). No server change. (R, 2026-10-25)
+- **ASSUMED** "This week" = the last 7 days (today included) in this browser's time zone; "Today" = since local midnight. The folder filter is the shared sidebar layout's folders (nested ones included); a History row (no session) never matches a folder. (R, 2026-10-25)
+- **ASSUMED** where hits lead: a message → `/agents/:id/events/:eventId` (a helper's → `/agents/:id/helpers/:helperId/events/:eventId`), paired computers' hits keep their remote ids (`r~<machine>~<id>`) exactly as classic routes them; an agent title → `/agents/:id`; a result → `/results?open=<artifactId>&agent=<sessionId>[&computer=<machineId>]` (the Results page owns that contract); a task → `/tasks`; a closed agent → `/agents?show=closed` (a History row is a terminal conversation without a v2 agent page). (R, 2026-10-25)
+- **ASSUMED** the note under the filters uses the server's own reasons (`offline`, `reconnecting`, `did not answer in time`, …): "**Studio-PC not searched (offline)** · its agents and results show up again when it’s back."; otherwise "Searched <this computer> and <paired ones> · any time". The page searches again when a computer's state changes (`machineState`). (R, 2026-10-25)
+- **ASSUMED** the address keeps every filter (`/search?q=&type=&computer=&folder=&date=`); typing replaces the history entry (debounced 200 ms). (R, 2026-10-25)
 
 ### Insights
 
-- (insights)
+- **ASSUMED** the ranges map onto the D108 periods: Today = a custom period of today (UTC days, as the API counts them), This week = `7d`, This month = `30d`; the default is Today (as the prototype). Today's "Tokens per day" chart reads the last 7 days with one more request. Filters are in the address (`/insights?range=&folder=&engine=&model=&account=&computer=`); the computer filter is the D108 machine (all = merged, `local`, or one paired computer). (R, 2026-10-25)
+- **ASSUMED** the tiles from what the API answers: Agent time = the turns' duration; Tokens; Cost = the period cost of every agent turn (D108 ruling, at the stored prices; conversations apart); Estimates = the share of finished, estimated tasks that took between half and twice their estimate (the prototype's "82% accurate"; the API gives buckets and a median, no single accuracy); Rework = reopened ÷ finished tasks, plus change requests sent back (D102 decisions); Prices used = Example prices / Your prices with the priced models and currency (the API does not return the price table itself). (R, 2026-10-25)
+- **ASSUMED** "Estimate vs. actual" shows the four accuracy buckets (`< 0.5×` … `> 2×`) as bars with the median, not the prototype's per-step dumbbells: the API returns no per-task estimate next to its actual time. Gap until an endpoint gives them. (R, 2026-10-25)
+- **ASSUMED** the forecast lines are the D108 window forecasts in their own words (the pressing ones — full or filling before the reset — else each account's first window); the prototype's "agents switch to Personal automatically" and the month's money forecast are not in the API, so they are left out. (R, 2026-10-25)
+- **ASSUMED** the suggestion line is the first D108 routing suggestion, shown only when the API has one; its **Switch** opens Settings › Advanced › Sessions & worktrees with the rule pre-filled (`/settings/advanced/sessions?suggestRule=…`, classic's Model by task editor), never saving it by itself. (R, 2026-10-25)
+- **ASSUMED** the page refreshes every 60 s and when the window regains focus (the API has no hub event for new rollup rows). (R, 2026-10-25)
 
 ### Settings
 

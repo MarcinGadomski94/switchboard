@@ -327,7 +327,7 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
   return (
     <V2Link to={href} className="v2-srch-row" data-testid="v2-search-hit" data-result-id={result.id} data-kind={result.kind}>
       <span className="v2-srch-ficon">
-        <Icon name={icon} />
+        <Icon name={result.kind === 'session' ? 'agents' : icon} />
       </span>
       <span className="v2-grow v2-srch-main">
         <span className="v2-srch-ttl">
@@ -337,7 +337,7 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
           {snippet ? <Marked segments={snippet} max={150} /> : null}
           {snippet && where ? ' · ' : ''}
           {where ?? ''}
-          {!snippet && !where ? timeAgo(result.ts) : ''}
+          {!snippet && !where ? `${result.kind === 'session' ? `${SEARCH_WORDS.agent} · ` : ''}${timeAgo(result.ts)}` : ''}
         </span>
       </span>
       {tag}
