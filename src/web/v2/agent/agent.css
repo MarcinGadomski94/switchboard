@@ -1882,3 +1882,133 @@
   overflow: auto;
   white-space: pre;
 }
+
+/* ── Lane X · agent: the Timeline's playback scrubber and event log ── */
+.sb2 .v2-ag-lane i[data-dim='true'] {
+  opacity: 0.35;
+}
+
+.sb2 .v2-ag-lane i[data-selected='true'] {
+  outline: 2px solid var(--v2-text);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.sb2 .v2-ag-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--v2-text);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sb2 .v2-ag-tl-controls {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-ag-tl-buttons {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-ag-tl-now {
+  font-family: var(--v2-mono);
+  font-size: var(--v2-fs-sm);
+  min-width: 5em;
+}
+
+.sb2 .v2-ag-scrubber {
+  width: 100%;
+  min-height: var(--v2-touch);
+  margin: 0;
+  accent-color: var(--v2-accent);
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-scrubber:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+  border-radius: var(--v2-r-s);
+}
+
+.sb2 .v2-ag-tl-log {
+  margin-top: 16px;
+}
+
+.sb2 .v2-ag-tl-log-h {
+  font-size: var(--v2-fs-sm);
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-ag-tl-log ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r);
+  overflow: hidden;
+}
+
+.sb2 .v2-ag-tl-log li + li {
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-tl-row {
+  display: grid;
+  grid-template-columns: 5.5em auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--v2-touch);
+  padding: 6px 12px;
+  border: 0;
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  font: inherit;
+  font-size: var(--v2-fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-tl-row:hover {
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-ag-tl-row[aria-pressed='true'] {
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-ag-tl-row:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: -2px;
+}
+
+.sb2 .v2-ag-tl-row .v2-chip {
+  justify-self: start;
+}
+
+.sb2 .v2-ag-tl-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-ag-tl-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 2px;
+  }
+
+  .sb2 .v2-ag-tl-what {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}

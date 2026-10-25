@@ -396,6 +396,72 @@ test('lane X · the side panel: the agents overview with a stopped run\'s Resume
   await settled(page, id);
 });
 
+test('lane X · the Timeline: the event log moves the playhead, the scrubber by keyboard, Play, reduced motion, phone', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-timeline', '[fake:tool-use] Create out.txt and list the files.');
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}/timeline`);
+  const tab = page.getByTestId('v2-agent-timeline');
+  const scrubber = tab.getByTestId('v2-agent-timeline-scrubber');
+  const entries = tab.getByTestId('v2-agent-timeline-entry');
+  // At the end: every event so far is in the log, nothing is dimmed.
+  await expect(scrubber).toHaveValue('1000');
+  await expect(entries.first()).toBeVisible();
+  const total = await entries.count();
+  expect(total).toBeGreaterThanOrEqual(2);
+  await expect(tab.locator('[data-testid="v2-agent-timeline-block"][data-dim="true"]')).toHaveCount(0);
+  await expect(tab.getByTestId('v2-agent-timeline-live')).toBeDisabled();
+
+  // A log row moves the playhead to its moment and marks its block.
+  const second = entries.nth(1);
+  const eventId = await second.getAttribute('data-event-id');
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await expect(tab.locator(`[data-testid="v2-agent-timeline-block"][data-event-id="${eventId}"]`)).toHaveAttribute('data-selected', 'true');
+  const at = Number(await scrubber.inputValue());
+  expect(at).toBeLessThan(1000);
+  await expect(tab.getByTestId('v2-agent-timeline-live')).toBeEnabled();
+
+  // The keyboard: Home goes to the start (only the first moment's events), ⇧→ to the next event, End back to now.
+  await scrubber.focus();
+  await page.keyboard.press('Home');
+  await expect(scrubber).toHaveValue('0');
+  const atStart = await entries.count();
+  expect(atStart).toBeLessThan(total);
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(async () => Number(await scrubber.inputValue())).toBeGreaterThan(0);
+  await page.keyboard.press('End');
+  await expect(scrubber).toHaveValue('1000');
+  await expect(entries).toHaveCount(total);
+
+  // Play from the end starts over and plays to the end.
+  await tab.getByTestId('v2-agent-timeline-play').click();
+  await expect(tab).toHaveAttribute('data-playing', 'true');
+  await expect(tab).toHaveAttribute('data-playing', 'false', { timeout: 15_000 });
+  await expect(scrubber).toHaveValue('1000');
+
+  // Reduced motion: Play never animates; each press moves to the next event.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await scrubber.focus();
+  await page.keyboard.press('Home');
+  await expect(scrubber).toHaveValue('0');
+  const step = tab.getByTestId('v2-agent-timeline-play');
+  await expect(step).toHaveText('Next event');
+  await step.click();
+  await expect(tab).toHaveAttribute('data-playing', 'false');
+  await expect.poll(async () => Number(await scrubber.inputValue())).toBeGreaterThan(0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  // Phone: the scrubber spans the screen and every log row is a 44 px target.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const box = await scrubber.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThan(300);
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  const row = await entries.first().boundingBox();
+  expect(row?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(row?.width ?? 0).toBeGreaterThan(300);
+});
+
 /**
  * Lane X · the v2 Move to computer dialog (D65 / D110) on two real Switchboards
  * (`tests/helpers/takeover.ts`): a local agent moves to the paired computer; a

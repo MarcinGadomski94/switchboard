@@ -6,6 +6,8 @@ import type { TakeoverPreview, TakeoverRun } from '../../src/core/takeover.ts';
 import { agentMenu } from '../../src/web/v2/agent/header-model.ts';
 import { moveBlockedReason, moveHeadline, moveTargets, moveTitle, repoLook, runTone, stepLook, targetLabel } from '../../src/web/v2/agent/move-model.ts';
 import { openResult, resultItemOf, shownResults } from '../../src/web/v2/agent/results-bits.ts';
+import { LOG_LOOKS, SCRUB_STEP, blockOf, moments, nextMoment, playOf, previousMoment } from '../../src/web/v2/agent/timeline-model.ts';
+import { PLAY_MAX, type TimelineLane } from '../../src/web/views/session/timeline.ts';
 import { agentProjects, notesHref, overviewItems, overviewSummary, reportedView } from '../../src/web/v2/agent/side-model.ts';
 
 /** D131 · lane X · the agent view's integration pieces: one result drawer, the v2 move / continue dialogs, the side panel's added groups. */
@@ -180,5 +182,36 @@ describe('the project line and the notes line', () => {
     expect(notesHref({ folder: '/x/acme ws' }, '/y')).toBe('/notes?scope=%2Fx%2Facme%20ws');
     expect(notesHref(null, '/y')).toBe('/notes?scope=%2Fy');
     expect(notesHref(null, null)).toBeNull();
+  });
+});
+
+describe('the timeline’s playback', () => {
+  const lane = (id: string, lefts: number[]): TimelineLane => ({ id, name: id, sub: '', blocks: lefts.map((left, index) => ({ id: index + (id === 'a' ? 0 : 100), kind: 'impl', label: 'x', left, width: 1, start: 0, end: 0, open: false, dim: false })) });
+  const lanes = [lane('a', [0, 40.04, 75]), lane('b', [40, 90])];
+
+  it('places a moment on the scrubber', () => {
+    expect(playOf(0)).toBe(0);
+    expect(playOf(40.04)).toBe(400);
+    expect(playOf(120)).toBe(PLAY_MAX);
+    expect(playOf(-3)).toBe(0);
+    expect(playOf(Number.NaN)).toBe(0);
+  });
+
+  it('steps between events (Play with reduced motion, ⇧← / ⇧→)', () => {
+    expect(moments(lanes)).toEqual([0, 400, 750, 900]);
+    expect(nextMoment(lanes, 0)).toBe(400);
+    expect(nextMoment(lanes, 400)).toBe(750);
+    expect(nextMoment(lanes, 900)).toBe(PLAY_MAX);
+    expect(previousMoment(lanes, 750)).toBe(400);
+    expect(previousMoment(lanes, 0)).toBe(0);
+    expect(SCRUB_STEP).toBe(10);
+  });
+
+  it('finds a log row’s block and reads each kind as icon + word + colour', () => {
+    expect(blockOf(lanes, 101)).toEqual({ lane: 'b', left: 90, start: 0 });
+    expect(blockOf(lanes, 7)).toBeNull();
+    expect(LOG_LOOKS.ok).toEqual({ icon: 'check-circle', word: 'Done', tone: 'green' });
+    expect(LOG_LOOKS.error.tone).toBe('red');
+    expect(Object.keys(LOG_LOOKS).sort()).toEqual(['ask', 'error', 'impl', 'loop', 'ok', 'plan']);
   });
 });
