@@ -1,0 +1,271 @@
+/* D131 · lane A · Notes (`/notes`), the prototype's `notesHTML()`: crumbs, the list of `.lrow`s, the tip. */
+
+.sb2 .v2-notes-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 32px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-notes-crumbs b {
+  color: var(--v2-text);
+}
+
+.sb2 .v2-notes-hint {
+  font-size: 13px;
+  margin-right: 6px;
+}
+
+.sb2 .v2-notes-filter {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+
+.sb2 .v2-notes-fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--v2-r-pill);
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  color: var(--v2-text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background var(--v2-fast), border-color var(--v2-fast);
+}
+
+.sb2 .v2-notes-fchip:hover {
+  background: var(--v2-surface-2);
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-notes-fchip[aria-pressed='true'] {
+  background: var(--v2-accent-soft);
+  border-color: var(--v2-accent);
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-notes-fcount {
+  font-size: 12px;
+  color: var(--v2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb2 .v2-notes-offline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-notes-offline-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-notes-section {
+  margin: 0 0 18px;
+}
+
+.sb2 .v2-notes-h {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--v2-muted);
+  text-transform: none;
+  margin: 0 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb2 .v2-notes-hn {
+  font-variant-numeric: tabular-nums;
+}
+
+.sb2 .v2-notes-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sb2 .v2-notes-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-notes-row:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-notes-row[data-status='proposed'] {
+  background: color-mix(in srgb, var(--v2-amber-bg) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--v2-amber-dot);
+}
+
+.sb2 .v2-notes-row[data-status='rejected'] .v2-notes-title,
+.sb2 .v2-notes-row[data-status='rejected'] .v2-notes-quote {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-notes-ficon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--v2-sunken);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-notes-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sb2 .v2-notes-title {
+  font-weight: 600;
+}
+
+.sb2 .v2-notes-quote {
+  font-weight: 450;
+  color: var(--v2-text-2);
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-notes-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--v2-muted);
+  margin-top: 3px;
+}
+
+.sb2 .v2-notes-sub .v2-chip[data-tone='outline'] {
+  border-radius: 6px;
+  max-width: 100%;
+}
+
+.sb2 .v2-notes-sub .v2-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-notes-why {
+  font-size: 13px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-notes-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  align-items: center;
+}
+
+.sb2 .v2-notes-tip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  margin: 12px 2px;
+  line-height: 1.4;
+}
+
+.sb2 .v2-notes-tip .v2-i {
+  flex: none;
+  margin-top: 1px;
+}
+
+.sb2 .v2-notes-dialog-note {
+  font-size: 13.5px;
+  margin: 10px 0 0;
+}
+
+/* Tablet: the hint goes, the buttons stay on the row. */
+@media (max-width: 1279px) {
+  .sb2 .v2-notes-hint {
+    display: none;
+  }
+}
+
+/* Phone: the buttons go under the text, full width. */
+@media (max-width: 767px) {
+  .sb2 .v2-notes-crumbs .v2-btn {
+    width: 100%;
+  }
+
+  .sb2 .v2-notes-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -16px 14px;
+    padding: 0 16px 4px;
+    scrollbar-width: none;
+  }
+
+  .sb2 .v2-notes-fchip {
+    flex: none;
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-notes-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .sb2 .v2-notes-ficon {
+    display: none;
+  }
+
+  .sb2 .v2-notes-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .sb2 .v2-notes-actions .v2-btn {
+    flex: 1 1 auto;
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-notes-actions .v2-icon-btn {
+    width: var(--v2-touch);
+    height: var(--v2-touch);
+  }
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-notes-fchip {
+    min-height: var(--v2-touch);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-notes-fchip {
+    transition: none;
+  }
+}

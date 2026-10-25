@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import type { SessionActivity, SessionListItem } from '../../../core/api.ts';
 import type { SessionMachine } from '../../../core/peers.ts';
 import { useLiveMachine } from '../../api/useMachines.ts';
@@ -66,31 +66,63 @@ export function DraftMark() {
  * D131 · the chat-style agent row (`.crow`): avatar with its status badge, name,
  * time, the activity or ask line, then the computer tag and markers. A button: a
  * click (or Enter) opens it; `trailing` = the row's own buttons (peek, ⋯).
+ *
+ * Lane A (additive): `variant="list"` is the List view's row (`.lrow`): the
+ * status as a badge on the right instead of under the line; `lead` goes before
+ * the avatar (the drag grip), `tags` after the name (kind, Draft), `rowProps`
+ * onto the row itself (draggable, data attributes, key handling), `line` replaces
+ * the activity line (an offline computer's reason).
  */
-export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now }: { readonly session: SessionListItem; readonly activity: SessionActivity | null; readonly extras?: AgentRowExtras; readonly onOpen: () => void; readonly trailing?: ReactNode; readonly now?: number }) {
+export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now, variant = 'chat', lead, tags, rowProps, line: lineOverride }: { readonly session: SessionListItem; readonly activity: SessionActivity | null; readonly extras?: AgentRowExtras; readonly onOpen: () => void; readonly trailing?: ReactNode; readonly now?: number; readonly variant?: 'chat' | 'list'; readonly lead?: ReactNode; readonly tags?: ReactNode; readonly rowProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string | undefined>; readonly line?: ReactNode }) {
   const status = agentStatusOf(session, extras);
   const line = agentLine(session, activity, extras, now);
   const name = agentName(session);
   const off = session.machine ? computerStateToV2(session.machine.state) !== 'online' : false;
+  const preview =
+    lineOverride ?? (line.tone === 'amber' || line.tone === 'red' ? (
+      <AskPreview text={line.text} tone={line.tone === 'red' ? 'red' : 'amber'} />
+    ) : (
+      <span className="v2-cprev">
+        {line.text}
+        {line.time ? ` · ${line.time}` : ''}
+      </span>
+    ));
+  if (variant === 'list') {
+    return (
+      <div {...rowProps} className={rowProps?.className ? `v2-crow v2-lrow ${rowProps.className}` : 'v2-crow v2-lrow'} data-status={status} data-session={session.id} {...(off ? { 'data-off': '' } : {})} data-testid="v2-agent-row" data-variant="list">
+        {lead}
+        <button type="button" className="v2-row v2-grow" style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', gap: 14, minWidth: 0 }} onClick={onOpen} aria-label={`${name} · ${STATUS[status].label}`}>
+          <Avatar name={name} icon={session.kind === 'chat' ? 'chat' : undefined} status={status} />
+          <span className="v2-cbody">
+            <span className="v2-ctop">
+              <b>{name}</b>
+              {tags}
+              {extras.kindLabel ?? (session.kind === 'chat' ? <span className="v2-chip" data-tone="outline">{TERMS.conversation.one}</span> : null)}
+              {extras.draft ? <DraftMark /> : null}
+              {extras.unread ? <UnreadDot /> : null}
+            </span>
+            {preview}
+          </span>
+        </button>
+        <AgentComputerTag machine={session.machine} />
+        <StatusBadge status={status} />
+        {trailing}
+      </div>
+    );
+  }
   return (
-    <div className="v2-crow" data-status={status} data-session={session.id} {...(off ? { 'data-off': '' } : {})} data-testid="v2-agent-row">
+    <div {...rowProps} className={rowProps?.className ? `v2-crow ${rowProps.className}` : 'v2-crow'} data-status={status} data-session={session.id} {...(off ? { 'data-off': '' } : {})} data-testid="v2-agent-row">
       <button type="button" className="v2-row v2-grow" style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', gap: 14, minWidth: 0 }} onClick={onOpen} aria-label={`${name} · ${STATUS[status].label}`}>
         <Avatar name={name} icon={session.kind === 'chat' ? 'chat' : undefined} status={status} />
         <span className="v2-cbody">
           <span className="v2-ctop">
             <b>{name}</b>
+            {tags}
             <span className="v2-ctime" {...(extras.unread ? { 'data-unread': '' } : {})}>
               {timeAgo(session.lastActivityAt, now)}
             </span>
           </span>
-          {line.tone === 'amber' || line.tone === 'red' ? (
-            <AskPreview text={line.text} tone={line.tone === 'red' ? 'red' : 'amber'} />
-          ) : (
-            <span className="v2-cprev">
-              {line.text}
-              {line.time ? ` · ${line.time}` : ''}
-            </span>
-          )}
+          {preview}
           <span className="v2-cmeta">
             <StatusBadge status={status} size="s" />
             {extras.kindLabel ?? (session.kind === 'chat' ? <span className="v2-chip" data-tone="outline">{TERMS.conversation.one}</span> : null)}
