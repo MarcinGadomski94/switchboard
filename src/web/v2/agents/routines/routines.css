@@ -1,0 +1,185 @@
+/* D131 · lane A · Routines (`/routines`): the prototype's `.routine-panel` per routine. */
+
+.sb2 .v2-routines-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 32px;
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-routines-crumbs b {
+  color: var(--v2-text);
+}
+
+.sb2 .v2-routines-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb2 .v2-routines-panel {
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.sb2 .v2-routines-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sb2 .v2-routines-name {
+  font-size: var(--v2-fs);
+  font-weight: 650;
+  margin: 0;
+  min-width: 160px;
+}
+
+.sb2 .v2-routines-watched {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  border: 1px solid var(--v2-border);
+  border-radius: 6px;
+  padding: 1px 7px;
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-routines-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-routines-summary {
+  margin: 8px 0 2px;
+  font-size: 14.5px;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-routines-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13.5px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-routines-meta a {
+  color: var(--v2-accent-text);
+  font-weight: 550;
+}
+
+.sb2 .v2-routines-what {
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-routines-why {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-routines-hhead {
+  font-size: 13px;
+  color: var(--v2-muted);
+  margin: 10px 0 4px;
+}
+
+.sb2 .v2-routines-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sb2 .v2-routines-hline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  min-height: 30px;
+}
+
+.sb2 .v2-routines-htime {
+  width: 70px;
+  flex: none;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-routines-hicon {
+  display: inline-flex;
+  flex: none;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-routines-hline[data-tone='ok'] .v2-routines-hicon {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-routines-hline[data-tone='fail'] .v2-routines-hicon {
+  color: var(--v2-red);
+}
+
+.sb2 .v2-routines-hline[data-tone='run'] .v2-routines-hicon {
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-routines-hline[data-tone='need'] .v2-routines-hicon {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-routines-ended {
+  margin: 4px 0 18px;
+}
+
+.sb2 .v2-routines-ended .v2-routines-panel {
+  opacity: 0.85;
+}
+
+.sb2 .v2-routines-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  margin: 12px 2px;
+  line-height: 1.4;
+}
+
+.sb2 .v2-routines-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sb2 .v2-routines-form-note {
+  font-size: 13.5px;
+  margin: 10px 0 0;
+}
+
+/* Phone: the buttons go on their own row, each at least 44 px high. */
+@media (max-width: 767px) {
+  .sb2 .v2-routines-panel {
+    padding: 14px;
+  }
+
+  .sb2 .v2-routines-actions {
+    width: 100%;
+  }
+
+  .sb2 .v2-routines-actions .v2-btn {
+    flex: 1 1 calc(50% - 6px);
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-routines-htime {
+    width: 70px;
+  }
+}
