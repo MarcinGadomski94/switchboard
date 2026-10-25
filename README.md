@@ -8,6 +8,10 @@ Switchboard is a local web app for running many **Claude Code**, **Codex CLI** a
 
 <img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with its icon navigation, pinned sessions and a folder, and the usage footer with an account on credits">
 
+## Switchboard 2
+
+Switchboard 2.0 ships a new UI, the **v2 theme**, as the default: **Home** with what needs you and a start box, **Agents** (List, Chats or Board, in folders), each agent's chat with a side panel (⌘.), **Projects**, **Crews**, **Results**, **Notes**, a ⌘K palette, light and dark, and phone and tablet layouts. The 1.x UI stays as the **Classic theme** (pictured above). Switch in Settings › Appearance in either theme, or type "classic" in ⌘K; each browser and phone keeps its own choice. A short tour, "Welcome to Switchboard 2", shows the new places once. [v2 and the glossary](docs/v2.md)
+
 ## Features
 
 - **Sessions** on three CLIs in any folder or git worktree, with subagent and Workflow agent chats, undo per turn and CLI switching mid-way. [new session](docs/new-session.md) · [chat](docs/chat.md) · [undo](docs/undo.md)
@@ -23,7 +27,7 @@ Switchboard is a local web app for running many **Claude Code**, **Codex CLI** a
 - **Paired machines** over Tailscale, with shared accounts, sidebar layout and power stats, and session take-over. [peers](docs/peers.md) · [power](docs/power.md)
 - **Phones and tablets:** pair with a QR code, get push notifications, install as an app. [devices](docs/devices.md) · [app](docs/install-app.md)
 - **Built-in `switchboard` MCP tools** for todos, artifacts, loops and `turn_status` in every session. [mcp](docs/mcp.md)
-- **Plans** run todos as a dependency graph with Jira import, merge modes and Done-on-merge ([plans](docs/plans.md)); **Team** of role agents ([team](docs/team.md)); **Project memory** approved by you before any session gets it ([memory](docs/memory.md)). Always on since 2.0.
+- **Plans** (Projects in v2) run todos as a dependency graph with Jira import, merge modes and Done-on-merge ([plans](docs/plans.md)); **Team** (Crews) of role agents ([team](docs/team.md)); **Project memory** (Notes) approved by you before any session gets it ([memory](docs/memory.md)). They graduated from Experimental in 2.0: always on, in both themes.
 
 ## Requirements
 
