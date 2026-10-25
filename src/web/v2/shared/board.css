@@ -352,3 +352,20 @@
     transition: none;
   }
 }
+
+/* Lane X: a narrow (tablet) card wraps its status word instead of letting the badge run past the card (both boards). */
+.sb2 .v2-bcard .v2-chip {
+  max-width: 100%;
+  height: auto;
+  min-height: 22px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  white-space: normal;
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-lane-tog {
+    width: var(--v2-touch);
+    height: var(--v2-touch);
+  }
+}

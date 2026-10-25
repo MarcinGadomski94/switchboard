@@ -717,16 +717,6 @@
   opacity: 0.6;
 }
 
-/* Board: a narrow (tablet) card wraps its status word instead of letting the badge run past the card. */
-.sb2 [data-testid='v2-project-board'] .v2-bcard .v2-chip {
-  max-width: 100%;
-  height: auto;
-  min-height: 22px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  white-space: normal;
-}
-
 /* Proposals */
 .sb2 .v2-p-proposals {
   padding: 14px 16px;
