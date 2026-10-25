@@ -17,6 +17,7 @@ import { setScheme } from '../scheme.ts';
 import { openStore } from '../shared/open-store.ts';
 import { timeAgo } from '../shared/time.ts';
 import { openShortcuts } from '../shell/ShortcutsDialog.tsx';
+import { replayV2Tours } from '../tour/TourHost.tsx';
 import { modKey } from '../shell/shortcuts.ts';
 import { type PaletteRow, actionRows, agentRow, hitPath, isTaskPrefix, pageRows, quickTaskAgent, quickTaskTitle, rankRows, resultPath, searchRow } from './palette-model.ts';
 import './palette.css';
@@ -191,6 +192,10 @@ function PaletteBody({ initial }: { readonly initial: string }) {
       case 'shortcuts':
         close();
         openShortcuts();
+        return;
+      case 'replay-tour':
+        close();
+        if (action.arg) replayV2Tours([action.arg]);
         return;
       default:
         close();

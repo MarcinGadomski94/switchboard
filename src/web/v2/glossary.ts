@@ -960,6 +960,8 @@ export const PALETTE_WORDS = {
     closed: 'Closed agents (history)',
     pairPhone: 'Pair a phone',
     addComputer: 'Add a computer',
+    // Lane X · P1: the prototype's direct replay of the v2 welcome tour.
+    replayTour: 'Replay tour: what’s new in Switchboard 2',
   },
 } as const;
 
