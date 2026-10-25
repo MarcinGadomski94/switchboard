@@ -1031,6 +1031,7 @@ textarea.v2-field {
   .v2-btn,
   .v2-btn[data-size='sm'],
   .v2-seg button,
+  .v2-seg[data-size='s'] button,
   .v2-field {
     min-height: var(--v2-touch);
   }
