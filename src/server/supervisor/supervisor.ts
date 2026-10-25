@@ -3613,12 +3613,21 @@ export class SessionSupervisor {
     return EMPTY_CONTEXT;
   }
 
+  /** Per session, the latest {@link #emitSession} call (an older one still building its Session is dropped). */
+  readonly #emitSeq = new Map<string, number>();
+
   async #emitSession(sessionId: string): Promise<void> {
     const listeners = this.#listeners.sessionUpdated;
     if (listeners.size === 0 || this.#starting.has(sessionId)) return;
+    // Two emits can overlap (a turn's end and a late context or status update); the Session is
+    // read and built asynchronously, so an older call could otherwise publish its stale snapshot
+    // ("Working") after a newer one ("Done"). Only the latest call publishes.
+    const seq = (this.#emitSeq.get(sessionId) ?? 0) + 1;
+    this.#emitSeq.set(sessionId, seq);
     const record = await this.#store.sessions.get(sessionId);
     if (!record) return;
     const session = await toSession(this.#store, record, this.activity(sessionId));
+    if (this.#emitSeq.get(sessionId) !== seq) return;
     for (const listener of listeners) {
       try {
         listener(session);
