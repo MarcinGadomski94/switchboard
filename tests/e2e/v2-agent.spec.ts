@@ -212,6 +212,41 @@ test('the Changes tab, and Undo from here restores the files', async ({ page }) 
   await expect(page.getByTestId('v2-agent-redo')).toBeVisible();
 });
 
+test('the reply ⋯ menu: Save as result shows it as an attachment that opens its drawer; Add to tasks fills the tasks strip', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-results', '[fake:say "## Plan\\n\\nShip the summary card first. Then the prices."] Plan it.');
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  const reply = page.getByTestId('v2-agent-reply').last();
+  await expect(reply).toContainText('Ship the summary card first.');
+  await reply.hover();
+  await reply.getByTestId('v2-agent-reply-menu').click();
+  await page.getByTestId('v2-agent-reply-menu-list').getByRole('menuitem', { name: 'Save as result' }).click();
+  const dialog = page.getByTestId('v2-agent-save-result');
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId('v2-agent-save-result-save').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('v2-toast')).toContainText('Saved “Plan”');
+  const attachment = page.getByTestId('v2-agent-result-attachment');
+  await expect(attachment).toHaveCount(1, { timeout: 10_000 });
+  await expect(attachment).toContainText('Plan');
+  await attachment.click();
+  await expect(page).toHaveURL(new RegExp(`/agents/${id}/results/`));
+  const drawer = page.getByTestId('v2-agent-result-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByTestId('v2-agent-result-markdown')).toContainText('Ship the summary card first.');
+  await drawer.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}/results`);
+
+  // Add to tasks (the reply's first sentence): the tasks strip above the box shows it.
+  await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: 'Chat' }).click();
+  const again = page.getByTestId('v2-agent-reply').last();
+  await again.hover();
+  await again.getByTestId('v2-agent-reply-menu').click();
+  await page.getByTestId('v2-agent-reply-menu-list').getByRole('menuitem', { name: 'Add to tasks' }).click();
+  await expect(page.getByTestId('v2-agent-tasks')).toContainText('Tasks · 0 of 1 done', { timeout: 10_000 });
+});
+
 test('a helper thread expands inline and opens its own chat', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-helpers', 'Say hello.');

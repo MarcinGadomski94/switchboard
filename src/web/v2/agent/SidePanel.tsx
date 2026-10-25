@@ -24,11 +24,11 @@ function errorText(caught: unknown): string {
 }
 
 /** The panel's groups. */
-type GroupKey = 'mem' | 'how' | 'helpers' | 'bg' | 'tasks' | 'handoff' | 'adv';
+type GroupKey = 'mem' | 'how' | 'helpers' | 'bg' | 'tasks' | 'routines' | 'handoff' | 'adv';
 
 const OPEN_KEY = 'switchboard.v2.agentPanelGroups';
 /** The prototype's defaults: Working memory and Helpers open. */
-const DEFAULT_OPEN: Readonly<Record<GroupKey, boolean>> = { mem: true, how: true, helpers: true, bg: false, tasks: false, handoff: false, adv: false };
+const DEFAULT_OPEN: Readonly<Record<GroupKey, boolean>> = { mem: true, how: true, helpers: true, bg: false, tasks: false, routines: true, handoff: false, adv: false };
 
 function loadOpen(): Record<GroupKey, boolean> {
   try {
@@ -134,6 +134,11 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
           <TasksGroup sessionId={data.sessionId} blocked={data.blocked} />
         </Group>
       )}
+      {(session.ownedLoops ?? []).some((loop) => loop.state === 'active' || loop.state === 'paused') ? (
+        <Group id="routines" title="Routines" icon="routine" summary={`${(session.ownedLoops ?? []).filter((loop) => loop.state === 'active').length} on`} open={open.routines} onToggle={toggle}>
+          <RoutinesGroup data={data} />
+        </Group>
+      ) : null}
       <Group id="handoff" title={AGENT_WORDS.handoff} icon="book" open={open.handoff} onToggle={toggle}>
         <HandoffGroup data={data} />
       </Group>
@@ -415,6 +420,45 @@ function TasksGroup({ sessionId, blocked }: { readonly sessionId: string; readon
               {AGENT_WORDS.run}
             </Button>
           ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** D94 · the routines (Switchboard loops) this agent runs: Pause / Resume, Run now, Cancel. */
+function RoutinesGroup({ data }: { readonly data: AgentData }) {
+  const { session, sessionId, blocked } = data;
+  const toast = useToast();
+  const loops = (session?.ownedLoops ?? []).filter((loop) => loop.state === 'active' || loop.state === 'paused');
+  const act = (work: () => Promise<unknown>, text: string): void => {
+    work().then(
+      () => {
+        toast({ text });
+        data.reload();
+      },
+      (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
+    );
+  };
+  return (
+    <>
+      {loops.map((loop) => (
+        <div className="v2-ag-prow" key={loop.id} data-testid="v2-agent-routine" data-state={loop.state}>
+          <div className="v2-grow">
+            <b>{loop.title}</b>
+            <div className="v2-muted v2-ag-small">
+              {loop.scheduleText} · {loop.state === 'paused' ? 'paused' : `${loop.runs} run${loop.runs === 1 ? '' : 's'}`}
+            </div>
+          </div>
+          <Button size="sm" disabled={blocked !== null} onClick={() => act(() => api.loopAction(sessionId, loop.id, loop.state === 'paused' ? 'resume' : 'pause'), loop.state === 'paused' ? 'Routine resumed.' : 'Routine paused.')}>
+            {loop.state === 'paused' ? 'Resume' : 'Pause'}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={blocked !== null} onClick={() => act(() => api.loopAction(sessionId, loop.id, 'run'), 'Ran it now.')}>
+            Run now
+          </Button>
+          <Button size="sm" variant="ghost" disabled={blocked !== null} aria-label={`Cancel ${loop.title}`} onClick={() => act(() => api.cancelLoop(sessionId, loop.id), 'Routine cancelled.')}>
+            Cancel
+          </Button>
         </div>
       ))}
     </>
