@@ -1,65 +1,43 @@
-# Removing Project memory (D107)
+# Project memory graduated (D132)
 
-Project memory is experimental and built to be removed cleanly (`docs/memory.md`, decision D107). Its code lives in its own folders and files; the rest of Switchboard knows it only through the small hooks listed here, each marked in the code with the comment **`Project memory (D107) hook`** (`grep -rn "Project memory (D107) hook" src` lists them all). `tests/server/memory/removal.test.ts` fails when a file carries the marker and is not listed below, or a listed file no longer carries it.
+Project memory (`docs/memory.md`, decision D107) shipped as an experimental feature behind **Settings → Experimental → Project memory**, off by default and built as a switchable hook with an off-state so it could be removed cleanly. In **2.0** it graduated to general release together with Team and Plans (D132; the developer: "in order to do that we would need to pull out or experimental functionalities to general release").
 
-## 1. Delete Project memory's folders and files
+## What changed in 2.0
 
-- `src/server/memory/` (service, `memory.db` and its migrations, routes, hooks, `install.ts`, the scopes' `reach.ts` and `team-link.ts`)
-- `src/core/memory.ts` (shapes, limits, the block, the duplicate check, the MCP tool definitions)
-- `src/hook/sb-memory-tools.ts` (the memory tools of the `switchboard` MCP helper)
-- `src/web/memory/` (the Memory page, the nav grid's cell, the session panel's line, Settings → Experimental's row, the draft asks' `draft.ts`, its API calls, store and styles)
-- `tests/server/memory/`, `tests/core/memory.test.ts`, `tests/e2e/memory.spec.ts`
-- `docs/memory.md`, this file
+- **The off-switch is gone.** There is no `experimental.memory` setting any more (`PUT /api/settings` refuses the key with 422) and Settings has no Experimental section.
+- **Always on.** `memory.db` is opened (and migrated) at start; no route answers `404 memory-off` any more. Only a `memory.db` that cannot be opened makes the memory routes answer `503 memory-unavailable` (and injects nothing), as before.
+- **MCP tools.** The `memory_*` tools register through the same probe as before (`GET /agent/v1/memory`, `src/hook/sb-feature-tools.ts`): in every session with a project folder.
+- **Nothing is injected without approved entries.** A session gets a memory block only from **approved** entries of its folder, repositories or member; with none its instruction is exactly as before (`withProjectMemory` returns it unchanged). Proposals are never injected.
+- **Existing installs.** Whatever the stored switch said, Project memory is on after the start; `forgetGraduatedSwitches` (`src/server/settings/graduated.ts`) deletes the stored `experimental.memory` row once. Approved entries kept from a time it was on reach new and resumed sessions again (open ones are flagged "instruction outdated", D91).
+- **Paired machines and phones.** The peer and device allow-lists are unchanged. A paired machine still on 1.x with memory off answers `404 memory-off` ("Project memory is off there" on a member's memory copy, retried when it changes).
 
-## 2. Revert the hooks
+## How it is wired
 
-| File | Hook | Revert to |
-|---|---|---|
-| `src/server/app.ts` | imports `installMemory`; calls `installMemory(app, apiContext)` after `installPlans` | drop the import and the call |
-| `src/core/settings.ts` | `experimental.memory` in `KnownSettings`, `EDITABLE_SETTINGS`, `SETTING_DEFAULTS` and `readKnownSettings` | remove the key in all four places |
-| `src/server/api/settings.ts` | imports `memorySwitchChanged`; calls it when `PUT /api/settings` changes `experimental.memory` | drop both |
-| `src/server/sessions/instruction.ts` | imports `withProjectMemory`; `sessionInstruction` wraps the standing instruction and charter with it (and its `Pick` names `root` / `cwd`) | `return withTeamCharter(store, session.id, await standingInstructionFor(store.settings));` |
-| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step | nothing once `sb-feature-tools.ts` has no memory set (the hook comment goes) |
-| `src/hook/sb-feature-tools.ts` | the `memory` entry of `FEATURE_TOOL_SETS` (imports `MEMORY_TOOLS`, `registerMemoryTools`) | drop the entry and the two imports |
-| `src/core/api.ts` | imports `MemoryChanged`; `HubEvents.memoryChanged` and its entry in `HUB_EVENT_NAMES` | remove all three |
-| `src/server/devices/local-only.ts` | the memory entries of `DEVICE_ALLOWED` (reads, a session's count, the scope options, edit / pin, approve, reject) and of `DEVICE_REFUSED` (add, delete, the cap, the draft asks, the import), and "(D107) project memory" in the file comment | remove them |
-| `src/server/peers/service.ts` | the memory entries of `PEER_API_ALLOW`; imports `memoryPeerChanged` and the `memoryChanged` branch at the top of `#onPeerEvent` (a pending member-memory copy is retried) | remove them |
-| `src/core/peer-wire.ts` | `'memoryChanged'` in `PEER_HUB_EVENTS` (streamed to paired machines; never republished) | remove the entry |
-| `src/server/inbox/system-items.ts` | imports `MEMORY_COPY_RETRY` / `MEMORY_COPY_KEEP` / `memoryInboxAction`; their branch in `#perform` (the "missing its memory" item's Retry / Keep on this PC) | drop the import and the branch |
-| `src/server/inbox/wire.ts` | `'memory-proposals': 'Memory'` and `'memory-copy': 'Memory'` in `SYSTEM_ITEM_LABELS` | remove the lines |
-| `src/core/tutorial.ts` | `memory` in `TourRoute`; `V1_20` and the `memory` entry of `WHATS_NEW`; the `memory-scopes` entry (1.22.0) | remove them (keep `V1_20` if another 1.20.0 tour uses it) |
-| `src/web/router.tsx` | `memory` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/memory` row of the header table | remove them |
-| `src/web/shell/Shell.tsx` | imports `MemoryPage`; `case 'memory'` of `View` | drop the import and the case |
-| `src/web/shell/AppBar.tsx` | `case 'memory'` of `pageTitle` | drop it |
-| `src/web/shell/Sidebar.tsx` | imports `MemoryNavItem`; `<MemoryNavItem />` at the end of the nav grid (nothing while off) | drop the import and the element |
-| `src/web/shell/nav-icon-glyphs.ts` | `memory` in `NavIconName` and its glyph | remove both (and `'memory'` from the list in `tests/web/nav-grid.test.ts`) |
-| `src/web/views/inbox.ts` | `OPEN_MEMORY` and its branch in `openRoute` | `return item.kind === 'system' && actionId === OPEN_PLAN ? (item.route ?? null) : null;` |
-| `src/web/views/session/RightPanel.tsx` | imports `SessionMemoryLine`; `<SessionMemoryLine … />` after the Plan tab (nothing while off) | drop the import and the element |
-| `src/server/team/hooks.ts` | D107 follow-up 2026-10-15: `memberOf` / `memberList` in `TeamHooks`, `TeamMemberRef`, `teamMemberOf`, `teamMemberList` (the member scope) | remove them (with `src/server/memory/team-link.ts`, deleted in section 1) |
-| `src/server/team/service.ts` | imports `memoryMemberMoved`; calls it in `#followMove` after a member moved (its member-scoped memory goes with it); registers `memberOf` / `memberList` and `#memberRef` (and imports `TeamMemberRef`) | drop the import, the call, the two registrations and `#memberRef` |
-| `src/web/shell/SidebarSessions.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`; the ⋯ menu's "Draft memory from this session" | drop the imports, `memoryOn` and the item |
-| `src/web/team/TeamPage.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`, `draftAllMemory`, the `draft-memory` case of `pickMenu`, the two "Draft memory for all members" buttons, `withMemoryDraft` around `memberMenu(…)` | drop them all (`items={memberMenu(…)}` again) |
-| `src/web/views/settings/ExperimentalSection.tsx` | imports `MemorySwitchRow` and renders it | drop the import and the element |
+Project memory's code lives in its own folders and files: `src/server/memory/` (service, `memory.db` and its migrations, routes, hooks, `reach.ts`, `team-link.ts`), `src/core/memory.ts`, `src/hook/sb-memory-tools.ts` and `src/web/memory/`. The rest of Switchboard knows it only through the hooks below, each marked in the code with the comment **`Project memory (D107) hook`** (`grep -rn "Project memory (D107) hook" src`). `tests/server/memory/removal.test.ts` fails when a file carries the marker and is not listed here, or a listed file no longer carries it.
 
-Tests that name Project memory's additions (revert with the code):
+| File | Hook |
+|---|---|
+| `src/server/app.ts` | imports `installMemory`; calls `installMemory(app, apiContext)` after `installPlans` |
+| `src/server/sessions/instruction.ts` | imports `withProjectMemory`; `sessionInstruction` wraps the standing instruction and charter with it (and its `Pick` names `root` / `cwd`) |
+| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step |
+| `src/hook/sb-feature-tools.ts` | the `memory` entry of `FEATURE_TOOL_SETS` (imports `MEMORY_TOOLS`, `registerMemoryTools`) |
+| `src/core/api.ts` | imports `MemoryChanged`; `HubEvents.memoryChanged` and its entry in `HUB_EVENT_NAMES` |
+| `src/server/devices/local-only.ts` | the memory entries of `DEVICE_ALLOWED` (reads, a session's count, the scope options, edit / pin, approve, reject) and of `DEVICE_REFUSED` (add, delete, the cap, the draft asks, the import), and "(D107) project memory" in the file comment |
+| `src/server/peers/service.ts` | the memory entries of `PEER_API_ALLOW`; imports `memoryPeerChanged` and the `memoryChanged` branch at the top of `#onPeerEvent` (a pending member-memory copy is retried) |
+| `src/core/peer-wire.ts` | `'memoryChanged'` in `PEER_HUB_EVENTS` (streamed to paired machines; never republished) |
+| `src/server/inbox/system-items.ts` | imports `MEMORY_COPY_RETRY` / `MEMORY_COPY_KEEP` / `memoryInboxAction`; their branch in `#perform` (the "missing its memory" item's Retry / Keep on this PC) |
+| `src/server/inbox/wire.ts` | `'memory-proposals': 'Memory'` and `'memory-copy': 'Memory'` in `SYSTEM_ITEM_LABELS` |
+| `src/core/tutorial.ts` | `memory` in `TourRoute`; `V1_20` and the `memory` entry of `WHATS_NEW`; the `memory-scopes` entry (1.22.0) |
+| `src/web/router.tsx` | `memory` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/memory` row of the header table |
+| `src/web/shell/Shell.tsx` | imports `MemoryPage`; `case 'memory'` of `View` |
+| `src/web/shell/AppBar.tsx` | `case 'memory'` of `pageTitle` |
+| `src/web/shell/Sidebar.tsx` | imports `MemoryNavItem`; `<MemoryNavItem />` at the end of the nav grid (nothing while unavailable) |
+| `src/web/shell/nav-icon-glyphs.ts` | `memory` in `NavIconName` and its glyph |
+| `src/web/views/inbox.ts` | `OPEN_MEMORY` and its branch in `openRoute` |
+| `src/web/views/session/RightPanel.tsx` | imports `SessionMemoryLine`; `<SessionMemoryLine … />` after the Plan tab (nothing while unavailable) |
+| `src/server/team/hooks.ts` | D107 follow-up 2026-10-15: `memberOf` / `memberList` in `TeamHooks`, `TeamMemberRef`, `teamMemberOf`, `teamMemberList` (the member scope) |
+| `src/server/team/service.ts` | imports `memoryMemberMoved`; calls it in `#followMove` after a member moved (its member-scoped memory goes with it); registers `memberOf` / `memberList` and `#memberRef` (and imports `TeamMemberRef`) |
+| `src/web/shell/SidebarSessions.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`; the ⋯ menu's "Draft memory from this session" |
+| `src/web/team/TeamPage.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`, `draftAllMemory`, the `draft-memory` case of `pickMenu`, the two "Draft memory for all members" buttons, `withMemoryDraft` around `memberMenu(…)` |
 
-- `tests/server/api/settings.test.ts`: the `'experimental.memory': false` line of the fresh-install answer.
-- `tests/server/tutorial/tutorial.test.ts`: `'D107'` in the What's-new decisions.
-- `tests/web/nav-grid.test.ts`: `'memory'` in the icon names.
-- `tests/server/inbox/inbox-list.test.ts`: `'memory-proposals'` and `'memory-copy'` in the labels.
-- `tests/server/tutorial/tutorial.test.ts`: the second `'D107'` (the `memory-scopes` tour, 1.22.0).
-
-Docs: the *Project memory (D107)* section of `docs/handoff/contracts/local-api.md`, the README's Features bullet, the *D107* section of `.loop/questions.md`, D107 in `docs/decisions.md` (mark it removed rather than deleting the record).
-
-## 3. Delete the data
-
-`<dataDir>/memory.db` (and `memory.db-wal` / `memory.db-shm` if present). Nothing of Project memory's own state is in `switchboard.db`. Two kinds of rows there mention it, both harmless to a build without it:
-
-- the `experimental.memory` setting (an unknown settings key is never read): `DELETE FROM settings WHERE key = 'experimental.memory'`;
-- the Inbox items it raised ("N memory proposals for …", "<member> is missing its memory on <PC>"): `DELETE FROM system_items WHERE source = 'memory'`.
-
-Sessions keep running as before: their next start (or a D91 Reload instruction) gives them the standing instruction without the memory block.
-
-## Checked
-
-The procedure was applied once to a throw-away copy (a scratch `git worktree` of the memory branch): every step of section 1 and 2, then `npm run typecheck`; the result is recorded in `.loop/questions.md` → *D107* (`VERIFIED D107-removal`).
+Removing Project memory now would be a new decision; the step-by-step removal procedure of 1.x is in this file's history (before D132).

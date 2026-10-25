@@ -4,13 +4,13 @@ Team lets the developer run a set of role agents ("members") from one page inste
 
 This document covers the core (lane T1), access requests (lane T2, *Access requests* below) and the Team page (lane T3, *The Team page* below).
 
-## The switch
+## Always on (D132)
 
-Settings → **Experimental** → **Team**, a row of the main `settings` table (`experimental.team`, default **off**; `PUT /api/settings`).
+Team was experimental behind Settings → **Experimental** → **Team** (`experimental.team`, off by default) until 2.0; it graduated to general release (D132, `docs/team-removal.md`) and has **no switch** any more.
 
-- **Off:** Team opens nothing, runs no timer and hides nothing. Only `GET /api/team/state` answers (the switch); every other Team route is 404 `team-off`. The agent routes refuse, so no session gets the Team MCP tools. The rest of Switchboard behaves exactly as without Team (the desktop visual oracle is unchanged; the only visible addition is the Experimental section in Settings).
-- **On:** `<dataDir>/team.db` is opened (created on first use), the Team timers start (a one-minute tick and the 30-second sync), and member sessions leave the sidebar.
-- **Off again:** the timers stop and `team.db` is closed (it stays on disk). Every member's session is back in the sessions list at its place; switching on again re-hides them. Member processes keep the charter they were started with until their next start (D91 shows them as running an older instruction and offers Reload).
+- **At start** `<dataDir>/team.db` is opened (created on first use, with the first team), the Team timers start (a one-minute tick and the 30-second sync) and member sessions leave the sidebar.
+- **No member:** nothing is hidden, no charter is added, and the sidebar shows no team entry above SESSIONS while only the first team exists with its default name (the nav grid's Team cell opens the page).
+- **Upgraded from 1.x with the switch off:** the stored `experimental.team` row is deleted; members kept in `team.db` from a time Team was on leave SESSIONS again, as switching Team on did in 1.x.
 - **Demo mode** never starts Team, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
 
 ## Storage

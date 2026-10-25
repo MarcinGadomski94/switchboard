@@ -1,81 +1,46 @@
-# Removing Plans (D99)
+# Plans graduated (D132)
 
-Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision D99). Its code lives in its own folders and files; the rest of Switchboard knows it only through the small hooks listed here, each marked in the code with the comment **`Plans (D99) hook`** (`grep -rn "Plans (D99) hook" src` lists them all). `tests/server/plans/removal.test.ts` fails when a file carries the marker and is not listed below, or a listed file no longer carries it.
+Plans (`docs/plans.md`, decision D99) shipped as an experimental feature behind **Settings → Experimental → Plans**, off by default and built as a switchable hook with an off-state so it could be removed cleanly. In **2.0** it graduated to general release together with Team and Project memory (D132; the developer: "in order to do that we would need to pull out or experimental functionalities to general release").
 
-## 1. Delete Plans' folders and files
+## What changed in 2.0
 
-- `src/server/plans/` (service and scheduler, `plans.db` and its migrations, repository, routes, git / gh adapter, environment, hooks, `install.ts`)
-- `src/core/plans.ts` (shapes, graph rules, texts, the MCP tool definitions)
-- `src/core/plans-jira.ts` (the Jira lane's shapes and rules; its server code is `src/server/plans/jira/`, its UI `src/web/plans/jira/`, both inside the folders above)
-- `src/core/plans-jira-context.ts` (D118: the Jira context of a plan's agents and the `plan_jira_context` tool)
-- `src/core/plan-run-folder.ts` (D130: the Start dialog's prefill of the runs' sidebar subfolder)
-- `src/web/plans-jira-dev.html` (the Jira import dialog's dev mount)
-- `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
-- `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav grid's cell (D101: through the shell's `NavCell`; the `plans` icon in `src/web/shell/nav-icon-glyphs.ts` and `plansBadge` in `nav-grid.ts` may stay) and the session's Plan tab, the Jira lane's `jira/` folder)
-- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/core/plan-run-folder.test.ts`, `tests/e2e/plans-run-subfolder.spec.ts`, `tests/e2e/plans-switch.spec.ts`, `tests/core/plans-jira.test.ts`, `tests/helpers/fake-jira.ts`, `tests/e2e/plans-jira.spec.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
-- `docs/plans.md`, `docs/plans-ui.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
+- **The off-switch is gone.** There is no `experimental.plans` setting any more (`PUT /api/settings` refuses the key with 422) and Settings has no Experimental section. The Jira connection that sat under the Plans row moved to its own section, **Settings → Jira** (`/settings/experimental` opens it).
+- **Always on.** `plans.db` is opened (and migrated) at start; the scheduler and its timers run; no route answers `404 plans-off` any more. Only a `plans.db` that cannot be opened makes the plan routes (and the Jira lane's) answer `503 plans-unavailable`, as before.
+- **MCP tools.** The `plan_*` tools register through the same probe as before (`GET /agent/v1/plans`, `src/hook/sb-feature-tools.ts`), which now answers 200 for every session with the agent token; each tool still acts only on the plans whose source is that session.
+- **Existing installs.** Whatever the stored switch said, Plans is on after the start; `forgetGraduatedSwitches` (`src/server/settings/graduated.ts`) deletes the stored `experimental.plans` row once (nothing reads it either way). With no plans nothing changes: nothing runs, no Inbox item appears, no session is touched. A plan a 1.x build paused when the switch went off keeps its "Plans was switched off" reason until you resume it.
+- **Paired machines and phones.** The peer and device allow-lists are unchanged (`src/server/peers/service.ts`, `src/server/devices/local-only.ts`). A paired machine still on 1.x with Plans off answers `404 plans-off`; it is read as "no plans there", as before.
 
-## 2. Revert the hooks
+## How it is wired
 
-| File | Hook | Revert to |
-|---|---|---|
-| `src/server/app.ts` | imports `installPlans` and the `PlanService` type; `AppOptions.plans`; calls `installPlans(app, apiContext, options.plans)` after `installTeam` | drop the imports, the option and the call |
-| `src/core/settings.ts` | `experimental.plans` in `KnownSettings`, `EDITABLE_SETTINGS`, `SETTING_DEFAULTS` and `readKnownSettings` | remove the key in all four places |
-| `src/server/api/settings.ts` | imports `plansSwitchChanged`; calls it when `PUT /api/settings` changes `experimental.plans` | drop both |
-| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step | nothing once `sb-feature-tools.ts` has no plans set (the hook comment goes) |
-| `src/hook/sb-feature-tools.ts` | the `plans` entry of `FEATURE_TOOL_SETS` (imports `PLAN_TOOLS`, `PLAN_PROPOSE_TOOL`, `PLAN_JIRA_CONTEXT_TOOL`, `registerPlanTools`) | drop the entry and the four imports |
-| `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
-| `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state and proposals `none`); D102: `peerRoute` and its use in `peerInboxItem` (a "Ready to merge" item's plan route) | remove them (`InboxItem.route` may stay: generic) |
-| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order; D102: an item's merge / open-pr / send-back); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
-| `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
-| `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order) and of `DEVICE_REFUSED` (`/api/integrations/jira`), and "(D99) plans" in the file comment | remove them |
-| `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) | drop the import and the call |
-| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" / "Plan done", second-conflict and "Confirm done" Inbox items); D102: imports `plansInboxMerge`; `PLAN_READY_TO_MERGE` / `PLAN_MERGE` / `OPEN_PLAN` / `PLAN_READY_TO_MERGE_ACTIONS`, `planMergeNotice`, `closePlanMergeNotices` and the `plan-merge` / `open-plan` branch of `#perform` (the "Ready to merge" item); D115 follow-ups: imports `plansInboxAskRepos`; `PLAN_PICK_REPOS` / `PLAN_ASK_REPOS` / `PLAN_PICK_REPOS_ACTIONS`, `planPickReposNotice`, `closePlanPickReposNotices`, `#closePickRepos` and the `plan-ask-repos` branch of `#perform` (the "Pick repositories" item); D120: `PLAN_STOPPED` / `PLAN_STOPPED_ACTIONS`, `planStoppedNotice`, `closePlanStoppedNotices` (the "Stopped" item) | remove them (the `refused` error code and the closed-by-the-action check in `act` may stay) |
-| `src/server/insights/service.ts` | D108: imports `plansInsightOutcomes`; Insights reads the plan items' outcomes through it (`plans: null` while off) | drop the import and pass `plans: null` (the Outcomes section then shows no Plans part, as while Plans is off) |
-| `src/server/team/service.ts` | D100 follow-up 2026-10-16: imports `plansItemsOfTodos`; `#currentItem` names a member's current todo by its plan item's key and title (the sidebar's member rows) | drop the import; `#currentItem` returns `{ title: todo.title, key: null }` (Team itself may be gone already: then nothing to do) |
-| `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers; `from: null` = D76's own cut, a plan without a target branch; D130: `sidebarFolder`, copied into the run's `todoLink`) | remove the type and the parameter; the branch, `from`, `task` and `answers` back to D76's (the source session's) |
-| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) and the `plans-any` entry (1.22.0, the D99 follow-up of 2026-10-15) | remove them |
-| `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table | remove them |
-| `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` | drop the imports and the cases |
-| `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` | drop them |
-| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is off) | drop the import and the element |
-| `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while off) | drop the import and the element |
-| `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_IDS`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tours while Plans is off | `const tours = pendingTours(state);` |
-| `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while off | `state.data?.whatsNew` in its two places |
-| `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `PlansSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Team) is left |
-| `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Team, D100) | keep while Team is there; otherwise remove both |
-| `src/web/views/settings/model.ts` | the `experimental` section (shared with Team, D100) | keep while Team is there; otherwise remove the entry |
+Plans' code lives in its own folders and files: `src/server/plans/` (service, scheduler, `plans.db` and its migrations, routes, the Jira lane in `jira/`), `src/core/plans.ts`, `src/core/plans-jira.ts`, `src/core/plans-jira-context.ts`, `src/core/plan-run-folder.ts`, `src/hook/sb-plan-tools.ts` and `src/web/plans/`. The rest of Switchboard knows it only through the hooks below, each marked in the code with the comment **`Plans (D99) hook`** (`grep -rn "Plans (D99) hook" src`). `tests/server/plans/removal.test.ts` fails when a file carries the marker and is not listed here, or a listed file no longer carries it.
 
-D109 (not markers: the shared code never imports Plans): Plans registers itself into the shared PR watcher (`registerCiMergeOwner` in `src/server/plans/service.ts`, the `prs` read and `ciSendsFailures` / `prOpened` in `install.ts` and `environment.ts`) and its Jira lane registers the todo import's Jira source (`registerJiraIssueSource` in `src/server/plans/jira/install.ts`). They go with `src/server/plans/`; without them the watcher raises its own "ready to merge" for every session and the Import issues dialog says Jira needs Plans.
+| File | Hook |
+|---|---|
+| `src/server/app.ts` | imports `installPlans` and the `PlanService` type; `AppOptions.plans`; calls `installPlans(app, apiContext, options.plans)` after `installTeam` |
+| `src/hook/sb-mcp.ts` | `main` probes the feature tools (`FeatureTools`, `sb-feature-tools.ts`) before `connect` and keeps them in step |
+| `src/hook/sb-feature-tools.ts` | the `plans` entry of `FEATURE_TOOL_SETS` (imports `PLAN_TOOLS`, `PLAN_PROPOSE_TOOL`, `PLAN_JIRA_CONTEXT_TOOL`, `registerPlanTools`) |
+| `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` |
+| `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer`; the Jira lane's two lines in `peerAnswerKind` (the import answers `plan-item`, a plan's Jira state and proposals `none`); D102: `peerRoute` and its use in `peerInboxItem` (a "Ready to merge" item's plan route) |
+| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order; D102: an item's merge / open-pr / send-back); the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans |
+| `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` |
+| `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` (with the Jira lane's preview, import, plan Jira state, refresh and proposed order) and of `DEVICE_REFUSED` (`/api/integrations/jira`), and "(D99) plans" in the file comment |
+| `src/server/api/sessions.ts` | imports `plansFollowContinuation`; `POST /api/sessions/{id}/fresh`'s `onStarted` calls it after the worktrees are assigned (D83: a continued session's plans and the items it ran follow it) |
+| `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" / "Plan done", second-conflict and "Confirm done" Inbox items); D102: imports `plansInboxMerge`; `PLAN_READY_TO_MERGE` / `PLAN_MERGE` / `OPEN_PLAN` / `PLAN_READY_TO_MERGE_ACTIONS`, `planMergeNotice`, `closePlanMergeNotices` and the `plan-merge` / `open-plan` branch of `#perform` (the "Ready to merge" item); D115 follow-ups: imports `plansInboxAskRepos`; `PLAN_PICK_REPOS` / `PLAN_ASK_REPOS` / `PLAN_PICK_REPOS_ACTIONS`, `planPickReposNotice`, `closePlanPickReposNotices`, `#closePickRepos` and the `plan-ask-repos` branch of `#perform` (the "Pick repositories" item); D120: `PLAN_STOPPED` / `PLAN_STOPPED_ACTIONS`, `planStoppedNotice`, `closePlanStoppedNotices` (the "Stopped" item) |
+| `src/server/insights/service.ts` | D108: imports `plansInsightOutcomes`; Insights reads the plan items' outcomes through it (`plans: null` while unavailable) |
+| `src/server/team/service.ts` | D100 follow-up 2026-10-16: imports `plansItemsOfTodos`; `#currentItem` names a member's current todo by its plan item's key and title (the sidebar's member rows) |
+| `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers; `from: null` = D76's own cut, a plan without a target branch; D130: `sidebarFolder`, copied into the run's `todoLink`) |
+| `src/core/tutorial.ts` | `plans` in `TourRoute`; the `plans` entry of `WHATS_NEW` (1.17.0) and the `plans-any` entry (1.22.0, the D99 follow-up of 2026-10-15) |
+| `src/web/router.tsx` | `plans` and `plan` in `ViewName`; `plans` in the simple-view `Route` union and `SIMPLE_VIEWS`; the `{ view: 'plan', id }` route, its `parseRoute` line and its `routePath` case; the `/plans` row of the header table |
+| `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` |
+| `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` |
+| `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is unavailable) |
+| `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while unavailable) |
+| `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_IDS`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tours while Plans is unavailable |
+| `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while unavailable |
+| `src/web/views/SettingsView.tsx` | imports `JiraSection`; its `case 'jira'` (D132) |
+| `src/web/views/settings/model.ts` | D132: the `jira` section (Settings → Jira; `/settings/experimental` resolves to it) |
+| `src/web/views/settings/JiraSection.tsx` | D132: Settings → **Jira**, the Jira lane's connection (it sat under the Plans switch in Settings → Experimental until 2.0) |
 
-Not markers (D130, generic, may stay): `TodoLink.sidebarFolder` in `src/core/api.ts`, `RunPlaces`' folder placement (`src/server/sessions/run-place.ts`), `runSubfolder` / `placeRunInFolder` / `folderOfSession` / `cutSidebarFolderName` in `src/core/sidebar-layout.ts` and `liveFolderFor` in `src/core/sidebar-records.ts`: without Plans no run carries a folder, so runs are placed next to their source as before.
+Plans also registers itself into the shared PR watcher (D109, `registerCiMergeOwner`) and the todo import's Jira source (`registerJiraIssueSource`); neither is a marker (the shared code never imports Plans).
 
-Not markers (Plans' D102 Merge step, shared code): `src/server/worktrees/branch-merge.ts` (`BranchMergeGit`, the safe local merge and Open PR) may stay or go; the `plan-ready-to-merge`, `plan-confirm` and (D115 follow-ups) `plan-pick-repos` and (D120) `plan-stopped` and (D121) `plan-reopened` labels in `SYSTEM_ITEM_LABELS` (`src/server/inbox/wire.ts`) and the web's `openRoute` / `OPEN_PLAN` (`src/web/views/inbox.ts`) and the Needs-you `merge` shape (`src/web/team/`) are harmless without Plans.
-
-Outside `src/` (not markers): `vite.config.ts` builds the Jira dialog's dev mount as an entry (`rollupOptions.input.plansJiraDev`: remove it); `tests/helpers/server-process.ts` drops `ATL_*` from test servers' environment (the Jira lane's guard; harmless without Plans, may stay).
-
-Tests that name Plans' additions (revert with the code):
-
-- `tests/server/api/settings.test.ts`: the `'experimental.plans': false` line of the fresh-install answer.
-- The Experimental section's Plans row has no screenshot of its own.
-- `tests/server/tutorial/tutorial.test.ts`: `'D99'` in the What's-new decisions.
-- `tests/e2e/shell.spec.ts`: the `/api/plans/state` branch of the shell's API calls.
-- `tests/e2e/tutorial.spec.ts`: the `WHATS_NEW` filter without `plans` / `plans-any` and the `status['plans']` / `status['plans-any']` lines.
-
-Docs: the *Plans (D99)* and *Plans · Jira (D99)* sections of `docs/handoff/contracts/local-api.md`, *Jira credentials (D99)* in `docs/security.md`, the Jira paragraphs of `PRIVACY.md`, the *D99-Jira* section of `.loop/questions.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* and *D99-UI* sections of `.loop/questions.md`.
-
-## 3. Delete the data
-
-If Jira was connected in Settings → Integrations → Jira, remove it there first (or delete the keychain item named `Switchboard Jira` by hand: Keychain Access on macOS, Credential Manager on Windows, `secret-tool clear service "Switchboard Jira" account default` on Linux). The Jira lane's tables (`plan_jira*`) are inside `plans.db` and go with it.
-
-`<dataDir>/plans.db` (and `plans.db-wal` / `plans.db-shm` if present). Nothing of Plans' own state is in `switchboard.db`. Three kinds of rows there mention it, all harmless to a build without Plans:
-
-- the `experimental.plans` setting (an unknown settings key is never read): `DELETE FROM settings WHERE key = 'experimental.plans'`;
-- the Inbox items it raised ("Plan ready", a second conflict, D102's "Ready to merge"): `DELETE FROM system_items WHERE source = 'plans'`;
-- a paired machine's last known plans: `DELETE FROM peer_snapshots WHERE kind = 'plans'`.
-
-Plan items are ordinary todos and their runs ordinary sessions (D76 todo runs) throughout: the todos, the run sessions, their worktrees, branches, pull requests are untouched by removal (D102: there are no review cards any more; an item waiting for your merge keeps its branch for you to merge by hand). Sessions that were working on an item keep their branch; nothing merges or starts any more.
-
-## Checked
-
-The procedure was applied once to a throw-away copy (a scratch `git worktree` of the Plans branch): every step above, then `npm run typecheck`; the result is recorded in `.loop/questions.md` → *D99* (`VERIFIED D99-removal`).
+Removing Plans now would be a new decision; the step-by-step removal procedure of 1.x is in this file's history (before D132).
