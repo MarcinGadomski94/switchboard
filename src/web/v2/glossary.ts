@@ -447,3 +447,47 @@ export const THEME_LABELS = {
   makeDefault: 'Make it the default for new browsers',
   isDefault: 'Default for new browsers',
 } as const;
+
+// ── Lane R · Results, Search, Insights, Settings, + New, ⌘K ─────────────
+// Each area keeps its words in its own object below (one block per area, so the
+// lane's parallel branches merge without touching each other's lines).
+
+/** Lane R · Results (`/results`) and the result drawer. */
+export const RESULTS_WORDS = {
+  title: 'Results',
+} as const;
+
+// ── (lane R · Search) ──
+
+/** Lane R · Search (`/search?q=`). */
+export const SEARCH_WORDS = {
+  title: 'Search',
+} as const;
+
+// ── (lane R · Insights) ──
+
+/** Lane R · Insights (`/insights`). */
+export const INSIGHTS_WORDS = {
+  title: 'Insights',
+} as const;
+
+// ── (lane R · Settings) ──
+
+/** Lane R · Settings (`/settings/*`). */
+export const SETTINGS_WORDS = {
+  title: 'Settings',
+} as const;
+
+// ── (lane R · + New) ──
+
+/** Lane R · the + New sheet. */
+export const NEW_WORDS = {
+  title: 'Start something new',
+} as const;
+
+// ── (lane R · ⌘K) ──
+
+/** Lane R · the ⌘K palette. */
+export const PALETTE_WORDS = {
+  placeholder: 'Search agents, messages, results, settings…',
+} as const;

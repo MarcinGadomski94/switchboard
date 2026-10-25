@@ -57,3 +57,33 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED G8 · the state routes keep `enabled`.** `GET /api/{team,plans,memory}/state` still answers `enabled` (always `true` outside demo mode) so a 1.x peer or an older page reading them keeps working; `available` remains the field that matters (false only for a broken database).
 - **ASSUMED G9 · a What's-new tour for the graduation.** Existing installs that had the features off would otherwise see three new sidebar cells unexplained, so a short `graduated` tour (D132, version 2.0.0) points at the Plans, Team and Memory cells and says Settings → Experimental is gone and the Jira connection moved. Lane X's "Welcome to Switchboard 2" tour is separate; the orchestrator may merge them.
 - **ASSUMED G10 · the removal docs stay as the wiring map.** `docs/*-removal.md` became short "graduated" notes that keep the hook table (file → hook) as *How it is wired*; the `removal.test.ts` files still check the markers against those tables. The 1.x step-by-step removal procedure is in the files' git history.
+
+## Lane R · Results, Search, Insights, Settings, + New, ⌘K (2026-10-25)
+
+### Results
+
+- (results)
+
+### Search
+
+- (search)
+
+### Insights
+
+- (insights)
+
+### Settings
+
+- (settings)
+
+### + New
+
+- (new)
+
+### ⌘K palette
+
+- (palette)
+
+### Lane-wide
+
+- (lane)
