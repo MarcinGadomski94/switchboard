@@ -42,6 +42,14 @@ export interface ServerConfig {
    */
   readonly demoExtras?: true;
   /**
+   * D131 · lane X: the demo's v2 layer (`docs/demo.md` → *The v2 layer*), only with `demo`:
+   * extra Acme rows for the v2 pages (folders and pins, tasks, projects, crews, notes,
+   * Insights) and Team, Plans and Project memory running. On unless the service's default
+   * theme is `classic` (the E2E servers, so the classic visual oracle and the README
+   * screenshots keep the plain seed); `SWITCHBOARD_DEMO_V2=1` / `0` forces it. Absent = off.
+   */
+  readonly demoV2?: true;
+  /**
    * D35 (`docs/frame-helper.md` → *Guided setup*): `SWITCHBOARD_OPEN_COMMAND`, an
    * argv prefix put in front of the OS opener the frame-helper setup runs (`open …`,
    * `explorer …`, `xdg-open …`, Chrome), so that command becomes its arguments.
@@ -281,5 +289,15 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     ...(env['SWITCHBOARD_POWER_TEST_FILE']?.trim() ? { powerTestFile: path.resolve(cwd, env['SWITCHBOARD_POWER_TEST_FILE'].trim()) } : {}),
     ...powerSampleMs(env['SWITCHBOARD_POWER_SAMPLE_MS']),
     ...uiThemeDefault(env['SWITCHBOARD_UI_THEME_DEFAULT']),
+    ...(demoV2(env) ? { demoV2: true as const } : {}),
   };
+}
+
+/** D131 · lane X: whether the demo's v2 layer runs ({@link Config.demoV2}). */
+export function demoV2(env: NodeJS.ProcessEnv): boolean {
+  if (env['SWITCHBOARD_DEMO'] !== '1') return false;
+  const forced = env['SWITCHBOARD_DEMO_V2']?.trim();
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  return env['SWITCHBOARD_UI_THEME_DEFAULT']?.trim().toLowerCase() !== 'classic';
 }

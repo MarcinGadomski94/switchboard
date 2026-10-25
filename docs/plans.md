@@ -12,7 +12,7 @@ Plans was experimental behind Settings → Experimental → **Plans** (`experime
 - **No plans:** nothing runs and nothing appears for sessions; the Plans cell is in the sidebar's nav grid.
 - **Upgraded from 1.x with the switch off:** the stored `experimental.plans` row is deleted; plans 1.x paused with the reason "Plans was switched off" stay **paused** until the developer resumes them (`POST /api/plans/{id}/resume`).
 - **A broken `plans.db`** (not a database, a failed migration) breaks nothing else: `GET /api/plans/state` reports `{ enabled: true, available: false, problem }`, the plan routes answer 503 `plans-unavailable` and nothing runs.
-- Demo mode never starts Plans, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
+- Demo mode never starts Plans, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*) and the demo's v2 layer (D131, `docs/demo.md` → *The v2 layer*).
 
 ## Storage
 

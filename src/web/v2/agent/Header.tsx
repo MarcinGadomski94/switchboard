@@ -166,7 +166,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
             <Menu items={viewItems} anchor={viewAnchor} open={viewOpen} onClose={() => setViewOpen(false)} label={AGENT_WORDS.view} testId="v2-agent-view-menu" />
           </>
         )}
-        <Button size="sm" variant="ghost" icon="sheet" aria-pressed={sideShown} data-testid="v2-agent-details" title={`${sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails} (⌘.)`} kbd={phone ? undefined : '⌘.'} onClick={onToggleSide}>
+        <Button size="sm" variant="ghost" icon="sheet" aria-pressed={sideShown} data-testid="v2-agent-details" data-tour="v2-agent-details" title={`${sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails} (⌘.)`} kbd={phone ? undefined : '⌘.'} onClick={onToggleSide}>
           {phone ? null : AGENT_WORDS.details}
         </Button>
         <AgentMenuButton data={data} />

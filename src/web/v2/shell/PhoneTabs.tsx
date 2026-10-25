@@ -15,7 +15,7 @@ export function PhoneTabs({ route, needs }: { readonly route: V2Route; readonly 
   return (
     <nav className="v2-ptabs" aria-label="Main" data-testid="v2-phone-tabs">
       {PHONE_TAB_IDS.map((tab) => (
-        <V2Link key={tab} to={PATHS[tab]} className="v2-ptab" aria-current={current === tab ? 'page' : undefined} data-testid={`v2-tab-${tab}`} aria-label={tab === 'needs' && needs > 0 ? `${PHONE_TABS[tab]}, ${needs}` : PHONE_TABS[tab]}>
+        <V2Link key={tab} to={PATHS[tab]} className="v2-ptab" aria-current={current === tab ? 'page' : undefined} data-testid={`v2-tab-${tab}`} data-tour={tab === 'needs' ? 'v2-needs' : `v2-tab-${tab}`} aria-label={tab === 'needs' && needs > 0 ? `${PHONE_TABS[tab]}, ${needs}` : PHONE_TABS[tab]}>
           <Icon name={ICONS[tab]} />
           <span>{PHONE_TABS[tab]}</span>
           {tab === 'needs' && needs > 0 ? (

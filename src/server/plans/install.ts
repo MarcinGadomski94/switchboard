@@ -56,8 +56,8 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
       }),
     });
     app.addHook('onReady', async () => {
-      // Demo mode never runs Plans, except for the README screenshots (`demoExtras`).
-      if (!context.config.demo || context.config.demoExtras) await own.start();
+      // Demo mode never runs Plans, except for the README screenshots (`demoExtras`) and the v2 layer (`demoV2`, docs/demo.md).
+      if (!context.config.demo || context.config.demoExtras || context.config.demoV2) await own.start();
     });
     app.addHook('preClose', async () => {
       await own.close();

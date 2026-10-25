@@ -75,10 +75,10 @@ export interface SegmentOption<T extends string> {
  * D131 · a segmented control (`.vt` / `.segc`): a group of toggle buttons, one
  * pressed (`aria-pressed`); ←/→ move between them.
  */
-export function Segmented<T extends string>({ options, value, onChange, label, size = 'm', testId }: { readonly options: readonly SegmentOption<T>[]; readonly value: T; readonly onChange: (value: T) => void; readonly label: string; readonly size?: 'm' | 's'; readonly testId?: string }) {
+export function Segmented<T extends string>({ options, value, onChange, label, size = 'm', testId, tour }: { readonly options: readonly SegmentOption<T>[]; readonly value: T; readonly onChange: (value: T) => void; readonly label: string; readonly size?: 'm' | 's'; readonly testId?: string; readonly tour?: string }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   return (
-    <div className="v2-seg" role="group" aria-label={label} data-size={size === 'm' ? undefined : size} data-testid={testId}>
+    <div className="v2-seg" role="group" aria-label={label} data-size={size === 'm' ? undefined : size} data-testid={testId} data-tour={tour}>
       {options.map((option, index) => (
         <button
           key={option.value}

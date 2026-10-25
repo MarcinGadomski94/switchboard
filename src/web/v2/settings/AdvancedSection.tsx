@@ -13,12 +13,12 @@ import { ModelRulesRow } from '../../views/settings/ModelRulesRow.tsx';
 import { ProcessesSection } from '../../views/settings/ProcessesSection.tsx';
 import { StartAtLoginRow } from '../../views/settings/StartAtLogin.tsx';
 import { ToolsSection } from '../../views/settings/ToolsSection.tsx';
-import { TutorialSection } from '../../views/settings/TutorialSection.tsx';
 import { WorkspaceSection } from '../../views/settings/WorkspaceSection.tsx';
 import { ClaudeSection, GithubSection, NotifySection, SchedulesSection, SessionsSection } from '../../views/settings/sections.tsx';
 import { Button, Card, EmptyState, Icon, Skeleton } from '../components/index.ts';
 import { SETTINGS_WORDS as W } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
+import { V2ToursSection } from '../tour/ToursSection.tsx';
 import { ClassicFrame, useClassicModals } from './ClassicFrame.tsx';
 import { ADVANCED_PAGES, type AdvancedKind, type AdvancedPage, resolveAdvanced } from './settings-map.ts';
 import { useKnownSettings } from './sections.tsx';
@@ -142,7 +142,8 @@ function AdvancedBody({ kind }: { readonly kind: AdvancedKind }) {
     case 'updates':
       return <UpdatesSection />;
     case 'tutorial':
-      return <TutorialSection />;
+      // Lane X · tour: the v2 tours, replayed with highlighting in v2 (the classic ones stay in Classic).
+      return <V2ToursSection />;
     case 'cleanup':
       return <CleanupSection />;
     case 'setup':

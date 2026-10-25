@@ -29,8 +29,8 @@ export async function installMemory(app: FastifyInstance, context: MemoryAppCont
     ...(context.peers ? { peers: context.peers } : {}),
   });
   app.addHook('onReady', async () => {
-    // Demo mode never runs Project memory (the visual oracle is unchanged).
-    if (!context.config.demo) await memory.start();
+    // Demo mode never runs Project memory (the visual oracle is unchanged), except in the v2 layer (`demoV2`, docs/demo.md).
+    if (!context.config.demo || context.config.demoV2) await memory.start();
   });
   app.addHook('preClose', async () => {
     await memory.close();

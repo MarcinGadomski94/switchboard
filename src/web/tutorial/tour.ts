@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { MAIN_TOUR_ID, WHATS_NEW, type TourRecord, type TourStep, tourSteps } from '../../core/tutorial.ts';
+import { MAIN_TOUR_ID, WHATS_NEW, type TourRecord, type TourStep, isV2Tour, tourSteps } from '../../core/tutorial.ts';
 
 /**
  * D85 · the running tour (`docs/tutorial.md`): which tours run (the main tour,
@@ -30,9 +30,9 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Starts `tours` (unknown ids are dropped; none left = nothing starts). */
+/** Starts `tours` (unknown ids and the v2 theme's tours, which the classic host cannot highlight, are dropped; none left = nothing starts). */
 export function startTours(tours: readonly string[], options: { readonly replay: boolean }): void {
-  const known = tours.filter((id) => tourSteps(id) !== null);
+  const known = tours.filter((id) => tourSteps(id) !== null && !isV2Tour(id));
   if (known.length === 0) return;
   counter += 1;
   run = { tours: known, replay: options.replay, key: counter };

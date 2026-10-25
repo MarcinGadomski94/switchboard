@@ -23,6 +23,7 @@ export function ThemeRow() {
       <Segmented
         label={THEME_LABELS.row}
         testId="v2-theme-switch"
+        tour="v2-theme"
         value={theme}
         onChange={(next) => themeStore.choose(next)}
         options={[

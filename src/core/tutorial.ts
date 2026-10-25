@@ -37,6 +37,12 @@ export interface TourStep {
   /** On tablets and phones the element sits in the sidebar: open the ☰ drawer first. */
   readonly drawer?: boolean;
   /**
+   * D131 · a v2 tour's step ({@link WhatsNewFeature.ui} `'v2'`): the v2 address to
+   * go to first (`/agents`, `/settings/appearance`, …), or `'agent'` for the
+   * newest open agent's view. The classic host ignores it (it never runs v2 tours).
+   */
+  readonly v2Route?: string;
+  /**
    * No anchor on screen (no sessions yet, a feature switched off): `null` skips
    * the step; a text shows a centred card with it instead of the spotlight.
    */
@@ -53,8 +59,14 @@ export interface WhatsNewFeature {
   readonly version: string;
   /** The feature's name (Settings → Tutorial lists it). */
   readonly title: string;
-  /** 2–3 steps. */
+  /** 2–3 steps (a v2 welcome may have more: {@link MAX_V2_TOUR_STEPS}). */
   readonly steps: readonly TourStep[];
+  /**
+   * D131 · the UI that can highlight it. Unset = the classic UI (its anchors are
+   * on classic pages); `'v2'` = the v2 theme's own tour (`src/web/v2/tour/`).
+   * Each UI opens, lists and replays only its own tours (`docs/tutorial.md` → *Two themes*).
+   */
+  readonly ui?: 'v2';
 }
 
 /** The id the main tour is stored under. */
@@ -124,6 +136,21 @@ const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
 /** Team (D100): the steps that need a member. */
 const TEAM_NO_MEMBER = 'This shows once a team has a member: adopt one with ＋ Member on the Team page. ';
+
+/** D131 · the v2 welcome tour's id ("Welcome to Switchboard 2"). */
+export const V2_WELCOME_ID = 'welcome-v2';
+
+/** The most steps a v2 tour may have (a classic mini-tour has 1–3). */
+export const MAX_V2_TOUR_STEPS = 8;
+
+/**
+ * D131 · classic What's-new tours the v2 welcome covers: when the welcome opens
+ * by itself in v2 and ends, these are recorded with its outcome too (when they
+ * are still pending), so a v2 user who later switches to Classic is not shown
+ * them again. `graduated` (D132: Team, Plans and Memory always on) is told by the
+ * welcome's Projects-and-Crews step; `two-themes` by its Appearance step.
+ */
+export const V2_COVERS: readonly string[] = ['graduated', 'two-themes'];
 
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
@@ -1130,6 +1157,88 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D131: Switchboard 2 ships the v2 theme; Classic stays one switch away.
+  {
+    id: 'two-themes',
+    decision: 'D131',
+    version: V2_0,
+    title: 'Two looks: v2 and Classic',
+    steps: [
+      {
+        id: 'theme',
+        title: 'Switch to v2 or back',
+        what: 'Switchboard 2 comes with a new design, v2, and keeps this one as Classic. Both show the same agents, folders and settings; the choice is kept in this browser (each phone chooses its own).',
+        todo: ['Press v2 to try the new design (Classic stays one switch away, in its Settings › Appearance).', 'Or make your choice the default for new browsers.'],
+        anchors: ['theme-switch'],
+        route: { view: 'settings', section: 'appearance' },
+        missing: 'Settings → Appearance has the Theme switch. ',
+      },
+    ],
+  },
+  // D131: the v2 theme's own tour, shown once on the first v2 load (src/web/v2/tour/).
+  {
+    id: V2_WELCOME_ID,
+    decision: 'D131',
+    version: V2_0,
+    title: 'Welcome to Switchboard 2',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'home',
+        title: 'Home and Needs you',
+        what: 'Home shows what needs you, what is working now and what was done today. Needs you is one queue for every question, approval and stop, from every agent and computer: answer right there, with Undo for a few seconds.',
+        todo: ['Answer the cards under Needs you (keys 1–9 work on a focused card).', 'Open Needs you for the full queue with its filters.'],
+        anchors: ['v2-home-needs', 'v2-needs'],
+        v2Route: '/',
+        missing: 'Home lists what needs you; the Needs you button shows its count. ',
+      },
+      {
+        id: 'start',
+        title: 'The start box',
+        what: 'Write what an agent should do and press Start agent; the folder and the computer next to it can be changed first. The chips under it start something else, such as a task, a project or a routine.',
+        todo: ['Describe the work in a sentence.', 'Check the folder and the computer, then press Start agent (⌘↩).'],
+        anchors: ['v2-start'],
+        v2Route: '/',
+        missing: 'The start box sits at the top of Home. ',
+      },
+      {
+        id: 'agents',
+        title: 'Agents and folders',
+        what: 'Every agent, grouped in your folders. List groups them by folder, Chats shows them like a messenger, Board sorts them by status.',
+        todo: ['Switch between List, Chats and Board.', 'Show or hide the folder tree with ⌘\\.'],
+        anchors: ['v2-agents-view', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Open Agents to see every agent in its folder. ',
+      },
+      {
+        id: 'agent',
+        title: 'One agent',
+        what: 'An agent is its chat, the changes it made, its results and its helpers. The side panel (⌘.) holds its details: computer, usage, routines and helpers. Each reply has a ⋯ menu: copy it, save it as a result, add it to tasks or undo from there.',
+        todo: ['Press ⌘. (or Details) to show or hide the side panel.', 'Hover a reply and open its ⋯ menu.'],
+        anchors: ['v2-agent-details'],
+        v2Route: 'agent',
+        missing: 'Start an agent from Home to see its view. ',
+      },
+      {
+        id: 'projects-crews',
+        title: 'Projects and Crews',
+        what: 'Projects split a bigger piece of work into steps that agents run in order; Crews are standing teams of agents (teammates) with roles. Both are always on now: Settings › Experimental is gone and the Jira connection is under Settings › Advanced › Jira.',
+        todo: ['Open Projects to plan work in steps.', 'Open Crews to give agents roles and a lead.'],
+        anchors: ['v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'Projects and Crews are in the rail (on a phone: under More). ',
+      },
+      {
+        id: 'appearance',
+        title: 'Prefer the old look?',
+        what: 'Settings › Appearance switches this browser back to Classic, the design of Switchboard 1, at once and without a reload. Everything stays where it is; you can come back any time.',
+        todo: ['Choose v2 or Classic for this browser.', 'Make your choice the default for new browsers if you like.'],
+        anchors: ['v2-theme'],
+        v2Route: '/settings/appearance',
+        missing: 'Settings › Appearance has the Theme switch. ',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
@@ -1141,6 +1250,16 @@ export function isTourId(id: string, registry: readonly WhatsNewFeature[] = WHAT
 export function tourSteps(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): readonly TourStep[] | null {
   if (id === MAIN_TOUR_ID) return MAIN_TOUR;
   return registry.find((feature) => feature.id === id)?.steps ?? null;
+}
+
+/** `true` for a tour of the v2 theme ({@link WhatsNewFeature.ui} `'v2'`); the main tour and every other tour are classic. */
+export function isV2Tour(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): boolean {
+  return registry.some((feature) => feature.id === id && feature.ui === 'v2');
+}
+
+/** The ids among `ids` a UI can run: the v2 tours in v2, every other tour in classic. */
+export function toursForUi(ids: readonly string[], ui: 'v2' | 'classic', registry: readonly WhatsNewFeature[] = WHATS_NEW): string[] {
+  return ids.filter((id) => isV2Tour(id, registry) === (ui === 'v2'));
 }
 
 /** `-1` / `0` / `1`; an unparseable version sorts before every parseable one. */
@@ -1212,6 +1331,23 @@ export function parseTourOutcome(body: unknown): TourOutcome | null {
   if (!body || typeof body !== 'object') return null;
   const status = (body as Record<string, unknown>)['status'];
   return status === 'completed' || status === 'skipped' ? { status } : null;
+}
+
+/**
+ * D131 · the tours that open by themselves in the v2 theme: its pending tours,
+ * and the welcome tour on any install where it was never shown (a brand-new
+ * install queues only the classic main tour, so the welcome stands in for it in
+ * v2; the main tour stays pending for a switch to Classic). Once finished or
+ * skipped it never opens again (one state per machine, like every tour).
+ */
+export function v2AutoTours(state: TutorialState, registry: readonly WhatsNewFeature[] = WHATS_NEW): string[] {
+  if (!state.autoOpen) return [];
+  return state.whatsNew.filter((entry) => isV2Tour(entry.id, registry) && (entry.status === 'pending' || (entry.id === V2_WELCOME_ID && entry.status === null))).map((entry) => entry.id);
+}
+
+/** D131 · the classic tours ({@link V2_COVERS}) to record with the v2 welcome's outcome: those still pending. */
+export function coveredByWelcome(state: TutorialState): string[] {
+  return state.whatsNew.filter((entry) => V2_COVERS.includes(entry.id) && entry.status === 'pending').map((entry) => entry.id);
 }
 
 /** The tours that open by themselves now, in order (the main tour first; it is never mixed with What's-new). */

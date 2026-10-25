@@ -11,7 +11,7 @@ Team was experimental behind Settings → **Experimental** → **Team** (`experi
 - **At start** `<dataDir>/team.db` is opened (created on first use, with the first team), the Team timers start (a one-minute tick and the 30-second sync) and member sessions leave the sidebar.
 - **No member:** nothing is hidden, no charter is added, and the sidebar shows no team entry above SESSIONS while only the first team exists with its default name (the nav grid's Team cell opens the page).
 - **Upgraded from 1.x with the switch off:** the stored `experimental.team` row is deleted; members kept in `team.db` from a time Team was on leave SESSIONS again, as switching Team on did in 1.x.
-- **Demo mode** never starts Team, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
+- **Demo mode** never starts Team, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*) and the demo's v2 layer (D131, `docs/demo.md` → *The v2 layer*).
 
 ## Storage
 

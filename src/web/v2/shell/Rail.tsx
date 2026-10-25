@@ -39,7 +39,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
       {RAIL_AREAS.map((area) => {
         const count = badge(area);
         return (
-          <V2Link key={area} to={TARGETS[area]} className="v2-nav-item" aria-current={current === area ? 'page' : undefined} data-testid={`v2-nav-${area}`} aria-label={count > 0 ? `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you` : RAIL_LABELS[area]}>
+          <V2Link key={area} to={TARGETS[area]} className="v2-nav-item" aria-current={current === area ? 'page' : undefined} data-testid={`v2-nav-${area}`} data-tour={`v2-nav-${area}`} aria-label={count > 0 ? `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you` : RAIL_LABELS[area]}>
             <Icon name={ICONS[area]} />
             <span className="v2-nav-label">{RAIL_LABELS[area]}</span>
             {count > 0 ? (

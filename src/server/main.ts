@@ -35,6 +35,7 @@ import { createUsageMeter, withAccountUsage, withCliUsage, withUsage } from './u
 import { loadDemoData } from './demo/data.ts';
 import { createFrameHelperOpener } from './tools/frame-helper.ts';
 import { demoFolderChecks } from './demo/folders.ts';
+import { seedDemoV2Api, seedDemoV2Files } from './demo/v2.ts';
 import { DeviceService } from './devices/service.ts';
 
 /**
@@ -108,6 +109,8 @@ async function main(): Promise<void> {
         });
     let providers: Providers = { diff: worktrees, solutions, system, loginService, ...(toolProxies ? { toolFrames: toolProxies } : {}) };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
+    // D131 · lane X: the demo's v2 layer (docs/demo.md → The v2 layer): rows before the app is built (plans.db before Plans opens it).
+    if (config.demoV2) await seedDemoV2Files(store, config.dataDir, await loadDemoData());
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
     // Max usage meter (M9.2, docs/usage.md): usagePct + warnings on providers.system, so on
@@ -193,6 +196,8 @@ async function main(): Promise<void> {
     // Installed before listening: a signal right after "Server listening" (tests stop
     // the server immediately) must still close cleanly with exit 0.
     requestExit = installShutdown(app);
+    // D131 · lane X: the rest of the demo's v2 layer through the app's own API (folders, crews, notes), before the port opens.
+    if (config.demoV2) await seedDemoV2Api(app, store, await loadDemoData(), { port: config.port, token, onError: (error) => app.log.error(error, 'demo v2 seed') });
     await listenLoopback(app, { port: config.port });
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.

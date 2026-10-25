@@ -41,8 +41,8 @@ export async function installTeam(app: FastifyInstance, context: TeamAppContext)
   await registerTeamRoutes(app, team);
   await registerAccessRoutes(app, team);
   app.addHook('onReady', async () => {
-    // Demo mode never starts Team, except for the README screenshots (`demoExtras`).
-    if (!context.config.demo || context.config.demoExtras) await team.init();
+    // Demo mode never starts Team, except for the README screenshots (`demoExtras`) and the v2 layer (`demoV2`, docs/demo.md).
+    if (!context.config.demo || context.config.demoExtras || context.config.demoV2) await team.init();
   });
   app.addHook('preClose', async () => {
     await team.close();
