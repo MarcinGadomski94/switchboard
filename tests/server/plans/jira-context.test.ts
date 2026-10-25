@@ -357,3 +357,27 @@ describe('D118 · plan_jira_context (the agent route)', () => {
     expect(still.json().error).toBe('not-jira');
   });
 });
+
+describe('D131 lane P · the developer’s read of the Jira context (GET /api/plans/{id}/jira/context)', () => {
+  it('answers the epic by default, an item’s ticket with the epic when named, and refuses a plan not from Jira', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r);
+    const epic = await r.app.inject({ method: 'GET', url: `/api/plans/${planId}/jira/context` });
+    expect(epic.statusCode, epic.body).toBe(200);
+    expect(epic.json()).toMatchObject({ planId, epicKey: 'PROJ-10', item: null });
+    expect(epic.json().text).toContain('Epic PROJ-10 Acme checkout');
+    expect(epic.json().text).not.toContain('Ticket PROJ-');
+    const item = await r.app.inject({ method: 'GET', url: `/api/plans/${planId}/jira/context?item=proj-15` });
+    expect(item.statusCode, item.body).toBe(200);
+    expect(item.json()).toMatchObject({ item: 'PROJ-15' });
+    expect(item.json().text).toContain('- PROJ-15 is blocked by PROJ-99 Mail service (In Progress)');
+    expect((await r.app.inject({ method: 'GET', url: `/api/plans/${planId}/jira/context?item=PROJ-77` })).statusCode).toBe(404);
+    expect((await r.app.inject({ method: 'GET', url: `/api/plans/${planId}/jira/context?part=nope` })).statusCode).toBe(422);
+    const plain = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Acme by hand', targetBranch: 'feature/acme' });
+    const refused = await r.app.inject({ method: 'GET', url: `/api/plans/${plain.id}/jira/context` });
+    expect(refused.statusCode).toBe(404);
+    expect(refused.json().error).toBe('not-jira');
+    // Read-only.
+    expect(r.fake.calls(/^POST /)).toEqual([]);
+  });
+});
