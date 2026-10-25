@@ -447,3 +447,30 @@ export const THEME_LABELS = {
   makeDefault: 'Make it the default for new browsers',
   isDefault: 'Default for new browsers',
 } as const;
+
+// ── Lane A · Agents, Notes, Routines, Tasks ─────────────────────────────
+// Lane A's words, one block per page (each page's own file edits only its block).
+
+/** Lane A · the Agents page: List / Chats / Board, the folder tree, Drafts, Closed. */
+export const AGENTS_WORDS = {
+  title: 'Agents',
+  sub: 'Every agent on every computer: conversations, teammates, routines and project steps too.',
+} as const;
+
+/** Lane A · the Tasks page (`/tasks`). */
+export const TASKS_WORDS = {
+  title: 'Tasks',
+  sub: 'Every agent’s tasks, with estimate vs actual.',
+} as const;
+
+/** Lane A · the Notes page (`/notes`, "What agents know"). */
+export const NOTES_WORDS = {
+  title: 'Notes',
+  sub: 'What agents know: facts agents proposed and you approved.',
+} as const;
+
+/** Lane A · the Routines page (`/routines`). */
+export const ROUTINES_WORDS = {
+  title: 'Routines',
+  sub: 'Work that runs on a schedule. Routines skip a run while they wait for you.',
+} as const;
