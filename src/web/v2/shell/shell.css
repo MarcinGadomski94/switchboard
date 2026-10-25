@@ -528,6 +528,19 @@
   }
 }
 
+/* Touch screens: the pill keeps its look, its tap area is 44 px high. */
+@media (pointer: coarse) {
+  .sb2 .v2-pill {
+    position: relative;
+  }
+
+  .sb2 .v2-pill::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
+  }
+}
+
 /* ── Phone ── */
 @media (max-width: 767px) {
   .sb2 .v2-pill {

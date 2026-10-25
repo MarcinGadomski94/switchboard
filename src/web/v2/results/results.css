@@ -72,15 +72,24 @@
 }
 
 .sb2 .v2-res-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
   flex: 0 1 280px;
   color: var(--v2-muted);
 }
 
+/* The magnifier sits inside the field (as on the Search page). */
+.sb2 .v2-res-search > .v2-i,
+.sb2 .v2-res-search > svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+}
+
 .sb2 .v2-res-search .v2-field {
   width: 100%;
+  padding-left: 34px;
 }
 
 .sb2 .v2-res-sync {
@@ -191,15 +200,24 @@
   text-overflow: ellipsis;
 }
 
-.sb2 .v2-res-sel {
+/* The box's tap area: 34 px on a mouse, 44 px on touch screens (the box itself 22 / 28 px). */
+.sb2 .v2-res-selhit {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 4px;
+  left: 4px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  cursor: pointer;
+}
+
+.sb2 .v2-res-sel {
   width: 22px;
   height: 22px;
   margin: 0;
   accent-color: var(--v2-accent);
-  z-index: 1;
   cursor: pointer;
 }
 
@@ -225,9 +243,9 @@
   transform: scale(0.55);
 }
 
-.sb2 .v2-res-grid[data-layout='list'] .v2-res-sel {
+.sb2 .v2-res-grid[data-layout='list'] .v2-res-selhit {
   position: static;
-  margin: 0 0 0 14px;
+  margin: 0 0 0 8px;
   order: -1;
   flex: none;
 }
@@ -417,6 +435,48 @@
   overflow: auto;
 }
 
+/* The rendered Markdown in v2 tokens (the classic renderer's rules use classic's dark-only colours: unreadable in light). */
+.sb2 .v2-res-doc .sb-md :where(h1, h2, h3, h4, h5, h6, strong, b, th) {
+  color: var(--v2-text);
+}
+
+.sb2 .v2-res-doc .sb-md a {
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-res-doc .sb-md code {
+  background: var(--v2-sunken);
+  border-color: var(--v2-border);
+  color: var(--v2-text);
+  font-family: var(--v2-mono);
+}
+
+.sb2 .v2-res-doc .sb-md pre code {
+  background: none;
+  color: inherit;
+}
+
+.sb2 .v2-res-doc .sb-md :where(th, td) {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-res-doc .sb-md th {
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-res-doc .sb-md blockquote {
+  border-left-color: var(--v2-border-strong);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-res-doc .sb-md hr {
+  border-top-color: var(--v2-border);
+}
+
+.sb2 .v2-res-doc .sb-md li.task-list-item input[type='checkbox'] {
+  border-color: var(--v2-border-strong);
+}
+
 .v2-res-source {
   margin: 0;
   padding: 14px;
@@ -552,6 +612,23 @@
   .sb2 .v2-res-sel {
     width: 28px;
     height: 28px;
+  }
+
+  .sb2 .v2-res-selhit {
+    top: 0;
+    left: 0;
+    width: 44px;
+    height: 44px;
+  }
+
+  .sb2 .v2-res-grid[data-layout='list'] .v2-res-selhit {
+    margin-left: 4px;
+  }
+
+  .v2-res-fchip[data-size='s'] {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
   }
 }
 

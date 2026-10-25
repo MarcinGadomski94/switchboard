@@ -343,6 +343,10 @@ export const HOME_WORDS = {
   testsRunning: 'automatic tests running',
   combined: 'combined',
   download: 'Download',
+  // Lane X · P1: why Start agent is disabled (its tooltip).
+  startNeedsText: 'Type what the agent should do first',
+  startComputerOffline: 'The chosen computer is not online',
+  startLoadingFolders: 'Loading the folders…',
 } as const;
 
 /** Lane H · the Needs-you page (`/needs-you`). */
@@ -429,6 +433,8 @@ export const ANSWER = {
   youPicked: (items: readonly string[]): string => `You picked ${items.join(', ')}`,
   gotIt: 'Got it',
   done: 'Done',
+  // Lane X · P1: why Send answer is disabled (its tooltip).
+  answerEveryQuestion: 'Answer every question first',
 } as const;
 
 /**
@@ -960,6 +966,8 @@ export const PALETTE_WORDS = {
     closed: 'Closed agents (history)',
     pairPhone: 'Pair a phone',
     addComputer: 'Add a computer',
+    // Lane X · P1: the prototype's direct replay of the v2 welcome tour.
+    replayTour: 'Replay tour: what’s new in Switchboard 2',
   },
 } as const;
 

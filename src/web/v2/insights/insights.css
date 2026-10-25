@@ -221,6 +221,16 @@
     min-height: 44px;
   }
 
+  .sb2 .v2-ins-ph {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  /* The range switch sits under the line, not 26 + 16 px below it. */
+  .sb2 .v2-ins-ph .v2-page-sub {
+    margin-bottom: 0;
+  }
+
   .sb2 .v2-ins-ph .v2-seg {
     width: 100%;
   }

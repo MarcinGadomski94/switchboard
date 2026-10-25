@@ -5,6 +5,7 @@
  */
 import type { SessionListItem } from '../../../core/api.ts';
 import { isChat } from '../../../core/chats.ts';
+import { V2_WELCOME_ID } from '../../../core/tutorial.ts';
 import { SETTINGS_SECTIONS } from '../../views/settings/model.ts';
 import { PALETTE_WORDS, RAIL_LABELS, SETTINGS_LABELS, WORDS } from '../glossary.ts';
 import { V2_SETTINGS_SECTIONS } from '../routes.ts';
@@ -142,7 +143,7 @@ export function pageRows(): PaletteRow[] {
   ];
 }
 
-/** The actions (New …, quick task, search, theme, shortcuts, tours, routines). */
+/** The actions (New …, quick task, search, theme, shortcuts, the v2 welcome tour's replay, tours, routines). */
 export function actionRows(): PaletteRow[] {
   const a = PALETTE_WORDS.actions;
   const run = (id: string, label: string, icon: string, keywords: string, hint?: string, arg?: string): PaletteRow => ({ id: `action:${id}${arg ? `:${arg}` : ''}`, group: 'actions', icon, label, keywords, ...(hint ? { hint } : {}), action: { run: id, ...(arg ? { arg } : {}) } });
@@ -161,6 +162,7 @@ export function actionRows(): PaletteRow[] {
     run('scheme', a.dark, 'moon', 'theme dark look scheme night', undefined, 'dark'),
     run('scheme', a.system, 'half', 'theme automatic system look scheme', undefined, 'system'),
     run('shortcuts', a.shortcuts, 'cmd', 'keyboard shortcuts keys help', '?'),
+    run('replay-tour', a.replayTour, 'sparkle', 'tour tours whats new replay welcome switchboard 2 v2', undefined, V2_WELCOME_ID),
     { id: 'action:tours', group: 'actions', icon: 'sparkle', label: a.tours, keywords: 'tour tours whats new tutorial', action: { go: '/settings/advanced/tutorial' } },
     { id: 'action:routines', group: 'actions', icon: 'routine', label: a.routines, keywords: 'routines schedules loops', action: { go: '/routines' } },
     { id: 'action:pair-phone', group: 'actions', icon: 'qr', label: a.pairPhone, keywords: 'pair phone qr device', action: { go: '/settings/phones' } },

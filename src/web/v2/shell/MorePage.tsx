@@ -1,5 +1,5 @@
-import { Icon } from '../components/index.ts';
-import { RAIL_LABELS, STATUS, TERMS, WORDS } from '../glossary.ts';
+import { Icon, StatusBadge } from '../components/index.ts';
+import { RAIL_LABELS, TERMS, WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import type { StatusPill } from './status-model.ts';
 import type { RailCounts } from './useShellData.ts';
@@ -74,9 +74,7 @@ export function MorePage({ pill, counts }: { readonly pill: StatusPill; readonly
                 {row.self ? 'this one' : row.detail}
               </div>
             </div>
-            <span className="v2-chip" data-size="s" data-tone={STATUS[row.state].tone}>
-              {STATUS[row.state].label}
-            </span>
+            <StatusBadge status={row.state} size="s" />
           </div>
         ))}
       </div>

@@ -122,3 +122,18 @@ test('phone (390 × 844, touch only): the top bar\'s ⌘K button opens the palet
   await palette.locator('.v2-cmd').first().click();
   await expect(page).toHaveURL(`${world.baseUrl}/crews`);
 });
+
+test('⌘K replays the v2 welcome tour directly: "Replay tour: what’s new in Switchboard 2" (lane X)', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const palette = page.getByTestId('v2-palette');
+  await page.keyboard.press('ControlOrMeta+k');
+  await expect(palette).toBeVisible();
+  await page.keyboard.type('replay tour');
+  const first = palette.locator('.v2-cmd').first();
+  await expect(first).toHaveAttribute('data-command', 'action:replay-tour:welcome-v2');
+  await expect(first).toContainText('Replay tour: what’s new in Switchboard 2');
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.getByTestId('v2-tour')).toHaveAttribute('data-tour-id', 'welcome-v2');
+  await expect(page.getByTestId('v2-tour-card')).toBeVisible();
+});

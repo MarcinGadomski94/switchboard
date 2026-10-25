@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionListItem } from '../../src/core/api.ts';
+import { V2_WELCOME_ID, isV2Tour } from '../../src/core/tutorial.ts';
 import {
   type PaletteRow,
   actionRows,
@@ -83,6 +84,15 @@ describe('⌘K · pages, actions and links', () => {
     const kinds = actions.filter((r) => 'run' in r.action && r.action.run === 'new').map((r) => ('run' in r.action ? r.action.arg : ''));
     expect(kinds).toEqual(['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew']);
     expect(rankRows(actions, 'classic')[0]?.id).toBe('action:theme-classic');
+  });
+
+  it('replays the v2 welcome tour directly (the prototype\'s "Replay tour: what\'s new in Switchboard 2")', () => {
+    const replay = actionRows().find((r) => r.id === `action:replay-tour:${V2_WELCOME_ID}`);
+    expect(replay?.label).toBe('Replay tour: what’s new in Switchboard 2');
+    expect(replay?.action).toEqual({ run: 'replay-tour', arg: V2_WELCOME_ID });
+    expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
+    expect(rankRows(actionRows(), 'replay tour')[0]?.id).toBe(replay?.id);
+    expect(rankRows(actionRows(), 'whats new').map((r) => r.id)).toContain(replay?.id);
   });
 
   it('links results, search hits and the search page', () => {

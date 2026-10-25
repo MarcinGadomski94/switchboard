@@ -96,6 +96,8 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
   const chosen = list?.find((f) => f.id === folder) ?? null;
   const offline = machine !== null && machines.find((m) => m.id === machine)?.state !== 'online';
   const ready = canStartFrom(text) && !busy && !offline && list !== null;
+  // Why Start agent is disabled (its tooltip); none while it starts.
+  const why = ready || busy ? undefined : offline ? HOME_WORDS.startComputerOffline : !canStartFrom(text) ? HOME_WORDS.startNeedsText : HOME_WORDS.startLoadingFolders;
 
   const computers = useMemo(
     () => [
@@ -155,7 +157,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
           {HOME_WORDS.startLabel}
         </label>
         <textarea id="v2-start-text" rows={1} value={text} placeholder={HOME_WORDS.startPhonePlaceholder} onChange={(event) => setText(event.currentTarget.value)} onKeyDown={onKey} data-testid="v2-start-text" />
-        <Button type="submit" variant="primary" aria-label={HOME_WORDS.startAgent} disabled={!ready} data-testid="v2-start-go" className="v2-home-pstart-go">
+        <Button type="submit" variant="primary" aria-label={HOME_WORDS.startAgent} disabled={!ready} title={why} data-testid="v2-start-go" className="v2-home-pstart-go">
           <Icon name="sparkle" />
         </Button>
         {error ? (
@@ -222,7 +224,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
         <Button variant="ghost" size="sm" onClick={() => more('agent')} data-testid="v2-start-more">
           {HOME_WORDS.moreOptions}
         </Button>
-        <Button variant="primary" icon="sparkle" kbd="⌘↩" disabled={!ready} onClick={() => void start()} data-testid="v2-start-go">
+        <Button variant="primary" icon="sparkle" kbd="⌘↩" disabled={!ready} title={why} onClick={() => void start()} data-testid="v2-start-go">
           {busy ? HOME_WORDS.starting : HOME_WORDS.startAgent}
         </Button>
       </div>
