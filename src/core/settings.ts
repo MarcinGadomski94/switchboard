@@ -34,6 +34,13 @@ export interface KnownSettings {
   /** D106: the sidebar's CHATS section is folded to its header. Editable, default `false`. */
   readonly 'ui.chatsCollapsed': boolean;
   /**
+   * D131 (`docs/v2.md` → *Two themes*): the UI a browser shows when it has no choice of its own
+   * (each browser / phone may override it in Settings, kept in its `localStorage`): `v2` (the
+   * Switchboard 2 UI) or `classic` (the 1.x UI). Editable, default `v2` (the service's
+   * `SWITCHBOARD_UI_THEME_DEFAULT` may set another default; tests use `classic`).
+   */
+  readonly 'ui.theme': UiTheme;
+  /**
    * D56: the New-session dialog's last used mode (`simple`: folder, message,
    * title, model, own worktree; `full`: the router form). Editable, default
    * `simple` (a fresh install opens the simple form).
@@ -139,6 +146,20 @@ export interface KnownSettings {
   readonly 'github.prPollMinutes': number;
 }
 
+/** D131: the two UIs (`docs/v2.md`). */
+export const UI_THEMES = ['v2', 'classic'] as const;
+
+/** D131: a UI theme. */
+export type UiTheme = (typeof UI_THEMES)[number];
+
+/** D131: the default theme of a fresh install. */
+export const DEFAULT_UI_THEME: UiTheme = 'v2';
+
+/** D131: `true` for one of {@link UI_THEMES}. */
+export function isUiTheme(value: unknown): value is UiTheme {
+  return typeof value === 'string' && (UI_THEMES as readonly string[]).includes(value);
+}
+
 /** D56: the New-session dialog's modes (`docs/new-session.md` → *Simple mode (D56)*). */
 export const NEW_SESSION_MODES = ['simple', 'full'] as const;
 
@@ -210,7 +231,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -228,6 +249,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'ui.toolsCollapsed': false,
   'ui.sessionsCollapsed': false,
   'ui.chatsCollapsed': false,
+  // D131: the v2 UI unless the service or the browser says otherwise.
+  'ui.theme': DEFAULT_UI_THEME,
   'newSession.mode': 'simple',
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
@@ -288,6 +311,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'ui.toolsCollapsed': bool('ui.toolsCollapsed', SETTING_DEFAULTS['ui.toolsCollapsed']),
     'ui.sessionsCollapsed': bool('ui.sessionsCollapsed', SETTING_DEFAULTS['ui.sessionsCollapsed']),
     'ui.chatsCollapsed': bool('ui.chatsCollapsed', SETTING_DEFAULTS['ui.chatsCollapsed']),
+    'ui.theme': isUiTheme(value['ui.theme']) ? value['ui.theme'] : SETTING_DEFAULTS['ui.theme'],
     'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),

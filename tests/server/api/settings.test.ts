@@ -89,6 +89,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'ui.toolsCollapsed': false,
       'ui.sessionsCollapsed': false,
       'ui.chatsCollapsed': false,
+      // D131: the v2 UI unless the service or the browser says otherwise.
+      'ui.theme': 'v2',
       'newSession.mode': 'simple',
       'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
       'agents.standingInstruction.enabled': true,
@@ -344,6 +346,35 @@ describe('settings helpers (M8.2)', () => {
     }
     const readOnly = await call('PUT', '/api/settings', { 'power.estimateDefaults': { cpuIdleW: 1, cpuMaxW: 2, baseW: 3 } });
     expect(readOnly.statusCode).toBe(422);
+  });
+
+  it('D131 · ui.theme: v2 by default, the service default from SWITCHBOARD_UI_THEME_DEFAULT until stored, only v2 / classic accepted', async () => {
+    await setup();
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.theme': 'v2' });
+    const saved = await call('PUT', '/api/settings', { 'ui.theme': 'classic' });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ 'ui.theme': 'classic' });
+    expect(await store!.settings.getAll()).toEqual({ 'ui.theme': 'classic' });
+    const bad = await call('PUT', '/api/settings', { 'ui.theme': 'dark' });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'ui.theme' }] });
+    expect(readKnownSettings({ 'ui.theme': 'nope' })['ui.theme']).toBe('v2');
+    expect(readKnownSettings({ 'ui.theme': 'classic' })['ui.theme']).toBe('classic');
+  });
+
+  it('D131 · SWITCHBOARD_UI_THEME_DEFAULT sets the default until ui.theme is stored; anything else is a config error', async () => {
+    tmp = await makeTempDir('api-settings-theme');
+    store = await openTempStore(path.join(tmp, 'data'));
+    token = generateToken();
+    const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'), SWITCHBOARD_UI_THEME_DEFAULT: 'Classic' }, platform: 'linux', home: tmp, cwd: tmp });
+    expect(base.uiThemeDefault).toBe('classic');
+    app = await buildApp({ config: { ...base, port: PORT }, token, store, webRoot: tmp });
+    await app.ready();
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.theme': 'classic' });
+    await call('PUT', '/api/settings', { 'ui.theme': 'v2' });
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.theme': 'v2' });
+    expect(loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }).uiThemeDefault).toBeUndefined();
+    expect(() => loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp, SWITCHBOARD_UI_THEME_DEFAULT: 'dark' }, platform: 'linux', home: tmp, cwd: tmp })).toThrow(/SWITCHBOARD_UI_THEME_DEFAULT/);
   });
 
   it('readKnownSettings (UI side) falls back to defaults / unknown for missing or mistyped values', () => {

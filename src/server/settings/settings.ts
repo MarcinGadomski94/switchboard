@@ -14,6 +14,8 @@ import {
   WARN_AT_PCT_MIN,
   isEditableSetting,
   isNewSessionMode,
+  isUiTheme,
+  type UiTheme,
 } from '../../core/settings.ts';
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
@@ -57,7 +59,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * keys (`EDITABLE_SETTINGS`). D82's `sessions.modelRules` is a rule list (`parseModelRules`; the
  * route then checks each model and profile, {@link checkModelRules}). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D80 `sessions.checkpoints` / D81 `sessions.todoEnrich` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden`, D101's `ui.toolsCollapsed` and D106's `ui.sessionsCollapsed` / `ui.chatsCollapsed` are booleans,
- * `usage.warnAtPct` a whole number 1–100, D83's `sessions.freshOfferPct` a whole number 50–95 (`sessions.freshOffer` a boolean), D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
+ * `usage.warnAtPct` a whole number 1–100, D83's `sessions.freshOfferPct` a whole number 50–95 (`sessions.freshOffer` a boolean), D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`, D131's `ui.theme` `v2` or `classic`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
@@ -104,6 +106,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       // D56: the New-session dialog's last used mode.
       if (!isNewSessionMode(raw)) {
         errors.push({ field: key, message: `${key} must be "simple" or "full"` });
+        continue;
+      }
+    } else if (key === 'ui.theme') {
+      // D131: the default UI theme.
+      if (!isUiTheme(raw)) {
+        errors.push({ field: key, message: `${key} must be "v2" or "classic"` });
         continue;
       }
     } else if (key === 'agents.standingInstruction') {
@@ -189,7 +197,7 @@ export async function routerTitle(workspaceRoot: string | null): Promise<string 
  */
 export async function readSettings(
   repo: SettingRepository,
-  config: Pick<ServerConfig, 'host' | 'port'>,
+  config: Pick<ServerConfig, 'host' | 'port'> & { readonly uiThemeDefault?: UiTheme | undefined },
   defaultFolder: Pick<FolderRecord, 'path' | 'kind'> | null,
 ): Promise<KnownSettings> {
   const stored = await repo.getAll();
@@ -199,6 +207,8 @@ export async function readSettings(
       const fallback = SETTING_DEFAULTS[key];
       // D56: the mode is one of two words; anything else stored reads as the default.
       if (key === 'newSession.mode') return [key, isNewSessionMode(value) ? value : fallback];
+      // D131: until stored, the service's default theme (`SWITCHBOARD_UI_THEME_DEFAULT`), else `v2`.
+      if (key === 'ui.theme') return [key, isUiTheme(value) ? value : (config.uiThemeDefault ?? fallback)];
       // D109: an unknown merge method reads as the default.
       if (key === 'ci.mergeMethod') return [key, isCiMergeMethod(value) ? value : fallback];
       // D68: an earlier default text reads as the current default (it gains the todo sentence).

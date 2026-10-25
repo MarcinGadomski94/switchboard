@@ -101,6 +101,20 @@ export interface ServerConfig {
    * (whole milliseconds, 100–600000; default 30 s). Meant for tests.
    */
   readonly powerSampleMs?: number;
+  /**
+   * D131: `SWITCHBOARD_UI_THEME_DEFAULT` (`v2` or `classic`), the UI a browser shows until
+   * `ui.theme` is stored and the browser has no choice of its own (`docs/v2.md`). Absent = `v2`.
+   * The E2E servers set `classic` (`tests/helpers/server-process.ts`).
+   */
+  readonly uiThemeDefault?: 'v2' | 'classic';
+}
+
+/** D131: `SWITCHBOARD_UI_THEME_DEFAULT`, else a {@link ConfigError}; unset or blank = none. */
+function uiThemeDefault(raw: string | undefined): { readonly uiThemeDefault?: 'v2' | 'classic' } {
+  const value = raw?.trim().toLowerCase() ?? '';
+  if (value === '') return {};
+  if (value !== 'v2' && value !== 'classic') throw new ConfigError('SWITCHBOARD_UI_THEME_DEFAULT must be "v2" or "classic"');
+  return { uiThemeDefault: value };
 }
 
 /** D73: a test origin of the device listener (loopback http with a port), else a {@link ConfigError}. */
@@ -266,5 +280,6 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     pushTestEndpoints: parsePushTestEndpoints(env['SWITCHBOARD_PUSH_TEST_ENDPOINTS']),
     ...(env['SWITCHBOARD_POWER_TEST_FILE']?.trim() ? { powerTestFile: path.resolve(cwd, env['SWITCHBOARD_POWER_TEST_FILE'].trim()) } : {}),
     ...powerSampleMs(env['SWITCHBOARD_POWER_SAMPLE_MS']),
+    ...uiThemeDefault(env['SWITCHBOARD_UI_THEME_DEFAULT']),
   };
 }

@@ -51,7 +51,8 @@ export const TEST_SERVICE_HOME = path.join(os.tmpdir(), `switchboard-test-servic
  * tutorial's tours do not open by themselves. The per-user
  * service redirected to {@link TEST_SERVICE_HOME} with tools/fake-servicectl as the
  * manager (the two are set together), so no test server reads or registers the
- * real login service. D125: no power reading (`tests/fixtures/power-none.json`).
+ * real login service. D125: no power reading (`tests/fixtures/power-none.json`). D131: the
+ * classic UI (`SWITCHBOARD_UI_THEME_DEFAULT`), which the specs before v2 were written for.
  */
 export function testServerDefaults(): Record<string, string> {
   return {
@@ -78,6 +79,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_TEST_SECRET_STORE: 'memory',
     // D125: no power reading (never this machine's real battery / GPU, which differ per machine); power specs set their own.
     SWITCHBOARD_POWER_TEST_FILE: path.join(REPO_ROOT, 'tests', 'fixtures', 'power-none.json'),
+    // D131: the specs written for the classic UI keep it (a v2 spec sets `v2`, or picks it per page: tests/e2e/v2-world.ts).
+    SWITCHBOARD_UI_THEME_DEFAULT: 'classic',
   };
 }
 
