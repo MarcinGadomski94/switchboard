@@ -57,3 +57,33 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED G8 · the state routes keep `enabled`.** `GET /api/{team,plans,memory}/state` still answers `enabled` (always `true` outside demo mode) so a 1.x peer or an older page reading them keeps working; `available` remains the field that matters (false only for a broken database).
 - **ASSUMED G9 · a What's-new tour for the graduation.** Existing installs that had the features off would otherwise see three new sidebar cells unexplained, so a short `graduated` tour (D132, version 2.0.0) points at the Plans, Team and Memory cells and says Settings → Experimental is gone and the Jira connection moved. Lane X's "Welcome to Switchboard 2" tour is separate; the orchestrator may merge them.
 - **ASSUMED G10 · the removal docs stay as the wiring map.** `docs/*-removal.md` became short "graduated" notes that keep the hook table (file → hook) as *How it is wired*; the `removal.test.ts` files still check the markers against those tables. The 1.x step-by-step removal procedure is in the files' git history.
+
+## Lane S · The agent view (2026-10-25)
+
+### Chat
+- **ASSUMED** the chat is built from the classic chat model (`chatItems`), so it shows exactly what the classic chat shows; v2 only regroups it: agent text = a reply, every run of tool steps between two texts = one activity row, Agent / Task calls = one helpers thread. (S)
+- **ASSUMED** "reply N" counts reply groups (a turn's texts within 10 minutes of each other share the first one's number and line); a pause of more than 45 minutes draws a time divider ("2 hours later · 16:42", or the day). (S)
+- **ASSUMED** an activity row's words come from its step labels (`Read · a.ts` → "Read a.ts"; several: "Read 2 files · edited 1 file · ran 2 commands"; a test command reads "Ran tests"); its time is the first step's start to the last step's end, shown from 1 s. (S)
+- **ASSUMED** a waiting question batch shows as the shared `AnswerSlot` at its place in the chat; the agent's other waiting items (permissions, asks, stopped…) show as cards at the chat's end. Once answered here the compact line stays (the store's answered map); an answer from elsewhere shows the server's record ("You answered …"). (S)
+- **ASSUMED** results (artifacts) show as file attachments after the last message older than their first save; one opens the Results tab with the result in a drawer (`/agents/:id/results/:resultId`). Lane R's global result drawer was not there yet, so the agent view has its own (versions, rendered / source, the classic viewer's rules). (S)
+- **ASSUMED** the reply ⋯ menu's **Save as result** saves the reply's Markdown (kind markdown) and a code block's own button saves the block (kind code); **Add to tasks** captures the selection (else the reply's first sentence) as a todo (`POST …/todos/capture`, `from: selection`); **Undo from here** is the D80 revert to before the turn that produced the reply (disabled with the reason when it has no save point or a turn runs). (S)
+- **ASSUMED** the developer's message bubbles keep the classic Markdown renderer; "the task" origin is not shown (it is the first message). (S)
+
+### Composer
+- **ASSUMED** both Enter and ⌘↩ (Ctrl+Enter) send, Shift+Enter is a new line (D26 kept; the prototype shows ⌘↩). (S)
+- **ASSUMED** messages the agent has not taken up move from the chat into the dock: queued (`turn` / `resume`, and D114's on-their-way while a turn runs) and paused (`credits`, D103). A queued message is already in the CLI's input, so it cannot be edited or removed alone: **Send now** stops the reply and sends what the Stop took back at once; **Edit** stops the reply and puts every queued message back into the box (D50's rule); **Remove** is disabled with the reason. (S)
+- **ASSUMED** "Send with paid extra" on a paused message has no per-message route (D103 holds messages only by the setting): the button goes to Settings › Usage & accounts and its tooltip says so. Logged as a gap. (S)
+- **ASSUMED** the tasks strip above the box shows this agent's todos folded to one line ("Tasks · 1 of 3 done · <the one in progress>"), ticked from the list; the full todo cards stay in the classic UI. The working-memory strip shows from 50 %; past Settings → Sessions' threshold (between replies) it is the amber "Continue with a clean slate" offer (D83, Not now snoozes like classic). (S)
+
+### Header, panel, menus
+- **ASSUMED** Smart = an Opus model (else the CLI's default), Fast = a Sonnet model (else Haiku); the exact model and effort are under Advanced, the effort as **Thinking depth** (Light / Normal / Deep…). (S)
+- **ASSUMED** the folder in the header is the agent's sidebar folder path (D54/D58); a click is not wired (lane A owns the folder tree's selection). (S)
+- **ASSUMED** the side panel's groups are remembered per browser (`switchboard.v2.agentPanelGroups`), and the panel's hidden state, the density and Full width in `switchboard.v2.agentView`. On a tablet the panel is a drawer and on a phone a bottom sheet (opened by Details; not remembered). (S)
+- **ASSUMED** Background apps poll every 15 s like the classic section (there is no hub event for them). (S)
+- **ASSUMED** **Add a routine** creates the agent's own Switchboard loop (D94, `POST …/loops`) from a small dialog (what to do, how often); **Make a teammate** adds it to a chosen crew with an empty job description and asks its agent to draft one (D105 `askCharter`); **Return to agents** uses the crew roster to find the member. **Draft notes** is Project memory's `draft` (D107). **Open in the Claude app** turns Remote Control on if needed and opens its claude.ai link. **Move to computer** reuses the classic take-over dialog (D65), which still has the classic look. (S)
+- **ASSUMED** a helper's chat replaces the agent header with its own (back to the main chat, Esc too); helpers take no messages, so it has the live line and a note instead of a composer. (S)
+
+### Shared / shell
+- **ASSUMED** the shell renders `PeekHost` once (one added line in `shell/Shell.tsx`, next to the + New sheet), which also hosts the agent view's Undo-from-here and Save-as-result dialogs, so the full view and a peek over it never show two. (S)
+- **ASSUMED** the classic composer's send machinery is reused, not copied: `views/session/ChatTab.tsx` now exports `deliver`, `sendsSettled`, `composers`, `refusedNotes` and `COMPOSER_INSERT_EVENT` (no behaviour change), so a refused send finds whichever composer is open. (S)
+- **ASSUMED** `window.__sbV2Peek(id)` opens the peek (the E2E spec uses it; Home and Agents call `openPeek`). (S)
