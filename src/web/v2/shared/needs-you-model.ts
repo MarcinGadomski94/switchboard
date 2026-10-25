@@ -1,5 +1,6 @@
 import type { InboxAction, InboxItem, PermissionRequest, Question } from '../../../core/api.ts';
 import type { MemoryEntry } from '../../../core/memory.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import type { MachineState } from '../../../core/peers.ts';
 import type { TeamCharter, TeamNeedsYouItem, TeamRequest } from '../../../core/team.ts';
 import { type NeedsKind, SYSTEM_LABELS } from '../glossary.ts';

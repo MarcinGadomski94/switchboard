@@ -1,5 +1,6 @@
 import type { InboxItem, SystemInfo } from '../../../core/api.ts';
 import type { MemoryEntry } from '../../../core/memory.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import type { MachineState } from '../../../core/peers.ts';
 import type { TeamNeedsYouItem } from '../../../core/team.ts';
 import { usageGridLines } from '../../shell/format.ts';

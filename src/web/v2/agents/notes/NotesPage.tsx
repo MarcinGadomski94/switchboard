@@ -6,6 +6,7 @@ import { useMachineStateChange, useMachines } from '../../../api/useMachines.ts'
 import { useSessionListOf } from '../../../api/session-list.ts';
 import { memoryApi, refusalText } from '../../../memory/api.ts';
 import { reloadMemory } from '../../../memory/store.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { Button, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, IconButton, Select, Skeleton, StatusBadge, TextArea, TOAST_MS, useToast } from '../../components/index.ts';
 import { NOTES_WORDS } from '../../glossary.ts';
 import { useV2Router } from '../../nav.tsx';

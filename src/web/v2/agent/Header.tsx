@@ -5,6 +5,7 @@ import type { TeamSummary } from '../../../core/team.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { memoryApi } from '../../memory/api.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { teamApi } from '../../team/api.ts';
 import { offersHookedContinue } from '../../../core/hooked-continue.ts';
 import { openContinueHooked } from '../../hooked-continue/store.ts';

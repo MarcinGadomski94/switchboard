@@ -7,6 +7,7 @@
  */
 import type { MemoryDraftAnswer, MemoryEntry, MemoryScope, MemoryStatus } from '../../../../core/memory.ts';
 import { folderName, memoryOrder, scopeKindOf } from '../../../../core/memory.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { isChat, type KindOf } from '../../../../core/chats.ts';
 import { NOTES_WORDS } from '../../glossary.ts';
 

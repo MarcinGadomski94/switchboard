@@ -7,6 +7,7 @@ import { api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { memoryApi } from '../../memory/api.ts';
 import { useMemory } from '../../memory/store.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { usePlans } from '../../plans/store.ts';
 import { agentActivity, resumeBlocked } from '../../views/session/workflow-agents.ts';
 import { Button, Icon, StatusBadge } from '../components/index.ts';

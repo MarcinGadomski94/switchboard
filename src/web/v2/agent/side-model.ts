@@ -1,5 +1,6 @@
 import type { SessionDetail } from '../../../core/api.ts';
 import type { MemorySessionCount } from '../../../core/memory.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import type { SessionStatus } from '../../../core/model.ts';
 import { parseRemoteId } from '../../../core/peers.ts';
 import type { Plan } from '../../../core/plans.ts';

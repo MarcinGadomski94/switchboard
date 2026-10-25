@@ -39,5 +39,14 @@ Project memory's code lives in its own folders and files: `src/server/memory/` (
 | `src/server/team/service.ts` | imports `memoryMemberMoved`; calls it in `#followMove` after a member moved (its member-scoped memory goes with it); registers `memberOf` / `memberList` and `#memberRef` (and imports `TeamMemberRef`) |
 | `src/web/shell/SidebarSessions.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`; the ⋯ menu's "Draft memory from this session" |
 | `src/web/team/TeamPage.tsx` | imports `draft.ts` and `useMemory`; `memoryOn`, `draftAllMemory`, the `draft-memory` case of `pickMenu`, the two "Draft memory for all members" buttons, `withMemoryDraft` around `memberMenu(…)` |
+| `src/web/v2/agents/AgentsPage.tsx` | imports `draft.ts`; an agent's ⋯ menu offers "Draft notes" (D131 v2 Agents) |
+| `src/web/v2/agents/notes/NotesPage.tsx` | the v2 Notes page (D131): `memoryApi`, `refusalText`, `reloadMemory` and the `MemoryEntry` type |
+| `src/web/v2/agents/notes/notes-model.ts` | the v2 Notes page's pure part (D131): the memory types, `folderName`, `memoryOrder`, `scopeKindOf` |
+| `src/web/v2/agent/side-model.ts` | the v2 agent side panel's notes line (D131): the `MemorySessionCount` type |
+| `src/web/v2/agent/SideExtras.tsx` | the v2 agent side panel's "What agents know" line (D131): `memoryApi`, `useMemory`, `memoryCountTooltip` |
+| `src/web/v2/agent/Header.tsx` | the v2 agent ⋯ menu's "Draft notes" (D131): `memoryApi(…).draft` |
+| `src/web/v2/shared/needs-you-model.ts` | v2 Needs you (D131): a note waiting for approval is an item (the `MemoryEntry` type) |
+| `src/web/v2/shared/needs-you-store.ts` | v2 Needs you (D131): the store reads the waiting notes (the `MemoryEntry` type) |
+| `src/web/v2/shared/needs-you.ts` | v2 Needs you (D131): reads the waiting notes and approves / rejects them (`memoryApi`) |
 
 Removing Project memory now would be a new decision; the step-by-step removal procedure of 1.x is in this file's history (before D132).

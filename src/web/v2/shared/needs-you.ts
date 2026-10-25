@@ -4,6 +4,7 @@ import { api, onDeviceOrigin, withKeepalive } from '../../api/client.ts';
 import { onHubEvent, onHubStatus } from '../../api/useHub.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { memoryApi } from '../../memory/api.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { plansApi } from '../../plans/api.ts';
 import { teamApi } from '../../team/api.ts';
 import type { AnsweredWhere } from '../glossary.ts';

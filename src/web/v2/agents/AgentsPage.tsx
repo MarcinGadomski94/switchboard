@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 import { useLiveActivities } from '../../activity/useActivity.ts';
 import { draftAnswerText, draftMemory, offersMemoryDraft } from '../../memory/draft.ts';
+// Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import { useLayout } from '../../shell/useLayout.ts';
 import { Button, Card, Dialog, EmptyState, Icon, MenuButton, type MenuItem, Segmented, Skeleton, useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
