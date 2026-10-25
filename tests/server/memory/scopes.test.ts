@@ -2,7 +2,7 @@ import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MEMORY_BLOCK_START, MEMORY_SETTING, type MemoryEntry, memoryListText } from '../../../src/core/memory.ts';
+import { MEMORY_BLOCK_START, type MemoryEntry, memoryListText } from '../../../src/core/memory.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { migrate } from '../../../src/server/db/migrate.ts';
 import { failureText, runCommand, succeeded } from '../../../src/server/exec.ts';
@@ -99,11 +99,9 @@ async function setup(label = 'memory-scopes', options: { readonly peers?: Memory
   registerTeamHooks(store, {
     charterFor: async (sessionId) => (rig.members.some((member) => member.sessionId === sessionId) ? `CHARTER ${'x'.repeat(5_000)}` : null),
     roleOf: (sessionId) => rig.members.find((member) => member.sessionId === sessionId)?.name ?? null,
-    switchChanged: async () => undefined,
     memberOf: (sessionId) => rig.members.find((member) => member.sessionId === sessionId && member.here) ?? null,
     memberList: () => rig.members,
   });
-  await store.settings.set(MEMORY_SETTING, true);
   await memory.start();
   rigs.push(rig);
   return rig;

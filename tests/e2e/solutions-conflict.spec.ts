@@ -196,8 +196,7 @@ test('2026-10-14: a Team member writing in place is named and linked on the card
   if (!member) throw new Error('no acme-billing session');
   await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${member.id}`)).body?.status as string, { timeout: 20_000 }).toMatch(/^(idle|done|need)$/);
 
-  // Team on; the session becomes a member (it leaves the sidebar's SESSIONS).
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
+  // The session becomes a member (it leaves the sidebar's SESSIONS; D132: Team is always on).
   const adopted = await call(page, 'POST', '/api/team/members', { sessionId: member.id, name: 'Billing keeper' });
   expect(adopted.status, JSON.stringify(adopted.body)).toBe(201);
   await page.reload();
@@ -227,5 +226,6 @@ test('2026-10-14: a Team member writing in place is named and linked on the card
   // Its branch card's owner links to the member's session too.
   await expect(page.getByTestId('solution-detail').getByTestId('branch-owner').filter({ hasText: 'Acme billing' })).toHaveAttribute('href', `/sessions/${member.id}`);
 
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.team': false })).status).toBe(200);
+  // Back to a plain session (the next tests list it in SESSIONS).
+  expect((await call(page, 'POST', `/api/team/members/${adopted.body.id}/return`)).status).toBeLessThan(300);
 });

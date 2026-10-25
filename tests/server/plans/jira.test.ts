@@ -9,7 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
-import { PLANS_SETTING, type PlanChecks } from '../../../src/core/plans.ts';
+import { type PlanChecks } from '../../../src/core/plans.ts';
 import type { JiraPreview, PlanJiraState } from '../../../src/core/plans-jira.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
@@ -154,7 +154,6 @@ async function setup(options: { env?: 'fake' | 'none'; issues?: FakeIssue[] } = 
     async closeMergeNotice() {},
   };
   const errors: unknown[] = [];
-  await store.settings.set(PLANS_SETTING, true);
   const plans = new PlanService({ dataDir: dir, store, bus, todos, git, merger: new FakeMerger(git), env, clock, onError: (error) => errors.push(error) });
   await plans.start();
   const fake = await startFakeJira(options.issues);
@@ -268,7 +267,7 @@ describe('D99-Jira · import preview', () => {
     expect(r.fake.calls(/^POST /)).toEqual([]);
   });
 
-  it('refuses a missing epic key, an unknown epic, an unconfigured Jira and a switched-off Plans', async () => {
+  it('refuses a missing epic key, an unknown epic, an unconfigured Jira and an unavailable plans.db', async () => {
     const r = await setup();
     expect((await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'nothing here' })).body).toMatchObject({ error: 'invalid', errors: [{ field: 'epic' }] });
     expect((await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'PROJ-404' })).status).toBe(404);
@@ -276,17 +275,15 @@ describe('D99-Jira · import preview', () => {
     r.enabled = false;
     for (const [method, url] of [['POST', `/api/sessions/${r.sourceId}/plans/jira/preview`], ['POST', `/api/sessions/${r.sourceId}/plans/jira/import`], ['GET', '/api/plans/x/jira'], ['PUT', '/api/plans/x/jira'], ['POST', '/api/plans/x/jira/refresh'], ['GET', '/api/integrations/jira'], ['PUT', '/api/integrations/jira']] as const) {
       const answer = await call(r, method, url, method === 'GET' ? undefined : {});
-      expect([url, answer.status, answer.body?.error]).toEqual([url, 404, 'plans-off']);
+      expect([url, answer.status, answer.body?.error]).toEqual([url, 503, 'plans-unavailable']);
     }
   });
 
-  it('follows the core switch: Settings → Experimental → Plans off answers plans-off', async () => {
+  it('D132: no core switch: a stored 1.x Plans switch set to off changes nothing, the Jira routes answer', async () => {
     const r = await setup();
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    expect((await call(r, 'GET', '/api/integrations/jira')).body.error).toBe('plans-off');
-    expect((await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'PROJ-10' })).body.error).toBe('plans-off');
-    expect(r.fake.requests).toEqual([]);
+    await r.store.settings.set('experimental.plans', false);
+    expect((await call(r, 'GET', '/api/integrations/jira')).status).toBe(200);
+    expect((await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'PROJ-10' })).status).toBe(200);
   });
 
   it('answers 409 jira-not-configured without credentials', async () => {
@@ -478,7 +475,7 @@ describe('D99-Jira · write mode', () => {
     expect(r.fake.calls(/^GET \/rest\/api\/3\/issue\/PROJ-12\/transitions$/).length).toBe(asked);
   });
 
-  it('reads and writes nothing while Plans is off', async () => {
+  it('reads and writes nothing while plans.db is unavailable', async () => {
     const r = await setup();
     const { planId } = await importEpic(r, 'write');
     r.enabled = false;

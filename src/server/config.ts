@@ -36,8 +36,8 @@ export interface ServerConfig {
   readonly demo: boolean;
   /**
    * `SWITCHBOARD_DEMO_EXTRAS=1`, only with `demo` (`npm run screenshots`, `docs/demo.md` →
-   * *Screenshot extras*): demo mode also starts Team (D100) and Plans (D99), each still
-   * behind its own Settings → Experimental switch, and the footer reads the accounts'
+   * *Screenshot extras*): demo mode also seeds Team (D100) and Plans (D99) (always on
+   * since D132), and the footer reads the accounts'
    * stored usage (D66 / D103). Absent otherwise.
    */
   readonly demoExtras?: true;

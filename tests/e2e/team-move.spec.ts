@@ -29,7 +29,6 @@ test.afterAll(async () => {
 test('move dialog: the checks first, then Move; the member runs on the other machine', async ({ page }) => {
   test.setTimeout(150_000);
   const w = world as TakeoverWorld;
-  for (const node of [w.a, w.b]) expect((await node.call('PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
   const session = await startRepoSession(w.a, w.folders.a.alpha as string, 'tracker-run');
   const adopted = await w.a.call('POST', '/api/team/members', { sessionId: session.id, name: 'Tracker' });
   expect(adopted.status, JSON.stringify(adopted.body)).toBe(201);

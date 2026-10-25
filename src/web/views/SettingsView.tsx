@@ -19,8 +19,8 @@ import { CleanupSection } from './settings/CleanupSection.tsx';
 import { TutorialSection } from './settings/TutorialSection.tsx';
 import { CiSection } from './settings/CiSection.tsx';
 import { ProcessesSection } from './settings/ProcessesSection.tsx';
-// Team (D100) hook and Plans (D99) hook: the shared Experimental section (docs/team-removal.md, docs/plans-removal.md).
-import { ExperimentalSection } from './settings/ExperimentalSection.tsx';
+// Plans (D99) hook: the Jira connection's section (D132: it left Settings → Experimental; docs/plans-removal.md).
+import { JiraSection } from './settings/JiraSection.tsx';
 import './settings.css';
 
 function Section({ section, settings, save, onSaved }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved: (body: Settings) => void }) {
@@ -57,9 +57,9 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
       return <CleanupSection />;
     case 'tutorial':
       return <TutorialSection />;
-    // Team (D100) hook and Plans (D99) hook (docs/team-removal.md, docs/plans-removal.md).
-    case 'experimental':
-      return <ExperimentalSection settings={settings} save={save} />;
+    // Plans (D99) hook (docs/plans-removal.md).
+    case 'jira':
+      return <JiraSection />;
   }
 }
 

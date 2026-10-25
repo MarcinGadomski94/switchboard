@@ -6,12 +6,10 @@
  */
 export interface MemoryHooks {
   /**
-   * The approved-memory block for a session's folder (`null`: none, off, a chat, or no folder).
+   * The approved-memory block for a session's folder (`null`: none, a chat, or no folder).
    * Built from **approved** entries only (`docs/memory.md` → *The review gate*).
    */
   blockFor(session: MemorySessionRef): Promise<string | null>;
-  /** Settings → Experimental → Project memory was switched (`PUT /api/settings`). */
-  switchChanged(): Promise<void>;
   /** D107 follow-up 2026-10-15: a Team member moved to another machine (D65 / D110): its member-scoped entries go with it. */
   memberMoved?(move: MemoryMemberMove): Promise<void>;
   /** D107 follow-up 2026-10-16: a paired machine's Project memory changed (e.g. switched on there): retry its pending copies. */
@@ -54,7 +52,7 @@ export function registerMemoryHooks(store: object, hooks: MemoryHooks): () => vo
 
 /**
  * D64 seam (`sessions/instruction.ts`): the instruction `base` with the folder's approved memory
- * block appended (unchanged while off, for a chat, or without approved entries). Never throws:
+ * block appended (unchanged for a chat, or without approved entries). Never throws:
  * a broken `memory.db` gives the session its instruction without memory.
  */
 export async function withProjectMemory(store: object, session: MemorySessionRef, base: string | null): Promise<string | null> {
@@ -86,11 +84,7 @@ export function memoryPeerChanged(store: object, machineId: string): void {
  */
 export async function memoryInboxAction(store: object, payload: unknown, action: string): Promise<string | null> {
   const hooks = registry.get(store);
-  if (!hooks?.copyAction) return 'Project memory is off: switch it on in Settings → Experimental';
+  if (!hooks?.copyAction) return 'Project memory is not available (it has not started)';
   return hooks.copyAction(payload, action);
 }
 
-/** Settings seam: the Project memory switch changed. */
-export async function memorySwitchChanged(store: object): Promise<void> {
-  await registry.get(store)?.switchChanged();
-}

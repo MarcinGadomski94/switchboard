@@ -130,21 +130,19 @@ describe('D109 · import issues from GitHub', () => {
     const sources = (await ui('GET', `/api/sessions/${id}/todos/import/sources`)).json() as IssueImportSources;
     expect(sources.github).toEqual({ available: true, repos: ['fake/acme-web'], problem: null });
     expect(sources.jira.available).toBe(false);
-    expect(sources.jira.problem).toMatch(/Settings → Experimental/);
+    expect(sources.jira.problem).toMatch(/Settings → Jira/);
   });
 });
 
 describe('D109 · import issues from Jira', () => {
-  it('uses the Plans Jira connection (also with Plans switched off again): JQL or a project key, a link back, no duplicates', async () => {
+  it('uses the Plans Jira connection (Settings → Jira): JQL or a project key, a link back, no duplicates', async () => {
     jira = await startFakeJira();
     const id = await session('import-jira');
     // Without a connection: 409 with the explanation.
     expect((await ui('POST', `/api/sessions/${id}/todos/import/preview`, { source: 'jira', project: 'PROJ' })).json()).toMatchObject({ error: 'jira-unavailable' });
-    // The connection lives in Settings → Experimental → Plans: switch Plans on, connect, switch it off again.
-    expect((await ui('PUT', '/api/settings', { 'experimental.plans': true })).statusCode).toBe(200);
+    // The connection lives in Settings → Jira (D132: Plans is always on).
     const saved = await ui('PUT', '/api/integrations/jira', { baseUrl: jira.url, email: jira.email, token: jira.token });
     expect(saved.statusCode, saved.body).toBe(200);
-    expect((await ui('PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(200);
     expect(((await ui('GET', `/api/sessions/${id}/todos/import/sources`)).json() as IssueImportSources).jira).toEqual({ available: true, problem: null });
 
     const preview = await ui('POST', `/api/sessions/${id}/todos/import/preview`, { source: 'jira', jql: 'parent = PROJ-10 ORDER BY key' });

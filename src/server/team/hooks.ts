@@ -18,8 +18,6 @@ export interface TeamHooks {
   charterFor(sessionId: string): Promise<string | null>;
   /** The role name of a session (this machine's id or `r~<machine>~<id>`), `null` when it is not a member's. */
   roleOf(sessionId: string): string | null;
-  /** Settings → Experimental → Team was switched (`PUT /api/settings`). */
-  switchChanged(): Promise<void>;
   /** D100 follow-up 2026-10-14: the developer chose a model / effort for a session (its header's picker): a member's saved choice follows. */
   sessionModelChanged?(sessionId: string, model: string | null, effort: string | null): Promise<void>;
   /** D100-T2: the MCP servers of a member's ready access (no value in them). */
@@ -138,10 +136,6 @@ export function teamOriginalPlace(store: object, sessionId: string): { readonly 
   }
 }
 
-/** Settings seam: the Team switch changed. */
-export async function teamSwitchChanged(store: object): Promise<void> {
-  await registry.get(store)?.switchChanged();
-}
 
 /**
  * D68 seam (D100-T2): a member's access MCP servers are added to its `switchboard`

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
-import { PLANS_SETTING, type Plan } from '../../../src/core/plans.ts';
+import { type Plan } from '../../../src/core/plans.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { PlanGit, type PlanGitPort, type PlanRepoInput, type PlanRepoState } from '../../../src/server/plans/git.ts';
 import { type PlanEnvironment, PlanError, PlanService } from '../../../src/server/plans/service.ts';
@@ -86,7 +86,6 @@ async function setup(): Promise<Rig> {
   await w.git(repo, 'worktree', 'add', '-q', targetDir, TARGET);
   const bus = new HubBus();
   const todos = new TodoService({ store: w.store, bus });
-  await w.store.settings.set(PLANS_SETTING, true);
   const source = await w.store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: w.root, root: w.root, rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new SwitchGit(new PlanGit({ gh: fakeGhCommand(), env: w.env }), w);
   const partial = { w, repo, targetDir, bus, git, todos, notices: [], errors: [], beforeCut: null, sourceId: source.id } as unknown as Rig;
@@ -240,18 +239,6 @@ describe('D121 · auto-repair of falsely done items', () => {
     expect((await item(r, plan.id, 'PROJ-2')).note).toBe('started before PROJ-1 was merged — its branch may lack that work');
     expect((await item(r, plan.id, 'PROJ-1')).storedState).toBe('running');
     expect(r.errors).toEqual([]);
-  });
-
-  it('when Plans is switched on again (activation without a restart); the paused plan is repaired too', async () => {
-    const r = await setup();
-    const { plan } = await falselyDone(r);
-    await r.w.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    await r.w.store.settings.set(PLANS_SETTING, true);
-    await r.plans.switchChanged();
-    await settle(r);
-    expect((await r.plans.get(plan.id)).state).toBe('paused');
-    expect((await item(r, plan.id, 'PROJ-1')).storedState).toBe('running');
   });
 
   it('with its run session closed it is stopped (D120), and stays so', async () => {

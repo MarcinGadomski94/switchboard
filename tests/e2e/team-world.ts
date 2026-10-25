@@ -17,7 +17,7 @@ import { type QuestionWorld, startQuestionWorld } from './question-world.ts';
 export interface TeamWorld extends QuestionWorld {
   /** Calls the local API from the page (same origin, the sb_token cookie). */
   call(page: Page, method: string, url: string, body?: unknown): Promise<{ readonly status: number; readonly body: any }>;
-  /** Settings → Experimental → Team through `PUT /api/settings`. */
+  /** D132: Team is always on (no switch): asserts it is available; `false` is refused (there is no off-state). */
   setTeam(page: Page, on: boolean): Promise<void>;
   /** A sidebar folder named `name` (made once), and `sessionId` placed in it. */
   placeInFolder(page: Page, sessionId: string, name: string): Promise<string>;
@@ -93,8 +93,9 @@ export async function startTeamWorld(label: string, options: { readonly env?: Re
   return Object.assign(world, {
     call,
     async setTeam(page: Page, on: boolean) {
-      const answer = await call(page, 'PUT', '/api/settings', { 'experimental.team': on });
-      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      if (!on) throw new Error('D132: Team has no off-switch');
+      const answer = await call(page, 'GET', '/api/team/state');
+      expect(answer.body, JSON.stringify(answer.body)).toMatchObject({ enabled: true, available: true });
     },
     async placeInFolder(page: Page, sessionId: string, name: string) {
       let id = folders.get(name);

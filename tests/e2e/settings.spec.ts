@@ -136,6 +136,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'CI & pull requests',
     // D62: after the prototype's seven.
     'CLIs',
+    // D127: after CLIs.
+    'Processes',
     'Accounts',
     // D48: after the prototype's seven.
     'Machines',
@@ -145,8 +147,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Updates',
     // D85: after Updates.
     'Tutorial',
-    // D100: Team's switch, before Clean-up.
-    'Experimental',
+    // D132: the Jira connection (it replaced the Experimental section), before Clean-up.
+    'Jira',
     // D84: last.
     'Clean-up',
   ]);

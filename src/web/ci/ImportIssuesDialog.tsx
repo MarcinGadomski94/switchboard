@@ -22,7 +22,7 @@ function errorText(caught: unknown): string {
 /**
  * D109 · **Import issues…** (the Todos page and a session's todo strip): GitHub issues of a
  * repository (`gh`: open, a label, assigned to me) or Jira issues (a project key or JQL, through
- * the Jira connection of Settings → Experimental → Plans), a preview with checkboxes, then the
+ * the Jira connection of Settings → Jira), a preview with checkboxes, then the
  * ticked ones become the session's todos with a link back. Issues imported before are shown
  * ticked off and cannot be imported twice.
  */

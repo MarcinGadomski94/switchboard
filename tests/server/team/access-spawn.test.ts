@@ -29,7 +29,6 @@ describe('D100-T2 · delivery at spawn', () => {
     registerTeamHooks(w.store, {
       charterFor: async () => null,
       roleOf: () => null,
-      switchChanged: async () => undefined,
       accessEnv: async (sessionId): Promise<AccessEnv> => {
         const record = await w.store.sessions.get(sessionId);
         if (record?.name !== 'member-run') return { env: {}, secrets: [] };

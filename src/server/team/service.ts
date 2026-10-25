@@ -21,7 +21,6 @@ import {
   NO_BUDGET,
   REPORT_MAX,
   TEAMS_MAX,
-  TEAM_SETTING,
   type HandoffState,
   type SessionStatusLike,
   type TeamActivityKind,
@@ -182,13 +181,14 @@ const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'i
 export type { TeamMoveRun } from '../../core/team.ts';
 
 /**
- * D100 · Team (`docs/team.md`). Owns `team.db` (opened only while Team is on), the
- * members, hand-offs, requests and activity, the sync with paired machines and the
- * Team timers. **Off by default**: while off it opens nothing, runs no timer and
- * answers every hook with "nothing", so the rest of Switchboard behaves as before.
+ * D100 · Team (`docs/team.md`). Owns `team.db` (opened at start), the members, hand-offs,
+ * requests and activity, the sync with paired machines and the Team timers. D132: always on
+ * since 2.0 (no switch); with no member it hides nothing and injects nothing, so the rest of
+ * Switchboard behaves as before.
  */
 export class TeamService {
   readonly #o: TeamServiceOptions;
+  /** D132: `team.db` was opened (or tried) at start. */
   #enabled = false;
   #db: TeamDb | null = null;
   #problem: string | null = null;
@@ -269,7 +269,6 @@ export class TeamService {
       charterFor: (sessionId) => this.#charterFor(sessionId),
       sessionModelChanged: (sessionId, model, effort) => this.sessionModelChanged(sessionId, model, effort),
       roleOf: (sessionId) => this.#roles.get(sessionId) ?? null,
-      switchChanged: () => this.switchChanged(),
       // D100-T2: a member's access at its spawn (servers, environment, masking).
       accessServers: (sessionId) => this.access.serversFor(sessionId),
       accessEnv: (sessionId) => this.access.envFor(sessionId),
@@ -289,7 +288,7 @@ export class TeamService {
         return { folderId: place.place === 'folder' ? place.folderId : null, index: place.index };
       },
     });
-    await this.switchChanged();
+    await this.#open();
   }
 
   /** Stops everything and closes `team.db` (the app closes). */
@@ -309,31 +308,13 @@ export class TeamService {
     return { id: member.id, name: member.name, teamId: member.teamId, sessionId: member.sessionId, machineId: member.machineId, here: member.machineId === this.#selfId(), paused: member.paused };
   }
 
-  /** The stored switch (default off). */
-  async #switchOn(): Promise<boolean> {
-    return (await this.#o.store.settings.get(TEAM_SETTING)) === true;
-  }
-
   /**
-   * The switch was read again (start, or Settings changed it): on → `team.db` is
-   * opened (created on first use) and the timers start; off → the timers stop and
-   * the file is closed (it stays on disk; switching on again re-hides the members).
+   * D132 (Team graduated in 2.0, `docs/team-removal.md`): opens `team.db` (created on first
+   * use) once, at start, and starts the timers. There is no off-switch any more.
    */
-  async switchChanged(): Promise<void> {
-    if (this.#closed) return;
-    const on = await this.#switchOn();
-    if (on === this.#enabled && (on ? this.#db !== null || this.#problem !== null : true)) return;
-    this.#enabled = on;
-    if (!on) {
-      this.#stop();
-      this.#db?.close();
-      this.#db = null;
-      this.#problem = null;
-      this.#roles = new Map();
-      await this.#republishMembers();
-      this.#publish(['state']);
-      return;
-    }
+  async #open(): Promise<void> {
+    if (this.#closed || this.#enabled) return;
+    this.#enabled = true;
     this.#self = await this.#o.peers.self();
     this.#clock = new HybridClock(this.#self.id, () => this.#now());
     try {
@@ -392,9 +373,8 @@ export class TeamService {
     return { enabled: this.#enabled, available, problem: this.#enabled ? this.#problem : null, hiddenSessionIds: Object.keys(roles), roles };
   }
 
-  /** @throws {TeamError} 404 while Team is off, 503 while `team.db` is broken. */
+  /** @throws {TeamError} 503 while `team.db` is broken (or not open yet). */
   #need(): TeamDb {
-    if (!this.#enabled) throw new TeamError(404, 'team-off', 'Team is off: switch it on in Settings → Experimental');
     if (!this.#db) throw new TeamError(503, 'team-unavailable', this.#problem ?? 'team.db is not open');
     return this.#db;
   }
@@ -1524,7 +1504,7 @@ export class TeamService {
   /** `team_members`: the members, their charters and status, as text. */
   async membersText(asSessionId: string, team?: unknown): Promise<string> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member: the Team tools work only in a member's session");
     // Its own team by default; `team` (a name or id) lists another (D100 follow-up 2026-10-14).
     let teamId = me.teamId;
     if (typeof team === 'string' && team.trim() !== '') {
@@ -1551,7 +1531,7 @@ export class TeamService {
   /** `team_report`: a short status line in the activity feed. */
   async report(asSessionId: string, text: unknown): Promise<void> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member: the Team tools work only in a member's session");
     const line = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
     if (line === '' || line.length > REPORT_MAX) throw new TeamError(422, 'invalid', `text is required (one line, at most ${REPORT_MAX} characters)`);
     await this.#serial(async () => {
@@ -1785,7 +1765,7 @@ export class TeamService {
    */
   async proposeCharter(asSessionId: string, body: Record<string, unknown>): Promise<{ readonly requestId: string }> {
     const me = this.memberOfSession(asSessionId);
-    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
+    if (!me) throw new TeamError(404, 'not-a-member', "this session is not a team member: the Team tools work only in a member's session");
     const proposal = readCharter({ owns: body['owns'], produces: body['produces'], neverDoes: body['neverDoes'], howItWorks: body['howItWorks'] });
     if (!proposal) throw new TeamError(422, 'invalid', 'owns, produces, neverDoes and howItWorks must be text of at most 2,000 characters each');
     for (const field of ['owns', 'produces', 'neverDoes'] as const) {

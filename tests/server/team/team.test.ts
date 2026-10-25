@@ -2,7 +2,6 @@ import { access, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { addFolder, placeSession } from '../../../src/core/sidebar-layout.ts';
-import { TEAM_SETTING } from '../../../src/core/team.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { LoopService } from '../../../src/server/loops/owned.ts';
 import { TEAM_DB_FILE } from '../../../src/server/team/db.ts';
@@ -79,11 +78,6 @@ async function setup(options: { readonly hooked?: (id: string) => Promise<boolea
   return rig;
 }
 
-async function switchOn(r: Rig, on = true): Promise<void> {
-  await r.world.store.settings.set(TEAM_SETTING, on);
-  await r.team.switchChanged();
-}
-
 async function exists(file: string): Promise<boolean> {
   return access(file).then(
     () => true,
@@ -112,31 +106,32 @@ async function instructionAfterRestart(r: Rig, sessionId: string, before: number
   return at >= 0 ? (spawn.argv?.[at + 1] ?? null) : null;
 }
 
-describe('D100 · the switch', () => {
-  it('is off by default: no team.db, no timer, only the state route answers', async () => {
+describe('D132 · Team is always on', () => {
+  it('opens team.db at init (with its first team), starts its timers; with no member nothing is hidden', async () => {
     const r = await setup();
+    // A stored 1.x switch set to off changes nothing.
+    await r.world.store.settings.set('experimental.team', false);
     await r.team.init();
-    expect(r.team.state()).toEqual({ enabled: false, available: false, problem: null, hiddenSessionIds: [], roles: {} });
-    expect(r.team.activeTimers()).toBe(0);
-    expect(await exists(path.join(r.dataDir, TEAM_DB_FILE))).toBe(false);
-    await expect(r.team.view()).rejects.toMatchObject({ status: 404, code: 'team-off' });
-  });
-
-  it('creates the separate team.db only when switched on, and stops its timers when off again', async () => {
-    const r = await setup();
-    await r.team.init();
-    expect(await exists(path.join(r.dataDir, TEAM_DB_FILE))).toBe(false);
-    await switchOn(r);
     expect(await exists(path.join(r.dataDir, TEAM_DB_FILE))).toBe(true);
-    expect(r.team.state().available).toBe(true);
+    expect(r.team.state()).toEqual({ enabled: true, available: true, problem: null, hiddenSessionIds: [], roles: {} });
     expect(r.team.activeTimers()).toBeGreaterThan(0);
     expect((await r.team.view()).team.name).toBe('Team');
+    expect((await r.team.view()).members).toEqual([]);
     // The main database has no Team table (no migration there).
     const tables = r.world.store.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%team%'").all();
     expect(tables).toEqual([]);
-    await switchOn(r, false);
-    expect(r.team.activeTimers()).toBe(0);
-    expect(r.team.state().enabled).toBe(false);
+  });
+
+  it('a broken team.db: Team reports it, hides nothing and answers 503', async () => {
+    const r = await setup();
+    await writeFile(path.join(r.dataDir, TEAM_DB_FILE), 'this is not a database');
+    await r.team.init();
+    const state = r.team.state();
+    expect(state.enabled).toBe(true);
+    expect(state.available).toBe(false);
+    expect(state.problem).toMatch(/team\.db could not be opened/);
+    expect(state.hiddenSessionIds).toEqual([]);
+    await expect(r.team.view()).rejects.toMatchObject({ status: 503, code: 'team-unavailable' });
   });
 });
 
@@ -144,7 +139,6 @@ describe('D100 · adopt and return', () => {
   it('adopt hides the session, keeps its history and gives its agent the charter; return restores folder and position', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const other = await idleSession(r, 'other-one');
     const session = await idleSession(r, 'tracker-one');
     // The session sits second in a sidebar folder.
@@ -185,7 +179,6 @@ describe('D100 · adopt and return', () => {
   it('create starts a new session whose very first process already carries the charter', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const member = await r.team.create({ name: 'Release manager', templateId: 'release-manager', session: { task: 'Prepare the checklist.' } });
     expect(member.templateId).toBe('release-manager');
     expect(member.charter.neverDoes).toBe('Tags, publishes or deploys without approval.');
@@ -199,7 +192,6 @@ describe('D100 · adopt and return', () => {
   it('refuses a hooked terminal session (continue it in Switchboard first)', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const session = await r.world.store.sessions.create({ name: 'terminal-one', claudeSessionId: '0b7c3e0a-2222-4333-8444-955566667777', hooked: true, attached: true });
     const refused = await r.team.adopt({ sessionId: session.id, name: 'Tracker' }).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(TeamError);
@@ -207,42 +199,12 @@ describe('D100 · adopt and return', () => {
     expect((refused as Error).message).toMatch(/Continue it in Switchboard first/);
     expect(r.team.state().hiddenSessionIds).toEqual([]);
   });
-
-  it('switching Team off returns every member to the list; on again re-hides them; a broken team.db hides nothing', async () => {
-    const r = await setup();
-    await r.team.init();
-    await switchOn(r);
-    const a = await r.world.store.sessions.create({ name: 'a-one', claudeSessionId: 'aaaaaaaa-2222-4333-8444-955566667777', attached: true });
-    const b = await r.world.store.sessions.create({ name: 'b-one', claudeSessionId: 'bbbbbbbb-2222-4333-8444-955566667777', attached: true });
-    await r.team.adopt({ sessionId: a.id, name: 'Alpha' });
-    await r.team.adopt({ sessionId: b.id, name: 'Beta' });
-    expect([...r.team.state().hiddenSessionIds].sort()).toEqual([a.id, b.id].sort());
-    await switchOn(r, false);
-    expect(r.team.state().hiddenSessionIds).toEqual([]);
-    // No session was touched by hiding.
-    expect((await r.world.store.sessions.list({ closed: false })).map((s) => s.id).sort()).toEqual([a.id, b.id].sort());
-    await switchOn(r);
-    expect([...r.team.state().hiddenSessionIds].sort()).toEqual([a.id, b.id].sort());
-
-    // A broken file: Team reports it and hides nothing.
-    await switchOn(r, false);
-    await writeFile(path.join(r.dataDir, TEAM_DB_FILE), 'this is not a database');
-    await writeFile(path.join(r.dataDir, `${TEAM_DB_FILE}-wal`), '').catch(() => undefined);
-    await switchOn(r);
-    const state = r.team.state();
-    expect(state.enabled).toBe(true);
-    expect(state.available).toBe(false);
-    expect(state.problem).toMatch(/team\.db could not be opened/);
-    expect(state.hiddenSessionIds).toEqual([]);
-    await expect(r.team.view()).rejects.toMatchObject({ status: 503, code: 'team-unavailable' });
-  });
 });
 
 describe('D100 · pause, hand-offs, budgets', () => {
   it('pause stops its Team loops (and loops added meanwhile); resume starts only those again', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const session = await r.world.store.sessions.create({ name: 'watcher', claudeSessionId: 'cccccccc-2222-4333-8444-955566667777', attached: true });
     const loop = await r.loops.create(session.id, { prompt: 'Check the queue.', everyMinutes: 30 }, 'developer');
     const own = await r.loops.create(session.id, { prompt: 'Paused by the developer.', everyMinutes: 60 }, 'developer');
@@ -267,7 +229,6 @@ describe('D100 · pause, hand-offs, budgets', () => {
   it('a hand-off becomes a todo in the receiver and follows it to done', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const s1 = await r.world.store.sessions.create({ name: 'planner', claudeSessionId: 'dddddddd-2222-4333-8444-955566667777', attached: true });
     const s2 = await r.world.store.sessions.create({ name: 'builder', claudeSessionId: 'eeeeeeee-2222-4333-8444-955566667777', attached: true });
     const planner = await r.team.adopt({ sessionId: s1.id, name: 'Planner' });
@@ -293,7 +254,6 @@ describe('D100 · pause, hand-offs, budgets', () => {
   it('over its daily budget: its Team loops pause and a Needs-you item is raised; its turn is not touched', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const session = await r.world.store.sessions.create({ name: 'spender', claudeSessionId: 'ffffffff-2222-4333-8444-955566667777', attached: true });
     const loop = await r.loops.create(session.id, { prompt: 'Spend.', everyMinutes: 30 }, 'developer');
     const member = await r.team.adopt({ sessionId: session.id, name: 'Spender', budget: { dailyPct: 20, profileId: null } });
@@ -320,7 +280,6 @@ describe('D100 follow-up 2026-10-14 · the members\' order', () => {
   it('syncs as part of the team definition: a peer\'s newer order wins; an older peer\'s record without one keeps ours', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const ids: string[] = [];
     for (const [index, name] of ['Alpha', 'Bravo', 'Charlie'].entries()) {
       const session = await r.world.store.sessions.create({ name: name.toLowerCase(), claudeSessionId: `0000000${index}-2222-4333-8444-955566667777`, attached: true });
@@ -353,7 +312,6 @@ describe('D100 follow-up 2026-10-14 · multiple teams between paired machines', 
   it('teams sync as part of the definition: a peer\'s new team, its rename, order and deletion arrive; ours go out with their activity', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const ours = await r.team.createTeam({ name: 'Growth' });
     const s1 = await r.world.store.sessions.create({ name: 'seo', claudeSessionId: '10000000-2222-4333-8444-955566667777', attached: true });
     await r.team.adopt({ sessionId: s1.id, name: 'SEO', teamId: ours.id });
@@ -385,7 +343,6 @@ describe('D100 follow-up 2026-10-14 · drag to move between teams, on the other 
   it('a member moved to another team on a paired machine moves here too, and the page is told (teamChanged)', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const growth = await r.team.createTeam({ name: 'Growth' });
     const s1 = await r.world.store.sessions.create({ name: 'tracker', claudeSessionId: '20000000-2222-4333-8444-955566667777', attached: true });
     const tracker = await r.team.adopt({ sessionId: s1.id, name: 'Tracker' });
@@ -410,7 +367,6 @@ describe('D100 follow-up 2026-10-14 · the member\'s model', () => {
   it('a model chosen for a member changes its session\'s model (as the header\'s picker); a model not on offer is refused; a peer\'s choice is applied here', async () => {
     const r = await setup();
     await r.team.init();
-    await switchOn(r);
     const session = await idleSession(r, 'model-one');
     const member = await r.team.adopt({ sessionId: session.id, name: 'Builder' });
     await until(async () => !r.world.supervisor.turnRunning(session.id) || undefined, 'idle after adopt');

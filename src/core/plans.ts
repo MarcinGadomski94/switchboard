@@ -329,18 +329,15 @@ export interface Plan {
   readonly machine: { readonly id: string; readonly name: string; readonly state: string } | null;
 }
 
-/** The setting of Settings → Experimental → **Plans** (off by default; `docs/plans.md` → *The switch*). */
-export const PLANS_SETTING = 'experimental.plans';
-
 /** D115: why an item of a plan whose repositories are picked per item waits while it has none. */
 export const PLAN_PICK_REPOS_REASON = "Waiting for the plan's agent to pick repositories";
 
-/** Why a running plan was paused when Plans was switched off (shown on the plan; the developer resumes it). */
+/** Why a running plan was paused when a 1.x build's Plans switch went off (shown on the plan; the developer resumes it). D132: 2.0 has no switch, so nothing pauses for it any more. */
 export const PLANS_OFF_REASON = 'Plans was switched off';
 
-/** `GET /api/plans/state`: the switch (always answered, also while Plans is off). */
+/** `GET /api/plans/state` (always answered, also while `plans.db` is broken). */
 export interface PlansState {
-  /** Settings → Experimental → Plans. */
+  /** Always `true` since D132 (2.0: no switch); a 1.x paired machine may still answer `false`. */
   readonly enabled: boolean;
   /** On and `plans.db` open (the plan routes answer). */
   readonly available: boolean;
@@ -1150,7 +1147,6 @@ export function pickReposMessage(input: {
     `Decide which solutions each item's work touches (todo_get for an item's full details), then call plan_set_solutions once with plan_id ${input.planId} and items: [{ item: <key or id>, solutions: [...] }] for every item above. It is applied at once; the developer can change an item's repositories later. Do not start any work yourself.`,
   ].join('\n\n');
 }
-
 
 /** One line per item for `plan_status`. */
 export function planStatusText(plan: Plan): string {

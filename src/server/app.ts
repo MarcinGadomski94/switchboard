@@ -1,3 +1,4 @@
+import { forgetGraduatedSwitches } from './settings/graduated.ts';
 import { AccountService } from './accounts/service.ts';
 import { SharedAccounts } from './accounts/shared.ts';
 import { AutoSwitcher } from './accounts/auto-switch.ts';
@@ -612,11 +613,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   systemItems.useCi(ci);
   const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, processes };
   await registerApiRoutes(app, apiContext);
-  // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
+  // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
+  await forgetGraduatedSwitches(options.store.settings);
+  // ── Team (D100) hook: the Team service and its routes (docs/team-removal.md). ──
   await installTeam(app, apiContext);
-  // ── Plans (D99) hook: the experimental Plans service and its routes (docs/plans-removal.md). ──
+  // ── Plans (D99) hook: the Plans service and its routes (docs/plans-removal.md). ──
   await installPlans(app, apiContext, options.plans);
-  // ── Project memory (D107) hook: the experimental Project memory service and its routes (docs/memory-removal.md). ──
+  // ── Project memory (D107) hook: the Project memory service and its routes (docs/memory-removal.md). ──
   await installMemory(app, apiContext);
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;

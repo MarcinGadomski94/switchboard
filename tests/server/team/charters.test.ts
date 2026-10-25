@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { TEAM_SETTING, type TeamCharter, charterInstruction, readCharter } from '../../../src/core/team.ts';
+import { type TeamCharter, charterInstruction, readCharter } from '../../../src/core/team.ts';
 import { readTeamSyncMessage } from '../../../src/core/team-sync.ts';
 import { TEAM_TEMPLATES, isTemplateCharter } from '../../../src/core/team-templates.ts';
 import { TEAM_TOOLS, type TeamAgentApi, teamProposeCharter } from '../../../src/core/team-tools.ts';
@@ -58,8 +58,6 @@ async function setup(): Promise<Rig> {
   const team = new TeamService({ dataDir: world.root, store: world.store, bus, supervisor: world.supervisor, loops, todos, peers, takeover: null, isHooked: async () => false, pushDelayMs: 10 });
   rig = { world, team, loops, todos };
   await team.init();
-  await world.store.settings.set(TEAM_SETTING, true);
-  await team.switchChanged();
   return rig;
 }
 

@@ -69,6 +69,9 @@ describe('Settings model (M8.2)', () => {
     // D14: Workspace & solutions became Folders; its old key stays and `folders` opens it too.
     expect(resolveSection('workspace')).toBe('workspace');
     expect(resolveSection('folders')).toBe('workspace');
+    // D132: the Experimental section is gone; its old links open Jira.
+    expect(resolveSection('experimental')).toBe('jira');
+    expect(resolveSection('jira')).toBe('jira');
   });
 
   it('builds the scan table per top-level folder, splitting the read-only group back into its folders', () => {

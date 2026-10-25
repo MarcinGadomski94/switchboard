@@ -283,7 +283,7 @@
   }
 }
 
-/* D99-Jira-q1: the proposed order on a plan; the Jira connection under Settings → Experimental → Plans. */
+/* D99-Jira-q1: the proposed order on a plan; the Jira connection in Settings → Jira (D132). */
 .sb-jira-proposals-title {
   margin: 0;
   font-size: var(--fs-section-label);

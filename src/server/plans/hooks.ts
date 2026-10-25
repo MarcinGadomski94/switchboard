@@ -4,8 +4,6 @@
  * (`registerPlanHooks`). Keyed by the main `Store` object (one app, one store), like Team's.
  */
 export interface PlanHooks {
-  /** Settings → Experimental → Plans was switched (`PUT /api/settings`). */
-  switchChanged(): Promise<void>;
   /** D83: session `from` was continued in the fresh session `to` (its todos, ids kept, moved there). */
   sessionContinued(from: string, to: string): Promise<void>;
   /** D102: the Inbox's "Ready to merge" item's Merge: answers `null` when merged, else why not. */
@@ -60,7 +58,7 @@ export async function plansFollowContinuation(store: object, from: string, to: s
  */
 export async function plansInboxMerge(store: object, planId: string, itemId: string): Promise<string | null> {
   const hooks = registry.get(store);
-  return hooks ? hooks.inboxMerge(planId, itemId) : 'Plans is off: switch it on in Settings → Experimental';
+  return hooks ? hooks.inboxMerge(planId, itemId) : 'Plans is not available (it has not started)';
 }
 
 /**
@@ -70,13 +68,8 @@ export async function plansInboxMerge(store: object, planId: string, itemId: str
  */
 export async function plansInboxAskRepos(store: object, planId: string): Promise<string | null> {
   const hooks = registry.get(store);
-  if (!hooks) return 'Plans is off: switch it on in Settings → Experimental';
+  if (!hooks) return 'Plans is not available (it has not started)';
   return hooks.inboxAskRepos ? hooks.inboxAskRepos(planId) : 'this Switchboard cannot ask the plan\'s agent';
-}
-
-/** Settings seam: the Plans switch changed. */
-export async function plansSwitchChanged(store: object): Promise<void> {
-  await registry.get(store)?.switchChanged();
 }
 
 /**

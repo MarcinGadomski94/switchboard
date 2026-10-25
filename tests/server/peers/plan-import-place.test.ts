@@ -35,7 +35,6 @@ async function layoutOf(node: PeerNode): Promise<SidebarLayout> {
 
 /** A with Plans on and the fake Jira connected. */
 async function plansOn(node: PeerNode, jira: FakeJira): Promise<void> {
-  expect((await node.call('PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const saved = await node.call('PUT', '/api/integrations/jira', { baseUrl: jira.url, email: jira.email, token: jira.token });
   expect(saved.status, JSON.stringify(saved.body)).toBe(200);
 }

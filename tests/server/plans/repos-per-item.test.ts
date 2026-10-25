@@ -14,7 +14,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, InboxItem, Session } from '../../../src/core/api.ts';
-import { PLANS_SETTING, PLAN_PICK_REPOS_REASON, type Plan } from '../../../src/core/plans.ts';
+import { PLAN_PICK_REPOS_REASON, type Plan } from '../../../src/core/plans.ts';
 import type { PlanJiraState } from '../../../src/core/plans-jira.ts';
 import { peerAnswerKind } from '../../../src/core/peer-wire.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
@@ -75,7 +75,6 @@ async function makeApp(s: SupervisorWorld, g: GitWorld, token: string): Promise<
 
 async function setup(): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
-  await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
   await writeFile(path.join(s.workspace, 'AGENTS.md'), '# Acme workspace\n');
   // A read-only solution (the router's deprecated/ folder): never a write target.

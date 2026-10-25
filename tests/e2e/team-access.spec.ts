@@ -83,7 +83,6 @@ const REQUEST = {
 
 test('request → Needs you → set up → only that member gets it, masked → deny → revoke', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
   const marketing = await start(page, 'marketing-run');
   const plain = await start(page, 'plain-run');
   await settled(page, marketing);

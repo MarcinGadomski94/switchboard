@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TEAM_SETTING, type TeamCharter } from '../../../src/core/team.ts';
+import { type TeamCharter } from '../../../src/core/team.ts';
 import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
 import { TEAM_TEMPLATES } from '../../../src/core/team-templates.ts';
 import { NO_ATTACHMENTS } from '../../../src/server/attachments/service.ts';
@@ -94,8 +94,6 @@ async function setup(listChanged: boolean): Promise<Rig> {
   rig = r;
   world.supervisor.useAgentMcp(async (session) => agentMcpLaunch({ nodePath: process.execPath, port, sessionId: session.id, token: 'test-token' }));
   await team.init();
-  await world.store.settings.set(TEAM_SETTING, true);
-  await team.switchChanged();
   return r;
 }
 

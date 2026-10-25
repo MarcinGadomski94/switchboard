@@ -3,7 +3,7 @@ import type { BackgroundTask, SessionActivity } from '../../src/core/api.ts';
 import { pendingSubagentCount, waitingOnSubagents } from '../../src/core/derive/background.ts';
 import { type TeamRosterEntry, memberStatus } from '../../src/core/team.ts';
 import { backgroundWaitText, cardWorkLine, subagentsWaitText } from '../../src/web/team/model.ts';
-import { ROSTER_GLYPH, SUBAGENTS_GLYPH, collapsedSummary, hasDuration, itemLabel, rosterGlyph, rosterLine, rosterTitle, shortDuration } from '../../src/web/team/sidebar-roster.ts';
+import { ROSTER_GLYPH, SUBAGENTS_GLYPH, collapsedSummary, hasDuration, itemLabel, rosterGlyph, rosterLine, rosterTitle, shortDuration, untouchedTeams } from '../../src/web/team/sidebar-roster.ts';
 
 /** D100 follow-up 2026-10-16 · the sidebar's member rows (`src/web/team/sidebar-roster.ts`). */
 
@@ -195,5 +195,18 @@ describe('waiting on background work (2026-10-16)', () => {
     expect(cardWorkLine({ ...member, waitingOn: 'github' }, null, null, text)).toBe('Waiting on GitHub Actions');
     expect(cardWorkLine({ ...member, waitingOn: 'wakeup', wakeAt: WAKE }, null, null, text)).toBe('Waking up at 18:40');
     expect(backgroundWaitText({ kind: 'subagents', count: 3, since: '' })).toBe('Waiting on 3 subagents');
+  });
+});
+
+describe('D132 · the sidebar shows no team entry while Team was never used', () => {
+  it('untouched: no team yet, or only the first team as made, without members', () => {
+    expect(untouchedTeams([])).toBe(true);
+    expect(untouchedTeams([{ id: 'team', name: 'Team', members: 0 }])).toBe(true);
+  });
+  it('in use: a member, a renamed first team, another team, or a second team', () => {
+    expect(untouchedTeams([{ id: 'team', name: 'Team', members: 1 }])).toBe(false);
+    expect(untouchedTeams([{ id: 'team', name: 'Acme', members: 0 }])).toBe(false);
+    expect(untouchedTeams([{ id: 't-ops', name: 'Ops', members: 0 }])).toBe(false);
+    expect(untouchedTeams([{ id: 'team', name: 'Team', members: 0 }, { id: 't-ops', name: 'Ops', members: 0 }])).toBe(false);
   });
 });

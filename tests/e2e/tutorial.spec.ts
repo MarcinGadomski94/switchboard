@@ -3,8 +3,8 @@ import path from 'node:path';
 import { type APIRequestContext, type Locator, type Page, expect, request as playwrightRequest, test } from '@playwright/test';
 import { MAIN_TOUR, type TutorialState, WHATS_NEW as ALL_WHATS_NEW } from '../../src/core/tutorial.ts';
 
-/** Plans (D99) hook: its tour exists only while Plans is on (off on these test servers; docs/plans-removal.md). */
-const WHATS_NEW = ALL_WHATS_NEW.filter((feature) => feature.id !== 'plans' && feature.id !== 'plans-any');
+/** Plans (D99) hook: its tours exist only while Plans is available (D132: always on, so on these test servers too; docs/plans-removal.md). */
+const WHATS_NEW = ALL_WHATS_NEW;
 import { loadMigrations } from '../../src/server/db/migrate.ts';
 import { openTempStore } from '../helpers/store.ts';
 import { seedFolder } from '../helpers/folders.ts';
@@ -275,10 +275,8 @@ test.describe('an install from before the tutorial', () => {
     const after = await tutorialState(api);
     const status = Object.fromEntries(after.whatsNew.map((entry) => [entry.id, entry.status]));
     expect(status['run-in-new-session']).toBe('completed');
-    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session' && id !== 'plans' && id !== 'plans-any').every(([, value]) => value === 'skipped')).toBe(true);
-    // Plans (D99) hook: its tour was never offered (Plans is off), so it waits for the day Plans is switched on.
-    expect(status['plans']).toBe('pending');
-    expect(status['plans-any']).toBe('pending');
+    // D132: Plans is always on, so its tours were offered (and skipped) like every other.
+    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session').every(([, value]) => value === 'skipped')).toBe(true);
     expect(after.main.status).toBeNull();
     await page.reload();
     await expect(page.getByTestId('sidebar')).toBeVisible();

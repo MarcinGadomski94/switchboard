@@ -1,4 +1,4 @@
-import type { TeamCurrentItem, TeamMemberStatus, TeamRosterEntry, TeamWaitKind } from '../../core/team.ts';
+import { DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, type TeamCurrentItem, type TeamMemberStatus, type TeamRosterEntry, type TeamSummary, type TeamWaitKind } from '../../core/team.ts';
 import { formatClockTime } from '../activity/activity.ts';
 
 /**
@@ -140,4 +140,15 @@ export function collapsedSummary(roster: readonly Pick<TeamRosterEntry, 'status'
 /** `true` when a shown row carries a duration (the rows then re-render once a minute). */
 export function hasDuration(roster: readonly Pick<TeamRosterEntry, 'status' | 'turnStartedAt' | 'lastActivityAt'>[]): boolean {
   return roster.some((entry) => (entry.status === 'working' && entry.turnStartedAt !== null) || (entry.status === 'idle' && entry.lastActivityAt !== null));
+}
+
+/**
+ * D132: `true` while Team was never used: no team read yet, or only the first team with its
+ * default name and no member. The sidebar then shows no team entry (Team is always on since 2.0,
+ * and a user who never touched it sees the sidebar as before; the nav grid's Team cell opens it).
+ */
+export function untouchedTeams(teams: readonly Pick<TeamSummary, 'id' | 'name' | 'members'>[]): boolean {
+  if (teams.length === 0) return true;
+  const [only] = teams;
+  return teams.length === 1 && only !== undefined && only.id === DEFAULT_TEAM_ID && only.name === DEFAULT_TEAM_NAME && only.members === 0;
 }

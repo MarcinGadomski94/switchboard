@@ -21,8 +21,8 @@ import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * D107 · Project memory over the real app (`inject`): off by default (no `memory.db`, 404
- * `memory-off`, no MCP memory tools), switched on through `PUT /api/settings`; the agent's
+ * D107 · Project memory over the real app (`inject`): D132, always on (no switch; `memory.db`
+ * at start, the MCP memory tools for sessions with a folder; a stored 1.x switch is deleted); the agent's
  * proposal (its own token) lands in the review queue and an Inbox item, never in the agent's
  * list until approved; edit-then-approve stores the edit; reject; the rate limit and the duplicate
  * check; a broken `memory.db`; the routes' classification for devices and paired machines.
@@ -49,11 +49,11 @@ afterEach(async () => {
   rig = undefined;
 });
 
-async function setup(before?: (dataDir: string) => Promise<void>): Promise<Rig> {
+async function setup(before?: (dataDir: string, store: Store) => Promise<void>): Promise<Rig> {
   const root = await makeTempDir('memory-switch');
   const dataDir = path.join(root, 'data');
   const store = await openTempStore(dataDir);
-  await before?.(dataDir);
+  await before?.(dataDir, store);
   const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: dataDir }, platform: 'linux', home: root, cwd: root }), port: PORT };
   const token = generateToken();
   const app = await buildApp({ config, token, store, webRoot: root, agentTools: false });
@@ -118,50 +118,37 @@ function text(result: { content: Array<{ type: string; text?: string }> }): stri
   return result.content.map((part) => part.text ?? '').join('');
 }
 
-describe('D107 · the Project memory switch', () => {
-  it('off by default: only the state answers, no memory.db, no memory tools, nothing for the agent', async () => {
+describe('D132 · Project memory is always on', () => {
+  it('a fresh install: memory.db appears and the tools are registered (not for a chat); no switch in Settings', async () => {
     const r = await setup();
-    expect((await ui(r, 'GET', '/api/settings')).json()['experimental.memory']).toBe(false);
-    expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: false, available: false, problem: null, members: 0 });
-    for (const [method, url] of [
-      ['GET', '/api/memory/scopes'],
-      ['GET', '/api/memory/entries'],
-      ['POST', '/api/memory/entries'],
-      ['POST', '/api/memory/entries/abc/approve'],
-      ['GET', '/api/memory/settings'],
-    ] as const) {
-      const answer = await ui(r, method, url, method === 'POST' ? {} : undefined);
-      expect([method, url, answer.statusCode, answer.json().error]).toEqual([method, url, 404, 'memory-off']);
-    }
-    expect(await exists(path.join(r.dataDir, MEMORY_DB_FILE))).toBe(false);
-    expect(memoryServiceOf(r.app)?.activeTimers()).toBe(0);
-    const sessionId = await agentSession(r);
-    expect((await helperApi(r, sessionId)('GET', '/agent/v1/memory')).status).toBe(404);
-    expect((await helperApi(r, sessionId)('POST', '/agent/v1/memory', { title: 'Build', text: 'npm ci' })).status).toBe(404);
-    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('memory_'))).toEqual([]);
-  });
-
-  it('on: memory.db appears and the tools are registered (not for a chat); off again: they go', async () => {
-    const r = await setup();
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.memory': true })).statusCode).toBe(200);
+    expect('experimental.memory' in (await ui(r, 'GET', '/api/settings')).json()).toBe(false);
+    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.memory': false })).statusCode).toBe(422);
     expect((await ui(r, 'GET', '/api/memory/state')).json()).toEqual<MemoryState>({ enabled: true, available: true, problem: null, members: 0 });
     expect(await exists(path.join(r.dataDir, MEMORY_DB_FILE))).toBe(true);
+    expect((await ui(r, 'GET', '/api/memory/entries')).json()).toEqual([]);
+    expect(memoryServiceOf(r.app)?.activeTimers()).toBe(0);
     const sessionId = await agentSession(r);
     expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('memory_'))).toEqual(MEMORY_TOOLS.map((tool) => tool.name));
     const chatId = await agentSession(r, 'chat', 'chat');
     expect((await toolsOf(helperApi(r, chatId))).filter((name) => name.startsWith('memory_'))).toEqual([]);
+    // No approved entries: the agent's list is empty and no Inbox item exists.
+    expect((await helperApi(r, sessionId)('GET', '/agent/v1/memory')).status).toBe(200);
+    expect((await ui(r, 'GET', '/api/inbox')).json()).toEqual([]);
+  });
 
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.memory': false })).statusCode).toBe(200);
-    expect((await ui(r, 'GET', '/api/memory/entries')).statusCode).toBe(404);
-    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('memory_'))).toEqual([]);
-    expect(await exists(path.join(r.dataDir, MEMORY_DB_FILE))).toBe(true);
+  it('an install whose 1.x switch was off: Project memory is on after the start and the stored switch is gone', async () => {
+    const r = await setup(async (_dataDir, store) => {
+      await store.settings.set('experimental.memory', false);
+    });
+    expect(await r.store.settings.get('experimental.memory')).toBeUndefined();
+    expect((await ui(r, 'GET', '/api/memory/state')).json()).toMatchObject({ enabled: true, available: true });
+    expect((await ui(r, 'GET', '/api/memory/entries')).statusCode).toBe(200);
   });
 
   it('a broken memory.db: the memory routes answer 503, everything else works', async () => {
     const r = await setup(async (dataDir) => {
       await writeFile(path.join(dataDir, MEMORY_DB_FILE), 'not a database, Acme notes\n'.repeat(200));
     });
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.memory': true })).statusCode).toBe(200);
     const state = (await ui(r, 'GET', '/api/memory/state')).json() as MemoryState;
     expect(state).toMatchObject({ enabled: true, available: false });
     expect(state.problem).toMatch(/^memory\.db could not be opened: /);
@@ -176,7 +163,6 @@ describe('D107 · the Project memory switch', () => {
 describe('D107 · the review gate over the routes', () => {
   it('a proposal is queued (never listed to agents), raises one Inbox item per folder, and edit-then-approve stores the edit', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.memory': true });
     const sessionId = await agentSession(r);
     const api = helperApi(r, sessionId);
 
@@ -230,7 +216,6 @@ describe('D107 · the review gate over the routes', () => {
 
   it(`rate limit (${MEMORY_PROPOSE_PER_HOUR} per hour per session) and near-identical titles`, async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.memory': true });
     const sessionId = await agentSession(r);
     const api = helperApi(r, sessionId);
     expect((await api('POST', '/agent/v1/memory', { title: 'Build command', text: 'npm run build' })).status).toBe(201);

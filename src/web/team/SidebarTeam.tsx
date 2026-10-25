@@ -7,7 +7,7 @@ import { useTeamSwitch } from './hidden.ts';
 import { DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, type TeamSummary } from '../../core/team.ts';
 import { teamApi } from './api.ts';
 import { requestMember } from './local.ts';
-import { collapsedSummary, rosterGlyph, hasDuration, rosterLine, rosterTitle } from './sidebar-roster.ts';
+import { collapsedSummary, rosterGlyph, hasDuration, rosterLine, rosterTitle, untouchedTeams } from './sidebar-roster.ts';
 import { sidebarTeamText } from './model.ts';
 import { reloadTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
@@ -83,7 +83,7 @@ function useMinute(active: boolean): number {
 /**
  * "⚑ <team name> · N members" above SESSIONS, one per team in the teams' order
  * (D100 follow-up 2026-10-14: multiple teams), each with its needs-you count; only
- * while Team is on. Each opens its team (`/team/{id}`). D100 follow-up 2026-10-16: a
+ * while Team is in use (D132: not for the untouched first team alone, {@link untouchedTeams}). Each opens its team (`/team/{id}`). D100 follow-up 2026-10-16: a
  * ▾ / ▸ chevron folds the team (remembered per install; expanded by default); expanded,
  * its members are listed under it in the team's order, each with its status glyph, its
  * role and a short status line (`sidebar-roster.ts`); a member row opens the member on
@@ -100,7 +100,8 @@ export function TeamSidebarEntry() {
   const foldedOf = (team: TeamSummary): boolean => folds.get(team.id)?.folded ?? team.collapsed ?? false;
   const listed = shown.flatMap((team) => (foldedOf(team) ? [] : (team.roster ?? [])));
   const now = useMinute(on && hasDuration(listed));
-  if (!on) return null;
+  // D132 (Team graduated, no switch): an install that never used Team (only the first team, as made, without members) shows nothing above SESSIONS, as before.
+  if (!on || untouchedTeams(teams)) return null;
   const currentId = route.view === 'team' ? route.teamId : undefined;
   const openMember = (memberId: string): void => {
     requestMember(memberId);

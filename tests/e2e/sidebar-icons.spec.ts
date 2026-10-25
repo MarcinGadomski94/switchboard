@@ -44,11 +44,6 @@ const CELLS = [
   ['nav-insights', 'Insights', '/insights', 'view-insights'],
 ] as const;
 
-async function putSettings(page: Page, body: Record<string, unknown>): Promise<void> {
-  const status = await page.evaluate(async (b) => (await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })).status, body);
-  expect(status).toBe(200);
-}
-
 async function openShell(page: Page, url = '/'): Promise<void> {
   await page.goto(`${server.baseUrl}${url}`);
   await expect(page.getByTestId('nav-grid')).toBeVisible();
@@ -156,14 +151,14 @@ test('keyboard: Tab reaches each cell with a visible ring; Enter and Space open 
   await expect(page.getByTestId('nav-schedules')).toHaveAttribute('aria-current', 'page');
 });
 
-test('the desktop sidebar with Team and Plans off: eight cells, nothing of theirs', async ({ page }) => {
+test('the desktop sidebar in demo mode (Team and Plans do not run there): eight cells, nothing of theirs', async ({ page }) => {
   await openShell(page);
   await expect(page.getByTestId('nav-team')).toHaveCount(0);
   await expect(page.getByTestId('nav-plans')).toHaveCount(0);
   await writeReport({ 'sidebar-icons-desktop.png': await sidebarShot(page) });
 });
 
-test.describe('Team and Plans switched on', () => {
+test.describe('Team, Plans and Memory on a plain server (D132: always on)', () => {
   // Team does not start in demo mode: a plain server (no demo seed) for these two.
   let plain: ServerProcess;
   let plainTmp: string;
@@ -178,12 +173,9 @@ test.describe('Team and Plans switched on', () => {
     await removeTempDir(plainTmp);
   });
 
-  test('Team and Plans add their cells (Team ⚑ in the role colour while open); the grid stays two rows', async ({ page }) => {
+  test('Team, Plans and Memory have their cells from the start (D132: always on; Team ⚑ in the role colour while open)', async ({ page }) => {
     await page.goto(`${plain.baseUrl}/`);
     await expect(page.getByTestId('nav-grid')).toBeVisible();
-    await expect(page.getByTestId('nav-team')).toHaveCount(0);
-    await putSettings(page, { 'experimental.team': true, 'experimental.plans': true });
-    await page.reload();
     const team = page.getByTestId('nav-team');
     const plans = page.getByTestId('nav-plans');
     await expect(team).toBeVisible();
@@ -193,10 +185,11 @@ test.describe('Team and Plans switched on', () => {
     await expect(team).toHaveAttribute('data-tour', 'team');
     await expect(plans).toHaveAttribute('data-tour', 'plans');
     await expect(page.getByTestId('nav-plans-count')).toHaveText('');
-    // D108: Insights makes it ten (still two rows of five).
-    expect(await page.getByTestId('nav-grid').locator('.sb-nav-item').count()).toBe(10);
+    await expect(page.getByTestId('nav-memory')).toBeVisible();
+    // D108: Insights makes it ten; D132: Memory (always on) makes it eleven, three rows of five.
+    expect(await page.getByTestId('nav-grid').locator('.sb-nav-item').count()).toBe(11);
     const rows = await page.getByTestId('nav-grid').evaluate((nav) => new Set([...nav.querySelectorAll('.sb-nav-item')].map((c) => c.getBoundingClientRect().y)).size);
-    expect(rows).toBe(2);
+    expect(rows).toBe(3);
     const neutral = await team.evaluate((el) => getComputedStyle(el).color);
     await writeReport({ 'sidebar-icons-desktop-team-plans.png': await sidebarShot(page) });
     await team.click();
@@ -208,12 +201,6 @@ test.describe('Team and Plans switched on', () => {
     await plans.click();
     await expect(page).toHaveURL(/\/plans$/);
     await expect(plans).toHaveAttribute('aria-current', 'page');
-
-    await putSettings(page, { 'experimental.team': false, 'experimental.plans': false });
-    await page.reload();
-    await expect(page.getByTestId('nav-grid')).toBeVisible();
-    await expect(page.getByTestId('nav-team')).toHaveCount(0);
-    await expect(page.getByTestId('nav-plans')).toHaveCount(0);
   });
 });
 

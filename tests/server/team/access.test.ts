@@ -256,7 +256,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
     const plain = await session(r, 'plain-session');
     // Off: nobody has request_access.
     expect(await toolNames(agent(r, marketing))).not.toContain('request_access');
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const m = await member(r, marketing, 'Marketing monitoring');
     await member(r, tracker, 'Tracker');
     expect(await toolNames(agent(r, marketing))).toContain('request_access');
@@ -329,7 +328,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
     const r = await setup();
     const marketing = await session(r, 'marketing-session');
     const plain = await session(r, 'plain-session');
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const m = await member(r, marketing, 'Marketing monitoring');
     const asked = await agent(r, marketing)('POST', '/agent/v1/team/access', {
       kind: 'mcp',
@@ -383,7 +381,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
   it('Test connection: an MCP server is started with its values and lists its tools; a key is tried on its declared host only', async () => {
     const r = await setup();
     const s = await session(r, 'marketing-session');
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     await member(r, s, 'Marketing');
     const fixture = path.join(REPO_ROOT, 'tests', 'fixtures', 'team-access', 'mcp-server.ts');
     const mcp = await agent(r, s)('POST', '/agent/v1/team/access', {
@@ -430,7 +427,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
   it('rate limit: at most 5 new requests per member per hour', async () => {
     const r = await setup();
     const s = await session(r, 'busy-session');
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     await member(r, s, 'Busy');
     const statuses: number[] = [];
     for (let i = 0; i < 6; i += 1) statuses.push((await agent(r, s)('POST', '/agent/v1/team/access', { ...KEY_REQUEST, service: `Acme ${i}`, host: `api${i}.acme.example` })).status);
@@ -441,7 +437,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
   it('phones read the tab but never write values; peers get metadata only; every route is classified', async () => {
     const r = await setup();
     const s = await session(r, 'marketing-session');
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const m = await member(r, s, 'Marketing');
     const asked = await agent(r, s)('POST', '/agent/v1/team/access', KEY_REQUEST);
     const accessId = (asked.body as { access: { id: string } }).access.id;
@@ -476,7 +471,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
   it('paired machines: the record syncs without the value ("set up on <A> only", Set up here too); after a move it needs setup on the target', async () => {
     const a = await setup(4962);
     const b = await setup(4963);
-    for (const r of [a, b]) await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const s = await session(a, 'marketing-session');
     const m = await member(a, s, 'Marketing');
     const accessId = ((await agent(a, s)('POST', '/agent/v1/team/access', KEY_REQUEST)).body as { access: { id: string } }).access.id;
@@ -502,7 +496,6 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
 
     // A move (the core points the member at the target; D65's take-over does the rest): B gets the member on a session of its own.
     const c = await setup(4964);
-    await ui(c, 'PUT', '/api/settings', { 'experimental.team': true });
     const target = await session(c, 'moved-session');
     const message = readTeamSyncMessage((await ui(a, 'POST', '/api/team/sync', {})).json());
     if (!message) throw new Error('a sync message');

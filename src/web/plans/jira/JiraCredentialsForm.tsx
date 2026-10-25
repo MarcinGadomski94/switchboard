@@ -10,10 +10,10 @@ export interface JiraCredentialsFormProps {
 }
 
 /**
- * D99-Jira · Settings → Integrations → Jira: the Jira site, the account's email and an API
+ * D99-Jira · Settings → Jira (D132): the Jira site, the account's email and an API
  * token, saved to this computer's OS keychain (never shown again; a phone never sees this form:
  * the routes are local-only). Shows where the current credentials come from (Settings or the
- * `ATL_*` environment). Renders nothing while Plans is off (the routes answer `plans-off`).
+ * `ATL_*` environment). Renders nothing while `plans.db` is unavailable (503 `plans-unavailable`; a 1.x build answered 404 `plans-off`).
  */
 export function JiraCredentialsForm({ onChanged }: JiraCredentialsFormProps) {
   const [status, setStatus] = useState<JiraConnectionStatus | null>(null);
@@ -33,7 +33,7 @@ export function JiraCredentialsForm({ onChanged }: JiraCredentialsFormProps) {
         setEmail(answer.email ?? '');
       })
       .catch((caught: unknown) => {
-        if (caught instanceof JiraApiError && caught.code === 'plans-off') setOff(true);
+        if (caught instanceof JiraApiError && (caught.code === 'plans-off' || caught.code === 'plans-unavailable')) setOff(true);
         else setError(caught instanceof JiraApiError ? caught : new JiraApiError(0, null, 'failed'));
       });
   }, []);

@@ -24,7 +24,7 @@ export interface JiraImportIssue {
 /**
  * D109: where Jira issues come from for the import: Plans' Jira lane registers its client and
  * credentials here (`src/server/plans/jira/install.ts`), so the todo import reuses the one
- * Jira connection (Settings → Experimental → Plans → Jira connection, else `ATL_*`) and never
+ * Jira connection (Settings → Jira, D132; else `ATL_*`) and never
  * reads a credential itself. Without a registration Jira is not available.
  */
 export interface JiraIssueSource {
@@ -104,7 +104,7 @@ export class TodoImportService {
       if (name) repos.add(name);
     }
     const jira = jiraSources.get(this.#store);
-    const jiraStatus = jira ? await jira.status().catch(() => ({ available: false, problem: 'the Jira connection could not be read' })) : { available: false, problem: 'Jira import needs Plans: it reuses the Jira connection of Settings → Experimental → Plans' };
+    const jiraStatus = jira ? await jira.status().catch(() => ({ available: false, problem: 'the Jira connection could not be read' })) : { available: false, problem: 'Jira import needs Plans: it reuses the Jira connection of Settings → Jira' };
     return {
       github: { available: true, repos: [...repos].sort(), problem: null },
       jira: { available: jiraStatus.available, problem: jiraStatus.problem },
@@ -165,7 +165,7 @@ export class TodoImportService {
       };
     }
     const jira = jiraSources.get(this.#store);
-    if (!jira) throw new TodoImportError(409, 'jira-unavailable', 'Jira import reuses the Jira connection of Settings → Experimental → Plans: switch Plans on and connect Jira there (or set ATL_BASE_URL, ATL_USER and ATL_TOKEN)');
+    if (!jira) throw new TodoImportError(409, 'jira-unavailable', 'Jira import reuses the Jira connection of Settings → Jira: connect Jira there (or set ATL_BASE_URL, ATL_USER and ATL_TOKEN)');
     const status = await jira.status();
     if (!status.available) throw new TodoImportError(409, 'jira-unavailable', status.problem ?? 'Jira is not connected');
     let found;

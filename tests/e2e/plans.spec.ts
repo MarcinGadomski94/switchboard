@@ -24,12 +24,13 @@ test.afterAll(async () => {
   await world?.stop();
 });
 
-test('off by default: no nav entry, /plans points to the switch', async ({ page }) => {
+test('always on (D132): the nav entry from the start, /plans lists no plans yet', async ({ page }) => {
   await openWithHub(page, `${world.baseUrl}/inbox`);
   await expect(page.getByTestId('nav-todos')).toBeVisible();
-  await expect(page.getByTestId('nav-plans')).toHaveCount(0);
+  await expect(page.getByTestId('nav-plans')).toBeVisible();
   await page.goto(`${world.baseUrl}/plans`);
-  await expect(page.getByTestId('plans-off')).toContainText('Plans is off');
+  await expect(page.getByTestId('plans-empty')).toBeVisible();
+  await expect(page.getByTestId('plans-unavailable')).toHaveCount(0);
 });
 
 test('create a plan from todos, add a dependency (a loop refused), Start needs a merge mode', async ({ page }) => {
@@ -282,16 +283,16 @@ test("the session's Plan strip imports from Jira with that session", async ({ pa
   await expect(page.getByTestId('jira-import')).toHaveCount(0);
 });
 
-test("What's new: the Plans tour is listed while Plans is on, and replays", async ({ page }) => {
+test("What's new: the Plans tour is listed, and replays", async ({ page }) => {
   await openWithHub(page, `${world.baseUrl}/settings/tutorial`);
   const row = page.locator('.sb-set-row[data-row="whats-new-plans"]');
-  await expect(row).toContainText('Plans (experimental)');
+  await expect(row).toContainText('Plans');
   await expect(row).toContainText('1.17.0');
   // D99 follow-up 2026-10-15: its own tour, also only while Plans is on.
   await expect(page.locator('.sb-set-row[data-row="whats-new-plans-any"]')).toContainText('Plans for anything');
   await expect(page.locator('.sb-set-row[data-row="whats-new-plans-any"]')).toContainText('1.22.0');
   await page.getByTestId('whats-new-replay-plans').click();
-  await expect(page.getByTestId('tour-card').getByTestId('tour-kicker')).toHaveText("What's new · Plans (experimental)");
+  await expect(page.getByTestId('tour-card').getByTestId('tour-kicker')).toHaveText("What's new · Plans");
   await page.getByTestId('tour-next').click();
   await expect(page).toHaveURL(/\/plans$/);
   await page.keyboard.press('Escape');
@@ -353,18 +354,4 @@ test('D99 follow-up 2026-10-15: a plan without a target branch (New plan, Start 
   await expect(page.getByTestId('plan-target')).toHaveText('⎇ dev (agents merge — acknowledged)');
   expect((await world.plan(page, devId)).allowProtectedTarget).toBe(true);
   expect((await world.call(page, 'POST', `/api/plans/${devId}/cancel`)).status).toBe(200);
-});
-
-test('switched off while running: nothing of Plans shows; on again, the plan is paused with the reason', async ({ page }) => {
-  await openWithHub(page, `${world.baseUrl}/plans/${planId}`);
-  await expect(page.getByTestId('plan-state')).toHaveText('running');
-  await world.setPlans(page, false);
-  await page.goto(`${world.baseUrl}/plans/${planId}`);
-  await expect(page.getByTestId('plans-off')).toBeVisible();
-  await expect(page.getByTestId('nav-plans')).toHaveCount(0);
-  await world.setPlans(page, true);
-  await page.goto(`${world.baseUrl}/plans/${planId}`);
-  await expect(page.getByTestId('plan-state')).toHaveText('paused · Plans was switched off');
-  await page.getByTestId('plan-resume').click();
-  await expect(page.getByTestId('plan-state')).toHaveText('running');
 });

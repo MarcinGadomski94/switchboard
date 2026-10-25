@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
-import { PLANS_SETTING, type Plan, type PlanChecks } from '../../../src/core/plans.ts';
+import { type Plan, type PlanChecks } from '../../../src/core/plans.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
@@ -160,7 +160,6 @@ async function setup(options: { pollMs?: number; stoppedGraceMs?: number } = {})
   const store = await openTempStore(dir, { now: () => clock.now() });
   const bus = new HubBus();
   const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
-  await store.settings.set(PLANS_SETTING, true);
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new FakeGit();
   const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
@@ -559,43 +558,20 @@ describe('D99 · plan scheduler', () => {
     expect(await item(r, plan.id, first.itemId)).toMatchObject({ state: 'blocked', reason: 'could not start: the CLI is not available' });
     expect(await item(r, plan.id, second.itemId)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-801, which could not start: the CLI is not available' });
   });
-  it('switched off: running plans pause with the reason, nothing runs; switched on: they stay paused until resumed', async () => {
+  it('D132: always on: no switch, a stored 1.x switch set to off changes nothing, plans run and the routes answer', async () => {
     const r = await setup();
-    const { plan, ids } = await diamond(r);
+    expect(r.plans.state()).toEqual({ enabled: true, available: true, problem: null });
+    const { plan } = await diamond(r);
+    await r.plans.close();
+    // A 1.x install with the switch off: the row is ignored (the app deletes it at start; D132).
+    await r.store.settings.set('experimental.plans', false);
+    r.plans = new PlanService({ dataDir: r.dir, store: r.store, bus: r.bus, todos: r.todos, git: r.git, merger: r.merger, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    await r.plans.start();
+    expect(r.plans.state()).toEqual({ enabled: true, available: true, problem: null });
+    expect((await r.plans.list()).map((p) => p.id)).toEqual([plan.id]);
     await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
     await settle(r);
     expect(started(r)).toEqual(['PROJ-1']);
-    const a = await item(r, plan.id, ids.A);
-    const draft = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Still a draft', targetBranch: 'feature/PROJ-200-later' });
-    expect(r.plans.activeTimers()).toBe(2);
-
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    expect(r.plans.activeTimers()).toBe(0);
-    expect(r.clock.delays()).toEqual([]);
-    expect(r.plans.state()).toEqual({ enabled: false, available: false, problem: null });
-    await expect(r.plans.list()).rejects.toMatchObject({ status: 404, code: 'plans-off' });
-    // A's session finishes its turn with the work merged: nothing reacts while Plans is off.
-    r.git.branches.set(a.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'green', summary: null, sha: 'abc' } } });
-    const inspected = r.git.inspected.length;
-    await status(r, a.runSessionId as string, 'idle');
-    await r.clock.advanceTo(new Date(r.clock.now().getTime() + 10 * 60_000), () => settle(r));
-    expect(started(r)).toEqual(['PROJ-1']);
-    expect(r.git.inspected).toHaveLength(inspected);
-
-    await r.store.settings.set(PLANS_SETTING, true);
-    await r.plans.switchChanged();
-    await settle(r);
-    const paused = await r.plans.get(plan.id);
-    expect(paused).toMatchObject({ state: 'paused', pausedReason: 'Plans was switched off', held: 'Plans was switched off' });
-    expect((await r.plans.get(draft.id)).state).toBe('draft');
-    // A's merge is picked up (its item finished its turn), but nothing new starts until the developer resumes.
-    expect((await item(r, plan.id, ids.A)).state).toBe('done');
-    expect(started(r)).toEqual(['PROJ-1']);
-    const resumed = await r.plans.resume(plan.id);
-    expect(resumed).toMatchObject({ state: 'running', pausedReason: null });
-    await settle(r);
-    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
     expect(r.errors).toEqual([]);
   });
 
@@ -608,23 +584,21 @@ describe('D99 · plan scheduler', () => {
     expect(await r.plans.list()).toEqual([]);
     expect(r.changed).toContain(plan.id);
   });
-  it('continued in a fresh session while Plans is off: switched on, the plan follows the session links and its items still start', async () => {
+  it('continued in a fresh session while Plans was not running: at the next start the plan follows the session links and its items still start', async () => {
     const r = await setup();
     const { plan, ids } = await diamond(r);
     await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
     await settle(r);
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    // D83 as the fresh-session flow does it: the todos move (ids kept), the old session names the fresh one; the hook is a no-op while off.
+    await r.plans.close();
+    // D83 as the fresh-session flow does it: the todos move (ids kept), the old session names the fresh one; the hook is a no-op while Plans is closed.
     const fresh = await r.store.sessions.create({ name: 'source-2', claudeSessionId: 'c-source-2', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first', continuedFrom: r.sourceId });
     await r.todos.moveAll(r.sourceId, fresh.id);
     await r.store.sessions.update(r.sourceId, { continuedTo: fresh.id });
     await plansFollowContinuation(r.store, r.sourceId, fresh.id);
-    await r.store.settings.set(PLANS_SETTING, true);
-    await r.plans.switchChanged();
+    r.plans = new PlanService({ dataDir: r.dir, store: r.store, bus: r.bus, todos: r.todos, git: r.git, merger: r.merger, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    await r.plans.start();
     await settle(r);
-    expect(await r.plans.get(plan.id)).toMatchObject({ sourceSessionId: fresh.id, state: 'paused' });
-    await r.plans.resume(plan.id);
+    expect(await r.plans.get(plan.id)).toMatchObject({ sourceSessionId: fresh.id, state: 'running' });
     await agentMerges(r, plan.id, ids.A);
     expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
     expect(r.runs[1]?.plan.sourceSessionId).toBe(fresh.id);
@@ -679,7 +653,7 @@ describe('D99 · plan scheduler', () => {
     expect(await kinds(b.itemId)).toEqual([['waiting-dependency', 'closed'], ['running', 'closed']]);
   });
 
-  it('item spans: paused-usage while the usage threshold holds starts; paused-plan when paused, also by the switch; a restart keeps one open span per item', async () => {
+  it('item spans: paused-usage while the usage threshold holds starts; paused-plan when paused; a restart keeps one open span per item', async () => {
     const r = await setup();
     const { plan, ids } = await diamond(r);
     r.held = 'the account Default is at 91% of its 5-hour limit (the plan starts items below 85%)';
@@ -694,11 +668,8 @@ describe('D99 · plan scheduler', () => {
     expect((await item(r, plan.id, ids.A)).spans.map((span) => span.kind)).toEqual(['paused-usage', 'running']);
     expect(await open(ids.A)).toEqual(['running']);
 
-    // Switched off: the plan pauses; the waiting items' spans become paused-plan, A's running span stays open.
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    await r.store.settings.set(PLANS_SETTING, true);
-    await r.plans.switchChanged();
+    // Paused: the waiting items' spans become paused-plan, A's running span stays open.
+    await r.plans.pause(plan.id);
     await settle(r);
     expect(await open(ids.A)).toEqual(['running']);
     expect(await open(ids.B)).toEqual(['paused-plan']);

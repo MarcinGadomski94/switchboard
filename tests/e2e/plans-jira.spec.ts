@@ -61,9 +61,8 @@ async function session(page: Page, name: string): Promise<string> {
 
 test('preview an epic, then create a draft plan with the write sync', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
-  // Plans is experimental (Settings → Experimental → Plans): the Jira routes answer plans-off until it is on.
-  expect((await call(page, 'POST', `/api/sessions/x/plans/jira/preview`, { epic: 'PROJ-10' })).body.error).toBe('plans-off');
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
+  // D132: Plans is always on, so the Jira routes answer from the start (an unknown session is a 404).
+  expect((await call(page, 'POST', `/api/sessions/x/plans/jira/preview`, { epic: 'PROJ-10' })).status).toBe(404);
   const sessionId = await session(page, 'epic-planner');
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
   await page.getByTestId('dev-open-import').click();
@@ -110,7 +109,6 @@ test('preview an epic, then create a draft plan with the write sync', async ({ p
 test('at 360 px the dialog fills the screen and Create stays reachable', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-planner-phone');
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
   await page.getByTestId('dev-open-import').click();
@@ -126,7 +124,6 @@ test('at 360 px the dialog fills the screen and Create stays reachable', async (
 test('D116: the plan\'s "Move to Done when merged" toggle and its transition name persist (360 px)', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-planner-done');
   // Without write sync the dialog shows no Done setting.
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
@@ -185,9 +182,8 @@ async function asAgent(sessionId: string, url: string, body: unknown): Promise<{
   return { status: response.status, body: await response.json() };
 }
 
-test('the plan shows the proposed order; ✓ adds the dependency, ✕ rejects; Settings → Experimental → Plans holds the Jira connection', async ({ page }) => {
+test('the plan shows the proposed order; ✓ adds the dependency, ✕ rejects; Settings → Jira holds the Jira connection', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-proposals');
   await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${sessionId}`)).body.status, { timeout: 20_000 }).toBe('done');
   const imported = await call(page, 'POST', `/api/sessions/${sessionId}/plans/jira/import`, { epic: 'PROJ-10', targetBranch: 'feature/PROJ-10-proposals' });
@@ -216,22 +212,17 @@ test('the plan shows the proposed order; ✓ adds the dependency, ✕ rejects; S
   expect(plan.edges).toContainEqual({ from: id('PROJ-14'), to: id('PROJ-15') });
   expect(plan.edges).not.toContainEqual({ from: id('PROJ-12'), to: id('PROJ-15') });
 
-  // Settings → Experimental: the Jira connection is part of the Plans row while Plans is on, gone while off.
-  await page.goto(`${server.baseUrl}/settings/experimental`);
-  const jira = page.getByTestId('experimental-plans-jira');
+  // D132: Settings → Jira holds the connection (it sat under the Plans switch in Settings → Experimental until 2.0).
+  await page.goto(`${server.baseUrl}/settings/jira`);
+  const jira = page.getByTestId('settings-jira');
   await expect(jira).toBeVisible();
   await expect(jira.getByTestId('jira-credentials-source')).toContainText(`Connected to ${fake.url} as ${fake.email} (from the ATL_* environment).`);
   await expect(jira).not.toContainText(fake.token);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': false })).status).toBe(200);
-  await page.reload();
-  await expect(page.getByText('Plans', { exact: true }).first()).toBeVisible();
-  await expect(page.getByTestId('experimental-plans-jira')).toHaveCount(0);
 });
 
 test("a workspace session without solutions: Create plan needs no repositories; the plan's agent picks them (D115)", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   // D38: a workspace session may start without solutions (the agent determines them); D115: so does its plan's agent, per item.
   const started = await call(page, 'POST', '/api/sessions', { name: 'epic-no-solutions', task: 'Reply with just OK.', workType: 'feature', mode: 'single', solutions: [], phase: 'ui-first', coordination: 'none', qa: null, worktrees: false, ultracode: false });
   expect(started.status, started.text).toBe(201);
@@ -272,7 +263,6 @@ test("a workspace session without solutions: Create plan needs no repositories; 
 test("a refused Create plan shows the server's reason by the button, even with the form scrolled", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 480 });
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-refused');
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
   await page.getByTestId('dev-open-import').click();
@@ -295,7 +285,6 @@ test('D118: the preview shows per ticket what the agents also get, and the epic 
   // The fake's issues take the context-rich epic's comments, sub-tasks, links and attachments (last test: nothing after it reads the fake).
   for (const issue of acmeEpicWithContext()) fake.issues.set(issue.key, issue);
   await page.goto(`${server.baseUrl}/inbox`);
-  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-planner-context');
   for (const width of [1440, 360]) {
     await page.setViewportSize({ width, height: width === 360 ? 740 : 900 });

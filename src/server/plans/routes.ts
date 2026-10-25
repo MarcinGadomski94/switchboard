@@ -47,12 +47,11 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * are picked per item, `POST /agent/v1/plans` and an item added without solutions also answer
  * `solutionChoices` (the workspace's writable solutions).
  *
- * Experimental (`docs/plans.md` → *The switch*): while Plans is off every route answers 404
- * `plans-off` except `GET /api/plans/state` (the switch); while `plans.db` is broken, 503
- * `plans-unavailable`. Registered by `installPlans` (`install.ts`), the one hook in `app.ts`.
+ * D132: always on since 2.0 (no switch; `GET /api/plans/state` answers `enabled: true`); while
+ * `plans.db` is broken, every route but the state answers 503 `plans-unavailable`. Registered by `installPlans` (`install.ts`), the one hook in `app.ts`.
  */
 export async function registerPlanRoutes(app: FastifyInstance, plans: PlanService, context: Pick<ApiContext, 'peers'>): Promise<void> {
-  // The switch (always answered: Settings and the Plans page read it).
+  // The state (always answered: the Plans page reads it; `enabled` is always true since D132).
   app.get('/api/plans/state', async () => plans.state());
 
   app.get('/api/plans', async (request, reply) => {

@@ -9,7 +9,7 @@
  */
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PLANS_SETTING, PLAN_RUN_MESSAGE_MAX } from '../../../src/core/plans.ts';
+import { PLAN_RUN_MESSAGE_MAX } from '../../../src/core/plans.ts';
 import { JIRA_TODO_CONTEXT_LINE } from '../../../src/core/plans-jira.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
@@ -112,7 +112,6 @@ async function setup(options: { solutions?: string[] } = {}): Promise<Rig> {
     async closeMergeNotice() {},
   };
   const errors: unknown[] = [];
-  await store.settings.set(PLANS_SETTING, true);
   const git = new FakeGit();
   const plans = new PlanService({ dataDir: dir, store, bus, todos, git, merger: new FakeMerger(), env, clock, onError: (error) => errors.push(error) });
   await plans.start();
@@ -346,16 +345,15 @@ describe('D118 · plan_jira_context (the agent route)', () => {
     expect(r.fake.calls(/^POST /)).toEqual([]);
   });
 
-  it('answers 404 not-jira for a plan that is not from Jira, and plans-off while Plans is off', async () => {
+  it('answers 404 not-jira for a plan that is not from Jira, also with a stored 1.x Plans switch set to off (D132: no switch)', async () => {
     const r = await setup();
     const plain = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Acme by hand', targetBranch: 'feature/acme' });
     const answer = await ask(r, r.sourceId, `/agent/v1/plans/${plain.id}/jira/context`);
     expect(answer.statusCode).toBe(404);
     expect(answer.json().error).toBe('not-jira');
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    const off = await ask(r, r.sourceId, '/agent/v1/plans/jira/context');
-    expect(off.statusCode).toBe(404);
-    expect(off.json().error).toBe('plans-off');
+    await r.store.settings.set('experimental.plans', false);
+    const still = await ask(r, r.sourceId, `/agent/v1/plans/${plain.id}/jira/context`);
+    expect(still.statusCode).toBe(404);
+    expect(still.json().error).toBe('not-jira');
   });
 });

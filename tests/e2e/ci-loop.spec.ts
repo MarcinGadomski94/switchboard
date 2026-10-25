@@ -205,7 +205,7 @@ test('Import issues…: preview with checkboxes, the ticked issues become todos 
 
   // Jira without a connection: the dialog says where to connect it.
   await dialog.getByTestId('ii-source-jira').click();
-  await expect(dialog.getByTestId('ii-jira-note')).toContainText('Settings → Experimental');
+  await expect(dialog.getByTestId('ii-jira-note')).toContainText('Settings → Jira');
   await expect(dialog.getByTestId('ii-preview')).toBeDisabled();
   await dialog.getByTestId('ii-cancel').click();
   await expect(dialog).toHaveCount(0);

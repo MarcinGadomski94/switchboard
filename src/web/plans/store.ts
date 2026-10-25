@@ -4,9 +4,9 @@ import { onHubEvent, onHubStatus } from '../api/useHub.ts';
 import { isPlansOff, plansApi } from './api.ts';
 
 /**
- * D99 · what the page knows of Plans: the switch (Settings → Experimental → Plans, off by
- * default; `GET /api/plans/state`, answered also while off) and, while on, the plans list
- * (`GET /api/plans`, which answers 404 `plans-off` while the switch is off). One read shared by the nav's Plans item, the Plans list, the session's
+ * D99 · what the page knows of Plans: its state (`GET /api/plans/state`; D132: always on since
+ * 2.0, so `on` is false only while `plans.db` is unavailable or before the first read) and the
+ * plans list (`GET /api/plans`). One read shared by the nav's Plans item, the Plans list, the session's
  * Plan tab and the What's-new tour; read again on `planChanged` (coalesced), after the hub
  * reconnects and after Settings changed the switch ({@link reloadPlans}). While off,
  * nothing of Plans renders, so every other page is as it was.

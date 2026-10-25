@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
-import { PLANS_SETTING, type Plan } from '../../../src/core/plans.ts';
+import { type Plan } from '../../../src/core/plans.ts';
 import type { JiraPreview } from '../../../src/core/plans-jira.ts';
 import type { SidebarLayout } from '../../../src/core/sidebar-layout.ts';
 import { peerAnswerKind, mapPeerAnswer } from '../../../src/core/peer-wire.ts';
@@ -63,7 +63,6 @@ function call(r: Rig, method: InjectOptions['method'], url: string, payload?: un
 
 async function setup(): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
-  await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
   await writeFile(path.join(s.workspace, 'AGENTS.md'), '# Acme workspace\n');
   const repoPath = await g.makeRepo(path.join(s.root, 'acme'));

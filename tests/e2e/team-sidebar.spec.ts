@@ -8,9 +8,9 @@ import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 
 /**
- * D100 (E2E, real code path with fake-claude): Settings → Experimental → Team
- * switches Team on; an adopted member's session leaves the sidebar's SESSIONS
- * while the other session stays; switching Team off in Settings puts it back.
+ * D100 (E2E, real code path with fake-claude): Team is always on (D132); an adopted
+ * member's session leaves the sidebar's SESSIONS while the other session stays; Return
+ * puts it back.
  * D100 follow-up 2026-10-16: each team folds (remembered across a reload) and lists
  * its members with a live status line; a member row opens it on the Team page; the
  * phone drawer has the same rows with 44 px targets.
@@ -58,29 +58,21 @@ function row(page: Page, id: string) {
   return page.getByTestId('sidebar-sessions').locator(`a.sb-session[data-session-id="${id}"]`);
 }
 
-async function flipTeam(page: Page, to: 'on' | 'off'): Promise<void> {
-  await page.goto(`${server.baseUrl}/settings/experimental`);
-  const toggle = page.locator('[data-row="experimental-team"]').getByTestId('setting-value');
-  await expect(toggle).toHaveText(to === 'on' ? 'off' : 'on');
-  await toggle.click();
-  await expect(toggle).toHaveText(to);
-}
-
-test('Team on: an adopted session leaves the sidebar; Team off: it is back', async ({ page }) => {
+test('an adopted session leaves the sidebar; returned, it is back (D132: Team is always on)', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
   const tracker = await start(page, 'tracker-run');
   const other = await start(page, 'other-run');
   await expect(row(page, tracker)).toBeVisible();
   await expect(row(page, other)).toBeVisible();
 
-  // Off by default: the switch reads off and nothing is hidden.
-  await flipTeam(page, 'on');
+  // No member yet: nothing is hidden, nothing shows above SESSIONS.
+  await expect(page.getByTestId('sidebar-team')).toHaveCount(0);
   const adopted = await call(page, 'POST', '/api/team/members', { sessionId: tracker, name: 'Tracker' });
   expect(adopted.status, JSON.stringify(adopted.body)).toBe(201);
   await expect(row(page, tracker)).toHaveCount(0);
   await expect(row(page, other)).toBeVisible();
 
-  await flipTeam(page, 'off');
+  expect((await call(page, 'POST', `/api/team/members/${adopted.body.id}/return`)).status).toBeLessThan(300);
   await expect(row(page, tracker)).toBeVisible();
   await expect(row(page, other)).toBeVisible();
 });
@@ -106,7 +98,6 @@ test('D100 follow-up 2026-10-16: member rows with live status; folding is rememb
   const asker = await start(page, 'asker-run');
   const rester = await start(page, 'rester-run');
   for (const id of [builder, idler, asker, rester]) await settle(page, id);
-  await flipTeam(page, 'on');
   // The first test's member returns (only this test's members are listed).
   for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
   const builderId = await adopt(page, builder, 'Builder');
@@ -196,15 +187,14 @@ test('D100 follow-up 2026-10-16: member rows with live status; folding is rememb
   await expect(phone.getByTestId('team-panel')).toHaveAttribute('data-member-id', resterId);
   await context.close();
 
-  // Team off: nothing of it renders.
-  await flipTeam(page, 'off');
+  // D132: no member left (Team has no off-switch): nothing of it renders above SESSIONS.
+  for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
   await page.goto(`${server.baseUrl}/inbox`);
   await expect(page.getByTestId('sidebar-teams')).toHaveCount(0);
 });
 
 test('2026-10-16: a member whose main turn ended while a subagent works reads working ("1 subagent"), then idle once it completes', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
-  await flipTeam(page, 'on');
   for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
   const delegator = await start(page, 'delegator-run');
   await settle(page, delegator);
@@ -226,12 +216,10 @@ test('2026-10-16: a member whose main turn ended while a subagent works reads wo
   await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 25_000 });
   await expect(row.getByTestId('sidebar-team-member-glyph')).toHaveText('○');
   await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
-  await flipTeam(page, 'off');
 });
 
 test('2026-10-16: a member whose main turn ended while it waits on GitHub Actions (a background `gh pr checks --watch`) reads working ("⏳ GitHub Actions"), then idle once it is done', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
-  await flipTeam(page, 'on');
   for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
   const watcher = await start(page, 'ci-watcher');
   await settle(page, watcher);
@@ -253,5 +241,4 @@ test('2026-10-16: a member whose main turn ended while it waits on GitHub Action
   await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 25_000 });
   await expect(row).not.toHaveAttribute('data-waiting-on', /.+/);
   await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
-  await flipTeam(page, 'off');
 });

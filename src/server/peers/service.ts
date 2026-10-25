@@ -1159,7 +1159,7 @@ export class PeerService implements PeerHandlers {
           if (!(error instanceof PeerUnreachableError)) this.#onError(error);
           return false;
         }
-        // Plans (D99) hook: a machine with Plans off answers 404 `plans-off`: it has no plans to show.
+        // Plans (D99) hook: a 1.x machine with Plans off answers 404 `plans-off` (D132: 2.0 has no switch): it has no plans to show.
         const body = kind === 'plans' && answer.status === 404 ? [] : answer.body;
         if ((answer.status !== 200 && body === answer.body) || !Array.isArray(body) || !this.#records.has(id) || this.#closed) return false;
         arrived = true;

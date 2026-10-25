@@ -77,7 +77,7 @@ const V1_15 = '1.15.0';
 /** The version D97 (search across everything) ships in. */
 const V1_16 = '1.16.0';
 
-/** The version D98 (accounts shared across paired machines), D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
+/** The version D98 (accounts shared across paired machines), D100 (Team) and D99 (Plans) ship in (both experimental until D132). */
 const V1_17 = '1.17.0';
 
 /** The version D101 (the sidebar's navigation as an icon grid, collapsible TOOLS) ships in. */
@@ -86,7 +86,7 @@ const V1_18 = '1.18.0';
 /** The version D106 (chats) ships in. */
 const V1_19 = '1.19.0';
 
-/** The version D107 (project memory, experimental), D108 (Insights) and D109 (the CI / pull-request feedback loop, importing issues as todos) ship in. */
+/** The version D107 (project memory, experimental until D132), D108 (Insights) and D109 (the CI / pull-request feedback loop, importing issues as todos) ship in. */
 const V1_20 = '1.20.0';
 
 /** The version D110 (choosing the target folders of a move, and their verification) ships in. */
@@ -116,11 +116,14 @@ const V1_34 = '1.34.0';
 /** The version D128 (multi-select questions take several answers) ships in. */
 const V1_35 = '1.35.0';
 
-/** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
-const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
+/** The version D132 (Team, Plans and Project memory graduate from Settings → Experimental: always on) ships in. */
+const V2_0 = '2.0.0';
+
+/** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
+const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
 /** Team (D100): the steps that need a member. */
-const TEAM_NO_MEMBER = 'This shows once Team is on (Settings → Experimental → Team) and has a member: adopt one with ＋ Member. ';
+const TEAM_NO_MEMBER = 'This shows once a team has a member: adopt one with ＋ Member on the Team page. ';
 
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
@@ -617,12 +620,12 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
-  // Plans (D99) hook: its What's-new tour, shown only while Plans is on (the web filters it: src/web/plans/store.ts; docs/plans-removal.md).
+  // Plans (D99) hook: its What's-new tour, shown only while Plans is available (the web filters it: src/web/plans/store.ts; docs/plans-removal.md).
   {
     id: 'plans',
     decision: 'D99',
     version: V1_17,
-    title: 'Plans (experimental)',
+    title: 'Plans',
     steps: [
       {
         id: 'nav',
@@ -658,16 +661,16 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
     id: 'team',
     decision: 'D100',
     version: V1_17,
-    title: 'Team (experimental)',
+    title: 'Team',
     steps: [
       {
         id: 'switch',
-        title: 'Team (experimental)',
-        what: 'Run a set of role agents ("members") from one page: each member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for. It is off by default; while off nothing changes.',
-        todo: ['Turn Team on here.', 'Open Team in the sidebar.'],
-        anchors: ['experimental-team'],
-        route: { view: 'settings', section: 'experimental' },
-        missing: 'Team lives in Settings → Experimental. ',
+        title: 'Team',
+        what: 'Run a set of role agents ("members") from one page: each member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for. Until a session becomes a member, nothing else changes.',
+        todo: ['Open Team in the sidebar (the ⚑ icon).'],
+        anchors: ['team'],
+        drawer: true,
+        missing: 'Team sits in the sidebar, next to Plans. ',
       },
       {
         id: 'adopt',
@@ -676,12 +679,12 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Press ＋ Member (or Review on the banner).', 'Pick a suggestion, check its charter and gates, and press Adopt into the team.', 'Or start a new member from a template.'],
         anchors: ['team-add'],
         route: { view: 'team' },
-        missing: TEAM_OFF,
+        missing: TEAM_OPEN,
       },
       {
         id: 'needs-you',
         title: 'Needs you, and Return to sessions',
-        what: "Needs you lists everything your members wait for: their questions, permission requests and plan items ready to merge, and Team's own approvals (a budget); answer them in place. A member's ⋯ menu gives it a task, pauses it or moves it to your other machine, and ↩ Return to sessions puts its session back in its folder as a plain session. Switching Team off returns every member.",
+        what: "Needs you lists everything your members wait for: their questions, permission requests and plan items ready to merge, and Team's own approvals (a budget); answer them in place. A member's ⋯ menu gives it a task, pauses it or moves it to your other machine, and ↩ Return to sessions puts its session back in its folder as a plain session.",
         todo: ['Tap an option to answer a question, Reply… to open the chat, or Approve / Decline a request.', "Open a member's ⋯ menu and pick ↩ Return to sessions when it is no longer needed."],
         anchors: ['team-needs-you', 'team-member-menu'],
         route: { view: 'team' },
@@ -720,7 +723,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Press ＋ New team and name it.', 'Adopt or create members into it (the form has a Team picker), or move one there from its ⋯ menu → Move to team ▸.'],
         anchors: ['team-new', 'team-switcher'],
         route: { view: 'team' },
-        missing: TEAM_OFF,
+        missing: TEAM_OPEN,
       },
       {
         id: 'order',
@@ -825,16 +828,16 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
     id: 'memory',
     decision: 'D107',
     version: V1_20,
-    title: 'Project memory (experimental)',
+    title: 'Project memory',
     steps: [
       {
         id: 'switch',
-        title: 'Project memory (experimental)',
-        what: 'Agents can propose durable facts about a project (build commands, gotchas, decisions, where things live). Nothing reaches a session until you approve it; approved entries go to every new or resumed session in that folder. It is off by default.',
-        todo: ['Turn Project memory on here.', 'Open Memory in the sidebar.'],
-        anchors: ['experimental-memory'],
-        route: { view: 'settings', section: 'experimental' },
-        missing: 'Project memory lives in Settings → Experimental. ',
+        title: 'Project memory',
+        what: 'Agents can propose durable facts about a project (build commands, gotchas, decisions, where things live). Nothing reaches a session until you approve it; approved entries go to every new or resumed session in that folder.',
+        todo: ['Open Memory in the sidebar.'],
+        anchors: ['memory'],
+        drawer: true,
+        missing: 'Memory sits in the sidebar, next to Plans. ',
       },
       {
         id: 'review',
@@ -843,7 +846,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Pick a folder.', 'Approve, Edit… or Reject each proposal.', 'Press + Add entry to write one yourself; ☆ pins it first.'],
         anchors: ['memory-queue', 'memory-folder'],
         route: { view: 'memory' },
-        missing: 'Switch Project memory on in Settings → Experimental, then open Memory in the sidebar. ',
+        missing: 'Open Memory in the sidebar to see this. ',
       },
     ],
   },
@@ -900,7 +903,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'import',
         title: 'Import issues as todos',
-        what: "Bring GitHub issues (a repository's open issues, by label or assigned to you) or Jira issues (a project key or JQL, through the Jira connection of Settings → Experimental → Plans) into a session's todo list, with a link back. Issues imported before are skipped.",
+        what: "Bring GitHub issues (a repository's open issues, by label or assigned to you) or Jira issues (a project key or JQL, through the Jira connection of Settings → Jira) into a session's todo list, with a link back. Issues imported before are skipped.",
         todo: ['Press Import issues… on the Todos page (or Import… on a session\'s todo strip).', 'Pick the source, Preview, tick the issues and Import.'],
         anchors: ['todos-import', 'todo-import'],
         route: { view: 'todos' },
@@ -925,7 +928,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
-  // Plans (D99) hook: the D99 follow-up's tour, shown only while Plans is on like the Plans tour (src/web/plans/store.ts; docs/plans-removal.md).
+  // Plans (D99) hook: the D99 follow-up's tour, shown only while Plans is available like the Plans tour (src/web/plans/store.ts; docs/plans-removal.md).
   {
     id: 'plans-any',
     decision: 'D99',
@@ -939,7 +942,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Press ＋ New plan and leave the target branch empty.', 'Tick the todos, Create plan, then ▶ Start plan.'],
         anchors: ['plans-new'],
         route: { view: 'plans' },
-        missing: 'Plans sits in the sidebar once Settings → Experimental → Plans is on. ＋ New plan takes an optional target branch: empty means no merge step.',
+        missing: 'Open Plans in the sidebar. ＋ New plan takes an optional target branch: empty means no merge step.',
       },
     ],
   },
@@ -957,7 +960,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Pick a scope in the filter to see only those entries.', 'In the review queue, check the scope each proposal suggests and change it before Approve if it is wrong.'],
         anchors: ['memory-kind', 'memory-queue'],
         route: { view: 'memory' },
-        missing: 'Switch Project memory on in Settings → Experimental, then open Memory in the sidebar. ',
+        missing: 'Open Memory in the sidebar to see this. ',
       },
       {
         id: 'draft',
@@ -984,7 +987,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Look at the member rows under your team.', 'Click a member to open it; fold the team with ▸ when you need the room.'],
         anchors: ['sidebar-team'],
         route: { view: 'team' },
-        missing: TEAM_OFF,
+        missing: TEAM_OPEN,
       },
     ],
   },
@@ -1106,6 +1109,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['question-card'],
         route: { view: 'inbox' },
         missing: 'Shown on a question card in the Inbox or the chat once an agent asks a multi-select question.',
+      },
+    ],
+  },
+  // D132: Team, Plans and Project memory left Settings → Experimental: always on, no switch.
+  {
+    id: 'graduated',
+    decision: 'D132',
+    version: V2_0,
+    title: 'Team, Plans and Project memory are always on',
+    steps: [
+      {
+        id: 'nav',
+        title: 'No switches any more',
+        what: 'Team, Plans and Project memory are no longer experimental: they are on for everyone and Settings → Experimental is gone. Nothing changes until you use them: no session leaves your list until you make it a team member, nothing runs until you start a plan, and no memory reaches a session until you approve an entry. The Jira connection moved to Settings → Jira.',
+        todo: ['Find Plans, Team and Memory in the sidebar.', 'Open one when you need it.'],
+        anchors: ['plans', 'team', 'memory'],
+        drawer: true,
+        missing: 'Plans, Team and Memory sit in the sidebar. ',
       },
     ],
   },

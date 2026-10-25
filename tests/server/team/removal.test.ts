@@ -21,7 +21,7 @@ async function files(dir: string): Promise<string[]> {
   return out;
 }
 
-describe('D100 · the removal procedure', () => {
+describe('D100 · the wiring map (D132: graduated, the hooks stay listed)', () => {
   it('lists every hook file, and every listed file is a hook', async () => {
     const doc = await readFile(path.join(REPO_ROOT, 'docs', 'team-removal.md'), 'utf8');
     const hooked: string[] = [];

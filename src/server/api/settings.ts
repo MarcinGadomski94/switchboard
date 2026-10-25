@@ -7,12 +7,6 @@ import { readSettings, validateSettingsPatch } from '../settings/settings.ts';
 import { applyInstructionToOpenSessions } from '../settings/apply-instruction.ts';
 import type { InstructionApplyResult } from '../../core/standing-instruction.ts';
 import type { PendingRoute } from './not-implemented.ts';
-// Team (D100) hook (docs/team-removal.md).
-import { teamSwitchChanged } from '../team/hooks.ts';
-// Plans (D99) hook (docs/plans-removal.md).
-import { plansSwitchChanged } from '../plans/hooks.ts';
-// Project memory (D107) hook (docs/memory-removal.md).
-import { memorySwitchChanged } from '../memory/hooks.ts';
 
 /** Settings routes (contract → REST) not implemented yet: none since M8.2. */
 export const SETTINGS_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -53,14 +47,6 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
     await store.settings.setMany(result.value);
     // D91: a changed standing instruction makes running sessions' processes "older" (their `instructionOutdated`).
     if ('agents.standingInstruction' in result.value || 'agents.standingInstruction.enabled' in result.value) await context.supervisor.instructionSettingChanged();
-    // Team (D100) hook: Settings → Experimental → Team opens / closes team.db and its timers (docs/team-removal.md).
-    if ('experimental.team' in result.value) await teamSwitchChanged(store);
-    // Plans (D99) hook: Settings → Experimental → Plans opens / closes plans.db and its scheduler; off pauses the running plans (docs/plans-removal.md).
-    if ('experimental.plans' in result.value) await plansSwitchChanged(store);
-    // Project memory (D107) hook: Settings → Experimental → Project memory opens / closes memory.db; sessions gain / lose their block (docs/memory-removal.md).
-    if ('experimental.memory' in result.value) await memorySwitchChanged(store);
-    // 2026-10-16: the sessions' helpers re-probe now and add / remove the feature tools live (list_changed; docs/mcp.md).
-    if ('experimental.team' in result.value || 'experimental.plans' in result.value || 'experimental.memory' in result.value) context.supervisor.agentToolsChanged();
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
 

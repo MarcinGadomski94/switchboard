@@ -13,7 +13,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
-import { PLANS_SETTING, type Plan } from '../../../src/core/plans.ts';
+import { type Plan } from '../../../src/core/plans.ts';
 import type { PlanEdgeProposal } from '../../../src/core/plans-jira.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
@@ -60,7 +60,6 @@ function call(r: Rig, method: InjectOptions['method'], url: string, payload?: un
 
 async function setup(): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
-  await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
   const repoPath = await g.makeRepo(path.join(s.root, 'acme'));
   const worktrees = g.manager({ sessions: s.supervisor });
@@ -201,16 +200,16 @@ describe('D99-Jira-q1 · proposed order', () => {
     await until(async () => ((await r.s.store.events.list(r.source.id)).filter((event) => JSON.stringify(event.payload).includes('Please propose the missing order')).length === 2 ? true : undefined), 'the second ask', 20_000);
   });
 
-  it('the tool is registered only while Plans is on', async () => {
+  it('D132: the tool is always registered; the old Plans switch is refused by Settings', async () => {
     const r = await setup();
     const on = await helper(helperApi(r, r.source.id));
     expect(await on.list()).toContain('plan_propose_dependencies');
     await on.close();
-    expect((await call(r, 'PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(200);
-    await planServiceOf(r.app)?.switchChanged();
-    const off = await helper(helperApi(r, r.source.id));
-    expect((await off.list()).filter((name) => name.startsWith('plan_'))).toEqual([]);
-    await off.close();
-    expect((await call(r, 'GET', '/api/plans/x/proposals')).json().error).toBe('plans-off');
+    expect((await call(r, 'PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(422);
+    const still = await helper(helperApi(r, r.source.id));
+    expect(await still.list()).toContain('plan_propose_dependencies');
+    await still.close();
+    expect((await call(r, 'GET', '/api/plans/x/proposals')).statusCode).toBe(404);
+    expect((await call(r, 'GET', '/api/plans/x/proposals')).json().error).not.toBe('plans-off');
   });
 });

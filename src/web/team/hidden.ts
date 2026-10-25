@@ -25,9 +25,11 @@ export interface TeamSwitch {
   readonly hidden: ReadonlySet<string>;
   /** Role name per hidden session id. */
   readonly roles: Readonly<Record<string, string>>;
+  /** D132: the first read of `GET /api/team/state` is over (the page shows "unavailable" only after it). */
+  readonly loaded?: boolean;
 }
 
-const OFF: TeamSwitch = { on: false, hidden: EMPTY, roles: {} };
+const OFF: TeamSwitch = { on: false, hidden: EMPTY, roles: {}, loaded: false };
 
 let current: TeamSwitch = OFF;
 let started = false;
@@ -36,13 +38,14 @@ const listeners = new Set<() => void>();
 async function load(): Promise<void> {
   try {
     const response = await fetch('/api/team/state', { credentials: 'same-origin', headers: { accept: 'application/json' } });
-    if (!response.ok) return set(OFF);
+    if (!response.ok) return set({ ...OFF, loaded: true });
     const state = (await response.json()) as Partial<TeamState>;
     const available = state.available === true && state.enabled === true;
     set({
       on: available,
       hidden: available && Array.isArray(state.hiddenSessionIds) ? new Set(state.hiddenSessionIds) : EMPTY,
       roles: available && state.roles && typeof state.roles === 'object' ? state.roles : {},
+      loaded: true,
     });
   } catch {
     // Unreachable: keep what was known (nothing hidden on a first failure).
@@ -56,9 +59,9 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 function set(next: TeamSwitch): void {
   const rolesSame = JSON.stringify(next.roles) === JSON.stringify(current.roles);
   const hiddenSame = sameSet(next.hidden, current.hidden);
-  if (next.on === current.on && hiddenSame && rolesSame) return;
+  if (next.on === current.on && hiddenSame && rolesSame && (next.loaded ?? false) === (current.loaded ?? false)) return;
   // Keep the hidden set's identity when only the switch or the roles changed (the sidebar re-renders only for the set).
-  current = { on: next.on, hidden: hiddenSame ? current.hidden : next.hidden, roles: rolesSame ? current.roles : next.roles };
+  current = { on: next.on, hidden: hiddenSame ? current.hidden : next.hidden, roles: rolesSame ? current.roles : next.roles, loaded: next.loaded ?? false };
   for (const listener of [...listeners]) listener();
 }
 

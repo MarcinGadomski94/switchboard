@@ -372,9 +372,9 @@ export function MemoryPage() {
   if (!on) {
     return (
       <div className="sb-mem-view" data-testid="memory-page">
-        <div className="sb-mem-empty" data-testid="memory-off">
-          Project memory is off. Switch it on in{' '}
-          <Link to={{ view: 'settings', section: 'experimental' }}>Settings → Experimental</Link>.
+        {/* D132: always on; only a memory.db that could not be opened lands here. */}
+        <div className="sb-mem-empty" data-testid="memory-unavailable">
+          Project memory is unavailable: its database (memory.db) could not be opened. Restart Switchboard; the log says why.
         </div>
       </div>
     );

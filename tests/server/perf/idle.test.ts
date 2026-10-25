@@ -30,7 +30,6 @@ describe.skipIf(process.platform === 'win32' || process.env['SWITCHBOARD_PERF'] 
 
   it('three live sessions with helpers, nothing working: under 4 % of a core over 20 s', async () => {
     const n = node as PeerNode;
-    await n.call('PUT', '/api/settings', { 'experimental.team': true, 'experimental.plans': true, 'experimental.memory': true });
     hub = new AbortController();
     const token = (await readFile(path.join(n.dataDir, 'sb_token'), 'utf8')).trim();
     // An open tab: the hub's 5 s system tick runs while a client is connected.
