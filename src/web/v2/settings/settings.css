@@ -1,0 +1,59 @@
+/* D131 · v2 Settings (the prototype's .set-layout / .subnav); lane R extends it. */
+.sb2 .v2-set-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+}
+
+.sb2 .v2-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+.sb2 .v2-subnav a {
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  min-height: 44px;
+  font-weight: 550;
+  color: var(--v2-text-2);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.sb2 .v2-subnav a:hover {
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-subnav a[aria-current='true'] {
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  box-shadow: var(--v2-shadow-1);
+}
+
+.sb2 .v2-set-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-top: 1px solid var(--v2-border);
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-set-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .sb2 .v2-subnav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+}

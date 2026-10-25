@@ -542,3 +542,15 @@
   gap: 12px;
   flex: none;
 }
+
+/* D131: Settings → Appearance's theme choice (two outlined buttons; the pressed one filled). */
+.sb-set-choice {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.sb-set-choice .sb-set-action[aria-pressed='true'] {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}

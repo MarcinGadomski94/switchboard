@@ -131,6 +131,8 @@ export function routePath(route: Route): string {
 
 interface RouterValue {
   readonly route: Route;
+  /** D131: the address's path as it is (the v2 UI parses it with its own routes, `v2/routes.ts`). */
+  readonly pathname: string;
   /** D97: the address's query (`location.search`, e.g. `?q=…` on the Search page); `''` without one. */
   readonly search: string;
   readonly navigate: (to: Route | string, options?: { readonly replace?: boolean }) => void;
@@ -192,7 +194,7 @@ export function RouterProvider({ children }: { readonly children: ReactNode }) {
     [navigate],
   );
 
-  const value = useMemo<RouterValue>(() => ({ route: parseRoute(pathname), search, navigate, backTo }), [pathname, search, navigate, backTo]);
+  const value = useMemo<RouterValue>(() => ({ route: parseRoute(pathname), pathname, search, navigate, backTo }), [pathname, search, navigate, backTo]);
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 

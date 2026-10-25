@@ -1,0 +1,89 @@
+import { Icon, StatusBadge } from '../components/index.ts';
+import { RAIL_LABELS, STATUS, WORDS, sessionStatusToV2 } from '../glossary.ts';
+import { V2Link } from '../nav.tsx';
+import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
+import { agentName } from '../shared/agent-row.tsx';
+import type { StatusPill } from './status-model.ts';
+import { type RailCounts, usePhones, usePins } from './useShellData.ts';
+
+const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', settings: 'settings' };
+const TARGETS: Readonly<Record<RailArea, V2Route>> = {
+  home: { area: 'home' },
+  agents: { area: 'agents' },
+  projects: { area: 'projects' },
+  crews: { area: 'crews' },
+  results: { area: 'results' },
+  settings: { area: 'settings', section: null, sub: null },
+};
+
+/**
+ * D131 · the left rail (the prototype's `.rail`): the brand, six labelled items
+ * (Home · Agents · Projects · Crews · Results · Settings), each with its "needs
+ * you" count, the Pinned list (the shared sidebar layout's pins, D71) and the
+ * computers and phones at its foot. ≤ 1279 px it narrows to icons with their
+ * labels under them and the pins and foot hide (the prototype's tablet rail).
+ */
+export function Rail({ route, counts, pill }: { readonly route: V2Route; readonly counts: RailCounts; readonly pill: StatusPill }) {
+  const current = railAreaOf(route);
+  const pins = usePins();
+  const phones = usePhones();
+  const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : 0);
+  return (
+    <nav className="v2-rail" aria-label="Main" data-testid="v2-rail">
+      <div className="v2-brand">
+        <div className="v2-brand-mark" aria-hidden="true">
+          <Icon name="sparkle" size="s" />
+        </div>
+        <span>Switchboard</span>
+      </div>
+      {RAIL_AREAS.map((area) => {
+        const count = badge(area);
+        return (
+          <V2Link key={area} to={TARGETS[area]} className="v2-nav-item" aria-current={current === area ? 'page' : undefined} data-testid={`v2-nav-${area}`} aria-label={count > 0 ? `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you` : RAIL_LABELS[area]}>
+            <Icon name={ICONS[area]} />
+            <span className="v2-nav-label">{RAIL_LABELS[area]}</span>
+            {count > 0 ? (
+              <span className="v2-nav-badge" aria-hidden="true" data-testid={`v2-nav-badge-${area}`}>
+                {count}
+              </span>
+            ) : null}
+          </V2Link>
+        );
+      })}
+      <div className="v2-rail-pins" aria-label={WORDS.pinned} role="group" data-testid="v2-rail-pins">
+        <h5>
+          <Icon name="pin" size="s" />
+          {WORDS.pinned}
+        </h5>
+        {pins.map((session) => {
+          const status = sessionStatusToV2(session.status);
+          const name = agentName(session);
+          return (
+            <V2Link key={session.id} to={{ area: 'agent', id: session.id, tab: 'chat' }} className="v2-pin-item" title={`${name} · ${STATUS[status].label}`} aria-current={route.area === 'agent' && route.id === session.id ? 'page' : undefined}>
+              <StatusBadge status={status} compact />
+              <span className="v2-pin-name">{name}</span>
+            </V2Link>
+          );
+        })}
+        {pins.length === 0 ? <p className="v2-rail-note">Pin agents from their ⋯ menu.</p> : null}
+      </div>
+      <div className="v2-rail-foot" data-testid="v2-rail-foot">
+        {pill.computerRows.map((row) => (
+          <div key={row.id ?? 'self'} className="v2-row" data-state={row.state}>
+            <Icon name={row.state === 'offline' ? 'offline' : row.state === 'reconnecting' ? 'refresh' : row.self ? 'laptop' : 'desktop'} size="s" />
+            <span className="v2-pin-name">
+              {row.name}
+              {row.self ? '' : ` · ${STATUS[row.state].label.toLowerCase()}`}
+            </span>
+          </div>
+        ))}
+        {phones.map((phone) => (
+          <div key={phone.id} className="v2-row">
+            <Icon name="phone" size="s" />
+            <span className="v2-pin-name">{phone.name} · paired</span>
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
+}

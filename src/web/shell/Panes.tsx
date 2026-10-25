@@ -43,10 +43,11 @@ const APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(na
  * Reads the stored pane state from the service (`GET /api/settings`) for the
  * first paint ({@link loadPaneStateFrom}), so a hidden pane never flashes open.
  */
-export function loadPaneState(): Promise<PaneState> {
+export function loadPaneState(settings: Promise<Readonly<Record<string, unknown>>> = api.settings()): Promise<PaneState> {
   // D101 / D106: the same read carries the sidebar's TOOLS, SESSIONS and CHATS states (useToolsCollapsed.ts).
+  // D131: main.tsx passes its one settings read (it also carries the theme).
   return loadPaneStateFrom(() =>
-    api.settings().then((body) => {
+    settings.then((body) => {
       seedToolsCollapsed(body);
       return body;
     }),

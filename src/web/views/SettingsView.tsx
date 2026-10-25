@@ -21,6 +21,8 @@ import { CiSection } from './settings/CiSection.tsx';
 import { ProcessesSection } from './settings/ProcessesSection.tsx';
 // Team (D100) hook and Plans (D99) hook: the shared Experimental section (docs/team-removal.md, docs/plans-removal.md).
 import { ExperimentalSection } from './settings/ExperimentalSection.tsx';
+// D131: Settings → Appearance (the v2 / Classic switch).
+import { AppearanceSection } from './settings/AppearanceSection.tsx';
 import './settings.css';
 
 function Section({ section, settings, save, onSaved }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved: (body: Settings) => void }) {
@@ -33,6 +35,9 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
       return <SessionsSection settings={settings} save={save} onSaved={onSaved} />;
     case 'notify':
       return <NotifySection settings={settings} save={save} onSaved={onSaved} />;
+    // D131: the theme switch.
+    case 'appearance':
+      return <AppearanceSection />;
     case 'schedules':
       return <SchedulesSection />;
     case 'tools':

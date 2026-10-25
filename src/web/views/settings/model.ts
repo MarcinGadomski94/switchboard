@@ -17,6 +17,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'workspace', label: 'Folders' },
   { key: 'sessions', label: 'Sessions & worktrees' },
   { key: 'notify', label: 'Notifications & usage' },
+  // D131 (docs/v2.md): the theme switch (v2 / Classic) and the default for new browsers.
+  { key: 'appearance', label: 'Appearance' },
   { key: 'schedules', label: 'Schedules' },
   { key: 'tools', label: 'Embedded tools' },
   { key: 'github', label: 'GitHub' },
