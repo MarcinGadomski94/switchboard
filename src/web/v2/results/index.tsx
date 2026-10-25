@@ -173,7 +173,7 @@ export function ResultsPage() {
   const first = items === null;
 
   return (
-    <div className="v2-page v2-res-page" data-wide="" data-testid="v2-page-results" data-area="results" data-view={view} data-filter={filter} aria-busy={first}>
+    <div className="v2-page v2-res-page" data-wide="" data-testid="v2-page-results" data-area="results" data-view={view} data-filter={filter} data-drawer={open ? '' : undefined} aria-busy={first}>
       <div className="v2-res-ph">
         <div className="v2-grow">
           <h1>{W.title}</h1>

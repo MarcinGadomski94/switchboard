@@ -62,7 +62,14 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 
 ### Results
 
-- (results)
+- **ASSUMED R-res1 · the deep link.** Results opens a result's drawer from `/results?open=<artifactId>[&agent=<agentId>][&computer=<computerId>]` (`resultsLink` / `parseResultsLink` in `src/web/v2/results/results-model.ts`, re-exported from `results/index.tsx`); clicking a card pushes that address (Back closes the drawer), closing it replaces it with `/results`. `/agents/:id/results/:resultId` stays lane S's (the agent's Results tab). A link to a result that is gone says "That result is gone." and drops the query. Ids are unique per computer only, so `computer` (and `agent`) narrow the match; without them the first row with that id opens. (R)
+- **ASSUMED R-res2 · the seven type filters map the eight server kinds:** Documents = markdown, PDFs = pdf, Diagrams = mermaid + svg, Images = image, Tables = csv, Web pages = html, Code = code; each chip shows its count. Filtering and search within run in the page over one `GET /api/artifacts` (the counts need every row anyway); search within matches the title, the kind, the language, the agent's name and title and the computer, every word anywhere. (R)
+- **ASSUMED R-res3 · delete with Undo (D111) waits the toast's 5.6 s before it sends the deletes** (as Needs you does): the rows hide at once, Undo brings them back and nothing is sent; leaving the page or hiding the tab sends at once. There is no confirmation dialog (the Undo replaces it). A row on an unreachable computer cannot be selected (the reason is its tooltip), as in classic. A failure says how many and why and the rows come back. (R)
+- **ASSUMED R-res4 · the drawer's actions sit in a toolbar under its header** (versions, Compare, Source / Rendered, Copy, Download, Open agent); the header keeps Full screen, Delete and Close. The prototype puts them all in the header, which does not fit 560 px with real titles. Share (the prototype's link-copy icon) is left out: no share route exists. (R)
+- **ASSUMED R-res5 · Compare shows the version on screen and the one before it side by side, rendered, and widens the drawer to full screen** (as the prototype does). The classic line diff stays in the agent's Results tab. A result with one version says "Only one version so far." (R)
+- **ASSUMED R-res6 · a result whose agent is gone (an orphan, D111) has no preview** (the content routes are the session's): the drawer says so and offers Delete. Its card says "Its agent is gone". (R)
+- **ASSUMED R-res7 · on a desktop the open drawer pushes the grid aside** (the page gets a 560 px right margin and the grid packs smaller cards) so the next result is one click away; on a tablet it overlays; on a phone it fills the screen. (R)
+- **ASSUMED R-res8 · thumbnails are drawn per kind** (the prototype's paper, diagram and table sketches; images show the file itself). Rendering real previews of documents in the grid would fetch every result's content. (R)
 
 ### Search
 

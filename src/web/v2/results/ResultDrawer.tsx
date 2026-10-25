@@ -6,7 +6,7 @@ import { useCoarsePointer, useLayout } from '../../shell/useLayout.ts';
 import { ChatMarkdown } from '../../views/session/ChatMarkdown.tsx';
 import { renderedMarkdown } from '../../views/session/artifacts.ts';
 import { actionErrorText } from '../../views/session/session-header.ts';
-import { Button, Chip, ComputerTag, Drawer, IconButton, Skeleton, useToast } from '../components/index.ts';
+import { Button, Chip, ComputerTag, Drawer, Icon, IconButton, Skeleton, useToast } from '../components/index.ts';
 import { RESULTS_WORDS as W, computerStateToV2 } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { comparePair, hasSource } from './results-model.ts';
@@ -179,6 +179,7 @@ function ResultView({ item, onFull }: { readonly item: ArtifactListItem; readonl
           </Button>
         ) : null}
         <a className="v2-btn" data-size="sm" data-testid="v2-result-download" href={artifactRawUrl(sessionId, item.id, n, true)} download>
+          <Icon name="download" size="s" />
           {W.download}
         </a>
         <Button size="sm" icon="agents" data-testid="v2-result-open-agent" onClick={() => navigate({ area: 'agent', id: sessionId, tab: 'chat' })}>
@@ -187,7 +188,7 @@ function ResultView({ item, onFull }: { readonly item: ArtifactListItem; readonl
       </div>
       {version ? (
         <div className="v2-muted v2-res-meta" data-testid="v2-result-meta">
-          {W.version(version.n)} · {artifactSizeLabel(version.size)} · {version.createdBy === 'agent' ? 'saved by the agent' : 'saved by you'}
+          {W.version(version.n)} · {artifactSizeLabel(version.size)} · {version.createdBy === 'agent' ? W.savedByAgent : W.savedByYou}
         </div>
       ) : null}
       {shown.error ? (

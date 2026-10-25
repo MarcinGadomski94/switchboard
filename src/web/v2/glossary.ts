@@ -518,6 +518,8 @@ export const RESULTS_WORDS = {
   noPreview: 'This result’s agent is gone, so it can’t be previewed here. You can still delete it.',
   notFound: 'That result is gone.',
   preview: 'Result preview',
+  savedByAgent: 'saved by the agent',
+  savedByYou: 'saved by you',
 } as const;
 
 // ── (lane R · Search) ──

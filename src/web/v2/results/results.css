@@ -371,8 +371,9 @@
   flex-wrap: wrap;
 }
 
-.v2-res-toolbar a.v2-btn {
+.sb2 .v2-res-toolbar a.v2-btn {
   text-decoration: none;
+  color: var(--v2-text);
 }
 
 .v2-res-vlist {
@@ -484,8 +485,9 @@
   background: var(--v2-surface);
 }
 
-.v2-res-pdf-card a {
+.sb2 .v2-res-pdf-card a.v2-btn {
   text-decoration: none;
+  color: var(--v2-accent-ink);
 }
 
 .v2-res-pdf-icon {
@@ -494,6 +496,17 @@
   border: 2px solid var(--v2-red);
   border-radius: 6px;
   padding: 10px 8px;
+}
+
+/* Desktop: the open drawer keeps the grid beside it usable (the next result is one click away). */
+@media (min-width: 1280px) {
+  .sb2 .v2-res-page[data-drawer] {
+    margin-right: 560px;
+  }
+
+  .sb2 .v2-res-page[data-drawer] .v2-res-grid:not([data-layout='list']) {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
 }
 
 /* Tablet and phone. */
