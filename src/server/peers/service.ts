@@ -272,6 +272,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D112: an import from a folder of that machine (the plan's new session starts there, with its Jira connection).
   ['POST', /^\/api\/plans\/jira\/(?:preview|import)$/],
   ['GET', /^\/api\/plans\/[^/]+\/jira$/],
+  // D131 (v2 Projects): the developer's read of an epic's or a ticket's Jira text, on the machine that owns the plan.
+  ['GET', /^\/api\/plans\/[^/]+\/jira\/context$/],
   ['PUT', /^\/api\/plans\/[^/]+\/jira$/],
   ['POST', /^\/api\/plans\/[^/]+\/jira\/(?:refresh|dependencies)$/],
   // Plans (D99) hook: proposed order, on the machine that owns the plan.

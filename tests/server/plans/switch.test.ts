@@ -127,6 +127,9 @@ describe('D132 · Plans is always on', () => {
     // The state route is classified like the others (phones and paired machines may read it).
     expect(isLocalOnly('GET', '/api/plans/state')).toBe(false);
     expect(peerApiAllowed('GET', '/api/plans/state')).toBe(true);
+    // D131 (lane X): a paired computer's project reads its epic's Jira text through the proxy.
+    expect(isLocalOnly('GET', '/api/plans/p1/jira/context')).toBe(false);
+    expect(peerApiAllowed('GET', '/api/plans/p1/jira/context?item=i1&part=description')).toBe(true);
   });
 
   it('an install whose 1.x switch was off: Plans is on after the start and the stored switch is gone', async () => {
