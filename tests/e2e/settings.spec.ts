@@ -129,6 +129,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Folders',
     'Sessions & worktrees',
     'Notifications & usage',
+    // D131: the theme switch.
+    'Appearance',
     'Schedules',
     'Embedded tools',
     'GitHub',
@@ -136,6 +138,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'CI & pull requests',
     // D62: after the prototype's seven.
     'CLIs',
+    // D127.
+    'Processes',
     'Accounts',
     // D48: after the prototype's seven.
     'Machines',
