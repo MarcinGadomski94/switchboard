@@ -103,6 +103,12 @@ test('move a teammate to another crew, then Undo puts it back in its place', asy
   await toast.getByTestId('v2-toast-undo').click();
   await expect(mates.locator('h3')).toHaveText(['Developer', 'Reviewer']);
   await expect.poll(async () => (await world.call(page, 'GET', '/api/team?teamId=team')).body.members.map((entry: { name: string }) => entry.name)).toEqual(['Developer', 'Reviewer']);
+  // ⋯ › Open chat peeks at the teammate's agent (lane X); the crew page stays.
+  await mates.first().getByTestId('v2-teammate-menu').click();
+  await page.getByRole('menuitem', { name: 'Open chat' }).click();
+  await expect(page.getByTestId('v2-agent-peek')).toBeVisible();
+  await expect(page).toHaveURL(/\/crews\/team$/);
+  await page.keyboard.press('Escape');
 });
 
 test('Needs you’s access link opens the teammate’s Access tab; Add key sets it up', async ({ page }) => {

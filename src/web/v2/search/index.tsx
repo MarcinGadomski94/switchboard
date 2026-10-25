@@ -7,6 +7,7 @@ import { useMachines, useMachineStateChange } from '../../api/useMachines.ts';
 import { Card, ComputerTag, EmptyState, Icon, Skeleton } from '../components/index.ts';
 import { SEARCH_WORDS, computerStateToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import { clock, timeAgo } from '../shared/time.ts';
 import {
   GROUP_ROWS,
@@ -21,6 +22,7 @@ import {
   folderSessions,
   groupAnswer,
   hitHref,
+  peekSessionOf,
   isMessageHit,
   parseV2SearchAddress,
   searchNote,
@@ -296,6 +298,8 @@ function Group({ group, single, onShowAll }: { readonly group: V2SearchGroup; re
 
 function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: string }) {
   const href = hitHref(result);
+  const openAgent = useOpenAgent();
+  const peekAt = peekSessionOf(result);
   const tag = result.machine ? <ComputerTag name={result.machine.name} state={computerStateToV2(result.machine.state)} short /> : null;
   if (isMessageHit(result)) {
     return (
@@ -325,7 +329,19 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
   const snippet = result.target.type === 'session' || result.snippet.length === 0 ? null : result.snippet;
   const where = result.sessionTitle && result.kind !== 'session' ? result.sessionTitle : null;
   return (
-    <V2Link to={href} className="v2-srch-row" data-testid="v2-search-hit" data-result-id={result.id} data-kind={result.kind}>
+    <V2Link
+      to={href}
+      className="v2-srch-row"
+      data-testid="v2-search-hit"
+      data-result-id={result.id}
+      data-kind={result.kind}
+      onClick={(event) => {
+        // An agent's title peeks at it (a modifier click still opens its page in a new tab).
+        if (peekAt === null || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        openAgent(peekAt);
+      }}
+    >
       <span className="v2-srch-ficon">
         <Icon name={result.kind === 'session' ? 'agents' : icon} />
       </span>

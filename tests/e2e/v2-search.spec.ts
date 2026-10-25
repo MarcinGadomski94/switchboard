@@ -67,6 +67,18 @@ test('a message is found and opens the exact message in its agent', async ({ pag
   await expect(page).toHaveURL(`${world.baseUrl}/agents/${encodeURIComponent(sessionId)}/events/${eventId}`);
 });
 
+test('an agent-title hit peeks at the agent (lane X); Open full view opens it', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/search?q=ledger-agent`);
+  const hit = page.locator('[data-testid="v2-search-hit"][data-kind="session"]').first();
+  await expect(hit).toBeVisible();
+  await hit.click();
+  const peek = page.getByTestId('v2-agent-peek');
+  await expect(peek).toBeVisible();
+  await expect(page).toHaveURL(/\/search\?q=ledger-agent$/);
+  await peek.getByTestId('v2-agent-peek-full').click();
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${encodeURIComponent(sessionId)}`);
+});
+
 test('the type chip and the date filter live in the address; nothing found is said', async ({ page }) => {
   await page.goto(`${world.baseUrl}/search?q=zanzibar`);
   await expect(page.getByTestId('v2-search-input')).toHaveValue('zanzibar');

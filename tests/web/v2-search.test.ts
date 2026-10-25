@@ -11,6 +11,7 @@ import {
   hitHref,
   parseV2SearchAddress,
   passes,
+  peekSessionOf,
   searchNote,
   sessionOf,
   v2SearchPath,
@@ -104,6 +105,11 @@ describe('where a hit leads', () => {
     expect(hitHref(todo)).toBe('/tasks');
     expect(hitHref(history)).toBe('/agents?show=closed');
     expect(hitHref(hit({ id: 'session:s1', scope: 'conversations', kind: 'session', target: { type: 'session', sessionId: 's1' } }))).toBe('/agents/s1');
+  });
+  it('an agent-title hit peeks at its agent (lane X); a message still jumps to the exact message; the rest go to their pages', () => {
+    expect(peekSessionOf(hit({ id: 'session:s1', scope: 'conversations', kind: 'session', target: { type: 'session', sessionId: 's1' } }))).toBe('s1');
+    expect(peekSessionOf(hit({ id: 'r~m2~session:s9', scope: 'conversations', kind: 'session', target: { type: 'session', sessionId: 'r~m2~s9' } }))).toBe('r~m2~s9');
+    expect([message, artifact, todo, history].map(peekSessionOf)).toEqual([null, null, null, null]);
   });
   it('who wrote it', () => {
     expect(whoOf(message)).toBe('You');

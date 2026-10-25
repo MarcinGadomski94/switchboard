@@ -9,6 +9,7 @@ import { useV2Router } from '../nav.tsx';
 import { agentName } from '../shared/agent-line.ts';
 import { cardButtons, summaryOf } from '../shared/answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from '../shared/needs-you.ts';
+import { useOpenAgent } from '../shared/open-agent.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock, timeAgo } from '../shared/time.ts';
 import { DONE_LIMIT, type DoneRow, testsLine } from './home-model.ts';
@@ -88,6 +89,8 @@ function CombineButton({ item, onCombined }: { readonly item: NeedsItem; readonl
 
 export function DoneToday({ rows, loaded, phone, now }: { readonly rows: readonly DoneRow[]; readonly loaded: boolean; readonly phone: boolean; readonly now: number }) {
   const { navigate } = useV2Router();
+  // An agent row peeks (the prototype's `data-peek`; a phone opens the agent).
+  const peek = useOpenAgent();
   const [expanded, setExpanded] = useState(false);
   const { answered } = useNeedsYou();
   /** The Ready-for-approval item combined from a row, by agent: the row shows the compact line while the store keeps it. */
@@ -132,10 +135,13 @@ export function DoneToday({ rows, loaded, phone, now }: { readonly rows: readonl
             const ago = timeAgo(row.at, now);
             const sub = [session.status === 'done' ? HOME_WORDS.doneAgo(ago) : HOME_WORDS.activeAgo(ago), tests?.text].filter(Boolean).join(' · ');
             return (
-              <div key={row.key} className="v2-home-lrow" role="button" tabIndex={0} data-testid="v2-done-row" data-type="agent" data-session={session.id} onClick={() => navigate(`/agents/${encodeURIComponent(session.id)}`)} onKeyDown={(event) => {
+              <div key={row.key} className="v2-home-lrow" role="button" tabIndex={0} data-testid="v2-done-row" data-type="agent" data-session={session.id} onClick={(event) => {
+                if ((event.target as HTMLElement).closest('button, a')) return;
+                peek(session.id);
+              }} onKeyDown={(event) => {
                 if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
                   event.preventDefault();
-                  navigate(`/agents/${encodeURIComponent(session.id)}`);
+                  peek(session.id);
                 }
               }}>
                 <div className="v2-home-ficon" data-tone={ready ? 'violet' : 'green'}>
