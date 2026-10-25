@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Artifact, ArtifactDetail, DiffScope, SessionEvent } from '../../../core/api.ts';
-import { parseCsv } from '../../../core/artifacts.ts';
-import { api, artifactRawUrl } from '../../api/client.ts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Artifact, ArtifactListItem, DiffScope, SessionEvent } from '../../../core/api.ts';
+import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
-import { ChatMarkdown } from '../../views/session/ChatMarkdown.tsx';
-import { renderedMarkdown, viewerModes, type ViewerMode } from '../../views/session/artifacts.ts';
+import { deleteErrorText } from '../../views/session/ArtifactDelete.tsx';
 import { deltaText, diffModel, fileKey, scopeOptions, shownScope } from '../../views/session/diff.ts';
 import { useDiffScope } from '../../views/session/useDiffScope.ts';
 import { useSessionRefresh } from '../../views/session/useSessionRefresh.ts';
 import { hasSubagentChat } from '../../views/session/chat.ts';
 import { PLAY_MAX, TIMELINE_EVENTS_PAGE, formatClock, timelineModel } from '../../views/session/timeline.ts';
 import { rootPath } from '../../views/session/right-panel.ts';
-import { Card, Drawer, EmptyState, Icon, Segmented, Skeleton, StatusBadge } from '../components/index.ts';
-import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
+import { Card, EmptyState, Icon, Segmented, Skeleton, StatusBadge, TOAST_MS, useToast } from '../components/index.ts';
+import { AGENT_WORDS, RESULTS_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
+import { ResultDrawer } from '../results/ResultDrawer.tsx';
 import { resultMeta } from './chat-model.ts';
+import { openResult, resultItemOf, shownResults } from './results-bits.ts';
 import type { AgentData } from './useAgent.ts';
 
 /** The v2 names of the classic diff views (D90). */
@@ -107,23 +107,91 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
   );
 }
 
-/** D89 · this agent's results (artifacts), newest first; a click opens the drawer. */
+/**
+ * D89 · this agent's results (artifacts), newest first; a click opens lane R's
+ * result drawer (versions, Compare, Source / Rendered, Copy, Download, Full
+ * screen), the same drawer as the Results page. Delete hides the result at once
+ * and deletes it when the toast's Undo window ends (D111, as the Results page).
+ */
 export function ResultsTab({ data, resultId, onOpen }: { readonly data: AgentData; readonly resultId: string | null; readonly onOpen?: (id: string | null) => void }) {
   const { navigate } = useV2Router();
-  const results = data.session?.artifacts ?? null;
-  const open = (id: string | null): void => {
-    if (onOpen) onOpen(id);
-    else navigate(id ? `/agents/${encodeURIComponent(data.sessionId)}/results/${encodeURIComponent(id)}` : `/agents/${encodeURIComponent(data.sessionId)}/results`);
+  const toast = useToast();
+  const session = data.session;
+  const results = session?.artifacts ?? null;
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const timers = useRef(new Map<string, number>());
+  const open = useCallback(
+    (id: string | null): void => {
+      if (onOpen) onOpen(id);
+      else navigate(id ? `/agents/${encodeURIComponent(data.sessionId)}/results/${encodeURIComponent(id)}` : `/agents/${encodeURIComponent(data.sessionId)}/results`, id ? undefined : { replace: true });
+    },
+    [onOpen, navigate, data.sessionId],
+  );
+  const sessionId = data.sessionId;
+  const reload = data.reload;
+  const send = useCallback(
+    (id: string): void => {
+      const timer = timers.current.get(id);
+      if (timer === undefined) return;
+      window.clearTimeout(timer);
+      timers.current.delete(id);
+      api.deleteArtifact(sessionId, id).then(
+        () => reload(),
+        (caught: unknown) => {
+          toast({ text: deleteErrorText(caught), tone: 'error' });
+          setPending((current) => new Set([...current].filter((key) => key !== id)));
+          reload();
+        },
+      );
+    },
+    [sessionId, reload, toast],
+  );
+  // Leaving the agent sends the deletes still in their Undo window at once.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const map = timers.current;
+    return () => {
+      for (const id of [...map.keys()]) sendRef.current(id);
+    };
+  }, []);
+  const remove = (item: ArtifactListItem): void => {
+    open(null);
+    setPending((current) => new Set([...current, item.id]));
+    timers.current.set(
+      item.id,
+      window.setTimeout(() => send(item.id), TOAST_MS),
+    );
+    toast({
+      text: RESULTS_WORDS.deleted(1),
+      undo: () => {
+        const timer = timers.current.get(item.id);
+        if (timer !== undefined) window.clearTimeout(timer);
+        timers.current.delete(item.id);
+        setPending((current) => new Set([...current].filter((key) => key !== item.id)));
+      },
+    });
   };
-  if (results === null) return <Skeleton lines={3} height={60} />;
+  const opened = openResult(results, resultId);
+  const goneShown = useRef<string | null>(null);
+  useEffect(() => {
+    // A link to a result this agent does not have (deleted, or a typo): say so and drop it.
+    if (opened !== null || resultId === null || pending.has(resultId) || goneShown.current === resultId) return;
+    goneShown.current = resultId;
+    toast({ text: RESULTS_WORDS.notFound, tone: 'error' });
+    open(null);
+  }, [opened, resultId, pending, toast, open]);
+  if (results === null || !session) return <Skeleton lines={3} height={60} />;
+  const shown = shownResults(results, pending);
+  const item = opened && !pending.has(opened.id) ? resultItemOf(opened, session, data.sessionId) : null;
   return (
     <div className="v2-ag-tab" data-testid="v2-agent-results">
-      {results.length === 0 ? (
+      {shown.length === 0 ? (
         <EmptyState icon="results" tone="grey" title={AGENT_WORDS.noResults} text={AGENT_WORDS.noResultsText} />
       ) : (
         <div className="v2-ag-rgrid">
-          {results.map((artifact) => (
-            <Card key={artifact.id} interactive className="v2-ag-rcard" data-testid="v2-agent-result-card" onClick={() => open(artifact.id)}>
+          {shown.map((artifact) => (
+            <Card key={artifact.id} interactive className="v2-ag-rcard" data-testid="v2-agent-result-card" data-result-id={artifact.id} onClick={() => open(artifact.id)}>
               <span className="v2-ag-fi" data-kind={artifact.kind}>
                 {artifact.kind === 'markdown' ? 'MD' : artifact.kind.slice(0, 3).toUpperCase()}
               </span>
@@ -135,92 +203,9 @@ export function ResultsTab({ data, resultId, onOpen }: { readonly data: AgentDat
           ))}
         </div>
       )}
-      {resultId ? <ResultDrawer sessionId={data.sessionId} artifactId={resultId} onClose={() => open(null)} /> : null}
+      <ResultDrawer item={item} onClose={() => open(null)} openAgent={false} {...(data.blocked === null ? { onDelete: remove } : {})} />
     </div>
   );
-}
-
-/** One result in a drawer: its versions, rendered or as source (the classic viewer's rules, D89 / D126). */
-export function ResultDrawer({ sessionId, artifactId, onClose }: { readonly sessionId: string; readonly artifactId: string; readonly onClose: () => void }) {
-  const [version, setVersion] = useState<number | null>(null);
-  const [detail, setDetail] = useState<ArtifactDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<ViewerMode>('rendered');
-  useEffect(() => {
-    let live = true;
-    setError(null);
-    api.artifact(sessionId, artifactId, version ?? undefined).then(
-      (answer) => live && setDetail(answer),
-      () => live && setError('This result could not be read.'),
-    );
-    return () => {
-      live = false;
-    };
-  }, [sessionId, artifactId, version]);
-  const modes = detail ? viewerModes(detail.kind, 1) : ['rendered' as const];
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      testId="v2-agent-result-drawer"
-      title={
-        <div>
-          <b>{detail?.title ?? 'Result'}</b>
-          {detail ? <div className="v2-muted v2-ag-small">{resultMeta(detail.kind, detail.versions)}</div> : null}
-        </div>
-      }
-      actions={
-        detail && detail.versionList.length > 1 ? (
-          <select className="v2-field" aria-label="Version" value={detail.version.n} onChange={(event) => setVersion(Number(event.target.value))}>
-            {detail.versionList.map((v) => (
-              <option key={v.n} value={v.n}>
-                v{v.n} · {new Date(v.createdAt).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-              </option>
-            ))}
-          </select>
-        ) : null
-      }
-    >
-      {modes.length > 1 ? (
-        <Segmented<ViewerMode> label="Show" size="s" value={mode} onChange={setMode} options={modes.filter((m) => m !== 'diff').map((m) => ({ value: m, label: m === 'rendered' ? 'Rendered' : 'Source' }))} />
-      ) : null}
-      {error ? <p className="v2-ag-dock-error">{error}</p> : detail ? <ResultBody sessionId={sessionId} detail={detail} mode={mode} /> : <Skeleton lines={6} height={12} />}
-    </Drawer>
-  );
-}
-
-function ResultBody({ sessionId, detail, mode }: { readonly sessionId: string; readonly detail: ArtifactDetail; readonly mode: ViewerMode }) {
-  const src = artifactRawUrl(sessionId, detail.id, detail.version.n);
-  const content = detail.version.content;
-  if (detail.kind === 'image' || (detail.kind === 'svg' && mode === 'rendered')) return <img className="v2-ag-result-img" src={src} alt={detail.title} />;
-  if (detail.kind === 'pdf') {
-    return (
-      <a className="v2-btn" href={src} target="_blank" rel="noopener noreferrer">
-        Open the PDF
-      </a>
-    );
-  }
-  if (detail.kind === 'html' && mode === 'rendered') return <iframe className="v2-ag-result-frame" sandbox="allow-scripts" src={src} title={detail.title} referrerPolicy="no-referrer" />;
-  if (detail.kind === 'mermaid' && mode === 'rendered') return <iframe className="v2-ag-result-frame" sandbox="allow-scripts" src={`${src}?render`} title={detail.title} referrerPolicy="no-referrer" />;
-  if (content === null) return <Skeleton lines={4} height={12} />;
-  if (mode === 'source') return <pre className="v2-ag-code">{content}</pre>;
-  if (detail.kind === 'csv') {
-    const table = parseCsv(content);
-    return (
-      <div className="v2-ag-csv">
-        <table>
-          <tbody>
-            {table.rows.map((row, i) => (
-              <tr key={i}>
-                {row.map((cell, j) => (i === 0 ? <th key={j}>{cell}</th> : <td key={j}>{cell}</td>))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-  return <ChatMarkdown text={renderedMarkdown(detail.kind, detail.language, content) ?? content} testId="v2-agent-result-markdown" />;
 }
 
 /** The newest events of the agent for its timeline (the classic tab's first page, kept live). */
