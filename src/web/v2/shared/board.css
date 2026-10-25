@@ -234,6 +234,10 @@
   padding: 7px 9px;
   font-weight: 550;
   font-size: 13px;
+}
+
+/* The clamp sits on the inner text, so a 4th line never shows in the quote's padding. */
+.sb2 .v2-bcard .v2-bq-t {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -286,20 +290,44 @@
   }
 }
 
-/* Tablet (768–1279): the four columns keep a readable width and the board scrolls sideways. */
+/*
+ * Tablet (768–1279): the columns shrink to 132 px (the prototype's tablet board shrinks them too),
+ * so the board fits next to the open folder tree at 1024. Narrower than that, the column heads and
+ * the lanes keep one shared minimum width and scroll sideways together inside the board.
+ */
 @media (max-width: 1279px) {
+  .sb2 .v2-bd {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
   .sb2 .v2-bd-col-h {
     font-size: 13px;
     padding: 6px 10px;
+    gap: 6px;
   }
 
   .sb2 .v2-bd-cols,
   .sb2 .v2-lane-g {
-    grid-template-columns: repeat(4, minmax(200px, 1fr));
+    grid-template-columns: repeat(4, minmax(132px, 1fr));
   }
 
-  .sb2 .v2-bd {
-    overflow-x: auto;
+  /* 4 × 132 + 3 gaps; a lane adds its 10 px padding each side and its border. */
+  .sb2 .v2-bd > .v2-bd-cols {
+    min-width: 558px;
+  }
+
+  .sb2 .v2-bd > .v2-lane {
+    min-width: 580px;
+  }
+
+  .sb2 .v2-lane-g {
+    padding: 0 8px 8px;
+  }
+
+  .sb2 .v2-bcard {
+    padding: 10px;
+    overflow-wrap: anywhere;
   }
 }
 

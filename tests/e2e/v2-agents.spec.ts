@@ -209,7 +209,7 @@ test('the Board quick answer answers from the card', async ({ page }) => {
   await expect(page.getByTestId('v2-bcard-answer')).toHaveCount(before - 1);
 });
 
-test('a Board card peeks (lane X: the shared board and the peek sheet); Enter too; the tablet board scrolls inside', async ({ page }) => {
+test('a Board card peeks (lane X: the shared board and the peek sheet); Enter too; the tablet board fits next to the tree', async ({ page }) => {
   await page.getByTestId('v2-agents-view').locator('[data-value="board"]').click();
   const card = page.getByTestId('v2-bcard').first();
   await expect(card).toBeVisible();
@@ -230,9 +230,18 @@ test('a Board card peeks (lane X: the shared board and the peek sheet); Enter to
   await page.setViewportSize({ width: 1024, height: 800 });
   await expect(page.getByTestId('v2-ftree')).toBeVisible();
   await expect(page.getByTestId('v2-agents-board')).toBeVisible();
-  const head = await page.getByTestId('v2-bd-col-done').boundingBox();
-  expect(head?.width ?? 0).toBeGreaterThanOrEqual(190);
+  // At 1024 the board fits next to the tree: every column head is on screen, nothing scrolls sideways.
+  const done = await page.getByTestId('v2-bd-col-done').boundingBox();
+  expect((done?.x ?? 0) + (done?.width ?? 0)).toBeLessThanOrEqual(1024);
+  const fits = (): Promise<boolean> => page.getByTestId('v2-agents-board').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(await fits()).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  // At 768 with the tree open the heads and lanes scroll sideways together inside the board (one scroller), never the page.
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(page.getByTestId('v2-ftree')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const widths = await page.getByTestId('v2-agents-board').evaluate((el) => [el.querySelector('.v2-bd-cols')?.scrollWidth ?? 0, el.querySelector('.v2-lane')?.getBoundingClientRect().width ?? 0]);
+  expect(widths[1] ?? 0).toBeGreaterThanOrEqual((widths[0] ?? 0) - 1);
 });
 
 test('Closed: search and Reopen', async ({ page }) => {

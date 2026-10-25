@@ -163,7 +163,7 @@ export function BoardCard({ column, flipId, kind, corner, title, status, label, 
 export function BoardQuote({ tone = 'amber', children }: { readonly tone?: 'amber' | 'red'; readonly children: ReactNode }) {
   return (
     <div className="v2-bq" data-tone={tone}>
-      {children}
+      <span className="v2-bq-t">{children}</span>
     </div>
   );
 }

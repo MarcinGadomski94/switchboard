@@ -68,10 +68,13 @@ test('the project list and the four views (remembered)', async ({ page }) => {
   await expect(board.getByTestId('v2-lane')).toHaveCount(1);
   await expect(board.locator('.v2-bd-col-h')).toHaveCount(4);
   await expect(board.locator('.v2-bd-col-h[data-col="working"] .v2-count')).toHaveText('3');
-  // Tablet: the four columns stay readable and the board scrolls sideways, not the page.
-  await page.setViewportSize({ width: 900, height: 900 });
-  await expect(board.getByTestId('v2-bcell')).toHaveCount(4);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  // Tablet (1024 and 768): the four columns fit; neither the board nor the page scrolls sideways.
+  for (const width of [1024, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(board.getByTestId('v2-bcell')).toHaveCount(4);
+    expect(await board.locator('.v2-bd').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  }
   await page.setViewportSize({ width: 1440, height: 900 });
   await views.getByRole('button', { name: 'Graph' }).click();
   await expect(page.getByTestId('v2-graph-node')).toHaveCount(3);
