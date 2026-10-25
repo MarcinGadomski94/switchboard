@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ArtifactListItem } from '../../../core/api.ts';
 import { offlineReason } from '../../../core/peers.ts';
-import { api, artifactRawUrl } from '../../api/client.ts';
+import { api, artifactRawUrl, withKeepalive } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { usePeerSync } from '../../components/PeerSync.tsx';
@@ -156,7 +156,7 @@ export function ResultsPage() {
   };
   // Leaving the page or hiding the tab sends what is waiting.
   useEffect(() => {
-    const flush = (): void => send([...timers.current.keys()]);
+    const flush = (): void => withKeepalive(() => send([...timers.current.keys()]));
     const onHide = (): void => {
       if (document.visibilityState === 'hidden') flush();
     };

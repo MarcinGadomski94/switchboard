@@ -1,7 +1,7 @@
 import type { TeamCharter, TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, keepaliveNow } from '../api/client.ts';
 
 /**
  * D100 · the Team page's calls (contract → *Team (D100)*). Kept here rather than in
@@ -17,6 +17,7 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, 
     response = await fetch(path, {
       method,
       credentials: 'same-origin',
+      ...(keepaliveNow() ? { keepalive: true } : {}),
       headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

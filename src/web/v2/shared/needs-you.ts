@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { MachineState } from '../../../core/peers.ts';
-import { api, onDeviceOrigin } from '../../api/client.ts';
+import { api, onDeviceOrigin, withKeepalive } from '../../api/client.ts';
 import { onHubEvent, onHubStatus } from '../../api/useHub.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { memoryApi } from '../../memory/api.ts';
@@ -130,11 +130,12 @@ function hold(): () => void {
       .system()
       .then((system) => needsYouStore.usageChanged(system))
       .catch(() => undefined);
-    // An answer still in its Undo window is sent before the page goes away.
+    // An answer still in its Undo window is sent before the page goes away,
+    // with `keepalive` so the browser lets the request outlive the page.
     const flush = (): void => {
-      if (document.visibilityState === 'hidden') void needsYouStore.flush();
+      if (document.visibilityState === 'hidden') void withKeepalive(() => needsYouStore.flush());
     };
-    const hide = (): void => void needsYouStore.flush();
+    const hide = (): void => void withKeepalive(() => needsYouStore.flush());
     document.addEventListener('visibilitychange', flush);
     window.addEventListener('pagehide', hide);
     live = () => {

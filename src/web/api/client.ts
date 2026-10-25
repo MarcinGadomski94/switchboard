@@ -142,6 +142,29 @@ function pageLocation(): { readonly hostname: string; replace(url: string): void
   return (globalThis as { location?: { readonly hostname: string; replace(url: string): void } }).location ?? null;
 }
 
+let keepaliveDepth = 0;
+
+/**
+ * Runs `send` so that every request it starts synchronously goes out with
+ * `keepalive` (it survives the page hiding or unloading): the v2 Undo windows
+ * (an answer, a deleted result or task) are flushed this way on `pagehide`.
+ * Only the first request of a chain is covered: one started after an `await`
+ * runs outside the scope.
+ */
+export function withKeepalive<T>(send: () => T): T {
+  keepaliveDepth += 1;
+  try {
+    return send();
+  } finally {
+    keepaliveDepth -= 1;
+  }
+}
+
+/** Whether a request started now should use `keepalive` (inside {@link withKeepalive}). */
+export function keepaliveNow(): boolean {
+  return keepaliveDepth > 0;
+}
+
 async function request<T>(method: Method, path: string, body?: unknown, options: { readonly keepalive?: boolean } = {}): Promise<T> {
   let response: Response;
   try {
@@ -149,7 +172,7 @@ async function request<T>(method: Method, path: string, body?: unknown, options:
       method,
       credentials: 'same-origin',
       // D88: a draft saved while the page hides or unloads still goes out.
-      ...(options.keepalive ? { keepalive: true } : {}),
+      ...(options.keepalive || keepaliveNow() ? { keepalive: true } : {}),
       headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

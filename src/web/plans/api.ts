@@ -1,5 +1,5 @@
 import type { Plan, PlanMergeMode, PlansState } from '../../core/plans.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, keepaliveNow } from '../api/client.ts';
 
 /**
  * D99 · the Plans page's calls (contract → *Plans (D99)* in
@@ -16,6 +16,7 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, 
     response = await fetch(path, {
       method,
       credentials: 'same-origin',
+      ...(keepaliveNow() ? { keepalive: true } : {}),
       headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

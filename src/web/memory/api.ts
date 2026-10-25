@@ -1,5 +1,5 @@
 import type { MemoryDraftAllAnswer, MemoryDraftAnswer, MemoryEntry, MemoryScope, MemoryScopeKind, MemoryScopeOption, MemorySessionCount, MemorySettings, MemoryState } from '../../core/memory.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, keepaliveNow } from '../api/client.ts';
 
 /**
  * D107 · the Memory page's calls (contract → *Project memory (D107)*), on this machine or, through
@@ -13,6 +13,7 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, 
     response = await fetch(path, {
       method,
       credentials: 'same-origin',
+      ...(keepaliveNow() ? { keepalive: true } : {}),
       headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

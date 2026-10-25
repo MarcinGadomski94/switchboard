@@ -4,7 +4,7 @@ import type { SessionStatus } from '../../../../core/model.ts';
 import { displayTitle } from '../../../../core/session-title.ts';
 import { captureTargets } from '../../../../core/todo-capture.ts';
 import { todoHasPlan, todoStartMessage } from '../../../../core/todos.ts';
-import { ApiError, api } from '../../../api/client.ts';
+import { ApiError, api, withKeepalive } from '../../../api/client.ts';
 import { useApi } from '../../../api/useApi.ts';
 import { useHubEvent } from '../../../api/useHub.ts';
 import { useLiveMachine } from '../../../api/useMachines.ts';
@@ -311,7 +311,7 @@ export function TasksPage() {
       for (const [key, entry] of map) {
         window.clearTimeout(entry.timer);
         map.delete(key);
-        entry.send();
+        withKeepalive(() => entry.send());
       }
     };
     window.addEventListener('pagehide', flush);
