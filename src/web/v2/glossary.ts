@@ -1356,6 +1356,10 @@ export const PROJECT_WORDS = {
   needYou: (n: number): string => `${n} need${n === 1 ? 's' : ''} you`,
   stoppedCount: (n: number): string => `${n} stopped`,
   earlierDone: (n: number): string => `${n} earlier step${n === 1 ? '' : 's'} done`,
+  // Lane X · boards
+  whatAgentsKnow: 'What agents know',
+  whatAgentsKnowText: 'Notes are scoped to a folder, a code project or a teammate, so every project there shares them.',
+  openNotes: 'Open notes',
 } as const;
 
 /** The Crews pages' words. */

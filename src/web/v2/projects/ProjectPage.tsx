@@ -5,13 +5,14 @@ import { plansApi, refusalText } from '../../plans/api.ts';
 import { jiraApi } from '../../plans/jira/api.ts';
 import { itemsWaitingForRepos } from '../../plans/model.ts';
 import { dropPlan } from '../../plans/store.ts';
+import { useSessionListOf } from '../../api/session-list.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Button, Checkbox, Chip, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Segmented, Select, Skeleton, useToast } from '../components/index.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
-import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, protectedAckText, readProjectView, remoteBlock, timeLeft } from './project-model.ts';
+import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readProjectView, remoteBlock, timeLeft } from './project-model.ts';
 import { ProgressBar } from './ProjectsPage.tsx';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
@@ -91,6 +92,8 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
   const started = plan.state !== 'draft';
   const mode = plan.mergeMode ?? draftMode;
   const waitingRepos = itemsWaitingForRepos(plan);
+  const sessions = useSessionListOf();
+  const notesHref = projectNotesHref(plan, sessions.data ?? []);
 
   const setView = (next: ProjectView): void => {
     setViewChoice(next);
@@ -323,6 +326,16 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
       </div>
 
       {isJira && jiraNow ? <JiraSection plan={plan} state={jiraNow} onRefreshed={setJiraState} /> : null}
+
+      <section className="v2-card v2-p-know" aria-label={PROJECT_WORDS.whatAgentsKnow} data-testid="v2-project-know">
+        <Icon name="book" size="s" />
+        <b>{PROJECT_WORDS.whatAgentsKnow}</b>
+        <span className="v2-muted v2-p-know-text">{PROJECT_WORDS.whatAgentsKnowText}</span>
+        <span className="v2-grow" />
+        <V2Link to={notesHref} className="v2-btn" data-size="sm" data-testid="v2-project-notes" style={{ textDecoration: 'none' }}>
+          {PROJECT_WORDS.openNotes}
+        </V2Link>
+      </section>
 
       {overlay?.kind === 'start' ? (
         <StartDialog

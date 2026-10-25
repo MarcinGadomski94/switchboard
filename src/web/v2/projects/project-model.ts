@@ -387,3 +387,25 @@ export function canStart(plan: Pick<Plan, 'targetBranch' | 'items'>, mode: PlanM
 export function checkSubfolder(name: string): string | null {
   return name.trim().length > 60 ? 'At most 60 characters.' : null;
 }
+
+// ── Lane X · boards: "What agents know" ──────────────────────────────────
+
+/** The bits of a session {@link projectNotesHref} reads (a `SessionListItem`). */
+export interface NotesSessionLike {
+  readonly id: string;
+  readonly folderPath: string | null;
+  readonly cwd: string | null;
+}
+
+/**
+ * D131 · lane X · where the project page's "What agents know" card leads: Notes scoped to the
+ * project's folder (`/notes?scope=<folder>`, the Notes page's `?scope=`), the folder being its own
+ * agent's (the plan's source session: its folder, else where it runs; Project memory's scope). A
+ * paired computer's project finds its agent under the remote id. Unknown → every note (`/notes`).
+ */
+export function projectNotesHref(plan: Pick<Plan, 'sourceSessionId' | 'machine'>, sessions: readonly NotesSessionLike[]): string {
+  const ids = [plan.sourceSessionId, ...(plan.machine ? [`r~${plan.machine.id}~${plan.sourceSessionId}`] : [])];
+  const source = sessions.find((session) => ids.includes(session.id)) ?? null;
+  const folder = source ? (source.folderPath ?? source.cwd) : null;
+  return folder ? `/notes?scope=${encodeURIComponent(folder)}` : '/notes';
+}

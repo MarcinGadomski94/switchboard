@@ -17,6 +17,7 @@ import {
   modeOptions,
   needsProtectedAck,
   projectCounts,
+  projectNotesHref,
   projectStatus,
   projectsTimeline,
   protectedAckText,
@@ -290,6 +291,18 @@ describe('the board', () => {
     const columns = boardColumns([item('2', { state: 'running' }), item('1', { state: 'running' }), item('3', { state: 'done' })]);
     expect(columns.working.map((entry) => entry.id)).toEqual(['1', '2']);
     expect(columns.done.map((entry) => entry.id)).toEqual(['3']);
+  });
+});
+
+describe('What agents know (lane X)', () => {
+  it('links to Notes scoped to the folder of the project’s own agent; a paired computer’s by its remote id; else every note', () => {
+    const plan = { sourceSessionId: 's1', machine: null };
+    const sessions = [{ id: 's1', folderPath: '/x/acme checkout', cwd: '/x/acme checkout/wt' }, { id: 's2', folderPath: null, cwd: '/x/other' }];
+    expect(projectNotesHref(plan, sessions)).toBe('/notes?scope=%2Fx%2Facme%20checkout');
+    expect(projectNotesHref({ sourceSessionId: 's2', machine: null }, sessions)).toBe('/notes?scope=%2Fx%2Fother');
+    expect(projectNotesHref({ sourceSessionId: 's9', machine: { id: 'm2', name: 'Studio-PC', state: 'online' } }, [{ id: 'r~m2~s9', folderPath: '/y/acme', cwd: null }])).toBe('/notes?scope=%2Fy%2Facme');
+    expect(projectNotesHref({ sourceSessionId: 'gone', machine: null }, sessions)).toBe('/notes');
+    expect(projectNotesHref(plan, [{ id: 's1', folderPath: null, cwd: null }])).toBe('/notes');
   });
 });
 

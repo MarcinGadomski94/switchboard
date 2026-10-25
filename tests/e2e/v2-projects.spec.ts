@@ -76,6 +76,15 @@ test('the project list and the four views (remembered)', async ({ page }) => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  // Lane X: "What agents know" links to Notes scoped to the folder of the project's own agent.
+  const know = page.getByTestId('v2-project-know');
+  await expect(know).toContainText('What agents know');
+  const folder = (await world.call(page, 'GET', `/api/sessions/${source}`)).body as { folderPath: string | null; cwd: string | null };
+  await expect(know.getByTestId('v2-project-notes')).toHaveAttribute('href', `/notes?scope=${encodeURIComponent(folder.folderPath ?? folder.cwd ?? '')}`);
+  await know.getByTestId('v2-project-notes').click();
+  await expect(page).toHaveURL(/\/notes\?scope=/);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/projects/${planId}$`));
   await views.getByRole('button', { name: 'Graph' }).click();
   await expect(page.getByTestId('v2-graph-node')).toHaveCount(3);
   await expect(page.getByTestId('v2-graph-edge')).toHaveCount(2);
@@ -260,4 +269,9 @@ test('phone: the list, then a project as its steps list', async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
   const box = await step(page, 'PROJ-1').getByTestId('v2-step-menu').boundingBox();
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(32);
+  // "What agents know" fits the phone too.
+  const know = page.getByTestId('v2-project-know');
+  await know.scrollIntoViewIfNeeded();
+  await expect(know).toBeVisible();
+  expect(((await know.boundingBox())?.width ?? 999)).toBeLessThanOrEqual(390);
 });
