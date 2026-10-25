@@ -1401,6 +1401,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Not built:** changing the folder of a running plan (`plan_set_mode` does not touch it) and a "Move future runs to subfolder…" action: not trivial (a route, validation and plan-page UI); runs can be dragged.
   - Details: `docs/plans.md` → *The runs' sidebar subfolder (D130)*, `docs/sidebar.md` → *Where runs appear*, `docs/mcp.md`; contract → *Plans (D99)*. Tests: `tests/core/plan-run-folder.test.ts`, `tests/server/plans/run-subfolder.test.ts`, `tests/server/sessions/run-place.test.ts`, `tests/server/plans/migration.test.ts`, `tests/e2e/plans-run-subfolder.spec.ts`.
 
+## Switchboard 2 (added 2026-10-25)
+
+- **D131 Switchboard 2: the v2 theme and the classic theme.** Developer request, 2026-10-25 (verbatim): "Please implement it as a default theme of v2, but keep the current theme that we have in Switchboard as "classic" theme that i can change to. The new theme is going to be called "v2 theme". Build it and release it as v2 of switchboard. Deliver the full implementation without asking me things." It follows the developer's approval of the Direction D v3 mockups the same day. Builds on D41 (the pane state read before the first paint), D71 (the shared sidebar layout's pins), D73 (paired phones), D74 (the responsive breakpoints) and D124 (waiting for you).
+  - **Two UIs, one app.** The v2 theme (`src/web/v2/`, the prototype `docs/design/v2-prototype.html`) is the default; the 1.x UI stays as the classic theme. Both use the same server, API, `/hub` events and data.
+  - **The switch.** Per browser (`localStorage`), with a service default (`ui.theme`, default `v2`; `SWITCHBOARD_UI_THEME_DEFAULT`). Read before the first render (no flash); switching swaps the whole UI without a reload and keeps the address where both UIs have the page. In classic Settings → Appearance and v2 Settings › Appearance.
+  - **Built in lanes** (`docs/design/v2-plan.md`): F (foundation: tokens, components, glossary, shell, router, the shared Needs-you store and answer card), G (Team, Plans and Project memory always on), then H, A, S, P, R and X. Every assumption a lane made without asking: `docs/design/v2-decisions.md`.
+  - **No server change for the UI beyond the setting:** v2 reads the existing routes (`docs/v2.md` → *Shared modules*).
+  - Details: `docs/v2.md`; `docs/configuration.md` (`SWITCHBOARD_UI_THEME_DEFAULT`). Tests: `tests/web/v2-theme.test.ts`, `tests/web/v2-needs-you.test.ts`, `tests/web/v2-shell.test.ts`, `tests/server/api/settings.test.ts`, `tests/e2e/v2-shell.spec.ts`, `tests/e2e/v2-needs-you.spec.ts`.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
