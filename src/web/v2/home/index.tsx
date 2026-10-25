@@ -29,7 +29,7 @@ import './home.css';
 
 function SectionHead({ id, icon, tone, title, count, countTone, hint, link }: { readonly id: string; readonly icon: string; readonly tone: string; readonly title: string; readonly count: number | null; readonly countTone?: 'amber'; readonly hint?: string; readonly link: ReactNode }) {
   return (
-    <div className="v2-home-sec-h">
+    <div className="v2-home-sec-h" data-tour={id}>
       <span className="v2-home-sec-i" data-tone={tone}>
         <Icon name={icon} />
       </span>
@@ -151,7 +151,7 @@ export function HomePage() {
 
       <StartBox phone={false} takenNames={takenNames} events={events} />
 
-      <section className="v2-home-sec" aria-labelledby="v2-home-needs" data-tour="v2-home-needs">
+      <section className="v2-home-sec" aria-labelledby="v2-home-needs">
         <SectionHead
           id="v2-home-needs"
           icon="hand"

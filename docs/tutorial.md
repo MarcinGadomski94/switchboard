@@ -18,6 +18,56 @@ Code: `src/core/tutorial.ts` (registry, rules, API types), `src/server/tutorial/
 (state), `src/server/api/tutorial.ts` (routes), `src/web/tutorial/` (the overlay, the
 first-run gate, the run store), `src/web/views/settings/TutorialSection.tsx`.
 
+## Two themes (D131): v2 tours and classic tours
+
+Switchboard 2 has two UIs (`docs/v2.md`), and a tour can only highlight elements of the UI
+on screen. So every tour belongs to one of them: `WhatsNewFeature.ui` is `'v2'` for a v2
+tour and unset for a classic one (the main tour is classic). Each UI opens, lists and
+replays only its own tours; the other UI's stay as they are stored (`pending` stays pending).
+
+- **"Welcome to Switchboard 2"** (`welcome-v2`, `V2_WELCOME_ID`, version 2.0.0) is the v2
+  tour, six steps: Home and Needs you · the start box · Agents and folders (List / Chats /
+  Board, ⌘\) · one agent (the side panel ⌘. and each reply's ⋯ menu) · Projects and Crews
+  (with D132's "always on", which the classic `graduated` tour tells) · Settings ›
+  Appearance (switch to Classic). Its steps name `v2Route` (a v2 address, or `'agent'` for
+  the newest open agent) instead of `route`, and these anchors:
+
+  | Step | Anchors (first one on screen wins) | Where |
+  |---|---|---|
+  | home | `v2-home-needs`, `v2-needs` | Home's Needs-you heading (desktop / tablet); the top bar's Needs you button; the phone's Needs you tab |
+  | start | `v2-start` | Home's start box (both layouts) |
+  | agents | `v2-agents-view`, `v2-nav-agents`, `v2-tab-agents` | the List / Chats / Board switch (phone: its own switch) |
+  | agent | `v2-agent-details` | the agent header's Details button (⌘.) |
+  | projects-crews | `v2-nav-projects`, `v2-tab-more` | the rail's Projects; the phone's More tab |
+  | appearance | `v2-theme` | Settings › Appearance's Theme switch |
+
+  The rail and the phone tabs carry `v2-nav-<area>` / `v2-tab-<tab>` on every item.
+- **When it opens:** on the first v2 load of a machine where it was never finished or
+  skipped (`v2AutoTours`): an existing install has it `pending` after the update (like any
+  What's-new tour); a brand-new install queues only the classic main tour, so in v2 the
+  welcome opens in its place and the main tour stays pending for a switch to Classic.
+  `autoOpen` (demo mode, `SWITCHBOARD_TUTORIAL=off`) applies as before. It is stored like
+  every tour (`PUT /api/tutorial/tours/welcome-v2`): once per machine, shared by its
+  browsers and phones. When it opened by itself, its outcome is also recorded for the
+  classic tours it covers (`V2_COVERS`: `graduated`, `two-themes`) that were still pending.
+- **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
+  Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
+- **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)
+  lists the v2 tours with their state and replays them in v2 with highlights (recording
+  nothing); a note says the other tours point at the Classic theme. Classic Settings →
+  Tutorial lists and replays the classic tours only.
+- **The v2 host** (`src/web/v2/tour/`): `TourHost.tsx` (the gate and the overlay, mounted by
+  `shell/Shell.tsx`, rendered through the v2 `Portal`), `tour-model.ts` (the run store and
+  the pure rules), `tour.css`. It reuses the classic geometry (`spotBox`, `placeCard`,
+  `sheetEdge`): the card sits next to the cutout, a bottom (or top) sheet on phones; Back ·
+  Next / Done · Skip tour (Skip all in a chain), → ← Esc, focus kept in the card and given
+  back, the page's address restored at the end, reduced motion respected. A step without its
+  anchor (no agent yet) shows its `missing` text in a centred card.
+- **Adding a v2 tour:** append a `WhatsNewFeature` with `ui: 'v2'` (up to
+  `MAX_V2_TOUR_STEPS` steps, each with `v2Route` and a `missing` text) and put `data-tour` on
+  v2 elements (`Segmented` takes a `tour` prop). Tests: `tests/web/v2-tour.test.ts`,
+  `tests/e2e/v2-tour.spec.ts`.
+
 ## What is stored (one state per machine)
 
 Migration `0037_tutorial.sql` adds `tutorial_tours` (`tour` = `main` or a feature id,
