@@ -74,7 +74,8 @@ describe('D108 · GET /api/insights', () => {
     expect(body.estimates).toMatchObject({ count: 1, median: 2 });
     // 1M output tokens at the example Opus price (20 / 1M) = 20.
     expect(body.cost).toMatchObject({ currency: 'USD', example: true, todos: 1, priced: 1, total: 20 });
-    expect(body.outcomes.plansOn).toBe(false);
+    // D132: Plans is always on.
+    expect(body.outcomes.plansOn).toBe(true);
     expect(body.backfill.done).toBe(true);
     // The default account appears in the forecast (no readings: unknown).
     expect(body.forecast.map((f) => [f.profileId, f.windows.map((w) => w.verdict)])).toEqual([['default-claude', ['unknown', 'unknown']]]);
