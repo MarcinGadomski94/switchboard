@@ -14,13 +14,13 @@
 | `SidePanel.tsx` | Details: the project line and What agents know (`SideExtras.tsx`), Working memory, How it works, Helpers, Agents overview (`SideExtras.tsx`: D21 / D27 / D51 with Resume run), Background apps, Tasks, Handoff note & terminal, Advanced (each group remembered) |
 | `SideExtras.tsx` | Lane X: `ProjectLine` (D99), `NotesLine` (D107, links `/notes?scope=<folder>`), `OverviewGroup` |
 | `MoveDialog.tsx` | Lane X: `MoveDialogsHost` (mounted by `PeekHost`): the v2 Move to computer (D65 / D110) and Continue in Switchboard (D72) dialogs over the classic stores (`openTakeover`, `openContinueHooked`) and API |
-| `tabs.tsx` | Changes, Results (opens lane R's `results/ResultDrawer.tsx`, `openAgent={false}`, Delete with Undo), Timeline, Helpers |
+| `tabs.tsx` | Changes, Results (opens lane R's `results/ResultDrawer.tsx`, `openAgent={false}`, Delete with Undo), Timeline (lanes, playback scrubber, event log), Helpers |
 | `HelperChat.tsx` | A helper's own chat (`/agents/:id/helpers/:helperId`) |
 | `Peek.tsx` | `openPeek`, `closePeek`, `PeekHost`, `PeekSheet` |
 | `dialogs.tsx` | Undo from here (D80), Save as result (D89), Rename, Continue in a terminal, Remote control (QR), confirmations |
 | `useAgent.ts`, `useChatRows.ts` | Data: the classic session data (`useSessionData`), hub reloads, activity, computer, save points; the chat rows |
 | `chat-model.ts`, `composer-model.ts`, `header-model.ts`, `reply-menu.ts`, `how-model.ts`, `view-settings.ts` | Pure, unit-tested (`tests/web/v2-agent.test.ts`) |
-| `results-bits.ts`, `move-model.ts`, `side-model.ts` | Lane X, pure, unit-tested (`tests/web/v2-x-agent.test.ts`) |
+| `results-bits.ts`, `move-model.ts`, `side-model.ts`, `timeline-model.ts` | Lane X, pure, unit-tested (`tests/web/v2-x-agent.test.ts`) |
 | `agent.css` | Styles, all under `.sb2`, classes `v2-ag-*` |
 
 Everything reuses the classic session view's models, hooks and API clients (chat items, outgoing / D114, Stop / D50, drafts / D88, attachments / D57, checkpoints / D80, diff / D90, timeline, fresh session / D83, CI / D109, processes / D127); only the markup is new. E2E: `tests/e2e/v2-agent.spec.ts`.

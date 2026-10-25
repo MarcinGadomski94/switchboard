@@ -8,14 +8,15 @@ import { deltaText, diffModel, fileKey, scopeOptions, shownScope } from '../../v
 import { useDiffScope } from '../../views/session/useDiffScope.ts';
 import { useSessionRefresh } from '../../views/session/useSessionRefresh.ts';
 import { hasSubagentChat } from '../../views/session/chat.ts';
-import { PLAY_MAX, TIMELINE_EVENTS_PAGE, formatClock, timelineModel } from '../../views/session/timeline.ts';
+import { PLAY_MAX, PLAY_TICK_MS, TIMELINE_EVENTS_PAGE, formatClock, playStep, timelineModel } from '../../views/session/timeline.ts';
 import { rootPath } from '../../views/session/right-panel.ts';
-import { Card, EmptyState, Icon, Segmented, Skeleton, StatusBadge, TOAST_MS, useToast } from '../components/index.ts';
+import { Button, Card, Chip, EmptyState, Icon, IconButton, Segmented, Skeleton, StatusBadge, TOAST_MS, useToast } from '../components/index.ts';
 import { AGENT_WORDS, RESULTS_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { ResultDrawer } from '../results/ResultDrawer.tsx';
 import { resultMeta } from './chat-model.ts';
 import { openResult, resultItemOf, shownResults } from './results-bits.ts';
+import { LOG_LOOKS, SCRUB_STEP, blockOf, nextMoment, playOf, previousMoment } from './timeline-model.ts';
 import type { AgentData } from './useAgent.ts';
 
 /** The v2 names of the classic diff views (D90). */
@@ -238,40 +239,118 @@ function useTimelineEvents(sessionId: string): readonly SessionEvent[] | null {
 
 const LANE_COLORS: Readonly<Record<string, string>> = { plan: 'var(--v2-violet)', impl: 'var(--v2-blue)', loop: 'var(--v2-accent)', ask: 'var(--v2-amber-dot)', ok: 'var(--v2-green)', error: 'var(--v2-red)' };
 
-/** The Timeline tab: one lane per helper (the classic timeline model, D95 window), the newest page of events. */
+/** `true` while the developer asked for reduced motion (Play then steps from event to event instead of animating). */
+function useReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const list = window.matchMedia(query);
+    const on = (): void => setReduced(list.matches);
+    list.addEventListener('change', on);
+    return () => list.removeEventListener('change', on);
+  }, []);
+  return reduced;
+}
+
+/**
+ * The Timeline tab: one lane per helper (the classic timeline model, D95 window),
+ * the newest page of events. Lane X: the playback scrubber (Play / Pause, drag or
+ * arrow keys to a moment, ⇧← / ⇧→ to the previous / next event; the lanes dim
+ * what happens after the playhead) and the event log up to that moment (a row
+ * moves the playhead there and marks its block). With reduced motion Play steps
+ * to the next event instead of animating.
+ */
 export function TimelineTab({ data }: { readonly data: AgentData }) {
   const events = useTimelineEvents(data.sessionId);
   const [now, setNow] = useState(() => Date.now());
+  const [play, setPlay] = useState(PLAY_MAX);
+  const [playing, setPlaying] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+  const reduced = useReducedMotion();
+  const playRef = useRef(play);
+  playRef.current = play;
   const live = data.session?.status === 'run' || data.session?.status === 'need';
   useEffect(() => {
     if (!live) return undefined;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [live]);
+  useEffect(() => {
+    setPlay(PLAY_MAX);
+    setPlaying(false);
+    setSelected(null);
+  }, [data.sessionId]);
+  useEffect(() => {
+    if (!playing) return undefined;
+    const timer = setInterval(() => {
+      const step = playStep(playRef.current);
+      playRef.current = step.play;
+      setPlay(step.play);
+      if (!step.playing) setPlaying(false);
+    }, PLAY_TICK_MS);
+    return () => clearInterval(timer);
+  }, [playing]);
   const session = data.session;
   const model = useMemo(
-    () => (events && session ? timelineModel({ events, agents: session.agents.filter((a) => a.kind !== 'workflow'), status: session.status, now, play: PLAY_MAX, root: rootPath(session) }) : null),
-    [events, session, now],
+    () => (events && session ? timelineModel({ events, agents: session.agents.filter((a) => a.kind !== 'workflow'), status: session.status, now, play, root: rootPath(session) }) : null),
+    [events, session, now, play],
   );
   if (!model) return <Skeleton lines={4} height={20} />;
   if (model.empty) return <EmptyState icon="clock" tone="grey" title={AGENT_WORDS.noTimeline} />;
+  const lanes = model.lanes;
+  const seek = (value: number): void => {
+    setPlaying(false);
+    setPlay(Math.min(PLAY_MAX, Math.max(0, value)));
+  };
+  const togglePlay = (): void => {
+    if (reduced) {
+      // No animation: one step to the next event (from the start again once at the end).
+      seek(play >= PLAY_MAX ? 0 : nextMoment(lanes, play));
+      return;
+    }
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (play >= PLAY_MAX) {
+      playRef.current = 0;
+      setPlay(0);
+    }
+    setPlaying(true);
+  };
+  const pick = (id: number): void => {
+    const block = blockOf(lanes, id);
+    setSelected(id);
+    if (block) seek(playOf(block.left));
+  };
   return (
-    <div className="v2-ag-tab" data-testid="v2-agent-timeline">
+    <div className="v2-ag-tab v2-ag-tl" data-testid="v2-agent-timeline" data-play={play} data-playing={playing ? 'true' : 'false'}>
       <p className="v2-muted v2-ag-small" style={{ marginTop: 0 }}>
         {AGENT_WORDS.timelineNote} {model.range}
       </p>
       <div className="v2-ag-lanes">
-        {model.lanes.map((lane) => (
+        {lanes.map((lane) => (
           <div className="v2-ag-lane-row" key={lane.id ?? 'main'} data-testid="v2-agent-lane">
             <span className="v2-ag-lane-name" title={lane.sub}>
               {lane.name}
             </span>
             <div className="v2-ag-lane">
               {lane.blocks.map((block) => (
-                <i key={block.id} title={`${block.label} · ${formatClock(block.start)}`} style={{ left: `${block.left}%`, width: `${Math.max(block.width, 0.6)}%`, background: LANE_COLORS[block.kind] ?? 'var(--v2-grey)' }} data-open={block.open ? 'true' : undefined}>
+                <i
+                  key={block.id}
+                  title={`${block.label} · ${formatClock(block.start)}`}
+                  style={{ left: `${block.left}%`, width: `${Math.max(block.width, 0.6)}%`, background: LANE_COLORS[block.kind] ?? 'var(--v2-grey)' }}
+                  data-open={block.open ? 'true' : undefined}
+                  data-dim={block.dim ? 'true' : undefined}
+                  data-selected={block.id === selected ? 'true' : undefined}
+                  data-testid="v2-agent-timeline-block"
+                  data-event-id={block.id}
+                >
                   {block.label}
                 </i>
               ))}
+              <span className="v2-ag-playhead" aria-hidden="true" style={{ left: `${model.head}%` }} data-testid="v2-agent-playhead" />
             </div>
           </div>
         ))}
@@ -281,6 +360,67 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
           <span key={index}>{tick}</span>
         ))}
       </div>
+      <div className="v2-ag-tl-controls" role="group" aria-label={AGENT_WORDS.playback}>
+        <div className="v2-row v2-ag-tl-buttons">
+          <IconButton icon="back" label={AGENT_WORDS.previousEvent} data-testid="v2-agent-timeline-prev" onClick={() => seek(previousMoment(lanes, play))} />
+          <Button size="sm" variant="primary" icon={playing ? 'pause' : 'play'} data-testid="v2-agent-timeline-play" aria-pressed={playing} title={reduced ? AGENT_WORDS.playReducedHint : undefined} onClick={togglePlay}>
+            {playing ? AGENT_WORDS.pausePlayback : reduced ? AGENT_WORDS.nextEvent : AGENT_WORDS.play}
+          </Button>
+          <IconButton icon="arrow-r" label={AGENT_WORDS.nextEvent} data-testid="v2-agent-timeline-next" onClick={() => seek(nextMoment(lanes, play))} />
+          <span className="v2-ag-tl-now" data-testid="v2-agent-timeline-now">
+            {model.now}
+          </span>
+          <span className="v2-grow" />
+          <Button size="sm" variant="ghost" icon="clock" data-testid="v2-agent-timeline-live" disabled={play >= PLAY_MAX} onClick={() => seek(PLAY_MAX)}>
+            {AGENT_WORDS.toNow}
+          </Button>
+        </div>
+        <input
+          type="range"
+          className="v2-ag-scrubber"
+          data-testid="v2-agent-timeline-scrubber"
+          aria-label={AGENT_WORDS.timelinePosition}
+          aria-valuetext={model.now}
+          aria-keyshortcuts="Shift+ArrowLeft Shift+ArrowRight"
+          min={0}
+          max={PLAY_MAX}
+          step={SCRUB_STEP}
+          value={play}
+          onChange={(event) => seek(Number(event.target.value))}
+          onKeyDown={(event) => {
+            if (!event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+            event.preventDefault();
+            seek(event.key === 'ArrowLeft' ? previousMoment(lanes, play) : nextMoment(lanes, play));
+          }}
+        />
+      </div>
+      <section className="v2-ag-tl-log" aria-label={AGENT_WORDS.eventLog} data-testid="v2-agent-timeline-log">
+        <h3 className="v2-ag-tl-log-h">{AGENT_WORDS.eventsUpTo(model.now)}</h3>
+        {model.log.length === 0 ? (
+          <p className="v2-muted v2-ag-small">{AGENT_WORDS.noEventsYet}</p>
+        ) : (
+          <ol>
+            {model.log.map((entry) => {
+              const look = LOG_LOOKS[entry.kind];
+              // The log's own clock has no seconds; the playhead's does, so the rows say the second too.
+              const start = blockOf(lanes, entry.id)?.start ?? null;
+              return (
+                <li key={entry.id}>
+                  <button type="button" className="v2-ag-tl-row" aria-pressed={entry.id === selected} data-testid="v2-agent-timeline-entry" data-event-id={entry.id} data-kind={entry.kind} onClick={() => pick(entry.id)}>
+                    <span className="v2-ag-tl-time v2-mono">{start === null ? entry.time : formatClock(start, true)}</span>
+                    <Chip tone={look.tone} icon={look.icon} size="s">
+                      {look.word}
+                    </Chip>
+                    <span className="v2-ag-tl-what">
+                      <b>{entry.who}</b> · {entry.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
     </div>
   );
 }
