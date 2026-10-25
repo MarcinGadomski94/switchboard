@@ -103,7 +103,7 @@ const OLDER_PX = 600;
  * they or the detail are late, bubble placeholders stand in (`ChatSkeleton`).
  */
 /** D103: the window event that puts a held message's text back into the session's composer (Edit). */
-const COMPOSER_INSERT_EVENT = 'switchboard:composer-insert';
+export const COMPOSER_INSERT_EVENT = 'switchboard:composer-insert';
 
 export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null, older = NO_OLDER, newer = NO_NEWER, focusEventId = null }: ChatTabProps) {
   const activity = useLiveActivity(sessionId, session);
@@ -539,9 +539,9 @@ export const ContextBar = memo(function ContextBar({ context }: { readonly conte
 });
 
 /** Fix · queued send feedback: the open composers by session (a refused send puts its text back there). */
-const composers = new Map<string, (text: string, attachments: readonly Attachment[], error: string) => void>();
+export const composers = new Map<string, (text: string, attachments: readonly Attachment[], error: string) => void>();
 /** A refusal that came while the session's composer was not open: shown when it opens again. */
-const refusedNotes = new Map<string, string>();
+export const refusedNotes = new Map<string, string>();
 /** Per session, the sends one after the other, so messages reach the service in the order they were written. */
 const sendChains = new Map<string, Promise<void>>();
 /**
@@ -569,7 +569,7 @@ if (typeof window !== 'undefined') {
  * session's composer with the error, or, when the session was left meanwhile,
  * into its server draft (D88), so it is there when the developer comes back.
  */
-function deliver(sessionId: string, key: string, text: string, ids: readonly string[], attachments: readonly Attachment[]): void {
+export function deliver(sessionId: string, key: string, text: string, ids: readonly string[], attachments: readonly Attachment[]): void {
   const previous = sendChains.get(sessionId) ?? Promise.resolve();
   const run = previous.then(async () => {
     try {
@@ -590,7 +590,7 @@ function deliver(sessionId: string, key: string, text: string, ids: readonly str
 }
 
 /** Resolves once the session's sends on their way got their answer (a Stop, a Pause or answers wait for them). */
-function sendsSettled(sessionId: string): Promise<void> {
+export function sendsSettled(sessionId: string): Promise<void> {
   return sendChains.get(sessionId) ?? Promise.resolve();
 }
 
