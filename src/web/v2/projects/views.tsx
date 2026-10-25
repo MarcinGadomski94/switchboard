@@ -181,7 +181,8 @@ export function StepsView(props: ViewProps) {
 function CardBody({ plan, item, todoText }: { readonly plan: Plan; readonly item: PlanItem; readonly todoText?: string | null }) {
   const look = stepLook(item, plan.items);
   if (look.kind === 'stopped') return <BoardQuote tone="red">{look.detail ? `${look.label}. ${look.detail}` : look.label}</BoardQuote>;
-  if (look.kind === 'needs' || look.kind === 'question') return <BoardQuote>{look.detail ? `“${look.detail}”` : look.label}</BoardQuote>;
+  // Without the ask's text the quote would only repeat the status badge above it.
+  if (look.kind === 'needs' || look.kind === 'question') return look.detail ? <BoardQuote>{`“${look.detail}”`}</BoardQuote> : null;
   const text = look.kind === 'pick' ? look.label : (look.detail ?? (look.kind === 'running' ? (todoText ?? null) : null));
   return text ? (
     <BoardActivity live={look.kind === 'running'} testId="v2-step-detail">
@@ -387,9 +388,10 @@ export function TimelineView({ plan, actions, onDetails }: ViewProps) {
               const look = stepLook(item, plan.items);
               return (
                 <div key={row.itemId} className="v2-p-tl-line" data-testid="v2-timeline-row" data-key={item.key ?? item.id}>
-                  <button type="button" className="v2-p-tl-n" onClick={() => (actions.open(item) ? undefined : onDetails(item))} title={stepName(item)}>
+                  <button type="button" className="v2-p-tl-n" onClick={() => (actions.open(item) ? undefined : onDetails(item))} title={`${stepName(item)} · ${look.label}`}>
                     <Mark status={look.status} />
                     <span>{stepName(item)}</span>
+                    <span className="v2-sr"> · {look.label}</span>
                   </button>
                   <div className="v2-p-tl-r">
                     {row.segments.map((segment, index) => {

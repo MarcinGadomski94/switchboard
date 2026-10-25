@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import { usePlans } from '../../plans/store.ts';
 import { Button, Card, Chip, ComputerTag, EmptyState, Icon, Segmented, Skeleton, StatusBadge } from '../components/index.ts';
-import { PROJECT_WORDS } from '../glossary.ts';
+import { PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
 import { clock } from '../shared/time.ts';
@@ -91,6 +91,11 @@ function ProjectsTimeline({ plans, onOpen }: { readonly plans: readonly Plan[]; 
   const view = projectsTimeline(plans, now);
   if (view.bars.length === 0) return <EmptyState icon="gantt" tone="grey" title="Nothing on the timeline yet" text="A project shows here once it starts." />;
   const pct = (at: number): string => `${axisPercent(at, view.start, view.end).toFixed(2)}%`;
+  // Each row's status as a word too (the bar's colour alone is not enough).
+  const statusWord = (planId: string, status: V2Status): string => {
+    const plan = plans.find((entry) => entry.id === planId);
+    return plan ? projectStatus(plan).label : STATUS[status].label;
+  };
   const ticks = 6;
   return (
     <div className="v2-card v2-p-tl" data-testid="v2-projects-timeline">
@@ -106,6 +111,7 @@ function ProjectsTimeline({ plans, onOpen }: { readonly plans: readonly Plan[]; 
         {view.bars.map((bar) => (
           <div key={bar.planId} className="v2-p-tl-line" data-testid="v2-projects-timeline-row">
             <button type="button" className="v2-p-tl-n" onClick={() => onOpen(bar.planId)} title={bar.title}>
+              <StatusBadge status={bar.status} label={statusWord(bar.planId, bar.status)} compact />
               <span>{bar.title}</span>
             </button>
             <div className="v2-p-tl-r">
