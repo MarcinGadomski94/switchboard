@@ -392,7 +392,10 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
           }}
         />
       ) : null}
-      {detailsItem ? <StepDetailSheet plan={plan} item={detailsItem} todo={todos.get(detailsItem.todoId) ?? null} onClose={close} onOpenAgent={() => actions.open(detailsItem)} /> : null}
+      {detailsItem ? <StepDetailSheet plan={plan} item={detailsItem} todo={todos.get(detailsItem.todoId) ?? null} onClose={close} onOpenAgent={() => {
+            close();
+            actions.open(detailsItem);
+          }} /> : null}
     </div>
   );
 }

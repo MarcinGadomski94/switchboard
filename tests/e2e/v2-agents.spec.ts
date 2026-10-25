@@ -209,6 +209,32 @@ test('the Board quick answer answers from the card', async ({ page }) => {
   await expect(page.getByTestId('v2-bcard-answer')).toHaveCount(before - 1);
 });
 
+test('a Board card peeks (lane X: the shared board and the peek sheet); Enter too; the tablet board scrolls inside', async ({ page }) => {
+  await page.getByTestId('v2-agents-view').locator('[data-value="board"]').click();
+  const card = page.getByTestId('v2-bcard').first();
+  await expect(card).toBeVisible();
+  const id = await card.getAttribute('data-session');
+  await card.locator('.v2-t').click();
+  const peek = page.getByTestId('v2-agent-peek');
+  await expect(peek).toBeVisible();
+  await expect(page).toHaveURL(/\/agents$/);
+  await page.keyboard.press('Escape');
+  await expect(peek).toBeHidden();
+  await card.focus();
+  await page.keyboard.press('Enter');
+  await expect(peek).toBeVisible();
+  await peek.getByTestId('v2-agent-peek-full').click();
+  await expect(page).toHaveURL(new RegExp(`/agents/${encodeURIComponent(id ?? '')}$`));
+  // Tablet with the folder tree open: four readable columns; the board scrolls, the page does not.
+  await page.goto(`${demo.baseUrl}/agents`);
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await expect(page.getByTestId('v2-ftree')).toBeVisible();
+  await expect(page.getByTestId('v2-agents-board')).toBeVisible();
+  const head = await page.getByTestId('v2-bd-col-done').boundingBox();
+  expect(head?.width ?? 0).toBeGreaterThanOrEqual(190);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
 test('Closed: search and Reopen', async ({ page }) => {
   const list = await sessions(page);
   const target = list.find((s) => s.status !== 'run') ?? list[0];

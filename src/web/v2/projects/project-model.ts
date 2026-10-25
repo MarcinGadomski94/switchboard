@@ -1,6 +1,7 @@
 import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_NO_MESSAGE } from '../../../core/plans.ts';
 import { durationShort, earlyStartWarning, isProtectedTargetName, shortLabel, timeline } from '../../plans/model.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS, type V2Status } from '../glossary.ts';
+import type { BoardColumn } from '../shared/board-model.ts';
 
 /**
  * D131 · lane P · the Projects pages' pure rules (a v2 "project" is a plan, D99; a "step" is a
@@ -241,13 +242,8 @@ export function readProjectView(stored: string | null): ProjectView {
   return (PROJECT_VIEWS as readonly string[]).includes(stored ?? '') ? (stored as ProjectView) : 'steps';
 }
 
-/** The board's columns (Lane A's board: Needs you · Working · Ready for approval · Done). */
-export const BOARD_COLUMNS = ['needs', 'working', 'ready', 'done'] as const;
-/** One of {@link BOARD_COLUMNS}. */
-export type BoardColumn = (typeof BOARD_COLUMNS)[number];
-
-/** The column titles. */
-export const BOARD_COLUMN_LABELS: Readonly<Record<BoardColumn, string>> = { needs: 'Needs you', working: 'Working', ready: 'Ready for approval', done: 'Done' };
+/** The board's columns: the shared board's (`../shared/board-model.ts`: Needs you · Working · Ready for approval · Done). */
+export { BOARD_COLUMNS, type BoardColumn } from '../shared/board-model.ts';
 
 /** The column a step sits in (waiting steps sit with the working ones, as in the prototype). */
 export function boardColumn(item: Pick<PlanItem, 'state' | 'reason'>): BoardColumn {

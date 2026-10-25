@@ -62,7 +62,17 @@ test('the project list and the four views (remembered)', async ({ page }) => {
   const views = page.getByTestId('v2-project-views');
   await views.getByRole('button', { name: 'Board' }).click();
   await expect(page.getByTestId('v2-project-board')).toBeVisible();
-  await expect(page.locator('[data-column="working"] [data-testid="v2-board-card"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="v2-bcell"][data-col="working"] [data-testid="v2-board-card"]')).toHaveCount(3);
+  // Lane X: the shared board (the Agents board's look): the project is its one lane, four columns with counts.
+  const board = page.getByTestId('v2-project-board');
+  await expect(board.getByTestId('v2-lane')).toHaveCount(1);
+  await expect(board.locator('.v2-bd-col-h')).toHaveCount(4);
+  await expect(board.locator('.v2-bd-col-h[data-col="working"] .v2-count')).toHaveText('3');
+  // Tablet: the four columns stay readable and the board scrolls sideways, not the page.
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect(board.getByTestId('v2-bcell')).toHaveCount(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await views.getByRole('button', { name: 'Graph' }).click();
   await expect(page.getByTestId('v2-graph-node')).toHaveCount(3);
   await expect(page.getByTestId('v2-graph-edge')).toHaveCount(2);
@@ -171,11 +181,15 @@ test('a stopped step shows red with its agent’s last message, and a click open
   await page.goto(`${world.baseUrl}/projects`);
   await expect(page.locator(`[data-testid="v2-project-card"][data-plan-id="${planId}"]`)).toContainText('1 stopped');
   await page.goto(`${world.baseUrl}/projects/${planId}`);
-  // Details show the message; a click on the step opens its agent.
+  // Details show the message; a click on the step peeks at its agent (lane X: the peek sheet), Open full view opens it.
   await row.getByTestId('v2-step-details').click();
   await expect(page.getByTestId('v2-step-sheet-detail')).toHaveText(`Stopped: ${LAST}`);
   await page.keyboard.press('Escape');
   await row.getByTestId('v2-step-open').click();
+  const peek = page.getByTestId('v2-agent-peek');
+  await expect(peek).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/projects/${planId}$`));
+  await peek.getByTestId('v2-agent-peek-full').click();
   await expect(page).toHaveURL(new RegExp(`/agents/${item.runSessionId as string}$`));
 });
 

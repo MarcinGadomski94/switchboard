@@ -3,6 +3,7 @@ import type { Plan } from '../../../core/plans.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import type { TeamSummary } from '../../../core/team.ts';
 import { type NeedsKind, type V2Status, sessionStatusToV2 } from '../glossary.ts';
+import type { BoardColumn } from '../shared/board-model.ts';
 
 /**
  * D131 · lane A · the Agents page's model (pure; unit-tested in
@@ -222,10 +223,8 @@ function crewSections(sorted: readonly AgentEntry[], teams: readonly Pick<TeamSu
 
 // ── Board ────────────────────────────────────────────────────────────
 
-/** The Board's columns, in order. */
-export const BOARD_COLUMNS = ['needs', 'working', 'ready', 'done'] as const;
-/** A Board column. */
-export type BoardColumn = (typeof BOARD_COLUMNS)[number];
+/** The Board's columns, in order: the shared board's (`../shared/board-model.ts`). */
+export { BOARD_COLUMNS, type BoardColumn } from '../shared/board-model.ts';
 
 /** The column a status sits in; `null` = not on the Board (idle, paused, offline). */
 export function columnOf(status: V2Status): BoardColumn | null {
