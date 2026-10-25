@@ -16,6 +16,7 @@ import { TODO_NO_PLAN, TODO_TITLE_MAX } from '../../../core/todos.ts';
 import { type FormFolder, DEFAULT_FORM, type NewSessionForm, canStart, formFromDraft, isPlainFolder, toStartBody } from '../../modals/new-session.ts';
 import { simpleBlockers, toSimpleBody } from '../../modals/simple-session.ts';
 import { NEW_WORDS } from '../glossary.ts';
+import { type Speed, speedModel as sharedSpeedModel } from '../shared/speed.ts';
 
 /** What the + New sheet can make (the prototype's types, in its order). */
 export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew'] as const;
@@ -30,7 +31,7 @@ export function isNewKind(value: unknown): value is NewKindId {
 // ── Agent / conversation ─────────────────────────────────────────────────
 
 /** Smart / Fast (the prototype's Speed). */
-export type Speed = 'smart' | 'fast';
+export type { Speed } from '../shared/speed.ts';
 /** Normal / Deep (the prototype's Thinking depth). */
 export type Depth = 'normal' | 'deep';
 
@@ -61,22 +62,15 @@ export const DEFAULT_AGENT_FORM: AgentForm = {
   machine: null,
 };
 
-/** A model whose name says it is the cheaper, faster one. */
-const FAST_MODEL = /sonnet|haiku|mini|fast|flash/i;
-
 /**
  * The `--model` / `--effort` the speed and depth mean (`null` = the CLI's default):
- * Smart = the CLI's default (its best), Fast = the first offered model that names
- * itself fast (`sonnet`, `haiku`, `mini`, …), else `sonnet` for Claude Code, else
- * the default. Deep = `high`, Normal = the default. An exact model wins.
+ * Smart / Fast through the shared mapping (`shared/speed.ts`: Opus / Sonnet),
+ * Deep = `high`, Normal = the default. An exact model wins.
  */
-export function speedModel(speed: Speed, depth: Depth, provider: CliProviderId | null, offered: readonly { readonly value: string }[] | null, exact = ''): { readonly model: string | null; readonly effort: string | null } {
+export function speedModel(speed: Speed, depth: Depth, provider: CliProviderId | null, offered: readonly { readonly value: string; readonly label?: string }[] | null, exact = ''): { readonly model: string | null; readonly effort: string | null } {
   const effort = depth === 'deep' ? 'high' : null;
   if (exact.trim() !== '') return { model: exact.trim(), effort };
-  if (speed === 'smart') return { model: null, effort };
-  const named = offered?.find((option) => FAST_MODEL.test(option.value) && option.value !== 'default');
-  if (named) return { model: named.value, effort };
-  return { model: (provider ?? 'claude') === 'claude' ? 'sonnet' : null, effort };
+  return { model: sharedSpeedModel(speed, offered, provider), effort };
 }
 
 /** Why the agent cannot start yet (empty = it can), in the order shown. */

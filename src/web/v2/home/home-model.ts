@@ -4,6 +4,7 @@ import { ciChip } from '../../../core/ci.ts';
 import { simpleShortName, simpleTitle } from '../../../core/simple-session.ts';
 import { HOME_WORDS } from '../glossary.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
+import { type Speed, speedModel as sharedSpeedModel } from '../shared/speed.ts';
 
 /**
  * D131 · Home's pure part (lane H; `README.md`): which agents are "Working now",
@@ -148,24 +149,17 @@ export function workSummary(working: number, done: number): string {
 // ── The start box ──────────────────────────────────────────────────────
 
 /** The start box's speed (Smart / Fast). */
-export type Speed = 'smart' | 'fast';
+export type { Speed } from '../shared/speed.ts';
 
 /** The model each speed starts with (the CLI's aliases: `--model opus` / `--model sonnet`). */
-export const SPEED_MODEL: Readonly<Record<Speed, string>> = { smart: 'opus', fast: 'sonnet' };
+export { SPEED_ALIAS as SPEED_MODEL } from '../shared/speed.ts';
 
 /**
  * The model a speed starts with on a computer whose CLI reported `options`
- * (`GET /api/models`): the alias itself when listed, else the first listed model
- * named after it (`claude-opus-…`), else `null` (the CLI's default: no model sent,
- * so a start is never refused for a name the CLI does not offer). Without a list
- * the alias is sent (the server takes any model name then).
+ * (`GET /api/models`): the shared Smart / Fast mapping (`shared/speed.ts`).
  */
 export function speedModel(speed: Speed, options: readonly Pick<SessionModelOption, 'value' | 'label'>[] | null): string | null {
-  const alias = SPEED_MODEL[speed];
-  if (!options) return alias;
-  if (options.some((option) => option.value === alias)) return alias;
-  const named = options.find((option) => option.value.toLowerCase().includes(alias) || option.label.toLowerCase().includes(alias));
-  return named?.value ?? null;
+  return sharedSpeedModel(speed, options);
 }
 
 /** Where this browser remembers the start box's last folder and speed (per computer: `<machine or "local">`). */

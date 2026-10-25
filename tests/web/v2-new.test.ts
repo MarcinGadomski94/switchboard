@@ -72,8 +72,10 @@ describe('+ New · agent', () => {
   });
 
   it('maps Smart / Fast and the thinking depth to a model and effort', () => {
-    expect(speedModel('smart', 'normal', 'claude', null)).toEqual({ model: null, effort: null });
-    expect(speedModel('smart', 'deep', 'claude', null)).toEqual({ model: null, effort: 'high' });
+    // Lane X: the shared mapping (Smart = Opus, as on Home and in the agent panel).
+    expect(speedModel('smart', 'normal', 'claude', null)).toEqual({ model: 'opus', effort: null });
+    expect(speedModel('smart', 'deep', 'claude', null)).toEqual({ model: 'opus', effort: 'high' });
+    expect(speedModel('smart', 'normal', 'codex', null)).toEqual({ model: null, effort: null });
     expect(speedModel('fast', 'normal', 'claude', null)).toEqual({ model: 'sonnet', effort: null });
     expect(speedModel('fast', 'normal', 'codex', [{ value: 'default' }, { value: 'gpt-5-mini' }])).toEqual({ model: 'gpt-5-mini', effort: null });
     expect(speedModel('fast', 'normal', 'codex', null)).toEqual({ model: null, effort: null });
@@ -84,7 +86,7 @@ describe('+ New · agent', () => {
 
   it('a conversation needs only the message', () => {
     expect(conversationProblems(DEFAULT_AGENT_FORM)).toEqual([NEW_WORDS.errors.message]);
-    expect(chatBody(withTask, null, ['a1'])).toEqual({ message: 'Fix the login timeout', attachments: ['a1'] });
+    expect(chatBody(withTask, null, ['a1'])).toEqual({ message: 'Fix the login timeout', attachments: ['a1'], model: 'opus', effort: null });
   });
 });
 
