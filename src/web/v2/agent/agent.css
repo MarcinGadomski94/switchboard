@@ -1199,33 +1199,6 @@
   padding: 12px;
 }
 
-.sb2 .v2-ag-result-img {
-  max-width: 100%;
-  border-radius: var(--v2-r);
-}
-
-.sb2 .v2-ag-result-frame {
-  width: 100%;
-  height: 70vh;
-  border: 1px solid var(--v2-border);
-  border-radius: var(--v2-r);
-  background: #fff;
-}
-
-.sb2 .v2-ag-csv {
-  overflow: auto;
-}
-
-.sb2 .v2-ag-csv table {
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.sb2 .v2-ag-csv :is(th, td) {
-  border: 1px solid var(--v2-border);
-  padding: 4px 8px;
-}
-
 .sb2 .v2-ag-lanes {
   display: flex;
   flex-direction: column;

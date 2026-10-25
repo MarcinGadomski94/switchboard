@@ -10,6 +10,7 @@ import { Button, Chip, ComputerTag, Drawer, Icon, IconButton, Skeleton, useToast
 import { RESULTS_WORDS as W, computerStateToV2 } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { comparePair, hasSource } from './results-model.ts';
+import './results.css';
 
 function errorText(caught: unknown): string {
   return caught instanceof ApiError ? actionErrorText(caught.status, caught.body) : actionErrorText(0, null);
@@ -48,8 +49,23 @@ function useVersion(item: ArtifactListItem, n: number | null): { readonly detail
  * Markdown and code rendered, images and SVG as images of the served file), the
  * versions with Compare side by side, Source / Rendered, Copy, Download, Full
  * screen, Open agent and Delete. On a phone it fills the screen.
+ *
+ * Lane X: the agent view's Results tab and its chat attachments open this drawer
+ * too. `onDelete` is optional (no Delete button without it) and `openAgent={false}`
+ * hides Open agent (the agent's own page shows it already).
  */
-export function ResultDrawer({ item, onClose, onDelete }: { readonly item: ArtifactListItem | null; readonly onClose: () => void; readonly onDelete: (item: ArtifactListItem) => void }) {
+export function ResultDrawer({
+  item,
+  onClose,
+  onDelete,
+  openAgent = true,
+}: {
+  readonly item: ArtifactListItem | null;
+  readonly onClose: () => void;
+  readonly onDelete?: (item: ArtifactListItem) => void;
+  /** Show **Open agent** (default); the agent view passes `false`. */
+  readonly openAgent?: boolean;
+}) {
   const phone = useLayout() === 'phone';
   const [full, setFull] = useState(false);
   return (
@@ -89,18 +105,18 @@ export function ResultDrawer({ item, onClose, onDelete }: { readonly item: Artif
                 onClick={() => setFull((on) => !on)}
               />
             )}
-            <IconButton icon="trash" label={W.delete} data-testid="v2-result-delete" className="v2-res-danger" onClick={() => onDelete(item)} />
+            {onDelete ? <IconButton icon="trash" label={W.delete} data-testid="v2-result-delete" className="v2-res-danger" onClick={() => onDelete(item)} /> : null}
           </>
         ) : null
       }
     >
-      {item ? <ResultView key={`${item.machine?.id ?? ''}/${item.id}`} item={item} onFull={setFull} /> : null}
+      {item ? <ResultView key={`${item.machine?.id ?? ''}/${item.id}`} item={item} onFull={setFull} openAgent={openAgent} /> : null}
     </Drawer>
   );
 }
 
 /** The body: toolbar (versions, Compare, Source, Copy, Download, Open agent) and the preview. */
-function ResultView({ item, onFull }: { readonly item: ArtifactListItem; readonly onFull: (on: boolean) => void }) {
+function ResultView({ item, onFull, openAgent }: { readonly item: ArtifactListItem; readonly onFull: (on: boolean) => void; readonly openAgent: boolean }) {
   const toast = useToast();
   const { navigate } = useV2Router();
   // `null` = follow the newest version.
@@ -182,9 +198,11 @@ function ResultView({ item, onFull }: { readonly item: ArtifactListItem; readonl
           <Icon name="download" size="s" />
           {W.download}
         </a>
-        <Button size="sm" icon="agents" data-testid="v2-result-open-agent" onClick={() => navigate({ area: 'agent', id: sessionId, tab: 'chat' })}>
-          {W.openAgent}
-        </Button>
+        {openAgent ? (
+          <Button size="sm" icon="agents" data-testid="v2-result-open-agent" onClick={() => navigate({ area: 'agent', id: sessionId, tab: 'chat' })}>
+            {W.openAgent}
+          </Button>
+        ) : null}
       </div>
       {version ? (
         <div className="v2-muted v2-res-meta" data-testid="v2-result-meta">

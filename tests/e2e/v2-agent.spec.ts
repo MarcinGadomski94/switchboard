@@ -232,10 +232,28 @@ test('the reply ⋯ menu: Save as result shows it as an attachment that opens it
   await expect(attachment).toContainText('Plan');
   await attachment.click();
   await expect(page).toHaveURL(new RegExp(`/agents/${id}/results/`));
-  const drawer = page.getByTestId('v2-agent-result-drawer');
+  // Lane X: lane R's result drawer (the Results page's), without its Open agent here.
+  const drawer = page.getByTestId('v2-result-drawer');
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByTestId('v2-agent-result-markdown')).toContainText('Ship the summary card first.');
+  await expect(drawer.getByTestId('v2-result-markdown')).toContainText('Ship the summary card first.');
+  await expect(drawer.getByTestId('v2-result-version')).toHaveCount(1);
+  await expect(drawer.getByTestId('v2-result-open-agent')).toHaveCount(0);
+  await drawer.getByTestId('v2-result-source').click();
+  await expect(drawer.getByTestId('v2-result-source-text')).toContainText('Ship the summary card first.');
   await drawer.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}/results`);
+  // Delete from the drawer hides the card, and Undo brings it back (nothing was deleted).
+  const card = page.getByTestId('v2-agent-result-card');
+  await expect(card).toHaveCount(1);
+  await card.click();
+  await drawer.getByTestId('v2-result-delete').click();
+  await expect(drawer).toHaveCount(0);
+  await expect(card).toHaveCount(0);
+  await page.getByTestId('v2-toast').filter({ hasText: 'Deleted 1 result' }).getByTestId('v2-toast-undo').click();
+  await expect(card).toHaveCount(1);
+  // A link to a result the agent does not have says so and drops it.
+  await openWithHub(page, `${world.baseUrl}/agents/${id}/results/no-such-result`);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'That result is gone.' })).toHaveCount(1);
   await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}/results`);
 
   // Add to tasks (the reply's first sentence): the tasks strip above the box shows it.
