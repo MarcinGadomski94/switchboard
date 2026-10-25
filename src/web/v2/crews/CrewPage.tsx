@@ -17,7 +17,7 @@ import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock } from '../shared/time.ts';
 import { AccessPanel } from './AccessPanel.tsx';
 import { CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
-import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, rhythmText, teammateStatus, undoOrder } from './crew-model.ts';
+import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
 import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
 
@@ -311,7 +311,7 @@ export function CrewPage({ id }: { readonly id: string }) {
   const selected = query.member ? (members.find((member) => member.id === query.member) ?? null) : null;
   const openDetails = (member: TeamMember, tab: TeammateTab): void => navigate(crewHref(id, member.id, tab));
   const closeDetails = (): void => navigate(crewHref(id), { replace: true });
-  const modelText = (member: TeamMember): string => modelLine(sessions.data?.find((session) => session.id === member.sessionRef)?.model, member);
+  const modelText = (member: TeamMember): string => v2ModelText(modelLine(sessions.data?.find((session) => session.id === member.sessionRef)?.model, member));
 
   if (data.loaded && !crew && data.teams.length > 0) {
     return (
@@ -466,7 +466,7 @@ export function CrewPage({ id }: { readonly id: string }) {
         </div>
         <div className="v2-card v2-c-list" data-testid="v2-crew-activity">
           {activityRows(view.activity, members).map((row) => (
-            <div key={row.id} className="v2-c-lrow">
+            <div key={row.id} className="v2-c-lrow v2-c-act">
               <span className="v2-muted v2-mono v2-c-time">{clock(row.at)}</span>
               <b className="v2-c-who">{row.who}</b>
               <span className="v2-grow">{row.text}</span>

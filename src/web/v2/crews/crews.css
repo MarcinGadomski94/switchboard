@@ -8,6 +8,11 @@
   flex-wrap: wrap;
 }
 
+/* The title keeps at least 240 px: on a phone the buttons wrap under it instead of squeezing it. */
+.sb2 .v2-c-ph > .v2-grow {
+  flex: 1 1 240px;
+}
+
 .sb2 .v2-c-small {
   font-size: 13px;
 }
@@ -411,6 +416,11 @@
   padding-top: 4px;
 }
 
+/* In the side sheet (whose body has no padding) the tabs and the panel sit on the sheet's 22 px gutter. */
+.sb2 .v2-sheet-b > .v2-c-details {
+  padding: 0 22px 22px;
+}
+
 .sb2 .v2-c-phone-head {
   gap: 12px;
   margin-bottom: 8px;
@@ -548,12 +558,27 @@
     flex: 1 1 auto;
   }
 
+  /* The buttons wrap under the title on a phone: keep the page's gap before the list. */
+  .sb2 .v2-c-ph {
+    margin-bottom: 16px;
+  }
+
   .sb2 .v2-c-grid2 {
     grid-template-columns: 1fr;
   }
 
   .sb2 .v2-c-who {
     min-width: 0;
+  }
+
+  /* Crew activity on a phone: the time and who on one line, the text under them. */
+  .sb2 .v2-c-act {
+    flex-wrap: wrap;
+    gap: 2px 10px;
+  }
+
+  .sb2 .v2-c-act > .v2-grow {
+    flex-basis: 100%;
   }
 }
 
