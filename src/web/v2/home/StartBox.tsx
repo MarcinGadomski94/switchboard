@@ -145,7 +145,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
     return (
       <form
         className="v2-home-pstart"
-        data-testid="v2-start-box"
+        data-testid="v2-start-box" data-tour="v2-start"
         onSubmit={(event) => {
           event.preventDefault();
           void start();
@@ -168,7 +168,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
   }
 
   return (
-    <div className="v2-home-start" data-testid="v2-start-box">
+    <div className="v2-home-start" data-testid="v2-start-box" data-tour="v2-start">
       <label className="v2-sr" htmlFor="v2-start-text">
         {HOME_WORDS.startLabel}
       </label>

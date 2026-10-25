@@ -19,7 +19,7 @@ export function PhoneAgents({ agents, tree, teams, newDraft }: { readonly agents
   const [view, setView] = usePref<PhoneView>(PREF_KEYS.phoneView, 'chats', isPhoneView);
   return (
     <div data-testid="v2-agents-phone">
-      <Segmented options={PHONE_VIEWS.map((value) => ({ value, label: AGENTS_WORDS.views[value] }))} value={view} onChange={setView} label={AGENTS_WORDS.viewLabel} testId="v2-phone-view" />
+      <Segmented options={PHONE_VIEWS.map((value) => ({ value, label: AGENTS_WORDS.views[value] }))} value={view} onChange={setView} label={AGENTS_WORDS.viewLabel} testId="v2-phone-view" tour="v2-agents-view" />
       {view === 'chats' ? <PhoneChats agents={agents} teams={teams} newDraft={newDraft} /> : view === 'folders' ? <PhoneFolders tree={tree} /> : <PhoneBoard agents={agents} />}
     </div>
   );

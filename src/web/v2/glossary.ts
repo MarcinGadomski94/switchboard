@@ -1603,3 +1603,30 @@ export const AGENT_WORDS = {
   // Peek.
   peekClose: 'Close peek',
 } as const;
+
+// Lane X · tour
+// The v2 tour host (`tour/TourHost.tsx`) and the replay page (Settings › Advanced › What’s new tours).
+
+/** Lane X · the v2 tours' card and their Settings page. */
+export const TOUR_WORDS = {
+  next: 'Next',
+  nextTour: 'Next tour',
+  back: 'Back',
+  done: 'Done',
+  skip: 'Skip tour',
+  skipAll: 'Skip all',
+  whatToDo: 'What to do',
+  step: (n: number, count: number): string => `${n} of ${count}`,
+  live: (kicker: string, n: number, count: number, title: string): string => `${kicker}, step ${n} of ${count}: ${title}`,
+  // Settings › Advanced › What’s new tours
+  pageTitle: 'What’s new tours',
+  pageSub: 'Replay a tour. Each one shows by itself once on this machine; a replay changes nothing.',
+  replay: 'Replay',
+  replayAll: 'Replay all',
+  seen: 'seen',
+  skipped: 'skipped',
+  notSeen: 'not seen yet',
+  notShown: 'not shown on this machine',
+  classicNote: 'The other What’s new tours point at the Classic theme. Switch to Classic in Settings › Appearance to replay them under Settings → Tutorial.',
+  loadError: 'The tours’ state could not be loaded.',
+} as const;

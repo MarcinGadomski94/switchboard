@@ -51,7 +51,7 @@ export function TopBar({ pill, needs, phone }: { readonly pill: Pill; readonly n
         </Chip>
       ) : null}
       <StatusPill pill={pill} />
-      <IconButton icon="bell" label={needs > 0 ? `${WORDS.needsYou}: ${needs}` : WORDS.needsYou} badge={needs} onClick={() => navigate('/needs-you')} data-testid="v2-needs-button" />
+      <IconButton icon="bell" label={needs > 0 ? `${WORDS.needsYou}: ${needs}` : WORDS.needsYou} badge={needs} onClick={() => navigate('/needs-you')} data-testid="v2-needs-button" data-tour="v2-needs" />
       <Button variant="primary" icon="plus" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new">
         {WORDS.newThing}
       </Button>

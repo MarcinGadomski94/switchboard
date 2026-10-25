@@ -11,6 +11,7 @@ import { PhoneTabs } from './PhoneTabs.tsx';
 import { Rail } from './Rail.tsx';
 import { ShortcutsDialog, openShortcuts } from './ShortcutsDialog.tsx';
 import { TopBar } from './TopBar.tsx';
+import { V2TourHost } from '../tour/TourHost.tsx';
 import { emitShortcut, shellKeyOf } from './shortcuts.ts';
 import { useRailCounts, useStatusPill } from './useShellData.ts';
 import './shell.css';
@@ -81,6 +82,8 @@ export function Shell() {
       <NewSheet />
       {/* Lane S: the agent peek sheet and the agent view's dialogs (openPeek, Undo from here, Save as result). */}
       <PeekHost />
+      {/* Lane X · tour: the v2 tours (Welcome to Switchboard 2) and their replays. */}
+      <V2TourHost />
     </div>
   );
 }

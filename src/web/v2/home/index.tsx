@@ -151,7 +151,7 @@ export function HomePage() {
 
       <StartBox phone={false} takenNames={takenNames} events={events} />
 
-      <section className="v2-home-sec" aria-labelledby="v2-home-needs">
+      <section className="v2-home-sec" aria-labelledby="v2-home-needs" data-tour="v2-home-needs">
         <SectionHead
           id="v2-home-needs"
           icon="hand"
