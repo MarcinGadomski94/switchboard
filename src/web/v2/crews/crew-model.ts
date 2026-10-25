@@ -187,8 +187,36 @@ export function activityRows(activity: readonly TeamActivityRecord[], members: r
   const names = new Map(members.map((member) => [member.id, member.name]));
   return activity.slice(0, limit).map((entry) => {
     const who = entry.memberId ? (names.get(entry.memberId) ?? 'A teammate') : 'Crew';
-    return { id: entry.id, at: entry.at, who, text: stripActor(entry.text, who) };
+    return { id: entry.id, at: entry.at, who, text: activityText(stripActor(entry.text, who)) };
   });
+}
+
+/**
+ * The server writes crew activity in classic words (session, team, charter, loops,
+ * member); v2 shows its own (`glossary.ts` TERMS): agent, crew, job description,
+ * routines, teammate. Only the server's own fixed phrases (anchored), so a hand-off brief is never reworded.
+ */
+const ACTIVITY_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^adopted from session\b/, 'joined from agent'],
+  [/^returned to the sessions list$/, 'returned to the agents list'],
+  [/^asked to draft a specific charter from its own session$/, 'asked to draft a specific job description from its own work'],
+  [/^proposed a new charter\b/, 'proposed a new job description'],
+  [/^new charter accepted\b/, 'new job description accepted'],
+  [/^charter (proposal dismissed|ask cancelled)$/, 'job description $1'],
+  [/— loops paused$/, '— routines paused'],
+  [/^started as a new member$/, 'started as a new teammate'],
+  [/^team (.+) created$/, 'crew $1 created'],
+  [/^(moved to|joined from) team\b/, '$1 crew'],
+];
+
+/** One crew activity line in v2 words (see {@link ACTIVITY_WORDS}). */
+export function activityText(text: string): string {
+  return ACTIVITY_WORDS.reduce((line, [pattern, words]) => line.replace(pattern, words), text);
+}
+
+/** The teammate's model line (`team/model.ts` → `modelLine`) in v2 words: "the agent’s model" when none is chosen. */
+export function v2ModelText(line: string): string {
+  return line === 'the session’s model' ? 'the agent’s model' : line;
 }
 
 /** One hand-off row: from → to, the brief and its state. */

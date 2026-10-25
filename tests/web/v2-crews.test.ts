@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TeamActivityRecord, TeamHandoff, TeamMember, TeamRosterEntry, TeamSummary } from '../../src/core/team.ts';
 import {
   activityRows,
+  activityText,
   budgetMeter,
   checkBudget,
   computerChoices,
@@ -19,6 +20,7 @@ import {
   rhythmText,
   teammateStatus,
   undoOrder,
+  v2ModelText,
 } from '../../src/web/v2/crews/crew-model.ts';
 import { CREW_WORDS } from '../../src/web/v2/glossary.ts';
 
@@ -207,6 +209,21 @@ describe('the lists', () => {
       { id: '1', at: '2026-10-25T09:00:00.000Z', who: 'Role a', text: 'paused' },
       { id: '2', at: '2026-10-25T08:00:00.000Z', who: 'Crew', text: 'renamed to Core' },
     ]);
+  });
+
+  it('activity lines and the model line use v2 words, not the classic ones', () => {
+    expect(activityText('adopted from session acme-web-lead')).toBe('joined from agent acme-web-lead');
+    expect(activityText('team Acme mobile created')).toBe('crew Acme mobile created');
+    expect(activityText('moved to team Acme web')).toBe('moved to crew Acme web');
+    expect(activityText('joined from team Acme web')).toBe('joined from crew Acme web');
+    expect(activityText('returned to the sessions list')).toBe('returned to the agents list');
+    expect(activityText('over its daily budget — loops paused')).toBe('over its daily budget — routines paused');
+    expect(activityText('started as a new member')).toBe('started as a new teammate');
+    expect(activityText('new charter accepted (with your edits)')).toBe('new job description accepted (with your edits)');
+    expect(activityText('charter proposal dismissed')).toBe('job description proposal dismissed');
+    expect(activityText('handed off to Reviewer: moved to team charter for PROJ-123')).toBe('handed off to Reviewer: moved to team charter for PROJ-123');
+    expect(v2ModelText('the session’s model')).toBe('the agent’s model');
+    expect(v2ModelText('Sonnet 5.5 · high')).toBe('Sonnet 5.5 · high');
   });
 
   it('hand-off rows: open ones first, from you or a teammate', () => {
