@@ -579,3 +579,10 @@ button.v2-qi-src:hover {
     min-height: 44px;
   }
 }
+
+/* Lane X: a touch tablet (768–1279 px) gets the 44 px targets too, not only the phone. */
+@media (pointer: coarse) {
+  .sb2 .v2-opt {
+    min-height: var(--v2-touch);
+  }
+}

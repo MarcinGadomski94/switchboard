@@ -737,3 +737,24 @@
     min-height: var(--v2-touch);
   }
 }
+
+/* Lane X: a touch tablet (768–1279 px) gets the 44 px targets too, not only the phone. */
+@media (pointer: coarse) {
+  .sb2 .v2-fn-main,
+  .sb2 .v2-fn-more,
+  .sb2 .v2-fl-main {
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-fn-more,
+  .sb2 .v2-fn-tog,
+  .sb2 .v2-ftree h4 .v2-icon-btn {
+    min-width: var(--v2-touch);
+    height: var(--v2-touch);
+  }
+
+  /* The "Not in a folder" heading's button (an inline 28 px min-height). */
+  .sb2 .v2-ftree .v2-fn-main {
+    min-height: var(--v2-touch) !important;
+  }
+}

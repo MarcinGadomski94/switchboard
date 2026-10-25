@@ -1041,8 +1041,11 @@ textarea.v2-field {
     height: var(--v2-touch);
   }
 
-  /* The switch keeps its look; a transparent 9 px border makes its target 62 × 44 without moving the layout. */
-  .v2-switch {
+}
+
+/* Lane X: the switch keeps its look on touch; a transparent 9 px border makes its target 62 × 44 without moving the layout. */
+@media (pointer: coarse) {
+  .sb2 .v2-switch {
     box-sizing: content-box;
     border: 9px solid transparent;
     background-clip: padding-box;

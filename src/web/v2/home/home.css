@@ -438,3 +438,12 @@
     transition: none;
   }
 }
+
+/* Lane X: a touch tablet (768–1279 px) gets the 44 px targets too, not only the phone. */
+@media (pointer: coarse) {
+  .sb2 .v2-fchip,
+  .sb2 .v2-home-start-more .v2-fchip,
+  .sb2 .v2-home-picker select {
+    min-height: var(--v2-touch);
+  }
+}
