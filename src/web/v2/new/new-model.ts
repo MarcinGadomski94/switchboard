@@ -279,72 +279,36 @@ export function projectProblems(project: ProjectForm): Partial<Record<'title' | 
 
 // ── Teammate / crew ──────────────────────────────────────────────────────
 
-/** The Teammate form. */
-export interface TeammateForm {
-  readonly templateId: string | null;
-  readonly name: string;
-  readonly crew: string;
-  readonly owns: string;
-  readonly produces: string;
-  readonly neverDoes: string;
-  readonly adopt: boolean;
-  /** The agent adopted (with {@link adopt}). */
-  readonly agent: string;
-  /** The project folder of a new teammate's own agent (`''` = the default). */
-  readonly folder: string;
+/** The kinds the Crews dialogs make (lane P's New teammate / New crew; the sheet opens them, it has no form of its own). */
+export const DIALOG_KINDS = ['teammate', 'crew'] as const;
+/** One of {@link DIALOG_KINDS}. */
+export type DialogKindId = (typeof DIALOG_KINDS)[number];
+
+/**
+ * D131 · lane X · `true` for a kind the + New sheet hands to the Crews dialogs (role templates,
+ * suggestions, adopting an agent, budget, hand-offs: `crews/dialogs.tsx`) instead of a form here.
+ */
+export function opensDialog(kind: NewKindId): kind is DialogKindId {
+  return (DIALOG_KINDS as readonly string[]).includes(kind);
 }
 
-/** The Teammate form as it opens. */
-export const DEFAULT_TEAMMATE_FORM: TeammateForm = { templateId: null, name: '', crew: '', owns: '', produces: '', neverDoes: '', adopt: false, agent: '', folder: '' };
-
-/** Why the teammate cannot be added (field → message). */
-export function teammateProblems(mate: TeammateForm): Partial<Record<'name' | 'crew' | 'agent', string>> {
-  const out: Partial<Record<'name' | 'crew' | 'agent', string>> = {};
-  if (mate.name.trim() === '') out.name = NEW_WORDS.errors.role;
-  if (mate.crew === '') out.crew = NEW_WORDS.errors.crew;
-  if (mate.adopt && mate.agent === '') out.agent = NEW_WORDS.errors.agent;
-  return out;
-}
-
-/** The `POST /api/team/members` body (adopt: `sessionId`; new: `session`, as the classic dialog sends). */
-export function teammateBody(mate: TeammateForm): Readonly<Record<string, unknown>> {
-  const charter = { owns: mate.owns.trim(), produces: mate.produces.trim(), neverDoes: mate.neverDoes.trim() };
-  const base = { name: mate.name.trim(), teamId: mate.crew, charter, ...(mate.templateId ? { templateId: mate.templateId } : {}) };
-  if (mate.adopt) return { ...base, sessionId: mate.agent, askCharter: true };
-  return {
-    ...base,
-    rhythm: { loopIds: [], onHandoff: false },
-    session: { task: '', workType: 'feature', mode: 'single', solutions: [], phase: 'ui-first', coordination: 'none', qa: null, worktrees: false, ultracode: false, ...(mate.folder ? { folder: mate.folder } : {}) },
-  };
-}
-
-/** The Crew form. */
-export interface CrewForm {
-  readonly name: string;
-  readonly job: string;
-}
-
-/** Why the crew cannot be made. */
-export function crewProblems(crew: CrewForm): Partial<Record<'name', string>> {
-  return crew.name.trim() === '' ? { name: NEW_WORDS.errors.crewName } : {};
-}
+/** The kinds the sheet's own forms make. */
+export type SheetKindId = Exclude<NewKindId, DialogKindId>;
 
 // ── The draft (D88's `new-session` machine draft) ────────────────────────
 
 /** Everything the sheet holds. */
 export interface SheetState {
-  readonly kind: NewKindId;
+  readonly kind: SheetKindId;
   readonly agent: AgentForm;
   readonly task: TaskForm;
   readonly routine: RoutineForm;
   readonly project: ProjectForm;
-  readonly teammate: TeammateForm;
-  readonly crew: CrewForm;
 }
 
 /** The sheet as it opens for `kind`. */
-export function emptySheet(kind: NewKindId): SheetState {
-  return { kind, agent: DEFAULT_AGENT_FORM, task: DEFAULT_TASK_FORM, routine: DEFAULT_ROUTINE_FORM, project: DEFAULT_PROJECT_FORM, teammate: DEFAULT_TEAMMATE_FORM, crew: { name: '', job: '' } };
+export function emptySheet(kind: SheetKindId): SheetState {
+  return { kind, agent: DEFAULT_AGENT_FORM, task: DEFAULT_TASK_FORM, routine: DEFAULT_ROUTINE_FORM, project: DEFAULT_PROJECT_FORM };
 }
 
 /**
@@ -367,14 +331,6 @@ export function sheetDraft(sheet: SheetState): { readonly form: Readonly<Record<
       base['name'] = sheet.project.title;
       base['task'] = sheet.project.steps;
       break;
-    case 'teammate':
-      base['name'] = sheet.teammate.name;
-      base['task'] = sheet.teammate.owns;
-      break;
-    case 'crew':
-      base['name'] = sheet.crew.name;
-      base['task'] = sheet.crew.job;
-      break;
     default:
       break;
   }
@@ -387,9 +343,13 @@ export function sheetHasText(sheet: SheetState): boolean {
   return ['name', 'task'].some((key) => typeof value[key] === 'string' && (value[key] as string).trim() !== '');
 }
 
-/** The sheet a saved `new-session` draft opens (any kind; an unknown kind is an agent, the classic form's draft). */
+/**
+ * The sheet a saved `new-session` draft opens (an unknown kind is an agent, the classic form's
+ * draft; a teammate or crew draft saved before lane X moved them to the Crews dialogs opens as an
+ * agent too).
+ */
 export function sheetFromDraft(saved: Readonly<Record<string, unknown>>): SheetState {
-  const kind = isNewKind(saved['newKind']) ? saved['newKind'] : 'agent';
+  const kind: SheetKindId = isNewKind(saved['newKind']) && !opensDialog(saved['newKind']) ? saved['newKind'] : 'agent';
   const empty = emptySheet(kind);
   const form = formFromDraft(saved);
   const name = typeof saved['name'] === 'string' ? saved['name'] : '';
@@ -401,17 +361,13 @@ export function sheetFromDraft(saved: Readonly<Record<string, unknown>>): SheetS
       return { ...empty, routine: { ...empty.routine, prompt: task } };
     case 'project':
       return { ...empty, project: { ...empty.project, title: name, steps: task } };
-    case 'teammate':
-      return { ...empty, teammate: { ...empty.teammate, name, owns: task } };
-    case 'crew':
-      return { ...empty, crew: { name, job: task } };
     default:
       return { ...empty, agent: { ...empty.agent, form } };
   }
 }
 
 /** Opens the sheet from a request: the kind, the message text, a prefill's form and the computer. */
-export function sheetFromRequest(kind: NewKindId, text: string | undefined, prefilled: NewSessionForm | null, machine: string | null | undefined): SheetState {
+export function sheetFromRequest(kind: SheetKindId, text: string | undefined, prefilled: NewSessionForm | null, machine: string | null | undefined): SheetState {
   const sheet = emptySheet(kind);
   const form = prefilled ?? DEFAULT_FORM;
   const withText = text !== undefined && text !== '' ? { ...form, task: text } : form;

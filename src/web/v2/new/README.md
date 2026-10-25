@@ -9,7 +9,8 @@ Agent / conversation / task / project / routine / teammate / crew. Opened from a
 - `index.tsx`: `openNew`, `NewKind`, `NewRequest`, `NewSheet` (the shell renders it once).
 - `NewSheet.tsx`: the sheet (kinds, forms, Save as draft, ⌘↩); a full-screen sheet on a phone.
 - `new-model.ts` (pure, `tests/web/v2-new.test.ts`): the kinds, checks, API bodies, routine presets, project steps, the `new-session` draft.
-- APIs: `machineApi(machine).createSession` (Simple, or Full with the workspace questions), `api.createChat`, `api.addTodo`, `api.createLoop`, `plansApi.create` + `addItem` (or the classic `ImportJiraDialog`, D112), `teamApi.addMember` / `createTeam`, `api.putMachineDraft('new-session')`.
+- APIs: `machineApi(machine).createSession` (Simple, or Full with the workspace questions), `api.createChat`, `api.addTodo`, `api.createLoop`, `plansApi.create` + `addItem` (or Import from Jira: the Projects page's v2 `JiraImportDialog`, D112), `api.putMachineDraft('new-session')`.
+- Teammate and Crew (lane X): `CrewDialogs.tsx` opens the Crews page's `NewTeammateDialog` / `NewCrewDialog` (`../crews/`), one New teammate and one New crew for the whole app; `openNew({ kind: 'teammate' | 'crew' })` opens them.
 - Decisions: `docs/design/v2-decisions.md` → Lane R → + New.
 
 ## Shared modules to use

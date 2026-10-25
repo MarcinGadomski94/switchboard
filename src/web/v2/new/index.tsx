@@ -1,7 +1,8 @@
 import type { NewSessionPrefill } from '../../../core/api.ts';
 import { openStore } from '../shared/open-store.ts';
+import { NewCrewDialogs } from './CrewDialogs.tsx';
 import { NewSheetBody } from './NewSheet.tsx';
-import type { NewKindId } from './new-model.ts';
+import { type NewKindId, opensDialog } from './new-model.ts';
 
 /** What the + New sheet can make (the prototype's types). */
 export type NewKind = NewKindId;
@@ -29,7 +30,8 @@ export function openNew(request: NewRequest): void {
 /**
  * D131 · lane R · the + New sheet (`docs/design/v2-prototype.html` → `#m-new`):
  * one sheet with the kinds Agent / Conversation / Task / Project / Routine /
- * Teammate / Crew, each on its existing API, Save as draft (the `new-session`
+ * Teammate / Crew, each on its existing API (Teammate and Crew hand over to the
+ * Crews dialogs, `CrewDialogs.tsx`), Save as draft (the `new-session`
  * machine draft, D88) and ⌘↩. The shell renders it once; `NewSheet.tsx` is the
  * body, `new-model.ts` its pure part.
  */
@@ -37,5 +39,8 @@ export function NewSheet() {
   const request = sheet.use();
   if (request === null) return null;
   const key = current?.request === request ? current.key : 0;
-  return <NewSheetBody key={key} request={request} onClose={sheet.close} />;
+  const kind = request.kind;
+  // Teammate and Crew open the Crews dialogs (one New teammate / New crew for the whole app, lane X).
+  if (opensDialog(kind)) return <NewCrewDialogs key={key} kind={kind} onClose={sheet.close} />;
+  return <NewSheetBody key={key} request={{ ...request, kind }} onClose={sheet.close} onDialog={(next) => openNew({ ...request, kind: next })} />;
 }
