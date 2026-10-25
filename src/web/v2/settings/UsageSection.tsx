@@ -256,7 +256,7 @@ function OrderList({
             key={profile.id}
             role="listitem"
             className="v2-acct-row"
-            draggable
+            draggable={profiles.length > 1}
             data-testid="v2-account-row"
             data-profile-id={profile.id}
             data-dragging={dragging === profile.id ? '' : undefined}
@@ -280,8 +280,12 @@ function OrderList({
               <div className="v2-acct-name">{card.title}</div>
               <div className="v2-muted v2-set-small">{card.signedIn ? (card.who ?? 'Signed in') : 'Signed out'}</div>
             </div>
-            <IconButton icon="chev-down" className="v2-acct-up" label={`Move ${card.title} up`} disabled={index === 0} onClick={() => onReorder(cli, movedOrder(ids, profile.id, -1), profile)} data-testid="v2-account-up" />
-            <IconButton icon="chev-down" label={`Move ${card.title} down`} disabled={index === profiles.length - 1} onClick={() => onReorder(cli, movedOrder(ids, profile.id, 1), profile)} data-testid="v2-account-down" />
+            {profiles.length > 1 ? (
+              <>
+                <IconButton icon="chev-down" className="v2-acct-up" label={`Move ${card.title} up`} disabled={index === 0} onClick={() => onReorder(cli, movedOrder(ids, profile.id, -1), profile)} data-testid="v2-account-up" />
+                <IconButton icon="chev-down" label={`Move ${card.title} down`} disabled={index === profiles.length - 1} onClick={() => onReorder(cli, movedOrder(ids, profile.id, 1), profile)} data-testid="v2-account-down" />
+              </>
+            ) : null}
             {profile.builtin ? (
               <span className="v2-muted v2-set-small" title="Your own login of the engine: sign in or out in its terminal.">
                 Your own login

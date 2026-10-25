@@ -74,7 +74,18 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 
 ### Settings
 
-- (settings)
+- **ASSUMED** `/settings` opens Usage & accounts on a desktop and tablet (the prototype's first section); on a phone it is the list of sections and each section drills down with a "‹ Settings" back link (D74's pattern). (R)
+- **ASSUMED** the Advanced pages embed the classic sections inside a v2 card (`settings/ClassicFrame.tsx`): the classic colour tokens are re-pointed at the v2 ones there, so they follow light / dark; the classic modal and toast contexts are provided locally (the setup wizard and the update dialog open over the v2 page; a classic toast shows as a v2 toast; the classic palette never opens). (R)
+- **ASSUMED** the Advanced list is the prototype's pages plus every remaining classic section, each `/settings/advanced/<classic key>`: `code-projects` (Solutions), `connections` (MCP), `clis` (AI engines + Model by task), `workspace` (Folders; `folders` resolves), `sessions` ("Sessions & separate copies"), `schedules`, `tools`, `github`, `ci`, `processes` ("Background apps"), `jira` (`experimental` resolves), `updates`, `tutorial` ("What's new tours"), `cleanup`, `setup` (Run setup again), `login` (Start at login), `claude` ("Claude Code service"), `notify` ("Notifications & prices"), and the every-option pages `accounts`, `machines`, `devices` (their simplified v2 sections are Usage, Computers and Phones). The prototype's "Privacy" page is not built (no classic section). (R)
+- **ASSUMED** "Switch when an account reaches 90 / 95 / 98 / 100 %" is D63's thresholds: a choice sets both the 5-hour and the weekly threshold; 100 % turns the thresholds off (switch at the limit error). Two different stored thresholds show the lower one. (R)
+- **ASSUMED** "When all are out" is D103's `outOfAllowance` (Use paid extra = `use-credits`, Pause new work = `pause`); "Switch back after it resets" is `afterReset: back-to-first` / `stay`; the card's switch is the rules' master `enabled`. No new server setting. (R)
+- **ASSUMED** the account order is per engine (D63 orders accounts within a CLI), so the list is grouped by engine; an engine's own login ("Your own login") has no Sign in / out here (it is the CLI's own). Sign in reuses classic's sign-in panel (additively exported from `AccountsSection.tsx`). (R)
+- **ASSUMED** "Pin an account to an agent" = switch the agent to that account (`POST /api/sessions/:id/account`) and pin it (`PUT …/profile-pin`); the card says the agent's side panel can do the same. Only this computer's open agents are listed. (R)
+- **ASSUMED** shared accounts across computers (D98) have no switch: the card lists which accounts are on several computers. The shared layout is D71's per-computer switch. (R)
+- **ASSUMED** per-kind notifications and quiet hours are set on the phone itself (they belong to the phone's push subscription, D73/D87): on the computer, Phones lists the paired phones (notifications on / off), pairs by QR, revokes after a confirm and switches phone access; on a paired phone, Settings › Phones shows classic's own device panel. (R)
+- **ASSUMED** the default text density is per browser: `localStorage['switchboard.v2.density']` (`comfortable` / `compact`), also on `<html data-density>`; lane S reads it with `readDensity()` from `src/web/v2/settings/density.ts` as the View menu's default. (R)
+- **ASSUMED** `/tools/:id` and `/share` embed the classic tool page and the classic share page in a v2 frame (their own navigations use classic addresses, which the v2 shell maps). (R)
+- **ASSUMED** "Background apps" Stop all stops each app that is not marked Keep (`POST …/processes/:pid/stop`), per computer. (R)
 
 ### + New
 
