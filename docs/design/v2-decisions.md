@@ -78,11 +78,26 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 
 ### + New
 
-- (new)
+- **ASSUMED** the Agent kind posts the classic bodies: a **Simple** start (the message alone, D56) unless Advanced › "Answer the workspace questions now" is on (a workspace folder only), then the **Full** start (work type / mode / phase / coordination, code projects, branch). The prototype's basic form has no router answers, so Simple is the honest default. (R, 2026-10-25)
+- **ASSUMED** Speed and Thinking depth map onto D42's model / effort: Smart = the CLI's default model, Fast = the first offered model named sonnet / haiku / mini / fast / flash (else `sonnet` for Claude Code, else the default); Normal = the default effort, Deep = `high`. Advanced › Model picks an exact model instead. (R, 2026-10-25)
+- **ASSUMED** "Put it in" (a sidebar folder) places only an agent started on this computer (`POST /api/sidebar/place`); on a paired computer the select is disabled (the sidebar layout is per install and the peer's new id is not known here). (R, 2026-10-25)
+- **ASSUMED** a Conversation always starts on this computer (`POST /api/chats` has no machine). (R, 2026-10-25)
+- **ASSUMED** a Task lives in one agent's list (todos belong to a session): the sheet asks **Whose list?**, defaulting to the agent on screen, else the most recently active open agent. "Start here / Run in its own agent" and "Import from Jira or GitHub" stay on the Tasks page (lane A). (R, 2026-10-25)
+- **ASSUMED** a Routine is a D94 loop of an agent (`POST /api/sessions/{id}/loops`): the agent, a plain-words preset (every 30 min, every hour, every morning 08:00, weekdays 08:00, Friday 15:00) or a typed cron; it runs on the agent's computer, which the sheet names instead of offering a computer picker. (R, 2026-10-25)
+- **ASSUMED** a Project needs an agent whose task list it runs (`POST /api/plans` requires `sourceSessionId`): the sheet asks **Which agent plans it?** and adds one item per written step (`(after <step>)` adds the dependency), with no target branch (a plan without a merge step); the merge mode is chosen at Start on the project page. **Import steps from a Jira epic** opens the classic Import dialog with no session (D112: a new agent in a folder owns the plan) — embedding it rather than rebuilding it. (R, 2026-10-25)
+- **ASSUMED** a new Teammate gets its own new agent in the chosen project folder (as the classic dialog: no worktree, no router answers); "Make an existing agent a teammate instead" adopts and asks its agent for a charter (D105). The job description is the charter's owns / produces / never-does; Rhythm stays on the crew page. (R, 2026-10-25)
+- **ASSUMED** a Crew is `POST /api/team/teams { name }`; the prototype's "What does this crew do?" is not asked because a team stores no description. (R, 2026-10-25)
+- **ASSUMED** **Save as draft** writes this computer's `new-session` machine draft (D88) for every kind: the classic form's fields, plus `newKind` (a new additive key the draft check now keeps) and, for the other kinds, their title in `name` and their text in `task`. The sheet restores it when it opens plain (no text or prefill) on + New's default kind or on the draft's own kind; a successful create clears it; **Clear draft** forgets it. The classic New-session dialog keeps reading the same draft (it ignores `newKind`). (R, 2026-10-25)
+- **ASSUMED** on a phone (≤ 767 px) the sheet fills the screen and the kinds scroll sideways. (R, 2026-10-25)
 
 ### ⌘K palette
 
-- (palette)
+- **ASSUMED** groups and order: Quick capture, Messages, Agents & projects, Results, Pages, Actions, then the last row "Search everything for “…”" (⌘⇧F). Each group sits where its best row ranks, so ↩ on a fresh query opens the best match. Opened empty it lists the four most recent agents and the actions. (R, 2026-10-25)
+- **ASSUMED** ranking (`palette-model.ts`): every query word must match the label or its hidden keywords; the label starting with the query beats every word starting a label word beats a match inside; then the most recent; at most 12 rows. (R, 2026-10-25)
+- **ASSUMED** Messages come from D97 search (`GET /api/search?scope=conversations`, 5 hits, after two characters) and open `/agents/:id/events/:eventId` (a helper's `/agents/:id/helpers/:helperId/events/:eventId`). Results open `/results?open=<artifactId>&agent=<sessionId>[&computer=<machineId>]` (the Results page's own deep link). (R, 2026-10-25)
+- **ASSUMED** "task …" quick capture (D81 `captureTodo`, `from: 'palette'`) goes to the agent on screen, else the most recently active open agent (conversations and closed agents never); without one the row says to start an agent first. (R, 2026-10-25)
+- **ASSUMED** "Replay a What’s new tour" opens Settings › Advanced › What’s new tours (`/settings/advanced/tutorial`): the tour host is mounted only in the classic shell, so v2 replays from that page. (R, 2026-10-25)
+- **ASSUMED** the palette also switches light / dark / automatic (v2's scheme) besides the classic theme, and lists every Settings section and Advanced page (the classic section keys, Code projects and Connections). (R, 2026-10-25)
 
 ### Lane-wide
 
