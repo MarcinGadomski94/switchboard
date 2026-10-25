@@ -1,0 +1,158 @@
+/*
+ * D131 · the v2 design tokens (Direction D v3, docs/design/v2-prototype.html → its :root and
+ * [data-theme="dark"]). Every name carries the `--v2-` prefix so it never meets a classic token
+ * (src/web/styles/tokens.css) of the same name: the two UIs share one page.
+ *
+ * They are defined on <html data-ui="v2"> (set before the first render, src/web/theme.ts), so
+ * the page background and anything v2 portals into <body> (menus, sheets, toasts) see them.
+ * The scheme: <html data-scheme="light|dark"> (src/web/v2/scheme.ts: the system's, or the
+ * browser's own pick in Settings → Appearance).
+ */
+:root[data-ui='v2'] {
+  /* Type */
+  --v2-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --v2-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --v2-fs-xs: 11.5px; /* rail kbd, mini status */
+  --v2-fs-s: 12.5px; /* tags, hints, meta */
+  --v2-fs-sm: 13.5px; /* secondary text */
+  --v2-fs: 14.5px; /* buttons, rows */
+  --v2-fs-body: 15px; /* body */
+  --v2-fs-chat: 15.5px; /* agent replies */
+  --v2-fs-h3: 17px;
+  --v2-fs-h2: 19px;
+  --v2-fs-h1: 30px;
+  --v2-lh: 1.5;
+
+  /* Space (4 px grid) */
+  --v2-sp-1: 4px;
+  --v2-sp-2: 8px;
+  --v2-sp-3: 12px;
+  --v2-sp-4: 16px;
+  --v2-sp-5: 20px;
+  --v2-sp-6: 24px;
+  --v2-sp-7: 28px;
+  --v2-sp-8: 32px;
+  --v2-sp-10: 40px;
+
+  /* Radii */
+  --v2-r-s: 8px;
+  --v2-r: 12px;
+  --v2-r-l: 16px;
+  --v2-r-xl: 22px;
+  --v2-r-pill: 999px;
+
+  /* Sizes */
+  --v2-rail: 232px;
+  --v2-topbar: 64px;
+  --v2-touch: 44px;
+  --v2-control: 40px;
+
+  /* Motion */
+  --v2-ease: cubic-bezier(0.2, 0, 0, 1);
+  --v2-fast: 0.12s;
+  --v2-med: 0.22s;
+  --v2-slow: 0.35s;
+
+  /* Colours: light (the prototype's :root) */
+  --v2-bg: #f6f5f2;
+  --v2-surface: #ffffff;
+  --v2-surface-2: #faf9f7;
+  --v2-sunken: #efeee9;
+  --v2-border: #e6e3dc;
+  --v2-border-strong: #d4d0c6;
+  --v2-text: #1b1b19;
+  --v2-text-2: #4a4944;
+  --v2-muted: #6c6b65;
+  --v2-accent: #4a55d0;
+  --v2-accent-ink: #fff;
+  --v2-accent-soft: #eceefd;
+  --v2-accent-text: #3740b0;
+  --v2-blue: #2463d1;
+  --v2-blue-bg: #e8f0fd;
+  --v2-amber: #8a5200;
+  --v2-amber-dot: #d98a00;
+  --v2-amber-bg: #fff3dd;
+  --v2-red: #b4302a;
+  --v2-red-bg: #fdecea;
+  --v2-green: #1d7a45;
+  --v2-green-bg: #e5f5eb;
+  --v2-violet: #6a3fc8;
+  --v2-violet-bg: #f1ebfd;
+  --v2-grey: #5f5e59;
+  --v2-grey-bg: #eeede9;
+  --v2-shadow-1: 0 1px 2px rgba(20, 20, 10, 0.05), 0 1px 1px rgba(20, 20, 10, 0.03);
+  --v2-shadow-2: 0 6px 24px rgba(20, 20, 10, 0.08), 0 2px 6px rgba(20, 20, 10, 0.05);
+  --v2-shadow-3: 0 24px 60px rgba(20, 20, 10, 0.18), 0 6px 18px rgba(20, 20, 10, 0.08);
+  --v2-scrim: rgba(15, 15, 12, 0.38);
+  --v2-toast-bg: #1d1d22;
+  --v2-toast-fg: #f2f2f5;
+  --v2-toast-action: #a9b0ff;
+  --v2-term-bg: #121214;
+  --v2-term-fg: #cfd3dc;
+  color-scheme: light;
+}
+
+:root[data-ui='v2'][data-scheme='dark'] {
+  --v2-bg: #131312;
+  --v2-surface: #1c1c1b;
+  --v2-surface-2: #20201f;
+  --v2-sunken: #171716;
+  --v2-border: #2d2d2b;
+  --v2-border-strong: #3c3c39;
+  --v2-text: #ecebe7;
+  --v2-text-2: #c9c7c1;
+  --v2-muted: #9a9891;
+  --v2-accent: #8b94ff;
+  --v2-accent-ink: #13132a;
+  --v2-accent-soft: #272a4a;
+  --v2-accent-text: #aeb4ff;
+  --v2-blue: #78a6ff;
+  --v2-blue-bg: #1d2a44;
+  --v2-amber: #f2b552;
+  --v2-amber-dot: #f2b552;
+  --v2-amber-bg: #3a2c12;
+  --v2-red: #ff8a80;
+  --v2-red-bg: #3d1f1d;
+  --v2-green: #6fd39a;
+  --v2-green-bg: #173323;
+  --v2-violet: #bda1ff;
+  --v2-violet-bg: #2c2347;
+  --v2-grey: #b0aea7;
+  --v2-grey-bg: #2a2a28;
+  --v2-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --v2-shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --v2-shadow-3: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --v2-scrim: rgba(0, 0, 0, 0.5);
+  --v2-toast-bg: #f1f0ec;
+  --v2-toast-fg: #1b1b19;
+  --v2-toast-action: #3740b0;
+  color-scheme: dark;
+}
+
+/* The tablet rail (the prototype's ≤ 1279 px). */
+@media (max-width: 1279px) {
+  :root[data-ui='v2'] {
+    --v2-rail: 84px;
+  }
+}
+
+/* The page itself while v2 shows (the classic global.css paints it otherwise). */
+html[data-ui='v2'],
+html[data-ui='v2'] body {
+  background: var(--v2-bg);
+  color: var(--v2-text);
+  font-family: var(--v2-font);
+}
+
+/* Reduced motion: nothing animates or slides (the prototype's rule, scoped to v2). */
+@media (prefers-reduced-motion: reduce) {
+  .sb2 *,
+  .sb2 *::before,
+  .sb2 *::after,
+  .sb2-portal *,
+  .sb2-portal *::before,
+  .sb2-portal *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
