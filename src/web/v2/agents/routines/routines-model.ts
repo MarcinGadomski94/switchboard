@@ -390,7 +390,7 @@ export function terminalRoutine(entry: TerminalLoop, now: number): RoutineModel 
   const loop = entry.loop;
   const { scheduleText, summary } = cliSummary(loop, now);
   const { status, label } = cliStatus(loop);
-  const terminalName = entry.terminal.name?.trim() || `${ROUTINES_WORDS.terminal} · ${baseName(entry.terminal.cwd) || 'session'}`;
+  const terminalName = entry.terminal.name?.trim() || (baseName(entry.terminal.cwd) ? `${ROUTINES_WORDS.terminal} · ${baseName(entry.terminal.cwd)}` : ROUTINES_WORDS.terminal);
   const machine = entry.machine ?? null;
   return {
     key: `cli:${loop.id}`,

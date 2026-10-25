@@ -161,7 +161,7 @@ describe('v2 Routines · CLI loops and the list', () => {
     expect(cli?.actions.pause).toEqual({ ok: false, reason: 'Managed by the AI engine: Switchboard can only watch it.' });
     const term = lists.active.find((routine) => routine.id === 'term:x:1');
     expect(term?.agent).toBeNull();
-    expect(term?.terminalName).toBe('Terminal session · acme');
+    expect(term?.terminalName).toBe('Terminal · acme');
   });
 
   it('counts', () => {

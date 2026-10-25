@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { turnBusy } from '../../views/session/needs-you.ts';
+import { useDiffCount } from '../../views/session/useDiffScope.ts';
+import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, Sheet, StatusBadge, Tabs, useToast } from '../components/index.ts';
 import { AGENT_TAB_LABELS, AGENT_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
@@ -72,6 +74,7 @@ export function PeekHost() {
 export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; readonly onClose: () => void }) {
   const { navigate } = useV2Router();
   const [tab, setTab] = useState<PeekTab>('chat');
+  const layout = useLayout();
   const data = useAgent(sessionId, true, null);
   const { rows, lastEventId, fullText } = useChatRows(data);
   const working = data.session !== null && turnBusy(data.session);
@@ -87,11 +90,14 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
   };
   const session = data.session;
   const name = session ? agentName(session) : '';
+  // The same counts as the full view's tabs (`AgentView.tsx`).
+  const changes = useDiffCount(sessionId, session ? session.files.length : null);
+  const helpers = (session?.agents ?? []).filter((a) => a.kind !== 'main').length;
   const tabs = [
     { id: 'chat' as const, label: AGENT_TAB_LABELS.chat, icon: 'chat' },
-    ...(data.conversation ? [] : [{ id: 'changes' as const, label: AGENT_TAB_LABELS.changes, icon: 'copy' }]),
+    ...(data.conversation ? [] : [{ id: 'changes' as const, label: AGENT_TAB_LABELS.changes, icon: 'copy', ...(changes ? { count: changes } : {}) }]),
     { id: 'results' as const, label: AGENT_TAB_LABELS.results, icon: 'results', ...(session?.artifacts.length ? { count: session.artifacts.length } : {}) },
-    ...(data.conversation ? [] : [{ id: 'helpers' as const, label: AGENT_TAB_LABELS.helpers, icon: 'crew' }]),
+    ...(data.conversation ? [] : [{ id: 'helpers' as const, label: AGENT_TAB_LABELS.helpers, icon: 'crew', ...(helpers ? { count: helpers } : {}) }]),
   ];
   return (
     <Sheet
@@ -136,7 +142,7 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
                 }}
                 helperHref={helperHref}
               />
-              <Dock data={data} queued={split.queued} paused={split.paused} lastEventId={lastEventId} onSent={() => (stick.current = true)} variant="peek" />
+              <Dock data={data} queued={split.queued} paused={split.paused} lastEventId={lastEventId} onSent={() => (stick.current = true)} variant="peek" short={layout === 'phone'} />
             </>
           ) : (
             <div className="v2-ag-scroll">

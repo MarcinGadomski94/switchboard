@@ -169,33 +169,35 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
         <h1>{showClosed ? AGENTS_WORDS.closedTitle : AGENTS_WORDS.title}</h1>
         <p className="v2-page-sub">{showClosed ? AGENTS_WORDS.closedSub : AGENTS_WORDS.sub}</p>
       </div>
-      {!showClosed && !phone ? <Segmented options={AGENT_VIEWS.map((value) => ({ value, label: AGENTS_WORDS.views[value], icon: value === 'list' ? 'list' : value === 'chats' ? 'chats' : 'board' }))} value={view} onChange={setView} label={AGENTS_WORDS.viewLabel} testId="v2-agents-view" tour="v2-agents-view" /> : null}
-      {!showClosed && !phone ? (
-        <Button variant="ghost" icon="sheet" aria-pressed={!treeHidden} title={`${AGENTS_WORDS.foldersToggle} · ${modKey('\\')}`} onClick={toggleTree} data-testid="v2-tree-toggle-button">
-          {AGENTS_WORDS.foldersButton}
-        </Button>
-      ) : null}
-      {!showClosed && !phone ? (
-        <MenuButton
-          label={AGENTS_WORDS.advanced}
-          icon="sliders"
-          testId="v2-agents-advanced"
-          items={[
-            {
-              id: 'engine',
-              label: `${advanced ? '✓ ' : ''}${AGENTS_WORDS.showEngine}`,
-              icon: 'cmd',
-              onSelect: () => {
-                writePref(PREF_KEYS.advanced, advanced ? '0' : '1');
-                setAdvanced(!advanced);
+      <div className="v2-ag-ph-tools">
+        {!showClosed && !phone ? <Segmented options={AGENT_VIEWS.map((value) => ({ value, label: AGENTS_WORDS.views[value], icon: value === 'list' ? 'list' : value === 'chats' ? 'chats' : 'board' }))} value={view} onChange={setView} label={AGENTS_WORDS.viewLabel} testId="v2-agents-view" tour="v2-agents-view" /> : null}
+        {!showClosed && !phone ? (
+          <Button variant="ghost" icon="sheet" aria-pressed={!treeHidden} title={`${AGENTS_WORDS.foldersToggle} · ${modKey('\\')}`} onClick={toggleTree} data-testid="v2-tree-toggle-button">
+            {AGENTS_WORDS.foldersButton}
+          </Button>
+        ) : null}
+        {!showClosed && !phone ? (
+          <MenuButton
+            label={AGENTS_WORDS.advanced}
+            icon="sliders"
+            testId="v2-agents-advanced"
+            items={[
+              {
+                id: 'engine',
+                label: `${advanced ? '✓ ' : ''}${AGENTS_WORDS.showEngine}`,
+                icon: 'cmd',
+                onSelect: () => {
+                  writePref(PREF_KEYS.advanced, advanced ? '0' : '1');
+                  setAdvanced(!advanced);
+                },
               },
-            },
-          ]}
-        />
-      ) : null}
-      <Button variant="primary" icon="plus" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-agents-new">
-        {AGENTS_WORDS.newButton}
-      </Button>
+            ]}
+          />
+        ) : null}
+        <Button variant="primary" icon="plus" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-agents-new">
+          {AGENTS_WORDS.newButton}
+        </Button>
+      </div>
     </div>
   );
 

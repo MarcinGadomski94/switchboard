@@ -2012,3 +2012,27 @@
     white-space: normal;
   }
 }
+
+/*
+ * Lane X polish · 44 px touch targets on touch screens and phones: the small segmented
+ * switches (Changes' scope, How it works' Smart / Fast; the base kit's `size="s"` beats its
+ * own coarse-pointer rule), the side panel's selects, the icon-only Details button, and the
+ * title (click to rename; negative margins keep the layout as it was).
+ */
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-ag .v2-seg[data-size='s'] button,
+  .sb2 .v2-ag-side-body .v2-seg[data-size='s'] button,
+  .sb2 .v2-ag-side-body select.v2-field {
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-ag-head .v2-btn {
+    min-width: var(--v2-touch);
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-ag-title-btn {
+    min-height: var(--v2-touch);
+    margin-block: calc((27px - var(--v2-touch)) / 2);
+  }
+}

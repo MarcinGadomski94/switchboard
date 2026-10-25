@@ -75,8 +75,8 @@ function Tags({ agent }: { readonly agent: AgentEntry }) {
 function kindChip(agent: AgentEntry): ReactNode {
   const label = kindLabel(agent);
   return label ? (
-    <span className="v2-tag" data-testid="v2-kind-tag">
-      {label}
+    <span className="v2-tag" data-testid="v2-kind-tag" title={label}>
+      <span className="v2-tag-t">{label}</span>
     </span>
   ) : null;
 }

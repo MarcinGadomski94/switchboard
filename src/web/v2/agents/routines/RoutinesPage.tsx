@@ -258,7 +258,7 @@ function RoutinePanel({
     <article className="v2-card v2-routines-panel" data-testid="v2-routines-panel" data-key={routine.key} data-source={routine.source} data-status={routine.status} aria-labelledby={`rt-${routine.key}`}>
       <div className="v2-routines-head">
         <Icon name="routine" />
-        <h2 className="v2-grow v2-routines-name" id={`rt-${routine.key}`} data-testid="v2-routines-name">
+        <h2 className="v2-grow v2-routines-name" id={`rt-${routine.key}`} title={routine.name} data-testid="v2-routines-name">
           {routine.name}
         </h2>
         <StatusBadge status={routine.status} label={routine.statusLabel} size="s" />
