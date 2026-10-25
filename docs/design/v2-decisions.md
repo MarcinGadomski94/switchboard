@@ -269,3 +269,34 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** the shell renders `PeekHost` once (one added line in `shell/Shell.tsx`, next to the + New sheet), which also hosts the agent view's Undo-from-here and Save-as-result dialogs, so the full view and a peek over it never show two. (S)
 - **ASSUMED** the classic composer's send machinery is reused, not copied: `views/session/ChatTab.tsx` now exports `deliver`, `sendsSettled`, `composers`, `refusedNotes` and `COMPOSER_INSERT_EVENT` (no behaviour change), so a refused send finds whichever composer is open. (S)
 - **ASSUMED** `window.__sbV2Peek(id)` opens the peek (the E2E spec uses it; Home and Agents call `openPeek`). (S)
+
+## Lane X · Integration + polish (2026-10-25)
+
+### The x-list
+- **ASSUMED** an answer (or a Results / Tasks delete) still in its Undo window is sent on `pagehide` and on a hidden tab through `withKeepalive()` (`api/client.ts`): every request started inside it carries `keepalive`, in all four API clients. Only the first request of a chain is covered, so a Send back that first reads its project (`plansApi.get`) may still lose its second call when the page is gone. (X)
+- **ASSUMED** Smart = Opus and Fast = Sonnet (else Haiku, else a model named fast) everywhere, in one helper (`shared/speed.ts`). + New's Smart used to send nothing (the engine default); it now sends Opus like Home and the side panel. Without a model list Claude Code's aliases are sent; another engine without a match gets its default. (X)
+- **ASSUMED** `GET /api/plans/{id}/jira/context` joins `PEER_API_ALLOW` (a read, on the machine that owns the plan, like `GET …/jira`); the device allow-list is unchanged. (X)
+- **ASSUMED** Settings › Advanced › Sessions already prefilled Model by task from `?suggestRule=` (the classic `ModelRulesRow` reads the address when it mounts); an E2E now proves it, and nothing is saved by itself. (X)
+- **ASSUMED** the phone top bar gets its own ⌘K button (the palette) next to Search (the Search page): phones have no ⌘K key, and the palette's commands had no other way in. (X)
+- **ASSUMED** "Start here / Run in its own agent" and the import live on the Tasks page as lane A built them (verified by `v2-tasks.spec.ts`); the spec's Move to Done retries its menu because the D81 fill-in turn can move the card back to In progress and re-render it. (X)
+- **ASSUMED** a card or row that "peeks" in the prototype opens the peek sheet on a desktop or tablet and the agent's page on a phone (`useOpenAgent`): Home's Working now and Done today, both boards, a project's steps, a teammate's Open chat, an agent-title hit in Search. Message hits still jump to the message, and the Agents List and Chats rows and a card's explicit Open navigate, as in the prototype. (X)
+- **ASSUMED** the one board is `shared/Board.tsx`, with the prototype's four columns; a project's Board is that board with the project as its one lane (lane P's 2×2 tablet grid is gone). Below 1280 px the columns shrink to 132 px; when the folder tree still leaves too little room, heads and lanes scroll sideways together. (X)
+- **ASSUMED** lane P's New crew / New teammate dialogs are the one implementation (suggestions, adopt an agent, budgets, hand-offs: richer than + New's forms); + New's tiles hand over to them. An older + New draft of those kinds reopens as an Agent draft. (X)
+- **ASSUMED** lane P's v2 Jira import is the one dialog; + New › Project › Import from Jira opens it (it gained `onImported`). Classic keeps its own dialog. (X)
+- **ASSUMED** a project's "What agents know" card links to `/notes?scope=<the folder of the project's own agent>` (its `folderPath ?? cwd`, Project memory's scope). (X)
+- **ASSUMED** lane R's result drawer is the one drawer; the agent view's Results tab and attachments open it (optional `onDelete`, `openAgent`). Delete in the agent's tab follows the Results page (hidden now, deleted after the Undo window); "Open agent" is hidden there. A link to a result the agent no longer has says "That result is gone." (X)
+- **ASSUMED** Move to computer and Continue in Switchboard are v2 dialogs over the classic stores and API (`agent/MoveDialog.tsx`), hosted by `PeekHost` so every v2 page gets them; Move opens on the first online computer and the target is switched inside the dialog. (X)
+- **ASSUMED** the side panel shows the project line (D99) and the "What agents know" line (D107) as compact links above the groups, and an **Agents overview** group (D21) as a two-column table (agent, status) with Workflow runs and **Resume run** on a stopped one; it opens by itself when a run can be resumed. (X)
+- **ASSUMED** the Timeline tab gets classic's playback scrubber and event log after all (the prototype shows only the lanes, but the x-list counts their absence as a gap): Previous / Play / Next / Now, a range scrubber (Shift+←/→ jumps between events), the last 8 events up to the playhead as buttons; with reduced motion Play steps one event per press. (X)
+- **ASSUMED** "Send with paid extra" keeps going to Settings › Usage & accounts (no per-message route); helper chats stay routes. (X)
+- **ASSUMED** classic Settings lists Appearance after the prototype's seven sections (after GitHub), like every later section, so the classic Settings visual oracle compares the same nav again. (X)
+- **ASSUMED** the v2 files that use Project memory are listed hooks in `docs/memory-removal.md` (the wiring test failed on the merged `v2`). (X)
+- **ASSUMED** Settings › Advanced says "Agents & separate copies" (the glossary's word) rather than "Sessions & separate copies". (X)
+
+### The tour
+- **ASSUMED** each theme runs only its own tours: classic anchors cannot be highlighted in v2. "Welcome to Switchboard 2" (`welcome-v2`, 2.0.0, six steps, `src/web/v2/tour/`) shows once per machine on the first v2 load (the server's tutorial state, like every What's-new tour); on a new install it stands in for the classic main tour, which stays pending for a later switch to Classic. (X)
+- **ASSUMED** lane G's `graduated` tour stays a classic tour; its message is folded into the welcome's Projects-and-Crews step, and it (and the new classic `two-themes` tour pointing at Settings → Appearance) is marked with the welcome's outcome. (X)
+- **ASSUMED** v2 Settings › Advanced › What's new tours lists and replays the v2 tours only, with a note that the classic tours are in Classic. (X)
+
+### The demo seed
+- **ASSUMED** the demo's v2 layer (`src/server/demo/v2.ts`: teammates and two crews, tasks with estimates, a week of Insights, three projects, folders, a pin, notes) runs only when the default theme is v2 (or `SWITCHBOARD_DEMO_V2=1`), so the classic visual oracles and the README shots keep the plain seed. Done tasks are seeded within the last hour (older ones leave the list). (X)
