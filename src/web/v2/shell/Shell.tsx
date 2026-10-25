@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLayout, useVisualViewportHeight } from '../../shell/useLayout.ts';
 import { useV2Router } from '../nav.tsx';
+import { PeekHost } from '../agent/index.tsx';
 import { NewSheet } from '../new/index.tsx';
 import { Palette, openPalette } from '../palette/index.tsx';
 import { isClassicOnlyPath } from '../routes.ts';
@@ -78,6 +79,8 @@ export function Shell() {
       <Palette />
       <ShortcutsDialog />
       <NewSheet />
+      {/* Lane S: the agent peek sheet and the agent view's dialogs (openPeek, Undo from here, Save as result). */}
+      <PeekHost />
     </div>
   );
 }

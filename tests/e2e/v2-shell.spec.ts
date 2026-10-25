@@ -97,7 +97,8 @@ test('keyboard: ? lists the shortcuts, ⌘K opens the palette, ⌘⇧F opens Sea
 test('a classic address opens its v2 page (push notifications, paired computers, bookmarks)', async ({ page }) => {
   await page.goto(`${server.baseUrl}/sessions/abc/diff`);
   await expect(page).toHaveURL(`${server.baseUrl}/agents/abc/changes`);
-  await expect(page.getByTestId('v2-page-agent')).toContainText('Agent abc · changes');
+  // Lane S: the agent view (here for an id with no agent) on its Changes tab.
+  await expect(page.locator('[data-testid="v2-agent-view"][data-session-id="abc"]')).toHaveAttribute('data-tab', 'changes');
   await page.goto(`${server.baseUrl}/inbox`);
   await expect(page).toHaveURL(`${server.baseUrl}/needs-you`);
   await expect(page.getByTestId('v2-page-needs-you')).toBeVisible();
@@ -133,7 +134,7 @@ test('the theme switch: v2 → Classic → v2, at once and without a reload, kee
 
   // From an agent's Changes tab to Classic (the palette's switch): the address becomes the session's Diff.
   await page.goto(`${server.baseUrl}/agents/abc/changes`);
-  await expect(page.getByTestId('v2-page-agent')).toBeVisible();
+  await expect(page.locator('[data-testid="v2-agent-view"][data-session-id="abc"]')).toBeVisible();
   await markWindow(page);
   await page.keyboard.press('ControlOrMeta+k');
   await expect(page.getByTestId('v2-palette')).toBeVisible();
