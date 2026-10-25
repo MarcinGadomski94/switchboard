@@ -978,6 +978,41 @@ export class PlanJiraService {
     }
   }
 
+  /**
+   * D131 lane P · `GET /api/plans/{id}/jira/context?item=&part=`: the developer's read of the same
+   * D118 context the agents get (the v2 project page's "From Jira"): an item's ticket and/or the
+   * epic, read from Jira now. `part` defaults to `both` with an item, else `epic`. 404 `not-jira`
+   * for a plan not from Jira, 502 when Jira cannot be read. Read-only; nothing is stored.
+   */
+  async developerContext(planId: string, query: { readonly item?: unknown; readonly part?: unknown }): Promise<{ readonly planId: string; readonly epicKey: string; readonly item: string | null; readonly text: string }> {
+    await this.#gate();
+    const id = planId.trim();
+    const record = await this.#record(id);
+    const rows = await (await this.#jdb()).items(id);
+    const plan = await this.#plan(id);
+    const wanted = typeof query.item === 'string' && query.item.trim() !== '' ? query.item.trim() : null;
+    const row = wanted === null ? null : (rows.find((entry) => entry.itemId === wanted || entry.key === wanted.toUpperCase()) ?? null);
+    if (wanted !== null && !row) throw new PlanJiraError(404, 'not-found', `${wanted} is not a Jira ticket of this plan`);
+    const partRaw = typeof query.part === 'string' && query.part !== '' ? query.part : null;
+    if (partRaw !== null && !(JIRA_CONTEXT_PARTS as readonly string[]).includes(partRaw)) throw new PlanJiraError(422, 'invalid', `part is one of ${JIRA_CONTEXT_PARTS.join(', ')}`, 'part');
+    const part = partRaw ?? (row ? 'both' : 'epic');
+    if (part === 'item' && !row) throw new PlanJiraError(422, 'invalid', 'give item: the key (PROJ-12) or id of the item', 'item');
+    const client = await this.#client();
+    const acceptanceField = await client.acceptanceField().catch(() => null);
+    const exclude = new Set([record.epicKey, ...rows.map((entry) => entry.key)]);
+    try {
+      const epic = part !== 'item' ? await this.#issueContext(client, record.epicKey, acceptanceField, exclude) : null;
+      const item = part !== 'epic' && row ? await this.#issueContext(client, row.key, acceptanceField, exclude) : null;
+      const epicText = epic ? renderJiraIssueContext(epic, { heading: `Epic ${epic.key} ${epic.summary}`, max: item ? Math.floor(JIRA_TOOL_MAX / 3) : JIRA_TOOL_MAX, toolNote: false }).text : '';
+      const itemText = item ? renderJiraIssueContext(item, { heading: `Ticket ${item.key} ${item.summary}`, max: JIRA_TOOL_MAX - epicText.length, toolNote: false }).text : '';
+      const head = `Jira context of the plan "${plan.title}", read from Jira now (${this.#clock.now().toISOString().slice(0, 16).replace('T', ' ')} UTC).`;
+      return { planId: id, epicKey: record.epicKey, item: row?.key ?? null, text: [head, itemText, epicText].filter((entry) => entry !== '').join('\n\n') };
+    } catch (error) {
+      if (error instanceof JiraError) throw fromJiraError(error);
+      throw error;
+    }
+  }
+
   // ── proposed order (D99-Jira-q1 ruling (b)) ─────────────────────────────
 
   /**

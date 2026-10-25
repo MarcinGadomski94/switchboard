@@ -190,6 +190,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/plans\/jira\/(?:preview|import)$/],
   ['GET|PUT', /^\/api\/plans\/[^/]+\/jira$/],
   ['POST', /^\/api\/plans\/[^/]+\/jira\/(?:refresh|dependencies)$/],
+  // D131 lane P: the v2 project page's "From Jira" (the D118 context, read now; a read like the plan's Jira state).
+  ['GET', /^\/api\/plans\/[^/]+\/jira\/context$/],
   // Plans (D99) hook: proposed order (read, Propose order, accept / reject one or all); a phone may (developer ruling 2026-10-13).
   ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
