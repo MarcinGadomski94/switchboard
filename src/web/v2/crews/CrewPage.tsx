@@ -203,7 +203,7 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { r
           {workLine(member)}
         </div>
       )}
-      <CharterProposalBlock member={member} onEdit={(requestId) => onOverlay({ kind: 'charter', member, requestId })} />
+      {needs.some((item) => item.kind === 'jd') ? null : <CharterProposalBlock member={member} onEdit={(requestId) => onOverlay({ kind: 'charter', member, requestId })} />}
       <div className="v2-c-meter-row">
         <span className="v2-muted v2-c-small">{CREW_WORDS.budget}</span>
         <div className="v2-c-meter" role="meter" aria-label={`Budget of ${member.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={meter?.fill ?? 0}>
@@ -355,7 +355,7 @@ export function CrewPage({ id }: { readonly id: string }) {
         {(needsOf.get(selected.id) ?? []).map((item) => (
           <AnswerCard key={item.key} item={item} variant="phone" where="phone" />
         ))}
-        <CharterProposalBlock member={selected} onEdit={(requestId) => setOverlay({ kind: 'charter', member: selected, requestId })} />
+        {(needsOf.get(selected.id) ?? []).some((item) => item.kind === 'jd') ? null : <CharterProposalBlock member={selected} onEdit={(requestId) => setOverlay({ kind: 'charter', member: selected, requestId })} />}
         <TeammateDetails member={selected} tab={query.tab} onTab={(tab) => navigate(crewHref(id, selected.id, tab), { replace: true })} modelText={modelText(selected)} />
         <CrewOverlays overlay={overlay} setOverlay={setOverlay} crews={ordered} crewId={id} onMove={actions.moveTo} />
       </div>

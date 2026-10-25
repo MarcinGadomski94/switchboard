@@ -988,3 +988,26 @@
     transition: none;
   }
 }
+
+/* Lane P's dialogs: their fields stacked with room between them. */
+.sb2 :is([data-testid='v2-start-dialog'], [data-testid='v2-jira-import'], [data-testid='v2-edit-step'], [data-testid='v2-sendback-dialog'], [data-testid='v2-jira-sync'], [data-testid='v2-mode-ack'], [data-testid='v2-delete-project'], [data-testid='v2-cancel-project']) > .v2-modal-b {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 :is([data-testid='v2-start-dialog'], [data-testid='v2-jira-import']) .v2-p-pick,
+.sb2 :is([data-testid='v2-start-dialog'], [data-testid='v2-jira-import']) .v2-p-dialog-p {
+  margin: 0;
+}
+
+.sb2 [data-testid='v2-jira-import'] {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb2 [data-testid='v2-jira-import'] > .v2-modal-b {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}

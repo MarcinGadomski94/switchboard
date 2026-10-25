@@ -564,3 +564,25 @@
     min-height: 44px;
   }
 }
+
+/* Lane P's dialogs: their fields stacked with room between them. */
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-new-crew'], [data-testid='v2-rename-crew'], [data-testid='v2-budget-dialog'], [data-testid='v2-model-dialog'], [data-testid='v2-charter-edit'], [data-testid='v2-move-crew'], [data-testid='v2-move-computer'], [data-testid='v2-delete-crew']) > .v2-modal-b {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-charter-edit']) {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-charter-edit']) > .v2-modal-b {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sb2 :is([data-testid='v2-new-teammate']) .v2-c-chips {
+  margin-bottom: 0;
+}

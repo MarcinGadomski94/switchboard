@@ -153,12 +153,14 @@ test('a proposed job description is accepted from the teammate’s card', async 
   });
   expect(proposed.status, JSON.stringify(proposed.body)).toBeLessThan(300);
   const card = page.locator(`[data-testid="v2-teammate"][data-member="${reviewer.id}"]`);
-  const proposal = card.getByTestId('v2-charter-proposal');
+  // The shared answer card shows the proposal with Accept / Edit / Dismiss (the card's own block stays out of its way).
+  const proposal = card.locator('[data-testid="v2-answer-card"][data-kind="jd"]');
   await expect(proposal).toContainText('Reviews of every change request in acme-app.');
-  await proposal.getByTestId('v2-charter-accept').click();
+  await expect(card.getByTestId('v2-charter-proposal')).toHaveCount(0);
+  await proposal.getByRole('button', { name: 'Accept' }).click();
   await expect(proposal).toHaveCount(0);
-  await expect(card.getByTestId('v2-teammate-jd')).toContainText('Reviews of every change request in acme-app.');
-  await expect.poll(async () => (await world.call(page, 'GET', '/api/team?teamId=team')).body.members.find((entry: { id: string }) => entry.id === reviewer.id).charter.owns).toBe('Reviews of every change request in acme-app.');
+  await expect(card.getByTestId('v2-teammate-jd')).toContainText('Reviews of every change request in acme-app.', { timeout: 20_000 });
+  await expect.poll(async () => (await world.call(page, 'GET', '/api/team?teamId=team')).body.members.find((entry: { id: string }) => entry.id === reviewer.id).charter.owns, { timeout: 20_000 }).toBe('Reviews of every change request in acme-app.');
 });
 
 test('phone: Crews › crew › teammate drill-down with a breadcrumb', async ({ page }) => {
