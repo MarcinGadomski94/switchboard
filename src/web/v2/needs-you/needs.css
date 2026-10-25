@@ -1,0 +1,86 @@
+/*
+ * D131 · the Needs-you page (lane H): the prototype's `.filters` / `.fchip` and the key hint.
+ * `.v2-fchip` is also Home's start-box chips. Scoped under `.sb2`, tokens only.
+ */
+
+.sb2 .v2-fchip {
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  border-radius: var(--v2-r-pill);
+  min-height: 36px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--v2-text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+
+.sb2 .v2-fchip:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-fchip:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-fchip[aria-pressed='true'] {
+  background: var(--v2-text);
+  color: var(--v2-bg);
+  border-color: var(--v2-text);
+}
+
+.sb2 .v2-fchip-n {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.sb2 .v2-needs-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.sb2 .v2-needs-keyhint {
+  font-size: 13px;
+  color: var(--v2-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb2 .v2-needs .v2-queue,
+.sb2 .v2-home .v2-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Phone: the chips scroll sideways in one row (44 px targets). */
+@media (max-width: 767px) {
+  .sb2 .v2-needs-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -16px 14px;
+    padding: 0 16px 2px;
+    scrollbar-width: none;
+  }
+
+  .sb2 .v2-fchip {
+    min-height: 44px;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-fchip {
+    min-height: 44px;
+  }
+}
