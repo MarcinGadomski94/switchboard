@@ -1,0 +1,440 @@
+/*
+ * D131 · Home (lane H): the prototype's `.start`, `.sec`, `.grid2` / `.wcard`, `.list` / `.lrow`
+ * and the phone's `home` screen. Scoped under `.sb2`, tokens only.
+ */
+
+/* ── Header ── */
+.sb2 .v2-home [data-tone='amber'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-home b[data-tone='green'] {
+  color: var(--v2-green);
+}
+
+/* ── Start box ── */
+.sb2 .v2-home-start {
+  padding: 6px;
+  border-radius: var(--v2-r-xl);
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-2);
+}
+
+.sb2 .v2-home-start textarea {
+  width: 100%;
+  border: 0;
+  resize: none;
+  background: none;
+  padding: 16px 18px 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.45;
+  min-height: 64px;
+  outline: none;
+  color: var(--v2-text);
+}
+
+.sb2 .v2-home-start:focus-within {
+  border-color: var(--v2-accent);
+  box-shadow: var(--v2-shadow-2), 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-home-start textarea::placeholder,
+.sb2 .v2-home-pstart textarea::placeholder {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-home-start-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-home-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface-2);
+  font-size: 14px;
+  color: var(--v2-text-2);
+  font-weight: 500;
+  max-width: 260px;
+}
+
+.sb2 .v2-home-picker:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-home-picker:focus-within {
+  border-color: var(--v2-accent);
+  box-shadow: 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-home-picker select {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0 18px 0 0;
+  margin-right: -18px;
+  min-width: 0;
+  max-width: 200px;
+  text-overflow: ellipsis;
+  outline: none;
+  cursor: pointer;
+  height: 100%;
+}
+
+.sb2 .v2-home-picker select:disabled {
+  cursor: default;
+}
+
+.sb2 .v2-home-picker .v2-i:last-child {
+  pointer-events: none;
+}
+
+.sb2 .v2-home-start-more {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 10px 10px;
+}
+
+.sb2 .v2-home-start-more .v2-fchip {
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.sb2 .v2-home-start-error {
+  margin: 0 10px 10px;
+  color: var(--v2-red);
+  font-size: 14px;
+}
+
+/* Phone: one line and a sparkle button (the prototype's `.composer`). */
+.sb2 .v2-home-pstart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border-radius: var(--v2-r-l);
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-1);
+  margin-bottom: 6px;
+}
+
+.sb2 .v2-home-pstart:focus-within {
+  border-color: var(--v2-accent);
+}
+
+.sb2 .v2-home-pstart textarea {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  resize: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 11px 0;
+  min-height: 44px;
+  max-height: 160px;
+  outline: none;
+  color: var(--v2-text);
+  field-sizing: content;
+}
+
+.sb2 .v2-home-pstart-go {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+.sb2 .v2-home-pstart .v2-home-start-error {
+  flex-basis: 100%;
+  margin: 0 0 6px;
+}
+
+/* ── Sections ── */
+.sb2 .v2-home-sec {
+  margin-top: 36px;
+}
+
+.sb2 .v2-home-sec-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-home-sec-h h2 {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.sb2 .v2-home-sec-i {
+  display: inline-flex;
+}
+
+.sb2 .v2-home-sec-i[data-tone='amber'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-home-sec-i[data-tone='blue'] {
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-home-sec-i[data-tone='green'] {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-home-count {
+  font-size: 13px;
+  font-weight: 650;
+  border-radius: var(--v2-r-pill);
+  padding: 1px 9px;
+  background: var(--v2-grey-bg);
+  color: var(--v2-grey);
+}
+
+.sb2 .v2-home-count[data-tone='amber'] {
+  background: var(--v2-amber-bg);
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-home-hint {
+  color: var(--v2-muted);
+  font-size: 14px;
+}
+
+.sb2 .v2-home-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--v2-accent-text);
+  padding: 8px;
+  min-height: 44px;
+  text-decoration: none;
+  border-radius: var(--v2-r-s);
+}
+
+.sb2 .v2-home-link:hover {
+  text-decoration: underline;
+}
+
+.sb2 .v2-home-more-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border: 1px dashed var(--v2-border-strong);
+  border-radius: var(--v2-r-l);
+  color: var(--v2-text-2);
+  background: none;
+  font: inherit;
+  font-weight: 550;
+  width: 100%;
+  text-decoration: none;
+  cursor: pointer;
+  margin-top: 0;
+}
+
+.sb2 .v2-home-more-row:hover {
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-home-empty {
+  text-align: center;
+  padding: 24px 20px;
+  border: 1px dashed var(--v2-border-strong);
+  border-radius: var(--v2-r-l);
+  color: var(--v2-muted);
+}
+
+/* ── Working now ── */
+.sb2 .v2-home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sb2 .v2-home-wcard > .v2-card {
+  height: 100%;
+}
+
+.sb2 .v2-home-wcard[data-off] > .v2-card {
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-home-wcard[data-off] h3,
+.sb2 .v2-home-wcard[data-off] .v2-activity {
+  opacity: 0.6;
+}
+
+.sb2 .v2-home-offline {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--v2-grey);
+  background: var(--v2-grey-bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.sb2 .v2-home-plist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Done today ── */
+.sb2 .v2-home-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sb2 .v2-home-lrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--v2-border);
+  min-height: 60px;
+  cursor: pointer;
+}
+
+.sb2 .v2-home-lrow:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-home-lrow:hover {
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-home-lrow:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: -2px;
+}
+
+.sb2 .v2-home-ttl {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-home-sub {
+  font-size: 13.5px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-home-tag {
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--v2-border);
+  border-radius: 6px;
+  padding: 0 6px;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-home-ficon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--v2-sunken);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-home-ficon[data-tone='green'] {
+  background: var(--v2-green-bg);
+  color: var(--v2-green);
+}
+
+.sb2 .v2-home-ficon[data-tone='violet'] {
+  background: var(--v2-violet-bg);
+  color: var(--v2-violet);
+}
+
+.sb2 .v2-home-ficon[data-tone='red'] {
+  background: var(--v2-red-bg);
+  color: var(--v2-red);
+}
+
+.sb2 .v2-home-list + .v2-home-more-row {
+  margin-top: 10px;
+}
+
+/* ── Phone ── */
+.sb2 .v2-home-ptop h1 {
+  margin: 0;
+}
+
+.sb2 .v2-home-psum {
+  color: var(--v2-muted);
+  font-size: 14px;
+  margin: 2px 0 12px;
+}
+
+.sb2 .v2-home-psec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 650;
+  margin: 18px 0 10px;
+}
+
+/* Tablet: one column of working cards below 1024 px. */
+@media (max-width: 1023px) {
+  .sb2 .v2-home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb2 .v2-home-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-home-lrow {
+    padding: 10px 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-home-picker {
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-home-start,
+  .sb2 .v2-home-more-row {
+    transition: none;
+  }
+}

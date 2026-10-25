@@ -278,6 +278,83 @@ export const NEEDS_FILTER_OF: Readonly<Record<NeedsKind, Exclude<NeedsFilter, 'a
   jd: 'setup',
 };
 
+// ── Lane H · Home + Needs you ───────────────────────────────────────────
+// Lane H's words, in their own block (so the lanes' parallel branches merge
+// without touching each other's lines).
+
+/** Lane H · Home (`/`): the greeting, the start box, Working now, Done today. */
+export const HOME_WORDS = {
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening',
+  nothingNeedsYou: 'Nothing needs you',
+  oneNeedsYou: '1 thing needs you',
+  manyNeedYou: (n: number): string => `${n} things need you`,
+  working: 'working',
+  doneToday: 'done today',
+  startLabel: 'What should an agent do?',
+  startPlaceholder: 'What should an agent do? For example: “Fix the login timeout on the checkout page”',
+  startPhonePlaceholder: 'What should an agent do?',
+  folder: 'Project folder',
+  noFolder: 'No folder saved',
+  computer: 'Computer',
+  speed: 'Speed',
+  moreOptions: 'More options',
+  startAgent: 'Start agent',
+  starting: 'Starting…',
+  justAsk: 'Just ask (conversation)',
+  addTask: 'Add a task',
+  newProject: 'New project',
+  newRoutine: 'New routine',
+  startSomethingElse: 'Start something else',
+  started: (folder: string): string => `Agent started in ${folder}. We’ll tell you if it needs you.`,
+  startedHere: 'Agent started. We’ll tell you if it needs you.',
+  open: 'Open',
+  needsHint: 'Answer here, in the agent’s chat, or on your phone',
+  seeAll: (n: number): string => `See all ${n}`,
+  seeAllWaiting: (n: number): string => `See all ${n} waiting`,
+  workingNow: 'Working now',
+  workingHint: 'Click to open an agent',
+  allAgents: 'All agents',
+  nothingRunning: 'Nothing running. Start an agent above.',
+  nothingRunningPhone: 'Nothing running.',
+  startedAt: (time: string): string => `started ${time}`,
+  justNow: 'just now',
+  helpers: (n: number): string => (n === 1 ? '1 helper' : `${n} helpers`),
+  approvalWaiting: 'approval waiting',
+  offlineCard: (computer: string): string => `${computer} is offline. Stop and Send wait until it reconnects.`,
+  reconnectingCard: (computer: string): string => `Reconnecting to ${computer}…`,
+  doneTodayTitle: 'Done today',
+  allResults: 'All results',
+  nothingDone: 'Nothing finished yet today.',
+  showMore: (n: number): string => `Show ${n} more`,
+  showLess: 'Show less',
+  doneAgo: (ago: string): string => `Done ${ago}`,
+  activeAgo: (ago: string): string => `Last active ${ago}`,
+  resultFrom: (agent: string, time: string): string => `Result from ${agent} · ${time}`,
+  resultAt: (time: string): string => `Result · ${time}`,
+  version: (n: number): string => `v${n}`,
+  changeRequest: (n: number): string => `Change request #${n}`,
+  testsPassed: 'automatic tests passed',
+  testsFailed: 'automatic tests failed',
+  testsRunning: 'automatic tests running',
+  combined: 'combined',
+  download: 'Download',
+} as const;
+
+/** Lane H · the Needs-you page (`/needs-you`). */
+export const NEEDS_PAGE_WORDS = {
+  sub: 'One queue for every agent, project step, teammate and computer. The same cards sit in each agent’s chat; answer either one and both update.',
+  phoneSub: 'Every ask, answerable right here. Answers sync to your computers.',
+  filterLabel: 'Filter',
+  keyHintTab: 'to a card, then',
+  keyHintAnswer: 'to answer',
+  nothingOfKind: 'Nothing of this kind',
+  tryAll: 'Try “All”.',
+  showAll: 'Show all',
+  loadError: 'Needs you could not be loaded',
+} as const;
+
 /** Where an item was answered, shown on its compact card ("· on Home"). */
 export const ANSWERED_WHERE = {
   home: 'on Home',
@@ -326,6 +403,8 @@ export const ANSWER = {
   openRoutine: 'Open routine',
   ok: 'OK',
   manageUsage: 'Manage usage',
+  /** Lane H: the Needs-you page's link to the item's agent. */
+  openAgent: 'Open agent',
   pickHint: 'The project agent needs to know where this step’s code lives. Choose any.',
   offline: (computer: string): string => `${computer} is offline. You can answer when it reconnects.`,
   keys: (n: number): string => `keys 1–${n}`,

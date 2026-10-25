@@ -5,7 +5,8 @@ import { Button, Checkbox, Chip, ComputerTag, Icon, useToast } from '../componen
 import { ANSWER, ANSWERED_WHERE, type AnsweredWhere, NEEDS_KIND_LOOK, STATUS, WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { toV2Path } from '../routes.ts';
-import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton, type OpenTarget, type QuestionDraft, batchAnswers, cardButtons, questionAnswer, questionReady, summaryOf, togglePick } from './answer-model.ts';
+import { openNew } from '../new/index.tsx';
+import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton, type OpenTarget, type QuestionDraft, batchAnswers, cardButtons, followUpOf, questionAnswer, questionReady, summaryOf, togglePick } from './answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from './needs-you.ts';
 import type { NeedsItem } from './needs-you-model.ts';
 import { clock, timeAgo } from './time.ts';
@@ -61,7 +62,8 @@ function onCardKey(event: KeyboardEvent<HTMLElement>): void {
   if (event.metaKey || event.ctrlKey || event.altKey || !/^[1-9]$/.test(event.key)) return;
   const target = event.target as HTMLElement;
   if (target.matches('textarea, input:not([type="checkbox"]):not([type="radio"]), select')) return;
-  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-num]')).filter((el) => !(el as HTMLButtonElement).disabled);
+  // `:disabled` also covers the controls of a disabled fieldset (an offline computer's card).
+  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-num]')).filter((el) => !el.matches(':disabled'));
   const hit = items[Number(event.key) - 1];
   if (!hit) return;
   event.preventDefault();
@@ -180,7 +182,7 @@ function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { 
  * line says it: "on Home"). `onAnswered` runs after the answer is taken (before
  * it is sent: the Undo window).
  */
-export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswered, testId = 'v2-answer-card' }: { readonly item: NeedsItem; readonly variant?: AnswerCardVariant; readonly where?: AnsweredWhere; readonly onAnswered?: (item: NeedsItem) => void; readonly testId?: string }) {
+export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswered, openAgent = false, testId = 'v2-answer-card' }: { readonly item: NeedsItem; readonly variant?: AnswerCardVariant; readonly where?: AnsweredWhere; readonly onAnswered?: (item: NeedsItem) => void; /** Lane H: an "Open agent" link in the head (the Needs-you page). */ readonly openAgent?: boolean; readonly testId?: string }) {
   const { navigate } = useV2Router();
   const layout = useLayout();
   const toast = useToast();
@@ -199,6 +201,10 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
   const answer = (action: AnswerAction): void => {
     needsYouStore.answer(item, action, place);
     onAnswered?.(item);
+    // Lane H: what the classic Inbox does after these actions (open + New with the fix prefill; the updates page).
+    const follow = followUpOf(item, action);
+    if (follow?.type === 'new-agent') openNew({ kind: 'agent', prefill: follow.prefill, machine: follow.machine });
+    else if (follow?.type === 'path') navigate(toV2Path(follow.path));
     toast({ text: `${summaryOf(item, action)}${source ? ` · sent to ${source}` : ''}`, undo: () => {
         needsYouStore.undo(item.key);
       },
@@ -380,16 +386,25 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
           ) : null}
           {item.computer ? <ComputerTag name={item.computer.name} state={item.computer.state} short={variant === 'phone'} /> : null}
           <span className="v2-qi-time">{timeAgo(item.createdAt)}</span>
+          {openAgent && item.agent?.sessionId ? (
+            <button type="button" className="v2-qi-open" data-testid="v2-answer-open-agent" onClick={() => open({ type: 'agent', sessionId: item.agent?.sessionId as string })}>
+              {ANSWER.openAgent}
+              <Icon name="arrow-r" size="s" />
+            </button>
+          ) : null}
         </div>
       ) : null}
       <p className="v2-qi-title">{item.title}</p>
-      {body}
-      {inputBox ?? (
-        <div className="v2-qi-actions" aria-disabled={off || undefined}>
-          {actions}
-          {hint}
-        </div>
-      )}
+      {/* Lane H: a fieldset, so an offline computer's card disables every answer (the options too), not only the action row. */}
+      <fieldset className="v2-qi-body" disabled={off || undefined}>
+        {body}
+        {inputBox ?? (
+          <div className="v2-qi-actions" aria-disabled={off || undefined}>
+            {actions}
+            {hint}
+          </div>
+        )}
+      </fieldset>
       {off ? (
         <div className="v2-offline-note" data-testid="v2-answer-offline">
           <Icon name="offline" size="s" />

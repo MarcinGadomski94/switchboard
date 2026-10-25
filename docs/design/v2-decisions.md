@@ -115,3 +115,26 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 ### Lane-wide
 
 - (lane)
+
+## Lane H · Home + Needs you (2026-10-25)
+
+### Home
+- **ASSUMED H1 · Working-now cards open the agent page.** Lane S exports no peek sheet on `v2` yet (`src/web/v2/agent/` is still the stub), so a card's click (and its Open) goes to `/agents/:id`. When lane S lands a peek, the orchestrator can swap `open()` in `home/WorkingNow.tsx`. (H)
+- **ASSUMED H2 · Smart / Fast = `--model opus` / `--model sonnet`.** The prototype gives no mapping. The start box sends the alias when the computer's CLI lists it, else the first listed model named after it, else no model (the CLI's default), so a start is never refused for an unknown name (`speedModel`). Lane S's "How it works" Smart / Fast should use the same mapping. (H)
+- **ASSUMED H3 · the start box's folder** is the one this browser last started in on that computer (`localStorage['switchboard.v2.home.start']`, also the speed and the computer), else the saved folder a session last started in (`lastUsedAt`), else the default. The start is the simple form's body (D56): no separate copy, title from the message. (H)
+- **ASSUMED H4 · Enter starts** (the brief), and ⌘↩ too (the prototype's label); Shift+Enter is a new line. (H)
+- **ASSUMED H5 · Working now** = open agents (not conversations) whose turn runs (`run`), on every computer, newest activity first; the prototype's "waiting on tests" and "stopped by you" have no server state to key on. Helpers = the live activity's agents besides the main one. The routine row under it (prototype) is left to lane A's Routines. (H)
+- **ASSUMED H6 · Done today** = agents (open or closed, not conversations) that finished today (`done`, local day), any agent active today with a Ready-for-approval item (Combine from the row, through the Needs-you store with Undo), and results saved or given a new version today; 5 rows, then "Show more". The tests line comes from `GET /api/sessions/{id}/ci` (this computer's agents only). (H)
+- **ASSUMED H7 · phone Home** follows the prototype: the one-line start box (no pickers: the remembered folder / speed / computer apply; More options is on the + New button of the top bar), the top 2 items (3 on a computer), working agents as chat rows. (H)
+- **ASSUMED H8 · the start box's "Start something else" chips** (conversation, task, project, routine) open + New with that kind and the typed text. (H)
+
+### Needs you
+- **ASSUMED H9 · six kind chips, as the prototype and the glossary** (`NEEDS_FILTERS`): Stopped and Alerts share "Stopped & alerts" (the brief listed them apart; the prototype is the spec). Crew chips come after, by name. `?filter=<group|crew:id>` opens a filter. The chip of a chosen crew stays (0) when its last item is answered. (H)
+- **ASSUMED H10 · keys**: ↑ / ↓ wrap between cards; 1–9 are the card's own; Enter on a focused card presses its Send answer (batches, multi-select); after an answer by key the focus moves to the next card. (H)
+- **ASSUMED H11 · phone filters** scroll sideways in one row (the prototype's phone tab has none; kept for parity, 44 px chips). (H)
+
+### Changes outside lane H's folders (small, additive)
+- `shared/AnswerCard.tsx`: an optional `openAgent` prop (the "Open agent" link); the body and actions sit in a `<fieldset disabled>` when the item's computer is offline / reconnecting (before, only the action row was greyed and the question options and number keys still answered); number keys skip `:disabled` controls; after "Fix it in a new agent" it opens + New with the item's prefill, after this computer's "What's new" it goes to the updates settings (the classic Inbox does both). `shared/answer-model.ts`: `followUpOf`. `shared/shared.css`: `.v2-qi-body`, `.v2-qi-open`. `glossary.ts`: `HOME_WORDS`, `NEEDS_PAGE_WORDS` (a lane H block after the Needs-you section), `ANSWER.openAgent`. (H)
+
+### Seen, not changed (lane F)
+- An answer still in its 5 s Undo window is sent on `pagehide` with a plain `fetch`; when the tab closes that request can be cut off and the answer is lost (seen in E2E when a page closed inside the window). A `keepalive` fetch (or `sendBeacon`) in `needs-you.ts` would fix it. (H)

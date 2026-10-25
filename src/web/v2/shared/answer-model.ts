@@ -1,4 +1,4 @@
-import type { BatchAnswer, Question } from '../../../core/api.ts';
+import type { BatchAnswer, NewSessionPrefill, Question } from '../../../core/api.ts';
 import type { TeamCharter } from '../../../core/team.ts';
 import { ANSWER, type AnsweredWhere, actionLabel } from '../glossary.ts';
 import type { NeedsItem } from './needs-you-model.ts';
@@ -176,6 +176,25 @@ export function cardButtons(item: NeedsItem): CardButton[] {
       // `pick` and anything else the server offers actions for.
       return serverButtons(item);
   }
+}
+
+/**
+ * Lane H · what the page does right after an answer, besides sending it (the
+ * classic Inbox's `newSessionAfter` / `routeAfter`): a failed routine's "Fix it in
+ * a new agent" opens + New with the item's prefill (on its computer); this
+ * computer's update item's "What's new" goes to the updates settings. `null` for
+ * every other answer.
+ */
+export type AnswerFollowUp =
+  | { readonly type: 'new-agent'; readonly prefill: NewSessionPrefill; readonly machine: string | null }
+  | { readonly type: 'path'; readonly path: string };
+
+/** The {@link AnswerFollowUp} of answering `item` with `action`. */
+export function followUpOf(item: Pick<NeedsItem, 'inbox' | 'computer'>, action: AnswerAction): AnswerFollowUp | null {
+  if (action.type !== 'server' || item.inbox?.kind !== 'system') return null;
+  if (action.actionId === 'open-fix-session') return { type: 'new-agent', prefill: item.inbox.prefill ?? {}, machine: item.computer?.id ?? null };
+  if (action.actionId === 'whats-new' && !item.computer) return { type: 'path', path: '/settings/updates' };
+  return null;
 }
 
 // ── Questions ─────────────────────────────────────────────────────────

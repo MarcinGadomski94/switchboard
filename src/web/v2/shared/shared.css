@@ -522,3 +522,46 @@ button.v2-qi-src:hover {
   font-size: 13px;
   color: var(--v2-muted);
 }
+
+/* Lane H: the answer card's body (a fieldset: disabled as a whole on an offline computer) and its Open agent link. */
+.v2-qi-body {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.v2-qi-body:disabled .v2-qi-q,
+.v2-qi-body:disabled .v2-reply {
+  opacity: 0.45;
+}
+
+.v2-qi-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--v2-accent-text);
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  min-height: 28px;
+  cursor: pointer;
+  border-radius: var(--v2-r-s);
+}
+
+.v2-qi-open:hover {
+  text-decoration: underline;
+}
+
+.v2-qi-open:focus-visible {
+  outline: 2px solid var(--v2-accent);
+}
+
+@media (pointer: coarse) {
+  .v2-qi-open {
+    min-height: 44px;
+  }
+}
