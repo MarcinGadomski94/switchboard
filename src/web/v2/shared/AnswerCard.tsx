@@ -254,7 +254,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
     if (!single) {
       const ready = batchAnswers(questions, draft);
       actions = (
-        <Button variant="primary" disabled={!ready} data-testid="v2-answer-send" onClick={() => ready && answer({ type: 'questions', answers: ready })}>
+        <Button variant="primary" disabled={!ready} title={ready ? undefined : ANSWER.answerEveryQuestion} data-testid="v2-answer-send" onClick={() => ready && answer({ type: 'questions', answers: ready })}>
           {ANSWER.sendAnswer}
         </Button>
       );

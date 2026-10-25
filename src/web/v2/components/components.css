@@ -1030,7 +1030,8 @@ textarea.v2-field {
 @media (pointer: coarse) {
   .v2-btn,
   .v2-btn[data-size='sm'],
-  .v2-seg button {
+  .v2-seg button,
+  .v2-field {
     min-height: var(--v2-touch);
   }
 
