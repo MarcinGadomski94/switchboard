@@ -1,11 +1,16 @@
-import { readFile } from 'node:fs/promises';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { type Page, expect, test } from '@playwright/test';
-import type { SessionDetail, SessionEvent } from '../../src/core/api.ts';
+import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test';
+import type { Session, SessionDetail, SessionEvent } from '../../src/core/api.ts';
 import { PNG_1X1 } from '../helpers/attachments.ts';
+import { makeTempDir, removeTempDir } from '../helpers/net.ts';
+import { type PeerNode, startPeerNode, waitFor } from '../helpers/peers.ts';
+import { type TakeoverWorld, removeWorld, startRepoSession, takeoverWorld } from '../helpers/takeover.ts';
+import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '../helpers/transcripts.ts';
 import { stubToolProbes } from './probes.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
-import { V2_SERVER_ENV } from './v2-world.ts';
+import { V2_SERVER_ENV, useV2 } from './v2-world.ts';
 
 /**
  * D131 · lane S · the v2 agent view on the real path (fake-claude, a temp
@@ -341,4 +346,162 @@ test('phone (390 × 844): the full-screen chat, the bottom composer sends, Detai
   await expect(page.getByTestId('v2-agent-side-sheet')).toBeVisible();
   await expect(page.getByTestId('v2-agent-side-sheet').getByTestId('v2-agent-group-how')).toBeVisible();
   await settled(page, id);
+});
+
+/**
+ * Lane X · the v2 Move to computer dialog (D65 / D110) on two real Switchboards
+ * (`tests/helpers/takeover.ts`): a local agent moves to the paired computer; a
+ * missing code project asks where to clone it, the Move button says why it waits.
+ */
+test.describe('lane X · Move to computer in v2', () => {
+  let tmp: string;
+  let peers: TakeoverWorld | null = null;
+  let contexts: BrowserContext[] = [];
+
+  test.beforeEach(async () => {
+    tmp = await makeTempDir('e2e-v2-move');
+  });
+
+  test.afterEach(async () => {
+    await Promise.all(contexts.map((context) => context.close()));
+    contexts = [];
+    if (peers) await Promise.all([peers.a.server.stop(), peers.b.server.stop()]);
+    peers = null;
+    await removeWorld(tmp);
+  });
+
+  async function v2Page(browser: Browser, node: PeerNode, route: string, size = { width: 1440, height: 900 }): Promise<Page> {
+    const context = await browser.newContext({ viewport: size });
+    contexts.push(context);
+    const page = await context.newPage();
+    await stubToolProbes(page);
+    await useV2(page);
+    await page.goto(`${node.baseUrl}${route}`);
+    return page;
+  }
+
+  test('the ⋯ menu opens the v2 dialog: the target picker, the clone folder, why Move waits, the steps, Open the agent', async ({ browser }) => {
+    const w = (peers = await takeoverWorld(tmp, { aRepos: { alpha: true, gamma: true }, bRepos: { alpha: true } }));
+    const started = await startRepoSession(w.a, w.folders.a.gamma as string, 'gamma-work');
+    await writeFile(path.join(w.paths.a.gamma, 'tracked.txt'), 'gamma edit\n');
+    const page = await v2Page(browser, w.a, `/agents/${started.id}`);
+    await expect(page.getByTestId('v2-agent-title')).toHaveText('gamma-work');
+    await page.getByTestId('v2-agent-menu').click();
+    await page.getByTestId('v2-agent-menu-list').getByRole('menuitem', { name: 'Move to computer…' }).click();
+
+    // The v2 dialog (no classic overlay), on the paired computer.
+    const dialog = page.getByTestId('v2-move-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId('takeover-dialog')).toHaveCount(0);
+    await expect(dialog.getByRole('heading')).toHaveText('Move to mac-laptop');
+    await expect(dialog.getByTestId('v2-move-target')).toHaveValue(await w.b.machineId());
+    await expect(dialog.getByTestId('v2-move-cli')).toContainText('of mac-laptop');
+    const repo = dialog.getByTestId('v2-move-repo');
+    await expect(repo).toHaveAttribute('data-action', 'clone');
+    await expect(repo).toContainText('Needs a look');
+    const clonePath = repo.getByTestId('v2-move-clone-path');
+    await expect(clonePath).toHaveValue(path.join(path.dirname(w.paths.b.alpha), 'gamma'));
+    // An empty clone folder: Move is disabled and says why.
+    await clonePath.fill('');
+    const move = dialog.getByTestId('v2-move-start');
+    await expect(move).toBeDisabled();
+    await expect(dialog.getByTestId('v2-move-reason')).toHaveText('Fill in where to clone each missing code project.');
+    const typed = path.join(tmp, 'b', 'typed', 'gamma');
+    await clonePath.fill(typed);
+    await clonePath.blur();
+    await expect(repo.getByTestId('v2-move-repo-summary')).toContainText(`clone ${w.remotes.gamma} into ${typed}`);
+    await expect(move).toBeEnabled();
+    await move.click();
+    // Escape does not close it while it runs; the steps end done.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId('v2-move-headline')).toContainText('Moved', { timeout: 60_000 });
+    await expect(dialog.getByTestId('v2-move-step')).toHaveCount(7);
+    await expect(dialog.locator('[data-testid="v2-move-step"][data-status="done"]')).toHaveCount(7);
+    await dialog.getByTestId('v2-move-log-toggle').click();
+    await expect(dialog.getByTestId('v2-move-log')).toContainText('commit-tree');
+    await dialog.getByTestId('v2-move-open').click();
+    await expect(dialog).toHaveCount(0);
+    // The moved agent lives on the mac: its v2 page here addresses it by its remote id.
+    await expect(page).toHaveURL(new RegExp(`/agents/r~${await w.b.machineId()}~`));
+    await expect(page.getByTestId('v2-agent-view')).toBeVisible();
+    await waitFor('the clone', async () => (await w.git(typed, 'status', '--porcelain')).includes('tracked.txt'));
+  });
+});
+
+/**
+ * Lane X · Continue in Switchboard (D72) in v2, on a real Switchboard with a
+ * hand-started terminal session faked by a stand-in process (as
+ * `hooked-continue.spec.ts`): the header's note offers it, the dialog asks while
+ * the terminal's claude runs, Cancel changes nothing, the confirmation stops it
+ * and the agent runs under Switchboard.
+ */
+test.describe('lane X · Continue in Switchboard in v2', () => {
+  const CS = '9a8b7c6d-bbbb-4bbb-8ccc-0123456789ab';
+  let tmp: string;
+  let node: PeerNode | null = null;
+  let terminal: ChildProcess | null = null;
+  let contexts: BrowserContext[] = [];
+
+  test.beforeEach(async () => {
+    tmp = await makeTempDir('e2e-v2-hooked');
+    node = await startPeerNode(tmp, 'a', { repo: true });
+  });
+
+  test.afterEach(async () => {
+    await Promise.all(contexts.map((context) => context.close()));
+    contexts = [];
+    if (terminal && terminal.exitCode === null && terminal.signalCode === null) terminal.kill('SIGKILL');
+    terminal = null;
+    await node?.server.stop();
+    node = null;
+    await removeTempDir(tmp);
+  });
+
+  test('the note and the ⋯ menu offer it; the v2 dialog asks, Cancel keeps the terminal, the confirmation continues here', async ({ browser }) => {
+    const n = node as PeerNode;
+    const cwd = n.repo as string;
+    terminal = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', shell: false });
+    const exited = new Promise<string>((resolve) => terminal?.once('exit', (code, signal) => resolve(signal ?? String(code))));
+    await mkdir(path.join(n.configDir, 'sessions'), { recursive: true });
+    await writeFile(
+      path.join(n.configDir, 'sessions', `${terminal.pid}.json`),
+      JSON.stringify({ pid: terminal.pid, sessionId: CS, cwd, kind: 'interactive', entrypoint: 'cli', startedAt: Date.now() - 60_000, name: 'pc-terminal', status: 'idle' }),
+    );
+    const lines = [terminalUserLine({ sessionId: CS, cwd, content: 'Refactor the parser.', parentUuid: null, timestamp: new Date(Date.now() - 50_000).toISOString() })];
+    lines.push(assistantTextLine({ sessionId: CS, cwd, text: 'Parser split in two.', parentUuid: lastUuid(lines), timestamp: new Date(Date.now() - 40_000).toISOString() }));
+    await writeTranscript(n.configDir, cwd, CS, lines);
+    const hooked = await n.call('POST', `/api/terminal-sessions/${CS}/hook`);
+    expect(hooked.status, JSON.stringify(hooked.body)).toBe(201);
+    const session = hooked.body as Session;
+
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    contexts.push(context);
+    const page = await context.newPage();
+    await stubToolProbes(page);
+    await useV2(page);
+    await page.goto(`${n.baseUrl}/agents/${session.id}`);
+    await expect(page.getByTestId('v2-agent-hooked')).toBeVisible();
+    // The ⋯ menu has it too.
+    await page.getByTestId('v2-agent-menu').click();
+    await expect(page.getByTestId('v2-agent-menu-list').getByRole('menuitem', { name: 'Continue in Switchboard' })).toBeEnabled();
+    await page.keyboard.press('Escape');
+
+    const action = page.getByTestId('v2-agent-continue-hooked');
+    await action.click();
+    const dialog = page.getByTestId('v2-continue-hooked');
+    await expect(dialog.getByTestId('v2-continue-hooked-body')).toHaveAttribute('data-state', 'confirm');
+    await expect(dialog.getByTestId('v2-continue-hooked-warning')).toContainText("This session's claude is still running in its terminal.");
+    await expect(page.getByTestId('continue-hooked-dialog')).toHaveCount(0);
+    await dialog.getByTestId('v2-continue-hooked-close').click();
+    await expect(dialog).toHaveCount(0);
+    expect(terminal?.exitCode).toBeNull();
+
+    await action.click();
+    await page.getByTestId('v2-continue-hooked-confirm').click();
+    await expect(page.getByTestId('v2-continue-hooked')).toHaveCount(0, { timeout: 30_000 });
+    expect(await exited).toBe('SIGTERM');
+    await expect(page.getByTestId('v2-toast').filter({ hasText: 'now runs in Switchboard' })).toHaveCount(1);
+    await expect(page.getByTestId('v2-agent-hooked')).toHaveCount(0, { timeout: 15_000 });
+  });
 });

@@ -10,6 +10,7 @@ import { ChatPane } from './ChatPane.tsx';
 import { splitDock } from './composer-model.ts';
 import { RevertHost, SaveResultHost, openSaveResult } from './dialogs.tsx';
 import { Dock } from './Dock.tsx';
+import { MoveDialogsHost } from './MoveDialog.tsx';
 import { ChangesTab, HelpersTab, ResultsTab } from './tabs.tsx';
 import { useAgent } from './useAgent.ts';
 import { useChatRows } from './useChatRows.ts';
@@ -47,6 +48,8 @@ export function PeekHost() {
       {sessionId ? <PeekSheet key={sessionId} sessionId={sessionId} onClose={peek.close} /> : null}
       {/* The agent view's dialogs, once for the page (the full view and the peek share them). */}
       <RevertHost />
+      {/* Lane X: Move to computer (D65) and Continue in Switchboard (D72) in v2's look. */}
+      <MoveDialogsHost />
       <SaveResultHost
         onSaved={(result) =>
           toast({

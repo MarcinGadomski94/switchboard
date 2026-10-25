@@ -6,6 +6,8 @@ import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { memoryApi } from '../../memory/api.ts';
 import { teamApi } from '../../team/api.ts';
+import { offersHookedContinue } from '../../../core/hooked-continue.ts';
+import { openContinueHooked } from '../../hooked-continue/store.ts';
 import { openTakeover } from '../../takeover/store.ts';
 import { offersTakeover } from '../../takeover/takeover.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
@@ -229,14 +231,14 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
           </Button>
         </div>
       ) : null}
-      {session ? <Notes session={session} /> : null}
+      {session ? <Notes session={session} sessionId={data.sessionId} /> : null}
       <Tabs<AgentTab> tabs={tabs} value={tab} onChange={onTab} label="Agent" panelId="v2-agent-panel" testId="v2-agent-tabs" />
     </div>
   );
 }
 
 /** Lines under the title: moved to another computer, continued in a fresh agent, started in a terminal. */
-function Notes({ session }: { readonly session: Session }) {
+function Notes({ session, sessionId }: { readonly session: Session; readonly sessionId: string }) {
   return (
     <>
       {session.movedTo ? (
@@ -260,7 +262,18 @@ function Notes({ session }: { readonly session: Session }) {
       {session.hooked ? (
         <div className="v2-ag-note" data-testid="v2-agent-hooked">
           <Icon name="cmd" size="s" />
-          Started in a terminal: Switchboard follows along. Pause, Stop and model changes stay in that terminal.
+          <span className="v2-grow">Started in a terminal: Switchboard follows along. Pause, Stop and model changes stay in that terminal.</span>
+          {offersHookedContinue(session) ? (
+            <Button
+              size="sm"
+              icon="play"
+              data-testid="v2-agent-continue-hooked"
+              title={AGENT_WORDS.continueHookedHint}
+              onClick={() => openContinueHooked({ sessionId, title: agentName(session), machineName: session.machine?.name ?? null })}
+            >
+              {AGENT_WORDS.continueHooked}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </>
@@ -338,12 +351,12 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   const toast = useToast();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<'rename' | 'remote' | 'routine' | 'teammate' | 'close' | 'delete' | 'move' | 'attach' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'remote' | 'routine' | 'teammate' | 'close' | 'delete' | 'attach' | null>(null);
   const [terminal, setTerminal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachWarning, setAttachWarning] = useState<AttachWarning | null>(null);
-  const { machines } = usePairedMachines(open || dialog === 'move');
+  const { machines } = usePairedMachines(open);
   const { crews, memberId } = useCrews(sessionId);
   const online = machines.filter((machine) => machine.state === 'online');
   const remote = session ? remoteToggle(session) : null;
@@ -362,6 +375,7 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
             remote,
             background,
             movable: offersTakeover(session),
+            hookedContinue: offersHookedContinue(session),
             computers: online.length,
             teammate: memberId !== null,
             crews: crews.length,
@@ -404,10 +418,13 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         act(() => api.stopBackground(sessionId, {}), { text: 'Stopped the background tasks.' });
         return;
       case 'move':
+        // Lane X: the v2 move dialog (MoveDialog.tsx); a local agent's target is picked in it (the first online computer to start).
         if (!session) return;
         if (session.machine) openTakeover({ sessionId, targetMachine: null, machineName: session.machine.name, title: name });
-        else if (online.length === 1 && online[0]) openTakeover({ sessionId, targetMachine: online[0].id, machineName: online[0].name, title: name });
-        else setDialog('move');
+        else if (online[0]) openTakeover({ sessionId, targetMachine: online[0].id, machineName: online[0].name, title: name });
+        return;
+      case 'continue-hooked':
+        if (session) openContinueHooked({ sessionId, title: name, machineName: session.machine?.name ?? null });
         return;
       case 'terminal':
         act(async () => {
@@ -520,24 +537,6 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
           />
           {dialog === 'routine' ? <RoutineDialog sessionId={sessionId} name={name} onClose={() => setDialog(null)} /> : null}
           {dialog === 'teammate' ? <TeammateDialog sessionId={sessionId} name={name} crews={crews} onClose={() => setDialog(null)} onDone={data.reload} /> : null}
-          {dialog === 'move' ? (
-            <Dialog open onClose={() => setDialog(null)} title={AGENT_WORDS.moveToComputer} icon="desktop" testId="v2-agent-move">
-              <div className="v2-ag-pick">
-                {online.map((machine) => (
-                  <Button
-                    key={machine.id}
-                    icon="desktop"
-                    onClick={() => {
-                      setDialog(null);
-                      openTakeover({ sessionId, targetMachine: machine.id, machineName: machine.name, title: name });
-                    }}
-                  >
-                    {machine.name}
-                  </Button>
-                ))}
-              </div>
-            </Dialog>
-          ) : null}
           <ConfirmDialog
             open={dialog === 'attach'}
             title={AGENT_WORDS.attachHere}

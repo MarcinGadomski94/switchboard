@@ -55,6 +55,7 @@ export type AgentMenuId =
   | 'teammate'
   | 'return'
   | 'continue-agent'
+  | 'continue-hooked'
   | 'close'
   | 'reopen'
   | 'delete';
@@ -88,6 +89,11 @@ export interface AgentMenuInput {
   readonly teammate: boolean;
   /** Crews exist to join. */
   readonly crews: number;
+  /**
+   * Lane X · D72: it was started in a terminal and can continue as a Switchboard-run
+   * agent (`offersHookedContinue`); `false` for every other agent. Optional: absent = `false`.
+   */
+  readonly hookedContinue?: boolean;
 }
 
 /** The agent ⋯ menu (the prototype's `agentMenu`, today's actions): every action listed, disabled with the reason where it cannot run. */
@@ -112,6 +118,8 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
   items.push({ sep: 'a' });
   if (!input.conversation) {
     const termReason = input.machineName ? `It runs on ${input.machineName}: continue it in a terminal there.` : input.hooked ? 'It already runs in a terminal.' : input.closed ? 'Closed agents do not run.' : undefined;
+    // Lane X · D72: an agent started in a terminal continues here (its terminal's claude is stopped first, the dialog asks).
+    if (input.hooked) items.push({ id: 'continue-hooked', label: AGENT_WORDS.continueHooked, icon: 'play', ...(off ? { disabledReason: off } : !input.hookedContinue ? { disabledReason: 'It moved to another computer, so it continues there.' } : {}) });
     items.push(input.attached || input.machineName ? { id: 'terminal', label: AGENT_WORDS.continueInTerminal, icon: 'cmd', ...(termReason ? { disabledReason: termReason } : {}) } : { id: 'attach', label: AGENT_WORDS.attachHere, icon: 'cmd' });
     const remoteReason = off ?? (input.remote === null ? 'It never ran here, so it has no remote control.' : input.remote.disabled && !input.remote.on ? (input.remote.reason ?? undefined) : undefined);
     items.push({ id: 'remote', label: AGENT_WORDS.remoteLink, icon: 'qr', ...(remoteReason ? { disabledReason: remoteReason } : {}) });

@@ -1,7 +1,5 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLayout } from '../../shell/useLayout.ts';
-import { TakeoverHost } from '../../takeover/TakeoverDialog.tsx';
-import { ContinueHookedHost } from '../../hooked-continue/ContinueHookedDialog.tsx';
 import { turnBusy } from '../../views/session/needs-you.ts';
 import { useDiffCount } from '../../views/session/useDiffScope.ts';
 import { BottomSheet, Drawer, EmptyState, useToast } from '../components/index.ts';
@@ -148,8 +146,6 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
           {panel}
         </BottomSheet>
       ) : null}
-      <TakeoverHost />
-      <ContinueHookedHost />
     </section>
   );
 }
