@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useId, useRef } from 'react';
 import { IconButton } from './Button.tsx';
+import { Portal } from './Portal.tsx';
 import { Icon, type IconName } from './Icon.tsx';
 import { useAnchoredPosition, useEscape, useFocusScope, useOutside } from './overlay.ts';
 
@@ -21,9 +22,11 @@ export function Popover({ open, onClose, anchor, label, children, align = 'end',
   if (!open) return null;
   const style: CSSProperties = { ...(pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden', top: 0, left: 0 }), ...(width ? { width } : {}) };
   return (
-    <div ref={ref} className="v2-pop" role="dialog" aria-label={label} data-testid={testId} style={style} tabIndex={-1}>
-      {children}
-    </div>
+    <Portal>
+      <div ref={ref} className="v2-pop" role="dialog" aria-label={label} data-testid={testId} style={style} tabIndex={-1}>
+        {children}
+      </div>
+    </Portal>
   );
 }
 
@@ -50,6 +53,7 @@ export function Dialog({ open, onClose, title, icon, children, footer, width, te
   useFocusScope(ref, open, true);
   if (!open) return null;
   return (
+    <Portal>
     <div
       className="v2-scrim"
       onMouseDown={(event) => {
@@ -62,6 +66,7 @@ export function Dialog({ open, onClose, title, icon, children, footer, width, te
         {footer ? <div className="v2-modal-f">{footer}</div> : null}
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -76,13 +81,13 @@ export function Sheet({ open, onClose, title, children, header, width, testId }:
   useFocusScope(ref, open, true);
   if (!open) return null;
   return (
-    <>
+    <Portal>
       <div className="v2-sheet-scrim" onMouseDown={onClose} aria-hidden="true" />
       <aside ref={ref} className="v2-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} data-testid={testId} style={width ? { width } : undefined} tabIndex={-1}>
         <OverlayHeader className="v2-sheet-h" titleId={titleId} title={title} onClose={onClose} extra={header} />
         <div className="v2-sheet-b">{children}</div>
       </aside>
-    </>
+    </Portal>
   );
 }
 
@@ -97,6 +102,7 @@ export function Drawer({ open, onClose, title, children, actions, side = 'right'
   useFocusScope(ref, open, false);
   if (!open) return null;
   return (
+    <Portal>
     <aside ref={ref} className="v2-drawer" data-side={side} {...(full ? { 'data-full': '' } : {})} role="dialog" aria-labelledby={titleId} data-testid={testId} tabIndex={-1}>
       <div className="v2-drawer-h">
         <div className="v2-grow" id={titleId}>
@@ -107,6 +113,7 @@ export function Drawer({ open, onClose, title, children, actions, side = 'right'
       </div>
       <div className="v2-drawer-b">{children}</div>
     </aside>
+    </Portal>
   );
 }
 
@@ -122,13 +129,13 @@ export function BottomSheet({ open, onClose, title, children, testId }: { readon
   useFocusScope(ref, open, true);
   if (!open) return null;
   return (
-    <>
+    <Portal>
       <div className="v2-bsheet-scrim" onMouseDown={onClose} aria-hidden="true" />
       <div ref={ref} className="v2-bsheet" role="dialog" aria-modal="true" aria-labelledby={titleId} data-testid={testId} tabIndex={-1}>
         <div className="v2-bsheet-grip" aria-hidden="true" />
         <OverlayHeader className="v2-bsheet-h" titleId={titleId} title={title} onClose={onClose} />
         <div className="v2-bsheet-b">{children}</div>
       </div>
-    </>
+    </Portal>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { MachineState } from '../../../core/peers.ts';
 import { api, onDeviceOrigin } from '../../api/client.ts';
-import { onHubEvent } from '../../api/useHub.ts';
+import { onHubEvent, onHubStatus } from '../../api/useHub.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { memoryApi } from '../../memory/api.ts';
 import { plansApi } from '../../plans/api.ts';
@@ -97,6 +97,8 @@ export const needsYouStore: NeedsYouStore = createNeedsYouStore({
 });
 
 let live: (() => void) | null = null;
+/** The paired computers' last known states (a reload on a change, not on every retry). */
+const machineStates = new Map<string, string>();
 let holders = 0;
 
 /** Keeps the store live (hub listeners, the first reads) while a view holds it. */
@@ -111,6 +113,18 @@ function hold(): () => void {
       onHubEvent('memoryChanged', reload),
       onHubEvent('planChanged', reload),
       onHubEvent('system', (system) => needsYouStore.usageChanged(system)),
+      // A paired computer coming or going brings or takes its items (D113): read again on a state change only.
+      onHubEvent('machineState', (machine) => {
+        const state = machine.removed ? 'removed' : machine.state;
+        if (machineStates.get(machine.id) === state) return;
+        const known = machineStates.has(machine.id);
+        machineStates.set(machine.id, state);
+        if (known) reload();
+      }),
+      // The stream reopened: events may have been missed.
+      onHubStatus((status) => {
+        if (status === 'open') reload();
+      }),
     ];
     void api
       .system()

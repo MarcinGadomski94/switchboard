@@ -1,5 +1,6 @@
 import { RouterProvider } from '../router.tsx';
-import { ToastProvider } from './components/index.ts';
+import { useState } from 'react';
+import { OverlayRoot, ToastProvider } from './components/index.ts';
 import { useSystemSchemeFollow } from './scheme.ts';
 import { Shell } from './shell/Shell.tsx';
 import './tokens.css';
@@ -12,13 +13,18 @@ import './base.css';
  */
 export function V2App() {
   useSystemSchemeFollow();
+  // The overlay layer (menus, popovers, dialogs, sheets: components/Portal.tsx), after the app.
+  const [overlays, setOverlays] = useState<HTMLDivElement | null>(null);
   return (
     <div className="sb2" data-testid="v2-root">
-      <RouterProvider>
-        <ToastProvider>
-          <Shell />
-        </ToastProvider>
-      </RouterProvider>
+      <OverlayRoot.Provider value={overlays}>
+        <RouterProvider>
+          <ToastProvider>
+            <Shell />
+          </ToastProvider>
+        </RouterProvider>
+      </OverlayRoot.Provider>
+      <div ref={setOverlays} className="v2-overlays" />
     </div>
   );
 }

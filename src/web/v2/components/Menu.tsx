@@ -1,6 +1,7 @@
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { IconButton } from './Button.tsx';
 import { Icon, type IconName } from './Icon.tsx';
+import { Portal } from './Portal.tsx';
 import { useAnchoredPosition, useEscape, useOutside } from './overlay.ts';
 
 /** One entry of a {@link Menu}: an action, or a separator. */
@@ -52,6 +53,7 @@ export function Menu({ items, anchor, open, onClose, label, align = 'end', testI
     next?.focus();
   };
   return (
+    <Portal>
     <div
       ref={(el) => {
         ref.current = el;
@@ -93,6 +95,7 @@ export function Menu({ items, anchor, open, onClose, label, align = 'end', testI
         );
       })}
     </div>
+    </Portal>
   );
 }
 
