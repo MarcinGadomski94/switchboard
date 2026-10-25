@@ -31,7 +31,7 @@ function errorText(caught: unknown): string {
  * at the URL once it is known), progress, the paste-back for a browser that runs on
  * another machine, and the terminal command as the fallback.
  */
-function SignInPanel({ profile, client, onFinished, onClose }: { readonly profile: AccountProfile; readonly client: Client; readonly onFinished: () => void; readonly onClose: () => void }) {
+export function SignInPanel({ profile, client, onFinished, onClose }: { readonly profile: AccountProfile; readonly client: Client; readonly onFinished: () => void; readonly onClose: () => void }) {
   const [email, setEmail] = useState('');
   const [device, setDevice] = useState(false);
   const [provider, setProvider] = useState('anthropic');
