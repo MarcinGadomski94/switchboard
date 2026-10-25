@@ -41,7 +41,6 @@ async function memberOn(node: PeerNode, name: string): Promise<TeamMember | unde
 describe('D100 · Team between paired machines', () => {
   it('a member on B is visible and pausable from A, moves from B to A with the take-over, and B\'s members show offline when B is away', async () => {
     const w = (world = await takeoverWorld(tmp));
-    for (const node of [w.a, w.b]) expect((await node.call('PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
     const tracker = await startRepoSession(w.b, w.folders.b.alpha as string, 'tracker-run');
     const builder = await startRepoSession(w.b, w.folders.b.alpha as string, 'builder-run');
     const loop = await w.b.call('POST', `/api/sessions/${tracker.id}/loops`, { prompt: 'Sweep the board.', everyMinutes: 30, label: 'Sweep' });

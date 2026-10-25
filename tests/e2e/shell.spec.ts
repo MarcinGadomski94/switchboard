@@ -104,17 +104,20 @@ test('the shell renders from the real API and shows only what the API returns', 
       // D87: the page reports whether it is in the foreground (no body).
       expect(call.status, call.url).toBe(204);
     } else if (call.url === '/api/team/state') {
-      // D100: Team's switch (always answered, the sidebar's filter reads it); off on a fresh install, nothing hidden.
+      // D100: Team's state (the sidebar's filter reads it); D132: always on, nothing hidden on a fresh install.
       expect(call.status, call.url).toBe(200);
-      expect(call.body, call.url).toMatchObject({ enabled: false, available: false, hiddenSessionIds: [] });
+      expect(call.body, call.url).toMatchObject({ enabled: true, available: true, hiddenSessionIds: [] });
     } else if (call.url === '/api/plans/state') {
-      // D99: Plans' switch (always answered, the nav's Plans item reads it); off on a fresh install.
+      // D99: Plans' state (the nav's Plans item reads it); D132: always on.
       expect(call.status, call.url).toBe(200);
-      expect(call.body, call.url).toMatchObject({ enabled: false, available: false });
+      expect(call.body, call.url).toMatchObject({ enabled: true, available: true });
     } else if (call.url === '/api/memory/state') {
-      // D107: Project memory's switch (always answered, the nav's Memory cell reads it); off on a fresh install.
+      // D107: Project memory's state (the nav's Memory cell reads it); D132: always on.
       expect(call.status, call.url).toBe(200);
-      expect(call.body, call.url).toMatchObject({ enabled: false, available: false });
+      expect(call.body, call.url).toMatchObject({ enabled: true, available: true });
+    } else if (/^\/api\/(team|plans|memory)(\/|\?|$)/.test(call.url)) {
+      // D132: Team, Plans and Project memory are always on: their nav cells and the sidebar read their lists (empty on a fresh install).
+      expect(call.status, call.url).toBe(200);
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);
@@ -131,7 +134,7 @@ test('the shell renders from the real API and shows only what the API returns', 
 
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
-  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '', '', '']); // D61: six nav items (MCP); D68: seven (Todos); D108: eight (Insights)
+  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '', '', '', '', '', '']); // D61: six nav items (MCP); D68: seven (Todos); D108: eight (Insights); D132: eleven (Team, Plans, Memory always on)
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
   await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM']);

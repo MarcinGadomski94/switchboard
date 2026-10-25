@@ -8,15 +8,12 @@ import { STOPPED_LABEL, mergeModeChip, planStateText, progressText, stoppedChip,
 import { putPlan, usePlans } from './store.ts';
 import './plans.css';
 
-/** Points to Settings → Experimental while Plans is off (the page itself is not linked then). */
+/** D132: Plans is always on; this shows only when `plans.db` could not be opened. */
 export function PlansOff() {
   return (
-    <div className="sb-plan-off" data-testid="plans-off">
-      <div className="sb-plan-off__title">Plans is off</div>
-      <div className="sb-plan-muted">Plans is an experimental feature. Switch it on in Settings → Experimental.</div>
-      <Link to={{ view: 'settings', section: 'experimental' }} className="sb-button sb-plan-btn" data-testid="plans-off-settings">
-        Open Settings → Experimental
-      </Link>
+    <div className="sb-plan-off" data-testid="plans-unavailable">
+      <div className="sb-plan-off__title">Plans is unavailable</div>
+      <div className="sb-plan-muted">Its database (plans.db) could not be opened. Restart Switchboard; the log says why.</div>
     </div>
   );
 }

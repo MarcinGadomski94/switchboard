@@ -194,7 +194,7 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
     } else {
       error = errorText(inboxResult.reason);
     }
-    // Team is optional (off, or an older service): no crew items then.
+    // Team is always on (D132); a failed read only means no crew items this time.
     team = teamResult.status === 'fulfilled' ? teamResult.value : [];
     prune();
     emit();

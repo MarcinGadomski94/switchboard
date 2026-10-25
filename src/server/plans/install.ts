@@ -66,7 +66,7 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
   }
   services.set(app, plans);
   await registerPlanRoutes(app, plans, context);
-  // D99-Jira: the Jira import and status sync (src/server/plans/jira/; its routes answer plans-off while Plans is off).
+  // D99-Jira: the Jira import and status sync (src/server/plans/jira/; its routes answer plans-unavailable while plans.db is broken).
   await installPlansJira(app, context, plans);
   return plans;
 }

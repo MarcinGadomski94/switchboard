@@ -107,16 +107,11 @@ async function session(r: Rig, name: string): Promise<string> {
 }
 
 describe('D100 · the routes', () => {
-  it('off: only the state answers; PUT /api/settings switches it on and team.db appears', async () => {
+  it('D132: always on: team.db at start, no switch in Settings, the routes answer', async () => {
     const r = await setup();
-    expect((await ui(r, 'GET', '/api/team/state')).json()).toEqual<TeamState>({ enabled: false, available: false, problem: null, hiddenSessionIds: [], roles: {} });
-    const off = await ui(r, 'GET', '/api/team');
-    expect([off.statusCode, off.json().error]).toEqual([404, 'team-off']);
-    expect((await ui(r, 'GET', '/api/settings')).json()['experimental.team']).toBe(false);
-    await expect(access(path.join(r.root, 'data', TEAM_DB_FILE))).rejects.toThrow();
-
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.team': true })).statusCode).toBe(200);
-    expect((await ui(r, 'GET', '/api/team/state')).json()).toMatchObject({ enabled: true, available: true });
+    expect((await ui(r, 'GET', '/api/team/state')).json()).toEqual<TeamState>({ enabled: true, available: true, problem: null, hiddenSessionIds: [], roles: {} });
+    expect('experimental.team' in (await ui(r, 'GET', '/api/settings')).json()).toBe(false);
+    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.team': false })).statusCode).toBe(422);
     await access(path.join(r.root, 'data', TEAM_DB_FILE));
     const view = (await ui(r, 'GET', '/api/team')).json() as TeamView;
     expect(view.team).toEqual({ id: 'team', name: 'Team' });
@@ -131,14 +126,13 @@ describe('D100 · the routes', () => {
     ]);
   });
 
-  it('the Team MCP tools exist only in a member\'s session, only while Team is on; they hand off, list and report', async () => {
+  it('the Team MCP tools exist only in a member\'s session; they hand off, list and report', async () => {
     const r = await setup();
     const tracker = await session(r, 'tracker-session');
     const builder = await session(r, 'builder-session');
     const plain = await session(r, 'plain-session');
-    // Off: nobody gets them.
+    // Not a member yet: no tools.
     expect((await toolsOf(helperApi(r, tracker))).filter((name) => name.startsWith('team_'))).toEqual([]);
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const adopted = await ui(r, 'POST', '/api/team/members', { sessionId: tracker, name: 'Tracker', charter: { owns: 'the board' } });
     expect(adopted.statusCode, adopted.body).toBe(201);
     expect((await ui(r, 'POST', '/api/team/members', { sessionId: builder, name: 'Builder', rhythm: { onHandoff: false } })).statusCode).toBe(201);
@@ -158,15 +152,10 @@ describe('D100 · the routes', () => {
     expect((await api('POST', '/agent/v1/team/reports', { text: 'Board triaged: 3 new.' })).status).toBe(201);
     const view = (await ui(r, 'GET', '/api/team')).json() as TeamView;
     expect(view.activity.map((a) => a.text)).toEqual(expect.arrayContaining(['Board triaged: 3 new.', 'handed off to Builder: Fix the flaky test.']));
-
-    // Off again: the tools go (the next start of the helper registers none) and the routes refuse.
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
-    expect((await toolsOf(helperApi(r, tracker))).filter((name) => name.startsWith('team_'))).toEqual([]);
   });
 
   it('the Inbox and search label member sessions with the role; Needs you derives the members\' Inbox items', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const tracker = await session(r, 'tracker-session');
     const plain = await session(r, 'plain-session');
     const member = (await ui(r, 'POST', '/api/team/members', { sessionId: tracker, name: 'Tracker' })).json() as TeamMember;
@@ -188,7 +177,6 @@ describe('D100 · the routes', () => {
 
   it('D102: a plan\'s "Ready to merge" item of a member\'s session shows in Needs you with Merge / Open plan; no review-merge gate is raised', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const dev = await session(r, 'dev-session');
     const member = (await ui(r, 'POST', '/api/team/members', { sessionId: dev, name: 'Developer', gates: ['merge-default-branch'] })).json() as TeamMember;
     expect(member.gates).toEqual(['outward-facing', 'merge-default-branch']);
@@ -225,7 +213,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-14: the members\' order is stored, a new member goes last, PUT /api/team/order reorders and survives a reopen', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const ids: string[] = [];
     for (const name of ['Alpha', 'Bravo', 'Charlie']) {
       const answer = await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, `${name.toLowerCase()}-session`), name });
@@ -250,8 +237,6 @@ describe('D100 · the routes', () => {
     expect(await names()).toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta']);
 
     // Stored in team.db: switching Team off closes the file, on again reads the same order.
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     expect(await names()).toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta']);
     // The sync message carries it (part of the team definition).
     const message = (await ui(r, 'POST', '/api/team/sync', {})).json() as { snapshot: { members: Array<{ name: string; order: number | null }> } };
@@ -260,7 +245,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-14 · teams: create, rename, reorder, delete (its members return); the first team stays and the old routes act on it', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const teams = async (): Promise<TeamSummary[]> => (await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[];
     expect((await teams()).map((t) => [t.id, t.name, t.members])).toEqual([['team', 'Team', 0]]);
 
@@ -305,7 +289,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-14 · the first team is deletable once another exists; the old routes then act on the first remaining team', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const devSession = await session(r, 'dev-session');
     const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
     const ops = (await ui(r, 'POST', '/api/team/teams', { name: 'Ops' })).json() as TeamSummary;
@@ -330,14 +313,11 @@ describe('D100 · the routes', () => {
     await ui(r, 'PUT', '/api/team/teams/order', { teamIds: [ops.id] });
     expect(((await ui(r, 'GET', '/api/team')).json() as TeamView).team.id).toBe(ops.id);
     // Switching Team off and on again does not bring the deleted first team back.
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': false });
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     expect(((await ui(r, 'GET', '/api/team/teams')).json() as TeamSummary[]).map((t) => t.name)).toEqual(['Ops', 'Growth squad']);
   });
 
   it('D100 follow-up 2026-10-14 · a model chosen in a member\'s session header becomes the member\'s saved model (and syncs); a plain session\'s does nothing', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const devSession = await session(r, 'dev-session');
     const plain = await session(r, 'plain-session');
     const dev = (await ui(r, 'POST', '/api/team/members', { sessionId: devSession, name: 'Developer' })).json() as TeamMember;
@@ -356,7 +336,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-14 · one team per session; a member moves to another team keeping its setup; Needs you per team and for all', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
     const trackerSession = await session(r, 'tracker-session');
     const tracker = (await ui(r, 'POST', '/api/team/members', { sessionId: trackerSession, name: 'Tracker', charter: { owns: 'the board' }, budget: { dailyPct: 20, profileId: null } })).json() as TeamMember;
@@ -408,7 +387,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-14 · drag to move between teams: Undo (move back, then the old order) restores the team and the place; its own team is a no-op', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
     const ids: string[] = [];
     for (const name of ['Alpha', 'Bravo', 'Charlie']) ids.push(((await ui(r, 'POST', '/api/team/members', { sessionId: await session(r, `${name.toLowerCase()}-move`), name })).json() as TeamMember).id);
@@ -435,7 +413,6 @@ describe('D100 · the routes', () => {
 
   it('D100 follow-up 2026-10-16 · the sidebar rows: each team lists its members with status and current item; folding is stored per install', async () => {
     const r = await setup();
-    await ui(r, 'PUT', '/api/settings', { 'experimental.team': true });
     const growth = (await ui(r, 'POST', '/api/team/teams', { name: 'Growth' })).json() as TeamSummary;
     const builderSession = await session(r, 'builder-session');
     const runnerSession = await session(r, 'runner-session');
@@ -468,7 +445,6 @@ describe('D100 · the routes', () => {
 
     // Plans (D99) knows the todo as a plan item with a key: the row names it by the key.
     registerPlanHooks(r.store, {
-      switchChanged: async () => undefined,
       sessionContinued: async () => undefined,
       inboxMerge: async () => null,
       outcomes: async () => null,

@@ -2,17 +2,15 @@
 
 Durable, reusable facts and conventions about a project (build and test commands, gotchas, decisions and their reasons, where things live), kept **per folder** and given to every session that works there. Agents only **propose** entries; the developer **approves** them before any session ever sees them. Decision D107 (`docs/decisions.md`); contract → *Project memory (D107)* in `docs/handoff/contracts/local-api.md`; removal: `docs/memory-removal.md`.
 
-## The switch
+## Always on (D132)
 
-Settings → Experimental → **Project memory** (`experimental.memory`), **off by default**. While off:
+Project memory was experimental behind Settings → Experimental → **Project memory** (`experimental.memory`, off by default) until 2.0; it graduated to general release (D132, `docs/memory-removal.md`) and has **no switch** any more.
 
-- no `memory.db` is created or opened, nothing runs in the background;
-- every route answers 404 `memory-off` except `GET /api/memory/state`;
-- the `switchboard` MCP server registers no memory tools;
-- no session gets a memory block (`sessionInstruction` is exactly as without the feature);
-- the Memory cell, the page and the session panel's line are not rendered.
-
-Switching it on opens (or creates) `<dataDir>/memory.db`; open sessions of folders that have approved entries show D91's "older instruction" state (below). Switching it off closes the file (it stays on disk), resolves its Inbox items and flags those sessions the same way (their next spawn, or a reload, drops the block). A broken `memory.db` answers 503 `memory-unavailable` and injects nothing; the rest of Switchboard is unaffected. Demo mode never starts it.
+- **At start** `<dataDir>/memory.db` is opened (created on first use); the `switchboard` MCP server registers the memory tools for sessions with a folder.
+- **No approved entries:** no session gets a memory block (`sessionInstruction` is exactly as without the feature); proposals are never injected.
+- **Upgraded from 1.x with the switch off:** the stored `experimental.memory` row is deleted; approved entries kept from a time it was on reach new and resumed sessions, and open sessions of those folders show D91's "older instruction" state (below).
+- **A broken `memory.db`:** every memory route but the state answers 503 `memory-unavailable` and nothing is injected.
+- Demo mode never starts Project memory.
 
 ## Folder
 

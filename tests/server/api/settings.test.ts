@@ -71,6 +71,12 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
   });
 }
 
+/** The stored settings rows without this machine's identity (`peers.self`, written at start since D132: Team, always on, reads it). */
+async function storedPreferences(): Promise<Record<string, unknown>> {
+  const { 'peers.self': _self, ...rest } = await store!.settings.getAll();
+  return rest;
+}
+
 describe('GET/PUT /api/settings (M8.2)', () => {
   it('a fresh install answers the defaults plus what the service reports about itself', async () => {
     const { workspace } = await setup();
@@ -99,10 +105,6 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.freshOfferPct': 80,
       // D108: Insights' prices, Switchboard's examples until saved.
       'insights.prices': EXAMPLE_PRICES,
-      // Team (D100): Settings → Experimental → Team, off by default.
-      'experimental.team': false,
-      'experimental.plans': false,
-      'experimental.memory': false,
       // D109: the CI / PR feedback loop.
       'ci.sendFailures': true,
       'ci.pendingPollMinutes': 2,
@@ -122,7 +124,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'github.prPollMinutes': 5,
     });
     // Nothing is stored until something is set (docs/database.md).
-    expect(await store!.settings.getAll()).toEqual({});
+    expect(await storedPreferences()).toEqual({});
   });
 
   it('PUT stores a subset of the editable keys and answers the whole object; the values survive a restart', async () => {
@@ -141,7 +143,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.ultracode': true,
       'usage.warnAtPct': 75,
     });
-    expect(await store!.settings.getAll()).toEqual({ 'sessions.worktrees': false, 'sessions.ultracode': true, 'usage.warnAtPct': 75 });
+    expect(await storedPreferences()).toEqual({ 'sessions.worktrees': false, 'sessions.ultracode': true, 'usage.warnAtPct': 75 });
   });
 
   it('PUT refuses read-only and unknown keys and wrong values with 422; nothing changes', async () => {
@@ -170,7 +172,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       expect(json.error).toBe('invalid');
       expect(json.errors.map((e) => e.field), JSON.stringify(body)).toEqual(fields);
     }
-    expect(await store!.settings.getAll()).toEqual({});
+    expect(await storedPreferences()).toEqual({});
     expect((await call('GET', '/api/settings')).json()).toMatchObject(SETTING_DEFAULTS);
   });
 
@@ -179,7 +181,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
     const response = await call('PUT', '/api/settings', {});
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject(SETTING_DEFAULTS);
-    expect(await store!.settings.getAll()).toEqual({});
+    expect(await storedPreferences()).toEqual({});
   });
 
   it('reports the workspace root and router as they are: none, missing folder, no AGENTS.md, no heading', async () => {
@@ -228,7 +230,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
     await close();
     await open(dir, workspace);
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
-    expect(await store!.settings.getAll()).toEqual({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
+    expect(await storedPreferences()).toEqual({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
 
     // Shown again: stored as false, not removed.
     const shown = await call('PUT', '/api/settings', { 'ui.sidebarHidden': false });
@@ -262,7 +264,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       expect(refused.statusCode, JSON.stringify(body)).toBe(422);
       expect((refused.json() as { errors: unknown }).errors).toEqual([{ field: 'newSession.mode', message: 'newSession.mode must be "simple" or "full"' }]);
     }
-    expect(await store!.settings.getAll()).toEqual({ 'newSession.mode': 'full' });
+    expect(await storedPreferences()).toEqual({ 'newSession.mode': 'full' });
     await store!.settings.setMany({ 'newSession.mode': 'wizard' });
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'newSession.mode': 'simple' });
   });
@@ -354,7 +356,8 @@ describe('settings helpers (M8.2)', () => {
     const saved = await call('PUT', '/api/settings', { 'ui.theme': 'classic' });
     expect(saved.statusCode).toBe(200);
     expect(saved.json()).toMatchObject({ 'ui.theme': 'classic' });
-    expect(await store!.settings.getAll()).toEqual({ 'ui.theme': 'classic' });
+    // Only ui.theme is stored by the PUT (D132's always-on services keep their own rows, e.g. peers.self).
+    expect(await store!.settings.get('ui.theme')).toBe('classic');
     const bad = await call('PUT', '/api/settings', { 'ui.theme': 'dark' });
     expect(bad.statusCode).toBe(422);
     expect(bad.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'ui.theme' }] });

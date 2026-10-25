@@ -48,8 +48,8 @@ export interface PlansJiraOptions {
 /**
  * D99 · Plans · Jira: the lane's one entry point, called by Plans' own `install.ts` (so it
  * goes with `src/server/plans/` on removal, `docs/plans-removal.md`). Its tables live in
- * `plans.db` (its own connection, opened on first use while Plans is on and closed when Plans
- * is seen off); its routes answer 404 `plans-off` while Plans is off; it follows the plans
+ * `plans.db` (its own connection, opened on first use); its routes answer 503
+ * `plans-unavailable` while `plans.db` is broken (D132: Plans has no off-switch); it follows the plans
  * (`planChanged`) and refreshes every 30 min once the app is ready. Answers the service (tests).
  */
 export async function installPlansJira(app: FastifyInstance, context: PlansAppContext, plans: PlanService, options: PlansJiraOptions = {}): Promise<PlanJiraService> {
@@ -106,12 +106,12 @@ export async function installPlansJira(app: FastifyInstance, context: PlansAppCo
   app.addHook('onReady', async () => {
     if (!context.config.demo) service.start();
   });
-  // D109: the todo import's Jira issues come through this lane's one Jira connection (Plans on or off;
-  // the connection's settings row is in Settings → Experimental → Plans). Credentials never leave the client.
+  // D109: the todo import's Jira issues come through this lane's one Jira connection
+  // (D132: its settings row is Settings → Jira). Credentials never leave the client.
   const offImport = registerJiraIssueSource(context.store, {
     status: async () => {
       const found = await credentials.resolve();
-      return found ? { available: true, problem: null } : { available: false, problem: 'Jira is not connected: switch Plans on in Settings → Experimental and fill in its Jira connection (or set ATL_BASE_URL, ATL_USER and ATL_TOKEN)' };
+      return found ? { available: true, problem: null } : { available: false, problem: 'Jira is not connected: fill in the Jira connection in Settings → Jira (or set ATL_BASE_URL, ATL_USER and ATL_TOKEN)' };
     },
     search: async (jql, max) => {
       const found = await credentials.resolve();

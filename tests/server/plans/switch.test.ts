@@ -22,10 +22,10 @@ import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * D99 · Plans is experimental (`docs/plans.md` → *The switch*): off by default (no
- * `plans.db`, no timers, 404 `plans-off`, no MCP plan tools), switched on through
- * `PUT /api/settings` (the file appears, the tools appear), and a broken `plans.db` answers
- * 503 on the plan routes while the rest of Switchboard works. Over the real app (`inject`).
+ * D132 · Plans graduated in 2.0 (`docs/plans-removal.md`): always on, no switch. A fresh install
+ * opens `plans.db` at start (timers, MCP plan tools); an install whose 1.x switch was off gets
+ * Plans all the same and its stored switch is deleted; a broken `plans.db` answers 503 on the
+ * plan routes while the rest of Switchboard works. Over the real app (`inject`).
  */
 
 const PORT = 4946; // inject() opens no socket; the port feeds the Host check only
@@ -48,11 +48,11 @@ afterEach(async () => {
   rig = undefined;
 });
 
-async function setup(before?: (dataDir: string) => Promise<void>): Promise<Rig> {
+async function setup(before?: (dataDir: string, store: Store) => Promise<void>): Promise<Rig> {
   const root = await makeTempDir('plans-switch');
   const dataDir = path.join(root, 'data');
   const store = await openTempStore(dataDir);
-  await before?.(dataDir);
+  await before?.(dataDir, store);
   const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: dataDir }, platform: 'linux', home: root, cwd: root }), port: PORT };
   const token = generateToken();
   const app = await buildApp({ config, token, store, webRoot: root, agentTools: false });
@@ -111,53 +111,45 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-describe('D99 · the Plans switch', () => {
-  it('off by default: only the state answers, no plans.db, no timers, no plan tools', async () => {
+describe('D132 · Plans is always on', () => {
+  it('a fresh install: plans.db appears, the scheduler listens, the plan tools are registered, no switch in Settings', async () => {
     const r = await setup();
-    expect((await ui(r, 'GET', '/api/settings')).json()['experimental.plans']).toBe(false);
-    expect((await ui(r, 'GET', '/api/plans/state')).json()).toEqual<PlansState>({ enabled: false, available: false, problem: null });
-    for (const [method, url] of [
-      ['GET', '/api/plans'],
-      ['POST', '/api/plans'],
-      ['GET', '/api/plans/abc'],
-      ['POST', '/api/plans/abc/start'],
-    ] as const) {
-      const answer = await ui(r, method, url, method === 'POST' ? {} : undefined);
-      expect([method, url, answer.statusCode, answer.json().error]).toEqual([method, url, 404, 'plans-off']);
-    }
-    expect(await exists(path.join(r.dataDir, PLANS_DB_FILE))).toBe(false);
-    expect(planServiceOf(r.app)?.activeTimers()).toBe(0);
-    const sessionId = (await r.store.sessions.create({ name: 'agent', claudeSessionId: 'c-agent', attached: true })).id;
-    expect((await helperApi(r, sessionId)('GET', '/agent/v1/plans')).status).toBe(404);
-    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('plan_'))).toEqual([]);
-    // The state route is classified like the others (phones and paired machines may read it).
-    expect(isLocalOnly('GET', '/api/plans/state')).toBe(false);
-    expect(peerApiAllowed('GET', '/api/plans/state')).toBe(true);
-  });
-
-  it('on: plans.db appears, the scheduler listens, the plan tools are registered; off again: they go', async () => {
-    const r = await setup();
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.plans': true })).statusCode).toBe(200);
+    expect('experimental.plans' in (await ui(r, 'GET', '/api/settings')).json()).toBe(false);
     expect((await ui(r, 'GET', '/api/plans/state')).json()).toEqual<PlansState>({ enabled: true, available: true, problem: null });
     expect(await exists(path.join(r.dataDir, PLANS_DB_FILE))).toBe(true);
     expect(planServiceOf(r.app)?.activeTimers()).toBe(2);
     expect((await ui(r, 'GET', '/api/plans')).json()).toEqual([]);
     const sessionId = (await r.store.sessions.create({ name: 'agent', claudeSessionId: 'c-agent', attached: true })).id;
+    expect((await helperApi(r, sessionId)('GET', '/agent/v1/plans')).status).toBe(200);
     expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('plan_'))).toEqual([...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name]);
+    // The old switch is no setting any more.
+    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(422);
+    // The state route is classified like the others (phones and paired machines may read it).
+    expect(isLocalOnly('GET', '/api/plans/state')).toBe(false);
+    expect(peerApiAllowed('GET', '/api/plans/state')).toBe(true);
+  });
 
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(200);
-    expect(planServiceOf(r.app)?.activeTimers()).toBe(0);
-    expect((await ui(r, 'GET', '/api/plans')).statusCode).toBe(404);
-    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('plan_'))).toEqual([]);
-    // The file stays on disk (switching on again shows the plans as they were).
-    expect(await exists(path.join(r.dataDir, PLANS_DB_FILE))).toBe(true);
+  it('an install whose 1.x switch was off: Plans is on after the start and the stored switch is gone', async () => {
+    const r = await setup(async (_dataDir, store) => {
+      await store.settings.set('experimental.plans', false);
+    });
+    expect(await r.store.settings.get('experimental.plans')).toBeUndefined();
+    expect((await ui(r, 'GET', '/api/plans/state')).json()).toEqual<PlansState>({ enabled: true, available: true, problem: null });
+    expect((await ui(r, 'GET', '/api/plans')).statusCode).toBe(200);
+    expect(planServiceOf(r.app)?.activeTimers()).toBe(2);
+  });
+
+  it('no plans: nothing changes for sessions (no Inbox items, every session listed)', async () => {
+    const r = await setup();
+    await r.store.sessions.create({ name: 'acme', claudeSessionId: 'c-acme', attached: true });
+    expect(((await ui(r, 'GET', '/api/sessions')).json() as unknown[]).length).toBe(1);
+    expect((await ui(r, 'GET', '/api/inbox')).json()).toEqual([]);
   });
 
   it('a broken plans.db: the plan routes answer 503, everything else works', async () => {
     const r = await setup(async (dataDir) => {
       await writeFile(path.join(dataDir, PLANS_DB_FILE), 'this is not a database, just Acme notes\n'.repeat(200));
     });
-    expect((await ui(r, 'PUT', '/api/settings', { 'experimental.plans': true })).statusCode).toBe(200);
     const state = (await ui(r, 'GET', '/api/plans/state')).json() as PlansState;
     expect(state).toMatchObject({ enabled: true, available: false });
     expect(state.problem).toMatch(/^plans\.db could not be opened: /);

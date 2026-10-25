@@ -5,10 +5,10 @@
  * repositories, applied at once), D129's `plan_update_item`, `plan_remove_item`,
  * `plan_remove_dependency` and `plan_set_mode` (items already in the plan, the merge mode), and the Jira lane's `plan_propose_dependencies` (proposals the
  * developer accepts on the plan; `src/core/plans-jira.ts`) and (D118) the read-only
- * `plan_jira_context` (`src/core/plans-jira-context.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
- * once at start (`registerPlanToolsIfOn`) and registers them only when it answers 200
- * (Plans on and `plans.db` open); 404 `plans-off`, 503, an older Switchboard or no answer
- * register nothing. The routes check again on every call. Names, descriptions and
+ * `plan_jira_context` (`src/core/plans-jira-context.ts`). The helper asks `GET /agent/v1/plans`
+ * (`FeatureTools`, `sb-feature-tools.ts`) and registers them only when it answers 200
+ * (`plans.db` open; D132: Plans is always on since 2.0); 503, a 1.x Switchboard with Plans off
+ * (404 `plans-off`) or no answer register nothing. The routes check again on every call. Names, descriptions and
  * annotations come from `src/core/plans.ts` ({@link PLAN_TOOLS}).
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

@@ -2,18 +2,17 @@
 
 A **plan** groups todo items of one session (D68) into a dependency graph ("B after A") and runs them by itself: a scheduler starts every ready item as a todo run (D76) in its own session and worktree, cut from the plan's **target branch** (the epic's feature branch), keeps at most *N* running at once, and moves an item to done once its work is merged into the target under the plan's **merge mode**. When every item is done, the Inbox says "Plan ready: `<target>` → `<base>`" and the developer merges the epic. Since the D99 follow-up of 2026-10-15 a plan is for anything: any target branch (also `dev` or `main`), or none at all (*Plans for anything* below).
 
-Plans is **experimental**: switchable and revertible like Team (D100). Contract → *Plans (D99)* in `docs/handoff/contracts/local-api.md`; the Plans page (web UI) → `docs/plans-ui.md`; removal → `docs/plans-removal.md`; decision → D99 in `docs/decisions.md`; assumptions → `.loop/questions.md` → *D99*.
+Plans is **always on** since 2.0 (D132; it was experimental, switchable and revertible like Team, D100). Contract → *Plans (D99)* in `docs/handoff/contracts/local-api.md`; the Plans page (web UI) → `docs/plans-ui.md`; removal → `docs/plans-removal.md`; decision → D99 in `docs/decisions.md`; assumptions → `.loop/questions.md` → *D99*.
 
-## The switch
+## Always on (D132)
 
-Settings → Experimental → **Plans** (`experimental.plans`), **off by default**, next to Team.
+Plans was experimental behind Settings → Experimental → **Plans** (`experimental.plans`, off by default) until 2.0; it graduated to general release (D132, `docs/plans-removal.md`) and has **no switch** any more.
 
-- **Off:** every plan route answers 404 `plans-off` except `GET /api/plans/state` (the switch); the scheduler does not listen to the hub, polls no PR checks and runs no timer; `plans.db` is not opened (on an install that never switched Plans on it does not exist); the `switchboard` MCP helper registers no plan tools. Nothing runs in the background.
-- **On:** `<dataDir>/plans.db` is opened (created on first use), the plans whose source session is gone are deleted, the running ones resume (their items' sessions are followed again; work merged meanwhile is picked up), and the plan tools appear in sessions whose helper starts from then on.
-- **Switched off while plans run:** every running plan is **paused** with the reason "Plans was switched off" (`pausedReason`, also shown as `held`). Running items are not stopped: their sessions finish their current turn; nothing new starts and nothing is merged or followed. The file is closed and stays on disk.
-- **Switched on again:** those plans show **paused** with the reason; the developer resumes each one (`POST /api/plans/{id}/resume`), which clears the reason and starts ready items again.
-- **A broken `plans.db`** (not a database, a failed migration) breaks nothing else: `GET /api/plans/state` reports `{ enabled: true, available: false, problem }`, the plan routes answer 503 `plans-unavailable`, the scheduler does not run, the plan tools are not registered, and every other route works.
-- Demo mode never starts Plans (it answers "off"), except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
+- **At start** `<dataDir>/plans.db` is opened (created on first use), the plans whose source session is gone are deleted and the running ones resume (their items' sessions are followed again; work merged meanwhile is picked up).
+- **No plans:** nothing runs and nothing appears for sessions; the Plans cell is in the sidebar's nav grid.
+- **Upgraded from 1.x with the switch off:** the stored `experimental.plans` row is deleted; plans 1.x paused with the reason "Plans was switched off" stay **paused** until the developer resumes them (`POST /api/plans/{id}/resume`).
+- **A broken `plans.db`** (not a database, a failed migration) breaks nothing else: `GET /api/plans/state` reports `{ enabled: true, available: false, problem }`, the plan routes answer 503 `plans-unavailable` and nothing runs.
+- Demo mode never starts Plans, except the README screenshot run (`SWITCHBOARD_DEMO_EXTRAS=1`, `docs/demo.md` → *Screenshot extras*).
 
 ## Storage
 
@@ -317,7 +316,7 @@ A per-plan setting, chosen in the dialog (default **off**) and changeable on the
 
 ### Credentials
 
-Jira Cloud REST API v3 with basic auth (the account's email and an API token): from **Settings → Experimental → Plans → Jira connection** (ruling D99-Jira-q3: `JiraCredentialsForm`, part of the Plans row and shown only while Plans is on; stored as one value in the OS keychain through the Team access lane's `SecretStore`, item "Switchboard Jira" / "default"), else from the environment `ATL_BASE_URL`, `ATL_USER`, `ATL_TOKEN`. Settings win when both are set. Requests go only to that base URL (`https://`, or `http://` on loopback for the tests' fake); redirects are refused. See `docs/security.md` → *Jira credentials (D99)*.
+Jira Cloud REST API v3 with basic auth (the account's email and an API token): from **Settings → Jira** (D132; until 2.0 Settings → Experimental → Plans → Jira connection, ruling D99-Jira-q3: `JiraCredentialsForm`; stored as one value in the OS keychain through the Team access lane's `SecretStore`, item "Switchboard Jira" / "default"), else from the environment `ATL_BASE_URL`, `ATL_USER`, `ATL_TOKEN`. Settings win when both are set. Requests go only to that base URL (`https://`, or `http://` on loopback for the tests' fake); redirects are refused. See `docs/security.md` → *Jira credentials (D99)*.
 
 ### Storage
 

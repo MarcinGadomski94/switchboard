@@ -4,7 +4,6 @@ import {
   MEMORY_DRAFT_REPEAT_HOURS,
   MEMORY_PROPOSE_PER_HOUR,
   MEMORY_SCOPE_KINDS,
-  MEMORY_SETTING,
   type MemoryDraftAllAnswer,
   type MemoryDraftAnswer,
   type MemoryEntry,
@@ -125,9 +124,9 @@ function backoffAfter(attempts: number): number {
  * open proposals has one Inbox item ("3 memory proposals for Acme app · Review"), closed when its
  * queue is empty.
  *
- * **Experimental, off by default** (Settings → Experimental → Project memory): while off it opens
- * nothing (`memory.db` is not created), injects nothing and answers 404 `memory-off`; while on with
- * a broken `memory.db`, 503 `memory-unavailable` and nothing is injected.
+ * D132: always on since 2.0 (it graduated from Settings → Experimental): `memory.db` opens at
+ * start; a folder without approved entries gets no block. With a broken `memory.db` every call
+ * answers 503 `memory-unavailable` and nothing is injected.
  */
 export class MemoryService {
   readonly #o: MemoryServiceOptions;
@@ -159,7 +158,6 @@ export class MemoryService {
     if (this.#closed) return;
     this.#offHooks ??= registerMemoryHooks(this.#o.store, {
       blockFor: (session) => this.blockFor(session),
-      switchChanged: () => this.switchChanged(),
       memberMoved: (move) => this.memberMoved(move),
       peerMemoryChanged: (machineId) => void this.retryCopies({ machineId }).catch((error: unknown) => this.#onError(error)),
       copyAction: (payload, action) => this.copyAction(payload, action),
@@ -170,7 +168,7 @@ export class MemoryService {
       const machine = message.payload as { readonly id?: unknown; readonly state?: unknown; readonly removed?: unknown };
       if (machine.state === 'online' && machine.removed !== true && typeof machine.id === 'string') void this.retryCopies({ machineId: machine.id }).catch((error: unknown) => this.#onError(error));
     });
-    await this.switchChanged();
+    await this.#open();
   }
 
   async close(): Promise<void> {
@@ -186,41 +184,36 @@ export class MemoryService {
     this.#db = null;
   }
 
-  /** The switch was read again. On: `memory.db` opens (created on first use). Off: it closes (it stays on disk). */
-  switchChanged(): Promise<void> {
-    const next = this.#switching.then(() => this.#applySwitch());
+  /**
+   * D132 (Project memory graduated in 2.0, `docs/memory-removal.md`): opens `memory.db` (created
+   * on first use) once, at start. There is no off-switch any more. Sessions get a memory block
+   * only from approved entries (none: no block, the instruction is unchanged).
+   */
+  #open(): Promise<void> {
+    const next = this.#switching.then(() => this.#openNow());
     this.#switching = next.catch((error: unknown) => this.#onError(error));
     return next;
   }
 
-  async #applySwitch(): Promise<void> {
-    if (this.#closed) return;
-    const on = (await this.#o.store.settings.get(MEMORY_SETTING)) === true;
-    if (on === this.#enabled) return;
-    this.#enabled = on;
-    if (!on) {
-      this.#clearCopyTimer();
-      this.#db?.close();
-      this.#db = null;
+  async #openNow(): Promise<void> {
+    if (this.#closed || this.#enabled) return;
+    this.#enabled = true;
+    try {
+      this.#db = await MemoryDb.open(this.#o.dataDir);
       this.#problem = null;
-    } else {
-      try {
-        this.#db = await MemoryDb.open(this.#o.dataDir);
-        this.#problem = null;
-      } catch (error) {
-        this.#db = null;
-        this.#problem = `memory.db could not be opened: ${error instanceof Error ? error.message : String(error)}`;
-        this.#onError(error);
-      }
+    } catch (error) {
+      this.#db = null;
+      this.#problem = `memory.db could not be opened: ${error instanceof Error ? error.message : String(error)}`;
+      this.#onError(error);
     }
-    // The blocks appear / disappear: the open sessions' `instructionOutdated` follows (D91; no restart).
+    // The blocks may appear: the open sessions' `instructionOutdated` follows (D91; no restart).
     await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
     await this.#syncAllInbox();
     this.#scheduleCopies();
     this.#o.bus.publish('memoryChanged', { scope: null });
   }
 
-  /** `GET /api/memory/state` (answered while off too). */
+  /** `GET /api/memory/state` (`enabled` is always true since D132). */
   state(): MemoryState {
     return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null, members: this.#enabled ? teamMembers(this.#o.store).length : 0 };
   }
@@ -231,7 +224,6 @@ export class MemoryService {
   }
 
   #need(): MemoryDb {
-    if (!this.#enabled) throw new MemoryError(404, 'memory-off', 'Project memory is off: switch it on in Settings → Experimental');
     if (!this.#db) throw new MemoryError(503, 'memory-unavailable', this.#problem ?? 'memory.db is not open');
     return this.#db;
   }
@@ -632,7 +624,7 @@ export class MemoryService {
     let sessionId = typeof raw['sessionId'] === 'string' ? raw['sessionId'] : '';
     if (typeof raw['memberId'] === 'string' && raw['memberId'] !== '') {
       const member = teamMembers(this.#o.store).find((candidate) => candidate.id === raw['memberId']);
-      if (!member) throw new MemoryError(404, 'not-found', 'no such team member (or Team is off)');
+      if (!member) throw new MemoryError(404, 'not-found', 'no such team member');
       if (!member.here) return this.#draftThere(member.machineId, member.sessionId);
       sessionId = member.sessionId;
     }
@@ -875,7 +867,7 @@ export class MemoryService {
    * pending copy (the entries stay here; the Inbox closes the item).
    */
   async copyAction(payload: unknown, action: string): Promise<string | null> {
-    if (!this.#enabled || !this.#db) return 'Project memory is off: switch it on in Settings → Experimental';
+    if (!this.#enabled || !this.#db) return 'Project memory is unavailable: memory.db is not open';
     const memberId = payload !== null && typeof payload === 'object' ? (payload as Record<string, unknown>)['memberId'] : null;
     if (typeof memberId !== 'string') return 'the member is no longer known';
     if (action === MEMORY_COPY_KEEP) {

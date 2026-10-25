@@ -52,8 +52,8 @@ function agentSession(request: FastifyRequest): string {
 }
 
 /**
- * D99 · Plans · Jira (contract → *Plans · Jira (D99)*). Every route answers 404 `plans-off`
- * while Plans is off.
+ * D99 · Plans · Jira (contract → *Plans · Jira (D99)*). Every route answers 503
+ * `plans-unavailable` while `plans.db` is broken (D132: no off-switch since 2.0).
  *
  * - `GET|PUT|DELETE /api/integrations/jira`: Settings → Integrations → Jira (status; save
  *   base URL, email and API token to the OS keychain; remove them). **This machine's UI only**:

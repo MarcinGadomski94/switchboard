@@ -288,7 +288,7 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
                 ))}
               </tbody>
             </table>
-            {!outcomes.plansOn ? <p className="sb-ins-foot">Plans is off (Settings → Experimental): its merge outcomes are not shown.</p> : null}
+            {!outcomes.plansOn ? <p className="sb-ins-foot">Plans is unavailable (plans.db could not be opened): its merge outcomes are not shown.</p> : null}
           </div>
         )}
       </Section>

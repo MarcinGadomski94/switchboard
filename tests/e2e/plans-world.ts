@@ -29,7 +29,7 @@ export interface PlansWorld {
   readonly target: string;
   /** Calls the local API from the page (same origin, the sb_token cookie). */
   call(page: Page, method: string, url: string, body?: unknown): Promise<{ readonly status: number; readonly body: any }>;
-  /** Settings → Experimental → Plans through `PUT /api/settings`. */
+  /** D132: Plans is always on (no switch): asserts it is available; `false` is refused (there is no off-state). */
   setPlans(page: Page, on: boolean): Promise<void>;
   /** A simple session in the `mobile` repo folder (its todos are the plan's items). */
   sourceSession(page: Page, name: string): Promise<string>;
@@ -108,8 +108,9 @@ export async function startPlansWorld(env: Readonly<Record<string, string>> = {}
     target: 'feature/PROJ-100-acme-epic',
     call,
     async setPlans(page, on) {
-      const answer = await call(page, 'PUT', '/api/settings', { 'experimental.plans': on });
-      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      if (!on) throw new Error('D132: Plans has no off-switch');
+      const answer = await call(page, 'GET', '/api/plans/state');
+      expect(answer.body, JSON.stringify(answer.body)).toMatchObject({ enabled: true, available: true });
     },
     async sourceSession(page, name) {
       const folder = await call(page, 'POST', '/api/folders', { path: git.mobile });

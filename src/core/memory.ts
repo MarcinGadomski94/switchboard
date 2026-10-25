@@ -3,17 +3,14 @@
  * project (build commands, gotchas, decisions, where things live), kept per folder. Agents only
  * **propose** entries (`memory_propose`); the developer **approves** them (as they are, or edited)
  * or rejects them, and only approved entries ever reach a session: as a delimited block next to the
- * standing instruction (D64), built by {@link memoryBlock}. Experimental, off by default
- * (Settings → Experimental → Project memory), removable (`docs/memory-removal.md`).
+ * standing instruction (D64), built by {@link memoryBlock}. Always on since 2.0
+ * (D132: it graduated from Settings → Experimental; `docs/memory-removal.md`).
  *
  * Shapes, limits, texts, the block, the duplicate check and the MCP tool definitions shared by the
  * server (`src/server/memory/`), the MCP helper (`src/hook/sb-memory-tools.ts`) and the page
  * (`src/web/memory/`).
  */
 import type { TodoToolDefinition } from './todos.ts';
-
-/** The switch (Settings → Experimental → Project memory). */
-export const MEMORY_SETTING = 'experimental.memory';
 
 /** An entry's review state: only `approved` entries are ever injected or listed to agents. */
 export type MemoryStatus = 'proposed' | 'approved' | 'rejected';

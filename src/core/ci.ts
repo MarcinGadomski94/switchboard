@@ -360,7 +360,7 @@ export interface IssueImportSources {
     readonly problem: string | null;
   };
   readonly jira: {
-    /** A Jira connection exists (Settings → Experimental → Plans → Jira connection, or `ATL_*`). */
+    /** A Jira connection exists (Settings → Jira, or `ATL_*`). */
     readonly available: boolean;
     readonly problem: string | null;
   };

@@ -4,7 +4,8 @@
  * process runs.
  *
  * Team (D100), Plans (D99) and Project memory (D107) each register their tools only while their
- * probe route answers 200 for this session (`GET /agent/v1/team`, `/agent/v1/plans`,
+ * probe route answers 200 for this session (D132: the features are always on since 2.0; the probes
+ * keep the per-session scoping: a member's session for Team, a session with a folder for memory) (`GET /agent/v1/team`, `/agent/v1/plans`,
  * `/agent/v1/memory`). Until now the helper asked once, at start, so a session adopted into
  * Team, a switch turned on later, or a probe that timed out left the process without the tools
  * until it restarted. {@link FeatureTools} asks again whenever Switchboard wakes it
@@ -56,15 +57,15 @@ export const FEATURE_TOOL_SETS: readonly FeatureToolSet[] = [
     label: 'Team',
     probe: '/agent/v1/team',
     tools: [...TEAM_TOOLS.map((tool) => tool.name), 'request_access'],
-    offReason: 'this session is not a team member, or Team is off',
+    offReason: 'this session is not a team member',
     register: (server, api) => {
       registerTeamTools(server, api);
       // D100-T2: request_access, likewise only in a member's session.
       registerAccessTool(server, api);
     },
   },
-  { name: 'plans', label: 'Plans', probe: '/agent/v1/plans', tools: [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name], offReason: 'Plans is off', register: registerPlanTools },
-  { name: 'memory', label: 'Project memory', probe: '/agent/v1/memory', tools: MEMORY_TOOLS.map((tool) => tool.name), offReason: 'Project memory is off, or this session has no project folder', register: registerMemoryTools },
+  { name: 'plans', label: 'Plans', probe: '/agent/v1/plans', tools: [...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name], offReason: 'Plans is unavailable on this Switchboard', register: registerPlanTools },
+  { name: 'memory', label: 'Project memory', probe: '/agent/v1/memory', tools: MEMORY_TOOLS.map((tool) => tool.name), offReason: 'this session has no project folder, or Project memory is unavailable', register: registerMemoryTools },
 ];
 
 /** `server` as the register functions see it, with each `registerTool` handle collected into `handles`. */

@@ -5,9 +5,9 @@ import { peerCall } from './peer-call.ts';
 import { TeamError, type TeamService } from './service.ts';
 
 /**
- * D100 · Team's routes (contract → *Team (D100)*, `docs/team.md`). While Team is off
- * only `GET /api/team/state` answers (the switch); everything else is 404
- * `team-off`. A paired machine's member is acted on through that machine (the
+ * D100 · Team's routes (contract → *Team (D100)*, `docs/team.md`). D132: always on since
+ * 2.0; while `team.db` is broken only `GET /api/team/state` answers, everything else is 503
+ * `team-unavailable`. A paired machine's member is acted on through that machine (the
  * service forwards over the peer API); a request that came in through the peer API
  * is never forwarded again (no chains).
  *
@@ -119,7 +119,7 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
 
   const memberOnly = (request: FastifyRequest): string => {
     const session = agentSession(request);
-    if (!team.memberOfSession(session)) throw new TeamError(404, 'not-a-member', "this session is not a team member (or Team is off): the Team tools work only in a member's session");
+    if (!team.memberOfSession(session)) throw new TeamError(404, 'not-a-member', "this session is not a team member: the Team tools work only in a member's session");
     return session;
   };
 

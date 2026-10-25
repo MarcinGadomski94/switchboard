@@ -38,8 +38,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'updates', label: 'Updates' },
   // D85 (docs/tutorial.md): replay the tour and the What's-new mini-tours.
   { key: 'tutorial', label: 'Tutorial' },
-  // Team (D100) hook and Plans (D99) hook: switchable, revertible features (docs/team-removal.md, docs/plans-removal.md); before Clean-up, which stays last (D84).
-  { key: 'experimental', label: 'Experimental' },
+  // Plans (D99) hook (docs/plans-removal.md): D132, the Jira connection that sat in the Experimental section (gone in 2.0: Team, Plans and Project memory graduated); before Clean-up, which stays last (D84).
+  { key: 'jira', label: 'Jira' },
   // D84 (docs/cleanup.md): occasional, so last.
   { key: 'cleanup', label: 'Clean-up' },
 ] as const;
@@ -47,9 +47,11 @@ export const SETTINGS_SECTIONS = [
 /** A section key. */
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['key'];
 
-/** The section of a `/settings[/:section]` route: Claude Code for none or an unknown one; `folders` is Folders (D14). */
+/** The section of a `/settings[/:section]` route: Claude Code for none or an unknown one; `folders` is Folders (D14); `experimental` is Jira (D132). */
 export function resolveSection(section: string | null): SettingsSection {
   if (section === 'folders') return 'workspace';
+  // D132: the Experimental section is gone; its old links open Jira (the connection that lived there).
+  if (section === 'experimental') return 'jira';
   return SETTINGS_SECTIONS.find((s) => s.key === section)?.key ?? 'claude';
 }
 

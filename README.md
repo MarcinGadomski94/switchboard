@@ -23,7 +23,7 @@ Switchboard is a local web app for running many **Claude Code**, **Codex CLI** a
 - **Paired machines** over Tailscale, with shared accounts, sidebar layout and power stats, and session take-over. [peers](docs/peers.md) · [power](docs/power.md)
 - **Phones and tablets:** pair with a QR code, get push notifications, install as an app. [devices](docs/devices.md) · [app](docs/install-app.md)
 - **Built-in `switchboard` MCP tools** for todos, artifacts, loops and `turn_status` in every session. [mcp](docs/mcp.md)
-- **Experimental** (Settings → Experimental): **Plans** run todos as a dependency graph with Jira import, merge modes and Done-on-merge ([plans](docs/plans.md)); **Team** of role agents ([team](docs/team.md)); **Project memory** ([memory](docs/memory.md)).
+- **Plans** run todos as a dependency graph with Jira import, merge modes and Done-on-merge ([plans](docs/plans.md)); **Team** of role agents ([team](docs/team.md)); **Project memory** approved by you before any session gets it ([memory](docs/memory.md)). Always on since 2.0.
 
 ## Requirements
 

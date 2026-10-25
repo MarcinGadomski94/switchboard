@@ -7,8 +7,8 @@ import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type QuestionWorld, startQuestionWorld } from './question-world.ts';
 
 /**
- * D107 on the real path (D13, fake-claude): Settings → Experimental → Project memory (off by
- * default, no Memory cell); on, an agent's proposal through `/agent/v1/memory` with its own token
+ * D107 on the real path (D13, fake-claude): Project memory (D132: always on, the Memory cell
+ * from the start); an agent's proposal through `/agent/v1/memory` with its own token
  * raises the Inbox item "1 memory proposal for work space"; Review opens the Memory page at the
  * folder with the proposing session linked; Edit… then Approve stores the edit, the item resolves,
  * and the next session in the folder gets the edited text in `--append-system-prompt` (never the
@@ -74,16 +74,9 @@ async function settled(page: Page, count: number): Promise<void> {
     .toBe(count);
 }
 
-test('the switch, an agent proposal → Inbox → Review → Edit… → Approve → injected; manual add and pin', async ({ page }) => {
-  // Off by default: the row says so, no Memory cell.
-  await page.goto(`${world.baseUrl}/settings/experimental`);
-  const row = page.locator('[data-row="experimental-memory"]');
-  await expect(row).toContainText('Project memory');
-  const toggle = row.getByTestId('setting-value');
-  await expect(toggle).toHaveText('off');
-  await expect(page.getByTestId('nav-memory')).toHaveCount(0);
-  await toggle.click();
-  await expect(toggle).toHaveText('on');
+test('always on, an agent proposal → Inbox → Review → Edit… → Approve → injected; manual add and pin', async ({ page }) => {
+  // D132: no switch; the Memory cell is there from the start.
+  await page.goto(`${world.baseUrl}/inbox`);
   await expect(page.getByTestId('nav-memory')).toBeVisible();
 
   // The developer's standing instruction is off here, so a session without memory gets no flag at all.
@@ -177,11 +170,8 @@ test('the switch, an agent proposal → Inbox → Review → Edit… → Approve
  * then a new non-member session in the same repo gets the repo entry and never the member's.
  */
 test('draft ask → proposals → approve with scope → only the right session gets it', async ({ page }) => {
-  // Project memory is on from the test above; Team goes on here.
+  // D132: Project memory and Team are always on.
   await page.goto(`${world.baseUrl}/memory`);
-  await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'experimental.team': true }) });
-  });
   const builder = await world.startSession(page, 'mem-builder', 'Reply with just OK.');
   await settled(page, 3);
   const adopted = await page.evaluate(async (sessionId) => {

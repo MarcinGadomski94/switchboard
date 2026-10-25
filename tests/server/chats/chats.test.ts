@@ -204,10 +204,10 @@ describe('D106 · chats', () => {
     const suggested = suggestions.map((s) => s.sessionId);
     expect(suggested).toContain(twin.id);
     expect(suggested).not.toContain(chat.id);
-    const adopt = await call('POST', '/api/team/members', { sessionId: chat.id, role: 'Planner' });
-    expect([404, 409]).toContain(adopt.statusCode);
+    // D132: Team is always on, so the refusal is the chat's own (409), not a missing Team.
+    const adopt = await call('POST', '/api/team/members', { sessionId: chat.id, name: 'Planner' });
+    expect(adopt.statusCode, adopt.body).toBe(409);
     // Plans on: a chat is refused as a plan's source.
-    expect((await call('PUT', '/api/settings', { 'experimental.plans': true })).statusCode).toBe(200);
     const plan = await call('POST', '/api/plans', { sourceSessionId: chat.id, title: 'Roadmap', targetBranch: 'epic/roadmap' });
     expect(plan.statusCode, plan.body).toBe(409);
     expect(plan.json()).toMatchObject({ error: 'chat' });

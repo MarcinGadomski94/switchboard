@@ -74,9 +74,9 @@ export class PlanJiraError extends Error {
   }
 }
 
-/** The answer when Plans is switched off (Settings → Experimental → Plans). */
+/** D132: the answer while `plans.db` is unavailable (Plans has no off-switch since 2.0; this was 404 `plans-off`). */
 export function plansOff(): PlanJiraError {
-  return new PlanJiraError(404, 'plans-off', 'Plans is off: switch it on in Settings → Experimental');
+  return new PlanJiraError(503, 'plans-unavailable', 'Plans is unavailable: plans.db is not open');
 }
 
 /** A {@link JiraError} as the route's answer: 502 (404 for an epic that is not there). */
@@ -98,7 +98,7 @@ export interface PlanJiraServiceOptions {
   /** Closes `plans.db`'s Jira connection (called when Plans is seen off). */
   readonly release?: () => void;
   readonly credentials: JiraCredentialSource;
-  /** Whether Plans is on and `plans.db` open (Settings → Experimental → Plans). Off: every call answers 404 `plans-off`, no sync runs. */
+  /** Whether `plans.db` is open. Not: every call answers 503 `plans-unavailable`, no sync runs. */
   readonly enabled: () => boolean | Promise<boolean>;
   /** The HTTP client Jira is called with (tests: the real one, at the fake Jira). */
   readonly fetch?: typeof fetch;

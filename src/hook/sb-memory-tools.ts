@@ -1,10 +1,10 @@
 /**
  * D107 · the memory tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`, D68's
  * helper and agent token): `memory_propose` (a proposal the developer reviews) and `memory_list`
- * (the folder's approved entries). Project memory is experimental: the helper asks
- * `GET /agent/v1/memory` once at start (`registerMemoryToolsIfOn`) and registers them only when it
- * answers 200 (on, `memory.db` open, a session with a folder); 404 `memory-off` / `no-folder`, 503,
- * an older Switchboard or no answer register nothing. The routes check again on every call.
+ * (the folder's approved entries). The helper asks
+ * `GET /agent/v1/memory` (`FeatureTools`, `sb-feature-tools.ts`) and registers them only when it
+ * answers 200 (`memory.db` open, a session with a folder; D132: always on since 2.0); 404
+ * `no-folder`, 503, a 1.x Switchboard with memory off (404 `memory-off`) or no answer register nothing. The routes check again on every call.
  * Names, descriptions and annotations come from `src/core/memory.ts` ({@link MEMORY_TOOLS}).
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

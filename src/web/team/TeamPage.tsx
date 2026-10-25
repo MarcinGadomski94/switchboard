@@ -67,7 +67,7 @@ type Open =
  * list with Needs you first and the panel full screen with "‹ Team". Shown only while Team is on; otherwise it points to the switch.
  */
 export function TeamPage() {
-  const { on } = useTeamSwitch();
+  const { on, loaded: switchLoaded } = useTeamSwitch();
   const layout = useLayout();
   const phone = layout === 'phone';
   const { route, navigate } = useRouter();
@@ -432,16 +432,16 @@ export function TeamPage() {
   const moveTargetsOf = (member: TeamMember): { id: string; name: string; online: boolean }[] =>
     [{ id: selfId, name: view?.self.name ?? 'this machine', online: true }, ...peerMachines.map((machine) => ({ id: machine.id, name: machine.name, online: machine.state === 'online' }))].filter((target) => target.id !== member.machineId);
 
+  // D132: Team is always on; it is missing only while its first state read runs or when team.db could not be opened.
   if (!on) {
     return (
-      <section className="sb-view sb-team" data-view="team" data-testid="view-team" data-state="off">
-        <div className="sb-team-empty">
-          <div className="sb-team-empty__title">Team is off</div>
-          <div className="sb-team-muted">Switch it on in Settings → Experimental → Team.</div>
-          <Link to={{ view: 'settings', section: 'experimental' }} className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-open-switch">
-            Open Settings
-          </Link>
-        </div>
+      <section className="sb-view sb-team" data-view="team" data-testid="view-team" data-state={switchLoaded ? 'unavailable' : 'loading'}>
+        {switchLoaded ? (
+          <div className="sb-team-empty" data-testid="team-unavailable">
+            <div className="sb-team-empty__title">Team is unavailable</div>
+            <div className="sb-team-muted">Its database (team.db) could not be opened. Restart Switchboard; the log says why.</div>
+          </div>
+        ) : null}
       </section>
     );
   }

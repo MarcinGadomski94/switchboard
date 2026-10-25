@@ -46,8 +46,8 @@ async function answer<T>(reply: FastifyReply, work: () => T | Promise<T>, status
  * folder: `GET /agent/v1/memory` (approved entries; also the helper's probe), `POST /agent/v1/memory`
  * (a proposal).
  *
- * Experimental: while off every route answers 404 `memory-off` except `GET /api/memory/state`;
- * while `memory.db` is broken, 503 `memory-unavailable`. Registered by `installMemory`.
+ * D132: always on since 2.0 (no switch); while `memory.db` is broken every route but
+ * `GET /api/memory/state` answers 503 `memory-unavailable`. Registered by `installMemory`.
  */
 export async function registerMemoryRoutes(app: FastifyInstance, memory: MemoryService): Promise<void> {
   app.get('/api/memory/state', async () => memory.state());

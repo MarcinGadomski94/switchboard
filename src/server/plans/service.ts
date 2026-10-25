@@ -28,7 +28,6 @@ import {
   PLAN_STOPPED_GRACE_MS,
   planItemSpanKind,
   PLANS_OFF_REASON,
-  PLANS_SETTING,
   PLAN_NO_TARGET,
   agentsMerge,
   developerConfirms,
@@ -411,10 +410,9 @@ function checkSidebarFolderName(value: unknown): string | null {
  * them, and once at start (plans that were running before a restart resume). Every change
  * publishes `planChanged`. One scheduling cycle at a time.
  *
- * **Experimental, off by default** (Settings → Experimental → Plans): while off it opens
- * nothing (`plans.db` is not created), listens to nothing, runs no timer and answers every
- * call with 404 `plans-off`; while on with a broken `plans.db`, 503 `plans-unavailable` and
- * still nothing runs. Switching it off pauses the running plans ({@link PLANS_OFF_REASON}).
+ * D132: always on since 2.0 (it graduated from Settings → Experimental). With a broken
+ * `plans.db` every call answers 503 `plans-unavailable` and nothing runs. Plans a 1.x build
+ * paused when the switch went off ({@link PLANS_OFF_REASON}) stay paused until resumed.
  */
 export class PlanService {
   readonly #dataDir: string;
@@ -445,7 +443,7 @@ export class PlanService {
   #unsubscribe: (() => void) | null = null;
   #poll: unknown = null;
   #closed = false;
-  /** Settings → Experimental → Plans as last read. */
+  /** D132: `plans.db` was opened (or tried) at start; Plans has no off-switch any more. */
   #enabled = false;
   /** `plans.db` while Plans is on and the file opened. */
   #db: PlansDb | null = null;
@@ -492,15 +490,14 @@ export class PlanService {
   // ── lifecycle ───────────────────────────────────────────────────────────
 
   /**
-   * Reads the switch (the app calls it when ready) and registers the settings seam; while
-   * Plans is on, opens `plans.db`, starts listening and resumes the running plans.
+   * Registers the seams (the app calls it when ready), opens `plans.db`, starts listening and
+   * resumes the running plans (D132: always, there is no switch any more).
    */
   async start(): Promise<void> {
     if (this.#closed) return;
     // D109: the shared PR watcher raises no "ready to merge" item for a running item's session (Plans has its own Merge step).
     this.#offCi ??= registerCiMergeOwner(this.#store, async (sessionId) => this.#enabled && this.#db !== null && this.#runs.has(sessionId));
     this.#offHooks ??= registerPlanHooks(this.#store, {
-      switchChanged: () => this.switchChanged(),
       sessionContinued: (from, to) => this.sessionContinued(from, to),
       inboxMerge: async (planId, itemId) => {
         try {
@@ -524,7 +521,7 @@ export class PlanService {
       outcomes: () => this.insightOutcomes(),
       itemsOfTodos: (todoIds) => this.itemsOfTodos(todoIds),
     });
-    await this.switchChanged();
+    await this.#open();
   }
 
   /**
@@ -576,27 +573,19 @@ export class PlanService {
   }
 
   /**
-   * The switch was read again (start, or `PUT /api/settings` changed it). On: `plans.db` is
-   * opened (created on first use), the plans whose source session is gone are deleted, the
-   * running ones resume. Off: the scheduler stops, every running plan is paused with
-   * {@link PLANS_OFF_REASON} (their items' sessions finish their turn; nothing new starts) and
-   * the file is closed (it stays on disk; switched on again, the plans show paused).
+   * D132 (Plans graduated in 2.0, `docs/plans-removal.md`): opens `plans.db` (created on first
+   * use) once, at start; the plans whose source session is gone are deleted, the running ones
+   * resume. There is no off-switch any more.
    */
-  switchChanged(): Promise<void> {
-    const next = this.#switching.then(() => this.#applySwitch());
+  #open(): Promise<void> {
+    const next = this.#switching.then(() => this.#openNow());
     this.#switching = next.catch((error: unknown) => this.#onError(error));
     return next;
   }
 
-  async #applySwitch(): Promise<void> {
-    if (this.#closed) return;
-    const on = (await this.#store.settings.get(PLANS_SETTING)) === true;
-    if (on === this.#enabled) return;
-    this.#enabled = on;
-    if (!on) {
-      await this.#deactivate();
-      return;
-    }
+  async #openNow(): Promise<void> {
+    if (this.#closed || this.#enabled) return;
+    this.#enabled = true;
     try {
       this.#db = await PlansDb.open(this.#dataDir, () => this.#nowIso());
       this.#problem = null;
@@ -626,29 +615,6 @@ export class PlanService {
     // D115 follow-ups: a repositories ask sent before a restart (or while Plans was off) is checked when it is due.
     for (const plan of await repo.list()) if (plan.reposAskedAt !== null) this.#armAskCheck(plan.id, this.#askDueIn(plan.reposAskedAt));
     this.kick();
-  }
-
-  async #deactivate(): Promise<void> {
-    this.#stopListening();
-    await this.idle();
-    const db = this.#db;
-    this.#db = null;
-    this.#problem = null;
-    this.#runs.clear();
-    this.#dirty.clear();
-    if (!db) return;
-    const paused: string[] = [];
-    try {
-      for (const plan of await db.plans.list({ states: ['running'] })) {
-        const now = await db.plans.update(plan.id, { state: 'paused', pausedReason: PLANS_OFF_REASON, heldReason: null });
-        // The waiting items' spans become paused-plan; running items keep theirs (their turn finishes).
-        if (now) await this.#syncSpans(db.plans, now);
-        paused.push(plan.id);
-      }
-    } finally {
-      db.close();
-    }
-    for (const planId of paused) this.#bus.publish('planChanged', { planId, state: 'paused' });
   }
 
   /**
@@ -738,9 +704,8 @@ export class PlanService {
     return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size + this.#stoppedTimers.size;
   }
 
-  /** The plans repository. @throws {PlanError} 404 `plans-off` while Plans is off, 503 `plans-unavailable` while `plans.db` is broken. */
+  /** The plans repository. @throws {PlanError} 503 `plans-unavailable` while `plans.db` is broken (or not open yet). */
   #repo(): PlanRepository {
-    if (!this.#enabled) throw new PlanError(404, 'plans-off', 'Plans is off: switch it on in Settings → Experimental');
     if (!this.#db) throw new PlanError(503, 'plans-unavailable', this.#problem ?? 'plans.db is not open');
     return this.#db.plans;
   }

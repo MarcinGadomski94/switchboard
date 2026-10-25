@@ -38,20 +38,11 @@ async function removeAllMembers(page: Page): Promise<void> {
 
 test.describe.configure({ mode: 'serial' });
 
-test('the switch: off = no Team nav or sidebar entry; on = both appear', async ({ page }) => {
+test('always on (D132): the Team nav cell from the start; no sidebar entry while the first team is untouched', async ({ page }) => {
   await openWithHub(page, `${world.baseUrl}/inbox`);
   await expect(page.getByTestId('nav-todos')).toBeVisible();
-  await expect(page.getByTestId('nav-team')).toHaveCount(0);
-  await expect(page.getByTestId('sidebar-team')).toHaveCount(0);
-
-  await page.goto(`${world.baseUrl}/settings/experimental`);
-  await expect(page.locator('[data-row="experimental-team"]')).toContainText('Off: no Team page, no background work, and every team member goes back to the session list.');
-  const toggle = page.locator('[data-row="experimental-team"]').getByTestId('setting-value');
-  await expect(toggle).toHaveText('off');
-  await toggle.click();
-  await expect(toggle).toHaveText('on');
   await expect(page.getByTestId('nav-team')).toBeVisible();
-  await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Team · 0 members');
+  await expect(page.getByTestId('sidebar-team')).toHaveCount(0);
 
   await page.getByTestId('nav-team').click();
   // D100 follow-up 2026-10-14: /team opens the last-used team (the first one here).
@@ -65,6 +56,7 @@ test('the switch: off = no Team nav or sidebar entry; on = both appear', async (
   await page.getByTestId('team-title-input').fill('Acme');
   await page.getByTestId('team-title-input').press('Enter');
   await expect(page.getByTestId('team-title')).toHaveText('Team · Acme');
+  // Renamed, the team is in use: its entry shows above SESSIONS.
   await expect(page.getByTestId('sidebar-team')).toHaveText('⚑Acme · 0 members');
   await page.getByTestId('team-title').click();
   await page.getByTestId('team-title-input').fill('');

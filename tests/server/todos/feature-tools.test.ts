@@ -46,7 +46,8 @@ afterEach(async () => {
 });
 
 const ROUTES: Record<string, 'team' | 'plans' | 'memory'> = { '/agent/v1/team': 'team', '/agent/v1/plans': 'plans', '/agent/v1/memory': 'memory' };
-const OFF_MESSAGES = { team: "this session is not a team member (or Team is off): the Team tools work only in a member's session", plans: 'Plans is off: switch it on in Settings → Experimental', memory: 'Project memory is off: switch it on in Settings → Experimental' };
+// D132: 2.0 answers only the team one (not a member); the plans / memory ones are what a 1.x Switchboard with the switch off answered.
+const OFF_MESSAGES = { team: "this session is not a team member: the Team tools work only in a member's session", plans: 'Plans is off: switch it on in Settings → Experimental', memory: 'Project memory is off: switch it on in Settings → Experimental' };
 
 /** A helper (the todo server + the feature tools) connected to a raw client over the in-memory transport, as `sb-mcp.ts` wires it. */
 async function connect(initial: Partial<Record<'team' | 'plans' | 'memory', Probe>> = {}): Promise<Rig> {
@@ -156,7 +157,7 @@ describe('2026-10-16 · feature tools without a restart (the helper)', () => {
     const answer = await r.call('team_propose_charter', { owns: 'x', produces: 'y', neverDoes: 'z' });
     expect(answer.isError).toBe(true);
     expect(answer.content[0]?.text).toBe(
-      "team_propose_charter is not available in this session: this session is not a team member (or Team is off): the Team tools work only in a member's session. The Team tools appear here by themselves once this session gets them (no restart needed); do not retry until then.",
+      "team_propose_charter is not available in this session: this session is not a team member: the Team tools work only in a member's session. The Team tools appear here by themselves once this session gets them (no restart needed); do not retry until then.",
     );
     // Any other unknown tool is the SDK's own answer.
     expect(r.features.unavailable('todo_list')).toBeNull();

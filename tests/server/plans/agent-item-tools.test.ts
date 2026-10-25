@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { PLANS_SETTING, type Plan, type PlanItem } from '../../../src/core/plans.ts';
+import { type Plan, type PlanItem } from '../../../src/core/plans.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { planAddDependency, planRemoveDependency, planRemoveItem, planSetMode, planUpdateItem, registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -85,7 +85,6 @@ async function setup(): Promise<Rig> {
   const store = await openTempStore(dir);
   const bus = new HubBus();
   const todos = new TodoService({ store, bus });
-  await store.settings.set(PLANS_SETTING, true);
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false });
   const other = await store.sessions.create({ name: 'other', claudeSessionId: 'c-other', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false });
   const sent: Array<{ sessionId: string; text: string }> = [];
@@ -324,26 +323,15 @@ describe('D129 · scope', () => {
     expect([after.items.length, after.edges.length, after.mergeMode, (await itemOf(r, plan.id, first)).hold]).toEqual([2, 1, null, false]);
   });
 
-  it('Plans off: the routes answer plans-off and the tools are not registered', async () => {
+  it('D132: always on: a stored 1.x Plans switch set to off changes nothing, the routes answer and the tools register', async () => {
     const r = await setup();
     const { plan } = await twoItems(r);
+    await r.store.settings.set('experimental.plans', false);
     const api = helperApi(r, r.sourceId);
-    const server = createTodoServer(api);
-    expect(await registerPlanToolsIfOn(server, api)).toBe(true);
-    await server.close();
-    await r.store.settings.set(PLANS_SETTING, false);
-    await r.plans.switchChanged();
-    for (const [method, url] of [
-      ['PUT', `/agent/v1/plans/${plan.id}/items/PROJ-1`],
-      ['DELETE', `/agent/v1/plans/${plan.id}/items/PROJ-1`],
-      ['DELETE', `/agent/v1/plans/${plan.id}/edges/PROJ-1/PROJ-2`],
-      ['PUT', `/agent/v1/plans/${plan.id}/mode`],
-    ] as const) {
-      const answer = await api(method, url, method === 'PUT' ? { hold: true, mergeMode: 'developer' } : undefined);
-      expect([method, url, answer.status, (answer.body as { error?: string }).error]).toEqual([method, url, 404, 'plans-off']);
-    }
-    const tool = await planUpdateItem(api, { plan_id: plan.id, item: 'PROJ-1', hold: true });
-    expect([tool.isError, text(tool)]).toEqual([true, 'Plans is off: switch it on in Settings → Experimental']);
-    expect(await registerPlanToolsIfOn(createTodoServer(api), api)).toBe(false);
+    expect(await registerPlanToolsIfOn(createTodoServer(api), api)).toBe(true);
+    const answer = await api('PUT', `/agent/v1/plans/${plan.id}/items/PROJ-1`, { hold: true });
+    expect(answer.status).toBe(200);
+    const tool = await planUpdateItem(api, { plan_id: plan.id, item: 'PROJ-1', hold: false });
+    expect(tool.isError ?? false).toBe(false);
   });
 });

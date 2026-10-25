@@ -2,7 +2,6 @@ import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MEMORY_SETTING } from '../../../src/core/memory.ts';
 import { migrate } from '../../../src/server/db/migrate.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
@@ -26,14 +25,17 @@ interface Machine {
   readonly root: string;
   readonly store: Store;
   readonly bus: HubBus;
-  readonly memory: MemoryService;
+  memory: MemoryService;
   readonly workspace: string;
   members: TeamMemberRef[];
+  /** The service's options (a restart builds a new one over the same memory.db). */
+  readonly options: ConstructorParameters<typeof MemoryService>[0];
 }
 
-/** The scripted link from the Mac to the PC: `offline` throws like an unreachable peer. */
+/** The scripted link from the Mac to the PC: `offline` throws like an unreachable peer; `legacyOff` answers like a 1.x PC with Project memory switched off. */
 interface Link {
   offline: boolean;
+  legacyOff?: boolean;
   calls: number;
 }
 
@@ -55,16 +57,15 @@ async function machine(label: string, peers?: ConstructorParameters<typeof Memor
   const workspace = path.join(root, 'workspace');
   await mkdir(workspace, { recursive: true });
   const bus = new HubBus();
-  const memory = new MemoryService({ dataDir: path.join(root, 'data'), store, bus, supervisor: { instructionSettingChanged: async () => undefined }, ...(peers ? { peers } : {}), now: () => clock.now, onError: () => undefined });
-  const m: Machine = { root, store, bus, memory, workspace, members: [] };
+  const options: ConstructorParameters<typeof MemoryService>[0] = { dataDir: path.join(root, 'data'), store, bus, supervisor: { instructionSettingChanged: async () => undefined }, ...(peers ? { peers } : {}), now: () => clock.now, onError: () => undefined };
+  const memory = new MemoryService(options);
+  const m: Machine = { root, store, bus, memory, workspace, members: [], options };
   registerTeamHooks(store, {
     charterFor: async () => null,
     roleOf: () => null,
-    switchChanged: async () => undefined,
     memberOf: (sessionId) => m.members.find((member) => member.sessionId === sessionId && member.here) ?? null,
     memberList: () => m.members,
   });
-  await store.settings.set(MEMORY_SETTING, true);
   await memory.start();
   machines.push(m);
   return m;
@@ -83,6 +84,7 @@ async function world() {
       link.calls += 1;
       if (link.offline || !pc || machineId !== 'pc') throw new Error('peer unreachable');
       expect(`${method} ${route}`).toBe('POST /api/memory/import');
+      if (link.legacyOff) return { status: 404, body: { error: 'memory-off', message: 'Project memory is off: switch it on in Settings → Experimental' } };
       try {
         return { status: 200, body: await pc.memory.importMember(body) };
       } catch (error) {
@@ -137,18 +139,13 @@ describe('D107 follow-up · a moved member’s memory is retried until it arrive
     expect(await pc.memory.blockFor({ id: builderThere, kind: 'session', root: pc.workspace })).toContain('TAG-THEN-PUBLISH');
   });
 
-  it('Project memory off on the PC, then switched on there: its memoryChanged retries and the copy succeeds', async () => {
-    const { mac, pc, move } = await world();
-    await pc.store.settings.set(MEMORY_SETTING, false);
-    await pc.memory.switchChanged();
+  it('a 1.x PC with Project memory off (404 memory-off), then switched on there: its memoryChanged retries and the copy succeeds', async () => {
+    const { mac, pc, link, move } = await world();
+    link.legacyOff = true;
     await mac.memory.memberMoved(move);
     expect(mac.memory.pendingCopies()[0]?.lastError).toBe('Project memory is off there');
-    // Switched on there: the PC publishes memoryChanged, which its peer stream carries to the Mac.
-    const published: string[] = [];
-    pc.bus.subscribe((message) => published.push(message.name));
-    await pc.store.settings.set(MEMORY_SETTING, true);
-    await pc.memory.switchChanged();
-    expect(published).toContain('memoryChanged');
+    // Switched on there: its memoryChanged reaches the Mac through the peer stream.
+    link.legacyOff = false;
     memoryPeerChanged(mac.store, 'pc');
     await expect.poll(() => memberTitles(pc)).toEqual(['Builder release steps', 'Builder waiting proposal']);
     await expect.poll(() => mac.memory.pendingCopies()).toEqual([]);
@@ -240,12 +237,10 @@ describe('D107 follow-up · a moved member’s memory is retried until it arrive
     const { mac, link, move } = await world();
     link.offline = true;
     await mac.memory.memberMoved(move);
-    await mac.memory.switchChanged();
-    await mac.store.settings.set(MEMORY_SETTING, false);
-    await mac.memory.switchChanged();
+    await mac.memory.close();
     expect(mac.memory.activeTimers()).toBe(0);
-    await mac.store.settings.set(MEMORY_SETTING, true);
-    await mac.memory.switchChanged();
+    mac.memory = new MemoryService(mac.options);
+    await mac.memory.start();
     expect(mac.memory.pendingCopies()).toHaveLength(1);
     expect(mac.memory.activeTimers()).toBe(1);
   });

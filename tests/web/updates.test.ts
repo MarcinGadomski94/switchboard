@@ -108,8 +108,8 @@ describe('update copy', () => {
 
 describe('Settings → Updates', () => {
   it('is a section after Machines', () => {
-    // D73: Devices sits between Machines and Updates; D85: Tutorial after Updates; D100: Experimental after Tutorial; D84: Clean-up comes last.
-    expect(SETTINGS_SECTIONS.map((s) => s.key).slice(-6)).toEqual(['machines', 'devices', 'updates', 'tutorial', 'experimental', 'cleanup']);
+    // D73: Devices sits between Machines and Updates; D85: Tutorial after Updates; D132: Jira (it replaced Experimental) after Tutorial; D84: Clean-up comes last.
+    expect(SETTINGS_SECTIONS.map((s) => s.key).slice(-6)).toEqual(['machines', 'devices', 'updates', 'tutorial', 'jira', 'cleanup']);
     expect(resolveSection('updates')).toBe('updates');
   });
 

@@ -88,22 +88,6 @@ export interface KnownSettings {
    * examples until saved).
    */
   readonly 'insights.prices': PriceTable;
-  /**
-   * Team (D100) hook: Settings → Experimental → **Team** (`docs/team.md`). Off by default; while
-   * off Team opens nothing, runs nothing and hides nothing. Editable, default `false`.
-   */
-  readonly 'experimental.team': boolean;
-  /**
-   * Plans (D99) hook: Settings → Experimental → **Plans** (`docs/plans.md`). Off by default; while
-   * off Plans opens nothing (no `plans.db`), runs no scheduler and gives agents no plan tools. Editable, default `false`.
-   */
-  readonly 'experimental.plans': boolean;
-  /**
-   * Project memory (D107) hook: Settings → Experimental → **Project memory** (`docs/memory.md`). Off by
-   * default; while off nothing opens (no `memory.db`), no agent gets the memory tools and no session
-   * gets a memory block. Editable, default `false`.
-   */
-  readonly 'experimental.memory': boolean;
   /** D109: send a red check's failure (with its log tail) to the PR's session (`docs/ci.md`). Editable, default `true`. */
   readonly 'ci.sendFailures': boolean;
   /** D109: how often a PR whose checks run is read again, in minutes (1–30). Editable, default 2. */
@@ -231,7 +215,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'experimental.team', 'experimental.plans', 'experimental.memory', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -261,12 +245,6 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.freshOffer': true,
   'sessions.freshOfferPct': FRESH_OFFER_DEFAULT_PCT,
   'insights.prices': EXAMPLE_PRICES,
-  // Team (D100) hook: off by default.
-  'experimental.team': false,
-  // Plans (D99) hook: off by default.
-  'experimental.plans': false,
-  // Project memory (D107) hook: off by default.
-  'experimental.memory': false,
   // D109: the CI / PR feedback loop (docs/ci.md).
   'ci.sendFailures': true,
   'ci.pendingPollMinutes': 2,
@@ -322,10 +300,6 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.freshOffer': bool('sessions.freshOffer', SETTING_DEFAULTS['sessions.freshOffer']),
     'sessions.freshOfferPct': num('sessions.freshOfferPct', SETTING_DEFAULTS['sessions.freshOfferPct']),
     'insights.prices': readPriceTable(value['insights.prices']),
-    'experimental.team': bool('experimental.team', SETTING_DEFAULTS['experimental.team']),
-    'experimental.plans': bool('experimental.plans', SETTING_DEFAULTS['experimental.plans']),
-    // Project memory (D107) hook.
-    'experimental.memory': bool('experimental.memory', SETTING_DEFAULTS['experimental.memory']),
     'ci.sendFailures': bool('ci.sendFailures', SETTING_DEFAULTS['ci.sendFailures']),
     'ci.pendingPollMinutes': num('ci.pendingPollMinutes', SETTING_DEFAULTS['ci.pendingPollMinutes']),
     'ci.idlePollMinutes': num('ci.idlePollMinutes', SETTING_DEFAULTS['ci.idlePollMinutes']),

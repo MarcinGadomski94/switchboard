@@ -11,7 +11,7 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
 import type { SidebarLayout } from '../../../src/core/sidebar-layout.ts';
-import { PLANS_SETTING, type Plan, type PlanItem } from '../../../src/core/plans.ts';
+import { type Plan, type PlanItem } from '../../../src/core/plans.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { FolderService } from '../../../src/server/folders/service.ts';
@@ -83,7 +83,6 @@ function makePlans(r: Omit<Rig, 'plans'>): PlanService {
 
 async function setup(): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
-  await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
   const repoPath = await g.makeRepo(path.join(s.root, 'acme'));
   const worktrees = g.manager({ sessions: s.supervisor });

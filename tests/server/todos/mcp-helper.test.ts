@@ -1,3 +1,6 @@
+import { PLAN_TOOLS } from '../../../src/core/plans.ts';
+import { PLAN_PROPOSE_TOOL } from '../../../src/core/plans-jira.ts';
+import { PLAN_JIRA_CONTEXT_TOOL } from '../../../src/core/plans-jira-context.ts';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -342,7 +345,10 @@ describe.each(['source', 'bundle'] as const)('the real helper (%s) over stdio ag
     ]);
     expect(answers.map((m) => m['id'])).toEqual([1, 4, 2, 3]);
     expect(answers[0]?.['result']).toMatchObject({ protocolVersion: '2025-06-18', serverInfo: { name: 'switchboard' }, instructions: AGENT_MCP_INSTRUCTIONS });
-    expect(answers[1]?.['result']).toEqual({ tools: LISTED_TOOLS });
+    // D132: Plans is always on, so a real Switchboard also gives this session the plan tools (after the base set; no folder: no memory tools, not a member: no team tools).
+    const listed = (answers[1]?.['result'] as { tools: Array<{ name: string }> }).tools;
+    expect(listed.slice(0, LISTED_TOOLS.length)).toEqual(LISTED_TOOLS);
+    expect(listed.slice(LISTED_TOOLS.length).map((tool) => tool.name)).toEqual([...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name, PLAN_JIRA_CONTEXT_TOOL.name]);
     const listText = ((answers[3]?.['result'] as { content: Array<{ text: string }> }).content[0] as { text: string }).text;
     expect(listText).toMatch(/^Open \(1\):\n\[[0-9a-f]{12}\] ☐ HIGH ~20m Check the migration · has description, plan\n/);
     expect((await store.todos.list(a)).map((t) => [t.title, t.description, t.plan, t.priority, t.estimateMinutes, t.addedBy])).toEqual([['Check the migration', 'Make sure 0027 keeps the rows.', 'Run the migration test.', 'high', 20, 'agent']]);

@@ -216,7 +216,6 @@ describe('D110: the folder listing of the target', () => {
 
 describe('D110: a Team member moves to a chosen folder', () => {
   it('checks and moves the member with the chosen target folder; the member runs on the mac in that checkout', async () => {
-    for (const node of [world.a, world.b]) expect((await node.call('PUT', '/api/settings', { 'experimental.team': true })).status).toBe(200);
     // The pc's alpha is back on a clean main for this one.
     await world.git(world.paths.a.alpha, 'checkout', '-q', 'main');
     const r6 = path.join(code, 'r6');

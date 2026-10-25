@@ -12,9 +12,6 @@
 
 import type { TeamAccessEntryView } from './team-access.ts';
 
-/** The Settings → Experimental switch (a row of the main `settings` table; default off). */
-export const TEAM_SETTING = 'experimental.team';
-
 /**
  * The team every install has, the first team. D100 follow-up 2026-10-14 (multiple
  * teams): it keeps this id and its data; the routes without a team id act on it

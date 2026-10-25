@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MEMORY_BLOCK_END, MEMORY_BLOCK_START, MEMORY_SETTING, type MemoryEntry } from '../../../src/core/memory.ts';
+import { MEMORY_BLOCK_END, MEMORY_BLOCK_START, type MemoryEntry } from '../../../src/core/memory.ts';
 import { DEFAULT_STANDING_INSTRUCTION } from '../../../src/core/settings.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { MemoryService } from '../../../src/server/memory/service.ts';
@@ -31,10 +31,9 @@ afterEach(async () => {
   rig = undefined;
 });
 
-async function setup(options: { readonly on?: boolean; readonly standingInstruction?: boolean; readonly now?: () => Date } = {}): Promise<Rig> {
+async function setup(options: { readonly standingInstruction?: boolean; readonly now?: () => Date } = {}): Promise<Rig> {
   const world = await makeSupervisorWorld({ standingInstruction: options.standingInstruction ?? false });
   const memory = new MemoryService({ dataDir: world.root, store: world.store, bus: new HubBus(), supervisor: world.supervisor, ...(options.now ? { now: options.now } : {}) });
-  if (options.on !== false) await world.store.settings.set(MEMORY_SETTING, true);
   await memory.start();
   rig = { world, memory };
   return rig;
@@ -176,13 +175,14 @@ describe('D107 · the review gate at the spawn (Claude Code)', () => {
     await expect(r.memory.propose(s.id, { title: 'Acme deploy shortcut!', text: 'twin' })).rejects.toMatchObject({ status: 409, code: 'duplicate' });
   });
 
-  it('off: approved entries are not injected (and the sessions are given back their plain instruction)', async () => {
+  it('D132: always on, but no approved entries means no block: a pending proposal injects nothing', async () => {
     const r = await setup();
-    await r.memory.add({ scope: r.world.workspace, title: 'Acme build', text: 'npm ci' });
-    await r.world.store.settings.set(MEMORY_SETTING, false);
-    await r.memory.switchChanged();
-    await startDone(r, 'off-one');
-    expect((await claudeSpawns(r.world)).map((spawn) => instructionOf(spawn.argv))).toEqual([undefined]);
+    // A stored 1.x switch (on or off) changes nothing.
+    await r.world.store.settings.set('experimental.memory', false);
+    const first = await startDone(r, 'plain-one');
+    await r.memory.propose(first.id, { title: 'Acme pending fact', text: 'PENDING-ONLY' });
+    await startDone(r, 'plain-two');
+    expect((await claudeSpawns(r.world)).map((spawn) => instructionOf(spawn.argv))).toEqual([undefined, undefined]);
   });
 });
 

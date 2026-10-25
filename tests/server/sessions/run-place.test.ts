@@ -138,7 +138,6 @@ describe('runs go to the source\'s sidebar folder (D99 / D76 follow-up 2026-10-1
     const ops = await folderOf('Ops');
     await place({ sessionId: other, place: 'folder', folderId: ops });
     await place({ sessionId: source, place: 'folder', folderId: ops, index: 0 });
-    expect((await call('PUT', '/api/settings', { 'experimental.team': true })).statusCode).toBe(200);
     const adopted = await call('POST', '/api/team/members', { sessionId: source, name: 'Tracker' });
     expect(adopted.statusCode, adopted.body).toBe(201);
     // The member's session left the layout (e.g. the layout moved on elsewhere): its original place still counts.
