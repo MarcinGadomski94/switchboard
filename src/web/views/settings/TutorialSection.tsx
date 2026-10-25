@@ -1,4 +1,4 @@
-import { MAIN_TOUR, MAIN_TOUR_ID } from '../../../core/tutorial.ts';
+import { MAIN_TOUR, MAIN_TOUR_ID, isV2Tour } from '../../../core/tutorial.ts';
 import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { startTours, tourStatusText } from '../../tutorial/tour.ts';
@@ -18,7 +18,8 @@ export function TutorialSection() {
   const state = useApi(api.tutorial);
   // Plans (D99) hook: the Plans tour is listed only while Plans is on (docs/plans-removal.md).
   const plans = usePlans();
-  const whatsNew = withoutPlansTour(state.data?.whatsNew ?? [], plans.on);
+  // D131: the v2 theme's tours are listed and replayed in v2 (src/web/v2/tour/), not here.
+  const whatsNew = withoutPlansTour(state.data?.whatsNew ?? [], plans.on).filter((entry) => !isV2Tour(entry.id));
   return (
     <>
       <SectionTitle>Tutorial</SectionTitle>

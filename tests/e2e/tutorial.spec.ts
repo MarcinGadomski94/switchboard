@@ -4,7 +4,8 @@ import { type APIRequestContext, type Locator, type Page, expect, request as pla
 import { MAIN_TOUR, type TutorialState, WHATS_NEW as ALL_WHATS_NEW } from '../../src/core/tutorial.ts';
 
 /** Plans (D99) hook: its tours exist only while Plans is available (D132: always on, so on these test servers too; docs/plans-removal.md). */
-const WHATS_NEW = ALL_WHATS_NEW;
+/** D131: the classic UI runs and lists only the classic tours (the v2 ones run in the v2 theme: tests/e2e/v2-tour.spec.ts). */
+const WHATS_NEW = ALL_WHATS_NEW.filter((feature) => feature.ui !== 'v2');
 import { loadMigrations } from '../../src/server/db/migrate.ts';
 import { openTempStore } from '../helpers/store.ts';
 import { seedFolder } from '../helpers/folders.ts';
@@ -276,7 +277,9 @@ test.describe('an install from before the tutorial', () => {
     const status = Object.fromEntries(after.whatsNew.map((entry) => [entry.id, entry.status]));
     expect(status['run-in-new-session']).toBe('completed');
     // D132: Plans is always on, so its tours were offered (and skipped) like every other.
-    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session').every(([, value]) => value === 'skipped')).toBe(true);
+    expect(Object.entries(status).filter(([id]) => id !== 'run-in-new-session' && WHATS_NEW.some((f) => f.id === id)).every(([, value]) => value === 'skipped')).toBe(true);
+    // D131: the v2 welcome waits for the first v2 load.
+    expect(status['welcome-v2']).toBe('pending');
     expect(after.main.status).toBeNull();
     await page.reload();
     await expect(page.getByTestId('sidebar')).toBeVisible();

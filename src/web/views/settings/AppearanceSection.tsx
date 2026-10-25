@@ -28,7 +28,7 @@ export function AppearanceSection() {
   return (
     <>
       <SectionTitle>Appearance</SectionTitle>
-      <Row id="ui-theme" label="Theme" description="The look of Switchboard in this browser. v2 is the new design; Classic is this one. The switch is immediate and kept in this browser.">
+      <Row id="ui-theme" tour="theme-switch" label="Theme" description="The look of Switchboard in this browser. v2 is the new design; Classic is this one. The switch is immediate and kept in this browser.">
         <div className="sb-set-choice" role="group" aria-label="Theme" data-testid="theme-switch">
           {(['v2', 'classic'] as const).map((option) => (
             <button key={option} type="button" className="sb-set-action" data-testid={`theme-${option}`} aria-pressed={theme === option} onClick={() => themeStore.choose(option)}>

@@ -1,7 +1,7 @@
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { openSessions } from '../../core/session-close.ts';
-import { type TourStep, pendingTours } from '../../core/tutorial.ts';
+import { type TourStep, pendingTours as allPendingTours, toursForUi } from '../../core/tutorial.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { PLANS_TOUR_IDS, plansOn, withoutPlansTour } from '../plans/store.ts';
 import { api } from '../api/client.ts';
@@ -32,6 +32,11 @@ export function TourHost() {
 const WIZARD_WAIT_MS = 4_000;
 /** How long a step looks for its anchor before it shows its centred card (or is skipped). */
 const ANCHOR_WAIT_MS = 1_800;
+
+/** D131 · the classic UI opens only its own tours (the v2 tours wait for the v2 theme: `src/web/v2/tour/`). */
+function pendingTours(state: Parameters<typeof allPendingTours>[0]): string[] {
+  return toursForUi(allPendingTours(state), 'classic');
+}
 
 function setupSkippedInThisTab(): boolean {
   try {
