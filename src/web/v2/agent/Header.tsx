@@ -135,8 +135,17 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
         { id: 'helpers', label: AGENT_TAB_LABELS.helpers, icon: 'crew', ...(counts.helpers ? { count: counts.helpers } : {}) },
       ];
   const status = session ? agentStatusOf(session) : null;
+  const head = useRef<HTMLDivElement | null>(null);
+  // A narrow tab row scrolls sideways: keep the open tab in sight (a phone opening /timeline or /helpers).
+  useEffect(() => {
+    const strip = head.current?.querySelector<HTMLElement>('.v2-tabs');
+    const on = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!strip || !on || strip.scrollWidth <= strip.clientWidth) return;
+    const left = on.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+    if (left < strip.scrollLeft || left + on.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = Math.max(0, left - 12);
+  }, [tab, phone, tabs.length, counts.changes, counts.results, counts.helpers]);
   return (
-    <div className="v2-ag-head" data-testid="v2-agent-header">
+    <div className="v2-ag-head" data-testid="v2-agent-header" ref={head}>
       <div className="v2-row v2-ag-head-top">
         {phone ? (
           <V2Link to="/agents" className="v2-icon-btn" data-size="l" aria-label={AGENT_WORDS.back} data-testid="v2-agent-back">

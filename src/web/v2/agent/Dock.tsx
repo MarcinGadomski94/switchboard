@@ -54,6 +54,8 @@ export interface DockProps {
   readonly onSent: () => void;
   /** `peek` / `phone`: a slimmer dock (no kbd hints, no todo strip on the peek). */
   readonly variant?: 'full' | 'peek' | 'phone';
+  /** The short placeholder ("Send a follow-up") whatever the variant (the peek on a phone). */
+  readonly short?: boolean;
 }
 
 /**
@@ -63,7 +65,7 @@ export interface DockProps {
  * sending and stopping are the classic composer's (`ChatTab.tsx`: D114 instant
  * queue, D50 Stop, D88 drafts, D57 attachments, D103 held messages).
  */
-export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'full' }: DockProps) {
+export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'full', short = false }: DockProps) {
   const { sessionId, session, activity, blocked, conversation } = data;
   const toast = useToast();
   const attachments = useAttachmentDraft(blocked === null ? (body) => api.uploadAttachment(sessionId, body) : undefined);
@@ -304,7 +306,7 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
     conversation,
   });
   const working = session !== null && turnBusy(session);
-  const placeholder = composerPlaceholder({ conversation, working: working && !stopped, blocked, short: variant === 'phone' });
+  const placeholder = composerPlaceholder({ conversation, working: working && !stopped, blocked, short: short || variant === 'phone' });
   const full = variant === 'full';
 
   return (

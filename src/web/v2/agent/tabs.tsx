@@ -366,7 +366,7 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
           <Button size="sm" variant="primary" icon={playing ? 'pause' : 'play'} data-testid="v2-agent-timeline-play" aria-pressed={playing} title={reduced ? AGENT_WORDS.playReducedHint : undefined} onClick={togglePlay}>
             {playing ? AGENT_WORDS.pausePlayback : reduced ? AGENT_WORDS.nextEvent : AGENT_WORDS.play}
           </Button>
-          <IconButton icon="arrow-r" label={AGENT_WORDS.nextEvent} data-testid="v2-agent-timeline-next" onClick={() => seek(nextMoment(lanes, play))} />
+          <IconButton icon="chev" label={AGENT_WORDS.nextEvent} data-testid="v2-agent-timeline-next" onClick={() => seek(nextMoment(lanes, play))} />
           <span className="v2-ag-tl-now" data-testid="v2-agent-timeline-now">
             {model.now}
           </span>

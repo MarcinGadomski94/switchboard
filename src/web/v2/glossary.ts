@@ -1626,7 +1626,7 @@ export const AGENT_WORDS = {
   resumeRunFailed: 'Could not send the message.',
   project: 'Project',
   projectStep: (step: string): string => `Step: ${step}`,
-  projectSource: 'Its plan agent',
+  projectSource: 'Project agent',
   openProject: 'Open project',
   whatAgentsKnow: 'What agents know',
   notesCount: (n: number): string => (n === 1 ? '1 note for this folder' : `${n} notes for this folder`),
