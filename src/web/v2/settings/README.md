@@ -2,6 +2,13 @@
 
 **Owner: lane R.** Lane F (Foundation) made this stub and wired it into the router (`../shell/Outlet.tsx`); the page's exports in `index.tsx` are what the router mounts, so keep their names and props.
 
+## Built (lane R)
+- `index.tsx`: the page (desktop list of sections, phone drill-down), `ToolPage`, `SharePage`.
+- `UsageSection.tsx`, `ComputersSection.tsx`, `PhonesSection.tsx`, `sections.tsx` (Rules, Appearance, `useKnownSettings`), `AdvancedSection.tsx`.
+- `ClassicFrame.tsx`: a classic section inside v2 (contexts, re-pointed tokens, modals, toasts).
+- Pure: `settings-map.ts` (the Advanced pages, where every classic section lives), `settings-model.ts` (account cards, switch at), `density.ts` (the per-browser density lane S reads).
+- Tests: `tests/web/v2-settings.test.ts`, `tests/e2e/v2-settings.spec.ts`.
+
 ## Scope
 Usage & accounts, Computers, Phones, Rules for every agent, Appearance (theme v2 / Classic — lane F built `ThemeRow` and `SchemeRow` — density, light / dark), Advanced (a page per classic section: `/settings/advanced/<classic key>`; `code-projects` and `connections` are the classic Solutions and MCP pages).
 
