@@ -21,6 +21,14 @@
   margin: 4px 0 0;
 }
 
+/* The view switch, Folders, the options and + New stay one group, so they wrap together (not + New alone). */
+.sb2 .v2-ag-ph-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .sb2 .v2-ag2 {
   display: grid;
   grid-template-columns: 288px minmax(0, 1fr);
@@ -328,6 +336,8 @@
 }
 
 .sb2 .v2-crumb-btn {
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: none;
   color: var(--v2-muted);
@@ -402,6 +412,53 @@
   height: 22px;
   white-space: nowrap;
   flex: none;
+}
+
+/*
+ * Lane X · in a row the name and the kind tag ("Step · PROJ-123") share the line: both shrink
+ * and truncate with an ellipsis, so a narrow row (a tablet with the folder tree open, a phone)
+ * never squeezes the name to one letter or pushes the tag over the status badge.
+ */
+.sb2 .v2-ag-list .v2-ctop > b,
+.sb2 .v2-p-list .v2-ctop > b {
+  flex: 1 1 auto;
+  min-width: 4em;
+}
+
+.sb2 .v2-ctop > .v2-tag {
+  flex: 0 1 auto;
+  min-width: min(4.5em, 40%);
+  max-width: 60%;
+  overflow: hidden;
+}
+
+/* The time never breaks over two lines. */
+.sb2 .v2-ag-list .v2-ctime,
+.sb2 .v2-p-list .v2-ctime {
+  flex: none;
+  white-space: nowrap;
+}
+
+/*
+ * A narrow list (a tablet with the folder tree open): the row keeps the avatar, the name,
+ * the activity, the status and ⋯; the drag grip and the kind tag step aside (the row's
+ * ⋯ → Move to folder and the board still say both).
+ */
+.sb2 .v2-ag-list {
+  container: v2-aglist / inline-size;
+}
+
+@container v2-aglist (max-width: 520px) {
+  .sb2 .v2-ag-list .v2-grip,
+  .sb2 .v2-ag-list .v2-ctop > .v2-tag {
+    display: none;
+  }
+}
+
+.sb2 .v2-tag-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sb2 .v2-cgroup {
@@ -670,5 +727,13 @@
   .sb2 .v2-fn-tog svg,
   .sb2 .v2-p-grp svg.v2-chev {
     transition: none;
+  }
+}
+
+/* Lane X polish · touch: Closed's breadcrumb link and search box are 44 px targets. */
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-crumb-btn,
+  .sb2 .v2-closed-search .v2-field {
+    min-height: var(--v2-touch);
   }
 }

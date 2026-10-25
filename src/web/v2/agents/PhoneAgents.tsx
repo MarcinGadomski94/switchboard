@@ -33,7 +33,13 @@ function Row({ agent }: { readonly agent: AgentEntry }) {
       session={agent.session}
       activity={page.activityOf(agent.id)}
       extras={{ ask: agent.asks[0]?.title ?? null, askStatus: agent.asks.length ? agent.status : undefined, unread: agent.unread, draft: agent.draft !== null, kindLabel: '' }}
-      tags={label ? <span className="v2-tag">{label}</span> : null}
+      tags={
+        label ? (
+          <span className="v2-tag" title={label}>
+            <span className="v2-tag-t">{label}</span>
+          </span>
+        ) : null
+      }
       onOpen={() => page.openAgent(agent)}
     />
   );
