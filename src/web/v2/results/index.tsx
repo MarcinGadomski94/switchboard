@@ -307,18 +307,21 @@ function ResultCard({ item, open, checked, onCheck, onOpen }: { readonly item: A
       aria-label={item.title}
       onClick={onOpen}
     >
-      <input
-        type="checkbox"
-        className="v2-res-sel"
-        data-testid="v2-result-select"
-        aria-label={W.select(item.title)}
-        checked={checked}
-        disabled={blocked !== null}
-        title={blocked ?? undefined}
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-        onChange={(event) => onCheck(event.target.checked)}
-      />
+      {/* The label is the 44 px tap area around the box on touch screens; a tap on it never opens the result. */}
+      <label className="v2-res-selhit" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="v2-res-sel"
+          data-testid="v2-result-select"
+          aria-label={W.select(item.title)}
+          checked={checked}
+          disabled={blocked !== null}
+          title={blocked ?? undefined}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onChange={(event) => onCheck(event.target.checked)}
+        />
+      </label>
       <div className="v2-res-thumb" data-kind={item.kind} aria-hidden="true">
         {item.kind === 'image' && item.sessionId ? <img src={artifactRawUrl(item.sessionId, item.id, item.versions)} alt="" loading="lazy" /> : <Thumb kind={item.kind} />}
       </div>
