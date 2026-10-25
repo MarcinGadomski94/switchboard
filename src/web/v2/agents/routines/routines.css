@@ -37,6 +37,9 @@
   font-weight: 650;
   margin: 0;
   min-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sb2 .v2-routines-watched {
@@ -108,8 +111,9 @@
 }
 
 .sb2 .v2-routines-htime {
-  width: 70px;
+  min-width: 70px;
   flex: none;
+  white-space: nowrap;
   color: var(--v2-muted);
 }
 
@@ -177,9 +181,5 @@
   .sb2 .v2-routines-actions .v2-btn {
     flex: 1 1 calc(50% - 6px);
     min-height: var(--v2-touch);
-  }
-
-  .sb2 .v2-routines-htime {
-    width: 70px;
   }
 }

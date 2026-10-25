@@ -28,6 +28,7 @@
 
 .sb2 .v2-tasks-quick .v2-field {
   width: 100%;
+  text-overflow: ellipsis;
 }
 
 .sb2 .v2-tasks-note {
@@ -379,5 +380,22 @@
   .sb2 .v2-tasks-card,
   .sb2 .v2-tasks-card-title {
     transition: none;
+  }
+}
+
+/* Lane X polish · touch: the card's agent link keeps its small look but gets a 44 px tall hit area. */
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-tasks-agent {
+    position: relative;
+  }
+
+  .sb2 .v2-tasks-agent::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--v2-touch);
+    transform: translateY(-50%);
   }
 }

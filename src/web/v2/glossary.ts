@@ -1249,7 +1249,7 @@ export const ROUTINES_WORDS = {
   cliTag: 'Watched',
   belongsTo: 'Agent',
   lastRunAgent: 'Last run',
-  terminal: 'Terminal session',
+  terminal: 'Terminal',
   agentClosed: 'Its agent is closed.',
   running: 'A run is in progress.',
   waitForRun: 'Wait for the current run to finish.',
