@@ -1,11 +1,9 @@
-import { Placeholder } from '../shared/Placeholder.tsx';
-
-/** D131 · Crews (`/crews`), lane P: every crew, in order. */
-export function CrewsPage() {
-  return <Placeholder area="crews" title="Crews" sub="Long-lived teammates with job descriptions, rhythms, budgets and hand-offs." lane="P" />;
-}
-
-/** D131 · one crew (`/crews/:id`, `?member=&tab=` opens a teammate's tab), lane P. */
-export function CrewPage({ id }: { readonly id: string }) {
-  return <Placeholder area="crew" title="Crew" sub={`Crew ${id}`} lane="P" />;
-}
+/**
+ * D131 · lane P · Crews (`/crews`, `/crews/:id`, `?member=<id>&tab=access` opens a teammate's
+ * Access tab): the router mounts these two pages (`../shell/Outlet.tsx`); keep their names and
+ * props. A crew is a team (D100), a teammate one of its members; see `README.md`.
+ * `NewTeammateDialog` / `NewCrewDialog` are exported for the + New sheet (lane R).
+ */
+export { CrewsPage } from './CrewsPage.tsx';
+export { CrewPage } from './CrewPage.tsx';
+export { NewCrewDialog, NewTeammateDialog } from './dialogs.tsx';
