@@ -1638,6 +1638,16 @@
   gap: 8px;
 }
 
+.sb2 .v2-mv-repo-head b {
+  flex: 1 1 auto;
+  min-width: 6em;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-mv-cols .v2-field-wrap {
+  width: 100%;
+}
+
 .sb2 .v2-mv-word {
   font-size: var(--v2-fs-s);
   font-weight: 600;
@@ -1728,4 +1738,147 @@
   .sb2 .v2-mv-cols {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Lane X · agent: the side panel's project line, notes line and agents overview ── */
+.sb2 .v2-ag-xline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-ag-xlink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--v2-touch);
+  padding: 6px 10px;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r);
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  text-decoration: none;
+}
+
+.sb2 .v2-ag-xlink:hover {
+  background: var(--v2-surface-2);
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-ag-xlink:focus-visible,
+.sb2 .v2-ag-ov-open:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-ag-xtext {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--v2-fs-sm);
+}
+
+.sb2 .v2-ag-xtext > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-xtext small {
+  font-size: var(--v2-fs-s);
+}
+
+.sb2 .v2-ag-xaction {
+  font-size: var(--v2-fs-s);
+  color: var(--v2-accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-ov {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--v2-fs-s);
+}
+
+.sb2 .v2-ag-ov :is(th, td) {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--v2-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.sb2 .v2-ag-ov-name,
+.sb2 .v2-ag-ov-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-ov-name {
+  font-size: var(--v2-fs-sm);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb2 .v2-ag-ov-sub {
+  margin-top: 2px;
+}
+
+/* A live status ("Bash: npm test 0:42") wraps instead of being cut. */
+.sb2 .v2-ag-ov td:last-child .v2-chip {
+  white-space: normal;
+  height: auto;
+  min-height: 22px;
+}
+
+.sb2 .v2-ag-ov th {
+  font-size: var(--v2-fs-xs);
+  font-weight: 600;
+  color: var(--v2-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sb2 .v2-ag-ov tr[data-depth='1'] td:first-child {
+  padding-left: 14px;
+}
+
+.sb2 .v2-ag-ov .v2-chip {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.sb2 .v2-ag-ov-open {
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-ag-ov-actions td {
+  white-space: normal;
+}
+
+.sb2 .v2-ag-ov-rep {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-ag-ov-printed > summary {
+  cursor: pointer;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  font-size: var(--v2-fs-s);
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-ag-ov-printed pre {
+  overflow: auto;
+  white-space: pre;
 }

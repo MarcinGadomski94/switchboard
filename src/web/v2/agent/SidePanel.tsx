@@ -15,6 +15,7 @@ import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
 import { Button, Icon, Segmented, Select, StatusBadge, useToast } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
+import { NotesLine, OverviewGroup, ProjectLine } from './SideExtras.tsx';
 import { depthOptions, exactModel, howSummary, speedModels, speedOf } from './how-model.ts';
 import type { AgentData } from './useAgent.ts';
 import { browserStorage } from './useAgent.ts';
@@ -24,11 +25,11 @@ function errorText(caught: unknown): string {
 }
 
 /** The panel's groups. */
-type GroupKey = 'mem' | 'how' | 'helpers' | 'bg' | 'tasks' | 'routines' | 'handoff' | 'adv';
+export type GroupKey = 'mem' | 'how' | 'helpers' | 'overview' | 'bg' | 'tasks' | 'routines' | 'handoff' | 'adv';
 
 const OPEN_KEY = 'switchboard.v2.agentPanelGroups';
 /** The prototype's defaults: Working memory and Helpers open. */
-const DEFAULT_OPEN: Readonly<Record<GroupKey, boolean>> = { mem: true, how: true, helpers: true, bg: false, tasks: false, routines: true, handoff: false, adv: false };
+const DEFAULT_OPEN: Readonly<Record<GroupKey, boolean>> = { mem: true, how: true, helpers: true, overview: false, bg: false, tasks: false, routines: true, handoff: false, adv: false };
 
 function loadOpen(): Record<GroupKey, boolean> {
   try {
@@ -40,7 +41,7 @@ function loadOpen(): Record<GroupKey, boolean> {
 }
 
 /** One collapsible group (`details.grp`), its open state remembered per browser. */
-function Group({ id, title, icon, summary, open, onToggle, children }: { readonly id: GroupKey; readonly title: string; readonly icon: string; readonly summary?: ReactNode; readonly open: boolean; readonly onToggle: (id: GroupKey, open: boolean) => void; readonly children: ReactNode }) {
+export function Group({ id, title, icon, summary, open, onToggle, children }: { readonly id: GroupKey; readonly title: string; readonly icon: string; readonly summary?: ReactNode; readonly open: boolean; readonly onToggle: (id: GroupKey, open: boolean) => void; readonly children: ReactNode }) {
   return (
     <details className="v2-ag-grp" open={open} data-group={id} data-testid={`v2-agent-group-${id}`} onToggle={(event) => onToggle(id, (event.currentTarget as HTMLDetailsElement).open)}>
       <summary>
@@ -97,6 +98,9 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
           </Button>
         </div>
       ) : null}
+      {/* Lane X · D99 / D107: the project it belongs to, and what agents know for its folder. */}
+      {data.conversation ? null : <ProjectLine sessionId={data.sessionId} />}
+      {data.conversation ? null : <NotesLine sessionId={data.sessionId} folderPath={session.folderPath} remote={Boolean(session.machine)} />}
       {data.conversation ? null : (
         <Group id="mem" title={AGENT_WORDS.workingMemory} icon="cpu" summary={pct === null ? AGENT_WORDS.memoryUnknown : AGENT_WORDS.memoryUsed(Math.round(pct))} open={open.mem} onToggle={toggle}>
           <MemoryGroup data={data} />
@@ -124,6 +128,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
           )}
         </Group>
       )}
+      {data.conversation ? null : <OverviewGroup data={data} helperHref={helperHref} open={open.overview} onToggle={toggle} />}
       {data.conversation ? null : (
         <Group id="bg" title={AGENT_WORDS.backgroundApps} icon="cpu" open={open.bg} onToggle={toggle}>
           <BackgroundGroup sessionId={data.sessionId} blocked={data.blocked} />

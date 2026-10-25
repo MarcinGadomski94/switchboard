@@ -348,6 +348,54 @@ test('phone (390 × 844): the full-screen chat, the bottom composer sends, Detai
   await settled(page, id);
 });
 
+test('lane X · the side panel: the agents overview with a stopped run\'s Resume run, the project link, what agents know', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-overview', 'Fan out. [fake:workflow 60 1x2]');
+  // A project made from this agent (D99): the panel links to it.
+  const plan = await page.evaluate(
+    async (sessionId) => {
+      const response = await fetch('/api/plans', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceSessionId: sessionId, title: 'Acme checkout', targetBranch: null, baseBranch: 'main' }) });
+      return { status: response.status, body: (await response.json()) as { id?: string } };
+    },
+    id,
+  );
+  expect(plan.status, JSON.stringify(plan.body)).toBe(201);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  const side = page.getByTestId('v2-agent-side');
+
+  // The overview: the main agent, the run's row and its two agents under it.
+  const group = side.getByTestId('v2-agent-group-overview');
+  await expect(group.locator('summary')).toContainText('Agents overview');
+  await group.locator('summary').click();
+  const runRow = group.getByTestId('v2-agent-overview-workflow');
+  await expect(runRow).toHaveCount(1, { timeout: 15_000 });
+  await expect(group.locator('[data-testid="v2-agent-overview-row"][data-depth="1"]')).toHaveCount(2);
+  await expect(group.locator('[data-testid="v2-agent-overview-row"][data-depth="0"]')).toHaveCount(1);
+
+  // Paused mid-run, the run stops and offers Resume run, which asks the agent.
+  const paused = await page.evaluate(async (sessionId) => (await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/pause`, { method: 'POST' })).status, id);
+  expect(paused).toBe(200);
+  await expect(runRow).toContainText('stopped · 0/2 done', { timeout: 15_000 });
+  const resume = group.getByTestId('v2-agent-resume-run');
+  await expect(resume).toBeEnabled();
+  await resume.click();
+  await expect(group.getByTestId('v2-agent-resume-note')).toHaveText('Asked the agent to resume it.');
+  await expect(resume).toBeDisabled();
+
+  // D99: the project link (its plan agent) opens the project.
+  const project = side.getByTestId('v2-agent-project-link');
+  await expect(project).toContainText('Project · Acme checkout');
+  await expect(project).toHaveAttribute('data-role', 'source');
+  // D107: what agents know for its folder, linked to Notes scoped to the folder.
+  const memory = side.getByTestId('v2-agent-memory-link');
+  await expect(side.getByTestId('v2-agent-memory-count')).toContainText('notes for this folder');
+  await expect(memory).toHaveAttribute('href', /^\/notes\?scope=/);
+  await project.click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${plan.body.id ?? ''}$`));
+  await settled(page, id);
+});
+
 /**
  * Lane X · the v2 Move to computer dialog (D65 / D110) on two real Switchboards
  * (`tests/helpers/takeover.ts`): a local agent moves to the paired computer; a
