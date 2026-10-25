@@ -300,3 +300,12 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 
 ### The demo seed
 - **ASSUMED** the demo's v2 layer (`src/server/demo/v2.ts`: teammates and two crews, tasks with estimates, a week of Insights, three projects, folders, a pin, notes) runs only when the default theme is v2 (or `SWITCHBOARD_DEMO_V2=1`), so the classic visual oracles and the README shots keep the plain seed. Done tasks are seeded within the last hour (older ones leave the list). (X)
+
+### The consistency pass
+- **ASSUMED** the pass is screenshot-driven: every v2 page in demo mode, light and dark, at 1440, 1024, 768 and 390, plus scripted checks for horizontal overflow, touch targets under 44 px, missing focus rings, classic words in visible text and console errors (none left). Fixes stay in CSS and markup; the list is in the lane's commits. (X)
+- **ASSUMED** a narrow Agents list (under 520 px) hides the drag grip and the kind tag (⋯ → Move to folder and the board still have them), and a long name and tag both end in an ellipsis. (X)
+- **ASSUMED** disabled buttons that wait for input say why in a tooltip (Start agent, Send answer, the Rules buttons); ones disabled for a moment while busy do not. (X)
+- **ASSUMED** server-written crew activity lines are reworded in v2 only for the server's own fixed phrases ("adopted from session …" → "joined from agent …"); hand-off briefs are never touched. (X)
+- **ASSUMED** visible classic words were renamed where they slipped through: "Terminal session" → "Terminal", "Its plan agent" → "Project agent", "on this machine" → "on this computer". Inline text links inside a paragraph are exempt from the 44 px rule. (X)
+- **ASSUMED** the rail highlights Settings on Insights, as the prototype does, and the palette gets the prototype's "Replay tour: what's new in Switchboard 2". (X)
+- **ASSUMED** `tools/screenshots/readme.ts` (the classic README shots) is left as it is: it still toggles the removed `experimental.*` settings and needs its own rework, outside v2. Gap. (X)
