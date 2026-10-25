@@ -237,6 +237,15 @@ export async function registerPlanJiraRoutes(
     });
   }
 
+  // D131 lane P: the v2 project page's "From Jira": the same D118 context, read now, for the developer (a read of Jira).
+  app.get<{ Params: { id: string }; Querystring: { item?: string; part?: string } }>('/api/plans/:id/jira/context', async (request, reply) => {
+    try {
+      return await jira.developerContext(request.params.id, request.query ?? {});
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
   // D118: the plan_jira_context tool: the plan's source session or one of its item run sessions.
   app.get<{ Querystring: { item?: string; part?: string } }>(PLAN_JIRA_CONTEXT_OWN_ROUTE, async (request, reply) => {
     try {

@@ -5,6 +5,10 @@
 ## Scope
 All crews (ordered), crew detail with a switcher, teammates, job descriptions, access requests and keys, budgets, hand-offs, Move to crew / computer, Pause, New teammate.
 
+## Built (lane P, 2026-10-25)
+- `index.tsx` mounts `CrewsPage` (`CrewsPage.tsx`: crews in order, drag and ⋯ › Move up / down, New crew, New teammate) and `CrewPage` (`CrewPage.tsx`: the switcher, teammate cards with Needs-you AnswerCards, budgets, the teammate ⋯ menu, activity and hand-offs, the teammate panel `?member=&tab=access`, the phone's drill-down); `dialogs.tsx` (New crew / teammate, Move to crew / computer, Budget, Model, job description edit), `AccessPanel.tsx` (Add key).
+- Pure rules: `crew-model.ts` (`tests/web/v2-crews.test.ts`). E2E: `tests/e2e/v2-crews.spec.ts`. Decisions: `docs/design/v2-decisions.md` → *Lane P*.
+
 ## Shared modules to use
 - `glossary.ts` → `teammateStatusToV2`, `TERMS.crew/teammate/jobDescription`
 - `shared/needs-you-model.ts` → `countByCrew(items)`; items carry `crew`

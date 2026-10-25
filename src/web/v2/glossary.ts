@@ -1280,3 +1280,138 @@ export const ROUTINES_WORDS = {
   showEnded: 'Show ended',
   hideEnded: 'Hide ended',
 } as const;
+
+// ── Lane P · Projects and Crews (D131) ───────────────────────────────────
+// Lane P's words, kept in one block at the end of the file so the lanes' merges stay trivial.
+
+/** A project step's state in v2 words (the step list, the board, the graph, the timeline). */
+export const STEP_LABELS = {
+  waiting: 'Waiting',
+  pick: 'Waiting for the project agent to pick code projects',
+  ready: 'Ready to start',
+  running: 'Working',
+  runningTests: 'Working · automatic tests',
+  question: 'Needs your answer',
+  needs: 'Needs you',
+  stopped: 'Stopped — needs you',
+  approval: 'Ready for approval',
+  confirm: 'Ready for approval',
+  done: 'Done',
+  blocked: 'Blocked',
+} as const;
+
+/** The approval modes (who combines a finished step), in plain words. */
+export const MODE_LABELS = {
+  agents: 'Agents combine on their own',
+  'agents-with-holds': 'Agents combine, I approve marked steps',
+  developer: 'I approve each',
+  none: 'No combining (finish when done)',
+  unset: 'Not chosen yet',
+} as const;
+
+/** The Projects pages' words. */
+export const PROJECT_WORDS = {
+  pageSub: 'Multi-step work. Steps start on their own when the steps before them are done.',
+  newProject: 'New project',
+  importJira: 'Import from Jira',
+  cards: 'Cards',
+  timeline: 'Timeline',
+  steps: 'Steps',
+  board: 'Board',
+  graph: 'Graph',
+  whoApproves: 'Who approves combining',
+  protectedAck: (branch: string): string => `Agents will combine straight into ${branch}`,
+  protectedAckNote: 'Needed before agents may combine into a protected branch.',
+  start: 'Start project',
+  pause: 'Hold project',
+  resume: 'Resume project',
+  cancel: 'Cancel project…',
+  heldNote: 'On hold. Running steps finish; no new steps start until you resume.',
+  hold: 'Hold this step',
+  release: 'Release hold',
+  onHold: 'On hold',
+  reopen: 'Reopen',
+  retry: 'Try again',
+  markDone: 'Mark done',
+  openChange: 'Open change request',
+  remove: 'Remove from project',
+  edit: 'Edit title and estimate…',
+  combine: 'Combine',
+  confirmDone: 'Confirm done',
+  sendBack: 'Send back',
+  rereadDeps: 'Re-read dependencies from Jira…',
+  jiraSync: 'Jira sync…',
+  proposeOrder: 'Propose order',
+  deleteProject: 'Delete project…',
+  fromJira: 'From Jira',
+  jiraActivity: 'Jira activity',
+  earlyStart: 'Early start',
+  reopened: 'Reopened',
+  sidebarSubfolder: 'Folder in Agents for its steps',
+  sidebarSubfolderHint: 'The steps’ agents go into this folder, next to the project’s own agent (an existing one with this name is reused). Clear it to keep them next to it.',
+  noProjects: 'No projects yet',
+  noProjectsText: 'A project runs several steps in order, each in its own agent. Start one from your tasks, or import a Jira epic.',
+  stepsDone: (done: number, total: number): string => `${done} of ${total} steps done`,
+  timeLeft: (text: string): string => `about ${text} left`,
+  needYou: (n: number): string => `${n} need${n === 1 ? 's' : ''} you`,
+  stoppedCount: (n: number): string => `${n} stopped`,
+  earlierDone: (n: number): string => `${n} earlier step${n === 1 ? '' : 's'} done`,
+} as const;
+
+/** The Crews pages' words. */
+export const CREW_WORDS = {
+  pageSub: 'Long-lived teammates, grouped into crews. Drag to reorder; the order is shared across your computers and phone.',
+  newCrew: 'New crew',
+  newTeammate: 'New teammate',
+  addTeammate: 'Add teammate',
+  allCrews: 'All crews',
+  reorderNote: 'Drag a crew to reorder it, or use ⋯ › Move up / Move down. Teammates move between crews from their ⋯ menu.',
+  phoneNote: 'Reorder crews and move teammates on a computer; the phone follows.',
+  moveUp: 'Move up',
+  moveDown: 'Move down',
+  openCrew: 'Open crew',
+  renameCrew: 'Rename crew…',
+  deleteCrew: 'Delete crew…',
+  moveToCrew: 'Move to crew…',
+  moveToComputer: 'Move to computer…',
+  pause: 'Pause',
+  resume: 'Resume',
+  draftJd: 'Draft job description',
+  redraftJd: 'Redraft job description',
+  returnToAgents: 'Return to agents',
+  model: 'Model…',
+  budget: 'Budget',
+  budgetEdit: 'Edit budget…',
+  access: 'Access',
+  overview: 'Overview',
+  addKey: 'Add key',
+  crewActivity: 'Crew activity',
+  handoffs: 'Hand-offs',
+  handoffsSub: 'Who passes work to whom',
+  noTeammates: 'No teammates yet. Add one, or move one here from another crew.',
+  noActivity: 'Nothing yet.',
+  noHandoffs: 'No hand-offs yet.',
+  working: 'working',
+  needYou: 'need you',
+  teammates: (n: number): string => `${n} teammate${n === 1 ? '' : 's'}`,
+  inOrder: (index: number): string => `${ordinal(index + 1)} in your order`,
+  movedTo: (who: string, crew: string): string => `Moved ${who} to ${crew}. Synced everywhere.`,
+  jdProposed: 'Proposed a new job description',
+  jdAsked: 'Asked for a job description — waiting for its agent',
+} as const;
+
+/** 1st, 2nd, 3rd, 4th … (the crews' order). */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}

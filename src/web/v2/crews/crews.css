@@ -1,0 +1,588 @@
+/*
+ * D131 · lane P · Crews. Every rule under `.sb2`, `--v2-*` tokens only; classes `v2-c-*`.
+ */
+.sb2 .v2-c-ph {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-c-small {
+  font-size: 13px;
+}
+
+.sb2 .v2-c-wrap {
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-c-amber {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-c-p {
+  margin: 0 0 12px;
+}
+
+.sb2 .v2-c-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px 0 4px;
+  margin: 0 0 8px -4px;
+  border-radius: var(--v2-r);
+  color: var(--v2-text-2);
+  text-decoration: none;
+  font-weight: 550;
+  font-size: var(--v2-fs-sm);
+}
+
+.sb2 .v2-c-back:hover {
+  background: var(--v2-sunken);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-c-crumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--v2-muted);
+  margin-bottom: 10px;
+}
+
+.sb2 .v2-c-crumb a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  color: var(--v2-accent-text);
+  text-decoration: none;
+}
+
+.sb2 .v2-c-crumb b {
+  color: var(--v2-text);
+  padding: 0 6px;
+}
+
+.sb2 .v2-c-note,
+.sb2 .v2-c-note-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb2 .v2-c-note {
+  padding: 10px 12px;
+  border-radius: var(--v2-r);
+  background: var(--v2-sunken);
+  border: 1px solid var(--v2-border);
+  font-size: 13.5px;
+  margin: 0 0 12px;
+}
+
+.sb2 .v2-c-note-line {
+  margin: 14px 2px;
+}
+
+/* Crew cards */
+.sb2 .v2-c-crews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sb2 .v2-c-crewcard {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sb2 .v2-c-crewcard[data-drop] {
+  box-shadow: inset 0 0 0 2px var(--v2-accent);
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-c-crewcard-head {
+  gap: 12px;
+}
+
+.sb2 .v2-c-grip {
+  cursor: grab;
+  color: var(--v2-muted);
+  display: inline-flex;
+}
+
+.sb2 .v2-c-crew-av {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--v2-violet);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.sb2 .v2-c-crew-name {
+  margin: 0;
+  font-size: 18px;
+}
+
+.sb2 .v2-c-avs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-c-kvs {
+  font-size: 13.5px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-c-kvs b {
+  color: var(--v2-text);
+  font-size: 15px;
+}
+
+.sb2 .v2-c-crewcard-foot {
+  gap: 10px;
+}
+
+/* Phone lists */
+.sb2 .v2-c-plist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb2 .v2-c-prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 14px;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-l);
+  background: var(--v2-surface);
+  text-align: left;
+  width: 100%;
+}
+
+.sb2 .v2-c-prow .v2-grow {
+  display: flex;
+  flex-direction: column;
+}
+
+/* One crew */
+.sb2 .v2-c-crew-head {
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.sb2 .v2-c-crew-title {
+  margin: 0;
+}
+
+.sb2 .v2-c-crew-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+}
+
+.sb2 .v2-c-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--v2-sunken);
+  border: 1px solid var(--v2-border);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.sb2 .v2-c-switch button {
+  border: 0;
+  background: none;
+  padding: 0 12px;
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--v2-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-c-switch button[aria-selected='true'] {
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  box-shadow: var(--v2-shadow-1);
+}
+
+.sb2 .v2-c-nb {
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--v2-amber-bg);
+  color: var(--v2-amber);
+  font-size: 12px;
+  font-weight: 650;
+  display: inline-grid;
+  place-items: center;
+}
+
+.sb2 .v2-c-mates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sb2 .v2-c-mate {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 .v2-c-mate[data-needs] {
+  border-color: var(--v2-amber-dot);
+}
+
+.sb2 .v2-c-mate[data-offline] {
+  opacity: 0.75;
+}
+
+.sb2 .v2-c-mate-name {
+  margin: 0;
+  font-size: 17px;
+}
+
+.sb2 .v2-c-jd {
+  color: var(--v2-text-2);
+  font-size: 14px;
+  margin: 0;
+}
+
+.sb2 .v2-c-activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--v2-surface-2);
+  border: 1px solid var(--v2-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.sb2 .v2-c-line {
+  font-size: 14px;
+}
+
+.sb2 .v2-c-needs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb2 .v2-c-jd-asked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--v2-muted);
+  font-size: 13.5px;
+}
+
+.sb2 .v2-c-proposal {
+  border: 1px solid var(--v2-violet);
+  background: var(--v2-violet-bg);
+  border-radius: var(--v2-r);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb2 .v2-c-proposal dl,
+.sb2 .v2-c-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.sb2 .v2-c-proposal dt,
+.sb2 .v2-c-kv dt {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-c-proposal dd,
+.sb2 .v2-c-kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-c-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb2 .v2-c-meter {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--v2-sunken);
+  overflow: hidden;
+}
+
+.sb2 .v2-c-meter b {
+  display: block;
+  height: 100%;
+  background: var(--v2-blue);
+}
+
+.sb2 .v2-c-meter b[data-over] {
+  background: var(--v2-red);
+}
+
+.sb2 .v2-c-sec {
+  margin-top: 28px;
+}
+
+.sb2 .v2-c-sec-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sb2 .v2-c-sec-h h2 {
+  font-size: 19px;
+  margin: 0;
+}
+
+.sb2 .v2-c-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sb2 .v2-c-lrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--v2-border);
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-c-lrow:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-c-time {
+  width: 44px;
+}
+
+.sb2 .v2-c-who {
+  min-width: 140px;
+}
+
+.sb2 .v2-c-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sb2 .v2-c-tabpanel {
+  padding-top: 4px;
+}
+
+.sb2 .v2-c-phone-head {
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sb2 .v2-c-phone-head h1 {
+  margin: 0;
+}
+
+/* Access */
+.sb2 .v2-c-access {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 .v2-c-access-entry {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-c-access-entry[data-status='requested'],
+.sb2 .v2-c-access-entry[data-status='needs-setup'] {
+  border-color: var(--v2-amber-dot);
+}
+
+.sb2 .v2-c-access-entry p {
+  margin: 0;
+}
+
+.sb2 .v2-c-why {
+  font-size: 14px;
+}
+
+.sb2 .v2-c-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v2-amber);
+  font-weight: 550;
+  font-size: 13.5px;
+}
+
+.sb2 .v2-c-access-form {
+  border-top: 1px solid var(--v2-border);
+  padding-top: 10px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Dialog bits */
+.sb2 .v2-c-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-c-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid var(--v2-border);
+  border-radius: var(--v2-r);
+  cursor: pointer;
+}
+
+.sb2 .v2-c-pick-row:has(input:checked) {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-c-pick-row[data-disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sb2 .v2-c-pick-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--v2-accent);
+}
+
+.sb2 .v2-c-blockers {
+  color: var(--v2-red);
+  font-size: 13.5px;
+}
+
+.sb2 .v2-c-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sb2 .v2-c-fchip {
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-c-fchip[aria-pressed='true'] {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-c-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 1279px) {
+  .sb2 .v2-c-crews,
+  .sb2 .v2-c-mates {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-c-ph .v2-btn {
+    flex: 1 1 auto;
+  }
+
+  .sb2 .v2-c-grid2 {
+    grid-template-columns: 1fr;
+  }
+
+  .sb2 .v2-c-who {
+    min-width: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-c-switch button,
+  .sb2 .v2-c-fchip,
+  .sb2 .v2-c-back {
+    min-height: 44px;
+  }
+}
+
+/* Lane P's dialogs: their fields stacked with room between them. */
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-new-crew'], [data-testid='v2-rename-crew'], [data-testid='v2-budget-dialog'], [data-testid='v2-model-dialog'], [data-testid='v2-charter-edit'], [data-testid='v2-move-crew'], [data-testid='v2-move-computer'], [data-testid='v2-delete-crew']) > .v2-modal-b {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-charter-edit']) {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb2 :is([data-testid='v2-new-teammate'], [data-testid='v2-charter-edit']) > .v2-modal-b {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sb2 :is([data-testid='v2-new-teammate']) .v2-c-chips {
+  margin-bottom: 0;
+}
