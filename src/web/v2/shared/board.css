@@ -193,6 +193,11 @@
   font-size: 14.5px;
   font-weight: 650;
   line-height: 1.3;
+  /* Lane X polish: a long name ends in an ellipsis after two lines (the card's label has it whole). */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .sb2 .v2-bcard .v2-brow {
