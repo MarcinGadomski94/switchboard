@@ -143,6 +143,12 @@
   margin-top: 12px;
 }
 
+/* A row's text keeps at least 200 px: on a phone its controls wrap under it instead of squeezing it to a word per line. */
+.sb2 .v2-set-row > .v2-grow,
+.sb2 .v2-set-actions > .v2-grow {
+  flex: 1 1 200px;
+}
+
 .sb2 .v2-set-grid2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

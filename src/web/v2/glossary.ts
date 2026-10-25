@@ -779,6 +779,11 @@ export const SETTINGS_WORDS = {
   // Tool / share
   toolTitle: 'Tool',
   shareTitle: 'Add to which agent?',
+  // Lane X · P3 polish: why a rules button is disabled
+  rulesNoChanges: 'No changes to save.',
+  rulesTooLong: 'Too long: at most 4,000 characters.',
+  rulesAtDefault: 'These are already the default rules.',
+  rulesAllCurrent: 'Every open agent already uses these rules.',
 } as const;
 
 // ── (lane R · + New) ──
@@ -1661,13 +1666,13 @@ export const TOUR_WORDS = {
   live: (kicker: string, n: number, count: number, title: string): string => `${kicker}, step ${n} of ${count}: ${title}`,
   // Settings › Advanced › What’s new tours
   pageTitle: 'What’s new tours',
-  pageSub: 'Replay a tour. Each one shows by itself once on this machine; a replay changes nothing.',
+  pageSub: 'Replay a tour. Each one shows by itself once on this computer; a replay changes nothing.',
   replay: 'Replay',
   replayAll: 'Replay all',
   seen: 'seen',
   skipped: 'skipped',
   notSeen: 'not seen yet',
-  notShown: 'not shown on this machine',
-  classicNote: 'The other What’s new tours point at the Classic theme. Switch to Classic in Settings › Appearance to replay them under Settings → Tutorial.',
+  notShown: 'not shown on this computer',
+  classicNote: 'The other What’s new tours point at the Classic theme. Switch to Classic in Settings › Appearance to replay them under Settings › Tutorial.',
   loadError: 'The tours’ state could not be loaded.',
 } as const;

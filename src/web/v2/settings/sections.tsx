@@ -84,13 +84,13 @@ export function RulesSection() {
         </div>
         <p className="v2-muted v2-set-p">{W.rulesSub}</p>
         <textarea className="v2-field v2-rules-text" rows={8} aria-label={SETTINGS_LABELS.rules} data-testid="v2-rules-text" value={text} disabled={busy} onChange={(event) => setDraft(event.currentTarget.value)} />
-        {state.tooLong ? <p className="v2-set-error">Too long: at most 4,000 characters.</p> : null}
+        {state.tooLong ? <p className="v2-set-error">{W.rulesTooLong}</p> : null}
         <div className="v2-set-actions">
           <span className="v2-muted v2-set-small v2-grow">{W.rulesApplies}</span>
-          <Button variant="ghost" disabled={busy || !state.canReset} onClick={() => run({ 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION }, 'Rules reset to the default.')} data-testid="v2-rules-reset">
+          <Button variant="ghost" disabled={busy || !state.canReset} title={state.canReset ? undefined : W.rulesAtDefault} onClick={() => run({ 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION }, 'Rules reset to the default.')} data-testid="v2-rules-reset">
             {W.resetRules}
           </Button>
-          <Button variant="primary" disabled={busy || !state.canSave} onClick={() => run({ 'agents.standingInstruction': text }, 'Rules saved. Agents follow them from their next step.')} data-testid="v2-rules-save">
+          <Button variant="primary" disabled={busy || !state.canSave} title={state.canSave ? undefined : state.tooLong ? W.rulesTooLong : W.rulesNoChanges} onClick={() => run({ 'agents.standingInstruction': text }, 'Rules saved. Agents follow them from their next step.')} data-testid="v2-rules-save">
             {W.saveRules}
           </Button>
         </div>
@@ -98,7 +98,7 @@ export function RulesSection() {
           <span className="v2-grow" data-testid="v2-rules-stale">
             {stale > 0 ? `${stale} open agent${stale === 1 ? ' uses' : 's use'} older rules.` : 'Every open agent uses these rules.'}
           </span>
-          <Button disabled={busy || stale === 0} onClick={apply} data-testid="v2-rules-apply">
+          <Button disabled={busy || stale === 0} title={stale === 0 ? W.rulesAllCurrent : undefined} onClick={apply} data-testid="v2-rules-apply">
             {W.applyOpen}
           </Button>
         </div>
