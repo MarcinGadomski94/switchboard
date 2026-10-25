@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.0 (2026-10-26)
+
+**Switchboard 2.** A new design, built so that anyone can run AI agents comfortably, plus three features leaving experimental. The design of Switchboard 1 stays available as the **Classic** theme.
+
+### The v2 theme (the new default)
+- **Home:** start an agent by writing what it should do; see what **Needs you**, what's **Working now** and what's **Done today**.
+- **One Needs-you queue** for every question (single and multi-select), approval, ask, stopped step, ready-for-approval change, crew request, note and alert, answerable in one click with Undo, on every page, in the agent's chat and on your phone.
+- **Six places, all labelled:** Home · Agents · Projects · Crews · Results · Settings, with search (⌘⇧F), ⌘K and a status pill for usage, computers, power and background apps.
+- **Agents** as a List, a Chats list or a Board (Needs you · Working · Ready for approval · Done), with the folder tree (pins, subfolders, drag, Move to folder with **M**) shared with Classic and your other computers; Drafts, Closed, Tasks, Notes and Routines.
+- **The agent view:** roomier chat (document-style replies, folded tool activity, answer cards in the chat, a ⋯ on every reply), a composer with attachments, drafts, queued and paused messages, a side panel you can hide (**⌘.**), Changes, Results, Timeline and Helpers, and a peek you can open from anywhere.
+- **Projects** (Steps, Board, Graph, Timeline) and **Crews** (several, in order; teammates, job descriptions, access keys, budgets, moves between crews and computers).
+- **Results, Search, Insights, + New** (agent, conversation, task, project, routine, teammate, crew) and **Settings** (usage and account switching, computers, phones, rules for every agent, appearance, and every Classic section under Advanced).
+- **Plain language** throughout (agents, replies, combine, change requests, automatic tests, computers), light and dark, phone and tablet layouts, and a short **"Welcome to Switchboard 2"** tour.
+
+### Classic theme
+- The Switchboard 1 design, unchanged, under **Settings → Appearance → Theme: Classic** (in either theme, or ⌘K "Switch to the classic theme"). The choice is per browser; both themes share the same agents, folders and data.
+
+### Out of experimental
+- **Team (Crews), Plans (Projects) and Project memory (Notes)** are always on; the Experimental switches are gone. Nothing changes for a feature you have not used. The Jira connection moved to **Settings → Jira**.
+
+### Fixed
+- An agent could keep showing "Working" after it finished, when two status updates overlapped.
+- Answers given just before a tab closes are no longer lost.
+
 ## 1.35.0 (2026-10-23)
 
 ### Questions
