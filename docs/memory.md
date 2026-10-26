@@ -114,12 +114,13 @@ A **periodic check** per folder that has approved notes, **weekly** by default (
 The check uses Claude Code only (the folder's CLI is the CLI of its newest session; a folder whose agents use Codex or OpenCode is skipped with "…, which has no headless check mode in Switchboard yet", recorded as its result). The binary and the account are resolved as for every spawn (the supervisor's CLI registry; D63's pick of the account a new session would start on, its profile folder in the environment, the environment scrubbed like every child). The argv (`memoryCheckArgs`, `src/server/memory/check.ts`):
 
 - `-p --input-format stream-json --output-format stream-json --verbose` (the prompt goes over stdin; the turn's `result` is the answer);
+- `--restricted`: the CLI's restricted mode: **no command or code tools** (no Bash, PowerShell or the like) and no WebFetch, **file tools confined to the working folder**, **user, project and local settings files ignored** (so their hooks and permission rules do not apply), writes never approved but by a person;
 - `--permission-mode dontAsk` (anything not allowed is refused, never asked);
-- (B) `--allowedTools Read,Grep,Glob,LS,Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git branch:*),Bash(git status:*),Bash(git diff:*)`; both `--disallowedTools` the editors, the web tools, agents and workflows, (A) also every reading tool (it only compares texts);
+- (B) `--allowedTools Read,Grep,Glob,LS` (no shell at all); both `--disallowedTools` Bash, PowerShell, the editors, the web tools, agents and workflows (belt and braces), (A) also every reading tool (it only compares texts);
 - `--strict-mcp-config` (no MCP servers), `--no-session-persistence` (no transcript: nothing in History);
 - `--model haiku` for (A), `--model sonnet` for (B); time limits 2 and 10 minutes (then stopped).
 
-(A) runs in Switchboard's data folder (no project files needed), (B) in the folder. Only the machine that owns the folder runs its checks; a paired machine's notes are checked there. **Demo mode never runs checks.**
+(A) runs in Switchboard's data folder (no project files needed), (B) in the folder. **The git history comes from Switchboard, not the agent:** before a periodic run Switchboard reads it itself with fixed, read-only git commands (argv, no shell, `GIT_OPTIONAL_LOCKS=0`: whether the folder is a working tree, the current branch, `git branch --list`, and `git log --since=<the last run, else 30 days> -n 200 --name-status`), truncated to 20,000 characters, and puts it in the prompt (`memoryGitContext`); the prompt tells the agent it has no shell. A folder that is not a git working tree gets no history (the notes are checked against the files only). Only the machine that owns the folder runs its checks; a paired machine's notes are checked there. **Demo mode never runs checks.**
 
 ### Removed by memory check
 

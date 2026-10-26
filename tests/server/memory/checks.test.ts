@@ -1,4 +1,4 @@
-import { mkdir, realpath } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -9,6 +9,7 @@ import {
   memoryCheckDueAt,
   memoryCheckJitterMs,
   memoryCheckLine,
+  memoryCheckPrompt,
   memoryCheckSummary,
   memoryRemovalCap,
   readCheckAnswer,
@@ -19,7 +20,8 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { DEVICE_ALLOWED, DEVICE_REFUSED, isLocalOnly, matchesRule } from '../../../src/server/devices/local-only.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { MEMORY_CHECK_AUTHOR } from '../../../src/core/memory-check.ts';
-import { type MemoryCheckHost, type MemoryCheckOutput, type MemoryCheckRun, claudeCheckRunner, memoryCheckArgs } from '../../../src/server/memory/check.ts';
+import { MEMORY_CHECK_ALLOWED_TOOLS, type MemoryCheckHost, type MemoryCheckOutput, type MemoryCheckRun, claudeCheckRunner, memoryCheckArgs, memoryGitContext } from '../../../src/server/memory/check.ts';
+import { runCommand, succeeded } from '../../../src/server/exec.ts';
 import { appCheckHost } from '../../../src/server/memory/install.ts';
 import { MemoryService } from '../../../src/server/memory/service.ts';
 import { UsageService } from '../../../src/server/insights/usage.ts';
@@ -472,14 +474,48 @@ describe('D136 · approve and remove the old note', () => {
 });
 
 describe('D136 · the plumbing with the real runner and fake-claude', () => {
-  it('argv: print mode, dontAsk, read-only tools, no MCP, no transcript', () => {
+  it('argv: print mode, --restricted, dontAsk, reading tools only (no shell), no MCP, no transcript', () => {
+    expect(MEMORY_CHECK_ALLOWED_TOOLS).toEqual(['Read', 'Grep', 'Glob', 'LS']);
     const periodic = memoryCheckArgs('periodic', 'sonnet');
-    expect(periodic).toEqual(expect.arrayContaining(['-p', '--permission-mode', 'dontAsk', '--strict-mcp-config', '--no-session-persistence', '--model', 'sonnet']));
-    expect(periodic[periodic.indexOf('--allowedTools') + 1]).toContain('Bash(git log:*)');
-    expect(periodic[periodic.indexOf('--disallowedTools') + 1]).toContain('Write');
+    expect(periodic).toEqual(expect.arrayContaining(['-p', '--restricted', '--permission-mode', 'dontAsk', '--strict-mcp-config', '--no-session-persistence', '--model', 'sonnet']));
+    expect(periodic[periodic.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Glob,LS');
+    expect(periodic.join(' ')).not.toMatch(/Bash\(/);
+    expect(periodic[periodic.indexOf('--disallowedTools') + 1]?.split(',')).toEqual(expect.arrayContaining(['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch']));
     const proposal = memoryCheckArgs('proposal', 'haiku');
+    expect(proposal).toContain('--restricted');
     expect(proposal).not.toContain('--allowedTools');
-    expect(proposal[proposal.indexOf('--disallowedTools') + 1]).toContain('Bash');
+    expect(proposal[proposal.indexOf('--disallowedTools') + 1]?.split(',')).toEqual(expect.arrayContaining(['Bash', 'Read', 'Grep', 'Glob']));
+  });
+
+  it('Switchboard reads the git context itself (read-only, fixed argv); the periodic prompt carries it', async () => {
+    const root = await realpath(await makeTempDir('memory-checks-git'));
+    try {
+      const repo = path.join(root, 'acme-repo');
+      await mkdir(repo, { recursive: true });
+      const env = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Acme', GIT_AUTHOR_EMAIL: 'a@example.invalid', GIT_COMMITTER_NAME: 'Acme', GIT_COMMITTER_EMAIL: 'a@example.invalid' };
+      const git = async (...args: string[]) => {
+        const result = await runCommand(['git'], args, { cwd: repo, env });
+        if (!succeeded(result)) throw new Error(`git ${args.join(' ')}`);
+      };
+      await writeFile(path.join(root, 'gitconfig'), '');
+      await git('init', '-q', '-b', 'main');
+      await writeFile(path.join(repo, 'build.sh'), 'echo hi\n');
+      await git('add', '-A');
+      await git('commit', '-q', '-m', 'Add the build script');
+      await git('branch', 'release/1');
+      const context = await memoryGitContext(repo, '2000-01-01T00:00:00.000Z');
+      expect(context).toContain('Current branch: main');
+      expect(context).toContain('release/1');
+      expect(context).toMatch(/commit [0-9a-f]+ \d{4}-\d{2}-\d{2} Add the build script/);
+      expect(context).toContain('A\tbuild.sh');
+      expect(await memoryGitContext(root, '2000-01-01T00:00:00.000Z')).toContain('not a git working tree');
+      const prompt = memoryCheckPrompt(repo, 'acme-repo', [{ id: 'aaaaaaaaaa', title: 'Build', text: 'Run build.sh' }], '2026-10-26', context);
+      expect(prompt).toContain('You have no shell');
+      expect(prompt).toContain('Git history (read by Switchboard):');
+      expect(prompt).toContain('Add the build script');
+    } finally {
+      await removeTempDir(root);
+    }
   });
 
   it('a conflicting proposal is flagged through fake-claude; the tokens reach Insights → Usage as a memory check', async () => {

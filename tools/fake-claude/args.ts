@@ -42,6 +42,8 @@ export interface RunArgs {
   noSessionPersistence: boolean;
   /** D136: `--strict-mcp-config` (accepted; only `--mcp-config` servers would run, and the fake runs none unless opted in). */
   strictMcpConfig: boolean;
+  /** D136: `--restricted` (accepted; the fake runs no tool of its own anyway, the argv log is what tests read). */
+  restricted: boolean;
 }
 
 /** What one invocation of the fake does. */
@@ -89,6 +91,7 @@ function defaults(): RunArgs {
     teleport: null,
     noSessionPersistence: false,
     strictMcpConfig: false,
+    restricted: false,
   };
 }
 
@@ -248,6 +251,9 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
         break;
       case '--strict-mcp-config':
         args.strictMcpConfig = true;
+        break;
+      case '--restricted':
+        args.restricted = true;
         break;
       default:
         if (flag.startsWith('-') && flag !== '-') throw new UsageError(`error: unknown option '${flag}'`);

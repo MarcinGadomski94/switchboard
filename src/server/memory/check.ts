@@ -20,6 +20,7 @@ import type { MemoryEntry } from '../../core/memory.ts';
 import { parseStreamLine } from '../../core/stream-json.ts';
 import { userMessageLine } from '../../core/stdin.ts';
 import { resultModelTotals } from '../../core/usage-breakdown.ts';
+import { runCommand, succeeded } from '../exec.ts';
 import { ClaudeProcess } from '../supervisor/process.ts';
 import type { MemoryDb } from './db.ts';
 
@@ -38,7 +39,7 @@ import type { MemoryDb } from './db.ts';
  *
  * Neither is a session: no `sessions` row, no events, nothing in Agents / sidebar / Home, nothing
  * to interact with; the run is `claude -p` with stream-json, `--permission-mode dontAsk`, only
- * reading tools allowed, no MCP servers and no transcript (`--no-session-persistence`). Their
+ * reading tools allowed (`--restricted`: no shell; Switchboard reads git itself), no MCP servers and no transcript (`--no-session-persistence`). Their
  * tokens go to Insights → Usage as "Memory check". Demo mode never runs them.
  */
 
@@ -72,11 +73,15 @@ export type MemoryCheckOutput =
 /** Runs one check (the real one spawns the CLI; tests pass a fake). */
 export type MemoryCheckRunner = (run: MemoryCheckRun) => Promise<MemoryCheckOutput>;
 
-/** The tools check (B) may use without asking (`--allowedTools`): reading, searching and read-only git. */
-export const MEMORY_CHECK_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'LS', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git ls-files:*)', 'Bash(git branch:*)', 'Bash(git status:*)', 'Bash(git diff:*)'];
+/**
+ * The tools check (B) may use without asking (`--allowedTools`): reading and searching files only.
+ * No shell at all (`--restricted` removes the command tools): Switchboard runs the read-only git
+ * commands itself ({@link memoryGitContext}) and puts their output in the prompt.
+ */
+export const MEMORY_CHECK_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'LS'];
 
-/** The tools no check may use (`--disallowedTools`; `dontAsk` refuses anything not allowed anyway). */
-export const MEMORY_CHECK_DISALLOWED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'TodoWrite', 'ExitPlanMode', 'KillShell', 'Workflow'];
+/** The tools no check may use (`--disallowedTools`, belt and braces: `--restricted` and `dontAsk` refuse them anyway). */
+export const MEMORY_CHECK_DISALLOWED_TOOLS: readonly string[] = ['Bash', 'PowerShell', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'TodoWrite', 'ExitPlanMode', 'KillShell', 'Workflow'];
 
 /** The model of the proposal check (a short comparison) and of the periodic check. */
 export const MEMORY_CHECK_MODELS: Readonly<Record<MemoryCheckRun['purpose'], string>> = { proposal: 'haiku', periodic: 'sonnet' };
@@ -89,8 +94,10 @@ export const MEMORY_CHECK_TICK_MS = 10 * 60_000;
 
 /**
  * The argv of a check run (without the CLI command): print mode with stream-json in and out (the
- * prompt goes over stdin, as every Switchboard spawn), `dontAsk` (anything not allowed is refused,
- * never asked), the read-only tools (none for the proposal check), no MCP servers, no transcript.
+ * prompt goes over stdin, as every Switchboard spawn), `--restricted` (no command or code tools, no
+ * WebFetch, file tools confined to the working folder, user / project / local settings and their
+ * hooks ignored, writes never approved), `dontAsk` (anything not allowed is refused, never asked),
+ * the reading tools (none for the proposal check), no MCP servers, no transcript.
  */
 export function memoryCheckArgs(purpose: MemoryCheckRun['purpose'], model: string | null, extraArgs: readonly string[] = []): string[] {
   return [
@@ -100,11 +107,12 @@ export function memoryCheckArgs(purpose: MemoryCheckRun['purpose'], model: strin
     '--output-format',
     'stream-json',
     '--verbose',
+    '--restricted',
     '--permission-mode',
     'dontAsk',
     ...(purpose === 'periodic' ? ['--allowedTools', MEMORY_CHECK_ALLOWED_TOOLS.join(',')] : []),
     '--disallowedTools',
-    [...MEMORY_CHECK_DISALLOWED_TOOLS, ...(purpose === 'proposal' ? ['Bash', 'Read', 'Grep', 'Glob', 'LS'] : [])].join(','),
+    [...MEMORY_CHECK_DISALLOWED_TOOLS, ...(purpose === 'proposal' ? MEMORY_CHECK_ALLOWED_TOOLS : [])].join(','),
     '--strict-mcp-config',
     '--no-session-persistence',
     ...(model ? ['--model', model] : []),
@@ -124,6 +132,38 @@ export function resultTokens(raw: unknown, fallbackModel: string): MemoryCheckTo
 }
 
 const KILL_GRACE_MS = 2_000;
+
+/** The most git context a periodic check's prompt carries (characters). */
+export const MEMORY_GIT_CONTEXT_MAX = 20_000;
+
+/** The environment of Switchboard's own git reads: no prompts, no optional locks (never touches the index). */
+function gitEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', LC_ALL: 'C' };
+}
+
+/**
+ * D136 · the git context check (B) needs, read by Switchboard itself (the check has no shell): fixed
+ * argv, `shell: false`, read-only commands only: whether the folder is a git working tree, its
+ * current branch, its local branches and the commits since `sinceIso` with the files they touched
+ * (at most 200), truncated to {@link MEMORY_GIT_CONTEXT_MAX} characters.
+ */
+export async function memoryGitContext(folder: string, sinceIso: string): Promise<string> {
+  const git = (args: readonly string[]) => runCommand(['git'], ['-C', folder, '-c', 'core.fsmonitor=false', '--no-pager', ...args], { cwd: folder, env: gitEnv(), timeoutMs: 20_000, maxOutputBytes: 2 * 1024 * 1024 });
+  const inside = await git(['rev-parse', '--is-inside-work-tree']);
+  if (!succeeded(inside) || inside.stdout.trim() !== 'true') return 'The folder is not a git working tree: no git history is available. Verify the notes against the files only.';
+  const [head, branches, log] = await Promise.all([
+    git(['rev-parse', '--abbrev-ref', 'HEAD']),
+    git(['branch', '--list', '--no-color', '--format=%(refname:short)']),
+    git(['log', `--since=${sinceIso}`, '-n', '200', '--no-color', '--no-ext-diff', '--name-status', '--date=short', '--format=commit %h %ad %s']),
+  ]);
+  const parts = [
+    `Current branch: ${succeeded(head) ? head.stdout.trim() : 'unknown'}`,
+    `Local branches:\n${succeeded(branches) ? branches.stdout.trim().split('\n').slice(0, 100).join('\n') || '(none)' : '(could not be read)'}`,
+    `Commits since ${sinceIso.slice(0, 10)} (newest first, with the files they changed):\n${succeeded(log) ? log.stdout.trim() || '(none)' : '(could not be read)'}`,
+  ];
+  const text = parts.join('\n\n');
+  return text.length > MEMORY_GIT_CONTEXT_MAX ? `${text.slice(0, MEMORY_GIT_CONTEXT_MAX)}\n… (cut: more history than fits)` : text;
+}
 
 /**
  * The real runner: spawns the CLI (argv array, `shell: false`, `ClaudeProcess`) with
@@ -402,6 +442,8 @@ export class MemoryChecks {
     if (!exists) return this.#save(folder, at, { ...empty, outcome: 'skipped', reason: 'the folder no longer exists on this computer' });
     const account = await this.#o.host.account(trigger === 'manual');
     if ('blocked' in account) return this.#save(folder, at, { ...empty, outcome: 'skipped', reason: account.blocked });
+    // The git history since the last run (first run: the last 30 days), read before this run is recorded.
+    const since = db.checkFolder(folder)?.lastRunAt ?? new Date(Date.parse(at) - 30 * DAY_MS).toISOString();
     // Persisted at the start: a restart in the middle of a run does not run it again.
     db.setCheckRun(folder, at, null);
     const notes = [...approved].sort((a, b) => (a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0)).slice(0, MEMORY_CHECK_MAX_NOTES);
@@ -411,7 +453,7 @@ export class MemoryChecks {
       command: await this.#o.host.command('claude'),
       cwd: folder,
       env: account.env,
-      prompt: memoryCheckPrompt(folder, await this.#a.label(folder), notes, at.slice(0, 10)),
+      prompt: memoryCheckPrompt(folder, await this.#a.label(folder), notes, at.slice(0, 10), await memoryGitContext(folder, since)),
       model: MEMORY_CHECK_MODELS.periodic,
       timeoutMs: MEMORY_CHECK_TIMEOUT_MS.periodic,
     });

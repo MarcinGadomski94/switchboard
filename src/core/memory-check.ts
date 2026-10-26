@@ -212,11 +212,11 @@ export function memoryConflictPrompt(proposal: Pick<MemoryEntry, 'title' | 'text
 }
 
 /** Check (B)'s prompt: verify each of `notes` against the code and recent git history of the folder (read-only). */
-export function memoryCheckPrompt(folder: string, label: string, notes: readonly Pick<MemoryEntry, 'id' | 'title' | 'text'>[], today: string): string {
+export function memoryCheckPrompt(folder: string, label: string, notes: readonly Pick<MemoryEntry, 'id' | 'title' | 'text'>[], today: string, gitContext = ''): string {
   return [
     `You check project-memory notes for Switchboard. Each note below was approved earlier as a durable fact about the project in this folder (${label || folderName(folder)}). Today is ${today}.`,
     'Verify every note against the code in the current folder and its recent git history: do the files, settings, commands, scripts and branches it names exist, and does the code still behave as it says?',
-    'You may only read: read files, search, list folders, and run read-only git commands (git log, git show, git ls-files, git branch, git status, git diff). Do not edit anything, do not run builds, tests or package managers, do not use the network.',
+    'You have no shell and cannot run any command: you can only read files, search and list folders inside this folder. Switchboard read the recent git history for you; it is below the notes. Do not try to edit anything.',
     'For each note decide:',
     '- "keep": still true, or you cannot tell (keep when unsure);',
     '- "edit": mostly true but something changed: give the corrected title and/or text (the complete new wording, not a diff) and the reason;',
@@ -227,6 +227,9 @@ export function memoryCheckPrompt(folder: string, label: string, notes: readonly
     '',
     'Notes:',
     noteLines(notes),
+    '',
+    'Git history (read by Switchboard):',
+    gitContext || '(none provided)',
   ].join('\n');
 }
 
