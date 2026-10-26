@@ -236,3 +236,12 @@ Ruling 2026-10-14 (q4) asked for a confirmation an agent cannot give: an agent r
 - 2026-10-26: GHSA-r825-w8mm-5pxw (MEDIUM, dev only, launch-editor CLI flag misinterpretation) fixed by vite 8.3.5 (patched in 8.3.3, launch-editor 2.14.2).
 - 2026-10-26: GHSA-rq7h-c2jc-7f22 (MEDIUM, dev only, files outside `server.fs.allow` served when project paths match system paths) fixed by vite 8.3.5 (patched in 8.3.3).
 - 2026-10-26: GHSA-vfpm-58rq-9qcg (MEDIUM, dev only, first 4 bytes outside `server.fs` exposed by `?vite-wasm-instance`) fixed by vite 8.3.5 (patched in 8.3.3).
+- 2026-10-26: GHSA-cg2g-xh64-v4q7 (CRITICAL, DOMPurify `SAFE_FOR_TEMPLATES` bypass in attached shadow root content) fixed by dompurify 3.4.17 (patched in 3.4.17), pulled in by mermaid 12.2.0; the bundled `MERMAID_BUNDLE` was rebuilt with it.
+- 2026-10-26: GHSA-mrv2-3pqr-j5jr (HIGH, DOMPurify `IN_PLACE` hook leaves a detached subtree's event handlers armed) fixed by dompurify 3.4.17 (patched in 3.4.17), via mermaid 12.2.0.
+- 2026-10-26: GHSA-c6gr-qvv4-5v3f (LOW, DOMPurify SMIL `attributeName=href` guard skipped under `application/xhtml+xml`) fixed by dompurify 3.4.17 (patched in 3.4.17), via mermaid 12.2.0.
+- 2026-10-26: GHSA-238p-pmpm-9mq7 (LOW, KaTeX trust restrictions bypassable through existing prototype pollution) fixed by katex 0.18.10 (patched in 0.18.2), via mermaid 12.2.0.
+- 2026-10-26: GHSA-27r3-jxmh-p828 (HIGH, body-parser DoS via trailing bytes after a compressed body) fixed by body-parser 2.4.0 (patched in 2.4.0), a lockfile refresh within express 5.2.1's `^2.2.1` range under `@modelcontextprotocol/sdk` 1.32.1; no SDK bump or override needed.
+- 2026-10-26: GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr (MEDIUM) and GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp (LOW), fast-uri scheme spoofing / host confusion / path equivalence / scheme injection, fixed by fast-uri 3.1.9 (via ajv) and 4.2.3 (via fastify) (patched in 3.1.9 / 4.2.3), a lockfile refresh within the existing ranges.
+- 2026-10-26: GHSA-rxp7-6hxx-x8q5 (MEDIUM, ip-address quadratic zone-identifier match) fixed by ip-address 10.7.5 (patched in 10.7.4), a lockfile refresh under express-rate-limit.
+- 2026-10-26: GHSA-qxg6-89mg-rqv8 (MEDIUM, dev only, Vitest code injection via unauthenticated manual mock registration) fixed by vitest 5.0.5 / @vitest/mocker 5.0.5 (patched in 5.0.3).
+- 2026-10-26: GHSA-xp26-3454-mjgp (MEDIUM, dev only, @vitest/mocker Windows backslash traversal of the redirect allowlist) fixed by vitest 5.0.5 / @vitest/mocker 5.0.5 (patched in 5.0.3).
