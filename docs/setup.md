@@ -121,12 +121,12 @@ On Windows:
 
 ## Manual install
 
-The same steps by hand. Replace `2.2.0` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole.
+The same steps by hand. Replace `2.3.0` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole.
 
 **macOS:**
 
 ```sh
-V=2.2.0
+V=2.3.0
 DIR=~/Applications/Switchboard
 mkdir -p "$DIR"
 cd "$DIR"
@@ -141,7 +141,7 @@ npm run service:install -- --start
 **Linux:**
 
 ```bash
-V=2.2.0
+V=2.3.0
 DIR=~/.local/opt/switchboard
 mkdir -p "$DIR"
 cd "$DIR"
@@ -156,7 +156,7 @@ npm run service:install -- --start
 **Windows** (PowerShell; closing the console window the task opens stops Switchboard, so minimise it):
 
 ```powershell
-$V = "2.2.0"
+$V = "2.3.0"
 $Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
 New-Item -ItemType Directory -Force $Dir | Out-Null
 Set-Location $Dir

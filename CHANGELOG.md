@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0 (2026-10-26)
+
+### Project memory
+- **Notes are checked by themselves:** once a week (adjustable, on by default) Switchboard checks each folder's approved notes against the code and its git history in a short background run (no session, read-only: `--restricted`, no shell). Notes that no longer hold are removed to a "Removed by memory check" list with the reason and **Restore** (kept 30 days; at most 5 per run, never a folder's only note); suggested rewrites arrive as "Note edit" for your approval. A new proposal is compared with the approved notes: a duplicate or contradiction shows on its card, with **Approve and remove the old note**. Tokens show in Insights → Usage as "Memory check". Settings: the switch, how often, and per folder; "Check now" on the Notes / Memory page. See `docs/memory.md` (D136).
+
+### Sessions
+- **Archive instead of Close:** archived agents are deleted after 14 days (Settings: any number of days, or Never), with "Deletes in N days" and **Restore** in the Archived list (v2) and History (Classic). Kept while running, pinned, a crew member, part of an unfinished plan or with a routine. Its worktree goes with it only when clean and merged; branches are never deleted. Nothing is deleted on upgrade day, and changing the period never makes agents due at once. Paired computers' archived agents show too, with their own countdown. See `docs/cleanup.md` (D137).
+
+### v2 theme
+- **Tasks in the rail:** the board of every session's tasks is a main item, with a count of unfinished tasks; ⌘K finds it as "board" too.
+
 ## 2.2.0 (2026-10-26)
 
 ### Project memory
