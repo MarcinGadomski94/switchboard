@@ -49,7 +49,7 @@ export const ADVANCED_PAGES: readonly AdvancedPage[] = [
   { key: 'connections', label: 'Connections', sub: 'Tools agents can use (Figma, Jira, App Store Connect…)', icon: 'plug' },
   { key: 'clis', label: 'AI engines & models', sub: 'Engines, model by task, exact model names', icon: 'agents' },
   { key: 'workspace', label: 'Folders', sub: 'The folders agents start in', icon: 'folder-plus' },
-  { key: 'sessions', label: 'Agents & separate copies', sub: 'Separate copies and branches, Ultracode, checkpoints, task reminders', icon: 'copy' },
+  { key: 'sessions', label: 'Agents & separate copies', sub: 'Separate copies and branches, archived agents, Ultracode, checkpoints, task reminders', icon: 'copy' },
   { key: 'schedules', label: 'Schedules', sub: 'Every routine’s schedule', icon: 'routine' },
   { key: 'tools', label: 'Embedded tools', sub: 'Code graph, browser preview', icon: 'sliders' },
   { key: 'github', label: 'GitHub', sub: 'Sign-in, change-request detection', icon: 'merge' },

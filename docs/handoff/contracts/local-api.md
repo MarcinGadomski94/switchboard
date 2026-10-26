@@ -2153,3 +2153,20 @@ POST /agent/v1/processes/keep   (x-switchboard-session: 0b7c…, Authorization: 
 { "match": "vite", "keep": true, "reason": "dev server for the review at http://localhost:5173" }
 → 200 { "keep": true, "processes": [{ "pid": 5150, "name": "node vite", "kind": "dev-server", "keep": true, "keptBy": "agent", "keepReason": "dev server for the review at http://localhost:5173", "…": "…" }] }
 ```
+
+## The archive (D137, 2026-10-26, additive)
+
+**D137 · the archive** (`docs/cleanup.md` → *The archive (D137)*; types in `src/core/session-archive.ts`; no migration, no new route, no hub event). Closing a session archives it (the UI says Archive / Archived / Restore; the routes stay `POST /api/sessions/{id}/close` / `reopen`, which phones and paired machines already use); an archived session is deleted by the server itself once its period is over, unless something keeps it.
+
+- **Session / SessionDetail / `sessionUpdated`** gain, on a closed session only (absent while open, and from a server before D137): `deletesAt: string | null` (ISO: when the sweep deletes it; `null` while it is kept or the period is Never) and `keptReason: "running" | "crew" | "plan" | "plan-step" | "routine" | "cli-schedule" | "pinned" | null`. Each computer computes its own sessions' (a paired computer's session carries its computer's values).
+- **HistoryItem** gains the same two fields on a closed stored session's row (absent otherwise).
+- **Settings** (additive): `sessions.archiveDays` (editable), a whole number 0–3650, default 14; `0` = Never. `sessions.archiveSweep` (read-only) `{ lastRunAt: string | null, lastDeleted: { at, sessions, worktrees, keptWorktrees: [{ path, reason }] } | null }`. The server also stores `sessions.archiveSince` (the upgrade grace), which `GET` does not return.
+- **CleanupScan** gains `archiveDays?: number | null` (the period while the archive has one, `null` when it is Never); the `sessions` group then lists the archived sessions past it with the new reason `archive-due` (a kept one unticked, its reason in `keeps`).
+
+```
+GET /api/sessions?closed=include
+→ 200 [{ "id": "0b7c…", "closedAt": "2026-10-20T09:00:00.000Z", "deletesAt": "2026-11-03T09:00:00.000Z", "keptReason": null, "…": "…" },
+       { "id": "5e1f…", "closedAt": "2026-09-01T09:00:00.000Z", "deletesAt": null, "keptReason": "pinned", "…": "…" }]
+PUT /api/settings { "sessions.archiveDays": 30 }
+→ 200 { "sessions.archiveDays": 30, "sessions.archiveSweep": { "lastRunAt": "2026-10-26T13:02:00.000Z", "lastDeleted": { "at": "2026-10-26T13:02:00.000Z", "sessions": 3, "worktrees": 2, "keptWorktrees": [] } }, "…": "…" }
+```

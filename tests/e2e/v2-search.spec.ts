@@ -50,7 +50,7 @@ test('a message is found and opens the exact message in its agent', async ({ pag
   await expect(page.getByTestId('v2-page-search')).toBeVisible();
   await expect(page.getByTestId('v2-search-input')).toBeFocused();
   await expect(page.getByTestId('v2-search-hint')).toBeVisible();
-  await expect(page.getByTestId('v2-search-type')).toHaveText(['Everything', 'Messages', 'Results', 'Tasks', 'Closed agents']);
+  await expect(page.getByTestId('v2-search-type')).toHaveText(['Everything', 'Messages', 'Results', 'Tasks', 'Archived agents']);
   await searchFor(page, 'zanzibar ledger');
   await expect(page).toHaveURL(/\/search\?q=zanzibar\+ledger$/);
   const messages = page.locator('[data-testid="v2-search-group"][data-type="messages"]');

@@ -371,7 +371,7 @@ function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract
   const [selection, setSelection] = useState<string | null>(null);
   const body = useRef<HTMLDivElement | null>(null);
   const items = useMemo(
-    () => (open ? replyMenu({ text: row.text, selection, turnEventId: row.turnEventId, checkpoints: data.checkpoints, blocked: data.blocked ?? (data.closed ? 'Closed agents do not change.' : null), conversation: data.conversation }) : []),
+    () => (open ? replyMenu({ text: row.text, selection, turnEventId: row.turnEventId, checkpoints: data.checkpoints, blocked: data.blocked ?? (data.closed ? 'Archived agents do not change.' : null), conversation: data.conversation }) : []),
     [open, row.text, selection, row.turnEventId, data.checkpoints, data.blocked, data.closed, data.conversation],
   );
   const run = (item: ReplyMenuItem): void => {

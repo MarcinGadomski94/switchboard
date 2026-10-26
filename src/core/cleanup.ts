@@ -18,7 +18,7 @@ export const CLEANUP_GROUP_LABELS: Readonly<Record<CleanupGroup, string>> = {
   worktrees: 'Worktrees',
   localBranches: 'Local branches',
   remoteBranches: 'Remote branches',
-  sessions: 'Closed sessions',
+  sessions: 'Archived sessions',
   data: 'Old attachments and data files',
 };
 
@@ -27,7 +27,7 @@ export const CLEANUP_GROUP_HINTS: Readonly<Record<CleanupGroup, string>> = {
   worktrees: 'Worktrees Switchboard made whose branch is merged, whose session is closed and that saw no change for 14 days, or whose folder is gone. Removing a worktree keeps its branch.',
   localBranches: 'Branches Switchboard made that are merged, or whose worktree or session is gone. Unmerged ones need an extra confirmation. Other branches a Switchboard worktree used are listed only when merged, never ticked for you.',
   remoteBranches: 'Branches Switchboard pushed. Never ticked for you: each one is deleted on its remote only when you tick it, after a separate confirmation.',
-  sessions: 'Closed sessions older than the limit below: the session record with its events, todos and attachments.',
+  sessions: 'Archived sessions past the archive period that it keeps (pinned, in a plan, …) or has not deleted yet; with the archive set to Never, those archived longer than the limit below. The session record with its events, todos and attachments.',
   data: 'Attachments past their 30 days, files nothing refers to any more, old chat exports, take-over staging folders, and (never ticked for you) saved artifacts whose session was deleted.',
 };
 
@@ -63,6 +63,8 @@ export type CleanupReason =
   | 'session-gone'
   | 'worktree-gone'
   | 'closed-long-ago'
+  /** D137: archived past the archive's period (kept for a reason, or not swept yet). */
+  | 'archive-due'
   | 'past-retention'
   | 'orphaned'
   | 'takeover-leftover'
@@ -79,6 +81,7 @@ export const CLEANUP_REASON_LABELS: Readonly<Record<CleanupReason, string>> = {
   'session-gone': 'session deleted',
   'worktree-gone': 'worktree gone',
   'closed-long-ago': 'closed long ago',
+  'archive-due': 'archive period over',
   'past-retention': 'past retention',
   orphaned: 'orphaned',
   'takeover-leftover': 'take-over leftover',
@@ -139,6 +142,12 @@ export interface CleanupItem {
 export interface CleanupScan {
   readonly scannedAt: string;
   readonly closedSessionDays: number;
+  /**
+   * D137: the archive's period in days when it has one: the Closed sessions group then lists the
+   * archived sessions past it (the archive deletes the others by itself) and `closedSessionDays`
+   * is not used; `null` = the archive is set to Never (Clean-up's own limit applies). Additive.
+   */
+  readonly archiveDays?: number | null;
   readonly staleDays: number;
   readonly items: readonly CleanupItem[];
   /** Things the scan could not read (a repo that is gone, git failing), one line each. */

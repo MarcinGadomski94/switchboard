@@ -70,26 +70,30 @@ export function closeAsks(session: { readonly status: SessionStatus; readonly ac
   return session.status === 'run' || session.status === 'need' || (session.activity !== null && session.activity !== undefined);
 }
 
-/** The Close action (session header; the sidebar row's × says it in its tooltip). */
-export const CLOSE_LABEL = 'Close';
+/**
+ * The Close action (session header; the sidebar row's × says it in its tooltip). D137: the
+ * user-facing word is **Archive** (an archived session is deleted after the archive period,
+ * `src/core/session-archive.ts`); the API and the database keep "close".
+ */
+export const CLOSE_LABEL = 'Archive';
 
-/** The sidebar row's × tooltip. */
-export const CLOSE_TOOLTIP = 'Close (keeps it in History)';
+/** The sidebar row's × tooltip (D137: Archive). */
+export const CLOSE_TOOLTIP = 'Archive (restore it from History)';
 
 /** The confirmation's buttons. */
-export const STOP_AND_CLOSE = 'Stop & close';
+export const STOP_AND_CLOSE = 'Stop & archive';
 export const CLOSE_CANCEL = 'Cancel';
 
-/** The confirmation for a running or waiting session: "Stop <title> and close it? …". */
+/** The confirmation for a running or waiting session: "Stop <title> and archive it? …". */
 export function closeConfirmText(title: string): string {
-  return `Stop ${title} and close it? Its conversation stays in History and can be reopened.`;
+  return `Stop ${title} and archive it? It stays in History, where you can restore it, until the archive period ends.`;
 }
 
-/** History's tag on a closed session's row. */
-export const CLOSED_TAG = 'Closed';
+/** History's tag on a closed (archived, D137) session's row. */
+export const CLOSED_TAG = 'Archived';
 
-/** History's action on a closed session's row. */
-export const REOPEN_LABEL = 'Reopen';
+/** History's action on a closed (archived) session's row (D137: Restore; the route is still reopen). */
+export const REOPEN_LABEL = 'Restore';
 
 /** What the chat shows for a question batch closed without answers (e.g. `Closed · session closed`). */
 export function closedBatchText(reason: string): string {

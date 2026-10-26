@@ -101,13 +101,13 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
   const off = input.offline;
   const items: AgentMenuSpec[] = [{ id: 'rename', label: AGENT_WORDS.rename, icon: 'edit', ...(off ? { disabledReason: off } : {}) }];
   if (!input.conversation) {
-    const reason = off ?? (input.hooked ? 'It runs in a terminal: pause it there.' : !input.attached ? 'It continues in a terminal: bring it back here first.' : input.closed ? 'Closed agents do not run.' : undefined);
+    const reason = off ?? (input.hooked ? 'It runs in a terminal: pause it there.' : !input.attached ? 'It continues in a terminal: bring it back here first.' : input.closed ? 'Archived agents do not run.' : undefined);
     items.push(input.running ? { id: 'pause', label: AGENT_WORDS.pause, icon: 'pause', ...(reason ? { disabledReason: reason } : {}) } : { id: 'resume', label: AGENT_WORDS.resume, icon: 'play', ...(reason ? { disabledReason: reason } : {}) });
     items.push({ id: 'stop-background', label: AGENT_WORDS.stopBackground, icon: 'cpu', ...(off ? { disabledReason: off } : input.background === 0 ? { disabledReason: AGENT_WORDS.noBackground } : {}) });
     const moveReason = off
       ? AGENT_WORDS.offlineReason(input.machineName ?? 'Its computer')
       : input.closed
-        ? 'Closed agents stay where they are.'
+        ? 'Archived agents stay where they are.'
         : !input.movable
           ? 'It cannot move: it never ran here, or it moved already.'
           : input.machineName === null && input.computers === 0
@@ -117,7 +117,7 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
   }
   items.push({ sep: 'a' });
   if (!input.conversation) {
-    const termReason = input.machineName ? `It runs on ${input.machineName}: continue it in a terminal there.` : input.hooked ? 'It already runs in a terminal.' : input.closed ? 'Closed agents do not run.' : undefined;
+    const termReason = input.machineName ? `It runs on ${input.machineName}: continue it in a terminal there.` : input.hooked ? 'It already runs in a terminal.' : input.closed ? 'Archived agents do not run.' : undefined;
     // Lane X · D72: an agent started in a terminal continues here (its terminal's claude is stopped first, the dialog asks).
     if (input.hooked) items.push({ id: 'continue-hooked', label: AGENT_WORDS.continueHooked, icon: 'play', ...(off ? { disabledReason: off } : !input.hookedContinue ? { disabledReason: 'It moved to another computer, so it continues there.' } : {}) });
     items.push(input.attached || input.machineName ? { id: 'terminal', label: AGENT_WORDS.continueInTerminal, icon: 'cmd', ...(termReason ? { disabledReason: termReason } : {}) } : { id: 'attach', label: AGENT_WORDS.attachHere, icon: 'cmd' });
@@ -130,7 +130,7 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
   items.push({ id: 'notes', label: AGENT_WORDS.draftNotes, icon: 'book', ...(off ? { disabledReason: off } : input.conversation ? { disabledReason: 'Conversations have no notes of their own.' } : {}) });
   if (input.conversation) items.push({ id: 'continue-agent', label: AGENT_WORDS.continueAsAgent, icon: 'sparkle', ...(off ? { disabledReason: off } : {}) });
   else if (input.teammate) items.push({ id: 'return', label: AGENT_WORDS.returnToAgents, icon: 'agents', ...(off ? { disabledReason: off } : {}) });
-  else items.push({ id: 'teammate', label: AGENT_WORDS.makeTeammate, icon: 'crew', ...(off ? { disabledReason: off } : input.closed ? { disabledReason: 'Reopen it first.' } : input.crews === 0 ? { disabledReason: 'Make a crew first (+ New › Crew).' } : {}) });
+  else items.push({ id: 'teammate', label: AGENT_WORDS.makeTeammate, icon: 'crew', ...(off ? { disabledReason: off } : input.closed ? { disabledReason: 'Restore it first.' } : input.crews === 0 ? { disabledReason: 'Make a crew first (+ New › Crew).' } : {}) });
   items.push({ sep: 'c' });
   items.push(input.closed ? { id: 'reopen', label: AGENT_WORDS.reopen, icon: 'refresh', ...(off ? { disabledReason: off } : {}) } : { id: 'close', label: AGENT_WORDS.close, icon: 'x', ...(off ? { disabledReason: off } : {}) });
   if (input.conversation) items.push({ id: 'delete', label: AGENT_WORDS.deleteConversation, icon: 'trash', danger: true, ...(off ? { disabledReason: off } : {}) });

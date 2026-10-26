@@ -3,6 +3,9 @@ import type { HistoryItem } from '../../core/api.ts';
 import { REMOTE_CONTROL_BADGE, formatHistoryDate, historyBranchLine } from '../../core/history.ts';
 import { REMOTE_COPY_NOTE, REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { CLOSED_TAG, REOPEN_LABEL } from '../../core/session-close.ts';
+import { archivePolicyText, archiveRowText } from '../../core/session-archive.ts';
+import { readKnownSettings } from '../../core/settings.ts';
+import { useApi } from '../api/useApi.ts';
 import { continuedFromLabel, continuedInLabel } from '../../core/fresh-session.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -65,7 +68,9 @@ interface Loaded {
  * moved session opens once the move is over. D33: a closed session's row carries a
  * **Closed** tag (after its mode line) and **Reopen** (under its outcome); Reopen
  * (`POST /api/sessions/{id}/reopen`) puts it back in the sidebar and opens it in
- * the session view.
+ * the session view. D137: those are now **Archived** and **Restore**, with the
+ * archive's countdown ("Deletes in 12 days") or why it is kept, and a note above
+ * the rows saying when archived sessions are deleted.
  */
 /** D62 P7: whether History lists Codex / OpenCode conversations (this browser's choice). */
 function readCliHistory(): boolean {
@@ -107,6 +112,9 @@ export function HistoryView() {
       setReopening(null);
     }
   };
+  // D137: the archive's period, for the note above the rows (a change in Settings shows on the next visit).
+  const settings = useApi(api.settings);
+  const archiveDays = settings.data ? readKnownSettings(settings.data)['sessions.archiveDays'] : null;
   const [search, setSearch] = useState('');
   // D62 P7: the Codex / OpenCode terminal conversations, on request (listing them reads those CLIs' records); remembered in this browser.
   const [withCli, setWithCli] = useState(() => readCliHistory());
@@ -175,6 +183,16 @@ export function HistoryView() {
         />
       </div>
       <div className="sb-hist-rows" data-testid="history-rows">
+        {/* D137: what happens to archived sessions, above the rows when any is listed. */}
+        {archiveDays !== null && rows.some((row) => row.sessionId !== null && typeof row.closedAt === 'string') ? (
+          <div className="sb-hist-archive-note" data-testid="history-archive-note">
+            {archivePolicyText(archiveDays, 'sessions')}{' '}
+            <Link to={{ view: 'settings', section: 'sessions' }} data-testid="history-archive-settings">
+              Change in Settings
+            </Link>
+            .
+          </div>
+        ) : null}
         {rows.map((item) => (
           <HistoryRow
             key={item.claudeSessionId}
@@ -306,10 +324,15 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
               {REMOTE_CONTROL_BADGE}
             </span>
           ) : null}
-          {/* D33: closed out of the sidebar; Reopen puts it back. */}
+          {/* D33: closed out of the sidebar; Reopen puts it back. D137: the words are Archived / Restore, with the archive's countdown. */}
           {closed ? (
-            <span className="sb-hist-closed" data-testid="history-closed-tag" title={`Closed ${formatHistoryDate(item.closedAt as string)} · Reopen puts it back in the sidebar`}>
+            <span className="sb-hist-closed" data-testid="history-closed-tag" title={`Archived ${formatHistoryDate(item.closedAt as string)} · Restore puts it back in the sidebar`}>
               {CLOSED_TAG}
+            </span>
+          ) : null}
+          {closed && archiveRowText(item) ? (
+            <span className="sb-hist-archive" data-testid="history-archive-countdown" data-kept={item.keptReason ? '' : undefined}>
+              {archiveRowText(item)}
             </span>
           ) : null}
           {/* D83: continued in / from a fresh session: the other session, linked. */}

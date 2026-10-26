@@ -307,6 +307,27 @@
   white-space: nowrap;
 }
 
+/* D137: the archive's countdown (or why it is kept) after the Archived tag, and the note above the rows. */
+.sb-hist-archive {
+  margin-left: 6px;
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-hist-archive-note {
+  padding: 8px 0 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-hist-archive-note a {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* D83: "Continued in / from <title>" opens the other session. */
 .sb-hist-link {
   margin-left: 6px;

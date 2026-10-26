@@ -73,7 +73,8 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
 
 /** The stored settings rows without this machine's identity (`peers.self`, written at start since D132: Team, always on, reads it). */
 async function storedPreferences(): Promise<Record<string, unknown>> {
-  const { 'peers.self': _self, ...rest } = await store!.settings.getAll();
+  // D137: the archive's grace and sweep record are written by the service itself at start.
+  const { 'peers.self': _self, 'sessions.archiveSince': _since, 'sessions.archiveSweep': _sweep, ...rest } = await store!.settings.getAll();
   return rest;
 }
 
@@ -116,6 +117,9 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'power.estimate': { cpuIdleW: null, cpuMaxW: null, baseW: null },
       // D127: the idle stop of a session's leftover processes (minutes; 0 = off).
       'processes.idleStopMinutes': 10,
+      // D137: the archive's period (days; 0 = never) and its sweep's record.
+      'sessions.archiveDays': 14,
+      'sessions.archiveSweep': expect.objectContaining({ lastDeleted: null }) as unknown as KnownSettings['sessions.archiveSweep'],
       'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
@@ -350,6 +354,20 @@ describe('settings helpers (M8.2)', () => {
     expect(readOnly.statusCode).toBe(422);
   });
 
+  it('D137 · sessions.archiveDays: 14 by default, 0 (Never) to 3650 stored; the sweep record is read-only; bad values 422', async () => {
+    await setup();
+    expect(((await call('GET', '/api/settings')).json() as KnownSettings)['sessions.archiveDays']).toBe(14);
+    for (const days of [0, 7, 3650]) {
+      const saved = await call('PUT', '/api/settings', { 'sessions.archiveDays': days });
+      expect(saved.statusCode).toBe(200);
+      expect((saved.json() as KnownSettings)['sessions.archiveDays']).toBe(days);
+    }
+    for (const bad of [-1, 3651, 1.5, '14', null]) expect((await call('PUT', '/api/settings', { 'sessions.archiveDays': bad })).statusCode, JSON.stringify(bad)).toBe(422);
+    expect((await call('PUT', '/api/settings', { 'sessions.archiveSweep': { lastRunAt: null, lastDeleted: null } })).statusCode).toBe(422);
+    await store!.settings.set('sessions.archiveSweep', { lastRunAt: '2026-10-26T12:00:00.000Z', lastDeleted: { at: '2026-10-26T12:00:00.000Z', sessions: 2, worktrees: 1, keptWorktrees: [] } });
+    expect(((await call('GET', '/api/settings')).json() as KnownSettings)['sessions.archiveSweep']).toEqual({ lastRunAt: '2026-10-26T12:00:00.000Z', lastDeleted: { at: '2026-10-26T12:00:00.000Z', sessions: 2, worktrees: 1, keptWorktrees: [] } });
+  });
+
   it('D131 · ui.theme: v2 by default, the service default from SWITCHBOARD_UI_THEME_DEFAULT until stored, only v2 / classic accepted', async () => {
     await setup();
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.theme': 'v2' });
@@ -390,6 +408,8 @@ describe('settings helpers (M8.2)', () => {
       'github.prPollMinutes': 0,
       // D125: no defaults reported → zeros (the UI shows none).
       'power.estimateDefaults': { cpuIdleW: 0, cpuMaxW: 0, baseW: 0 },
+      // D137: no sweep yet.
+      'sessions.archiveSweep': { lastRunAt: null, lastDeleted: null },
     });
     expect(readKnownSettings({ 'sessions.ultracode': 'yes', 'workspace.root': '/w', 'usage.warnAtPct': 80 })).toMatchObject({
       'sessions.ultracode': false,

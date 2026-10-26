@@ -1,4 +1,5 @@
 import type { SessionStatus } from '../../core/model.ts';
+import { type ArchiveKeptReason, archiveCountdownText, archivePolicyText } from '../../core/session-archive.ts';
 import type { PlanItemState } from '../../core/plans.ts';
 import type { TeamMemberStatus } from '../../core/team.ts';
 import type { MachineState } from '../../core/peers.ts';
@@ -634,10 +635,10 @@ export const RESULTS_WORDS = {
 /** Lane R · Search (`/search?q=`). */
 export const SEARCH_WORDS = {
   title: 'Search',
-  sub: 'Every message, result, task and closed agent, on every computer.',
+  sub: 'Every message, result, task and archived agent, on every computer.',
   input: 'Search',
-  placeholder: 'Search messages, results, tasks and closed agents…',
-  types: { all: 'Everything', messages: 'Messages', results: 'Results', tasks: 'Tasks', closed: 'Closed agents' },
+  placeholder: 'Search messages, results, tasks and archived agents…',
+  types: { all: 'Everything', messages: 'Messages', results: 'Results', tasks: 'Tasks', closed: 'Archived agents' },
   computerAny: 'Any computer',
   folderAny: 'Any folder',
   dates: { any: 'Any time', today: 'Today', week: 'This week' },
@@ -1062,7 +1063,7 @@ export const PALETTE_WORDS = {
     shortcuts: 'Keyboard shortcuts',
     tours: 'Replay a What’s new tour',
     routines: 'Routines',
-    closed: 'Closed agents (history)',
+    closed: 'Archived agents',
     pairPhone: 'Pair a phone',
     addComputer: 'Add a computer',
     // Lane X · P1: the prototype's direct replay of the v2 welcome tour.
@@ -1073,12 +1074,31 @@ export const PALETTE_WORDS = {
 // ── Lane A · Agents, Notes, Routines, Tasks ─────────────────────────────
 // Lane A's words, one block per page (each page's own file edits only its block).
 
-/** Lane A · the Agents page: List / Chats / Board, the folder tree, Drafts, Closed. */
+/** D137: why an archived agent is kept past the archive period, in v2 words (classic: `ARCHIVE_KEPT_LABELS`). */
+export const ARCHIVE_KEPT_WORDS: Readonly<Record<ArchiveKeptReason, string>> = {
+  running: 'still running',
+  crew: 'a teammate in a crew',
+  plan: 'its project is not finished',
+  'plan-step': 'a step of a running project',
+  routine: 'it has an active routine',
+  'cli-schedule': 'it has a scheduled job',
+  pinned: 'pinned',
+};
+
+/** D137: Settings › Advanced › Sessions → the archive's row (`ArchiveRow`) in v2 words. */
+export const ARCHIVE_WORDS = {
+  label: 'Delete archived agents after',
+  description: 'An archived agent is deleted by itself after this long, with its separate copy of the code when nothing in it would be lost. Pinned agents, teammates, project agents and agents with an active routine are kept. Never keeps them until you delete them in Clean-up.',
+  select: 'Delete archived agents after',
+  noun: 'agent',
+} as const;
+
+/** Lane A · the Agents page: List / Chats / Board, the folder tree, Drafts, Archived (D137; was Closed). */
 export const AGENTS_WORDS = {
   title: 'Agents',
   sub: 'Every agent on every computer: conversations, teammates, routines and project steps too.',
-  closedTitle: 'Closed (history)',
-  closedSub: 'Closed agents keep their full chat. Reopen one to carry on.',
+  closedTitle: 'Archived',
+  closedSub: 'Archived agents keep their full chat until they are deleted. Restore one to carry on.',
   views: { list: 'List', chats: 'Chats', board: 'Board', folders: 'Folders' },
   viewLabel: 'View',
   foldersButton: 'Folders',
@@ -1091,7 +1111,7 @@ export const AGENTS_WORDS = {
   crews: 'Crews',
   notInFolder: 'Not in a folder',
   drafts: 'Drafts',
-  closed: 'Closed (history)',
+  closed: 'Archived',
   also: 'Also',
   notes: 'Notes · what agents know',
   tasks: 'Tasks',
@@ -1126,8 +1146,8 @@ export const AGENTS_WORDS = {
   moveToCrew: 'Move to crew…',
   rename: 'Rename…',
   delete: 'Delete folder…',
-  closeAgent: 'Close agent',
-  closeRunning: (name: string): string => `“${name}” is still running or waiting. Closing stops it; its chat is kept in Closed (history).`,
+  closeAgent: 'Archive agent',
+  closeRunning: (name: string): string => `“${name}” is still running or waiting. Archiving stops it; its chat is kept in Archived.`,
   draftNotes: 'Draft notes from this agent',
   managedPlan: 'Managed by its project. Rename or delete the project instead.',
   managedCrew: 'Managed by its crew. Rename the crew on the Crew page.',
@@ -1150,8 +1170,8 @@ export const AGENTS_WORDS = {
   folderCreated: (name: string, parent: string | null): string => `Folder “${name}” created${parent ? ` in ${parent}` : ''}. Drag agents into it.`,
   renamed: (name: string): string => `Renamed to “${name}”.`,
   folderDeleted: (name: string): string => `Deleted “${name}”. Its agents moved up a level.`,
-  closedToast: (name: string): string => `Closed “${name}”. Find it in Closed (history).`,
-  reopened: (name: string): string => `Reopened “${name}”. It’s back in Agents with its full chat.`,
+  closedToast: (name: string): string => `Archived “${name}”. Find it in Archived.`,
+  reopened: (name: string): string => `Restored “${name}”. It’s back in Agents with its full chat.`,
   syncedTo: (names: readonly string[]): string => (names.length ? `Synced to ${names.join(', ')}.` : ''),
   // Dialogs.
   moveTitle: 'Move to folder',
@@ -1191,13 +1211,20 @@ export const AGENTS_WORDS = {
   deleteDraft: 'Delete draft',
   newAgentDraft: (when: string): string => `New agent · saved ${when}`,
   draftDeleted: 'Draft deleted.',
-  // Closed.
-  searchClosed: 'Search closed agents',
-  reopen: 'Reopen',
-  closedAgo: (when: string): string => `Closed ${when}`,
-  closedEmpty: 'No closed agents',
-  closedEmptyText: 'Agents you close show here with their full chat.',
-  closedNoMatch: 'No closed agent matches',
+  // Archived (D137: the classic "Closed"; the API keeps close / reopen).
+  searchClosed: 'Search archived agents',
+  reopen: 'Restore',
+  closedAgo: (when: string): string => `Archived ${when}`,
+  closedEmpty: 'No archived agents',
+  closedEmptyText: 'Agents you archive show here with their full chat until they are deleted.',
+  closedNoMatch: 'No archived agent matches',
+  /** D137: the line at the top of Archived ("… Change in Settings."). */
+  archivePolicy: (days: number): string => archivePolicyText(days, 'agents'),
+  archiveSettings: 'Change in Settings',
+  /** D137: a row's countdown ("Deletes in 12 days", "Deletes today"). */
+  deletesIn: (deletesAt: string): string => archiveCountdownText(deletesAt),
+  /** D137: why an archived agent is kept past the period ("Kept: pinned"). */
+  kept: (reason: ArchiveKeptReason): string => `Kept: ${ARCHIVE_KEPT_WORDS[reason]}`,
   backToAgents: 'Back to Agents',
   // Phone.
   phoneNote: 'Same folders and pins as on your computers. Rearrange them on a computer; the phone follows.',
@@ -1417,7 +1444,7 @@ export const ROUTINES_WORDS = {
   belongsTo: 'Agent',
   lastRunAgent: 'Last run',
   terminal: 'Terminal',
-  agentClosed: 'Its agent is closed.',
+  agentClosed: 'Its agent is archived.',
   running: 'A run is in progress.',
   waitForRun: 'Wait for the current run to finish.',
   cancelTitle: 'Cancel “{name}”?',
@@ -1776,8 +1803,8 @@ export const AGENT_WORDS = {
   draftNotes: 'Draft notes from this agent',
   makeTeammate: 'Make a teammate…',
   returnToAgents: 'Return to agents',
-  close: 'Close agent',
-  reopen: 'Reopen',
+  close: 'Archive agent',
+  reopen: 'Restore',
   deleteConversation: 'Delete conversation…',
   offlineReason: (computer: string): string => `${computer} is offline; it can move once it reconnects.`,
   // Peek.

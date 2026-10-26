@@ -73,8 +73,8 @@ export async function registerHistoryRoutes(app: FastifyInstance, context: ApiCo
     const rawQ = request.query.q;
     const q = Array.isArray(rawQ) ? (rawQ.at(-1) ?? '') : (rawQ ?? '');
     // The demo's History is its own (nothing runs).
-    if (request.query.cli === '1' && !context.providers.history) return cliHistory.history(q);
-    return provider.history(q);
+    const items = request.query.cli === '1' && !context.providers.history ? await cliHistory.history(q) : await provider.history(q);
+    return withArchive(items, context);
   });
 
   const mover = new ConversationMover({ store: context.store, supervisor: context.supervisor, folders: context.folders });
@@ -134,4 +134,15 @@ export async function registerHistoryRoutes(app: FastifyInstance, context: ApiCo
       throw error;
     }
   });
+}
+
+/** D137: a closed session's row carries the archive's countdown or kept reason (`deletesAt` / `keptReason`). */
+async function withArchive(items: HistoryItem[], context: ApiContext): Promise<HistoryItem[]> {
+  const archive = context.archive;
+  if (!archive) return items;
+  return Promise.all(
+    items.map(async (item) =>
+      item.sessionId !== null && typeof item.closedAt === 'string' ? { ...item, ...(await archive.info({ id: item.sessionId, closedAt: item.closedAt })) } : item,
+    ),
+  );
 }

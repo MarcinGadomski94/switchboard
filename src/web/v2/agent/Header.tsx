@@ -16,7 +16,7 @@ import { needsYouOf } from '../../views/session/needs-you.ts';
 import { actionErrorText, attachWarningText, pauseButton, remoteToggle, rootLine } from '../../views/session/session-header.ts';
 import { stoppableBackground } from '../../views/session/stop.ts';
 import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, Select, StatusBadge, Tabs, TextArea, useToast } from '../components/index.ts';
-import { AGENT_TAB_LABELS, AGENT_WORDS, WORDS } from '../glossary.ts';
+import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
 import { AgentComputerTag, CrewTag } from '../shared/agent-row.tsx';
@@ -565,10 +565,10 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         return;
       case 'close':
         if (session && (session.live || session.status === 'run' || session.status === 'need')) setDialog('close');
-        else act(() => api.closeSession(sessionId), { text: `Closed “${name}”. Find it in Closed (history).`, undo: () => api.reopenSession(sessionId) });
+        else act(() => api.closeSession(sessionId), { text: AGENTS_WORDS.closedToast(name), undo: () => api.reopenSession(sessionId) });
         return;
       case 'reopen':
-        act(() => api.reopenSession(sessionId), { text: `Reopened “${name}”.` });
+        act(() => api.reopenSession(sessionId), { text: AGENTS_WORDS.reopened(name) });
         return;
       case 'delete':
         setDialog('delete');
@@ -633,13 +633,13 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
           />
           <ConfirmDialog
             open={dialog === 'close'}
-            title={`Close “${name}”?`}
-            text="It is working or waiting for you. Closing stops it; nothing is undone, and you can reopen it from Closed (history)."
+            title={`Archive “${name}”?`}
+            text="It is working or waiting for you. Archiving stops it; nothing is undone, and you can restore it from Archived until it is deleted."
             yes={AGENT_WORDS.close}
             busy={busy}
             error={error}
             testId="v2-agent-close-confirm"
-            onYes={() => act(() => api.closeSession(sessionId, true), { text: `Closed “${name}”. Find it in Closed (history).`, undo: () => api.reopenSession(sessionId) })}
+            onYes={() => act(() => api.closeSession(sessionId, true), { text: AGENTS_WORDS.closedToast(name), undo: () => api.reopenSession(sessionId) })}
             onClose={() => setDialog(null)}
           />
           <ConfirmDialog

@@ -125,7 +125,7 @@ export function SessionCloseButton({ session, busy, onClose }: { readonly sessio
       className="sb-button sb-session-close"
       data-testid="sidebar-session-close"
       data-session-id={session.id}
-      aria-label={`Close ${displayTitle(session)}`}
+      aria-label={`Archive ${displayTitle(session)}`}
       aria-busy={busy || undefined}
       title={CLOSE_TOOLTIP}
       onClick={click}

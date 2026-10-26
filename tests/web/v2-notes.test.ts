@@ -126,6 +126,6 @@ describe('v2 Notes · drafting', () => {
     expect(draftToast({ asked: true, reason: null, askedAt: null }, 'Fix login')).toBe('Asked “Fix login” to draft notes. They’ll wait for you in Needs you.');
     expect(draftToast({ asked: false, reason: 'asked-recently', askedAt: null }, 'A')).toContain('last 24 hours');
     expect(draftToast({ asked: false, reason: 'no-folder', askedAt: null }, 'A')).toContain('doesn’t work in a folder');
-    expect(draftToast({ asked: false, reason: 'closed', askedAt: null }, 'A')).toBe('“A” is closed. Reopen it first.');
+    expect(draftToast({ asked: false, reason: 'closed', askedAt: null }, 'A')).toBe('“A” is archived. Restore it first.');
   });
 });

@@ -276,7 +276,8 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     search: searchText([
       item.name,
       session.title,
-      item.closedAt ? CLOSED_TAG : null,
+      // D137: an archived row is found by "Archived" and, as before, by "Closed".
+      item.closedAt ? `${CLOSED_TAG} Closed` : null,
       item.mode,
       fullSummary,
       historyBranchLine(item),

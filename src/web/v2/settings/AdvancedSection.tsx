@@ -18,7 +18,7 @@ import { ToolsSection } from '../../views/settings/ToolsSection.tsx';
 import { WorkspaceSection } from '../../views/settings/WorkspaceSection.tsx';
 import { ClaudeSection, GithubSection, NotifySection, SchedulesSection, SessionsSection } from '../../views/settings/sections.tsx';
 import { Button, Card, EmptyState, Icon, Skeleton } from '../components/index.ts';
-import { SETTINGS_WORDS as W } from '../glossary.ts';
+import { ARCHIVE_WORDS, SETTINGS_WORDS as W } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { V2ToursSection } from '../tour/ToursSection.tsx';
 import { ClassicFrame, useClassicModals } from './ClassicFrame.tsx';
@@ -128,7 +128,8 @@ function AdvancedBody({ kind }: { readonly kind: AdvancedKind }) {
     case 'workspace':
       return <WorkspaceSection />;
     case 'sessions':
-      return <WithSettings>{({ settings, save, onSaved }) => <SessionsSection settings={settings} save={save} onSaved={onSaved} />}</WithSettings>;
+      // D137: the archive's row in v2 words.
+      return <WithSettings>{({ settings, save, onSaved }) => <SessionsSection settings={settings} save={save} onSaved={onSaved} archiveWords={ARCHIVE_WORDS} />}</WithSettings>;
     case 'schedules':
       return <SchedulesSection />;
     case 'tools':

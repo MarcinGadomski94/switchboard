@@ -522,8 +522,28 @@ export class PlanService {
       itemsOfTodos: (todoIds) => this.itemsOfTodos(todoIds),
       // D134: the Usage breakdown's "plan step" kind.
       runSessionIds: async () => (this.#enabled && this.#db !== null ? this.#repo().runSessionIds() : []),
+      // D137: the sessions the archive must keep.
+      archiveHolds: () => this.archiveHolds(),
     });
     await this.#open();
+  }
+
+  /**
+   * D137 (the archive, `docs/cleanup.md` → *The archive*): the source session of every plan that is
+   * not finished (`plan`: draft, running, paused) and the run session of every item of a running or
+   * paused plan (`plan-step`); `null` until `plans.db` is open (or while it cannot be). Read-only.
+   */
+  async archiveHolds(): Promise<Map<string, 'plan' | 'plan-step'> | null> {
+    const out = new Map<string, 'plan' | 'plan-step'>();
+    if (!this.#enabled || this.#db === null) return null;
+    const repo = this.#repo();
+    for (const plan of await repo.list()) {
+      if (plan.state === 'done' || plan.state === 'cancelled') continue;
+      out.set(plan.sourceSessionId, 'plan');
+      if (plan.state !== 'running' && plan.state !== 'paused') continue;
+      for (const item of await repo.items(plan.id)) if (item.runSessionId && !out.has(item.runSessionId)) out.set(item.runSessionId, 'plan-step');
+    }
+    return out;
   }
 
   /**

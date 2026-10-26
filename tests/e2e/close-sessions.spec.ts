@@ -4,7 +4,7 @@ import type { LifecyclePayload } from '../../src/core/event-payload.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
- * D33 oracle (E2E, real path: `node src/server/main.ts` with fake-claude, no demo
+ * D33 oracle (E2E, real path; D137: the words are now Archive / Archived / Restore: `node src/server/main.ts` with fake-claude, no demo
  * seed, D13):
  * 1. An idle session closes from its sidebar row: the × is invisible at rest and
  *    shows on hover without moving anything, over the age; a click closes it
@@ -76,8 +76,8 @@ test('an idle session closes from its sidebar row: × on hover (nothing moves), 
   // Invisible at rest (the prototype's row is unchanged), not a click target.
   await expect(close).toHaveCSS('opacity', '0');
   await expect(close).toHaveCSS('pointer-events', 'none');
-  await expect(close).toHaveAttribute('title', 'Close (keeps it in History)');
-  await expect(close).toHaveAttribute('aria-label', 'Close close-idle');
+  await expect(close).toHaveAttribute('title', 'Archive (restore it from History)');
+  await expect(close).toHaveAttribute('aria-label', 'Archive close-idle');
   await expect(row).toHaveText(/close-idle/);
   const rowBefore = await row.boundingBox();
   const nameBefore = await row.locator('.sb-session-name').boundingBox();
@@ -110,8 +110,8 @@ test('an idle session closes from its sidebar row: × on hover (nothing moves), 
   await page.getByTestId('nav-history').click();
   const history = historyRow(page, idle.id);
   await expect(history).toHaveAttribute('data-closed', 'true');
-  await expect(history.getByTestId('history-closed-tag')).toHaveText('Closed');
-  await expect(history.getByTestId('history-reopen')).toHaveText('Reopen');
+  await expect(history.getByTestId('history-closed-tag')).toHaveText('Archived');
+  await expect(history.getByTestId('history-reopen')).toHaveText('Restore');
   await expect(historyRow(page, kept.id).getByTestId('history-closed-tag')).toHaveCount(0);
   await expect(historyRow(page, kept.id).getByTestId('history-reopen')).toHaveCount(0);
   const rows = await page.evaluate(async () => (await (await fetch('/api/history')).json()) as HistoryItem[]);
@@ -125,7 +125,7 @@ test('a running session closes from the header after the confirmation; Cancel ke
   await openWithHub(page, `${world.baseUrl}/sessions/${running.id}`);
 
   const close = page.getByTestId('session-close');
-  await expect(close).toHaveText('Close');
+  await expect(close).toHaveText('Archive');
   // Styled like the other header actions, first among them.
   const pause = page.getByTestId('session-pause');
   for (const prop of ['font-size', 'color', 'border-top-color', 'border-top-left-radius', 'padding-top', 'padding-left']) {
@@ -140,8 +140,8 @@ test('a running session closes from the header after the confirmation; Cancel ke
   await close.click();
   const dialog = page.getByTestId('close-confirm');
   await expect(dialog).toBeVisible();
-  await expect(page.getByTestId('close-confirm-text')).toHaveText('Stop close-running and close it? Its conversation stays in History and can be reopened.');
-  await expect(page.getByTestId('close-confirm-stop')).toHaveText('Stop & close');
+  await expect(page.getByTestId('close-confirm-text')).toHaveText('Stop close-running and archive it? It stays in History, where you can restore it, until the archive period ends.');
+  await expect(page.getByTestId('close-confirm-stop')).toHaveText('Stop & archive');
   await expect(page.getByTestId('close-confirm-cancel')).toHaveText('Cancel');
   await page.getByTestId('close-confirm-cancel').click();
   await expect(dialog).toHaveCount(0);
@@ -171,7 +171,7 @@ test('a waiting session: its question leaves the Inbox; Reopen in History brings
   const row = sidebarRow(page, waiting.id);
   await row.hover();
   await row.getByTestId('sidebar-session-close').click();
-  await expect(page.getByTestId('close-confirm-text')).toHaveText('Stop close-waiting and close it? Its conversation stays in History and can be reopened.');
+  await expect(page.getByTestId('close-confirm-text')).toHaveText('Stop close-waiting and archive it? It stays in History, where you can restore it, until the archive period ends.');
   await page.getByTestId('close-confirm-stop').click();
   await expect(row).toHaveCount(0);
   // Its question left the Inbox.
@@ -181,7 +181,7 @@ test('a waiting session: its question leaves the Inbox; Reopen in History brings
   // Reopen from History: the session view opens and the row is back.
   await page.getByTestId('nav-history').click();
   const history = historyRow(page, waiting.id);
-  await expect(history.getByTestId('history-closed-tag')).toHaveText('Closed');
+  await expect(history.getByTestId('history-closed-tag')).toHaveText('Archived');
   await history.getByTestId('history-reopen').click();
   await expect(page).toHaveURL(`${world.baseUrl}/sessions/${waiting.id}`);
   await expect(page.getByTestId('session-name')).toHaveText('close-waiting');

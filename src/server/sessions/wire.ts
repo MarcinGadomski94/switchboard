@@ -1,3 +1,4 @@
+import type { ArchiveInfo } from '../../core/session-archive.ts';
 import { sessionProfileId } from '../../core/accounts.ts';
 import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionFreshContinue, SessionLink, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
@@ -74,6 +75,30 @@ const switchSources = new WeakMap<Store, SwitchSource>();
 /** D62 P5: registers where `toSession` reads a session's switch in progress. */
 export function registerSwitchSource(store: Store, source: SwitchSource): void {
   switchSources.set(store, source);
+}
+
+/**
+ * D137: an archived session's countdown or kept reason (the `ArchiveService`, registered when it
+ * is created), keyed by the store like {@link registerWorkflowSource}; a store without one sends neither.
+ */
+export interface ArchiveSource {
+  info(record: SessionRecord): Promise<ArchiveInfo>;
+}
+
+const archiveSources = new WeakMap<Store, ArchiveSource>();
+
+/** D137: registers where `toSession` reads an archived session's `deletesAt` / `keptReason`. */
+export function registerArchiveSource(store: Store, source: ArchiveSource): () => void {
+  archiveSources.set(store, source);
+  return () => {
+    if (archiveSources.get(store) === source) archiveSources.delete(store);
+  };
+}
+
+/** D137: `deletesAt` / `keptReason` of a closed session (nothing for an open one, or without the archive). */
+export async function archiveFieldsOf(store: Store, record: SessionRecord): Promise<Partial<ArchiveInfo>> {
+  const source = archiveSources.get(store);
+  return source && record.closedAt !== null ? source.info(record) : {};
 }
 
 /**
@@ -161,7 +186,7 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * `remoteSource`, the remote session a teleported session is a local copy of
  * (`null` otherwise). D31: its `model` ({@link toSessionModel}). D33: `closedAt`,
  * when the developer closed it (`null` while open). D48: `machine` is `null` (a
- * session of this machine).
+ * session of this machine). D137: a closed session's `deletesAt` / `keptReason` (the archive).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -245,6 +270,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     ...(await instructionState(store, record)),
     // D124: how its last turn ended (the ask of a needs-you, `detected` or `declared`).
     turnWait: record.closedAt === null ? record.turnWait : null,
+    // D137: an archived session's countdown or why it is kept.
+    ...(await archiveFieldsOf(store, record)),
   };
 }
 

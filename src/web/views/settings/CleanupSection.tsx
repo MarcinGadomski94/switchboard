@@ -88,28 +88,37 @@ function LocalCleanup() {
     <>
       <SectionTitle withLede>Clean-up</SectionTitle>
       <div className="sb-set-lede" data-tour="cleanup">
-        Finds what Switchboard created and no longer needs: worktrees, branches, old closed sessions and data files. Nothing is removed until you tick it and confirm. This machine only.
+        Finds what Switchboard created and no longer needs: worktrees, branches, old archived sessions and data files. Nothing is removed until you tick it and confirm. This machine only.
       </div>
-      <Row id="cleanup-days" label="Closed sessions" description="List closed sessions once they have been closed this long">
-        <span className="sb-cleanup-days">
-          <input
-            className="sb-set-input sb-cleanup-days-input"
-            data-testid="cleanup-days"
-            type="number"
-            inputMode="numeric"
-            min={CLOSED_SESSION_DAYS_MIN}
-            max={CLOSED_SESSION_DAYS_MAX}
-            value={days}
-            aria-label="Closed sessions older than, in days"
-            onChange={(event) => setDays(event.target.value)}
-            onBlur={() => void saveDays()}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void saveDays();
-            }}
-          />
-          <span className="sb-cleanup-days-unit">days</span>
-        </span>
-      </Row>
+      {/* D137: with an archive period, archived sessions go by themselves; Clean-up lists only those past it (kept, or not swept yet). */}
+      {data && typeof data.archiveDays === 'number' ? (
+        <Row id="cleanup-days" label="Archived sessions" description="Deleted by themselves after the archive period (Settings → Sessions & worktrees). Listed here only once past it, when the archive keeps them or has not deleted them yet.">
+          <span className="sb-cleanup-days-unit" data-testid="cleanup-archive-days">
+            after {data.archiveDays === 1 ? '1 day' : `${data.archiveDays} days`}
+          </span>
+        </Row>
+      ) : (
+        <Row id="cleanup-days" label="Archived sessions" description="The archive keeps them (Never): list archived sessions once they have been archived this long">
+          <span className="sb-cleanup-days">
+            <input
+              className="sb-set-input sb-cleanup-days-input"
+              data-testid="cleanup-days"
+              type="number"
+              inputMode="numeric"
+              min={CLOSED_SESSION_DAYS_MIN}
+              max={CLOSED_SESSION_DAYS_MAX}
+              value={days}
+              aria-label="Archived sessions older than, in days"
+              onChange={(event) => setDays(event.target.value)}
+              onBlur={() => void saveDays()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveDays();
+              }}
+            />
+            <span className="sb-cleanup-days-unit">days</span>
+          </span>
+        </Row>
+      )}
       {daysError ? (
         <div className="sb-set-note sb-set-error" data-testid="cleanup-days-error">
           {daysError}

@@ -22,6 +22,7 @@ import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
 import { StandingInstructionRow } from './StandingInstruction.tsx';
 import { ModelRulesRow } from './ModelRulesRow.tsx';
 import { PricesRow } from './PricesRow.tsx';
+import { ArchiveRow, type ArchiveRowWords } from './ArchiveRow.tsx';
 import { FRESH_OFFER_PCT_CHOICES } from '../../../core/fresh-session.ts';
 
 /** D83: the Settings row of the fresh-session offer. */
@@ -83,9 +84,9 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
 
 /**
  * Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder,
- * D80's checkpoints, D81's captured-todo fill-in, D83's fresh-session offer, D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
+ * D80's checkpoints, D81's captured-todo fill-in, D137's archive period, D83's fresh-session offer, D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
  */
-export function SessionsSection({ settings, save, onSaved }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void }) {
+export function SessionsSection({ settings, save, onSaved, archiveWords }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void; readonly archiveWords?: ArchiveRowWords }) {
   const [busy, setBusy] = useState(false);
   const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.checkpoints' | 'sessions.todoEnrich' | 'sessions.freshOffer'): void => {
     setBusy(true);
@@ -120,6 +121,8 @@ export function SessionsSection({ settings, save, onSaved }: { readonly settings
       >
         <Value>from AGENTS.md</Value>
       </Row>
+      {/* D137: the archive's period and its last sweep (after the prototype's rows: the visual oracle compares those by position). */}
+      <ArchiveRow settings={settings} save={save} {...(archiveWords ? { words: archiveWords } : {})} />
       {/* D75: one reminder when a turn ends with a started todo still in progress and untouched. */}
       <Row
         id="todo-reminder"

@@ -16,6 +16,12 @@ export interface PlanHooks {
   itemsOfTodos(todoIds: readonly string[]): Promise<PlanItemRef[]>;
   /** D134 (Usage breakdown): the sessions that run plan items (their kind is "plan step"); empty while unavailable. */
   runSessionIds?(): Promise<string[]>;
+  /**
+   * D137 (the archive): the sessions a plan still needs: the source (owner) session of every plan
+   * that is not finished (`plan`), and every item's run session while its plan runs or is paused
+   * (`plan-step`); `null` while `plans.db` is unavailable (the archive then deletes nothing).
+   */
+  archiveHolds?(): Promise<ReadonlyMap<string, 'plan' | 'plan-step'> | null>;
 }
 
 /** D100 follow-up 2026-10-16: a plan item as Team's sidebar names a member's current item. */
@@ -99,4 +105,14 @@ export async function plansItemsOfTodos(store: object, todoIds: readonly string[
 export async function plansRunSessionIds(store: object): Promise<string[]> {
   const hooks = registry.get(store);
   return hooks?.runSessionIds ? hooks.runSessionIds() : [];
+}
+
+/**
+ * D137 seam (the archive, `src/server/sessions/archive.ts`): the sessions plans still need, which
+ * the archive never deletes; empty without Plans (no hooks registered: demo mode, tests), `null`
+ * while Plans has not opened `plans.db` or cannot (the archive then deletes nothing).
+ */
+export async function plansArchiveHolds(store: object): Promise<ReadonlyMap<string, 'plan' | 'plan-step'> | null> {
+  const hooks = registry.get(store);
+  return hooks?.archiveHolds ? hooks.archiveHolds() : new Map();
 }

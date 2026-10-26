@@ -1302,6 +1302,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D137: the archive (docs/cleanup.md → The archive); in classic (v2 runs only its welcome tour).
+  {
+    id: 'session-archive',
+    decision: 'D137',
+    version: V2_3,
+    title: 'Archived sessions go by themselves',
+    steps: [
+      {
+        id: 'period',
+        title: 'Archive instead of delete',
+        what: 'Close is now Archive. An archived session stays in History, where Restore brings it back, and is deleted by itself after 14 days, quietly, with its worktree when nothing in it would be lost. Pinned sessions, Team members, plan sessions and sessions with an active loop are kept. Sessions archived before this version count from today.',
+        todo: ['Pick the period (or Never) in Settings → Sessions & worktrees.', 'See each archived session’s countdown in History.'],
+        anchors: ['setting-archive'],
+        route: { view: 'settings', section: 'sessions' },
+        missing: 'Settings → Sessions & worktrees has Delete archived sessions after. ',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

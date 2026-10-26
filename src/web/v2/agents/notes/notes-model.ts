@@ -250,7 +250,7 @@ export function draftToast(answer: MemoryDraftAnswer, name: string): string {
   if (answer.asked) return `Asked “${name}” to draft notes. They’ll wait for you in Needs you.`;
   if (answer.reason === 'asked-recently') return `“${name}” was asked to draft notes in the last 24 hours. Its notes wait for you in Needs you.`;
   if (answer.reason === 'no-folder') return `“${name}” doesn’t work in a folder, so it can’t keep notes.`;
-  if (answer.reason === 'closed') return `“${name}” is closed. Reopen it first.`;
+  if (answer.reason === 'closed') return `“${name}” is archived. Restore it first.`;
   return `“${name}” wasn’t asked: ${answer.reason ?? 'unknown reason'}.`;
 }
 

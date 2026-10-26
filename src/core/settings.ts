@@ -13,6 +13,7 @@ import { type ModelRule, readModelRules } from './model-routing.ts';
 import { EXAMPLE_PRICES, type PriceTable, readPriceTable } from './insights.ts';
 import { type CiMergeMethod, isCiMergeMethod } from './ci.ts';
 import { IDLE_STOP_DEFAULT_MINUTES } from './processes.ts';
+import { ARCHIVE_DAYS_DEFAULT, type ArchiveSweepRecord, readArchiveSweep } from './session-archive.ts';
 import { POWER_ESTIMATE_UNSET, type PowerEstimateModel, type PowerEstimateSettings, readPowerEstimateSettings } from './power.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
@@ -106,6 +107,13 @@ export interface KnownSettings {
    * many minutes (whole, 0–1440; 0 = never for being idle: a close still stops them). Editable, default 10.
    */
   readonly 'processes.idleStopMinutes': number;
+  /**
+   * D137 (`docs/cleanup.md` → *The archive*): an archived (closed) session is deleted by itself
+   * after this many days (whole, 0–3650; 0 = Never). Editable, default 14.
+   */
+  readonly 'sessions.archiveDays': number;
+  /** D137: the archive sweep's record (the last run, the last deletions). Read-only. */
+  readonly 'sessions.archiveSweep': ArchiveSweepRecord;
   /**
    * D125: Settings → Machines → *Power estimate* (`docs/power.md`): this machine's CPU idle
    * and max watts and the rest of the system, used only while it has no battery; `null` =
@@ -218,7 +226,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes', 'sessions.archiveDays'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -259,6 +267,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'power.estimate': POWER_ESTIMATE_UNSET,
   // D127: the idle stop of a session's leftover processes (docs/processes.md).
   'processes.idleStopMinutes': IDLE_STOP_DEFAULT_MINUTES,
+  // D137: the archive's period (docs/cleanup.md → The archive).
+  'sessions.archiveDays': ARCHIVE_DAYS_DEFAULT,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -311,6 +321,8 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'ci.mergeMethod': isCiMergeMethod(value['ci.mergeMethod']) ? value['ci.mergeMethod'] : SETTING_DEFAULTS['ci.mergeMethod'],
     'power.estimate': readPowerEstimateSettings(value['power.estimate']),
     'processes.idleStopMinutes': num('processes.idleStopMinutes', SETTING_DEFAULTS['processes.idleStopMinutes']),
+    'sessions.archiveDays': num('sessions.archiveDays', SETTING_DEFAULTS['sessions.archiveDays']),
+    'sessions.archiveSweep': readArchiveSweep(value['sessions.archiveSweep']),
     'power.estimateDefaults': readPowerEstimateModel(value['power.estimateDefaults']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',

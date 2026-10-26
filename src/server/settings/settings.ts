@@ -20,6 +20,7 @@ import {
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
 import { IDLE_STOP_MAX_MINUTES, IDLE_STOP_MIN_MINUTES } from '../../core/processes.ts';
+import { ARCHIVE_DAYS_MAX, ARCHIVE_DAYS_MIN, ARCHIVE_SWEEP_SETTING, archiveDaysOf, parseArchiveDays, readArchiveSweep } from '../../core/session-archive.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
 import { defaultPowerEstimate, parsePowerEstimateSettings, readPowerEstimateSettings } from '../../core/power.ts';
@@ -43,6 +44,7 @@ const READ_ONLY_KEYS: readonly SettingKey[] = [
   'workspace.router',
   'github.prPollMinutes',
   'power.estimateDefaults',
+  'sessions.archiveSweep',
 ];
 
 /** Result of {@link validateSettingsPatch}. */
@@ -94,6 +96,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       // D127: the idle stop of a session's leftover processes (0 = off).
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < IDLE_STOP_MIN_MINUTES || raw > IDLE_STOP_MAX_MINUTES) {
         errors.push({ field: key, message: `${key} must be a whole number ${IDLE_STOP_MIN_MINUTES}–${IDLE_STOP_MAX_MINUTES} (0 = off)` });
+        continue;
+      }
+    } else if (key === 'sessions.archiveDays') {
+      // D137: the archive's period (0 = Never).
+      if (parseArchiveDays(raw) === null) {
+        errors.push({ field: key, message: `${key} must be a whole number ${ARCHIVE_DAYS_MIN}–${ARCHIVE_DAYS_MAX} (0 = never)` });
         continue;
       }
     } else if (key === 'ci.mergeMethod') {
@@ -219,6 +227,8 @@ export async function readSettings(
       if (key === 'insights.prices') return [key, readPriceTable(value)];
       // D125: unusable watts read as the default.
       if (key === 'power.estimate') return [key, readPowerEstimateSettings(value)];
+      // D137: an out-of-range period reads as the default.
+      if (key === 'sessions.archiveDays') return [key, archiveDaysOf(value)];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
@@ -231,6 +241,7 @@ export async function readSettings(
     'workspace.router': defaultFolder?.kind === 'workspace' ? await routerTitle(defaultFolder.path) : null,
     'github.prPollMinutes': DEFAULT_PR_POLL_MS / 60_000,
     'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
+    'sessions.archiveSweep': readArchiveSweep(stored[ARCHIVE_SWEEP_SETTING]),
   };
 }
 

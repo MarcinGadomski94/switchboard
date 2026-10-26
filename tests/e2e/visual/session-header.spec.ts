@@ -83,8 +83,8 @@ const APP_PATHS: Readonly<Record<string, readonly number[]>> = {
   close: [...TOP, 3, 0],
 };
 
-/** D33: the Close action's label (src/core/session-close.ts `CLOSE_LABEL`). */
-const CLOSE_LABEL = 'Close';
+/** D33: the Close action's label (src/core/session-close.ts `CLOSE_LABEL`; D137: Archive). */
+const CLOSE_LABEL = 'Archive';
 
 /** D33: the gap between two header actions (`.sb-sv-actions`). */
 const ACTION_GAP_PX = 6;

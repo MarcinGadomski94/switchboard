@@ -56,9 +56,9 @@ describe('the address', () => {
 
 describe('grouping', () => {
   const answer = { groups: [group('history', [history]), group('conversations', [message, remoteMessage], 14), group('artifacts', [artifact]), group('todos', [])] };
-  it('orders Messages · Results · Tasks · Closed agents and skips empty groups for Everything', () => {
+  it('orders Messages · Results · Tasks · Archived agents and skips empty groups for Everything', () => {
     const groups = groupAnswer(answer, ANY, CTX);
-    expect(groups.map((g) => g.label)).toEqual(['Messages', 'Results', 'Closed agents']);
+    expect(groups.map((g) => g.label)).toEqual(['Messages', 'Results', 'Archived agents']);
     expect(groups[0]?.count).toBe(14);
     expect(groups[0]?.more).toBe(true);
     expect(groups.map((g) => g.icon)).toEqual(['chat', 'results', 'clock']);

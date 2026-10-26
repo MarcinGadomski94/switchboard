@@ -21,6 +21,7 @@ import {
   inRunOrder,
   missingConfirmations,
 } from '../../core/cleanup.ts';
+import { type ArchiveKeptReason, ARCHIVE_KEPT_LABELS, ARCHIVE_NEVER, archiveDeadline } from '../../core/session-archive.ts';
 import { type Leftover, redactUrl } from '../../core/takeover.ts';
 import { parseWorktreeList } from '../../core/worktrees.ts';
 import { ATTACHMENTS_DIR, STAGED_DIR } from '../attachments/service.ts';
@@ -38,6 +39,27 @@ export interface CleanupTakeover {
   deleteLeftover(id: string): Promise<unknown>;
   hasTarget(opId: string): boolean;
 }
+
+/**
+ * D137: what Clean-up reads of the archive (`src/server/sessions/archive.ts`): the period, the
+ * upgrade grace and the sessions kept past their period. With a period set, the Closed sessions
+ * group lists the archived sessions past their period (kept ones, or not swept yet) instead of
+ * using `cleanup.closedSessionDays`; with Never, Clean-up keeps its own limit.
+ */
+export interface CleanupArchive {
+  snapshot(): Promise<CleanupArchiveSnapshot>;
+}
+
+/** D137: the archive as one scan sees it. */
+export interface CleanupArchiveSnapshot {
+  /** The period in days; `0` = Never. */
+  readonly days: number;
+  readonly since: string | null;
+  readonly kept: ReadonlyMap<string, ArchiveKeptReason>;
+}
+
+/** D137: what {@link CleanupService.removeWorktreeIfSafe} did. */
+export type SafeRemoval = { readonly removed: true } | { readonly removed: false; readonly reason: string };
 
 /** Options of {@link CleanupService}. */
 export interface CleanupServiceOptions {
@@ -214,6 +236,7 @@ export class CleanupService {
   readonly #sizeLimit: number;
   readonly #runs = new Map<string, CleanupRun>();
   #running: string | null = null;
+  #archive: CleanupArchive | null = null;
 
   constructor(options: CleanupServiceOptions) {
     this.#store = options.store;
@@ -226,6 +249,11 @@ export class CleanupService {
     this.#gitTimeout = options.gitTimeoutMs ?? 120_000;
     this.#pushTimeout = options.pushTimeoutMs ?? 60_000;
     this.#sizeLimit = options.sizeWalkLimit ?? 200_000;
+  }
+
+  /** D137: the archive the Closed sessions group follows (set once the archive service exists). */
+  useArchive(archive: CleanupArchive): void {
+    this.#archive = archive;
   }
 
   // ── settings ────────────────────────────────────────────────────────
@@ -256,6 +284,9 @@ export class CleanupService {
       planned.set(entry.item.id, entry);
     };
     const closedSessionDays = await this.closedSessionDays();
+    // D137: with an archive period, the Closed sessions group follows it (Never keeps Clean-up's own limit).
+    const archive = this.#archive ? await this.#archive.snapshot() : null;
+    const archiveDays = archive && archive.days !== ARCHIVE_NEVER ? archive.days : null;
     const sessions = new Map<string, SessionRecord | null>();
     const sessionOf = async (id: string | null): Promise<SessionRecord | null> => {
       if (id === null) return null;
@@ -523,13 +554,17 @@ export class CleanupService {
       }
     }
 
-    // 4. Closed sessions older than the limit.
+    // 4. Closed sessions older than the limit (D137: archived past their period while the archive has one).
     const cutoff = now.getTime() - closedSessionDays * DAY_MS;
     for (const session of await this.#store.sessions.list({ closed: true })) {
-      if (session.closedAt === null || Date.parse(session.closedAt) > cutoff || this.#isLive(session.id)) continue;
+      if (session.closedAt === null || this.#isLive(session.id)) continue;
+      const kept = archive?.kept.get(session.id) ?? null;
+      if (archiveDays !== null && archive) {
+        const deadline = archiveDeadline(session.closedAt, archive.since, archiveDays);
+        if (deadline === null || Date.parse(deadline) > now.getTime()) continue;
+      } else if (Date.parse(session.closedAt) > cutoff) continue;
       const counts = this.#sessionCounts(session.id);
-      // D106: a chat's scratch folder goes with it.
-      const folders = [path.join(this.#dataDir, ATTACHMENTS_DIR, session.id), path.join(this.#dataDir, 'handovers', session.id), ...(session.kind === 'chat' ? [path.join(this.#dataDir, 'chats', session.id)] : [])];
+      const folders = this.#sessionFolders(session);
       const present: string[] = [];
       let bytes = counts.eventBytes;
       let capped = false;
@@ -548,15 +583,16 @@ export class CleanupService {
         group: 'sessions',
         title: session.title ?? session.name,
         subtitle: `${session.name} · closed ${session.closedAt.slice(0, 10)}`,
-        reasons: ['closed-long-ago'],
+        reasons: [archiveDays !== null ? 'archive-due' : 'closed-long-ago'],
         sizeBytes: sizes ? bytes : null,
         sizeCapped: capped,
         lastChangeAt: latest([session.closedAt, session.lastActivityAt]),
         removes: [`the session record ${session.name} with ${holds.join(', ')}`, ...present],
-        keeps: ['its worktrees and branches (listed above when they can go)', "the CLI's own transcript"],
+        keeps: [...(kept ? [`Kept by the archive: ${ARCHIVE_KEPT_LABELS[kept]}`] : []), 'its worktrees and branches (listed above when they can go)', "the CLI's own transcript"],
         warnings: [],
         confirm: null,
-        selected: true,
+        // D137: a session the archive keeps (pinned, in a plan, …) is never ticked for you.
+        selected: kept === null,
         extra: [session.closedAt],
       });
       add({ item, action: { kind: 'session', sessionId: session.id, paths: present } });
@@ -566,7 +602,7 @@ export class CleanupService {
     for (const entry of await this.#dataItems(now, sizes)) add(entry);
 
     const items = inRunOrder([...planned.values()].map((entry) => entry.item));
-    return { scan: { scannedAt: now.toISOString(), closedSessionDays, staleDays: STALE_WORKTREE_DAYS, items, notes }, planned };
+    return { scan: { scannedAt: now.toISOString(), closedSessionDays, archiveDays, staleDays: STALE_WORKTREE_DAYS, items, notes }, planned };
   }
 
   async #dataItems(now: Date, sizes: boolean): Promise<Planned[]> {
@@ -919,6 +955,72 @@ export class CleanupService {
       this.#pushTimeout,
     );
     if (!succeeded(pushed)) throw new Error(`git push --delete failed: ${failureText(pushed)}`);
+  }
+
+  // ── D137: the archive's sweep ───────────────────────────────────────
+
+  /** The data folders that go with a session (D106: a chat's scratch folder too). */
+  #sessionFolders(session: SessionRecord): string[] {
+    return [path.join(this.#dataDir, ATTACHMENTS_DIR, session.id), path.join(this.#dataDir, 'handovers', session.id), ...(session.kind === 'chat' ? [path.join(this.#dataDir, 'chats', session.id)] : [])];
+  }
+
+  /**
+   * D137: deletes an archived session the way a Clean-up run does (its attachments,
+   * exports and a chat's scratch folder, then the record with its events, agents,
+   * questions, todos and attachment rows; worktree rows keep their branch, saved
+   * artifacts lose their session). Refused while it is open again or running.
+   */
+  async deleteArchivedSession(sessionId: string): Promise<void> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) throw new Error('already deleted');
+    const present: string[] = [];
+    for (const folder of this.#sessionFolders(session)) if (await exists(folder)) present.push(folder);
+    await this.#deleteSession({ kind: 'session', sessionId, paths: present });
+  }
+
+  /**
+   * D137 (the developer's choice 4): removes a worktree Switchboard made for an archived
+   * session that is being deleted, only when nothing would be lost: no uncommitted or
+   * untracked file, its branch merged into its base (or its PR merged with every commit on
+   * a remote), and no other session (`usedBy`) works in it. Never `--force`; the branch is
+   * kept (Clean-up lists it when it can go). A folder that is already gone only loses its
+   * record (and git's entry for it). Otherwise it is kept and the reason is answered.
+   */
+  async removeWorktreeIfSafe(record: WorktreeRecord, usedBy: readonly string[] = []): Promise<SafeRemoval> {
+    const current = await this.#store.worktrees.get(record.id);
+    if (!current || current.removedAt) return { removed: false, reason: 'already removed' };
+    if (usedBy.length > 0) return { removed: false, reason: `also used by ${usedBy.join(', ')}` };
+    if (record.sessionId !== null && this.#isLive(record.sessionId)) return { removed: false, reason: 'its session is running' };
+    if (!(await isDirectory(record.path))) {
+      try {
+        await this.#removeWorktree({ kind: 'worktree', record: current, missing: true, uncommitted: [] }, null);
+        return { removed: true };
+      } catch (error) {
+        return { removed: false, reason: errorText(error) };
+      }
+    }
+    const status = await this.#runGit(record.path, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    if (!succeeded(status)) return { removed: false, reason: `git status failed: ${failureText(status)}` };
+    const uncommitted = statusPaths(status.stdout);
+    if (uncommitted.length > 0) return { removed: false, reason: `${plural(uncommitted.length, 'uncommitted change')}` };
+    const head = await this.#resolve(record.path, 'HEAD');
+    if (head === null) return { removed: false, reason: 'its HEAD cannot be read' };
+    const base = current.baseRef ? await this.#resolve(record.path, current.baseRef) : null;
+    const ancestor = base !== null && (await this.#isAncestor(record.path, head, base));
+    if (!ancestor) {
+      if (current.prState !== 'MERGED') return { removed: false, reason: base === null ? 'not merged (its base is unknown)' : `not merged into ${current.baseRef}` };
+      // A merged PR (squash or rebase leaves the commits out of the base): every commit must be on a remote.
+      const localOnly = await this.#count(record.path, [head, '--not', '--remotes', ...(base !== null ? [base] : [])]);
+      if (localOnly === null) return { removed: false, reason: 'its commits cannot be checked' };
+      if (localOnly > 0) return { removed: false, reason: `${plural(localOnly, 'commit')} only on this computer` };
+    }
+    try {
+      // `confirm` null: the removal itself refuses (no --force) if a change appeared meanwhile.
+      await this.#removeWorktree({ kind: 'worktree', record: current, missing: false, uncommitted: [] }, null);
+      return { removed: true };
+    } catch (error) {
+      return { removed: false, reason: errorText(error) };
+    }
   }
 
   async #deleteSession(action: Extract<Action, { kind: 'session' }>): Promise<void> {

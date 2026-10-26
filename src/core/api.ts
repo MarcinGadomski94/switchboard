@@ -12,6 +12,7 @@
  * step because both import this file.
  */
 import type { FreshStep } from './fresh-session.ts';
+import type { ArchiveKeptReason } from './session-archive.ts';
 import type { SessionKind } from './chats.ts';
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
@@ -750,6 +751,15 @@ export interface Session {
    * type-check.
    */
   readonly closedAt?: string | null;
+  /**
+   * Additive (D137, the archive): on a closed (archived) session, when the server deletes it by
+   * itself (ISO; the period from `sessions.archiveDays`, counted from `closedAt` or the upgrade
+   * grace); `null` while it is kept ({@link keptReason}) or the period is Never. Absent on an
+   * open session (and from a server before D137).
+   */
+  readonly deletesAt?: string | null;
+  /** Additive (D137): why an archived session is kept past its period (re-checked every sweep); `null` when not kept. Absent on an open session. */
+  readonly keptReason?: ArchiveKeptReason | null;
   /**
    * Additive (D49, migration 0015): how full the main agent's context window is
    * and when the CLI last compacted it (`docs/chat.md` → *Context bar*). `null`
@@ -1990,6 +2000,10 @@ export interface HistoryItem {
    * it is open. Absent on a terminal conversation's row.
    */
   readonly closedAt?: string | null;
+  /** Additive (D137): on a closed (archived) session's row, the {@link Session.deletesAt} of the archive. Absent otherwise. */
+  readonly deletesAt?: string | null;
+  /** Additive (D137): on a closed session's row, the {@link Session.keptReason}. Absent otherwise. */
+  readonly keptReason?: ArchiveKeptReason | null;
   /**
    * Additive (D62 P7): a Codex CLI / OpenCode terminal conversation's row (with
    * `?cli=1`): its CLI and its own id (`claudeSessionId` is then `<cli>:<id>`);

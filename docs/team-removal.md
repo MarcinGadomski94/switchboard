@@ -41,6 +41,7 @@ Team's code lives in its own folders and files: `src/server/team/` (service, `te
 | `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team`, `team-update`, (D105) `better-charters` and (D100 follow-up 2026-10-16) `team-sidebar` and `team-left-column` entries of `WHATS_NEW`; `V1_23` and `V1_24` when nothing else uses them |
 | `src/server/sessions/run-place.ts` | D99 / D76 follow-up 2026-10-19: imports `teamOriginalPlace`; a run whose source is a member goes to the folder the member had (`member` of `placeRun`) |
 | `src/server/memory/team-link.ts` | Project memory's member scope (D107 follow-up 2026-10-15): imports `teamMemberOf` / `teamMemberList` (and `TeamMemberRef`) from `team/hooks.ts` |
+| `src/server/sessions/archive.ts` | D137: imports `teamMemberOf`; the archive keeps a member's archived session (`keptReason: crew`) |
 | `src/server/insights/usage.ts` | D134 Usage breakdown: imports `teamMemberList`; a member's session is of the kind "teammate" (crew) |
 
 Removing Team now would be a new decision; the step-by-step removal procedure of 1.x is in this file's history (before D132).

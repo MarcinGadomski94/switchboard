@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { draftField } from '../../../core/drafts.ts';
+import { readKnownSettings } from '../../../core/settings.ts';
+import type { SessionListItem } from '../../../core/api.ts';
 import { api } from '../../api/client.ts';
+import { useApi } from '../../api/useApi.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { Button, Card, EmptyState, Field, Icon, IconButton, Skeleton, useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
@@ -14,8 +17,15 @@ import { type NewDraft, useTeams } from './useAgentsData.ts';
 /**
  * D131 · lane A · the Drafts card at the top of Agents (the composers' unsent
  * messages, D88, and this computer's New-agent draft, with Continue and Delete)
- * and Closed (`/agents?show=closed`: the closed agents, searchable, with Reopen).
+ * and Archived (`/agents?show=closed`: the archived agents, searchable, with Restore; D137).
  */
+
+/** D137: an archived row's countdown or kept reason (its own computer's, sent with the session); `null` when neither. */
+function archiveLine(session: Pick<SessionListItem, 'deletesAt' | 'keptReason'>): string | null {
+  if (session.keptReason) return AGENTS_WORDS.kept(session.keptReason);
+  if (session.deletesAt) return AGENTS_WORDS.deletesIn(session.deletesAt);
+  return null;
+}
 
 /** The Drafts card; nothing when there is no draft. */
 export function DraftsCard({ agents, newDraft, onRemoveNew, onOpen }: { readonly agents: readonly AgentEntry[]; readonly newDraft: NewDraft | null; readonly onRemoveNew: () => Promise<void>; readonly onOpen: (agent: AgentEntry) => void }) {
@@ -88,9 +98,15 @@ export function DraftsCard({ agents, newDraft, onRemoveNew, onOpen }: { readonly
 /** How many closed agents are shown before "search to find one". */
 const CLOSED_SHOWN = 60;
 
-/** Closed (history): the closed agents, newest first, with search and Reopen. */
+/**
+ * Archived (D137; was Closed (history)): the archived agents, newest first, with search and
+ * Restore; a line on top says when the archive deletes them (Change in Settings), and each row
+ * its countdown ("Deletes in 12 days", "Deletes today") or why it is kept ("Kept: pinned").
+ */
 export function ClosedView() {
   const all = useSessionListOf('all');
+  const settings = useApi(api.settings);
+  const archiveDays = settings.data ? readKnownSettings(settings.data)['sessions.archiveDays'] : null;
   // Teammates are the Crews pages' (fix after 2.0), closed or not.
   const teams = useTeams();
   const mates = useMemo(() => teammateIds(teams), [teams]);
@@ -129,6 +145,15 @@ export function ClosedView() {
         <b>{AGENTS_WORDS.closedTitle}</b>
         <span>{`· ${AGENTS_WORDS.agentsCount(total)}`}</span>
       </div>
+      {archiveDays !== null ? (
+        <p className="v2-muted v2-closed-policy" data-testid="v2-archive-policy">
+          {AGENTS_WORDS.archivePolicy(archiveDays)}{' '}
+          <V2Link to="/settings/advanced/sessions" data-testid="v2-archive-settings">
+            {AGENTS_WORDS.archiveSettings}
+          </V2Link>
+          .
+        </p>
+      ) : null}
       <div className="v2-closed-search">
         <Field type="search" placeholder={AGENTS_WORDS.searchClosed} aria-label={AGENTS_WORDS.searchClosed} value={query} onChange={(event) => setQuery(event.target.value)} data-testid="v2-closed-search" />
       </div>
@@ -158,7 +183,14 @@ export function ClosedView() {
                 </span>
                 <div className="v2-grow">
                   <div className="v2-ttl">{name}</div>
-                  <div className="v2-sub">{AGENTS_WORDS.closedAgo(timeAgo(session.closedAt) || 'just now')}</div>
+                  <div className="v2-sub">
+                    {AGENTS_WORDS.closedAgo(timeAgo(session.closedAt) || 'just now')}
+                    {archiveLine(session) ? (
+                      <span className="v2-closed-countdown" data-testid="v2-closed-countdown" data-kept={session.keptReason ? '' : undefined}>
+                        {` · ${archiveLine(session)}`}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <AgentComputerTag machine={session.machine} short />
                 <Button size="sm" icon="refresh" disabled={busy === session.id || offline} title={offline && session.machine ? AGENTS_WORDS.offlineWhy(session.machine.name) : undefined} onClick={() => void reopen(session.id, name)} data-testid="v2-closed-reopen">

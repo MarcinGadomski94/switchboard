@@ -131,7 +131,10 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D106 (only on a chat)
   'kind',
   'lookAt',
-]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt');
+  // additive, D137 (only on a closed session: the archive's countdown or kept reason)
+  'deletesAt',
+  'keptReason',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt' && key !== 'deletesAt' && key !== 'keptReason');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',

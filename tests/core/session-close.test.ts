@@ -45,8 +45,9 @@ describe('D33 · closing sessions (rules and copy)', () => {
   });
 
   it('copy: the confirmation names the session; the tooltip; a batch closed with its session', () => {
-    expect(closeConfirmText('JIRA Ticket handling')).toBe('Stop JIRA Ticket handling and close it? Its conversation stays in History and can be reopened.');
-    expect(CLOSE_TOOLTIP).toBe('Close (keeps it in History)');
+    // D137: the user-facing words are Archive / Restore.
+    expect(closeConfirmText('JIRA Ticket handling')).toBe('Stop JIRA Ticket handling and archive it? It stays in History, where you can restore it, until the archive period ends.');
+    expect(CLOSE_TOOLTIP).toBe('Archive (restore it from History)');
     expect(closedBatchText(SESSION_CLOSED_REASON)).toBe('Closed · session closed');
   });
 });

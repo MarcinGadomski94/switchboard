@@ -50,6 +50,8 @@ import type { TodoService } from './todos/service.ts';
 import { registerTodoRoutes } from './api/todos.ts';
 import { registerDeviceRoutes } from './api/devices.ts';
 import { registerCleanupRoutes } from './api/cleanup.ts';
+import type { CleanupService } from './cleanup/service.ts';
+import type { ArchiveService } from './sessions/archive.ts';
 import type { DeviceService } from './devices/service.ts';
 import { registerCheckpointRoutes } from './api/checkpoints.ts';
 import type { CheckpointService } from './checkpoints/service.ts';
@@ -139,6 +141,10 @@ export interface ApiContext {
   readonly usage: UsageService;
   /** D127: the processes sessions leave running: tracking, Stop / Keep, the automatic stop (docs/processes.md). */
   readonly processes: ProcessService;
+  /** D84: Clean-up's scan and removal (its routes make their own when absent). */
+  readonly cleanup?: CleanupService;
+  /** D137: the archive: deletes archived sessions after their period (docs/cleanup.md → The archive). */
+  readonly archive?: ArchiveService;
 }
 
 /**
@@ -178,7 +184,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
   await registerDeviceRoutes(app, context);
-  await registerCleanupRoutes(app, context);
+  await registerCleanupRoutes(app, context, context.cleanup);
   await registerTutorialRoutes(app, context);
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);

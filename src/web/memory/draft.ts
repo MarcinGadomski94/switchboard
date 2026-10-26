@@ -22,7 +22,7 @@ export function draftAnswerText(answer: MemoryDraftAnswer, name: string): string
   if (answer.asked) return `Asked ${name} to draft project memory from its own session. Its proposals wait for your review on the Memory page.`;
   if (answer.reason === 'asked-recently') return `${name} was asked to draft memory in the last 24 hours: its proposals wait on the Memory page.`;
   if (answer.reason === 'no-folder') return `${name} has no project folder: project memory belongs to sessions with one.`;
-  if (answer.reason === 'closed') return `${name} is closed: reopen it first.`;
+  if (answer.reason === 'closed') return `${name} is archived: restore it first.`;
   return `${name} was not asked: ${answer.reason ?? 'unknown reason'}.`;
 }
 

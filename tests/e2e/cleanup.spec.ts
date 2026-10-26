@@ -81,6 +81,8 @@ test.beforeAll(async () => {
   const longAgo = new Date(Date.now() - 40 * DAY);
   await utimes(path.join(exportDir, 'chat.md'), longAgo, longAgo);
   await utimes(exportDir, longAgo, longAgo);
+  // D137: the archive set to Never, so Clean-up's own 30-day limit lists the old session (as before the archive).
+  await store.settings.set('sessions.archiveDays', 0);
   // The developer's own: never listed.
   await world.git(world.web, 'branch', 'feature/mine');
   ownWorktree = path.join(tmp, 'own-worktree');

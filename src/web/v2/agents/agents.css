@@ -551,6 +551,22 @@
   margin-bottom: 12px;
 }
 
+/* D137: the archive's line above the search, and a row's countdown / kept reason. */
+.sb2 .v2-closed-policy {
+  margin: 0 0 10px;
+  font-size: var(--v2-fs-sm, 13px);
+}
+
+.sb2 .v2-closed-policy a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sb2 .v2-closed-countdown[data-kept] {
+  color: var(--v2-text-2);
+}
+
 /* ── Move to folder ── */
 .sb2 .v2-fpick {
   display: flex;

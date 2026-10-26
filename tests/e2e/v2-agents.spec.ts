@@ -244,7 +244,7 @@ test('a Board card peeks (lane X: the shared board and the peek sheet); Enter to
   expect(widths[1] ?? 0).toBeGreaterThanOrEqual((widths[0] ?? 0) - 1);
 });
 
-test('Closed: search and Reopen', async ({ page }) => {
+test('Archived (D137; was Closed): search and Restore', async ({ page }) => {
   const list = await sessions(page);
   const target = list.find((s) => s.status !== 'run') ?? list[0];
   if (!target) throw new Error('no demo session');
@@ -259,7 +259,7 @@ test('Closed: search and Reopen', async ({ page }) => {
   await expect(page.getByTestId('v2-closed-empty')).toBeVisible();
   await page.getByTestId('v2-closed-search').fill(target.name);
   await row.getByTestId('v2-closed-reopen').click();
-  await expect(page.getByTestId('v2-toast').filter({ hasText: `Reopened “${target.name}”.` })).toBeVisible();
+  await expect(page.getByTestId('v2-toast').filter({ hasText: `Restored “${target.name}”.` })).toBeVisible();
   await expect(row).toHaveCount(0);
   const after = await sessions(page);
   expect(after.some((s) => s.id === target.id)).toBe(true);

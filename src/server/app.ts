@@ -41,6 +41,8 @@ import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { type ApiContext, registerApiRoutes } from './routes.ts';
+import { CleanupService } from './cleanup/service.ts';
+import { ArchiveService } from './sessions/archive.ts';
 import { TurnWaitingInbox } from './inbox/turn-waiting.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { installTeam } from './team/install.ts';
@@ -628,7 +630,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ci = own;
   }
   systemItems.useCi(ci);
-  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes };
+  // D84 Clean-up and D137 the archive (archived sessions deleted after their period, with their safe worktrees).
+  const cleanup = new CleanupService({ store: options.store, dataDir: config.dataDir, isLive: (sessionId) => supervisor.isLive(sessionId), takeover });
+  const archive = new ArchiveService({ store: options.store, cleanup, isLive: (sessionId) => supervisor.isLive(sessionId) });
+  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);
@@ -638,6 +643,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   await installPlans(app, apiContext, options.plans);
   // ── Project memory (D107) hook: the Project memory service and its routes (docs/memory-removal.md). ──
   await installMemory(app, apiContext);
+  // D137: the archive sweeps after Plans and Team started (registered last, so its onReady runs after theirs); never in demo mode.
+  app.addHook('onReady', async () => {
+    if (!config.demo) void archive.start().catch((error: unknown) => console.error(error));
+  });
+  app.addHook('preClose', async () => {
+    await archive.stop();
+  });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
