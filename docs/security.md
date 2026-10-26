@@ -226,3 +226,13 @@ Ruling 2026-10-14 (q4) asked for a confirmation an agent cannot give: an agent r
 - **Handover exports** (a switch without the outgoing agent's handover) are written under `<dataDir>/handovers/<session>/` (folder 0700, file 0600) and hold the session's chat; nothing else is copied.
 - **MCP:** Codex servers are added with `codex mcp add` (its argv carries the server's env values while it runs, as D61's `add-json` does); the page shows env names and masked commands / URLs only.
 
+
+## Dependency advisories
+
+- 2026-10-26: GHSA-mrhx-c7xc-m3w5 (HIGH, zod memory exhaustion on oversized constrained collections) fixed by zod 4.6.7 (patched in 4.6.6); the MCP helper bundles were rebuilt with it.
+- 2026-10-26: GHSA-389g-gv7q-r4x8 (LOW, fastify header validation bypass via case-sensitive `propertyNames`) fixed by fastify 5.12.7 (patched in 5.12.6).
+- 2026-10-26: GHSA-587h-7wmj-h5pm (HIGH, dev only, launch-editor `fs.existsSync()` bypass on Windows) fixed by vite 8.3.5 (patched in 8.3.3), which bundles launch-editor ≥ 2.14.2.
+- 2026-10-26: GHSA-698v-4r3x-3vcv (MEDIUM, dev only, launch-editor `escapeCmdArgs()` omits `%` escaping on Windows) fixed by vite 8.3.5 (patched in 8.3.3, launch-editor 2.14.2).
+- 2026-10-26: GHSA-r825-w8mm-5pxw (MEDIUM, dev only, launch-editor CLI flag misinterpretation) fixed by vite 8.3.5 (patched in 8.3.3, launch-editor 2.14.2).
+- 2026-10-26: GHSA-rq7h-c2jc-7f22 (MEDIUM, dev only, files outside `server.fs.allow` served when project paths match system paths) fixed by vite 8.3.5 (patched in 8.3.3).
+- 2026-10-26: GHSA-vfpm-58rq-9qcg (MEDIUM, dev only, first 4 bytes outside `server.fs` exposed by `?vite-wasm-instance`) fixed by vite 8.3.5 (patched in 8.3.3).
