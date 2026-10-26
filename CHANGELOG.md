@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1 (2026-10-26)
+
+### v2 theme
+- **Crew members live only in Crews:** an agent made a teammate leaves every Agents view, the folder tree and the Agents badge; its chat still opens from Crews, Needs you, search or a link, and Return to agents brings it back.
+- **Teammates go by their teammate name** (with their crew) in the agent view, the peek, the browser tab, Needs you, Home, search, ⌘K and Recent; renaming one in the header renames the teammate.
+- **More room for the chat:** a one-row header (details behind ⓘ), one compact status row above the message box ("Working 0:42 · Tasks 1/3 · Memory 64% · 2 queued"), a message box that grows to about a fifth of the screen and then scrolls, and long messages of yours folded after 12 lines.
+- **Copy and Save as result** sit in a strip above a code block instead of covering it.
+- **Recent** in the left rail: your last five agents and conversations under Pinned.
+
+### Docs
+- The README describes Switchboard 2 and shows the v2 theme; the demo data uses neutral Acme names throughout.
+
 ## 2.0.0 (2026-10-26)
 
 **Switchboard 2.** A new design, built so that anyone can run AI agents comfortably, plus three features leaving experimental. The design of Switchboard 1 stays available as the **Classic** theme.
