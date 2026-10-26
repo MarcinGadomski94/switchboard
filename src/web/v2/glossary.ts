@@ -437,6 +437,8 @@ export const ANSWER = {
   youRejectedNote: 'You rejected the note',
   // D135: a proposed change of an approved note.
   approveRemoval: 'Approve removal',
+  // D136: a proposal the memory check flagged (a duplicate or a conflict with an approved note).
+  approveReplace: 'Approve and remove the old note',
   youApprovedNoteEdit: 'You approved the edit',
   youRejectedNoteEdit: 'You kept the note as it was',
   youApprovedNoteRemoval: 'You removed the note',
@@ -726,7 +728,7 @@ export const USAGE_WORDS = {
   accountAll: 'All accounts',
   computerAll: 'All computers',
   thisComputer: 'This computer',
-  kinds: { agent: 'Agent', conversation: 'Conversation', crew: 'Teammate', plan: 'Plan step', routine: 'Routine' },
+  kinds: { agent: 'Agent', conversation: 'Conversation', crew: 'Teammate', plan: 'Plan step', routine: 'Routine', memory: 'Memory check' },
   tokens: 'Tokens',
   input: 'input',
   output: 'output',
@@ -1379,6 +1381,15 @@ export const NOTES_WORDS = {
   editApprovedToast: 'Approved. The note now reads as proposed.',
   removalApprovedToast: 'Approved. The note was removed.',
   changeRejectedToast: 'Rejected. The note stays as it was.',
+  // D136: memory checks.
+  approveReplace: 'Approve and remove the old note',
+  replacedToast: 'Approved. The old note moved to “Removed by memory check”.',
+  removedHeading: 'Removed by memory check',
+  removedSub: 'Kept 30 days and never given to agents. Restore puts a note back as it was.',
+  restore: 'Restore',
+  restoredToast: 'Restored. Agents know the note again.',
+  checkNow: 'Check now',
+  checkStartedToast: 'Checking the notes in the background. The result shows here.',
 } as const;
 
 /** Lane A · the Routines page (`/routines`). */

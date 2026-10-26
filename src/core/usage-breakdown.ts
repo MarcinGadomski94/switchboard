@@ -42,9 +42,23 @@ export type UsagePeriod = (typeof USAGE_PERIODS)[number];
 export const USAGE_GROUPS = ['session', 'folder', 'model', 'account', 'kind'] as const;
 export type UsageGroupBy = (typeof USAGE_GROUPS)[number];
 
-/** What a session is (the v2 words: agent, conversation, crew teammate, plan step, routine). */
-export const USAGE_KINDS = ['agent', 'conversation', 'crew', 'plan', 'routine'] as const;
+/** What a session is (the v2 words: agent, conversation, crew teammate, plan step, routine); D136: `memory`, a memory check (no session). */
+export const USAGE_KINDS = ['agent', 'conversation', 'crew', 'plan', 'routine', 'memory'] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
+
+// Project memory (D107) hook, D136: the memory checks' kind and pseudo-session (docs/memory-removal.md).
+/** D136: the pseudo-session id of a folder's memory checks in the usage rows (they have no session). */
+export const BACKGROUND_SESSION_PREFIX = 'memory-check~';
+
+/** D136: a folder's memory checks as one usage "session" (`memory-check~<folder>`). */
+export function backgroundSessionId(folder: string): string {
+  return `${BACKGROUND_SESSION_PREFIX}${folder}`;
+}
+
+/** D136: `true` for a memory check's pseudo-session (also a paired machine's, `r~<machine>~memory-check~…`): nothing to open. */
+export function isBackgroundSession(sessionId: string): boolean {
+  return sessionId.startsWith(BACKGROUND_SESSION_PREFIX) || /^r~[^~]+~memory-check~/.test(sessionId);
+}
 
 export const HOUR_MS = 3_600_000;
 export const FIVE_HOURS_MS = 5 * HOUR_MS;
@@ -401,7 +415,7 @@ function folderName(key: string, labels: ReadonlyMap<string, string> | undefined
 }
 
 /** The `UsageKind` words of the classic page and the CSV (v2 has its own glossary). */
-export const USAGE_KIND_LABELS: Readonly<Record<UsageKind, string>> = { agent: 'Agent', conversation: 'Conversation', crew: 'Teammate', plan: 'Plan step', routine: 'Routine' };
+export const USAGE_KIND_LABELS: Readonly<Record<UsageKind, string>> = { agent: 'Agent', conversation: 'Conversation', crew: 'Teammate', plan: 'Plan step', routine: 'Routine', memory: 'Memory check' };
 
 interface Acc {
   key: string;
@@ -511,7 +525,7 @@ export function buildUsage(input: BuildUsageInput): UsageAnswer {
           cost: 0,
           priced: false,
           partial: false,
-          sessionId: query.groupBy === 'session' ? turn.sessionId : null,
+          sessionId: query.groupBy === 'session' && !isBackgroundSession(turn.sessionId) ? turn.sessionId : null,
           kind: query.groupBy === 'session' ? kindOf(turn, rows.sessionKinds) : null,
           machine: query.groupBy === 'session' ? machineOf(turn.sessionId) : null,
           lastAt: turn.ts,

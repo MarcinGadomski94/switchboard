@@ -49,6 +49,13 @@ async function answer<T>(reply: FastifyReply, work: () => T | Promise<T>, status
  * entry; `approve` / `reject` above decide them: an approved edit replaces the entry, an approved
  * retract deletes it).
  *
+ * D136 (memory checks, `docs/memory.md` → *Checking notes*): `GET /api/memory/removed?scope=` →
+ * `MemoryRemovedEntry[]`; `POST /api/memory/removed/{id}/restore` → the note again approved;
+ * `GET /api/memory/check?scope=` → `MemoryCheckStatus`; `PUT /api/memory/check` `{ scope, enabled }`;
+ * `POST /api/memory/check/run` `{ scope }` → 202 (Check now); `GET|PUT /api/memory/check/settings`
+ * `{ enabled?, frequencyDays? }`; `approve` takes `{ removeConflicting: true }` ("Approve and remove
+ * the old note").
+ *
  * D132: always on since 2.0 (no switch); while `memory.db` is broken every route but
  * `GET /api/memory/state` answers 503 `memory-unavailable`. Registered by `installMemory`.
  */
@@ -70,6 +77,14 @@ export async function registerMemoryRoutes(app: FastifyInstance, memory: MemoryS
   app.delete<{ Params: { id: string } }>('/api/memory/entries/:id', async (request, reply) => answer(reply, () => memory.delete(request.params.id), 204));
   app.post<{ Params: { id: string } }>('/api/memory/entries/:id/approve', async (request, reply) => answer(reply, () => memory.approve(request.params.id, request.body)));
   app.post<{ Params: { id: string } }>('/api/memory/entries/:id/reject', async (request, reply) => answer(reply, () => memory.reject(request.params.id)));
+  // D136: memory checks: the removed notes (Restore), a folder's check state, its switch, Check now, the settings.
+  app.get<{ Querystring: { scope?: string } }>('/api/memory/removed', async (request, reply) => answer(reply, () => memory.removed(request.query.scope)));
+  app.post<{ Params: { id: string } }>('/api/memory/removed/:id/restore', async (request, reply) => answer(reply, () => memory.restore(request.params.id)));
+  app.get<{ Querystring: { scope?: string } }>('/api/memory/check', async (request, reply) => answer(reply, () => memory.checkStatus(request.query.scope ?? '')));
+  app.put('/api/memory/check', async (request, reply) => answer(reply, () => memory.setCheckFolder(request.body)));
+  app.post('/api/memory/check/run', async (request, reply) => answer(reply, () => memory.checkNow(request.body), 202));
+  app.get('/api/memory/check/settings', async (_request, reply) => answer(reply, () => memory.checkSettings()));
+  app.put('/api/memory/check/settings', async (request, reply) => answer(reply, () => memory.setCheckSettings(request.body)));
   app.get('/api/memory/settings', async (_request, reply) => answer(reply, () => memory.settings()));
   app.put('/api/memory/settings', async (request, reply) => answer(reply, () => memory.setSettings(request.body)));
 

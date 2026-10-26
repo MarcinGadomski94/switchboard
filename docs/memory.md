@@ -85,6 +85,61 @@ Decision D135 (`docs/decisions.md`). An agent that finds an approved entry wrong
 - **Review UI:** `GET /api/memory/entries` gives each change proposal its `target` (the entry as it is now, `null` once gone). Classic Memory page and v2 Notes page: an **edit** shows *Now* and *Proposed* side by side (title and text; removed words struck, added words marked, `memoryWordDiff`; stacked on a phone) with the reason, **Approve**, **Edit…** / **Edit first** (the new title and text, then approve) and **Reject**; a **removal** shows the entry struck through with the reason, **Approve removal** and **Reject**. v2 Needs you shows the same as the item kinds **Note edit** / **Note removal**. Phones and paired machines approve and reject them like any proposal (the same routes, already on the allow-lists).
 - Out of scope: approving a new proposal that duplicates an approved entry (only the near-identical title check at proposal time guards that).
 
+## Checking notes (D136)
+
+Decision D136 (`docs/decisions.md`). The developer asked: "Can Switchboard check whether stored memories are still true when new memories are added, and from time to time by itself?" Both happen now, in the background, and neither is a session: no `sessions` row, nothing in Agents, the sidebar or Home, nothing to interact with, no Inbox item, toast or push for a run.
+
+### (A) When an agent proposes a note
+
+When `memory_propose` adds a proposal, a short model call compares it with the approved notes the proposing session sees (the same reach as `memory_list`: its folder's workspace notes, its repositories', its member's). It answers **none**, **duplicate** (says the same thing) or **conflict** (they contradict each other), naming the approved note and a one-sentence reason.
+
+- A duplicate or a conflict is kept (`memory_proposal_checks`) and the review card shows **"Duplicates: <title>"** / **"Conflicts with: <title>"** with the reason: the classic Memory page, the v2 Notes page and the v2 Needs-you "Note to approve" card. `GET /api/memory/entries` carries it as `check` on the proposal (only while the approved note still exists).
+- **Approve and remove the old note** approves the proposal and moves the old note to the removed list (below) in one step (`POST /api/memory/entries/{id}/approve` with `{ removeConflicting: true }`; the same route, already on the phone and paired-machine allow-lists). **Approve** alone still works and keeps both.
+- A failed, skipped or unreadable check shows nothing. Skipped: the checks are off (globally or for the folder), the session sees no approved note, the folder's agents use a CLI without a headless check mode, usage is paused or the account is at the warning level.
+- Only new notes (`add`) are checked; D135's edit and removal proposals are not.
+
+### (B) By itself, per folder
+
+A **periodic check** per folder that has approved notes, **weekly** by default (Settings → Project memory: daily, every 3 days, weekly, every 2 weeks, monthly). The folder's approved notes (at most 60, the least recently changed first) go to a fresh, short-lived, read-only run of the folder's CLI in the folder itself, which verifies each against the code and recent git history (do the files, settings, commands, scripts and branches it names exist; does the code still behave as it says) and answers per note **keep**, **edit** (new title and / or text, reason) or **remove** (reason).
+
+- **When:** a folder's first run is due a stable offset after the scheduler first sees it with approved notes (0–6 hours, a hash of its path, so folders do not all run at once); then the last run + the frequency + the same offset; a failed run is tried again after at most a day. A run also needs **agent activity in the folder since its last run** (never run: within the last period), and the account it would use **below the developer's usage warning level** ("Warn at", `usage.warnAtPct`) and not paused (D103: every account out of allowance). The scheduler looks every 10 minutes and starts **at most one** folder per look; runs never overlap.
+- **Persisted:** `memory_check_folders` keeps per folder the first sighting, the last run's start and its result, so a restart neither re-runs a folder nor forgets when it ran (a run interrupted by a restart counts as run and shows "did not finish").
+- **Output, validated on the server:** JSON `{ "notes": [ { "id", "action": "keep" | "edit" | "remove", "title"?, "text"?, "reason"? } ] }` (code fences and words around it are tolerated). An id must be one of the notes sent to that run; one decision per id (the first counts); edits and removals need a reason (≤ 500 characters); an edit needs a title (≤ 80) and / or a text (≤ 1,000). Anything else is dropped and logged. A note the developer changed while the run worked is left alone.
+- **Removals are applied** (the developer's allowance) but **recoverable**: the note moves to **Removed by memory check** (below). At most **5 removals per run, and at most half of the folder's approved notes** (rounded down: a folder with one note never loses it by itself); removals over that cap become normal D135 removal proposals.
+- **Edits still need approval:** they are filed as D135 edit proposals (author "Memory check", no session), shown in Needs you as **Note edit** as today. A pending check-filed proposal of the same kind for the same note is not filed again.
+- **The result** is shown quietly on the Memory page and the v2 Notes page (when a folder is chosen): "Checked 2 days ago: checked 12 notes, removed 1, proposed 2 edits." (plus "proposed N removals for review" over the cap), "Checking the notes now…", "Not checked yet.", or why it was skipped or failed. **Check now** runs the folder at once (whatever its schedule and activity; it skips the warning level but not a pause).
+
+### How a check runs
+
+The check uses Claude Code only (the folder's CLI is the CLI of its newest session; a folder whose agents use Codex or OpenCode is skipped with "…, which has no headless check mode in Switchboard yet", recorded as its result). The binary and the account are resolved as for every spawn (the supervisor's CLI registry; D63's pick of the account a new session would start on, its profile folder in the environment, the environment scrubbed like every child). The argv (`memoryCheckArgs`, `src/server/memory/check.ts`):
+
+- `-p --input-format stream-json --output-format stream-json --verbose` (the prompt goes over stdin; the turn's `result` is the answer);
+- `--restricted`: the CLI's restricted mode: **no command or code tools** (no Bash, PowerShell or the like) and no WebFetch, **file tools confined to the working folder**, **user, project and local settings files ignored** (so their hooks and permission rules do not apply), writes never approved but by a person;
+- `--permission-mode dontAsk` (anything not allowed is refused, never asked);
+- (B) `--allowedTools Read,Grep,Glob,LS` (no shell at all); both `--disallowedTools` Bash, PowerShell, the editors, the web tools, agents and workflows (belt and braces), (A) also every reading tool (it only compares texts);
+- `--strict-mcp-config` (no MCP servers), `--no-session-persistence` (no transcript: nothing in History);
+- `--model haiku` for (A), `--model sonnet` for (B); time limits 2 and 10 minutes (then stopped).
+
+(A) runs in Switchboard's data folder (no project files needed), (B) in the folder. **The git history comes from Switchboard, not the agent:** before a periodic run Switchboard reads it itself with fixed, read-only git commands (argv, no shell, `GIT_OPTIONAL_LOCKS=0`: whether the folder is a working tree, the current branch, `git branch --list`, and `git log --since=<the last run, else 30 days> -n 200 --name-status`), truncated to 20,000 characters, and puts it in the prompt (`memoryGitContext`); the prompt tells the agent it has no shell. A folder that is not a git working tree gets no history (the notes are checked against the files only). Only the machine that owns the folder runs its checks; a paired machine's notes are checked there. **Demo mode never runs checks.**
+
+### Removed by memory check
+
+A removed note (by a check, or by "Approve and remove the old note") leaves `memory_entries`, so it is **never injected** and never listed to agents; its pending edit / removal proposals go with it. It is kept in `memory_removed` (the note as it was, the reason, who removed it, when) for **30 days**, then purged (the scheduler purges on each look). The classic Memory page and the v2 Notes page list them under **Removed by memory check** (struck through, the reason, "deleted for good on <date>") with **Restore**: the note is approved again **under the same id** (a new one only if that id was taken meanwhile), as it was, and the folder's open sessions are flagged (D91).
+
+### Cost
+
+Each run's tokens (per model, from the result's `modelUsage`, else its `usage`) are recorded in `insight_background_turns` (main database, migration 0051) and counted in **Insights → Usage** as kind **Memory check**, one row per folder ("Memory check · <folder>"), in the account's windows like any turn; it has nothing to open.
+
+### Settings
+
+**Settings → Project memory** (classic; v2: Settings → Advanced → **Notes checks**): **Check notes automatically** (on by default; it switches both checks), **How often** (weekly by default) and one switch per folder with approved notes (its last result next to it). Stored in `memory.db` (`memory_meta` `check.enabled` / `check.days`, `memory_check_folders.enabled`).
+
+### Phones and paired machines
+
+Phones read the removed notes and a folder's check state and use **Restore** and **Approve and remove the old note** (`DEVICE_ALLOWED`); the switches and **Check now** stay on the desktop (`DEVICE_REFUSED`). Every check route is on `PEER_API_ALLOW`, so the Memory and Notes pages reach a paired machine's checks through the proxy; its runs happen on that machine.
+
+Tests: `tests/server/memory/checks.test.ts` (the schedule: first sighting and jitter, the activity gate, the usage gate, persistence across a restart, one run per tick, the switches, a failed run; the output validation; the removal cap; removal, never injected, Restore, the 30-day purge; check-filed proposals; a note changed meanwhile; "Approve and remove the old note"; the argv; the proposal check through the real runner and fake-claude, its tokens in Insights → Usage; the allow-lists), `tests/e2e/memory-checks.spec.ts` (classic Memory page and Settings, phone width), `tests/e2e/v2-notes-checks.spec.ts` (v2 Notes, Needs you, Settings → Advanced, phone width).
+
 ## Injection
 
 `sessionInstruction` (D64, read at every spawn) appends the folder's block after the standing instruction and the D100 charter, so new sessions, resumes, restart recovery, account and CLI switches all carry it: Claude Code's `--append-system-prompt` (one argv entry), Codex's `developerInstructions`, OpenCode's `system`. With the standing instruction off, the block alone is passed.
@@ -127,6 +182,7 @@ D107 follow-up 2026-10-15. **Draft memory from this session** (a session's ⋯ m
 - **Approved:** ☆ / ★ pin, **Edit** (the scope too), **Delete…** (asks once more); **+ Add entry** (title, text, tags, pinned, scope: Workspace by default): the developer's entries are approved at once.
 - **Draft memory for all members** (while Team has members) next to the pickers.
 - **Rejected (n):** folded; **Approve after all** or **Delete**.
+- D136: under the folder's path its **check line** with **Check now**; a flagged proposal's "Conflicts with / Duplicates" and **Approve and remove the old note**; **Removed by memory check (n)** with **Restore** (*Checking notes (D136)*).
 - **Block size per session:** the cap.
 
 The **Inbox** has one item per folder with proposals ("3 memory proposals for Acme app", kind `memory-proposals`, label *Memory*), its title following the count; **Review** opens the page at the folder (a link: the item stays), **Dismiss** closes it until the next proposal. It is resolved by itself once the folder's queue is empty.
@@ -140,4 +196,4 @@ The **session's right panel** shows "Memory: N entries": what **this session rec
 
 ## Storage
 
-`<dataDir>/memory.db`, its own migration list (`MEMORY_MIGRATIONS`, run by the main database's runner like Team's and Plans'; never edit an applied one: they are checksummed, comments included): `memory_entries` (id, scope, title, text, tags, author kind / session / label, status, pinned, timestamps, decided at / by, proposed title / text; migration 2 `memory_scopes` added `scope_kind` (default `workspace`, so every earlier row is a workspace entry and is injected exactly as approved), `scope_key`, `scope_label`), `memory_meta` (the cap) `memory_draft_asks` (migration 2: the last draft ask per session), `memory_pending_copies` (migration 3: a moved member's entries not yet taken by its new machine) and, migration 4 `memory_changes` (D135), `memory_entries.change_kind` (`add`, the default for every earlier row, `edit`, `retract`; a CHECK refuses an approved `edit` / `retract`), `target_id`, `reason`, `target_title`, `target_text`, indexed by target. A change proposal is a row of the same table rather than a table of its own so that the review queue, the Inbox item, the rate limit, the routes, their allow-lists, the peer proxy and a member's move needed no new paths; the CHECK keeps the review gate's one rule (only approved `add` rows are read for a session). Nothing in `switchboard.db` besides the setting and the Inbox items it raises.
+`<dataDir>/memory.db`, its own migration list (`MEMORY_MIGRATIONS`, run by the main database's runner like Team's and Plans'; never edit an applied one: they are checksummed, comments included): `memory_entries` (id, scope, title, text, tags, author kind / session / label, status, pinned, timestamps, decided at / by, proposed title / text; migration 2 `memory_scopes` added `scope_kind` (default `workspace`, so every earlier row is a workspace entry and is injected exactly as approved), `scope_key`, `scope_label`), `memory_meta` (the cap) `memory_draft_asks` (migration 2: the last draft ask per session), `memory_pending_copies` (migration 3: a moved member's entries not yet taken by its new machine), migration 5 `memory_checks` (D136: `memory_removed`, `memory_proposal_checks`, `memory_check_folders`; *Checking notes (D136)*) and, migration 4 `memory_changes` (D135), `memory_entries.change_kind` (`add`, the default for every earlier row, `edit`, `retract`; a CHECK refuses an approved `edit` / `retract`), `target_id`, `reason`, `target_title`, `target_text`, indexed by target. A change proposal is a row of the same table rather than a table of its own so that the review queue, the Inbox item, the rate limit, the routes, their allow-lists, the peer proxy and a member's move needed no new paths; the CHECK keeps the review gate's one rule (only approved `add` rows are read for a session). Nothing in `switchboard.db` besides the setting and the Inbox items it raises.

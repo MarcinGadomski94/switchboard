@@ -40,6 +40,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'tutorial', label: 'Tutorial' },
   // Plans (D99) hook (docs/plans-removal.md): D132, the Jira connection that sat in the Experimental section (gone in 2.0: Team, Plans and Project memory graduated); before Clean-up, which stays last (D84).
   { key: 'jira', label: 'Jira' },
+  // Project memory (D107) hook, D136 (docs/memory.md → Checking notes): its automatic checks; before Clean-up, which stays last (D84).
+  { key: 'memory', label: 'Project memory' },
   // D84 (docs/cleanup.md): occasional, so last.
   { key: 'cleanup', label: 'Clean-up' },
 ] as const;

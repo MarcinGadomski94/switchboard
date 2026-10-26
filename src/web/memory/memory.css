@@ -424,3 +424,41 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* D136 · memory checks: a proposal's finding, the folder's check line, the removed notes. */
+.sb-mem-finding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--status-need);
+  background: color-mix(in srgb, var(--status-need) 10%, transparent);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.sb-mem-finding--duplicate {
+  border-color: var(--border-card);
+  background: color-mix(in srgb, var(--border-card) 12%, transparent);
+}
+.sb-mem-finding-reason {
+  color: var(--muted-1);
+}
+.sb-mem-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted-1);
+}
+.sb-mem-card--removed {
+  opacity: 0.85;
+}
+.sb-mem-card--removed .sb-mem-entry-title,
+.sb-mem-card--removed .sb-mem-entry-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}

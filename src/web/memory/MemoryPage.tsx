@@ -13,6 +13,7 @@ import {
   isMemoryChange,
   memoryWordDiff,
 } from '../../core/memory.ts';
+import { APPROVE_REPLACE_LABEL, type MemoryCheckStatus, type MemoryRemovedEntry, checkFindingText, memoryCheckLine, removedLine } from '../../core/memory-check.ts';
 import type { Machine } from '../../core/peers.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -271,6 +272,15 @@ function ProposalCard({
       <div className="sb-mem-entry-text" data-testid="memory-entry-text">
         {entry.text}
       </div>
+      {entry.check ? (
+        // D136: the proposal check found a duplicate or a conflict with an approved note.
+        <div className={`sb-mem-finding sb-mem-finding--${entry.check.verdict}`} data-testid="memory-finding" data-verdict={entry.check.verdict}>
+          <b data-testid="memory-finding-title">{checkFindingText(entry.check)}</b>
+          <span className="sb-mem-finding-reason" data-testid="memory-finding-reason">
+            {entry.check.reason}
+          </span>
+        </div>
+      ) : null}
       <div className="sb-mem-scope-row">
         <span className="sb-mem-meta">Suggested for</span> <ScopeSelect options={options} value={scope} onChange={setScope} testId="memory-proposal-scope" />
       </div>
@@ -280,6 +290,11 @@ function ProposalCard({
           <button type="button" className="sb-button sb-mem-btn sb-mem-btn--primary" data-testid="memory-approve" onClick={() => onAct(() => onApprove(scopeFields(scope, entry)))}>
             Approve
           </button>
+          {entry.check ? (
+            <button type="button" className="sb-button sb-mem-btn" data-testid="memory-approve-replace" onClick={() => onAct(() => onApprove({ ...scopeFields(scope, entry), removeConflicting: true }))}>
+              {APPROVE_REPLACE_LABEL}
+            </button>
+          ) : null}
           <button type="button" className="sb-button sb-mem-btn" data-testid="memory-edit" onClick={onEdit}>
             Edit…
           </button>
@@ -487,6 +502,9 @@ export function MemoryPage() {
   const [kind, setKind] = useState<MemoryScopeKind | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
   const [members, setMembers] = useState(0);
+  // D136: the folder's removed notes (Restore) and its check state.
+  const [removed, setRemoved] = useState<readonly MemoryRemovedEntry[]>([]);
+  const [check, setCheck] = useState<MemoryCheckStatus | null>(null);
   const memory = memoryApi(machineId);
 
   useEffect(() => {
@@ -522,6 +540,9 @@ export function MemoryPage() {
         setCap(settings.cap);
         setCapText(String(settings.cap));
         setEntries(chosen ? await memory.entries(chosen) : []);
+        // D136: an older paired machine has no checks (404): nothing of them shows.
+        setRemoved(chosen ? await memory.removed(chosen).catch(() => []) : []);
+        setCheck(chosen ? await memory.checkStatus(chosen).catch(() => null) : null);
         setError(null);
       } catch (failure) {
         if (!cancelled) setError(refusalText(failure));
@@ -631,6 +652,15 @@ export function MemoryPage() {
         {current ? (
           <div className="sb-mem-path" data-testid="memory-folder-path">
             {current.scope}
+          </div>
+        ) : null}
+        {check && scope ? (
+          // D136: the folder's last check, quietly (no Inbox item, toast or push for a background run).
+          <div className="sb-mem-check" data-testid="memory-check-status" data-tour="memory-check" data-running={check.running ? 'true' : undefined}>
+            <span data-testid="memory-check-line">{memoryCheckLine(check, Date.now())}</span>
+            <button type="button" className="sb-button sb-mem-btn" data-testid="memory-check-now" disabled={check.running || check.notes === 0} onClick={() => act(() => memory.checkNow(scope))}>
+              Check now
+            </button>
           </div>
         ) : null}
       </div>
@@ -815,6 +845,36 @@ export function MemoryPage() {
                     </article>
                   ))
                 : null}
+            </section>
+          ) : null}
+
+          {removed.length > 0 ? (
+            <section className="sb-mem-section" data-testid="memory-removed">
+              <h2 className="sb-mem-h2">
+                Removed by memory check <span className="sb-mem-count">{removed.length}</span>
+              </h2>
+              <div className="sb-mem-none">Kept 30 days, never given to agents. Restore puts a note back as it was.</div>
+              {removed.map((row) => (
+                <article key={row.id} className="sb-mem-card sb-mem-card--removed" data-testid="memory-removed-entry" data-entry-id={row.id}>
+                  <div className="sb-mem-card-head">
+                    <ScopeChip entry={row.entry} />
+                    <span className="sb-mem-entry-title" data-testid="memory-entry-title">
+                      {row.entry.title}
+                    </span>
+                  </div>
+                  <div className="sb-mem-entry-text">{row.entry.text}</div>
+                  <div className="sb-mem-card-foot">
+                    <span className="sb-mem-meta" data-testid="memory-removed-reason">
+                      {removedLine(row, Date.now())}
+                    </span>
+                    <span className="sb-mem-actions">
+                      <button type="button" className="sb-button sb-mem-btn sb-mem-btn--primary" data-testid="memory-restore" onClick={() => act(() => memory.restore(row.id))}>
+                        Restore
+                      </button>
+                    </span>
+                  </div>
+                </article>
+              ))}
             </section>
           ) : null}
 

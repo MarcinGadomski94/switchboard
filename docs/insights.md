@@ -112,6 +112,8 @@ One row per `result` event in `insight_turns` (migration 0050), written by the s
 
 **Backfill:** turns written before 0050 are added in the background (the D108 backfill's pattern: bounded steps, waiting while events are written, the progress in each batch's transaction), **the last 8 days only** (its start found by a binary search over the event ids). The view says *Counting the last week's replies… n%* meanwhile. Older history is not needed: the longest period is a week.
 
+**Memory checks (D136):** the memory checks (`docs/memory.md` → *Checking notes*) are not sessions; their tokens are rows of `insight_background_turns` (migration 0051, one per run and model) that the breakdown reads with the turns: kind **Memory check**, one row per folder ("Memory check · <folder>"), counted in the account's windows like any turn, with nothing to open.
+
 ### Subagents and workflow agents
 
 Claude Code's `result.usage` is the turn's **own** replies (the main thread). Its `modelUsage` is **cumulative for the session** (it survives a resume) and includes the subagents', workflow agents' and background calls' tokens; a background subagent's tokens may appear only in a later turn. So from 2.1 on every result also stores `modelTotals` (the `modelUsage` token counts per model), and a turn's agents' tokens are, per model, *the growth of the totals since the session's previous turn, minus the turn's own usage* (`agentTokensOfTurn`). Rules, so it never over-counts:

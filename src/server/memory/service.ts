@@ -34,11 +34,21 @@ import {
   readScopeKind,
   scopeKindOf,
 } from '../../core/memory.ts';
+import {
+  MEMORY_CHECK_AUTHOR,
+  MEMORY_REMOVED_KEEP_DAYS,
+  type MemoryCheckSettings,
+  type MemoryCheckStatus,
+  type MemoryRemovedBy,
+  type MemoryRemovedEntry,
+  readCheckSettings,
+} from '../../core/memory-check.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { inboxCount } from '../inbox/wire.ts';
+import { type MemoryCheckOptions, MemoryChecks } from './check.ts';
 import { MemoryDb, type MemoryPendingCopy } from './db.ts';
 import { MEMORY_COPY_ITEM, MEMORY_COPY_KEEP, MEMORY_COPY_RETRY, type MemoryMemberMove, type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
 import { type MemoryRepoSource, MemoryRepoIdentity, reachOf } from './reach.ts';
@@ -95,6 +105,11 @@ export interface MemoryServiceOptions {
   readonly peers?: MemoryPeers;
   readonly now?: () => Date;
   readonly onError?: (error: unknown) => void;
+  /**
+   * D136: the memory checks (`docs/memory.md` → *Checking notes*): the proposal check and the
+   * periodic check. Absent (demo mode, tests that do not need them): no check ever runs.
+   */
+  readonly check?: MemoryCheckOptions;
 }
 
 const CAP_KEY = 'cap';
@@ -149,11 +164,27 @@ export class MemoryService {
   #copyTimer: ReturnType<typeof setTimeout> | null = null;
   /** Copies run one at a time (a retry never overlaps another). */
   #copying: Promise<unknown> = Promise.resolve();
+  /** D136: the memory checks (`null` without {@link MemoryServiceOptions.check}). */
+  readonly #checks: MemoryChecks | null;
 
   constructor(options: MemoryServiceOptions) {
     this.#o = options;
     this.#now = options.now ?? (() => new Date());
     this.#onError = options.onError ?? ((error) => console.error('switchboard memory:', error));
+    this.#checks = options.check
+      ? new MemoryChecks(
+          {
+            db: () => (this.#enabled ? this.#db : null),
+            now: () => this.#now(),
+            label: (folder) => this.#label(folder),
+            removeNote: (entry, reason) => this.#removeNote(entry, reason, 'check'),
+            fileChange: (target, kind, fields) => this.#fileCheckChange(target, kind, fields),
+            changed: (folder) => this.#o.bus.publish('memoryChanged', { scope: folder }),
+            onError: (error) => this.#onError(error),
+          },
+          options.check,
+        )
+      : null;
   }
 
   // ── lifecycle ───────────────────────────────────────────────────────────
@@ -174,10 +205,12 @@ export class MemoryService {
       if (machine.state === 'online' && machine.removed !== true && typeof machine.id === 'string') void this.retryCopies({ machineId: machine.id }).catch((error: unknown) => this.#onError(error));
     });
     await this.#open();
+    this.#checks?.start();
   }
 
   async close(): Promise<void> {
     this.#closed = true;
+    await this.#checks?.close();
     this.#offHooks?.();
     this.#offHooks = null;
     this.#offBus?.();
@@ -281,8 +314,16 @@ export class MemoryService {
     return [...memoryOrder(rows.filter((entry) => entry.status === 'approved')), ...rows.filter((entry) => entry.status === 'proposed'), ...rows.filter((entry) => entry.status === 'rejected').reverse()];
   }
 
-  /** D135: a change proposal with its target as it is now (the review's "old" side; `null` once gone); an add as it is. */
+  /**
+   * D135: a change proposal with its target as it is now (the review's "old" side; `null` once gone);
+   * D136: a proposed add with what the proposal check found (only while its approved note exists).
+   */
   #withTarget(entry: MemoryEntry): MemoryEntry {
+    if (!isMemoryChange(entry) && entry.status === 'proposed') {
+      const check = this.#need().proposalCheck(entry.id);
+      const target = check ? this.#need().get(check.targetId) : null;
+      return check && target && target.status === 'approved' ? { ...entry, check: { ...check, targetTitle: target.title } } : entry;
+    }
     if (!isMemoryChange(entry) || entry.targetId == null) return entry;
     const target = this.#need().get(entry.targetId);
     return { ...entry, target: target && target.status === 'approved' ? target : null };
@@ -451,6 +492,8 @@ export class MemoryService {
     });
     await this.#syncInbox(scope);
     this.#o.bus.publish('memoryChanged', { scope });
+    // D136: in the background, does it duplicate or contradict a note this session sees?
+    this.#checks?.proposalAdded(entry, this.#visible(scope, reach, ['approved']));
     return entry;
   }
 
@@ -633,6 +676,10 @@ export class MemoryService {
     const input = readMemoryInput(body);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
     if (isMemoryChange(entry)) return this.#applyChange(entry, input.value);
+    // D136: "Approve and remove the old note": the note the proposal check found goes to the removed list (recoverable).
+    const removeOld = body !== null && typeof body === 'object' && (body as Record<string, unknown>)['removeConflicting'] === true;
+    const check = this.#need().proposalCheck(id);
+    const old = removeOld && check ? this.#need().get(check.targetId) : null;
     const target = await this.#chosenScope(body, entry.scope, entry);
     const now = this.#iso();
     const approved = this.#need().update(id, {
@@ -647,6 +694,10 @@ export class MemoryService {
       decidedBy: 'developer',
       updatedAt: now,
     }) as MemoryEntry;
+    this.#need().deleteProposalCheck(id);
+    if (old && check && old.status === 'approved' && !isMemoryChange(old) && old.id !== id) {
+      await this.#removeNote(old, `Replaced by “${approved.title}” (${check.verdict === 'duplicate' ? 'a duplicate' : 'a conflict'}: ${check.reason})`, 'approval');
+    }
     await this.#syncInbox(entry.scope);
     await this.#approvedChanged(entry.scope);
     return approved;
@@ -689,6 +740,7 @@ export class MemoryService {
     if (entry.status !== 'proposed') throw new MemoryError(409, 'not-proposed', entry.status === 'approved' ? 'this entry is approved: delete it instead' : 'this entry is already rejected');
     const now = this.#iso();
     const rejected = this.#need().update(id, { status: 'rejected', decidedAt: now, decidedBy: 'developer', updatedAt: now }) as MemoryEntry;
+    this.#need().deleteProposalCheck(id);
     await this.#syncInbox(entry.scope);
     this.#o.bus.publish('memoryChanged', { scope: entry.scope });
     return rejected;
@@ -698,6 +750,7 @@ export class MemoryService {
   async delete(id: string): Promise<void> {
     const entry = this.#get(id);
     this.#need().delete(id);
+    this.#need().deleteProposalCheck(id);
     // D135: proposals to change an entry go with it.
     const dropped = isMemoryChange(entry) ? 0 : this.#need().deleteChangesFor(id);
     if (dropped > 0 && entry.status !== 'proposed') await this.#syncInbox(entry.scope);
@@ -1075,6 +1128,159 @@ export class MemoryService {
     await this.#syncInbox(folder);
     await this.#approvedChanged(folder);
     return { imported };
+  }
+
+  // ── D136 · checks: removed notes, check-filed proposals, settings ──────
+
+  /**
+   * Moves an approved note to the removed list (recoverable for 30 days): deleted from the entries
+   * (so it is never injected again), its pending change proposals with it, the open sessions
+   * flagged (D91). `by`: the periodic check, or "Approve and remove the old note".
+   */
+  async #removeNote(entry: MemoryEntry, reason: string, by: MemoryRemovedBy): Promise<void> {
+    const db = this.#need();
+    const current = db.get(entry.id);
+    if (!current || current.status !== 'approved' || isMemoryChange(current)) return;
+    db.delete(current.id);
+    const dropped = db.deleteChangesFor(current.id);
+    db.putRemoved(current, reason, by, this.#iso());
+    if (dropped > 0) await this.#syncInbox(current.scope);
+    await this.#approvedChanged(current.scope);
+  }
+
+  /** A D135 edit / retract proposal filed by the check (author "Memory check"); `false` when one of the kind is pending already or nothing changes. */
+  async #fileCheckChange(target: MemoryEntry, kind: 'edit' | 'retract', fields: { readonly title: string | null; readonly text: string | null; readonly reason: string }): Promise<boolean> {
+    const db = this.#need();
+    const pending = db.changesFor(target.id).some((change) => change.status === 'proposed' && changeKindOf(change) === kind && change.authorSessionId === null && change.authorLabel === MEMORY_CHECK_AUTHOR);
+    if (pending) return false;
+    const title = kind === 'edit' ? (fields.title ?? target.title) : target.title;
+    const text = kind === 'edit' ? (fields.text ?? target.text) : target.text;
+    if (kind === 'edit' && title === target.title && text === target.text) return false;
+    const now = this.#iso();
+    db.insert({
+      id: randomBytes(5).toString('hex'),
+      scope: target.scope,
+      title,
+      text,
+      tags: target.tags,
+      authorKind: 'agent',
+      authorSessionId: null,
+      authorLabel: MEMORY_CHECK_AUTHOR,
+      status: 'proposed',
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      decidedAt: null,
+      decidedBy: null,
+      proposedTitle: null,
+      proposedText: null,
+      scopeKind: target.scopeKind,
+      scopeKey: target.scopeKey,
+      scopeLabel: target.scopeLabel,
+      changeKind: kind,
+      targetId: target.id,
+      reason: fields.reason,
+      targetTitle: target.title,
+      targetText: target.text,
+    });
+    await this.#syncInbox(target.scope);
+    this.#o.bus.publish('memoryChanged', { scope: target.scope });
+    return true;
+  }
+
+  /** `GET /api/memory/removed?scope=`: the notes removed by a check (or replaced on approval), newest first, kept 30 days. */
+  removed(scope?: string): MemoryRemovedEntry[] {
+    return this.#need().removed(scope ? scope : null, MEMORY_REMOVED_KEEP_DAYS);
+  }
+
+  /**
+   * `POST /api/memory/removed/{id}/restore`: puts a removed note back as an approved note, under
+   * its own id (a new one only if that id is taken meanwhile), as it was when removed.
+   */
+  async restore(id: string): Promise<MemoryEntry> {
+    const db = this.#need();
+    const removed = db.removedOne(id, MEMORY_REMOVED_KEEP_DAYS);
+    if (!removed) throw new MemoryError(404, 'not-found', `no removed note ${id} (removed notes are kept ${MEMORY_REMOVED_KEEP_DAYS} days)`);
+    const now = this.#iso();
+    const old = removed.entry;
+    const restored = db.insert({
+      ...old,
+      id: db.get(old.id) ? randomBytes(5).toString('hex') : old.id,
+      scope: removed.scope,
+      status: 'approved',
+      changeKind: 'add',
+      targetId: null,
+      reason: null,
+      targetTitle: null,
+      targetText: null,
+      updatedAt: now,
+    });
+    db.deleteRemoved(id);
+    await this.#approvedChanged(removed.scope);
+    return restored;
+  }
+
+  /** Purges removed notes past their 30 days (the scheduler does it on each tick; tests). */
+  purgeRemoved(): number {
+    const db = this.#need();
+    const before = new Date(this.#now().getTime() - MEMORY_REMOVED_KEEP_DAYS * 24 * HOUR_MS).toISOString();
+    const count = db.removed(null, MEMORY_REMOVED_KEEP_DAYS).filter((row) => row.removedAt < before).length;
+    for (const scope of new Set(db.purgeRemoved(before))) this.#o.bus.publish('memoryChanged', { scope });
+    return count;
+  }
+
+  #needChecks(): MemoryChecks {
+    this.#need();
+    if (!this.#checks) throw new MemoryError(404, 'checks-off', 'memory checks do not run here (demo mode)');
+    return this.#checks;
+  }
+
+  /** The checks (tests: run a tick, wait for the runs). */
+  get checks(): MemoryChecks | null {
+    return this.#checks;
+  }
+
+  /** `GET /api/memory/check?scope=`: the folder's check state (last run and result, next due time). */
+  checkStatus(scope: string): MemoryCheckStatus {
+    if (!scope) throw new MemoryError(422, 'invalid', 'scope is required: the folder', 'scope');
+    return this.#needChecks().status(scope);
+  }
+
+  /** `GET /api/memory/check/settings`. */
+  checkSettings(): MemoryCheckSettings {
+    return this.#needChecks().settings();
+  }
+
+  /** `PUT /api/memory/check/settings` `{ enabled?, frequencyDays? }`. */
+  setCheckSettings(body: unknown): MemoryCheckSettings {
+    const checks = this.#needChecks();
+    const read = readCheckSettings(body);
+    if ('error' in read) throw new MemoryError(422, 'invalid', read.error, read.field);
+    const settings = checks.setSettings(read);
+    this.#o.bus.publish('memoryChanged', { scope: null });
+    return settings;
+  }
+
+  /** `PUT /api/memory/check` `{ scope, enabled }`: the check on or off for one folder. */
+  setCheckFolder(body: unknown): MemoryCheckStatus {
+    const checks = this.#needChecks();
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const scope = typeof raw['scope'] === 'string' ? raw['scope'].trim() : '';
+    if (scope === '') throw new MemoryError(422, 'invalid', 'scope is required: the folder', 'scope');
+    if (typeof raw['enabled'] !== 'boolean') throw new MemoryError(422, 'invalid', 'enabled must be true or false', 'enabled');
+    const status = checks.setFolderEnabled(scope, raw['enabled']);
+    this.#o.bus.publish('memoryChanged', { scope });
+    return status;
+  }
+
+  /** `POST /api/memory/check/run` `{ scope }` ("Check now"): runs the folder's check in the background now. */
+  checkNow(body: unknown): MemoryCheckStatus {
+    const checks = this.#needChecks();
+    const raw = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const scope = typeof raw['scope'] === 'string' ? raw['scope'].trim() : '';
+    if (scope === '') throw new MemoryError(422, 'invalid', 'scope is required: the folder', 'scope');
+    if (this.#need().list({ scope, statuses: ['approved'] }).length === 0) throw new MemoryError(409, 'no-notes', 'this folder has no approved notes to check');
+    return checks.checkNow(scope);
   }
 
   // ── after a change ──────────────────────────────────────────────────────

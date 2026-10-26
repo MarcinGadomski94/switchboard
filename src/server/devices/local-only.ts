@@ -159,6 +159,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/memory\/sessions\/[^/]+$/],
   ['PUT', /^\/api\/memory\/entries\/[^/]+$/],
   ['POST', /^\/api\/memory\/entries\/[^/]+\/(?:approve|reject)$/],
+  // D136: the removed notes and a folder's check state (read), Restore (review on the phone).
+  ['GET', /^\/api\/memory\/(?:removed|check|check\/settings)$/],
+  ['POST', /^\/api\/memory\/removed\/[^/]+\/restore$/],
   // Team (D100) hook (docs/team.md → Devices): read the team, answer (requests), pause / resume, give tasks (hand-offs),
   // adopt / create, return and remove a member (the session itself is never lost). Settings edits, moves and the sync stay off phones.
   ['GET', /^\/api\/team(?:\/(?:state|templates|suggestions|activity|needs-you))?$/],
@@ -259,6 +262,9 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/memory\/entries$/],
   ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
   ['PUT', /^\/api\/memory\/settings$/],
+  // D136: the checks' switches and Check now (desktop and paired machines).
+  ['PUT', /^\/api\/memory\/check(?:\/settings)?$/],
+  ['POST', /^\/api\/memory\/check\/run$/],
   // D107 follow-up 2026-10-15: "Draft memory" asks and a moved member's import (desktop and paired machines only).
   ['POST', /^\/api\/memory\/(?:draft|draft-all|import)$/],
 ];

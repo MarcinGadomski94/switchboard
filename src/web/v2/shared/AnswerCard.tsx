@@ -1,5 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useState, useSyncExternalStore } from 'react';
 import type { Question } from '../../../core/api.ts';
+// Project memory (D107) hook, D136: a flagged proposal's finding (docs/memory-removal.md).
+import { checkFindingText } from '../../../core/memory-check.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Button, Checkbox, Chip, ComputerTag, Icon, useToast } from '../components/index.ts';
 import { AGENT_WORDS, ANSWER, ANSWERED_WHERE, type AnsweredWhere, NEEDS_KIND_LOOK, STATUS, WORDS } from '../glossary.ts';
@@ -303,6 +305,12 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
         <>
           {item.text && item.memory ? <p className="v2-qi-text">{item.text}</p> : null}
           {item.quote ? <div className="v2-quote">{item.quote}</div> : !item.memory && item.text ? <p className="v2-qi-text">{item.text}</p> : null}
+          {item.memory?.check ? (
+            // D136: the proposal check found a duplicate or a conflict with an approved note.
+            <p className="v2-qi-hint v2-qi-finding" data-testid="v2-answer-finding" data-verdict={item.memory.check.verdict}>
+              <Icon name="alert" size="s" /> <b>{checkFindingText(item.memory.check)}</b> · {item.memory.check.reason}
+            </p>
+          ) : null}
           {item.context ? (
             <p className="v2-qi-hint">
               <Icon name="book" size="s" /> Scope: <b>{item.context}</b> · every agent working there will know this.

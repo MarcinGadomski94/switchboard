@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UsageAnswer, UsageGroupBy, UsagePeriod, UsageRow } from '../../../core/usage-breakdown.ts';
-import { USAGE_GROUPS, USAGE_PERIODS } from '../../../core/usage-breakdown.ts';
+import { USAGE_GROUPS, USAGE_PERIODS, isBackgroundSession } from '../../../core/usage-breakdown.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { machinesNotice } from '../../views/insights/useInsights.ts';
@@ -389,9 +389,14 @@ function UsageLog({
         {answer.log.rows.map((row) => (
           <li key={row.id} className="v2-usage-log-row" data-testid="v2-usage-log-row">
             <span className="v2-usage-log-time">{logTime(row.at, now)}</span>
-            <button type="button" className="v2-usage-log-title" onClick={() => openAgent(row.sessionId)} title={USAGE_WORDS.open}>
-              {row.title}
-            </button>
+            {isBackgroundSession(row.sessionId) ? (
+              // Project memory (D107) hook, D136: a memory check has no agent to open.
+              <span className="v2-usage-log-title">{row.title}</span>
+            ) : (
+              <button type="button" className="v2-usage-log-title" onClick={() => openAgent(row.sessionId)} title={USAGE_WORDS.open}>
+                {row.title}
+              </button>
+            )}
             <span className="v2-muted v2-usage-log-model">{row.models.map((m) => m || 'default model').join(' + ')}</span>
             <span className="v2-usage-log-tokens">
               <b>{tokensShort(row.total.tokens)}</b>

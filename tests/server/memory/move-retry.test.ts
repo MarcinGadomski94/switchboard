@@ -253,7 +253,9 @@ describe('D107 follow-up · migration 3', () => {
       [2, 'memory_scopes', '72a7166af3aaa3098e9374cf2d1dc374bc5d7d234d181cfd71619d3a715e3af1'],
       // D135: migration 3 as released (its checksum pinned once migration 4 followed).
       [3, 'memory_pending_copies', 'f3ded3785f77bc19dc499888fbcbabb5877114b0f591e507bf37cd0497091b48'],
-      [4, 'memory_changes', expect.any(String)],
+      // D136: migration 4 as released in 2.2.0 (its checksum pinned once migration 5 followed).
+      [4, 'memory_changes', 'e271b6a93973c0a7a1b8ff46dea8dc8f0d0e13145c08d862855b546b36e02c3f'],
+      [5, 'memory_checks', expect.any(String)],
     ]);
     const root = await realpath(await makeTempDir('memory-migrate-3'));
     try {

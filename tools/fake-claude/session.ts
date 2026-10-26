@@ -455,7 +455,10 @@ export class Runner {
     this.recordedModel = recordedInitModel(this.core.base);
     if (this.args.effort !== null && !FAKE_EFFORT_LEVELS.includes(this.args.effort)) this.o.writeStderr(effortWarning(this.args.effort));
 
-    if (this.configDir === null) {
+    if (this.args.noSessionPersistence) {
+      // D136: `--no-session-persistence`: nothing on disk (no transcript, no live-process file), as the CLI's print mode does.
+      if (resuming) return this.fail('fake-claude: --resume cannot be combined with --no-session-persistence');
+    } else if (this.configDir === null) {
       if (resuming) return this.fail('fake-claude: --resume needs CLAUDE_CONFIG_DIR (the fake never reads ~/.claude)');
       this.o.writeStderr('fake-claude: CLAUDE_CONFIG_DIR is not set; no transcript or live-process file is written\n');
     } else {

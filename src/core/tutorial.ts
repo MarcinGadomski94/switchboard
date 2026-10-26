@@ -137,6 +137,9 @@ const V2_1 = '2.1.0';
 /** The version D135 (agents propose edits and removals of approved Project memory entries) ships in. */
 const V2_2 = '2.2.0';
 
+/** The version D136 (Project memory checks: duplicates and contradictions of a proposal, a periodic check per folder) ships in. */
+const V2_3 = '2.3.0';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1278,6 +1281,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['memory-queue'],
         route: { view: 'memory' },
         missing: 'Open Memory (the book icon) to see the proposals. ',
+      },
+    ],
+  },
+  // Project memory (D107) hook: D136's tour (docs/memory-removal.md); in classic (v2 runs only its welcome tour).
+  {
+    id: 'memory-checks',
+    decision: 'D136',
+    version: V2_3,
+    title: 'Notes are checked for you',
+    steps: [
+      {
+        id: 'check',
+        title: 'Stored notes stay true',
+        what: 'Switchboard now checks project memory by itself. A new proposal is compared with the approved notes, and a duplicate or a contradiction shows on its card ("Approve and remove the old note" does both at once). Once a week, a short read-only check per folder verifies the notes against the code: a note that is no longer true is removed (Restore brings it back for 30 days), an edit waits for your review. No session opens; the cost shows in Insights › Usage as "Memory check".',
+        todo: ['Open Memory to see when the folder was last checked.', 'Use Check now, or switch it off in Settings › Project memory.'],
+        anchors: ['memory-check'],
+        route: { view: 'memory' },
+        missing: 'Open Memory (the book icon) to see the last check. ',
       },
     ],
   },

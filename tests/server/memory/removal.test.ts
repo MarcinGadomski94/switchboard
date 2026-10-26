@@ -9,7 +9,7 @@ import { REPO_ROOT } from '../../helpers/net.ts';
  * and every file the table names exists and still carries a marker (Team's and Plans' pattern).
  */
 
-const OWN = [/^src\/server\/memory\//, /^src\/web\/memory\//, /^src\/core\/memory\.ts$/, /^src\/hook\/sb-memory-tools\.ts$/];
+const OWN = [/^src\/server\/memory\//, /^src\/web\/memory\//, /^src\/core\/memory\.ts$/, /^src\/core\/memory-check\.ts$/, /^src\/hook\/sb-memory-tools\.ts$/];
 
 async function files(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -45,7 +45,7 @@ describe('D107 · the wiring map (D132: graduated, the hooks stay listed)', () =
     for (const file of await files('src')) {
       if (OWN.some((pattern) => pattern.test(file))) continue;
       const text = await readFile(path.join(REPO_ROOT, file), 'utf8');
-      if (/from '[^']*(?:\/memory\/|\/core\/memory\.ts|sb-memory-tools\.ts)/.test(text)) expect(doc, `${file} imports Project memory`).toContain(`\`${file}\``);
+      if (/from '[^']*(?:\/memory\/|\/core\/memory\.ts|\/core\/memory-check\.ts|sb-memory-tools\.ts)/.test(text)) expect(doc, `${file} imports Project memory`).toContain(`\`${file}\``);
     }
   });
 });

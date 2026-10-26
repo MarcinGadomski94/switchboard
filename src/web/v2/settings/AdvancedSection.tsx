@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+// Project memory (D107) hook, D136: Settings → Advanced → Notes checks (docs/memory-removal.md).
+import { MemoryCheckSection } from '../../memory/CheckSettings.tsx';
 import { UpdatesSection } from '../../updates/UpdatesSection.tsx';
 import { McpView } from '../../views/McpView.tsx';
 import { SolutionsView } from '../../views/SolutionsView.tsx';
@@ -160,5 +162,8 @@ function AdvancedBody({ kind }: { readonly kind: AdvancedKind }) {
       return <MachinesSection />;
     case 'devices':
       return <DevicesSection />;
+    // Project memory (D107) hook, D136: the automatic checks (docs/memory-removal.md).
+    case 'memory':
+      return <MemoryCheckSection />;
   }
 }
