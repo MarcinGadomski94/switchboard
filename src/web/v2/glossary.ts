@@ -500,15 +500,19 @@ export function actionLabel(id: string, serverLabel: string): string {
 
 // ── Rail, tabs, shortcuts ──────────────────────────────────────────────
 
-/** The rail's six destinations, in order. */
+/** The rail's seven destinations, in order. */
 export const RAIL_LABELS = {
   home: 'Home',
   agents: 'Agents',
   projects: 'Projects',
   crews: 'Crews',
   results: 'Results',
+  tasks: TERMS.task.many,
   settings: 'Settings',
 } as const;
+
+/** The rail's Tasks item read aloud with its count of tasks not done yet. */
+export const railTasksLabel = (count: number): string => `${RAIL_LABELS.tasks}, ${count} not done`;
 
 /** The phone's bottom tabs, in order. */
 export const PHONE_TABS = {

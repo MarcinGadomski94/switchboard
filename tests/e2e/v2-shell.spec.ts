@@ -28,14 +28,14 @@ test.beforeEach(async ({ page }) => {
   await stubToolProbes(page);
 });
 
-test('v2 is the default: the shell renders with its six rail items, and the rail navigates', async ({ page }) => {
+test('v2 is the default: the shell renders with its seven rail items, and the rail navigates', async ({ page }) => {
   await page.goto(`${server.baseUrl}/`);
   await expect(page.getByTestId('v2-shell')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-ui', 'v2');
   // The classic shell is not mounted at all.
   await expect(page.getByTestId('shell')).toHaveCount(0);
   const rail = page.getByTestId('v2-rail');
-  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Settings']);
+  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Settings']);
   await expect(page.getByTestId('v2-nav-home')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('v2-page-home')).toBeVisible();
   await expect(rail.getByTestId('v2-rail-pins')).toContainText('Pinned');
@@ -50,6 +50,7 @@ test('v2 is the default: the shell renders with its six rail items, and the rail
     ['projects', '/projects', 'v2-page-projects'],
     ['crews', '/crews', 'v2-page-crews'],
     ['results', '/results', 'v2-page-results'],
+    ['tasks', '/tasks', 'v2-page-tasks'],
     ['settings', '/settings', 'v2-page-settings'],
     ['home', '/', 'v2-page-home'],
   ] as const) {

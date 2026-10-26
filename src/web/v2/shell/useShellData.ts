@@ -7,6 +7,8 @@ import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
+import { useThrottled } from '../../api/useThrottled.ts';
+import { unfinishedCount } from '../agents/tasks/tasks-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
 import { useTeamMembers } from '../shared/teammates.ts';
 import { useWarnAt } from '../shared/warn-at.ts';
@@ -64,4 +66,16 @@ export function useRailCounts(): RailCounts {
   const { items } = useNeedsYou();
   const members = useTeamMembers();
   return useMemo(() => railCounts(items, new Set(members.keys())), [items, members]);
+}
+
+/**
+ * The rail's Tasks badge: the tasks not done yet across every agent (`GET /api/todos`,
+ * the Tasks page's own source, this computer's and the paired ones'), live through the
+ * same `todosChanged` event the page reloads on.
+ */
+export function useUnfinishedTaskCount(): number {
+  const groups = useApi(api.todos);
+  const reload = useThrottled(groups.reload, 300);
+  useHubEvent('todosChanged', () => reload());
+  return useMemo(() => unfinishedCount(groups.data), [groups.data]);
 }

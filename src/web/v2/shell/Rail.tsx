@@ -1,27 +1,28 @@
 import { useMemo } from 'react';
 import { Icon, StatusBadge } from '../components/index.ts';
-import { RAIL_LABELS, STATUS, WORDS, sessionStatusToV2 } from '../glossary.ts';
+import { RAIL_LABELS, STATUS, WORDS, railTasksLabel, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
 import { RecentList } from '../shared/RecentList.tsx';
 import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import type { StatusPill } from './status-model.ts';
-import { type RailCounts, usePhones, usePins } from './useShellData.ts';
+import { type RailCounts, usePhones, usePins, useUnfinishedTaskCount } from './useShellData.ts';
 
-const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', settings: 'settings' };
+const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', tasks: 'task', settings: 'settings' };
 const TARGETS: Readonly<Record<RailArea, V2Route>> = {
   home: { area: 'home' },
   agents: { area: 'agents' },
   projects: { area: 'projects' },
   crews: { area: 'crews' },
   results: { area: 'results' },
+  tasks: { area: 'tasks' },
   settings: { area: 'settings', section: null, sub: null },
 };
 
 /**
- * D131 · the left rail (the prototype's `.rail`): the brand, six labelled items
- * (Home · Agents · Projects · Crews · Results · Settings), each with its "needs
- * you" count, the Pinned list (the shared sidebar layout's pins, D71) and the
+ * D131 · the left rail (the prototype's `.rail`): the brand, seven labelled items
+ * (Home · Agents · Projects · Crews · Results · Tasks · Settings), each with its "needs
+ * you" count (Tasks: its tasks not done yet; fix after 2.0), the Pinned list (the shared sidebar layout's pins, D71) and the
  * computers and phones at its foot. ≤ 1279 px it narrows to icons with their
  * labels under them and the pins and foot hide (the prototype's tablet rail).
  */
@@ -31,7 +32,12 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
   const members = useTeamMembers();
   const pinnedIds = useMemo(() => pins.map((session) => session.id), [pins]);
   const phones = usePhones();
-  const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : 0);
+  const unfinished = useUnfinishedTaskCount();
+  const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : area === 'tasks' ? unfinished : 0);
+  const label = (area: RailArea, count: number): string => {
+    if (count <= 0) return RAIL_LABELS[area];
+    return area === 'tasks' ? railTasksLabel(count) : `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you`;
+  };
   return (
     <nav className="v2-rail" aria-label="Main" data-testid="v2-rail">
       <div className="v2-brand">
@@ -43,7 +49,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
       {RAIL_AREAS.map((area) => {
         const count = badge(area);
         return (
-          <V2Link key={area} to={TARGETS[area]} className="v2-nav-item" aria-current={current === area ? 'page' : undefined} data-testid={`v2-nav-${area}`} data-tour={`v2-nav-${area}`} aria-label={count > 0 ? `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you` : RAIL_LABELS[area]}>
+          <V2Link key={area} to={TARGETS[area]} className="v2-nav-item" aria-current={current === area ? 'page' : undefined} data-testid={`v2-nav-${area}`} data-tour={`v2-nav-${area}`} aria-label={label(area, count)}>
             <Icon name={ICONS[area]} />
             <span className="v2-nav-label">{RAIL_LABELS[area]}</span>
             {count > 0 ? (

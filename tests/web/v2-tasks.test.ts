@@ -17,6 +17,7 @@ import {
   priorityLook,
   quickAddInput,
   taskColumnOf,
+  unfinishedCount,
   workerOf,
 } from '../../src/web/v2/agents/tasks/tasks-model.ts';
 
@@ -149,5 +150,22 @@ describe('v2 Tasks · priority, moves, quick add, availability', () => {
     const list = [todo('a'), todo('b', { createdAt: '2026-10-25T11:00:00.000Z' }), todo('c', { createdAt: '2026-10-25T11:05:00.000Z' })];
     expect(addedTodo(new Set(['a']), list)?.id).toBe('c');
     expect(addedTodo(new Set(['a', 'b', 'c']), list)).toBeNull();
+  });
+});
+
+describe('v2 Tasks · the rail badge', () => {
+  it('counts every agent\'s tasks not done yet (Open, In progress and Review together)', () => {
+    const groups = [group('a', [todo('1'), todo('2', { state: 'in_progress' }), todo('3', { state: 'done' })]), group('b', [todo('4', { state: 'in_progress' }), todo('5', { state: 'done' })]), group('c', [])];
+    expect(unfinishedCount(groups)).toBe(3);
+    // The board puts the same three in Open, In progress and Review, whatever the agents' status.
+    const board = boardOf(groups, (id) => (id === 'b' ? 'idle' : 'run'));
+    expect(board.open.length + board.progress.length + board.review.length).toBe(3);
+  });
+
+  it('is 0 before the list loads, with no groups and when everything is done', () => {
+    expect(unfinishedCount(null)).toBe(0);
+    expect(unfinishedCount(undefined)).toBe(0);
+    expect(unfinishedCount([])).toBe(0);
+    expect(unfinishedCount([group('a', [todo('1', { state: 'done' })])])).toBe(0);
   });
 });

@@ -133,7 +133,7 @@ export function pageRows(): PaletteRow[] {
     page('results', RAIL_LABELS.results, 'results', '/results', 'artifacts files reports'),
     page('search', WORDS.search, 'search', '/search', 'find'),
     page('insights', WORDS.insights, 'insights', '/insights', 'cost tokens forecast estimates'),
-    page('tasks', 'Tasks', 'task', '/tasks', 'todos'),
+    page('tasks', RAIL_LABELS.tasks, 'task', '/tasks', 'todos board'),
     page('routines', 'Routines', 'routine', '/routines', 'schedules loops'),
     page('notes', 'Notes', 'book', '/notes', 'memory'),
     page('closed', PALETTE_WORDS.actions.closed, 'clock', '/agents?show=closed', 'history closed'),

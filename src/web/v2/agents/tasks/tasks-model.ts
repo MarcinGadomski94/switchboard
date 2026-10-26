@@ -79,6 +79,17 @@ export function boardOf(groups: readonly TodoGroup[], statusOf: (sessionId: stri
   return out;
 }
 
+/**
+ * The rail's Tasks badge (fix after 2.0): the items not done yet across every group the
+ * board shows (this computer's and the paired ones'), i.e. the Open, In progress and
+ * Review columns together. Review is derived from In progress, so only the state counts.
+ */
+export function unfinishedCount(groups: readonly Pick<TodoGroup, 'todos'>[] | null | undefined): number {
+  let count = 0;
+  for (const group of groups ?? []) for (const todo of group.todos) if (todo.state !== 'done') count += 1;
+  return count;
+}
+
 /** A card's key across sessions (item ids are per session). */
 export function cardKey(sessionId: string, todoId: string): string {
   return `${sessionId}\u0000${todoId}`;

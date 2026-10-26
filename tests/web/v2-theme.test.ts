@@ -131,6 +131,7 @@ describe('D131 · v2 routes and the classic ⇄ v2 address map', () => {
     expect(railAreaOf({ area: 'needs-you' })).toBe('home');
     expect(railAreaOf({ area: 'agent', id: 'x', tab: 'chat' })).toBe('agents');
     expect(railAreaOf({ area: 'notes' })).toBe('agents');
+    expect(railAreaOf({ area: 'tasks' })).toBe('tasks');
     expect(railAreaOf({ area: 'project', id: 'p' })).toBe('projects');
     expect(railAreaOf({ area: 'search' })).toBeNull();
     expect(railAreaOf({ area: 'insights' })).toBe('settings');

@@ -49,7 +49,7 @@ describe('D131 · the glossary: one place for the v2 words', () => {
     expect(TERMS.backgroundApp.many).toBe('Background apps');
     expect(TERMS.aiEngine.one).toBe('AI engine');
     expect(TERMS.connections.many).toBe('Connections');
-    expect(Object.values(RAIL_LABELS)).toEqual(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Settings']);
+    expect(Object.values(RAIL_LABELS)).toEqual(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Settings']);
     expect(actionLabel('plan-merge', 'Merge')).toBe('Combine');
     expect(actionLabel('open-session', 'Open session')).toBe('Open chat');
     expect(actionLabel('something-new', 'Something new')).toBe('Something new');
