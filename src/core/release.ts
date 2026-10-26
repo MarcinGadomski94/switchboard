@@ -30,10 +30,25 @@ export function releaseTag(version: string): string {
 
 /**
  * Paths (repo-relative, `/`-separated) left out of a release package: the tests
- * and their configs, the loop state and the visual oracle's references. Folders
- * end with `/`.
+ * and their configs, the loop state, the visual oracle's references, the
+ * docs-only images (the README screenshots and demo GIF, the social previews,
+ * the handoff's reference screenshots: none is read at run time) and the npx
+ * installer package (`packages/npx`, published to npm on its own). Folders end
+ * with `/`.
  */
-export const RELEASE_EXCLUDED: readonly string[] = ['tests/', '.loop/', 'docs/visual/', 'playwright.config.ts', 'vitest.config.ts', 'tsconfig.e2e.json'];
+export const RELEASE_EXCLUDED: readonly string[] = [
+  'tests/',
+  '.loop/',
+  'docs/visual/',
+  'docs/screenshots/',
+  'docs/handoff/screenshots/',
+  'docs/social-preview.png',
+  'docs/assets/social-preview.png',
+  'packages/',
+  'playwright.config.ts',
+  'vitest.config.ts',
+  'tsconfig.e2e.json',
+];
 
 /** `true` when the repo-relative `file` (or folder) is left out of a release package. */
 export function isReleaseExcluded(file: string): boolean {

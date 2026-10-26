@@ -69,54 +69,25 @@ How to install them per OS: [docs/setup.md](docs/setup.md#requirements).
 
 ## Install
 
-Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole. Replace `2.0.2` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Other ways to run it (without the service, from source): [docs/setup.md](docs/setup.md).
-
-**macOS:**
+macOS and Linux:
 
 ```sh
-V=2.0.2
-DIR=~/Applications/Switchboard
-mkdir -p "$DIR"
-cd "$DIR"
-curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
-curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256
-shasum -a 256 -c switchboard-$V.tar.gz.sha256 && tar -xzf switchboard-$V.tar.gz
-cd switchboard-$V
-npm ci --omit=dev
-npm run service:install -- --start
+curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh
 ```
 
-**Linux:**
-
-```bash
-V=2.0.2
-DIR=~/.local/opt/switchboard
-mkdir -p "$DIR"
-cd "$DIR"
-curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
-curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256
-sha256sum -c switchboard-$V.tar.gz.sha256 && tar -xzf switchboard-$V.tar.gz
-cd switchboard-$V
-npm ci --omit=dev
-npm run service:install -- --start
-```
-
-**Windows** (PowerShell; closing the console window the task opens stops Switchboard, so minimise it):
+Windows (PowerShell):
 
 ```powershell
-$V = "2.0.2"
-$Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
-New-Item -ItemType Directory -Force $Dir | Out-Null
-Set-Location $Dir
-curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz"
-curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256"
-$Expected = (Get-Content "switchboard-$V.tar.gz.sha256").Split(" ")[0]
-$Actual = (Get-FileHash "switchboard-$V.tar.gz" -Algorithm SHA256).Hash.ToLower()
-if ($Actual -eq $Expected) { tar -xzf "switchboard-$V.tar.gz" } else { Write-Error "Checksum mismatch: do not install this download." }
-Set-Location "switchboard-$V"
-npm ci --omit=dev
-npm run service:install -- --start
+irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex
 ```
+
+Or with npm, once the package is published:
+
+```sh
+npx @marcingadomski94/switchboard
+```
+
+The installer needs Node.js 24 or newer ([how to install it](docs/setup.md#requirements)). It downloads the latest release and installs it only when its SHA-256 checksum matches. It installs the release into `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) or `%LOCALAPPDATA%\Programs\Switchboard` (Windows). It asks whether to start Switchboard at every sign-in, then starts it. Run it again to upgrade or repair. It never uses sudo, never changes your shell profile and sends no telemetry. You can read [install.sh](install.sh) and [install.ps1](install.ps1) before you run them. The options (`--service`, `--dir`, `--version`, `--uninstall`) and the manual install are in [docs/setup.md](docs/setup.md#one-line-install).
 
 Then open **http://127.0.0.1:13001** (type it or use a bookmark). A setup wizard walks you through the first folder and notifications.
 

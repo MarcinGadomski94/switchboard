@@ -1,0 +1,36 @@
+{
+  "name": "@marcingadomski94/switchboard",
+  "version": "2.0.2",
+  "description": "Installs Switchboard, the local web app to run, supervise and switch many Claude Code, Codex CLI and OpenCode sessions at once: npx @marcingadomski94/switchboard",
+  "license": "MIT",
+  "mcpName": "io.github.MarcinGadomski94/switchboard",
+  "homepage": "https://github.com/MarcinGadomski94/switchboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarcinGadomski94/switchboard.git",
+    "directory": "packages/npx"
+  },
+  "bugs": {
+    "url": "https://github.com/MarcinGadomski94/switchboard/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex-cli",
+    "opencode",
+    "ai-agents",
+    "mcp",
+    "installer"
+  ],
+  "type": "module",
+  "bin": {
+    "switchboard": "bin/switchboard.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  }
+}

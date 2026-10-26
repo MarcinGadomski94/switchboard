@@ -1,6 +1,6 @@
 # Setup
 
-How to install the requirements, run Switchboard in other ways than the README's quick install, start it at login, and fix common problems. The README has the quick install per OS; the first-run setup wizard is described at the end of this page.
+How to install the requirements, install Switchboard with the one-line installer or by hand, run it in other ways, start it at login, and fix common problems. The first-run setup wizard is described at the end of this page.
 
 Copyable command blocks on this page have no comments, so they paste safely into macOS zsh, Linux bash and Windows PowerShell; the explanations are in the text around them.
 
@@ -60,10 +60,121 @@ irm https://claude.ai/install.ps1 | iex
 
 Open a **new** terminal so the updated `PATH` is picked up, then run `claude` once and sign in. Use the native installer for Claude Code: an npm install creates `claude.cmd`, which Switchboard can't start without a shell (then set `SWITCHBOARD_CLAUDE_BIN`, `docs/configuration.md`). `tar` and `curl` come with Windows 10 and 11.
 
+## One-line install
+
+The README's one-liners run [`install.sh`](../install.sh) (macOS, Linux; POSIX `sh`) or [`install.ps1`](../install.ps1) (Windows PowerShell 5.1 and PowerShell 7) from the repository's `master` branch. Read them first if you like; they are short. Each one:
+
+1. checks for Node.js 24 or newer with npm, and without them prints how to install them and stops before installing anything;
+2. finds the latest release through the GitHub API (or the `releases/latest` redirect when the API is rate limited), or takes `--version`;
+3. downloads `switchboard-<version>.tar.gz` and its `.sha256`, and verifies the checksum (`sha256sum` / `shasum -a 256`, `Get-FileHash` on Windows); a mismatch stops it before anything is unpacked;
+4. unpacks it into `<dir>/switchboard-<version>` after checking every entry stays inside that folder, and runs `npm ci --omit=dev` there;
+5. registers the login service (`tools/service/install.ts`, the same as `npm run service:install`) when you pass `--service`, or when you answer yes. It asks only in an interactive terminal; without one the default is no. A login service that already starts this install is kept and pointed at the new version;
+6. starts Switchboard (through the login service, else in the background with its output in `<dir>/switchboard.log`) and prints `http://127.0.0.1:13001`.
+
+It never uses sudo or administrator rights, never edits shell profiles and sends no telemetry. The only downloads are the release from GitHub and the dependencies from the npm registry.
+
+**Running it again** upgrades to the latest release or, on the same version, repairs it: a fresh download replaces the folder, and a Switchboard it started is stopped and started again. It keeps the version it replaced (for a rollback) and removes older `switchboard-*` folders, unless the login service points at one. If something else already answers on the port (another Switchboard), it installs but does not start a second one.
+
+**Options** (`install.ps1` takes them as `-Dir`, `-Version`, `-Service`, `-NoService`, `-NoStart`, `-Uninstall`, `-Purge`):
+
+| Option | What |
+|---|---|
+| `--dir <folder>` | Install folder. Default `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux), `%LOCALAPPDATA%\Programs\Switchboard` (Windows). |
+| `--version <x.y.z>` | That release instead of the latest (also `SWITCHBOARD_VERSION`). |
+| `--service` / `--no-service` | Register the login service, or don't (no question asked). |
+| `--no-start` | Install only. |
+| `--uninstall` | Stops the Switchboard it started and removes the login service when it points at this install. Removes the install folder and the versions the in-app updater put in the data folder (`versions/`, `updates/`). **Keeps your data**: the database, the token, attachments and logs. It refuses to delete a folder that holds files it did not make. |
+| `--purge` | With `--uninstall`: also removes the data folder. |
+
+`SWITCHBOARD_PORT`, `SWITCHBOARD_DATA_DIR` and the other settings (`docs/configuration.md`) are passed on to Switchboard and to the login service. `SWITCHBOARD_UPDATE_REPO` (`owner/name`) installs from a fork. `SWITCHBOARD_INSTALL_SOURCE` is **for tests**: a folder URL such as `file:///tmp/release` that holds `switchboard-<version>.tar.gz` and its `.sha256`, used instead of GitHub (the newest one there unless `--version`).
+
+To pass options through the one-liner on macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh -s -- --service
+```
+
+On Windows:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1))) -Service
+```
+
+To uninstall on macOS or Linux (add `--purge` to remove your data as well):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh -s -- --uninstall
+```
+
+On Windows:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1))) -Uninstall
+```
+
+**With npm.** `npx @marcingadomski94/switchboard` (once published, `docs/publishing.md`) does the same in Node, with the same options (`--help` lists them). The package is only the installer, so it works the same on every OS.
+
+**And the in-app updater.** The installer makes the layout of the manual install: the release unpacked into a folder of its own, outside the data folder. The updater recognises it as a **release install** and takes over from there: it puts later versions into `<data folder>/versions/<version>` and points the login service at them (`docs/updates.md` → *Install layout*). Running the installer again later works too. It installs the newest release into its own folder again and points the login service back there.
+
+**Tests:** `tests/tools/installer.test.ts` runs `install.sh` (under `sh`, and under `dash` where it exists) and the npx launcher against local fake releases in a temp HOME on a test port (4700-4799). It covers install and start (`/` answers 200), repair, a checksum mismatch, the login service through the test redirect (`SWITCHBOARD_SERVICE_HOME`), upgrade, uninstall, purge and a refused folder. It also unit-tests the launcher's version resolution and checksum parsing. `install.ps1` has no automated test: no PowerShell on the development Mac.
+
+## Manual install
+
+The same steps by hand. Replace `2.0.2` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole.
+
+**macOS:**
+
+```sh
+V=2.0.2
+DIR=~/Applications/Switchboard
+mkdir -p "$DIR"
+cd "$DIR"
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256
+shasum -a 256 -c switchboard-$V.tar.gz.sha256 && tar -xzf switchboard-$V.tar.gz
+cd switchboard-$V
+npm ci --omit=dev
+npm run service:install -- --start
+```
+
+**Linux:**
+
+```bash
+V=2.0.2
+DIR=~/.local/opt/switchboard
+mkdir -p "$DIR"
+cd "$DIR"
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256
+sha256sum -c switchboard-$V.tar.gz.sha256 && tar -xzf switchboard-$V.tar.gz
+cd switchboard-$V
+npm ci --omit=dev
+npm run service:install -- --start
+```
+
+**Windows** (PowerShell; closing the console window the task opens stops Switchboard, so minimise it):
+
+```powershell
+$V = "2.0.2"
+$Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
+New-Item -ItemType Directory -Force $Dir | Out-Null
+Set-Location $Dir
+curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz"
+curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256"
+$Expected = (Get-Content "switchboard-$V.tar.gz.sha256").Split(" ")[0]
+$Actual = (Get-FileHash "switchboard-$V.tar.gz" -Algorithm SHA256).Hash.ToLower()
+if ($Actual -eq $Expected) { tar -xzf "switchboard-$V.tar.gz" } else { Write-Error "Checksum mismatch: do not install this download." }
+Set-Location "switchboard-$V"
+npm ci --omit=dev
+npm run service:install -- --start
+```
+
+The version in these blocks follows `package.json`: `npm version` rewrites it (`tools/release/server-json.ts`), and `tests/docs/server-json.test.ts` fails when they drift.
+
 ## Install notes
 
-- **The release install** (README → *Install*) downloads a release and its `.sha256`, extracts it only when the checksum matches, runs `npm ci --omit=dev` (runtime dependencies only) and registers the login service with `npm run service:install -- --start`.
-- **Folders used:** the README installs into `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Any folder works.
+- **The release install** (the installer or the manual steps above) downloads a release and its `.sha256`, extracts it only when the checksum matches, runs `npm ci --omit=dev` (runtime dependencies only) and registers the login service with `npm run service:install -- --start`.
+- **Folders used:** `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Any folder works.
 - **Without the login service:** leave out the last command and run `npm start` in the `switchboard-<version>` folder instead, keeping the terminal open.
 - **Windows:** the Task Scheduler task runs `node.exe` in a console window; **closing that window stops Switchboard** (minimise it instead).
 - **Your data** (the database, the access token, attachments, logs, updated versions) lives in the per-user data folder: `~/Library/Application Support/Switchboard` (macOS), `~/.local/share/switchboard` (Linux), `%LOCALAPPDATA%\Switchboard` (Windows). `SWITCHBOARD_DATA_DIR` moves it.
@@ -136,7 +247,7 @@ npm run service:uninstall
 
 | Symptom | Fix |
 |---|---|
-| A pasted command fails with `command not found: #` | An older copy of the instructions had comments, which macOS zsh doesn't accept by default. Copy the blocks from the README again. |
+| A pasted command fails with `command not found: #` | An older copy of the instructions had comments, which macOS zsh doesn't accept by default. Copy the blocks from the README or this page again. |
 | The UI looks old after an update | Release installs ship the built UI: reload the page. A git checkout: `npm run build`, then restart Switchboard. |
 | `401 unauthorized` / blank data | Open `http://127.0.0.1:13001` by typing it (or a bookmark). Links from other sites don't get the cookie. |
 | `listen EADDRINUSE … 127.0.0.1:13001` on start | Another Switchboard (or another app) holds the port: stop it, or set `SWITCHBOARD_PORT`. |

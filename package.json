@@ -34,7 +34,7 @@
     "dev": "node tools/dev.ts",
     "build": "vite build && node tools/release/helper-bundle.ts",
     "start": "node src/server/main.ts",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json && tsc -p tsconfig.sw.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json && tsc -p tsconfig.sw.json && tsc -p tsconfig.npx.json",
     "test": "vitest run",
     "e2e": "playwright test",
     "perf:guard": "node tools/release/helper-bundle.ts && node tools/bench/soak.ts --sessions 6 --active-min 1 --idle-min 3 --profile-min 0 --sample-s 15 --out .bench/perf-guard --max-idle-cpu 4 --max-idle-heap-growth-mb 5 --max-helper-mb 85",

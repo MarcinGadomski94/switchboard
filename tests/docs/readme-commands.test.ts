@@ -9,7 +9,7 @@ import { REPO_ROOT } from '../helpers/net.ts';
  * Linux bash and Windows PowerShell: no comment lines, no trailing ` # `
  * comments and no `$ ` prompts. Explanations go in the prose around a block.
  */
-const FILES = ['README.md', 'docs/setup.md', 'docs/updates.md', 'docs/service.md', 'docs/install-app.md'];
+const FILES = ['README.md', 'docs/setup.md', 'docs/updates.md', 'docs/service.md', 'docs/install-app.md', 'docs/publishing.md'];
 const SHELL_LANGS = new Set(['', 'sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'ps1', 'pwsh']);
 
 interface Block {
@@ -53,9 +53,21 @@ describe('copyable command blocks', () => {
     expect(found).toEqual([]);
   });
 
-  it('finds the README install blocks', () => {
+  it('finds the README one-liners: install.sh piped to sh, install.ps1 piped to iex, npx', () => {
     const blocks = shellBlocks(readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8'));
+    const lines = blocks.flatMap((block) => block.lines.filter((line) => line.trim() !== ''));
+    expect(lines).toEqual(expect.arrayContaining([
+      'curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh',
+      'irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex',
+      'npx @marcingadomski94/switchboard',
+    ]));
+    expect(blocks.map((block) => block.lang)).toEqual(expect.arrayContaining(['sh', 'powershell']));
+  });
+
+  it('finds the manual install blocks in docs/setup.md', () => {
+    const blocks = shellBlocks(readFileSync(path.join(REPO_ROOT, 'docs/setup.md'), 'utf8'));
     expect(blocks.map((block) => block.lang)).toEqual(expect.arrayContaining(['sh', 'bash', 'powershell']));
+    expect(blocks.filter((block) => block.lines.includes('npm ci --omit=dev'))).toHaveLength(3);
   });
 
   it('flags comments and prompts', () => {

@@ -47,6 +47,8 @@ One update at a time (a second **Update** answers 409 `busy`); refused while a c
   updates/downloads/, updates/staging/ only during an update (cleared at start)
   logs/update.log                      the restart helper's log
 ```
+A fresh install, by the one-line installer (`install.sh`, `install.ps1`, `npx @marcingadomski94/switchboard`; `docs/setup.md` → *One-line install*) or by hand, is the release unpacked into `<install folder>/switchboard-<v>` outside the data folder: the "folder the first release was unpacked into" above. It is a release install, so the updater takes over from it. Running the installer again installs into that folder again and points the login service back there.
+
 Versions live side by side and the **login service's definition is the stable pointer**: it names the folder the next start uses, so the switch is one re-registration and a rollback is another. At every start the updater removes leftovers of an interrupted update and every `versions/*` folder that is neither the running one nor `previous` (only when the running install is itself one of `versions/*`; the folder the first release was unpacked into is never removed).
 
 ## Restarting
@@ -71,15 +73,15 @@ Without the login service: stop Switchboard, then run `npm start` in that folder
 A rollback over a version that added a **database migration** is refused at start ("the database has migration … which this build does not know; it was made by a newer Switchboard", M1.3): check `docs/database.md` of the newer version; going back then needs the database of before the update (Switchboard keeps no copy of it; ASSUMED D55-no-db-backup).
 
 ## Release packages
-The updater accepts exactly the layout of 1.0.0 (`src/core/release.ts`): assets `switchboard-<v>.tar.gz` and `switchboard-<v>.tar.gz.sha256` (`<sha256>  switchboard-<v>.tar.gz`), the tarball a ustar archive whose every entry sits under `switchboard-<v>/`: the `git archive` of the release commit **without** `tests/`, `.loop/`, `docs/visual/`, `playwright.config.ts`, `vitest.config.ts`, `tsconfig.e2e.json`, **plus** the built UI in `dist/web`. Installs run `npm ci --omit=dev && npm start`.
+The updater accepts exactly the layout of 1.0.0 (`src/core/release.ts`): assets `switchboard-<v>.tar.gz` and `switchboard-<v>.tar.gz.sha256` (`<sha256>  switchboard-<v>.tar.gz`), the tarball a ustar archive whose every entry sits under `switchboard-<v>/`: the `git archive` of the release commit **without** `tests/`, `.loop/`, `docs/visual/`, the docs-only images (`docs/screenshots/` with the README's demo GIF, `docs/handoff/screenshots/`, `docs/social-preview.png`, `docs/assets/social-preview.png`), `packages/` (the npx installer, published to npm on its own), `playwright.config.ts`, `vitest.config.ts`, `tsconfig.e2e.json` (`RELEASE_EXCLUDED`), **plus** the built UI in `dist/web`. Installs run `npm ci --omit=dev && npm start`. The one-line installers (`install.sh`, `install.ps1`, the npx package) download these same two assets.
 
 `npm run release:package -- [--ref <ref>] [--out <folder>] [--skip-build] [--allow-dirty]` (`tools/release/package.ts`) writes both files into `dist/release/`: it refuses a dirty tree (unless `--allow-dirty`), builds the UI (`vite build`, unless `--skip-build`), reads `git archive --format=tar <ref>` (default `HEAD`) with the same tar reader, drops the excluded paths, adds `dist/web`, writes the gzip'd tar with the same writer (long paths through ustar's prefix or a pax header) and the checksum; the version is `package.json`'s. It warns when the tag `v<version>` is missing or not the ref.
-To publish, bump `package.json` and the lock with `npm version <x.y.z> --no-git-tag-version` (its `version` script also moves `server.json` to the new version, `docs/configuration.md` → *MCP directories*), add the CHANGELOG entry, commit and push. Then, with `V` set to the new version (`V=x.y.z`) and `NOTES` to the release-notes file:
+To publish, bump `package.json` and the lock with `npm version <x.y.z> --no-git-tag-version`. Its `version` script also moves `server.json`, the npx installer's `packages/npx/package.json` and the manual install blocks of `docs/setup.md` to the new version (`docs/configuration.md` → *MCP directories*). The README has no version string any more: its one-liners install the latest release. Add the CHANGELOG entry, commit and push. Then, with `V` set to the new version (`V=x.y.z`) and `NOTES` to the release-notes file:
 ```sh
 npm run release:package
 gh release create "v$V" "dist/release/switchboard-$V.tar.gz" "dist/release/switchboard-$V.tar.gz.sha256" --title "Switchboard $V" --notes-file "$NOTES"
 ```
-The release notes (the body) are what "What's new" shows. Never mark an installable release as a pre-release or draft: the updater ignores those.
+The release notes (the body) are what "What's new" shows. Never mark an installable release as a pre-release or draft: the updater and the one-line installers ignore those. To ship the same version on npm (and to the MCP Registry), follow `docs/publishing.md`.
 
 ## Configuration
 | Variable | Default | What |

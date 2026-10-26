@@ -1,0 +1,20 @@
+{
+  // The npx installer package (packages/npx, docs/publishing.md): plain JavaScript (Node
+  // does not strip types under node_modules), type-checked through its JSDoc.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["packages/npx/bin/*.mjs", "packages/npx/lib/*.mjs"]
+}

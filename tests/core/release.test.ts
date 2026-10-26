@@ -21,8 +21,14 @@ describe('isReleaseExcluded', () => {
     }
   });
 
+  it('leaves out the docs-only images and the npx installer package', () => {
+    for (const file of ['docs/screenshots/', 'docs/screenshots/demo.gif', 'docs/screenshots/home.png', 'docs/social-preview.png', 'docs/assets/social-preview.png', 'docs/handoff/screenshots/01-inbox.png', 'packages/npx/package.json', 'packages']) {
+      expect(isReleaseExcluded(file), file).toBe(true);
+    }
+  });
+
   it('keeps everything else', () => {
-    for (const file of ['src/server/main.ts', 'docs/updates.md', 'docs/visualize.md', 'tools/fake-gh/main.ts', 'tsconfig.json', 'package.json', 'testsuite.md', '.github/workflows/service.yml']) {
+    for (const file of ['src/server/main.ts', 'docs/updates.md', 'docs/visualize.md', 'tools/fake-gh/main.ts', 'tsconfig.json', 'package.json', 'testsuite.md', '.github/workflows/service.yml', 'docs/assets/buy-me-a-coffee.svg', 'docs/handoff/SPEC.md', 'docs/screenshots.md', 'install.sh', 'install.ps1']) {
       expect(isReleaseExcluded(file), file).toBe(false);
     }
   });

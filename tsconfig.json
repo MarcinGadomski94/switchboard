@@ -4,8 +4,11 @@
   // The React UI has its own config (tsconfig.web.json), and so do the Playwright
   // specs, the screenshot scripts in tools/screenshots and the browser benchmark
   // tools/bench/browser.ts (tsconfig.e2e.json,
-  // which adds the DOM lib for page.evaluate).
+  // which adds the DOM lib for page.evaluate). allowJs lets the tests import the
+  // npx installer's plain-JavaScript helpers with their JSDoc types; that package is
+  // checked on its own by tsconfig.npx.json.
   "compilerOptions": {
+    "allowJs": true,
     "target": "ES2024",
     "lib": ["ES2024"],
     "module": "NodeNext",
