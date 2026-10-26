@@ -58,7 +58,7 @@ async function quickAdd(page: Page, text: string): Promise<void> {
 }
 
 function card(page: Page, title: string) {
-  return page.getByTestId('v2-tasks-card').filter({ has: page.getByTestId('v2-tasks-title').getByText(title, { exact: true }) });
+  return page.getByTestId('v2-tasks-card').filter({ has: page.getByTestId('v2-todo-title').getByText(title, { exact: true }) });
 }
 
 test('the board: quick add with Undo, Start here, Move to Done, details, delete with Undo, Run in its own agent', async ({ page }) => {
@@ -89,12 +89,12 @@ test('the board: quick add with Undo, Start here, Move to Done, details, delete 
   const open = page.getByTestId('v2-tasks-col-open');
   await expect(open.getByTestId('v2-tasks-card')).toHaveCount(3);
   await expect(open.getByTestId('v2-tasks-count')).toHaveText('3');
-  await expect(card(page, 'Docs cleanup').getByTestId('v2-tasks-priority')).toHaveText('Medium');
+  await expect(card(page, 'Docs cleanup').getByTestId('v2-todo-priority')).toHaveText('Medium');
   await expect(card(page, 'Docs cleanup').getByTestId('v2-tasks-agent')).toHaveText('tasker');
   await expect(card(page, 'Docs cleanup').getByTestId('v2-tasks-agent')).toHaveAttribute('href', `/agents/${id}`);
 
   // Start here: the start message goes to the agent and the card leaves Open (In progress, then Review once the agent stops).
-  await card(page, 'Empty-cart state').getByTestId('v2-tasks-start').click();
+  await card(page, 'Empty-cart state').getByTestId('v2-todo-start').click();
   await expect(page.getByTestId('v2-toast').filter({ hasText: '“Empty-cart state”' })).toBeVisible();
   await expect(open.getByTestId('v2-tasks-card')).toHaveCount(2);
   await expect(card(page, 'Empty-cart state')).toHaveAttribute('data-column', /^(progress|review)$/);
@@ -108,16 +108,17 @@ test('the board: quick add with Undo, Start here, Move to Done, details, delete 
   // ⋯ → Move to Done. The agent may start filling in the captured tasks (D81) right after
   // its reply, which moves the card back to In progress and re-renders it: retry the menu.
   await expect(async () => {
-    if ((await page.getByRole('menuitem', { name: 'Move to Done' }).count()) === 0) await card(page, 'Empty-cart state').getByTestId('v2-tasks-menu').click({ timeout: 2_000 });
+    if ((await page.getByRole('menuitem', { name: 'Move to Done' }).count()) === 0) await card(page, 'Empty-cart state').getByTestId('v2-todo-menu').click({ timeout: 2_000 });
     await page.getByRole('menuitem', { name: 'Move to Done' }).click({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   const done = page.getByTestId('v2-tasks-col-done');
   await expect(done.getByTestId('v2-tasks-card')).toHaveCount(1);
-  await expect(card(page, 'Empty-cart state').getByTestId('v2-tasks-estimate')).toContainText('took');
-  await expect(card(page, 'Empty-cart state').getByTestId('v2-tasks-start')).toHaveCount(0);
+  await expect(card(page, 'Empty-cart state').getByTestId('v2-todo-estimate')).toContainText('took');
+  await expect(card(page, 'Empty-cart state').getByTestId('v2-todo-start')).toHaveCount(0);
 
-  // Details: the description and the handover plan.
-  await card(page, 'Docs cleanup').getByTestId('v2-tasks-title').click();
+  // Details (⋯ → Details): the description and the handover plan.
+  await card(page, 'Docs cleanup').getByTestId('v2-todo-menu').click();
+  await page.getByRole('menuitem', { name: 'Details' }).click();
   const detail = page.getByTestId('v2-tasks-detail');
   await expect(detail).toBeVisible();
   await expect(detail.getByTestId('v2-tasks-plan')).toContainText('No handover plan.');
@@ -125,12 +126,12 @@ test('the board: quick add with Undo, Start here, Move to Done, details, delete 
   await expect(detail).toHaveCount(0);
 
   // Delete with Undo, then for real (sent after the Undo window).
-  await card(page, 'Docs cleanup').getByTestId('v2-tasks-menu').click();
+  await card(page, 'Docs cleanup').getByTestId('v2-todo-menu').click();
   await page.getByRole('menuitem', { name: 'Delete' }).click();
   await expect(card(page, 'Docs cleanup')).toHaveCount(0);
   await page.getByTestId('v2-toast').filter({ hasText: 'Deleted “Docs cleanup”' }).getByTestId('v2-toast-undo').click();
   await expect(card(page, 'Docs cleanup')).toHaveCount(1);
-  await card(page, 'Docs cleanup').getByTestId('v2-tasks-menu').click();
+  await card(page, 'Docs cleanup').getByTestId('v2-todo-menu').click();
   await page.getByRole('menuitem', { name: 'Delete' }).click();
   await expect(card(page, 'Docs cleanup')).toHaveCount(0);
   expect((await todosOf(page, id)).some((todo) => todo.title === 'Docs cleanup')).toBe(true);
@@ -139,7 +140,7 @@ test('the board: quick add with Undo, Start here, Move to Done, details, delete 
 
   // Run in its own agent: a new agent works on it, the toast offers Open.
   const before = await page.evaluate(async () => ((await (await fetch('/api/sessions')).json()) as unknown[]).length);
-  await card(page, 'Update the PROJ-123 copy').getByTestId('v2-tasks-run').click();
+  await card(page, 'Update the PROJ-123 copy').getByTestId('v2-todo-run').click();
   const ran = page.getByTestId('v2-toast').filter({ hasText: 'Started a new agent for “Update the PROJ-123 copy”' });
   await expect(ran).toBeVisible();
   await expect(open.getByTestId('v2-tasks-card')).toHaveCount(0);
@@ -170,7 +171,7 @@ test('Import from Jira or GitHub: preview, tick, import into an agent', async ({
   await dialog.getByTestId('v2-tasks-import-go').click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId('v2-toast').filter({ hasText: 'Imported 1 task from GitHub into importer' })).toBeVisible();
-  await expect(page.getByTestId('v2-tasks-col-open').getByTestId('v2-tasks-title').filter({ hasText: 'Checkout button overlaps the footer' })).toHaveCount(1);
+  await expect(page.getByTestId('v2-tasks-col-open').getByTestId('v2-todo-title').filter({ hasText: 'Checkout button overlaps the footer' })).toHaveCount(1);
 
   // Again: #21 shows imported and cannot be ticked.
   await page.getByTestId('v2-tasks-import-open').click();
@@ -193,10 +194,10 @@ test('phone (390 × 844): one column at a time with the switcher, 44 px targets'
   await expect(switcher).toBeVisible();
   await expect(page.getByTestId('v2-tasks-col-open')).toBeVisible();
   await expect(page.getByTestId('v2-tasks-col-done')).toBeHidden();
-  const start = card(page, 'Phone task').getByTestId('v2-tasks-start');
+  const start = card(page, 'Phone task').getByTestId('v2-todo-start');
   await expect(start).toBeVisible();
   expect((await start.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
-  expect((await card(page, 'Phone task').getByTestId('v2-tasks-menu').boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect((await card(page, 'Phone task').getByTestId('v2-todo-menu').boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   // No horizontal scroll on the page.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await switcher.getByRole('button', { name: /Done/ }).click();

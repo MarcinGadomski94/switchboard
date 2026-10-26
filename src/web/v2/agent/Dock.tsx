@@ -22,10 +22,13 @@ import { isEditing } from '../../views/session/SubagentChat.tsx';
 import { freshBusy, freshEligible, loadSnooze, saveSnooze } from '../../views/session/fresh-offer.ts';
 import { freshStepText } from '../../../core/fresh-session.ts';
 import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
-import { Button, Icon, IconButton, Popover, useToast } from '../components/index.ts';
-import { AGENT_WORDS, STATUS } from '../glossary.ts';
+import { Button, Icon, IconButton, useToast } from '../components/index.ts';
+import { AGENT_WORDS, STATUS, TASKS_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { markRecent } from '../shared/recent.ts';
+import { useAgentTaskCards } from '../shared/session-tasks.ts';
+import { TodoCard } from '../shared/TodoCard.tsx';
+import { readStripOpen, stripOrder, writeStripOpen } from '../shared/todo-card-model.ts';
 import { clock } from '../shared/time.ts';
 import { type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, joinWithdrawn, liveLine, resetTimeOf } from './composer-model.ts';
 import type { AgentData } from './useAgent.ts';
@@ -53,15 +56,16 @@ export interface DockProps {
   readonly lastEventId: () => number;
   /** A message went out: the chat follows to its end. */
   readonly onSent: () => void;
-  /** `peek` / `phone`: a slimmer dock (no kbd hints, no todo strip on the peek). */
+  /** `peek` / `phone`: a slimmer dock (no kbd hints; the task strip's cards fill the width on a phone). */
   readonly variant?: 'full' | 'peek' | 'phone';
   /** The short placeholder ("Send a follow-up") whatever the variant (the peek on a phone). */
   readonly short?: boolean;
 }
 
 /**
- * D131 · lane S · the composer dock (the prototype's `.dock`): the live line, the
- * queued and paused messages, the tasks and working-memory strips, then the box
+ * D131 · lane S · the composer dock (the prototype's `.dock`): the status row (live
+ * line, tasks, working memory, queue), the task strip (fix after 2.0: classic's todo
+ * cards, collapsed by default), the queued and paused messages, then the box
  * with 📎 (paste, drop, chips) and Send (⌘↩); Esc stops the running reply. The
  * sending and stopping are the classic composer's (`ChatTab.tsx`: D114 instant
  * queue, D50 Stop, D88 drafts, D57 attachments, D103 held messages).
@@ -290,6 +294,14 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
   const todos = useSessionTodos(sessionId);
   const memory = useMemoryState(data);
   const [queueOpen, setQueueOpen] = useState(false);
+  // Fix after 2.0: the task cards above the box, collapsed by default (the chat keeps its room), the choice kept per browser.
+  const [stripOpen, setStripOpen] = useState(() => readStripOpen(browserStorage()));
+  const toggleStrip = (): void => {
+    setStripOpen((open) => {
+      writeStripOpen(browserStorage(), !open);
+      return !open;
+    });
+  };
 
   const drop = useFileDrop(attachments.add, blocked === null && !readOnly);
   const attaching = attachmentsBlocker(attachments.items);
@@ -322,7 +334,7 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
       <StatusRow
         status={dockStatus({
           live,
-          tasks: full && !conversation ? todoSummary(todos.list?.todos ?? []) : null,
+          tasks: !conversation ? todoSummary(todos.list?.todos ?? []) : null,
           memory: variant !== 'peek' && memory.shown ? memory : null,
           queued: queued.length,
           paused: paused.length,
@@ -333,14 +345,15 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
         onStop={() => void stopToBox()}
         onResume={() => void resume()}
         onStopBackground={() => void stopBackground()}
-        todos={full && !conversation ? todos : null}
+        stripOpen={stripOpen}
+        onTasks={toggleStrip}
         sessionId={sessionId}
-        blocked={blocked}
         memory={memory}
         draftSaved={draft.trim() !== '' && full}
         queueOpen={queueOpen}
         onQueue={() => setQueueOpen((v) => !v)}
       />
+      {stripOpen && !conversation && (todos.list?.todos.length ?? 0) > 0 ? <TaskStrip sessionId={sessionId} todos={todos} blocked={blocked} working={working} /> : null}
       {stopTimedOut ? (
         <div className="v2-ag-dock-note" role="alert" data-testid="v2-agent-stop-timeout">
           {AGENT_WORDS.stopTimeout}{' '}
@@ -479,6 +492,29 @@ function liveIcon(kind: ReturnType<typeof liveLine>['kind']): string | null {
   }
 }
 
+/**
+ * Fix after 2.0 · the agent's tasks as classic's cards (`shared/TodoCard.tsx`), side by side
+ * above the box and scrolling sideways: in progress first, open by priority, done last. The
+ * status row's "Tasks n/m" opens and closes it.
+ */
+function TaskStrip({ sessionId, todos, blocked, working }: { readonly sessionId: string; readonly todos: ReturnType<typeof useSessionTodos>; readonly blocked: string | null; readonly working: boolean }) {
+  const cards = useAgentTaskCards(sessionId, todos, blocked, working);
+  return (
+    <section className="v2-ag-taskstrip" id={`v2-ag-taskstrip-${sessionId}`} aria-label={TASKS_WORDS.stripLabel} data-testid="v2-agent-taskstrip">
+      <div className="v2-ag-taskstrip-cards">
+        {stripOrder(cards.visible).map((todo) => (
+          <TodoCard key={todo.id} layout="strip" {...cards.cardProps(todo)} />
+        ))}
+      </div>
+      {cards.error ? (
+        <div className="v2-ag-taskstrip-error" role="alert" data-testid="v2-agent-tasks-error">
+          {cards.error}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /** The tasks of the status row, as {@link dockStatus} reads them. */
 function todoSummary(list: readonly SessionTodo[]): { total: number; done: number; current: string | null } {
   const current = list.find((t) => t.state === 'in_progress') ?? list.find((t) => t.state === 'open') ?? null;
@@ -517,9 +553,9 @@ function StatusRow({
   onStop,
   onResume,
   onStopBackground,
-  todos,
+  stripOpen,
+  onTasks,
   sessionId,
-  blocked,
   memory,
   draftSaved,
   queueOpen,
@@ -532,24 +568,18 @@ function StatusRow({
   readonly onStop: () => void;
   readonly onResume: () => void;
   readonly onStopBackground: () => void;
-  readonly todos: ReturnType<typeof useSessionTodos> | null;
+  readonly stripOpen: boolean;
+  readonly onTasks: () => void;
   readonly sessionId: string;
-  readonly blocked: string | null;
   readonly memory: MemoryState;
   readonly draftSaved: boolean;
   readonly queueOpen: boolean;
   readonly onQueue: () => void;
 }) {
   const icon = liveIcon(live.kind);
-  const [tasksAnchor, setTasksAnchor] = useState<HTMLButtonElement | null>(null);
-  const [tasksOpen, setTasksOpen] = useState(false);
   const tasks = status.parts.find((part) => part.id === 'tasks') ?? null;
   const mem = status.parts.find((part) => part.id === 'memory') ?? null;
   const queue = status.parts.find((part) => part.id === 'queue') ?? null;
-  const list = todos?.list?.todos ?? [];
-  const toggle = (todo: SessionTodo): void => {
-    if (todos) void todos.run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' }));
-  };
   return (
     <div className="v2-ag-status" data-testid="v2-agent-status" aria-label={status.text}>
       <span className="v2-ag-live" data-kind={live.kind} data-testid="v2-agent-live" role="status" title={live.text}>
@@ -567,28 +597,19 @@ function StatusRow({
           <span className="v2-ag-sep" aria-hidden="true">
             ·
           </span>
-          <button type="button" ref={setTasksAnchor} className="v2-ag-spart" data-testid="v2-agent-tasks" title={tasks.title} aria-haspopup="dialog" aria-expanded={tasksOpen} onClick={() => setTasksOpen((v) => !v)}>
+          <button
+            type="button"
+            className="v2-ag-spart"
+            data-testid="v2-agent-tasks"
+            title={`${tasks.title} · ${TASKS_WORDS.stripToggle(stripOpen)}`}
+            aria-expanded={stripOpen}
+            aria-controls={`v2-ag-taskstrip-${sessionId}`}
+            onClick={onTasks}
+          >
             <Icon name="task" size="s" />
             {tasks.text}
+            <Icon name="chev" size="s" className="v2-ag-chev" />
           </button>
-          <Popover open={tasksOpen} onClose={() => setTasksOpen(false)} anchor={tasksAnchor} label={AGENT_WORDS.tasksStrip(list.length - list.filter((t) => t.state === 'done').length, list.filter((t) => t.state === 'done').length)} align="start" width={340} testId="v2-agent-tasks-pop">
-            <b className="v2-ag-pop-title">{tasks.title}</b>
-            <ul className="v2-ag-tasks-list">
-              {list.map((todo) => (
-                <li key={todo.id} data-state={todo.state} data-testid="v2-agent-task">
-                  <button type="button" className="v2-ag-task-check" role="checkbox" aria-checked={todo.state === 'done'} disabled={blocked !== null} aria-label={todo.title} onClick={() => toggle(todo)}>
-                    <Icon name={todo.state === 'done' ? 'check-circle' : todo.state === 'in_progress' ? 'dot' : 'circle'} size="s" />
-                  </button>
-                  <span className="v2-grow">{todo.title}</span>
-                </li>
-              ))}
-            </ul>
-            {todos?.error ? (
-              <div className="v2-ag-dock-error" role="alert">
-                {todos.error}
-              </div>
-            ) : null}
-          </Popover>
         </>
       ) : null}
       {mem ? (

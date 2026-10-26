@@ -1071,32 +1071,6 @@
   white-space: nowrap;
 }
 
-.sb2 .v2-ag-tasks-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.sb2 .v2-ag-tasks-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-}
-
-.sb2 .v2-ag-tasks-list li[data-state='done'] .v2-grow {
-  color: var(--v2-muted);
-  text-decoration: line-through;
-}
-
-.sb2 .v2-ag-task-check {
-  border: 0;
-  background: none;
-  color: var(--v2-accent-text);
-  min-width: 32px;
-  min-height: 32px;
-}
-
 
 .sb2 .v2-ag-meter {
   display: block;

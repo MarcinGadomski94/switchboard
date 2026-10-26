@@ -1,0 +1,333 @@
+/* Fix after 2.0 · the v2 task card (classic's todo card in v2's tokens, `shared/TodoCard.tsx`) and the agent view's task strip. */
+
+.sb2 .v2-todo {
+  position: relative;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-left: 3px solid var(--v2-border);
+  border-radius: 10px;
+  padding: 8px 10px 8px 9px;
+  font-size: 14px;
+  box-shadow: var(--v2-shadow-1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sb2 .v2-todo[data-layout='board'] {
+  margin-bottom: 8px;
+}
+
+/* Classic's tint by priority: the left edge (the word and icon carry it too). */
+.sb2 .v2-todo[data-priority='urgent'] {
+  border-left-color: var(--v2-red);
+}
+
+.sb2 .v2-todo[data-priority='high'] {
+  border-left-color: var(--v2-amber-dot);
+}
+
+/* The in-progress highlight (D75): a blue edge and a soft tint; it pulses while its agent works. */
+.sb2 .v2-todo[data-state='in_progress'] {
+  border-left-color: var(--v2-blue);
+  background: linear-gradient(90deg, var(--v2-blue-bg), var(--v2-surface) 45%);
+}
+
+.sb2 .v2-todo[data-status='review'] {
+  border-left-color: var(--v2-violet);
+}
+
+.sb2 .v2-todo[data-working='true'] {
+  animation: v2-todo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes v2-todo-pulse {
+  0%,
+  100% {
+    box-shadow: inset 3px 0 0 -1px var(--v2-blue), var(--v2-shadow-1);
+  }
+  50% {
+    box-shadow: inset 3px 0 0 -1px transparent, 0 0 0 2px var(--v2-blue-bg);
+  }
+}
+
+.sb2 .v2-todo[data-state='done'] {
+  border-left-color: var(--v2-green);
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-todo[data-state='done'] .v2-todo-title {
+  color: var(--v2-muted);
+  text-decoration: line-through;
+}
+
+.sb2 .v2-todo[data-expanded='false'] {
+  cursor: default;
+}
+
+.sb2 .v2-todo-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sb2 .v2-todo-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: -2px 0 0 -4px;
+  border: 0;
+  border-radius: var(--v2-r-s);
+  background: none;
+  color: var(--v2-muted);
+  cursor: pointer;
+}
+
+.sb2 .v2-todo-check[data-tone='blue'] {
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-todo-check[data-tone='violet'] {
+  color: var(--v2-violet);
+}
+
+.sb2 .v2-todo-check[data-tone='green'] {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-todo-check:hover:not(:disabled) {
+  background: var(--v2-grey-bg);
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-todo-check:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sb2 .v2-todo-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: var(--v2-text);
+  font: inherit;
+  font-weight: 550;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  border-radius: var(--v2-r-s);
+}
+
+.sb2 .v2-todo-title:hover {
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-todo-top .v2-icon-btn {
+  flex: none;
+  margin: -4px -6px 0 0;
+}
+
+.sb2 .v2-todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.sb2 .v2-todo-est,
+.sb2 .v2-todo-plan-mark,
+.sb2 .v2-todo-fill {
+  color: var(--v2-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-todo-est[data-over='true'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-todo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--v2-muted);
+  text-decoration: none;
+  border: 1px solid var(--v2-border);
+  border-radius: 6px;
+  padding: 1px 7px;
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-todo-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-todo-link:hover {
+  color: var(--v2-text);
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-todo-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-todo-text {
+  font-size: var(--v2-fs-sm);
+  line-height: var(--v2-lh);
+  background: var(--v2-surface-2);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-s);
+  padding: 6px 10px;
+  max-height: 220px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-todo-text-h {
+  display: block;
+  font-size: 12px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-todo-text p:first-child {
+  margin-top: 0;
+}
+
+.sb2 .v2-todo-text p:last-child {
+  margin-bottom: 0;
+}
+
+.sb2 .v2-todo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb2 .v2-todo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb2 .v2-todo-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+/* ── The agent view's strip: cards side by side above the composer (classic's strip) ── */
+.sb2 .v2-ag-taskstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sb2 .v2-ag-taskstrip-cards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 6px;
+  scroll-snap-type: x proximity;
+  max-height: 40vh;
+  align-items: flex-start;
+}
+
+.sb2 .v2-ag-taskstrip-cards > .v2-todo {
+  flex: 0 0 280px;
+  max-width: 85%;
+  scroll-snap-align: start;
+  max-height: calc(40vh - 10px);
+  overflow-y: auto;
+}
+
+.sb2 .v2-ag-taskstrip-error {
+  color: var(--v2-red);
+  font-size: var(--v2-fs-s);
+}
+
+/* The side panel: one card under another. */
+.sb2 .v2-ag-side-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 44 px targets on touch screens and phones. */
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-todo-check {
+    width: var(--v2-touch);
+    height: var(--v2-touch);
+    margin: -7px 0 -7px -8px;
+  }
+
+  .sb2 .v2-todo-title {
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-todo .v2-btn {
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-todo .v2-icon-btn {
+    width: var(--v2-touch);
+    height: var(--v2-touch);
+  }
+
+  .sb2 .v2-todo-link {
+    position: relative;
+  }
+
+  .sb2 .v2-todo-link::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--v2-touch);
+    transform: translateY(-50%);
+  }
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-todo-actions .v2-btn {
+    flex: 1 1 auto;
+  }
+
+  .sb2 .v2-ag-taskstrip-cards > .v2-todo {
+    flex-basis: 82vw;
+  }
+
+  .sb2 .v2-todo-form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-todo[data-working='true'] {
+    animation: none;
+  }
+}

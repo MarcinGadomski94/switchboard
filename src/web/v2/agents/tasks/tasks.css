@@ -109,51 +109,7 @@
   margin: 6px;
 }
 
-/* A card (`.tcard`). */
-.sb2 .v2-tasks-card {
-  background: var(--v2-surface);
-  border: 1px solid var(--v2-border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  font-size: 14px;
-  box-shadow: var(--v2-shadow-1);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sb2 .v2-tasks-card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.sb2 .v2-tasks-card-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 4px 0;
-  color: var(--v2-text);
-  font: inherit;
-  font-weight: 550;
-  line-height: 1.35;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-  border-radius: var(--v2-r-s);
-}
-
-.sb2 .v2-tasks-card-title:hover {
-  color: var(--v2-accent-text);
-}
-
-.sb2 .v2-tasks-card-top .v2-icon-btn {
-  flex: none;
-  margin: -4px -6px 0 0;
-}
-
+/* A card: `shared/todo-card.css` (fix after 2.0, the shared task card). */
 .sb2 .v2-tasks-meta {
   display: flex;
   flex-wrap: wrap;
@@ -171,11 +127,6 @@
 
 .sb2 .v2-tasks-est[data-over='true'] {
   color: var(--v2-amber);
-}
-
-.sb2 .v2-tasks-fill {
-  color: var(--v2-muted);
-  display: inline-flex;
 }
 
 .sb2 .v2-tasks-owner {
@@ -357,8 +308,7 @@
 
   .sb2 .v2-tasks .v2-btn,
   .sb2 .v2-tasks .v2-seg button,
-  .sb2 .v2-tasks .v2-field,
-  .sb2 .v2-tasks-card-title {
+  .sb2 .v2-tasks .v2-field {
     min-height: var(--v2-touch);
   }
 
@@ -373,13 +323,6 @@
 
   .sb2 .v2-tasks-import-row {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sb2 .v2-tasks-card,
-  .sb2 .v2-tasks-card-title {
-    transition: none;
   }
 }
 
@@ -402,10 +345,6 @@
 
 /* Lane X: a touch tablet (768–1279 px) gets the 44 px targets too, not only the phone. */
 @media (pointer: coarse) {
-  .sb2 .v2-tasks-card-title {
-    min-height: var(--v2-touch);
-  }
-
   .sb2 .v2-tasks-agent {
     display: inline-flex;
     align-items: center;
