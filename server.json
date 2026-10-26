@@ -1,0 +1,122 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.MarcinGadomski94/switchboard",
+  "title": "Switchboard",
+  "description": "Run and supervise many Claude Code, Codex CLI and OpenCode agents from one local web app.",
+  "version": "2.0.2",
+  "websiteUrl": "https://github.com/MarcinGadomski94/switchboard#readme",
+  "repository": {
+    "url": "https://github.com/MarcinGadomski94/switchboard",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "github-release",
+      "registryBaseUrl": "https://github.com",
+      "identifier": "https://github.com/MarcinGadomski94/switchboard/releases/download/v2.0.2/switchboard-2.0.2.tar.gz",
+      "version": "2.0.2",
+      "runtimeHint": "node",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SWITCHBOARD_PORT",
+          "description": "HTTP port of the web app on 127.0.0.1 (1-65535).",
+          "format": "number",
+          "default": "13001",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_DATA_DIR",
+          "description": "Folder for the token and the database; default is the per-user app-data folder (macOS ~/Library/Application Support/Switchboard).",
+          "format": "filepath",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_CLAUDE_BIN",
+          "description": "The Claude Code CLI: a name, a path, or a JSON argv array.",
+          "default": "claude",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_CODEX_BIN",
+          "description": "The Codex CLI, same format as SWITCHBOARD_CLAUDE_BIN; optional, Settings > CLIs can override it.",
+          "default": "codex",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_OPENCODE_BIN",
+          "description": "The OpenCode CLI, same format as SWITCHBOARD_CLAUDE_BIN; optional, Settings > CLIs can override it.",
+          "default": "opencode",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_GH_BIN",
+          "description": "The GitHub CLI used to read pull requests of worktrees, same format as SWITCHBOARD_CLAUDE_BIN.",
+          "default": "gh",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_TAILSCALE_BIN",
+          "description": "The Tailscale CLI used by the optional peer listener, same format as SWITCHBOARD_CLAUDE_BIN.",
+          "default": "tailscale",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_SETUP_WIZARD",
+          "description": "off keeps the first-run setup wizard from opening by itself; any other value means on.",
+          "default": "on",
+          "choices": [
+            "on",
+            "off"
+          ],
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_UI_THEME_DEFAULT",
+          "description": "The UI a browser shows until a theme is chosen: v2 (Switchboard 2) or classic (the 1.x UI).",
+          "default": "v2",
+          "choices": [
+            "v2",
+            "classic"
+          ],
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_UPDATES",
+          "description": "off switches the updater off (no GitHub checks, no banner).",
+          "default": "on",
+          "choices": [
+            "on",
+            "off"
+          ],
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_UPDATE_REPO",
+          "description": "owner/name of the GitHub repository whose releases are checked (forks).",
+          "default": "MarcinGadomski94/switchboard",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SWITCHBOARD_NPM_BIN",
+          "description": "The npm that runs npm ci in a staged release, as an argv prefix; default is the npm next to node.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

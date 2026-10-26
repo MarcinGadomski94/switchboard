@@ -115,6 +115,10 @@ npm run service:install -- --start
 
 Then open **http://127.0.0.1:13001** (type it or use a bookmark). A setup wizard walks you through the first folder and notifications.
 
+## Configuration
+
+Switchboard runs with no configuration. Environment variables such as `SWITCHBOARD_PORT` (default `13001`) and `SWITCHBOARD_DATA_DIR` change the port, the data folder, the CLIs it starts and the updater: [docs/configuration.md](docs/configuration.md).
+
 ## Updating
 
 Release installs update themselves: **Update** in the banner or Settings → Updates verifies the checksum, switches over and resumes live sessions. Git checkouts and rollbacks: [docs/updates.md](docs/updates.md).
