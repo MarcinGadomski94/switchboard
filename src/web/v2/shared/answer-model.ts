@@ -91,8 +91,6 @@ function serverButtons(item: NeedsItem, skip: ReadonlySet<string> = new Set()): 
 
 /** The text a Try again sends a stopped agent. */
 export const RETRY_TEXT = 'Please try again and finish the task.';
-/** The text "Go ahead" sends an agent that waits for a yes. */
-export const GO_AHEAD_TEXT = 'Go ahead.';
 
 /**
  * The buttons of a card (questions excepted: their options are the buttons,
@@ -101,6 +99,10 @@ export const GO_AHEAD_TEXT = 'Go ahead.';
 export function cardButtons(item: NeedsItem): CardButton[] {
   const sessionId = item.agent?.sessionId ?? null;
   switch (item.kind) {
+    case 'question':
+    case 'multi':
+      // The agent's own options are the answers (`AnswerCard`'s question blocks); never generic buttons.
+      return [];
     case 'approval': {
       if (item.request) {
         return [
@@ -125,10 +127,10 @@ export function cardButtons(item: NeedsItem): CardButton[] {
       return buttons;
     }
     case 'ask':
-      return [
-        { id: 'go-ahead', label: ANSWER.goAhead, variant: 'default', icon: 'check', intent: { type: 'answer', action: { type: 'reply', text: GO_AHEAD_TEXT } } },
-        { id: 'not-waiting', label: ANSWER.notWaiting, variant: 'ghost', intent: { type: 'answer', action: { type: 'not-waiting' } } },
-      ];
+      // Fix after 2.0: what classic offers for an agent's ask (D124): the reply box (the card's own) and
+      // Not waiting (the session header's; the Inbox's Dismiss). No made-up "Go ahead": the agent's own
+      // choices are in its message, and a question card (AskUserQuestion) carries them as options.
+      return [{ id: 'not-waiting', label: ANSWER.notWaiting, variant: 'ghost', intent: { type: 'answer', action: { type: 'not-waiting' } } }];
     case 'stopped': {
       const own = new Set(item.actions.map((action) => action.id));
       const buttons: CardButton[] = [];
@@ -226,15 +228,27 @@ export function togglePick(draft: QuestionDraft | undefined, index: number): Que
 export function questionReady(question: Pick<Question, 'multiSelect'>, draft: QuestionDraft | undefined): boolean {
   const text = draft?.other ? (draft.text ?? '').trim() : '';
   if (text.length > 2000) return false;
-  if (question.multiSelect) return (draft?.picks?.length ?? 0) > 0 || text.length > 0;
+  // As classic (`isAnswered`): a ticked Other… needs its words.
+  if (question.multiSelect) return !(draft?.other && text.length === 0) && ((draft?.picks?.length ?? 0) > 0 || text.length > 0);
   return draft?.index !== undefined || text.length > 0;
 }
 
-/** The answer of one question from its draft, `null` while not ready. */
+/**
+ * The answer of one question from its draft, `null` while not ready. The shapes
+ * are classic's (`answerBody` in `components/question-card.ts`): a multi-select
+ * question with one option alone sends `answerIndex`, own words alone `text`, and
+ * only several choices `answerIndexes` (+ `text`), so a paired computer from
+ * before D128 still takes them.
+ */
 export function questionAnswer(question: Pick<Question, 'id' | 'multiSelect'>, draft: QuestionDraft | undefined): BatchAnswer | null {
   if (!questionReady(question, draft)) return null;
   const text = draft?.other ? (draft.text ?? '').trim() : '';
-  if (question.multiSelect) return { questionId: question.id, answerIndexes: [...(draft?.picks ?? [])], ...(text ? { text } : {}) };
+  if (question.multiSelect) {
+    const picks = [...(draft?.picks ?? [])].sort((a, b) => a - b);
+    if (!text && picks.length === 1) return { questionId: question.id, answerIndex: picks[0] as number };
+    if (text && picks.length === 0) return { questionId: question.id, text };
+    return { questionId: question.id, answerIndexes: picks, ...(text ? { text } : {}) };
+  }
   if (text) return { questionId: question.id, text };
   return { questionId: question.id, answerIndex: draft?.index as number };
 }

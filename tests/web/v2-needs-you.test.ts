@@ -138,7 +138,7 @@ describe('D131 · answering: the buttons, the drafts and the summaries', () => {
     expect(ids(PERMISSION)).toEqual(['allow-once:Allow once', 'deny:Deny']);
     expect(ids(inbox({ ...PERMISSION, actions: [{ id: 'allow-once', label: 'Allow once' }, { id: 'always-allow', label: 'Always allow' }, { id: 'deny', label: 'Deny' }] }))).toEqual(['allow-once:Allow once', 'always-allow:Always allow', 'deny:Deny']);
     expect(ids(READY)).toEqual(['plan-merge:Combine', 'send-back:Send back', 'open-plan:Open project', 'changes:View changes']);
-    expect(ids(WAITING)).toEqual(['go-ahead:Go ahead', 'not-waiting:Not waiting']);
+    expect(ids(WAITING)).toEqual(['not-waiting:Not waiting']);
     expect(ids(STOPPED)).toEqual(['retry:Try again', 'open-session:Open chat', 'dismiss:Dismiss']);
     expect(ids(ROUTINE)).toEqual(['open-fix-session:Fix it in a new agent', 'open-routine:Open routine', 'retry-run:Try again', 'dismiss:Dismiss']);
     expect(ids(PICK)).toEqual(['plan-ask-repos:Ask again', 'open-plan:Open project', 'dismiss:Dismiss']);
@@ -169,14 +169,18 @@ describe('D131 · answering: the buttons, the drafts and the summaries', () => {
     expect(draft.picks).toEqual([0, 2]);
     draft = togglePick(draft, 2);
     expect(draft.picks).toEqual([0]);
-    expect(questionAnswer(multi, draft)).toEqual({ questionId: 'q2', answerIndexes: [0] });
+    // Classic's shapes: one option alone → answerIndex, own words alone → text, several → answerIndexes.
+    expect(questionAnswer(multi, draft)).toEqual({ questionId: 'q2', answerIndex: 0 });
     expect(questionAnswer(multi, { picks: [1], other: true, text: 'my own' })).toEqual({ questionId: 'q2', answerIndexes: [1], text: 'my own' });
-    expect(questionAnswer(multi, { picks: [], other: true, text: 'only mine' })).toEqual({ questionId: 'q2', answerIndexes: [], text: 'only mine' });
+    expect(questionAnswer(multi, { picks: [], other: true, text: 'only mine' })).toEqual({ questionId: 'q2', text: 'only mine' });
+    expect(questionAnswer(multi, { picks: [2, 0] })).toEqual({ questionId: 'q2', answerIndexes: [0, 2] });
+    // A ticked Other… needs its words (classic's isAnswered).
+    expect(questionAnswer(multi, { picks: [1], other: true, text: '  ' })).toBeNull();
     expect(questionAnswer(multi, { picks: [] })).toBeNull();
     expect(batchAnswers([single, multi], { q1: { index: 0 } })).toBeNull();
     expect(batchAnswers([single, multi], { q1: { index: 0 }, q2: { picks: [2] } })).toEqual([
       { questionId: 'q1', answerIndex: 0 },
-      { questionId: 'q2', answerIndexes: [2] },
+      { questionId: 'q2', answerIndex: 2 },
     ]);
   });
 

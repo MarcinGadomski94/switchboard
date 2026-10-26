@@ -85,9 +85,10 @@ export const Select = forwardRef<HTMLSelectElement, Omit<SelectHTMLAttributes<HT
  * D131 · a checkbox row (`.chk`, 44 px high): the whole row is the label.
  * `plain` drops the outlined box. `num` shows the answer cards' number key.
  */
-export const Checkbox = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { readonly label: ReactNode; readonly plain?: boolean; readonly num?: number }>(function Checkbox({ label, plain = false, num, className, ...rest }, ref) {
+export const Checkbox = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { readonly label: ReactNode; readonly plain?: boolean; readonly num?: number }>(function Checkbox({ label, plain = false, num, className, title, ...rest }, ref) {
+  // The tooltip (an answer option's description) on the whole choice, not only its box.
   return (
-    <label className={className ? `v2-chk ${className}` : 'v2-chk'} {...(plain ? { 'data-plain': '' } : {})}>
+    <label className={className ? `v2-chk ${className}` : 'v2-chk'} title={title} {...(plain ? { 'data-plain': '' } : {})}>
       <input ref={ref} type="checkbox" {...(num !== undefined ? { 'data-num': num } : {})} {...rest} />
       {num !== undefined ? (
         <span className="v2-num" aria-hidden="true">

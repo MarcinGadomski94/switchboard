@@ -66,6 +66,12 @@ export interface NeedsItem {
   readonly text: string;
   /** A quoted ask or proposal (an agent's waiting ask, a note, a job description). */
   readonly quote?: string;
+  /**
+   * Fix after 2.0: an `ask` the text check read from the agent's last message (its
+   * Inbox label "Waiting for you · detected"), not one the agent declared with
+   * `turn_status`; the card says "detected", as the classic session header does.
+   */
+  readonly detected?: boolean;
   /** An approval's command or call, verbatim. */
   readonly command?: string;
   /** The questions of a batch (`question` / `multi`). */
@@ -215,7 +221,7 @@ export function fromInbox(item: InboxItem, live?: Readonly<Record<string, Machin
     case 'approval':
       return { ...base, text: item.permission?.description ?? item.detail, ...(item.context ? { quote: item.context } : {}), ...(commandOf(item.permission) ? { command: commandOf(item.permission) as string } : {}), ...(item.permission ? { permission: item.permission } : {}) };
     case 'ask':
-      return { ...base, text: '', quote: item.detail };
+      return { ...base, text: '', quote: item.detail, ...(item.label.endsWith(' · detected') ? { detected: true } : {}) };
     default:
       return { ...base, text: item.detail };
   }
