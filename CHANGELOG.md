@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.2 (2026-10-26)
+
+### Security
+- **Dependencies patched; `npm audit` reports 0 vulnerabilities:** zod 4.6.7 (GHSA-mrhx-c7xc-m3w5, high), fastify 5.12.7 (GHSA-389g-gv7q-r4x8), vite 8.3.5 with its launch-editor (five advisories, development only), mermaid 12.2.0 bringing dompurify 3.4.17 (critical) and katex 0.18.10, body-parser 2.4.0 (high), fast-uri, ip-address and vitest 5.0.5. The built-in MCP helpers ship with the patched zod. See `docs/security.md`.
+
+### v2 theme
+- **Usage warnings:** when an account reaches your "Warn at" level, v2 shows a toast and a "Usage warning" in Needs you, and the status pill turns amber at your level; "Warn at" is in Settings → Usage & accounts.
+- **Unsent text is kept** when you leave an agent and come back, also after a reload and without an empty box first (both themes: a save still on its way was overwritten by an older read).
+- **Your message shows at once** when you press Enter, with "Queued", "sends when the agent starts again" or "Paused — waiting for usage" under it, whatever the agent is doing.
+- **Answer cards match Classic:** an agent's plain-text ask shows its question, a reply box and Not waiting (no made-up "Go ahead"); multi-select answers are sent exactly as Classic sends them; option descriptions show on the whole option.
+
+### Agents
+- **Choices come as question cards:** the built-in instructions ask agents to offer choices with AskUserQuestion instead of a list in their message, so you get buttons to pick from.
+
 ## 2.0.1 (2026-10-26)
 
 ### v2 theme

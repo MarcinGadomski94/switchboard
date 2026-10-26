@@ -64,12 +64,12 @@ How to install them per OS: [docs/setup.md](docs/setup.md#requirements).
 
 ## Install
 
-Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole. Replace `2.0.1` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Other ways to run it (without the service, from source): [docs/setup.md](docs/setup.md).
+Each block downloads a release, extracts it only when its checksum matches, installs it, and starts Switchboard now and at every sign-in. Paste a block as a whole. Replace `2.0.2` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest) if a newer one exists. Other ways to run it (without the service, from source): [docs/setup.md](docs/setup.md).
 
 **macOS:**
 
 ```sh
-V=2.0.1
+V=2.0.2
 DIR=~/Applications/Switchboard
 mkdir -p "$DIR"
 cd "$DIR"
@@ -84,7 +84,7 @@ npm run service:install -- --start
 **Linux:**
 
 ```bash
-V=2.0.1
+V=2.0.2
 DIR=~/.local/opt/switchboard
 mkdir -p "$DIR"
 cd "$DIR"
@@ -99,7 +99,7 @@ npm run service:install -- --start
 **Windows** (PowerShell; closing the console window the task opens stops Switchboard, so minimise it):
 
 ```powershell
-$V = "2.0.1"
+$V = "2.0.2"
 $Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
 New-Item -ItemType Directory -Force $Dir | Out-Null
 Set-Location $Dir
