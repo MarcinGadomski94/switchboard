@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatItem } from '../../src/web/views/session/chat.ts';
 import { activityMark, activitySummary, chatRows, codeBlocks, durationText, hasCodeBlock, helpersSummary, laterText, repliesFrom, waitingBatches } from '../../src/web/v2/agent/chat-model.ts';
 import { DEFAULT_VIEW, VIEW_SETTINGS_KEY, columnWidth, loadView, saveView, textMetrics } from '../../src/web/v2/agent/view-settings.ts';
-import { MEMORY_SHOWN_FROM, YOU_FOLD_LINES, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, foldsYou, joinWithdrawn, liveLine, resetTimeOf, splitDock } from '../../src/web/v2/agent/composer-model.ts';
+import { MEMORY_SHOWN_FROM, YOU_FOLD_LINES, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, foldsYou, joinWithdrawn, liveLine, resetTimeOf, splitDock, youWaitNote } from '../../src/web/v2/agent/composer-model.ts';
 import { firstSentence, replyMenu, shortQuote, taskTitle, undoReason } from '../../src/web/v2/agent/reply-menu.ts';
 import { agentMenu, ciView } from '../../src/web/v2/agent/header-model.ts';
 import type { SessionPr } from '../../src/core/ci.ts';
@@ -173,7 +173,7 @@ describe('composer states', () => {
     expect(liveLine({ ...base, held: true }).kind).toBe('held');
     expect(liveLine(base).kind).toBe('idle');
   });
-  it('moves queued and paused messages into the dock; a not-sent one stays in the chat', () => {
+  it('lists queued and paused messages for the dock; every message stays in the chat as its bubble (fix after 2.0)', () => {
     const rows = chatRows({
       items: [user(1, 'a'), user(2, 'b', { queued: 'turn' }), user(3, 'c', { queued: 'credits', heldNote: 'Waiting for an account with allowance — Private back at 23:30' }), user(4, 'd', { notSent: true }), user(-1, 'e', { delivered: false })],
       times: new Map(),
@@ -185,9 +185,17 @@ describe('composer states', () => {
     const split = splitDock(rows, true);
     expect(split.queued.map((r) => r.text)).toEqual(['b', 'e']);
     expect(split.paused.map((r) => r.text)).toEqual(['c']);
-    expect(split.chat.map((r) => (r.kind === 'you' ? r.text : r.kind))).toEqual(['a', 'd']);
-    // Not working: a message on its way shows in the chat at once.
-    expect(splitDock(rows, false).chat.length).toBe(3);
+    expect(split.chat.map((r) => (r.kind === 'you' ? r.text : r.kind))).toEqual(['a', 'b', 'c', 'd', 'e']);
+    // Not working: a message on its way is not queued (it shows as sent at once).
+    expect(splitDock(rows, false).queued.map((r) => r.text)).toEqual(['b']);
+    // The note under a bubble the agent has not taken up.
+    const you = (text: string) => rows.find((r): r is Extract<typeof r, { kind: 'you' }> => r.kind === 'you' && r.text === text)!;
+    expect(youWaitNote(you('a'), true)).toBeNull();
+    expect(youWaitNote(you('b'), false)).toBe('Queued · sends when this reply finishes');
+    expect(youWaitNote(you('c'), false)).toBe('Paused — waiting for usage (resets 23:30)');
+    expect(youWaitNote(you('e'), true)).toBe('Queued · sends when this reply finishes');
+    expect(youWaitNote(you('e'), false)).toBeNull();
+    expect(youWaitNote({ id: 9, queued: 'resume' }, false)).toBe('Queued · sends when the agent starts again');
     expect(resetTimeOf('Waiting for an account with allowance — Private back at 23:30')).toBe('23:30');
     expect(resetTimeOf(null)).toBe(null);
   });

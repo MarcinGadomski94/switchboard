@@ -1521,6 +1521,7 @@ export const AGENT_WORDS = {
   resend: 'Resend',
   queued: 'Queued',
   queuedNote: 'sends when this reply finishes',
+  queuedResume: 'sends when the agent starts again',
   sendNow: 'Send now',
   edit: 'Edit',
   remove: 'Remove',
