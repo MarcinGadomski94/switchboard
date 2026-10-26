@@ -134,6 +134,9 @@ const V2_0 = '2.0.0';
 /** The version D134 (Insights → Usage: where each account's usage windows went) ships in. */
 const V2_1 = '2.1.0';
 
+/** The version D135 (agents propose edits and removals of approved Project memory entries) ships in. */
+const V2_2 = '2.2.0';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1257,6 +1260,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['insights-usage'],
         route: { view: 'insights' },
         missing: 'Open Insights (the bar-chart icon) and scroll to Where your usage went. ',
+      },
+    ],
+  },
+  // Project memory (D107) hook: D135's tour (docs/memory-removal.md); in classic (v2 runs only its welcome tour).
+  {
+    id: 'memory-changes',
+    decision: 'D135',
+    version: V2_2,
+    title: 'Agents propose changes to memory',
+    steps: [
+      {
+        id: 'review',
+        title: 'Edits and removals, reviewed like proposals',
+        what: 'An agent that finds an approved entry wrong or outdated now proposes an edit or its removal, with a reason, instead of adding a contradicting entry. An edit shows the entry now and as proposed side by side; approving replaces it (same entry), approving a removal deletes it, rejecting leaves it as it is. Nothing changes until you approve.',
+        todo: ['Open the Memory page when a proposal waits.', 'Compare, then Approve, Edit… or Reject.'],
+        anchors: ['memory-queue'],
+        route: { view: 'memory' },
+        missing: 'Open Memory (the book icon) to see the proposals. ',
       },
     ],
   },

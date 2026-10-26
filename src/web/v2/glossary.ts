@@ -232,7 +232,7 @@ export function computerProblem(state: MachineState | null | undefined): string 
  * The kinds of a "needs you" item (the prototype's `KIND`): what the card asks.
  * `alert` covers usage / paid-extra alerts and anything only to acknowledge.
  */
-export const NEEDS_KINDS = ['question', 'multi', 'approval', 'ready', 'pick', 'note', 'access', 'jd', 'routine', 'ask', 'stopped', 'alert'] as const;
+export const NEEDS_KINDS = ['question', 'multi', 'approval', 'ready', 'pick', 'note', 'note-edit', 'note-removal', 'access', 'jd', 'routine', 'ask', 'stopped', 'alert'] as const;
 /** A needs-you kind. */
 export type NeedsKind = (typeof NEEDS_KINDS)[number];
 
@@ -244,6 +244,9 @@ export const NEEDS_KIND_LOOK: Readonly<Record<NeedsKind, { readonly label: strin
   ready: { label: 'Ready for approval', icon: 'half', status: 'ready' },
   pick: { label: 'Pick code projects', icon: 'folder', status: 'needs' },
   note: { label: 'Note to approve', icon: 'book', status: 'ready' },
+  // D135: an agent proposes to change or remove an approved note.
+  'note-edit': { label: 'Note edit', icon: 'edit', status: 'ready' },
+  'note-removal': { label: 'Note removal', icon: 'trash', status: 'ready' },
   access: { label: 'Access request', icon: 'shield', status: 'needs' },
   jd: { label: 'Job description', icon: 'crew', status: 'needs' },
   routine: { label: 'Routine failed', icon: 'routine', status: 'stopped' },
@@ -280,6 +283,8 @@ export const NEEDS_FILTER_OF: Readonly<Record<NeedsKind, Exclude<NeedsFilter, 'a
   routine: 'stopped',
   pick: 'setup',
   note: 'setup',
+  'note-edit': 'setup',
+  'note-removal': 'setup',
   access: 'setup',
   jd: 'setup',
 };
@@ -430,6 +435,12 @@ export const ANSWER = {
   youDismissed: 'You dismissed it',
   youApprovedNote: 'You approved the note',
   youRejectedNote: 'You rejected the note',
+  // D135: a proposed change of an approved note.
+  approveRemoval: 'Approve removal',
+  youApprovedNoteEdit: 'You approved the edit',
+  youRejectedNoteEdit: 'You kept the note as it was',
+  youApprovedNoteRemoval: 'You removed the note',
+  youRejectedNoteRemoval: 'You kept the note',
   youAccepted: 'You accepted the job description',
   youRetried: 'You asked it to try again',
   youPicked: (items: readonly string[]): string => `You picked ${items.join(', ')}`,
@@ -1347,6 +1358,23 @@ export const NOTES_WORDS = {
   emptyFilteredText: 'Nothing is stored for this scope yet.',
   unavailable: 'Notes are unavailable: their database (memory.db) could not be opened. Restart Switchboard; the log says why.',
   offlineNote: '{name} is offline: its notes show when it is back.',
+  // D135: an agent proposes to change or remove an approved note.
+  changeEdit: 'Edit',
+  changeRemoval: 'Removal',
+  changeEditTitle: (title: string): string => `Change “${title}”`,
+  changeRemovalTitle: (title: string): string => `Remove “${title}”`,
+  now: 'Now',
+  proposedSide: 'Proposed',
+  wouldBeRemoved: 'Would be removed',
+  why: 'Why',
+  noReason: 'No reason given.',
+  targetGone: 'That note no longer exists: reject this proposal.',
+  approveRemoval: 'Approve removal',
+  editFirstChangeTitle: 'Edit the change before approving',
+  approveEditedChange: 'Approve edited change',
+  editApprovedToast: 'Approved. The note now reads as proposed.',
+  removalApprovedToast: 'Approved. The note was removed.',
+  changeRejectedToast: 'Rejected. The note stays as it was.',
 } as const;
 
 /** Lane A · the Routines page (`/routines`). */

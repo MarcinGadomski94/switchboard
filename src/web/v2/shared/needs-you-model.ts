@@ -1,5 +1,5 @@
 import type { InboxAction, InboxItem, PermissionRequest, Question } from '../../../core/api.ts';
-import type { MemoryEntry } from '../../../core/memory.ts';
+import { type MemoryEntry, changeKindOf } from '../../../core/memory.ts';
 // Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import type { MachineState } from '../../../core/peers.ts';
 import type { TeamCharter, TeamNeedsYouItem, TeamRequest } from '../../../core/team.ts';
@@ -23,7 +23,8 @@ import { type NeedsKind, SYSTEM_LABELS } from '../glossary.ts';
  *   they only add the crew tag) and its own requests: access → `access`, charter
  *   proposals (D105) → `jd`, gates and budgets → `approval`.
  * - `GET /api/memory/entries?scope=` for each scope with a memory-proposals item:
- *   each proposed note → `note` (they replace that scope's summary item).
+ *   each proposed note → `note`, a proposed change of an approved one (D135) →
+ *   `note-edit` / `note-removal` (they replace that scope's summary item).
  * - Usage (`GET /api/system`, live via `system`): an account out of usage or paying
  *   from paid extra usage → `alert` (dismissed per browser).
  */
@@ -256,16 +257,22 @@ export function charterText(charter: TeamCharter): string {
   return parts.join(' ');
 }
 
-/** A proposed note as a {@link NeedsItem}. */
+/**
+ * A proposed note as a {@link NeedsItem}; D135: a proposed edit of an approved note is a
+ * `note-edit` (its `quote` the proposed text, `memory.target` the note now), a proposed removal a
+ * `note-removal` (its `quote` the note's text).
+ */
 export function fromNote(entry: MemoryEntry, scopeLabel: string | null, computer: NeedsComputer | null = null): NeedsItem {
   const scope = entry.scopeLabel ? `${scopeLabel ?? 'Folder'} · ${entry.scopeLabel}` : `Folder · ${scopeLabel ?? lastSegment(entry.scope)}`;
+  const change = changeKindOf(entry);
+  const current = entry.target?.title ?? entry.targetTitle ?? entry.title;
   return {
     key: `notes:${entry.id}`,
     id: entry.id,
     source: 'notes',
-    kind: 'note',
-    title: 'Add to what agents know?',
-    text: entry.title,
+    kind: change === 'edit' ? 'note-edit' : change === 'retract' ? 'note-removal' : 'note',
+    title: change === 'edit' ? 'Change what agents know?' : change === 'retract' ? 'Remove from what agents know?' : 'Add to what agents know?',
+    text: change === 'add' ? entry.title : current,
     quote: entry.text,
     context: scope,
     createdAt: entry.createdAt,

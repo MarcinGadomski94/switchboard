@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MemoryEntry } from '../../../../core/memory.ts';
+import { type MemoryEntry, changeKindOf, isMemoryChange } from '../../../../core/memory.ts';
 import type { Machine } from '../../../../core/peers.ts';
 import { onHubStatus, useHubEvent } from '../../../api/useHub.ts';
 import { useMachineStateChange, useMachines } from '../../../api/useMachines.ts';
@@ -11,6 +11,7 @@ import { Button, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, IconButton,
 import { NOTES_WORDS } from '../../glossary.ts';
 import { useV2Router } from '../../nav.tsx';
 import { agentName } from '../../shared/agent-line.ts';
+import { NoteChange } from '../../shared/NoteChange.tsx';
 import { ALL_NOTES, type NoteComputer, type NoteRow, type NoteSource, approvedText, canDraftNotes, draftToast, filterFromQuery, filterOptions, inFilter, noteQuote, noteRows } from './notes-model.ts';
 import './notes.css';
 
@@ -164,8 +165,10 @@ export function NotesPage() {
     }
   };
 
-  const approve = (row: NoteRow): void => void act(row, () => api(row).approve(row.entry.id), approvedText(row.scope));
-  const reject = (row: NoteRow): void => void act(row, () => api(row).reject(row.entry.id), NOTES_WORDS.rejectedToast);
+  // D135: a proposed edit replaces the note, a proposed removal deletes it; rejecting either keeps it as it was.
+  const approvedWords = (row: NoteRow): string => (changeKindOf(row.entry) === 'edit' ? NOTES_WORDS.editApprovedToast : changeKindOf(row.entry) === 'retract' ? NOTES_WORDS.removalApprovedToast : approvedText(row.scope));
+  const approve = (row: NoteRow): void => void act(row, () => api(row).approve(row.entry.id), approvedWords(row));
+  const reject = (row: NoteRow): void => void act(row, () => api(row).reject(row.entry.id), isMemoryChange(row.entry) ? NOTES_WORDS.changeRejectedToast : NOTES_WORDS.rejectedToast);
   // Delete waits out the toast's Undo window, then deletes (the API cannot bring an entry back as it was).
   const remove = (row: NoteRow): void => {
     hide(row.key, true);
@@ -196,7 +199,7 @@ export function NotesPage() {
     try {
       if (approveIt) await api(row).approve(row.entry.id, fields);
       else await api(row).update(row.entry.id, fields);
-      toast({ text: approveIt ? NOTES_WORDS.editedApprovedToast : NOTES_WORDS.savedToast });
+      toast({ text: approveIt ? (isMemoryChange(row.entry) ? NOTES_WORDS.editApprovedToast : NOTES_WORDS.editedApprovedToast) : NOTES_WORDS.savedToast });
       void reloadMemory();
       reload();
       return null;
@@ -344,25 +347,36 @@ function scopeIcon(kind: NoteRow['scope']['kind']): string {
 /** One note (prototype `.lrow`): its title and text, status, scope tag, author, time, computer; its buttons. */
 function NoteLine({ row, busy, onApprove, onReject, onEdit, onDelete }: { readonly row: NoteRow; readonly busy: boolean; readonly onApprove?: (row: NoteRow) => void; readonly onReject?: (row: NoteRow) => void; readonly onEdit?: (row: NoteRow) => void; readonly onDelete?: (row: NoteRow) => void }) {
   const entry: MemoryEntry = row.entry;
+  // D135: a proposed edit or removal of an approved note.
+  const change = changeKindOf(entry);
+  const gone = change !== 'add' && (entry.target ?? null) === null;
   const disabled = busy || row.blocked !== null;
   const why = row.blocked ?? undefined;
   const badge = STATUS_BADGE[row.status];
+  const current = entry.target?.title ?? entry.targetTitle ?? entry.title;
   return (
-    <div className="v2-notes-row" data-testid="v2-notes-row" data-status={row.status} data-note-id={entry.id} data-scope={row.scope.key}>
+    <div className="v2-notes-row" data-testid="v2-notes-row" data-status={row.status} data-note-id={entry.id} data-scope={row.scope.key} data-change={change}>
       <div className="v2-notes-ficon" aria-hidden="true">
-        <Icon name="book" />
+        <Icon name={change === 'edit' ? 'edit' : change === 'retract' ? 'trash' : 'book'} />
       </div>
       <div className="v2-grow v2-notes-body">
         <div className="v2-notes-title" data-testid="v2-notes-title">
-          {entry.title}
+          {change === 'edit' ? NOTES_WORDS.changeEditTitle(current) : change === 'retract' ? NOTES_WORDS.changeRemovalTitle(current) : entry.title}
         </div>
-        {entry.text.trim() && entry.text.trim() !== entry.title.trim() ? (
+        {change !== 'add' ? (
+          <NoteChange entry={entry} />
+        ) : entry.text.trim() && entry.text.trim() !== entry.title.trim() ? (
           <div className="v2-notes-quote" data-testid="v2-notes-text">
             “{noteQuote(entry)}”
           </div>
         ) : null}
         <div className="v2-notes-sub">
           <StatusBadge status={badge.status} label={badge.label} size="s" />
+          {change !== 'add' ? (
+            <Chip tone="outline" size="s" icon={change === 'edit' ? 'edit' : 'trash'}>
+              <span data-testid="v2-notes-change">{change === 'edit' ? NOTES_WORDS.changeEdit : NOTES_WORDS.changeRemoval}</span>
+            </Chip>
+          ) : null}
           <Chip tone="outline" size="s" icon={scopeIcon(row.scope.kind)}>
             <span data-testid="v2-notes-scope">{row.scope.label}</span>
           </Chip>
@@ -376,12 +390,12 @@ function NoteLine({ row, busy, onApprove, onReject, onEdit, onDelete }: { readon
       </div>
       <div className="v2-notes-actions">
         {onApprove ? (
-          <Button size="sm" variant="primary" icon="check" disabled={disabled} title={why} onClick={() => onApprove(row)} data-testid="v2-notes-approve">
-            {NOTES_WORDS.approve}
+          <Button size="sm" variant="primary" icon={change === 'retract' ? 'trash' : 'check'} disabled={disabled || gone} title={why} onClick={() => onApprove(row)} data-testid="v2-notes-approve">
+            {change === 'retract' ? NOTES_WORDS.approveRemoval : NOTES_WORDS.approve}
           </Button>
         ) : null}
-        {onEdit ? (
-          <Button size="sm" icon="edit" disabled={disabled} title={why} onClick={() => onEdit(row)} data-testid="v2-notes-edit">
+        {onEdit && change !== 'retract' && !(change === 'edit' && row.status !== 'proposed') ? (
+          <Button size="sm" icon="edit" disabled={disabled || gone} title={why} onClick={() => onEdit(row)} data-testid="v2-notes-edit">
             {row.status === 'proposed' ? NOTES_WORDS.editFirst : NOTES_WORDS.edit}
           </Button>
         ) : null}
@@ -419,14 +433,14 @@ function EditDialog({ editing, onClose, onSave }: { readonly editing: NonNullabl
       open
       onClose={onClose}
       icon="book"
-      title={approve ? NOTES_WORDS.editFirstTitle : NOTES_WORDS.editTitle}
+      title={isMemoryChange(row.entry) ? NOTES_WORDS.editFirstChangeTitle : approve ? NOTES_WORDS.editFirstTitle : NOTES_WORDS.editTitle}
       testId="v2-notes-edit-dialog"
       footer={
         <>
           <span className="v2-grow" />
           <Button onClick={onClose}>{NOTES_WORDS.cancel}</Button>
           <Button variant="primary" icon="check" disabled={saving} onClick={() => void save()} data-testid="v2-notes-edit-save">
-            {approve ? NOTES_WORDS.approveEdited : NOTES_WORDS.save}
+            {isMemoryChange(row.entry) ? NOTES_WORDS.approveEditedChange : approve ? NOTES_WORDS.approveEdited : NOTES_WORDS.save}
           </Button>
         </>
       }

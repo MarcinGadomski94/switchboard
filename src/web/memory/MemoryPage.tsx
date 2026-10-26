@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MEMORY_CAP_DEFAULT, MEMORY_CAP_MAX, MEMORY_CAP_MIN, MEMORY_TEXT_MAX, MEMORY_TITLE_MAX, type MemoryEntry, type MemoryScope, type MemoryScopeKind, type MemoryScopeOption } from '../../core/memory.ts';
+import {
+  MEMORY_CAP_DEFAULT,
+  MEMORY_CAP_MAX,
+  MEMORY_CAP_MIN,
+  MEMORY_TEXT_MAX,
+  MEMORY_TITLE_MAX,
+  type MemoryEntry,
+  type MemoryScope,
+  type MemoryScopeKind,
+  type MemoryScopeOption,
+  changeKindOf,
+  isMemoryChange,
+  memoryWordDiff,
+} from '../../core/memory.ts';
 import type { Machine } from '../../core/peers.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -279,6 +292,167 @@ function ProposalCard({
   );
 }
 
+/**
+ * D135 · one side of the review's comparison: `before` → `after` word by word; the "now" side marks
+ * what goes (`del`), the "proposed" side what comes (`add`).
+ */
+function DiffText({ before, after, side, testId }: { readonly before: string; readonly after: string; readonly side: 'now' | 'proposed'; readonly testId: string }) {
+  const parts = memoryWordDiff(before, after).filter((part) => part.kind === 'same' || part.kind === (side === 'now' ? 'del' : 'add'));
+  return (
+    <span data-testid={testId}>
+      {parts.map((part, index) =>
+        part.kind === 'same' ? (
+          <span key={index}>{part.text}</span>
+        ) : part.kind === 'del' ? (
+          <del key={index} className="sb-mem-diff sb-mem-diff--del">
+            {part.text}
+          </del>
+        ) : (
+          <ins key={index} className="sb-mem-diff sb-mem-diff--add">
+            {part.text}
+          </ins>
+        ),
+      )}
+    </span>
+  );
+}
+
+/** D135 · Edit… of an edit proposal: its new title and text, then Approve (what is approved replaces the entry). */
+function ChangeForm({ entry, onSubmit, onCancel }: { readonly entry: MemoryEntry; readonly onSubmit: (fields: MemoryFields) => Promise<void>; readonly onCancel: () => void }) {
+  const [title, setTitle] = useState(entry.title);
+  const [text, setText] = useState(entry.text);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="sb-mem-form"
+      data-testid="memory-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setBusy(true);
+        setError(null);
+        onSubmit({ title, text })
+          .catch((failure: unknown) => setError(refusalText(failure)))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <input className="sb-mem-input" data-testid="memory-form-title" value={title} maxLength={MEMORY_TITLE_MAX} aria-label="New title" onChange={(event) => setTitle(event.target.value)} autoFocus />
+      <textarea className="sb-mem-input sb-mem-textarea" data-testid="memory-form-text" value={text} maxLength={MEMORY_TEXT_MAX} aria-label="New text" rows={4} onChange={(event) => setText(event.target.value)} />
+      {error ? (
+        <div className="sb-mem-error" role="alert" data-testid="memory-form-error">
+          {error}
+        </div>
+      ) : null}
+      <div className="sb-mem-actions">
+        <button type="submit" className="sb-button sb-mem-btn sb-mem-btn--primary" data-testid="memory-form-approve" disabled={busy || title.trim() === '' || text.trim() === ''}>
+          Approve
+        </button>
+        <button type="button" className="sb-button sb-mem-btn" data-testid="memory-form-cancel" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * D135 · a proposal to change an approved entry: an **edit** shows the entry now and as proposed side
+ * by side (removed words struck, added ones marked) with Approve (replaces it, same id), Edit… (then
+ * Approve) and Reject; a **removal** shows the entry and the agent's reason with Approve removal
+ * (deletes it) and Reject (keeps it).
+ */
+function ChangeCard({
+  entry,
+  machineId,
+  editing,
+  onEdit,
+  onCancel,
+  onApprove,
+  onAct,
+  onReject,
+}: {
+  readonly entry: MemoryEntry;
+  readonly machineId: string | null;
+  readonly editing: boolean;
+  readonly onEdit: () => void;
+  readonly onCancel: () => void;
+  readonly onApprove: (fields: MemoryFields) => Promise<void>;
+  readonly onAct: (work: () => Promise<unknown>) => void;
+  readonly onReject: () => void;
+}) {
+  const kind = changeKindOf(entry);
+  const target = entry.target ?? null;
+  if (editing && kind === 'edit') return <ChangeForm entry={entry} onSubmit={onApprove} onCancel={onCancel} />;
+  const now = target ?? { title: entry.targetTitle ?? entry.title, text: entry.targetText ?? entry.text };
+  return (
+    <>
+      <div className="sb-mem-card-head">
+        <span className={`sb-mem-change sb-mem-change--${kind}`} data-testid="memory-change-kind">
+          {kind === 'edit' ? 'Edit' : 'Removal'}
+        </span>
+        <ScopeChip entry={entry} />
+        <span className="sb-mem-meta">of the approved entry “{now.title}”</span>
+      </div>
+      {target === null ? (
+        <div className="sb-mem-error" data-testid="memory-change-gone">
+          That entry no longer exists: reject this proposal.
+        </div>
+      ) : null}
+      {kind === 'edit' ? (
+        <div className="sb-mem-compare" data-testid="memory-compare">
+          <div className="sb-mem-compare-side" data-testid="memory-compare-now">
+            <div className="sb-mem-compare-label">Now</div>
+            <div className="sb-mem-entry-title">
+              <DiffText before={now.title} after={entry.title} side="now" testId="memory-compare-now-title" />
+            </div>
+            <div className="sb-mem-entry-text">
+              <DiffText before={now.text} after={entry.text} side="now" testId="memory-compare-now-text" />
+            </div>
+          </div>
+          <div className="sb-mem-compare-side sb-mem-compare-side--proposed" data-testid="memory-compare-proposed">
+            <div className="sb-mem-compare-label">Proposed</div>
+            <div className="sb-mem-entry-title">
+              <DiffText before={now.title} after={entry.title} side="proposed" testId="memory-compare-proposed-title" />
+            </div>
+            <div className="sb-mem-entry-text">
+              <DiffText before={now.text} after={entry.text} side="proposed" testId="memory-compare-proposed-text" />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="sb-mem-compare-side sb-mem-compare-side--removed" data-testid="memory-removal">
+          <div className="sb-mem-compare-label">Would be removed</div>
+          <div className="sb-mem-entry-title" data-testid="memory-entry-title">
+            {now.title}
+          </div>
+          <div className="sb-mem-entry-text" data-testid="memory-entry-text">
+            {now.text}
+          </div>
+        </div>
+      )}
+      <div className="sb-mem-reason" data-testid="memory-change-reason">
+        <span className="sb-mem-meta">Why:</span> {entry.reason ?? 'no reason given'}
+      </div>
+      <div className="sb-mem-card-foot">
+        <Author entry={entry} machineId={machineId} />
+        <span className="sb-mem-actions">
+          <button type="button" className={`sb-button sb-mem-btn ${kind === 'retract' ? 'sb-mem-btn--danger' : 'sb-mem-btn--primary'}`} data-testid="memory-approve" disabled={target === null} onClick={() => onAct(() => onApprove({}))}>
+            {kind === 'retract' ? 'Approve removal' : 'Approve'}
+          </button>
+          {kind === 'edit' ? (
+            <button type="button" className="sb-button sb-mem-btn" data-testid="memory-edit" disabled={target === null} onClick={onEdit}>
+              Edit…
+            </button>
+          ) : null}
+          <button type="button" className="sb-button sb-mem-btn" data-testid="memory-reject" onClick={onReject}>
+            Reject
+          </button>
+        </span>
+      </div>
+    </>
+  );
+}
+
 /** The scope a selector value names, as an entry's fields (the edit form starts from the queue's choice). */
 function scopeFieldsAsEntry(value: ScopeValue, entry: Pick<MemoryEntry, 'scopeKind' | 'scopeKey'>): Pick<MemoryEntry, 'scopeKind' | 'scopeKey'> {
   const fields = scopeFields(value, entry);
@@ -480,25 +654,43 @@ export function MemoryPage() {
             <h2 className="sb-mem-h2">
               To review <span className="sb-mem-count">{proposed.length}</span>
             </h2>
-            {proposed.length === 0 ? <div className="sb-mem-none">No proposals. Agents propose with the memory_propose tool.</div> : null}
+            {proposed.length === 0 ? <div className="sb-mem-none">No proposals. Agents propose with the memory_propose tool (and changes to approved entries with memory_propose_edit / memory_propose_retract).</div> : null}
             {proposed.map((entry) => (
-              <article key={entry.id} className="sb-mem-card sb-mem-card--proposed" data-testid="memory-proposal" data-entry-id={entry.id}>
-                <ProposalCard
-                  entry={entry}
-                  machineId={machineId}
-                  folder={scope}
-                  editing={editing === entry.id}
-                  onEdit={() => setEditing(entry.id)}
-                  onCancel={() => setEditing(null)}
-                  onApprove={async (fields) => {
-                    await memory.approve(entry.id, fields);
-                    setEditing(null);
-                    reload();
-                    void reloadMemory();
-                  }}
-                  onAct={act}
-                  onReject={() => act(() => memory.reject(entry.id))}
-                />
+              <article key={entry.id} className="sb-mem-card sb-mem-card--proposed" data-testid="memory-proposal" data-entry-id={entry.id} data-change={changeKindOf(entry)}>
+                {isMemoryChange(entry) ? (
+                  <ChangeCard
+                    entry={entry}
+                    machineId={machineId}
+                    editing={editing === entry.id}
+                    onEdit={() => setEditing(entry.id)}
+                    onCancel={() => setEditing(null)}
+                    onApprove={async (fields) => {
+                      await memory.approve(entry.id, fields);
+                      setEditing(null);
+                      reload();
+                      void reloadMemory();
+                    }}
+                    onAct={act}
+                    onReject={() => act(() => memory.reject(entry.id))}
+                  />
+                ) : (
+                  <ProposalCard
+                    entry={entry}
+                    machineId={machineId}
+                    folder={scope}
+                    editing={editing === entry.id}
+                    onEdit={() => setEditing(entry.id)}
+                    onCancel={() => setEditing(null)}
+                    onApprove={async (fields) => {
+                      await memory.approve(entry.id, fields);
+                      setEditing(null);
+                      reload();
+                      void reloadMemory();
+                    }}
+                    onAct={act}
+                    onReject={() => act(() => memory.reject(entry.id))}
+                  />
+                )}
               </article>
             ))}
           </section>
@@ -604,6 +796,7 @@ export function MemoryPage() {
                 ? rejected.map((entry) => (
                     <article key={entry.id} className="sb-mem-card sb-mem-card--rejected" data-testid="memory-rejected-entry" data-entry-id={entry.id}>
                       <div className="sb-mem-card-head">
+                        {isMemoryChange(entry) ? <span className={`sb-mem-change sb-mem-change--${changeKindOf(entry)}`}>{changeKindOf(entry) === 'edit' ? 'Edit' : 'Removal'}</span> : null}
                         <ScopeChip entry={entry} />
                         <span className="sb-mem-entry-title">{entry.title}</span>
                       </div>

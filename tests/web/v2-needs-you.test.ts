@@ -3,7 +3,8 @@ import type { InboxItem, Question, SystemInfo } from '../../src/core/api.ts';
 import type { MemoryEntry } from '../../src/core/memory.ts';
 import type { TeamNeedsYouItem } from '../../src/core/team.ts';
 import { batchAnswers, cardButtons, questionAnswer, questionReady, summaryOf, togglePick, answeredFromServer, isLinkAction } from '../../src/web/v2/shared/answer-model.ts';
-import { commandOf, fromInbox, inboxKindOf, memoryScopeOf, mergeNeedsYou, planIdOf, itemsOfSession, countByCrew, type NeedsItem } from '../../src/web/v2/shared/needs-you-model.ts';
+import { commandOf, fromInbox, fromNote, inboxKindOf, memoryScopeOf, mergeNeedsYou, planIdOf, itemsOfSession, countByCrew, type NeedsItem } from '../../src/web/v2/shared/needs-you-model.ts';
+import { NEEDS_KIND_LOOK } from '../../src/web/v2/glossary.ts';
 import { DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
 
 const AT = '2026-10-25T12:00:00.000Z';
@@ -323,5 +324,31 @@ describe('D131 · the store: answering anywhere answers it everywhere, with Undo
     expect(store.getSnapshot().items[0]?.computer?.state).toBe('online');
     store.computersChanged({ studio: 'offline' });
     expect(store.getSnapshot().items[0]?.computer?.state).toBe('offline');
+  });
+});
+
+describe('D135 · a proposed change of an approved note in Needs you', () => {
+  const target = { ...note('t1', 'approved'), title: 'Currency', text: 'Prices are shown in EUR.' } as MemoryEntry;
+  const edit = { ...note('e1'), text: 'Prices are shown in the local currency.', changeKind: 'edit', targetId: 't1', reason: 'Localised now.', targetTitle: 'Currency', targetText: 'Prices are shown in EUR.', target } as MemoryEntry;
+  const removal = { ...note('r1'), title: 'Currency', text: 'Prices are shown in EUR.', changeKind: 'retract', targetId: 't1', reason: 'Gone.', targetTitle: 'Currency', targetText: 'Prices are shown in EUR.', target } as MemoryEntry;
+
+  it('is a note-edit / note-removal item labelled "Note edit" / "Note removal", with the change buttons', () => {
+    const items = mergeNeedsYou({ inbox: [MEMORY], team: [], notes: { '/w/checkout': [edit, removal, note('n1')] }, usage: [] });
+    expect(items.map((item) => [item.key, item.kind])).toEqual([
+      ['notes:e1', 'note-edit'],
+      ['notes:r1', 'note-removal'],
+      ['notes:n1', 'note'],
+    ]);
+    expect(NEEDS_KIND_LOOK['note-edit'].label).toBe('Note edit');
+    expect(NEEDS_KIND_LOOK['note-removal'].label).toBe('Note removal');
+    const editItem = fromNote(edit, null);
+    expect(editItem).toMatchObject({ title: 'Change what agents know?', text: 'Currency', quote: 'Prices are shown in the local currency.', memory: { target: { id: 't1' } } });
+    expect(cardButtons(editItem).map((button) => `${button.id}:${button.label}`)).toEqual(['note-approve:Approve', 'note-edit:Edit first', 'note-reject:Reject']);
+    const removalItem = fromNote(removal, null);
+    expect(removalItem.title).toBe('Remove from what agents know?');
+    expect(cardButtons(removalItem).map((button) => `${button.id}:${button.label}`)).toEqual(['note-approve:Approve removal', 'note-reject:Reject']);
+    expect(summaryOf(editItem, { type: 'note', decision: 'approve' })).toBe('You approved the edit');
+    expect(summaryOf(removalItem, { type: 'note', decision: 'approve' })).toBe('You removed the note');
+    expect(summaryOf(removalItem, { type: 'note', decision: 'reject' })).toBe('You kept the note');
   });
 });

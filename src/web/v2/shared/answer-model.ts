@@ -152,6 +152,18 @@ export function cardButtons(item: NeedsItem): CardButton[] {
         ];
       }
       return serverButtons(item);
+    // D135: a proposed change of an approved note (approving an edit replaces it, a removal deletes it).
+    case 'note-edit':
+      return [
+        { id: 'note-approve', label: ANSWER.approve, variant: 'primary', icon: 'check', intent: { type: 'answer', action: { type: 'note', decision: 'approve' } } },
+        { id: 'note-edit', label: ANSWER.editFirst, variant: 'default', icon: 'edit', intent: { type: 'input', mode: 'note-edit' } },
+        { id: 'note-reject', label: ANSWER.reject, variant: 'ghost', intent: { type: 'answer', action: { type: 'note', decision: 'reject' } } },
+      ];
+    case 'note-removal':
+      return [
+        { id: 'note-approve', label: ANSWER.approveRemoval, variant: 'primary', icon: 'trash', intent: { type: 'answer', action: { type: 'note', decision: 'approve' } } },
+        { id: 'note-reject', label: ANSWER.reject, variant: 'ghost', intent: { type: 'answer', action: { type: 'note', decision: 'reject' } } },
+      ];
     case 'access': {
       const crewId = item.crew?.id;
       const path = crewId ? `/crews/${encodeURIComponent(crewId)}?member=${encodeURIComponent(item.crew?.memberId ?? '')}&tab=access` : '/crews';
@@ -300,6 +312,8 @@ export function summaryOf(item: NeedsItem, action: AnswerAction): string {
       if (item.kind === 'jd') return action.decision === 'approve' ? ANSWER.youAccepted : ANSWER.youDismissed;
       return action.decision === 'approve' ? 'You approved it' : action.decision === 'decline' ? (item.kind === 'access' ? 'You said not now' : ANSWER.youDenied) : ANSWER.youDismissed;
     case 'note':
+      if (item.kind === 'note-edit') return action.decision === 'approve' ? ANSWER.youApprovedNoteEdit : ANSWER.youRejectedNoteEdit;
+      if (item.kind === 'note-removal') return action.decision === 'approve' ? ANSWER.youApprovedNoteRemoval : ANSWER.youRejectedNoteRemoval;
       return action.decision === 'approve' ? ANSWER.youApprovedNote : ANSWER.youRejectedNote;
     case 'dismiss-local':
       return ANSWER.gotIt;

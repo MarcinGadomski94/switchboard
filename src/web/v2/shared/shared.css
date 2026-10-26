@@ -822,3 +822,100 @@ button.v2-qi-src:hover {
     min-width: var(--v2-touch);
   }
 }
+
+/* D135 · a proposed change of an approved note (NoteChange.tsx): the comparison and the reason. */
+.v2-qi[data-kind='note-edit'],
+.v2-qi[data-kind='note-removal'] {
+  --qc: var(--v2-violet);
+}
+
+.v2-nc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+  min-width: 0;
+}
+
+.v2-nc-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.v2-nc-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--v2-border-strong);
+  border-radius: 8px;
+}
+
+.v2-nc-side--proposed {
+  border-color: var(--v2-violet);
+}
+
+.v2-nc-side--removed {
+  border-color: var(--v2-red);
+  background: var(--v2-red-bg);
+}
+
+.v2-nc-side--removed .v2-nc-title,
+.v2-nc-side--removed .v2-nc-text {
+  text-decoration: line-through;
+}
+
+.v2-nc-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--v2-text-2);
+}
+
+.v2-nc-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.v2-nc-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--v2-text-2);
+}
+
+.v2-nc-del,
+.v2-nc-add {
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.v2-nc-del {
+  background: var(--v2-red-bg);
+  color: var(--v2-red);
+  text-decoration: line-through;
+}
+
+.v2-nc-add {
+  background: var(--v2-green-bg);
+  color: var(--v2-green);
+  text-decoration: none;
+}
+
+.v2-nc-reason,
+.v2-nc-gone {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.v2-nc-gone {
+  color: var(--v2-red);
+}
+
+@media (max-width: 640px) {
+  .v2-nc-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -349,3 +349,78 @@
   font-size: 12px;
   background: rgba(139, 92, 246, 0.12);
 }
+
+/* D135: proposals to change an approved entry: the kind chip, the side-by-side comparison, the reason. */
+.sb-mem-change {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--status-need);
+  border: 1px solid currentColor;
+}
+.sb-mem-change--retract {
+  color: var(--status-fail);
+}
+.sb-mem-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+.sb-mem-compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-2);
+  min-width: 0;
+}
+.sb-mem-compare-side--removed {
+  margin-top: 6px;
+  text-decoration: line-through;
+  text-decoration-color: var(--status-fail);
+}
+.sb-mem-compare-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+  text-decoration: none;
+}
+.sb-mem-compare .sb-mem-entry-text,
+.sb-mem-compare-side .sb-mem-entry-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sb-mem-diff {
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.sb-mem-diff--del {
+  background: var(--diff-del-bg);
+  color: var(--diff-del-fg);
+  text-decoration: line-through;
+}
+.sb-mem-diff--add {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
+}
+.sb-mem-reason {
+  margin-top: 6px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .sb-mem-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

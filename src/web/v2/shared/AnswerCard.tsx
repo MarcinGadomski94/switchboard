@@ -10,6 +10,7 @@ import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton,
 import { defaultWhere, needsYouStore, useNeedsYou } from './needs-you.ts';
 import type { NeedsItem } from './needs-you-model.ts';
 import { CardMarkdown } from './CardMarkdown.tsx';
+import { NoteChange } from './NoteChange.tsx';
 import { clampsIn, plainText } from './card-markdown.ts';
 import { markRecent } from './recent.ts';
 import { displayNameById, useTeamMembers } from './teammates.ts';
@@ -309,6 +310,18 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
           ) : null}
         </>
       );
+    } else if ((item.kind === 'note-edit' || item.kind === 'note-removal') && item.memory) {
+      // D135: a proposed change of an approved note: the note now vs as proposed (or the note that would go) and the reason.
+      body = (
+        <>
+          <NoteChange entry={item.memory} />
+          {item.context ? (
+            <p className="v2-qi-hint">
+              <Icon name="book" size="s" /> Scope: <b>{item.context}</b> · every agent working there knows this note.
+            </p>
+          ) : null}
+        </>
+      );
     } else if (item.kind === 'jd') {
       body = item.quote ? <div className="v2-quote">{item.quote}</div> : null;
     } else if (item.kind === 'pick') {
@@ -396,7 +409,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
               <span className="v2-qi-src">{source}</span>
             )
           ) : null}
-          {item.context && variant !== 'phone' && item.kind !== 'note' ? <span>· {item.context}</span> : null}
+          {item.context && variant !== 'phone' && item.kind !== 'note' && item.kind !== 'note-edit' && item.kind !== 'note-removal' ? <span>· {item.context}</span> : null}
           {item.crew ? (
             <Chip tone="outline" icon="crew">
               {item.crew.teammate}
