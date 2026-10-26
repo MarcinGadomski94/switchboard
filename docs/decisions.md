@@ -1442,6 +1442,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 20. The `sb_token` cookie is set when the UI page is loaded from a loopback Host with `Sec-Fetch-Site` none/same-origin; API and `/hub` reject a missing cookie or a foreign Host/Origin.
 21. Demo seed with the prototype's mock data, used only by the visual oracle and screenshots, never in normal runs.
 
+- **D133 Agents offer choices as question cards.** Developer approved 2026-10-26: agents offer choices as question cards. The built-in standing instruction (D64) gains one sentence after D124's turn_status line: "When you offer the developer choices, ask with AskUserQuestion (options to pick from), not as a list in your message." The 1.31–2.0 default (D124) counts as an earlier default (D68), so installs still on it get the new text; an edited instruction stays as it is. Details: `docs/settings.md`. Tests: `tests/core/owned-loops.test.ts` and the length bounds in `tests/server/api/settings.test.ts`, `tests/server/todos/injection.test.ts`, `tests/web/standing-instruction.test.ts`.
 ## Open for the developer (not blocking the build)
 - Whether driving Claude Code from a local tool fits the Max subscription terms (handoff README open decision).
 - **Multi-user mode** (several human developers sharing Switchboard; not D100 Team): design proposal, not decided — `docs/design/team-mode.md` (its *Decisions for the developer* list).

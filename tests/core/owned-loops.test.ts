@@ -86,17 +86,26 @@ describe('texts', () => {
 
   it('D94 · the standing instruction: one short line added; the 1.14 default reads as the new one', () => {
     expect(DEFAULT_STANDING_INSTRUCTION).toContain(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.');
-    // D124 added the turn_status line after it: the D89 default is the one before the D94 default.
-    expect(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1)?.endsWith(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.')).toBe(true);
-    const d89 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-2) as string;
+    // D124 added the turn_status line after it and D133 the question-card line: the D89 default is the one before the D94 default.
+    expect(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-2)?.endsWith(' For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop.')).toBe(true);
+    const d89 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-3) as string;
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(d89)).toBe(true);
     expect(currentStandingInstruction(d89)).toBe(DEFAULT_STANDING_INSTRUCTION);
   });
 
   it('D124 · the standing instruction: one short turn_status line added; the 1.30 default reads as the new one', () => {
-    expect(DEFAULT_STANDING_INSTRUCTION.endsWith(' End every turn without a question card with the switchboard turn_status tool.')).toBe(true);
-    const d94 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1) as string;
+    expect(DEFAULT_STANDING_INSTRUCTION).toContain(' End every turn without a question card with the switchboard turn_status tool.');
+    // D133 added the question-card line after it: the D94 default is the one before the D124 default.
+    expect(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1)?.endsWith(' End every turn without a question card with the switchboard turn_status tool.')).toBe(true);
+    const d94 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-2) as string;
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(d94)).toBe(true);
     expect(currentStandingInstruction(d94)).toBe(DEFAULT_STANDING_INSTRUCTION);
+  });
+
+  it('D133 · the standing instruction: one short question-card line added; the 2.0 default reads as the new one', () => {
+    expect(DEFAULT_STANDING_INSTRUCTION.endsWith(' When you offer the developer choices, ask with AskUserQuestion (options to pick from), not as a list in your message.')).toBe(true);
+    const d124 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.at(-1) as string;
+    expect(DEFAULT_STANDING_INSTRUCTION.startsWith(d124)).toBe(true);
+    expect(currentStandingInstruction(d124)).toBe(DEFAULT_STANDING_INSTRUCTION);
   });
 });
