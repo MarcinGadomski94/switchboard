@@ -24,7 +24,7 @@ export interface DirtyProject {
   readonly id: string;
   /**
    * The folder the id names, relative to the workspace root and `/`-separated
-   * (`microfrontends/acme-app-front`, `mobile/Acme.Mobile`), when the id
+   * (`microfrontends/acme-web-front`, `mobile/Acme.Mobile`), when the id
    * is the hook's form under one of the root's forms; `null` for any other id
    * (another root, an unknown category, the root or a category alone).
    */
@@ -62,7 +62,7 @@ function normalizeRelative(relativePath: string): string {
  * The codebase-memory project id of a folder, as the hook computes it: the
  * absolute path with `\` turned into `/` and trailing slashes dropped, then every
  * run of `:`, `/` and `\` turned into one `-`, and leading / trailing `-` removed
- * (`D:\…\nugets\login-nuget` → `D-…-nugets-login-nuget`,
+ * (`D:\…\nugets\api-client-nuget` → `D-…-nugets-api-client-nuget`,
  * `/Users/me/ws/mobile` → `Users-me-ws-mobile`). Spaces and case are kept.
  */
 export function codebaseMemoryProjectId(root: string, relativePath = ''): string {

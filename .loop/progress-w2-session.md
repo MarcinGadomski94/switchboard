@@ -15,7 +15,7 @@ last oracle: M4.3 PASS · `npm run typecheck` green · `SWITCHBOARD_TEST_PORTS=4
   - Web pure state `chat.ts`: `chatItems(events, questions, mainAgentId)` → user bubbles, agent blocks (text + step lines ✓/●/✕/⏸), batches at their AskUserQuestion call (else last); quick replies verbatim; `answeredLines` uses the source name part.
   - `ChatTab.tsx`: messages, step lines, `QuestionCard variant="chat"` → `POST /answers`, answers bubble + "● Answers written into the briefs…", composer (quick replies fill the draft, Enter / Send → `POST /messages`, "Not sent: …"), stick-to-bottom; SessionView also reloads on `questionBatch`.
   - Demo seed: prototype chat → real payloads + `demoStep` step events; seed test updated.
-  - Tests: tests/web/chat.test.ts, tests/server/sessions/questions.test.ts, tests/e2e/session-chat.spec.ts (fake-claude tool-use + ask-2q, composer, quick reply, detached refusal), tests/e2e/visual/session-chat.spec.ts (reminder-func-fix absolute, pair-talk-feature relative to the chat top: card, picked, answered, composer; 15 SPEC-token checks).
+  - Tests: tests/web/chat.test.ts, tests/server/sessions/questions.test.ts, tests/e2e/session-chat.spec.ts (fake-claude tool-use + ask-2q, composer, quick reply, detached refusal), tests/e2e/visual/session-chat.spec.ts (invoice-func-fix absolute, checkout-redesign relative to the chat top: card, picked, answered, composer; 15 SPEC-token checks).
   - Docs: docs/chat.md, lanes.md, demo.md, supervisor.md, questions.md, docs/visual/chat.md + README review.
 - M4.1 ✓ 2026-09-28 (commit: see git log "M4.1: Session header") · oracle attempts 3/5 (E2E green on the 1st run; visual: 1st run a wait on text the prototype splits, 2nd run found the class clash with the sidebar's `sb-session-*` (renamed to `sb-sv-*`) and the data-dependent chip wrap (compared relative to the chip row + a second, fully absolute session), 3rd run green) · plan:
   - Server Attach (gap #5, M0.4): `src/core/transcript-sync.ts` (newest-leaf chain, entries after the sync uuid, synthetic/sidechain/meta skipped) + `src/server/supervisor/attach.ts` (find `<configDir>/projects/*/<id>.jsonl`, mtime < 2 min or `claude agents --json` lists the id or cannot be read → warning; import the terminal turns as events before the `--resume` spawn, sync point moved). `POST /attach` → 409 `attach-warning` unless `{ confirm: true }`; attach calls serialized per session.
@@ -37,7 +37,7 @@ consecutive_blocked: 0
 - M4.1 · imported terminal turns: transcript timestamps, origin `terminal`, no subagents/artifacts
 - M4.1 · handoff card + minimal chat list built early (M4.3 / M4.2 extend)
 - M4.1 · demo sessions get the demo root as `cwd`
-- M4.1 · visual oracle on reminder-func-fix (absolute) + pair-talk-feature (relative to the wrapped chip row)
+- M4.1 · visual oracle on invoice-func-fix (absolute) + checkout-redesign (relative to the wrapped chip row)
 - M4.2 · SessionDetail gains `questions` (all batches)
 - M4.2 · chat = main agent's events only
 - M4.2 · step lines + marks (tool / permission / denial / failed turn / mode mismatch)

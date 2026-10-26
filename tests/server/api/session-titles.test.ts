@@ -96,15 +96,15 @@ describe('POST /api/sessions · title (D22)', () => {
     await waitForStatus(w.store, titled.id, ['done']);
 
     // Without a title (omitted or null) the name is what is shown and passed.
-    const plain = await create({ name: 'pair-talk-640', title: null });
-    expect(plain).toMatchObject({ name: 'pair-talk-640', title: null, displayTitle: 'pair-talk-640' });
+    const plain = await create({ name: 'checkout-page-640', title: null });
+    expect(plain).toMatchObject({ name: 'checkout-page-640', title: null, displayTitle: 'checkout-page-640' });
     const spawns = await spawnCount(w, 2);
-    expect(nameArg(spawns[1]?.argv)).toBe('pair-talk-640');
+    expect(nameArg(spawns[1]?.argv)).toBe('checkout-page-640');
     await waitForStatus(w.store, plain.id, ['done']);
 
     const list = (await call('GET', '/api/sessions')).json() as Session[];
     expect(list.map((s) => [s.name, s.title, s.displayTitle])).toEqual([
-      ['pair-talk-640', null, 'pair-talk-640'],
+      ['checkout-page-640', null, 'checkout-page-640'],
       ['jira-ticket-handling', 'JIRA Ticket handling', 'JIRA Ticket handling'],
     ]);
     const detail = (await call('GET', `/api/sessions/${titled.id}`)).json() as SessionDetail;
@@ -213,7 +213,7 @@ describe('where a session is named (D22)', () => {
     const session = await create({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' });
     await waitForStatus(w.store, session.id, ['done']);
     await w.store.questions.createBatch({ id: 'batch-1', sessionId: session.id, input: { questions: [] } }, [
-      { source: 'web · microfrontends/acme-app-front', text: 'Which one?', options: [{ label: 'a' }, { label: 'b' }] },
+      { source: 'web · microfrontends/acme-web-front', text: 'Which one?', options: [{ label: 'a' }, { label: 'b' }] },
     ]);
     await w.store.artifacts.create({ id: 'a000000001', sessionId: session.id, title: 'notes.md', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
 

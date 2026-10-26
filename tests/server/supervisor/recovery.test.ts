@@ -87,13 +87,13 @@ async function crashed(w: SupervisorWorld, patch: Partial<SessionRecord> & { nam
     status: patch.status ?? 'run',
     workType: 'feature',
     mode: 'single',
-    solutions: ['acme-app-front'],
+    solutions: ['acme-web-front'],
     attached: patch.attached ?? true,
     cwd: w.workspace,
     pid: patch.pid ?? null,
     stopReason: patch.stopReason ?? null,
   });
-  await w.store.agents.create({ sessionId: session.id, kind: 'main', name: 'acme-app-front', status: session.status });
+  await w.store.agents.create({ sessionId: session.id, kind: 'main', name: 'acme-web-front', status: session.status });
   return session;
 }
 

@@ -49,17 +49,17 @@ describe('WorktreeManager · create (gap #1)', () => {
     const statusBefore = await w.git(w.web, 'status', '--porcelain');
     const head = await w.git(w.web, 'rev-parse', 'HEAD');
 
-    const records = await m.createForSession('pair-talk', ['web-front', 'mobile'], w.folder);
+    const records = await m.createForSession('checkout', ['web-front', 'mobile'], w.folder);
 
-    const webPath = path.join(path.dirname(w.web), 'web-front-wt-pair-talk');
-    const mobilePath = path.join(w.workspace, 'mobile-wt-pair-talk');
+    const webPath = path.join(path.dirname(w.web), 'web-front-wt-checkout');
+    const mobilePath = path.join(w.workspace, 'mobile-wt-checkout');
     expect(records.map((r) => [r.repo, r.repoPath, r.branch, r.baseRef, r.path, r.sessionId])).toEqual([
-      ['web-front', w.web, 'session/pair-talk', 'main', webPath, null],
-      ['mobile', w.mobile, 'session/pair-talk', 'main', mobilePath, null],
+      ['web-front', w.web, 'session/checkout', 'main', webPath, null],
+      ['mobile', w.mobile, 'session/checkout', 'main', mobilePath, null],
     ]);
-    expect(await w.git(w.web, 'rev-parse', 'session/pair-talk')).toBe(head);
+    expect(await w.git(w.web, 'rev-parse', 'session/checkout')).toBe(head);
     expect(await w.git(w.web, 'worktree', 'list', '--porcelain')).toContain(`worktree ${webPath}`);
-    expect(await w.git(webPath, 'symbolic-ref', '--short', 'HEAD')).toBe('session/pair-talk');
+    expect(await w.git(webPath, 'symbolic-ref', '--short', 'HEAD')).toBe('session/checkout');
     // The worktree starts from HEAD: the developer's uncommitted edit is not in it.
     expect(await readFile(path.join(webPath, 'README.md'), 'utf8')).toBe('hello\n');
     // The main checkout is untouched: same branch, same dirty state, nothing stashed.
@@ -72,7 +72,7 @@ describe('WorktreeManager · create (gap #1)', () => {
     expect(forbiddenGitCalls(calls)).toEqual([]);
     const adds = calls.filter((c) => c.argv[0] === 'worktree' && c.argv[1] === 'add');
     expect(adds.map((c) => c.cwd)).toEqual([w.web, w.mobile]);
-    expect(adds[0]?.argv).toEqual(['worktree', 'add', '-b', 'session/pair-talk', webPath, head]);
+    expect(adds[0]?.argv).toEqual(['worktree', 'add', '-b', 'session/checkout', webPath, head]);
   });
 
   it('a detached HEAD is the base itself', async () => {

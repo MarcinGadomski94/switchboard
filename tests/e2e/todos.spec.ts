@@ -619,7 +619,7 @@ test('D76 · ⋯ Run in new session: a new session titled like the item gets its
   const notes = items.filter({ hasText: 'Tidy the release notes' });
   const todoId = (await notes.getAttribute('data-todo-id')) as string;
 
-  // ⋯ → Run in new session: a toast (the source works in the workspace's acme-app-front repo: the run gets its own worktree there, no note).
+  // ⋯ → Run in new session: a toast (the source works in the workspace's acme-web-front repo: the run gets its own worktree there, no note).
   await notes.getByTestId('todo-menu-button').click();
   await notes.getByTestId('todo-menu-run').click();
   const toast = page.getByTestId('toast').filter({ hasText: 'Running in a new session' });

@@ -86,7 +86,7 @@ describe('conflictCard (M6.3)', () => {
     const mobile = (await solutions.solutions({ id: 'demo', path: 'D:\\acme', root: 'D:\\acme', kind: 'workspace' })).flatMap((g) => g.solutions).find((s) => s.name === 'mobile');
     expect(mobile).toBeDefined();
     expect(conflictCard(mobile as Solution)).toEqual({
-      text: "pair-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+      text: "checkout-redesign and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
       segments: expect.any(Array),
       actions: [{ sessionId: 'button-rollout', repo: 'mobile', label: 'Move button-rollout to worktree', disabled: false, title: '', sessionTitle: 'button-rollout', suggestedBranch: '' }],
     });

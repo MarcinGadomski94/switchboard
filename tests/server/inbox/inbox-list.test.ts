@@ -104,9 +104,9 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
     }, 'a permission item');
 
     // Branch sources of the asker: an agent with a branch, a worktree on the same branch (deduped), another worktree.
-    await r.w.store.agents.create({ sessionId: asker.id, kind: 'subagent', name: 'web', solutionPath: 'microfrontends/acme-app-front', branch: 'feature/x' });
+    await r.w.store.agents.create({ sessionId: asker.id, kind: 'subagent', name: 'web', solutionPath: 'microfrontends/acme-web-front', branch: 'feature/x' });
     await r.w.store.agents.create({ sessionId: asker.id, kind: 'subagent', name: 'reader', solutionPath: 'deprecated/old-front', branch: null });
-    await r.w.store.worktrees.create({ repo: 'acme-app-front', repoPath: '/w/acme-app-front', branch: 'feature/x', path: '/w/acme-app-front-wt-asker', sessionId: asker.id });
+    await r.w.store.worktrees.create({ repo: 'acme-web-front', repoPath: '/w/acme-web-front', branch: 'feature/x', path: '/w/acme-web-front-wt-asker', sessionId: asker.id });
     await r.w.store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/asker', path: '/w/mobile-wt-asker', sessionId: asker.id });
     const removed = await r.w.store.worktrees.create({ repo: 'gone', repoPath: '/w/gone', branch: 'old', path: '/w/gone-wt', sessionId: asker.id });
     await r.w.store.worktrees.markRemoved(removed.id);
@@ -164,7 +164,7 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
         { id: 'allow-once', label: 'Allow once' },
         { id: 'deny', label: 'Deny' },
       ],
-      permission: { toolName: 'Bash', input: { command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' }, agent: 'acme-app-front' },
+      permission: { toolName: 'Bash', input: { command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' }, agent: 'acme-web-front' },
     });
 
     expect(Object.keys(questions).sort()).toEqual([...BASE_KEYS, 'questions', 'sourceTitle'].sort());
@@ -172,12 +172,12 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
       sessionId: asker.id,
       source: 'asker',
       status: 'need',
-      title: '2 questions from acme-app-front',
+      title: '2 questions from acme-web-front',
       label: '2 questions',
       detail: '',
       createdAt: batch!.createdAt,
       branches: [
-        { solution: 'acme-app-front', branch: 'feature/x' },
+        { solution: 'acme-web-front', branch: 'feature/x' },
         { solution: 'mobile', branch: 'session/asker' },
       ],
     });
@@ -238,40 +238,40 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
 });
 
 describe('M3.2 · Inbox item rules (prototype copy)', () => {
-  it('names a source by the part before " · " (prototype title "n questions from web, mobile, (orchestrator)")', async () => {
-    expect(sourceName('web · microfrontends/acme-app-front')).toBe('web');
-    expect(sourceName('qa-web-playwright · acme-app-front')).toBe('qa-web-playwright');
-    expect(sourceName('(orchestrator)')).toBe('(orchestrator)');
+  it('names a source by the part before " · " (prototype title "n questions from web, mobile, (lead)")', async () => {
+    expect(sourceName('web · microfrontends/acme-web-front')).toBe('web');
+    expect(sourceName('qa-web-playwright · acme-web-front')).toBe('qa-web-playwright');
+    expect(sourceName('(lead)')).toBe('(lead)');
     expect(sourceName('orchestrator')).toBe('orchestrator');
 
     const r = await setup('default');
     const session = await r.w.store.sessions.create({ name: 'three-sources', task: 't', claudeSessionId: 'c1', status: 'need', solutions: [] });
     const created = await r.w.store.questions.createBatch({ id: 'b-3', sessionId: session.id, input: { questions: [] } }, [
-      { source: 'web · microfrontends/acme-app-front', text: 'A?', options: [{ label: 'a' }] },
+      { source: 'web · microfrontends/acme-web-front', text: 'A?', options: [{ label: 'a' }] },
       { source: 'mobile · mobile/', text: 'B?', options: [{ label: 'b' }] },
-      { source: '(orchestrator)', text: 'C?', options: [{ label: 'c' }] },
-      { source: 'web · microfrontends/acme-app-front', text: 'D?', options: [{ label: 'd' }] },
+      { source: '(lead)', text: 'C?', options: [{ label: 'c' }] },
+      { source: 'web · microfrontends/acme-web-front', text: 'D?', options: [{ label: 'd' }] },
     ]);
     const item = await questionBatchItem(r.w.store, created.batch, created.questions);
-    expect(item.title).toBe('4 questions from web, mobile, (orchestrator)');
+    expect(item.title).toBe('4 questions from web, mobile, (lead)');
     expect(item.label).toBe('4 questions');
     // The questions keep their full source (shown in mono blue on the card).
-    expect(item.questions?.map((q) => q.source)).toEqual(['web · microfrontends/acme-app-front', 'mobile · mobile/', '(orchestrator)', 'web · microfrontends/acme-app-front']);
+    expect(item.questions?.map((q) => q.source)).toEqual(['web · microfrontends/acme-web-front', 'mobile · mobile/', '(lead)', 'web · microfrontends/acme-web-front']);
   });
 
   it('branch chips: agents with a branch in agent order (last folder of the path), then live worktrees not already named', async () => {
     const r = await setup('default');
     const session = await r.w.store.sessions.create({ name: 'chips', task: 't', claudeSessionId: 'c2', status: 'need', solutions: [] });
     await r.w.store.agents.create({ sessionId: session.id, kind: 'main', name: 'orchestrator', solutionPath: 'workspace root', branch: null });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'web', solutionPath: 'microfrontends/acme-app-front', branch: 'feature/pair-talk-360' });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile', solutionPath: 'mobile/', branch: 'feature/pair-talk-360' });
-    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile-2', solutionPath: 'mobile', branch: 'feature/pair-talk-360' });
-    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'feature/pair-talk-360', path: '/w/mobile-wt', sessionId: session.id });
-    await r.w.store.worktrees.create({ repo: 'reminder-func', repoPath: '/w/reminder-func', branch: 'session/chips', path: '/w/cf-wt', sessionId: session.id });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'web', solutionPath: 'microfrontends/acme-web-front', branch: 'feature/checkout-redesign' });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile', solutionPath: 'mobile/', branch: 'feature/checkout-redesign' });
+    await r.w.store.agents.create({ sessionId: session.id, name: 'mobile-2', solutionPath: 'mobile', branch: 'feature/checkout-redesign' });
+    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'feature/checkout-redesign', path: '/w/mobile-wt', sessionId: session.id });
+    await r.w.store.worktrees.create({ repo: 'invoice-func', repoPath: '/w/invoice-func', branch: 'session/chips', path: '/w/cf-wt', sessionId: session.id });
     expect(await sessionBranches(r.w.store, session.id)).toEqual([
-      { solution: 'acme-app-front', branch: 'feature/pair-talk-360' },
-      { solution: 'mobile', branch: 'feature/pair-talk-360' },
-      { solution: 'reminder-func', branch: 'session/chips' },
+      { solution: 'acme-web-front', branch: 'feature/checkout-redesign' },
+      { solution: 'mobile', branch: 'feature/checkout-redesign' },
+      { solution: 'invoice-func', branch: 'session/chips' },
     ]);
   });
 

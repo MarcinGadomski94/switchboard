@@ -74,7 +74,7 @@ export function joinNames(names: readonly string[]): string {
 }
 
 /**
- * The conflict card's text (prototype `sd.warn`): "pair-talk-feature and
+ * The conflict card's text (prototype `sd.warn`): "checkout-redesign and
  * button-rollout both write to mobile/ in one working tree. Your AGENTS.md
  * requires isolation: 'worktree' for parallel writers in the same repo." Three
  * or more sessions read "… all write to …". `folder` is the solution's path from

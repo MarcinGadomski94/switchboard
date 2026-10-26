@@ -24,13 +24,13 @@ const BOX = [
   '┌─────────────────┬──────────────────────┬──────────────────┬────────────┐',
   '│ Agent           │ Description          │ Solution         │ Status     │',
   '├─────────────────┼──────────────────────┼──────────────────┼────────────┤',
-  '│ 1. web          │ Pair talk at 360     │ acme-app-front/  │ 🟢 running │',
+  '│ 1. web          │ Checkout at 360      │ acme-web-front/  │ 🟢 running │',
   '├─────────────────┼──────────────────────┼──────────────────┼────────────┤',
-  '│ 2. mobile       │ Pair talk at 360     │ mobile/          │ ✅ done    │',
+  '│ 2. mobile       │ Checkout at 360      │ mobile/          │ ✅ done    │',
   '└─────────────────┴──────────────────────┴──────────────────┴────────────┘',
 ];
 
-const PIPE = ['| Agent | Description | Status |', '|:--|---|--:|', '| web | Pair talk | running |', '| mobile | Pair talk | done |'];
+const PIPE = ['| Agent | Description | Status |', '|:--|---|--:|', '| web | Checkout | running |', '| mobile | Checkout | done |'];
 
 describe('statusTablesIn', () => {
   it('a box-drawing table inside a code fence: its lines without the fence', () => {
@@ -165,16 +165,16 @@ describe('parseStatusTable (D27): box-drawing tables', () => {
       '┌──────────┬────────────────────┬────────────┐',
       '│ Agent    │ Description        │ Status     │',
       '├──────────┼────────────────────┼────────────┤',
-      '│ 1. web   │ Pair talk at 360   │ 🟢 running │',
-      '│ 2. mobile│ Pair talk at 360   │ ⏳ queued  │',
+      '│ 1. web   │ Checkout at 360    │ 🟢 running │',
+      '│ 2. mobile│ Checkout at 360    │ ⏳ queued  │',
       '│ 3. qa    │ Coverage matrix    │ ❌ failed  │',
       '└──────────┴────────────────────┴────────────┘',
     ].join('\n');
     expect(box(text)).toEqual({
       header: ['Agent', 'Description', 'Status'],
       rows: [
-        ['1. web', 'Pair talk at 360', '🟢 running'],
-        ['2. mobile', 'Pair talk at 360', '⏳ queued'],
+        ['1. web', 'Checkout at 360', '🟢 running'],
+        ['2. mobile', 'Checkout at 360', '⏳ queued'],
         ['3. qa', 'Coverage matrix', '❌ failed'],
       ],
     });
@@ -205,16 +205,16 @@ describe('parseStatusTable (D27): box-drawing tables', () => {
       '┌──────────┬───────────────────────┬──────────┐',
       '│ Agent    │ Description           │ Status   │',
       '├──────────┼───────────────────────┼──────────┤',
-      '│ web      │ Pair talk at 360,     │ running  │',
+      '│ web      │ Checkout at 360,      │ running  │',
       '│          │ then 640              │          │',
-      '│ mobile   │ Pair talk             │ queued   │',
+      '│ mobile   │ Checkout              │ queued   │',
       '│ qa-web   │ Coverage              │ blocked  │',
       '│ runner   │ matrix                │          │',
       '└──────────┴───────────────────────┴──────────┘',
     ].join('\n');
     expect(box(text)?.rows).toEqual([
-      ['web', 'Pair talk at 360, then 640', 'running'],
-      ['mobile', 'Pair talk', 'queued'],
+      ['web', 'Checkout at 360, then 640', 'running'],
+      ['mobile', 'Checkout', 'queued'],
       ['qa-web runner', 'Coverage matrix', 'blocked'],
     ]);
   });
@@ -263,14 +263,14 @@ describe('parseStatusTable (D27): GFM pipe tables', () => {
       gfm([
         '| Agent | Description | Status |',
         '|:--|---|--:|',
-        '| **web** | Pair talk at 360, see [PR #12](https://github.com/o/r/pull/12) | ✅ *merged* |',
-        '| `mobile` | Pair talk ~~at 360~~ | 🟢 running |',
+        '| **web** | Checkout at 360, see [PR #12](https://github.com/o/r/pull/12) | ✅ *merged* |',
+        '| `mobile` | Checkout ~~at 360~~ | 🟢 running |',
       ]),
     ).toEqual({
       header: ['Agent', 'Description', 'Status'],
       rows: [
-        ['web', 'Pair talk at 360, see PR #12', '✅ merged'],
-        ['mobile', 'Pair talk at 360', '🟢 running'],
+        ['web', 'Checkout at 360, see PR #12', '✅ merged'],
+        ['mobile', 'Checkout at 360', '🟢 running'],
       ],
     });
   });

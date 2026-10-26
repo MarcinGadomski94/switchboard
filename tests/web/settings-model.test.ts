@@ -44,7 +44,7 @@ const GROUPS: SolutionGroup[] = [
     folder: 'microfrontends/',
     note: '',
     rule: 'editable',
-    solutions: ['login-front', 'content-library-front', 'acme-app-front', 'dashboard-front'].map((n) => solution(n, `microfrontends/${n}`, 'editable')),
+    solutions: ['loyalty-front', 'catalog-front', 'acme-web-front', 'delivery-front'].map((n) => solution(n, `microfrontends/${n}`, 'editable')),
   },
   { folder: 'mobile/', note: '', rule: 'editable', solutions: [solution('mobile', 'mobile', 'editable', 'Mobile')] },
   { folder: 'other/', note: 'on request only', rule: 'on-request', solutions: [solution('it-dashboard', 'other/it-dashboard', 'on-request', 'Other')] },
@@ -54,8 +54,8 @@ const GROUPS: SolutionGroup[] = [
     rule: 'read-only',
     solutions: [
       solution('infrastructure', 'infrastructure', 'read-only', 'Read-only'),
-      solution('legacy-login-microservice', 'deprecated/microservices/legacy-login-microservice', 'read-only', 'Read-only'),
-      solution('old-chat-front', 'deprecated/microfrontends/old-chat-front', 'read-only', 'Read-only'),
+      solution('legacy-accounts-microservice', 'deprecated/microservices/legacy-accounts-microservice', 'read-only', 'Read-only'),
+      solution('old-cart-front', 'deprecated/microfrontends/old-cart-front', 'read-only', 'Read-only'),
     ],
   },
 ];
@@ -76,10 +76,10 @@ describe('Settings model (M8.2)', () => {
 
   it('builds the scan table per top-level folder, splitting the read-only group back into its folders', () => {
     expect(scanRows(GROUPS, ROOT)).toEqual([
-      { folder: 'microfrontends/', count: 4, examples: 'login-front, content-library-front, acme-app-front, …', rule: 'editable', ruleLabel: 'editable' },
+      { folder: 'microfrontends/', count: 4, examples: 'loyalty-front, catalog-front, acme-web-front, …', rule: 'editable', ruleLabel: 'editable' },
       { folder: 'mobile/', count: 1, examples: 'mobile', rule: 'editable', ruleLabel: 'editable' },
       { folder: 'other/', count: 1, examples: 'it-dashboard', rule: 'on-request', ruleLabel: 'on request only' },
-      { folder: 'deprecated/', count: 2, examples: 'legacy-login-microservice, old-chat-front', rule: 'read-only', ruleLabel: 'read-only' },
+      { folder: 'deprecated/', count: 2, examples: 'legacy-accounts-microservice, old-cart-front', rule: 'read-only', ruleLabel: 'read-only' },
       { folder: 'infrastructure/', count: 1, examples: 'infrastructure', rule: 'read-only', ruleLabel: 'read-only' },
     ]);
   });

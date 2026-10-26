@@ -57,7 +57,7 @@ function card(index: number, name: string): Record<string, PartSpec> {
   };
 }
 
-/** Parts of the default view (first item: pair-talk-feature, 3 questions). */
+/** Parts of the default view (first item: checkout-redesign, 3 questions). */
 const DEFAULT_PARTS: Readonly<Record<string, PartSpec>> = {
   inbox: { path: [1, 0], geometry: 'box', copy: false },
   listColumn: { path: LIST, geometry: 'box', copy: false },

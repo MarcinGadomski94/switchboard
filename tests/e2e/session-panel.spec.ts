@@ -5,7 +5,7 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
 
 /**
  * M4.3, real path (D13, no demo seed): `node src/server/main.ts` with fake-claude
- * as the CLI, a temp workspace with a real git repo (`acme-app-front`) and a
+ * as the CLI, a temp workspace with a real git repo (`acme-web-front`) and a
  * session started with worktrees. The right panel shows:
  * - the agent cards: the main agent placed by its write into its worktree (path +
  *   ⎇ branch), a subagent from an Agent call (`subagent-forward`; D37: once done,
@@ -55,18 +55,18 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   const { id } = await world.startSession(page, 'panel-e2e', TASK, true);
   await expect.poll(async () => (await detail(page, id)).status).toBe('done');
   const started = await detail(page, id);
-  const worktreeFile = 'microfrontends/acme-app-front-wt-panel-e2e/src/panel.txt';
+  const worktreeFile = 'microfrontends/acme-web-front-wt-panel-e2e/src/panel.txt';
 
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
   const panel = page.getByTestId('session-right-panel');
   await expect(panel.getByTestId('agents-summary')).toHaveText('1 agents · 0 solutions · 0 branches');
-  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front']);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-web-front']);
   await expect(panel.getByTestId('agent-path')).toHaveText(['workspace root']);
   await expect(panel.getByTestId('terminal-line')).toHaveText(['Started', '$ ls', 'hello.txt', 'out.txt', 'DONE']);
 
   // A write into the session's worktree places the main agent there (path + ⎇ branch), live over /hub.
   await send(page, id, `Now the panel. [fake:write ${worktreeFile}]`);
-  await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-app-front']);
+  await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-web-front']);
   await expect(panel.getByTestId('agent-branch')).toHaveText(['⎇ PROJ-1-panel-e2e']);
   // Developer ruling 2026-09-28: the panel never scrolls sideways (long temp paths and the branch are cut with …).
   expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -83,10 +83,10 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   await expect(panel.getByTestId('agents-finished')).toHaveText('✓ 1 finished');
   await panel.getByTestId('agents-finished').click();
   await expect(cards).toHaveCount(2);
-  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-web-front', 'general-purpose']);
   await expect(panel.getByTestId('agent-desc')).toHaveText([TASK, 'Read hello.txt and return first line']);
   await expect(panel.getByTestId('agent-status')).toHaveText(['done', 'done']);
-  await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-app-front', 'workspace root']);
+  await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-web-front', 'workspace root']);
   await expect(cards.nth(1).getByTestId('agent-branch')).toHaveCount(0);
   const lines = panel.getByTestId('terminal-line');
   await expect(lines).toHaveText(['Started', '$ ls', 'hello.txt', 'out.txt', 'DONE', 'DONE', '[general-purpose] ✓ Read · hello.txt', 'alpha line one']);

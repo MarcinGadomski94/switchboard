@@ -47,7 +47,7 @@ test('every v2 page has Acme data: folders, projects, crews, notes, tasks, Insig
 
   await page.goto(`${server.baseUrl}/tasks`);
   await expect(page.getByText('Coverage matrix for PROJ-123')).toBeVisible();
-  await expect(page.getByText('PairTalkService contract')).toBeVisible();
+  await expect(page.getByText('CheckoutService contract')).toBeVisible();
 
   await page.goto(`${server.baseUrl}/insights`);
   await expect(page.getByText('Nothing in this range yet')).toHaveCount(0);

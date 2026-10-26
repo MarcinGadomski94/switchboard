@@ -203,32 +203,32 @@ describe('.codebase-memory-dirty (gap #4; the hook project ids)', () => {
   it('projectId follows the hook: runs of : / \\ → one dash, trimmed', () => {
     expect(projectId('/Users/me/Acme Corp/workspace')).toBe('Users-me-Acme Corp-workspace');
     expect(projectId('D:\\RiderProjects\\ws\\')).toBe('D-RiderProjects-ws');
-    expect(projectId('/Users/me/ws/nugets/login-nuget')).toBe('Users-me-ws-nugets-login-nuget');
+    expect(projectId('/Users/me/ws/nugets/api-client-nuget')).toBe('Users-me-ws-nugets-api-client-nuget');
   });
 
   it('names lines of the workspace root by repo; others keep their id', () => {
     const root = '/Users/me/Acme Corp/workspace';
     const rootId = projectId(root);
     const text = [
-      `${rootId}-microfrontends-acme-app-front`,
+      `${rootId}-microfrontends-acme-web-front`,
       '',
-      `${rootId.toLowerCase()}-nugets-design-system-nuget`,
+      `${rootId.toLowerCase()}-nugets-design-kit-nuget`,
       `${rootId}-mobile-src`,
-      `${rootId}-microfrontends-acme-app-front`,
-      'D-other-ws-nugets-login-nuget',
+      `${rootId}-microfrontends-acme-web-front`,
+      'D-other-ws-nugets-api-client-nuget',
       `${rootId}-unknowncat-x`,
       '   ',
     ].join('\r\n');
     expect(parseDirtyFile(text, root)).toEqual([
-      { id: `${rootId}-microfrontends-acme-app-front`, name: 'acme-app-front', path: path.join(root, 'microfrontends', 'acme-app-front'), markedAt: null },
+      { id: `${rootId}-microfrontends-acme-web-front`, name: 'acme-web-front', path: path.join(root, 'microfrontends', 'acme-web-front'), markedAt: null },
       {
-        id: `${rootId.toLowerCase()}-nugets-design-system-nuget`,
-        name: 'design-system-nuget',
-        path: path.join(root, 'nugets', 'design-system-nuget'),
+        id: `${rootId.toLowerCase()}-nugets-design-kit-nuget`,
+        name: 'design-kit-nuget',
+        path: path.join(root, 'nugets', 'design-kit-nuget'),
         markedAt: null,
       },
       { id: `${rootId}-mobile-src`, name: 'mobile', path: path.join(root, 'mobile', 'src'), markedAt: null },
-      { id: 'D-other-ws-nugets-login-nuget', name: 'D-other-ws-nugets-login-nuget', path: null, markedAt: null },
+      { id: 'D-other-ws-nugets-api-client-nuget', name: 'D-other-ws-nugets-api-client-nuget', path: null, markedAt: null },
       { id: `${rootId}-unknowncat-x`, name: `${rootId}-unknowncat-x`, path: null, markedAt: null },
     ]);
     expect(describeProject('anything', null)).toEqual({ id: 'anything', name: 'anything', path: null, markedAt: null });
@@ -240,19 +240,19 @@ describe('.codebase-memory-dirty (gap #4; the hook project ids)', () => {
     expect(await readDirtyProjects(null)).toEqual([]);
     const link = path.join(w.root, 'ws-link');
     await symlink(w.workspace, link);
-    await writeDirty(w.workspace, [`${projectId(w.workspace)}-functions-reminder-func`]);
+    await writeDirty(w.workspace, [`${projectId(w.workspace)}-functions-invoice-func`]);
     expect(await readDirtyProjects(link)).toEqual([
-      { id: `${projectId(w.workspace)}-functions-reminder-func`, name: 'reminder-func', path: path.join(link, 'functions', 'reminder-func'), markedAt: null },
+      { id: `${projectId(w.workspace)}-functions-invoice-func`, name: 'invoice-func', path: path.join(link, 'functions', 'invoice-func'), markedAt: null },
     ]);
   });
 
   it('GET /api/codebase-memory: the projects, indexed unknown', async () => {
     const w = await setup();
     expect((await call('GET', '/api/codebase-memory')).json()).toEqual({ projects: [], indexed: null });
-    await writeDirty(w.workspace, [`${projectId(w.workspace)}-microfrontends-acme-app-front`, `${projectId(w.workspace)}-mobile-x`]);
+    await writeDirty(w.workspace, [`${projectId(w.workspace)}-microfrontends-acme-web-front`, `${projectId(w.workspace)}-mobile-x`]);
     const status = (await call('GET', '/api/codebase-memory')).json() as CodebaseMemoryStatus;
     expect(status.indexed).toBeNull();
-    expect(status.projects.map((p) => p.name)).toEqual(['acme-app-front', 'mobile']);
+    expect(status.projects.map((p) => p.name)).toEqual(['acme-web-front', 'mobile']);
   });
 });
 
@@ -260,7 +260,7 @@ describe('POST /api/codebase-memory/reindex (gap #4)', () => {
   it('starts a background session from the built-in prompt through the supervisor (fake-claude); names never clash', async () => {
     const w = await setup();
     const rootId = projectId(w.workspace);
-    await writeDirty(w.workspace, [`${rootId}-microfrontends-acme-app-front`, `${rootId}-nugets-design-system-nuget`]);
+    await writeDirty(w.workspace, [`${rootId}-microfrontends-acme-web-front`, `${rootId}-nugets-design-kit-nuget`]);
     const response = await call('POST', '/api/codebase-memory/reindex');
     expect(response.statusCode).toBe(201);
     const session = response.json() as Session;
@@ -275,7 +275,7 @@ describe('POST /api/codebase-memory/reindex (gap #4)', () => {
       return lines.length > 0 ? lines : undefined;
     }, 'the first stdin message');
     expect(first).toEqual({ type: 'user', message: { role: 'user', content: expected } });
-    expect(expected).toContain(`- acme-app-front: ${path.join(w.workspace, 'microfrontends', 'acme-app-front')} (codebase-memory project ${rootId}-microfrontends-acme-app-front)`);
+    expect(expected).toContain(`- acme-web-front: ${path.join(w.workspace, 'microfrontends', 'acme-web-front')} (codebase-memory project ${rootId}-microfrontends-acme-web-front)`);
     expect(expected).toContain('index_repository with mode "full"');
     expect(expected).toContain('do not run the codebase-memory-mcp binary directly');
     await waitForStatus(w.store, session.id, ['done', 'idle']);

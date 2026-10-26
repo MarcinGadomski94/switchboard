@@ -19,7 +19,7 @@ import {
 
 /**
  * Visual oracle for the Solutions view (M6.2, D10): the app (demo seed) against
- * the prototype at 1440×900, both with `acme-app-front` selected (the prototype
+ * the prototype at 1440×900, both with `acme-web-front` selected (the prototype
  * opens on `mobile`, whose conflict card is M6.3). Gate: boxes ±2 px, exact copy,
  * computed styles equal to the prototype's and to the SPEC tokens. The pixel
  * diff is advisory (`docs/visual/solutions.md`).
@@ -41,18 +41,18 @@ const DETAIL = [...VIEW, 1];
 /** Children of the scroll list: group headers and rows, as the demo data orders them. */
 const GROUP_HEADERS: Readonly<Record<string, number>> = { microfrontends: 0, mobile: 5, nugets: 7, microservices: 10, functions: 13, readOnly: 15 };
 const ROWS: Readonly<Record<string, number>> = {
-  'acme-app-front': 1,
-  'dashboard-front': 2,
-  'login-front': 3,
-  'content-library-front': 4,
+  'acme-web-front': 1,
+  'delivery-front': 2,
+  'loyalty-front': 3,
+  'catalog-front': 4,
   mobile: 6,
-  'design-system-nuget': 8,
-  'acme-fonts-nuget': 9,
-  'acme-alerts-microservice': 11,
-  'login-microservice': 12,
-  'reminder-func': 14,
+  'design-kit-nuget': 8,
+  'acme-icons-nuget': 9,
+  'orders-microservice': 11,
+  'accounts-microservice': 12,
+  'invoice-func': 14,
   infrastructure: 16,
-  'old-chat-front': 17,
+  'old-cart-front': 17,
 };
 
 function parts(): Record<string, PartSpec> {
@@ -97,7 +97,7 @@ function parts(): Record<string, PartSpec> {
     out[`row:${name}:changes`] = { path: [...row, 3], geometry: 'box', copy: true };
   }
   out['row:mobile:flag'] = { path: [...SCROLL, ROWS['mobile'] as number, 0, 1, 1], geometry: 'box', copy: true };
-  out['row:acme-alerts-microservice:flag'] = { path: [...SCROLL, ROWS['acme-alerts-microservice'] as number, 0, 1, 1], geometry: 'box', copy: true };
+  out['row:orders-microservice:flag'] = { path: [...SCROLL, ROWS['orders-microservice'] as number, 0, 1, 1], geometry: 'box', copy: true };
   for (let i = 1; i <= 3; i++) {
     out[`card${i}`] = { path: [...DETAIL, 1, i], geometry: 'box', copy: true };
     out[`card${i}:branch`] = { path: [...DETAIL, 1, i, 0], geometry: 'box', copy: true };
@@ -180,10 +180,10 @@ test('Solutions view matches the prototype (tokens, boxes ±2 px, copy)', async 
   await openPrototypeSolutions(protoPage);
   await openApp(appPage, app.baseUrl, '/solutions');
   await appPage.getByTestId('solution-row').first().waitFor();
-  await selectRow(protoPage, 'acme-app-front');
-  await selectRow(appPage, 'acme-app-front');
-  await expect(appPage.getByTestId('solution-detail')).toHaveAttribute('data-solution', 'acme-app-front');
-  await expect(protoPage.getByText('D:\\acme\\microfrontends\\acme-app-front', { exact: true })).toBeVisible();
+  await selectRow(protoPage, 'acme-web-front');
+  await selectRow(appPage, 'acme-web-front');
+  await expect(appPage.getByTestId('solution-detail')).toHaveAttribute('data-solution', 'acme-web-front');
+  await expect(protoPage.getByText('D:\\acme\\microfrontends\\acme-web-front', { exact: true })).toBeVisible();
 
   const spec = parts();
   const paths = Object.fromEntries(Object.entries(spec).map(([name, part]) => [name, part.path]));
@@ -283,9 +283,9 @@ test('Solutions view matches the prototype (tokens, boxes ±2 px, copy)', async 
     computedRows.push(`| ${key} | ${want} | ${got} | ${got === want ? 'ok' : 'FAIL'} |`);
   }
   const dots = await appPage.evaluate(() => ({
-    acme: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-app-front"] .sb-sol-dot')!).backgroundColor,
-    notifications: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-alerts-microservice"] .sb-sol-dot')!).backgroundColor,
-    calendar: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="reminder-func"] .sb-sol-dot')!).backgroundColor,
+    acme: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-web-front"] .sb-sol-dot')!).backgroundColor,
+    notifications: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="orders-microservice"] .sb-sol-dot')!).backgroundColor,
+    calendar: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="invoice-func"] .sb-sol-dot')!).backgroundColor,
     mobileFlag: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="mobile"] .sb-sol-flag')!).color,
     ledgerUiFirst: getComputedStyle(document.querySelector('[data-testid="ledger-row"] span:nth-child(2)')!).color,
   }));
@@ -314,7 +314,7 @@ test('Solutions view matches the prototype (tokens, boxes ±2 px, copy)', async 
   }
 
   // Advisory pixel diff + side-by-side captures (the Solutions view, then the whole page).
-  await selectRow(protoPage, 'acme-app-front');
+  await selectRow(protoPage, 'acme-web-front');
   const clip = { x: 256, y: 0, width: 1184, height: 900 };
   const protoMain = await protoPage.screenshot({ clip });
   const appMain = await appPage.screenshot({ clip });
@@ -346,8 +346,8 @@ function report(input: {
 }): string {
   return `# Visual oracle · Solutions (M6.2)
 
-Generated by \`tests/e2e/visual/solutions.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/solutions\`, \`acme-app-front\` selected.
-Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, Solutions view, \`acme-app-front\` selected (it opens on \`mobile\`, whose conflict card is M6.3).
+Generated by \`tests/e2e/visual/solutions.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/solutions\`, \`acme-web-front\` selected.
+Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, Solutions view, \`acme-web-front\` selected (it opens on \`mobile\`, whose conflict card is M6.3).
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
 

@@ -239,7 +239,7 @@ export function answerBody(questions: readonly Pick<Question, 'id' | 'options'>[
 /**
  * The lines of the "answers" bubble once a batch is answered: `<source name>: <label>`
  * (prototype `ssAnswered`: the source's part before the first `" · "`, so
- * `web · microfrontends/acme-app-front` → `web`; M4.2), D39: the own answer's text
+ * `web · microfrontends/acme-web-front` → `web`; M4.2), D39: the own answer's text
  * verbatim in place of the label. D128: a multi-select answer lists every picked
  * label and then its own text, joined with `", "`.
  */

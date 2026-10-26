@@ -1695,7 +1695,7 @@ export interface PhaseLedgerEntry {
   readonly interface: string;
   /** `UI-first` or `integration`. */
   readonly phase: string;
-  /** Where the seam is (`seam TODO · PairTalkViewModel.cs:41`); empty when the ledger names none. */
+  /** Where the seam is (`seam TODO · CheckoutViewModel.cs:41`); empty when the ledger names none. */
   readonly seam: string;
 }
 
@@ -1703,7 +1703,7 @@ export interface PhaseLedgerEntry {
 export interface SolutionArtifact {
   /** Artifact type tag (`CONTRACT`, `QA`, `FOLLOWUP`, …). */
   readonly type: string;
-  /** Path inside the solution (`contracts/pair-talk.md`) or the artifact's name. */
+  /** Path inside the solution (`contracts/checkout.md`) or the artifact's name. */
   readonly name: string;
   /** Short state (`locked`, `2 pending`); empty when none. */
   readonly meta: string;
@@ -1821,7 +1821,7 @@ export type CodebaseMemoryFreshness = 'fresh' | 'dirty' | 'unknown';
 export interface Solution {
   readonly name: string;
   readonly path: string;
-  /** Path from the workspace root, `/`-separated (`microfrontends/acme-app-front`, `mobile`). M6.2. */
+  /** Path from the workspace root, `/`-separated (`microfrontends/acme-web-front`, `mobile`). M6.2. */
   readonly relativePath: string;
   /** Filter pill: Web, Mobile, NuGet, Backend, Read-only (or Other for `other/`). */
   readonly type: string;
@@ -2147,7 +2147,7 @@ export interface FrameHelperOpenError {
 export interface CodebaseMemoryProject {
   /** The line of the file verbatim: codebase-memory's project id. */
   readonly id: string;
-  /** The repo folder name (`acme-app-front`, `mobile`), else the id. */
+  /** The repo folder name (`acme-web-front`, `mobile`), else the id. */
   readonly name: string;
   /** Absolute repo path when the id belongs to the workspace root, else `null`. */
   readonly path: string | null;

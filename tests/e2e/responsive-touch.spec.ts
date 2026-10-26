@@ -100,7 +100,7 @@ test('long-press drag: a row lifts after the hold, goes into a folder, and re-or
   const finger = await Finger.of(page);
 
   // Into the folder.
-  const row = page.locator('a.sb-session[data-session-id="qa-pair-talk"]');
+  const row = page.locator('a.sb-session[data-session-id="qa-checkout"]');
   const folder = page.locator(`[data-testid="sidebar-folder"][data-folder-id="${folderId}"]`);
   await row.scrollIntoViewIfNeeded();
   const start = await center(row);
@@ -115,7 +115,7 @@ test('long-press drag: a row lifts after the hold, goes into a folder, and re-or
   await finger.move(start, target);
   await expect(folder).toHaveAttribute('data-drop', 'into');
   await finger.up();
-  await expect.poll(async () => (await layout(page)).folders.find((f) => f.id === folderId)?.sessionIds ?? []).toContain('qa-pair-talk');
+  await expect.poll(async () => (await layout(page)).folders.find((f) => f.id === folderId)?.sessionIds ?? []).toContain('qa-checkout');
   await expect(page.getByTestId('sidebar-touch-ghost')).toHaveCount(0);
   // The release did not follow the row's link.
   await expect(page).toHaveURL(/\/history$/);
@@ -150,7 +150,7 @@ test('D77 · the Todos board: a card held still lifts and goes into another colu
     const answer = (await (await fetch(`/api/sessions/${session}/todos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Drag me by touch' }) })).json()) as { todos: Array<{ id: string; title: string }> };
     window.localStorage.setItem('sb.todos.view', 'board');
     return answer.todos.find((todo) => todo.title === 'Drag me by touch')?.id ?? '';
-  }, 'pair-talk-feature');
+  }, 'checkout-redesign');
   await openPage(page, app.baseUrl, '/todos');
   const board = page.getByTestId('todo-board');
   const card = board.locator(`[data-testid="todo-item"][data-todo-id="${todoId}"]`);
@@ -178,7 +178,7 @@ test('D77 · the Todos board: a card held still lifts and goes into another colu
       await fetch(`/api/sessions/${session}/todos/${id}`, { method: 'DELETE' });
       window.localStorage.removeItem('sb.todos.view');
     },
-    { session: 'pair-talk-feature', id: todoId },
+    { session: 'checkout-redesign', id: todoId },
   );
   await context.close();
 });
@@ -192,7 +192,7 @@ test('D77 · a phone board: a card held still and dropped on a column tab moves 
     window.localStorage.setItem('sb.todos.view', 'board');
     window.localStorage.removeItem('sb.todos.boardColumn');
     return answer.todos.find((todo) => todo.title === 'Drag me to a tab')?.id ?? '';
-  }, 'pair-talk-feature');
+  }, 'checkout-redesign');
   await openPage(page, app.baseUrl, '/todos');
   const board = page.getByTestId('todo-board');
   const card = board.locator(`[data-testid="todo-item"][data-todo-id="${todoId}"]`);
@@ -213,7 +213,7 @@ test('D77 · a phone board: a card held still and dropped on a column tab moves 
       await fetch(`/api/sessions/${session}/todos/${id}`, { method: 'DELETE' });
       window.localStorage.removeItem('sb.todos.view');
     },
-    { session: 'pair-talk-feature', id: todoId },
+    { session: 'checkout-redesign', id: todoId },
   );
   await context.close();
 });
@@ -273,7 +273,7 @@ test('tap targets are at least 44 × 44 px on a touch screen; the row ⋯ shows 
   await big(page.locator('.sb-layout-menu-item'), 'menu item');
   await page.keyboard.press('Escape');
 
-  await openPage(page, app.baseUrl, '/sessions/pair-talk-feature');
+  await openPage(page, app.baseUrl, '/sessions/checkout-redesign');
   await big(page.locator('.sb-sv-tab'), 'session tab');
   await big(page.getByTestId('session-more'), 'session ⋯');
   await big(page.getByTestId('panel-open'), 'panel button');
@@ -291,7 +291,7 @@ test('tap targets are at least 44 × 44 px on a touch screen; the row ⋯ shows 
   await page.keyboard.press('Escape');
 
   // D89 follow-up: an artifact row's ⋯ and checkbox, and its menu's Delete…
-  await openPage(page, app.baseUrl, '/sessions/pair-talk-feature/artifacts');
+  await openPage(page, app.baseUrl, '/sessions/checkout-redesign/artifacts');
   await big(page.getByTestId('session-artifacts').getByTestId('artifact-row-menu'), 'session artifact ⋯');
   await openPage(page, app.baseUrl, '/artifacts');
   await big(page.getByTestId('artifact-row-menu'), 'artifact ⋯');

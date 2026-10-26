@@ -77,7 +77,7 @@ test('the sidebar follows a new session live through /hub (sessionUpdated), with
         task: 'Write out.txt, then run a command.',
         workType: 'feature',
         mode: 'single',
-        solutions: ['acme-app-front'],
+        solutions: ['acme-web-front'],
         phase: 'ui-first',
         coordination: 'none',
         qa: null,

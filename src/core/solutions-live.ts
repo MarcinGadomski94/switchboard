@@ -79,7 +79,7 @@ function bulletEntry(body: string): PhaseLedgerEntry | null {
  * (`| interface | phase | seam |`, the phase cell holding only `UI-first` or
  * `integration`, the interface = the first non-empty cell before it, the seam =
  * the non-empty cells after it joined with ` · `) and list items
- * (`- PairTalkService → UI-first → seam TODO · PairTalkViewModel.cs:41`: the
+ * (`- CheckoutService → UI-first → seam TODO · CheckoutViewModel.cs:41`: the
  * interface before the first phase word, the seam after it, separators such as
  * `→`, `->`, `:`, dashes and `|` trimmed). Header and separator rows, headings,
  * prose, items without a phase word or without an interface and fenced code are

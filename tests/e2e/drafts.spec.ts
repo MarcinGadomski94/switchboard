@@ -152,7 +152,7 @@ test('a question card\'s "Other…" answer and picked option come back after a s
 test('the todo + Add form comes back after a reload; Cancel clears it (D102: no review card drafts)', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(`${world.baseUrl}/`);
-  const { id } = await world.startSession(page, 'drafts-review', '[fake:write microfrontends/acme-app-front/notes.md]');
+  const { id } = await world.startSession(page, 'drafts-review', '[fake:write microfrontends/acme-web-front/notes.md]');
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
 
   // + Add (the composer's "+ Todo" while the list is empty): a title and an estimate.
@@ -244,7 +244,7 @@ test('ruling 2026-10-09: the New-session form is kept per machine; Cancel keeps 
 test('ruling 2026-10-09: a deleted todo takes its Edit draft with it', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(`${world.baseUrl}/`);
-  const { id } = await world.startSession(page, 'drafts-commit', '[fake:write microfrontends/acme-app-front/commit-notes.md]');
+  const { id } = await world.startSession(page, 'drafts-commit', '[fake:write microfrontends/acme-web-front/commit-notes.md]');
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
 
   // A todo with an open Edit form, then deleted from another device (a direct API call).

@@ -75,7 +75,7 @@ export function isBatchWaiting(batch: QuestionBatchRecord): boolean {
 
 /**
  * The name part of a question source (prototype: the part before the first
- * `" · "`, so `web · microfrontends/acme-app-front` → `web`); a source without it
+ * `" · "`, so `web · microfrontends/acme-web-front` → `web`); a source without it
  * is returned as it is.
  */
 export function sourceName(source: string): string {
@@ -84,8 +84,8 @@ export function sourceName(source: string): string {
 }
 
 /**
- * The last folder of a workspace-relative path (`microfrontends/acme-app-front` →
- * `acme-app-front`, `mobile/` → `mobile`); the path itself when it has none.
+ * The last folder of a workspace-relative path (`microfrontends/acme-web-front` →
+ * `acme-web-front`, `mobile/` → `mobile`); the path itself when it has none.
  */
 function lastSegment(folder: string): string {
   return folder.split(/[\\/]/).filter(Boolean).pop() ?? folder;

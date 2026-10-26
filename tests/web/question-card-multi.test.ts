@@ -32,7 +32,7 @@ function question(id: string, text: string, labels: string[], multiSelect: boole
     id,
     batchId: 'req-1',
     sessionId: 's1',
-    source: 'web · microfrontends/acme-app-front',
+    source: 'web · microfrontends/acme-web-front',
     text,
     header: null,
     options: labels.map((label) => ({ label, description: `${label} option` })),

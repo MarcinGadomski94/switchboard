@@ -43,23 +43,23 @@ async function worktree(workspace: string, relative: string): Promise<void> {
 async function fixtureWorkspace(): Promise<string> {
   const ws = await tempWorkspace();
   await copyFile(ROUTER_FIXTURE, path.join(ws, 'AGENTS.md'));
-  await repo(ws, 'microfrontends/acme-app-front');
-  await repo(ws, 'microfrontends/login-front');
-  await worktree(ws, 'microfrontends/acme-app-front-wt-pair-talk'); // gap #16
+  await repo(ws, 'microfrontends/acme-web-front');
+  await repo(ws, 'microfrontends/loyalty-front');
+  await worktree(ws, 'microfrontends/acme-web-front-wt-checkout'); // gap #16
   await mkdir(path.join(ws, 'microfrontends', 'not-cloned-front', 'src'), { recursive: true }); // no .git: still a solution slot
   await mkdir(path.join(ws, 'microfrontends', '.idea'), { recursive: true });
   await writeFile(path.join(ws, 'microfrontends', 'notes.md'), 'a file\n');
   await repo(ws, 'mobile');
   await mkdir(path.join(ws, 'mobile', 'Acme.Mobile'), { recursive: true });
-  await repo(ws, 'nugets/design-system-nuget');
-  await worktree(ws, 'nugets/design-system-nuget-wt-variants');
-  await repo(ws, 'microservices/acme-alerts-microservice');
+  await repo(ws, 'nugets/design-kit-nuget');
+  await worktree(ws, 'nugets/design-kit-nuget-wt-variants');
+  await repo(ws, 'microservices/orders-microservice');
   // functions/ does not exist in this workspace
   await repo(ws, 'other/it-dashboard');
   await repo(ws, 'other/switchboard');
   await worktree(ws, 'other/switchboard/.worktrees/w1-solutions'); // inside a repo: never scanned
-  await repo(ws, 'deprecated/microfrontends/old-chat-front');
-  await worktree(ws, 'deprecated/microfrontends/old-chat-front-wt-x');
+  await repo(ws, 'deprecated/microfrontends/old-cart-front');
+  await worktree(ws, 'deprecated/microfrontends/old-cart-front-wt-x');
   await repo(ws, 'deprecated/mobile'); // a repo at the type-group level (the router lists `deprecated/mobile/`)
   await mkdir(path.join(ws, 'deprecated', 'mobile', 'src'), { recursive: true });
   await mkdir(path.join(ws, 'deprecated', 'nugets'), { recursive: true }); // an empty type group
@@ -87,14 +87,14 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
         '',
         'editable',
         [
-          ['acme-app-front', p('microfrontends', 'acme-app-front'), 'Web', 'editable'],
-          ['login-front', p('microfrontends', 'login-front'), 'Web', 'editable'],
+          ['acme-web-front', p('microfrontends', 'acme-web-front'), 'Web', 'editable'],
+          ['loyalty-front', p('microfrontends', 'loyalty-front'), 'Web', 'editable'],
           ['not-cloned-front', p('microfrontends', 'not-cloned-front'), 'Web', 'editable'],
         ],
       ],
       ['mobile/', '', 'editable', [['mobile', p('mobile'), 'Mobile', 'editable']]],
-      ['nugets/', '', 'editable', [['design-system-nuget', p('nugets', 'design-system-nuget'), 'NuGet', 'editable']]],
-      ['microservices/', '', 'editable', [['acme-alerts-microservice', p('microservices', 'acme-alerts-microservice'), 'Backend', 'editable']]],
+      ['nugets/', '', 'editable', [['design-kit-nuget', p('nugets', 'design-kit-nuget'), 'NuGet', 'editable']]],
+      ['microservices/', '', 'editable', [['orders-microservice', p('microservices', 'orders-microservice'), 'Backend', 'editable']]],
       [
         'other/',
         'on request only',
@@ -111,7 +111,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
         [
           ['infrastructure', p('infrastructure'), 'Read-only', 'read-only'],
           ['mobile', p('deprecated', 'mobile'), 'Read-only', 'read-only'],
-          ['old-chat-front', p('deprecated', 'microfrontends', 'old-chat-front'), 'Read-only', 'read-only'],
+          ['old-cart-front', p('deprecated', 'microfrontends', 'old-cart-front'), 'Read-only', 'read-only'],
         ],
       ],
     ]);
@@ -139,11 +139,11 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     ]);
     const web = scan.folders[0]?.solutions ?? [];
     expect(web.map((s) => [s.relativePath, s.git])).toEqual([
-      ['microfrontends/acme-app-front', true],
-      ['microfrontends/login-front', true],
+      ['microfrontends/acme-web-front', true],
+      ['microfrontends/loyalty-front', true],
       ['microfrontends/not-cloned-front', false],
     ]);
-    expect(scan.folders[6]?.solutions.map((s) => s.relativePath)).toEqual(['deprecated/microfrontends/old-chat-front', 'deprecated/mobile']);
+    expect(scan.folders[6]?.solutions.map((s) => s.relativePath)).toEqual(['deprecated/microfrontends/old-cart-front', 'deprecated/mobile']);
   });
 
   it('folders the router adds are scanned with its rule; the router can tighten a baseline folder', async () => {
@@ -160,7 +160,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
       ].join('\n'),
     );
     await repo(ws, 'microfrontends/web-front');
-    await repo(ws, 'nugets/acme-fonts-nuget');
+    await repo(ws, 'nugets/acme-icons-nuget');
     await repo(ws, 'archive/old-repo');
     await worktree(ws, 'archive/old-repo-wt-x');
     await repo(ws, 'labs/spike');
@@ -171,11 +171,11 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
       ['microfrontends/', '', 'editable', ['web-front:Web']],
       ['labs/', 'on request only', 'on-request', ['spike:Other']],
       ['tools/', '', 'editable', ['tools:Other']],
-      ['read-only', 'nugets/ · archive/ · never edited', 'read-only', ['acme-fonts-nuget:Read-only', 'old-repo:Read-only']],
+      ['read-only', 'nugets/ · archive/ · never edited', 'read-only', ['acme-icons-nuget:Read-only', 'old-repo:Read-only']],
     ]);
     expect(await scanner.isReadOnly('archive/old-repo')).toBe(true);
-    expect(await scanner.isReadOnly('acme-fonts-nuget')).toBe(true);
-    expect(await scanner.isReadOnly('nugets/acme-fonts-nuget')).toBe(true);
+    expect(await scanner.isReadOnly('acme-icons-nuget')).toBe(true);
+    expect(await scanner.isReadOnly('nugets/acme-icons-nuget')).toBe(true);
     expect(await scanner.isReadOnly('web-front')).toBe(false);
     expect(await scanner.isReadOnly('labs/spike')).toBe(false);
     // `nugets/mobile` does not exist, so a tightened nugets/ never makes the live mobile read-only.
@@ -261,7 +261,7 @@ describe('WorkspaceScanner · real git checkouts and worktrees', () => {
     world = await makeGitWorld();
     const w = world;
     // A real gap #1 worktree next to the repo, and one inside the repo (the lane layout).
-    await w.git(w.web, 'worktree', 'add', '-q', '-b', 'session/pair-talk', path.join(w.workspace, 'microfrontends', 'web-front-wt-pair-talk'));
+    await w.git(w.web, 'worktree', 'add', '-q', '-b', 'session/checkout', path.join(w.workspace, 'microfrontends', 'web-front-wt-checkout'));
     await w.git(w.web, 'worktree', 'add', '-q', '-b', 'lane/x', path.join(w.web, '.worktrees', 'x'));
     await w.makeRepo(path.join(w.workspace, 'other', 'switchboard'));
     await w.git(path.join(w.workspace, 'other', 'switchboard'), 'worktree', 'add', '-q', '-b', 'session/y', path.join(w.workspace, 'other', 'switchboard-wt-y'));

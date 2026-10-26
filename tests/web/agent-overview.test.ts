@@ -29,7 +29,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: 'main',
     kind: 'main',
-    name: 'acme-app-front',
+    name: 'acme-web-front',
     description: null,
     solutionPath: null,
     branch: null,
@@ -41,13 +41,13 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 
 describe('derived table rows', () => {
   it('a session with only the main agent: one row, the task\'s first line as its description, no solution yet', () => {
-    const rows = overviewRows([agent({ status: 'done' })], { status: 'done', task: 'Build the pair-talk screen.\nMore detail.' });
+    const rows = overviewRows([agent({ status: 'done' })], { status: 'done', task: 'Build the checkout screen.\nMore detail.' });
     expect(rows).toEqual([
       {
         id: 'main',
         main: true,
-        name: 'acme-app-front',
-        description: 'Build the pair-talk screen.',
+        name: 'acme-web-front',
+        description: 'Build the checkout screen.',
         solution: '—',
         solutionPath: null,
         status: 'done',
@@ -59,14 +59,14 @@ describe('derived table rows', () => {
   it('the main agent first, then each subagent in start order; the solution is the folder name of solutionPath (the path is kept for the tooltip)', () => {
     const rows = overviewRows(
       [
-        agent({ solutionPath: 'microfrontends/acme-app-front' }),
+        agent({ solutionPath: 'microfrontends/acme-web-front' }),
         agent({ id: 'a', kind: 'subagent', name: 'general-purpose', description: 'Read hello.txt', solutionPath: 'mobile/' }),
         agent({ id: 'b', kind: 'subagent', name: 'Explore', description: null }),
       ],
       { status: 'run', task: 'Task' },
     );
     expect(rows.map((row) => [row.name, row.main, row.description, row.solution, row.solutionPath])).toEqual([
-      ['acme-app-front', true, 'Task', 'acme-app-front', 'microfrontends/acme-app-front'],
+      ['acme-web-front', true, 'Task', 'acme-web-front', 'microfrontends/acme-web-front'],
       ['general-purpose', false, 'Read hello.txt', 'mobile', 'mobile/'],
       ['Explore', false, '', '—', null],
     ]);

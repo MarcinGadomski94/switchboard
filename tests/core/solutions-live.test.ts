@@ -17,13 +17,13 @@ describe('parsePhaseLedger (gap #12: table or bullets, lenient)', () => {
       '',
       '| Interface | Phase | Seam |',
       '|---|:---:|---|',
-      '| `PairTalkService` | UI-first | mock-DI | fixtures/pair-talk.json |',
+      '| `CheckoutService` | UI-first | mock-DI | fixtures/checkout.json |',
       '| **ProfileConnector** | integration | Tier B green 09-24 |',
       '| NoPhaseHere | later | x |',
       '| | UI-first | no interface |',
     ].join('\n');
     expect(parsePhaseLedger(text)).toEqual([
-      { interface: 'PairTalkService', phase: 'UI-first', seam: 'mock-DI · fixtures/pair-talk.json' },
+      { interface: 'CheckoutService', phase: 'UI-first', seam: 'mock-DI · fixtures/checkout.json' },
       { interface: 'ProfileConnector', phase: 'integration', seam: 'Tier B green 09-24' },
     ]);
   });
@@ -32,8 +32,8 @@ describe('parsePhaseLedger (gap #12: table or bullets, lenient)', () => {
     const text = [
       'Interfaces of this solution (interface → phase → seam):',
       '',
-      '- PairTalkService → UI-first → seam TODO · PairTalkViewModel.cs:41',
-      '* `PushPreferencesClient`: integration — Tier A pending on BFF route',
+      '- CheckoutService → UI-first → seam TODO · CheckoutViewModel.cs:41',
+      '* `OrderHistoryClient`: integration — Tier A pending on BFF route',
       '1. Billing -> ui first',
       '- a bullet without any phase word',
       '```',
@@ -42,8 +42,8 @@ describe('parsePhaseLedger (gap #12: table or bullets, lenient)', () => {
       '  - Nested: Integration | seam in Nested.cs',
     ].join('\r\n');
     expect(parsePhaseLedger(text)).toEqual([
-      { interface: 'PairTalkService', phase: 'UI-first', seam: 'seam TODO · PairTalkViewModel.cs:41' },
-      { interface: 'PushPreferencesClient', phase: 'integration', seam: 'Tier A pending on BFF route' },
+      { interface: 'CheckoutService', phase: 'UI-first', seam: 'seam TODO · CheckoutViewModel.cs:41' },
+      { interface: 'OrderHistoryClient', phase: 'integration', seam: 'Tier A pending on BFF route' },
       { interface: 'Billing', phase: 'UI-first', seam: '' },
       { interface: 'Nested', phase: 'integration', seam: 'seam in Nested.cs' },
     ]);
@@ -92,7 +92,7 @@ describe('row summaries', () => {
 
   it('branch from .git/HEAD: a ref, a detached commit, junk', () => {
     expect(branchFromHead('ref: refs/heads/main\n')).toBe('main');
-    expect(branchFromHead('ref: refs/heads/feature/pair-talk-360\n')).toBe('feature/pair-talk-360');
+    expect(branchFromHead('ref: refs/heads/feature/checkout-redesign\n')).toBe('feature/checkout-redesign');
     expect(branchFromHead('0123456789abcdef0123456789abcdef01234567\n')).toBe('0123456');
     expect(branchFromHead('garbage')).toBeNull();
   });
@@ -101,7 +101,7 @@ describe('row summaries', () => {
     expect(branchOwnerTitle({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' })).toBe('JIRA Ticket handling');
     expect(branchOwnerTitle({ name: 'button-rollout', title: null })).toBe('button-rollout');
     expect(branchOwnerTitle({ name: 'button-rollout' })).toBe('button-rollout');
-    expect(branchOwnerTitle({ name: 'pair-talk-640', title: 'pair-talk-640' })).toBe('pair-talk-640');
+    expect(branchOwnerTitle({ name: 'checkout-page-640', title: 'checkout-page-640' })).toBe('checkout-page-640');
     expect(branchOwnerTitle(null)).toBeNull();
     expect(branchOwnerTitle(undefined)).toBeNull();
   });

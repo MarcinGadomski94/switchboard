@@ -59,11 +59,11 @@ describe('POST /api/sessions · validation (contract → NewSession)', () => {
   it('422 for each invalid field; nothing is spawned', async () => {
     const w = await setup('handoff-start');
     const cases: Array<[string, Record<string, unknown>, string]> = [
-      ['name not kebab-case', { name: 'Pair Talk' }, 'name'],
+      ['name not kebab-case', { name: 'Checkout' }, 'name'],
       // D38: no solutions is allowed (the agent determines them); a list that is not a list is not.
       ['solutions not a list', { solutions: 'web-front' }, 'solutions'],
       ['a blank solution', { solutions: [' '] }, 'solutions'],
-      ['read-only deprecated path', { solutions: ['deprecated/microfrontends/old-chat-front'] }, 'solutions'],
+      ['read-only deprecated path', { solutions: ['deprecated/microfrontends/old-cart-front'] }, 'solutions'],
       ['read-only infrastructure', { solutions: ['infrastructure'] }, 'solutions'],
       ['path escape', { solutions: ['../elsewhere'] }, 'solutions'],
       ['qa without qa', { workType: 'qa', qa: null }, 'qa'],
@@ -113,7 +113,7 @@ describe('POST /api/sessions · validation (contract → NewSession)', () => {
 describe('session routes over the real supervisor + fake-claude', () => {
   it('create → list/detail → events?since → detach → attach → message', async () => {
     const w = await setup('handoff-start');
-    const created = await call('POST', '/api/sessions', newSession({ mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'] }));
+    const created = await call('POST', '/api/sessions', newSession({ mode: 'orchestrator', solutions: ['acme-web-front', 'mobile'] }));
     expect(created.statusCode).toBe(201);
     const session = created.json() as Session;
     expect(session).toMatchObject({ name: 'demo-session', status: 'run', attached: true, mode: 'orchestrator', openQuestionCount: 0 });

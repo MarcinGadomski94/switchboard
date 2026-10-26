@@ -14,7 +14,7 @@ function session(overrides: Partial<Session>): Session {
   return {
     origin: 'switchboard',
     id: 's1',
-    name: 'pair-talk-feature',
+    name: 'checkout-redesign',
     claudeSessionId: 'c1',
     status: 'run',
     workType: null,
@@ -70,8 +70,8 @@ const TOOLS: Tool[] = [
 ];
 
 const SESSIONS: Session[] = [
-  session({ id: 'id-1', name: 'pair-talk-feature', mode: 'orchestrator', workType: 'feature', phase: 'ui-first' }),
-  session({ id: 'id-2', name: 'reminder-func-fix', mode: 'single' }),
+  session({ id: 'id-1', name: 'checkout-redesign', mode: 'orchestrator', workType: 'feature', phase: 'ui-first' }),
+  session({ id: 'id-2', name: 'invoice-func-fix', mode: 'single' }),
 ];
 
 const GROUPS: SolutionGroup[] = [
@@ -79,14 +79,14 @@ const GROUPS: SolutionGroup[] = [
     folder: 'microfrontends/',
     note: '',
     rule: 'editable',
-    solutions: [solution({ name: 'acme-app-front', path: '/ws/microfrontends/acme-app-front' }), solution({ name: 'login-front', path: '/ws/microfrontends/login-front' })],
+    solutions: [solution({ name: 'acme-web-front', path: '/ws/microfrontends/acme-web-front' }), solution({ name: 'loyalty-front', path: '/ws/microfrontends/loyalty-front' })],
   },
   { folder: 'mobile/', note: '', rule: 'editable', solutions: [solution({ name: 'mobile', path: '/ws/mobile', type: 'Mobile' })] },
   {
     folder: 'read-only',
     note: 'deprecated/ · never edited',
     rule: 'read-only',
-    solutions: [solution({ name: 'old-chat-front', path: '/ws/deprecated/microfrontends/old-chat-front', rule: 'read-only' })],
+    solutions: [solution({ name: 'old-cart-front', path: '/ws/deprecated/microfrontends/old-cart-front', rule: 'read-only' })],
   },
 ];
 
@@ -110,12 +110,12 @@ describe('palette model (M8.3)', () => {
       'action | Add todo… | todo <title>',
       'tool | Codebase Memory | localhost:13000',
       'tool | Acme Tool | ',
-      'session | pair-talk-feature | orch · feature · UI-first',
-      'session | reminder-func-fix | single',
-      'solution | acme-app-front | microfrontends/',
-      'solution | login-front | microfrontends/',
+      'session | checkout-redesign | orch · feature · UI-first',
+      'session | invoice-func-fix | single',
+      'solution | acme-web-front | microfrontends/',
+      'solution | loyalty-front | microfrontends/',
       'solution | mobile | mobile/',
-      'solution | old-chat-front | read-only',
+      'solution | old-cart-front | read-only',
       // D85: the tutorial's replay comes last.
       // D106: New chat, after the prototype's entries.
       'action | New chat | plan without editing',
@@ -136,14 +136,14 @@ describe('palette model (M8.3)', () => {
     expect(by('Settings')).toEqual({ type: 'route', route: { view: 'settings', section: null } });
     expect(by('New session')).toEqual({ type: 'new-session' });
     expect(by('Acme Tool')).toEqual({ type: 'route', route: { view: 'tool', id: 'sw' } });
-    expect(by('reminder-func-fix')).toEqual({ type: 'route', route: { view: 'session', id: 'id-2', tab: 'chat' } });
+    expect(by('invoice-func-fix')).toEqual({ type: 'route', route: { view: 'session', id: 'id-2', tab: 'chat' } });
     expect(by('mobile')).toEqual({ type: 'solution', path: '/ws/mobile' });
   });
 
   it('D33: closed sessions are left out (a stale list may still hold one), even when the query names them', () => {
     const withClosed = [...SESSIONS, session({ id: 'id-3', name: 'put-away', title: 'Put away', closedAt: '2026-09-28T10:00:00.000Z' })];
     const entries = paletteEntries({ sessions: withClosed, tools: null, solutions: null });
-    expect(entries.filter((e) => e.kind === 'session').map((e) => e.label)).toEqual(['pair-talk-feature', 'reminder-func-fix']);
+    expect(entries.filter((e) => e.kind === 'session').map((e) => e.label)).toEqual(['checkout-redesign', 'invoice-func-fix']);
     expect(filterPalette(entries, 'put')).toEqual([]);
     expect(filterPalette(entries, 'away')).toEqual([]);
   });
@@ -172,14 +172,14 @@ describe('palette model (M8.3)', () => {
     expect(filterPalette(entries, '')).toHaveLength(PALETTE_MAX_RESULTS);
     expect(filterPalette(entries, '').map((e) => e.label)).toEqual(entries.slice(0, 10).map((e) => e.label));
     // by label
-    expect(rows(filterPalette(entries, 'ACME'))).toEqual(['tool | Acme Tool | ', 'solution | acme-app-front | microfrontends/']);
+    expect(rows(filterPalette(entries, 'ACME'))).toEqual(['tool | Acme Tool | ', 'solution | acme-web-front | microfrontends/']);
     // by kind
     expect(filterPalette(entries, 'view').map((e) => e.label)).toEqual(['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History', 'Insights', 'Settings']);
-    expect(filterPalette(entries, 'Session').map((e) => e.label)).toEqual(['New session', 'pair-talk-feature', 'reminder-func-fix']);
+    expect(filterPalette(entries, 'Session').map((e) => e.label)).toEqual(['New session', 'checkout-redesign', 'invoice-func-fix']);
     // by hint
-    expect(filterPalette(entries, 'microfrontends/').map((e) => e.label)).toEqual(['acme-app-front', 'login-front']);
+    expect(filterPalette(entries, 'microfrontends/').map((e) => e.label)).toEqual(['acme-web-front', 'loyalty-front']);
     expect(filterPalette(entries, 'localhost').map((e) => e.label)).toEqual(['Codebase Memory']);
-    expect(filterPalette(entries, 'ui-first').map((e) => e.label)).toEqual(['pair-talk-feature']);
+    expect(filterPalette(entries, 'ui-first').map((e) => e.label)).toEqual(['checkout-redesign']);
     // across the joined fields (prototype: label + ' ' + kind + ' ' + hint)
     expect(filterPalette(entries, 'mobile solution mobile/').map((e) => e.label)).toEqual(['mobile']);
     expect(filterPalette(entries, 'nothing like this')).toEqual([]);

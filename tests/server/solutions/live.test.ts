@@ -55,9 +55,9 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld; m: WorktreeMa
   await g.commit(
     g.web,
     'phase-ledger.md',
-    '| Interface | Phase | Seam |\n|---|---|---|\n| PairTalkService | UI-first | mock-DI · fixtures/pair-talk.json |\n| ProfileConnector | integration | Tier B green 09-24 |\n',
+    '| Interface | Phase | Seam |\n|---|---|---|\n| CheckoutService | UI-first | mock-DI · fixtures/checkout.json |\n| ProfileConnector | integration | Tier B green 09-24 |\n',
   );
-  await g.commit(g.mobile, 'phase-ledger.md', '- `PushPreferencesClient` → integration → Tier A pending on BFF route\n');
+  await g.commit(g.mobile, 'phase-ledger.md', '- `OrderHistoryClient` → integration → Tier A pending on BFF route\n');
   // The hook marks web-front, and mobile through its `<root>-mobile-<subfolder>` form.
   await mkdir(path.join(ws, '.claude'), { recursive: true });
   await writeFile(
@@ -125,13 +125,13 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
       conflictSessions: [],
       branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }],
       ledger: [
-        { interface: 'PairTalkService', phase: 'UI-first', seam: 'mock-DI · fixtures/pair-talk.json' },
+        { interface: 'CheckoutService', phase: 'UI-first', seam: 'mock-DI · fixtures/checkout.json' },
         { interface: 'ProfileConnector', phase: 'integration', seam: 'Tier B green 09-24' },
       ],
       artifacts: [],
       codebaseMemory: 'dirty',
     });
-    expect(rows.get('mobile')).toMatchObject({ phase: 'integration', codebaseMemory: 'dirty', ledger: [{ interface: 'PushPreferencesClient', phase: 'integration' }] });
+    expect(rows.get('mobile')).toMatchObject({ phase: 'integration', codebaseMemory: 'dirty', ledger: [{ interface: 'OrderHistoryClient', phase: 'integration' }] });
     expect(rows.get('idle-nuget')).toMatchObject({ status: 'idle', phase: '—', changes: '—', ledger: null, artifacts: [], codebaseMemory: 'fresh' });
     expect(rows.get('old-front')).toMatchObject({
       rule: 'read-only',
@@ -155,12 +155,12 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
       '/api/sessions',
       newSession({
         name: 'wt-session',
-        title: 'Pair talk contract',
+        title: 'Checkout contract',
         solutions: ['web-front'],
         worktrees: true,
-        branch: 'PROJ-77-pair-talk-contract',
+        branch: 'PROJ-77-checkout-contract',
         phase: 'integration',
-        task: '[fake:write microfrontends/web-front-wt-wt-session/contracts/pair-talk.md]',
+        task: '[fake:write microfrontends/web-front-wt-wt-session/contracts/checkout.md]',
       }),
     );
     expect(worktreeSession.statusCode).toBe(201);
@@ -184,11 +184,11 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(web?.branches).toEqual([
       // The worktree keeps the short name (D32: the branch is the developer's ticket branch); the owner's title is the session's.
       {
-        branch: 'PROJ-77-pair-talk-contract',
+        branch: 'PROJ-77-checkout-contract',
         worktree: path.join(g.workspace, 'microfrontends', 'web-front-wt-wt-session'),
         sessionId: wt.id,
         owner: 'wt-session',
-        ownerTitle: 'Pair talk contract',
+        ownerTitle: 'Checkout contract',
         status: 'done',
       },
     ]);
@@ -223,7 +223,7 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(after.get('mobile')?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }]);
     expect(after.get('mobile')?.status).toBe('idle');
     expect(after.get('mobile')?.changes).toBe('—');
-    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.status])).toEqual([['PROJ-77-pair-talk-contract', 'wt-session', 'Pair talk contract', 'done']]);
+    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.status])).toEqual([['PROJ-77-checkout-contract', 'wt-session', 'Checkout contract', 'done']]);
     expect(after.get('web-front')?.changes).toBe('+1');
 
     // Reading the solutions never changes a tree.

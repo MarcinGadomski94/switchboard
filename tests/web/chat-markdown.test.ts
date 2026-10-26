@@ -78,8 +78,8 @@ describe('ChatMarkdown · plain text looks as before', () => {
     expect(render('a  \nb')).toBe('<p>a<br/>b</p>');
     expect(render('a\\\nb')).toBe('<p>a<br/>b</p>');
     // The demo seed's texts and the fake CLI's tokens stay plain.
-    expect(render('Contract locked from Figma node 2231:884 and written to contracts/pair-talk.md.')).toBe(
-      '<p>Contract locked from Figma node 2231:884 and written to contracts/pair-talk.md.</p>',
+    expect(render('Contract locked from Figma node 2231:884 and written to contracts/checkout.md.')).toBe(
+      '<p>Contract locked from Figma node 2231:884 and written to contracts/checkout.md.</p>',
     );
     expect(render('[fake:ask-2q] Ask me two questions.')).toBe('<p>[fake:ask-2q] Ask me two questions.</p>');
   });
@@ -180,7 +180,7 @@ describe('ChatMarkdown · GFM blocks', () => {
       '┌─────────────────┬──────────────────────────┬────────────┐',
       '│ Agent           │ Description              │ Status     │',
       '├─────────────────┼──────────────────────────┼────────────┤',
-      '│ 1. web          │ Pair talk at 360         │ running    │',
+      '│ 1. web          │ Checkout at 360          │ running    │',
       '├─────────────────┼──────────────────────────┼────────────┤',
       '│ 2. mobile       │   indented   cells  kept │ done       │',
       '└─────────────────┴──────────────────────────┴────────────┘',

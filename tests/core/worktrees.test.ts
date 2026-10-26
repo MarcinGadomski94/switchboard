@@ -18,9 +18,9 @@ import {
 
 describe('gap #1 naming', () => {
   it('branch session/{name}, folder ../{repo}-wt-{name} next to the repo', () => {
-    expect(worktreeBranch('pair-talk-640')).toBe('session/pair-talk-640');
-    const repo = path.join(path.sep, 'ws', 'microfrontends', 'acme-app-front');
-    expect(worktreePath(repo, 'pair-talk-640')).toBe(path.join(path.sep, 'ws', 'microfrontends', 'acme-app-front-wt-pair-talk-640'));
+    expect(worktreeBranch('checkout-page-640')).toBe('session/checkout-page-640');
+    const repo = path.join(path.sep, 'ws', 'microfrontends', 'acme-web-front');
+    expect(worktreePath(repo, 'checkout-page-640')).toBe(path.join(path.sep, 'ws', 'microfrontends', 'acme-web-front-wt-checkout-page-640'));
     expect(worktreePath(path.join(path.sep, 'ws', 'mobile'), 'x')).toBe(path.join(path.sep, 'ws', 'mobile-wt-x'));
   });
 });

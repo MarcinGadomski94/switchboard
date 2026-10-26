@@ -31,7 +31,7 @@ const REPLY = [
   '',
   'The **contract** is locked. Next:',
   '',
-  '- web: `acme-app-front`',
+  '- web: `acme-web-front`',
   '- mobile',
   '',
   '| Agent | Status |',
@@ -81,8 +81,8 @@ test('agent Markdown (heading, list, table, highlighted code, box table), raw HT
   await expect(reply.locator('h2')).toHaveText('Plan');
   await expect(reply.locator('p').first()).toHaveText('The contract is locked. Next:');
   await expect(reply.locator('strong')).toHaveText('contract');
-  await expect(reply.locator('ul > li')).toHaveText(['web: acme-app-front', 'mobile']);
-  await expect(reply.locator('li code')).toHaveText('acme-app-front');
+  await expect(reply.locator('ul > li')).toHaveText(['web: acme-web-front', 'mobile']);
+  await expect(reply.locator('li code')).toHaveText('acme-web-front');
   await expect(reply.locator('li code')).toHaveCSS('font-family', /Geist Mono/);
 
   // The table, with the delimiter row's alignment.

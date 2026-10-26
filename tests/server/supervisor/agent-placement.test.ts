@@ -32,30 +32,30 @@ describe('agent placement · real path (fake-claude Write turns)', () => {
   it('the main agent is placed by its first write into a solution, with the worktree branch; root files and later writes do not move it', async () => {
     world = await makeSupervisorWorld();
     const w = world;
-    const session = await w.supervisor.start(newSession({ task: 'Write the contract. [fake:write contracts/pair-talk.md]' }), w.place);
+    const session = await w.supervisor.start(newSession({ task: 'Write the contract. [fake:write contracts/checkout.md]' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
     const main = async () => (await w.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
-    expect(await main()).toMatchObject({ name: 'acme-app-front', solutionPath: null, branch: null });
+    expect(await main()).toMatchObject({ name: 'acme-web-front', solutionPath: null, branch: null });
 
-    // The session's worktree of acme-app-front (gap #1 naming), registered as M2.2 does.
-    const worktree = path.join(w.workspace, 'microfrontends', 'acme-app-front-wt-demo-session');
+    // The session's worktree of acme-web-front (gap #1 naming), registered as M2.2 does.
+    const worktree = path.join(w.workspace, 'microfrontends', 'acme-web-front-wt-demo-session');
     await w.store.worktrees.create({
-      repo: 'acme-app-front',
-      repoPath: 'microfrontends/acme-app-front',
+      repo: 'acme-web-front',
+      repoPath: 'microfrontends/acme-web-front',
       branch: 'session/demo-session',
       path: worktree,
       sessionId: session.id,
     });
-    await w.supervisor.sendMessage(session.id, 'Now the page. [fake:write microfrontends/acme-app-front-wt-demo-session/Pages/Talk.razor]');
+    await w.supervisor.sendMessage(session.id, 'Now the page. [fake:write microfrontends/acme-web-front-wt-demo-session/Pages/Talk.razor]');
     await until(async () => (await main())?.solutionPath ?? undefined, 'the main agent placed');
-    expect(await main()).toMatchObject({ solutionPath: 'microfrontends/acme-app-front', branch: 'session/demo-session' });
+    expect(await main()).toMatchObject({ solutionPath: 'microfrontends/acme-web-front', branch: 'session/demo-session' });
 
     await waitForStatus(w.store, session.id, ['done']);
     await w.supervisor.sendMessage(session.id, 'And a mobile note. [fake:write mobile/notes.md]');
     // D38: the recorder took the write in (the solution joins the session's); D89: it makes no artifact.
     await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('mobile') || undefined, 'the mobile write');
     expect(await w.store.artifacts.list({ sessionId: session.id })).toEqual([]);
-    expect(await main()).toMatchObject({ solutionPath: 'microfrontends/acme-app-front', branch: 'session/demo-session' });
+    expect(await main()).toMatchObject({ solutionPath: 'microfrontends/acme-web-front', branch: 'session/demo-session' });
   });
 });
 
@@ -103,7 +103,7 @@ describe('1.24 perf · the recorder keeps a tool call only until its result', ()
     const recorder = new StreamRecorder({ store, session, mainAgentId: mainAgent.id, onEvent: () => undefined });
     const content = 'x'.repeat(200_000);
     for (let i = 0; i < 5; i += 1) {
-      await recorder.handle(parseStreamObject({ type: 'assistant', uuid: `u-${i}`, parent_tool_use_id: null, message: { id: `m-${i}`, content: [{ type: 'tool_use', id: `tu_${i}`, name: 'Write', input: { file_path: `microfrontends/acme-app-front/f${i}.ts`, content } }] } }));
+      await recorder.handle(parseStreamObject({ type: 'assistant', uuid: `u-${i}`, parent_tool_use_id: null, message: { id: `m-${i}`, content: [{ type: 'tool_use', id: `tu_${i}`, name: 'Write', input: { file_path: `microfrontends/acme-web-front/f${i}.ts`, content } }] } }));
       expect(recorder.retainedToolCalls()).toBe(1);
       await recorder.handle(parseStreamObject({ type: 'user', uuid: `r-${i}`, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `tu_${i}`, content: 'ok', is_error: false }] } }));
       expect(recorder.retainedToolCalls()).toBe(0);

@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { type ChipSession, sessionChips } from '../../src/core/derive/chips.ts';
 
-const base: ChipSession = { workType: 'feature', mode: 'single', phase: 'ui-first', qaStack: null, solutions: ['acme-app-front'], ultracode: false };
+const base: ChipSession = { workType: 'feature', mode: 'single', phase: 'ui-first', qaStack: null, solutions: ['acme-web-front'], ultracode: false };
 const text = (chips: ReturnType<typeof sessionChips>) => chips.map((c) => `${c.k} ${c.v}${c.loop ? ' [blue]' : ''}`);
 
 describe('session header chips (M4.1)', () => {
   it('the session-start answers in the prototype new-session words (nsLaunch)', () => {
-    expect(text(sessionChips(base))).toEqual(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-app-front']);
-    expect(text(sessionChips({ ...base, mode: 'orchestrator', phase: 'integration', solutions: ['acme-app-front', 'mobile'], ultracode: true }))).toEqual([
+    expect(text(sessionChips(base))).toEqual(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-web-front']);
+    expect(text(sessionChips({ ...base, mode: 'orchestrator', phase: 'integration', solutions: ['acme-web-front', 'mobile'], ultracode: true }))).toEqual([
       'work feature-building',
       'mode orchestrator',
       'phase integration',
-      'scope acme-app-front + mobile',
+      'scope acme-web-front + mobile',
       'ultracode on [blue]',
     ]);
   });
@@ -22,7 +22,7 @@ describe('session header chips (M4.1)', () => {
       'mode orchestrator',
       'phase UI-first',
       'stack both',
-      'scope acme-app-front',
+      'scope acme-web-front',
     ]);
     expect(sessionChips({ workType: null, mode: null, phase: null, qaStack: 'web', solutions: [], ultracode: false })).toEqual([]);
   });

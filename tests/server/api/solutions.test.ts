@@ -48,7 +48,7 @@ async function setup(options: { root?: 'world' | 'none'; providers?: 'scanner' |
   const ws = world.workspace;
   const router = `${await readFile(ROUTER_FIXTURE, 'utf8')}\n- \`archive/<repo>/\` — old snapshots, never edited\n`;
   await writeFile(path.join(ws, 'AGENTS.md'), router);
-  await repo(ws, 'microfrontends/acme-app-front');
+  await repo(ws, 'microfrontends/acme-web-front');
   await repo(ws, 'mobile');
   await repo(ws, 'deprecated/mobile');
   await repo(ws, 'archive/old-repo');
@@ -85,7 +85,7 @@ describe('GET /api/solutions (M6.1)', () => {
     expect(response.statusCode).toBe(200);
     const groups = response.json() as SolutionGroup[];
     expect(groups.map((g) => [g.folder, g.note, g.rule, g.solutions.map((s) => [s.name, s.path, s.type, s.rule])])).toEqual([
-      ['microfrontends/', '', 'editable', [['acme-app-front', path.join(w.workspace, 'microfrontends', 'acme-app-front'), 'Web', 'editable']]],
+      ['microfrontends/', '', 'editable', [['acme-web-front', path.join(w.workspace, 'microfrontends', 'acme-web-front'), 'Web', 'editable']]],
       ['mobile/', '', 'editable', [['mobile', path.join(w.workspace, 'mobile'), 'Mobile', 'editable']]],
       ['other/', 'on request only', 'on-request', [['it-dashboard', path.join(w.workspace, 'other', 'it-dashboard'), 'Other', 'on-request']]],
       [

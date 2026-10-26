@@ -28,14 +28,14 @@ import {
 } from '../../src/web/views/session/diff.ts';
 
 function file(patch: Partial<FileDiff> & Pick<FileDiff, 'path'>): FileDiff {
-  return { solution: 'acme-app-front', branch: 'session/pair-talk', added: 1, removed: 0, lines: ['+x'], uncommitted: true, ...patch };
+  return { solution: 'acme-web-front', branch: 'session/checkout', added: 1, removed: 0, lines: ['+x'], uncommitted: true, ...patch };
 }
 
 const FILES: FileDiff[] = [
-  file({ path: 'Pages/PairTalk/PairTalk.razor', added: 118, lines: [' @page "/pair-talk"', '+<AcmPageHeader Title="Pair talk" />', '+'] }),
-  file({ path: 'Pages/PairTalk/TopicChips.razor', added: 51, removed: 12, lines: [' <div>', '-    <AcmChip Size="Compact">', '+    <AcmChip>'] }),
-  file({ solution: 'mobile', path: 'Views/PairTalkView.xaml', added: 96, uncommitted: false }),
-  file({ solution: 'root', path: 'contracts/pair-talk.md', branch: null, added: 62 }),
+  file({ path: 'Pages/Checkout/Checkout.razor', added: 118, lines: [' @page "/checkout"', '+<AcmePageHeader Title="Checkout" />', '+'] }),
+  file({ path: 'Pages/Checkout/DeliveryChips.razor', added: 51, removed: 12, lines: [' <div>', '-    <AcmeChip Size="Compact">', '+    <AcmeChip>'] }),
+  file({ solution: 'mobile', path: 'Views/CheckoutView.xaml', added: 96, uncommitted: false }),
+  file({ solution: 'root', path: 'contracts/checkout.md', branch: null, added: 62 }),
 ];
 
 describe('Diff tab model (M4.5)', () => {
@@ -57,7 +57,7 @@ describe('Diff tab model (M4.5)', () => {
     expect(lineTone('-removed')).toBe('del');
     expect(lineTone(' context')).toBe('ctx');
     expect(lineTone('')).toBe('ctx');
-    expect(shortName('Pages/PairTalk/PairTalk.razor')).toBe('PairTalk.razor');
+    expect(shortName('Pages/Checkout/Checkout.razor')).toBe('Checkout.razor');
     expect(shortName('README.md')).toBe('README.md');
   });
 
@@ -65,19 +65,19 @@ describe('Diff tab model (M4.5)', () => {
     const model = diffModel(FILES, null);
     expect(model.empty).toBe(false);
     expect(model.rows.map((r) => [r.short, r.delta, r.sub, r.selected])).toEqual([
-      ['PairTalk.razor', '+118', 'acme-app-front · Pages/PairTalk/PairTalk.razor', true],
-      ['TopicChips.razor', '+51 −12', 'acme-app-front · Pages/PairTalk/TopicChips.razor', false],
-      ['PairTalkView.xaml', '+96', 'mobile · Views/PairTalkView.xaml', false],
-      ['pair-talk.md', '+62', 'root · contracts/pair-talk.md', false],
+      ['Checkout.razor', '+118', 'acme-web-front · Pages/Checkout/Checkout.razor', true],
+      ['DeliveryChips.razor', '+51 −12', 'acme-web-front · Pages/Checkout/DeliveryChips.razor', false],
+      ['CheckoutView.xaml', '+96', 'mobile · Views/CheckoutView.xaml', false],
+      ['checkout.md', '+62', 'root · contracts/checkout.md', false],
     ]);
     expect(model.pane).toEqual({
       key: fileKey(FILES[0]!),
-      name: 'acme-app-front / Pages/PairTalk/PairTalk.razor',
-      branch: '⎇ session/pair-talk',
+      name: 'acme-web-front / Pages/Checkout/Checkout.razor',
+      branch: '⎇ session/checkout',
       note: true,
       lines: [
-        { text: ' @page "/pair-talk"', tone: 'ctx' },
-        { text: '+<AcmPageHeader Title="Pair talk" />', tone: 'add' },
+        { text: ' @page "/checkout"', tone: 'ctx' },
+        { text: '+<AcmePageHeader Title="Checkout" />', tone: 'add' },
         { text: '+', tone: 'add' },
       ],
     });
@@ -89,17 +89,17 @@ describe('Diff tab model (M4.5)', () => {
     expect(chips.pane.lines.map((l) => l.tone)).toEqual(['ctx', 'del', 'add']);
 
     const root = diffModel(FILES, fileKey(FILES[3]!));
-    expect(root.pane.name).toBe('root / contracts/pair-talk.md');
+    expect(root.pane.name).toBe('root / contracts/checkout.md');
     expect(root.pane.branch).toBe('');
     expect(root.pane.note).toBe(true);
 
     const committed = diffModel(FILES, fileKey(FILES[2]!));
-    expect(committed.pane.name).toBe('mobile / Views/PairTalkView.xaml');
+    expect(committed.pane.name).toBe('mobile / Views/CheckoutView.xaml');
     expect(committed.pane.note).toBe(false);
   });
 
   it('a selected file that leaves the diff falls back to the first; the same path in two solutions stays distinct', () => {
-    const gone = fileKey({ solution: 'acme-app-front', path: 'deleted.txt' });
+    const gone = fileKey({ solution: 'acme-web-front', path: 'deleted.txt' });
     expect(selectedFile(FILES, gone)).toBe(FILES[0]);
     expect(selectedFile([], gone)).toBeNull();
     const twin = [file({ path: 'README.md' }), file({ solution: 'mobile', path: 'README.md', added: 3 })];

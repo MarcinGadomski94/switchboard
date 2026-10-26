@@ -185,7 +185,7 @@ describe('M3.3 · failed scheduled run → Inbox item (inserted into the schedul
   it('the scheduler hook raises at once; startWatching picks up a run inserted later; branches + "Fix on" from the run session', async () => {
     const r = await setup();
     const session = await r.w.store.sessions.create({ name: 'nightly-run-7', claudeSessionId: randomUUID(), solutions: ['mobile'], worktrees: true });
-    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: r.w.mobile, branch: 'feature/pair-talk-360', path: `${r.w.mobile}-wt-x`, sessionId: session.id });
+    await r.w.store.worktrees.create({ repo: 'mobile', repoPath: r.w.mobile, branch: 'feature/checkout-redesign', path: `${r.w.mobile}-wt-x`, sessionId: session.id });
     const { schedule, runs } = await scheduleWithRuns(r, 'Nightly Build', ['fail', 'ok', 'fail'], {
       template: { task: 'no session fields' },
       lastSummary: null,
@@ -195,11 +195,11 @@ describe('M3.3 · failed scheduled run → Inbox item (inserted into the schedul
     // The M7.1 hook: only the given run.
     const hooked = await r.service.scheduleRunFinished(runs[2]!.id);
     expect(hooked).toMatchObject({ source: 'Nightly Build', title: 'Nightly Build failed', detail: 'The previous run was green.', sessionId: session.id });
-    expect(hooked?.branches).toEqual([{ solution: 'mobile', branch: 'feature/pair-talk-360' }]);
+    expect(hooked?.branches).toEqual([{ solution: 'mobile', branch: 'feature/checkout-redesign' }]);
     expect(hooked?.payload).toEqual({
       prefill: {
         name: 'fix-nightly-build',
-        task: 'Nightly Build: Nightly Build failed. Fix on feature/pair-talk-360.',
+        task: 'Nightly Build: Nightly Build failed. Fix on feature/checkout-redesign.',
         workType: 'feature',
         mode: 'single',
         solutions: [],

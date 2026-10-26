@@ -54,7 +54,7 @@ async function startSession(page: Page, name: string, task: string): Promise<{ i
           task: sessionTask,
           workType: 'feature',
           mode: 'single',
-          solutions: ['acme-app-front'],
+          solutions: ['acme-web-front'],
           phase: 'ui-first',
           coordination: 'none',
           qa: null,
@@ -121,13 +121,13 @@ test('a question batch: list + detail, Send stays disabled at 45% until every qu
   await expect(card).toHaveAttribute('data-selected', 'true');
   await expect(card.locator('.sb-inbox__card-source')).toHaveText('asker');
   await expect(card.locator('.sb-inbox__card-age')).toHaveText('now');
-  await expect(card.locator('.sb-inbox__card-title')).toHaveText('2 questions from acme-app-front');
+  await expect(card.locator('.sb-inbox__card-title')).toHaveText('2 questions from acme-web-front');
   await expect(card.locator('.sb-inbox__card-kind')).toHaveText('2 questions');
 
   // Detail: meta line with the session link, the 24px title, the question card.
   await expect(page.getByTestId('inbox-meta')).toHaveText('asker·2 questions·nowOpen session →');
   await expect(page.getByTestId('inbox-open-session')).toHaveAttribute('href', `/sessions/${session.id}`);
-  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-app-front');
+  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-web-front');
   await expect(page.getByTestId('inbox-title')).toHaveCSS('font-size', '24px');
   await expect(page.getByTestId('inbox-branches').locator('*')).toHaveCount(0);
   await expect(page.getByTestId('inbox-text')).toHaveCount(0);
@@ -135,7 +135,7 @@ test('a question batch: list + detail, Send stays disabled at 45% until every qu
   await expect(questionCard.locator('.sb-qcard__head')).toHaveText('2 questions · relayed verbatim');
   const questions = questionCard.getByTestId('question');
   await expect(questions).toHaveCount(2);
-  await expect(questions.locator('.sb-qcard__source')).toHaveText(['acme-app-front', 'acme-app-front']);
+  await expect(questions.locator('.sb-qcard__source')).toHaveText(['acme-web-front', 'acme-web-front']);
   await expect(questions.locator('.sb-qcard__quote')).toHaveText(['“Which color should the button be?”', '“Which size should it be?”']);
   await expect(questions.nth(0).getByTestId('question-option')).toHaveText(['Red', 'Green', 'Blue']);
   await expect(questions.nth(1).getByTestId('question-option')).toHaveText(['Small', 'Large']);
@@ -213,7 +213,7 @@ test('two items: newest first and selected; picking switches the detail; a permi
   await expect(page.getByTestId('inbox-meta')).toHaveText('runner·Permission·nowOpen session →');
   await expect(page.getByTestId('inbox-text')).toHaveText('Run Node.js calculation');
   const request = page.getByTestId('permission-request');
-  await expect(request.locator('.sb-inbox__request-agent')).toHaveText('acme-app-front');
+  await expect(request.locator('.sb-inbox__request-agent')).toHaveText('acme-web-front');
   await expect(request.locator('.sb-inbox__request-tool')).toHaveText('Bash');
   const input = JSON.parse((await page.getByTestId('permission-input').textContent()) ?? 'null') as unknown;
   expect(input).toEqual({ command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' });
@@ -229,7 +229,7 @@ test('two items: newest first and selected; picking switches the detail; a permi
   await cards.nth(1).click();
   await expect(cards.nth(1)).toHaveAttribute('data-selected', 'true');
   await expect(cards.nth(0)).toHaveAttribute('data-selected', 'false');
-  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-app-front');
+  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-web-front');
   await expect(page.getByTestId('question-card')).toBeVisible();
   await expect(page.getByTestId('permission-request')).toHaveCount(0);
   await expect(page.getByTestId('inbox-actions')).toHaveCount(0);
@@ -241,7 +241,7 @@ test('two items: newest first and selected; picking switches the detail; a permi
   await actions.filter({ hasText: 'Allow once' }).click();
   await expect(cards).toHaveCount(1);
   await expect(cards.nth(0)).toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-app-front');
+  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-web-front');
   await expect.poll(async () => (await controlResponses()).length).toBe(before + 1);
   const allow = (await controlResponses())[before];
   expect(allow?.response.response).toEqual({ behavior: 'allow', updatedInput: { command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' } });

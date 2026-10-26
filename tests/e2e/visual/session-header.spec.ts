@@ -20,15 +20,15 @@ import {
 /**
  * Visual oracle for the session header and layout (M4.1, D10): the app (demo seed)
  * against the prototype with the same session open (its sidebar row), 1440×900,
- * `simulateIncoming` off, on two sessions: `reminder-func-fix` (every chip fits one
- * row on both pages, so every box is compared absolutely) and `pair-talk-feature`
+ * `simulateIncoming` off, on two sessions: `invoice-func-fix` (every chip fits one
+ * row on both pages, so every box is compared absolutely) and `checkout-redesign`
  * (the prototype's default; its hand-written chips wrap to a second row, so the
  * chip row, the header height and the tabs are compared relative to the chip row).
  * Gate: boxes ±2 px, exact copy and equal computed styles for the layout, the
  * header row, the first three chips and the tabs; SPEC tokens as computed styles;
  * the loop chip's blue compared on `button-rollout`. Chips the prototype
  * hand-writes without a data source (`bp 360`, `run workflow 7f3a · reconcile`,
- * the path-style scope `functions/reminder-func`) are known differences (D13,
+ * the path-style scope `functions/invoice-func`) are known differences (D13,
  * `docs/derivations.md` → *Session chips*), reported but not gated. The pixel diff
  * is advisory (`docs/visual/session-header.md`).
  *
@@ -236,19 +236,19 @@ test('Session header and layout match the prototype (tokens, boxes ±2 px, copy)
   const failures: string[] = [];
   await openPrototype(protoPage, { simulateIncoming: false });
 
-  // reminder-func-fix: every chip the prototype shows fits one row in both pages, so every box is absolute.
-  await openProtoSession(protoPage, 'reminder-func-fix');
-  await openAppSession(appPage, 'reminder-func-fix');
-  const calendar = await compareSession(protoPage, appPage, 'reminder-func-fix', false, failures);
+  // invoice-func-fix: every chip the prototype shows fits one row in both pages, so every box is absolute.
+  await openProtoSession(protoPage, 'invoice-func-fix');
+  await openAppSession(appPage, 'invoice-func-fix');
+  const calendar = await compareSession(protoPage, appPage, 'invoice-func-fix', false, failures);
 
-  // pair-talk-feature (the prototype's default session): its extra mock chips wrap to a second row.
-  await openProtoSession(protoPage, 'pair-talk-feature');
-  await openAppSession(appPage, 'pair-talk-feature');
+  // checkout-redesign (the prototype's default session): its extra mock chips wrap to a second row.
+  await openProtoSession(protoPage, 'checkout-redesign');
+  await openAppSession(appPage, 'checkout-redesign');
   await expect(appPage.getByTestId('session-tab-artifacts')).toHaveText('Artifacts · 4');
-  const pairTalk = await compareSession(protoPage, appPage, 'pair-talk-feature', true, failures);
-  const shot = pairTalk.app;
-  const rows = [...calendar.rows, ...pairTalk.rows];
-  const knownRows = [...calendar.knownRows, ...pairTalk.knownRows];
+  const checkout = await compareSession(protoPage, appPage, 'checkout-redesign', true, failures);
+  const shot = checkout.app;
+  const rows = [...calendar.rows, ...checkout.rows];
+  const knownRows = [...calendar.knownRows, ...checkout.knownRows];
 
   // The loop chip's blue (SPEC: loop / workflow chips are blue), on button-rollout in both pages.
   const loopProto = await openLoopChip(protoPage, 'proto');
@@ -261,9 +261,9 @@ test('Session header and layout match the prototype (tokens, boxes ±2 px, copy)
   }
   if (loopProto.text !== loopApp.text) failures.push(`loopChip.text: prototype ${JSON.stringify(loopProto.text)} vs app ${JSON.stringify(loopApp.text)}`);
 
-  // Back on pair-talk-feature for the SPEC token checks and the captures.
-  await openProtoSession(protoPage, 'pair-talk-feature');
-  await openAppSession(appPage, 'pair-talk-feature');
+  // Back on checkout-redesign for the SPEC token checks and the captures.
+  await openProtoSession(protoPage, 'checkout-redesign');
+  await openAppSession(appPage, 'checkout-redesign');
   const computed = await appPage.evaluate(() => {
     const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
     const header = style('.sb-sv-header');
@@ -350,8 +350,8 @@ test('Session header and layout match the prototype (tokens, boxes ±2 px, copy)
       header: headerDiff.percent,
       view: viewDiff.percent,
       chipLines: [
-        `reminder-func-fix · prototype: ${calendar.protoChips.filter(Boolean).join(' · ')} · app: ${calendar.appChips.filter(Boolean).join(' · ')}`,
-        `pair-talk-feature · prototype: ${pairTalk.protoChips.filter(Boolean).join(' · ')} · app: ${pairTalk.appChips.filter(Boolean).join(' · ')}`,
+        `invoice-func-fix · prototype: ${calendar.protoChips.filter(Boolean).join(' · ')} · app: ${calendar.appChips.filter(Boolean).join(' · ')}`,
+        `checkout-redesign · prototype: ${checkout.protoChips.filter(Boolean).join(' · ')} · app: ${checkout.appChips.filter(Boolean).join(' · ')}`,
       ],
     }),
     'session-header-side-by-side.png': await sideBySide(appPage, protoHeader, appHeader),
@@ -401,7 +401,7 @@ function report(input: {
 }): string {
   return `# Visual oracle · Session header (M4.1)
 
-Generated by \`tests/e2e/visual/session-header.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/reminder-func-fix\` and \`/sessions/pair-talk-feature\` (Chat tab).
+Generated by \`tests/e2e/visual/session-header.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/sessions/invoice-func-fix\` and \`/sessions/checkout-redesign\` (Chat tab).
 Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, the same sessions opened from their sidebar rows.
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
@@ -420,12 +420,12 @@ ${input.rows.join('\n')}
 
 D33: the app's actions start with **Close** (not in the prototype). Pause and "⇄ Continue in terminal" are compared with the prototype's (they are one place later in the app); the actions group by its right edge, y and height, its copy being "Close" + the prototype's; Close itself with Pause's y, height and computed styles, 6 px left of Pause.
 
-On pair-talk-feature the prototype's chip row wraps to two lines (its hand-written chips), so the chip row, the header and the tabs are compared relative to the chip row there (\`relative\` rows: same position and width, same gap to the tabs, same header height without the chip row); on reminder-func-fix every box is compared absolutely.
+On checkout-redesign the prototype's chip row wraps to two lines (its hand-written chips), so the chip row, the header and the tabs are compared relative to the chip row there (\`relative\` rows: same position and width, same gap to the tabs, same header height without the chip row); on invoice-func-fix every box is compared absolutely.
 
 ## Chips
 ${input.chipLines.map((line) => `- ${line}`).join('\n')}
 
-Chips 0–2 are gated above. Known differences, not findings (D13, no data source; \`docs/derivations.md\` → *Session chips*): pair-talk-feature's \`bp 360\` and \`run workflow 7f3a · reconcile\` are hand-written mock chips (the app shows the chips it can derive, so \`scope\` moves up to the 4th place); reminder-func-fix's scope is the hand-written path \`functions/reminder-func\` where the app shows the solution name.
+Chips 0–2 are gated above. Known differences, not findings (D13, no data source; \`docs/derivations.md\` → *Session chips*): checkout-redesign's \`bp 360\` and \`run workflow 7f3a · reconcile\` are hand-written mock chips (the app shows the chips it can derive, so \`scope\` moves up to the 4th place); invoice-func-fix's scope is the hand-written path \`functions/invoice-func\` where the app shows the solution name.
 
 | Session | Chip | Prototype | App |
 |---|---|---|---|

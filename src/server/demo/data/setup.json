@@ -17,7 +17,7 @@
     {
       "folder": "microfrontends/",
       "count": 4,
-      "examples": "acme-app-front, dashboard-front, login-front, …",
+      "examples": "acme-web-front, delivery-front, loyalty-front, …",
       "rule": "editable"
     },
     {
@@ -29,19 +29,19 @@
     {
       "folder": "nugets/",
       "count": 4,
-      "examples": "design-system-nuget, acme-fonts-nuget, …",
+      "examples": "design-kit-nuget, acme-icons-nuget, …",
       "rule": "editable"
     },
     {
       "folder": "microservices/",
       "count": 2,
-      "examples": "login-microservice, acme-alerts-microservice",
+      "examples": "accounts-microservice, orders-microservice",
       "rule": "editable"
     },
     {
       "folder": "functions/",
       "count": 2,
-      "examples": "reminder-func, crm-sync-func",
+      "examples": "invoice-func, stock-sync-func",
       "rule": "editable"
     },
     {
@@ -53,7 +53,7 @@
     {
       "folder": "deprecated/",
       "count": 3,
-      "examples": "old-chat-front, legacy-login-microservice, …",
+      "examples": "old-cart-front, legacy-accounts-microservice, …",
       "rule": "read-only"
     },
     {

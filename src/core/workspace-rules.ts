@@ -220,9 +220,9 @@ export interface RouterFile {
 
 /** One solution folder found by the scan. */
 export interface ScannedSolution {
-  /** Folder name (`acme-app-front`, `mobile`). */
+  /** Folder name (`acme-web-front`, `mobile`). */
   readonly name: string;
-  /** Path from the workspace root, `/`-separated (`microfrontends/acme-app-front`). */
+  /** Path from the workspace root, `/`-separated (`microfrontends/acme-web-front`). */
   readonly relativePath: string;
   /** Absolute path in the current OS's form (gap #17). */
   readonly path: string;

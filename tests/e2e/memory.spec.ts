@@ -197,7 +197,7 @@ test('draft ask → proposals → approve with scope → only the right session 
 
   // Its agent proposes (no scope given: a member's default is member).
   expect(await agentPropose(builder.id, { title: 'Builder release steps', text: 'MEMBER-ONLY: tag, then publish.' })).toBe(201);
-  expect(await agentPropose(builder.id, { title: 'Acme app lint command', text: 'REPO-WIDE: npm run lint in acme-app-front.' })).toBe(201);
+  expect(await agentPropose(builder.id, { title: 'Acme app lint command', text: 'REPO-WIDE: npm run lint in acme-web-front.' })).toBe(201);
 
   await page.goto(`${world.baseUrl}/memory`);
   const queue = page.getByTestId('memory-queue');
@@ -214,7 +214,7 @@ test('draft ask → proposals → approve with scope → only the right session 
   await release.getByTestId('memory-approve').click();
   await expect(queue.getByTestId('memory-proposal')).toHaveCount(0);
   const approved = page.getByTestId('memory-approved').getByTestId('memory-entry');
-  await expect(approved.filter({ hasText: 'Acme app lint command' }).getByTestId('memory-entry-scope')).toHaveText(/acme-app-front/);
+  await expect(approved.filter({ hasText: 'Acme app lint command' }).getByTestId('memory-entry-scope')).toHaveText(/acme-web-front/);
   await expect(approved.filter({ hasText: 'Builder release steps' }).getByTestId('memory-entry-scope')).toHaveText(/Builder/);
   // The scope filter.
   await page.getByTestId('memory-kind').selectOption('member');
@@ -230,7 +230,7 @@ test('draft ask → proposals → approve with scope → only the right session 
   const reader = await world.startSession(page, 'mem-repo-reader', 'Reply with just OK.');
   await expect.poll(async () => (await instructions()).filter((text) => text?.includes('REPO-WIDE')).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
   const latest = (await instructions()).filter((text): text is string => text !== null && text.includes('REPO-WIDE')).at(-1) ?? '';
-  expect(latest).toContain('-- Repository acme-app-front (repo memory) --');
+  expect(latest).toContain('-- Repository acme-web-front (repo memory) --');
   expect(latest).not.toContain('MEMBER-ONLY');
   await page.goto(`${world.baseUrl}/sessions/${reader.id}`);
   await expect(page.getByTestId('session-memory-link')).toHaveAttribute('title', /member 0 · repo 2 · workspace 1/);

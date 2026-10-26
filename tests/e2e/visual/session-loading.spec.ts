@@ -7,7 +7,7 @@ import { type DemoApp, BOX_TOLERANCE_PX, VIEWPORT, hexToRgb, openApp, round, sid
  * loading placeholders are not in the prototype, and the loaded views are
  * unchanged (every other visual spec and the full pass gate them as before).
  *
- * The demo app at 1440×900: `reminder-func-fix` is open, then `pair-talk-feature`
+ * The demo app at 1440×900: `invoice-func-fix` is open, then `checkout-redesign`
  * is opened from the sidebar with its detail and events held back in the browser
  * (`page.route`), so its placeholders show; the same view loaded is the template.
  * Gated here:
@@ -30,8 +30,8 @@ import { type DemoApp, BOX_TOLERANCE_PX, VIEWPORT, hexToRgb, openApp, round, sid
  * left, loaded right).
  */
 
-const FROM = 'reminder-func-fix';
-const TARGET = 'pair-talk-feature';
+const FROM = 'invoice-func-fix';
+const TARGET = 'checkout-redesign';
 
 const BG_CARD = hexToRgb('#17181b');
 const BORDER_ROW = hexToRgb('#1f2024');

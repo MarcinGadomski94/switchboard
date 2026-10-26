@@ -17,10 +17,10 @@ describe('lineTone (the prototype lineColor)', () => {
   it('colors by the first character after an [agent] tag', () => {
     expect(lineTone('$ dotnet build')).toBe('cmd');
     expect(lineTone('✓ web 13/14 fields match')).toBe('ok');
-    expect(lineTone('⚠ mobile TopicId: required ≠ web nullable')).toBe('warn');
+    expect(lineTone('⚠ mobile CartId: required ≠ web nullable')).toBe('warn');
     expect(lineTone('⏸ waiting for your answers')).toBe('warn');
     expect(lineTone('✕ figma: no variant State=Loading')).toBe('err');
-    expect(lineTone('[web] $ dotnet test --filter PairTalk')).toBe('cmd');
+    expect(lineTone('[web] $ dotnet test --filter Checkout')).toBe('cmd');
     expect(lineTone('[orch] reconcile · contract-adherence report')).toBe('plain');
     expect(lineTone('CS0103 TimeZoneInfo not found')).toBe('plain');
   });

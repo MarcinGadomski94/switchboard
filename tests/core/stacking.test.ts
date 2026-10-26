@@ -78,7 +78,7 @@ describe('parentMatches', () => {
 
 describe('resolveRepoBase (rules 2 and 4)', () => {
   it('the parent on origin: cut from it, PR into it', () => {
-    expect(resolveRepoBase(withEpic, 'acme-app-front', { parentMatches: [PARENT], epicOnOrigin: true, defaultBranch: null })).toEqual({
+    expect(resolveRepoBase(withEpic, 'acme-web-front', { parentMatches: [PARENT], epicOnOrigin: true, defaultBranch: null })).toEqual({
       ok: true,
       cut: PARENT,
       prTarget: PARENT,
@@ -165,9 +165,9 @@ describe('hand-off lines', () => {
   const stack: HandoffStack = {
     parent: 'PROJ-3013',
     repos: [
-      repo('acme-app-front', { parentMatches: [PARENT], epicOnOrigin: true, defaultBranch: null }, open306),
+      repo('acme-web-front', { parentMatches: [PARENT], epicOnOrigin: true, defaultBranch: null }, open306),
       repo('assets-front', { parentMatches: [PARENT], epicOnOrigin: false, defaultBranch: null }, open1080),
-      repo('surveys-front', { parentMatches: [], epicOnOrigin: false, defaultBranch: null }, null),
+      repo('reviews-front', { parentMatches: [], epicOnOrigin: false, defaultBranch: null }, null),
     ],
   };
   const handoff: HandoffBranching = { task: TASK, epic: { key: 'PROJ-3010', branch: EPIC }, base: 'dev', defaultBases: [], overrides: [], dropped: [], stack };
@@ -179,9 +179,9 @@ describe('hand-off lines', () => {
       `  - Task branch: ${TASK}`,
       `  - Parent: ${PARENT} (stacked; PR #306/#1080 open)`,
       '  - Per-repo base / PR target:',
-      `    - acme-app-front: origin/${PARENT} → PR into ${PARENT}`,
+      `    - acme-web-front: origin/${PARENT} → PR into ${PARENT}`,
       `    - assets-front: origin/${PARENT} → PR into ${PARENT}`,
-      `    - surveys-front: origin/dev (epic missing; parent not in repo) → PR into ${EPIC} (epic, created lazily)`,
+      `    - reviews-front: origin/dev (epic missing; parent not in repo) → PR into ${EPIC} (epic, created lazily)`,
       "  - Rule: push the task branch with `git push -u origin <same name>` only in a repo at its first code change; in a repo where the parent is not on origin, create and push the epic too (cut from the current `origin/dev` when it is missing on origin); never create a branch in repos that are not changed; open each repo's PR into its PR target above",
       `  - When the parent merges: Switchboard watches the parent's PR in each repo and tells you when it merges; then retarget this task's PR to the parent's own base (\`gh pr edit ${TASK} --base <parent's base>\`) and rebase ${TASK} onto \`origin/<parent's base>\` (\`git rebase --onto origin/<parent's base> <old parent tip> ${TASK}\` when the parent was squash-merged, else a normal rebase), then report; ask the developer before force-pushing a rebased branch`,
     ]);
@@ -250,7 +250,7 @@ describe('hand-off lines', () => {
 
 describe('parent merged (rule 5)', () => {
   const merged: ParentMerged = {
-    solution: 'acme-app-front',
+    solution: 'acme-web-front',
     task: TASK,
     parent: PARENT,
     parentBase: EPIC,
@@ -258,7 +258,7 @@ describe('parent merged (rule 5)', () => {
     oldTip: 'abc1234',
     merge: 'squash',
     childPr: 412,
-    worktreePath: '/w/acme-app-front-wt-kpi',
+    worktreePath: '/w/acme-web-front-wt-kpi',
   };
 
   it('title and rebase command per merge kind', () => {
@@ -271,8 +271,8 @@ describe('parent merged (rule 5)', () => {
   it('the message asks to retarget, rebase and report (never done by Switchboard)', () => {
     expect(parentMergedMessage(merged)).toBe(
       [
-        `Switchboard: the parent branch ${PARENT} (PR #306) was merged into ${EPIC} in acme-app-front; it was squash-merged (its old tip abc1234 is not in origin/${EPIC}), so rebase with --onto.`,
-        'In /w/acme-app-front-wt-kpi:',
+        `Switchboard: the parent branch ${PARENT} (PR #306) was merged into ${EPIC} in acme-web-front; it was squash-merged (its old tip abc1234 is not in origin/${EPIC}), so rebase with --onto.`,
+        'In /w/acme-web-front-wt-kpi:',
         `1. Retarget your PR #412 to ${EPIC}: \`gh pr edit ${TASK} --base ${EPIC}\`.`,
         `2. \`git fetch origin --prune\`, then rebase ${TASK} onto origin/${EPIC}: \`git rebase --onto origin/${EPIC} abc1234 ${TASK}\`.`,
         '3. Report what you did. Ask the developer before force-pushing the rebased branch.',

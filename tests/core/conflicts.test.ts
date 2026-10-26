@@ -39,12 +39,12 @@ describe('repoConflict (M6.3)', () => {
 
   it('a worktree session and one in place → conflict (each must have its own worktree), the prototype case', () => {
     const result = repoConflict([
-      writer('pair-talk-feature', true, { createdAt: '2026-09-28T09:00:00.000Z' }),
+      writer('checkout-redesign', true, { createdAt: '2026-09-28T09:00:00.000Z' }),
       writer('button-rollout', false, { createdAt: '2026-09-28T09:30:00.000Z', attached: false }),
     ]);
     expect(result.conflict).toBe(true);
     expect(result.sessions.map((s) => [s.name, s.isolated, s.attached])).toEqual([
-      ['pair-talk-feature', true, true],
+      ['checkout-redesign', true, true],
       ['button-rollout', false, false],
     ]);
   });
@@ -63,8 +63,8 @@ describe('repoConflict (M6.3)', () => {
 
 describe('conflict copy (prototype sd.warn)', () => {
   it('two sessions: "… both write to <folder>/ in one working tree …", verbatim', () => {
-    expect(conflictText([{ name: 'pair-talk-feature' }, { name: 'button-rollout' }], 'mobile')).toBe(
-      "pair-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+    expect(conflictText([{ name: 'checkout-redesign' }, { name: 'button-rollout' }], 'mobile')).toBe(
+      "checkout-redesign and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
     );
   });
 

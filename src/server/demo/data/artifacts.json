@@ -2,65 +2,65 @@
   "note": "D89: artifacts saved on purpose (docs/artifacts.md), not the prototype's ART rows (derived from tool results, replaced by D89). versions: oldest first; age: of the latest version.",
   "artifacts": [
     {
-      "title": "Pair talk · implementation plan",
+      "title": "Checkout · implementation plan",
       "kind": "markdown",
-      "session": "pair-talk-feature",
+      "session": "checkout-redesign",
       "by": "agent",
       "age": "1m",
       "versions": [
-        "# Pair talk · implementation plan\n\n1. Lock the contract (`contracts/pair-talk.md`).\n2. Web at 360, then mobile at 360.\n",
-        "# Pair talk · implementation plan\n\nScope: the Pair talk screen at **360** on web and mobile, UI-first (mock-DI).\n\n## Steps\n1. Lock the contract (`contracts/pair-talk.md`): done.\n2. Web: `Pages/PairTalk` (6 files) against Figma `2231:884`.\n3. Mobile: `Views/PairTalkView` (5 files), same frame.\n4. Reconcile both against the contract by requirement ID.\n\n## Open points\n| Point | Owner | State |\n|---|---|---|\n| Empty-state copy | design | waiting |\n| Timer rounding | web + mobile | agreed: whole seconds |\n\n> Phase stays UI-first: no Gateway wiring in this round.\n"
+        "# Checkout · implementation plan\n\n1. Lock the contract (`contracts/checkout.md`).\n2. Web on phones, then mobile on phones.\n",
+        "# Checkout · implementation plan\n\nScope: the checkout page on **phones** on web and mobile, UI-first (mock-DI).\n\n## Steps\n1. Lock the contract (`contracts/checkout.md`): done.\n2. Web: `Pages/Checkout` (6 files) against Figma `2231:884`.\n3. Mobile: `Views/CheckoutView` (5 files), same frame.\n4. Reconcile both against the contract by requirement ID.\n\n## Open points\n| Point | Owner | State |\n|---|---|---|\n| Empty-state copy | design | waiting |\n| Timer rounding | web + mobile | agreed: whole seconds |\n\n> Phase stays UI-first: no Gateway wiring in this round.\n"
       ]
     },
     {
-      "title": "Pair talk flow",
+      "title": "Checkout flow",
       "kind": "mermaid",
-      "session": "pair-talk-feature",
+      "session": "checkout-redesign",
       "by": "agent",
       "age": "3m",
       "versions": [
-        "flowchart LR\n  A[Lobby] --> B{Partner found?}\n  B -- yes --> C[Talk 10 min]\n  B -- no --> D[Empty state]\n  C --> E[Summary]\n"
+        "flowchart LR\n  A[Cart] --> B{Address valid?}\n  B -- yes --> C[Pay]\n  B -- no --> D[Empty state]\n  C --> E[Summary]\n"
       ]
     },
     {
-      "title": "Pair talk card · mockup",
+      "title": "Checkout card · mockup",
       "kind": "html",
-      "session": "pair-talk-feature",
+      "session": "checkout-redesign",
       "by": "agent",
       "age": "4m",
       "versions": [
-        "<!doctype html>\n<html><head><meta charset=\"utf-8\"><style>\nbody{margin:0;font:14px system-ui,sans-serif;background:#f4f3ef;color:#1b1c1f;display:grid;place-items:center;min-height:100vh}\n.card{width:300px;border-radius:14px;background:#fff;box-shadow:0 2px 12px #0002;padding:18px}\n.card h1{font-size:17px;margin:0 0 6px}.muted{color:#6b6a66}\nbutton{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;background:#1b1c1f;color:#fff;font-weight:600}\n</style></head><body>\n<div class=\"card\"><h1>Pair talk</h1><div class=\"muted\">Talk about anything for 10 minutes.</div><button id=\"go\">Find a partner</button><div id=\"state\" class=\"muted\"></div></div>\n<script>document.getElementById('go').onclick=()=>{document.getElementById('state').textContent='Looking for a partner…'};</script>\n</body></html>\n"
+        "<!doctype html>\n<html><head><meta charset=\"utf-8\"><style>\nbody{margin:0;font:14px system-ui,sans-serif;background:#f4f3ef;color:#1b1c1f;display:grid;place-items:center;min-height:100vh}\n.card{width:300px;border-radius:14px;background:#fff;box-shadow:0 2px 12px #0002;padding:18px}\n.card h1{font-size:17px;margin:0 0 6px}.muted{color:#6b6a66}\nbutton{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;background:#1b1c1f;color:#fff;font-weight:600}\n</style></head><body>\n<div class=\"card\"><h1>Checkout</h1><div class=\"muted\">3 items · 42.90 EUR · reserved for 10 minutes.</div><button id=\"go\">Place order</button><div id=\"state\" class=\"muted\"></div></div>\n<script>document.getElementById('go').onclick=()=>{document.getElementById('state').textContent='Placing your order…'};</script>\n</body></html>\n"
       ]
     },
     {
-      "title": "PairTalkTimer.cs",
+      "title": "CheckoutTimer.cs",
       "kind": "code",
       "language": "csharp",
-      "session": "pair-talk-feature",
+      "session": "checkout-redesign",
       "by": "developer",
       "age": "5m",
       "versions": [
-        "public sealed class PairTalkTimer\n{\n    public TimeSpan Remaining { get; private set; } = TimeSpan.FromMinutes(10);\n\n    public void Tick(TimeSpan elapsed)\n    {\n        Remaining = Remaining - elapsed;\n        if (Remaining < TimeSpan.Zero) Remaining = TimeSpan.Zero;\n    }\n}\n"
+        "public sealed class CheckoutTimer\n{\n    public TimeSpan Remaining { get; private set; } = TimeSpan.FromMinutes(10);\n\n    public void Tick(TimeSpan elapsed)\n    {\n        Remaining = Remaining - elapsed;\n        if (Remaining < TimeSpan.Zero) Remaining = TimeSpan.Zero;\n    }\n}\n"
       ]
     },
     {
-      "title": "Push preferences contract",
+      "title": "Order history contract",
       "kind": "markdown",
-      "session": "acme-alerts-integration",
+      "session": "acme-orders-integration",
       "by": "agent",
       "age": "22m",
       "versions": [
-        "# Push preferences\n\n`GET /notifications/preferences` → `{ push: boolean, quietHours: { from, to } | null }`\n\n`PUT /notifications/preferences` with the same body → 204.\n"
+        "# Order history\n\n`GET /orders` → `{ items: [{ id, placedAt, total }], next: string | null }`\n\n`GET /orders/{id}` → one order, or 404.\n"
       ]
     },
     {
-      "title": "Pair talk coverage matrix",
+      "title": "Checkout coverage matrix",
       "kind": "csv",
-      "session": "qa-pair-talk",
+      "session": "qa-checkout",
       "by": "agent",
       "age": "9m",
       "versions": [
-        "Requirement,Web 360,Mobile 360,State\nFT-1 Lobby shows the timer,yes,yes,covered\nFT-2 Empty state copy,yes,no,partial\nFT-3 Summary opens after 10 min,yes,yes,covered\nFT-4 Leave ends the talk,no,no,open\n"
+        "Requirement,Web,Mobile,State\nCO-1 Cart shows the reservation timer,yes,yes,covered\nCO-2 Empty cart copy,yes,no,partial\nCO-3 Summary opens after payment,yes,yes,covered\nCO-4 Cancel empties the cart,no,no,open\n"
       ]
     },
     {
@@ -80,27 +80,27 @@
       "by": "agent",
       "age": "41m",
       "versions": [
-        "# Monitoring notes\n\n- `NullReferenceException` in notifications: fixed in PR #412.\n- 2 escalations: billing timeouts, calendar sync lag.\n"
+        "# Monitoring notes\n\n- `NullReferenceException` in orders: fixed in PR #412.\n- 2 escalations: billing timeouts, stock sync lag.\n"
       ]
     },
     {
-      "title": "Push preferences · PR summary",
+      "title": "Order history · PR summary",
       "kind": "markdown",
-      "session": "acme-alerts-integration",
+      "session": "acme-orders-integration",
       "by": "agent",
       "age": "20m",
       "versions": [
-        "# PR #88 · push preferences\n\n- Adds `GET` / `PUT /notifications/preferences`.\n- Quiet hours stored per user.\n- Contract: `contracts/push-preferences.md`.\n"
+        "# PR #88 · order history\n\n- Adds `GET /orders` and `GET /orders/{id}`.\n- Pages of 20, newest first.\n- Contract: `contracts/order-history.md`.\n"
       ]
     },
     {
       "title": "Empty-state reply draft",
       "kind": "markdown",
-      "session": "qa-pair-talk",
+      "session": "qa-checkout",
       "by": "developer",
       "age": "9m",
       "versions": [
-        "Hi! The Pair talk empty state reads \"No partner yet\" on web and \"Nobody here\" on mobile. Which copy is right?\n"
+        "Hi! The checkout empty state reads \"Your cart is empty\" on web and \"Nothing here yet\" on mobile. Which copy is right?\n"
       ]
     },
     {
@@ -114,10 +114,10 @@
       ]
     },
     {
-      "title": "ReminderScheduler.cs · DST fix",
+      "title": "InvoiceScheduler.cs · DST fix",
       "kind": "code",
       "language": "csharp",
-      "session": "reminder-func-fix",
+      "session": "invoice-func-fix",
       "by": "agent",
       "age": "20m",
       "versions": [
@@ -131,7 +131,7 @@
       "by": "agent",
       "age": "41m",
       "versions": [
-        "Signature,Service,Owner\nTimeoutException,billing,developer\nSync lag,calendar,developer\n"
+        "Signature,Service,Owner\nTimeoutException,billing,developer\nSync lag,stock,developer\n"
       ]
     }
   ]

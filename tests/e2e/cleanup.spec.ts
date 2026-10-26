@@ -62,8 +62,8 @@ test.beforeAll(async () => {
   world = await makeGitWorld({ root: tmp, store });
   await seedFolder(store, world.workspace);
   // Merged into main, its session closed: worktree + local branch.
-  merged = await worktree('pair-talk', await closedSession(store, 'pair-talk', 3));
-  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/pair-talk');
+  merged = await worktree('checkout', await closedSession(store, 'checkout', 3));
+  await world.git(world.web, 'merge', '-q', '--ff-only', 'session/checkout');
   // Merged too, but with an uncommitted change: needs the extra confirmation.
   dirty = await worktree('launch-plan', await closedSession(store, 'launch-plan', 3));
   await world.git(world.web, 'merge', '-q', '--ff-only', 'session/launch-plan');
@@ -134,7 +134,7 @@ test('Clean-up lists Switchboard’s leftovers, confirms, removes exactly the ti
   }
 
   // A merged branch goes with its worktree; the dirty worktree's branch waits for its worktree.
-  await expect(item('session/pair-talk').getByTestId('cleanup-item-check')).toBeChecked();
+  await expect(item('session/checkout').getByTestId('cleanup-item-check')).toBeChecked();
   await expect(item('session/launch-plan').getByTestId('cleanup-item-check')).not.toBeChecked();
   // Tick the dirty worktree (and its branch) and the remote branch by hand: the worktree and the remote branch need their confirmation.
   await item(dirty.path).getByTestId('cleanup-item-check').check();

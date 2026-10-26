@@ -102,7 +102,7 @@ test('messages, tool steps, composer (D86: 📎 next to Send, no quick replies),
   await expect(card).toHaveClass(/sb-qcard--chat/);
   await expect(card.getByTestId('question')).toHaveCount(2);
   await expect(card.locator('.sb-qcard__quote')).toHaveText(['“Which color should the button be?”', '“Which size should it be?”']);
-  await expect(card.locator('.sb-qcard__source')).toHaveText(['acme-app-front', 'acme-app-front']);
+  await expect(card.locator('.sb-qcard__source')).toHaveText(['acme-web-front', 'acme-web-front']);
   await expect(card.locator('.sb-qcard__head')).toHaveText('2 questions · relayed verbatim');
   await expect(card.getByTestId('question-status')).toHaveText('0 of 2 answered');
   const send = card.getByTestId('question-send');
@@ -125,7 +125,7 @@ test('messages, tool steps, composer (D86: 📎 next to Send, no quick replies),
 
   // The card turns into the answers bubble + note, then the agent's reply follows.
   await expect(chat.getByTestId('question-card')).toHaveCount(0);
-  await expect(chat.getByTestId('chat-answer')).toHaveText(['acme-app-front: Green', 'acme-app-front: Small']);
+  await expect(chat.getByTestId('chat-answer')).toHaveText(['acme-web-front: Green', 'acme-web-front: Small']);
   await expect(chat.getByTestId('chat-answers-note')).toHaveText('● Answers written into the briefs. Blocked agents are resuming…');
   await expect(chat.getByTestId('chat-text')).toHaveText([TASK, 'DONE', ASK, 'You chose a green button in small size.']);
   expect(await chatShape(page)).toEqual([

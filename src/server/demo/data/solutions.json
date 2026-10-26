@@ -6,7 +6,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "acme-app-front",
+          "name": "acme-web-front",
           "type": "Web",
           "status": "need",
           "readOnly": false,
@@ -16,27 +16,27 @@
           "flagKind": null,
           "branches": [
             {
-              "branch": "feature/pair-talk-360",
-              "owner": "pair-talk-feature",
+              "branch": "feature/checkout-redesign",
+              "owner": "checkout-redesign",
               "status": "need",
-              "worktree": "acme-app-front-wt-pair-talk-feature"
+              "worktree": "acme-web-front-wt-checkout-redesign"
             },
             {
               "branch": "feature/button-variants",
               "owner": "button-rollout",
               "status": "need",
-              "worktree": "acme-app-front-wt-button-rollout"
+              "worktree": "acme-web-front-wt-button-rollout"
             },
             {
-              "branch": "qa/pair-talk-e2e",
-              "owner": "qa-pair-talk",
+              "branch": "qa/checkout-e2e",
+              "owner": "qa-checkout",
               "status": "run",
-              "worktree": "acme-app-front-wt-qa-pair-talk"
+              "worktree": "acme-web-front-wt-qa-checkout"
             }
           ]
         },
         {
-          "name": "dashboard-front",
+          "name": "delivery-front",
           "type": "Web",
           "status": "run",
           "readOnly": false,
@@ -46,15 +46,15 @@
           "flagKind": null,
           "branches": [
             {
-              "branch": "feature/notifications-panel",
-              "owner": "acme-alerts-integration",
+              "branch": "feature/order-history",
+              "owner": "acme-orders-integration",
               "status": "done",
-              "worktree": "dashboard-front-wt-acme-alerts-integration"
+              "worktree": "delivery-front-wt-acme-orders-integration"
             }
           ]
         },
         {
-          "name": "login-front",
+          "name": "loyalty-front",
           "type": "Web",
           "status": "idle",
           "readOnly": false,
@@ -72,7 +72,7 @@
           ]
         },
         {
-          "name": "content-library-front",
+          "name": "catalog-front",
           "type": "Web",
           "status": "idle",
           "readOnly": false,
@@ -105,15 +105,15 @@
           "flag": "⚠ shared working tree",
           "flagKind": "warn",
           "conflictSessions": [
-            "pair-talk-feature",
+            "checkout-redesign",
             "button-rollout"
           ],
           "branches": [
             {
-              "branch": "feature/pair-talk-360",
-              "owner": "pair-talk-feature",
+              "branch": "feature/checkout-redesign",
+              "owner": "checkout-redesign",
               "status": "need",
-              "worktree": "mobile-wt-pair-talk-feature"
+              "worktree": "mobile-wt-checkout-redesign"
             },
             {
               "branch": "feature/button-variants",
@@ -122,10 +122,10 @@
               "worktree": null
             },
             {
-              "branch": "feature/push-prefs-bff",
-              "owner": "acme-alerts-integration",
+              "branch": "feature/order-history-bff",
+              "owner": "acme-orders-integration",
               "status": "run",
-              "worktree": "mobile-wt-acme-alerts-integration"
+              "worktree": "mobile-wt-acme-orders-integration"
             }
           ]
         }
@@ -136,7 +136,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "design-system-nuget",
+          "name": "design-kit-nuget",
           "type": "NuGet",
           "status": "run",
           "readOnly": false,
@@ -146,15 +146,15 @@
           "flagKind": null,
           "branches": [
             {
-              "branch": "feature/acm-button-sizes",
+              "branch": "feature/acme-button-sizes",
               "owner": "button-rollout",
               "status": "done",
-              "worktree": "design-system-nuget-wt-button-rollout"
+              "worktree": "design-kit-nuget-wt-button-rollout"
             }
           ]
         },
         {
-          "name": "acme-fonts-nuget",
+          "name": "acme-icons-nuget",
           "type": "NuGet",
           "status": "idle",
           "readOnly": false,
@@ -178,7 +178,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "acme-alerts-microservice",
+          "name": "orders-microservice",
           "type": "Backend",
           "status": "done",
           "readOnly": false,
@@ -188,15 +188,15 @@
           "flagKind": "muted",
           "branches": [
             {
-              "branch": "feature/push-prefs",
-              "owner": "acme-alerts-integration",
+              "branch": "feature/order-history-api",
+              "owner": "acme-orders-integration",
               "status": "done",
-              "worktree": "acme-alerts-microservice-wt-acme-alerts-integration"
+              "worktree": "orders-microservice-wt-acme-orders-integration"
             }
           ]
         },
         {
-          "name": "login-microservice",
+          "name": "accounts-microservice",
           "type": "Backend",
           "status": "idle",
           "readOnly": false,
@@ -220,7 +220,7 @@
       "note": "",
       "solutions": [
         {
-          "name": "reminder-func",
+          "name": "invoice-func",
           "type": "Backend",
           "status": "run",
           "readOnly": false,
@@ -231,9 +231,9 @@
           "branches": [
             {
               "branch": "fix/timezone-dst",
-              "owner": "reminder-func-fix",
+              "owner": "invoice-func-fix",
               "status": "run",
-              "worktree": "reminder-func-wt-reminder-func-fix"
+              "worktree": "invoice-func-wt-invoice-func-fix"
             }
           ]
         }
@@ -255,14 +255,14 @@
           "branches": [
             {
               "branch": "main",
-              "owner": "read by acme-alerts-integration",
+              "owner": "read by acme-orders-integration",
               "status": "run",
               "worktree": null
             }
           ]
         },
         {
-          "name": "old-chat-front",
+          "name": "old-cart-front",
           "type": "Read-only",
           "status": "idle",
           "readOnly": true,
@@ -273,7 +273,7 @@
           "branches": [
             {
               "branch": "main",
-              "owner": "read by acme-alerts-integration",
+              "owner": "read by acme-orders-integration",
               "status": "run",
               "worktree": null
             }
@@ -290,24 +290,24 @@
   "phaseLedgers": {
     "mobile": [
       {
-        "interface": "PairTalkService",
+        "interface": "CheckoutService",
         "phase": "UI-first",
         "status": "need",
-        "seam": "seam TODO · PairTalkViewModel.cs:41"
+        "seam": "seam TODO · CheckoutViewModel.cs:41"
       },
       {
-        "interface": "PushPreferencesClient",
+        "interface": "OrderHistoryClient",
         "phase": "integration",
         "status": "run",
         "seam": "Tier A pending on BFF route"
       }
     ],
-    "acme-app-front": [
+    "acme-web-front": [
       {
-        "interface": "PairTalkService",
+        "interface": "CheckoutService",
         "phase": "UI-first",
         "status": "need",
-        "seam": "mock-DI · fixtures/pair-talk.json"
+        "seam": "mock-DI · fixtures/checkout.json"
       },
       {
         "interface": "ProfileConnector",
@@ -321,12 +321,12 @@
     "mobile": [
       {
         "type": "CONTRACT",
-        "name": "contracts/pair-talk.md",
+        "name": "contracts/checkout.md",
         "meta": "locked"
       },
       {
         "type": "FOLLOWUP",
-        "name": "mobile-followups/from-acme-app-front.md",
+        "name": "mobile-followups/from-acme-web-front.md",
         "meta": "2 pending"
       },
       {
@@ -335,10 +335,10 @@
         "meta": "12/18"
       }
     ],
-    "acme-app-front": [
+    "acme-web-front": [
       {
         "type": "CONTRACT",
-        "name": "contracts/pair-talk.md",
+        "name": "contracts/checkout.md",
         "meta": "locked"
       },
       {
@@ -354,11 +354,11 @@
       "ts": "10:31"
     },
     {
-      "project": "acme-app-front",
+      "project": "acme-web-front",
       "ts": "10:22"
     },
     {
-      "project": "design-system-nuget",
+      "project": "design-kit-nuget",
       "ts": "09:58"
     }
   ],
@@ -370,10 +370,10 @@
     {
       "folder": "microfrontends/",
       "solutions": [
-        "acme-app-front",
-        "dashboard-front",
-        "login-front",
-        "content-library-front"
+        "acme-web-front",
+        "delivery-front",
+        "loyalty-front",
+        "catalog-front"
       ]
     },
     {
@@ -385,24 +385,24 @@
     {
       "folder": "nugets/",
       "solutions": [
-        "design-system-nuget",
-        "acme-fonts-nuget",
-        "summary-nuget",
-        "login-nuget"
+        "design-kit-nuget",
+        "acme-icons-nuget",
+        "acme-charts-nuget",
+        "api-client-nuget"
       ]
     },
     {
       "folder": "microservices/",
       "solutions": [
-        "login-microservice",
-        "acme-alerts-microservice"
+        "accounts-microservice",
+        "orders-microservice"
       ]
     },
     {
       "folder": "functions/",
       "solutions": [
-        "reminder-func",
-        "crm-sync-func"
+        "invoice-func",
+        "stock-sync-func"
       ]
     },
     {
@@ -420,15 +420,15 @@
     }
   ],
   "newSessionDraft": {
-    "name": "pair-talk-640",
-    "task": "Pair talk screen at 640, web and mobile. Figma node 2231:902.",
+    "name": "checkout-page-640",
+    "task": "Checkout page on tablets, web and mobile. Figma node 2231:902.",
     "work": "feature",
     "mode": "orch",
     "phase": "ui",
     "coord": "seq",
     "stack": "both",
     "sols": [
-      "acme-app-front",
+      "acme-web-front",
       "mobile"
     ],
     "wt": true,

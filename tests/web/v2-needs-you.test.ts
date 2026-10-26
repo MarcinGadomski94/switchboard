@@ -10,7 +10,7 @@ const AT = '2026-10-25T12:00:00.000Z';
 const LATER = '2026-10-25T12:05:00.000Z';
 
 function question(id: string, options: string[], extra: Partial<Question> = {}): Question {
-  return { id, batchId: 'b1', sessionId: 's1', source: 'acme-app-front', text: `Q ${id}?`, header: null, options: options.map((label) => ({ label })), multiSelect: false, state: 'open', answerIndex: null, answeredAt: null, ...extra };
+  return { id, batchId: 'b1', sessionId: 's1', source: 'acme-web-front', text: `Q ${id}?`, header: null, options: options.map((label) => ({ label })), multiSelect: false, state: 'open', answerIndex: null, answeredAt: null, ...extra };
 }
 
 function inbox(partial: Partial<InboxItem> & Pick<InboxItem, 'id' | 'kind'>): InboxItem {

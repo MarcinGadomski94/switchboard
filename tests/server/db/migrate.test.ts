@@ -196,16 +196,16 @@ describe('0006 session title (D22)', () => {
     // A database as the build before D22 left it (0006 does not depend on any 0005).
     migrate(database, shipped.filter((m) => m.version <= 4));
     const ts = '2026-09-28T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 4).map((m) => m.version));
-    expect(database.prepare('SELECT id, name, title FROM sessions').all()).toEqual([{ id: 's-old', name: 'pair-talk-640', title: null }]);
-    database.prepare("UPDATE sessions SET title = 'Pair talk at 640' WHERE id = 's-old'").run();
+    expect(database.prepare('SELECT id, name, title FROM sessions').all()).toEqual([{ id: 's-old', name: 'checkout-page-640', title: null }]);
+    database.prepare("UPDATE sessions SET title = 'Checkout page at 640' WHERE id = 's-old'").run();
     database.close();
 
     // The store reads it: the old session's title, a new one without.
     const store = await openStore(file);
     try {
-      expect(await store.sessions.get('s-old')).toMatchObject({ name: 'pair-talk-640', title: 'Pair talk at 640' });
+      expect(await store.sessions.get('s-old')).toMatchObject({ name: 'checkout-page-640', title: 'Checkout page at 640' });
       expect(await store.sessions.create({ name: 'fresh', claudeSessionId: 'c-fresh' })).toMatchObject({ title: null });
     } finally {
       await store.close();
@@ -222,7 +222,7 @@ describe('0007 session remote (D24)', () => {
     // A database as the build before D24 left it (0007 does not depend on D25's 0008).
     migrate(database, shipped.filter((m) => m.version <= 6));
     const ts = '2026-09-28T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     database.prepare('INSERT INTO question_batches (id, session_id, input, created_at) VALUES (?, ?, ?, ?)').run('b-old', 's-old', '{}', ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 6).map((m) => m.version));
     expect(database.prepare('SELECT remote_available, remote_enabled, remote_session_url, remote_bridge_id FROM sessions').all()).toEqual([
@@ -254,7 +254,7 @@ describe('0008 session remote source (D25)', () => {
     // 0007 belongs to another change (D24): the runner takes the gap, and 0008 needs nothing after 0006.
     migrate(database, shipped.filter((m) => m.version <= 6));
     const ts = '2026-09-28T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 6).map((m) => m.version));
     expect(database.prepare('SELECT id, remote_source FROM sessions').all()).toEqual([{ id: 's-old', remote_source: null }]);
     database.close();
@@ -278,7 +278,7 @@ describe('0009 session model (D31)', () => {
     // A database as the build before D31 left it (0001–0008).
     migrate(database, shipped.filter((m) => m.version <= 8));
     const ts = '2026-09-28T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 8).map((m) => m.version));
     expect(database.prepare('SELECT id, model, effort, model_options FROM sessions').all()).toEqual([{ id: 's-old', model: null, effort: null, model_options: null }]);
     database.close();
@@ -305,7 +305,7 @@ describe('0010 session closed (D33)', () => {
     // A database as the build before D33 left it (0009 belongs to another change: the runner takes the gap).
     migrate(database, shipped.filter((m) => m.version <= 8));
     const ts = '2026-09-28T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     database.prepare('INSERT INTO question_batches (id, session_id, input, created_at) VALUES (?, ?, ?, ?)').run('b-old', 's-old', '{}', ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 8).map((m) => m.version));
     expect(columnsOf(database, 'sessions')).toContain('closed_at');
@@ -335,7 +335,7 @@ describe('0012 session branching (D40)', () => {
     expect(shipped.find((m) => m.version === 12)).toMatchObject({ name: 'session_branching' });
     migrate(database, shipped.filter((m) => m.version <= 11));
     const ts = '2026-09-29T10:00:00.000Z';
-    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'pair-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'checkout-page-640', 'c-old', ts, ts);
     expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 11).map((m) => m.version));
     expect(database.prepare('SELECT id, branching FROM sessions').all()).toEqual([{ id: 's-old', branching: null }]);
     database.close();

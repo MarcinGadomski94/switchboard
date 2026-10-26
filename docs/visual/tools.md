@@ -6,7 +6,7 @@ Both show the tool unreachable (prototype: its probe of localhost:13000 aborted;
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.60%**, main area (256,0 1184×900) **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **1.99%**, main area (256,0 1184×900) **0.00%**.
 
 Side by side (prototype left, app right): `tools-side-by-side.png`, `tools-main-side-by-side.png`.
 
@@ -37,14 +37,14 @@ Side by side (prototype left, app right): `tools-side-by-side.png`, `tools-main-
 | chip1Dot | box | 442.8,875 6×6 | 442.8,875 6×6 | ok |  |
 | chip1Name | box | 454.8,870.5 41.4×15 | 454.8,870.5 41.4×15 | ok | "mobile" |
 | chip1Time | box | 502.2,870.5 34.5×15 | 502.2,870.5 34.5×15 | ok | "10:31" |
-| chip2 | box | 555.7,867.5 167.1×21 | 555.7,867.5 167.1×21 | ok | "acme-app-front10:22" |
-| chip3 | box | 732.8,867.5 236.1×21 | 732.8,867.5 236.1×21 | ok | "design-system-nuget09:58" |
+| chip2 | box | 555.7,867.5 167.1×21 | 555.7,867.5 167.1×21 | ok | "acme-web-front10:22" |
+| chip3 | box | 732.8,867.5 180.9×21 | 732.8,867.5 180.9×21 | ok | "design-kit-nuget09:58" |
 | stripNote | box | 1097,870.5 213.9×15 | 1097,870.5 213.9×15 | ok | "16 projects indexed · full mode" |
 | reindex | box | 1320.9,865 103.1×26 | 1320.9,865 103.1×26 | ok | "Reindex 3 now" |
-| sideCm | box | 10,290 235×48 | 10,290 235×48 | ok | "Codebase Memorylocalhost:13000" |
-| sideCmDot | size | 18,310.5 7×7 | 18,302 7×7 | ok |  |
-| sideSw | box | 10,340 235×31 | 10,340 235×31 | ok | "Acme Toolset URL" |
-| sideSwDot | box | 18,352 7×7 | 18,352 7×7 | ok |  |
+| sideCm | box (y rel. TOOLS label) | 10,290 235×48 | 10,213 235×48 | ok | "Codebase Memorylocalhost:13000" |
+| sideCmDot | size | 18,310.5 7×7 | 18,225 7×7 | ok |  |
+| sideSw | box (y rel. TOOLS label) | 10,340 235×31 | 10,263 235×31 | ok | "Acme Toolset URL" |
+| sideSwDot | box (y rel. TOOLS label) | 18,352 7×7 | 18,275 7×7 | ok |  |
 
 ## Computed styles (SPEC tokens)
 | Check | Expected | App | Result |

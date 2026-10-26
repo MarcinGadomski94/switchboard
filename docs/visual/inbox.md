@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **2.02%**, main area (256,0 1184×900) **0.12%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **2.06%**, main area (256,0 1184×900) **0.12%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
 
 Side by side (prototype left, app right): `inbox-side-by-side.png`, `inbox-main-side-by-side.png`, `inbox-system-side-by-side.png`, `inbox-empty-side-by-side.png`.
 
@@ -22,86 +22,86 @@ Every part also compares these computed styles: color, background-color, font-fa
 | listHead | box | 256,0 339×53 | 256,0 339×53 | ok |  |
 | heading | box | 274,18 48.1×23 | 274,18 48.1×23 | ok | "Inbox" |
 | count | box | 332.1,24 115.2×16 | 332.1,24 115.2×16 | ok | "5 waiting on you" |
-| list | box | 256,53 339×561.1 | 256,53 339×561.1 | ok |  |
+| list | box | 256,53 339×542.9 | 256,53 339×542.9 | ok |  |
 | card0 | box | 266,53 319×83.2 | 266,53 319×83.2 | ok |  |
 | card0Head | box | 279,66 293×16 | 279,66 293×16 | ok |  |
 | card0Dot | box | 279,70.5 7×7 | 279,70.5 7×7 | ok |  |
-| card0Source | box | 293,66 93.3×16 | 293,66 93.3×16 | ok | "pair-talk-feature" |
+| card0Source | box | 293,66 105.6×16 | 293,66 105.6×16 | ok | "checkout-redesign" |
 | card0Age | box | 558.8,67 13.2×14 | 558.8,67 13.2×14 | ok | "1m" |
-| card0Title | box | 279,87 293×18.2 | 279,87 293×18.2 | ok | "3 questions from web, mobile, (orchestrator)" |
+| card0Title | box | 279,87 293×18.2 | 279,87 293×18.2 | ok | "3 questions from web, mobile, (lead)" |
 | card0Kind | box | 279,110.2 293×13 | 279,110.2 293×13 | ok | "3 questions" |
-| card1 | box | 266,142.2 319×137.8 | 266,142.2 319×137.8 | ok |  |
+| card1 | box | 266,142.2 319×119.6 | 266,142.2 319×119.6 | ok |  |
 | card1Head | box | 279,155.2 293×16 | 279,155.2 293×16 | ok |  |
 | card1Dot | box | 279,159.7 7×7 | 279,159.7 7×7 | ok |  |
-| card1Source | box | 293,155.2 133.7×16 | 293,155.2 133.7×16 | ok | "acme-alerts-integration" |
+| card1Source | box | 293,155.2 137.4×16 | 293,155.2 137.4×16 | ok | "acme-orders-integration" |
 | card1Age | box | 558.8,156.2 13.2×14 | 558.8,156.2 13.2×14 | ok | "3m" |
-| card1Title | box | 279,176.2 293×72.8 | 279,176.2 293×72.8 | ok | "Tier A is green on web. Tier B boots acme-alerts-microservice → Gateway → dashboard-front locally (3 processes, about 6 min). Authorize Tier B now?" |
-| card1Kind | box | 279,253.9 293×13 | 279,253.9 293×13 | ok | "Question" |
-| card2 | box | 266,285.9 319×137.8 | 266,285.9 319×137.8 | ok |  |
-| card2Head | box | 279,298.9 293×16 | 279,298.9 293×16 | ok |  |
-| card2Dot | box | 279,303.4 7×7 | 279,303.4 7×7 | ok |  |
-| card2Source | box | 293,298.9 77.9×16 | 293,298.9 77.9×16 | ok | "button-rollout" |
-| card2Age | box | 552.2,299.9 19.8×14 | 552.2,299.9 19.8×14 | ok | "12m" |
-| card2Title | box | 279,319.9 293×72.8 | 279,319.9 293×72.8 | ok | "Items 8 and 9 (AcmIconButton, AcmLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive)." |
-| card2Kind | box | 279,397.7 293×13 | 279,397.7 293×13 | ok | "Question" (prototype "Loop paused": known difference, D13) |
-| card3 | box | 266,429.7 319×83.2 | 266,429.7 319×83.2 | ok |  |
-| card3Head | box | 279,442.7 293×16 | 279,442.7 293×16 | ok |  |
-| card3Dot | box | 279,447.2 7×7 | 279,447.2 7×7 | ok |  |
-| card3Source | box | 293,442.7 107×16 | 293,442.7 107×16 | ok | "nightly-build-verify" |
-| card3Age | box | 552.2,443.7 19.8×14 | 552.2,443.7 19.8×14 | ok | "38m" |
-| card3Title | box | 279,463.7 293×18.2 | 279,463.7 293×18.2 | ok | "Android build failed at XamlC" |
-| card3Kind | box | 279,486.9 293×13 | 279,486.9 293×13 | ok | "Scheduled run failed" |
-| card4 | box | 266,518.9 319×83.2 | 266,518.9 319×83.2 | ok |  |
-| card4Head | box | 279,531.9 293×16 | 279,531.9 293×16 | ok |  |
-| card4Dot | box | 279,536.4 7×7 | 279,536.4 7×7 | ok |  |
-| card4Source | box | 293,531.9 56.9×16 | 293,531.9 56.9×16 | ok | "worktrees" |
-| card4Age | box | 552.2,532.9 19.8×14 | 552.2,532.9 19.8×14 | ok | "20m" |
-| card4Title | box | 279,552.9 293×18.2 | 279,552.9 293×18.2 | ok | "PR #231 merged, so the worktree can be removed" |
-| card4Kind | box | 279,576.1 293×13 | 279,576.1 293×13 | ok | "PR merged" |
+| card1Title | box | 279,176.2 293×54.6 | 279,176.2 293×54.6 | ok | "Tier A is green on web. Tier B boots orders-microservice → Gateway → delivery-front locally (3 processes, about 6 min). Authorize Tier B now?" |
+| card1Kind | box | 279,235.8 293×13 | 279,235.8 293×13 | ok | "Question" |
+| card2 | box | 266,267.8 319×137.8 | 266,267.8 319×137.8 | ok |  |
+| card2Head | box | 279,280.8 293×16 | 279,280.8 293×16 | ok |  |
+| card2Dot | box | 279,285.3 7×7 | 279,285.3 7×7 | ok |  |
+| card2Source | box | 293,280.8 77.9×16 | 293,280.8 77.9×16 | ok | "button-rollout" |
+| card2Age | box | 552.2,281.8 19.8×14 | 552.2,281.8 19.8×14 | ok | "12m" |
+| card2Title | box | 279,301.8 293×72.8 | 279,301.8 293×72.8 | ok | "Items 8 and 9 (AcmeIconButton, AcmeLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive)." |
+| card2Kind | box | 279,379.5 293×13 | 279,379.5 293×13 | ok | "Question" (prototype "Loop paused": known difference, D13) |
+| card3 | box | 266,411.5 319×83.2 | 266,411.5 319×83.2 | ok |  |
+| card3Head | box | 279,424.5 293×16 | 279,424.5 293×16 | ok |  |
+| card3Dot | box | 279,429 7×7 | 279,429 7×7 | ok |  |
+| card3Source | box | 293,424.5 107×16 | 293,424.5 107×16 | ok | "nightly-build-verify" |
+| card3Age | box | 552.2,425.5 19.8×14 | 552.2,425.5 19.8×14 | ok | "38m" |
+| card3Title | box | 279,445.5 293×18.2 | 279,445.5 293×18.2 | ok | "Android build failed at XamlC" |
+| card3Kind | box | 279,468.7 293×13 | 279,468.7 293×13 | ok | "Scheduled run failed" |
+| card4 | box | 266,500.7 319×83.2 | 266,500.7 319×83.2 | ok |  |
+| card4Head | box | 279,513.7 293×16 | 279,513.7 293×16 | ok |  |
+| card4Dot | box | 279,518.2 7×7 | 279,518.2 7×7 | ok |  |
+| card4Source | box | 293,513.7 56.9×16 | 293,513.7 56.9×16 | ok | "worktrees" |
+| card4Age | box | 552.2,514.7 19.8×14 | 552.2,514.7 19.8×14 | ok | "20m" |
+| card4Title | box | 279,534.7 293×18.2 | 279,534.7 293×18.2 | ok | "PR #231 merged, so the worktree can be removed" |
+| card4Kind | box | 279,557.9 293×13 | 279,557.9 293×13 | ok | "PR merged" |
 | detail | box | 596,0 844×900 | 596,0 844×900 | ok |  |
-| meta | box | 636,28 764×29 | 636,28 764×29 | ok | "pair-talk-feature·3 questions·1mOpen session →" |
+| meta | box | 636,28 764×29 | 636,28 764×29 | ok | "checkout-redesign·3 questions·1mOpen session →" |
 | metaDot | box | 636,38.5 8×8 | 636,38.5 8×8 | ok |  |
-| metaSource | box | 654,34 100.1×17 | 654,34 100.1×17 | ok | "pair-talk-feature" |
-| metaKind | box | 776.6,34 66.6×17 | 776.6,34 66.6×17 | ok | "3 questions" |
-| metaAge | box | 865.7,34 15.8×17 | 865.7,34 15.8×17 | ok | "1m" |
+| metaSource | box | 654,34 112.8×17 | 654,34 112.8×17 | ok | "checkout-redesign" |
+| metaKind | box | 789.3,34 66.6×17 | 789.3,34 66.6×17 | ok | "3 questions" |
+| metaAge | box | 878.4,34 15.8×17 | 878.4,34 15.8×17 | ok | "1m" |
 | openSession | box | 1286.5,28 113.5×29 | 1286.5,28 113.5×29 | ok | "Open session →" |
-| title | box | 636,73 720×31.2 | 636,73 720×31.2 | ok | "3 questions from web, mobile, (orchestrator)" |
+| title | box | 636,73 720×31.2 | 636,73 720×31.2 | ok | "3 questions from web, mobile, (lead)" |
 | branches | box | 636,120.2 764×26 | 636,120.2 764×26 | ok |  |
-| branch0 | box | 636,120.2 301.2×26 | 636,120.2 301.2×26 | ok | "acme-app-front⎇ feature/pair-talk-360" |
-| branch0Name | box | 755.8,125.2 170.4×16 | 755.8,125.2 170.4×16 | ok | "⎇ feature/pair-talk-360" |
-| branch1 | box | 943.2,120.2 243.6×26 | 943.2,120.2 243.6×26 | ok | "mobile⎇ feature/pair-talk-360" |
-| card | box | 636,162.2 764×393.8 | 636,162.2 764×393.8 | ok |  |
+| branch0 | box | 636,120.2 330×26 | 636,120.2 330×26 | ok | "acme-web-front⎇ feature/checkout-redesign" |
+| branch0Name | box | 755.8,125.2 199.2×16 | 755.8,125.2 199.2×16 | ok | "⎇ feature/checkout-redesign" |
+| branch1 | box | 972,120.2 272.4×26 | 972,120.2 272.4×26 | ok | "mobile⎇ feature/checkout-redesign" |
+| card | box | 636,162.2 764×414 | 636,162.2 764×414 | ok |  |
 | cardHead | box | 653,177.2 730×14 | 653,177.2 730×14 | ok | "3 questions · relayed verbatim" |
-| q0 | box | 653,203.2 730×90.3 | 653,203.2 730×90.3 | ok |  |
-| q0Source | box | 653,214.2 730×14 | 653,214.2 730×14 | ok | "web · microfrontends/acme-app-front" |
-| q0Quote | box | 653,235.2 730×20.3 | 653,235.2 730×20.3 | ok | "“Figma shows the topic chips wrapping to 2 rows at 360. Should overflow wrap as drawn, or scroll horizontally?”" |
-| q0Options | box | 653,262.4 730×31 | 653,262.4 730×31 | ok |  |
-| q0Option0 | box | 653,262.4 174×31 | 653,262.4 174×31 | ok | "Wrap to 2 rows (as Figma)" |
-| q0Option1 | box | 833,262.4 118.2×31 | 833,262.4 118.2×31 | ok | "Horizontal scroll" |
-| q0Option2 | box | 957.3,262.4 100.7×31 | 957.3,262.4 100.7×31 | ok | "Ask designer" |
-| q1 | box | 653,305.4 730×90.3 | 653,305.4 730×90.3 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?”Use default sizeAdd compact variantStop here" + "Other…" (D39, checked on its own) |
-| q2 | box | 653,407.7 730×90.3 | 653,407.7 730×90.3 | ok | "(orchestrator)“Web mocked PairTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" + "Other…" (D39, checked on its own) |
-| cardFoot | box | 653,509.9 730×31 | 653,509.9 730×31 | ok |  |
-| cardStatus | box | 653,517.4 88.9×16 | 653,517.4 88.9×16 | ok | "0 of 3 answered" |
-| send | box | 1248,509.9 135×31 | 1248,509.9 135×31 | ok | "Send all answers" |
+| q0 | box | 653,203.2 730×110.5 | 653,203.2 730×110.5 | ok |  |
+| q0Source | box | 653,214.2 730×14 | 653,214.2 730×14 | ok | "web · microfrontends/acme-web-front" |
+| q0Quote | box | 653,235.2 730×40.5 | 653,235.2 730×40.5 | ok | "“Figma shows the delivery chips wrapping to 2 rows on phones. Should overflow wrap as drawn, or scroll horizontally?”" |
+| q0Options | box | 653,282.7 730×31 | 653,282.7 730×31 | ok |  |
+| q0Option0 | box | 653,282.7 174×31 | 653,282.7 174×31 | ok | "Wrap to 2 rows (as Figma)" |
+| q0Option1 | box | 833,282.7 118.2×31 | 833,282.7 118.2×31 | ok | "Horizontal scroll" |
+| q0Option2 | box | 957.3,282.7 100.7×31 | 957.3,282.7 100.7×31 | ok | "Ask designer" |
+| q1 | box | 653,325.7 730×90.3 | 653,325.7 730×90.3 | ok | "mobile · mobile/“AcmeChip has no compact size in Acme.Ui.Mobile. Add the variant, or use the default size on phones?”Use default sizeAdd compact variantStop here" + "Other…" (D39, checked on its own) |
+| q2 | box | 653,427.9 730×90.3 | 653,427.9 730×90.3 | ok | "(lead)“Web mocked CheckoutService.CartId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" + "Other…" (D39, checked on its own) |
+| cardFoot | box | 653,530.2 730×31 | 653,530.2 730×31 | ok |  |
+| cardStatus | box | 653,537.7 88.9×16 | 653,537.7 88.9×16 | ok | "0 of 3 answered" |
+| send | box | 1248,530.2 135×31 | 1248,530.2 135×31 | ok | "Send all answers" |
 
 ### One of three answered
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
-| q0Option0 | box | 653,262.4 174×31 | 653,262.4 174×31 | ok | "Wrap to 2 rows (as Figma)" |
-| cardStatus | box | 653,517.4 85.5×16 | 653,517.4 85.5×16 | ok | "1 of 3 answered" |
+| q0Option0 | box | 653,282.7 174×31 | 653,282.7 174×31 | ok | "Wrap to 2 rows (as Figma)" |
+| cardStatus | box | 653,537.7 85.5×16 | 653,537.7 85.5×16 | ok | "1 of 3 answered" |
 
 ### System item picked (nightly-build-verify)
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
-| card3 | box | 266,429.7 319×83.2 | 266,429.7 319×83.2 | ok |  |
+| card3 | box | 266,411.5 319×83.2 | 266,411.5 319×83.2 | ok |  |
 | card0 | box | 266,53 319×83.2 | 266,53 319×83.2 | ok |  |
 | meta | box | 636,28 764×17 | 636,28 764×17 | ok | "nightly-build-verify·Scheduled run failed·38m" |
 | metaSource | box | 654,28 114.9×17 | 654,28 114.9×17 | ok | "nightly-build-verify" |
 | title | box | 636,61 720×31.2 | 636,61 720×31.2 | ok | "Android build failed at XamlC" |
 | branches | box | 636,108.2 764×26 | 636,108.2 764×26 | ok |  |
-| branch0 | box | 636,108.2 250.8×26 | 636,108.2 250.8×26 | ok | "mobile/⎇ feature/pair-talk-360" |
-| text | box | 636,150.2 720×43.4 | 636,150.2 720×43.4 | ok | "mobile/ · PairTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to pair-talk-feature." |
+| branch0 | box | 636,108.2 279.6×26 | 636,108.2 279.6×26 | ok | "mobile/⎇ feature/checkout-redesign" |
+| text | box | 636,150.2 720×43.4 | 636,150.2 720×43.4 | ok | "mobile/ · CheckoutView.xaml(41): unknown property AcmeChip.Size. The previous 13 runs were green. Likely related to checkout-redesign." |
 | actions | box | 636,209.6 764×35 | 636,209.6 764×35 | ok |  |
 | action0 | box | 636,209.6 132.1×35 | 636,209.6 132.1×35 | ok | "Open fix session" |
 | action1 | box | 776.1,209.6 89.2×35 | 776.1,209.6 89.2×35 | ok | "Retry run" |
@@ -126,21 +126,21 @@ Every part also compares these computed styles: color, background-color, font-fa
 |---|---|---|---|---|---|
 | q0Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
 | q0Options · D39 copy | addition | — | "Other…" | ok | |
-| q0Options · D39 on the options' line | addition | — | 1063.9,262.4 64.8×31 · first option 653,262.4 174×31 | ok | |
+| q0Options · D39 on the options' line | addition | — | 1063.9,282.7 64.8×31 · first option 653,282.7 174×31 | ok | |
 | q0Options · D39 one row gap after the last option | addition | — | x 1063.9 · last option ends 1057.9 + gap 6 | ok | |
 | q0Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
 | q0Options · D39 inside the row | addition | — | ends 1128.7 · row ends 1383 | ok | |
 | q0Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
 | q1Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
 | q1Options · D39 copy | addition | — | "Other…" | ok | |
-| q1Options · D39 on the options' line | addition | — | 1013.4,364.7 64.8×31 · first option 653,364.7 116.9×31 | ok | |
+| q1Options · D39 on the options' line | addition | — | 1013.4,384.9 64.8×31 · first option 653,384.9 116.9×31 | ok | |
 | q1Options · D39 one row gap after the last option | addition | — | x 1013.4 · last option ends 1007.4 + gap 6 | ok | |
 | q1Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
 | q1Options · D39 inside the row | addition | — | ends 1078.2 · row ends 1383 | ok | |
 | q1Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
 | q2Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
 | q2Options · D39 copy | addition | — | "Other…" | ok | |
-| q2Options · D39 on the options' line | addition | — | 978.7,466.9 64.8×31 · first option 653,466.9 73.2×31 | ok | |
+| q2Options · D39 on the options' line | addition | — | 978.7,487.2 64.8×31 · first option 653,487.2 73.2×31 | ok | |
 | q2Options · D39 one row gap after the last option | addition | — | x 978.7 · last option ends 972.7 + gap 6 | ok | |
 | q2Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
 | q2Options · D39 inside the row | addition | — | ends 1043.5 · row ends 1383 | ok | |

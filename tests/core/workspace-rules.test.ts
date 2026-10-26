@@ -166,22 +166,22 @@ describe('readOnlyCheck (NewSession validation)', () => {
   const none = { always: false, candidates: [] };
 
   it('a path that starts in a read-only folder is always read-only, whatever the slashes', () => {
-    for (const solution of ['deprecated', 'deprecated/microfrontends/old-chat-front', 'deprecated\\mobile', 'infrastructure', './infrastructure', 'archive/old-repo', 'archive']) {
+    for (const solution of ['deprecated', 'deprecated/microfrontends/old-cart-front', 'deprecated\\mobile', 'infrastructure', './infrastructure', 'archive/old-repo', 'archive']) {
       expect(readOnlyCheck(specs, root, solution), solution).toEqual({ always: true, candidates: [] });
     }
   });
 
   it('a live solution that shares its name with an archived one (deprecated/mobile/) has nothing read-only to resolve to', () => {
-    for (const solution of ['mobile', 'acme-app-front', 'old-chat-front', 'other/it-dashboard', 'microfrontends/acme-app-front']) {
+    for (const solution of ['mobile', 'acme-web-front', 'old-cart-front', 'other/it-dashboard', 'microfrontends/acme-web-front']) {
       expect(readOnlyCheck(specs, root, solution), solution).toEqual(none);
     }
   });
 
   it('a bare name lists the folders it can resolve to inside a folder the router made read-only (read-only when one exists)', () => {
     const tightened = mergeFolderRules([{ folder: 'nugets', rule: 'read-only', depth: 1 }]);
-    expect(readOnlyCheck(tightened, root, 'acme-fonts-nuget')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'acme-fonts-nuget')] });
+    expect(readOnlyCheck(tightened, root, 'acme-icons-nuget')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'acme-icons-nuget')] });
     expect(readOnlyCheck(tightened, root, 'mobile')).toEqual({ always: false, candidates: [path.join(root, 'nugets', 'mobile')] });
-    expect(readOnlyCheck(tightened, root, 'nugets/acme-fonts-nuget')).toEqual({ always: true, candidates: [] });
+    expect(readOnlyCheck(tightened, root, 'nugets/acme-icons-nuget')).toEqual({ always: true, candidates: [] });
   });
 
   it('leaves names that are no workspace solution to the other checks', () => {
@@ -212,26 +212,26 @@ describe('toSolutionGroups', () => {
   it('one group per writable folder, other/ on request, every read-only folder in one read-only group', () => {
     const groups = toSolutionGroups(
       scan([
-        folder('microfrontends', ['microfrontends/dashboard-front', 'microfrontends/Billing-front', 'microfrontends/acme-app-front']),
+        folder('microfrontends', ['microfrontends/delivery-front', 'microfrontends/Billing-front', 'microfrontends/acme-web-front']),
         folder('mobile', ['mobile']),
         folder('nugets', []),
         folder('microservices', [], false),
         folder('other', ['other/it-dashboard']),
-        folder('deprecated', ['deprecated/mobile', 'deprecated/microfrontends/old-chat-front']),
+        folder('deprecated', ['deprecated/mobile', 'deprecated/microfrontends/old-cart-front']),
         folder('infrastructure', ['infrastructure']),
       ]),
     );
     expect(groups.map((g) => [g.folder, g.note, g.rule, g.solutions.map((s) => s.name)])).toEqual([
-      ['microfrontends/', '', 'editable', ['acme-app-front', 'Billing-front', 'dashboard-front']],
+      ['microfrontends/', '', 'editable', ['acme-web-front', 'Billing-front', 'delivery-front']],
       ['mobile/', '', 'editable', ['mobile']],
       ['other/', 'on request only', 'on-request', ['it-dashboard']],
-      ['read-only', 'deprecated/ · infrastructure/ · never edited', 'read-only', ['infrastructure', 'mobile', 'old-chat-front']],
+      ['read-only', 'deprecated/ · infrastructure/ · never edited', 'read-only', ['infrastructure', 'mobile', 'old-cart-front']],
     ]);
     const [web, , other, readOnly] = groups;
     expect(web?.solutions[0]).toEqual({
-      name: 'acme-app-front',
-      path: path.join(root, 'microfrontends', 'acme-app-front'),
-      relativePath: 'microfrontends/acme-app-front',
+      name: 'acme-web-front',
+      path: path.join(root, 'microfrontends', 'acme-web-front'),
+      relativePath: 'microfrontends/acme-web-front',
       type: 'Web',
       status: 'idle',
       rule: 'editable',
@@ -250,7 +250,7 @@ describe('toSolutionGroups', () => {
     expect(readOnly?.solutions.map((s) => [s.path, s.type, s.rule, s.changes])).toEqual([
       [path.join(root, 'infrastructure'), 'Read-only', 'read-only', 'locked'],
       [path.join(root, 'deprecated', 'mobile'), 'Read-only', 'read-only', 'locked'],
-      [path.join(root, 'deprecated', 'microfrontends', 'old-chat-front'), 'Read-only', 'read-only', 'locked'],
+      [path.join(root, 'deprecated', 'microfrontends', 'old-cart-front'), 'Read-only', 'read-only', 'locked'],
     ]);
   });
 

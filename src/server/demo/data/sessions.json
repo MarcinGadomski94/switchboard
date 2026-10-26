@@ -1,7 +1,7 @@
 {
   "sessions": [
     {
-      "name": "pair-talk-feature",
+      "name": "checkout-redesign",
       "status": "need",
       "age": "1m",
       "modeLine": "orch · feature · UI-first",
@@ -27,7 +27,7 @@
         },
         {
           "k": "scope",
-          "v": "acme-app-front + mobile"
+          "v": "acme-web-front + mobile"
         },
         {
           "k": "run",
@@ -46,17 +46,17 @@
         },
         {
           "name": "web",
-          "description": "PairTalkPage @360",
-          "solutionPath": "microfrontends/acme-app-front",
-          "branch": "feature/pair-talk-360",
+          "description": "CheckoutPage @phone",
+          "solutionPath": "microfrontends/acme-web-front",
+          "branch": "feature/checkout-redesign",
           "statusText": "asked 1",
           "status": "need"
         },
         {
           "name": "mobile",
-          "description": "PairTalkView @360",
+          "description": "CheckoutView @phone",
           "solutionPath": "mobile/",
-          "branch": "feature/pair-talk-360",
+          "branch": "feature/checkout-redesign",
           "statusText": "asked 1",
           "status": "need"
         },
@@ -72,11 +72,11 @@
       "messages": [
         {
           "from": "user",
-          "text": "Pair talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page."
+          "text": "Checkout page on phones, web and mobile in parallel. The Figma frame is on the handoff page."
         },
         {
           "from": "agent",
-          "text": "Contract locked from Figma node 2231:884 and written to contracts/pair-talk.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.",
+          "text": "Contract locked from Figma node 2231:884 and written to contracts/checkout.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.",
           "tools": [
             "✓ recon · codebase-memory · 2 precedents found",
             "✓ figma-extractor · spec table, 14 slots",
@@ -87,8 +87,8 @@
       ],
       "questions": [
         {
-          "source": "web · microfrontends/acme-app-front",
-          "text": "Figma shows the topic chips wrapping to 2 rows at 360. Should overflow wrap as drawn, or scroll horizontally?",
+          "source": "web · microfrontends/acme-web-front",
+          "text": "Figma shows the delivery chips wrapping to 2 rows on phones. Should overflow wrap as drawn, or scroll horizontally?",
           "options": [
             "Wrap to 2 rows (as Figma)",
             "Horizontal scroll",
@@ -97,7 +97,7 @@
         },
         {
           "source": "mobile · mobile/",
-          "text": "AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?",
+          "text": "AcmeChip has no compact size in Acme.Ui.Mobile. Add the variant, or use the default size on phones?",
           "options": [
             "Use default size",
             "Add compact variant",
@@ -105,8 +105,8 @@
           ]
         },
         {
-          "source": "(orchestrator)",
-          "text": "Web mocked PairTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?",
+          "source": "(lead)",
+          "text": "Web mocked CheckoutService.CartId as nullable, mobile as required. The Confluence page is silent. Which is correct?",
           "options": [
             "Nullable",
             "Required",
@@ -117,83 +117,83 @@
       "terminal": [
         "[orch] reconcile · contract-adherence report",
         "✓ web 13/14 fields match",
-        "⚠ mobile TopicId: required ≠ web nullable",
-        "⏸ [web] question: chip overflow at 360",
-        "⏸ [mobile] question: AcmChip compact size",
+        "⚠ mobile CartId: required ≠ web nullable",
+        "⏸ [web] question: chip overflow on phones",
+        "⏸ [mobile] question: AcmeChip compact size",
         "⏸ waiting for your answers"
       ],
       "files": [
         {
-          "solution": "acme-app-front",
-          "path": "Pages/PairTalk/PairTalk.razor",
-          "branch": "feature/pair-talk-360",
+          "solution": "acme-web-front",
+          "path": "Pages/Checkout/Checkout.razor",
+          "branch": "feature/checkout-redesign",
           "delta": "+118",
           "lines": [
-            " @page \"/pair-talk\"",
-            " @inject IPairTalkService PairTalkService",
-            "+<AcmPageHeader Title=\"Pair talk\" />",
-            "+<TopicChips Topics=\"@_topics\" Wrap=\"true\" />",
-            "+<AcmButton Size=\"Large\" OnClick=\"StartAsync\">Start talking</AcmButton>",
+            " @page \"/checkout\"",
+            " @inject ICheckoutService CheckoutService",
+            "+<AcmePageHeader Title=\"Checkout\" />",
+            "+<DeliveryChips Options=\"@_options\" Wrap=\"true\" />",
+            "+<AcmeButton Size=\"Large\" OnClick=\"PlaceOrderAsync\">Place order</AcmeButton>",
             "+",
             "+@code {",
-            "+    private IReadOnlyList<TopicDto> _topics = [];",
+            "+    private IReadOnlyList<DeliveryOptionDto> _options = [];",
             "+",
             "+    protected override async Task OnInitializedAsync()",
-            "+        => _topics = await PairTalkService.GetTopicsAsync();",
+            "+        => _options = await CheckoutService.GetDeliveryOptionsAsync();",
             "+}"
           ]
         },
         {
-          "solution": "acme-app-front",
-          "path": "Pages/PairTalk/TopicChips.razor",
-          "branch": "feature/pair-talk-360",
+          "solution": "acme-web-front",
+          "path": "Pages/Checkout/DeliveryChips.razor",
+          "branch": "feature/checkout-redesign",
           "delta": "+51 −12",
           "lines": [
-            " <div class=\"topic-chips\">",
-            "-    <AcmChip Size=\"Compact\" @bind-Selected=\"topic.Selected\">",
-            "+    <AcmChip @bind-Selected=\"topic.Selected\">",
-            "         @topic.Title",
-            "     </AcmChip>",
+            " <div class=\"delivery-chips\">",
+            "-    <AcmeChip Size=\"Compact\" @bind-Selected=\"option.Selected\">",
+            "+    <AcmeChip @bind-Selected=\"option.Selected\">",
+            "         @option.Title",
+            "     </AcmeChip>",
             " </div>"
           ]
         },
         {
           "solution": "mobile/",
-          "path": "Views/PairTalkView.xaml",
-          "branch": "feature/pair-talk-360",
+          "path": "Views/CheckoutView.xaml",
+          "branch": "feature/checkout-redesign",
           "delta": "+96",
           "lines": [
-            "+<ContentPage x:Class=\"Acme.Mobile.Views.PairTalkView\"",
-            "+             Title=\"Pair talk\">",
+            "+<ContentPage x:Class=\"Acme.Mobile.Views.CheckoutView\"",
+            "+             Title=\"Checkout\">",
             "+  <VerticalStackLayout Spacing=\"16\" Padding=\"16\">",
-            "+    <controls:AcmChipGroup ItemsSource=\"{Binding Topics}\" />",
-            "+    <controls:AcmButton Text=\"Start talking\" Command=\"{Binding StartCommand}\" />",
+            "+    <controls:AcmeChipGroup ItemsSource=\"{Binding DeliveryOptions}\" />",
+            "+    <controls:AcmeButton Text=\"Place order\" Command=\"{Binding PlaceOrderCommand}\" />",
             "+  </VerticalStackLayout>",
             "+</ContentPage>"
           ]
         },
         {
           "solution": "mobile/",
-          "path": "ViewModels/PairTalkViewModel.cs",
-          "branch": "feature/pair-talk-360",
+          "path": "ViewModels/CheckoutViewModel.cs",
+          "branch": "feature/checkout-redesign",
           "delta": "+88",
           "lines": [
-            "+public partial class PairTalkViewModel : ObservableObject",
+            "+public partial class CheckoutViewModel : ObservableObject",
             "+{",
-            "+    // UI-first seam: swap PairTalkServiceMock for the real connector at integration",
-            "+    [ObservableProperty] private IReadOnlyList<TopicDto> _topics = [];",
+            "+    // UI-first seam: swap CheckoutServiceMock for the real connector at integration",
+            "+    [ObservableProperty] private IReadOnlyList<DeliveryOptionDto> _options = [];",
             "+}"
           ]
         },
         {
           "solution": "root",
-          "path": "contracts/pair-talk.md",
+          "path": "contracts/checkout.md",
           "branch": "—",
           "delta": "+62",
           "lines": [
-            "+# Pair talk · locked contract",
-            "+Figma: 2231:884 (360)",
-            "+Breakpoints: web 360 · mobile 360",
+            "+# Checkout · locked contract",
+            "+Figma: 2231:884 (phone)",
+            "+Breakpoints: web phone · mobile phone",
             "+Phase: UI-first (mock-DI)"
           ]
         }
@@ -201,12 +201,12 @@
       "artifacts": [
         {
           "type": "CONTRACT",
-          "name": "contracts/pair-talk.md",
+          "name": "contracts/checkout.md",
           "meta": "locked"
         },
         {
           "type": "DIFF",
-          "name": "acme-app-front · 6 files",
+          "name": "acme-web-front · 6 files",
           "meta": "+284 −12"
         },
         {
@@ -216,7 +216,7 @@
         },
         {
           "type": "FOLLOWUP",
-          "name": "mobile-followups/from-acme-app-front.md",
+          "name": "mobile-followups/from-acme-web-front.md",
           "meta": "1 new"
         }
       ],
@@ -277,13 +277,13 @@
         },
         {
           "agent": "web",
-          "solution": "acme-app-front",
+          "solution": "acme-web-front",
           "blocks": [
             {
               "start": 13,
               "end": 22,
               "kind": "impl",
-              "label": "implement PairTalkPage"
+              "label": "implement CheckoutPage"
             },
             {
               "start": 22,
@@ -319,7 +319,7 @@
               "start": 13,
               "end": 24,
               "kind": "impl",
-              "label": "implement PairTalkView"
+              "label": "implement CheckoutView"
             },
             {
               "start": 24,
@@ -344,7 +344,7 @@
       ]
     },
     {
-      "name": "acme-alerts-integration",
+      "name": "acme-orders-integration",
       "status": "need",
       "age": "3m",
       "modeLine": "orch · integration · Tier A 3/6",
@@ -366,7 +366,7 @@
         },
         {
           "k": "scope",
-          "v": "acme-alerts-microservice → mobile BFF → dashboard-front"
+          "v": "orders-microservice → mobile BFF → delivery-front"
         },
         {
           "k": "loop",
@@ -385,17 +385,17 @@
         },
         {
           "name": "microservice",
-          "description": "push-preferences endpoint",
-          "solutionPath": "microservices/acme-alerts-microservice",
-          "branch": "feature/push-prefs",
+          "description": "order-history endpoint",
+          "solutionPath": "microservices/orders-microservice",
+          "branch": "feature/order-history-api",
           "statusText": "contract locked",
           "status": "done"
         },
         {
           "name": "web",
-          "description": "NotificationsPanel connector",
-          "solutionPath": "microfrontends/dashboard-front",
-          "branch": "feature/notifications-panel",
+          "description": "OrderHistoryPanel connector",
+          "solutionPath": "microfrontends/delivery-front",
+          "branch": "feature/order-history",
           "statusText": "Tier A green",
           "status": "done"
         },
@@ -403,7 +403,7 @@
           "name": "mobile",
           "description": "BFF route + client",
           "solutionPath": "mobile/",
-          "branch": "feature/push-prefs-bff",
+          "branch": "feature/order-history-bff",
           "statusText": "running",
           "status": "run"
         }
@@ -411,23 +411,23 @@
       "messages": [
         {
           "from": "user",
-          "text": "Wire the notifications panel to the real acme-alerts-microservice. Push preferences endpoint."
+          "text": "Wire the order history panel to the real orders-microservice. Order history endpoint."
         },
         {
           "from": "agent",
-          "text": "The microservice shipped first and locked the contract (GET/PUT /push-preferences). Web ran the Tier A loop against the mocked upstream and is green after 3 iterations. Mobile is still wiring the BFF route.",
+          "text": "The microservice shipped first and locked the contract (GET /orders). Web ran the Tier A loop against the mocked upstream and is green after 3 iterations. Mobile is still wiring the BFF route.",
           "tools": [
             "✓ microservice · swagger.yml updated · contract locked",
             "✓ web · NSwag client regenerated",
             "✓ web · Tier A iteration 3/6 · deserialization matches",
-            "● mobile · BFF route PushPreferences in progress"
+            "● mobile · BFF route OrderHistory in progress"
           ]
         }
       ],
       "questions": [
         {
-          "source": "(orchestrator)",
-          "text": "Tier A is green on web. Tier B boots acme-alerts-microservice → Gateway → dashboard-front locally (3 processes, about 6 min). Authorize Tier B now?",
+          "source": "(lead)",
+          "text": "Tier A is green on web. Tier B boots orders-microservice → Gateway → delivery-front locally (3 processes, about 6 min). Authorize Tier B now?",
           "options": [
             "Authorize Tier B",
             "Tier A only for now",
@@ -436,54 +436,54 @@
         }
       ],
       "terminal": [
-        "$ dotnet run --project Notifications.API (mock upstream)",
-        "rider-debugger attach · breakpoint PushPreferencesConnector.cs:58",
-        "GET /push-preferences → 200 · 4 fields",
+        "$ dotnet run --project Orders.API (mock upstream)",
+        "rider-debugger attach · breakpoint OrderHistoryConnector.cs:58",
+        "GET /order-history → 200 · 4 fields",
         "✓ runtime matches locked contract",
         "⏸ Tier B requires your authorization"
       ],
       "files": [
         {
-          "solution": "dashboard-front",
-          "path": "Services/PushPreferencesConnector.cs",
-          "branch": "feature/notifications-panel",
+          "solution": "delivery-front",
+          "path": "Services/OrderHistoryConnector.cs",
+          "branch": "feature/order-history",
           "delta": "+74",
           "lines": [
-            "+public sealed class PushPreferencesConnector(INotificationsMicroserviceClient client)",
+            "+public sealed class OrderHistoryConnector(IOrdersMicroserviceClient client)",
             "+{",
-            "+    public async Task<PushPreferences> GetAsync(CancellationToken ct)",
-            "+        => (await client.GetPushPreferencesAsync(ct)).ToModel();",
+            "+    public async Task<OrderHistory> GetAsync(CancellationToken ct)",
+            "+        => (await client.GetOrderHistoryAsync(ct)).ToModel();",
             "+}"
           ]
         },
         {
-          "solution": "acme-alerts-microservice",
+          "solution": "orders-microservice",
           "path": "swagger.yml",
-          "branch": "feature/push-prefs",
+          "branch": "feature/order-history-api",
           "delta": "+41",
           "lines": [
-            "+  /push-preferences:",
+            "+  /orders:",
             "+    get:",
-            "+      operationId: GetPushPreferences",
-            "+    put:",
-            "+      operationId: UpdatePushPreferences"
+            "+      operationId: GetOrderHistory",
+            "+  /orders/{id}:",
+            "+    get:"
           ]
         }
       ],
       "artifacts": [
         {
           "type": "CONTRACT",
-          "name": "contracts/push-preferences.md",
+          "name": "contracts/order-history.md",
           "meta": "locked"
         },
         {
           "type": "PR",
-          "name": "acme-alerts-microservice #88",
+          "name": "orders-microservice #88",
           "meta": "open"
         },
         {
           "type": "DIFF",
-          "name": "dashboard-front · 4 files",
+          "name": "delivery-front · 4 files",
           "meta": "+131 −9"
         }
       ],
@@ -508,7 +508,7 @@
         },
         {
           "agent": "microservice",
-          "solution": "acme-alerts-microservice",
+          "solution": "orders-microservice",
           "blocks": [
             {
               "start": 6,
@@ -526,7 +526,7 @@
         },
         {
           "agent": "web",
-          "solution": "dashboard-front",
+          "solution": "delivery-front",
           "blocks": [
             {
               "start": 18,
@@ -557,7 +557,7 @@
       ]
     },
     {
-      "name": "qa-pair-talk",
+      "name": "qa-checkout",
       "status": "run",
       "age": "9m",
       "modeLine": "orch · QA · 14/18 covered",
@@ -589,17 +589,17 @@
       "agents": [
         {
           "name": "qa-web-playwright",
-          "description": "E2E @360",
-          "solutionPath": "microfrontends/acme-app-front",
-          "branch": "qa/pair-talk-e2e",
+          "description": "E2E @phone",
+          "solutionPath": "microfrontends/acme-web-front",
+          "branch": "qa/checkout-e2e",
           "statusText": "AC 14/18",
           "status": "run"
         },
         {
           "name": "qa-mobile-appium",
-          "description": "UI tests @360",
+          "description": "UI tests @phone",
           "solutionPath": "mobile/",
-          "branch": "qa/pair-talk-appium",
+          "branch": "qa/checkout-appium",
           "statusText": "AC 12/18",
           "status": "run"
         }
@@ -607,7 +607,7 @@
       "messages": [
         {
           "from": "user",
-          "text": "Write E2E tests for Pair talk at 360 on both stacks."
+          "text": "Write E2E tests for the checkout page on both stacks."
         },
         {
           "from": "agent",
@@ -621,21 +621,21 @@
       ],
       "questions": [],
       "terminal": [
-        "[web] $ dotnet test --filter PairTalk",
+        "[web] $ dotnet test --filter Checkout",
         "[web] Passed 14 · Failed 0",
-        "[mobile] appium · emulator pixel_7 @360",
-        "[mobile] AC-5 swipe to next topic ✓",
+        "[mobile] appium · emulator pixel_7 @phone",
+        "[mobile] AC-5 swipe to next delivery option ✓",
         "▍"
       ],
       "files": [
         {
-          "solution": "acme-app-front",
-          "path": "Tests/E2E/PairTalkTests.cs",
-          "branch": "qa/pair-talk-e2e",
+          "solution": "acme-web-front",
+          "path": "Tests/E2E/CheckoutTests.cs",
+          "branch": "qa/checkout-e2e",
           "delta": "+212",
           "lines": [
             "+[Test, Requirement(\"AC-3\")]",
-            "+public async Task Topic_chips_wrap_at_360()",
+            "+public async Task Delivery_chips_wrap_on_phones()",
             "+{",
             "+    await Page.SetViewportSizeAsync(360, 800);",
             "+}"
@@ -648,7 +648,7 @@
           "delta": "+48",
           "lines": [
             "+| ID | Requirement | Web | Mobile |",
-            "+| AC-1 | Title shows \"Pair talk\" | ✓ | ✓ |"
+            "+| AC-1 | Title shows \"Checkout\" | ✓ | ✓ |"
           ]
         }
       ],
@@ -660,7 +660,7 @@
         },
         {
           "type": "DIFF",
-          "name": "acme-app-front · Tests/E2E",
+          "name": "acme-web-front · Tests/E2E",
           "meta": "+212"
         }
       ],
@@ -685,7 +685,7 @@
         },
         {
           "agent": "qa-web-playwright",
-          "solution": "acme-app-front",
+          "solution": "acme-web-front",
           "blocks": [
             {
               "start": 7,
@@ -737,22 +737,22 @@
         },
         {
           "k": "scope",
-          "v": "design-system-nuget + acme-app-front + mobile"
+          "v": "design-kit-nuget + acme-web-front + mobile"
         }
       ],
       "agents": [
         {
           "name": "nuget",
-          "description": "AcmButton size variants",
-          "solutionPath": "nugets/design-system-nuget",
-          "branch": "feature/acm-button-sizes",
+          "description": "AcmeButton size variants",
+          "solutionPath": "nugets/design-kit-nuget",
+          "branch": "feature/acme-button-sizes",
           "statusText": "item 7 done",
           "status": "done"
         },
         {
           "name": "web",
           "description": "local variants",
-          "solutionPath": "microfrontends/acme-app-front",
+          "solutionPath": "microfrontends/acme-web-front",
           "branch": "feature/button-variants",
           "statusText": "paused",
           "status": "need"
@@ -776,8 +776,8 @@
           "text": "Items 1–7 converged against the verified spec table. The circuit breaker tripped on items 8 and 9.",
           "tools": [
             "✓ items 1–7 · render vs Figma green",
-            "✕ item 8 AcmIconButton · no loading frame",
-            "✕ item 9 AcmLinkButton · no loading frame",
+            "✕ item 8 AcmeIconButton · no loading frame",
+            "✕ item 9 AcmeLinkButton · no loading frame",
             "⏸ breaker: 2 consecutive ambiguous items"
           ]
         }
@@ -785,7 +785,7 @@
       "questions": [
         {
           "source": "circuit breaker",
-          "text": "Items 8 and 9 (AcmIconButton, AcmLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive).",
+          "text": "Items 8 and 9 (AcmeIconButton, AcmeLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive).",
           "options": [
             "Skip both, continue loop",
             "Stop loop here",
@@ -794,20 +794,20 @@
         }
       ],
       "terminal": [
-        "[loop] item 8/12 AcmIconButton",
+        "[loop] item 8/12 AcmeIconButton",
         "✕ figma: no variant State=Loading",
-        "[loop] item 9/12 AcmLinkButton",
+        "[loop] item 9/12 AcmeLinkButton",
         "✕ figma: no variant State=Loading",
         "⏸ circuit breaker tripped"
       ],
       "files": [
         {
-          "solution": "design-system-nuget",
-          "path": "AcmButton/AcmButton.razor",
-          "branch": "feature/acm-button-sizes",
+          "solution": "design-kit-nuget",
+          "path": "AcmeButton/AcmeButton.razor",
+          "branch": "feature/acme-button-sizes",
           "delta": "+64 −8",
           "lines": [
-            "+[Parameter] public AcmButtonSize Size { get; set; } = AcmButtonSize.Medium;",
+            "+[Parameter] public AcmeButtonSize Size { get; set; } = AcmeButtonSize.Medium;",
             "+[Parameter] public bool Loading { get; set; }"
           ]
         }
@@ -815,7 +815,7 @@
       "artifacts": [
         {
           "type": "BRANCH",
-          "name": "feature/acm-button-sizes",
+          "name": "feature/acme-button-sizes",
           "meta": "7 commits"
         },
         {
@@ -864,10 +864,10 @@
       ]
     },
     {
-      "name": "reminder-func-fix",
+      "name": "invoice-func-fix",
       "status": "run",
       "age": "20m",
-      "modeLine": "single · reminder-func",
+      "modeLine": "single · invoice-func",
       "resumeId": "a7710de2",
       "t0": 12,
       "duration": 22,
@@ -886,14 +886,14 @@
         },
         {
           "k": "scope",
-          "v": "functions/reminder-func"
+          "v": "functions/invoice-func"
         }
       ],
       "agents": [
         {
-          "name": "reminder-func",
-          "description": "DST offset in reminders",
-          "solutionPath": "functions/reminder-func",
+          "name": "invoice-func",
+          "description": "DST offset in invoice runs",
+          "solutionPath": "functions/invoice-func",
           "branch": "fix/timezone-dst",
           "statusText": "build self-heal 1/3",
           "status": "run"
@@ -902,13 +902,13 @@
       "messages": [
         {
           "from": "user",
-          "text": "Reminders fire an hour late after the DST switch. Fix in reminder-func."
+          "text": "Invoices go out an hour late after the DST switch. Fix in invoice-func."
         },
         {
           "from": "agent",
           "text": "Found the cause: the timer trigger converts with a fixed UTC offset. Switching to TimeZoneInfo with the user's zone. Building now.",
           "tools": [
-            "✓ recon · codebase-memory · ReminderScheduler.cs",
+            "✓ recon · codebase-memory · InvoiceScheduler.cs",
             "● dotnet build · self-heal 1/3"
           ]
         }
@@ -922,8 +922,8 @@
       ],
       "files": [
         {
-          "solution": "reminder-func",
-          "path": "Services/ReminderScheduler.cs",
+          "solution": "invoice-func",
+          "path": "Services/InvoiceScheduler.cs",
           "branch": "fix/timezone-dst",
           "delta": "+14 −6",
           "lines": [
@@ -936,14 +936,14 @@
       "artifacts": [
         {
           "type": "DIFF",
-          "name": "reminder-func · 2 files",
+          "name": "invoice-func · 2 files",
           "meta": "+23 −6"
         }
       ],
       "timeline": [
         {
-          "agent": "reminder-func",
-          "solution": "functions/reminder-func",
+          "agent": "invoice-func",
+          "solution": "functions/invoice-func",
           "blocks": [
             {
               "start": 0,
@@ -1007,10 +1007,10 @@
         },
         {
           "from": "agent",
-          "text": "Sweep 14:00 done: 212 events, 3 new signatures. Fixed 1 (null-ref in NotificationsController, PR #412). Escalated 2 to you as notes. Next sweep 15:00.",
+          "text": "Sweep 14:00 done: 212 events, 3 new signatures. Fixed 1 (null-ref in OrdersController, PR #412). Escalated 2 to you as notes. Next sweep 15:00.",
           "tools": [
             "✓ 209 known-noise events filtered",
-            "✓ PR #412 opened · acme-alerts-microservice",
+            "✓ PR #412 opened · orders-microservice",
             "• 2 escalations written to monitoring-notes.md"
           ]
         }
@@ -1026,7 +1026,7 @@
       "artifacts": [
         {
           "type": "PR",
-          "name": "acme-alerts-microservice #412",
+          "name": "orders-microservice #412",
           "meta": "open"
         },
         {

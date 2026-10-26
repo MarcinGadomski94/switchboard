@@ -5,7 +5,7 @@ import { Table, type TableSpec, defined } from '../table.ts';
 /** A git worktree Switchboard created (gap #1) and tracks until it is removed (gap #3). */
 export interface WorktreeRecord {
   readonly id: string;
-  /** Solution / repo name, e.g. `acme-app-front`. */
+  /** Solution / repo name, e.g. `acme-web-front`. */
   readonly repo: string;
   /** Absolute path of the repo's main checkout. */
   readonly repoPath: string;

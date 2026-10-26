@@ -123,7 +123,7 @@ An item's run is D76's todo run with the plan's overrides (`TodoRunOverrides` in
 
 ### The runs' sidebar subfolder (D130)
 
-Developer request 2026-10-23: "I see plan spawns sessions under a fx. Swap Language folder which is good, but it would be better if it will create a subfolder with name that I should specify before plan starts".
+Developer request 2026-10-23: "I see plan spawns sessions under a fx. Acme folder which is good, but it would be better if it will create a subfolder with name that I should specify before plan starts".
 
 - **Start dialog.** The merge-mode dialog's Start (not its Change the merge mode) has a **Sidebar subfolder** text field (`plan-start-folder-input`, at most 60 characters), prefilled with the plan's title cut to the sidebar's 60 characters at a word break (`planRunFolderDefault` in `src/core/plan-run-folder.ts`). When the source session already sits in a D119 "Plan · …" subfolder (a Jira folder import), it is prefilled with that folder's name instead. Clearing it means no subfolder: the runs go next to the source, as before. The prefill reads this machine's sidebar layout (a paired machine's plan: its source by its remote id here).
 - **`POST /api/plans/{id}/start`** takes `sidebarFolder` (a name; trimmed; `''` or `null` = none; omitted = none, so older clients and phones that do not send it start as before). On start, Switchboard finds or makes the subfolder **inside the source session's sidebar folder** (the top level when the source is loose, unplaced or pinned; a hidden Team member source, D100: the top level), `runSubfolder` in `src/core/sidebar-layout.ts`:

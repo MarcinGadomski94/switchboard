@@ -195,7 +195,7 @@ test('answers to a question the pause left stale wait in the outbox with the clo
   await card.getByRole('button', { name: 'Small' }).click();
   await card.getByTestId('question-send').click();
   const answers = chat.getByTestId('chat-answers');
-  await expect(chat.getByTestId('chat-answer')).toHaveText(['acme-app-front: Green', 'acme-app-front: Small']);
+  await expect(chat.getByTestId('chat-answer')).toHaveText(['acme-web-front: Green', 'acme-web-front: Small']);
   await expect(answers).toHaveAttribute('data-queued', 'resume');
   const clock = answers.getByTestId('chat-queued');
   await expect(clock).toHaveAttribute('title', 'Queued: sent when the session resumes');

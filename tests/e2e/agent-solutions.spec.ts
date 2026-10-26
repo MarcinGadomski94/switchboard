@@ -16,11 +16,11 @@ import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts'
  * D38 oracle (E2E, real path, no demo seed, D13): a workspace session started
  * from the New-session modal **without picked solutions**. `node
  * src/server/main.ts` with fake-claude as the CLI, fake gh, a temp data folder
- * and a fixture workspace (git repos `microfrontends/acme-app-front`, `mobile`).
+ * and a fixture workspace (git repos `microfrontends/acme-web-front`, `mobile`).
  * 1. Worktrees off: the form starts without a chip picked (the summary reads
  *    `solutions  chosen by the agent`); the first message carries the "not
- *    chosen" answer; a `[fake:write …]` into `microfrontends/acme-app-front`
- *    fills in the session's solution chip live (`scope acme-app-front`).
+ *    chosen" answer; a `[fake:write …]` into `microfrontends/acme-web-front`
+ *    fills in the session's solution chip live (`scope acme-web-front`).
  * 2. Worktrees on, a ticket title: the first message tells the agent to create
  *    its worktrees on the ticket branch; the agent (`[fake:worktree-add]`) runs
  *    `git worktree add` and Switchboard adopts the worktree: the chip fills in and
@@ -90,7 +90,7 @@ test.beforeAll(async () => {
     GIT_COMMITTER_NAME: 'Switchboard Test',
     GIT_COMMITTER_EMAIL: 'test@example.invalid',
   };
-  await makeRepo(path.join(workspace, 'microfrontends', 'acme-app-front'));
+  await makeRepo(path.join(workspace, 'microfrontends', 'acme-web-front'));
   await makeRepo(path.join(workspace, 'mobile'));
   // D14: the workspace is a saved folder (the default) in the server's database.
   await seedFolderInDataDir(dataDir, workspace);
@@ -112,11 +112,11 @@ test.afterAll(async () => {
   if (tmp) await removeTempDir(tmp);
 });
 
-test('no solution picked: the agent is told to choose; a write into acme-app-front fills in the solution chip', async ({ page }) => {
+test('no solution picked: the agent is told to choose; a write into acme-web-front fills in the solution chip', async ({ page }) => {
   await openWithHub(page, `${server.baseUrl}/inbox`);
   const modal = await openModal(page);
   await modal.getByTestId('ns-name').fill('agent-picks');
-  await modal.getByTestId('ns-task').fill('Add the pair talk screen.');
+  await modal.getByTestId('ns-task').fill('Add the checkout screen.');
   await modal.getByTestId('ns-switch-worktrees').click();
   await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · leave empty to let the agent choose · read-only folders locked');
   expect(await summary(modal)).toEqual([
@@ -145,18 +145,18 @@ test('no solution picked: the agent is told to choose; a write into acme-app-fro
   const created = (await listSessions(page)).find((s) => s.name === 'agent-picks');
   expect(created?.solutions).toEqual([]);
   const lines = await firstMessage(page, created?.id ?? '');
-  expect(lines[0]).toBe('Add the pair talk screen.');
+  expect(lines[0]).toBe('Add the checkout screen.');
   expect(lines).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
   expect(lines).toContain('- Worktrees: no worktrees · edits in place');
   expect(lines.some((line) => line.startsWith('- Mobile coordination'))).toBe(false);
   // No solution yet: no scope chip.
   await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first']);
 
-  // The agent writes into microfrontends/acme-app-front: the solution joins the session, the chip follows live.
+  // The agent writes into microfrontends/acme-web-front: the solution joins the session, the chip follows live.
   await expect(page.getByTestId('chat-input')).toBeEnabled();
-  await send(page, 'Start there. [fake:write microfrontends/acme-app-front/notes.md]');
-  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-app-front']);
-  expect((await listSessions(page)).find((s) => s.name === 'agent-picks')?.solutions).toEqual(['acme-app-front']);
+  await send(page, 'Start there. [fake:write microfrontends/acme-web-front/notes.md]');
+  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-web-front']);
+  expect((await listSessions(page)).find((s) => s.name === 'agent-picks')?.solutions).toEqual(['acme-web-front']);
 });
 
 test('Worktrees on + a ticket branch: the agent creates its worktree, Switchboard adopts it (chip, Diff tab)', async ({ page }) => {
@@ -167,10 +167,10 @@ test('Worktrees on + a ticket branch: the agent creates its worktree, Switchboar
   // D32: the Branch field still shows with Worktrees on (the agent may create a worktree) and is pre-filled from the title.
   await expect(modal.getByTestId('ns-branch')).toHaveValue('PROJ-38-agent-worktree');
   const name = 'proj-38-agent-worktree';
-  const worktree = path.join(workspace, 'microfrontends', `acme-app-front-wt-${name}`);
+  const worktree = path.join(workspace, 'microfrontends', `acme-web-front-wt-${name}`);
   await modal
     .getByTestId('ns-task')
-    .fill(`Build it in a worktree. [fake:worktree-add microfrontends/acme-app-front PROJ-38-agent-worktree microfrontends/acme-app-front-wt-${name}]`);
+    .fill(`Build it in a worktree. [fake:worktree-add microfrontends/acme-web-front PROJ-38-agent-worktree microfrontends/acme-web-front-wt-${name}]`);
   expect(await summary(modal)).toEqual(expect.arrayContaining(['# worktrees', 'branch    PROJ-38-agent-worktree', 'solutions  chosen by the agent']));
   await modal.getByTestId('ns-start').click();
   await expect(modal).toHaveCount(0);
@@ -183,20 +183,20 @@ test('Worktrees on + a ticket branch: the agent creates its worktree, Switchboar
   expect(lines).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
   expect(lines).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-38-agent-worktree', name, { epic: null, base: 'dev' })}`);
 
-  // The fake ran `git worktree add` (a main-agent Bash): the worktree is adopted and acme-app-front joins the session.
-  await expect(page.getByTestId('session-chip').filter({ hasText: 'scope' })).toHaveText('scope acme-app-front');
+  // The fake ran `git worktree add` (a main-agent Bash): the worktree is adopted and acme-web-front joins the session.
+  await expect(page.getByTestId('session-chip').filter({ hasText: 'scope' })).toHaveText('scope acme-web-front');
   expect(await git(worktree, 'branch', '--show-current')).toBe('PROJ-38-agent-worktree');
 
   // A write in the worktree: the Diff tab shows it on the ticket branch.
   await expect(page.getByTestId('chat-input')).toBeEnabled();
-  await send(page, `Write the plan. [fake:write microfrontends/acme-app-front-wt-${name}/notes/plan.md]`);
+  await send(page, `Write the plan. [fake:write microfrontends/acme-web-front-wt-${name}/notes/plan.md]`);
   await expect(page.getByTestId('chat-input')).toBeEnabled();
   await page.goto(`${server.baseUrl}/sessions/${created?.id}/diff`);
   const row = page.getByTestId('diff-file').filter({ hasText: 'plan.md' });
   await expect(row).toHaveCount(1, { timeout: 20_000 });
-  await expect(row.locator('.sb-diff__file-sub')).toHaveText('acme-app-front · notes/plan.md');
+  await expect(row.locator('.sb-diff__file-sub')).toHaveText('acme-web-front · notes/plan.md');
   await row.click();
   await expect(page.getByTestId('diff-branch')).toHaveText('⎇ PROJ-38-agent-worktree');
   // The main checkout never got the plan (only the first test's in-place notes.md).
-  expect(await git(path.join(workspace, 'microfrontends', 'acme-app-front'), 'status', '--porcelain', '--untracked-files=all')).toBe('?? notes.md');
+  expect(await git(path.join(workspace, 'microfrontends', 'acme-web-front'), 'status', '--porcelain', '--untracked-files=all')).toBe('?? notes.md');
 });

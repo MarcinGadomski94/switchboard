@@ -33,12 +33,12 @@ function event(agentId: string | null, kind: EventKind, label: string, start: nu
   return { id: nextId++, sessionId: 's', agentId, ts: at(start), endTs: end === null ? null : at(end), kind, label, payload };
 }
 
-/** The prototype's `pair-talk-feature` timeline (t0 2, dur 46), in the demo seed's shape. */
+/** The prototype's `checkout-redesign` timeline (t0 2, dur 46), in the demo seed's shape. */
 function prototypeSession(): { agents: Agent[]; events: SessionEvent[] } {
   nextId = 1;
   const agents = [
     agent('o', 'orchestrator', 'main', 'workspace root'),
-    agent('w', 'web', 'subagent', 'acme-app-front'),
+    agent('w', 'web', 'subagent', 'acme-web-front'),
     agent('m', 'mobile', 'subagent', 'mobile/'),
     agent('f', 'figma-extractor', 'subagent', 'read-only'),
   ];
@@ -46,12 +46,12 @@ function prototypeSession(): { agents: Agent[]; events: SessionEvent[] } {
   const lanes: Array<[string, Array<[number, number, EventKind, string]>]> = [
     ['o', [[0, 3, 'plan', 'task definition'], [3, 9, 'plan', 'recon · codebase-memory'], [9, 12, 'plan', 'contract lock'], [12, 13, 'impl', 'dispatch'], [30, 33, 'ask', 'relay 3 Qs'], [40, 46, 'ok', 'reconcile']]],
     ['f', [[9, 12, 'plan', 'spec table']]],
-    ['w', [[13, 22, 'impl', 'implement PairTalkPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]],
-    ['m', [[13, 24, 'impl', 'implement PairTalkView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]],
+    ['w', [[13, 22, 'impl', 'implement CheckoutPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]],
+    ['m', [[13, 24, 'impl', 'implement CheckoutView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]],
   ];
   const events: SessionEvent[] = [
     // chat (text) at the start and the end, terminal lines at the end: not blocks
-    event(null, 'text', 'Pair talk screen at 360', t0, null, { source: 'demo', channel: 'chat' }),
+    event(null, 'text', 'Checkout screen at 360', t0, null, { source: 'demo', channel: 'chat' }),
     event(null, 'text', 'Contract locked', t0 + 46, null, { source: 'demo', channel: 'chat' }),
     event(null, 'tool', '✓ web 13/14 fields match', t0 + 46, null, { source: 'demo', channel: 'terminal' }),
   ];
@@ -74,7 +74,7 @@ describe('timelineModel on the prototype data', () => {
     expect(model.lanes.map((lane) => [lane.name, lane.sub])).toEqual([
       ['orchestrator', 'workspace root'],
       ['figma-extractor', 'read-only'],
-      ['web', 'acme-app-front'],
+      ['web', 'acme-web-front'],
       ['mobile', 'mobile/'],
     ]);
     const orchestrator = model.lanes[0]!;
@@ -120,7 +120,7 @@ describe('timelineModel on the prototype data', () => {
 });
 
 describe('timelineModel on real events', () => {
-  const agents = [agent('main', 'acme-app-front', 'main'), agent('sub', 'general-purpose')];
+  const agents = [agent('main', 'acme-web-front', 'main'), agent('sub', 'general-purpose')];
   const t = (seconds: number): number => BASE + seconds * 1_000;
   const iso = (seconds: number): string => new Date(t(seconds)).toISOString();
   function real(agentId: string | null, kind: EventKind, label: string, start: number, end: number | null, payload: unknown): SessionEvent {
@@ -144,7 +144,7 @@ describe('timelineModel on real events', () => {
     expect(model.range).toBe('10:00:00 – 10:01:00');
     expect(model.ticks[1]).toBe('10:00:10');
     expect(model.lanes.map((lane) => [lane.name, lane.sub])).toEqual([
-      ['acme-app-front', MAIN_LANE_SUB],
+      ['acme-web-front', MAIN_LANE_SUB],
       ['general-purpose', ''],
     ]);
     // D14: a repo session's main lane names its repo instead of the workspace root.
@@ -160,7 +160,7 @@ describe('timelineModel on real events', () => {
     const done = model.lanes[0]!.blocks[1]!;
     expect(done.width).toBe(0);
     expect(done.left).toBeCloseTo((42 / 60) * 100, 6);
-    expect(model.log.map((x) => x.who)).toEqual(['acme-app-front', 'general-purpose', 'acme-app-front', 'acme-app-front', 'acme-app-front', 'acme-app-front']);
+    expect(model.log.map((x) => x.who)).toEqual(['acme-web-front', 'general-purpose', 'acme-web-front', 'acme-web-front', 'acme-web-front', 'acme-web-front']);
   });
 
   it('lets an open tool call run to now while the session is live, and stops at the last event otherwise', () => {

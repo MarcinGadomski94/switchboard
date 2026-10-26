@@ -86,13 +86,13 @@ export const DEMO_V2_TEAMMATES: ReadonlyArray<{ readonly id: string; readonly st
 
 /** The tasks (Tasks page): session, title, estimate, state, the minutes it took (done ones), priority. */
 const TASKS: ReadonlyArray<{ readonly session: string; readonly title: string; readonly estimate: number | null; readonly state: 'open' | 'in_progress' | 'done'; readonly actual?: number; readonly priority: 'high' | 'medium' | 'low'; readonly doneAgo?: number }> = [
-  { session: 'pair-talk-feature', title: 'Topic chips wrap at 360', estimate: 30, state: 'in_progress', priority: 'high' },
-  { session: 'pair-talk-feature', title: 'PairTalkPage empty state', estimate: 20, state: 'open', priority: 'medium' },
-  { session: 'pair-talk-feature', title: 'PairTalkService contract', estimate: 45, state: 'done', actual: 52, priority: 'high', doneAgo: 15 },
-  { session: 'acme-alerts-integration', title: 'Alert thresholds per tenant', estimate: 60, state: 'open', priority: 'medium' },
-  { session: 'acme-alerts-integration', title: 'Alerts swagger.yml', estimate: 30, state: 'done', actual: 25, priority: 'medium', doneAgo: 35 },
-  { session: 'qa-pair-talk', title: 'Coverage matrix for PROJ-123', estimate: 40, state: 'in_progress', priority: 'high' },
-  { session: 'button-rollout', title: 'AcmIconButton sizes', estimate: 25, state: 'done', actual: 31, priority: 'low', doneAgo: 50 },
+  { session: 'checkout-redesign', title: 'Delivery chips wrap on phones', estimate: 30, state: 'in_progress', priority: 'high' },
+  { session: 'checkout-redesign', title: 'CheckoutPage empty state', estimate: 20, state: 'open', priority: 'medium' },
+  { session: 'checkout-redesign', title: 'CheckoutService contract', estimate: 45, state: 'done', actual: 52, priority: 'high', doneAgo: 15 },
+  { session: 'acme-orders-integration', title: 'Alert thresholds per tenant', estimate: 60, state: 'open', priority: 'medium' },
+  { session: 'acme-orders-integration', title: 'Alerts swagger.yml', estimate: 30, state: 'done', actual: 25, priority: 'medium', doneAgo: 35 },
+  { session: 'qa-checkout', title: 'Coverage matrix for PROJ-123', estimate: 40, state: 'in_progress', priority: 'high' },
+  { session: 'button-rollout', title: 'AcmeIconButton sizes', estimate: 25, state: 'done', actual: 31, priority: 'low', doneAgo: 50 },
   { session: 'acme-mobile-dev', title: 'Checkout at 768', estimate: 50, state: 'in_progress', priority: 'medium' },
 ];
 
@@ -116,7 +116,7 @@ const PROJECTS: ReadonlyArray<{ readonly id: string; readonly title: string; rea
   {
     id: 'demo-v2-checkout',
     title: 'PROJ-123 Acme checkout',
-    source: 'pair-talk-feature',
+    source: 'checkout-redesign',
     branch: 'feature/PROJ-123-acme-checkout',
     state: 'running',
     createdAgo: 210,
@@ -125,7 +125,7 @@ const PROJECTS: ReadonlyArray<{ readonly id: string; readonly title: string; rea
       { key: 'PROJ-125', title: 'Receipt e-mail template', minutes: 30, after: [], hold: false, state: 'done', spans: [{ kind: 'running', from: 200, to: 170 }] },
       { key: 'PROJ-126', title: 'Checkout screen', minutes: 90, after: ['PROJ-124'], hold: true, state: 'running', run: 'prod-monitoring', waitingOn: 'review', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 45 }, { kind: 'waiting-you', from: 45, to: null }] },
       { key: 'PROJ-127', title: 'Payment form', minutes: 60, after: ['PROJ-124'], hold: false, state: 'running', run: 'button-rollout', waitingOn: 'question', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: 20 }, { kind: 'waiting-you', from: 20, to: null }] },
-      { key: 'PROJ-128', title: 'Order summary', minutes: 120, after: ['PROJ-124'], hold: false, state: 'running', run: 'reminder-func-fix', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: null }] },
+      { key: 'PROJ-128', title: 'Order summary', minutes: 120, after: ['PROJ-124'], hold: false, state: 'running', run: 'invoice-func-fix', spans: [{ kind: 'waiting-dependency', from: 200, to: 150 }, { kind: 'running', from: 150, to: null }] },
       { key: 'PROJ-129', title: 'Wire checkout to the API', minutes: 60, after: ['PROJ-126', 'PROJ-127'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
       { key: 'PROJ-130', title: 'Checkout E2E', minutes: 45, after: ['PROJ-129', 'PROJ-128'], hold: false, state: 'pending', spans: [{ kind: 'waiting-dependency', from: 200, to: null }] },
     ],
@@ -133,7 +133,7 @@ const PROJECTS: ReadonlyArray<{ readonly id: string; readonly title: string; rea
   {
     id: 'demo-v2-alerts',
     title: 'PROJ-140 Acme alerts digest',
-    source: 'acme-alerts-integration',
+    source: 'acme-orders-integration',
     branch: 'feature/PROJ-140-alerts-digest',
     state: 'done',
     createdAgo: 2 * 1440,
@@ -145,7 +145,7 @@ const PROJECTS: ReadonlyArray<{ readonly id: string; readonly title: string; rea
   {
     id: 'demo-v2-loyalty',
     title: 'PROJ-150 Acme loyalty points',
-    source: 'pair-talk-feature',
+    source: 'checkout-redesign',
     branch: 'feature/PROJ-150-loyalty-points',
     state: 'draft',
     createdAgo: 30,
@@ -158,16 +158,16 @@ const PROJECTS: ReadonlyArray<{ readonly id: string; readonly title: string; rea
 
 /** The notes (Notes page): what agents know about the Acme workspace. */
 const NOTES: ReadonlyArray<{ readonly title: string; readonly text: string; readonly tags: readonly string[]; readonly pinned?: boolean }> = [
-  { title: 'Breakpoints', text: 'Web covers 360, 640, 768, 1024, 1366 and 1920; mobile covers 360 to 1024 only.', tags: ['design'], pinned: true },
-  { title: 'Checkout contract', text: 'PairTalkService.TopicId is required on both stacks (decided for PROJ-123).', tags: ['contract'] },
+  { title: 'Breakpoints', text: 'Web covers phone, tablet and desktop; the mobile app covers phone and tablet only.', tags: ['design'], pinned: true },
+  { title: 'Checkout contract', text: 'CheckoutService.CartId is required on both stacks (decided for PROJ-123).', tags: ['contract'] },
   { title: 'Release day', text: 'Acme web releases go out on Thursdays; nothing merges to master after 15:00 that day.', tags: ['process'] },
 ];
 
 /** A week of usage per demo agent (Insights): turns and tokens per day, newest last. */
 const USAGE: ReadonlyArray<{ readonly session: string; readonly model: string; readonly turns: readonly number[]; readonly kTokens: readonly number[] }> = [
-  { session: 'pair-talk-feature', model: 'claude-opus-4-7', turns: [12, 18, 9, 22, 15, 26, 14], kTokens: [410, 620, 300, 780, 510, 900, 460] },
-  { session: 'acme-alerts-integration', model: 'claude-opus-4-7', turns: [6, 0, 11, 8, 14, 9, 7], kTokens: [210, 0, 380, 260, 470, 300, 240] },
-  { session: 'qa-pair-talk', model: 'claude-sonnet-4-6', turns: [0, 5, 7, 4, 9, 12, 6], kTokens: [0, 120, 160, 90, 210, 280, 140] },
+  { session: 'checkout-redesign', model: 'claude-opus-4-7', turns: [12, 18, 9, 22, 15, 26, 14], kTokens: [410, 620, 300, 780, 510, 900, 460] },
+  { session: 'acme-orders-integration', model: 'claude-opus-4-7', turns: [6, 0, 11, 8, 14, 9, 7], kTokens: [210, 0, 380, 260, 470, 300, 240] },
+  { session: 'qa-checkout', model: 'claude-sonnet-4-6', turns: [0, 5, 7, 4, 9, 12, 6], kTokens: [0, 120, 160, 90, 210, 280, 140] },
   { session: 'button-rollout', model: 'claude-sonnet-4-6', turns: [8, 6, 0, 10, 5, 7, 4], kTokens: [180, 140, 0, 230, 110, 160, 90] },
   { session: 'acme-web-reviewer', model: 'claude-sonnet-4-6', turns: [3, 4, 2, 6, 3, 5, 4], kTokens: [60, 80, 40, 120, 60, 100, 80] },
 ];
@@ -400,16 +400,16 @@ export async function seedDemoV2Api(app: FastifyInstance, store: Store, data: De
   const folderId = (answer: Record<string, unknown> | null, name: string): string | undefined => (answer?.['folders'] as Array<{ id: string; name: string }> | undefined)?.find((folder) => folder.name === name)?.id;
 
   // Agents: folders (with a subfolder) and pins (D54, D58).
-  await call('POST', '/api/sidebar/place', { sessionId: 'pair-talk-feature', place: 'pinned' });
-  await call('POST', '/api/sidebar/place', { sessionId: 'acme-alerts-integration', place: 'pinned' });
+  await call('POST', '/api/sidebar/place', { sessionId: 'checkout-redesign', place: 'pinned' });
+  await call('POST', '/api/sidebar/place', { sessionId: 'acme-orders-integration', place: 'pinned' });
   const web = folderId(await call('POST', '/api/sidebar/folders', { name: 'Acme web' }), 'Acme web');
   if (web) {
-    await call('POST', '/api/sidebar/place', { sessionId: 'pair-talk-feature', place: 'folder', folderId: web });
-    await call('POST', '/api/sidebar/place', { sessionId: 'qa-pair-talk', place: 'folder', folderId: web });
+    await call('POST', '/api/sidebar/place', { sessionId: 'checkout-redesign', place: 'folder', folderId: web });
+    await call('POST', '/api/sidebar/place', { sessionId: 'qa-checkout', place: 'folder', folderId: web });
   }
   const maintenance = folderId(await call('POST', '/api/sidebar/folders', { name: 'Maintenance' }), 'Maintenance');
   if (maintenance) {
-    await call('POST', '/api/sidebar/place', { sessionId: 'reminder-func-fix', place: 'folder', folderId: maintenance });
+    await call('POST', '/api/sidebar/place', { sessionId: 'invoice-func-fix', place: 'folder', folderId: maintenance });
     await call('POST', '/api/sidebar/place', { sessionId: 'prod-monitoring', place: 'folder', folderId: maintenance });
     const releases = folderId(await call('POST', '/api/sidebar/folders', { name: 'Releases', parentId: maintenance }), 'Releases');
     if (releases) await call('POST', '/api/sidebar/place', { sessionId: 'button-rollout', place: 'folder', folderId: releases });

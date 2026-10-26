@@ -24,7 +24,7 @@ export const SIZES: readonly Size[] = [
 ];
 
 /** The demo seed's session the specs open. */
-export const DEMO_SESSION = 'pair-talk-feature';
+export const DEMO_SESSION = 'checkout-redesign';
 
 /** Every page of the demo seed: the nav's views, a tool, a session's tabs, each Settings section (and the phone's section list). */
 export const ROUTES: readonly string[] = [

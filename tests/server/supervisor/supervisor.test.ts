@@ -123,7 +123,7 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(users.every((e) => typeof e.uuid === 'string')).toBe(true);
 
     const agents = await w.store.agents.listBySession(session.id);
-    expect(agents.map((a) => [a.kind, a.name, a.status])).toEqual([['main', 'acme-app-front', 'done']]);
+    expect(agents.map((a) => [a.kind, a.name, a.status])).toEqual([['main', 'acme-web-front', 'done']]);
     expect(events.filter((e) => payloadType(e) !== 'lifecycle').every((e) => e.agentId === agents[0]?.id)).toBe(true);
 
     const usage = await w.store.usage.latest();
@@ -161,7 +161,7 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
   });
 
   it('subagent-forward: one agent per Agent call, its lines attributed to it, done after task_notification', async () => {
-    const { w, session } = await start({ scenario: 'subagent-forward' }, { mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'] });
+    const { w, session } = await start({ scenario: 'subagent-forward' }, { mode: 'orchestrator', solutions: ['acme-web-front', 'mobile'] });
     await waitForStatus(w.store, session.id, ['done']);
     const agents = await w.store.agents.listBySession(session.id);
     expect(agents.map((a) => [a.kind, a.name])).toEqual([
@@ -239,12 +239,12 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
   });
 
   it('D89: written files no longer become artifacts (artifacts are saved on purpose)', async () => {
-    const { w, session } = await start({}, { task: 'Write the contract. [fake:write contracts/pair-talk.md]' });
+    const { w, session } = await start({}, { task: 'Write the contract. [fake:write contracts/checkout.md]' });
     await waitForStatus(w.store, session.id, ['done']);
-    await w.supervisor.sendMessage(session.id, 'And the notes. [fake:write microfrontends/acme-app-front/docs/notes.md]');
-    await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('acme-app-front') || undefined, 'the notes written');
+    await w.supervisor.sendMessage(session.id, 'And the notes. [fake:write microfrontends/acme-web-front/docs/notes.md]');
+    await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('acme-web-front') || undefined, 'the notes written');
     expect(await w.store.artifacts.list({ sessionId: session.id })).toEqual([]);
-    expect(await readFile(path.join(w.workspace, 'contracts', 'pair-talk.md'), 'utf8')).toContain('fake-claude');
+    expect(await readFile(path.join(w.workspace, 'contracts', 'checkout.md'), 'utf8')).toContain('fake-claude');
   });
 });
 

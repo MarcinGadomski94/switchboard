@@ -73,7 +73,7 @@ export function locateFile(workspaceRoot: string, file: string, sessionName: str
 /**
  * The workspace-relative folder of the solution a file belongs to (M4.3, the
  * agent card's path line; `docs/session-panel.md`), in the prototype's words:
- * `<group>/<repo>` for the grouping folders (`microfrontends/acme-app-front`),
+ * `<group>/<repo>` for the grouping folders (`microfrontends/acme-web-front`),
  * `deprecated/<type>/<repo>`, and `<repo>/` for a repo at the root (`mobile/`,
  * `infrastructure/`). A file in the session's worktree (`<repo>-wt-<session>`,
  * gap #1) maps to its repo's folder. `null` for the workspace root itself and

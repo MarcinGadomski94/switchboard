@@ -9,7 +9,7 @@ import { rememberNewSessionMode } from '../helpers/new-session-mode.ts';
  * D13 final-verify walkthrough (docs/decisions.md → D13, check 1): the whole
  * product on the real path, no demo seed. The real server (`node src/server/main.ts`)
  * with fake-claude as the CLI, fake gh, and a temp workspace holding one real git
- * repo (`microfrontends/acme-app-front`). Everything is driven through the UI:
+ * repo (`microfrontends/acme-web-front`). Everything is driven through the UI:
  *
  * New session (with a worktree) → streamed chat → a question batch reaches the
  * Inbox with a toast → answering it continues the process → Pause / Resume →
@@ -18,7 +18,7 @@ import { rememberNewSessionMode } from '../helpers/new-session-mode.ts';
  */
 
 const NAME = 'walkthrough';
-const WORKTREE = path.join('microfrontends', `acme-app-front-wt-${NAME}`);
+const WORKTREE = path.join('microfrontends', `acme-web-front-wt-${NAME}`);
 
 let world: QuestionWorld;
 
@@ -55,16 +55,16 @@ test('the whole product on the real path: session → question → answer → pa
   await expect(modal.getByTestId('ns-group').first()).toBeVisible();
   await modal.getByTestId('ns-name').fill(NAME);
   await modal.getByTestId('ns-task').fill('[fake:ask-2q] Ask me two questions.');
-  await chip(modal, 'acme-app-front').click();
+  await chip(modal, 'acme-web-front').click();
   // D32: the worktree's branch is named after its ticket.
   await modal.getByTestId('ns-branch').fill('PROJ-100-walkthrough');
-  await expect(modal.getByTestId('ns-summary-line').filter({ hasText: `../acme-app-front-wt-${NAME}` })).toHaveCount(1);
+  await expect(modal.getByTestId('ns-summary-line').filter({ hasText: `../acme-web-front-wt-${NAME}` })).toHaveCount(1);
   await modal.getByTestId('ns-start').click();
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();
   await expect(page.getByTestId('session-name')).toHaveText(NAME);
   const session = await sessionByName(page, NAME);
-  expect(session).toMatchObject({ worktrees: true, solutions: ['acme-app-front'] });
+  expect(session).toMatchObject({ worktrees: true, solutions: ['acme-web-front'] });
   expect(await readFile(path.join(world.workspace, WORKTREE, 'README.md'), 'utf8')).toBe('hello\n');
 
   // 2. Streamed chat: the task the developer typed (without the appended answers block, M5.2).
@@ -77,7 +77,7 @@ test('the whole product on the real path: session → question → answer → pa
   await expect(page.getByTestId('toast')).toHaveCount(0);
   await page.getByTestId('nav-inbox').click();
   await expect(page.getByTestId('inbox-item')).toHaveCount(1);
-  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-app-front');
+  await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-web-front');
 
   // 4. Answer both; Send stays disabled until every question is answered; the process continues.
   const questions = page.getByTestId('question');
@@ -135,7 +135,7 @@ test('the whole product on the real path: session → question → answer → pa
   await expect(scheduleModal.getByTestId('ns-group').first()).toBeVisible();
   await scheduleModal.getByTestId('ns-name').fill('nightly-walk');
   await scheduleModal.getByTestId('ns-task').fill('Check the build and report.');
-  await chip(scheduleModal, 'acme-app-front').click();
+  await chip(scheduleModal, 'acme-web-front').click();
   await scheduleModal.getByTestId('ns-cron').fill('0 2 * * *');
   await scheduleModal.getByTestId('ns-save-schedule').click();
   await expect(scheduleModal).toHaveCount(0);

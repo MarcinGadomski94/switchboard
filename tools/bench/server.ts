@@ -121,7 +121,7 @@ export interface BenchWorld {
 export async function makeBenchWorld(label: string): Promise<BenchWorld> {
   const tmp = await realpath(await makeTempDir(label));
   const workspace = path.join(tmp, 'workspace');
-  const repo = path.join(workspace, 'microfrontends', 'acme-app-front');
+  const repo = path.join(workspace, 'microfrontends', 'acme-web-front');
   const gitConfig = path.join(tmp, 'gitconfig');
   await mkdir(repo, { recursive: true });
   await mkdir(path.join(tmp, 'claude-config'), { recursive: true });
@@ -183,7 +183,7 @@ export async function startLiveSession(client: BenchClient, name: string): Promi
     task: 'Say hello.',
     workType: 'feature',
     mode: 'single',
-    solutions: ['acme-app-front'],
+    solutions: ['acme-web-front'],
     phase: 'ui-first',
     coordination: 'none',
     qa: null,

@@ -154,7 +154,7 @@ async function expectAnswersBubble(page: Page, id: string, typed: string): Promi
   const chat = page.getByTestId('session-chat');
   await expect(chat.getByTestId('question-card')).toHaveCount(0);
   await expect(chat.getByTestId('chat-answer')).toHaveCount(2);
-  expect(await exactTexts(chat.getByTestId('chat-answer'))).toEqual(['acme-app-front: Blue', `acme-app-front: ${typed}`]);
+  expect(await exactTexts(chat.getByTestId('chat-answer'))).toEqual(['acme-web-front: Blue', `acme-web-front: ${typed}`]);
   // Verbatim on screen too: the line break shows as a line break (two lines, the option's line one).
   await expect(chat.getByTestId('chat-answer').nth(1)).toHaveCSS('white-space', 'pre-wrap');
   const heights = await chat.getByTestId('chat-answer').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));

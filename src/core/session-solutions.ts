@@ -13,7 +13,7 @@ const READ_ONLY_TOP = new Set(['deprecated', 'infrastructure']);
 
 /**
  * The solution a file an agent wrote belongs to, as `Session.solutions` names it
- * (the solution's folder name, as the New-session chips do: `acme-app-front`,
+ * (the solution's folder name, as the New-session chips do: `acme-web-front`,
  * `mobile`), or `null`: a repo folder's session (its one solution is fixed, D14),
  * the workspace root, a path outside the folder, or a read-only solution. A file
  * in the session's worktree (`<repo>-wt-<name>`) belongs to its repo.

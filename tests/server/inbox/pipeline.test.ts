@@ -172,12 +172,12 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
     expect(batch.input).toEqual(recordedQuestions);
 
     expect(questions.map((q) => [q.position, q.source, q.text, q.header, q.options, q.multiSelect, q.answerIndex])).toEqual([
-      [0, 'acme-app-front', 'Which color should the button be?', 'Color', [
+      [0, 'acme-web-front', 'Which color should the button be?', 'Color', [
         { label: 'Red', description: 'A red button' },
         { label: 'Green', description: 'A green button' },
         { label: 'Blue', description: 'A blue button' },
       ], false, null],
-      [1, 'acme-app-front', 'Which size should it be?', 'Size', [
+      [1, 'acme-web-front', 'Which size should it be?', 'Size', [
         { label: 'Small', description: 'A small button' },
         { label: 'Large', description: 'A large button' },
       ], false, null],
@@ -199,7 +199,7 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
       sessionId: session.id,
       source: 'demo-session',
       status: 'need',
-      title: '2 questions from acme-app-front',
+      title: '2 questions from acme-web-front',
       label: '2 questions',
     });
 
@@ -495,7 +495,7 @@ describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
       label: 'Permission',
       detail: 'Run Node.js calculation',
       actions: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }],
-      permission: { requestId: item!.requestId, toolName: 'Bash', input: item!.input, agentId: null, agent: 'acme-app-front' },
+      permission: { requestId: item!.requestId, toolName: 'Bash', input: item!.input, agentId: null, agent: 'acme-web-front' },
     });
 
     expect((await call(r, 'POST', `/api/inbox/${item!.id}/actions/always`)).statusCode).toBe(400);

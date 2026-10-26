@@ -1,9 +1,9 @@
 {
   "incoming": {
-    "session": "qa-pair-talk",
+    "session": "qa-checkout",
     "question": {
-      "source": "qa-web-playwright · acme-app-front",
-      "text": "Confluence AC-7 says the empty state reads \"No topics yet\", Figma 2231:884 shows \"Pick a topic to start\". Which one is the contract?",
+      "source": "qa-web-playwright · acme-web-front",
+      "text": "Confluence AC-7 says the empty state reads \"Your cart is empty\", Figma 2231:884 shows \"Add something to get started\". Which one is the contract?",
       "options": [
         "Confluence (AC-7)",
         "Figma",
@@ -11,14 +11,14 @@
       ]
     },
     "toast": {
-      "sid": "qa-pair-talk",
-      "title": "qa-pair-talk",
+      "sid": "qa-checkout",
+      "title": "qa-checkout",
       "sub": "question · now",
-      "branch": "acme-app-front ⎇ qa/pair-talk-e2e",
+      "branch": "acme-web-front ⎇ qa/checkout-e2e",
       "text": "Confluence AC-7 and Figma disagree on the empty-state copy. Which one is the contract?"
     },
     "notification": {
-      "title": "qa-pair-talk needs you",
+      "title": "qa-checkout needs you",
       "body": "Confluence AC-7 and Figma disagree on the empty-state copy."
     }
   },
@@ -30,11 +30,11 @@
       "status": "fail",
       "age": "38m",
       "title": "Android build failed at XamlC",
-      "detail": "mobile/ · PairTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to pair-talk-feature.",
+      "detail": "mobile/ · CheckoutView.xaml(41): unknown property AcmeChip.Size. The previous 13 runs were green. Likely related to checkout-redesign.",
       "branches": [
         {
           "solution": "mobile/",
-          "branch": "feature/pair-talk-360"
+          "branch": "feature/checkout-redesign"
         }
       ],
       "actions": [
@@ -44,8 +44,8 @@
       ],
       "schedule": "nightly-build-verify",
       "fixSession": {
-        "name": "fix-xamlc-acmchip",
-        "task": "nightly-build-verify: PairTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/pair-talk-360.",
+        "name": "fix-xamlc-acmechip",
+        "task": "nightly-build-verify: CheckoutView.xaml(41) unknown property AcmeChip.Size. Fix on feature/checkout-redesign.",
         "sols": [
           "mobile"
         ],
@@ -60,10 +60,10 @@
       "status": "done",
       "age": "20m",
       "title": "PR #231 merged, so the worktree can be removed",
-      "detail": "../acme-app-front-wt-profile-page · branch feature/profile-page was merged on GitHub (checked through gh). No uncommitted changes.",
+      "detail": "../acme-web-front-wt-profile-page · branch feature/profile-page was merged on GitHub (checked through gh). No uncommitted changes.",
       "branches": [
         {
-          "solution": "acme-app-front",
+          "solution": "acme-web-front",
           "branch": "feature/profile-page"
         }
       ],
@@ -72,9 +72,9 @@
         "Keep"
       ],
       "worktree": {
-        "repo": "acme-app-front",
+        "repo": "acme-web-front",
         "branch": "feature/profile-page",
-        "path": "../acme-app-front-wt-profile-page",
+        "path": "../acme-web-front-wt-profile-page",
         "prNumber": 231
       }
     }

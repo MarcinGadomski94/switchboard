@@ -65,15 +65,15 @@ describe('New-session form: the name field is the title (D22)', () => {
   it('derives the short name from the title; a taken one gets -2; kebab-case text is a title too (developer ruling)', () => {
     expect(startNames(form({ name: ' JIRA Ticket handling ' }), [])).toEqual({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' });
     expect(startNames(form({ name: 'JIRA Ticket handling' }), ['jira-ticket-handling'])).toEqual({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling' });
-    expect(startNames(form({ name: 'pair-talk-640' }), [])).toEqual({ name: 'pair-talk-640', title: 'pair-talk-640' });
-    expect(startNames(form({ name: 'pair-talk-640' }), ['pair-talk-640'])).toEqual({ name: 'pair-talk-640-2', title: 'pair-talk-640' });
+    expect(startNames(form({ name: 'checkout-page-640' }), [])).toEqual({ name: 'checkout-page-640', title: 'checkout-page-640' });
+    expect(startNames(form({ name: 'checkout-page-640' }), ['checkout-page-640'])).toEqual({ name: 'checkout-page-640-2', title: 'checkout-page-640' });
     expect(startNames(form({ name: '' }), [])).toEqual({ name: 'session', title: null });
     expect(startNames(form({ name: '!!!' }), [])).toEqual({ name: 'session', title: '!!!' });
   });
 
   it('Start posts the derived name and the title (workspace and repo folder); kebab-case text as both; an empty field no title', () => {
-    const body = toStartBody(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'] }), null, ['jira-ticket-handling']);
-    expect(body).toMatchObject({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling', solutions: ['acme-app-front'] });
+    const body = toStartBody(form({ name: 'JIRA Ticket handling', solutions: ['acme-web-front'] }), null, ['jira-ticket-handling']);
+    expect(body).toMatchObject({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling', solutions: ['acme-web-front'] });
     // D32: with its worktree the repo body carries the ticket branch.
     expect(toStartBody(form({ name: 'Fix the build', worktrees: true, branch: 'PROJ-7-fix-the-build' }), repoFolder, [])).toEqual({
       name: 'fix-the-build',
@@ -85,18 +85,18 @@ describe('New-session form: the name field is the title (D22)', () => {
       ultracode: false,
       branch: 'PROJ-7-fix-the-build',
     });
-    expect(toStartBody(form({ name: 'pair-talk-640', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'pair-talk-640', title: 'pair-talk-640' });
+    expect(toStartBody(form({ name: 'checkout-page-640', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'checkout-page-640', title: 'checkout-page-640' });
     expect('title' in toStartBody(form({ name: '  ', solutions: ['mobile'] }), null, [])).toBe(false);
     expect(toStartBody(form({ name: '', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'session' });
   });
 
   it('the summary shows the short name in the worktree lines (D32: the branch line names the ticket branch); nothing changes for a kebab-case name', () => {
-    const titled = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'], branch: 'PROJ-3-jira-handling' }), '/ws', []).map((l) => [l.text, l.tone]);
+    const titled = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['acme-web-front'], branch: 'PROJ-3-jira-handling' }), '/ws', []).map((l) => [l.text, l.tone]);
     const at = titled.findIndex(([text]) => text === '# worktrees');
     expect(titled.slice(at, at + 3)).toEqual([
       ['# worktrees', 'comment'],
       ['branch    PROJ-3-jira-handling', 'value'],
-      ['../acme-app-front-wt-jira-ticket-handling', 'path'],
+      ['../acme-web-front-wt-jira-ticket-handling', 'path'],
     ]);
     const inPlace = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['mobile'], worktrees: false }), '/ws', []).map((l) => l.text);
     expect(inPlace).toContain('name      jira-ticket-handling');
@@ -106,7 +106,7 @@ describe('New-session form: the name field is the title (D22)', () => {
     expect(repo).toContain('../switchboard-wt-proj-12-fix-the-build');
 
     // A kebab-case name (a title equal to its short name): the pre-D22 summary, plus D32's branch line under `# worktrees`.
-    const kebab = summaryLines(form({ name: 'pair-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'], branch: 'PROJ-640-pair-talk' }), 'D:\\acme', []).map((l) => l.text);
+    const kebab = summaryLines(form({ name: 'checkout-page-640', mode: 'orchestrator', solutions: ['acme-web-front', 'mobile'], branch: 'PROJ-640-checkout' }), 'D:\\acme', []).map((l) => l.text);
     expect(kebab).toEqual([
       '# claude code · background · Max',
       'cwd       D:\\acme',
@@ -116,9 +116,9 @@ describe('New-session form: the name field is the title (D22)', () => {
       'ultracode off',
       ' ',
       '# worktrees',
-      'branch    PROJ-640-pair-talk',
-      '../acme-app-front-wt-pair-talk-640',
-      '../mobile-wt-pair-talk-640',
+      'branch    PROJ-640-checkout',
+      '../acme-web-front-wt-checkout-page-640',
+      '../mobile-wt-checkout-page-640',
       ' ',
       '✓ answers pre-filled → agent confirms, no re-ask',
     ]);
@@ -146,17 +146,17 @@ describe('New-session form: the name field is the title (D22)', () => {
 
 describe('rename in place (D22)', () => {
   const titled = { id: 's1', name: 'jira-ticket-handling', title: 'JIRA Ticket handling', displayTitle: 'JIRA Ticket handling' };
-  const plain = { id: 's2', name: 'pair-talk-640', title: null, displayTitle: 'pair-talk-640' };
+  const plain = { id: 's2', name: 'checkout-page-640', title: null, displayTitle: 'checkout-page-640' };
 
   it('opens with what the session shows', () => {
     expect(titleDraft(titled)).toBe('JIRA Ticket handling');
-    expect(titleDraft(plain)).toBe('pair-talk-640');
+    expect(titleDraft(plain)).toBe('checkout-page-640');
   });
 
   it('saves the trimmed text; nothing for the same text; an emptied field clears a title', () => {
     expect(titleEditOutcome('  Billing: fix invoices ', titled)).toEqual({ kind: 'save', title: 'Billing: fix invoices' });
     expect(titleEditOutcome(' JIRA Ticket handling ', titled)).toEqual({ kind: 'unchanged' });
-    expect(titleEditOutcome('pair-talk-640', plain)).toEqual({ kind: 'unchanged' });
+    expect(titleEditOutcome('checkout-page-640', plain)).toEqual({ kind: 'unchanged' });
     expect(titleEditOutcome('   ', titled)).toEqual({ kind: 'save', title: null });
     expect(titleEditOutcome('', plain)).toEqual({ kind: 'unchanged' });
     // The length rule is the server's: an 81-character title is sent and refused there.
@@ -173,18 +173,18 @@ describe('rename in place (D22)', () => {
   it('the tooltip shows the whole title, the short name behind it, and how to rename', () => {
     expect(titleTooltip(titled, 'click')).toBe('JIRA Ticket handling (jira-ticket-handling) · click to rename');
     expect(titleTooltip(titled, 'double-click')).toBe('JIRA Ticket handling (jira-ticket-handling) · double-click to rename');
-    expect(titleTooltip(plain, 'double-click')).toBe('pair-talk-640 · double-click to rename');
+    expect(titleTooltip(plain, 'double-click')).toBe('checkout-page-640 · double-click to rename');
   });
 });
 
 describe('display titles where a session is named (D22)', () => {
   it('the palette lists the title and finds the session by its title or its name', () => {
-    const sessions = [session(), session({ id: 's2', name: 'pair-talk-640', title: null, displayTitle: 'pair-talk-640' })];
+    const sessions = [session(), session({ id: 's2', name: 'checkout-page-640', title: null, displayTitle: 'checkout-page-640' })];
     const entries = paletteEntries({ sessions, tools: null, solutions: null }).filter((e) => e.kind === 'session');
-    expect(entries.map((e) => e.label)).toEqual(['JIRA Ticket handling', 'pair-talk-640']);
+    expect(entries.map((e) => e.label)).toEqual(['JIRA Ticket handling', 'checkout-page-640']);
     expect(filterPalette(entries, 'ticket hand').map((e) => e.key)).toEqual(['session:s1']);
     expect(filterPalette(entries, 'jira-ticket').map((e) => e.key)).toEqual(['session:s1']);
-    expect(filterPalette(entries, 'pair-talk').map((e) => e.key)).toEqual(['session:s2']);
+    expect(filterPalette(entries, 'checkout').map((e) => e.key)).toEqual(['session:s2']);
     // An older payload without the fields still shows the name.
     const { title: _t, displayTitle: _d, ...old } = session({ id: 's3', name: 'old-one' });
     expect(paletteEntries({ sessions: [old as Session], tools: null, solutions: null }).find((e) => e.kind === 'session')?.label).toBe('old-one');

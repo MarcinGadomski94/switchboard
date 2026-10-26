@@ -37,13 +37,13 @@ describe('event kinds (gap #7)', () => {
     expect(userMessageKind('/loop 1h Monitor production')).toBe('loop');
     expect(userMessageKind('  /loop')).toBe('loop');
     expect(userMessageKind('/looping')).toBe('text');
-    expect(userMessageKind('Build the pair talk page')).toBe('text');
+    expect(userMessageKind('Build the checkout page')).toBe('text');
   });
 
   it('labels tool calls in one line', () => {
-    expect(toolLabel('Write', { file_path: '/w/contracts/pair-talk.md', content: 'x' })).toBe('Write · pair-talk.md');
+    expect(toolLabel('Write', { file_path: '/w/contracts/checkout.md', content: 'x' })).toBe('Write · checkout.md');
     expect(toolLabel('Bash', { command: 'dotnet build\n--no-restore' })).toBe('Bash · dotnet build');
-    expect(toolLabel('Grep', { pattern: 'PairTalk' })).toBe('Grep · PairTalk');
+    expect(toolLabel('Grep', { pattern: 'Checkout' })).toBe('Grep · Checkout');
     expect(toolLabel('Agent', { description: 'spec table', subagent_type: 'figma-extractor' })).toBe('Agent · figma-extractor · spec table');
     expect(toolLabel('AskUserQuestion', { questions: [{ question: 'Wrap or scroll?' }] })).toBe('Wrap or scroll?');
     expect(toolLabel('TodoWrite', {})).toBe('TodoWrite');
@@ -53,7 +53,7 @@ describe('event kinds (gap #7)', () => {
 describe('agents (gap #8)', () => {
   it('names the main agent from the mode', () => {
     expect(mainAgentName('orchestrator', ['a', 'b'])).toBe('orchestrator');
-    expect(mainAgentName('single', ['reminder-func'])).toBe('reminder-func');
+    expect(mainAgentName('single', ['invoice-func'])).toBe('invoice-func');
     expect(mainAgentName('single', ['a', 'b'])).toBe('main');
     expect(mainAgentName(null, [])).toBe('main');
   });
@@ -78,32 +78,32 @@ describe('files and solutions (the gap #9 layout)', () => {
   const at = (...parts: string[]) => path.join(root, ...parts);
 
   it('maps paths to solutions with the router layout', () => {
-    expect(locateFile(root, at('microfrontends', 'acme-app-front', 'Pages', 'A.razor'))).toMatchObject({
-      solution: 'acme-app-front',
+    expect(locateFile(root, at('microfrontends', 'acme-web-front', 'Pages', 'A.razor'))).toMatchObject({
+      solution: 'acme-web-front',
       relative: 'Pages/A.razor',
       worktree: false,
     });
     expect(locateFile(root, at('mobile', 'mobile-followups', 'from-x.md'))).toMatchObject({ solution: 'mobile', relative: 'mobile-followups/from-x.md' });
-    expect(locateFile(root, at('deprecated', 'microfrontends', 'old-chat-front', 'a.cs'))).toMatchObject({ solution: 'old-chat-front' });
+    expect(locateFile(root, at('deprecated', 'microfrontends', 'old-cart-front', 'a.cs'))).toMatchObject({ solution: 'old-cart-front' });
     expect(locateFile(root, at('infrastructure', 'main.tf'))).toMatchObject({ solution: 'infrastructure', relative: 'main.tf' });
-    expect(locateFile(root, at('contracts', 'pair-talk.md'))).toMatchObject({ solution: null, relative: 'contracts/pair-talk.md' });
+    expect(locateFile(root, at('contracts', 'checkout.md'))).toMatchObject({ solution: null, relative: 'contracts/checkout.md' });
     expect(locateFile(root, 'contracts/rel.md')).toMatchObject({ solution: null, relative: 'contracts/rel.md' });
     expect(locateFile(root, path.join(path.sep, 'elsewhere', 'x.md'))).toMatchObject({ solution: null, outside: true });
     expect(locateFile(root, at('microfrontends', 'AGENTS.md'))).toMatchObject({ solution: null, relative: 'microfrontends/AGENTS.md' });
   });
 
   it('maps a worktree folder `<repo>-wt-<session>` back to its repo (gap #1)', () => {
-    expect(locateFile(root, at('microfrontends', 'acme-app-front-wt-pair-talk', 'a.cs'), 'pair-talk')).toMatchObject({
-      solution: 'acme-app-front',
+    expect(locateFile(root, at('microfrontends', 'acme-web-front-wt-checkout', 'a.cs'), 'checkout')).toMatchObject({
+      solution: 'acme-web-front',
       relative: 'a.cs',
       worktree: true,
     });
-    expect(locateFile(root, at('mobile-wt-pair-talk', 'Views', 'V.xaml'), 'pair-talk')).toMatchObject({
+    expect(locateFile(root, at('mobile-wt-checkout', 'Views', 'V.xaml'), 'checkout')).toMatchObject({
       solution: 'mobile',
       relative: 'Views/V.xaml',
       worktree: true,
     });
-    expect(locateFile(root, at('mobile-wt-pair-talk', 'x'), 'other-session')).toMatchObject({ solution: null });
+    expect(locateFile(root, at('mobile-wt-checkout', 'x'), 'other-session')).toMatchObject({ solution: null });
   });
 });
 

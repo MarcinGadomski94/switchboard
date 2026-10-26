@@ -7,13 +7,13 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 **Gate:** green
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
-- Claude Code: **0.36%** / 2.25%
-- Workspace & solutions: **3.85%** / 5.12%
-- Sessions & worktrees: **4.14%** / 5.36%
-- Notifications & usage: **0.25%** / 2.17%
-- Schedules: **0.25%** / 2.17%
-- Embedded tools: **1.05%** / 2.82%
-- GitHub: **0.28%** / 2.19%
+- Claude Code: **0.44%** / 2.36%
+- Workspace & solutions: **3.93%** / 5.22%
+- Sessions & worktrees: **4.22%** / 5.47%
+- Notifications & usage: **2.38%** / 3.95%
+- Schedules: **0.33%** / 2.27%
+- Embedded tools: **1.13%** / 2.92%
+- GitHub: **0.36%** / 2.29%
 
 Side by side (main area, prototype left, app right): `settings-claude-side-by-side.png`, `settings-workspace-side-by-side.png`, `settings-sessions-side-by-side.png`, `settings-notify-side-by-side.png`, `settings-schedules-side-by-side.png`, `settings-tools-side-by-side.png`, `settings-github-side-by-side.png`.
 
@@ -65,7 +65,7 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | service | box | 520,196 860×64 | 520,196 860×64 | ok |  |
 | serviceLabel | box | 520,210 671.2×18 | 520,210 671.2×18 | ok | "Background service" |
 | serviceDesc | box | 520,228 671.2×17 | 520,228 671.2×17 | ok | "Starts and supervises Claude Code processes" |
-| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4900 · running" |
+| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4600 · running" |
 | bind | box | 520,262 860×64 | 520,262 860×64 | ok |  |
 | bindLabel | box | 520,276 743.2×18 | 520,276 743.2×18 | ok | "Bind address" |
 | bindDesc | box | 520,294 743.2×17 | 520,294 743.2×17 | ok | "The service never listens beyond this PC" |
@@ -98,13 +98,13 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | exempt: "Workspace & solutions" → "Folders" |
 | root | none | 520,64 860×63 | 520,320 860×63 | ok |  |
 | rootLabel | none | 520,78 781.2×18 | 520,334 781.2×18 | ok | exempt: "Workspace root" → "Solutions in ws" |
-| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-oi9Lzc/ws" |
+| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-2q9ing/ws" |
 | rootValue | size | 1317.2,81 62.8×28 | 1317.2,337 62.8×28 | ok | "Rescan" |
 | scan | size | 520,141 860×290 | 520,397 860×290 | ok |  |
 | scan0 | size | 521,142 858×36 | 521,398 858×36 | ok |  |
 | scan0Folder | size | 535,151 170×17 | 535,407 170×17 | ok | "microfrontends/" |
 | scan0Count | size | 717,151.5 40×16 | 717,407.5 40×16 | ok | "4" |
-| scan0Examples | size | 769,151.5 464×16 | 769,407.5 464×16 | ok | exempt: "acme-app-front, dashboard-front, login-front, …" → "microfrontends-1, microfrontends-2, microfrontends-3, …" |
+| scan0Examples | size | 769,151.5 464×16 | 769,407.5 464×16 | ok | exempt: "acme-web-front, delivery-front, loyalty-front, …" → "microfrontends-1, microfrontends-2, microfrontends-3, …" |
 | scan0Rule | size | 1245,152.5 120×14 | 1245,408.5 120×14 | ok | "editable" |
 | scan1 | size | 521,178 858×36 | 521,434 858×36 | ok |  |
 | scan1Folder | size | 535,187 170×17 | 535,443 170×17 | ok | "mobile/" |
@@ -114,17 +114,17 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | scan2 | size | 521,214 858×36 | 521,470 858×36 | ok |  |
 | scan2Folder | size | 535,223 170×17 | 535,479 170×17 | ok | "nugets/" |
 | scan2Count | size | 717,223.5 40×16 | 717,479.5 40×16 | ok | "4" |
-| scan2Examples | size | 769,223.5 464×16 | 769,479.5 464×16 | ok | exempt: "design-system-nuget, acme-fonts-nuget, …" → "nugets-1, nugets-2, nugets-3, …" |
+| scan2Examples | size | 769,223.5 464×16 | 769,479.5 464×16 | ok | exempt: "design-kit-nuget, acme-icons-nuget, …" → "nugets-1, nugets-2, nugets-3, …" |
 | scan2Rule | size | 1245,224.5 120×14 | 1245,480.5 120×14 | ok | "editable" |
 | scan3 | size | 521,250 858×36 | 521,506 858×36 | ok |  |
 | scan3Folder | size | 535,259 170×17 | 535,515 170×17 | ok | "microservices/" |
 | scan3Count | size | 717,259.5 40×16 | 717,515.5 40×16 | ok | "2" |
-| scan3Examples | size | 769,259.5 464×16 | 769,515.5 464×16 | ok | exempt: "login-microservice, acme-alerts-microservice" → "microservices-1, microservices-2" |
+| scan3Examples | size | 769,259.5 464×16 | 769,515.5 464×16 | ok | exempt: "accounts-microservice, orders-microservice" → "microservices-1, microservices-2" |
 | scan3Rule | size | 1245,260.5 120×14 | 1245,516.5 120×14 | ok | "editable" |
 | scan4 | size | 521,286 858×36 | 521,542 858×36 | ok |  |
 | scan4Folder | size | 535,295 170×17 | 535,551 170×17 | ok | "functions/" |
 | scan4Count | size | 717,295.5 40×16 | 717,551.5 40×16 | ok | "2" |
-| scan4Examples | size | 769,295.5 464×16 | 769,551.5 464×16 | ok | exempt: "reminder-func, crm-sync-func" → "functions-1, functions-2" |
+| scan4Examples | size | 769,295.5 464×16 | 769,551.5 464×16 | ok | exempt: "invoice-func, stock-sync-func" → "functions-1, functions-2" |
 | scan4Rule | size | 1245,296.5 120×14 | 1245,552.5 120×14 | ok | "editable" |
 | scan5 | size | 521,322 858×36 | 521,578 858×36 | ok |  |
 | scan5Folder | size | 535,331 170×17 | 535,587 170×17 | ok | "other/" |
@@ -134,14 +134,14 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | scan6 | size | 521,358 858×36 | 521,614 858×36 | ok |  |
 | scan6Folder | size | 535,367 170×17 | 535,623 170×17 | ok | "deprecated/" |
 | scan6Count | size | 717,367.5 40×16 | 717,623.5 40×16 | ok | "3" |
-| scan6Examples | size | 769,367.5 464×16 | 769,623.5 464×16 | ok | exempt: "old-chat-front, legacy-login-microservice, …" → "deprecated-1, deprecated-2, deprecated-3" |
+| scan6Examples | size | 769,367.5 464×16 | 769,623.5 464×16 | ok | exempt: "old-cart-front, legacy-accounts-microservice, …" → "deprecated-1, deprecated-2, deprecated-3" |
 | scan6Rule | size | 1245,368.5 120×14 | 1245,624.5 120×14 | ok | "read-only" |
 | scan7 | size | 521,394 858×36 | 521,650 858×36 | ok |  |
 | scan7Folder | size | 535,403 170×17 | 535,659 170×17 | ok | "infrastructure/" |
 | scan7Count | size | 717,403.5 40×16 | 717,659.5 40×16 | ok | "1" |
 | scan7Examples | size | 769,403.5 464×16 | 769,659.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
 | scan7Rule | size | 1245,404.5 120×14 | 1245,660.5 120×14 | ok | "read-only" |
-| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-o |
+| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-2 |
 | D14 the temp root: a workspace with its router | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 0 solutions" |
 | D14 the demo folder: not the default, its check line | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 12 solutions" |
 | D14 Add… | addition | — | — | ok | Add… |

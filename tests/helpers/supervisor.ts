@@ -176,7 +176,7 @@ export function newSession(overrides: Partial<NewSession> = {}): NewSession {
     task: 'Remember the code word: zeppelin. Reply with just OK.',
     workType: 'feature',
     mode: 'single',
-    solutions: ['acme-app-front'],
+    solutions: ['acme-web-front'],
     phase: 'ui-first',
     coordination: 'none',
     qa: null,

@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **2.04%**, main area (256,0 1184×900) **0.14%**, main area searched ("profile") **0.14%**.
+Pixel diff (advisory, channel threshold 24): full page **2.08%**, main area (256,0 1184×900) **0.14%**, main area searched ("profile") **0.14%**.
 
 Side by side (prototype left, app right): `history-side-by-side.png`, `history-main-side-by-side.png`, `history-search-side-by-side.png`.
 
@@ -23,11 +23,11 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | row0 | box | 278,74 1140×64.8 | 278,74 1140×64.8 | ok |  |
 | row0Date | box | 278,89 110×15 | 278,89 110×15 | ok | "09-26 16:40" |
 | row0NameCol | box | 404,87 220×34 | 404,87 220×34 | ok |  |
-| row0Name | box | 404,87 220×18 | 404,87 220×18 | ok | "profile-page-360" |
+| row0Name | box | 404,87 220×18 | 404,87 220×18 | ok | "profile-page-mobile" |
 | row0Mode | box | 404,107 220×14 | 404,107 220×14 | ok | "orch · feature · UI-first" |
 | row0SumCol | box | 640,88 562×36.8 | 640,88 562×36.8 | ok |  |
-| row0Summary | box | 640,88 562×18.8 | 640,88 562×18.8 | ok | "Profile page at 360 on web and mobile. 2 questions answered, reconciled clean." |
-| row0Sols | box | 640,110.8 562×14 | 640,110.8 562×14 | ok | "acme-app-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page" |
+| row0Summary | box | 640,88 562×18.8 | 640,88 562×18.8 | ok | "Profile page on phones, web and mobile. 2 questions answered, reconciled clean." |
+| row0Sols | box | 640,110.8 562×14 | 640,110.8 562×14 | ok | "acme-web-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page" |
 | row0Outcome | box | 1218,89 200×15 | 1218,89 200×15 | ok | "PR #231 merged" |
 | row1 | box | 278,138.8 1140×64.8 | 278,138.8 1140×64.8 | ok |  |
 | row1Date | box | 278,153.8 110×15 | 278,153.8 110×15 | ok | "09-26 11:05" |
@@ -36,7 +36,7 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | row1Mode | box | 404,171.8 220×14 | 404,171.8 220×14 | ok | "orch · QA" |
 | row1SumCol | box | 640,152.8 562×36.8 | 640,152.8 562×36.8 | ok |  |
 | row1Summary | box | 640,152.8 562×18.8 | 640,152.8 562×18.8 | ok | "E2E + Appium coverage for Profile page. 16/16 requirements covered." |
-| row1Sols | box | 640,175.7 562×14 | 640,175.7 562×14 | ok | "acme-app-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium" |
+| row1Sols | box | 640,175.7 562×14 | 640,175.7 562×14 | ok | "acme-web-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium" |
 | row1Outcome | box | 1218,153.8 200×15 | 1218,153.8 200×15 | ok | "PR #229 merged" |
 | row2 | box | 278,203.7 1140×64.8 | 278,203.7 1140×64.8 | ok |  |
 | row2Date | box | 278,218.7 110×15 | 278,218.7 110×15 | ok | "09-25 15:20" |
@@ -45,43 +45,43 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | row2Mode | box | 404,236.7 220×14 | 404,236.7 220×14 | ok | "orch · integration" |
 | row2SumCol | box | 640,217.7 562×36.8 | 640,217.7 562×36.8 | ok |  |
 | row2Summary | box | 640,217.7 562×18.8 | 640,217.7 562×18.8 | ok | "Refresh-token rotation, Tier B green before phase exit." |
-| row2Sols | box | 640,240.5 562×14 | 640,240.5 562×14 | ok | "login-microservice ⎇ feature/refresh-rotation · login-front ⎇ feature/refresh" |
+| row2Sols | box | 640,240.5 562×14 | 640,240.5 562×14 | ok | "accounts-microservice ⎇ feature/refresh-rotation · loyalty-front ⎇ feature/refresh" |
 | row2Outcome | box | 1218,218.7 200×15 | 1218,218.7 200×15 | ok | "PR #77 merged" |
 | row3 | box | 278,268.5 1140×64.8 | 278,268.5 1140×64.8 | ok |  |
 | row3Date | box | 278,283.5 110×15 | 278,283.5 110×15 | ok | "09-25 09:12" |
 | row3NameCol | box | 404,281.5 220×34 | 404,281.5 220×34 | ok |  |
-| row3Name | box | 404,281.5 220×18 | 404,281.5 220×18 | ok | "crm-sync-func-retry" |
-| row3Mode | box | 404,301.5 220×14 | 404,301.5 220×14 | ok | "single · crm-sync-func" |
+| row3Name | box | 404,281.5 220×18 | 404,281.5 220×18 | ok | "stock-sync-func-retry" |
+| row3Mode | box | 404,301.5 220×14 | 404,301.5 220×14 | ok | "single · stock-sync-func" |
 | row3SumCol | box | 640,282.5 562×36.8 | 640,282.5 562×36.8 | ok |  |
-| row3Summary | box | 640,282.5 562×18.8 | 640,282.5 562×18.8 | ok | "Retry with backoff on 429s from the CRM." |
-| row3Sols | box | 640,305.4 562×14 | 640,305.4 562×14 | ok | "crm-sync-func ⎇ fix/retry-429" |
+| row3Summary | box | 640,282.5 562×18.8 | 640,282.5 562×18.8 | ok | "Retry with backoff on 429s from the stock API." |
+| row3Sols | box | 640,305.4 562×14 | 640,305.4 562×14 | ok | "stock-sync-func ⎇ fix/retry-429" |
 | row3Outcome | box | 1218,283.5 200×15 | 1218,283.5 200×15 | ok | "PR #19 open" |
 | row4 | box | 278,333.4 1140×64.8 | 278,333.4 1140×64.8 | ok |  |
 | row4Date | box | 278,348.4 110×15 | 278,348.4 110×15 | ok | "09-24 17:30" |
 | row4NameCol | box | 404,346.4 220×34 | 404,346.4 220×34 | ok |  |
-| row4Name | box | 404,346.4 220×18 | 404,346.4 220×18 | ok | "acme-fonts-nuget-1.4" |
-| row4Mode | box | 404,366.4 220×14 | 404,366.4 220×14 | ok | "single · acme-fonts-nuget" |
+| row4Name | box | 404,346.4 220×18 | 404,346.4 220×18 | ok | "acme-icons-nuget-1.4" |
+| row4Mode | box | 404,366.4 220×14 | 404,366.4 220×14 | ok | "single · acme-icons-nuget" |
 | row4SumCol | box | 640,347.4 562×36.8 | 640,347.4 562×36.8 | ok |  |
 | row4Summary | box | 640,347.4 562×18.8 | 640,347.4 562×18.8 | ok | "New Display XL token, inline version bump to 1.4.0." |
-| row4Sols | box | 640,370.2 562×14 | 640,370.2 562×14 | ok | "acme-fonts-nuget ⎇ release/1.4" |
+| row4Sols | box | 640,370.2 562×14 | 640,370.2 562×14 | ok | "acme-icons-nuget ⎇ release/1.4" |
 | row4Outcome | box | 1218,348.4 200×15 | 1218,348.4 200×15 | ok | "published" |
 | row5 | box | 278,398.2 1140×64.8 | 278,398.2 1140×64.8 | ok |  |
 | row5Date | box | 278,413.2 110×15 | 278,413.2 110×15 | ok | "09-24 10:02" |
 | row5NameCol | box | 404,411.2 220×34 | 404,411.2 220×34 | ok |  |
-| row5Name | box | 404,411.2 220×18 | 404,411.2 220×18 | ok | "summary-nuget-skeleton" |
+| row5Name | box | 404,411.2 220×18 | 404,411.2 220×18 | ok | "acme-charts-nuget-skeleton" |
 | row5Mode | box | 404,431.2 220×14 | 404,431.2 220×14 | ok | "loop-until-dry" |
 | row5SumCol | box | 640,412.2 562×36.8 | 640,412.2 562×36.8 | ok |  |
 | row5Summary | box | 640,412.2 562×18.8 | 640,412.2 562×18.8 | ok | "Loading skeletons for 6 summary components." |
-| row5Sols | box | 640,435.1 562×14 | 640,435.1 562×14 | ok | "summary-nuget ⎇ feature/skeletons" |
+| row5Sols | box | 640,435.1 562×14 | 640,435.1 562×14 | ok | "acme-charts-nuget ⎇ feature/skeletons" |
 | row5Outcome | box | 1218,413.2 200×15 | 1218,413.2 200×15 | ok | "stopped by you at 4/6" |
 | row6 | box | 278,463.1 1140×64.8 | 278,463.1 1140×64.8 | ok |  |
 | row6Date | box | 278,478.1 110×15 | 278,478.1 110×15 | ok | "09-23 14:44" |
 | row6NameCol | box | 404,476.1 220×34 | 404,476.1 220×34 | ok |  |
-| row6Name | box | 404,476.1 220×18 | 404,476.1 220×18 | ok | "content-library-filters" |
+| row6Name | box | 404,476.1 220×18 | 404,476.1 220×18 | ok | "catalog-filters" |
 | row6Mode | box | 404,496.1 220×14 | 404,496.1 220×14 | ok | "orch · feature · UI-first" |
 | row6SumCol | box | 640,477.1 562×36.8 | 640,477.1 562×36.8 | ok |  |
-| row6Summary | box | 640,477.1 562×18.8 | 640,477.1 562×18.8 | ok | "Filter bar at 1366 and 1920, web only (no mobile per breakpoint partition)." |
-| row6Sols | box | 640,499.9 562×14 | 640,499.9 562×14 | ok | "content-library-front ⎇ feature/filters" |
+| row6Summary | box | 640,477.1 562×18.8 | 640,477.1 562×18.8 | ok | "Filter bar on desktop, web only (no mobile counterpart)." |
+| row6Sols | box | 640,499.9 562×14 | 640,499.9 562×14 | ok | "catalog-front ⎇ feature/filters" |
 | row6Outcome | box | 1218,478.1 200×15 | 1218,478.1 200×15 | ok | "PR #58 merged" |
 | row7 | box | 278,527.9 1140×64.8 | 278,527.9 1140×64.8 | ok |  |
 | row7Date | box | 278,542.9 110×15 | 278,542.9 110×15 | ok | "09-23 08:00" |
@@ -99,11 +99,11 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | row0 | box | 278,74 1140×64.8 | 278,74 1140×64.8 | ok |  |
 | row0Date | box | 278,89 110×15 | 278,89 110×15 | ok | "09-26 16:40" |
 | row0NameCol | box | 404,87 220×34 | 404,87 220×34 | ok |  |
-| row0Name | box | 404,87 220×18 | 404,87 220×18 | ok | "profile-page-360" |
+| row0Name | box | 404,87 220×18 | 404,87 220×18 | ok | "profile-page-mobile" |
 | row0Mode | box | 404,107 220×14 | 404,107 220×14 | ok | "orch · feature · UI-first" |
 | row0SumCol | box | 640,88 562×36.8 | 640,88 562×36.8 | ok |  |
-| row0Summary | box | 640,88 562×18.8 | 640,88 562×18.8 | ok | "Profile page at 360 on web and mobile. 2 questions answered, reconciled clean." |
-| row0Sols | box | 640,110.8 562×14 | 640,110.8 562×14 | ok | "acme-app-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page" |
+| row0Summary | box | 640,88 562×18.8 | 640,88 562×18.8 | ok | "Profile page on phones, web and mobile. 2 questions answered, reconciled clean." |
+| row0Sols | box | 640,110.8 562×14 | 640,110.8 562×14 | ok | "acme-web-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page" |
 | row0Outcome | box | 1218,89 200×15 | 1218,89 200×15 | ok | "PR #231 merged" |
 | row1 | box | 278,138.8 1140×64.8 | 278,138.8 1140×64.8 | ok |  |
 | row1Date | box | 278,153.8 110×15 | 278,153.8 110×15 | ok | "09-26 11:05" |
@@ -112,7 +112,7 @@ The demo rows are the prototype's `HIST` in its order (newest first, the API's o
 | row1Mode | box | 404,171.8 220×14 | 404,171.8 220×14 | ok | "orch · QA" |
 | row1SumCol | box | 640,152.8 562×36.8 | 640,152.8 562×36.8 | ok |  |
 | row1Summary | box | 640,152.8 562×18.8 | 640,152.8 562×18.8 | ok | "E2E + Appium coverage for Profile page. 16/16 requirements covered." |
-| row1Sols | box | 640,175.7 562×14 | 640,175.7 562×14 | ok | "acme-app-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium" |
+| row1Sols | box | 640,175.7 562×14 | 640,175.7 562×14 | ok | "acme-web-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium" |
 | row1Outcome | box | 1218,153.8 200×15 | 1218,153.8 200×15 | ok | "PR #229 merged" |
 
 ## No match

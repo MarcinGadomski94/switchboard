@@ -17,12 +17,17 @@ The Team page is not in the prototype; its reference is the approved mockup desc
 
 - sidebar entry: color oklch(0.78 0.09 300), background oklch(0.25 0.04 300)
 - card top borders: working oklch(0.72 0.12 250), needs you oklch(0.8 0.14 70), idle rgb(90, 89, 85), paused / offline rgb(44, 45, 50) dimmed
+- sidebar member rows: expanded by default, glyphs working oklch(0.72 0.12 250) / needs you oklch(0.8 0.14 70) / paused ⏸, status line rgb(118, 117, 111) at the right edge
 - desktop: the cards in one row across the full width (4 cards, 196 px each; the row scrolls sideways when they do not fit), then Needs you + Activity (330px) | the member panel to the bottom
 - desktop: Needs you and Activity collapse (▾ / ▸, open by default); an activity entry is two lines (icon · actor in oklch(0.78 0.09 300) · time right-aligned, then the text across 297 of the column's 297 px)
 - `team-left-column-desktop.png`
 - `team-populated-desktop.png`
+- desktop, left column folded: a 44 px strip (› then the needs-you count as an amber badge oklch(0.8 0.14 70)), the member panel 854 → 1140 px
+- `team-left-collapsed-desktop.png`
 - tablet: the cards in one row across the top (scrolling sideways when they do not fit), then Needs you + Activity (260px) | the member panel
 - `team-populated-tablet.png`
+- tablet, left column folded: the same 44 px strip
+- `team-left-collapsed-tablet.png`
 - phone: one column, Needs you first, then the cards in the team's order, then Activity
 - `team-populated-phone.png`
 - phone: the member panel full screen with ‹ Team

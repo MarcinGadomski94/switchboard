@@ -1,4 +1,4 @@
 D-riderprojects-acme-workspace-infrastructure-network
-D-riderprojects-acme-workspace-microservices-login-microservice
+D-riderprojects-acme-workspace-microservices-accounts-microservice
 D-riderprojects-acme-workspace-mobile-src
-D-riderprojects-acme-workspace-nugets-login-nuget
+D-riderprojects-acme-workspace-nugets-api-client-nuget

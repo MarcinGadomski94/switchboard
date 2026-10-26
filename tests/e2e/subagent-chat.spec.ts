@@ -224,9 +224,9 @@ test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return 
   const panel = page.getByTestId('session-right-panel');
   await expect(panel.getByTestId('agents-summary')).toHaveText('2 agents · 0 solutions · 0 branches');
   await expect(panel.getByTestId('agent-card')).toHaveCount(1);
-  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front']);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-web-front']);
   await expect(panel.getByTestId('overview-row')).toHaveCount(1);
-  await expect(panel.getByTestId('overview-agent')).toHaveText(['acme-app-front']);
+  await expect(panel.getByTestId('overview-agent')).toHaveText(['acme-web-front']);
   const finished = panel.getByTestId('agents-finished');
   await expect(finished).toHaveText('✓ 1 finished');
   await expect(finished).toHaveAttribute('aria-expanded', 'false');
@@ -236,7 +236,7 @@ test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return 
   await finished.focus();
   await page.keyboard.press('Enter');
   await expect(finished).toHaveAttribute('aria-expanded', 'true');
-  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-web-front', 'general-purpose']);
   await expect(panel.getByTestId('overview-row')).toHaveCount(1);
   const card = panel.locator(`[data-testid="agent-card"][data-agent-id="${sub?.id ?? ''}"]`);
   await expect(card).toHaveAttribute('title', "Open this subagent's chat");

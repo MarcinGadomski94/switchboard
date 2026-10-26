@@ -62,7 +62,7 @@ test('Continue in terminal → the command → a terminal turn → Attach warns 
   const header = page.getByTestId('session-header');
   await expect(page.getByTestId('session-name')).toHaveText('handoff-e2e');
   await expect(page.getByTestId('session-root')).toHaveText(`${world.workspace} · workspace root`);
-  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-app-front']);
+  await expect(page.getByTestId('session-chip')).toHaveText(['work feature-building', 'mode single-solution', 'phase UI-first', 'scope acme-web-front']);
   await expect(header.getByRole('tab')).toHaveText(['Chat', 'Timeline', 'Diff · 0', 'Artifacts · 0']);
   await expect(page.getByTestId('session-tab-chat')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('session-pause')).toHaveText('Pause');

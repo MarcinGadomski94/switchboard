@@ -79,8 +79,8 @@ test('Timeline: lanes per agent, kind colors, playhead, scrub / play, log, termi
   // One lane: the main agent (single-solution → the solution's name), in the workspace root.
   const lanes = page.getByTestId('timeline-lane');
   await expect(lanes).toHaveCount(1);
-  await expect(lanes.first()).toHaveAttribute('data-agent', 'acme-app-front');
-  await expect(lanes.first().locator('.sb-timeline__name')).toHaveText('acme-app-front');
+  await expect(lanes.first()).toHaveAttribute('data-agent', 'acme-web-front');
+  await expect(lanes.first().locator('.sb-timeline__name')).toHaveText('acme-web-front');
   await expect(lanes.first().locator('.sb-timeline__sub')).toHaveText('workspace root');
 
   // Blocks: Write + Bash (impl), the turn's result (ok); the task message is chat text, not a block.
@@ -128,8 +128,8 @@ test('Timeline: lanes per agent, kind colors, playhead, scrub / play, log, termi
   // The log: every block up to the playhead, "who · label", dot colored by kind.
   const log = page.getByTestId('timeline-log-entry');
   await expect(log).toHaveCount(3);
-  await expect(log.nth(0)).toContainText('acme-app-front · Write · out.txt');
-  await expect(log.nth(2)).toContainText('acme-app-front · DONE');
+  await expect(log.nth(0)).toContainText('acme-web-front · Write · out.txt');
+  await expect(log.nth(2)).toContainText('acme-web-front · DONE');
   expect(await style(log.nth(0).locator('.sb-timeline__log-dot'), 'background-color')).toBe(await computed(page, 'oklch(0.72 0.12 250)'));
   expect(await style(log.nth(2).locator('.sb-timeline__log-dot'), 'background-color')).toBe(await computed(page, 'oklch(0.74 0.13 150)'));
 
@@ -184,7 +184,7 @@ test('Timeline: lanes per agent, kind colors, playhead, scrub / play, log, termi
   expect(await style(subBlocks.first(), 'color')).toBe(await computed(page, '#c9c8c3'));
   // The Agent call itself is a `tool` event: no block on the main lane.
   await expect(lanes.nth(0).getByTestId('timeline-block')).toHaveText(['Write · out.txt', 'Bash · ls', 'DONE', 'alpha line one'], { timeout: 15_000 });
-  await expect(page.getByTestId('timeline-log-entry').last()).toContainText('acme-app-front · alpha line one');
+  await expect(page.getByTestId('timeline-log-entry').last()).toContainText('acme-web-front · alpha line one');
   await expect(page.getByTestId('timeline-log-entry')).toContainText(['general-purpose · Read · hello.txt']);
   await expect(term).toContainText(['[general-purpose] ✓ Read · hello.txt']);
   await expect(term.last()).toHaveText('✓ alpha line one');

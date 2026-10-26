@@ -94,14 +94,14 @@ describe('the ruling of 2026-10-09: Commit message and New-session drafts', () =
     expect(isMachineDraftField('new-session')).toBe(true);
     expect(isDraftField('new-session')).toBe(false);
     expect(isMachineDraftField('composer')).toBe(false);
-    const form = { ...DEFAULT_FORM, task: 'Pair talk at 640', solutions: ['acme-app-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } };
+    const form = { ...DEFAULT_FORM, task: 'Checkout page at 640', solutions: ['acme-web-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } };
     const parsed = parseDraftValue('new-session', { form: { ...form, extra: 'dropped' }, simpleBranch: null });
     expect(parsed).toEqual({ form, simpleBranch: null });
     expect(draftIsEmpty('new-session', { form: { ...DEFAULT_FORM, workType: 'qa', ultracode: true }, simpleBranch: null })).toBe(true);
     expect(draftIsEmpty('new-session', { form: DEFAULT_FORM, simpleBranch: 'PROJ-1-x' })).toBe(false);
-    expect(draftIsEmpty('new-session', { form: { ...DEFAULT_FORM, name: 'pair-talk' }, simpleBranch: null })).toBe(false);
+    expect(draftIsEmpty('new-session', { form: { ...DEFAULT_FORM, name: 'checkout' }, simpleBranch: null })).toBe(false);
     // The dialog's restore: the typed values back, an unknown pick keeps the default.
-    expect(formFromDraft({ ...form, mode: 'nonsense', provider: 'not-a-cli' })).toEqual({ ...DEFAULT_FORM, task: 'Pair talk at 640', solutions: ['acme-app-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } });
+    expect(formFromDraft({ ...form, mode: 'nonsense', provider: 'not-a-cli' })).toEqual({ ...DEFAULT_FORM, task: 'Checkout page at 640', solutions: ['acme-web-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } });
     expect(formFromDraft({})).toEqual(DEFAULT_FORM);
   });
 });

@@ -255,7 +255,7 @@ export function parentFromTask(text: string): string | null {
 
 /** One repo of a stacked session's hand-off. */
 export interface StackRepo {
-  /** The solution as the session names it (`acme-app-front`). */
+  /** The solution as the session names it (`acme-web-front`). */
   readonly solution: string;
   /** Resolved; `null` for a repo without an `origin` remote (cut from its HEAD). */
   readonly base: Extract<RepoBase, { ok: true }> | null;
@@ -370,8 +370,8 @@ export function perRepoRule(parent: string, epic: string | null, base: string): 
  *   - Task branch: PROJ-3014-…
  *   - Parent: PROJ-3013-… (stacked; PR #306/#1080 open)
  *   - Per-repo base / PR target:
- *     - acme-app-front: origin/PROJ-3013-… → PR into PROJ-3013-…
- *     - surveys-front: origin/dev (epic missing; parent not in repo) → PR into feature/PROJ-3010-… (epic, created lazily)
+ *     - acme-web-front: origin/PROJ-3013-… → PR into PROJ-3013-…
+ *     - reviews-front: origin/dev (epic missing; parent not in repo) → PR into feature/PROJ-3010-… (epic, created lazily)
  *   - Rule: …
  *   - When the parent merges: …
  * ```

@@ -28,7 +28,7 @@ describe('TICKET_BRANCH (D32)', () => {
       'PROJ-0001-Test-Branch',
       'PROJ-0001-test--branch',
       'PROJ-0001-test_branch',
-      'session/pair-talk',
+      'session/checkout',
       'feature/PROJ-0001-test',
       ' PROJ-0001-test',
       '',
@@ -98,7 +98,7 @@ describe('branchFromTitle (D32)', () => {
   });
 
   it('suggests nothing without a ticket key at the start', () => {
-    for (const title of ['pair-talk-640', 'Fix PROJ-1984', 'PROJ-1984purchase', 'PROJ purchase', '', 'JIRA Ticket handling']) {
+    for (const title of ['checkout-page-640', 'Fix PROJ-1984', 'PROJ-1984purchase', 'PROJ purchase', '', 'JIRA Ticket handling']) {
       expect(branchFromTitle(title), title).toBeNull();
     }
   });

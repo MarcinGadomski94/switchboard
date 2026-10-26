@@ -2,10 +2,10 @@
   "history": [
     {
       "date": "09-26 16:40",
-      "name": "profile-page-360",
+      "name": "profile-page-mobile",
       "mode": "orch · feature · UI-first",
-      "summary": "Profile page at 360 on web and mobile. 2 questions answered, reconciled clean.",
-      "branches": "acme-app-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page",
+      "summary": "Profile page on phones, web and mobile. 2 questions answered, reconciled clean.",
+      "branches": "acme-web-front ⎇ feature/profile-page · mobile ⎇ feature/profile-page",
       "outcome": "PR #231 merged",
       "status": "done"
     },
@@ -14,7 +14,7 @@
       "name": "qa-profile-page",
       "mode": "orch · QA",
       "summary": "E2E + Appium coverage for Profile page. 16/16 requirements covered.",
-      "branches": "acme-app-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium",
+      "branches": "acme-web-front ⎇ qa/profile-e2e · mobile ⎇ qa/profile-appium",
       "outcome": "PR #229 merged",
       "status": "done"
     },
@@ -23,43 +23,43 @@
       "name": "auth-token-refresh",
       "mode": "orch · integration",
       "summary": "Refresh-token rotation, Tier B green before phase exit.",
-      "branches": "login-microservice ⎇ feature/refresh-rotation · login-front ⎇ feature/refresh",
+      "branches": "accounts-microservice ⎇ feature/refresh-rotation · loyalty-front ⎇ feature/refresh",
       "outcome": "PR #77 merged",
       "status": "done"
     },
     {
       "date": "09-25 09:12",
-      "name": "crm-sync-func-retry",
-      "mode": "single · crm-sync-func",
-      "summary": "Retry with backoff on 429s from the CRM.",
-      "branches": "crm-sync-func ⎇ fix/retry-429",
+      "name": "stock-sync-func-retry",
+      "mode": "single · stock-sync-func",
+      "summary": "Retry with backoff on 429s from the stock API.",
+      "branches": "stock-sync-func ⎇ fix/retry-429",
       "outcome": "PR #19 open",
       "status": "run"
     },
     {
       "date": "09-24 17:30",
-      "name": "acme-fonts-nuget-1.4",
-      "mode": "single · acme-fonts-nuget",
+      "name": "acme-icons-nuget-1.4",
+      "mode": "single · acme-icons-nuget",
       "summary": "New Display XL token, inline version bump to 1.4.0.",
-      "branches": "acme-fonts-nuget ⎇ release/1.4",
+      "branches": "acme-icons-nuget ⎇ release/1.4",
       "outcome": "published",
       "status": "done"
     },
     {
       "date": "09-24 10:02",
-      "name": "summary-nuget-skeleton",
+      "name": "acme-charts-nuget-skeleton",
       "mode": "loop-until-dry",
       "summary": "Loading skeletons for 6 summary components.",
-      "branches": "summary-nuget ⎇ feature/skeletons",
+      "branches": "acme-charts-nuget ⎇ feature/skeletons",
       "outcome": "stopped by you at 4/6",
       "status": "fail"
     },
     {
       "date": "09-23 14:44",
-      "name": "content-library-filters",
+      "name": "catalog-filters",
       "mode": "orch · feature · UI-first",
-      "summary": "Filter bar at 1366 and 1920, web only (no mobile per breakpoint partition).",
-      "branches": "content-library-front ⎇ feature/filters",
+      "summary": "Filter bar on desktop, web only (no mobile counterpart).",
+      "branches": "catalog-front ⎇ feature/filters",
       "outcome": "PR #58 merged",
       "status": "done"
     },

@@ -63,7 +63,7 @@ const SHOTS: readonly Shot[] = [
   // Home in full: Needs you, Working now and Done today.
   { name: 'home-full', full: true, go: (page, base) => open(page, base, '/') },
   // The agent view: three questions as one answer card in the chat, the side panel open.
-  { name: 'agent', go: (page, base) => open(page, base, '/agents/pair-talk-feature') },
+  { name: 'agent', go: (page, base) => open(page, base, '/agents/checkout-redesign') },
   {
     name: 'agents-board',
     async go(page, base) {
@@ -97,8 +97,8 @@ const SHOTS: readonly Shot[] = [
   },
   { name: 'needs-you', go: (page, base) => open(page, base, '/needs-you') },
   { name: 'phone-home', phone: true, go: (page, base) => open(page, base, '/') },
-  { name: 'phone-agent', phone: true, go: (page, base) => open(page, base, '/agents/acme-alerts-integration') },
-  { name: 'agent-dark', dark: true, go: (page, base) => open(page, base, '/agents/acme-alerts-integration') },
+  { name: 'phone-agent', phone: true, go: (page, base) => open(page, base, '/agents/acme-orders-integration') },
+  { name: 'agent-dark', dark: true, go: (page, base) => open(page, base, '/agents/acme-orders-integration') },
 ];
 
 /** The machine's name in every shot (its default is this computer's host name). */

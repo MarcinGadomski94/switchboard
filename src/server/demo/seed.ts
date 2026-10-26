@@ -87,7 +87,7 @@ function chip(session: DemoSession, key: string): string | undefined {
   return session.chips.find((c) => c.k === key)?.v;
 }
 
-/** Solution name of an agent's folder (`microfrontends/acme-app-front` → `acme-app-front`), `null` for non-solutions. */
+/** Solution name of an agent's folder (`microfrontends/acme-web-front` → `acme-web-front`), `null` for non-solutions. */
 export function solutionOf(solutionPath: string): string | null {
   if (solutionPath === 'workspace root' || solutionPath === 'read-only' || !solutionPath.includes('/')) return null;
   return solutionPath.split('/').filter(Boolean).pop() ?? null;

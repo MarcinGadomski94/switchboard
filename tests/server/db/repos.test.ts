@@ -27,7 +27,7 @@ afterEach(async () => {
   await removeTempDir(tmp);
 });
 
-async function session(name = 'pair-talk', claudeSessionId = `claude-${name}`) {
+async function session(name = 'checkout', claudeSessionId = `claude-${name}`) {
   return store.sessions.create({ name, claudeSessionId });
 }
 
@@ -36,11 +36,11 @@ describe('sessions', () => {
     const created = await session();
     expect(created).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      name: 'pair-talk',
+      name: 'checkout',
       // D22 (0006): no title until one is given.
       title: null,
       task: '',
-      claudeSessionId: 'claude-pair-talk',
+      claudeSessionId: 'claude-checkout',
       status: 'idle',
       workType: null,
       mode: null,
@@ -113,7 +113,7 @@ describe('sessions', () => {
   it('stores every NewSession field and the M0 fields', async () => {
     const created = await store.sessions.create({
       id: 's-1',
-      name: 'qa-pair-talk',
+      name: 'qa-checkout',
       task: 'Write E2E tests.',
       claudeSessionId: 'c9d4118a-0000-4000-8000-000000000000',
       status: 'run',
@@ -124,7 +124,7 @@ describe('sessions', () => {
       qaStack: 'both',
       qaConfluenceUrl: 'https://example.atlassian.net/wiki/x',
       qaFigmaUrls: ['https://figma.com/a', 'https://figma.com/b'],
-      solutions: ['acme-app-front', 'mobile'],
+      solutions: ['acme-web-front', 'mobile'],
       worktrees: true,
       ultracode: true,
       cwd: '/tmp/workspace',
@@ -134,8 +134,8 @@ describe('sessions', () => {
       cliVersion: '2.1.283',
       lastTranscriptUuid: 'u-1',
     });
-    expect(created).toMatchObject({ id: 's-1', workType: 'qa', qaStack: 'both', solutions: ['acme-app-front', 'mobile'], worktrees: true, ultracode: true, pid: 4242 });
-    expect(await store.sessions.getByName('qa-pair-talk')).toEqual(created);
+    expect(created).toMatchObject({ id: 's-1', workType: 'qa', qaStack: 'both', solutions: ['acme-web-front', 'mobile'], worktrees: true, ultracode: true, pid: 4242 });
+    expect(await store.sessions.getByName('qa-checkout')).toEqual(created);
     expect(await store.sessions.getByClaudeSessionId('c9d4118a-0000-4000-8000-000000000000')).toEqual(created);
     expect(await store.sessions.getByName('nope')).toBeNull();
   });
@@ -193,7 +193,7 @@ describe('sessions', () => {
     await store.permissions.create({ sessionId: s.id, requestId: 'req-2', toolName: 'Bash', input: { command: 'ls' } });
     await store.loops.create({ sessionId: s.id, kind: '/loop' });
     await store.pendingMessages.enqueue({ sessionId: s.id, kind: 'restart-note', text: 'Switchboard restarted.' });
-    const worktree = await store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/pair-talk', path: '/w/mobile-wt-pair-talk', sessionId: s.id });
+    const worktree = await store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/checkout', path: '/w/mobile-wt-checkout', sessionId: s.id });
     const artifact = await store.artifacts.create({ id: 'a000000001', sessionId: s.id, title: 'Notes', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
     const item = await store.systemItems.create({ kind: 'worktree-removable', source: 'worktrees', title: 't', sessionId: s.id });
     const reading = await store.usage.add({ source: 'get_usage', sessionId: s.id, fiveHourPct: 8 });
@@ -224,9 +224,9 @@ describe('agents', () => {
     const sub = await store.agents.create({
       sessionId: s.id,
       name: 'web',
-      description: 'PairTalkPage @360',
-      solutionPath: 'microfrontends/acme-app-front',
-      branch: 'feature/pair-talk-360',
+      description: 'CheckoutPage @phone',
+      solutionPath: 'microfrontends/acme-web-front',
+      branch: 'feature/checkout-redesign',
       toolUseId: 'toolu_1',
       taskId: 'task_1',
       subagentType: 'general-purpose',
@@ -537,11 +537,11 @@ describe('worktrees', () => {
   it('create / live lookups / update / remove, and a path can be reused after removal', async () => {
     const s = await session();
     const wt = await store.worktrees.create({
-      repo: 'acme-app-front',
-      repoPath: '/w/microfrontends/acme-app-front',
-      branch: 'session/pair-talk',
+      repo: 'acme-web-front',
+      repoPath: '/w/microfrontends/acme-web-front',
+      branch: 'session/checkout',
       baseRef: 'main',
-      path: '/w/microfrontends/acme-app-front-wt-pair-talk',
+      path: '/w/microfrontends/acme-web-front-wt-checkout',
       sessionId: s.id,
     });
     expect(wt).toMatchObject({ removable: false, prNumber: null, prState: null, removedAt: null });
@@ -559,7 +559,7 @@ describe('worktrees', () => {
     expect(await store.worktrees.list()).toEqual([]);
     expect(await store.worktrees.list({ includeRemoved: true })).toHaveLength(1);
     expect(await store.worktrees.getLiveByPath(wt.path)).toBeNull();
-    const again = await store.worktrees.create({ repo: 'acme-app-front', repoPath: wt.repoPath, branch: 'session/pair-talk-2', path: wt.path });
+    const again = await store.worktrees.create({ repo: 'acme-web-front', repoPath: wt.repoPath, branch: 'session/checkout-2', path: wt.path });
     expect(await store.worktrees.getLiveByPath(wt.path)).toEqual(again);
   });
 });

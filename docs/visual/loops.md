@@ -8,7 +8,7 @@ The grid is compared on its own: the view header ("Schedules & loops", "+ New sc
 
 Known difference (by design, D9 + D13): the three facts are Iteration / cap · Next / expires · Breaker from observed data ("—" when unknown), not the prototype's hand-written facts, so their copy and the widths of their label / value lines are listed below and not gated. The demo loops have no next firing stored (the prototype's "15:00" is mock copy), so Next shows "—".
 
-Advisory pixel diff (not a gate): 1.6 %. Side-by-side crop (prototype left, app right): `loops-side-by-side.png`.
+Advisory pixel diff (not a gate): 1.9 %. Side-by-side crop (prototype left, app right): `loops-side-by-side.png`.
 
 | Part | Prototype (rel) | App (rel) | Result | Copy |
 |---|---|---|---|---|

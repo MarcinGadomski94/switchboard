@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **2.02%**, sidebar (0,0 256×900) **10.79%**.
+Pixel diff (advisory, channel threshold 24): full page **2.06%**, sidebar (0,0 256×900) **11.03%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.
@@ -24,7 +24,7 @@ D101: the nav rows are not listed here (see *D101 nav grid* below). Geometry: `b
 | newSession | box | 10,50 235×33 | 10,50 235×33 | ok | "+ New session" |
 | toolsLabel | size | 0,254 255×36 | 0,177 255×36 | ok |  |
 | toolsAdd | box (y rel. TOOLS label) | 202.3,270 34.7×14 | 202.3,193 34.7×14 | ok | "+ Add" |
-| sessionsLabel | size | 0,371 255×36 | 0,294 255×36 | ok |  |
+| sessionsLabel | size | 0,371 255×36 | 0,330 255×36 | ok |  |
 | settings | size | 10,747 235×31 | 10,730 235×31 | ok | "Settings" |
 | footer | bottom | 0,784 255×116 | 0,767 255×133 | ok |  |
 | footerLabel | none | 27.4,795 45.8×28 | 27.4,778 45.8×28 | ok | "claude code" |
@@ -39,16 +39,16 @@ The prototype lists the views as text rows; D101 makes them an icon grid and TOO
 | Check | Expected | App | Result |
 |---|---|---|---|
 | grid columns | 40px × 5 | 40px 40px 40px 40px 40px | ok |
-| cells (7 views; Team / Plans off) | 7 | 7 | ok |
-| cell size | 40 × 40 each | 40×40 40×40 40×40 40×40 40×40 40×40 40×40 | ok |
+| cells (8 views; Team / Plans off) | 8 | 8 | ok |
+| cell size | 40 × 40 each | 40×40 40×40 40×40 40×40 40×40 40×40 40×40 40×40 | ok |
 | grid top = "+ New session" row bottom (its 8 px padding) | 91 | 91 | ok |
 | first column left = "+ New session" left | 10 | 10 | ok |
 | fifth column right = "+ New session" right | 245 | 245 | ok |
-| rows (5 + 2), 6 px apart | 2 · gap 6 | 2 · gap 6 | ok |
+| rows (5 + 3), 6 px apart | 2 · gap 6 | 2 · gap 6 | ok |
 | second row starts in the first column | 10 | 10 | ok |
-| icons 18 × 18, centred | 18×18, ±0.5 | 18×18 18×18 18×18 18×18 18×18 18×18 18×18 | ok |
-| names (aria-label): the prototype's labels in order, MCP and Todos added | Inbox · Solutions · Schedules & loops · Artifacts · History (+ MCP, Todos) | Inbox · Solutions · Schedules & loops · MCP · Artifacts · History · Todos | ok |
-| tooltips start with the name | name[ · badge] | Inbox · 5 items waiting · Solutions · 1 conflict · Schedules & loops · 1 failed · MCP · Artifacts · 13 artifacts · History · Todos | ok |
+| icons 18 × 18, centred | 18×18, ±0.5 | 18×18 18×18 18×18 18×18 18×18 18×18 18×18 18×18 | ok |
+| names (aria-label): the prototype's labels in order, MCP, Todos and Insights added | Inbox · Solutions · Schedules & loops · Artifacts · History (+ MCP, Todos, Insights) | Inbox · Solutions · Schedules & loops · MCP · Artifacts · History · Todos · Insights | ok |
+| tooltips start with the name | name[ · badge] | Inbox · 5 items waiting · Solutions · 1 conflict · Schedules & loops · 1 failed · MCP · Artifacts · 13 artifacts · History · Todos · Insights | ok |
 | selected cell (Inbox) in the prototype's selected nav colours | rgb(33, 34, 39) / rgb(240, 239, 235) | Inbox: rgb(33, 34, 39) / rgb(240, 239, 235) | ok |
 | other cells: transparent, muted-1 icon, radius 8px | rgba(0, 0, 0, 0) / rgb(169, 168, 163) / 8px | rgba(0, 0, 0, 0) / rgb(169, 168, 163) / 8px | ok |
 | Inbox badge: "5", amber, on the top-right corner (3 px out), 16 px high | 5 · 3 / 3 out · 16 | 5 · 3 / 3 out · 16 · oklch(0.8 0.14 70) / rgb(17, 18, 20) · 600 9.5px | ok |

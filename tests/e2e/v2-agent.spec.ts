@@ -187,9 +187,9 @@ test('the Changes tab, and Undo from here restores the files', async ({ page }) 
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-undo', 'Say hello.');
   await settled(page, id);
-  await post(page, id, '[fake:write microfrontends/acme-app-front/notes.txt] Write the notes file.');
+  await post(page, id, '[fake:write microfrontends/acme-web-front/notes.txt] Write the notes file.');
   await expect.poll(async () => (await detail(page, id)).status, { timeout: 20_000 }).toBe('done');
-  const file = path.join(world.workspace, 'microfrontends', 'acme-app-front', 'notes.txt');
+  const file = path.join(world.workspace, 'microfrontends', 'acme-web-front', 'notes.txt');
   const exists = async (): Promise<boolean> => readFile(file).then(() => true, () => false);
   await expect.poll(exists).toBe(true);
 

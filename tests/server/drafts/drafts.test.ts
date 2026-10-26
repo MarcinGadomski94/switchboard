@@ -75,7 +75,7 @@ async function fields(id: string): Promise<string[]> {
 
 /** A New-session form as the dialog sends it (`NewSessionDraft`). */
 const NEW_SESSION = {
-  form: { name: '', task: 'Pair talk screen at 640', workType: 'feature', mode: 'single', solutions: ['acme-app-front'], phase: 'ui-first', coordination: 'sequential', stack: null, confluenceUrl: '', figmaUrls: '', worktrees: true, ultracode: false, folder: 'f1', branch: null, model: { model: 'opus', effort: null }, provider: null, profileId: null },
+  form: { name: '', task: 'Checkout screen at 640', workType: 'feature', mode: 'single', solutions: ['acme-web-front'], phase: 'ui-first', coordination: 'sequential', stack: null, confluenceUrl: '', figmaUrls: '', worktrees: true, ultracode: false, folder: 'f1', branch: null, model: { model: 'opus', effort: null }, provider: null, profileId: null },
   simpleBranch: null,
 };
 
@@ -220,7 +220,7 @@ describe('this machine\'s own drafts: the New-session form (ruling 2026-10-09, 0
     expect(saved.json()).toMatchObject({ field: 'new-session', value: NEW_SESSION, updatedBy: 'local/page1' });
     expect((await ui('GET', '/api/drafts')).json()).toMatchObject([{ field: 'new-session', value: NEW_SESSION }]);
     // The Simple form's edited branch alone is typed text too.
-    const branchOnly = { form: { ...NEW_SESSION.form, task: '' }, simpleBranch: 'PROJ-1-pair-talk' };
+    const branchOnly = { form: { ...NEW_SESSION.form, task: '' }, simpleBranch: 'PROJ-1-checkout' };
     expect((await ui('PUT', '/api/drafts/new-session', { value: branchOnly })).json()).toMatchObject({ value: branchOnly, updatedBy: 'local' });
     // Picks without typed text are no draft: cleared.
     expect((await ui('PUT', '/api/drafts/new-session', { value: { form: { ...NEW_SESSION.form, task: '', workType: 'qa' }, simpleBranch: null }, client: 'page2' })).statusCode).toBe(204);

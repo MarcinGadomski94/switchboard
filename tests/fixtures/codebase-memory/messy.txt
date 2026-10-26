@@ -1,8 +1,8 @@
-﻿   Users-dev-Acme Corp-workspace-microfrontends-acme-app-front   
+﻿   Users-dev-Acme Corp-workspace-microfrontends-acme-web-front   
 
-users-dev-acme corp-workspace-MICROFRONTENDS-acme-app-front
-Users-dev-Acme Corp-workspace-nugets-login-nuget-v2
-Users-dev-Other Place-workspace-nugets-login-nuget
+users-dev-acme corp-workspace-MICROFRONTENDS-acme-web-front
+Users-dev-Acme Corp-workspace-nugets-api-client-nuget-v2
+Users-dev-Other Place-workspace-nugets-api-client-nuget
 Users-dev-Acme Corp-workspace-deprecated-microfrontends-old-front
 Users-dev-Acme Corp-workspace-tools-scripts
 Users-dev-Acme Corp-workspace

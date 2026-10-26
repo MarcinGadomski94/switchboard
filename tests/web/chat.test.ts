@@ -42,7 +42,7 @@ function event(id: number, payload: unknown, extra: Partial<SessionEvent> = {}):
   };
 }
 
-function question(id: string, batchId: string, answerIndex: number | null = null, source = 'acme-app-front'): Question {
+function question(id: string, batchId: string, answerIndex: number | null = null, source = 'acme-web-front'): Question {
   return {
     id,
     batchId,
@@ -212,17 +212,17 @@ describe('answers bubble and composer', () => {
   });
 
   it('answer lines use the source name part (prototype ssAnswered)', () => {
-    expect(answeredLines([question('a', 'x', 0, 'web · microfrontends/acme-app-front'), question('b', 'x', 1, '(orchestrator)'), question('c', 'x', null)])).toEqual([
+    expect(answeredLines([question('a', 'x', 0, 'web · microfrontends/acme-web-front'), question('b', 'x', 1, '(lead)'), question('c', 'x', null)])).toEqual([
       'web: Red',
-      '(orchestrator): Green',
-      'acme-app-front: —',
+      '(lead): Green',
+      'acme-web-front: —',
     ]);
   });
 
   it('draft: trimmed, nothing to send when empty; placeholder from the session name', () => {
     expect(draftToSend('  hello  ')).toBe('hello');
     expect(draftToSend('   ')).toBeNull();
-    expect(composerPlaceholder('pair-talk-640')).toBe('Message pair-talk-640…');
+    expect(composerPlaceholder('checkout-page-640')).toBe('Message checkout-page-640…');
   });
 
   it('D26: Enter sends, Shift+Enter is a new line, Enter while an IME composes does neither', () => {

@@ -42,7 +42,7 @@ export interface OverviewRow {
   readonly name: string;
   /** Empty when there is none. */
   readonly description: string;
-  /** The solution's folder name (`acme-app-front`), or `—` when the agent has not written into one. */
+  /** The solution's folder name (`acme-web-front`), or `—` when the agent has not written into one. */
   readonly solution: string;
   /** The workspace-relative solution folder (the Solution cell's tooltip); `null` without one. */
   readonly solutionPath: string | null;

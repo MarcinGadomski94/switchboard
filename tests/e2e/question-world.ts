@@ -11,8 +11,8 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
 /**
  * A real-path world for the notification specs (M3.4, D13): `node src/server/main.ts`
  * with fake-claude as the CLI, fake gh, and a temp workspace holding one real git
- * repo (`microfrontends/acme-app-front`), so a session started with worktrees gets
- * a branch chip (`acme-app-front ⎇ PROJ-1-<name>`: D32, its ticket branch). No demo seed.
+ * repo (`microfrontends/acme-web-front`), so a session started with worktrees gets
+ * a branch chip (`acme-web-front ⎇ PROJ-1-<name>`: D32, its ticket branch). No demo seed.
  */
 export interface QuestionWorld {
   readonly server: ServerProcess;
@@ -24,7 +24,7 @@ export interface QuestionWorld {
   /** The server's `SWITCHBOARD_DATA_DIR` (its database). Additive (Fix · long messages: tests seed events stored before a fix). */
   readonly dataDir: string;
   /**
-   * Starts a session in `acme-app-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie).
+   * Starts a session in `acme-web-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie).
    * With worktrees its branch is the ticket branch `PROJ-1-<name>` (D32).
    */
   startSession(page: Page, name: string, task: string, worktrees?: boolean): Promise<{ id: string }>;
@@ -42,7 +42,7 @@ export async function startQuestionWorld(label: string, options: { readonly env?
   const tmp = await realpath(await makeTempDir(label));
   try {
     const workspace = path.join(tmp, 'work space');
-    const repo = path.join(workspace, 'microfrontends', 'acme-app-front');
+    const repo = path.join(workspace, 'microfrontends', 'acme-web-front');
     const gitConfig = path.join(tmp, 'gitconfig');
     const prsFile = path.join(tmp, 'fake-gh-prs.json');
     await mkdir(repo, { recursive: true });
@@ -107,7 +107,7 @@ export async function startQuestionWorld(label: string, options: { readonly env?
             task,
             workType: 'feature',
             mode: 'single',
-            solutions: ['acme-app-front'],
+            solutions: ['acme-web-front'],
             phase: 'ui-first',
             coordination: 'none',
             qa: null,
