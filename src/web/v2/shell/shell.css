@@ -332,6 +332,15 @@
   border-radius: 5px;
 }
 
+/* The popover's bars: amber from the developer's "Warn at", red when out (fix after 2.0). */
+.sb2 .v2-bar2 .v2-meter[data-tone='amber'] b {
+  background: var(--v2-amber-dot);
+}
+
+.sb2 .v2-bar2 .v2-meter[data-tone='red'] b {
+  background: var(--v2-red);
+}
+
 .sb2 .v2-prow {
   display: flex;
   align-items: center;

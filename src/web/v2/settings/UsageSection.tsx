@@ -7,11 +7,13 @@ import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { droppedOrder, movedOrder } from '../../views/settings/accounts.ts';
+import { warnAtOptions } from '../../views/settings/model.ts';
 import { SignInPanel } from '../../views/settings/AccountsSection.tsx';
 import { Button, Card, Dialog, EmptyState, Icon, IconButton, Segmented, Skeleton, StatusBadge, Switch, useToast } from '../components/index.ts';
 import { SETTINGS_WORDS as W } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { agentName } from '../shared/agent-line.ts';
+import { saveWarnAt, useWarnAt } from '../shared/warn-at.ts';
 import { ClassicFrame } from './ClassicFrame.tsx';
 import { accountCard, inUseIds, switchAtChoices, switchAtOf, switchAtPatch } from './settings-model.ts';
 
@@ -31,6 +33,40 @@ function Meter({ used, label }: { readonly used: number | null; readonly label: 
     <div className="v2-meter" data-tone={tone} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used ?? 0}>
       <b style={{ width: `${used ?? 0}%` }} />
     </div>
+  );
+}
+
+/**
+ * Fix after 2.0 · "Warn at" (`usage.warnAtPct`, the same setting and choices as
+ * classic's Settings › Notifications & usage, `warnAtOptions`): when a Max usage
+ * warning fires (`docs/v2.md` → *Usage warnings*) and where the status pill turns amber.
+ */
+function WarnAtCard() {
+  const warnAt = useWarnAt();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const save = (pct: number): void => {
+    setBusy(true);
+    saveWarnAt(pct).then(
+      (saved) => toast({ text: W.warnSaved(saved) }),
+      (caught: unknown) => toast({ text: errorText(caught) || W.saveError, tone: 'error' }),
+    ).finally(() => setBusy(false));
+  };
+  return (
+    <Card pad className="v2-set-card" data-testid="v2-usage-warnings">
+      <div className="v2-set-card-h">
+        <h3 className="v2-grow">{W.warnTitle}</h3>
+      </div>
+      <p className="v2-muted v2-set-p">{W.warnSub}</p>
+      <label className="v2-set-label">
+        {W.warnAt}
+        <select className="v2-field" data-testid="v2-usage-warn-at" value={warnAt} disabled={busy} onChange={(event) => save(Number(event.target.value))}>
+          {warnAtOptions(warnAt).map((pct) => (
+            <option key={pct} value={pct}>{`${pct}%`}</option>
+          ))}
+        </select>
+      </label>
+    </Card>
   );
 }
 
@@ -199,6 +235,8 @@ export function UsageSection() {
           </V2Link>
         </p>
       </Card>
+
+      <WarnAtCard />
 
       <InsightsCard />
 

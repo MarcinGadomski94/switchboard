@@ -14,6 +14,7 @@ import { TopBar } from './TopBar.tsx';
 import { V2TourHost } from '../tour/TourHost.tsx';
 import { emitShortcut, shellKeyOf } from './shortcuts.ts';
 import { useRailCounts, useStatusPill } from './useShellData.ts';
+import { useUsageWarningToasts } from './useUsageWarningToasts.ts';
 import './shell.css';
 
 /** `true` when the focus is in a text box (`?` is a character there, not the shortcuts list). */
@@ -36,6 +37,8 @@ export function Shell() {
   const { pill } = useStatusPill();
   const counts = useRailCounts();
   const needs = useNeedsYouCount();
+  // Fix after 2.0: the Max usage warnings as toasts (once per window, like classic's).
+  useUsageWarningToasts();
 
   // A classic address (a push notification, a paired computer, a bookmark) opens its v2 page.
   useEffect(() => {

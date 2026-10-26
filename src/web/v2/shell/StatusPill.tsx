@@ -3,13 +3,14 @@ import { api } from '../../api/client.ts';
 import { rememberMachine } from '../../api/useMachines.ts';
 import { Button, Chip, Icon, Popover } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
+import type { Tone } from '../glossary.ts';
 import type { StatusPill as Pill, PillComputer } from './status-model.ts';
 
-function Meter({ label, pct }: { readonly label: string; readonly pct: number | null }) {
+function Meter({ label, pct, tone }: { readonly label: string; readonly pct: number | null; readonly tone: Tone }) {
   return (
     <div className="v2-bar2">
       <span className="v2-bar2-l">{label}</span>
-      <span className="v2-meter" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
+      <span className="v2-meter" data-tone={tone} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
         <b style={{ width: `${Math.max(0, Math.min(100, pct ?? 0))}%` }} />
       </span>
       <span>{pct === null ? '—' : `${Math.round(pct)}%`}</span>
@@ -121,8 +122,8 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
             {account.note ? <div className="v2-bar2">{account.note}</div> : null}
             {!account.note || account.badge?.text === 'Paid extra' ? (
               <>
-                <Meter label="5 hours" pct={account.session} />
-                <Meter label="Week" pct={account.week} />
+                <Meter label="5 hours" pct={account.session} tone={account.sessionTone} />
+                <Meter label="Week" pct={account.week} tone={account.weekTone} />
               </>
             ) : null}
           </div>

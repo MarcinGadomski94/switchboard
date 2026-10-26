@@ -7,6 +7,7 @@ import { usageGridLines } from '../../shell/format.ts';
 import type { AnsweredWhere } from '../glossary.ts';
 import { type AnswerAction, type AnsweredInfo, summaryOf } from './answer-model.ts';
 import { type NeedsItem, type UsageAlert, memoryScopeOf, mergeNeedsYou } from './needs-you-model.ts';
+import { usageWarningAlerts } from './usage-warning-model.ts';
 
 /**
  * D131 · the "Needs you" store's logic (DOM-free; `needs-you.ts` wires it to the
@@ -87,7 +88,11 @@ export interface NeedsYouStore {
 
 const EMPTY: NeedsYouSnapshot = { items: [], loaded: false, error: null, answered: new Map(), pending: new Set(), errors: new Map() };
 
-/** The usage alerts of a `GET /api/system` reading: an account out of usage, or paying from paid extra usage. */
+/**
+ * The usage alerts of a `GET /api/system` reading: an account out of usage, or
+ * paying from paid extra usage, and (fix after 2.0) each Max usage warning in
+ * force ("Usage warning", `usage-warning-model.ts`).
+ */
 export function usageAlerts(system: SystemInfo | null, now: number, firstSeen: (key: string) => string): UsageAlert[] {
   if (!system) return [];
   const out: UsageAlert[] = [];
@@ -100,6 +105,7 @@ export function usageAlerts(system: SystemInfo | null, now: number, firstSeen: (
       out.push({ key, title: `${line.label} is out of usage`, text: `${line.outUntil.replace(/^out /, 'Out ')}. Agents switch to another account automatically when one is set up.`, createdAt: firstSeen(key) });
     }
   }
+  out.push(...usageWarningAlerts(system, now));
   return out;
 }
 

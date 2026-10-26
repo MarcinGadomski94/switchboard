@@ -717,6 +717,10 @@
   color: #ff8a80;
 }
 
+.v2-toast[data-tone='warn'] > .v2-i {
+  color: #ffc56b;
+}
+
 .v2-toast button {
   background: none;
   border: 0;

@@ -9,6 +9,7 @@ import { useMachines } from '../../api/useMachines.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
 import { useTeamMembers } from '../shared/teammates.ts';
+import { useWarnAt } from '../shared/warn-at.ts';
 import { type RailCounts, type StatusPill, railCounts, statusPill } from './status-model.ts';
 
 export { type RailCounts, railCounts } from './status-model.ts';
@@ -35,7 +36,8 @@ export function useStatusPill(): { readonly pill: StatusPill; readonly system: S
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const pill = useMemo(() => statusPill(info, machines, name, now), [info, machines, name, now]);
+  const warnAt = useWarnAt();
+  const pill = useMemo(() => statusPill(info, machines, name, now, warnAt), [info, machines, name, now, warnAt]);
   return { pill, system: info };
 }
 

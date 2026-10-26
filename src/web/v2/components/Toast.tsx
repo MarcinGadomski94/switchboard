@@ -1,12 +1,12 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icon.tsx';
 
-/** One toast. `undo` adds the Undo button (or `actionLabel`); `tone: 'error'` for a refusal. */
+/** One toast. `undo` adds the Undo button (or `actionLabel`); `tone: 'error'` for a refusal, `'warn'` for a warning (a usage warning). */
 export interface ToastInput {
   readonly text: ReactNode;
   readonly undo?: () => void | Promise<unknown>;
   readonly actionLabel?: string;
-  readonly tone?: 'ok' | 'error';
+  readonly tone?: 'ok' | 'error' | 'warn';
   /** How long it stays (ms); default 5600 (the prototype's). */
   readonly ms?: number;
 }
@@ -35,8 +35,8 @@ function ToastView({ entry, onDone }: { readonly entry: ToastEntry; readonly onD
     return () => window.clearTimeout(timer);
   }, [entry, onDone]);
   return (
-    <div className="v2-toast" role="status" data-tone={entry.tone === 'error' ? 'error' : undefined} data-testid="v2-toast">
-      <Icon name={entry.tone === 'error' ? 'alert' : 'check-circle'} size="s" />
+    <div className="v2-toast" role="status" data-tone={entry.tone === 'error' || entry.tone === 'warn' ? entry.tone : undefined} data-testid="v2-toast">
+      <Icon name={entry.tone === 'error' || entry.tone === 'warn' ? 'alert' : 'check-circle'} size="s" />
       <span>{entry.text}</span>
       {entry.undo ? (
         <button

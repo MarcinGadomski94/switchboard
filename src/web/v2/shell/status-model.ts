@@ -1,6 +1,7 @@
 import type { SystemInfo } from '../../../core/api.ts';
 import type { Machine } from '../../../core/peers.ts';
 import { powerView } from '../../../core/power.ts';
+import { DEFAULT_WARN_AT_PCT } from '../../../core/usage.ts';
 import { type UsageGridLine, usageGridLines } from '../../shell/format.ts';
 import { type Tone, computerProblem, computerStateToV2 } from '../glossary.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
@@ -21,6 +22,9 @@ export interface PillAccount {
   /** The 5-hour and weekly windows (`null` while unknown). */
   readonly session: number | null;
   readonly week: number | null;
+  /** Each bar's tone: amber from the developer's "Warn at" (`usage.warnAtPct`), red when the account is out (fix after 2.0). */
+  readonly sessionTone: Tone;
+  readonly weekTone: Tone;
   /** A line instead of the bars (out of usage, paid extra's balance). */
   readonly note: string | null;
 }
@@ -65,7 +69,7 @@ function gb(bytes: number): string {
   return String(Number((bytes / 1024 ** 3).toFixed(1)));
 }
 
-function account(line: UsageGridLine): PillAccount {
+function account(line: UsageGridLine, warnAt: number): PillAccount {
   let badge: PillAccount['badge'] = null;
   let note: string | null = null;
   if (line.credits) {
@@ -75,18 +79,24 @@ function account(line: UsageGridLine): PillAccount {
     badge = { text: line.outUntil.replace(/^out/, 'Out'), tone: 'grey' };
     note = 'Out of usage';
   } else if (line.active) badge = { text: 'In use', tone: 'blue' };
-  return { key: line.key, name: line.label, badge, session: line.session.known ? line.session.pct : null, week: line.week.known ? line.week.pct : null, note };
+  const session = line.session.known ? line.session.pct : null;
+  const week = line.week.known ? line.week.pct : null;
+  return { key: line.key, name: line.label, badge, session, week, sessionTone: usageTone(session, line.spent, warnAt), weekTone: usageTone(week, line.spent, warnAt), note };
 }
 
-/** The tone of a usage percentage (amber from `warnAt`, red when spent). */
-export function usageTone(pct: number | null, spent: boolean, warnAt = 90): Tone {
+/** The tone of a usage percentage (amber from `warnAt`, the developer's `usage.warnAtPct`; red when spent). */
+export function usageTone(pct: number | null, spent: boolean, warnAt: number = DEFAULT_WARN_AT_PCT): Tone {
   if (spent) return 'red';
   if (pct !== null && pct >= warnAt) return 'amber';
   return 'green';
 }
 
-/** The pill and popover from the readings. `selfName` = this computer's name (`GET /api/machines` → `self`). */
-export function statusPill(system: SystemInfo | null, machines: readonly Machine[], selfName: string, now: number = Date.now(), warnAt = 90): StatusPill {
+/**
+ * The pill and popover from the readings. `selfName` = this computer's name
+ * (`GET /api/machines` → `self`); `warnAt` = the developer's "Warn at"
+ * (`usage.warnAtPct`, `useWarnAt`), the pill's and each popover bar's amber.
+ */
+export function statusPill(system: SystemInfo | null, machines: readonly Machine[], selfName: string, now: number = Date.now(), warnAt: number = DEFAULT_WARN_AT_PCT): StatusPill {
   const lines = system ? usageGridLines(system, now) : [];
   const active = lines.find((line) => line.active) ?? lines.find((line) => line.cli === 'claude') ?? lines[0] ?? null;
   const usage = active
@@ -127,7 +137,7 @@ export function statusPill(system: SystemInfo | null, machines: readonly Machine
       : reconnecting > 0
         ? { text: 'Reconnecting', tone: 'amber' as Tone, icon: 'refresh' }
         : { text: `${online} online`, tone: 'grey' as Tone, icon: rows.length > 1 ? 'desktop' : 'laptop' };
-  return { usage, power, computers, backgroundApps, accounts: lines.map(account), computerRows: rows, away };
+  return { usage, power, computers, backgroundApps, accounts: lines.map((line) => account(line, warnAt)), computerRows: rows, away };
 }
 
 /** The rail's counts. */
