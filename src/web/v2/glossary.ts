@@ -396,7 +396,6 @@ export const ANSWER = {
   sendBackPlaceholder: 'What should change?',
   viewChanges: 'View changes',
   replyTo: (name: string): string => `Reply to ${name}`,
-  goAhead: 'Go ahead',
   notWaiting: 'Not waiting',
   tryAgain: 'Try again',
   openChat: 'Open chat',

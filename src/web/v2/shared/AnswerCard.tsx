@@ -2,7 +2,7 @@ import { type KeyboardEvent, type ReactNode, useState, useSyncExternalStore } fr
 import type { Question } from '../../../core/api.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Button, Checkbox, Chip, ComputerTag, Icon, useToast } from '../components/index.ts';
-import { ANSWER, ANSWERED_WHERE, type AnsweredWhere, NEEDS_KIND_LOOK, STATUS, WORDS } from '../glossary.ts';
+import { AGENT_WORDS, ANSWER, ANSWERED_WHERE, type AnsweredWhere, NEEDS_KIND_LOOK, STATUS, WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { toV2Path } from '../routes.ts';
 import { openNew } from '../new/index.tsx';
@@ -22,7 +22,7 @@ import './shared.css';
  *
  * - Kinds: single-choice questions (a tap sends), multi-select ("Choose any",
  *   Other…), whole batches, approvals (Allow once / Always allow / Deny), asks
- *   (reply, Go ahead, Not waiting), ready for approval (Combine / Send back / View
+ *   (the agent's ask, a reply box, Not waiting: what classic offers), ready for approval (Combine / Send back / View
  *   changes), stopped (Try again / Open / Dismiss), Combine, notes, access
  *   requests, job descriptions, failed routines, pick code projects, alerts.
  * - Keys: with focus on the card, 1–9 press its numbered answers (the prototype's).
@@ -277,10 +277,16 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
     } else if (item.kind === 'ask') {
       body = (
         <>
-          {item.quote ? <div className="v2-quote">{item.quote}</div> : null}
+          {item.quote ? <div className="v2-quote" data-testid="v2-answer-ask">{item.quote}</div> : null}
           <span className="v2-waiting">
             <Icon name="hourglass" size="s" />
             {WORDS.waitingForYou}
+            {/* Fix after 2.0: as the classic session header, a text-checked ask says so. */}
+            {item.detected ? (
+              <span className="v2-muted" data-testid="v2-answer-detected" title={AGENT_WORDS.detectedHint}>
+                · {AGENT_WORDS.detected}
+              </span>
+            ) : null}
           </span>
         </>
       );
