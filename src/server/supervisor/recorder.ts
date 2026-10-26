@@ -2,6 +2,7 @@ import { CHAT_PERMISSION_MODE } from '../../core/chats.ts';
 import path from 'node:path';
 import { resultTurnTokens } from '../../core/todo-actuals.ts';
 import { resultInsightFields } from '../../core/insights.ts';
+import { type ModelTotals, resultModelTotals } from '../../core/usage-breakdown.ts';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
 import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
 import type { EventKind, SessionStatus } from '../../core/model.ts';
@@ -1153,6 +1154,8 @@ export class StreamRecorder {
         tokens: resultTurnTokens(message.raw),
         // D108: the split and the model the CLI reported (Insights).
         ...resultInsightFields(message.raw),
+        // D134: the CLI's cumulative per-model usage (the Usage breakdown's subagent tokens).
+        ...modelTotalsField(message.raw),
         stopped: true,
       }, { uuid: message.uuid });
       return;
@@ -1179,6 +1182,8 @@ export class StreamRecorder {
       tokens: resultTurnTokens(message.raw),
       // D108: the split and the model the CLI reported (Insights).
       ...resultInsightFields(message.raw),
+      // D134: the CLI's cumulative per-model usage (the Usage breakdown's subagent tokens).
+      ...modelTotalsField(message.raw),
     }, { uuid: message.uuid });
   }
 
@@ -1346,4 +1351,10 @@ function writtenFile(name: string, input: Readonly<Record<string, unknown>>): st
   if (!WRITE_TOOLS.includes(name)) return null;
   const file = typeof input['file_path'] === 'string' ? input['file_path'] : typeof input['notebook_path'] === 'string' ? input['notebook_path'] : null;
   return file || null;
+}
+
+/** D134: `{ modelTotals }` of a raw `result` line (the CLI's cumulative `modelUsage`), `{}` without token counts. */
+function modelTotalsField(raw: unknown): { readonly modelTotals?: ModelTotals } {
+  const totals = resultModelTotals(raw);
+  return totals ? { modelTotals: totals } : {};
 }

@@ -558,3 +558,25 @@
     gap: 6px;
   }
 }
+
+/* D134: the popover's "See what used it →" per account (Insights → Usage, filtered to it). */
+.sb2 .v2-acct-usage {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  font-size: 13px;
+  color: var(--v2-accent-text);
+}
+
+.sb2 .v2-acct-usage:hover,
+.sb2 .v2-acct-usage:focus-visible {
+  text-decoration: underline;
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-acct-usage {
+    min-height: var(--v2-touch);
+  }
+}

@@ -131,6 +131,9 @@ const V1_35 = '1.35.0';
 /** The version D132 (Team, Plans and Project memory graduate from Settings → Experimental: always on) ships in. */
 const V2_0 = '2.0.0';
 
+/** The version D134 (Insights → Usage: where each account's usage windows went) ships in. */
+const V2_1 = '2.1.0';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1236,6 +1239,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-theme'],
         v2Route: '/settings/appearance',
         missing: 'Settings › Appearance has the Theme switch. ',
+      },
+    ],
+  },
+  // D134: Insights → Usage ("Where your usage went"); in classic (v2 runs only its welcome tour).
+  {
+    id: 'usage-breakdown',
+    decision: 'D134',
+    version: V2_1,
+    title: 'Where your usage went',
+    steps: [
+      {
+        id: 'section',
+        title: 'Which sessions used your limits',
+        what: 'Insights now ranks the sessions by the tokens they used in each account’s current 5-hour or weekly window (or today, or the last 7 days), with their share, cache reads, replies, models and cost. Subagents and workflow agents count towards their session. The share is of the tokens Switchboard recorded, not of the limit itself.',
+        todo: ['Pick the period and, if you like, one account.', 'Group by folder, model, account or kind to see it another way.'],
+        anchors: ['insights-usage'],
+        route: { view: 'insights' },
+        missing: 'Open Insights (the bar-chart icon) and scroll to Where your usage went. ',
       },
     ],
   },

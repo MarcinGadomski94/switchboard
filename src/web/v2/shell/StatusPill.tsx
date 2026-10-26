@@ -3,7 +3,8 @@ import { api } from '../../api/client.ts';
 import { rememberMachine } from '../../api/useMachines.ts';
 import { Button, Chip, Icon, Popover } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
-import type { Tone } from '../glossary.ts';
+import { type Tone, USAGE_WORDS } from '../glossary.ts';
+import { pillUsageHref } from '../insights/usage-model.ts';
 import type { StatusPill as Pill, PillComputer } from './status-model.ts';
 
 function Meter({ label, pct, tone }: { readonly label: string; readonly pct: number | null; readonly tone: Tone }) {
@@ -126,6 +127,10 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
                 <Meter label="Week" pct={account.week} tone={account.weekTone} />
               </>
             ) : null}
+            {/* D134: where this account's current 5-hour window went (Insights → Usage, filtered to it). */}
+            <button type="button" className="v2-acct-usage" onClick={() => go(pillUsageHref(account.key))} data-testid="v2-pill-see-usage">
+              {USAGE_WORDS.seeWhat} →
+            </button>
           </div>
         ))}
         <p className="v2-muted" style={{ fontSize: 13, margin: '6px 0 14px' }}>

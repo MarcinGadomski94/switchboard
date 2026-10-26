@@ -433,6 +433,12 @@ function InsightsCard() {
         </V2Link>
       </div>
       <p className="v2-muted v2-set-small">Time, tokens and cost per folder, engine, model, account and computer, and how good the estimates are.</p>
+      {/* D134: the Usage breakdown (which agents used each account's windows). */}
+      <V2Link to="/insights?view=usage" className="v2-btn" data-variant="ghost" data-size="sm" data-testid="v2-open-usage">
+        <Icon name="clock" size="s" />
+        {W.seeUsage}
+        <Icon name="chev" size="s" />
+      </V2Link>
       {totals ? (
         <div className="v2-set-kv" data-testid="v2-insights-kv">
           <span>

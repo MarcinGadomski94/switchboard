@@ -14,6 +14,8 @@ export interface PlanHooks {
   outcomes(): Promise<PlanItemOutcome[] | null>;
   /** Team (D100) hook (docs/team-removal.md), D100 follow-up 2026-10-16: the plan items of these todos (Team's sidebar member rows name them); empty while off. */
   itemsOfTodos(todoIds: readonly string[]): Promise<PlanItemRef[]>;
+  /** D134 (Usage breakdown): the sessions that run plan items (their kind is "plan step"); empty while unavailable. */
+  runSessionIds?(): Promise<string[]>;
 }
 
 /** D100 follow-up 2026-10-16: a plan item as Team's sidebar names a member's current item. */
@@ -88,4 +90,13 @@ export async function plansInsightOutcomes(store: object): Promise<PlanItemOutco
 export async function plansItemsOfTodos(store: object, todoIds: readonly string[]): Promise<PlanItemRef[]> {
   const hooks = registry.get(store);
   return hooks && todoIds.length > 0 ? hooks.itemsOfTodos(todoIds) : [];
+}
+
+/**
+ * D134 seam (Insights → Usage breakdown, `src/server/insights/usage.ts`): the sessions that run
+ * plan items; empty while Plans is unavailable.
+ */
+export async function plansRunSessionIds(store: object): Promise<string[]> {
+  const hooks = registry.get(store);
+  return hooks?.runSessionIds ? hooks.runSessionIds() : [];
 }

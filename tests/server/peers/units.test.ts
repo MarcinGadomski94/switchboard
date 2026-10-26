@@ -79,6 +79,12 @@ describe('D48 peer API allow-list', () => {
   it('serves the session, Inbox, new-session and hook routes only', () => {
     expect(peerApiAllowed('GET', '/api/sessions')).toBe(true);
     expect(peerApiAllowed('GET', '/api/sessions/abc?x=1')).toBe(true);
+    // D108 / D134: Insights, its rows, the Usage breakdown and its per-turn rows.
+    expect(peerApiAllowed('GET', '/api/insights/usage?period=5h')).toBe(true);
+    expect(peerApiAllowed('GET', '/api/insights/usage/rows?from=a&to=b')).toBe(true);
+    expect(peerApiAllowed('GET', '/api/insights/rows')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/insights/usage')).toBe(false);
+    expect(peerApiAllowed('GET', '/api/insights/usage/other')).toBe(false);
     expect(peerApiAllowed('POST', '/api/sessions/abc/messages')).toBe(true);
     expect(peerApiAllowed('PUT', '/api/sessions/abc/model')).toBe(true);
     // D63: a machine's account profiles, their sign-in (with the paste-back) and a session's account / pin.

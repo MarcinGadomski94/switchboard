@@ -63,6 +63,7 @@ import { registerSearchRoutes } from './api/search.ts';
 import type { SearchService } from './search/service.ts';
 import { registerInsightsRoutes } from './api/insights.ts';
 import type { InsightsService } from './insights/service.ts';
+import type { UsageService } from './insights/usage.ts';
 import type { PrWatcher } from './ci/watcher.ts';
 import { registerCiRoutes } from './api/ci.ts';
 import { registerTurnStatusRoutes } from './api/turn-status.ts';
@@ -134,6 +135,8 @@ export interface ApiContext {
   readonly search: SearchService;
   /** D108: the Insights page (docs/insights.md). */
   readonly insights: InsightsService;
+  /** D134: Insights → Usage breakdown (docs/insights.md → Usage breakdown). */
+  readonly usage: UsageService;
   /** D127: the processes sessions leave running: tracking, Stop / Keep, the automatic stop (docs/processes.md). */
   readonly processes: ProcessService;
 }
