@@ -2026,6 +2026,13 @@ export interface HistoryItem {
    */
   readonly continuedTo?: SessionLink | null;
   readonly continuedFrom?: SessionLink | null;
+  /**
+   * Additive (D137 follow-up 2026-10-26): on a paired computer's archived session's row, that
+   * computer (the row's tag; its `sessionId` is the remote id, so Restore goes through the peer
+   * proxy, and its `deletesAt` / `keptReason` are that computer's). Absent / `null` on this
+   * computer's rows.
+   */
+  readonly machine?: SessionMachine | null;
 }
 
 /**

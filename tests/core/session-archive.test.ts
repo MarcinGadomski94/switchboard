@@ -6,6 +6,7 @@ import {
   archiveDaysOf,
   archiveDeadline,
   archiveDue,
+  archiveGraceRestarts,
   archiveInfo,
   archivePolicyText,
   archiveRowText,
@@ -71,5 +72,17 @@ describe('the archive · rules (D137)', () => {
     const record = readArchiveSweep({ lastRunAt: at, lastDeleted: { at, sessions: 3, worktrees: 2, keptWorktrees: [{ path: '/x', reason: 'dirty' }, { bad: 1 }] } });
     expect(record.lastDeleted?.keptWorktrees).toEqual([{ path: '/x', reason: 'dirty' }]);
     expect(archiveSweepText(record, 'agent', now)).toMatch(/^Last: deleted 3 archived agents, 2 worktrees, today .+ \(1 worktree kept, see Clean-up\)$/);
+  });
+});
+
+describe('the archive · a change of the period (D137 follow-up 2026-10-26)', () => {
+  it('Never → days and a shorter period restart the grace; longer, the same, or Never keep it', () => {
+    expect(archiveGraceRestarts(0, 14)).toBe(true);
+    expect(archiveGraceRestarts(30, 14)).toBe(true);
+    expect(archiveGraceRestarts(14, 1)).toBe(true);
+    expect(archiveGraceRestarts(14, 30)).toBe(false);
+    expect(archiveGraceRestarts(14, 14)).toBe(false);
+    expect(archiveGraceRestarts(14, 0)).toBe(false);
+    expect(archiveGraceRestarts(0, 0)).toBe(false);
   });
 });

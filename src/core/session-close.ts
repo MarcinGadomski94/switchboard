@@ -24,13 +24,17 @@ export const CLOSE_NEEDS_CONFIRM = 'close-needs-confirm';
 /** The refusal code of a message, Resume or Attach for a closed session (HTTP 409): reopen it first. */
 export const SESSION_CLOSED = 'closed';
 
-/** `?closed=` of `GET /api/sessions`: `exclude` (the default) lists open sessions only, `include` every session. */
-export type ClosedFilter = 'exclude' | 'include';
+/**
+ * `?closed=` of `GET /api/sessions`: `exclude` (the default) lists open sessions only, `include` every session,
+ * `only` (D137 follow-up 2026-10-26) the closed (archived) ones only: what a paired computer reads for its
+ * Archived list (capped there, `ARCHIVE_PEER_LIMIT`).
+ */
+export type ClosedFilter = 'exclude' | 'include' | 'only';
 
 /** The values `?closed=` accepts. */
-export const CLOSED_FILTERS: readonly ClosedFilter[] = ['exclude', 'include'];
+export const CLOSED_FILTERS: readonly ClosedFilter[] = ['exclude', 'include', 'only'];
 
-/** `?closed=` read: absent → `exclude`; `include` / `exclude` as given; anything else → `null` (the route answers 422). */
+/** `?closed=` read: absent → `exclude`; `include` / `exclude` / `only` as given; anything else → `null` (the route answers 422). */
 export function parseClosedFilter(value: unknown): ClosedFilter | null {
   if (value === undefined) return 'exclude';
   return typeof value === 'string' && (CLOSED_FILTERS as readonly string[]).includes(value) ? (value as ClosedFilter) : null;

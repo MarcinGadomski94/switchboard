@@ -6,6 +6,8 @@ import { CLOSED_TAG, REOPEN_LABEL } from '../../core/session-close.ts';
 import { archivePolicyText, archiveRowText } from '../../core/session-archive.ts';
 import { readKnownSettings } from '../../core/settings.ts';
 import { useApi } from '../api/useApi.ts';
+import { useLiveMachine } from '../api/useMachines.ts';
+import { MachineTag } from '../components/MachineTag.tsx';
 import { continuedFromLabel, continuedInLabel } from '../../core/fresh-session.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -195,7 +197,7 @@ export function HistoryView() {
         ) : null}
         {rows.map((item) => (
           <HistoryRow
-            key={item.claudeSessionId}
+            key={`${item.machine?.id ?? ''}:${item.claudeSessionId}`}
             item={item}
             folderTag={tagOf(item)}
             selected={selected.has(item.claudeSessionId)}
@@ -267,6 +269,9 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
   const movable = item.terminal === true && item.sessionId === null;
   // D33: a closed Switchboard session can be reopened.
   const closed = typeof item.closedAt === 'string' && item.sessionId !== null;
+  // D137 follow-up 2026-10-26: a paired computer's archived session (Restore goes through the peer proxy; not while it is away).
+  const machine = useLiveMachine(item.machine ?? null);
+  const away = machine !== null && machine.state !== 'online';
   // D72: a hooked terminal session (open or closed: continuing reopens it) can continue as a Switchboard-run session.
   const hooked = item.hooked === true && item.sessionId !== null;
   const continueHooked = hooked ? (
@@ -274,7 +279,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
       type="button"
       className="sb-button sb-hist-continue"
       data-testid="history-continue-hooked"
-      onClick={() => item.sessionId && openContinueHooked({ sessionId: item.sessionId, title: item.displayTitle ?? item.name, machineName: null })}
+      onClick={() => item.sessionId && openContinueHooked({ sessionId: item.sessionId, title: item.displayTitle ?? item.name, machineName: item.machine?.name ?? null })}
     >
       {CONTINUE_HOOKED_LABEL}
     </button>
@@ -294,6 +299,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
       data-terminal={movable ? 'true' : undefined}
       data-closed={closed ? 'true' : undefined}
       data-hooked={hooked ? 'true' : undefined}
+      data-machine={item.machine?.id ?? undefined}
     >
       <span className="sb-hist-date">
         {movable ? (
@@ -330,6 +336,8 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
               {CLOSED_TAG}
             </span>
           ) : null}
+          {/* D137 follow-up 2026-10-26: a paired computer's archived session carries that computer's tag. */}
+          <MachineTag machine={item.machine ?? null} />
           {closed && archiveRowText(item) ? (
             <span className="sb-hist-archive" data-testid="history-archive-countdown" data-kept={item.keptReason ? '' : undefined}>
               {archiveRowText(item)}
@@ -367,7 +375,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
       ) : closed ? (
         <div className="sb-hist-outcol">
           {outcome}
-          <button type="button" className="sb-button sb-hist-continue" data-testid="history-reopen" disabled={reopening} aria-busy={reopening || undefined} onClick={onReopen}>
+          <button type="button" className="sb-button sb-hist-continue" data-testid="history-reopen" disabled={reopening || away} title={away && machine ? `${machine.name} can’t be reached now` : undefined} aria-busy={reopening || undefined} onClick={onReopen}>
             {REOPEN_LABEL}
           </button>
           {continueHooked}

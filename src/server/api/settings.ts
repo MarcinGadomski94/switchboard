@@ -21,7 +21,9 @@ export const SETTINGS_ROUTES_PENDING: readonly PendingRoute[] = [];
  *   transaction and answers like `GET`; `422 {error:"invalid", errors}` for a
  *   read-only or unknown key or a wrong value, and nothing changes; D82's
  *   `sessions.modelRules` is also checked against each CLI's model list and
- *   its enabled account profiles (`checkRuleTargets`);
+ *   its enabled account profiles (`checkRuleTargets`); D137 follow-up: a
+ *   `sessions.archiveDays` from Never or shorter than before also moves the
+ *   archive's grace start to now (`ArchiveService.periodChange`);
  * - `GET /api/models` (additive, D42) → `{ options, last }`: the latest model
  *   list any claude process reported and the developer's last model choice, the
  *   service's own settings (`settings/models.ts`), which the New-session form's
@@ -44,7 +46,10 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
       });
       if (problems.length > 0) return reply.code(422).send({ error: 'invalid', errors: problems });
     }
-    await store.settings.setMany(result.value);
+    // D137 follow-up 2026-10-26: a period from Never or a shorter one starts a new grace now, in the same transaction.
+    const days = result.value['sessions.archiveDays'];
+    const grace = days !== undefined && context.archive ? await context.archive.periodChange(days) : {};
+    await store.settings.setMany({ ...result.value, ...grace });
     // D91: a changed standing instruction makes running sessions' processes "older" (their `instructionOutdated`).
     if ('agents.standingInstruction' in result.value || 'agents.standingInstruction.enabled' in result.value) await context.supervisor.instructionSettingChanged();
     return readSettings(store.settings, config, await folders.defaultRecord());

@@ -4,6 +4,7 @@ import { DIFF_SCOPES, type DiffCount, type DiffScope, type DiffTargets, offeredD
 import type { AttachRequest, AttachWarning, FileDiff, FreshContinueResult, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionListItem, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
+import { ARCHIVE_PEER_LIMIT } from '../../core/session-archive.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import { FRESH_HOOKED_REASON } from '../../core/fresh-session.ts';
 import type { InstructionReloadResult } from '../../core/standing-instruction.ts';
@@ -142,7 +143,8 @@ async function isHooked(context: ApiContext, id: string): Promise<boolean> {
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
 
-  // D33: closed sessions are left out unless `?closed=include` (History and the New-session name check list them).
+  // D33: closed sessions are left out unless `?closed=include` (History and the New-session name check list them);
+  // D137 follow-up: `?closed=only` lists the closed (archived) ones only.
   app.get<{ Querystring: { closed?: unknown; include?: unknown } }>('/api/sessions', async (request, reply): Promise<Array<Session | SessionListItem> | FastifyReply> => {
     const closed = parseClosedFilter(request.query.closed);
     if (closed === null) {
@@ -153,12 +155,19 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       return reply.code(422).send({ error: 'invalid', errors: [{ field: 'include', message: 'include must be agents' }] });
     }
     // D25: a teleport that has not reported its local session yet is not listed (a refusal deletes it again).
-    const records = (await store.sessions.list(closed === 'include' ? {} : { closed: false })).filter((record) => !supervisor.isStarting(record.id));
+    let records = (await store.sessions.list(closed === 'include' ? {} : closed === 'only' ? { closed: true } : { closed: false })).filter((record) => !supervisor.isStarting(record.id));
+    // D137 follow-up 2026-10-26: a paired computer reads this computer's archived sessions for its Archived list,
+    // the newest ARCHIVE_PEER_LIMIT only (older ones show here only), without their agents.
+    const peer = isPeerRequest(request);
+    if (peer && closed === 'only') records = [...records].sort((a, b) => Date.parse(b.closedAt ?? '') - Date.parse(a.closedAt ?? '')).slice(0, ARCHIVE_PEER_LIMIT);
     const local = await Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
+    if (peer && closed === 'only') return local.map(withoutAgents);
     // D48: the paired machines' open sessions follow (tagged, namespaced); a peer asking gets this machine's only.
     // D95 follow-up 2: a peer always gets the agents (a machine before it reads them from this list); the UI only with `?include=agents`.
-    if (isPeerRequest(request)) return local;
-    const all = [...local, ...context.peers.remoteSessions()];
+    if (peer) return local;
+    // D137 follow-up 2026-10-26: with `?closed=include` / `only` the paired computers' archived sessions follow too
+    // (as last known, with their own computer's countdown / Kept reason); the open list never carries them.
+    const all = closed === 'exclude' ? [...local, ...context.peers.remoteSessions()] : closed === 'only' ? [...local, ...context.peers.remoteArchived()] : [...local, ...mergeRemote(context.peers.remoteSessions(), context.peers.remoteArchived())];
     return include === 'agents' ? all : all.map(withoutAgents);
   });
 
@@ -729,4 +738,10 @@ export function isDiffFilePath(value: unknown): value is string {
   if (typeof value !== 'string' || value.trim() === '' || value.includes('\0')) return false;
   if (value.startsWith('/') || value.startsWith('\\') || /^[A-Za-z]:/.test(value)) return false;
   return !value.split(/[\\/]/).includes('..');
+}
+
+/** D137 follow-up 2026-10-26: a peer's open sessions, then its archived ones not also listed as open (an update in between wins as open). */
+function mergeRemote(open: readonly Session[], archived: readonly SessionListItem[]): Array<Session | SessionListItem> {
+  const ids = new Set(open.map((session) => session.id));
+  return [...open, ...archived.filter((session) => !ids.has(session.id))];
 }

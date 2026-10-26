@@ -1,8 +1,8 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import type { HistoryItem } from '../../core/api.ts';
+import type { HistoryItem, SessionListItem } from '../../core/api.ts';
 import { CLI_LABELS } from '../../core/cli-providers.ts';
-import { solutionOfPath } from '../../core/history.ts';
+import { buildHistoryRows, filterHistory, solutionOfPath } from '../../core/history.ts';
 import { TITLE_MAX, checkTitle, shortNameFromTitle } from '../../core/session-title.ts';
 import { kebabName, uniqueName } from '../../core/terminal-move.ts';
 import { CliHistory } from '../history/cli-history.ts';
@@ -74,7 +74,8 @@ export async function registerHistoryRoutes(app: FastifyInstance, context: ApiCo
     const q = Array.isArray(rawQ) ? (rawQ.at(-1) ?? '') : (rawQ ?? '');
     // The demo's History is its own (nothing runs).
     const items = request.query.cli === '1' && !context.providers.history ? await cliHistory.history(q) : await provider.history(q);
-    return withArchive(items, context);
+    // D137 follow-up 2026-10-26: the paired computers' archived sessions follow, with their own countdown / Kept reason.
+    return withPeerArchived(await withArchive(items, context), context.peers.remoteArchived(), q);
   });
 
   const mover = new ConversationMover({ store: context.store, supervisor: context.supervisor, folders: context.folders });
@@ -145,4 +146,48 @@ async function withArchive(items: HistoryItem[], context: ApiContext): Promise<H
       item.sessionId !== null && typeof item.closedAt === 'string' ? { ...item, ...(await archive.info({ id: item.sessionId, closedAt: item.closedAt })) } : item,
     ),
   );
+}
+
+/**
+ * D137 follow-up 2026-10-26: a paired computer's archived sessions as History rows (built like a
+ * stored session's row, without its transcript: that is on the other computer), with the
+ * computer's tag (`machine`) and its own `deletesAt` / `keptReason` passed on unchanged; matched
+ * by the same search, merged newest first.
+ */
+export function withPeerArchived(items: readonly HistoryItem[], archived: readonly SessionListItem[], q: string): HistoryItem[] {
+  if (archived.length === 0) return [...items];
+  const byId = new Map(archived.map((session) => [session.id, session]));
+  const rows = buildHistoryRows({
+    sessions: archived.map((session) => ({
+      id: session.id,
+      name: session.name,
+      title: session.title ?? null,
+      claudeSessionId: session.claudeSessionId,
+      status: session.status,
+      task: '',
+      workType: session.workType,
+      mode: session.mode,
+      phase: session.phase,
+      solutions: session.solutions,
+      createdAt: session.createdAt,
+      worktrees: [],
+      folder: session.folder,
+      folderPath: session.folderPath,
+      origin: session.origin,
+      remoteSource: session.remoteSource ?? null,
+      closedAt: session.closedAt ?? null,
+      hooked: session.hooked === true,
+      continuedTo: session.continuedTo ?? null,
+      continuedFrom: session.continuedFrom ?? null,
+    })),
+    transcripts: [],
+    roots: [],
+    caseInsensitive: false,
+    now: Date.now(),
+  });
+  const peers = filterHistory(rows, q).map((item): HistoryItem => {
+    const session = item.sessionId === null ? undefined : byId.get(item.sessionId);
+    return { ...item, deletesAt: session?.deletesAt ?? null, keptReason: session?.keptReason ?? null, machine: session?.machine ?? null };
+  });
+  return [...items, ...peers].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }

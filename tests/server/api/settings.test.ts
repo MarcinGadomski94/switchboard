@@ -368,6 +368,35 @@ describe('settings helpers (M8.2)', () => {
     expect(((await call('GET', '/api/settings')).json() as KnownSettings)['sessions.archiveSweep']).toEqual({ lastRunAt: '2026-10-26T12:00:00.000Z', lastDeleted: { at: '2026-10-26T12:00:00.000Z', sessions: 2, worktrees: 1, keptWorktrees: [] } });
   });
 
+  it('D137 follow-up · a period from Never or a shorter one moves the grace start to now (same write); a longer one or the same keeps it', async () => {
+    await setup();
+    const old = '2025-01-01T00:00:00.000Z';
+    const since = async (): Promise<unknown> => store!.settings.get('sessions.archiveSince');
+    const put = async (days: number): Promise<void> => {
+      expect((await call('PUT', '/api/settings', { 'sessions.archiveDays': days })).statusCode).toBe(200);
+    };
+    const fresh = async (): Promise<void> => {
+      const value = await since();
+      expect(typeof value === 'string' && Date.now() - Date.parse(value) < 60_000, String(value)).toBe(true);
+    };
+    await store!.settings.set('sessions.archiveSince', old);
+    await put(30); // 14 → 30: longer
+    expect(await since()).toBe(old);
+    await put(30); // the same
+    expect(await since()).toBe(old);
+    await put(14); // 30 → 14: shorter
+    await fresh();
+    await store!.settings.set('sessions.archiveSince', old);
+    await put(0); // to Never
+    expect(await since()).toBe(old);
+    await put(7); // Never → 7
+    await fresh();
+    // Another setting in the same body does not touch it.
+    await store!.settings.set('sessions.archiveSince', old);
+    expect((await call('PUT', '/api/settings', { 'usage.warnAtPct': 80 })).statusCode).toBe(200);
+    expect(await since()).toBe(old);
+  });
+
   it('D131 · ui.theme: v2 by default, the service default from SWITCHBOARD_UI_THEME_DEFAULT until stored, only v2 / classic accepted', async () => {
     await setup();
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.theme': 'v2' });

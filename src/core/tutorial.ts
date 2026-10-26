@@ -1312,7 +1312,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'period',
         title: 'Archive instead of delete',
-        what: 'Close is now Archive. An archived session stays in History, where Restore brings it back, and is deleted by itself after 14 days, quietly, with its worktree when nothing in it would be lost. Pinned sessions, Team members, plan sessions and sessions with an active loop are kept. Sessions archived before this version count from today.',
+        what: 'Close is now Archive. An archived session stays in History, where Restore brings it back, and is deleted by itself after 14 days, quietly, with its worktree when nothing in it would be lost. Pinned sessions, Team members, plan sessions and sessions with an active loop are kept. Sessions archived before this version count from today, and changing the period never deletes anything at once. Your other paired computers’ archived sessions are listed too, with their own countdown, and Restore works on them.',
         todo: ['Pick the period (or Never) in Settings → Sessions & worktrees.', 'See each archived session’s countdown in History.'],
         anchors: ['setting-archive'],
         route: { view: 'settings', section: 'sessions' },

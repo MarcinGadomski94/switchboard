@@ -137,7 +137,9 @@ describe('D33 · POST /api/sessions/{id}/close', () => {
       ['rest-idle', body.closedAt],
     ]);
     expect((await listed(r, '?closed=exclude')).map((s) => s.name)).toEqual(['still-open']);
-    const bad = await call(r, 'GET', '/api/sessions?closed=only');
+    // D137 follow-up: `only` lists the closed ones only.
+    expect((await listed(r, '?closed=only')).map((s) => s.name)).toEqual(['rest-idle']);
+    const bad = await call(r, 'GET', '/api/sessions?closed=closed');
     expect(bad.statusCode).toBe(422);
     expect(bad.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'closed' }] });
     // The detail still answers (the session view of a closed session, History's Reopen).

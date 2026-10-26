@@ -12,6 +12,7 @@ import {
   type ArchiveKeptWorktree,
   type ArchiveSweepRecord,
   archiveDaysOf,
+  archiveGraceRestarts,
   archiveDue,
   archiveInfo,
   readArchiveSweep,
@@ -56,8 +57,9 @@ const HOLDS_TTL_MS = 2_000;
  * Clean-up run, and removes the worktrees Switchboard made for it when nothing
  * would be lost ({@link CleanupService.removeWorktreeIfSafe}).
  *
- * - **Upgrade grace:** `sessions.archiveSince` is written once, the first time
- *   this runs; a session archived earlier counts its period from then.
+ * - **Upgrade grace:** `sessions.archiveSince` is written the first time this
+ *   runs; a session archived earlier counts its period from then. A change of the
+ *   period from Never or to a shorter one moves it to the change ({@link periodChange}).
  * - **Kept** (never deleted while it holds, re-checked every sweep): running, a
  *   Team member, the source of an unfinished plan or a step of a running /
  *   paused plan, an active (not ended) Switchboard loop, a CLI schedule still
@@ -78,7 +80,6 @@ export class ArchiveService implements CleanupArchive {
   #timer: ReturnType<typeof setInterval> | null = null;
   #sweeping: Promise<ArchiveSweepRecord> | null = null;
   #holds: { readonly at: number; readonly value: Promise<Holds> } | null = null;
-  #since: string | null = null;
   #stopped = false;
 
   constructor(options: ArchiveServiceOptions) {
@@ -119,25 +120,39 @@ export class ArchiveService implements CleanupArchive {
     return archiveDaysOf(await this.#store.settings.get(ARCHIVE_DAYS_SETTING));
   }
 
-  /** The upgrade grace: written once (now) when missing, then always that moment. */
+  /**
+   * The grace start: the upgrade grace, written (now) when missing; a period change from
+   * Never or to a shorter period moves it ({@link periodChange}). Read from the store every
+   * time (never cached), so a sweep never pairs a new period with an old grace.
+   */
   async since(): Promise<string> {
-    if (this.#since) return this.#since;
-    const stored = await this.#store.settings.get(ARCHIVE_SINCE_SETTING);
-    if (typeof stored === 'string' && Number.isFinite(Date.parse(stored))) {
-      this.#since = stored;
-      return stored;
-    }
+    const stored = await this.#storedSince();
+    if (stored !== null) return stored;
     const now = this.#now().toISOString();
     await this.#store.settings.set(ARCHIVE_SINCE_SETTING, now);
-    this.#since = now;
     return now;
   }
 
   /** The grace as stored, without writing it (`null` before the first start). */
   async #storedSince(): Promise<string | null> {
-    if (this.#since) return this.#since;
     const stored = await this.#store.settings.get(ARCHIVE_SINCE_SETTING);
     return typeof stored === 'string' && Number.isFinite(Date.parse(stored)) ? stored : null;
+  }
+
+  /**
+   * D137 follow-up 2026-10-26: the settings to store together with a new period `next`
+   * (`PUT /api/settings`, in the same transaction): a new grace start (now) when the period
+   * goes from Never to days or is shortened ({@link archiveGraceRestarts}), so a change never
+   * makes archived sessions due at once; nothing when it is lengthened or unchanged.
+   */
+  async periodChange(next: number): Promise<Readonly<Record<string, unknown>>> {
+    const previous = await this.days();
+    return archiveGraceRestarts(previous, next) ? { [ARCHIVE_SINCE_SETTING]: this.#now().toISOString() } : {};
+  }
+
+  /** Stores a new period with its {@link periodChange} (what `PUT /api/settings` does). */
+  async setPeriod(next: number): Promise<void> {
+    await this.#store.settings.setMany({ [ARCHIVE_DAYS_SETTING]: next, ...(await this.periodChange(next)) });
   }
 
   /** The sweep's record. */

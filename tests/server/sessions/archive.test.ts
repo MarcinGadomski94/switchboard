@@ -151,6 +151,86 @@ describe('the archive · deadline (D137)', () => {
   });
 });
 
+describe('the archive · a change of the period (D137 follow-up 2026-10-26)', () => {
+  it('Never → 14 deletes nothing at the next sweep, and deletes after 14 days from the change', async () => {
+    const r = await rig();
+    await pastGrace(r);
+    await r.archive.setPeriod(0);
+    const old = await session(r.w, 'year-old', r.clock.now - 300 * DAY);
+    const recent = await session(r.w, 'two-days', r.clock.now - 2 * DAY);
+    await r.archive.sweep();
+    r.clock.now += DAY;
+    await r.archive.setPeriod(14);
+    expect(await r.w.store.settings.get(ARCHIVE_SINCE_SETTING)).toBe(new Date(r.clock.now).toISOString());
+    expect((await r.archive.info({ id: old, closedAt: new Date(r.clock.now - 301 * DAY).toISOString() })).deletesAt).toBe(new Date(r.clock.now + 14 * DAY).toISOString());
+    await r.archive.sweep();
+    for (const id of [old, recent]) expect(await r.w.store.sessions.get(id)).not.toBeNull();
+    r.clock.now += 14 * DAY - 60_000;
+    await r.archive.sweep();
+    for (const id of [old, recent]) expect(await r.w.store.sessions.get(id)).not.toBeNull();
+    r.clock.now += 2 * 60_000;
+    await r.archive.sweep();
+    for (const id of [old, recent]) expect(await r.w.store.sessions.get(id)).toBeNull();
+  });
+
+  it('30 → 14 deletes nothing at the next sweep, and deletes after 14 days from the change', async () => {
+    const r = await rig();
+    await pastGrace(r);
+    await r.archive.setPeriod(30);
+    const twenty = await session(r.w, 'twenty-days', r.clock.now - 20 * DAY);
+    const twentyNine = await session(r.w, 'twenty-nine', r.clock.now - 29 * DAY);
+    await r.archive.sweep();
+    await r.archive.setPeriod(14);
+    await r.archive.sweep();
+    for (const id of [twenty, twentyNine]) expect(await r.w.store.sessions.get(id)).not.toBeNull();
+    r.clock.now += 14 * DAY + 60_000;
+    await r.archive.sweep();
+    for (const id of [twenty, twentyNine]) expect(await r.w.store.sessions.get(id)).toBeNull();
+  });
+
+  it('14 → 30 keeps the grace as it was (a session counts from its own archiving)', async () => {
+    const r = await rig();
+    await pastGrace(r);
+    const before = await r.w.store.settings.get(ARCHIVE_SINCE_SETTING);
+    const ten = await session(r.w, 'ten-days', r.clock.now - 10 * DAY);
+    const forty = await session(r.w, 'forty-days', r.clock.now - 40 * DAY);
+    await r.archive.setPeriod(14);
+    await r.archive.setPeriod(30);
+    expect(await r.w.store.settings.get(ARCHIVE_SINCE_SETTING)).toBe(before);
+    await r.archive.sweep();
+    expect(await r.w.store.sessions.get(forty)).toBeNull();
+    expect(await r.w.store.sessions.get(ten)).not.toBeNull();
+    r.clock.now += 20 * DAY + 60_000;
+    await r.archive.sweep();
+    expect(await r.w.store.sessions.get(ten)).toBeNull();
+  });
+
+  it('repeated changes: each shortening restarts the grace, a lengthening in between keeps it, the shortest wait wins only from its own change', async () => {
+    const r = await rig();
+    await pastGrace(r);
+    const old = await session(r.w, 'old-one', r.clock.now - 100 * DAY);
+    await r.archive.setPeriod(60); // longer: the grace stays past, so 100 days old is due
+    await r.archive.setPeriod(30); // shorter: a new grace now
+    const first = await r.w.store.settings.get(ARCHIVE_SINCE_SETTING);
+    expect(first).toBe(new Date(r.clock.now).toISOString());
+    await r.archive.sweep();
+    expect(await r.w.store.sessions.get(old)).not.toBeNull();
+    r.clock.now += 10 * DAY;
+    await r.archive.setPeriod(90); // longer: the grace from 10 days ago stays
+    expect(await r.w.store.settings.get(ARCHIVE_SINCE_SETTING)).toBe(first);
+    r.clock.now += 5 * DAY;
+    await r.archive.setPeriod(7); // shorter again: a new grace now, 7 more days
+    expect(await r.w.store.settings.get(ARCHIVE_SINCE_SETTING)).toBe(new Date(r.clock.now).toISOString());
+    await r.archive.setPeriod(0); // Never: kept, the grace untouched
+    await r.archive.setPeriod(1); // Never → 1: a new grace now
+    await r.archive.sweep();
+    expect(await r.w.store.sessions.get(old)).not.toBeNull();
+    r.clock.now += DAY + 60_000;
+    await r.archive.sweep();
+    expect(await r.w.store.sessions.get(old)).toBeNull();
+  });
+});
+
 describe('the archive · kept past the period (D137)', () => {
   it('running, a crew member, a plan, a plan step, an active routine, a CLI schedule and a pin keep a due session; each is re-checked every sweep', async () => {
     const r = await rig();

@@ -13,11 +13,12 @@ import {
 
 /** D33: the pure rules and copy of closing / reopening sessions (src/core/session-close.ts). */
 describe('D33 · closing sessions (rules and copy)', () => {
-  it('?closed= of GET /api/sessions: absent = exclude; include / exclude as given; anything else is refused', () => {
+  it('?closed= of GET /api/sessions: absent = exclude; include / exclude / only (D137 follow-up) as given; anything else is refused', () => {
     expect(parseClosedFilter(undefined)).toBe('exclude');
     expect(parseClosedFilter('exclude')).toBe('exclude');
     expect(parseClosedFilter('include')).toBe('include');
-    for (const bad of ['', 'only', 'INCLUDE', ['include'], 1, null]) expect(parseClosedFilter(bad), String(bad)).toBeNull();
+    expect(parseClosedFilter('only')).toBe('only');
+    for (const bad of ['', 'closed', 'ONLY', 'INCLUDE', ['include'], 1, null]) expect(parseClosedFilter(bad), String(bad)).toBeNull();
   });
 
   it('the list filtering: closed sessions (a closedAt) are left out, in order; a missing closedAt is open', () => {

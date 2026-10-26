@@ -26,11 +26,33 @@ export const ARCHIVE_DAYS_MAX = 3650;
 export const ARCHIVE_DAYS_CHOICES: readonly number[] = [1, 7, 14, 30, 60, 90, ARCHIVE_NEVER];
 
 /**
- * The raw settings key of the upgrade grace (ISO), written once, the first time
- * a version with D137 runs: a session archived before it counts its period from
- * that moment, so nothing disappears on the upgrade day. Not a `GET /api/settings` key.
+ * The raw settings key of the grace start (ISO): written the first time a version
+ * with D137 runs (the upgrade grace: a session archived before it counts its period
+ * from that moment, so nothing disappears on the upgrade day), and again whenever the
+ * period goes from Never to days or is shortened ({@link archiveGraceRestarts}). Not a
+ * `GET /api/settings` key.
  */
 export const ARCHIVE_SINCE_SETTING = 'sessions.archiveSince';
+
+/**
+ * D137 follow-up 2026-10-26 (the developer's answer 1): a change of the period never makes
+ * archived sessions due at once. Going from Never to a number of days, or shortening the
+ * period, starts a new grace now (`sessions.archiveSince` = the moment of the change), so
+ * every archived session gets at least the whole new period from the change. Lengthening it
+ * (or setting the same value, or Never) leaves the grace as it is.
+ */
+export function archiveGraceRestarts(previous: number, next: number): boolean {
+  if (next === ARCHIVE_NEVER) return false;
+  if (previous === ARCHIVE_NEVER) return true;
+  return next < previous;
+}
+
+/**
+ * D137 follow-up 2026-10-26: at most this many archived sessions of a computer are sent to a
+ * paired computer (its newest by `closedAt`), so the Archived list of another computer does not
+ * bloat the sync; older ones show only on their own computer.
+ */
+export const ARCHIVE_PEER_LIMIT = 200;
 
 /** The raw settings key of the sweep's record ({@link ArchiveSweepRecord}); read through `sessions.archiveSweep`. */
 export const ARCHIVE_SWEEP_SETTING = 'sessions.archiveSweep';
@@ -122,7 +144,8 @@ export function readArchiveSweep(value: unknown): ArchiveSweepRecord {
 
 /**
  * When an archived session is due: its period counts from when it was archived
- * (`closedAt`), or from the upgrade grace (`since`) when that is later. `null`
+ * (`closedAt`), or from the grace start (`since`: the upgrade, or the last change
+ * from Never or to a shorter period) when that is later. `null`
  * when the period is Never. Reopening clears `closedAt`, so archiving again
  * starts a new period.
  */

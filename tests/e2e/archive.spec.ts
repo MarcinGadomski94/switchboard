@@ -113,7 +113,11 @@ test.describe('v2', () => {
     await page.goto(`${server.baseUrl}/agents?show=closed`);
     await expect(page.getByTestId('v2-archive-policy')).toHaveText('Archived agents are deleted after 30 days. Change in Settings.');
     await expect(row('checkout recent').getByTestId('v2-closed-countdown')).toHaveText(' · Deletes in 28 days');
+    // D137 follow-up 2026-10-26: back to 14 is a shorter period: a new grace from now, so nothing is due at once
+    // (every archived agent gets the whole 14 days from the change; the later tests see that).
     await api(page, 'PUT', '/api/settings', { 'sessions.archiveDays': 14 });
+    await page.reload();
+    await expect(row('checkout recent').getByTestId('v2-closed-countdown')).toHaveText(' · Deletes in 14 days');
     // Archive again from the agent ⋯ menu wording: the restored agent goes back to Archived.
     await api(page, 'POST', `/api/sessions/${encodeURIComponent(ids['restore'] as string)}/close`, { confirm: true });
   });
@@ -125,7 +129,8 @@ test.describe('v2', () => {
       await page.goto(`${server.baseUrl}/agents?show=closed`);
       await expect(page.getByTestId('v2-archive-policy')).toBeVisible();
       const row = (name: string) => page.getByTestId('v2-closed-row').filter({ hasText: name });
-      await expect(row('checkout recent').getByTestId('v2-closed-countdown')).toHaveText(' · Deletes in 12 days');
+      // 14 days from the change back to 14 (the desktop test above).
+      await expect(row('checkout recent').getByTestId('v2-closed-countdown')).toHaveText(' · Deletes in 14 days');
       await expect(row('pinned pricing').getByTestId('v2-closed-countdown')).toHaveText(' · Kept: pinned');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
       await shot(page, 'archive-v2-phone');
@@ -139,7 +144,8 @@ test('classic: History shows Archived, the countdown, the Kept reason and Restor
   await expect(page.getByTestId('history-archive-note')).toHaveText('Archived sessions are deleted after 14 days. Change in Settings.');
   const row = (id: string) => page.locator(`[data-testid="history-row"][data-session-id="${id}"]`);
   await expect(row(ids['recent'] as string).getByTestId('history-closed-tag')).toHaveText('Archived');
-  await expect(row(ids['recent'] as string).getByTestId('history-archive-countdown')).toHaveText('Deletes in 12 days');
+  // 14 days from the v2 test's change back to 14 (a shorter period starts a new grace, D137 follow-up).
+  await expect(row(ids['recent'] as string).getByTestId('history-archive-countdown')).toHaveText('Deletes in 14 days');
   await expect(row(ids['pinned'] as string).getByTestId('history-archive-countdown')).toHaveText('Kept: pinned');
   await shot(page, 'archive-classic-history');
   await row(ids['restore'] as string).getByTestId('history-reopen').click();

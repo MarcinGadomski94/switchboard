@@ -2160,7 +2160,7 @@ POST /agent/v1/processes/keep   (x-switchboard-session: 0b7c…, Authorization: 
 
 - **Session / SessionDetail / `sessionUpdated`** gain, on a closed session only (absent while open, and from a server before D137): `deletesAt: string | null` (ISO: when the sweep deletes it; `null` while it is kept or the period is Never) and `keptReason: "running" | "crew" | "plan" | "plan-step" | "routine" | "cli-schedule" | "pinned" | null`. Each computer computes its own sessions' (a paired computer's session carries its computer's values).
 - **HistoryItem** gains the same two fields on a closed stored session's row (absent otherwise).
-- **Settings** (additive): `sessions.archiveDays` (editable), a whole number 0–3650, default 14; `0` = Never. `sessions.archiveSweep` (read-only) `{ lastRunAt: string | null, lastDeleted: { at, sessions, worktrees, keptWorktrees: [{ path, reason }] } | null }`. The server also stores `sessions.archiveSince` (the upgrade grace), which `GET` does not return.
+- **Settings** (additive): `sessions.archiveDays` (editable), a whole number 0–3650, default 14; `0` = Never. `sessions.archiveSweep` (read-only) `{ lastRunAt: string | null, lastDeleted: { at, sessions, worktrees, keptWorktrees: [{ path, reason }] } | null }`. The server also stores `sessions.archiveSince` (the grace start: the upgrade, then a change from Never or to a shorter period), which `GET` does not return.
 - **CleanupScan** gains `archiveDays?: number | null` (the period while the archive has one, `null` when it is Never); the `sessions` group then lists the archived sessions past it with the new reason `archive-due` (a kept one unticked, its reason in `keeps`).
 
 ```
@@ -2169,4 +2169,16 @@ GET /api/sessions?closed=include
        { "id": "5e1f…", "closedAt": "2026-09-01T09:00:00.000Z", "deletesAt": null, "keptReason": "pinned", "…": "…" }]
 PUT /api/settings { "sessions.archiveDays": 30 }
 → 200 { "sessions.archiveDays": 30, "sessions.archiveSweep": { "lastRunAt": "2026-10-26T13:02:00.000Z", "lastDeleted": { "at": "2026-10-26T13:02:00.000Z", "sessions": 3, "worktrees": 2, "keptWorktrees": [] } }, "…": "…" }
+```
+
+**D137 follow-up 2026-10-26 (additive; no migration):**
+
+- **A change of the period:** `PUT /api/settings` with `sessions.archiveDays` going from `0` (Never) to days, or to fewer days than stored, also stores `sessions.archiveSince` = now (same transaction), so nothing becomes due at once: each archived session's `deletesAt` is at least now + the new period. More days (or the same, or `0`) leave it.
+- **`GET /api/sessions?closed=only`**: the closed (archived) sessions only (`?closed=` now accepts `exclude` | `include` | `only`; anything else 422 `invalid`, field `closed`). From the UI it lists this computer's and the paired computers' archived sessions; from a paired computer (the peer API) only this computer's, the newest `200` by `closedAt`, without `agents`.
+- **The paired computers' archived sessions** follow in `?closed=include` / `?closed=only` (never in the default open list) and in `GET /api/history`, namespaced (`r~<machine>~<id>`) with `machine: { id, name, state }` and their own computer's `deletesAt` / `keptReason`, as last known (an unreachable computer's stay listed with its state). Restore = `POST /api/sessions/{remote id}/reopen` (forwarded; 502 `peer-unreachable` while it is away).
+- **HistoryItem** gains `machine?: { id, name, state } | null`: that computer, on a paired computer's archived session's row (absent / `null` on this computer's rows).
+
+```
+GET /api/sessions?closed=only
+→ 200 [{ "id": "r~abcd2345efgh~5e1f…", "closedAt": "2026-10-25T09:00:00.000Z", "deletesAt": "2026-11-01T09:00:00.000Z", "keptReason": null, "machine": { "id": "abcd2345efgh", "name": "studio-pc", "state": "online" }, "…": "…" }]
 ```

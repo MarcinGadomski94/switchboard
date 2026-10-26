@@ -2,7 +2,9 @@ import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 import type { FastifyInstance } from 'fastify';
-import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
+import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, SessionListItem, TerminalLoop, TodoGroup } from '../../core/api.ts';
+import { ARCHIVE_PEER_LIMIT } from '../../core/session-archive.ts';
+import { withoutAgents } from '../../core/session-list.ts';
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
 // Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
@@ -96,7 +98,8 @@ export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
 /** Plans (D99) hook: its plans (`GET /api/plans`). */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans' } as const;
+/** D137 follow-up 2026-10-26: its archived sessions (the newest `ARCHIVE_PEER_LIMIT`, without agents), for this computer's Archived list. */
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans', archived: '/api/sessions?closed=only' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -1042,6 +1045,8 @@ export class PeerService implements PeerHandlers {
       });
       return;
     }
+    // D137 follow-up 2026-10-26: an archive or a restore there moves the session in or out of its archived list here.
+    if (name === 'sessionUpdated') this.#patchArchived(id, payload as Session);
     const mapped = peerHubEvent(ref, name, payload);
     if (mapped !== null) this.#publishFromPeer(name, mapped);
   }
@@ -1074,6 +1079,36 @@ export class PeerService implements PeerHandlers {
       if (ref) for (const session of connection.sessions) out.push(peerSession(ref, session));
     }
     return out;
+  }
+
+  /**
+   * D137 follow-up 2026-10-26: the paired machines' archived sessions as last known (`GET
+   * /api/sessions?closed=only` there: its newest `ARCHIVE_PEER_LIMIT`, each with that machine's
+   * own `deletesAt` / `keptReason`, passed on unchanged), namespaced and tagged; an unreachable
+   * machine's from its snapshot, tagged with its state (like its open sessions). See {@link remoteSchedules}.
+   */
+  remoteArchived(): SessionListItem[] {
+    return this.#remoteList('archived', (ref, item) => (isArchivedSession(item) ? peerSession(ref, item as Session) : null)).filter((session): session is Session => session !== null);
+  }
+
+  /**
+   * D137 follow-up 2026-10-26: a peer's `sessionUpdated` keeps its archived list current at once
+   * (a Restore there leaves it, an Archive there joins it, newest first), so the merged list read
+   * right after the event agrees with it; the countdown itself is refreshed with the list.
+   */
+  #patchArchived(id: string, session: Session): void {
+    const list = this.#lists.get(id)?.get('archived');
+    if (!list) return;
+    const known = list.some((item) => isArchivedSession(item) && item.id === session.id);
+    if (!known && !session.closedAt) return;
+    const rest = list.filter((item) => !(isArchivedSession(item) && item.id === session.id));
+    const next = session.closedAt
+      ? [withoutAgents(session), ...rest].sort((a, b) => Date.parse(String((b as Session).closedAt ?? '')) - Date.parse(String((a as Session).closedAt ?? ''))).slice(0, ARCHIVE_PEER_LIMIT)
+      : rest;
+    this.#setList(id, 'archived', next);
+    void this.#store.peerSnapshots.put(id, 'archived', '', next).catch((error: unknown) => this.#onError(error));
+    // The next read fetches the list again (its countdowns and Kept reasons as that machine computes them now).
+    this.#listFetched.delete(`${id} archived`);
   }
 
   /** The reachable machines' Inbox items, namespaced and tagged. */
@@ -1547,4 +1582,11 @@ function snapshotOf(method: string, path: string, kind: ReturnType<typeof peerAn
   } catch {
     return null;
   }
+}
+
+/** D137 follow-up 2026-10-26: an item of a peer's archived list (a session with `closedAt`). */
+function isArchivedSession(item: unknown): item is Session {
+  if (typeof item !== 'object' || item === null) return false;
+  const record = item as Record<string, unknown>;
+  return typeof record['id'] === 'string' && typeof record['closedAt'] === 'string';
 }
