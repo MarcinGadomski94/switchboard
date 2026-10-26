@@ -27,7 +27,7 @@ Project memory's code lives in its own folders and files: `src/server/memory/` (
 | `src/core/peer-wire.ts` | `'memoryChanged'` in `PEER_HUB_EVENTS` (streamed to paired machines; never republished) |
 | `src/server/inbox/system-items.ts` | imports `MEMORY_COPY_RETRY` / `MEMORY_COPY_KEEP` / `memoryInboxAction`; their branch in `#perform` (the "missing its memory" item's Retry / Keep on this PC) |
 | `src/server/inbox/wire.ts` | `'memory-proposals': 'Memory'` and `'memory-copy': 'Memory'` in `SYSTEM_ITEM_LABELS` |
-| `src/core/tutorial.ts` | `memory` in `TourRoute`; `V1_20` and the `memory` entry of `WHATS_NEW`; the `memory-scopes` entry (1.22.0) |
+| `src/core/tutorial.ts` | `memory` in `TourRoute`; `V1_20` and the `memory` entry of `WHATS_NEW`; the `memory-scopes` entry (1.22.0); D135's `memory-changes` entry (2.2.0) |
 | `src/web/router.tsx` | `memory` in `ViewName`, the simple-view `Route` union and `SIMPLE_VIEWS`; the `/memory` row of the header table |
 | `src/web/shell/Shell.tsx` | imports `MemoryPage`; `case 'memory'` of `View` |
 | `src/web/shell/AppBar.tsx` | `case 'memory'` of `pageTitle` |
@@ -45,7 +45,8 @@ Project memory's code lives in its own folders and files: `src/server/memory/` (
 | `src/web/v2/agent/side-model.ts` | the v2 agent side panel's notes line (D131): the `MemorySessionCount` type |
 | `src/web/v2/agent/SideExtras.tsx` | the v2 agent side panel's "What agents know" line (D131): `memoryApi`, `useMemory`, `memoryCountTooltip` |
 | `src/web/v2/agent/Header.tsx` | the v2 agent ⋯ menu's "Draft notes" (D131): `memoryApi(…).draft` |
-| `src/web/v2/shared/needs-you-model.ts` | v2 Needs you (D131): a note waiting for approval is an item (the `MemoryEntry` type) |
+| `src/web/v2/shared/needs-you-model.ts` | v2 Needs you (D131): a note waiting for approval is an item (the `MemoryEntry` type; D135: `changeKindOf` for the `note-edit` / `note-removal` kinds) |
+| `src/web/v2/shared/NoteChange.tsx` | D135: a proposed edit / removal of an approved note, side by side (`memoryWordDiff`, `changeKindOf`); used by `AnswerCard.tsx` and the Notes page |
 | `src/web/v2/shared/needs-you-store.ts` | v2 Needs you (D131): the store reads the waiting notes (the `MemoryEntry` type) |
 | `src/web/v2/shared/needs-you.ts` | v2 Needs you (D131): reads the waiting notes and approves / rejects them (`memoryApi`) |
 

@@ -1966,6 +1966,16 @@ POST /api/memory/draft { "memberId": "m-41f…" }   (again, the same day)
 → 200 { "asked": false, "reason": "asked-recently", "askedAt": "2026-10-15T10:00:00.000Z" }
 ```
 
+**D135 · changing approved entries** (`docs/memory.md` → *Changing approved entries (D135)*; `memory.db` migration 4 `memory_changes`). `MemoryEntry` gains `changeKind?` (`add` \| `edit` \| `retract`; absent = `add`), `targetId?`, `reason?`, `targetTitle?`, `targetText?` and, in `GET /api/memory/entries` only, `target?: MemoryEntry | null` (the approved entry a change is about, as it is now).
+
+- **Agent routes:** `POST /agent/v1/memory/edit` `{ entry, title?, text?, reason? }` and `POST /agent/v1/memory/retract` `{ entry, reason }` → 201 `MemoryEntry` (`status: proposed`, `changeKind: edit | retract`) · 404 `not-found` (no approved entry with that id) · 403 `out-of-scope` (not one the session sees) · 422 `invalid` / `no-change` · 409 `duplicate` (this session's pending change of that kind for that entry) · 429 `rate-limited` (shared with `POST /agent/v1/memory`). MCP tools `memory_propose_edit`, `memory_propose_retract`; `memory_list` adds each entry's id and last update.
+- **UI routes (unchanged paths):** `POST /api/memory/entries/{id}/approve` `{ title?, text? }` on a change proposal applies it (an edit replaces the target's title / text and answers the target, same id; a retract deletes the target and answers it as it was) · 409 `target-gone`; `POST …/reject` keeps the target; `PUT /api/memory/entries/{id}` `{ title?, text? }` edits an edit proposal's new wording (409 `not-editable` for a retract); `DELETE` of an entry also deletes the proposals about it.
+
+```
+POST /agent/v1/memory/edit { "entry": "0a1b2c3d4e", "text": "npm run test:unit", "reason": "The script was renamed." }
+→ 201 { "id": "5f6e7d8c9b", "status": "proposed", "changeKind": "edit", "targetId": "0a1b2c3d4e", "reason": "The script was renamed.", "target": { "id": "0a1b2c3d4e", "text": "npm test", … }, … }
+```
+
 ## Insights (D108, 2026-10-14, additive)
 
 The Insights page in one answer (`docs/insights.md`, `docs/decisions.md` → D108): time and tokens, estimate accuracy, outcomes and rework, cost per todo run, the usage-limit forecast and suggested routing rules, from **this machine's** data. Types in `src/core/insights.ts`: `InsightsAnswer`, `InsightsQuery`, `TimeTokensRow`, `TrendPoint`, `AccuracyDistribution`, `AccuracyGroup`, `OutcomeRow`, `CostSection`, `TodoCost`, `AccountForecast`, `WindowForecast`, `RoutingSuggestion`, `PriceTable`, `ModelPrice`. Migration 0045 (the daily rollup, `todo_actuals`' new columns, `todo_reopens`, an index on `usage_readings`).
