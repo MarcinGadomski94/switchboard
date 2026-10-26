@@ -1976,6 +1976,29 @@ POST /agent/v1/memory/edit { "entry": "0a1b2c3d4e", "text": "npm run test:unit",
 → 201 { "id": "5f6e7d8c9b", "status": "proposed", "changeKind": "edit", "targetId": "0a1b2c3d4e", "reason": "The script was renamed.", "target": { "id": "0a1b2c3d4e", "text": "npm test", … }, … }
 ```
 
+**D136 · memory checks** (`docs/memory.md` → *Checking notes (D136)*; `memory.db` migration 5 `memory_checks`; main migration 0051 `insight_background_turns`). Types in `src/core/memory-check.ts`. `MemoryEntry` gains, in `GET /api/memory/entries` only, `check?: MemoryProposalCheck | null` on a proposed note the proposal check flagged (`{ verdict: duplicate | conflict, targetId, targetTitle, reason, checkedAt }`).
+
+| Method | Path | Body / query | Answers |
+|---|---|---|---|
+| POST | /api/memory/entries/{id}/approve | `{ …, removeConflicting: true }` | as before; also moves the flagged approved note to the removed list |
+| GET | /api/memory/removed | `scope` (a folder; absent = every folder) | 200 `MemoryRemovedEntry[]` (`{ id, scope, entry, reason, removedBy: check \| approval, removedAt, purgeAt }`), newest first |
+| POST | /api/memory/removed/{id}/restore | — | 200 `MemoryEntry` (approved again, same id) · 404 `not-found` |
+| GET | /api/memory/check | `scope` | 200 `MemoryCheckStatus` (`{ folder, enabled, settings, lastRunAt, lastResult, nextDueAt, running, notes }`) · 422 without `scope` |
+| PUT | /api/memory/check | `{ scope, enabled }` | 200 `MemoryCheckStatus` (the folder's switch) |
+| POST | /api/memory/check/run | `{ scope }` | 202 `MemoryCheckStatus` (Check now; runs in the background) · 409 `no-notes` |
+| GET / PUT | /api/memory/check/settings | `{ enabled?, frequencyDays? }` (1, 3, 7, 14, 30) | 200 `MemoryCheckSettings` · 422 `invalid` |
+
+Every check route answers 404 `checks-off` where checks do not run (demo mode). Phones: the GETs and Restore (`DEVICE_ALLOWED`); the PUTs and `check/run` are refused (`DEVICE_REFUSED`). Paired machines: all (`PEER_API_ALLOW`). No hub event of its own: `memoryChanged { scope }` when a run starts, ends or changes notes. Insights → Usage: a memory check's turns are rows of kind `memory` (`UsageKind`), session id `memory-check~<folder>` (nothing to open, `sessionId: null` on its ranked row).
+
+```
+POST /api/memory/check/run { "scope": "/work/acme-app" }
+→ 202 { "folder": "/work/acme-app", "running": true, "lastResult": null, … }
+GET /api/memory/check?scope=%2Fwork%2Facme-app
+→ 200 { "lastResult": { "outcome": "done", "trigger": "manual", "checked": 12, "removed": 1, "edits": 2, "retracts": 0, … }, … }
+POST /api/memory/removed/0a1b2c3d4e/restore
+→ 200 { "id": "0a1b2c3d4e", "status": "approved", … }
+```
+
 ## Insights (D108, 2026-10-14, additive)
 
 The Insights page in one answer (`docs/insights.md`, `docs/decisions.md` → D108): time and tokens, estimate accuracy, outcomes and rework, cost per todo run, the usage-limit forecast and suggested routing rules, from **this machine's** data. Types in `src/core/insights.ts`: `InsightsAnswer`, `InsightsQuery`, `TimeTokensRow`, `TrendPoint`, `AccuracyDistribution`, `AccuracyGroup`, `OutcomeRow`, `CostSection`, `TodoCost`, `AccountForecast`, `WindowForecast`, `RoutingSuggestion`, `PriceTable`, `ModelPrice`. Migration 0045 (the daily rollup, `todo_actuals`' new columns, `todo_reopens`, an index on `usage_readings`).
