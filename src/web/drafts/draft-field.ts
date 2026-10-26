@@ -29,6 +29,12 @@ export interface DraftFieldHost {
   write(value: unknown | null, keepalive: boolean): Promise<void>;
   /** The server's current value of this field (`null` = none), read again. */
   read(): Promise<unknown | null>;
+  /**
+   * Called at once (before the write, which waits for the ones before it) with what is
+   * being saved (`null` = cleared) and when that write is over: the page's draft cache
+   * remembers it and holds its reads until then (`trackDraftWrite`).
+   */
+  readonly saving?: (value: unknown | null, done: Promise<void>) => void;
   readonly setTimer?: (run: () => void, ms: number) => unknown;
   readonly clearTimer?: (timer: unknown) => void;
   readonly delayMs?: number;
@@ -89,6 +95,7 @@ export class DraftField {
     this.#synced = local;
     const value = local === null ? null : (JSON.parse(local) as unknown);
     this.#chain = this.#chain.then(() => this.#host.write(value, keepalive)).catch(() => undefined);
+    this.#host.saving?.(value, this.#chain);
     return this.#chain;
   }
 

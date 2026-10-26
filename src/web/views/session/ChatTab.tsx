@@ -33,7 +33,7 @@ import { FreshOffer } from './FreshOffer.tsx';
 import { type ArtifactDraft, SaveArtifactDialog } from './SaveArtifact.tsx';
 import { type ComposerDraft, draftField, parseDraftValue } from '../../../core/drafts.ts';
 import { initialDraft, useDraft } from '../../drafts/useDraft.ts';
-import { draftsOnce, knownDraft, readDrafts, rememberDraft } from '../../drafts/session-drafts.ts';
+import { draftsOnce, knownDraft, readDrafts, rememberDraft, trackDraftWrite } from '../../drafts/session-drafts.ts';
 import { pageClientId } from '../../pwa/presence.ts';
 import { turnBusy } from './needs-you.ts';
 import {
@@ -615,8 +615,9 @@ async function sendRefused(sessionId: string, text: string, attachments: readonl
       reopened(text, attachments, error);
       return;
     }
-    rememberDraft(sessionId, draftField.composer, value);
-    await api.putDraft(sessionId, draftField.composer, { value, client: pageClientId() });
+    const put = api.putDraft(sessionId, draftField.composer, { value, client: pageClientId() });
+    trackDraftWrite(sessionId, draftField.composer, value, put);
+    await put;
   } catch {
     // Nothing more can be done from here: the note still says it was not sent.
   }

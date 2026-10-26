@@ -4,7 +4,7 @@ import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { pageClientId } from '../pwa/presence.ts';
 import { DraftField } from './draft-field.ts';
-import { type DraftScope, knownDraft, readDrafts, rememberDraft } from './session-drafts.ts';
+import { type DraftScope, knownDraft, readDrafts, rememberDraft, trackDraftWrite } from './session-drafts.ts';
 
 /** What a field gives {@link useDraft}. */
 export interface UseDraftOptions<T> {
@@ -67,8 +67,8 @@ export function useDraft<T>({ sessionId, field, value, apply, root, initial = nu
           applyRef.current(next === null ? null : (parseDraftValue(field_, next) as T | null));
         },
         focused,
+        saving: (next, done) => trackDraftWrite(sessionId, field_, next, done),
         write: async (next, keepalive) => {
-          rememberDraft(sessionId, field_, next);
           if (sessionId === null) {
             if (next === null) await api.deleteMachineDraft(field_, pageClientId(), keepalive);
             else await api.putMachineDraft(field_, { value: next, client: pageClientId() }, keepalive);
