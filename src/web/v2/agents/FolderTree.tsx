@@ -1,20 +1,19 @@
 import { type KeyboardEvent, useState } from 'react';
 import { Icon, IconButton, Menu, type MenuItem } from '../components/index.ts';
-import { openNew } from '../new/index.tsx';
 import { V2Link } from '../nav.tsx';
 import { AGENTS_WORDS, computerProblem } from '../glossary.ts';
 import { type AgentEntry, offline } from './agents-model.ts';
 import { MiniStatus, useAgentsPage } from './context.tsx';
 import { dragSource, dropTarget, isMoveKey } from './dnd.ts';
-import { type AgentTree, type Selection, type TreeCrew, type TreeFolder, canNest } from './tree-model.ts';
+import { type AgentTree, type Selection, type TreeFolder, canNest } from './tree-model.ts';
 
 /**
  * D131 · lane A · the folder tree left of Agents (`.ftree`): All agents, Needs
  * you, Pinned, the folders (nested, counts, a Needs-you badge on a folded one,
- * project subfolders), the Crews, Not in a folder, Drafts, Closed, and the links
+ * project subfolders), Not in a folder, Drafts, Closed, and the links
  * to Notes, Tasks and Routines. Agents drag onto folders; ⋯ on a folder makes a
  * subfolder, pins, renames or deletes it; ⋯ on an agent offers Move to folder…
- * (or `M`).
+ * (or `M`). Teammates are not here: the Crews pages own them (fix after 2.0).
  */
 export function FolderTree({ tree, selection, onSelect, draftCount, closedCount, shareText }: { readonly tree: AgentTree; readonly selection: Selection; readonly onSelect: (selection: Selection) => void; readonly draftCount: number; readonly closedCount: number | null; readonly shareText: string }) {
   const page = useAgentsPage();
@@ -44,20 +43,6 @@ export function FolderTree({ tree, selection, onSelect, draftCount, closedCount,
           <FolderNode key={folder.id} folder={folder} tree={tree} selection={selection} onSelect={onSelect} />
         ))}
       </div>
-      {tree.crews.length ? (
-        <>
-          <h4>
-            <Icon name="crew" size="s" />
-            {AGENTS_WORDS.crews}
-            <IconButton icon="plus" label={AGENTS_WORDS.newCrew} title={AGENTS_WORDS.newCrew} onClick={() => openNew({ kind: 'crew' })} />
-          </h4>
-          <div role="tree" aria-label={AGENTS_WORDS.crews}>
-            {tree.crews.map((crew) => (
-              <CrewNode key={crew.id} crew={crew} selection={selection} onSelect={onSelect} />
-            ))}
-          </div>
-        </>
-      ) : null}
       <h4 data-testid="v2-tree-loose" {...dropTarget((id) => {
           const agent = allAgents.get(id);
           if (agent) void page.actions.move(agent, { kind: 'loose' });
@@ -188,54 +173,6 @@ function FolderNode({ folder, tree, selection, onSelect }: { readonly folder: Tr
           ))}
           {folder.agents.map((agent) => (
             <Leaf key={agent.id} agent={agent} depth={folder.level} />
-          ))}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function CrewNode({ crew, selection, onSelect }: { readonly crew: TreeCrew; readonly selection: Selection; readonly onSelect: (selection: Selection) => void }) {
-  const page = useAgentsPage();
-  const [open, setOpen] = useState(false);
-  const id: Selection = `crew:${crew.id}`;
-  return (
-    <>
-      <div
-        className="v2-fn"
-        role="treeitem"
-        aria-level={1}
-        aria-expanded={open}
-        data-crew={crew.id}
-        data-testid="v2-tree-crew"
-        {...(selection === id ? { 'data-on': '' } : {})}
-        {...dropTarget((agentId) => {
-          const agent = allAgents.get(agentId);
-          if (agent) void page.actions.move(agent, { kind: 'crew', crewId: crew.id });
-        })}
-      >
-        <button type="button" className="v2-fn-tog" onClick={() => setOpen((v) => !v)} aria-label={open ? AGENTS_WORDS.collapse(crew.name) : AGENTS_WORDS.expand(crew.name)}>
-          <Icon name="chev" size="s" />
-        </button>
-        <button type="button" className="v2-fn-main" onClick={() => onSelect(id)}>
-          <Icon name="crew" size="s" />
-          <span className="v2-nm">{`Crew · ${crew.name}`}</span>
-          {!open && crew.needs ? (
-            <span className="v2-nb" title={AGENTS_WORDS.needCount(crew.needs)}>
-              <Icon name="hand" size="s" />
-              {crew.needs}
-            </span>
-          ) : null}
-          <span className="v2-n">{crew.members.length}</span>
-        </button>
-        <V2Link to={`/crews/${encodeURIComponent(crew.id)}`} className="v2-fn-more" aria-label={AGENTS_WORDS.openCrew} title={AGENTS_WORDS.openCrew}>
-          <Icon name="arrow-r" size="s" />
-        </V2Link>
-      </div>
-      {open ? (
-        <div role="group">
-          {crew.members.map((agent) => (
-            <Leaf key={agent.id} agent={agent} depth={1} />
           ))}
         </div>
       ) : null}

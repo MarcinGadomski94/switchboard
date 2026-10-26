@@ -10,16 +10,14 @@ import type { TreeActions } from './useTreeActions.ts';
 
 /**
  * D131 · lane A · the Agents page's dialogs: Move to folder (the keyboard way to
- * drag, ↑ ↓ ↩; a teammate picks a crew instead), New / Rename / Delete folder,
+ * drag, ↑ ↓ ↩), New / Rename / Delete folder,
  * Rename agent.
  */
 
-/** Move to folder (or, for a teammate, to another crew). */
+/** Move to folder. */
 export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly agent: AgentEntry | null; readonly layout: SidebarLayout; readonly tree: AgentTree; readonly actions: TreeActions; readonly onClose: () => void }) {
-  const mate = agent?.kind === 'mate';
-  const rows = agent && !mate ? pickRows(agent, layout, tree) : [];
-  const crews = agent && mate ? tree.crews : [];
-  const initial = agent ? (mate ? (agent.crew?.id ?? '') : (rows.find((row) => row.current)?.value ?? 'loose')) : '';
+  const rows = agent ? pickRows(agent, layout, tree) : [];
+  const initial = agent ? (rows.find((row) => row.current)?.value ?? 'loose') : '';
   const [value, setValue] = useState(initial);
   const list = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -29,8 +27,7 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
   if (!agent) return null;
   const go = (): void => {
     onClose();
-    if (mate) void actions.move(agent, { kind: 'crew', crewId: value });
-    else void actions.move(agent, value === 'loose' ? { kind: 'loose' } : { kind: 'folder', folderId: value });
+    void actions.move(agent, value === 'loose' ? { kind: 'loose' } : { kind: 'folder', folderId: value });
   };
   const keyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Enter') {
@@ -43,7 +40,7 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
       open
       onClose={onClose}
       icon="folder-move"
-      title={mate ? AGENTS_WORDS.moveToCrew.replace('…', '') : AGENTS_WORDS.moveTitle}
+      title={AGENTS_WORDS.moveTitle}
       width={520}
       testId="v2-move-dialog"
       footer={
@@ -62,15 +59,7 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
         {AGENTS_WORDS.moveHint}
       </p>
       <div className="v2-fpick" role="radiogroup" aria-label={AGENTS_WORDS.folders} ref={list} onKeyDown={keyDown} data-testid="v2-move-list">
-        {mate
-          ? crews.map((crew) => (
-              <label key={crew.id}>
-                <input type="radio" name="v2-move" value={crew.id} checked={value === crew.id} onChange={() => setValue(crew.id)} {...(crew.id === initial ? { 'data-autofocus': '' } : {})} />
-                <Icon name="crew" size="s" />
-                <span className="v2-grow">{crew.name}</span>
-              </label>
-            ))
-          : rows.map((row) => (
+        {rows.map((row) => (
               <label key={row.value} style={{ paddingLeft: 10 + row.depth * 20 }} {...(row.disabled ? { 'data-disabled': '' } : {})} data-testid="v2-move-option">
                 <input type="radio" name="v2-move" value={row.value} checked={value === row.value} disabled={row.disabled !== null} onChange={() => setValue(row.value)} {...(row.value === initial ? { 'data-autofocus': '' } : {})} />
                 <Icon name={row.value === 'loose' ? 'agents' : row.plan ? 'projects' : 'folder'} size="s" className={row.plan ? 'v2-plan-ic' : undefined} />

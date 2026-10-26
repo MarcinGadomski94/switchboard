@@ -1,5 +1,4 @@
 import { SIDEBAR_FOLDER_DEPTH_MAX, type SidebarFolder, type SidebarLayout } from '../../../core/sidebar-layout.ts';
-import type { TeamSummary } from '../../../core/team.ts';
 import { type AgentEntry, isPlanFolderName, needy } from './agents-model.ts';
 
 /**
@@ -7,9 +6,9 @@ import { type AgentEntry, isPlanFolderName, needy } from './agents-model.ts';
  * sidebar layout (D54 pins and folders, D58 subfolders up to
  * {@link SIDEBAR_FOLDER_DEPTH_MAX} levels, D71 order and sharing with paired
  * computers) read as the v2 tree — Pinned, the folders with their subfolders
- * (project subfolders "Plan · …" marked), the Crews (each crew's teammates), the
- * agents in no folder — with counts and Needs-you badges, plus the rules for
- * moving an agent. The classic sidebar reads the same layout, so both themes
+ * (project subfolders "Plan · …" marked), the agents in no folder — with counts
+ * and Needs-you badges, plus the rules for moving an agent. Teammates are not in
+ * it: the Crews pages own them (fix after 2.0). The classic sidebar reads the same layout, so both themes
  * show the same organisation.
  */
 
@@ -32,27 +31,18 @@ export interface TreeFolder {
   readonly needs: number;
 }
 
-/** A crew in the tree: its teammates. */
-export interface TreeCrew {
-  readonly id: string;
-  readonly name: string;
-  readonly members: readonly AgentEntry[];
-  readonly needs: number;
-}
-
 /** The whole tree. */
 export interface AgentTree {
   readonly pinned: readonly AgentEntry[];
   readonly folders: readonly TreeFolder[];
-  readonly crews: readonly TreeCrew[];
-  /** In no folder (and not pinned, not a teammate). */
+  /** In no folder (and not pinned). */
   readonly loose: readonly AgentEntry[];
   readonly all: number;
   readonly needs: number;
 }
 
-/** Builds the tree from the layout, the agents and the crews. */
-export function buildTree(layout: SidebarLayout, agents: readonly AgentEntry[], teams: readonly Pick<TeamSummary, 'id' | 'name'>[]): AgentTree {
+/** Builds the tree from the layout and the agents (teammates are already left out of them). */
+export function buildTree(layout: SidebarLayout, agents: readonly AgentEntry[]): AgentTree {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const placed = new Set<string>();
   const pinned = layout.pinned.map((id) => byId.get(id)).filter((agent): agent is AgentEntry => agent !== undefined);
@@ -82,18 +72,8 @@ export function buildTree(layout: SidebarLayout, agents: readonly AgentEntry[], 
     };
   };
   const folders = (kids.get(null) ?? []).map((folder) => build(folder, 1));
-  const crewIds = new Set(teams.map((team) => team.id));
-  const crewList = teams.map((team) => ({ id: team.id, name: team.name }));
-  for (const agent of agents) if (agent.crew && !crewIds.has(agent.crew.id)) {
-    crewIds.add(agent.crew.id);
-    crewList.push({ id: agent.crew.id, name: agent.crew.name });
-  }
-  const crews = crewList.map((crew) => {
-    const members = agents.filter((agent) => agent.kind === 'mate' && agent.crew?.id === crew.id);
-    return { id: crew.id, name: crew.name, members, needs: members.filter(needy).length };
-  });
-  const loose = agents.filter((agent) => !placed.has(agent.id) && agent.kind !== 'mate');
-  return { pinned, folders, crews, loose, all: agents.length, needs: agents.filter(needy).length };
+  const loose = agents.filter((agent) => !placed.has(agent.id));
+  return { pinned, folders, loose, all: agents.length, needs: agents.filter(needy).length };
 }
 
 /** Every folder of the tree, depth first (each followed by its subfolders). */
@@ -131,8 +111,8 @@ export function agentsUnder(folder: TreeFolder): AgentEntry[] {
   return [...folder.agents, ...folder.children.flatMap(agentsUnder)];
 }
 
-/** What the page lists: a smart group, a folder, a crew, the loose agents or the drafts. */
-export type Selection = 'all' | 'needs' | 'pinned' | 'loose' | 'drafts' | `folder:${string}` | `crew:${string}`;
+/** What the page lists: a smart group, a folder, the loose agents or the drafts. */
+export type Selection = 'all' | 'needs' | 'pinned' | 'loose' | 'drafts' | `folder:${string}`;
 
 /** The agents a selection lists. */
 export function agentsOf(selection: Selection, tree: AgentTree, agents: readonly AgentEntry[]): AgentEntry[] {
@@ -140,25 +120,23 @@ export function agentsOf(selection: Selection, tree: AgentTree, agents: readonly
   if (selection === 'needs') return agents.filter(needy);
   if (selection === 'pinned') return [...tree.pinned];
   if (selection === 'loose') return [...tree.loose];
-  if (selection.startsWith('crew:')) return [...(tree.crews.find((crew) => `crew:${crew.id}` === selection)?.members ?? [])];
   const folder = findFolder(tree, selection.slice('folder:'.length));
   return folder ? agentsUnder(folder) : [];
 }
 
-/** `true` while the selection still exists (a deleted folder or crew falls back to All agents). */
+/** `true` while the selection still exists (a deleted folder falls back to All agents). */
 export function selectionExists(selection: Selection, tree: AgentTree): boolean {
   if (selection.startsWith('folder:')) return findFolder(tree, selection.slice('folder:'.length)) !== null;
-  if (selection.startsWith('crew:')) return tree.crews.some((crew) => `crew:${crew.id}` === selection);
   return true;
 }
 
 // ── Moving ───────────────────────────────────────────────────────────
 
 /** Where an agent can be moved. */
-export type MoveTarget = { readonly kind: 'folder'; readonly folderId: string } | { readonly kind: 'loose' } | { readonly kind: 'crew'; readonly crewId: string };
+export type MoveTarget = { readonly kind: 'folder'; readonly folderId: string } | { readonly kind: 'loose' };
 
-/** What a move does: a sidebar placement, a crew change, or nothing with the reason. */
-export type MoveCheck = { readonly ok: true; readonly via: 'place' | 'crew' } | { readonly ok: false; readonly reason: string };
+/** What a move does: a sidebar placement, or nothing with the reason. */
+export type MoveCheck = { readonly ok: true; readonly via: 'place' } | { readonly ok: false; readonly reason: string };
 
 /** The folder an agent sits in now (`pinned`, a folder id, or `null` = loose). */
 export function placeOfAgent(layout: SidebarLayout, sessionId: string): 'pinned' | string | null {
@@ -168,18 +146,12 @@ export function placeOfAgent(layout: SidebarLayout, sessionId: string): 'pinned'
 
 /**
  * The prototype's move rules: project steps stay in their project's subfolder,
- * a project's subfolder takes only project steps, teammates live in their crew
- * (dropping one on another crew moves it there), a crew takes only teammates.
+ * a project's subfolder takes only project steps. (Teammates are not on the
+ * Agents page: their crew is changed from the Crews pages.)
  */
-export function checkMove(agent: Pick<AgentEntry, 'id' | 'name' | 'kind' | 'crew'>, target: MoveTarget, layout: SidebarLayout, tree: Pick<AgentTree, 'folders' | 'crews'>): MoveCheck {
+export function checkMove(agent: Pick<AgentEntry, 'id' | 'name' | 'kind'>, target: MoveTarget, layout: SidebarLayout, tree: Pick<AgentTree, 'folders'>): MoveCheck {
   const now = placeOfAgent(layout, agent.id);
   const nowFolder = now && now !== 'pinned' ? findFolder(tree, now) : null;
-  if (target.kind === 'crew') {
-    if (agent.kind !== 'mate') return { ok: false, reason: `Only teammates live in a crew. Make “${agent.name}” a teammate from its ⋯ menu first.` };
-    if (agent.crew?.id === target.crewId) return { ok: false, reason: `${agent.name} is already there.` };
-    return { ok: true, via: 'crew' };
-  }
-  if (agent.kind === 'mate') return { ok: false, reason: 'Teammates live in their crew’s folder. Use ⋯ › Move to crew… to change crews.' };
   if (agent.kind === 'step' && nowFolder?.plan) return { ok: false, reason: `Project steps stay in their project’s folder (${nowFolder.name}).` };
   if (target.kind === 'loose') return now === null ? { ok: false, reason: `${agent.name} is already there.` } : { ok: true, via: 'place' };
   const folder = findFolder(tree, target.folderId);
@@ -202,7 +174,7 @@ export interface PickRow {
 }
 
 /** The Move-to-folder list for `agent`: Not in a folder, then every folder in tree order. */
-export function pickRows(agent: Pick<AgentEntry, 'id' | 'name' | 'kind' | 'crew'>, layout: SidebarLayout, tree: AgentTree): PickRow[] {
+export function pickRows(agent: Pick<AgentEntry, 'id' | 'name' | 'kind'>, layout: SidebarLayout, tree: AgentTree): PickRow[] {
   const now = placeOfAgent(layout, agent.id);
   const rows: PickRow[] = [{ value: 'loose', label: 'Not in a folder', depth: 0, plan: false, count: tree.loose.length, disabled: null, current: now === null }];
   for (const folder of flatFolders(tree)) {

@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { TeamSummary } from '../../../core/team.ts';
 import { Icon, Segmented } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { AgentRow } from '../shared/agent-row.tsx';
 import { type AgentEntry, BOARD_COLUMNS, type BoardColumn, PHONE_VIEWS, PREF_KEYS, type PhoneView, chatSections, columnOf, isPhoneView, sortAgents } from './agents-model.ts';
 import { kindLabel, useAgentsPage } from './context.tsx';
-import { type AgentTree, type TreeCrew, type TreeFolder, drill } from './tree-model.ts';
+import { type AgentTree, type TreeFolder, drill } from './tree-model.ts';
 import { type NewDraft, usePref } from './useAgentsData.ts';
 
 /**
@@ -15,12 +14,12 @@ import { type NewDraft, usePref } from './useAgentsData.ts';
  * a drill-down list with a breadcrumb, browse only (rearranging happens on a
  * computer; the phone follows the shared layout).
  */
-export function PhoneAgents({ agents, tree, teams, newDraft }: { readonly agents: readonly AgentEntry[]; readonly tree: AgentTree; readonly teams: readonly TeamSummary[]; readonly newDraft: NewDraft | null }) {
+export function PhoneAgents({ agents, tree, newDraft }: { readonly agents: readonly AgentEntry[]; readonly tree: AgentTree; readonly newDraft: NewDraft | null }) {
   const [view, setView] = usePref<PhoneView>(PREF_KEYS.phoneView, 'chats', isPhoneView);
   return (
     <div data-testid="v2-agents-phone">
       <Segmented options={PHONE_VIEWS.map((value) => ({ value, label: AGENTS_WORDS.views[value] }))} value={view} onChange={setView} label={AGENTS_WORDS.viewLabel} testId="v2-phone-view" tour="v2-agents-view" />
-      {view === 'chats' ? <PhoneChats agents={agents} teams={teams} newDraft={newDraft} /> : view === 'folders' ? <PhoneFolders tree={tree} /> : <PhoneBoard agents={agents} />}
+      {view === 'chats' ? <PhoneChats agents={agents} newDraft={newDraft} /> : view === 'folders' ? <PhoneFolders tree={tree} /> : <PhoneBoard agents={agents} />}
     </div>
   );
 }
@@ -45,8 +44,8 @@ function Row({ agent }: { readonly agent: AgentEntry }) {
   );
 }
 
-function PhoneChats({ agents, teams, newDraft }: { readonly agents: readonly AgentEntry[]; readonly teams: readonly TeamSummary[]; readonly newDraft: NewDraft | null }) {
-  const sections = useMemo(() => chatSections(agents, teams), [agents, teams]);
+function PhoneChats({ agents, newDraft }: { readonly agents: readonly AgentEntry[]; readonly newDraft: NewDraft | null }) {
+  const sections = useMemo(() => chatSections(agents), [agents]);
   const drafts = agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0);
   return (
     <div data-testid="v2-phone-chats">
@@ -66,8 +65,8 @@ function PhoneChats({ agents, teams, newDraft }: { readonly agents: readonly Age
       {sections.map((section) => (
         <div key={section.id}>
           <div className="v2-p-sec" {...(section.kind === 'needs' ? { 'data-tone': 'amber' } : {})}>
-            <Icon name={section.kind === 'needs' ? 'hand' : section.kind === 'crew' ? 'crew' : 'chats'} size="s" />
-            {section.kind === 'needs' ? `${AGENTS_WORDS.needsYou} · ${section.items.length}` : section.kind === 'crew' ? `Crew · ${section.crew?.name ?? ''}` : AGENTS_WORDS.everythingElse}
+            <Icon name={section.kind === 'needs' ? 'hand' : 'chats'} size="s" />
+            {section.kind === 'needs' ? `${AGENTS_WORDS.needsYou} · ${section.items.length}` : AGENTS_WORDS.everythingElse}
           </div>
           <div className="v2-p-list">
             {section.items.map((agent) => (
@@ -104,9 +103,8 @@ function FolderButton({ folder, onOpen }: { readonly folder: TreeFolder; readonl
 
 function PhoneFolders({ tree }: { readonly tree: AgentTree }) {
   const [path, setPath] = useState<readonly string[]>([]);
-  const [crew, setCrew] = useState<TreeCrew | null>(null);
   const level = drill(tree, path);
-  const top = path.length === 0 && !crew;
+  const top = path.length === 0;
   return (
     <div data-testid="v2-phone-folders">
       <nav className="v2-p-crumb" aria-label={AGENTS_WORDS.folderPath} data-testid="v2-phone-crumb">
@@ -115,35 +113,19 @@ function PhoneFolders({ tree }: { readonly tree: AgentTree }) {
         ) : (
           <button
             type="button"
-            onClick={() => {
-              setPath([]);
-              setCrew(null);
-            }}
+            onClick={() => setPath([])}
           >
             {AGENTS_WORDS.title}
           </button>
         )}
-        {crew ? (
-          <>
+        {level.crumbs.map((folder, i) => (
+          <span key={folder.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
             <Icon name="chev" size="s" />
-            <b style={{ color: 'var(--v2-text)' }}>{`Crew · ${crew.name}`}</b>
-          </>
-        ) : (
-          level.crumbs.map((folder, i) => (
-            <span key={folder.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <Icon name="chev" size="s" />
-              {i === level.crumbs.length - 1 ? <b style={{ color: 'var(--v2-text)', padding: '0 6px' }}>{folder.name}</b> : <button type="button" onClick={() => setPath(path.slice(0, i + 1))}>{folder.name}</button>}
-            </span>
-          ))
-        )}
+            {i === level.crumbs.length - 1 ? <b style={{ color: 'var(--v2-text)', padding: '0 6px' }}>{folder.name}</b> : <button type="button" onClick={() => setPath(path.slice(0, i + 1))}>{folder.name}</button>}
+          </span>
+        ))}
       </nav>
-      {crew ? (
-        <div className="v2-p-list">
-          {sortAgents(crew.members).map((agent) => (
-            <Row key={agent.id} agent={agent} />
-          ))}
-        </div>
-      ) : top ? (
+      {top ? (
         <>
           {tree.pinned.length ? (
             <>
@@ -167,36 +149,6 @@ function PhoneFolders({ tree }: { readonly tree: AgentTree }) {
               <div className="v2-p-list">
                 {tree.folders.map((folder) => (
                   <FolderButton key={folder.id} folder={folder} onOpen={() => setPath([folder.id])} />
-                ))}
-              </div>
-            </>
-          ) : null}
-          {tree.crews.length ? (
-            <>
-              <div className="v2-p-sec">
-                <Icon name="crew" size="s" />
-                {AGENTS_WORDS.crews}
-              </div>
-              <div className="v2-p-list">
-                {tree.crews.map((c) => (
-                  <button key={c.id} type="button" className="v2-p-fold" onClick={() => setCrew(c)}>
-                    <span className="v2-ficon">
-                      <Icon name="crew" />
-                    </span>
-                    <span className="v2-grow">
-                      <b style={{ display: 'block', fontWeight: 600 }}>{`Crew · ${c.name}`}</b>
-                      <span className="v2-muted" style={{ fontSize: 13 }}>
-                        {AGENTS_WORDS.agentsCount(c.members.length)}
-                      </span>
-                    </span>
-                    {c.needs ? (
-                      <span className="v2-nb">
-                        <Icon name="hand" size="s" />
-                        {c.needs}
-                      </span>
-                    ) : null}
-                    <Icon name="chev" size="s" />
-                  </button>
                 ))}
               </div>
             </>

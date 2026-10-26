@@ -24,8 +24,8 @@ import './agents.css';
 
 /**
  * D131 · lane A · the Agents page (`/agents`; `?show=closed` = Closed): every
- * agent on every computer — Switchboard sessions, conversations, teammates (in
- * "Crew · <name>" sections), routines' sessions, project steps, the paired
+ * agent on every computer — Switchboard sessions, conversations, routines'
+ * sessions, project steps (teammates are the Crews pages'), the paired
  * computers' — as List, Chats or Board (remembered per browser), the folder tree
  * on the left (the shared sidebar layout, ⌘\ hides it), Drafts on top. On a phone:
  * Chats | Folders (a drill-down) | Board.
@@ -133,9 +133,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
       return [
         { id: 'open', label: AGENTS_WORDS.open, icon: 'external', onSelect: () => openAgent(agent) },
         { id: 'pin', label: pinned ? AGENTS_WORDS.unpin : AGENTS_WORDS.pin, icon: 'pin', onSelect: () => void actions.togglePin(agent) },
-        agent.kind === 'mate'
-          ? { id: 'move', label: AGENTS_WORDS.moveToCrew, icon: 'crew', kbd: 'M', onSelect: () => setMoving(agent) }
-          : { id: 'move', label: AGENTS_WORDS.moveToFolder, icon: 'folder-move', kbd: 'M', onSelect: () => setMoving(agent) },
+        { id: 'move', label: AGENTS_WORDS.moveToFolder, icon: 'folder-move', kbd: 'M', onSelect: () => setMoving(agent) },
         { id: 'rename', label: AGENTS_WORDS.rename, icon: 'edit', onSelect: () => setRenaming(agent), ...(offWhy ? { disabledReason: offWhy } : {}) },
         { separator: true, id: 'sep-1' },
         {
@@ -210,7 +208,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
         ) : !data.loaded ? (
           <LoadingList />
         ) : phone ? (
-          <PhoneAgents agents={data.agents} tree={data.tree} teams={data.teams} newDraft={newDraft} />
+          <PhoneAgents agents={data.agents} tree={data.tree} newDraft={newDraft} />
         ) : (
           <div className="v2-ag2" {...(treeHidden ? { 'data-tree-off': '' } : {})}>
             <FolderTree tree={data.tree} selection={selection} onSelect={setSelection} draftCount={data.agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0)} closedCount={null} shareText={shareText} />
@@ -222,11 +220,11 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
                   {listed.length === 0 ? (
                     <EmptyState icon={selection.startsWith('folder:') ? 'folder' : 'agents'} tone="grey" title={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderTitle : AGENTS_WORDS.emptyTitle} text={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderText : AGENTS_WORDS.emptyText} testId="v2-agents-empty" />
                   ) : view === 'list' ? (
-                    <ListView agents={listed} teams={data.teams} />
+                    <ListView agents={listed} />
                   ) : view === 'chats' ? (
-                    <ChatsView agents={listed} teams={data.teams} />
+                    <ChatsView agents={listed} />
                   ) : (
-                    <BoardView agents={listed} teams={data.teams} plans={data.plans} layout={data.layout} groupBy={groupBy} onGroupBy={setGroupBy} closedLanes={closedLanes} onToggleLane={toggleLane} />
+                    <BoardView agents={listed} plans={data.plans} layout={data.layout} groupBy={groupBy} onGroupBy={setGroupBy} closedLanes={closedLanes} onToggleLane={toggleLane} />
                   )}
                 </>
               )}
@@ -287,10 +285,9 @@ function Crumbs({ selection, count, data, onSelect }: { readonly selection: Sele
   const folderId = selection.startsWith('folder:') ? selection.slice('folder:'.length) : null;
   const folder = folderId ? findFolder(data.tree, folderId) : null;
   const path = folderId ? pathOf(data.tree, folderId) : [];
-  const crew = selection.startsWith('crew:') ? data.tree.crews.find((c) => `crew:${c.id}` === selection) : null;
   const planId = folder?.plan ? (agentsOf(selection, data.tree, data.agents).find((agent) => agent.plan)?.plan?.id ?? null) : null;
   const { navigate } = useV2Router();
-  const label = selection === 'all' ? AGENTS_WORDS.allAgents : selection === 'needs' ? AGENTS_WORDS.needsYou : selection === 'pinned' ? AGENTS_WORDS.pinned : selection === 'loose' ? AGENTS_WORDS.notInFolder : crew ? `Crew · ${crew.name}` : null;
+  const label = selection === 'all' ? AGENTS_WORDS.allAgents : selection === 'needs' ? AGENTS_WORDS.needsYou : selection === 'pinned' ? AGENTS_WORDS.pinned : selection === 'loose' ? AGENTS_WORDS.notInFolder : null;
   return (
     <div className="v2-crumbs" data-testid="v2-crumbs">
       {label ? (
@@ -313,11 +310,6 @@ function Crumbs({ selection, count, data, onSelect }: { readonly selection: Sele
       {planId ? (
         <Button size="sm" icon="projects" onClick={() => navigate(`/projects/${encodeURIComponent(planId)}`)}>
           {AGENTS_WORDS.openProject}
-        </Button>
-      ) : null}
-      {crew ? (
-        <Button size="sm" icon="crew" onClick={() => navigate(`/crews/${encodeURIComponent(crew.id)}`)}>
-          {AGENTS_WORDS.openCrew}
         </Button>
       ) : null}
       <span className="v2-drag-hint">

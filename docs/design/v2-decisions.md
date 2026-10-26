@@ -309,3 +309,11 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** visible classic words were renamed where they slipped through: "Terminal session" → "Terminal", "Its plan agent" → "Project agent", "on this machine" → "on this computer". Inline text links inside a paragraph are exempt from the 44 px rule. (X)
 - **ASSUMED** the rail highlights Settings on Insights, as the prototype does, and the palette gets the prototype's "Replay tour: what's new in Switchboard 2". (X)
 - **ASSUMED** `tools/screenshots/readme.ts` (the classic README shots) is left as it is: it still toggles the removed `experimental.*` settings and needs its own rework, outside v2. Gap. (X)
+
+## Fixes after 2.0 (2026-10-26)
+
+### Teammates only in Crews
+- **ASSUMED** an agent turned into a teammate (D100) belongs to the Crews pages only, as the classic sidebar already hides member sessions from SESSIONS. The Agents page leaves teammates out of List, Chats, Board, the folder tree (its Crews section is gone, and a pinned or filed teammate is left out of Pinned and the folder counts), Drafts, Closed, and every count and Needs-you badge of the page and the tree. "Teammate" = a session in any crew's roster (`GET /api/team/teams`, `sessionRef`), read once per page from a shared live store (`shared/teammates.ts`, read again on `teamChanged` and when the hub reconnects). (fix, 2026-10-26)
+- **ASSUMED** the Board's "Group rows by" loses **Crew** (only teammates would fill its lanes); Project | Folder stay. A browser that remembered Crew falls back to Project. The tree's move-to-crew drop target and the row menu's Move to crew… go with it; crews are changed from the Crews pages. (fix, 2026-10-26)
+- **ASSUMED** the rail's Agents badge never counts a teammate's item: an item tagged with its crew already counted for Crews, and an untagged item whose agent is a teammate now counts for Crews too (`railCounts(items, teammates)`). (fix, 2026-10-26)
+- **ASSUMED** a teammate's own chat (`/agents/:id`) still opens from Crews, Needs you, Search or a deep link; "Return to agents" takes it out of the roster, so it shows on the Agents page again as soon as `teamChanged` arrives. (fix, 2026-10-26)

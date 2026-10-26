@@ -8,6 +8,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
+import { useTeamMembers } from '../shared/teammates.ts';
 import { type RailCounts, type StatusPill, railCounts, statusPill } from './status-model.ts';
 
 export { type RailCounts, railCounts } from './status-model.ts';
@@ -59,5 +60,6 @@ export function usePins(): readonly SessionListItem[] {
 /** The rail's counts, live. */
 export function useRailCounts(): RailCounts {
   const { items } = useNeedsYou();
-  return useMemo(() => railCounts(items), [items]);
+  const members = useTeamMembers();
+  return useMemo(() => railCounts(items, new Set(members.keys())), [items, members]);
 }

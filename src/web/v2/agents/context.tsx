@@ -51,15 +51,13 @@ export function MiniStatus({ status }: { readonly status: V2Status }) {
   );
 }
 
-/** The kind tag of an agent that is not a plain one ("Conversation", "Teammate · Mobile", "Step · PROJ-100"). */
-export function kindLabel(agent: Pick<AgentEntry, 'kind' | 'crew' | 'plan'>): string | null {
+/** The kind tag of an agent that is not a plain one ("Conversation", "Step · PROJ-100"). */
+export function kindLabel(agent: Pick<AgentEntry, 'kind' | 'plan'>): string | null {
   switch (agent.kind) {
     case 'conv':
       return AGENTS_WORDS.kind.conv;
     case 'routine':
       return AGENTS_WORDS.kind.routine;
-    case 'mate':
-      return `${AGENTS_WORDS.kind.mate}${agent.crew ? ` · ${agent.crew.name}` : ''}`;
     case 'step':
       return `${AGENTS_WORDS.kind.step}${agent.plan ? ` · ${agent.plan.title.split(' ')[0] ?? ''}` : ''}`;
     default:

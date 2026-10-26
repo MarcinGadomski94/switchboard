@@ -3,7 +3,7 @@
 **Owner: lane A.** Lane F (Foundation) made this stub and wired it into the router (`../shell/Outlet.tsx`); the page's exports in `index.tsx` are what the router mounts, so keep their names and props.
 
 ## Scope
-List / Chats / Board (group by Project | Crew | Folder), the folder tree (pins, nested folders, drag, Move to folder `M`, create / rename / delete, plan subfolders, Crews sections, other computers' agents with offline states), Drafts, Closed, the Tasks board, Notes, Routines.
+List / Chats / Board (group by Project | Folder), the folder tree (pins, nested folders, drag, Move to folder `M`, create / rename / delete, plan subfolders, other computers' agents with offline states), Drafts, Closed, the Tasks board, Notes, Routines.
 
 ## Shared modules to use
 - `shell/shortcuts.ts` → `useShortcut('folder-tree', toggle)` (⌘\\ is the shell's key; you handle it)

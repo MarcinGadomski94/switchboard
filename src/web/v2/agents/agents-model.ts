@@ -8,13 +8,15 @@ import type { BoardColumn } from '../shared/board-model.ts';
 /**
  * D131 · lane A · the Agents page's model (pure; unit-tested in
  * `tests/web/v2-agents.test.ts`): every open agent (Switchboard sessions, chats,
- * teammates, routines' sessions, project steps, this computer's and the paired
- * ones') as one {@link AgentEntry}, the List / Chats sort and sections, and the
- * Board's columns and swimlanes (group by Project | Crew | Folder).
+ * routines' sessions, project steps, this computer's and the paired ones') as
+ * one {@link AgentEntry}, the List / Chats sort and sections, and the Board's
+ * columns and swimlanes (group by Project | Folder). Teammates (D100) are not
+ * agents here: the Crews pages own them (fix after 2.0), as the classic sidebar
+ * hides member sessions from SESSIONS.
  */
 
 /** What an agent is, beyond a plain Switchboard session. */
-export type AgentKind = 'agent' | 'conv' | 'routine' | 'mate' | 'step';
+export type AgentKind = 'agent' | 'conv' | 'routine' | 'step';
 
 /** The open "needs you" item of an agent, as much as the rows need. */
 export interface AgentAsk {
@@ -33,8 +35,6 @@ export interface AgentEntry {
   readonly status: V2Status;
   /** Its open items (first = the one the row shows). */
   readonly asks: readonly AgentAsk[];
-  /** The crew it is a teammate of. */
-  readonly crew: { readonly id: string; readonly name: string; readonly memberId: string } | null;
   /** The project it is a step of. */
   readonly plan: { readonly id: string; readonly title: string } | null;
   /** The paired computer it runs on (`null` = this one), with its live state. */
@@ -57,7 +57,8 @@ export interface NeedsLike {
 export interface AgentSources {
   readonly sessions: readonly SessionListItem[];
   readonly needs: readonly NeedsLike[];
-  readonly teams: readonly TeamSummary[];
+  /** The crews: their teammates' sessions are left out. */
+  readonly teams: readonly Pick<TeamSummary, 'roster'>[];
   readonly plans: readonly Plan[];
   /** Composer drafts by session id (text). */
   readonly drafts?: Readonly<Record<string, string>>;
@@ -95,12 +96,16 @@ function unreadOf(session: SessionListItem, seen: Readonly<Record<string, string
   return Date.parse(session.lastActivityAt) > Date.parse(since);
 }
 
-/** Every open agent as an {@link AgentEntry} (closed ones are left out), in the service's order. */
+/** The session ids of every crew's teammates (D100). */
+export function teammateIds(teams: readonly Pick<TeamSummary, 'roster'>[]): Set<string> {
+  const out = new Set<string>();
+  for (const team of teams) for (const member of team.roster ?? []) out.add(member.sessionRef);
+  return out;
+}
+
+/** Every open agent as an {@link AgentEntry} (closed ones and teammates are left out), in the service's order. */
 export function buildAgents(sources: AgentSources): AgentEntry[] {
-  const crewOf = new Map<string, { id: string; name: string; memberId: string }>();
-  for (const team of sources.teams) {
-    for (const member of team.roster ?? []) crewOf.set(member.sessionRef, { id: team.id, name: team.name, memberId: member.id });
-  }
+  const mates = teammateIds(sources.teams);
   const planOf = new Map<string, { id: string; title: string }>();
   for (const plan of sources.plans) {
     for (const item of plan.items) if (item.runSessionId) planOf.set(item.runSessionId, { id: plan.id, title: plan.title });
@@ -116,12 +121,11 @@ export function buildAgents(sources: AgentSources): AgentEntry[] {
   const drafts = sources.drafts ?? {};
   const seen = sources.seen ?? {};
   return sources.sessions
-    .filter((session) => !session.closedAt)
+    .filter((session) => !session.closedAt && !mates.has(session.id))
     .map((session): AgentEntry => {
-      const crew = crewOf.get(session.id) ?? null;
       const plan = planOf.get(session.id) ?? null;
       const asks = asksOf.get(session.id) ?? [];
-      const kind: AgentKind = crew ? 'mate' : plan ? 'step' : session.kind === 'chat' ? 'conv' : hasRoutine(session) ? 'routine' : 'agent';
+      const kind: AgentKind = plan ? 'step' : session.kind === 'chat' ? 'conv' : hasRoutine(session) ? 'routine' : 'agent';
       const machine = session.machine ?? null;
       const computer = machine ? { id: machine.id, name: machine.name, state: machine.state === 'online' ? ('online' as const) : machine.state === 'reconnecting' ? ('reconnecting' as const) : ('offline' as const) } : null;
       return {
@@ -131,7 +135,6 @@ export function buildAgents(sources: AgentSources): AgentEntry[] {
         kind,
         status: askStatusOf(asks) ?? sessionStatusToV2(session.status),
         asks,
-        crew,
         plan,
         computer,
         draft: drafts[session.id] ?? null,
@@ -176,48 +179,25 @@ export function sortAgents<T extends Pick<AgentEntry, 'status' | 'asks' | 'sessi
 /** A section of the List or Chats view. */
 export interface AgentSection {
   readonly id: string;
-  /** `needs` = the Needs-you group (Chats), `plain` = the agents and conversations, `crew` = a crew's teammates. */
-  readonly kind: 'needs' | 'plain' | 'crew';
-  readonly crew?: { readonly id: string; readonly name: string };
+  /** `needs` = the Needs-you group (Chats), `plain` = the agents and conversations. */
+  readonly kind: 'needs' | 'plain';
   readonly items: readonly AgentEntry[];
 }
 
-/** The List's sections: every agent that is not a teammate, then one section per crew ("Crew · <name>"), nothing hidden. */
-export function listSections(agents: readonly AgentEntry[], teams: readonly Pick<TeamSummary, 'id' | 'name'>[]): AgentSection[] {
+/** The List's sections: every agent, nothing hidden (teammates are the Crews pages'). */
+export function listSections(agents: readonly AgentEntry[]): AgentSection[] {
   const sorted = sortAgents(agents);
-  const out: AgentSection[] = [];
-  const plain = sorted.filter((agent) => agent.kind !== 'mate');
-  if (plain.length) out.push({ id: 'plain', kind: 'plain', items: plain });
-  out.push(...crewSections(sorted, teams));
-  return out;
+  return sorted.length ? [{ id: 'plain', kind: 'plain', items: sorted }] : [];
 }
 
-/** The Chats' sections: the ones that need you float to the top, then the rest, then the crews. */
-export function chatSections(agents: readonly AgentEntry[], teams: readonly Pick<TeamSummary, 'id' | 'name'>[]): AgentSection[] {
+/** The Chats' sections: the ones that need you float to the top, then the rest. */
+export function chatSections(agents: readonly AgentEntry[]): AgentSection[] {
   const sorted = sortAgents(agents);
-  const plain = sorted.filter((agent) => agent.kind !== 'mate');
-  const needs = plain.filter(needy);
-  const rest = plain.filter((agent) => !needy(agent));
+  const needs = sorted.filter(needy);
+  const rest = sorted.filter((agent) => !needy(agent));
   const out: AgentSection[] = [];
   if (needs.length) out.push({ id: 'needs', kind: 'needs', items: needs });
   if (rest.length) out.push({ id: 'plain', kind: 'plain', items: rest });
-  out.push(...crewSections(sorted, teams));
-  return out;
-}
-
-function crewSections(sorted: readonly AgentEntry[], teams: readonly Pick<TeamSummary, 'id' | 'name'>[]): AgentSection[] {
-  const out: AgentSection[] = [];
-  const known = new Set(teams.map((team) => team.id));
-  const crews = [...teams.map((team) => ({ id: team.id, name: team.name }))];
-  // A teammate of a crew the list does not name (a paired computer's) still shows.
-  for (const agent of sorted) if (agent.crew && !known.has(agent.crew.id)) {
-    known.add(agent.crew.id);
-    crews.push({ id: agent.crew.id, name: agent.crew.name });
-  }
-  for (const crew of crews) {
-    const items = sorted.filter((agent) => agent.kind === 'mate' && agent.crew?.id === crew.id);
-    if (items.length) out.push({ id: `crew:${crew.id}`, kind: 'crew', crew, items });
-  }
   return out;
 }
 
@@ -248,7 +228,7 @@ export function columnOf(status: V2Status): BoardColumn | null {
 }
 
 /** How the Board's rows (swimlanes) are grouped. */
-export const GROUP_BYS = ['project', 'crew', 'folder'] as const;
+export const GROUP_BYS = ['project', 'folder'] as const;
 /** A grouping. */
 export type GroupBy = (typeof GROUP_BYS)[number];
 
@@ -261,9 +241,8 @@ export function isGroupBy(value: unknown): value is GroupBy {
 export interface BoardLane {
   readonly id: string;
   readonly title: string;
-  readonly icon: 'projects' | 'crew' | 'folder' | 'agents' | 'pin';
+  readonly icon: 'projects' | 'folder' | 'agents' | 'pin';
   readonly plan?: { readonly id: string; readonly done: number; readonly total: number };
-  readonly crewId?: string;
   readonly items: readonly AgentEntry[];
 }
 
@@ -282,28 +261,20 @@ export function topFolderOf(layout: SidebarLayout, sessionId: string): string | 
 }
 
 /** The Board's swimlanes for `agents` (only the ones on the Board), grouped by `groupBy`; empty lanes are left out. */
-export function boardLanes(agents: readonly AgentEntry[], groupBy: GroupBy, context: { readonly teams: readonly Pick<TeamSummary, 'id' | 'name'>[]; readonly plans: readonly Plan[]; readonly layout: SidebarLayout }): BoardLane[] {
+export function boardLanes(agents: readonly AgentEntry[], groupBy: GroupBy, context: { readonly plans: readonly Plan[]; readonly layout: SidebarLayout }): BoardLane[] {
   const on = agents.filter((agent) => columnOf(agent.status) !== null);
   const lanes: BoardLane[] = [];
-  const crewLanes = (): void => {
-    for (const team of context.teams) lanes.push({ id: `crew:${team.id}`, title: `Crew · ${team.name}`, icon: 'crew', crewId: team.id, items: on.filter((agent) => agent.crew?.id === team.id) });
-  };
-  if (groupBy === 'crew') {
-    crewLanes();
-    lanes.push({ id: 'crew:none', title: 'Not in a crew', icon: 'agents', items: on.filter((agent) => agent.kind !== 'mate') });
-  } else if (groupBy === 'folder') {
+  if (groupBy === 'folder') {
     const top = new Map(on.map((agent) => [agent.id, topFolderOf(context.layout, agent.id)]));
     lanes.push({ id: 'fold:pinned', title: 'Pinned', icon: 'pin', items: on.filter((agent) => top.get(agent.id) === 'pinned') });
     for (const folder of context.layout.folders.filter((f) => !f.parentId)) lanes.push({ id: `fold:${folder.id}`, title: folder.name, icon: isPlanFolderName(folder.name) ? 'projects' : 'folder', items: on.filter((agent) => top.get(agent.id) === folder.id) });
-    crewLanes();
-    lanes.push({ id: 'fold:none', title: 'Not in a folder', icon: 'agents', items: on.filter((agent) => top.get(agent.id) === null && agent.kind !== 'mate') });
+    lanes.push({ id: 'fold:none', title: 'Not in a folder', icon: 'agents', items: on.filter((agent) => top.get(agent.id) === null) });
   } else {
     for (const plan of context.plans) {
       const done = plan.items.filter((item) => item.state === 'done').length;
       lanes.push({ id: `plan:${plan.id}`, title: plan.title, icon: 'projects', plan: { id: plan.id, done, total: plan.items.length }, items: on.filter((agent) => agent.plan?.id === plan.id) });
     }
-    lanes.push({ id: 'agents', title: 'Agents', icon: 'agents', items: on.filter((agent) => agent.kind !== 'step' && agent.kind !== 'mate') });
-    crewLanes();
+    lanes.push({ id: 'agents', title: 'Agents', icon: 'agents', items: on.filter((agent) => agent.kind !== 'step') });
   }
   return lanes.filter((lane) => lane.items.length > 0);
 }

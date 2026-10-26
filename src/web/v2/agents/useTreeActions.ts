@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import type { SidebarLayout, SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
 import { api } from '../../api/client.ts';
-import { teamApi } from '../../team/api.ts';
 import { useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
@@ -11,8 +10,7 @@ import { type AgentTree, type MoveTarget, checkMove, findFolder } from './tree-m
  * D131 · lane A · what the folder tree and the rows do to the shared sidebar
  * layout, through the same routes the classic sidebar uses (`/api/sidebar*`), each
  * with Undo: move an agent (drag, Move to folder… / M), pin / unpin, create /
- * rename / delete a folder, fold a folder. A teammate dropped on another crew
- * moves crews (`/api/team/members/{id}/team`).
+ * rename / delete a folder, fold a folder. (Teammates are the Crews pages'.)
  */
 
 /** Where a session sits, as a place input that puts it back exactly there. */
@@ -43,14 +41,6 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
         return false;
       }
       try {
-        if (check.via === 'crew' && target.kind === 'crew' && agent.crew) {
-          const from = agent.crew.id;
-          await teamApi.moveToTeam(agent.crew.memberId, target.crewId);
-          const crew = tree.crews.find((c) => c.id === target.crewId);
-          const memberId = agent.crew.memberId;
-          toast({ text: AGENTS_WORDS.movedToCrew(agent.name, crew?.name ?? ''), undo: () => teamApi.moveToTeam(memberId, from) });
-          return true;
-        }
         const back = restoreInput(layout, agent.id);
         const folder = target.kind === 'folder' ? findFolder(tree, target.folderId) : null;
         await place(target.kind === 'folder' ? { sessionId: agent.id, place: 'folder', folderId: target.folderId } : { sessionId: agent.id, place: 'loose' });

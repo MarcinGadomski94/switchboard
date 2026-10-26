@@ -138,13 +138,17 @@ export interface RailCounts {
   readonly crews: number;
 }
 
-/** The rail's counts from the merged items (pure). */
-export function railCounts(items: readonly NeedsItem[]): RailCounts {
+/**
+ * The rail's counts from the merged items (pure). A teammate's item counts for
+ * Crews, never Agents: `teammates` (their session ids) catches the ones the
+ * merge has not tagged with their crew (fix after 2.0).
+ */
+export function railCounts(items: readonly NeedsItem[], teammates: ReadonlySet<string> = new Set()): RailCounts {
   let agents = 0;
   let projects = 0;
   let crews = 0;
   for (const item of items) {
-    if (item.crew) crews += 1;
+    if (item.crew || (item.agent?.sessionId && teammates.has(item.agent.sessionId))) crews += 1;
     else if (item.route?.startsWith('/plans/') || item.kind === 'pick') projects += 1;
     else if (item.agent?.sessionId) agents += 1;
   }

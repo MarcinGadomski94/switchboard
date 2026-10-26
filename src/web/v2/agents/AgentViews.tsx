@@ -1,7 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useMemo, useState } from 'react';
 import type { Plan } from '../../../core/plans.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
-import type { TeamSummary } from '../../../core/team.ts';
 import { Button, Icon, Menu, Popover, Segmented, StatusBadge } from '../components/index.ts';
 import { AGENTS_WORDS, STATUS, computerProblem } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
@@ -10,14 +9,14 @@ import { AgentComputerTag, AgentRow, agentLine } from '../shared/agent-row.tsx';
 import { Board, BoardActivity, BoardButtons, BoardCard, BoardLane, BoardProgress, BoardQuote } from '../shared/Board.tsx';
 import { boardCounts, boardFlipKey } from '../shared/board-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
-import { type AgentEntry, type AgentSection, type BoardColumn, type BoardLane as BoardLaneModel, GROUP_BYS, type GroupBy, boardLanes, cellOf, chatSections, columnOf, engineLabel, listSections, needy, offBoard, offline } from './agents-model.ts';
+import { type AgentEntry, type BoardColumn, type BoardLane as BoardLaneModel, GROUP_BYS, type GroupBy, boardLanes, cellOf, chatSections, columnOf, engineLabel, listSections, needy, offBoard, offline } from './agents-model.ts';
 import { kindLabel, useAgentsPage } from './context.tsx';
 import { dragSource, isMoveKey } from './dnd.ts';
 
 /**
  * D131 · lane A · the Agents page's three views: List (`AgentRow` list rows),
  * Chats (messenger rows, Needs-you chats on top) and Board (Needs you · Working ·
- * Ready for approval · Done, swimlanes grouped by Project | Crew | Folder, cards
+ * Ready for approval · Done, swimlanes grouped by Project | Folder, cards
  * that move live, the quick-answer popover).
  */
 
@@ -81,38 +80,14 @@ function kindChip(agent: AgentEntry): ReactNode {
   ) : null;
 }
 
-function CrewHeader({ section, count }: { readonly section: AgentSection; readonly count: number }) {
-  const needs = section.items.filter(needy).length;
-  return (
-    <div className="v2-cgroup" style={{ color: 'var(--v2-text-2)' }} data-testid="v2-crew-group">
-      <Icon name="crew" size="s" />
-      {`Crew · ${section.crew?.name ?? ''} · ${count}`}
-      {needs ? (
-        <span className="v2-nb">
-          <Icon name="hand" size="s" />
-          {needs}
-        </span>
-      ) : null}
-      <span className="v2-grow" />
-      {section.crew ? (
-        <V2Link to={`/crews/${encodeURIComponent(section.crew.id)}`} className="v2-btn" data-variant="ghost" data-size="sm" style={{ textDecoration: 'none' }}>
-          {AGENTS_WORDS.openCrew}
-          <Icon name="chev" size="s" />
-        </V2Link>
-      ) : null}
-    </div>
-  );
-}
-
-/** List: `AgentRow` list rows (grip, avatar, name + kind, the activity or ask, computer, status, ⋯); teammates in "Crew · <name>" sections. */
-export function ListView({ agents, teams }: { readonly agents: readonly AgentEntry[]; readonly teams: readonly TeamSummary[] }) {
+/** List: `AgentRow` list rows (grip, avatar, name + kind, the activity or ask, computer, status, ⋯). Teammates are the Crews pages'. */
+export function ListView({ agents }: { readonly agents: readonly AgentEntry[] }) {
   const page = useAgentsPage();
-  const sections = useMemo(() => listSections(agents, teams), [agents, teams]);
+  const sections = useMemo(() => listSections(agents), [agents]);
   return (
     <div className="v2-card v2-ag-list" data-testid="v2-agents-list">
       {sections.map((section) => (
         <div key={section.id} data-section={section.kind}>
-          {section.kind === 'crew' ? <CrewHeader section={section} count={section.items.length} /> : null}
           {section.items.map((agent) => (
             <AgentRow
               key={agent.id}
@@ -138,10 +113,10 @@ export function ListView({ agents, teams }: { readonly agents: readonly AgentEnt
   );
 }
 
-/** Chats: messenger rows; the chats that need you float to the top; teammates in their crews. */
-export function ChatsView({ agents, teams }: { readonly agents: readonly AgentEntry[]; readonly teams: readonly TeamSummary[] }) {
+/** Chats: messenger rows; the chats that need you float to the top. */
+export function ChatsView({ agents }: { readonly agents: readonly AgentEntry[] }) {
   const page = useAgentsPage();
-  const sections = useMemo(() => chatSections(agents, teams), [agents, teams]);
+  const sections = useMemo(() => chatSections(agents), [agents]);
   return (
     <div className="v2-card v2-ag-list" data-testid="v2-agents-chats">
       {sections.map((section) => (
@@ -151,13 +126,11 @@ export function ChatsView({ agents, teams }: { readonly agents: readonly AgentEn
               <Icon name="hand" size="s" />
               {`${AGENTS_WORDS.needsYou} · ${section.items.length}`}
             </div>
-          ) : section.kind === 'plain' ? (
+          ) : (
             <div className="v2-cgroup">
               <Icon name="chats" size="s" />
               {`${AGENTS_WORDS.agentsAndConversations} · ${section.items.length}`}
             </div>
-          ) : (
-            <CrewHeader section={section} count={section.items.length} />
           )}
           {section.items.map((agent) => (
             <AgentRow
@@ -185,9 +158,9 @@ export function ChatsView({ agents, teams }: { readonly agents: readonly AgentEn
   );
 }
 
-/** Board: the shared board (`../shared/Board.tsx`) with swimlanes grouped by Project | Crew | Folder, live cards and a quick answer. */
-export function BoardView({ agents, teams, plans, layout, groupBy, onGroupBy, closedLanes, onToggleLane }: { readonly agents: readonly AgentEntry[]; readonly teams: readonly TeamSummary[]; readonly plans: readonly Plan[]; readonly layout: SidebarLayout; readonly groupBy: GroupBy; readonly onGroupBy: (value: GroupBy) => void; readonly closedLanes: ReadonlySet<string>; readonly onToggleLane: (id: string) => void }) {
-  const lanes = useMemo(() => boardLanes(agents, groupBy, { teams, plans, layout }), [agents, groupBy, teams, plans, layout]);
+/** Board: the shared board (`../shared/Board.tsx`) with swimlanes grouped by Project | Folder, live cards and a quick answer. */
+export function BoardView({ agents, plans, layout, groupBy, onGroupBy, closedLanes, onToggleLane }: { readonly agents: readonly AgentEntry[]; readonly plans: readonly Plan[]; readonly layout: SidebarLayout; readonly groupBy: GroupBy; readonly onGroupBy: (value: GroupBy) => void; readonly closedLanes: ReadonlySet<string>; readonly onToggleLane: (id: string) => void }) {
+  const lanes = useMemo(() => boardLanes(agents, groupBy, { plans, layout }), [agents, groupBy, plans, layout]);
   const off = useMemo(() => offBoard(agents), [agents]);
   const counts = useMemo(() => boardCounts(agents, (agent) => columnOf(agent.status)), [agents]);
   const flip = boardFlipKey(lanes.map((lane) => ({ id: lane.id, cards: lane.items.map((agent) => ({ id: agent.id, column: columnOf(agent.status) })) })));
@@ -253,12 +226,6 @@ function Lane({ lane, closed, onToggle }: { readonly lane: BoardLaneModel; reado
               {AGENTS_WORDS.openProject}
             </V2Link>
           ) : null}
-          {lane.crewId ? (
-            <V2Link to={`/crews/${encodeURIComponent(lane.crewId)}`} className="v2-btn" data-size="sm" style={{ textDecoration: 'none' }}>
-              <Icon name="crew" size="s" />
-              {AGENTS_WORDS.openCrew}
-            </V2Link>
-          ) : null}
         </>
       }
       cell={(column) => cellOf(lane, column).map((agent) => <AgentBoardCard key={agent.id} agent={agent} column={column} />)}
@@ -277,7 +244,7 @@ function AgentBoardCard({ agent, column }: { readonly agent: AgentEntry; readonl
   const off = offline(agent);
   const activity = page.activityOf(agent.id);
   const line = agentLine(agent.session, activity, {});
-  const kindWord = agent.kind === 'step' ? 'Step' : agent.kind === 'mate' ? `Teammate${agent.crew ? ` · ${agent.crew.name}` : ''}` : agent.kind === 'routine' ? 'Routine' : agent.kind === 'conv' ? 'Conversation' : 'Agent';
+  const kindWord = agent.kind === 'step' ? 'Step' : agent.kind === 'routine' ? 'Routine' : agent.kind === 'conv' ? 'Conversation' : 'Agent';
   return (
     <BoardCard
       column={column}

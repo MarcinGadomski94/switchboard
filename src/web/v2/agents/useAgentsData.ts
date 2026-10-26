@@ -8,9 +8,9 @@ import { api } from '../../api/client.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { onHubEvent, useHubEvent } from '../../api/useHub.ts';
 import { usePlans } from '../../plans/store.ts';
-import { teamApi } from '../../team/api.ts';
 import { untouchedTeams } from '../../team/sidebar-roster.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
+import { useCrewsList } from '../shared/teammates.ts';
 import { type AgentEntry, PREF_KEYS, buildAgents } from './agents-model.ts';
 import { type AgentTree, buildTree } from './tree-model.ts';
 
@@ -74,16 +74,11 @@ export function useLayoutState(): { readonly layout: SidebarLayout; readonly loa
   return { layout, loaded, apply: setLayout, reload };
 }
 
-/** The crews (teams) with their rosters, live. */
+/** The crews (teams) with their rosters, live (the shared store, `../shared/teammates.ts`). */
 export function useTeams(): readonly TeamSummary[] {
-  const [teams, setTeams] = useState<readonly TeamSummary[]>([]);
-  const reload = useCallback(() => {
-    // G4: the untouched first crew (default name, no teammate) is left out, as in the classic sidebar.
-    teamApi.teams().then((list) => setTeams(untouchedTeams(list) ? [] : list), () => undefined);
-  }, []);
-  useEffect(reload, [reload]);
-  useHubEvent('teamChanged', reload);
-  return teams;
+  const list = useCrewsList();
+  // G4: the untouched first crew (default name, no teammate) is left out, as in the classic sidebar.
+  return useMemo(() => (untouchedTeams(list) ? [] : list), [list]);
 }
 
 function composerText(drafts: readonly SessionDraft[]): string | null {
@@ -253,7 +248,7 @@ export function useAgentsData(): AgentsData {
   const drafts = useComposerDrafts(list);
   const { seen, baseline, markSeen } = useSeen();
   const agents = useMemo(() => buildAgents({ sessions: list, needs: items, teams, plans, drafts, seen, baseline }), [list, items, teams, plans, drafts, seen, baseline]);
-  const tree = useMemo(() => buildTree(layout, agents, teams), [layout, agents, teams]);
+  const tree = useMemo(() => buildTree(layout, agents), [layout, agents]);
   const loaded = sessions.data !== null && layoutLoaded;
   return { loaded, agents, tree, layout, applyLayout: apply, reloadLayout: reload, teams, plans, markSeen, sessions: list };
 }

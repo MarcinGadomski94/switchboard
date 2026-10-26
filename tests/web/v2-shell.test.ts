@@ -153,6 +153,8 @@ describe('D131 · the shell: status pill, rail counts, shortcuts', () => {
       fromInbox({ id: 'd', kind: 'system', sessionId: null, source: 'update', status: 'need', title: '', label: 'Update available', detail: '', createdAt: 'x', branches: [] }),
     ];
     expect(railCounts(items)).toEqual({ home: 4, agents: 1, projects: 1, crews: 1 });
+    // Fix after 2.0: a teammate's untagged item counts for Crews, not Agents.
+    expect(railCounts(items, new Set(['s1']))).toEqual({ home: 4, agents: 0, projects: 1, crews: 2 });
   });
 
   it('shortcuts: ⌘K, ⌘⇧F, ⌘., ⌘\\ and ? (not while typing)', () => {

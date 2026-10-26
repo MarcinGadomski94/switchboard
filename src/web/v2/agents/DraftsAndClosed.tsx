@@ -8,8 +8,8 @@ import { V2Link, useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
 import { AgentComputerTag } from '../shared/agent-row.tsx';
 import { timeAgo } from '../shared/time.ts';
-import { type AgentEntry, matchesQuery, nameOf } from './agents-model.ts';
-import type { NewDraft } from './useAgentsData.ts';
+import { type AgentEntry, matchesQuery, nameOf, teammateIds } from './agents-model.ts';
+import { type NewDraft, useTeams } from './useAgentsData.ts';
 
 /**
  * D131 · lane A · the Drafts card at the top of Agents (the composers' unsent
@@ -91,6 +91,9 @@ const CLOSED_SHOWN = 60;
 /** Closed (history): the closed agents, newest first, with search and Reopen. */
 export function ClosedView() {
   const all = useSessionListOf('all');
+  // Teammates are the Crews pages' (fix after 2.0), closed or not.
+  const teams = useTeams();
+  const mates = useMemo(() => teammateIds(teams), [teams]);
   const toast = useToast();
   const { navigate } = useV2Router();
   const [query, setQuery] = useState('');
@@ -98,12 +101,12 @@ export function ClosedView() {
   const closed = useMemo(
     () =>
       (all.data ?? [])
-        .filter((session) => session.closedAt)
+        .filter((session) => session.closedAt && !mates.has(session.id))
         .sort((a, b) => Date.parse(b.closedAt ?? '') - Date.parse(a.closedAt ?? ''))
         .filter((session) => !query.trim() || matchesQuery(`${nameOf(session)} ${session.folderPath ?? ''} ${session.machine?.name ?? ''}`, query)),
-    [all.data, query],
+    [all.data, query, mates],
   );
-  const total = (all.data ?? []).filter((session) => session.closedAt).length;
+  const total = (all.data ?? []).filter((session) => session.closedAt && !mates.has(session.id)).length;
   const reopen = async (id: string, name: string): Promise<void> => {
     setBusy(id);
     try {
