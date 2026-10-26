@@ -2003,6 +2003,22 @@ GET /api/insights?period=7d&model=claude-haiku-4-5
   "suggestions": [] }
 ```
 
+## Insights › Usage breakdown (D134, 2026-10-26, additive)
+
+"Where your usage went" (`docs/insights.md` → *Usage breakdown (D134)*, `docs/decisions.md` → D134). Types in `src/core/usage-breakdown.ts`. Migration 0050 (`insight_turns`, one row per turn).
+
+| Method | Path | Query | Answers |
+|---|---|---|---|
+| GET | /api/insights/usage | `period` (`5h` default · `week` · `today` · `7d`), `account` (a profile id; absent = all, each in its own window), `groupBy` (`session` default · `folder` · `model` · `account` · `kind`), `from` (`today` only: the browser's midnight, ISO, within 26 h), `group` (the log shows only this group key), `page` (0-based), `pageSize` (1–200, default 50), `machine` (`all` default · `local`), `peers` (`cached` default · `wait`), `format` (`json` default · `csv`: the whole log, `text/csv` attachment) | 200 `UsageAnswer`; 422 `invalid` with `errors` |
+| GET | /api/insights/usage/rows | `from`, `to` (ISO times, ≤ 8 days apart) | 200 `UsageRows` `{ turns: UsageTurnRow[], accounts: UsageAccountRow[] (windows, `identity`), sessionTitles, sessionKinds, accountNames }`: this machine's rows (the merged view's pull); 422 |
+
+- **`UsageAnswer`**: `{ query, generatedAt, spans: { accountId, name, start, end, pct, resetsAt, sinceReset }[], unknownWindows: string[], totals: { input, output, cacheWrite, cacheRead, unsplit, tokens, agentTokens, turns, sessions, cost, costPartial }, rows: UsageRow[] (≤ 100), more: { count, tokens } | null, chart: { buckets, bucketMs, start, end, series: { key, label, values, other }[] }, log: { rows: UsageLogRow[], page, pageSize, total }, shareOf: 'account' | 'all', estimate: { available, window, pct }, currency, examplePrices, accounts: { id, name, cli }[], machines, backfill }`.
+- **`UsageRow`**: `{ key, label, total, agents (both `{ input, output, cacheWrite, cacheRead, unsplit, tokens }`), agentModels: { model, tokens, cacheRead }[], share (0–1), estimate: { pct, window } | null, turns, models, cost | null, costPartial, sessionId | null, kind | null, machine: { id | null, name } | null, lastAt }`. `tokens` = input + output + cache writes + unsplit (cache reads apart); `estimate` only for one account in its own 5-hour / weekly window.
+- **`UsageLogRow`**: `{ id, at, sessionId, title, kind, models, total, agentTokens, accountId, accountName, machine, folder }`.
+- **Result events** (additive payload field, D134): `modelTotals: { [model]: { input, output, cacheWrite, cacheRead } }`, the CLI's cumulative `modelUsage` counts, when it reports them.
+- **Peers / devices:** both routes are on `PEER_API_ALLOW` and the device allow-list; a paired machine's request answers its own rows (never fans out).
+- **UI address:** v2 `/insights?view=usage&period=…&account=…&groupBy=…&group=…&page=…&computer=…`; classic `/insights?view=usage` scrolls to the section.
+
 ## CI and pull requests (D109, 2026-10-14, additive)
 
 The shared PR watcher follows the pull request of every live worktree whose PR is open (`docs/ci.md`, `docs/decisions.md` → D109): a red check sends the failing job's log tail to the session as a normal message (one per red head, at most `ci.maxAttempts` per PR; the same failure twice in a row stops it), then raises "CI keeps failing on PR #n …"; green and approved (or approval not required) raises "PR #n ready to merge" with **Merge PR**. Plans (D99) reads its items' PRs through the same watcher. Issues of a GitHub repository or of Jira become todo items (`docs/todos.md` → *Import issues (D109)*). Migration 0046 adds `pr_watch` and `todo_imports`.

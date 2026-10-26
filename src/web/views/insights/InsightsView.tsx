@@ -24,6 +24,7 @@ import {
   tokensText,
   trendGeometry,
 } from './insights-view.ts';
+import { UsageSection } from './UsageSection.tsx';
 import './insights.css';
 
 /**
@@ -123,6 +124,8 @@ export function InsightsView() {
         ) : null}
         {!answer && !state.error ? <p className="sb-ins-empty">Loading…</p> : null}
         {answer ? <Sections answer={answer} onOpen={(path) => navigate(path)} /> : null}
+        {/* D134: where each account's usage window went (the v2 Usage view's breakdown, as a section). */}
+        <UsageSection machine={filters.machine} scrollTo={new URLSearchParams(search).get('view') === 'usage'} />
       </div>
     </section>
   );

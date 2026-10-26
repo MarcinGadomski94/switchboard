@@ -78,7 +78,7 @@ describe('core tutorial rules', () => {
   });
 
   it("seeds a 1–3 step mini-tour for each of D76–D84, D88, D89, D90 and D91, unique ids, after the pre-tutorial version", () => {
-    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D80', 'D81', 'D82', 'D83', 'D84', 'D88', 'D89', 'D90', 'D91', 'D92', 'D93', 'D94', 'D97', 'D98', 'D99', 'D100', 'D101', 'D100', 'D103', 'D104', 'D105', 'D106', 'D107', 'D108', 'D109', 'D110', 'D99', 'D107', 'D100', 'D100', 'D111', 'D124', 'D125', 'D127', 'D128', 'D132', 'D131', 'D131']);
+    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D80', 'D81', 'D82', 'D83', 'D84', 'D88', 'D89', 'D90', 'D91', 'D92', 'D93', 'D94', 'D97', 'D98', 'D99', 'D100', 'D101', 'D100', 'D103', 'D104', 'D105', 'D106', 'D107', 'D108', 'D109', 'D110', 'D99', 'D107', 'D100', 'D100', 'D111', 'D124', 'D125', 'D127', 'D128', 'D132', 'D131', 'D131', 'D134']);
     expect(new Set(WHATS_NEW.map((f) => f.id)).size).toBe(WHATS_NEW.length);
     for (const feature of WHATS_NEW) {
       expect(feature.steps.length, feature.id).toBeGreaterThanOrEqual(1);

@@ -215,6 +215,12 @@ export interface ResultPayload {
   /** Additive (D78): the turn's `input + cache creation + output` tokens (`resultTurnTokens`); absent / `null` = not reported. */
   readonly tokens?: number | null;
   /**
+   * Additive (D134): the CLI's cumulative per-model token counts at this turn (Claude Code's
+   * `modelUsage`, `{model: {input, output, cacheWrite, cacheRead}}`; it includes subagents,
+   * workflow agents and background calls). Absent when the CLI reports none.
+   */
+  readonly modelTotals?: Readonly<Record<string, { readonly input: number; readonly output: number; readonly cacheWrite: number; readonly cacheRead: number }>>;
+  /**
    * Additive (D50): the developer stopped this turn (Stop / Esc): the CLI's
    * interrupted result (`error_during_execution`, `terminal_reason` `aborted_*`).
    * The event is the chat's small "Stopped" line, kind `text`, and not a failure.

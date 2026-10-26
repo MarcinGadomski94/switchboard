@@ -520,6 +520,8 @@ export class PlanService {
       },
       outcomes: () => this.insightOutcomes(),
       itemsOfTodos: (todoIds) => this.itemsOfTodos(todoIds),
+      // D134: the Usage breakdown's "plan step" kind.
+      runSessionIds: async () => (this.#enabled && this.#db !== null ? this.#repo().runSessionIds() : []),
     });
     await this.#open();
   }

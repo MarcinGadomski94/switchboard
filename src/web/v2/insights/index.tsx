@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { CLI_LABELS, type CliProviderId } from '../../../core/cli-providers.ts';
 import type { InsightsAnswer } from '../../../core/insights.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { forecastText } from '../../views/insights/insights-view.ts';
 import { machinesNotice, useInsights } from '../../views/insights/useInsights.ts';
-import { Button, Card, EmptyState, Icon, Segmented, Skeleton } from '../components/index.ts';
-import { INSIGHTS_WORDS, computerStateToV2 } from '../glossary.ts';
+import { Button, Card, EmptyState, Icon, Segmented, Skeleton, Tabs } from '../components/index.ts';
+import { INSIGHTS_WORDS, USAGE_WORDS, computerStateToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import {
   type Bar,
@@ -32,6 +32,8 @@ import {
   tokensShort,
   trendApiQuery,
 } from './insights-model.ts';
+import { UsageView } from './UsageView.tsx';
+import { isUsageView } from './usage-model.ts';
 import './insights.css';
 
 /** Refresh the numbers this often while the page is open (ms). */
@@ -54,6 +56,42 @@ function withCurrent(values: readonly string[], current: string | null): readonl
  */
 export function InsightsPage() {
   const { search, navigate } = useV2Router();
+  const usage = isUsageView(search);
+  const [self, setSelf] = useState('');
+  useEffect(() => {
+    void api.machines().then((view) => setSelf(view.self.name), () => undefined);
+  }, []);
+  // D134: Overview (D131) and Usage ("Where your usage went"); the view is in the address.
+  const tabs = (
+    <Tabs<'overview' | 'usage'>
+      label={USAGE_WORDS.tabsLabel}
+      testId="v2-insights-tabs"
+      value={usage ? 'usage' : 'overview'}
+      onChange={(id) => navigate(id === 'usage' ? '/insights?view=usage' : '/insights', { replace: true })}
+      tabs={[
+        { id: 'overview', label: USAGE_WORDS.tabOverview, icon: 'insights' },
+        { id: 'usage', label: USAGE_WORDS.tabUsage, icon: 'clock' },
+      ]}
+    />
+  );
+  if (usage) {
+    return (
+      <div className="v2-page v2-ins" data-wide="" data-testid="v2-page-insights" data-area="insights" data-view="usage">
+        <V2Link to="/settings/usage" className="v2-btn v2-ins-back" data-variant="ghost" data-size="sm" data-testid="v2-insights-back">
+          <Icon name="back" size="s" />
+          {INSIGHTS_WORDS.back}
+        </V2Link>
+        <h1>{INSIGHTS_WORDS.title}</h1>
+        {tabs}
+        <UsageView self={self} />
+      </div>
+    );
+  }
+  return <OverviewPage tabs={tabs} self={self} />;
+}
+
+function OverviewPage({ tabs, self }: { readonly tabs: ReactNode; readonly self: string }) {
+  const { search, navigate } = useV2Router();
   const filters = parseInsightsAddress(search);
   const now = new Date();
   const query = insightsApiQuery(filters, now);
@@ -62,12 +100,8 @@ export function InsightsPage() {
   const trendQuery = trendApiQuery(filters, now);
   const [trend, setTrend] = useState<{ readonly key: string; readonly answer: InsightsAnswer } | null>(null);
   const machines = useMachines();
-  const [self, setSelf] = useState('');
   const set = (next: Partial<InsightsFilters>): void => navigate(insightsAddress({ ...filters, ...next }), { replace: true });
 
-  useEffect(() => {
-    void api.machines().then((view) => setSelf(view.self.name), () => undefined);
-  }, []);
   // Live: the numbers follow while the page is open (and when the window comes back).
   useEffect(() => {
     const timer = window.setInterval(state.reload, REFRESH_MS);
@@ -129,6 +163,7 @@ export function InsightsPage() {
           <p className="v2-page-sub" data-testid="v2-insights-sub">
             {INSIGHTS_WORDS.ranges[filters.range]}, {where}. {INSIGHTS_WORDS.subCost}
           </p>
+          {tabs}
         </div>
         <Segmented<InsightsRange>
           label={INSIGHTS_WORDS.rangeLabel}

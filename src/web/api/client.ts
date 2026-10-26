@@ -2,6 +2,7 @@ import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../.
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
 import type { InsightsAnswer } from '../../core/insights.ts';
+import type { UsageAnswer } from '../../core/usage-breakdown.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun, TargetDirListing, TargetPlacement } from '../../core/takeover.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
@@ -432,6 +433,8 @@ export const api = {
 
   /** D108: the Insights page's answer (`query` = `period=…&folder=…`); `machine` = a paired machine's own Insights through its peer API. */
   insights: (queryString: string, machine: string | null = null) => request<InsightsAnswer>('GET', onMachine(machine, `/api/insights?${queryString}`)),
+  /** D134: Insights → Usage breakdown (`query` = `period=5h&account=…`); `machine` = a paired machine's own breakdown through its peer API. */
+  insightsUsage: (queryString: string, machine: string | null = null) => request<UsageAnswer>('GET', onMachine(machine, `/api/insights/usage?${queryString}`)),
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),
   /** D42, additive: the latest reported model list and the last model choice (the New-session form's Model row). D62: of a CLI. */

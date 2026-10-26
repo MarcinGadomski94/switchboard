@@ -49,6 +49,8 @@ import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
 import { InsightsBackfill } from './insights/backfill.ts';
 import { InsightsService } from './insights/service.ts';
+import { UsageTurnsBackfill } from './insights/turns-backfill.ts';
+import { UsageService } from './insights/usage.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
 import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
@@ -194,6 +196,8 @@ export interface AppOptions {
   readonly searchBackfill?: SearchBackfill;
   /** D108: the Insights rollup's startup backfill (`docs/insights.md`); like `searchBackfill`, a caller that passes one starts it. */
   readonly insightsBackfill?: InsightsBackfill;
+  /** D134: the Usage breakdown's per-turn backfill (`docs/insights.md` → *Usage breakdown*); a caller that passes one starts it. */
+  readonly usageTurnsBackfill?: UsageTurnsBackfill;
   /**
    * Plans (D99) hook: plans and their scheduler (`docs/plans.md`). Without one the app makes its
    * own (git from PATH, the configured gh), started when the app is ready and closed with it.
@@ -601,6 +605,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     insightsBackfill = own;
   }
   const insights = new InsightsService({ store: options.store, backfill: insightsBackfill, accounts, peers });
+  // D134: the Usage breakdown's per-turn rows: the last 8 days before 0050 are added in the background.
+  let turnsBackfill = options.usageTurnsBackfill;
+  if (!turnsBackfill) {
+    const own = new UsageTurnsBackfill(options.store);
+    app.addHook('onReady', async () => {
+      own.start();
+    });
+    app.addHook('onClose', async () => {
+      own.stop();
+    });
+    turnsBackfill = own;
+  }
+  const usage = new UsageService({ store: options.store, backfill: turnsBackfill, accounts, peers });
   // D109: the shared PR watcher (CI failures back to the session, Merge PR, the header chip; Plans reads its PRs through it).
   let ci = options.ci;
   if (!ci) {
@@ -611,7 +628,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ci = own;
   }
   systemItems.useCi(ci);
-  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, processes };
+  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

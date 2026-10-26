@@ -237,7 +237,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/processes\/\d+\/stop$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/processes\/\d+\/keep$/],
   // D108: that machine's Insights (its own data) and its rows of a period (the merged view's pull).
-  ['GET', /^\/api\/insights(?:\/rows)?$/],
+  // D134: its Usage breakdown and its per-turn rows (the merged breakdown's pull).
+  ['GET', /^\/api\/insights(?:\/rows|\/usage(?:\/rows)?)?$/],
   // Plans (D99) hook: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
   // D121: an item's Reopen too, like retry and Mark done.
   ['GET', /^\/api\/plans(?:\/[^/]+)?$/],

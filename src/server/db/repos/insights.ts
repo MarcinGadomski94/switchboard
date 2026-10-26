@@ -12,6 +12,7 @@ import {
   utcDay,
 } from '../../../core/insights.ts';
 import type { TodoPriority } from '../../../core/api.ts';
+import { type ModelTotals, type UsageTurnRow, agentTokensOfTurn, readModelTotals } from '../../../core/usage-breakdown.ts';
 import type { RepoContext } from '../context.ts';
 import { transaction } from '../database.ts';
 
@@ -39,6 +40,7 @@ export interface RollupEvent {
 
 /** A session's dimensions as the rollup stores them. */
 interface SessionDims {
+  readonly origin: string;
   readonly provider: string;
   readonly chosenModel: string | null;
   readonly profileId: string;
@@ -85,13 +87,17 @@ export class InsightsRepository {
   #onError: (error: unknown) => void = (error) => console.error('switchboard insights rollup:', error);
   /** `false` in a store built without migration 0045 (tests with an older schema). */
   readonly enabled: boolean;
+  /** D134: `false` in a store built without migration 0050 (`insight_turns`). */
+  readonly turnsEnabled: boolean;
   #upto: number | null = null;
+  #turnsUpto: number | null = null;
   /** Bumped on every rollup write (the service's cache key). */
   revision = 0;
 
   constructor(ctx: RepoContext) {
     this.#ctx = ctx;
     this.enabled = ctx.db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'insight_turns_daily'").get() !== undefined;
+    this.turnsEnabled = ctx.db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'insight_turns'").get() !== undefined;
   }
 
   /** Where a failed rollup write is reported (it never fails the event write). */
@@ -124,10 +130,17 @@ export class InsightsRepository {
     return this.#upto;
   }
 
+  /** D134: the newest event id 0050 saw: events up to it are the turns backfill's. */
+  get turnsUpto(): number {
+    this.#turnsUpto ??= Number(this.getState('turns.upto') ?? 0);
+    return this.#turnsUpto;
+  }
+
   #dims(sessionId: string): SessionDims | null {
-    const row = this.#statement("SELECT provider, model, COALESCE(profile_id, 'default-' || provider) AS profile_id, root, kind FROM sessions WHERE id = ?").get(sessionId);
+    const row = this.#statement("SELECT origin, provider, model, COALESCE(profile_id, 'default-' || provider) AS profile_id, root, kind FROM sessions WHERE id = ?").get(sessionId);
     if (!row) return null;
     return {
+      origin: String(row['origin'] ?? 'switchboard'),
       provider: String(row['provider'] ?? ''),
       chosenModel: typeof row['model'] === 'string' ? row['model'] : null,
       profileId: typeof row['profile_id'] === 'string' ? row['profile_id'] : '',
@@ -196,12 +209,179 @@ export class InsightsRepository {
    * {@link upto}; the earlier ones are the backfill's). Never throws.
    */
   recordEvent(event: RollupEvent): void {
-    if (!this.enabled || event.id <= this.upto) return;
+    const daily = this.enabled && event.id > this.upto;
+    // D134: a turn's own row (`insight_turns`), for events after 0050 (the earlier ones are the turns backfill's).
+    const turn = this.turnsEnabled && event.id > this.turnsUpto;
+    if (!daily && !turn) return;
     try {
-      this.#roll(event, (id) => this.#dims(id));
+      let dims: SessionDims | null | undefined;
+      const dimsOf = (id: string): SessionDims | null => (dims === undefined ? (dims = this.#dims(id)) : dims);
+      if (daily) this.#roll(event, dimsOf);
+      if (turn) this.#turn(event, dimsOf);
     } catch (error) {
       this.#onError(error);
     }
+  }
+
+  /**
+   * D134: adds a `result` event as a row of `insight_turns` (once: the event id is the key), with
+   * its subagents', workflow agents' and background calls' tokens (the growth of the CLI's
+   * cumulative `modelUsage` since the session's previous turn, minus the turn's own `usage`).
+   */
+  #turn(event: RollupEvent, dimsOf: (sessionId: string) => SessionDims | null): void {
+    const payload = event.payload;
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
+    const record = payload as Record<string, unknown>;
+    if (record['type'] !== 'result') return;
+    const parsed = rollupDelta(payload);
+    if (!parsed) return;
+    const dims = dimsOf(event.sessionId);
+    if (!dims) return;
+    const at = Date.parse(event.ts);
+    if (!Number.isFinite(at)) return;
+    const split = parsed.delta.split;
+    const totals = readModelTotals(record['modelTotals']);
+    let agents: Record<string, unknown> = {};
+    if (totals && dims.provider === 'claude') {
+      const previous = this.#statement('SELECT model_totals FROM insight_turns WHERE session_id = ? AND event_id < ? AND model_totals IS NOT NULL ORDER BY event_id DESC LIMIT 1').get(event.sessionId, event.id);
+      let baseline: ModelTotals | null = null;
+      try {
+        baseline = typeof previous?.['model_totals'] === 'string' ? readModelTotals(JSON.parse(previous['model_totals'])) : null;
+      } catch {
+        baseline = null;
+      }
+      // Without a baseline, the CLI started at zero only for the session's first turn ever (a Switchboard session).
+      const fresh = baseline === null && dims.origin === 'switchboard' && !this.#hasEarlierResult(event.sessionId, event.id);
+      agents = agentTokensOfTurn(totals, baseline, split, parsed.model ?? '', fresh);
+    }
+    this.#statement(
+      `INSERT OR IGNORE INTO insight_turns (event_id, ts, session_id, provider, model, profile_id, folder, kind, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, unsplit_tokens, agent_usage, model_totals, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      event.id,
+      new Date(at).toISOString(),
+      event.sessionId,
+      dims.provider,
+      modelKey(parsed.model, dims.chosenModel),
+      dims.profileId,
+      dims.folder,
+      dims.kind,
+      split?.input ?? 0,
+      split?.output ?? 0,
+      split?.cacheWrite ?? 0,
+      split?.cacheRead ?? 0,
+      split ? 0 : parsed.delta.tokens,
+      JSON.stringify(agents),
+      totals ? JSON.stringify(totals) : null,
+      parsed.delta.durationMs,
+    );
+    this.revision += 1;
+  }
+
+  /** The session has a `result` event before event `beforeId`. */
+  #hasEarlierResult(sessionId: string, beforeId: number): boolean {
+    return (
+      this.#statement("SELECT 1 AS ok FROM events WHERE session_id = ? AND id < ? AND kind IN ('ok', 'error', 'text') AND json_extract(payload, '$.type') = 'result' LIMIT 1").get(sessionId, beforeId) !== undefined
+    );
+  }
+
+  /**
+   * D134: the first event id written at or after `sinceIso` (a binary search over the ids, which
+   * grow with time; an imported older event in between only moves the start a little).
+   */
+  firstEventIdSince(sinceIso: string): number {
+    let lo = 1;
+    let hi = this.maxEventId();
+    if (hi === 0) return 0;
+    const tsAt = (id: number): { id: number; ts: string } | null => {
+      const row = this.#statement('SELECT id, ts FROM events WHERE id >= ? ORDER BY id LIMIT 1').get(id);
+      return row ? { id: Number(row['id']), ts: String(row['ts']) } : null;
+    };
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const at = tsAt(mid);
+      if (!at || at.ts >= sinceIso) hi = mid;
+      else lo = at.id + 1;
+    }
+    return tsAt(lo)?.id ?? hi;
+  }
+
+  /**
+   * D134 backfill step: adds the `result` events with `after < id <= upto` (at most `limit`
+   * candidates) to `insight_turns`, storing the progress (`turns.done`) in the same transaction.
+   */
+  backfillTurns(after: number, upto: number, limit: number): { readonly last: number; readonly read: number } {
+    const rows = this.#statement("SELECT id, session_id, ts, payload FROM events WHERE id > ? AND id <= ? AND kind IN ('ok', 'error', 'text') ORDER BY id LIMIT ?").all(after, upto, limit);
+    let last = after;
+    const dims = new Map<string, SessionDims | null>();
+    const dimsOf = (id: string): SessionDims | null => {
+      if (!dims.has(id)) dims.set(id, this.#dims(id));
+      return dims.get(id) ?? null;
+    };
+    transaction(this.#ctx.db, () => {
+      for (const row of rows) {
+        last = Number(row['id']);
+        const text = row['payload'];
+        if (typeof text !== 'string' || !text.includes('"result"')) continue;
+        let payload: unknown = null;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          continue;
+        }
+        this.#turn({ id: last, sessionId: String(row['session_id']), ts: String(row['ts']), payload }, dimsOf);
+      }
+      this.setState('turns.done', String(rows.length < limit || last >= upto ? upto : last));
+    });
+    return { last, read: rows.length };
+  }
+
+  /** D134: the turns that ended with `fromIso ≤ ts ≤ toIso` (indexed by time). */
+  usageTurns(fromIso: string, toIso: string): UsageTurnRow[] {
+    if (!this.turnsEnabled) return [];
+    return this.#statement('SELECT * FROM insight_turns WHERE ts >= ? AND ts <= ? ORDER BY ts, event_id')
+      .all(fromIso, toIso)
+      .map((row) => {
+        let agents: Record<string, TokenSplit> = {};
+        try {
+          const parsed: unknown = JSON.parse(String(row['agent_usage'] ?? '{}'));
+          agents = readModelTotals(parsed) ?? {};
+        } catch {
+          agents = {};
+        }
+        return {
+          eventId: Number(row['event_id']),
+          ts: String(row['ts']),
+          sessionId: String(row['session_id']),
+          provider: String(row['provider']),
+          model: String(row['model']),
+          profileId: String(row['profile_id']),
+          folder: String(row['folder']),
+          kind: row['kind'] === 'chat' ? 'chat' : 'session',
+          usage: {
+            input: Number(row['input_tokens']),
+            output: Number(row['output_tokens']),
+            cacheWrite: Number(row['cache_write_tokens']),
+            cacheRead: Number(row['cache_read_tokens']),
+            unsplit: Number(row['unsplit_tokens']),
+          },
+          agents,
+          durationMs: Number(row['duration_ms']),
+        } satisfies UsageTurnRow;
+      });
+  }
+
+  /** D134: of these sessions, those that are routines (a Switchboard loop that has not ended, or a schedule's run). */
+  routineSessions(ids: readonly string[]): Set<string> {
+    const out = new Set<string>();
+    if (ids.length === 0) return out;
+    const list = JSON.stringify(ids);
+    for (const row of this.#statement(
+      "SELECT id FROM sessions WHERE id IN (SELECT value FROM json_each(?)) AND (schedule_id IS NOT NULL OR EXISTS (SELECT 1 FROM session_loops l WHERE l.session_id = sessions.id AND l.state <> 'ended'))",
+    ).all(list)) {
+      out.add(String(row['id']));
+    }
+    return out;
   }
 
   /** The newest event id. */
