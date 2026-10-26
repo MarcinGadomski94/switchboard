@@ -448,8 +448,8 @@ describe('D136 · approve and remove the old note', () => {
     const second = await r.memory.propose(sessionId, { title: 'Acme release day', text: 'Never on Fridays.' });
     await r.memory.checks?.idle();
     expect(r.runs.map((run) => [run.purpose, run.model, run.cwd])).toEqual([
-      ['proposal', 'haiku', r.dataDir],
-      ['proposal', 'haiku', r.dataDir],
+      ['proposal', 'sonnet', r.dataDir],
+      ['proposal', 'sonnet', r.dataDir],
     ]);
     const listed = r.memory.entries({ scope: r.workspace, status: 'proposed' });
     expect(listed.find((e) => e.id === proposal.id)?.check).toMatchObject({ verdict: 'duplicate', targetId: old.id, targetTitle: 'Acme test ports', reason: 'Same ports.' });

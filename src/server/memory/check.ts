@@ -84,7 +84,7 @@ export const MEMORY_CHECK_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'G
 export const MEMORY_CHECK_DISALLOWED_TOOLS: readonly string[] = ['Bash', 'PowerShell', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'TodoWrite', 'ExitPlanMode', 'KillShell', 'Workflow'];
 
 /** The model of the proposal check (a short comparison) and of the periodic check. */
-export const MEMORY_CHECK_MODELS: Readonly<Record<MemoryCheckRun['purpose'], string>> = { proposal: 'haiku', periodic: 'sonnet' };
+export const MEMORY_CHECK_MODELS: Readonly<Record<MemoryCheckRun['purpose'], string>> = { proposal: 'sonnet', periodic: 'sonnet' };
 
 /** Time limits of a run (spawn to exit). */
 export const MEMORY_CHECK_TIMEOUT_MS: Readonly<Record<MemoryCheckRun['purpose'], number>> = { proposal: 120_000, periodic: 10 * 60_000 };

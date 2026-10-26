@@ -15,9 +15,10 @@ function profile(extra: Partial<AccountProfile> = {}): AccountProfile {
 }
 
 describe('D63 · Settings → Accounts (web)', () => {
-  it('the section is in the nav, after CLIs', () => {
+  it('the section is in the nav, after CLIs and Processes (D127)', () => {
     const keys = SETTINGS_SECTIONS.map((s) => s.key);
-    expect(keys.indexOf('accounts')).toBe(keys.indexOf('clis') + 1);
+    expect(keys.indexOf('processes')).toBe(keys.indexOf('clis') + 1);
+    expect(keys.indexOf('accounts')).toBe(keys.indexOf('processes') + 1);
   });
 
   it('sign-in line: the CLI\'s own status, never a guess; the Default is "your own login" until it says', () => {

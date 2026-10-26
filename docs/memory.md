@@ -118,7 +118,7 @@ The check uses Claude Code only (the folder's CLI is the CLI of its newest sessi
 - `--permission-mode dontAsk` (anything not allowed is refused, never asked);
 - (B) `--allowedTools Read,Grep,Glob,LS` (no shell at all); both `--disallowedTools` Bash, PowerShell, the editors, the web tools, agents and workflows (belt and braces), (A) also every reading tool (it only compares texts);
 - `--strict-mcp-config` (no MCP servers), `--no-session-persistence` (no transcript: nothing in History);
-- `--model haiku` for (A), `--model sonnet` for (B); time limits 2 and 10 minutes (then stopped).
+- `--model sonnet` for both (A) and (B) (the developer's choice; Haiku at first); time limits 2 and 10 minutes (then stopped).
 
 (A) runs in Switchboard's data folder (no project files needed), (B) in the folder. **The git history comes from Switchboard, not the agent:** before a periodic run Switchboard reads it itself with fixed, read-only git commands (argv, no shell, `GIT_OPTIONAL_LOCKS=0`: whether the folder is a working tree, the current branch, `git branch --list`, and `git log --since=<the last run, else 30 days> -n 200 --name-status`), truncated to 20,000 characters, and puts it in the prompt (`memoryGitContext`); the prompt tells the agent it has no shell. A folder that is not a git working tree gets no history (the notes are checked against the files only). Only the machine that owns the folder runs its checks; a paired machine's notes are checked there. **Demo mode never runs checks.**
 
