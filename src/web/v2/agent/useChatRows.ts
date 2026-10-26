@@ -29,7 +29,8 @@ export function useChatRows(data: AgentData): { readonly rows: readonly ChatRow[
   const items = useMemo(() => (ready && questions && agents ? chatItems(fullText.events, questions, mainAgentId, agents, { complete }) : []), [ready, fullText.events, questions, mainAgentId, agents, complete]);
   const outgoing = useSyncExternalStore(subscribeOutgoing, () => outgoingOf(sessionId));
   const match = useMemo(() => matchOutgoing(events, outgoing), [events, outgoing]);
-  const all = useMemo(() => (ready && match.waiting.length > 0 ? [...items, ...match.waiting.map(outgoingItem)] : items), [ready, items, match]);
+  // Fix after 2.0: shown at once, even before the chat has loaded (coming back to the agent while it loads).
+  const all = useMemo(() => (match.waiting.length > 0 ? [...items, ...match.waiting.map(outgoingItem)] : items), [items, match]);
   useEffect(() => {
     for (const key of settledOutgoing(outgoing, match.shown)) dropOutgoing(sessionId, key);
     const waiting = outgoing.filter((item) => item.state === 'sent' && item.sentAt !== null && !match.shown.has(item.key));

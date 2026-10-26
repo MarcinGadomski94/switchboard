@@ -6,6 +6,7 @@
  * is out of usage, D103: Edit / Remove) and the box's placeholder. Pure; the
  * rules mirror the classic composer's (`views/session/ChatTab.tsx`, `stop.ts`).
  */
+import type { QueuedReason } from '../../../core/event-payload.ts';
 import type { ChatRow } from './chat-model.ts';
 import { AGENT_WORDS } from '../glossary.ts';
 
@@ -76,21 +77,32 @@ export interface DockSplit {
 }
 
 /**
- * Moves the developer's messages that the agent has not taken up into the dock
- * (the prototype's queued and paused lines): a held one (`credits`) is paused; a
+ * The developer's messages that the agent has not taken up, for the dock's queued
+ * and paused lines (Send now, Edit, Remove): a held one (`credits`) is paused; a
  * queued one (`turn` / `resume`) or one still on its way while a turn runs is
- * queued. Everything else stays in the chat.
+ * queued. Fix after 2.0 (developer request 2026-10-26: "the bubble with the message
+ * that user sends should appear immediately"): every message also stays in the
+ * chat as its bubble, from the moment it is sent (D114), with its Queued / Paused
+ * note; the dock only lists them for the actions.
  */
 export function splitDock(rows: readonly ChatRow[], working: boolean): DockSplit {
   const chat: ChatRow[] = [];
   const queued: DockMessage[] = [];
   const paused: DockMessage[] = [];
   for (const row of rows) {
+    chat.push(row);
     if (row.kind === 'you' && row.queued === 'credits') paused.push(row);
     else if (row.kind === 'you' && (row.queued === 'turn' || row.queued === 'resume' || (row.id < 0 && working))) queued.push(row);
-    else chat.push(row);
   }
   return { chat, queued, paused };
+}
+
+/** The note under a bubble the agent has not taken up yet (`null`: none): Queued (a reply runs, or no process yet) or Paused (held for usage). */
+export function youWaitNote(row: { readonly id: number; readonly queued: QueuedReason | null; readonly heldNote?: string | null }, working: boolean): string | null {
+  if (row.queued === 'credits') return AGENT_WORDS.paused(resetTimeOf(row.heldNote));
+  if (row.queued === 'turn' || (row.id < 0 && working)) return `${AGENT_WORDS.queued} · ${AGENT_WORDS.queuedNote}`;
+  if (row.queued === 'resume') return `${AGENT_WORDS.queued} · ${AGENT_WORDS.queuedResume}`;
+  return null;
 }
 
 /** The reset time a held message's note names ("… back at 23:30" → `23:30`), `null` when none. */

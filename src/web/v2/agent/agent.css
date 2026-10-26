@@ -496,6 +496,16 @@
   overflow-wrap: anywhere;
 }
 
+/* Fix after 2.0: a message the agent has not taken up yet: Queued / Paused under its bubble. */
+.sb2 .v2-ag-you-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--v2-muted);
+}
+
 /* Fix after 2.0: a long message of yours folds after about 12 lines (Show more). */
 .sb2 .v2-ag-pill[data-folded='true'] {
   max-height: calc(15px * 1.45 * 12 + 12px);

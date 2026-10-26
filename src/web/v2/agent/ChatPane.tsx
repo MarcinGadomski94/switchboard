@@ -19,7 +19,8 @@ import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { useNeedsItemsOf, useNeedsYou } from '../shared/needs-you.ts';
 import { SentAttachments } from './Attachments.tsx';
 import type { ActivityMark, ChatRow, HelperRef, ResultRef } from './chat-model.ts';
-import { foldsYou } from './composer-model.ts';
+import { foldsYou, youWaitNote } from './composer-model.ts';
+import { turnBusy } from '../../views/session/needs-you.ts';
 import { type ReplyMenuItem, replyMenu } from './reply-menu.ts';
 import type { AgentData } from './useAgent.ts';
 import { openRevert } from './dialogs.tsx';
@@ -233,7 +234,7 @@ export function ChatRowsView({ rows, data, fullText, focusEventId, variant }: { 
 const Row = memo(function Row({ row, data, variant, fullText, focusEventId, needs, onSave, onOpenResult, helperHref, readOnly = false }: RowProps) {
   switch (row.kind) {
     case 'you':
-      return <YouPill row={row} sessionId={data.sessionId} fullText={fullText} />;
+      return <YouPill row={row} sessionId={data.sessionId} fullText={fullText} working={data.session !== null && turnBusy(data.session)} />;
     case 'reply':
       return <Reply row={row} data={data} variant={readOnly ? 'phone' : variant} fullText={fullText} onSave={onSave} />;
     case 'activity':
@@ -255,7 +256,9 @@ const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need
   }
 });
 
-function YouPill({ row, sessionId, fullText }: { readonly row: Extract<ChatRow, { kind: 'you' }>; readonly sessionId: string; readonly fullText: FullTextControl | undefined }) {
+function YouPill({ row, sessionId, fullText, working }: { readonly row: Extract<ChatRow, { kind: 'you' }>; readonly sessionId: string; readonly fullText: FullTextControl | undefined; readonly working: boolean }) {
+  // Fix after 2.0: a message the agent has not taken up shows in the chat at once, with what it waits for.
+  const wait = youWaitNote(row, working);
   // Fix after 2.0: a long message of yours folds after about 12 lines (Show more).
   const folds = foldsYou(row.text);
   const [open, setOpen] = useState(false);
@@ -287,6 +290,12 @@ function YouPill({ row, sessionId, fullText }: { readonly row: Extract<ChatRow, 
       ) : null}
       {row.cut ? <CutNote cut={row.cut} control={fullText} /> : null}
       <SentAttachments sessionId={sessionId} attachments={row.attachments} />
+      {wait ? (
+        <div className="v2-ag-you-wait" data-testid="v2-agent-you-queued" data-reason={row.queued ?? 'sending'}>
+          <Icon name={row.queued === 'credits' ? 'pause' : 'clock'} size="s" />
+          {wait}
+        </div>
+      ) : null}
       {row.notSent ? <NotSent sessionId={sessionId} eventId={row.id} /> : null}
     </div>
   );
