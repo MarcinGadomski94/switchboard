@@ -119,6 +119,13 @@ export type ChatRow =
       readonly revert: 'reverted' | 'undone' | null;
     }
   | { readonly kind: 'gap'; readonly key: string; readonly text: string }
+  /**
+   * Fix after 2.0 · a loop or schedule made, changed or removed (a `loop_*` tool,
+   * `CronCreate` / `CronDelete`, `ScheduleWakeup`): classic lists these step lines
+   * one by one, so they get their own compact row instead of folding into an
+   * activity row ("⟳ Set up a routine: Check the queue").
+   */
+  | { readonly kind: 'routine'; readonly key: string; readonly id: number; readonly text: string; readonly icon: 'routine' | 'clock'; readonly mark: StepMark; readonly time: string | null }
   /** Results (artifacts) the agent saved, as file attachments at the time they were saved. */
   | { readonly kind: 'results'; readonly key: string; readonly results: readonly ResultRef[] };
 
@@ -232,6 +239,44 @@ const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'apply
 const RUN_TOOLS = new Set(['Bash', 'BashOutput', 'shell', 'Shell', 'exec_command']);
 const SEARCH_TOOLS = new Set(['Grep', 'Glob', 'LS', 'ToolSearch']);
 const WEB_TOOLS = new Set(['WebFetch', 'WebSearch']);
+/** The words of a routine step (see {@link routineStep}). */
+export interface RoutineStepWords {
+  readonly text: string;
+  /** `routine` = a Switchboard loop; `clock` = the CLI's own schedule or wake-up. */
+  readonly icon: 'routine' | 'clock';
+}
+
+/**
+ * Fix after 2.0 · a step line that makes, changes or removes a loop or schedule,
+ * in words; `null` for any other step. The `switchboard` MCP tools match by their
+ * suffix (`mcp__switchboard__loop_create`, or the other engines' names); `loop_list`
+ * only reads, so it stays in its activity row.
+ */
+export function routineStep(label: string): RoutineStepWords | null {
+  const tool = stepTool(label);
+  const detail = stepDetail(label);
+  const with_ = (words: string): string => (detail ? `${words}: ${detail}` : words);
+  const owned = /(?:^|_)loop_(create|update|pause|resume|cancel)$/.exec(tool);
+  if (owned) {
+    switch (owned[1]) {
+      case 'create':
+        return { icon: 'routine', text: with_('Set up a routine') };
+      case 'update':
+        return { icon: 'routine', text: with_('Changed a routine') };
+      case 'pause':
+        return { icon: 'routine', text: 'Paused a routine' };
+      case 'resume':
+        return { icon: 'routine', text: 'Resumed a routine' };
+      default:
+        return { icon: 'routine', text: 'Cancelled a routine' };
+    }
+  }
+  if (tool === 'CronCreate') return { icon: 'clock', text: with_('Scheduled in the CLI') };
+  if (tool === 'CronDelete') return { icon: 'clock', text: 'Removed a CLI schedule' };
+  if (tool === 'ScheduleWakeup') return { icon: 'clock', text: with_('Scheduled a wake-up') };
+  return null;
+}
+
 /** Agent / Task calls start helpers (`core/derive/event-kind.ts` → `AGENT_TOOLS`). */
 export const HELPER_TOOLS: ReadonlySet<string> = new Set(['Agent', 'Task']);
 
@@ -388,6 +433,14 @@ export function chatRows(input: ChatRowsInput): ChatRow[] {
       helpers = [];
     };
     for (const step of item.steps) {
+      const routine = routineStep(step.label);
+      if (routine) {
+        flushRun();
+        flushHelpers();
+        const ts = input.times.get(step.id)?.ts;
+        out.push({ kind: 'routine', key: `rt:${step.id}`, id: step.id, text: routine.text, icon: routine.icon, mark: step.mark, time: ts ? clock(ts) : null });
+        continue;
+      }
       if (isHelperStep(step)) {
         flushRun();
         helpers.push(step);

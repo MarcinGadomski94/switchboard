@@ -2265,3 +2265,135 @@
     margin-block: calc((27px - var(--v2-touch)) / 2);
   }
 }
+
+/* Fix after 2.0 · the agent's routines: the status row's indicator, its popover / side panel list, the chat's routine rows (Routines.tsx). */
+.sb2 .v2-ag-rt-ind {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 34ch;
+}
+
+.sb2 .v2-ag-rt-ind-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-rts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb2 .v2-ag-rt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--v2-border);
+  font-size: var(--v2-fs-sm);
+  min-width: 0;
+}
+
+.sb2 .v2-ag-rt:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-ag-rt-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sb2 .v2-ag-rt-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-rt-kind {
+  flex: none;
+  font-size: 11px;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-ag-rt-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-rt-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+}
+
+.sb2 .v2-ag-rt-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sb2 .v2-ag-rt-last[data-tone='fail'],
+.sb2 .v2-ag-rt-state[data-state='stale'] {
+  color: var(--v2-red, var(--v2-amber));
+}
+
+.sb2 .v2-ag-rt-last[data-tone='need'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-ag-rt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sb2 .v2-ag-rt-why {
+  font-size: 12px;
+}
+
+.sb2 .v2-ag-rtrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: calc(var(--v2-ag-gap) * -0.4) 0 calc(var(--v2-ag-gap) * 0.7);
+  padding: 0 6px;
+  font-size: var(--v2-fs-s);
+  color: var(--v2-accent-text);
+  min-width: 0;
+}
+
+.sb2 .v2-ag-rtrow-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-rtrow-bad {
+  color: var(--v2-red, var(--v2-amber));
+}
+
+.sb2 .v2-ag-rtrow-time {
+  margin-left: auto;
+  flex: none;
+  color: var(--v2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-ag-rt-actions .v2-btn {
+    min-height: var(--v2-touch);
+  }
+}

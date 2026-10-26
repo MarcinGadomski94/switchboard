@@ -335,7 +335,7 @@ type LoopKind = LoopDraft['kind'];
  * or a scheduled run (its cron and prompt, the rest of its settings kept).
  * Lane R's + New sheet only creates, so editing lives here.
  */
-function EditRoutineDialog({ routine, onClose, onSaved }: { readonly routine: RoutineModel; readonly onClose: () => void; readonly onSaved: () => void }) {
+export function EditRoutineDialog({ routine, onClose, onSaved }: { readonly routine: RoutineModel; readonly onClose: () => void; readonly onSaved: () => void }) {
   const toast = useToast();
   const [loopDraft, setLoopDraft] = useState<LoopDraft | null>(() => (routine.loop ? draftFromLoop(routine.loop) : null));
   const [schedDraft, setSchedDraft] = useState<ScheduleDraft | null>(() => (routine.schedule ? scheduleDraft(routine.schedule) : null));
