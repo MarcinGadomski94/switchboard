@@ -173,6 +173,29 @@ export function noteToken(text: string): { text: string } | { error: string } | 
   }
 }
 
+/**
+ * Fix after 2.0 (v2 answer options) `[fake:questions <json array>]` in a stdin user
+ * message: the turn's AskUserQuestion call (and its `can_use_tool` request) asks
+ * these questions in place of the recorded ones (the CLI's input shape: `question`,
+ * `header`, `multiSelect`, `options: [{label, description}]`). Use it with an ask
+ * scenario, e.g. `[fake:ask-2q] [fake:questions [{…}, {…}]]`, as the message's last
+ * token (the array ends at the last `]]`). Orthogonal: no scenario or turn change.
+ * @returns the questions, `{ error }` for a malformed token, `null` without a token.
+ */
+export function questionsToken(text: string): { questions: JsonObject[] } | { error: string } | null {
+  const at = text.indexOf('[fake:questions');
+  if (at < 0) return null;
+  const match = /^\[fake:questions\s+(\[[\s\S]*\])\]/.exec(text.slice(at));
+  if (!match) return { error: 'expected [fake:questions <json array>]' };
+  try {
+    const value: unknown = JSON.parse(match[1] ?? '');
+    if (!Array.isArray(value) || value.length === 0 || !value.every((q) => isObject(q))) return { error: 'the argument is not a non-empty JSON array of objects' };
+    return { questions: value as JsonObject[] };
+  } catch (error) {
+    return { error: `the argument is not JSON (${error instanceof Error ? error.message : String(error)})` };
+  }
+}
+
 /** Longest reply `[fake:say-long]` writes (characters). */
 export const SAY_LONG_MAX = 2_000_000;
 

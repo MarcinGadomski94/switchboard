@@ -39,6 +39,7 @@ import {
   echoEnvToken,
   leaveProcessToken,
   noteToken,
+  questionsToken,
   scenarioToken,
   toolResultText,
   toolToken,
@@ -62,6 +63,17 @@ import { FakeWorkflow, type WorkflowGrid } from './workflow.ts';
 import { FakeMcp } from './mcp.ts';
 
 /** D96: a main-agent assistant line whose only block is an empty `thinking` block. */
+/** Fix after 2.0 `[fake:questions]`: an AskUserQuestion `tool_use` block's or `can_use_tool` request's input asks `questions`. */
+function patchQuestions(line: JsonObject, questions: readonly JsonObject[]): void {
+  const request = asObject(line['request']);
+  if (request && request['subtype'] === 'can_use_tool' && request['tool_name'] === 'AskUserQuestion') {
+    request['input'] = { ...(asObject(request['input']) ?? {}), questions: clone(questions as JsonObject[]) };
+  }
+  for (const block of asArray(asObject(line['message'])?.['content'])) {
+    if (isObject(block) && block['type'] === 'tool_use' && block['name'] === 'AskUserQuestion') block['input'] = { ...(asObject(block['input']) ?? {}), questions: clone(questions as JsonObject[]) };
+  }
+}
+
 function isEmptyThinkingLine(line: JsonObject): boolean {
   if (line['type'] !== 'assistant' || line['parent_tool_use_id'] !== null) return false;
   const content = asArray(asObject(line['message'])?.['content']);
@@ -167,6 +179,8 @@ interface TurnState {
   compact?: CompactSpec | null;
   /** D96 `[fake:note]`: the progress note written after the turn's first empty thinking line (once). */
   note?: string | null;
+  /** Fix after 2.0 `[fake:questions]`: the AskUserQuestion call's questions in place of the recorded ones. */
+  readonly questions?: readonly JsonObject[] | null;
   open: OpenRequest | null;
 }
 
@@ -1022,7 +1036,12 @@ export class Runner {
       await this.crash(`fake-claude: [fake:note]: ${note.error}`);
       return 'crash';
     }
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, usage, compact, note: note?.text ?? null, open: null };
+    const asked = msg.fired ? null : questionsToken(msg.text);
+    if (asked !== null && 'error' in asked) {
+      await this.crash(`fake-claude: [fake:questions]: ${asked.error}`);
+      return 'crash';
+    }
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, usage, compact, note: note?.text ?? null, questions: asked?.questions ?? null, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
@@ -1500,6 +1519,7 @@ export class Runner {
     if (turn.launch) this.patchLaunch(line, turn.launch);
     if (turn.say !== null) this.patchSay(line, turn.say);
     if (turn.usage) this.patchUsage(line, turn.usage);
+    if (turn.questions) patchQuestions(line, turn.questions);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
     this.writeJson(line);
