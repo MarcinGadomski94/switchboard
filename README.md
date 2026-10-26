@@ -1,19 +1,24 @@
 # Switchboard
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme)
+**Run many Claude Code, Codex and OpenCode agents at once. See what each one is doing and answer them from anywhere, even your phone.**
 
-<a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="48"></a>
+<img src="docs/screenshots/demo.gif" alt="Switchboard in 24 seconds: Home shows five things that need you and four agents working; one click answers a question card, which leaves the queue as the count drops to four; an agent's chat with its live activity; Agents as a board; a project's steps as a graph" width="100%">
 
-Switchboard is a local web app for running many **Claude Code**, **Codex CLI** and **OpenCode** agents at once. Watch every agent work live, answer all their questions from one place, and let Switchboard handle the repetitive parts: tasks, projects, routines, test fixes and account switching. It runs on `127.0.0.1` only, drives the unmodified CLIs with your own logins, sends no telemetry, and updates itself from GitHub releases.
+- **One queue for everything that needs you:** every question, approval and alert from every agent, answered in one click.
+- **Projects that run in order:** import a Jira epic and each step starts on its own when the steps before it are done.
+- **Usage limits handled:** several logins per AI engine, switched automatically when one runs out.
+- **Your other computers and your phone:** pair them over Tailscale or with a QR code, with push notifications.
+- **Local only:** runs on `127.0.0.1` with the unmodified CLIs and your own logins; no telemetry, no account.
 
-<img src="docs/screenshots/home.png" alt="Switchboard 2 Home in light mode: a greeting with five things that need you, four working and fifteen done today, the start box, and the first Needs-you card with three questions from the web, mobile and orchestrator agents">
+**[Get started](#install)** · macOS, Linux and Windows · MIT
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme) <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="28"></a>
 
 ## Switchboard 2
 
 Switchboard 2 opens in a new look, the **v2 theme**, with plain words instead of jargon (agents, tasks, projects, results; [the glossary](docs/v2.md#glossary-the-new-names)), in light or dark, on desktop, tablet and phone:
 
-- **Home:** what needs you, what is working now and what got done today, with a box to start an agent ([the whole page](docs/screenshots/home-full.png)).
-- **Needs you:** one queue for every question, approval and alert, from every agent, project step, teammate and computer; the same cards sit in each agent's chat.
+- **Home:** what needs you, what is working now and what got done today, with a box to start an agent ([the first screen](docs/screenshots/home.png), [the whole page](docs/screenshots/home-full.png)); the same answer cards sit in each agent's chat.
 - **Agents:** List, Chats or Board, sorted into folders you drag agents into.
 - **The agent view:** the chat with its answer cards, and a side panel (⌘.) with the agent's project, notes, working memory, helpers and settings.
 - **Projects:** multi-step work whose steps start on their own when the steps before them are done (Steps, Board, Graph, Timeline).
@@ -39,7 +44,7 @@ Switchboard 2 opens in a new look, the **v2 theme**, with plain words instead of
 
 - **Agents** on three AI engines in any folder or separate copy (git worktree), with helper chats, undo per turn and engine switching mid-way. [new agent](docs/new-session.md) · [chat](docs/chat.md) · [undo](docs/undo.md)
 - **Conversations** to plan with a read-only agent, then continue as an agent to code. [conversations](docs/chats.md)
-- **Needs you:** every question and permission request in one place; agents report with `turn_status`, so an agent waiting on you says so. [needs you](docs/inbox.md)
+- **Needs you:** agents report with `turn_status`, so an agent waiting on you says so. [needs you](docs/inbox.md)
 - **Tasks** kept by the agent, with estimates, a board, issue import and runs in their own copy. [tasks](docs/todos.md)
 - **Results** saved on purpose (Markdown, HTML, Mermaid, images, CSV, PDF), with versions and deletion. [results](docs/artifacts.md)
 - **Search** across every message, result and task on every computer. [search](docs/search.md)

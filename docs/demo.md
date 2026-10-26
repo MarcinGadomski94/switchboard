@@ -73,6 +73,18 @@ npm run screenshots
 - The browser is Playwright's bundled Chromium, headless. Desktop shots are 1440×900, phone shots 390×844 with touch, all at device scale 2 and light unless the name ends in `-dark`; `home-full.png` is Home's whole scrolling content. A welcome tour that shows is ended with Esc, and any console error fails the run.
 - To add or change a shot, edit `SHOTS` in the script; a shot whose file the README no longer links should be removed with it.
 
+## README demo animation (`npm run demo-video`)
+`tools/screenshots/demo-video.ts` records the animation at the top of the README (`docs/screenshots/demo.gif`) and the repo's social preview (`docs/social-preview.png`) from the same world as `npm run screenshots` (same build step and `--no-build`, test port, throwaway data folder, `studio-mac`, v2 layer and theme):
+```sh
+npm run demo-video
+```
+- The story, about 24 s at 1280×800 in light: Home with "5 things need you" and four agents working; one click on "Authorize Tier B" answers that card, which leaves the queue as the counts drop to 4; Working now → `qa-checkout`, its chat with the live activity opened; Agents → Board; Projects → PROJ-123 → Graph. To change it, edit `story()` in the script.
+- How: a headless bundled Chromium runs the story while a loop takes a screenshot at most every 80 ms, each stamped with its time; a pointer is drawn into the page (headless screenshots have none), with a ring on each click. Any console error fails the run.
+- Why a GIF: GitHub plays an animated GIF inline, looping, from a path in the repo. A video (MP4 / WebM) only gets a player when uploaded through the GitHub web editor, and does not autoplay or loop.
+- The GIF is built in Node with `gifenc` (a dev dependency with no dependencies of its own, so no ffmpeg is needed): one 255-color palette for the whole film, and every frame stores only the pixels that changed since the one before (the rest transparent), so the still parts cost almost nothing; frames that change nothing are merged. Chromium's PNGs are decoded by `tools/screenshots/png.ts`. The result is about 2 MB; keep it under 5 MB.
+- The social preview (1280×640) is the v2 brand mark, the README's one-liner and Home from the demo, composed in the same browser before the story runs. GitHub does not read it from the repo: upload it in the repo's Settings → General → Social preview.
+- `DEMO_FRAMES_DIR=<folder>` also writes every screenshot there (named by index and milliseconds), to check the story frame by frame.
+
 ## The v2 layer (D131, `config.demoV2`)
 The prototype-verbatim seed above leaves several v2 pages empty (no folders, projects, crews, notes, tasks or Insights) and demo mode does not run Team, Plans or Project memory. The v2 layer (`src/server/demo/v2.ts`) adds plausible Acme rows for them. It runs with `SWITCHBOARD_DEMO=1` **unless the service's default theme is `classic`** (`SWITCHBOARD_UI_THEME_DEFAULT=classic`, which every E2E server sets), so the classic visual oracle (`tests/e2e/visual/`) keeps the plain seed; `npm run screenshots` uses it (*README screenshots* above); `SWITCHBOARD_DEMO_V2=1` / `0` forces it on or off. With it, Team, Plans and Project memory run in demo mode.
 

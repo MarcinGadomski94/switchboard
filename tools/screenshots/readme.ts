@@ -118,7 +118,7 @@ async function nameMachine(dataDir: string): Promise<void> {
 }
 
 /** The demo instance in v2, with a neutral machine name. */
-async function startWorld(root: string): Promise<PeerNode> {
+export async function startWorld(root: string): Promise<PeerNode> {
   return startPeerNode(root, 'main', {
     env: { SWITCHBOARD_DEMO: '1', SWITCHBOARD_DEMO_V2: '1', SWITCHBOARD_UI_THEME_DEFAULT: 'v2' },
     prepare: ({ dataDir }) => nameMachine(dataDir),
@@ -138,7 +138,7 @@ async function newContext(browser: Browser, shot: Shot): Promise<BrowserContext>
 }
 
 /** Ends the welcome tour if it opened (test servers start with tours off, so it should not). */
-async function noTour(page: Page): Promise<void> {
+export async function noTour(page: Page): Promise<void> {
   const card = page.getByTestId('v2-tour-card');
   if (await card.isVisible()) {
     await page.keyboard.press('Escape');
