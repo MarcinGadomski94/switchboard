@@ -38,6 +38,10 @@ export interface RunArgs {
   mcpConfig: string[];
   /** `--teleport <id>` (D25): a local copy of a remote session (`teleport.ts`); `null` otherwise. */
   teleport: string | null;
+  /** D136: `--no-session-persistence` (print mode): no transcript and no live-process file are written. */
+  noSessionPersistence: boolean;
+  /** D136: `--strict-mcp-config` (accepted; only `--mcp-config` servers would run, and the fake runs none unless opted in). */
+  strictMcpConfig: boolean;
 }
 
 /** What one invocation of the fake does. */
@@ -83,6 +87,8 @@ function defaults(): RunArgs {
     appendSystemPrompt: null,
     mcpConfig: [],
     teleport: null,
+    noSessionPersistence: false,
+    strictMcpConfig: false,
   };
 }
 
@@ -236,6 +242,12 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
         break;
       case '--teleport':
         args.teleport = value();
+        break;
+      case '--no-session-persistence':
+        args.noSessionPersistence = true;
+        break;
+      case '--strict-mcp-config':
+        args.strictMcpConfig = true;
         break;
       default:
         if (flag.startsWith('-') && flag !== '-') throw new UsageError(`error: unknown option '${flag}'`);

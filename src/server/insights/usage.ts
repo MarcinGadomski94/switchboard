@@ -1,6 +1,7 @@
 import { CLI_SHORT_LABELS, type CliProviderId } from '../../core/cli-providers.ts';
 import type { InsightsMachines } from '../../core/insights.ts';
 import {
+  BACKGROUND_SESSION_PREFIX,
   USAGE_CSV_MAX,
   type UsageAccountRow,
   type UsageAnswer,
@@ -9,6 +10,7 @@ import {
   type UsageQuery,
   type UsageRows,
   buildUsage,
+  isBackgroundSession,
   mergeUsageRows,
   readUsageRows,
   usageLogCsv,
@@ -114,7 +116,16 @@ export class UsageService {
     const routines = insights.routineSessions(ids);
     const plans = new Set(await plansRunSessionIds(this.#store).catch(() => []));
     const mates = new Set(teamMemberList(this.#store).map((member) => member.sessionId));
+    const titles: Record<string, string> = Object.fromEntries(insights.sessionTitles(ids.filter((id) => !isBackgroundSession(id))));
+    const folderLabels = new Map((await this.#store.folders.list()).map((folder) => [folder.canonicalPath, folder.label ?? '']));
     for (const id of ids) {
+      // Project memory (D107) hook, D136: a folder's memory checks (no session): kind "Memory check", titled with the folder.
+      if (isBackgroundSession(id)) {
+        const folder = id.slice(BACKGROUND_SESSION_PREFIX.length);
+        kinds[id] = 'memory';
+        titles[id] = `Memory check · ${folderLabels.get(folder) || folder.split(/[\\/]/).filter(Boolean).at(-1) || folder}`;
+        continue;
+      }
       // The v2 order: a teammate, a plan step, a conversation, a routine; else a plain agent (left out).
       if (mates.has(id)) kinds[id] = 'crew';
       else if (plans.has(id)) kinds[id] = 'plan';
@@ -124,7 +135,7 @@ export class UsageService {
     return {
       turns,
       accounts,
-      sessionTitles: Object.fromEntries(insights.sessionTitles(ids)),
+      sessionTitles: titles,
       sessionKinds: kinds,
       accountNames: Object.fromEntries(profiles.map((record) => [record.id, accountLabel(record)])),
     };

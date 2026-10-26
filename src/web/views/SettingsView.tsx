@@ -21,6 +21,8 @@ import { CiSection } from './settings/CiSection.tsx';
 import { ProcessesSection } from './settings/ProcessesSection.tsx';
 // Plans (D99) hook: the Jira connection's section (D132: it left Settings → Experimental; docs/plans-removal.md).
 import { JiraSection } from './settings/JiraSection.tsx';
+// Project memory (D107) hook, D136: Settings → Project memory (the automatic checks; docs/memory-removal.md).
+import { MemoryCheckSection } from '../memory/CheckSettings.tsx';
 // D131: Settings → Appearance (the v2 / Classic switch).
 import { AppearanceSection } from './settings/AppearanceSection.tsx';
 import './settings.css';
@@ -65,6 +67,9 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
     // Plans (D99) hook (docs/plans-removal.md).
     case 'jira':
       return <JiraSection />;
+    // Project memory (D107) hook, D136: its automatic checks (docs/memory-removal.md).
+    case 'memory':
+      return <MemoryCheckSection />;
   }
 }
 

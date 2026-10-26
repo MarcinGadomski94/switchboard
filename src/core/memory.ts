@@ -10,6 +10,7 @@
  * server (`src/server/memory/`), the MCP helper (`src/hook/sb-memory-tools.ts`) and the page
  * (`src/web/memory/`).
  */
+import type { MemoryProposalCheck } from './memory-check.ts';
 import type { TodoToolDefinition } from './todos.ts';
 
 /** An entry's review state: only `approved` entries are ever injected or listed to agents. */
@@ -88,6 +89,11 @@ export interface MemoryEntry {
    * review's "old" side), `null` once it is gone.
    */
   readonly target?: MemoryEntry | null;
+  /**
+   * D136: `GET /api/memory/entries` only, on a proposed `add` entry: what the proposal check found
+   * (it duplicates or contradicts an approved note); absent / `null` when nothing was found.
+   */
+  readonly check?: MemoryProposalCheck | null;
 }
 
 /** D135 · a proposal's change kind (`add` when absent). */

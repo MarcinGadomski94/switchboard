@@ -305,6 +305,7 @@ describe('D107 follow-up · storage and moves', () => {
       [2, 'memory_scopes'],
       [3, 'memory_pending_copies'],
       [4, 'memory_changes'],
+      [5, 'memory_checks'],
     ]);
     const root = await realpath(await makeTempDir('memory-migrate'));
     try {

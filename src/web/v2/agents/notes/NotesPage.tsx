@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type MemoryCheckStatus, checkFindingText, memoryCheckLine, removedLine } from '../../../../core/memory-check.ts';
 import { type MemoryEntry, changeKindOf, isMemoryChange } from '../../../../core/memory.ts';
 import type { Machine } from '../../../../core/peers.ts';
 import { onHubStatus, useHubEvent } from '../../../api/useHub.ts';
@@ -12,7 +13,23 @@ import { NOTES_WORDS } from '../../glossary.ts';
 import { useV2Router } from '../../nav.tsx';
 import { agentName } from '../../shared/agent-line.ts';
 import { NoteChange } from '../../shared/NoteChange.tsx';
-import { ALL_NOTES, type NoteComputer, type NoteRow, type NoteSource, approvedText, canDraftNotes, draftToast, filterFromQuery, filterOptions, inFilter, noteQuote, noteRows } from './notes-model.ts';
+import {
+  ALL_NOTES,
+  type NoteComputer,
+  type NoteRow,
+  type NoteSource,
+  type RemovedRow,
+  approvedText,
+  canDraftNotes,
+  draftToast,
+  filterFolder,
+  filterFromQuery,
+  filterOptions,
+  inFilter,
+  noteQuote,
+  noteRows,
+  removedRows,
+} from './notes-model.ts';
 import './notes.css';
 
 /** Read again at most this often while paired computers are listed (their changes do not reach this hub). */
@@ -74,16 +91,17 @@ function useNotesData(): { readonly data: NotesData; readonly reload: () => void
           if (!cancelled) setData({ phase: 'unavailable' });
           return;
         }
-        const [scopes, entries] = await Promise.all([local.scopes(), local.entries('')]);
-        const sources: NoteSource[] = [{ computer: null, scopes, entries }];
+        // D136: the removed notes too (an older computer has none: 404 → empty).
+        const [scopes, entries, removed] = await Promise.all([local.scopes(), local.entries(''), local.removed('').catch(() => [])]);
+        const sources: NoteSource[] = [{ computer: null, scopes, entries, removed }];
         const offline: NoteComputer[] = [];
         const peers = machines.map(computerOf);
         const reachable = peers.filter((peer) => peer.state !== 'offline');
         const answers = await Promise.allSettled(
           reachable.map(async (peer): Promise<NoteSource> => {
             const api = memoryApi(peer.id);
-            const [peerScopes, peerEntries] = await Promise.all([api.scopes(), api.entries('')]);
-            return { computer: peer, scopes: peerScopes, entries: peerEntries };
+            const [peerScopes, peerEntries, peerRemoved] = await Promise.all([api.scopes(), api.entries(''), api.removed('').catch(() => [])]);
+            return { computer: peer, scopes: peerScopes, entries: peerEntries, removed: peerRemoved };
           }),
         );
         for (const peer of peers) {
@@ -135,6 +153,11 @@ export function NotesPage() {
   const proposed = shown.filter((row) => row.status === 'proposed');
   const approved = shown.filter((row) => row.status === 'approved');
   const rejected = shown.filter((row) => row.status === 'rejected');
+  // D136: the notes a memory check removed (Restore), and the chosen folder's check line.
+  const removed = useMemo(() => (data.phase === 'ready' ? removedRows(data.sources).filter((row) => !hidden.has(row.key)) : []), [data, hidden]).filter((row) => inFilter(row, filter));
+  const folder = filterFolder(filter);
+  const folderComputer = folder === null ? null : (rows.find((row) => row.folder === folder)?.computer ?? removed.find((row) => row.folder === folder)?.computer ?? null);
+  const check = useCheckStatus(folder, folderComputer?.id ?? null, data.phase === 'ready' ? data : null);
 
   const pick = (key: string): void => {
     setFilter(key);
@@ -168,6 +191,34 @@ export function NotesPage() {
   // D135: a proposed edit replaces the note, a proposed removal deletes it; rejecting either keeps it as it was.
   const approvedWords = (row: NoteRow): string => (changeKindOf(row.entry) === 'edit' ? NOTES_WORDS.editApprovedToast : changeKindOf(row.entry) === 'retract' ? NOTES_WORDS.removalApprovedToast : approvedText(row.scope));
   const approve = (row: NoteRow): void => void act(row, () => api(row).approve(row.entry.id), approvedWords(row));
+  // D136: approve a flagged proposal and move the note it duplicates or contradicts to the removed list.
+  const approveReplace = (row: NoteRow): void => void act(row, () => api(row).approve(row.entry.id, { removeConflicting: true }), NOTES_WORDS.replacedToast);
+  const restore = (row: RemovedRow): void => {
+    setBusy(row.key);
+    memoryApi(row.computer?.id ?? null)
+      .restore(row.removed.id)
+      .then(
+        () => {
+          toast({ text: NOTES_WORDS.restoredToast });
+          void reloadMemory();
+          reload();
+        },
+        (error: unknown) => toast({ text: `Not restored: ${refusalText(error)}`, tone: 'error' }),
+      )
+      .finally(() => setBusy(null));
+  };
+  const checkNow = (): void => {
+    if (folder === null) return;
+    memoryApi(folderComputer?.id ?? null)
+      .checkNow(folder)
+      .then(
+        () => {
+          toast({ text: NOTES_WORDS.checkStartedToast });
+          reload();
+        },
+        (error: unknown) => toast({ text: `Not checked: ${refusalText(error)}`, tone: 'error' }),
+      );
+  };
   const reject = (row: NoteRow): void => void act(row, () => api(row).reject(row.entry.id), isMemoryChange(row.entry) ? NOTES_WORDS.changeRejectedToast : NOTES_WORDS.rejectedToast);
   // Delete waits out the toast's Undo window, then deletes (the API cannot bring an entry back as it was).
   const remove = (row: NoteRow): void => {
@@ -247,6 +298,18 @@ export function NotesPage() {
         </div>
       ) : null}
 
+      {check && folder !== null ? (
+        <div className="v2-notes-check" data-testid="v2-notes-check" data-running={check.running ? 'true' : undefined}>
+          <Icon name="refresh" size="s" />
+          <span className="v2-grow" data-testid="v2-notes-check-line">
+            {memoryCheckLine(check, Date.now())}
+          </span>
+          <Button size="sm" variant="ghost" disabled={check.running || check.notes === 0} onClick={checkNow} data-testid="v2-notes-check-now">
+            {NOTES_WORDS.checkNow}
+          </Button>
+        </div>
+      ) : null}
+
       {data.phase === 'ready' && data.offline.length > 0 ? (
         <div className="v2-notes-offline" data-testid="v2-notes-offline">
           {data.offline.map((computer) => (
@@ -289,7 +352,7 @@ export function NotesPage() {
               </h2>
               <div className="v2-card v2-notes-list" data-testid="v2-notes-proposed">
                 {proposed.map((row) => (
-                  <NoteLine key={row.key} row={row} busy={busy === row.key} onApprove={approve} onReject={reject} onEdit={(r) => setEditing({ row: r, approve: true })} />
+                  <NoteLine key={row.key} row={row} busy={busy === row.key} onApprove={approve} onApproveReplace={approveReplace} onReject={reject} onEdit={(r) => setEditing({ row: r, approve: true })} />
                 ))}
               </div>
             </section>
@@ -302,6 +365,19 @@ export function NotesPage() {
               <div className="v2-card v2-notes-list" data-testid="v2-notes-approved">
                 {approved.map((row) => (
                   <NoteLine key={row.key} row={row} busy={busy === row.key} onEdit={(r) => setEditing({ row: r, approve: false })} onDelete={remove} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {removed.length > 0 ? (
+            <section className="v2-notes-section" aria-labelledby="v2-notes-removed-h">
+              <h2 id="v2-notes-removed-h" className="v2-notes-h">
+                {NOTES_WORDS.removedHeading} <span className="v2-notes-hn">{removed.length}</span>
+              </h2>
+              <p className="v2-muted v2-notes-removed-sub">{NOTES_WORDS.removedSub}</p>
+              <div className="v2-card v2-notes-list" data-testid="v2-notes-removed">
+                {removed.map((row) => (
+                  <RemovedLine key={row.key} row={row} busy={busy === row.key} onRestore={restore} />
                 ))}
               </div>
             </section>
@@ -344,8 +420,82 @@ function scopeIcon(kind: NoteRow['scope']['kind']): string {
   return kind === 'teammate' ? 'crew' : kind === 'codeProject' ? 'diagram' : 'folder';
 }
 
+/** D136 · a folder's check state, read again when the notes reload (`null`: no folder chosen, or a computer without checks). */
+function useCheckStatus(folder: string | null, machineId: string | null, data: unknown): MemoryCheckStatus | null {
+  const [status, setStatus] = useState<MemoryCheckStatus | null>(null);
+  useEffect(() => {
+    if (folder === null) {
+      setStatus(null);
+      return undefined;
+    }
+    let cancelled = false;
+    memoryApi(machineId)
+      .checkStatus(folder)
+      .then(
+        (next) => {
+          if (!cancelled) setStatus(next);
+        },
+        () => {
+          if (!cancelled) setStatus(null);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [folder, machineId, data]);
+  return status;
+}
+
+/** D136 · a note a memory check removed: struck through, the reason and when it goes for good; Restore. */
+function RemovedLine({ row, busy, onRestore }: { readonly row: RemovedRow; readonly busy: boolean; readonly onRestore: (row: RemovedRow) => void }) {
+  const entry = row.removed.entry;
+  return (
+    <div className="v2-notes-row" data-testid="v2-notes-removed-row" data-note-id={row.removed.id} data-scope={row.scope.key}>
+      <div className="v2-notes-ficon" aria-hidden="true">
+        <Icon name="trash" />
+      </div>
+      <div className="v2-grow v2-notes-body">
+        <div className="v2-notes-title v2-notes-struck" data-testid="v2-notes-title">
+          {entry.title}
+        </div>
+        {entry.text.trim() && entry.text.trim() !== entry.title.trim() ? <div className="v2-notes-quote v2-notes-struck">“{noteQuote(entry)}”</div> : null}
+        <div className="v2-notes-sub">
+          <Chip tone="outline" size="s" icon={scopeIcon(row.scope.kind)}>
+            <span data-testid="v2-notes-scope">{row.scope.label}</span>
+          </Chip>
+          {row.computer ? <ComputerTag name={row.computer.name} state={row.computer.state} short /> : null}
+        </div>
+        <div className="v2-notes-why" data-testid="v2-notes-removed-reason">
+          {removedLine(row.removed, Date.now())}
+        </div>
+      </div>
+      <div className="v2-notes-actions">
+        <Button size="sm" variant="primary" icon="undo" disabled={busy || row.blocked !== null} title={row.blocked ?? undefined} onClick={() => onRestore(row)} data-testid="v2-notes-restore">
+          {NOTES_WORDS.restore}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** One note (prototype `.lrow`): its title and text, status, scope tag, author, time, computer; its buttons. */
-function NoteLine({ row, busy, onApprove, onReject, onEdit, onDelete }: { readonly row: NoteRow; readonly busy: boolean; readonly onApprove?: (row: NoteRow) => void; readonly onReject?: (row: NoteRow) => void; readonly onEdit?: (row: NoteRow) => void; readonly onDelete?: (row: NoteRow) => void }) {
+function NoteLine({
+  row,
+  busy,
+  onApprove,
+  onApproveReplace,
+  onReject,
+  onEdit,
+  onDelete,
+}: {
+  readonly row: NoteRow;
+  readonly busy: boolean;
+  readonly onApprove?: (row: NoteRow) => void;
+  readonly onApproveReplace?: (row: NoteRow) => void;
+  readonly onReject?: (row: NoteRow) => void;
+  readonly onEdit?: (row: NoteRow) => void;
+  readonly onDelete?: (row: NoteRow) => void;
+}) {
   const entry: MemoryEntry = row.entry;
   // D135: a proposed edit or removal of an approved note.
   const change = changeKindOf(entry);
@@ -370,6 +520,15 @@ function NoteLine({ row, busy, onApprove, onReject, onEdit, onDelete }: { readon
             “{noteQuote(entry)}”
           </div>
         ) : null}
+        {change === 'add' && entry.check ? (
+          // D136: the proposal check found a duplicate or a conflict with an approved note.
+          <div className="v2-notes-finding" data-testid="v2-notes-finding" data-verdict={entry.check.verdict}>
+            <Icon name="alert" size="s" />
+            <span>
+              <b data-testid="v2-notes-finding-title">{checkFindingText(entry.check)}</b> <span data-testid="v2-notes-finding-reason">{entry.check.reason}</span>
+            </span>
+          </div>
+        ) : null}
         <div className="v2-notes-sub">
           <StatusBadge status={badge.status} label={badge.label} size="s" />
           {change !== 'add' ? (
@@ -392,6 +551,11 @@ function NoteLine({ row, busy, onApprove, onReject, onEdit, onDelete }: { readon
         {onApprove ? (
           <Button size="sm" variant="primary" icon={change === 'retract' ? 'trash' : 'check'} disabled={disabled || gone} title={why} onClick={() => onApprove(row)} data-testid="v2-notes-approve">
             {change === 'retract' ? NOTES_WORDS.approveRemoval : NOTES_WORDS.approve}
+          </Button>
+        ) : null}
+        {onApproveReplace && change === 'add' && entry.check ? (
+          <Button size="sm" icon="check" disabled={disabled} title={why} onClick={() => onApproveReplace(row)} data-testid="v2-notes-approve-replace">
+            {NOTES_WORDS.approveReplace}
           </Button>
         ) : null}
         {onEdit && change !== 'retract' && !(change === 'edit' && row.status !== 'proposed') ? (

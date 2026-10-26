@@ -69,7 +69,7 @@ export async function sendAnswer(item: NeedsItem, action: AnswerAction): Promise
     case 'note': {
       const notes = memoryApi(item.computer?.id ?? null);
       if (action.decision === 'reject') await notes.reject(item.id);
-      else await notes.approve(item.id, action.text !== undefined ? { text: action.text } : {});
+      else await notes.approve(item.id, { ...(action.text !== undefined ? { text: action.text } : {}), ...(action.removeOld ? { removeConflicting: true } : {}) });
       return;
     }
     case 'dismiss-local':

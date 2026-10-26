@@ -291,6 +291,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/memory\/(?:draft|draft-all|import)$/],
   ['PUT', /^\/api\/memory\/(?:entries\/[^/]+|settings)$/],
   ['DELETE', /^\/api\/memory\/entries\/[^/]+$/],
+  // D136: memory checks: the removed notes and Restore, a folder's check state, its switch, Check now, the settings (the checks run on the machine that owns the folder).
+  ['GET', /^\/api\/memory\/(?:removed|check|check\/settings)$/],
+  ['POST', /^\/api\/memory\/(?:removed\/[^/]+\/restore|check\/run)$/],
+  ['PUT', /^\/api\/memory\/check(?:\/settings)?$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

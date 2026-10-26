@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import type { MemoryCheckResult, MemoryProposalCheck, MemoryRemovedBy, MemoryRemovedEntry } from '../../core/memory-check.ts';
 import { type MemoryAuthorKind, type MemoryChangeKind, type MemoryEntry, type MemoryScopeKind, type MemoryStatus, readScopeKind } from '../../core/memory.ts';
 import { openDatabase } from '../db/database.ts';
 import { type Migration, makeMigration, migrate } from '../db/migrate.ts';
@@ -129,6 +130,52 @@ ALTER TABLE memory_entries ADD COLUMN target_text TEXT;
 CREATE INDEX memory_entries_target ON memory_entries (target_id, status);
 `,
   ),
+  makeMigration(
+    5,
+    'memory_checks',
+    `-- D136 (docs/memory.md -> Checking notes): Switchboard checks whether stored notes are still true,
+-- (A) when an agent proposes a new note and (B) by itself, weekly per folder, in a short-lived
+-- read-only headless run (never a session).
+-- memory_removed: approved notes a check removed (or the developer's "Approve and remove the old
+--   note"), recoverable: Restore puts the note back (same id); purged 30 days after removed_at.
+--   Never injected (they are no longer rows of memory_entries).
+--   id           the note's id;  scope  its folder.
+--   entry        the note as it was (JSON, the MemoryEntry shape).
+--   reason       why it was removed (the check's reason, or the replacing proposal's).
+--   removed_by   check (the periodic check) | approval (approving a proposal that replaces it).
+-- memory_proposal_checks: what check (A) found about a proposed note (only a duplicate or a
+--   conflict is kept): the approved note it is about (target_id, its title then) and why.
+-- memory_check_folders: the periodic check per folder.
+--   enabled       0 = the developer switched the check off for this folder.
+--   first_seen_at when the scheduler first saw the folder with approved notes (the first run's base).
+--   last_run_at   when the last run started; last_result its MemoryCheckResult (JSON).
+-- memory_meta keys check.enabled ('1' / '0') and check.days (the frequency) hold the settings.
+CREATE TABLE memory_removed (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  entry TEXT NOT NULL CHECK (json_valid(entry)),
+  reason TEXT NOT NULL,
+  removed_by TEXT NOT NULL CHECK (removed_by IN ('check', 'approval')),
+  removed_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX memory_removed_scope ON memory_removed (scope, removed_at);
+CREATE TABLE memory_proposal_checks (
+  proposal_id TEXT PRIMARY KEY,
+  verdict TEXT NOT NULL CHECK (verdict IN ('duplicate', 'conflict')),
+  target_id TEXT NOT NULL,
+  target_title TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  checked_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE memory_check_folders (
+  folder TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  first_seen_at TEXT NOT NULL,
+  last_run_at TEXT,
+  last_result TEXT CHECK (last_result IS NULL OR json_valid(last_result))
+) STRICT;
+`,
+  ),
 ];
 
 interface Row {
@@ -237,6 +284,61 @@ function toPending(row: PendingRow): MemoryPendingCopy {
   };
 }
 
+interface RemovedRow {
+  id: string;
+  scope: string;
+  entry: string;
+  reason: string;
+  removed_by: string;
+  removed_at: string;
+}
+
+function toRemoved(row: RemovedRow, keepDays: number): MemoryRemovedEntry | null {
+  let entry: MemoryEntry;
+  try {
+    entry = JSON.parse(row.entry) as MemoryEntry;
+  } catch {
+    return null;
+  }
+  const removedAt = Date.parse(row.removed_at);
+  return {
+    id: row.id,
+    scope: row.scope,
+    entry,
+    reason: row.reason,
+    removedBy: row.removed_by === 'approval' ? 'approval' : 'check',
+    removedAt: row.removed_at,
+    purgeAt: new Date((Number.isFinite(removedAt) ? removedAt : 0) + keepDays * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+/** D136: a folder's periodic-check record. */
+export interface MemoryCheckFolder {
+  readonly folder: string;
+  readonly enabled: boolean;
+  readonly firstSeenAt: string;
+  readonly lastRunAt: string | null;
+  readonly lastResult: MemoryCheckResult | null;
+}
+
+interface CheckFolderRow {
+  folder: string;
+  enabled: number;
+  first_seen_at: string;
+  last_run_at: string | null;
+  last_result: string | null;
+}
+
+function toCheckFolder(row: CheckFolderRow): MemoryCheckFolder {
+  let lastResult: MemoryCheckResult | null = null;
+  try {
+    lastResult = row.last_result ? (JSON.parse(row.last_result) as MemoryCheckResult) : null;
+  } catch {
+    lastResult = null;
+  }
+  return { folder: row.folder, enabled: Number(row.enabled) === 1, firstSeenAt: row.first_seen_at, lastRunAt: row.last_run_at, lastResult };
+}
+
 /** A row patch (only the fields given change). */
 export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt' | 'scopeKind' | 'scopeKey' | 'scopeLabel' | 'scope' | 'reason'>>;
 
@@ -278,7 +380,7 @@ export class MemoryDb {
     const db = await openDatabase(file);
     try {
       migrate(db, migrations);
-      for (const table of ['memory_entries', 'memory_meta', 'memory_draft_asks', 'memory_pending_copies']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      for (const table of ['memory_entries', 'memory_meta', 'memory_draft_asks', 'memory_pending_copies', 'memory_removed', 'memory_proposal_checks', 'memory_check_folders']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;
@@ -464,6 +566,93 @@ export class MemoryDb {
 
   deletePendingCopy(memberId: string): void {
     this.#db.prepare('DELETE FROM memory_pending_copies WHERE member_id = ?').run(memberId);
+  }
+
+  // ── D136 · checks ──────────────────────────────────────────────────────
+
+  /** D136: moves `entry` (an approved note, already deleted from memory_entries by the caller) to the removed list. */
+  putRemoved(entry: MemoryEntry, reason: string, by: MemoryRemovedBy, at: string): void {
+    this.#db
+      .prepare(
+        `INSERT INTO memory_removed (id, scope, entry, reason, removed_by, removed_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET scope = excluded.scope, entry = excluded.entry, reason = excluded.reason, removed_by = excluded.removed_by, removed_at = excluded.removed_at`,
+      )
+      .run(entry.id, entry.scope, JSON.stringify(entry), reason, by, at);
+  }
+
+  /** D136: the removed notes (of `scope`, else every folder), newest first; `purgeAt` = removed + `keepDays`. */
+  removed(scope: string | null, keepDays: number): MemoryRemovedEntry[] {
+    const rows = (scope === null ? this.#db.prepare('SELECT * FROM memory_removed ORDER BY removed_at DESC, id').all() : this.#db.prepare('SELECT * FROM memory_removed WHERE scope = ? ORDER BY removed_at DESC, id').all(scope)) as unknown as RemovedRow[];
+    const out: MemoryRemovedEntry[] = [];
+    for (const row of rows) {
+      const removed = toRemoved(row, keepDays);
+      if (removed) out.push(removed);
+    }
+    return out;
+  }
+
+  removedOne(id: string, keepDays: number): MemoryRemovedEntry | null {
+    const row = this.#db.prepare('SELECT * FROM memory_removed WHERE id = ?').get(id) as RemovedRow | undefined;
+    return row ? toRemoved(row, keepDays) : null;
+  }
+
+  deleteRemoved(id: string): boolean {
+    return Number(this.#db.prepare('DELETE FROM memory_removed WHERE id = ?').run(id).changes) > 0;
+  }
+
+  /** D136: deletes the removed notes removed before `beforeIso`; answers their folders. */
+  purgeRemoved(beforeIso: string): string[] {
+    const rows = this.#db.prepare('SELECT DISTINCT scope FROM memory_removed WHERE removed_at < ?').all(beforeIso) as unknown as Array<{ scope: string }>;
+    this.#db.prepare('DELETE FROM memory_removed WHERE removed_at < ?').run(beforeIso);
+    return rows.map((row) => row.scope);
+  }
+
+  /** D136: check (A)'s finding about proposal `proposalId`, `null` when none is kept. */
+  proposalCheck(proposalId: string): MemoryProposalCheck | null {
+    const row = this.#db.prepare('SELECT * FROM memory_proposal_checks WHERE proposal_id = ?').get(proposalId) as
+      | { verdict: string; target_id: string; target_title: string; reason: string; checked_at: string }
+      | undefined;
+    if (!row) return null;
+    return { verdict: row.verdict === 'duplicate' ? 'duplicate' : 'conflict', targetId: row.target_id, targetTitle: row.target_title, reason: row.reason, checkedAt: row.checked_at };
+  }
+
+  putProposalCheck(proposalId: string, check: MemoryProposalCheck): void {
+    this.#db
+      .prepare(
+        `INSERT INTO memory_proposal_checks (proposal_id, verdict, target_id, target_title, reason, checked_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (proposal_id) DO UPDATE SET verdict = excluded.verdict, target_id = excluded.target_id, target_title = excluded.target_title, reason = excluded.reason, checked_at = excluded.checked_at`,
+      )
+      .run(proposalId, check.verdict, check.targetId, check.targetTitle, check.reason, check.checkedAt);
+  }
+
+  deleteProposalCheck(proposalId: string): void {
+    this.#db.prepare('DELETE FROM memory_proposal_checks WHERE proposal_id = ?').run(proposalId);
+  }
+
+  /** D136: a folder's periodic-check record, `null` before the scheduler saw it. */
+  checkFolder(folder: string): MemoryCheckFolder | null {
+    const row = this.#db.prepare('SELECT * FROM memory_check_folders WHERE folder = ?').get(folder) as CheckFolderRow | undefined;
+    return row ? toCheckFolder(row) : null;
+  }
+
+  checkFolders(): MemoryCheckFolder[] {
+    return (this.#db.prepare('SELECT * FROM memory_check_folders ORDER BY folder').all() as unknown as CheckFolderRow[]).map(toCheckFolder);
+  }
+
+  /** D136: the folder's record, created (first seen `at`, enabled) when missing. */
+  ensureCheckFolder(folder: string, at: string): MemoryCheckFolder {
+    this.#db.prepare('INSERT INTO memory_check_folders (folder, first_seen_at) VALUES (?, ?) ON CONFLICT (folder) DO NOTHING').run(folder, at);
+    return this.checkFolder(folder) as MemoryCheckFolder;
+  }
+
+  setCheckFolderEnabled(folder: string, enabled: boolean, at: string): void {
+    this.ensureCheckFolder(folder, at);
+    this.#db.prepare('UPDATE memory_check_folders SET enabled = ? WHERE folder = ?').run(enabled ? 1 : 0, folder);
+  }
+
+  setCheckRun(folder: string, at: string, result: MemoryCheckResult | null): void {
+    this.ensureCheckFolder(folder, at);
+    this.#db.prepare('UPDATE memory_check_folders SET last_run_at = ?, last_result = ? WHERE folder = ?').run(at, result ? JSON.stringify(result) : null, folder);
   }
 
   meta(key: string): string | null {

@@ -1,3 +1,4 @@
+import type { MemoryCheckSettings, MemoryCheckStatus, MemoryRemovedEntry } from '../../core/memory-check.ts';
 import type { MemoryDraftAllAnswer, MemoryDraftAnswer, MemoryEntry, MemoryScope, MemoryScopeKind, MemoryScopeOption, MemorySessionCount, MemorySettings, MemoryState } from '../../core/memory.ts';
 import { ApiError, keepaliveNow } from '../api/client.ts';
 
@@ -52,6 +53,8 @@ export interface MemoryFields {
   readonly scopeKind?: MemoryScopeKind;
   /** The repository's key or the member id (`repo` / `member`). */
   readonly scopeKey?: string | null;
+  /** D136: approve and move the note the proposal check found (a duplicate or a conflict) to the removed list. */
+  readonly removeConflicting?: boolean;
 }
 
 /** The calls on one machine: `null` = this one, else a paired machine's id (through the proxy). */
@@ -71,6 +74,14 @@ export function memoryApi(machineId: string | null) {
     sessionCount: (sessionId: string) => call<MemorySessionCount>('GET', `${base}/sessions/${encodeURIComponent(sessionId)}`),
     draft: (target: { readonly sessionId: string } | { readonly memberId: string }) => call<MemoryDraftAnswer>('POST', `${base}/draft`, target),
     draftAll: (teamId?: string) => call<MemoryDraftAllAnswer>('POST', `${base}/draft-all`, teamId ? { teamId } : {}),
+    // D136: memory checks.
+    removed: (scope: string) => call<MemoryRemovedEntry[]>('GET', `${base}/removed${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
+    restore: (id: string) => call<MemoryEntry>('POST', `${base}/removed/${encodeURIComponent(id)}/restore`, {}),
+    checkStatus: (scope: string) => call<MemoryCheckStatus>('GET', `${base}/check?scope=${encodeURIComponent(scope)}`),
+    setCheckFolder: (scope: string, enabled: boolean) => call<MemoryCheckStatus>('PUT', `${base}/check`, { scope, enabled }),
+    checkNow: (scope: string) => call<MemoryCheckStatus>('POST', `${base}/check/run`, { scope }),
+    checkSettings: () => call<MemoryCheckSettings>('GET', `${base}/check/settings`),
+    setCheckSettings: (patch: Partial<MemoryCheckSettings>) => call<MemoryCheckSettings>('PUT', `${base}/check/settings`, patch),
     settings: () => call<MemorySettings>('GET', `${base}/settings`),
     setSettings: (cap: number) => call<MemorySettings>('PUT', `${base}/settings`, { cap }),
   };

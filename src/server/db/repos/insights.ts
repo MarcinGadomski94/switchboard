@@ -12,7 +12,7 @@ import {
   utcDay,
 } from '../../../core/insights.ts';
 import type { TodoPriority } from '../../../core/api.ts';
-import { type ModelTotals, type UsageTurnRow, agentTokensOfTurn, readModelTotals } from '../../../core/usage-breakdown.ts';
+import { type ModelTotals, type UsageTurnRow, agentTokensOfTurn, backgroundSessionId, readModelTotals } from '../../../core/usage-breakdown.ts';
 import type { RepoContext } from '../context.ts';
 import { transaction } from '../database.ts';
 
@@ -74,6 +74,21 @@ export function rollupDelta(payload: unknown): { readonly delta: Delta; readonly
   return null;
 }
 
+/** D136: one model's tokens of a background run (a memory check), as {@link InsightsRepository.recordBackgroundTurn} stores it. */
+export interface BackgroundTurn {
+  readonly ts: string;
+  readonly kind: 'memory-check';
+  readonly provider: string;
+  readonly model: string;
+  readonly profileId: string;
+  readonly folder: string;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheWrite: number;
+  readonly cacheRead: number;
+  readonly durationMs: number;
+}
+
 /**
  * D108 (`docs/insights.md`): the daily turn rollup (`insight_turns_daily`, 0045) and the
  * reads of the Insights page. Every event write goes through {@link recordEvent} (the events
@@ -89,6 +104,8 @@ export class InsightsRepository {
   readonly enabled: boolean;
   /** D134: `false` in a store built without migration 0050 (`insight_turns`). */
   readonly turnsEnabled: boolean;
+  /** D136: `false` in a store built without migration 0051 (`insight_background_turns`). */
+  readonly backgroundEnabled: boolean;
   #upto: number | null = null;
   #turnsUpto: number | null = null;
   /** Bumped on every rollup write (the service's cache key). */
@@ -98,6 +115,21 @@ export class InsightsRepository {
     this.#ctx = ctx;
     this.enabled = ctx.db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'insight_turns_daily'").get() !== undefined;
     this.turnsEnabled = ctx.db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'insight_turns'").get() !== undefined;
+    this.backgroundEnabled = ctx.db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'insight_background_turns'").get() !== undefined;
+  }
+
+  // Project memory (D107) hook, D136: the memory checks' tokens (docs/memory-removal.md).
+  /**
+   * D136: records the tokens of work Switchboard ran by itself without a session (a memory check),
+   * one row per model, so Insights → Usage counts them (kind "Memory check", the folder's).
+   */
+  recordBackgroundTurn(row: BackgroundTurn): void {
+    if (!this.backgroundEnabled) return;
+    this.#statement(
+      `INSERT INTO insight_background_turns (ts, kind, provider, model, profile_id, folder, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(row.ts, row.kind, row.provider, row.model, row.profileId, row.folder, row.input, row.output, row.cacheWrite, row.cacheRead, Math.max(0, Math.round(row.durationMs)));
+    this.revision += 1;
   }
 
   /** Where a failed rollup write is reported (it never fails the event write). */
@@ -336,9 +368,36 @@ export class InsightsRepository {
     return { last, read: rows.length };
   }
 
-  /** D134: the turns that ended with `fromIso ≤ ts ≤ toIso` (indexed by time). */
+  /** D134: the turns that ended with `fromIso ≤ ts ≤ toIso` (indexed by time); D136: then the background runs of the period. */
   usageTurns(fromIso: string, toIso: string): UsageTurnRow[] {
     if (!this.turnsEnabled) return [];
+    return [...this.#sessionTurns(fromIso, toIso), ...this.#backgroundTurns(fromIso, toIso)];
+  }
+
+  /** D136: the background runs (`insight_background_turns`) as turns: a negative event id, the folder's pseudo-session (`backgroundSessionId`). */
+  #backgroundTurns(fromIso: string, toIso: string): UsageTurnRow[] {
+    if (!this.backgroundEnabled) return [];
+    return this.#statement('SELECT * FROM insight_background_turns WHERE ts >= ? AND ts <= ? ORDER BY ts, id')
+      .all(fromIso, toIso)
+      .map(
+        (row) =>
+          ({
+            eventId: -Number(row['id']),
+            ts: String(row['ts']),
+            sessionId: backgroundSessionId(String(row['folder'])),
+            provider: String(row['provider']),
+            model: String(row['model']),
+            profileId: String(row['profile_id']),
+            folder: String(row['folder']),
+            kind: 'session',
+            usage: { input: Number(row['input_tokens']), output: Number(row['output_tokens']), cacheWrite: Number(row['cache_write_tokens']), cacheRead: Number(row['cache_read_tokens']), unsplit: 0 },
+            agents: {},
+            durationMs: Number(row['duration_ms']),
+          }) satisfies UsageTurnRow,
+      );
+  }
+
+  #sessionTurns(fromIso: string, toIso: string): UsageTurnRow[] {
     return this.#statement('SELECT * FROM insight_turns WHERE ts >= ? AND ts <= ? ORDER BY ts, event_id')
       .all(fromIso, toIso)
       .map((row) => {

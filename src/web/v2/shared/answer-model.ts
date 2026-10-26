@@ -30,7 +30,7 @@ export type AnswerAction =
   /** A crew request's decision (`POST /api/team/requests/{id}/{decision}`). */
   | { readonly type: 'team'; readonly decision: 'approve' | 'decline' | 'dismiss'; readonly charter?: TeamCharter }
   /** A proposed note (`POST /api/memory/entries/{id}/approve|reject`), optionally edited first. */
-  | { readonly type: 'note'; readonly decision: 'approve' | 'reject'; readonly text?: string }
+  | { readonly type: 'note'; readonly decision: 'approve' | 'reject'; readonly text?: string; readonly removeOld?: true }
   /** Hide an alert on this browser only (usage alerts have no server item). */
   | { readonly type: 'dismiss-local' };
 
@@ -147,6 +147,8 @@ export function cardButtons(item: NeedsItem): CardButton[] {
       if (item.memory) {
         return [
           { id: 'note-approve', label: ANSWER.approve, variant: 'primary', icon: 'check', intent: { type: 'answer', action: { type: 'note', decision: 'approve' } } },
+          // Project memory (D107) hook, D136: the proposal check found a duplicate or a conflict: approve it and move the old note to the removed list.
+          ...(item.memory.check ? [{ id: 'note-approve-replace', label: ANSWER.approveReplace, variant: 'default' as const, icon: 'check', intent: { type: 'answer' as const, action: { type: 'note' as const, decision: 'approve' as const, removeOld: true as const } } }] : []),
           { id: 'note-edit', label: ANSWER.editFirst, variant: 'default', icon: 'edit', intent: { type: 'input', mode: 'note-edit' } },
           { id: 'note-reject', label: ANSWER.reject, variant: 'ghost', intent: { type: 'answer', action: { type: 'note', decision: 'reject' } } },
         ];

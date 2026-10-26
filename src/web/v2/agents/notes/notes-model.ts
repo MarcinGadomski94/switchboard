@@ -5,6 +5,7 @@
  * "Teammate · …"), the scope filter, proposed first, and the draft answer's toast.
  * DOM-free; unit-tested in `tests/web/v2-notes.test.ts`.
  */
+import type { MemoryRemovedEntry } from '../../../../core/memory-check.ts';
 import type { MemoryDraftAnswer, MemoryEntry, MemoryScope, MemoryStatus } from '../../../../core/memory.ts';
 import { folderName, memoryOrder, scopeKindOf } from '../../../../core/memory.ts';
 // Project memory (D107) hook (docs/memory-removal.md): the imports above.
@@ -57,6 +58,35 @@ export interface NoteSource {
   readonly computer: NoteComputer | null;
   readonly entries: readonly MemoryEntry[];
   readonly scopes: readonly MemoryScope[];
+  /** D136: its notes removed by a memory check (`GET /api/memory/removed`; absent from an older computer). */
+  readonly removed?: readonly MemoryRemovedEntry[];
+}
+
+/** D136 · a removed note as the page shows it. */
+export interface RemovedRow {
+  /** `<computer id or "local">:removed:<id>`. */
+  readonly key: string;
+  readonly removed: MemoryRemovedEntry;
+  readonly scope: NoteScope;
+  readonly folder: string;
+  readonly computer: NoteComputer | null;
+  readonly blocked: string | null;
+}
+
+/** D136 · every computer's removed notes, newest first. */
+export function removedRows(sources: readonly NoteSource[]): RemovedRow[] {
+  const rows: RemovedRow[] = [];
+  for (const source of sources) {
+    for (const removed of source.removed ?? []) {
+      rows.push({ key: `${source.computer?.id ?? 'local'}:removed:${removed.id}`, removed, scope: noteScopeOf(removed.entry, source.scopes), folder: removed.scope, computer: source.computer, blocked: noteBlocked(source.computer) });
+    }
+  }
+  return rows.sort((a, b) => b.removed.removedAt.localeCompare(a.removed.removedAt));
+}
+
+/** D136 · the folder a filter names (`folder:<path>`), else `null`. */
+export function filterFolder(filter: string): string | null {
+  return filter.startsWith('folder:') ? filter.slice('folder:'.length) : null;
 }
 
 /** One option of the scope filter. */

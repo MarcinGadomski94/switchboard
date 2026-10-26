@@ -30,7 +30,8 @@ export type AdvancedKind =
   | 'notify'
   | 'accounts'
   | 'machines'
-  | 'devices';
+  | 'devices'
+  | 'memory';
 
 /** One Advanced page. */
 export interface AdvancedPage {
@@ -65,6 +66,8 @@ export const ADVANCED_PAGES: readonly AdvancedPage[] = [
   { key: 'accounts', label: 'Accounts: every option', sub: 'Add accounts, per-engine switching, other computers', icon: 'wallet' },
   { key: 'machines', label: 'Computers: every option', sub: 'Peer listener, pair by address, terminal hooks', icon: 'desktop' },
   { key: 'devices', label: 'Phones: every option', sub: 'Phone access over Tailscale, rename', icon: 'phone' },
+  // Project memory (D107) hook, D136: its automatic checks (the notes agents know).
+  { key: 'memory', label: 'Notes checks', sub: 'Check notes automatically, how often, per folder', icon: 'book' },
 ];
 
 /** The Advanced page of a `/settings/advanced/<sub>` address; old classic keys resolve (`folders` → Folders, `experimental` → Jira); `null` = the list. */
@@ -87,6 +90,7 @@ const ADVANCED_ALIASES: Readonly<Record<string, AdvancedKind>> = {
   tours: 'tutorial',
   wizard: 'setup',
   code: 'code-projects',
+  notes: 'memory',
 };
 
 /** Classic sections that have a v2 section of their own. */
