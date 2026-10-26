@@ -480,6 +480,31 @@ button.v2-qi-src:hover {
   margin: 0 0 18px;
 }
 
+/* Fix after 2.0: a transient compact line (a chat's end card) fades out and collapses (ANSWERED_FADE_MS). */
+.v2-answered-transient {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 240ms ease,
+    opacity 240ms ease;
+}
+
+.v2-answered-transient > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.v2-answered-transient[data-leaving] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-answered-transient {
+    transition: none;
+  }
+}
+
 .v2-answered-ok {
   width: 26px;
   height: 26px;

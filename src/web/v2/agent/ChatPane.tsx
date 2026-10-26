@@ -71,18 +71,19 @@ export function ChatPane({ data, rows, fullText, focusEventId, stick, variant, o
   newerRef.current = newer;
   const anchor = useRef<{ readonly node: Element; readonly top: number } | null>(null);
 
-  // The agent's other waiting items (permissions, asks, stopped…) show as cards at the chat's end; once answered here they stay as the compact line.
+  // The agent's other waiting items (permissions, asks, stopped…) show as cards at the chat's end; once answered here
+  // they turn into the compact line for a few seconds (fix after 2.0: they are not history, the reply is), then leave.
   const needs = useNeedsItemsOf(sessionId);
-  const { answered } = useNeedsYou();
+  const { answered, settled } = useNeedsYou();
   const batchKeys = useMemo(() => new Set(rows.flatMap((row) => (row.kind === 'questions' ? [`inbox:${row.batchId}`] : []))), [rows]);
   const [extraKeys, setExtraKeys] = useState<readonly string[]>([]);
   useEffect(() => {
     const fresh = needs.filter((item) => !batchKeys.has(item.key)).map((item) => item.key);
     setExtraKeys((current) => {
-      const next = [...current.filter((key) => fresh.includes(key) || answered.has(key)), ...fresh.filter((key) => !current.includes(key))];
+      const next = [...current.filter((key) => fresh.includes(key) || (answered.has(key) && !settled.has(key))), ...fresh.filter((key) => !current.includes(key))];
       return next.length === current.length && next.every((key, i) => key === current[i]) ? current : next;
     });
-  }, [needs, batchKeys, answered]);
+  }, [needs, batchKeys, answered, settled]);
   useEffect(() => setExtraKeys([]), [sessionId]);
   const needsByKey = useMemo(() => new Map(needs.map((item) => [item.key, item])), [needs]);
 
@@ -143,7 +144,7 @@ export function ChatPane({ data, rows, fullText, focusEventId, stick, variant, o
           ? null
           : extraKeys.map((key) => (
               <div className="v2-ag-card" key={key} data-testid="v2-agent-card">
-                <AnswerSlot itemKey={key} item={needsByKey.get(key) ?? null} variant={variant === 'phone' ? 'phone' : 'chat'} where="chat" />
+                <AnswerSlot itemKey={key} item={needsByKey.get(key) ?? null} variant={variant === 'phone' ? 'phone' : 'chat'} where="chat" transient />
               </div>
             ))}
         {loaded && newer.available ? (

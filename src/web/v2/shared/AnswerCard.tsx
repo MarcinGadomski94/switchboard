@@ -469,10 +469,27 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
  * D131 · an item's card wherever it is shown: the live card while it waits, the
  * compact line once it was answered on this page (from any view). `item` may be
  * gone from the list already; pass its `key` so the compact line is found.
+ *
+ * - A live `item` (listed and not hidden by an answer) wins over an old compact
+ *   line (fix after 2.0): the same key listed again waits again.
+ * - `transient` (fix after 2.0; the cards at a chat's end, which are not part of
+ *   its history): the compact line shows for `ANSWERED_LINE_MS` (at least until the
+ *   Undo window ends), fades out and collapses (`leaving`), then is gone
+ *   (`settled`) and does not come back for that answer. Without it (a question
+ *   batch's row in the chat's history) the line stays.
  */
-export function AnswerSlot({ itemKey, item, variant = 'chat', where = 'chat' }: { readonly itemKey: string; readonly item: NeedsItem | null; readonly variant?: AnswerCardVariant; readonly where?: AnsweredWhere }) {
-  const { answered } = useNeedsYou();
+export function AnswerSlot({ itemKey, item, variant = 'chat', where = 'chat', transient = false }: { readonly itemKey: string; readonly item: NeedsItem | null; readonly variant?: AnswerCardVariant; readonly where?: AnsweredWhere; readonly transient?: boolean }) {
+  const { answered, leaving, settled } = useNeedsYou();
+  if (item) return <AnswerCard item={item} variant={variant} where={where} />;
   const info = answered.get(itemKey);
-  if (info) return <AnsweredLine info={info} />;
-  return item ? <AnswerCard item={item} variant={variant} where={where} /> : null;
+  if (!info) return null;
+  if (!transient) return <AnsweredLine info={info} />;
+  if (settled.has(itemKey)) return null;
+  return (
+    <div className="v2-answered-transient" data-leaving={leaving.has(itemKey) || undefined}>
+      <div>
+        <AnsweredLine info={info} />
+      </div>
+    </div>
+  );
 }

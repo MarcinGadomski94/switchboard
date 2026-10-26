@@ -12,7 +12,7 @@ import type { AnswerAction } from './answer-model.ts';
 import { type NeedsItem, itemsOfSession, planIdOf } from './needs-you-model.ts';
 import { type NeedsYouSnapshot, type NeedsYouStore, UNDO_WINDOW_MS, createNeedsYouStore } from './needs-you-store.ts';
 
-export { DISMISSED_ALERTS_KEY, UNDO_WINDOW_MS, createNeedsYouStore, errorText, usageAlerts, type NeedsYouDeps, type NeedsYouSnapshot, type NeedsYouStore } from './needs-you-store.ts';
+export { ANSWERED_FADE_MS, ANSWERED_LINE_MS, DISMISSED_ALERTS_KEY, UNDO_WINDOW_MS, createNeedsYouStore, errorText, usageAlerts, type NeedsYouDeps, type NeedsYouSnapshot, type NeedsYouStore } from './needs-you-store.ts';
 
 /**
  * D131 · the page's "Needs you" store and its hooks (`docs/v2.md` → *Needs you*;
@@ -95,6 +95,7 @@ export const needsYouStore: NeedsYouStore = createNeedsYouStore({
   now: () => Date.now(),
   storage: browserStorage(),
   undoMs: UNDO_WINDOW_MS,
+  reducedMotion: () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
 });
 
 let live: (() => void) | null = null;
