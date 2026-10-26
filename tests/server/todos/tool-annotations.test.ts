@@ -66,6 +66,9 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_jira_context: [true, false, true, true],
   memory_propose: [false, false, true, false],
   memory_list: [true, false, true, false],
+  // D135: proposals to change or remove an approved entry (only proposals: the developer decides; a second call is a second proposal or refused).
+  memory_propose_edit: [false, false, false, false],
+  memory_propose_retract: [false, false, false, false],
 };
 
 /** `tools/list` of the helper with every feature set on (every probe answers 200), over the in-memory transport. */

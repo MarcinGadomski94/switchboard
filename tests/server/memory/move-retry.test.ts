@@ -251,7 +251,9 @@ describe('D107 follow-up · migration 3', () => {
     expect(MEMORY_MIGRATIONS.map((m) => [m.version, m.name, m.checksum])).toEqual([
       [1, 'memory', '6d1bf0aedc3a169a1215c62bf859c6d8e4e8f7aaa272d885ec21b34baf615c13'],
       [2, 'memory_scopes', '72a7166af3aaa3098e9374cf2d1dc374bc5d7d234d181cfd71619d3a715e3af1'],
-      [3, 'memory_pending_copies', expect.any(String)],
+      // D135: migration 3 as released (its checksum pinned once migration 4 followed).
+      [3, 'memory_pending_copies', 'f3ded3785f77bc19dc499888fbcbabb5877114b0f591e507bf37cd0497091b48'],
+      [4, 'memory_changes', expect.any(String)],
     ]);
     const root = await realpath(await makeTempDir('memory-migrate-3'));
     try {

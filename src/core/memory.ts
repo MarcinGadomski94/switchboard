@@ -17,6 +17,14 @@ export type MemoryStatus = 'proposed' | 'approved' | 'rejected';
 
 export const MEMORY_STATUSES: readonly MemoryStatus[] = ['proposed', 'approved', 'rejected'];
 
+/**
+ * D135 · what a proposal asks for: `add` a new entry (every entry before D135, and every approved
+ * one), `edit` an approved entry's title and / or text ({@link MemoryEntry.targetId}), or `retract`
+ * (remove) one. Only `add` rows are ever approved: an approved `edit` is written into its target and
+ * an approved `retract` deletes it (`docs/memory.md` → *Changing approved entries*).
+ */
+export type MemoryChangeKind = 'add' | 'edit' | 'retract';
+
 /** Who wrote an entry: an agent (it proposed it) or the developer (added by hand: approved at once). */
 export type MemoryAuthorKind = 'agent' | 'developer';
 
@@ -63,6 +71,33 @@ export interface MemoryEntry {
   /** The agent's own title / text when the developer changed them (the record of what was proposed); `null` otherwise. */
   readonly proposedTitle: string | null;
   readonly proposedText: string | null;
+  /**
+   * D135: what the proposal asks for (absent, e.g. from an older paired machine, = `add`). For
+   * `edit`, {@link title} / {@link text} are the proposed new ones; for `retract`, the entry's own.
+   */
+  readonly changeKind?: MemoryChangeKind;
+  /** D135: the approved entry an `edit` / `retract` is about (`null` for `add`). */
+  readonly targetId?: string | null;
+  /** D135: why the agent proposes the change (required for `retract`), `null` otherwise. */
+  readonly reason?: string | null;
+  /** D135: the target's title and text when the change was proposed (what the agent saw), `null` for `add`. */
+  readonly targetTitle?: string | null;
+  readonly targetText?: string | null;
+  /**
+   * D135: `GET /api/memory/entries` only, on an `edit` / `retract`: the target as it is now (the
+   * review's "old" side), `null` once it is gone.
+   */
+  readonly target?: MemoryEntry | null;
+}
+
+/** D135 · a proposal's change kind (`add` when absent). */
+export function changeKindOf(entry: Pick<MemoryEntry, 'changeKind'>): MemoryChangeKind {
+  return entry.changeKind ?? 'add';
+}
+
+/** D135 · whether `entry` asks to change an approved entry (`edit` / `retract`) rather than add one. */
+export function isMemoryChange(entry: Pick<MemoryEntry, 'changeKind'>): boolean {
+  return changeKindOf(entry) !== 'add';
 }
 
 /** A folder the Memory page offers (`GET /api/memory/scopes`): the saved folders and every folder that has entries. */
@@ -170,7 +205,9 @@ export const MEMORY_TITLE_MAX = 80;
 export const MEMORY_TEXT_MAX = 1_000;
 export const MEMORY_TAGS_MAX = 8;
 export const MEMORY_TAG_MAX = 32;
-/** `memory_propose`: at most this many proposals per session per hour. */
+/** D135: a change proposal's reason is at most this long. */
+export const MEMORY_REASON_MAX = 500;
+/** `memory_propose` (and D135's `memory_propose_edit` / `memory_propose_retract`, counted together): at most this many proposals per session per hour. */
 export const MEMORY_PROPOSE_PER_HOUR = 10;
 /** The block's overflow line names at most this many titles. */
 export const MEMORY_OVERFLOW_TITLES = 20;
@@ -489,13 +526,121 @@ export function memoryCountTooltip(count: Pick<MemorySessionCount, 'member' | 'r
   return `In this session's block: ${parts}${over}`;
 }
 
-/** `memory_list`'s answer: each entry labelled with its scope. */
-export function memoryListText(entries: readonly (Pick<MemoryEntry, 'title' | 'text' | 'tags'> & Partial<Pick<MemoryEntry, 'scopeKind' | 'scopeLabel'>>)[], label: string): string {
+/** An ISO time as `memory_list` shows it: "2026-10-15 10:00 UTC" (the raw text when it is not a time). */
+export function memoryListTime(iso: string): string {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : `${at.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+/**
+ * `memory_list`'s answer: each entry labelled with its scope and, since D135, followed by its id and
+ * when it was last approved or edited, so an agent can name it in `memory_propose_edit` /
+ * `memory_propose_retract`. The lines before D135 are unchanged (the id line is added under each).
+ */
+export function memoryListText(
+  entries: readonly (Pick<MemoryEntry, 'title' | 'text' | 'tags'> & Partial<Pick<MemoryEntry, 'id' | 'scopeKind' | 'scopeLabel' | 'updatedAt' | 'decidedAt'>>)[],
+  label: string,
+): string {
   if (entries.length === 0) return `No approved project memory for ${label} yet. Propose durable facts with memory_propose.`;
   return [
-    `Project memory for ${label} (approved by the developer) that this session sees, ${entries.length === 1 ? '1 entry' : `${entries.length} entries`}, member first, then repo, then workspace:`,
-    ...entries.map((entry) => `[${memoryScopeText(entry)}] ${memoryEntryText(entry)}`),
+    `Project memory for ${label} (approved by the developer) that this session sees, ${entries.length === 1 ? '1 entry' : `${entries.length} entries`}, member first, then repo, then workspace. To change or remove one, pass its id to memory_propose_edit or memory_propose_retract instead of proposing a contradicting entry:`,
+    ...entries.map((entry) => {
+      const line = `[${memoryScopeText(entry)}] ${memoryEntryText(entry)}`;
+      if (entry.id === undefined) return line;
+      const at = entry.decidedAt && entry.updatedAt && entry.decidedAt > entry.updatedAt ? entry.decidedAt : (entry.updatedAt ?? entry.decidedAt ?? null);
+      return `${line}\n  (id: ${entry.id}${at ? ` · updated ${memoryListTime(at)}` : ''})`;
+    }),
   ].join('\n');
+}
+
+// ── D135 · the review's comparison ─────────────────────────────────────
+
+/** One run of a word diff: kept on both sides, only in the old text (`del`) or only in the new one (`add`). */
+export interface MemoryDiffPart {
+  readonly kind: 'same' | 'del' | 'add';
+  readonly text: string;
+}
+
+/** Splits text into words and the spaces between them (the spaces are kept, so the parts join back to the text). */
+function diffTokens(text: string): string[] {
+  return text.match(/\s+|[^\s]+/g) ?? [];
+}
+
+/**
+ * D135 · a word-level diff of `before` → `after` (the review's old vs new title and text): the
+ * longest common run of words is `same`, the rest `del` (only before) or `add` (only after).
+ * Adjacent parts of a kind are merged. Joining the `same` + `del` parts gives `before`, the
+ * `same` + `add` parts `after`. Entries are short (≤ 1,000 characters), so the plain LCS table is cheap.
+ */
+export function memoryWordDiff(before: string, after: string): MemoryDiffPart[] {
+  const a = diffTokens(before);
+  const b = diffTokens(after);
+  // Far beyond an entry's size (e.g. an older peer's long text): the whole of each side, no table.
+  if (a.length * b.length > 1_000_000) return [...(before ? [{ kind: 'del' as const, text: before }] : []), ...(after ? [{ kind: 'add' as const, text: after }] : [])];
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const table = new Uint16Array(rows * cols);
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i * cols + j] = a[i] === b[j] ? (table[(i + 1) * cols + j + 1] as number) + 1 : Math.max(table[(i + 1) * cols + j] as number, table[i * cols + j + 1] as number);
+    }
+  }
+  const parts: MemoryDiffPart[] = [];
+  const push = (kind: MemoryDiffPart['kind'], text: string): void => {
+    const last = parts[parts.length - 1];
+    if (last && last.kind === kind) parts[parts.length - 1] = { kind, text: last.text + text };
+    else parts.push({ kind, text });
+  };
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      push('same', a[i] as string);
+      i += 1;
+      j += 1;
+    } else if ((table[(i + 1) * cols + j] as number) >= (table[i * cols + j + 1] as number)) {
+      push('del', a[i] as string);
+      i += 1;
+    } else {
+      push('add', b[j] as string);
+      j += 1;
+    }
+  }
+  while (i < a.length) push('del', a[i++] as string);
+  while (j < b.length) push('add', b[j++] as string);
+  // A lone space kept between two changes splits one change in two: it joins both sides, and each
+  // run of changes reads as one removed and one added stretch.
+  const out: MemoryDiffPart[] = [];
+  let del = '';
+  let add = '';
+  const flush = (): void => {
+    if (del) out.push({ kind: 'del', text: del });
+    if (add) out.push({ kind: 'add', text: add });
+    del = '';
+    add = '';
+  };
+  parts.forEach((part, index) => {
+    const between = part.kind === 'same' && /^\s+$/.test(part.text) && index > 0 && index < parts.length - 1 && (del !== '' || add !== '') && parts[index + 1]?.kind !== 'same';
+    if (part.kind === 'del') del += part.text;
+    else if (part.kind === 'add') add += part.text;
+    else if (between) {
+      del += part.text;
+      add += part.text;
+    } else {
+      flush();
+      out.push(part);
+    }
+  });
+  flush();
+  return out;
+}
+
+/** D135 · the Inbox / review wording of a proposal: "Edit: Title", "Removal: Title", the title alone for an add. */
+export function memoryProposalLabel(entry: Pick<MemoryEntry, 'title' | 'changeKind'> & { readonly target?: Pick<MemoryEntry, 'title'> | null }): string {
+  const kind = changeKindOf(entry);
+  if (kind === 'edit') return `Edit: ${entry.target?.title ?? entry.title}`;
+  if (kind === 'retract') return `Removal: ${entry.target?.title ?? entry.title}`;
+  return entry.title;
 }
 
 /**
@@ -527,7 +672,7 @@ export function folderName(scope: string): string {
 export const MEMORY_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'memory_propose',
-    description: `Propose a project memory entry: a durable, reusable fact or convention about this project that a future session would need, e.g. a build or test command, a gotcha, a decision and its reason, where something lives. Not for task notes, progress or anything only this task needs (use the todo tools for those). Keep it short: one fact per entry, a title of at most ${MEMORY_TITLE_MAX} characters and a text of at most ${MEMORY_TEXT_MAX}. Prefer the narrowest scope that holds: "member" (only you, when you are a team member: the default for members), "repo" (sessions working in one repository: the default when you work in exactly one), "workspace" (every session in this folder) only for facts true for everyone in the folder. The developer reviews every proposal and may change its scope; it is used only once approved. At most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour; a title close to an existing entry is refused.`,
+    description: `Propose a project memory entry: a durable, reusable fact or convention about this project that a future session would need, e.g. a build or test command, a gotcha, a decision and its reason, where something lives. Not for task notes, progress or anything only this task needs (use the todo tools for those). Keep it short: one fact per entry, a title of at most ${MEMORY_TITLE_MAX} characters and a text of at most ${MEMORY_TEXT_MAX}. Prefer the narrowest scope that holds: "member" (only you, when you are a team member: the default for members), "repo" (sessions working in one repository: the default when you work in exactly one), "workspace" (every session in this folder) only for facts true for everyone in the folder. The developer reviews every proposal and may change its scope; it is used only once approved. At most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour; a title close to an existing entry is refused. To correct or retire an entry that is already approved, use memory_propose_edit or memory_propose_retract with its id (from memory_list) instead of proposing a new entry that contradicts it.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -548,8 +693,39 @@ export const MEMORY_TOOLS: readonly TodoToolDefinition[] = [
   },
   {
     name: 'memory_list',
-    description: "List the project memory this session sees: the entries the developer approved for you as a team member, for the repositories you work in and for everyone in this folder (title, text, tags), each labelled with its scope. Proposals still under review are not listed.",
+    description:
+      "List the project memory this session sees: the entries the developer approved for you as a team member, for the repositories you work in and for everyone in this folder (title, text, tags), each labelled with its scope and followed by its id and when it was last updated. Pass an id to memory_propose_edit or memory_propose_retract to change or remove that entry. Proposals still under review are not listed.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { title: 'List project memory', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'memory_propose_edit',
+    description: `Propose a change to an approved project memory entry that is wrong, outdated or unclear: give its id (from memory_list) and the new title and / or text. Use this instead of proposing a new entry that contradicts or repeats an existing one. Nothing changes until the developer approves: they see the current and the proposed wording side by side, and approving replaces the entry (it keeps its id and scope). Always say why in reason. You can only change entries this session sees (memory_list). One pending edit per entry from a session; at most ${MEMORY_PROPOSE_PER_HOUR} proposals of any kind per hour.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        entry: { type: 'string', description: 'The id of the approved entry to change, as memory_list shows it ("id: …").' },
+        title: { type: 'string', description: `Optional: the new title (at most ${MEMORY_TITLE_MAX} characters). Leave it out to keep the current one.` },
+        text: { type: 'string', description: `Optional: the new text, complete, not a diff (at most ${MEMORY_TEXT_MAX} characters). Leave it out to keep the current one. Give title, text or both.` },
+        reason: { type: 'string', description: `Why the entry should change (at most ${MEMORY_REASON_MAX} characters), e.g. "The test command moved to npm run test:unit in this repository." Always give one: the developer decides on it.` },
+      },
+      required: ['entry'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Propose a change to a project memory entry', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'memory_propose_retract',
+    description: `Propose removing an approved project memory entry that is no longer true or no longer useful: give its id (from memory_list) and the reason. Use this instead of proposing a new entry that says the opposite. Nothing is removed until the developer approves; rejecting keeps the entry. You can only retract entries this session sees (memory_list). One pending removal per entry from a session; at most ${MEMORY_PROPOSE_PER_HOUR} proposals of any kind per hour.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        entry: { type: 'string', description: 'The id of the approved entry to remove, as memory_list shows it ("id: …").' },
+        reason: { type: 'string', description: `Why it should go (at most ${MEMORY_REASON_MAX} characters), e.g. "The staging server was retired; the deploy goes straight to production now."` },
+      },
+      required: ['entry', 'reason'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Propose removing a project memory entry', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
 ];

@@ -44,7 +44,10 @@ async function answer<T>(reply: FastifyReply, work: () => T | Promise<T>, status
  *
  * The agent's (the `memory_*` MCP tools), only with the session's agent token, for that session's
  * folder: `GET /agent/v1/memory` (approved entries; also the helper's probe), `POST /agent/v1/memory`
- * (a proposal).
+ * (a proposal); D135: `POST /agent/v1/memory/edit` `{ entry, title?, text?, reason? }` and
+ * `POST /agent/v1/memory/retract` `{ entry, reason }` (proposals to change or remove an approved
+ * entry; `approve` / `reject` above decide them: an approved edit replaces the entry, an approved
+ * retract deletes it).
  *
  * D132: always on since 2.0 (no switch); while `memory.db` is broken every route but
  * `GET /api/memory/state` answers 503 `memory-unavailable`. Registered by `installMemory`.
@@ -73,4 +76,7 @@ export async function registerMemoryRoutes(app: FastifyInstance, memory: MemoryS
   // ── the agent's routes (the `switchboard` MCP helper) ──────────────────
   app.get('/agent/v1/memory', async (request, reply) => answer(reply, () => memory.agentList(agentSession(request))));
   app.post('/agent/v1/memory', async (request, reply) => answer(reply, () => memory.propose(agentSession(request), request.body), 201));
+  // D135: proposals to change or remove an approved entry (reviewed and approved through the same entry routes).
+  app.post('/agent/v1/memory/edit', async (request, reply) => answer(reply, () => memory.proposeEdit(agentSession(request), request.body), 201));
+  app.post('/agent/v1/memory/retract', async (request, reply) => answer(reply, () => memory.proposeRetract(agentSession(request), request.body), 201));
 }

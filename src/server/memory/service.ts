@@ -3,6 +3,7 @@ import {
   MEMORY_CAP_DEFAULT,
   MEMORY_DRAFT_REPEAT_HOURS,
   MEMORY_PROPOSE_PER_HOUR,
+  MEMORY_REASON_MAX,
   MEMORY_SCOPE_KINDS,
   type MemoryDraftAllAnswer,
   type MemoryDraftAnswer,
@@ -17,14 +18,18 @@ import {
   type MemoryState,
   type MemoryStatus,
   NO_REACH,
+  changeKindOf,
   defaultProposalScope,
   folderName,
   memoryBlockParts,
   memoryDraftAskText,
   memoryOrder,
+  memoryProposalLabel,
   memoryProposalsTitle,
+  memoryVisible,
   nearDuplicateTitle,
   readMemoryCap,
+  isMemoryChange,
   readMemoryInput,
   readScopeKind,
   scopeKindOf,
@@ -272,8 +277,15 @@ export class MemoryService {
     const db = this.#need();
     const statuses: MemoryStatus[] | undefined = filter.status === 'approved' || filter.status === 'proposed' || filter.status === 'rejected' ? [filter.status] : undefined;
     const kind = readScopeKind(filter.kind);
-    const rows = db.list({ ...(filter.scope ? { scope: filter.scope } : {}), ...(statuses ? { statuses } : {}), ...(kind ? { scopeKind: kind } : {}) });
+    const rows = db.list({ ...(filter.scope ? { scope: filter.scope } : {}), ...(statuses ? { statuses } : {}), ...(kind ? { scopeKind: kind } : {}) }).map((entry) => this.#withTarget(entry));
     return [...memoryOrder(rows.filter((entry) => entry.status === 'approved')), ...rows.filter((entry) => entry.status === 'proposed'), ...rows.filter((entry) => entry.status === 'rejected').reverse()];
+  }
+
+  /** D135: a change proposal with its target as it is now (the review's "old" side; `null` once gone); an add as it is. */
+  #withTarget(entry: MemoryEntry): MemoryEntry {
+    if (!isMemoryChange(entry) || entry.targetId == null) return entry;
+    const target = this.#need().get(entry.targetId);
+    return { ...entry, target: target && target.status === 'approved' ? target : null };
   }
 
   /** `GET|PUT /api/memory/settings`. */
@@ -407,6 +419,8 @@ export class MemoryService {
     const blockedSince = new Date(this.#now().getTime() - REJECTED_BLOCK_MS).toISOString();
     const known = new Map([...db.list({ scope }), ...this.#visible(scope, reach, ['proposed', 'approved', 'rejected'])].map((entry) => [entry.id, entry]));
     const twin = [...known.values()]
+      // D135: change proposals (edit / retract) are about an entry, not entries of their own.
+      .filter((entry) => !isMemoryChange(entry))
       .filter((entry) => entry.status !== 'rejected' || (entry.decidedAt ?? entry.updatedAt) >= blockedSince)
       .find((entry) => nearDuplicateTitle(entry.title, title) || (entry.proposedTitle !== null && nearDuplicateTitle(entry.proposedTitle, title)));
     if (twin) {
@@ -438,6 +452,95 @@ export class MemoryService {
     await this.#syncInbox(scope);
     this.#o.bus.publish('memoryChanged', { scope });
     return entry;
+  }
+
+  /** D135: the approved entry `body.entry` names, checked against the caller's reach (what `memory_list` shows it). */
+  async #changeTarget(sessionId: string, body: unknown, kind: 'edit' | 'retract'): Promise<{ session: SessionRecord; target: MemoryEntry; reason: string | null }> {
+    const { session, scope, reach } = await this.#agentScope(sessionId);
+    const raw = body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const id = typeof raw['entry'] === 'string' ? raw['entry'].trim() : '';
+    if (id === '') throw new MemoryError(422, 'invalid', 'entry is required: the id of an approved entry, as memory_list shows it', 'entry');
+    let reason: string | null = null;
+    if (raw['reason'] !== undefined && raw['reason'] !== null) {
+      if (typeof raw['reason'] !== 'string') throw new MemoryError(422, 'invalid', 'reason must be text', 'reason');
+      reason = raw['reason'].replace(/\s+/g, ' ').trim() || null;
+      if (reason !== null && reason.length > MEMORY_REASON_MAX) throw new MemoryError(422, 'invalid', `reason must be at most ${MEMORY_REASON_MAX} characters (it is ${reason.length})`, 'reason');
+    }
+    if (kind === 'retract' && reason === null) throw new MemoryError(422, 'invalid', 'reason is required: say why the entry should be removed', 'reason');
+    const db = this.#need();
+    const target = db.get(id);
+    if (!target || target.status !== 'approved' || isMemoryChange(target)) throw new MemoryError(404, 'not-found', `no approved memory entry ${id}: read the ids with memory_list`, 'entry');
+    if (!memoryVisible(target, scope, reach)) throw new MemoryError(403, 'out-of-scope', `entry ${id} is not one this session sees (memory_list lists those): it belongs to another folder, repository or team member`, 'entry');
+    const since = new Date(this.#now().getTime() - HOUR_MS).toISOString();
+    if (db.proposalsSince(sessionId, since) >= MEMORY_PROPOSE_PER_HOUR) {
+      throw new MemoryError(429, 'rate-limited', `at most ${MEMORY_PROPOSE_PER_HOUR} proposals per hour from one session: propose only what matters, and try again later`);
+    }
+    const pending = db.changesFor(id).find((change) => change.status === 'proposed' && changeKindOf(change) === kind && change.authorSessionId === sessionId);
+    if (pending) throw new MemoryError(409, 'duplicate', `this session already proposed ${kind === 'edit' ? 'an edit of' : 'removing'} "${target.title}"; it is waiting for the developer's review. Do not propose it again.`, 'entry');
+    return { session, target, reason };
+  }
+
+  /** D135: a change proposal row about `target` (in its folder and scope, so it is reviewed next to it). */
+  async #insertChange(sessionId: string, session: SessionRecord, target: MemoryEntry, kind: 'edit' | 'retract', fields: { title: string; text: string; reason: string | null }): Promise<MemoryEntry> {
+    const now = this.#iso();
+    const entry = this.#need().insert({
+      id: randomBytes(5).toString('hex'),
+      scope: target.scope,
+      title: fields.title,
+      text: fields.text,
+      tags: target.tags,
+      authorKind: 'agent',
+      authorSessionId: sessionId,
+      authorLabel: session.title ?? session.name,
+      status: 'proposed',
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      decidedAt: null,
+      decidedBy: null,
+      proposedTitle: null,
+      proposedText: null,
+      scopeKind: target.scopeKind,
+      scopeKey: target.scopeKey,
+      scopeLabel: target.scopeLabel,
+      changeKind: kind,
+      targetId: target.id,
+      reason: fields.reason,
+      targetTitle: target.title,
+      targetText: target.text,
+    });
+    await this.#syncInbox(target.scope);
+    this.#o.bus.publish('memoryChanged', { scope: target.scope });
+    return this.#withTarget(entry);
+  }
+
+  /**
+   * D135 · `memory_propose_edit { entry, title?, text?, reason? }`: a **proposed** edit of an approved
+   * entry the caller sees (the same reach as `memory_list`). Nothing changes until the developer
+   * approves it: then the entry's title and / or text are replaced (its id, scope, tags and pin
+   * kept). Refused: an unknown entry (404), one outside the caller's reach (403 `out-of-scope`),
+   * neither field or no change (422), a pending edit of the same entry from this session (409
+   * `duplicate`), the shared rate limit (429).
+   */
+  async proposeEdit(sessionId: string, body: unknown): Promise<MemoryEntry> {
+    const input = readMemoryInput(body);
+    if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    if (input.value.title === undefined && input.value.text === undefined) throw new MemoryError(422, 'invalid', 'give the new title, the new text or both', 'text');
+    const { session, target, reason } = await this.#changeTarget(sessionId, body, 'edit');
+    const title = input.value.title ?? target.title;
+    const text = input.value.text ?? target.text;
+    if (title === target.title && text === target.text) throw new MemoryError(422, 'no-change', `the entry already reads exactly like that: "${target.title}". Propose an edit only when something changes.`, 'text');
+    return this.#insertChange(sessionId, session, target, 'edit', { title, text, reason });
+  }
+
+  /**
+   * D135 · `memory_propose_retract { entry, reason }`: a **proposed** removal of an approved entry
+   * the caller sees. Approving it deletes the entry; rejecting keeps it. Refused like
+   * {@link proposeEdit} (a reason is required).
+   */
+  async proposeRetract(sessionId: string, body: unknown): Promise<MemoryEntry> {
+    const { session, target, reason } = await this.#changeTarget(sessionId, body, 'retract');
+    return this.#insertChange(sessionId, session, target, 'retract', { title: target.title, text: target.text, reason });
   }
 
   // ── the developer's calls (`/api/memory`) ──────────────────────────────
@@ -497,6 +600,13 @@ export class MemoryService {
     const entry = this.#get(id);
     const input = readMemoryInput(body);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    if (isMemoryChange(entry)) {
+      // D135: an edit proposal's new title / text can be changed before approving it; nothing else.
+      if (changeKindOf(entry) === 'retract') throw new MemoryError(409, 'not-editable', 'a proposed removal has nothing to edit: approve or reject it');
+      const changed = this.#need().update(id, { ...(input.value.title !== undefined ? { title: input.value.title } : {}), ...(input.value.text !== undefined ? { text: input.value.text } : {}), updatedAt: this.#iso() }) as MemoryEntry;
+      this.#o.bus.publish('memoryChanged', { scope: entry.scope });
+      return this.#withTarget(changed);
+    }
     const target = await this.#chosenScope(body, entry.scope, entry);
     const updated = this.#need().update(id, {
       ...(target ?? {}),
@@ -522,6 +632,7 @@ export class MemoryService {
     if (entry.status === 'approved') throw new MemoryError(409, 'not-proposed', 'this entry is already approved');
     const input = readMemoryInput(body);
     if (!input.ok) throw new MemoryError(422, 'invalid', input.message, input.field);
+    if (isMemoryChange(entry)) return this.#applyChange(entry, input.value);
     const target = await this.#chosenScope(body, entry.scope, entry);
     const now = this.#iso();
     const approved = this.#need().update(id, {
@@ -541,6 +652,37 @@ export class MemoryService {
     return approved;
   }
 
+  /**
+   * D135: approving an `edit` / `retract` proposal. An edit writes the proposed title and / or text
+   * (the developer's, when they edited it first) into the target, which keeps its id, scope, tags
+   * and pin and records the decision (`decidedAt` / `decidedBy`, `updatedAt`); a field the agent
+   * left as it was is not written, so a change the developer made since is kept. A retract deletes
+   * the target (the store has no soft delete). Either way the proposal itself is not kept (it is
+   * never an approved entry), nor are other proposals about a deleted target. Answers the target
+   * as it is now (a retract: as it was, the last time).
+   */
+  async #applyChange(change: MemoryEntry, input: { readonly title?: string; readonly text?: string }): Promise<MemoryEntry> {
+    const db = this.#need();
+    const target = change.targetId ? db.get(change.targetId) : null;
+    if (!target || target.status !== 'approved') throw new MemoryError(409, 'target-gone', 'the entry this proposal is about no longer exists: reject or delete the proposal');
+    const now = this.#iso();
+    let answer: MemoryEntry;
+    if (changeKindOf(change) === 'retract') {
+      db.delete(target.id);
+      db.deleteChangesFor(target.id);
+      answer = target;
+    } else {
+      const title = input.title ?? (change.title !== (change.targetTitle ?? target.title) ? change.title : undefined);
+      const text = input.text ?? (change.text !== (change.targetText ?? target.text) ? change.text : undefined);
+      answer = db.update(target.id, { ...(title !== undefined ? { title } : {}), ...(text !== undefined ? { text } : {}), decidedAt: now, decidedBy: 'developer', updatedAt: now }) as MemoryEntry;
+      db.delete(change.id);
+    }
+    await this.#syncInbox(change.scope);
+    if (target.scope !== change.scope) await this.#syncInbox(target.scope);
+    await this.#approvedChanged(target.scope);
+    return answer;
+  }
+
   /** `POST /api/memory/entries/{id}/reject`: a proposal is rejected (kept, never injected; its title blocks a re-proposal). */
   async reject(id: string): Promise<MemoryEntry> {
     const entry = this.#get(id);
@@ -556,6 +698,9 @@ export class MemoryService {
   async delete(id: string): Promise<void> {
     const entry = this.#get(id);
     this.#need().delete(id);
+    // D135: proposals to change an entry go with it.
+    const dropped = isMemoryChange(entry) ? 0 : this.#need().deleteChangesFor(id);
+    if (dropped > 0 && entry.status !== 'proposed') await this.#syncInbox(entry.scope);
     if (entry.status === 'proposed') await this.#syncInbox(entry.scope);
     if (entry.status === 'approved') await this.#approvedChanged(entry.scope);
     else this.#o.bus.publish('memoryChanged', { scope: entry.scope });
@@ -921,6 +1066,8 @@ export class MemoryService {
       if (!entry || typeof entry !== 'object' || entry.scopeKind !== 'member' || entry.scopeKey !== memberId || typeof entry.id !== 'string') continue;
       const input = readMemoryInput(entry, ['title', 'text']);
       if (!input.ok || !['proposed', 'approved', 'rejected'].includes(entry.status)) continue;
+      // D135: a change proposal is never approved (an older or broken sender's would break the CHECK).
+      if (isMemoryChange(entry) && entry.status === 'approved') continue;
       db.delete(entry.id);
       db.insert({ ...entry, scope: folder, title: input.value.title as string, text: input.value.text as string, tags: input.value.tags ?? [], authorKind: entry.authorKind === 'developer' ? 'developer' : 'agent', decidedBy: entry.decidedBy === 'developer' ? 'developer' : null });
       imported += 1;
@@ -976,7 +1123,7 @@ export class MemoryService {
       const label = await this.#label(scope);
       const title = memoryProposalsTitle(proposed.length, label);
       const newest = proposed[proposed.length - 1] as MemoryEntry;
-      const detail = `Agents proposed project memory for ${scope}. Review approves, edits or rejects each one; nothing is used until you approve it. Newest: "${newest.title}".`;
+      const detail = `Agents proposed project memory for ${scope}. Review approves, edits or rejects each one; nothing is used until you approve it. Newest: "${memoryProposalLabel(this.#withTarget(newest))}".`;
       const payload = { scope, route: `/memory?scope=${encodeURIComponent(scope)}` };
       const [first, ...rest] = open;
       if (first) {

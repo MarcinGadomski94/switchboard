@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { type MemoryAuthorKind, type MemoryEntry, type MemoryScopeKind, type MemoryStatus, readScopeKind } from '../../core/memory.ts';
+import { type MemoryAuthorKind, type MemoryChangeKind, type MemoryEntry, type MemoryScopeKind, type MemoryStatus, readScopeKind } from '../../core/memory.ts';
 import { openDatabase } from '../db/database.ts';
 import { type Migration, makeMigration, migrate } from '../db/migrate.ts';
 
@@ -109,6 +109,26 @@ CREATE TABLE memory_pending_copies (
 ) STRICT;
 `,
   ),
+  makeMigration(
+    4,
+    'memory_changes',
+    `-- D135 (docs/memory.md -> Changing approved entries): agents propose to edit or remove an approved
+-- entry, behind the same review. A change proposal is a memory_entries row like any proposal (the
+-- review queue, the Inbox item, the rate limit, the routes and the paired-machine proxy stay as
+-- they are), told apart by its kind; it is never approved itself (the CHECK below): approving an
+-- edit writes it into its target and drops the proposal, approving a retract deletes the target.
+-- memory_entries.change_kind   add (a new entry: every row made before this) | edit | retract.
+-- memory_entries.target_id     edit / retract: the approved entry it is about; NULL for add.
+-- memory_entries.reason        edit / retract: why the agent proposes it; NULL for add.
+-- memory_entries.target_title, target_text  edit / retract: the target's title and text when proposed.
+ALTER TABLE memory_entries ADD COLUMN change_kind TEXT NOT NULL DEFAULT 'add' CHECK (change_kind IN ('add', 'edit', 'retract') AND (change_kind = 'add' OR status <> 'approved'));
+ALTER TABLE memory_entries ADD COLUMN target_id TEXT;
+ALTER TABLE memory_entries ADD COLUMN reason TEXT;
+ALTER TABLE memory_entries ADD COLUMN target_title TEXT;
+ALTER TABLE memory_entries ADD COLUMN target_text TEXT;
+CREATE INDEX memory_entries_target ON memory_entries (target_id, status);
+`,
+  ),
 ];
 
 interface Row {
@@ -131,6 +151,15 @@ interface Row {
   scope_kind: string;
   scope_key: string | null;
   scope_label: string | null;
+  change_kind: string | null;
+  target_id: string | null;
+  reason: string | null;
+  target_title: string | null;
+  target_text: string | null;
+}
+
+function readChangeKind(value: string | null): MemoryChangeKind {
+  return value === 'edit' || value === 'retract' ? value : 'add';
 }
 
 function toEntry(row: Row): MemoryEntry {
@@ -161,6 +190,11 @@ function toEntry(row: Row): MemoryEntry {
     scopeKind: readScopeKind(row.scope_kind) ?? 'workspace',
     scopeKey: row.scope_key,
     scopeLabel: row.scope_label,
+    changeKind: readChangeKind(row.change_kind),
+    targetId: row.target_id,
+    reason: row.reason,
+    targetTitle: row.target_title,
+    targetText: row.target_text,
   };
 }
 
@@ -204,7 +238,7 @@ function toPending(row: PendingRow): MemoryPendingCopy {
 }
 
 /** A row patch (only the fields given change). */
-export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt' | 'scopeKind' | 'scopeKey' | 'scopeLabel' | 'scope'>>;
+export type MemoryPatch = Partial<Pick<MemoryEntry, 'title' | 'text' | 'tags' | 'pinned' | 'status' | 'decidedAt' | 'decidedBy' | 'proposedTitle' | 'proposedText' | 'updatedAt' | 'scopeKind' | 'scopeKey' | 'scopeLabel' | 'scope' | 'reason'>>;
 
 const COLUMNS: Readonly<Record<keyof MemoryPatch, string>> = {
   title: 'title',
@@ -221,6 +255,7 @@ const COLUMNS: Readonly<Record<keyof MemoryPatch, string>> = {
   scopeKey: 'scope_key',
   scopeLabel: 'scope_label',
   scope: 'scope',
+  reason: 'reason',
 };
 
 /** The Project memory database: one connection, its entries and its settings. */
@@ -264,8 +299,8 @@ export class MemoryDb {
   insert(entry: MemoryEntry): MemoryEntry {
     this.#db
       .prepare(
-        `INSERT INTO memory_entries (id, scope, title, text, tags, author_kind, author_session_id, author_label, status, pinned, created_at, updated_at, decided_at, decided_by, proposed_title, proposed_text, scope_kind, scope_key, scope_label)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO memory_entries (id, scope, title, text, tags, author_kind, author_session_id, author_label, status, pinned, created_at, updated_at, decided_at, decided_by, proposed_title, proposed_text, scope_kind, scope_key, scope_label, change_kind, target_id, reason, target_title, target_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         entry.id,
@@ -287,6 +322,11 @@ export class MemoryDb {
         entry.scopeKind,
         entry.scopeKind === 'workspace' ? null : entry.scopeKey,
         entry.scopeKind === 'workspace' ? null : entry.scopeLabel,
+        entry.changeKind ?? 'add',
+        (entry.changeKind ?? 'add') === 'add' ? null : (entry.targetId ?? null),
+        (entry.changeKind ?? 'add') === 'add' ? null : (entry.reason ?? null),
+        (entry.changeKind ?? 'add') === 'add' ? null : (entry.targetTitle ?? null),
+        (entry.changeKind ?? 'add') === 'add' ? null : (entry.targetText ?? null),
       );
     return this.get(entry.id) ?? entry;
   }
@@ -375,6 +415,16 @@ export class MemoryDb {
     }
     if (sets.length > 0) this.#db.prepare(`UPDATE memory_entries SET ${sets.join(', ')} WHERE id = ?`).run(...args, id);
     return this.get(id);
+  }
+
+  /** D135: the change proposals (`edit` / `retract`, every state) about entry `targetId`, oldest first. */
+  changesFor(targetId: string): MemoryEntry[] {
+    return (this.#db.prepare(`SELECT * FROM memory_entries WHERE target_id = ? AND change_kind <> 'add' ORDER BY created_at, id`).all(targetId) as unknown as Row[]).map(toEntry);
+  }
+
+  /** D135: deletes the change proposals about `targetId` (it is gone); answers how many. */
+  deleteChangesFor(targetId: string): number {
+    return Number(this.#db.prepare(`DELETE FROM memory_entries WHERE target_id = ? AND change_kind <> 'add'`).run(targetId).changes);
   }
 
   delete(id: string): boolean {
