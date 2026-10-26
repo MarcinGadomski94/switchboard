@@ -4,7 +4,8 @@ import type { SessionMachine } from '../../../core/peers.ts';
 import { useLiveMachine } from '../../api/useMachines.ts';
 import { Avatar, Card, ComputerTag, Icon, StatusBadge } from '../components/index.ts';
 import { STATUS, TERMS, computerStateToV2 } from '../glossary.ts';
-import { type AgentLine, type AgentRowExtras, agentLine, agentName, agentStatusOf } from './agent-line.ts';
+import { agentDisplayName, teammateOf, useTeamMembers } from './teammates.ts';
+import { type AgentLine, type AgentRowExtras, agentLine, agentStatusOf } from './agent-line.ts';
 import { timeAgo } from './time.ts';
 
 export { type AgentLine, type AgentRowExtras, agentLine, agentName, agentStatusOf } from './agent-line.ts';
@@ -76,7 +77,9 @@ export function DraftMark() {
 export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now, variant = 'chat', lead, tags, rowProps, line: lineOverride }: { readonly session: SessionListItem; readonly activity: SessionActivity | null; readonly extras?: AgentRowExtras; readonly onOpen: () => void; readonly trailing?: ReactNode; readonly now?: number; readonly variant?: 'chat' | 'list'; readonly lead?: ReactNode; readonly tags?: ReactNode; readonly rowProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string | undefined>; readonly line?: ReactNode }) {
   const status = agentStatusOf(session, extras);
   const line = agentLine(session, activity, extras, now);
-  const name = agentName(session);
+  const members = useTeamMembers();
+  const name = agentDisplayName(session, members);
+  const mate = teammateOf(session.id, members);
   const off = session.machine ? computerStateToV2(session.machine.state) !== 'online' : false;
   const preview =
     lineOverride ?? (line.tone === 'amber' || line.tone === 'red' ? (
@@ -96,6 +99,7 @@ export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now
           <span className="v2-cbody">
             <span className="v2-ctop">
               <b>{name}</b>
+              {mate ? <CrewTag crew={mate.crewName} /> : null}
               {tags}
               {extras.kindLabel ?? (session.kind === 'chat' ? <span className="v2-chip" data-tone="outline">{TERMS.conversation.one}</span> : null)}
               {extras.draft ? <DraftMark /> : null}
@@ -117,6 +121,7 @@ export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now
         <span className="v2-cbody">
           <span className="v2-ctop">
             <b>{name}</b>
+            {mate ? <CrewTag crew={mate.crewName} /> : null}
             {tags}
             <span className="v2-ctime" {...(extras.unread ? { 'data-unread': '' } : {})}>
               {timeAgo(session.lastActivityAt, now)}
@@ -143,11 +148,16 @@ export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now
  */
 export function AgentCard({ session, activity, extras = {}, onOpen, footer, now }: { readonly session: SessionListItem; readonly activity: SessionActivity | null; readonly extras?: AgentRowExtras; readonly onOpen: () => void; readonly footer?: ReactNode; readonly now?: number }) {
   const status = agentStatusOf(session, extras);
-  const name = agentName(session);
+  const members = useTeamMembers();
+  const name = agentDisplayName(session, members);
+  const mate = teammateOf(session.id, members);
   return (
     <Card interactive className="v2-wcard" onClick={onOpen} aria-label={`${name} · ${STATUS[status].label}`} data-testid="v2-agent-card" data-session={session.id}>
       <div className="v2-row">
-        <h3 className="v2-grow">{name}</h3>
+        <h3 className="v2-grow">
+          {name}
+          {mate ? <CrewTag crew={mate.crewName} /> : null}
+        </h3>
         <StatusBadge status={status} />
       </div>
       <ActivityLine line={agentLine(session, activity, extras, now)} />
@@ -158,5 +168,14 @@ export function AgentCard({ session, activity, extras = {}, onOpen, footer, now 
         {footer}
       </div>
     </Card>
+  );
+}
+
+/** Fix after 2.0 · a teammate's crew, a subtle tag after its name ("· Acme Core"). */
+export function CrewTag({ crew }: { readonly crew: string }) {
+  return (
+    <span className="v2-crew-tag" data-testid="v2-crew-tag" title={`Teammate in ${crew}`}>
+      {`· ${crew}`}
+    </span>
   );
 }

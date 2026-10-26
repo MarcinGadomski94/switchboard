@@ -1,8 +1,12 @@
 import { Icon, StatusBadge } from '../components/index.ts';
 import { RAIL_LABELS, TERMS, WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
+import { RecentList } from '../shared/RecentList.tsx';
 import type { StatusPill } from './status-model.ts';
 import type { RailCounts } from './useShellData.ts';
+
+/** The phone shows no Pinned list, so Recent leaves nothing out. */
+const NO_PINS: readonly string[] = [];
 
 const LINKS = [
   { to: '/projects', icon: 'projects', label: RAIL_LABELS.projects, count: 'projects' as const },
@@ -22,6 +26,7 @@ export function MorePage({ pill, counts }: { readonly pill: StatusPill; readonly
   return (
     <div className="v2-page" data-testid="v2-page-more" data-area="more">
       <h1>{WORDS.more}</h1>
+      <RecentList pinned={NO_PINS} currentId={null} variant="phone" />
       <div className="v2-plist">
         {LINKS.map((link) => {
           const n = 'count' in link ? counts[link.count] : 0;

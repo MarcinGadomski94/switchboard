@@ -40,17 +40,31 @@
   flex-direction: column;
 }
 
-/* ── Header ── */
+/* ── Header (fix after 2.0: one compact row, ~52 px) ── */
 .sb2 .v2-ag-head {
-  padding: 14px 28px 0;
+  padding: 0 16px 0 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  border-bottom: 1px solid var(--v2-border);
+  container-type: inline-size;
+  container-name: v2-ag-head;
 }
 
-.sb2 .v2-ag-head-top {
-  gap: 6px;
-  min-height: 36px;
+.sb2 .v2-ag-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-titlebox {
+  display: flex;
+  align-items: baseline;
+  min-width: 6ch;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .sb2 .v2-ag-tag {
@@ -69,29 +83,31 @@
   text-overflow: ellipsis;
 }
 
-.sb2 .v2-ag-title-row {
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
 .sb2 .v2-ag-title {
   margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.015em;
+  font-size: 17px;
+  letter-spacing: -0.01em;
   line-height: 1.25;
   min-width: 0;
+  overflow: hidden;
 }
 
 .sb2 .v2-ag-title-btn {
   font: inherit;
+  font-weight: 650;
   color: inherit;
   background: none;
   border: 0;
   padding: 2px 4px;
-  margin: -2px -4px;
+  margin: -2px 0;
   border-radius: var(--v2-r-s);
   text-align: left;
   cursor: text;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 
 .sb2 .v2-ag-title-btn:hover:not(:disabled) {
@@ -99,9 +115,9 @@
 }
 
 .sb2 .v2-ag-title-field {
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 650;
-  min-width: 280px;
+  min-width: 220px;
   border: 1px solid var(--v2-accent);
   border-radius: var(--v2-r-s);
   padding: 2px 8px;
@@ -109,18 +125,24 @@
   color: var(--v2-text);
 }
 
-.sb2 .v2-ag-ci,
-.sb2 .v2-ag-meta {
-  gap: 6px;
-  flex-wrap: wrap;
+.sb2 .v2-ag-ci {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
 }
 
+/* The Needs-you ask, inline and compact (the whole ask in its tooltip). */
 .sb2 .v2-ag-needs {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 14px;
-  border-radius: var(--v2-r);
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 420px;
+  min-height: 32px;
+  padding: 0 2px 0 10px;
+  border-radius: var(--v2-r-pill);
   background: var(--v2-amber-bg);
   color: var(--v2-amber);
   font-size: var(--v2-fs-sm);
@@ -129,6 +151,86 @@
 .sb2 .v2-ag-needs-ask {
   color: var(--v2-text);
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-ag-head .v2-tabs {
+  border-bottom: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+.sb2 .v2-ag-head .v2-tab {
+  padding: 0 10px;
+  min-height: 52px;
+  margin-bottom: 0;
+}
+
+.sb2 .v2-ag-head [data-testid='v2-agent-info'][data-dot='true'] {
+  position: relative;
+}
+
+.sb2 .v2-ag-head [data-testid='v2-agent-info'][data-dot='true']::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--v2-accent);
+}
+
+/* Narrower: the tabs keep their icon (the word for screen readers), the ask only its word. */
+@container v2-ag-head (max-width: 1060px) {
+  .sb2 .v2-ag-head .v2-tab:not([aria-selected='true']) .v2-tab-l {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+@container v2-ag-head (max-width: 860px) {
+  .sb2 .v2-ag-needs-ask,
+  .sb2 .v2-ag-ci-word {
+    display: none;
+  }
+
+  .sb2 .v2-ag-head .v2-tab .v2-tab-l {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* The ⓘ popover: computer, folders, Smart / Fast, separate copy, the notes. */
+.sb2 .v2-ag-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--v2-fs-sm);
+}
+
+.sb2 .v2-ag-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-ag-info-row > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sb2 .v2-ag-note {
@@ -148,7 +250,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 22px 28px;
+  padding: 12px 28px;
   overscroll-behavior: contain;
 }
 
@@ -177,6 +279,12 @@
   line-height: 1.3;
   color: var(--v2-muted);
   margin-bottom: 4px;
+  /* Fix after 2.0: a message's header stays one compact line. */
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* An agent reply: document-style text, no bubble. */
@@ -249,28 +357,74 @@
   padding: 0;
 }
 
+/*
+ * Fix after 2.0: a code block's Copy and Save as result sit in their own slim
+ * strip above the code (the language on its left), never over its first line;
+ * a wide block scrolls sideways inside its <pre> while the strip stays put.
+ */
 .sb2 .v2-ag .sb-md-code {
   position: relative;
   margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--v2-term-bg);
+  border-radius: var(--v2-r);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.sb2 .v2-ag .sb-md-code > pre {
+  margin: 0;
+  border-radius: 0;
+  padding: 4px 14px 12px;
 }
 
 .sb2 .v2-ag .sb-md-code-tools {
-  position: absolute;
-  top: 6px;
-  right: 6px;
+  position: static;
+  order: -1;
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 4px;
+  min-height: 32px;
+  padding: 4px 6px 0 14px;
   opacity: 1;
+  color: var(--v2-term-fg);
+}
+
+.sb2 .v2-ag .sb-md-code-lang {
+  display: block;
+  margin-right: auto;
+  font-family: var(--v2-mono);
+  font-size: 11.5px;
+  opacity: 0.6;
+}
+
+.sb2 .v2-ag .sb-md-code-lang::before {
+  content: attr(data-language);
 }
 
 .sb2 .v2-ag .sb-md-code-tools .sb-button {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border-radius: var(--v2-r-s);
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.08);
   color: var(--v2-term-fg);
-  font-size: 12.5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag .sb-md-code-tools .sb-button:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-ag .sb-md-code-tools .sb-button {
+    min-height: var(--v2-touch);
+    min-width: var(--v2-touch);
+  }
 }
 
 .sb2 .v2-ag .sb-md table {
@@ -342,6 +496,26 @@
   overflow-wrap: anywhere;
 }
 
+/* Fix after 2.0: a long message of yours folds after about 12 lines (Show more). */
+.sb2 .v2-ag-pill[data-folded='true'] {
+  max-height: calc(15px * 1.45 * 12 + 12px);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+
+.sb2 .v2-ag-you-more {
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  min-height: 32px;
+  color: var(--v2-accent-text);
+  font: inherit;
+  font-size: var(--v2-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .sb2 .v2-ag-you[data-cont='true'] {
   margin-top: calc(var(--v2-ag-gap) * -0.65);
 }
@@ -372,6 +546,17 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Fix after 2.0: the chips about to be sent stay on one row that scrolls sideways. */
+.sb2 .v2-ag-dock .v2-ag-atts {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.sb2 .v2-ag-dock .v2-ag-achip {
+  flex: none;
 }
 
 .sb2 .v2-ag-atts-sent {
@@ -694,13 +879,13 @@
   }
 }
 
-/* ── The dock ── */
+/* ── The dock (fix after 2.0: one status row, a capped box) ── */
 .sb2 .v2-ag-dock {
   border-top: 1px solid var(--v2-border);
-  padding: 12px 28px 16px;
+  padding: 6px 28px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   background: var(--v2-surface-2);
 }
 
@@ -716,35 +901,45 @@
   outline-offset: -6px;
 }
 
-.sb2 .v2-ag-live {
+/* The one status row: live line · tasks · memory · queue, then Stop / Resume. */
+.sb2 .v2-ag-status {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 6px 0 14px;
-  border-radius: var(--v2-r);
-  background: var(--v2-grey-bg);
+  gap: 6px;
+  min-height: 32px;
+  min-width: 0;
+  font-size: var(--v2-fs-sm);
+  color: var(--v2-text-2);
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-sep {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-ag-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
   color: var(--v2-grey);
   font-weight: 600;
-  font-size: 14.5px;
 }
 
 .sb2 .v2-ag-live[data-kind='working'],
 .sb2 .v2-ag-live[data-kind='background'] {
-  background: var(--v2-blue-bg);
   color: var(--v2-blue);
 }
 
 .sb2 .v2-ag-live[data-kind='needs'],
 .sb2 .v2-ag-live[data-kind='held'],
 .sb2 .v2-ag-live[data-kind='reconnecting'] {
-  background: var(--v2-amber-bg);
   color: var(--v2-amber);
 }
 
 .sb2 .v2-ag-live[data-kind='stopped'],
 .sb2 .v2-ag-live[data-kind='failed'] {
-  background: var(--v2-red-bg);
   color: var(--v2-red);
 }
 
@@ -760,6 +955,56 @@
   font-weight: 500;
   opacity: 0.85;
   white-space: nowrap;
+}
+
+.sb2 .v2-ag-spart {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--v2-r-s);
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.sb2 button.v2-ag-spart:hover {
+  background: var(--v2-hover, var(--v2-grey-bg));
+}
+
+.sb2 .v2-ag-spart[data-tone='amber'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-ag-spart[aria-expanded='true'] .v2-ag-chev {
+  transform: rotate(90deg);
+}
+
+.sb2 .v2-ag-offer {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+
+.sb2 .v2-ag-draft-note {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-ag-pop-title {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sb2 .v2-ag-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 30vh;
+  overflow: auto;
 }
 
 .sb2 .v2-ag-queued {
@@ -794,13 +1039,6 @@
   color: var(--v2-amber);
 }
 
-.sb2 .v2-ag-tasks,
-.sb2 .v2-ag-memory {
-  border: 1px solid var(--v2-border);
-  border-radius: var(--v2-r);
-  background: var(--v2-surface);
-  font-size: var(--v2-fs-sm);
-}
 
 .sb2 .v2-ag-strip-head {
   display: flex;
@@ -826,7 +1064,7 @@
 .sb2 .v2-ag-tasks-list {
   list-style: none;
   margin: 0;
-  padding: 0 12px 8px;
+  padding: 0;
 }
 
 .sb2 .v2-ag-tasks-list li {
@@ -849,24 +1087,6 @@
   min-height: 32px;
 }
 
-.sb2 .v2-ag-memory {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 12px;
-  min-height: 40px;
-}
-
-.sb2 .v2-ag-memory[data-state='offer'] {
-  background: var(--v2-amber-bg);
-  color: var(--v2-amber);
-  border-color: transparent;
-}
-
-.sb2 .v2-ag-memory .v2-ag-meter {
-  flex: 1;
-  max-width: 220px;
-}
 
 .sb2 .v2-ag-meter {
   display: block;
@@ -929,13 +1149,6 @@
   flex: none;
 }
 
-.sb2 .v2-ag-draft-note {
-  font-size: var(--v2-fs-s);
-  color: var(--v2-muted);
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
 
 .sb2 .v2-ag-dock-note {
   font-size: var(--v2-fs-sm);
@@ -1347,42 +1560,65 @@
 /* ── Tablet ── */
 @media (max-width: 1279px) {
   .sb2 .v2-ag-head {
-    padding: 12px 20px 0;
+    padding: 0 12px 0 8px;
   }
 
   .sb2 .v2-ag-scroll {
-    padding: 18px 20px;
+    padding: 10px 20px;
   }
 
   .sb2 .v2-ag-dock {
-    padding: 10px 20px 14px;
+    padding: 6px 20px 10px;
   }
 }
 
 /* ── Phone: the full-screen chat, edge-to-edge text, a bottom composer ── */
 @media (max-width: 767px) {
   .sb2 .v2-ag-head {
-    padding: 8px 12px 0;
-    gap: 6px;
+    padding: 0 4px;
+  }
+
+  .sb2 .v2-ag-bar {
+    gap: 4px;
+    min-height: 52px;
   }
 
   .sb2 .v2-ag-title,
   .sb2 .v2-ag-title-field {
-    font-size: 18px;
+    font-size: 16px;
   }
 
-  .sb2 .v2-ag-meta,
-  .sb2 .v2-ag-head .v2-ag-note {
+  .sb2 .v2-ag-title-field {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sb2 .v2-ag-head .v2-crew-tag {
+    display: none;
+  }
+
+  /* The ask is in the chat and Needs you; here only the hand and Not waiting. */
+  .sb2 .v2-ag-needs {
+    padding-left: 8px;
+  }
+
+  .sb2 .v2-ag-needs-word,
+  .sb2 .v2-ag-needs-ask {
     display: none;
   }
 
   .sb2 .v2-ag-head .v2-tabs {
     overflow-x: auto;
     scrollbar-width: none;
+    border-top: 1px solid var(--v2-border);
+  }
+
+  .sb2 .v2-ag-head .v2-tab {
+    min-height: 44px;
   }
 
   .sb2 .v2-ag-scroll {
-    padding: 12px 14px;
+    padding: 8px 14px;
   }
 
   .sb2 .v2-ag {
@@ -1395,8 +1631,12 @@
   }
 
   .sb2 .v2-ag-dock {
-    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-    gap: 6px;
+    padding: 4px 10px calc(6px + env(safe-area-inset-bottom));
+    gap: 4px;
+  }
+
+  .sb2 .v2-ag-draft-word {
+    display: none;
   }
 
   .sb2 .v2-ag-queued {
@@ -2028,6 +2268,11 @@
 
   .sb2 .v2-ag-head .v2-btn {
     min-width: var(--v2-touch);
+    min-height: var(--v2-touch);
+  }
+
+  .sb2 .v2-ag-spart,
+  .sb2 .v2-ag-you-more {
     min-height: var(--v2-touch);
   }
 

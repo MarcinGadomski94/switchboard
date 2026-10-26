@@ -22,11 +22,12 @@ import { isEditing } from '../../views/session/SubagentChat.tsx';
 import { freshBusy, freshEligible, loadSnooze, saveSnooze } from '../../views/session/fresh-offer.ts';
 import { freshStepText } from '../../../core/fresh-session.ts';
 import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
-import { Button, Icon, IconButton, useToast } from '../components/index.ts';
+import { Button, Icon, IconButton, Popover, useToast } from '../components/index.ts';
 import { AGENT_WORDS, STATUS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
+import { markRecent } from '../shared/recent.ts';
 import { clock } from '../shared/time.ts';
-import { type DockMessage, composerKey, composerPlaceholder, joinWithdrawn, liveLine, resetTimeOf } from './composer-model.ts';
+import { type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, joinWithdrawn, liveLine, resetTimeOf } from './composer-model.ts';
 import type { AgentData } from './useAgent.ts';
 import { DraftChips } from './Attachments.tsx';
 import { computerOf, continueAsAgent } from './agent-bits.ts';
@@ -159,6 +160,7 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
     setDraft('');
     for (const item of sentItems) attachments.remove(item.key);
     const key = addOutgoing(sessionId, { text: message.text, attachments: sentAttachments, queued: sendQueued(session), afterId: lastEventId() });
+    markRecent(sessionId);
     onSent();
     deliver(sessionId, key, message.text, message.attachments, sentAttachments);
   };
@@ -273,15 +275,21 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
     }
   };
 
-  // The box grows with its text (up to 8 lines), as classic D26.
+  // Fix after 2.0: the box starts at one line and grows with its text only up to about a fifth of the
+  // visible height (never under 4 lines), then scrolls inside: a long message never pushes the chat away.
+  // The visible height follows a phone's keyboard (visualViewport).
+  const viewHeight = useViewHeight();
   useLayoutEffect(() => {
     const field = input.current;
     if (!field) return;
     field.style.height = 'auto';
-    const max = parseFloat(getComputedStyle(field).lineHeight || '22') * 8 + 18;
+    const max = composerMaxHeight(viewHeight, parseFloat(getComputedStyle(field).lineHeight || '22'), variant === 'phone' ? 0.17 : 0.22);
     field.style.height = `${Math.min(field.scrollHeight, max)}px`;
     field.style.overflowY = field.scrollHeight > max ? 'auto' : 'hidden';
-  }, [draft]);
+  }, [draft, viewHeight, variant]);
+  const todos = useSessionTodos(sessionId);
+  const memory = useMemoryState(data);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   const drop = useFileDrop(attachments.add, blocked === null && !readOnly);
   const attaching = attachmentsBlocker(attachments.items);
@@ -311,7 +319,28 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
 
   return (
     <div className="v2-ag-dock" data-variant={variant} data-dragging={drop.dragging ? 'true' : undefined} data-testid="v2-agent-dock" {...drop.handlers}>
-      <LiveRow live={live} stopping={stopping} kbd={full} onStop={() => void stopToBox()} onResume={() => void resume()} onStopBackground={() => void stopBackground()} />
+      <StatusRow
+        status={dockStatus({
+          live,
+          tasks: full && !conversation ? todoSummary(todos.list?.todos ?? []) : null,
+          memory: variant !== 'peek' && memory.shown ? memory : null,
+          queued: queued.length,
+          paused: paused.length,
+        })}
+        live={live}
+        stopping={stopping}
+        kbd={full}
+        onStop={() => void stopToBox()}
+        onResume={() => void resume()}
+        onStopBackground={() => void stopBackground()}
+        todos={full && !conversation ? todos : null}
+        sessionId={sessionId}
+        blocked={blocked}
+        memory={memory}
+        draftSaved={draft.trim() !== '' && full}
+        queueOpen={queueOpen}
+        onQueue={() => setQueueOpen((v) => !v)}
+      />
       {stopTimedOut ? (
         <div className="v2-ag-dock-note" role="alert" data-testid="v2-agent-stop-timeout">
           {AGENT_WORDS.stopTimeout}{' '}
@@ -320,50 +349,48 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
           </Button>
         </div>
       ) : null}
-      {queued.map((row) => (
-        <div className="v2-ag-queued" key={row.key} data-testid="v2-agent-queued" data-event-id={row.id}>
-          <Icon name="clock" size="s" />
-          <span className="v2-grow v2-ag-queued-text">
-            <b>{AGENT_WORDS.queued}</b> <span className="v2-muted">· {AGENT_WORDS.queuedNote}</span>
-            <br />
-            {row.text}
-            {row.attachments.length > 0 ? <span className="v2-muted"> · {row.attachments.length} attachment{row.attachments.length === 1 ? '' : 's'}</span> : null}
-          </span>
-          <span className="v2-ag-queued-btns">
-            <Button size="sm" data-testid="v2-agent-queued-now" disabled={blocked !== null || stopping || !stoppable} title={stoppable ? undefined : 'It sends by itself in a moment.'} onClick={() => void sendNow()}>
-              {AGENT_WORDS.sendNow}
-            </Button>
-            <Button size="sm" variant="ghost" data-testid="v2-agent-queued-edit" disabled={blocked !== null || stopping || !stoppable} title={AGENT_WORDS.takeBackHint} onClick={editQueued}>
-              {AGENT_WORDS.edit}
-            </Button>
-            <Button size="sm" variant="ghost" data-testid="v2-agent-queued-remove" disabled title={AGENT_WORDS.removeQueuedHint}>
-              {AGENT_WORDS.remove}
-            </Button>
-          </span>
+      {queueOpen && queued.length + paused.length > 0 ? (
+        <div className="v2-ag-queue" id={`v2-ag-queue-${sessionId}`} data-testid="v2-agent-queue">
+          {queued.map((row) => (
+            <div className="v2-ag-queued" key={row.key} data-testid="v2-agent-queued" data-event-id={row.id}>
+              <Icon name="clock" size="s" />
+              <span className="v2-grow v2-ag-queued-text">
+                <b>{AGENT_WORDS.queued}</b> <span className="v2-muted">· {AGENT_WORDS.queuedNote}</span> · {row.text}
+                {row.attachments.length > 0 ? <span className="v2-muted"> · {row.attachments.length} attachment{row.attachments.length === 1 ? '' : 's'}</span> : null}
+              </span>
+              <span className="v2-ag-queued-btns">
+                <Button size="sm" data-testid="v2-agent-queued-now" disabled={blocked !== null || stopping || !stoppable} title={stoppable ? undefined : 'It sends by itself in a moment.'} onClick={() => void sendNow()}>
+                  {AGENT_WORDS.sendNow}
+                </Button>
+                <Button size="sm" variant="ghost" data-testid="v2-agent-queued-edit" disabled={blocked !== null || stopping || !stoppable} title={AGENT_WORDS.takeBackHint} onClick={editQueued}>
+                  {AGENT_WORDS.edit}
+                </Button>
+                <Button size="sm" variant="ghost" data-testid="v2-agent-queued-remove" disabled title={AGENT_WORDS.removeQueuedHint}>
+                  {AGENT_WORDS.remove}
+                </Button>
+              </span>
+            </div>
+          ))}
+          {paused.map((row) => (
+            <div className="v2-ag-queued v2-ag-paused" key={row.key} data-testid="v2-agent-paused" data-event-id={row.id}>
+              <Icon name="pause" size="s" />
+              <span className="v2-grow v2-ag-queued-text">
+                <b className="v2-ag-paused-word">{AGENT_WORDS.paused(resetTimeOf(row.heldNote))}</b> · {row.text}
+                {row.attachments.length > 0 ? ` · ${row.attachments.length} attachment${row.attachments.length === 1 ? '' : 's'}` : ''}
+              </span>
+              <span className="v2-ag-queued-btns">
+                <Button size="sm" icon="edit" data-testid="v2-agent-paused-edit" disabled={blocked !== null} onClick={() => void onHeld(row, 'edit')}>
+                  {AGENT_WORDS.edit}
+                </Button>
+                <Button size="sm" variant="ghost" data-testid="v2-agent-paused-remove" disabled={blocked !== null} onClick={() => void onHeld(row, 'remove')}>
+                  {AGENT_WORDS.remove}
+                </Button>
+                <PaidExtraButton />
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
-      {paused.map((row) => (
-        <div className="v2-ag-queued v2-ag-paused" key={row.key} data-testid="v2-agent-paused" data-event-id={row.id}>
-          <Icon name="pause" size="s" />
-          <span className="v2-grow v2-ag-queued-text">
-            <b className="v2-ag-paused-word">{AGENT_WORDS.paused(resetTimeOf(row.heldNote))}</b>
-            <br />
-            {row.text}
-            {row.attachments.length > 0 ? ` · ${row.attachments.length} attachment${row.attachments.length === 1 ? '' : 's'}` : ''}
-          </span>
-          <span className="v2-ag-queued-btns">
-            <Button size="sm" icon="edit" data-testid="v2-agent-paused-edit" disabled={blocked !== null} onClick={() => void onHeld(row, 'edit')}>
-              {AGENT_WORDS.edit}
-            </Button>
-            <Button size="sm" variant="ghost" data-testid="v2-agent-paused-remove" disabled={blocked !== null} onClick={() => void onHeld(row, 'remove')}>
-              {AGENT_WORDS.remove}
-            </Button>
-            <PaidExtraButton />
-          </span>
-        </div>
-      ))}
-      {full && !conversation ? <TasksStrip sessionId={sessionId} blocked={blocked} /> : null}
-      {variant !== 'peek' ? <MemoryStrip data={data} /> : null}
+      ) : null}
       {readOnly ? (
         <div className="v2-ag-dock-note" data-testid="v2-agent-readonly">
           {AGENT_WORDS.readOnly}
@@ -404,12 +431,6 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
           </div>
         </>
       )}
-      {draft.trim() !== '' && full ? (
-        <div className="v2-ag-draft-note" data-testid="v2-agent-draft-note">
-          <Icon name="edit" size="s" />
-          {AGENT_WORDS.draftSaved}
-        </div>
-      ) : null}
       {error ? (
         <div className="v2-ag-dock-error" role="alert" data-testid="v2-agent-error">
           {error}
@@ -431,35 +452,187 @@ function pickFiles(onFiles: (files: File[]) => void): void {
   picker.click();
 }
 
-/** The live line (the prototype's `.liveline`): icon + words + time, and its button. */
-function LiveRow({ live, stopping, kbd, onStop, onResume, onStopBackground }: { readonly live: ReturnType<typeof liveLine>; readonly stopping: boolean; readonly kbd: boolean; readonly onStop: () => void; readonly onResume: () => void; readonly onStopBackground: () => void }) {
-  const icon =
-    live.kind === 'working' || live.kind === 'background'
-      ? null
-      : live.kind === 'offline'
-        ? 'offline'
-        : live.kind === 'reconnecting'
-          ? 'refresh'
-          : live.kind === 'needs'
-            ? 'hand'
-            : live.kind === 'held'
-              ? 'wallet'
-              : live.kind === 'stopped'
-                ? 'stop'
-                : live.kind === 'paused'
-                  ? 'pause'
-                  : live.kind === 'done'
-                    ? 'check'
-                    : live.kind === 'failed'
-                      ? 'octagon'
-                      : 'moon';
+/** The live line's icon (a pulse while it works). */
+function liveIcon(kind: ReturnType<typeof liveLine>['kind']): string | null {
+  switch (kind) {
+    case 'working':
+    case 'background':
+      return null;
+    case 'offline':
+      return 'offline';
+    case 'reconnecting':
+      return 'refresh';
+    case 'needs':
+      return 'hand';
+    case 'held':
+      return 'wallet';
+    case 'stopped':
+      return 'stop';
+    case 'paused':
+      return 'pause';
+    case 'done':
+      return 'check';
+    case 'failed':
+      return 'octagon';
+    default:
+      return 'moon';
+  }
+}
+
+/** The tasks of the status row, as {@link dockStatus} reads them. */
+function todoSummary(list: readonly SessionTodo[]): { total: number; done: number; current: string | null } {
+  const current = list.find((t) => t.state === 'in_progress') ?? list.find((t) => t.state === 'open') ?? null;
+  return { total: list.length, done: list.filter((t) => t.state === 'done').length, current: current?.title ?? null };
+}
+
+/** The visible height (a phone's keyboard shrinks it), live. */
+function useViewHeight(): number {
+  const read = (): number => (typeof window === 'undefined' ? 900 : (window.visualViewport?.height ?? window.innerHeight));
+  const [height, setHeight] = useState(read);
+  useEffect(() => {
+    const update = (): void => setHeight(read());
+    const view = window.visualViewport;
+    window.addEventListener('resize', update);
+    view?.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      view?.removeEventListener('resize', update);
+    };
+  }, []);
+  return height;
+}
+
+/**
+ * Fix after 2.0 · ONE compact status row above the box (the old live line, tasks
+ * strip, working-memory strip and queued / paused cards merged): "● Running tests
+ * 0:42 · Tasks 1/3 · Memory 64% · 2 queued ▸", Stop / Resume on its right. Tasks
+ * open their list in a popover; the queue line unfolds the queued and paused
+ * messages; the clean-slate offer shows in the row only past its threshold.
+ */
+function StatusRow({
+  status,
+  live,
+  stopping,
+  kbd,
+  onStop,
+  onResume,
+  onStopBackground,
+  todos,
+  sessionId,
+  blocked,
+  memory,
+  draftSaved,
+  queueOpen,
+  onQueue,
+}: {
+  readonly status: DockStatus;
+  readonly live: ReturnType<typeof liveLine>;
+  readonly stopping: boolean;
+  readonly kbd: boolean;
+  readonly onStop: () => void;
+  readonly onResume: () => void;
+  readonly onStopBackground: () => void;
+  readonly todos: ReturnType<typeof useSessionTodos> | null;
+  readonly sessionId: string;
+  readonly blocked: string | null;
+  readonly memory: MemoryState;
+  readonly draftSaved: boolean;
+  readonly queueOpen: boolean;
+  readonly onQueue: () => void;
+}) {
+  const icon = liveIcon(live.kind);
+  const [tasksAnchor, setTasksAnchor] = useState<HTMLButtonElement | null>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const tasks = status.parts.find((part) => part.id === 'tasks') ?? null;
+  const mem = status.parts.find((part) => part.id === 'memory') ?? null;
+  const queue = status.parts.find((part) => part.id === 'queue') ?? null;
+  const list = todos?.list?.todos ?? [];
+  const toggle = (todo: SessionTodo): void => {
+    if (todos) void todos.run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' }));
+  };
   return (
-    <div className="v2-ag-live" data-kind={live.kind} data-testid="v2-agent-live" role="status">
-      {icon ? <Icon name={icon} size="s" /> : <span className="v2-pulse" aria-hidden="true" />}
-      <span className="v2-ag-live-text">{live.text}</span>
-      {live.time ? (
-        <span className="v2-ag-live-time" data-testid="v2-agent-live-time">
-          {live.kind === 'stopped' ? `at ${live.time}` : live.time}
+    <div className="v2-ag-status" data-testid="v2-agent-status" aria-label={status.text}>
+      <span className="v2-ag-live" data-kind={live.kind} data-testid="v2-agent-live" role="status" title={live.text}>
+        {icon ? <Icon name={icon} size="s" /> : <span className="v2-pulse" aria-hidden="true" />}
+        <span className="v2-ag-live-text">{live.text}</span>
+        {live.time ? (
+          <span className="v2-ag-live-time" data-testid="v2-agent-live-time">
+            {live.kind === 'stopped' ? `at ${live.time}` : live.time}
+          </span>
+        ) : null}
+        <span className="v2-sr">{STATUS.working.label}</span>
+      </span>
+      {tasks ? (
+        <>
+          <span className="v2-ag-sep" aria-hidden="true">
+            ·
+          </span>
+          <button type="button" ref={setTasksAnchor} className="v2-ag-spart" data-testid="v2-agent-tasks" title={tasks.title} aria-haspopup="dialog" aria-expanded={tasksOpen} onClick={() => setTasksOpen((v) => !v)}>
+            <Icon name="task" size="s" />
+            {tasks.text}
+          </button>
+          <Popover open={tasksOpen} onClose={() => setTasksOpen(false)} anchor={tasksAnchor} label={AGENT_WORDS.tasksStrip(list.length - list.filter((t) => t.state === 'done').length, list.filter((t) => t.state === 'done').length)} align="start" width={340} testId="v2-agent-tasks-pop">
+            <b className="v2-ag-pop-title">{tasks.title}</b>
+            <ul className="v2-ag-tasks-list">
+              {list.map((todo) => (
+                <li key={todo.id} data-state={todo.state} data-testid="v2-agent-task">
+                  <button type="button" className="v2-ag-task-check" role="checkbox" aria-checked={todo.state === 'done'} disabled={blocked !== null} aria-label={todo.title} onClick={() => toggle(todo)}>
+                    <Icon name={todo.state === 'done' ? 'check-circle' : todo.state === 'in_progress' ? 'dot' : 'circle'} size="s" />
+                  </button>
+                  <span className="v2-grow">{todo.title}</span>
+                </li>
+              ))}
+            </ul>
+            {todos?.error ? (
+              <div className="v2-ag-dock-error" role="alert">
+                {todos.error}
+              </div>
+            ) : null}
+          </Popover>
+        </>
+      ) : null}
+      {mem ? (
+        <>
+          <span className="v2-ag-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="v2-ag-spart" data-tone={mem.tone} data-testid="v2-agent-memory" title={mem.title} tabIndex={0}>
+            <Icon name={memory.running ? 'refresh' : 'cpu'} size="s" />
+            {mem.text}
+          </span>
+        </>
+      ) : null}
+      {status.offer ? (
+        <span className="v2-ag-offer" data-testid="v2-agent-memory-offer">
+          <Button size="sm" variant="primary" icon="refresh" data-testid="v2-agent-clean-slate" title={mem?.title} disabled={memory.busy} onClick={() => void memory.clean()}>
+            {AGENT_WORDS.cleanSlateShort}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={memory.snooze}>
+            Not now
+          </Button>
+        </span>
+      ) : null}
+      {memory.error ? (
+        <span className="v2-ag-dock-error" role="alert">
+          {memory.error}
+        </span>
+      ) : null}
+      {queue ? (
+        <>
+          <span className="v2-ag-sep" aria-hidden="true">
+            ·
+          </span>
+          <button type="button" className="v2-ag-spart" data-tone={queue.tone} data-testid="v2-agent-queue-line" aria-expanded={queueOpen} aria-controls={`v2-ag-queue-${sessionId}`} title={queue.title} onClick={onQueue}>
+            <Icon name={queue.tone === 'amber' ? 'pause' : 'clock'} size="s" />
+            {queue.text}
+            <Icon name="chev" size="s" className="v2-ag-chev" />
+          </button>
+        </>
+      ) : null}
+      {draftSaved ? (
+        <span className="v2-ag-spart v2-ag-draft-note" data-testid="v2-agent-draft-note" title={AGENT_WORDS.draftSaved} tabIndex={0}>
+          <Icon name="edit" size="s" />
+          <span className="v2-ag-draft-word">{AGENT_WORDS.draftSavedShort}</span>
         </span>
       ) : null}
       <span className="v2-grow" />
@@ -478,7 +651,6 @@ function LiveRow({ live, stopping, kbd, onStop, onResume, onStopBackground }: { 
           {AGENT_WORDS.stopBackground}
         </Button>
       ) : null}
-      <span className="v2-sr">{STATUS.working.label}</span>
     </div>
   );
 }
@@ -506,47 +678,6 @@ function ContinueAsAgent({ session }: { readonly session: SessionDetail | null }
   );
 }
 
-/** D68 · this agent's tasks above the box (v2 style): the one in progress, and the list folded under it. */
-function TasksStrip({ sessionId, blocked }: { readonly sessionId: string; readonly blocked: string | null }) {
-  const todos = useSessionTodos(sessionId);
-  const [open, setOpen] = useState(false);
-  const list = todos.list?.todos ?? [];
-  if (list.length === 0) return null;
-  const done = list.filter((t) => t.state === 'done').length;
-  const current = list.find((t) => t.state === 'in_progress') ?? list.find((t) => t.state === 'open') ?? null;
-  const toggle = (todo: SessionTodo): void => {
-    void todos.run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' }));
-  };
-  return (
-    <div className="v2-ag-tasks" data-testid="v2-agent-tasks" data-open={open ? 'true' : undefined}>
-      <button type="button" className="v2-ag-strip-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <Icon name="task" size="s" />
-        <b>{AGENT_WORDS.tasksStrip(list.length - done, done)}</b>
-        {current && !open ? <span className="v2-ag-strip-sub">· {current.title}</span> : null}
-        <span className="v2-grow" />
-        <Icon name="chev" size="s" className="v2-ag-chev" />
-      </button>
-      {open ? (
-        <ul className="v2-ag-tasks-list">
-          {list.map((todo) => (
-            <li key={todo.id} data-state={todo.state} data-testid="v2-agent-task">
-              <button type="button" className="v2-ag-task-check" role="checkbox" aria-checked={todo.state === 'done'} disabled={blocked !== null} aria-label={todo.title} onClick={() => toggle(todo)}>
-                <Icon name={todo.state === 'done' ? 'check-circle' : todo.state === 'in_progress' ? 'dot' : 'circle'} size="s" />
-              </button>
-              <span className="v2-grow">{todo.title}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {todos.error ? (
-        <div className="v2-ag-dock-error" role="alert">
-          {todos.error}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** The Settings → Sessions offer (D83): on, and at what percentage. */
 function useFreshSettings(): { readonly enabled: boolean; readonly pct: number } | null {
   const [value, setValue] = useState<{ enabled: boolean; pct: number } | null>(null);
@@ -567,12 +698,25 @@ function useFreshSettings(): { readonly enabled: boolean; readonly pct: number }
   return value;
 }
 
+/** Working memory as the status row shows it, and what its offer does. */
+export interface MemoryState {
+  /** Something to show (from 50 %, the offer, or a continuation running). */
+  readonly shown: boolean;
+  readonly pct: number | null;
+  readonly offer: boolean;
+  readonly running: string | null;
+  readonly busy: boolean;
+  readonly error: string | null;
+  readonly clean: () => Promise<void>;
+  readonly snooze: () => void;
+}
+
 /**
- * D49 / D83 · "Working memory" above the box: a thin meter while it fills; past the
- * offer's threshold (between replies) the amber note with **Continue with a clean
- * slate** and Not now; while a continuation runs, which step.
+ * D49 / D83 · working memory for the status row: its percentage from 50 %; past
+ * the offer's threshold (between replies) the clean-slate offer with Not now;
+ * while a continuation runs, which step.
  */
-export function MemoryStrip({ data }: { readonly data: AgentData }) {
+export function useMemoryState(data: AgentData): MemoryState {
   const { session, sessionId, activity, blocked } = data;
   const settings = useFreshSettings();
   const { navigate } = useV2Router();
@@ -588,17 +732,11 @@ export function MemoryStrip({ data }: { readonly data: AgentData }) {
     }
   }, [target, navigate]);
   const context = session?.context ?? null;
-  if (!session || !context || data.conversation) return null;
-  const pct = context.percent === null ? null : Math.round(context.percent);
-  if (session.freshContinue) {
-    return (
-      <div className="v2-ag-memory" data-state="running" role="status" data-testid="v2-agent-memory">
-        <Icon name="refresh" size="s" />
-        {freshStepText(session.freshContinue.step)}
-      </div>
-    );
-  }
+  const pct = context?.percent == null ? null : Math.round(context.percent);
+  const running = session?.freshContinue ? freshStepText(session.freshContinue.step) : null;
   const offer =
+    session !== null &&
+    !running &&
     settings !== null &&
     settings.enabled &&
     blocked === null &&
@@ -620,38 +758,10 @@ export function MemoryStrip({ data }: { readonly data: AgentData }) {
       setBusy(false);
     }
   };
-  if (!offer) {
-    // A slim meter only once it is worth a look (from 50 %).
-    if (pct === null || pct < 50) return null;
-    return (
-      <div className="v2-ag-memory" data-band={context.band} data-testid="v2-agent-memory" title={`${AGENT_WORDS.workingMemory} · ${AGENT_WORDS.memoryUsed(pct)}`}>
-        <Icon name="cpu" size="s" />
-        <span>{AGENT_WORDS.workingMemory}</span>
-        <span className="v2-ag-meter" role="meter" aria-label={AGENT_WORDS.workingMemory} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-          <b style={{ width: `${pct}%` }} />
-        </span>
-        <span className="v2-muted">{AGENT_WORDS.memoryUsed(pct)}</span>
-      </div>
-    );
-  }
-  return (
-    <div className="v2-ag-memory" data-state="offer" data-testid="v2-agent-memory" role="region" aria-label={AGENT_WORDS.workingMemory}>
-      <Icon name="alert" size="s" />
-      <span className="v2-grow">{AGENT_WORDS.memoryFullBanner(pct ?? 0)}</span>
-      <Button size="sm" variant="primary" icon="refresh" data-testid="v2-agent-clean-slate" disabled={busy} onClick={() => void clean()}>
-        {AGENT_WORDS.cleanSlate}
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          setSnoozedAt(pct);
-          saveSnooze(browserStorage(), sessionId, pct);
-        }}
-      >
-        Not now
-      </Button>
-      {error ? <span role="alert">{error}</span> : null}
-    </div>
-  );
+  const snooze = (): void => {
+    setSnoozedAt(pct);
+    saveSnooze(browserStorage(), sessionId, pct ?? 0);
+  };
+  const shown = session !== null && context !== null && !data.conversation && (running !== null || offer || (pct !== null && pct >= 50));
+  return { shown, pct, offer, running, busy, error, clean, snooze };
 }

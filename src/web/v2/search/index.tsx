@@ -7,7 +7,9 @@ import { useMachines, useMachineStateChange } from '../../api/useMachines.ts';
 import { Card, ComputerTag, EmptyState, Icon, Skeleton } from '../components/index.ts';
 import { SEARCH_WORDS, computerStateToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
+import { CrewTag } from '../shared/agent-row.tsx';
 import { useOpenAgent } from '../shared/open-agent.ts';
+import { teammateOf, useTeamMembers } from '../shared/teammates.ts';
 import { clock, timeAgo } from '../shared/time.ts';
 import {
   GROUP_ROWS,
@@ -300,6 +302,9 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
   const href = hitHref(result);
   const openAgent = useOpenAgent();
   const peekAt = peekSessionOf(result);
+  // Fix after 2.0: a teammate's hits name it by its teammate's name (with its crew).
+  const members = useTeamMembers();
+  const mate = teammateOf('sessionId' in result.target ? result.target.sessionId : null, members);
   const tag = result.machine ? <ComputerTag name={result.machine.name} state={computerStateToV2(result.machine.state)} short /> : null;
   if (isMessageHit(result)) {
     return (
@@ -309,7 +314,8 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
         </span>
         <span className="v2-grow v2-srch-main">
           <span className="v2-srch-ttl">
-            {result.teamRole ?? result.sessionTitle ?? ''}{' '}
+            {mate?.name ?? result.teamRole ?? result.sessionTitle ?? ''}
+            {mate ? <CrewTag crew={mate.crewName} /> : null}{' '}
             <span className="v2-srch-who">
               · {whoOf(result)} · {clock(result.ts) || timeAgo(result.ts)}
             </span>
@@ -327,7 +333,7 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
     );
   }
   const snippet = result.target.type === 'session' || result.snippet.length === 0 ? null : result.snippet;
-  const where = result.sessionTitle && result.kind !== 'session' ? result.sessionTitle : null;
+  const where = result.sessionTitle && result.kind !== 'session' ? (mate?.name ?? result.sessionTitle) : null;
   return (
     <V2Link
       to={href}
@@ -347,7 +353,8 @@ function Hit({ result, icon }: { readonly result: SearchResult; readonly icon: s
       </span>
       <span className="v2-grow v2-srch-main">
         <span className="v2-srch-ttl">
-          <Marked segments={result.title} />
+          {mate && result.kind === 'session' ? mate.name : <Marked segments={result.title} />}
+          {mate && result.kind === 'session' ? <CrewTag crew={mate.crewName} /> : null}
         </span>
         <span className="v2-srch-sub">
           {snippet ? <Marked segments={snippet} max={150} /> : null}

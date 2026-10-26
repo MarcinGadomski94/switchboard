@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { Icon, StatusBadge } from '../components/index.ts';
 import { RAIL_LABELS, STATUS, WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
-import { agentName } from '../shared/agent-row.tsx';
+import { RecentList } from '../shared/RecentList.tsx';
+import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import type { StatusPill } from './status-model.ts';
 import { type RailCounts, usePhones, usePins } from './useShellData.ts';
 
@@ -26,6 +28,8 @@ const TARGETS: Readonly<Record<RailArea, V2Route>> = {
 export function Rail({ route, counts, pill }: { readonly route: V2Route; readonly counts: RailCounts; readonly pill: StatusPill }) {
   const current = railAreaOf(route);
   const pins = usePins();
+  const members = useTeamMembers();
+  const pinnedIds = useMemo(() => pins.map((session) => session.id), [pins]);
   const phones = usePhones();
   const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : 0);
   return (
@@ -57,7 +61,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
         </h5>
         {pins.map((session) => {
           const status = sessionStatusToV2(session.status);
-          const name = agentName(session);
+          const name = agentDisplayName(session, members);
           return (
             <V2Link key={session.id} to={{ area: 'agent', id: session.id, tab: 'chat' }} className="v2-pin-item" title={`${name} · ${STATUS[status].label}`} aria-current={route.area === 'agent' && route.id === session.id ? 'page' : undefined}>
               <StatusBadge status={status} compact />
@@ -67,6 +71,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
         })}
         {pins.length === 0 ? <p className="v2-rail-note">Pin agents from their ⋯ menu.</p> : null}
       </div>
+      <RecentList pinned={pinnedIds} currentId={route.area === 'agent' ? route.id : null} />
       <div className="v2-rail-foot" data-testid="v2-rail-foot">
         {pill.computerRows.map((row) => (
           <div key={row.id ?? 'self'} className="v2-row" data-state={row.state}>

@@ -15,6 +15,7 @@ import { useV2Router } from '../nav.tsx';
 import { openNew, type NewKind } from '../new/index.tsx';
 import { setScheme } from '../scheme.ts';
 import { openStore } from '../shared/open-store.ts';
+import { agentDisplayName, displayNameById, useTeamMembers } from '../shared/teammates.ts';
 import { timeAgo } from '../shared/time.ts';
 import { openShortcuts } from '../shell/ShortcutsDialog.tsx';
 import { replayV2Tours } from '../tour/TourHost.tsx';
@@ -56,6 +57,7 @@ function PaletteBody({ initial }: { readonly initial: string }) {
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const sessions = useSessionListOf();
+  const members = useTeamMembers();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [crews, setCrews] = useState<TeamSummary[]>([]);
   const [results, setResults] = useState<ArtifactListItem[]>([]);
@@ -91,13 +93,13 @@ function PaletteBody({ initial }: { readonly initial: string }) {
 
   const currentAgent = route.area === 'agent' ? route.id : null;
   const taskAgent = quickTaskAgent(sessions.data, currentAgent);
-  const taskAgentName = taskAgent ? (taskAgent.displayTitle ?? taskAgent.title ?? taskAgent.name) : '';
+  const taskAgentName = taskAgent ? agentDisplayName(taskAgent, members) : '';
 
   const rows = useMemo<PaletteRow[]>(() => {
     if (taskTitle !== null) {
       return [{ id: 'quick-task', group: 'quick', icon: 'task', label: P.addTask(taskTitle), hint: taskAgent ? P.addTaskTo(taskAgentName) : P.noAgentForTask, action: { run: 'quick-task', arg: taskTitle } }];
     }
-    const agents = (sessions.data ?? []).filter((s) => !s.closedAt).map(agentRow);
+    const agents = (sessions.data ?? []).filter((s) => !s.closedAt).map((s) => agentRow(s, members));
     const actions = actionRows();
     if (isTaskPrefix(query)) return actions.filter((row) => row.id === 'action:task-prefix');
     if (q === '') {
@@ -126,7 +128,7 @@ function PaletteBody({ initial }: { readonly initial: string }) {
                 group: 'messages' as const,
                 icon: 'chat',
                 label: `“${plainText(hit.snippet).trim()}”`,
-                hint: [hit.sessionTitle, hit.detail, timeAgo(hit.ts), hit.machine?.name].filter(Boolean).join(' · '),
+                hint: [displayNameById('sessionId' in hit.target ? hit.target.sessionId : null, hit.sessionTitle ?? '', members) || null, hit.detail, timeAgo(hit.ts), hit.machine?.name].filter(Boolean).join(' · '),
                 keywords: q,
                 action: { go: hitPath(hit.target, hit.machine?.id) },
               })),
@@ -134,7 +136,7 @@ function PaletteBody({ initial }: { readonly initial: string }) {
         : [];
     const ranked = rankRows([...messages.slice(0, 3), ...agents, ...projectRows, ...crewRows, ...resultRows, ...pageRows(), ...actions], q, 11);
     return [...ranked, searchRow(q)];
-  }, [taskTitle, taskAgent, taskAgentName, sessions.data, q, query, plans, crews, results, found]);
+  }, [taskTitle, taskAgent, taskAgentName, sessions.data, members, q, query, plans, crews, results, found]);
 
   useEffect(() => {
     setSelected((index) => Math.min(index, Math.max(0, rows.length - 1)));

@@ -89,6 +89,9 @@ test('the chat: replies as text, collapsed tool rows expand, the live line ticks
   // A follow-up while it works waits in the dock as queued (D114: at once).
   await input.fill('A queued follow-up');
   await input.press('Enter');
+  // Fix after 2.0: one "1 queued ▸" line in the status row unfolds the queued messages.
+  await expect(page.getByTestId('v2-agent-queue-line')).toHaveText(/1 queued/);
+  await page.getByTestId('v2-agent-queue-line').click();
   const queued = page.getByTestId('v2-agent-queued');
   await expect(queued).toHaveCount(1);
   await expect(queued).toContainText('A queued follow-up');
@@ -267,7 +270,7 @@ test('the reply ⋯ menu: Save as result shows it as an attachment that opens it
   await again.hover();
   await again.getByTestId('v2-agent-reply-menu').click();
   await page.getByTestId('v2-agent-reply-menu-list').getByRole('menuitem', { name: 'Add to tasks' }).click();
-  await expect(page.getByTestId('v2-agent-tasks')).toContainText('Tasks · 0 of 1 done', { timeout: 10_000 });
+  await expect(page.getByTestId('v2-agent-tasks')).toContainText('Tasks 0/1', { timeout: 10_000 });
 });
 
 test('a helper thread expands inline and opens its own chat', async ({ page }) => {
@@ -342,7 +345,9 @@ test('phone (390 × 844): the full-screen chat, the bottom composer sends, Detai
   // The text reaches the screen's edges (no side panel, no line cap wider than the screen).
   const reply = await page.getByTestId('v2-agent-reply').last().boundingBox();
   expect(reply?.width ?? 0).toBeGreaterThan(330);
-  await page.getByTestId('v2-agent-details').click();
+  // Fix after 2.0: the phone header is one row (back, title, status, ⋯); Details is in ⋯.
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByTestId('v2-agent-menu-list').getByRole('menuitem', { name: 'Details' }).click();
   await expect(page.getByTestId('v2-agent-side-sheet')).toBeVisible();
   await expect(page.getByTestId('v2-agent-side-sheet').getByTestId('v2-agent-group-how')).toBeVisible();
   await settled(page, id);
@@ -595,6 +600,12 @@ test.describe('lane X · Continue in Switchboard in v2', () => {
     await stubToolProbes(page);
     await useV2(page);
     await page.goto(`${n.baseUrl}/agents/${session.id}`);
+    // Fix after 2.0: the notes under the title moved into the header's ⓘ popover (its dot says there is one).
+    const info = async (): Promise<void> => {
+      if (!(await page.getByTestId('v2-agent-info-pop').isVisible())) await page.getByTestId('v2-agent-info').click();
+    };
+    await expect(page.getByTestId('v2-agent-info')).toHaveAttribute('data-dot', 'true');
+    await info();
     await expect(page.getByTestId('v2-agent-hooked')).toBeVisible();
     // The ⋯ menu has it too.
     await page.getByTestId('v2-agent-menu').click();
@@ -602,6 +613,7 @@ test.describe('lane X · Continue in Switchboard in v2', () => {
     await page.keyboard.press('Escape');
 
     const action = page.getByTestId('v2-agent-continue-hooked');
+    await info();
     await action.click();
     const dialog = page.getByTestId('v2-continue-hooked');
     await expect(dialog.getByTestId('v2-continue-hooked-body')).toHaveAttribute('data-state', 'confirm');
@@ -611,6 +623,7 @@ test.describe('lane X · Continue in Switchboard in v2', () => {
     await expect(dialog).toHaveCount(0);
     expect(terminal?.exitCode).toBeNull();
 
+    await info();
     await action.click();
     await page.getByTestId('v2-continue-hooked-confirm').click();
     await expect(page.getByTestId('v2-continue-hooked')).toHaveCount(0, { timeout: 30_000 });

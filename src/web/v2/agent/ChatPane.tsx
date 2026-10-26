@@ -19,6 +19,7 @@ import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { useNeedsItemsOf, useNeedsYou } from '../shared/needs-you.ts';
 import { SentAttachments } from './Attachments.tsx';
 import type { ActivityMark, ChatRow, HelperRef, ResultRef } from './chat-model.ts';
+import { foldsYou } from './composer-model.ts';
 import { type ReplyMenuItem, replyMenu } from './reply-menu.ts';
 import type { AgentData } from './useAgent.ts';
 import { openRevert } from './dialogs.tsx';
@@ -255,6 +256,10 @@ const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need
 });
 
 function YouPill({ row, sessionId, fullText }: { readonly row: Extract<ChatRow, { kind: 'you' }>; readonly sessionId: string; readonly fullText: FullTextControl | undefined }) {
+  // Fix after 2.0: a long message of yours folds after about 12 lines (Show more).
+  const folds = foldsYou(row.text);
+  const [open, setOpen] = useState(false);
+  const pillId = `v2-ag-you-${row.key}`;
   return (
     <div className="v2-ag-msg v2-ag-you" data-cont={row.cont ? 'true' : undefined} data-event-id={row.id > 0 ? row.id : undefined} data-testid="v2-agent-you" data-delivered={row.delivered ? 'true' : 'false'}>
       {row.loop ? (
@@ -271,9 +276,14 @@ function YouPill({ row, sessionId, fullText }: { readonly row: Extract<ChatRow, 
         </div>
       )}
       {row.text !== '' || row.attachments.length === 0 ? (
-        <div className="v2-ag-pill">
+        <div className="v2-ag-pill" id={pillId} data-folded={folds && !open ? 'true' : undefined}>
           <ChatMarkdown text={row.text} testId="v2-agent-you-text" />
         </div>
+      ) : null}
+      {folds ? (
+        <button type="button" className="v2-ag-you-more" aria-expanded={open} aria-controls={pillId} data-testid="v2-agent-you-more" onClick={() => setOpen((v) => !v)}>
+          {open ? AGENT_WORDS.showLess : AGENT_WORDS.showMore}
+        </button>
       ) : null}
       {row.cut ? <CutNote cut={row.cut} control={fullText} /> : null}
       <SentAttachments sessionId={sessionId} attachments={row.attachments} />

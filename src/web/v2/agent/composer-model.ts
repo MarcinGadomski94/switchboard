@@ -119,3 +119,87 @@ export function composerKey(event: { readonly key: string; readonly shiftKey: bo
 export function joinWithdrawn(texts: readonly string[]): string {
   return texts.map((text) => text.trim()).filter((text) => text !== '').join('\n\n');
 }
+
+// ── Fix after 2.0 · one compact status row above the box ─────────────
+
+/** What {@link dockStatus} reads. */
+export interface DockStatusInput {
+  readonly live: LiveLine;
+  /** This agent's tasks (`null` / total 0 = none). */
+  readonly tasks: { readonly total: number; readonly done: number; readonly current: string | null } | null;
+  /** Working memory: its percentage (`null` = unknown), the clean-slate offer, a continuation's step. */
+  readonly memory: { readonly pct: number | null; readonly offer: boolean; readonly running: string | null } | null;
+  readonly queued: number;
+  readonly paused: number;
+}
+
+/** One part of the status row. */
+export interface DockStatusPart {
+  readonly id: 'live' | 'tasks' | 'memory' | 'queue';
+  readonly text: string;
+  /** The longer words for its tooltip (and the part's details). */
+  readonly title: string;
+  readonly tone: 'grey' | 'blue' | 'amber' | 'red';
+}
+
+/** The status row: its parts in order (live, tasks, memory, queue) and the whole line in words (the row's label). */
+export interface DockStatus {
+  readonly parts: readonly DockStatusPart[];
+  readonly text: string;
+  /** The clean-slate offer shows in the row (D83: past the Settings threshold, between replies). */
+  readonly offer: boolean;
+}
+
+/** Working memory shows in the row from this percentage (the strip's old threshold). */
+export const MEMORY_SHOWN_FROM = 50;
+
+function liveTone(kind: LiveKind): DockStatusPart['tone'] {
+  if (kind === 'working' || kind === 'background') return 'blue';
+  if (kind === 'needs' || kind === 'held' || kind === 'reconnecting') return 'amber';
+  if (kind === 'stopped' || kind === 'failed') return 'red';
+  return 'grey';
+}
+
+/**
+ * Merges the live line, the tasks strip, the working-memory strip and the
+ * queued / paused count into ONE compact row ("● Running tests 0:42 · Tasks 1/3 ·
+ * Memory 64% · 2 queued"), details on click or hover. Pure.
+ */
+export function dockStatus(input: DockStatusInput): DockStatus {
+  const parts: DockStatusPart[] = [{ id: 'live', text: input.live.time ? `${input.live.text} ${input.live.time}` : input.live.text, title: input.live.text, tone: liveTone(input.live.kind) }];
+  const tasks = input.tasks;
+  if (tasks && tasks.total > 0) {
+    parts.push({ id: 'tasks', text: `Tasks ${tasks.done}/${tasks.total}`, title: `${AGENT_WORDS.tasksStrip(tasks.total - tasks.done, tasks.done)}${tasks.current ? ` · ${tasks.current}` : ''}`, tone: 'grey' });
+  }
+  const memory = input.memory;
+  if (memory?.running) parts.push({ id: 'memory', text: memory.running, title: memory.running, tone: 'blue' });
+  else if (memory && memory.pct !== null && (memory.offer || memory.pct >= MEMORY_SHOWN_FROM)) {
+    parts.push({ id: 'memory', text: `Memory ${memory.pct}%`, title: memory.offer ? AGENT_WORDS.memoryFullBanner(memory.pct) : `${AGENT_WORDS.workingMemory} · ${AGENT_WORDS.memoryUsed(memory.pct)}`, tone: memory.offer || memory.pct >= 80 ? 'amber' : 'grey' });
+  }
+  const waiting = input.queued + input.paused;
+  if (waiting > 0) {
+    const words = [input.queued ? `${input.queued} queued` : '', input.paused ? `${input.paused} paused` : ''].filter(Boolean).join(' · ');
+    parts.push({ id: 'queue', text: words, title: words, tone: input.paused ? 'amber' : 'grey' });
+  }
+  return { parts, text: parts.map((part) => part.text).join(' · '), offer: memory?.offer === true && !memory.running };
+}
+
+/**
+ * The box's height cap: about a fifth of the visible height (`share`; a phone,
+ * with its top bar and tabs, passes less) so the whole dock stays under a third,
+ * never under 4 lines (`lineHeight` px) plus its padding.
+ */
+export function composerMaxHeight(viewportHeight: number, lineHeight: number, share = 0.22, padding = 18): number {
+  const lines = Math.ceil(lineHeight * 4 + padding);
+  return Math.max(lines, Math.round(viewportHeight * share));
+}
+
+/** Your long message folds after this many lines (Show more). */
+export const YOU_FOLD_LINES = 12;
+
+/** `true` when your message is long enough to fold: more than {@link YOU_FOLD_LINES} lines (a long line counts as `width` characters per line). */
+export function foldsYou(text: string, charsPerLine = 90): boolean {
+  let lines = 0;
+  for (const line of text.split('\n')) lines += Math.max(1, Math.ceil(line.length / charsPerLine));
+  return lines > YOU_FOLD_LINES;
+}

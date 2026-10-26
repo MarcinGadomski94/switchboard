@@ -6,6 +6,7 @@ import { BottomSheet, Drawer, EmptyState, useToast } from '../components/index.t
 import { AGENT_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import type { AgentTab, V2Route } from '../routes.ts';
+import { markRecent } from '../shared/recent.ts';
 import { useShortcut } from '../shell/shortcuts.ts';
 import { ChatPane } from './ChatPane.tsx';
 import { splitDock } from './composer-model.ts';
@@ -63,6 +64,8 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   }, [desktop, view, setView, toast]);
   useShortcut('side-panel', toggleSide);
   useEffect(() => setDrawer(false), [sessionId, layout]);
+  // Fix after 2.0: opening an agent puts it first in the rail's Recent.
+  useEffect(() => markRecent(sessionId), [sessionId]);
 
   const { rows, lastEventId, fullText } = useChatRows(data);
   const working = data.session !== null && turnBusy(data.session);

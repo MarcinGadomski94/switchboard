@@ -9,7 +9,7 @@ import { V2_WELCOME_ID } from '../../../core/tutorial.ts';
 import { SETTINGS_SECTIONS } from '../../views/settings/model.ts';
 import { PALETTE_WORDS, RAIL_LABELS, SETTINGS_LABELS, WORDS } from '../glossary.ts';
 import { V2_SETTINGS_SECTIONS } from '../routes.ts';
-import { agentName } from '../shared/agent-line.ts';
+import { NO_TEAM_MEMBERS, type TeamMembers, agentDisplayName, sessionOwnName, teammateOf } from '../shared/teammate-name.ts';
 
 /** The palette's groups, in the order shown. */
 export const PALETTE_GROUPS = ['quick', 'messages', 'agents', 'results', 'pages', 'actions', 'search'] as const;
@@ -170,17 +170,18 @@ export function actionRows(): PaletteRow[] {
   ];
 }
 
-/** An agent's row (a conversation is labelled so; another computer's is tagged with its name). */
-export function agentRow(session: SessionListItem): PaletteRow {
+/** An agent's row (a conversation is labelled so; another computer's is tagged with its name; a teammate shows its teammate's name and crew). */
+export function agentRow(session: SessionListItem, members: TeamMembers = NO_TEAM_MEMBERS): PaletteRow {
   const where = session.machine ? ` · ${session.machine.name}` : '';
   const chat = isChat(session);
+  const mate = teammateOf(session.id, members);
   return {
     id: `agent:${session.id}`,
     group: 'agents',
-    icon: chat ? 'chat' : 'agents',
-    label: agentName(session),
-    hint: `${chat ? PALETTE_WORDS.conversation : 'Agent'}${where}`,
-    keywords: `${session.name} ${chat ? 'conversation chat' : 'agent'}`,
+    icon: chat ? 'chat' : mate ? 'crew' : 'agents',
+    label: agentDisplayName(session, members),
+    hint: `${chat ? PALETTE_WORDS.conversation : mate ? `Teammate · ${mate.crewName}` : 'Agent'}${where}`,
+    keywords: `${session.name} ${sessionOwnName(session)} ${chat ? 'conversation chat' : 'agent'}${mate ? ' teammate crew' : ''}`,
     recency: Date.parse(session.lastActivityAt ?? session.createdAt) || 0,
     action: { go: `/agents/${encodeURIComponent(session.id)}` },
   };

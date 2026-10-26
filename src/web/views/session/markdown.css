@@ -300,6 +300,10 @@
   cursor: pointer;
 }
 
+.sb-md-code-lang {
+  display: none;
+}
+
 .sb-md-code-copy::before {
   content: 'Copy';
 }

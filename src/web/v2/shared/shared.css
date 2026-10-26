@@ -586,3 +586,82 @@ button.v2-qi-src:hover {
     min-height: var(--v2-touch);
   }
 }
+
+/* Fix after 2.0 · a teammate's crew after its name ("· Acme Core"). */
+.sb2 .v2-crew-tag {
+  margin-left: 6px;
+  color: var(--v2-text-2);
+  font-weight: 500;
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+
+/* Fix after 2.0 · Recent (the rail under Pinned; the phone's More tab). */
+.sb2 .v2-rail-recent {
+  margin-top: 8px;
+}
+
+.sb2 .v2-recent-head {
+  justify-content: space-between;
+}
+
+.sb2 .v2-recent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: 28px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sb2 .v2-recent-toggle[aria-expanded='true'] .v2-recent-chev {
+  transform: rotate(90deg);
+}
+
+.sb2 .v2-recent-head .v2-icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.sb2 .v2-recent-item .v2-ctag,
+.sb2 .v2-recent-item .v2-nav-badge {
+  flex: none;
+}
+
+.sb2 .v2-recent-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+  padding: 6px;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-l);
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-recent-phone h5 {
+  margin: 0 6px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-muted);
+  display: flex;
+  align-items: center;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-recent-toggle,
+  .sb2 .v2-recent-head .v2-icon-btn {
+    min-height: var(--v2-touch);
+    min-width: var(--v2-touch);
+  }
+}

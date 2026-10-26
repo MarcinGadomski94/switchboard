@@ -5,9 +5,11 @@ import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, Sheet, StatusBadge, Tabs, useToast } from '../components/index.ts';
 import { AGENT_TAB_LABELS, AGENT_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
-import { AgentComputerTag } from '../shared/agent-row.tsx';
-import { agentName, agentStatusOf } from '../shared/agent-line.ts';
+import { AgentComputerTag, CrewTag } from '../shared/agent-row.tsx';
+import { agentStatusOf } from '../shared/agent-line.ts';
+import { agentDisplayName, teammateOf, useTeamMembers } from '../shared/teammates.ts';
 import { openStore } from '../shared/open-store.ts';
+import { markRecent } from '../shared/recent.ts';
 import { ChatPane } from './ChatPane.tsx';
 import { splitDock } from './composer-model.ts';
 import { RevertHost, SaveResultHost, openSaveResult } from './dialogs.tsx';
@@ -80,6 +82,8 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
   const working = data.session !== null && turnBusy(data.session);
   const split = useMemo(() => splitDock(rows, working), [rows, working]);
   const stick = useRef(true);
+  // Fix after 2.0: opening an agent's chat in the peek counts for the rail's Recent too.
+  useEffect(() => markRecent(sessionId), [sessionId]);
   const [resultId, setResultId] = useState<string | null>(null);
   useEffect(() => setResultId(null), [tab]);
   const base = `/agents/${encodeURIComponent(sessionId)}`;
@@ -89,7 +93,9 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
     navigate(tab === 'chat' ? base : `${base}/${tab}`);
   };
   const session = data.session;
-  const name = session ? agentName(session) : '';
+  const members = useTeamMembers();
+  const name = session ? agentDisplayName(session, members) : '';
+  const mate = teammateOf(sessionId, members);
   // The same counts as the full view's tabs (`AgentView.tsx`).
   const changes = useDiffCount(sessionId, session ? session.files.length : null);
   const helpers = (session?.agents ?? []).filter((a) => a.kind !== 'main').length;
@@ -109,7 +115,10 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
         <span className="v2-row" style={{ gap: 10, minWidth: 0 }}>
           <Avatar name={name || 'Agent'} size="m" {...(session ? { status: agentStatusOf(session) } : {})} />
           <span style={{ minWidth: 0 }}>
-            <span className="v2-ag-peek-name">{name}</span>
+            <span className="v2-ag-peek-name" data-testid="v2-agent-peek-name">
+              {name}
+              {mate ? <CrewTag crew={mate.crewName} /> : null}
+            </span>
             <span className="v2-row" style={{ gap: 6, marginTop: 2 }}>
               {session ? <StatusBadge status={agentStatusOf(session)} size="s" /> : null}
               {session ? <AgentComputerTag machine={session.machine} short /> : null}

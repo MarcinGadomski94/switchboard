@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatItem } from '../../src/web/views/session/chat.ts';
 import { activityMark, activitySummary, chatRows, codeBlocks, durationText, hasCodeBlock, helpersSummary, laterText, repliesFrom, waitingBatches } from '../../src/web/v2/agent/chat-model.ts';
 import { DEFAULT_VIEW, VIEW_SETTINGS_KEY, columnWidth, loadView, saveView, textMetrics } from '../../src/web/v2/agent/view-settings.ts';
-import { composerKey, composerPlaceholder, joinWithdrawn, liveLine, resetTimeOf, splitDock } from '../../src/web/v2/agent/composer-model.ts';
+import { MEMORY_SHOWN_FROM, YOU_FOLD_LINES, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, foldsYou, joinWithdrawn, liveLine, resetTimeOf, splitDock } from '../../src/web/v2/agent/composer-model.ts';
 import { firstSentence, replyMenu, shortQuote, taskTitle, undoReason } from '../../src/web/v2/agent/reply-menu.ts';
 import { agentMenu, ciView } from '../../src/web/v2/agent/header-model.ts';
 import type { SessionPr } from '../../src/core/ci.ts';
@@ -319,5 +319,47 @@ describe('how it works (Smart / Fast) and results in the chat', () => {
     expect(placed.map((r) => (r.kind === 'results' ? `res:${r.results.map((x) => x.id).join('+')}` : r.kind))).toEqual(['res:r2', 'you', 'res:r1', 'reply', 'res:r3']);
     expect(resultMeta('csv', 2)).toBe('Table · v2');
     expect(resultMeta('mermaid', 1)).toBe('Diagram · v1');
+  });
+});
+
+describe('fix after 2.0 · the dock status row', () => {
+  const working = { kind: 'working' as const, text: 'Running tests', time: '0:42', action: 'stop' as const };
+  it('merges the live line, tasks, memory and the queue into one row', () => {
+    const row = dockStatus({ live: working, tasks: { total: 3, done: 1, current: 'Fix the login' }, memory: { pct: 64, offer: false, running: null }, queued: 2, paused: 0 });
+    expect(row.parts.map((p) => p.id)).toEqual(['live', 'tasks', 'memory', 'queue']);
+    expect(row.text).toBe('Running tests 0:42 · Tasks 1/3 · Memory 64% · 2 queued');
+    expect(row.parts[0]?.tone).toBe('blue');
+    expect(row.parts[1]?.title).toBe('Tasks · 1 of 3 done · Fix the login');
+    expect(row.offer).toBe(false);
+  });
+  it('shows only what is relevant: no tasks, memory under 50 %, nothing waiting', () => {
+    const row = dockStatus({ live: { kind: 'idle', text: 'Idle', time: null, action: null }, tasks: { total: 0, done: 0, current: null }, memory: { pct: MEMORY_SHOWN_FROM - 1, offer: false, running: null }, queued: 0, paused: 0 });
+    expect(row.parts.map((p) => p.id)).toEqual(['live']);
+    expect(row.text).toBe('Idle');
+    expect(dockStatus({ live: working, tasks: null, memory: null, queued: 0, paused: 0 }).parts).toHaveLength(1);
+  });
+  it('the clean-slate offer only when the memory part offers it; amber from 80 %', () => {
+    const offer = dockStatus({ live: working, tasks: null, memory: { pct: 84, offer: true, running: null }, queued: 0, paused: 0 });
+    expect(offer.offer).toBe(true);
+    expect(offer.parts[1]).toMatchObject({ id: 'memory', text: 'Memory 84%', tone: 'amber' });
+    expect(dockStatus({ live: working, tasks: null, memory: { pct: 84, offer: false, running: null }, queued: 0, paused: 0 }).offer).toBe(false);
+    const running = dockStatus({ live: working, tasks: null, memory: { pct: 90, offer: true, running: 'Writing a summary…' }, queued: 0, paused: 0 });
+    expect(running.offer).toBe(false);
+    expect(running.parts[1]?.text).toBe('Writing a summary…');
+  });
+  it('queued and paused messages are one line', () => {
+    expect(dockStatus({ live: working, tasks: null, memory: null, queued: 1, paused: 2 }).parts[1]).toMatchObject({ id: 'queue', text: '1 queued · 2 paused', tone: 'amber' });
+  });
+  it('the box grows to about a fifth of the visible height, never under 4 lines', () => {
+    expect(composerMaxHeight(900, 22)).toBe(198);
+    expect(composerMaxHeight(844, 22)).toBe(186);
+    expect(composerMaxHeight(300, 22)).toBe(106);
+    expect(composerMaxHeight(844, 22, 0.17)).toBe(143);
+  });
+  it('your message folds after 12 lines', () => {
+    expect(YOU_FOLD_LINES).toBe(12);
+    expect(foldsYou(Array.from({ length: 12 }, () => 'x').join('\n'))).toBe(false);
+    expect(foldsYou(Array.from({ length: 13 }, () => 'x').join('\n'))).toBe(true);
+    expect(foldsYou('y'.repeat(90 * 13))).toBe(true);
   });
 });

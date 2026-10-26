@@ -6,7 +6,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { Button, Chip, Icon, Skeleton, useToast } from '../components/index.ts';
 import { HOME_WORDS, STATUS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
-import { agentName } from '../shared/agent-line.ts';
+import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import { cardButtons, summaryOf } from '../shared/answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from '../shared/needs-you.ts';
 import { useOpenAgent } from '../shared/open-agent.ts';
@@ -88,6 +88,7 @@ function CombineButton({ item, onCombined }: { readonly item: NeedsItem; readonl
 }
 
 export function DoneToday({ rows, loaded, phone, now }: { readonly rows: readonly DoneRow[]; readonly loaded: boolean; readonly phone: boolean; readonly now: number }) {
+  const members = useTeamMembers();
   const { navigate } = useV2Router();
   // An agent row peeks (the prototype's `data-peek`; a phone opens the agent).
   const peek = useOpenAgent();
@@ -148,7 +149,7 @@ export function DoneToday({ rows, loaded, phone, now }: { readonly rows: readonl
                   <Icon name={ready ? 'half' : 'check'} />
                 </div>
                 <div className="v2-grow" style={{ minWidth: 0 }}>
-                  <div className="v2-home-ttl">{agentName(session)}</div>
+                  <div className="v2-home-ttl">{agentDisplayName(session, members)}</div>
                   {phone ? null : <div className="v2-home-sub">{sub}</div>}
                 </div>
                 {ready ? (

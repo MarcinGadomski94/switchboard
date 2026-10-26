@@ -12,7 +12,7 @@ import { agentActivity } from '../../views/session/workflow-agents.ts';
 import { Avatar, Button, EmptyState, Icon, StatusBadge } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
-import { agentName } from '../shared/agent-line.ts';
+import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import { chatRows } from './chat-model.ts';
 import { ChatRowsView } from './ChatPane.tsx';
 import type { AgentData } from './useAgent.ts';
@@ -43,6 +43,7 @@ function useWorkflowChat(sessionId: string, agentId: string | null, version: num
 export function HelperChat({ data, helperId, focusEventId }: { readonly data: AgentData; readonly helperId: string; readonly focusEventId: number | null }) {
   const { navigate } = useV2Router();
   const { session, sessionId, activity } = data;
+  const members = useTeamMembers();
   const agent = session?.agents.find((candidate) => candidate.id === helperId) ?? null;
   const workflow = agent?.kind === 'workflow';
   const ownEvents = useAgentEvents(sessionId, helperId, agent?.toolUseId ?? null, data.events);
@@ -104,7 +105,7 @@ export function HelperChat({ data, helperId, focusEventId }: { readonly data: Ag
           <b className="v2-ag-helper-name">{name}</b>
           <div className="v2-row" style={{ gap: 6 }}>
             <StatusBadge status={sessionStatusToV2(agent.status)} size="s" />
-            <span className="v2-muted v2-ag-small">{AGENT_WORDS.helperOf(agentName(session))}</span>
+            <span className="v2-muted v2-ag-small">{AGENT_WORDS.helperOf(agentDisplayName(session, members))}</span>
           </div>
         </div>
       </div>

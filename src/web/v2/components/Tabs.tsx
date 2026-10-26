@@ -8,6 +8,8 @@ export interface TabItem<T extends string> {
   readonly icon?: IconName | string;
   /** A count after the label. */
   readonly count?: number;
+  /** A tooltip (e.g. the label of a tab drawn as its icon only). */
+  readonly title?: string;
 }
 
 /** Moves along a row of buttons with ←/→ (Home / End), as WAI-ARIA tabs and toolbars do. */
@@ -41,6 +43,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label, panelId, 
           aria-controls={panelId}
           tabIndex={tab.id === value ? 0 : -1}
           data-tab={tab.id}
+          title={tab.title}
           onClick={() => onChange(tab.id)}
           onKeyDown={(event) => {
             const next = rovingKey(event, tabs, index);

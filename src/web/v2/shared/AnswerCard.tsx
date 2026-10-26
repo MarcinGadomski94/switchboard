@@ -9,6 +9,8 @@ import { openNew } from '../new/index.tsx';
 import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton, type OpenTarget, type QuestionDraft, batchAnswers, cardButtons, followUpOf, questionAnswer, questionReady, summaryOf, togglePick } from './answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from './needs-you.ts';
 import type { NeedsItem } from './needs-you-model.ts';
+import { markRecent } from './recent.ts';
+import { displayNameById, useTeamMembers } from './teammates.ts';
 import { clock, timeAgo } from './time.ts';
 import './shared.css';
 
@@ -195,11 +197,14 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
   const look = NEEDS_KIND_LOOK[item.kind];
   const off = item.computer !== null && item.computer.state !== 'online';
   const error = errors.get(item.key) ?? null;
-  const source = item.agent?.name ?? '';
+  const members = useTeamMembers();
+  const source = item.agent ? displayNameById(item.agent.sessionId, item.agent.name, members) : '';
   const place = defaultWhere(where);
 
   const answer = (action: AnswerAction): void => {
     needsYouStore.answer(item, action, place);
+    // Fix after 2.0: answering from an agent's chat counts as talking to it (the rail's Recent).
+    if (place === 'chat') markRecent(item.agent?.sessionId);
     onAnswered?.(item);
     // Lane H: what the classic Inbox does after these actions (open + New with the fix prefill; the updates page).
     const follow = followUpOf(item, action);

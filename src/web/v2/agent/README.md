@@ -8,9 +8,9 @@
 |---|---|
 | `index.tsx` | `AgentPage` (the router's page), and the peek exports |
 | `AgentView.tsx` | The full view: header, tabs, chat + dock or a tab, the side panel (desktop column, tablet drawer, phone bottom sheet), ⌘. |
-| `Header.tsx` | Agents › folder, View menu, Details, the agent ⋯ menu (`AgentMenuButton`) and its dialogs; the title (click to rename), status, automatic-tests chip, computer / folder / engine tags, the Needs-you line, the tabs |
+| `Header.tsx` | One compact row (fix after 2.0): back, the title (click to rename; a teammate's name, renamed through its crew), status, the automatic-tests chip and the Needs-you ask inline, the tabs, ⓘ (computer, folders, Smart / Fast, separate copy, the notes), View, Details, the agent ⋯ menu (`AgentMenuButton`) and its dialogs |
 | `ChatPane.tsx` | The chat ("E. Chat text space"): rows, paging (D95), a search hit (D97), in-chat answer cards (`AnswerSlot`), the reply ⋯ menu |
-| `Dock.tsx` | The composer dock: live line (Stop / Esc), queued and paused messages, the tasks and working-memory strips, 📎 + box + Send (⌘↩) |
+| `Dock.tsx` | The composer dock: ONE status row (live line with Stop / Esc · tasks · working memory and the clean-slate offer · "2 queued ▸" unfolding the queued and paused messages), 📎 + a capped box + Send (⌘↩) |
 | `SidePanel.tsx` | Details: the project line and What agents know (`SideExtras.tsx`), Working memory, How it works, Helpers, Agents overview (`SideExtras.tsx`: D21 / D27 / D51 with Resume run), Background apps, Tasks, Handoff note & terminal, Advanced (each group remembered) |
 | `SideExtras.tsx` | Lane X: `ProjectLine` (D99), `NotesLine` (D107, links `/notes?scope=<folder>`), `OverviewGroup` |
 | `MoveDialog.tsx` | Lane X: `MoveDialogsHost` (mounted by `PeekHost`): the v2 Move to computer (D65 / D110) and Continue in Switchboard (D72) dialogs over the classic stores (`openTakeover`, `openContinueHooked`) and API |
