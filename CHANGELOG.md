@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.1.0 (2026-10-27)
+
+### Insights
+- **Where your usage went:** Insights → Usage ranks the agents, conversations, teammates, plan steps and routines by the tokens they used in each account's current 5-hour or weekly window (or today / last 7 days), groupable by folder, model, account or kind, with a stacked chart, a usage log with CSV export and a "See what used it" link per account in the status pill. Helper and workflow-agent tokens are now recorded and counted towards the agent that started them. Classic Insights has the ranked table too.
+
+### v2 theme
+- **Loops and schedules in the agent view:** "⏰ Next: … · n routines" in the status row lists every loop, CLI schedule and wake-up of the agent with Pause, Run now, Edit and Cancel; creating one shows in the chat.
+- **Tasks as cards** in Classic's format: a strip above the message box (collapsed by default), the side panel, the peek, the phone and the Tasks page.
+- **Markdown in question cards:** bold, code, lists, links and code blocks render in questions, asks and alerts; long ones fold behind Show more.
+
+### Install
+- **One-line install:** `curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh` on macOS and Linux, `irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex` on Windows. Checksum-verified, no sudo, re-runnable to upgrade, with `--uninstall`.
+- Release downloads are smaller (screenshots left out).
+
+### Docs
+- A FAQ, CONTRIBUTING, SECURITY, a code of conduct and issue templates; the requirements now say any one of Claude Code, Codex or OpenCode is enough.
+
 ## 2.0.2 (2026-10-26)
 
 ### Security
