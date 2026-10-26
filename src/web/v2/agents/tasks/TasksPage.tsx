@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionTodo, SessionTodoList, TodoGroup } from '../../../../core/api.ts';
+import type { SessionTodo, SessionTodoList, TodoFieldsInput, TodoGroup } from '../../../../core/api.ts';
 import type { SessionStatus } from '../../../../core/model.ts';
 import { displayTitle } from '../../../../core/session-title.ts';
 import { captureTargets } from '../../../../core/todo-capture.ts';
@@ -11,12 +11,16 @@ import { useLiveMachine } from '../../../api/useMachines.ts';
 import { useSessionListOf } from '../../../api/session-list.ts';
 import { useThrottled } from '../../../api/useThrottled.ts';
 import { captureTodo } from '../../../capture/capture.ts';
-import { Button, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, MenuButton, type MenuItem, Segmented, Select, Skeleton, useToast } from '../../components/index.ts';
+import { usePlans } from '../../../plans/store.ts';
+import { savePatch } from '../../../views/session/TodoStrip.tsx';
+import { TodoCard } from '../../shared/TodoCard.tsx';
+import { type TodoPlanLink, todoPlanLink } from '../../shared/todo-card-model.ts';
+import { Button, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, type MenuItem, Segmented, Select, Skeleton, useToast } from '../../components/index.ts';
 import { TASKS_WORDS as W, computerStateToV2 } from '../../glossary.ts';
 import { openNew } from '../../new/index.tsx';
 import { V2Link, useV2Router } from '../../nav.tsx';
 import { ImportTasksDialog } from './ImportTasksDialog.tsx';
-import { TASK_COLUMNS, TASK_COLUMN_LOOK, type TaskCard, type TaskColumn, addedTodo, blockedReason, boardOf, cardKey, estimateAccuracy, estimateText, movePatch, moveTargets, overEstimate, priorityLook, quickAddInput } from './tasks-model.ts';
+import { TASK_COLUMNS, TASK_COLUMN_LOOK, type TaskCard, type TaskColumn, addedTodo, blockedReason, boardOf, cardKey, estimateAccuracy, estimateText, movePatch, moveTargets, priorityLook, quickAddInput, workerOf } from './tasks-model.ts';
 import './tasks.css';
 
 /** How long a deleted task waits before it is really deleted (the toast's Undo window). */
@@ -67,6 +71,8 @@ interface CardActions {
   readonly move: (card: TaskCard, to: TaskColumn) => void;
   readonly remove: (card: TaskCard) => void;
   readonly open: (card: TaskCard) => void;
+  /** Edit's Save (every field, D70); answers whether it worked. */
+  readonly save: (card: TaskCard, fields: TodoFieldsInput) => Promise<boolean>;
 }
 
 /** The priority as icon + word + colour (the prototype's `.prio`). */
@@ -101,16 +107,6 @@ function OpenActions({ card, actions, busy, size = 'sm' }: { readonly card: Task
   );
 }
 
-function cardMenu(card: TaskCard, actions: CardActions): MenuItem[] {
-  return [
-    { id: 'details', label: W.details, icon: 'eye', onSelect: () => actions.open(card) },
-    { separator: true, id: 'sep-move' },
-    ...moveTargets(card.todo).map((to) => ({ id: `move-${to}`, label: W.moveTo(COLUMN_WORD[to]), icon: TASK_COLUMN_LOOK[to].icon, onSelect: () => actions.move(card, to) })),
-    { separator: true, id: 'sep-delete' },
-    { id: 'delete', label: W.delete, icon: 'trash', danger: true, onSelect: () => actions.remove(card) },
-  ];
-}
-
 /** The agent a task belongs to (a link to its chat) and, for a paired computer's, the computer. */
 function Owner({ card, onNavigate }: { readonly card: TaskCard; readonly onNavigate?: () => void }) {
   const machine = useLiveMachine(card.group.machine ?? null);
@@ -125,42 +121,55 @@ function Owner({ card, onNavigate }: { readonly card: TaskCard; readonly onNavig
   );
 }
 
-/** One task card (the prototype's `.tcard`). */
-function TaskCardView({ card, actions, busy, now }: { readonly card: TaskCard; readonly actions: CardActions; readonly busy: boolean; readonly now: number }) {
+/**
+ * One task card: fix after 2.0, classic's todo card in v2's look (`shared/TodoCard.tsx`, shared with
+ * the agent view): check box, details in place, Start here / Run in its own agent, Edit, Mark in
+ * progress, Delete with Undo; plus the agent it belongs to, Details and Move to.
+ */
+function TaskCardView({ card, actions, busy, now, extras }: { readonly card: TaskCard; readonly actions: CardActions; readonly busy: boolean; readonly now: number; readonly extras: CardExtras }) {
   const { todo, group } = card;
-  const estimate = estimateText(todo, now);
-  const over = overEstimate(todo, now);
+  const machine = useLiveMachine(group.machine ?? null);
+  const blocked = blockedReason(machine, W);
+  const menu: MenuItem[] = [
+    { id: 'details', label: W.details, icon: 'eye', onSelect: () => actions.open(card) },
+    ...moveTargets(todo).map((to) => ({ id: `move-${to}`, label: W.moveTo(COLUMN_WORD[to]), icon: TASK_COLUMN_LOOK[to].icon, onSelect: () => actions.move(card, to) })),
+  ];
   return (
-    <article className="v2-tasks-card" data-testid="v2-tasks-card" data-column={card.column} data-todo={todo.id} data-session={group.sessionId} aria-label={todo.title}>
-      <div className="v2-tasks-card-top">
-        <button type="button" className="v2-tasks-card-title" onClick={() => actions.open(card)} data-testid="v2-tasks-title">
-          {todo.title}
-        </button>
-        <MenuButton items={cardMenu(card, actions)} label={W.more} testId="v2-tasks-menu" />
-      </div>
-      <div className="v2-tasks-meta">
-        <Priority priority={todo.priority} />
-        {estimate ? (
-          <span className="v2-tasks-est" data-over={over ? 'true' : undefined} data-testid="v2-tasks-estimate">
-            {over ? <Icon name="clock" size="s" /> : null}
-            {estimate}
-          </span>
-        ) : null}
-        {todo.needsEnrichment && todo.state === 'open' ? (
-          <span className="v2-tasks-fill" title={W.waitingFill}>
-            <Icon name="edit" size="s" />
-            <span className="v2-sr">{W.waitingFill}</span>
-          </span>
-        ) : null}
-      </div>
-      <Owner card={card} />
-      {todo.state === 'open' ? <OpenActions card={card} actions={actions} busy={busy} /> : null}
-    </article>
+    <TodoCard
+      todo={todo}
+      layout="board"
+      testId="v2-tasks-card"
+      workerStatus={extras.statusOf(workerOf(todo))}
+      now={now}
+      blocked={blocked}
+      busy={busy}
+      working={extras.statusOf(workerOf(todo)) === 'run'}
+      planLink={extras.planLink(todo)}
+      runTitle={extras.runTitle(todo.runSessionId)}
+      owner={<Owner card={card} />}
+      extraMenu={menu}
+      startTitle={W.startHereTitle(group.title)}
+      handlers={{
+        start: () => actions.start(card),
+        run: () => actions.run(card),
+        check: () => actions.move(card, todo.state === 'done' ? 'open' : 'done'),
+        save: (fields) => actions.save(card, fields),
+        progress: (state) => actions.move(card, state === 'in_progress' ? 'progress' : 'open'),
+        remove: () => actions.remove(card),
+      }}
+    />
   );
 }
 
+/** What the cards read from the page (live statuses, D99 plan links, run agents' names). */
+interface CardExtras {
+  readonly statusOf: (sessionId: string) => SessionStatus | null;
+  readonly planLink: (todo: SessionTodo) => TodoPlanLink | null;
+  readonly runTitle: (sessionId: string | null | undefined) => string | null;
+}
+
 /** One column (the prototype's `.col`). */
-function Column({ column, cards, actions, busy, now, footer }: { readonly column: TaskColumn; readonly cards: readonly TaskCard[]; readonly actions: CardActions; readonly busy: ReadonlySet<string>; readonly now: number; readonly footer?: string | null }) {
+function Column({ column, cards, actions, busy, now, extras, footer }: { readonly column: TaskColumn; readonly cards: readonly TaskCard[]; readonly actions: CardActions; readonly busy: ReadonlySet<string>; readonly now: number; readonly extras: CardExtras; readonly footer?: string | null }) {
   const look = TASK_COLUMN_LOOK[column];
   return (
     <section className="v2-tasks-col" data-col={column} data-testid={`v2-tasks-col-${column}`} aria-labelledby={`v2-tasks-h-${column}`}>
@@ -175,7 +184,7 @@ function Column({ column, cards, actions, busy, now, footer }: { readonly column
       </h2>
       {cards.length === 0 ? <p className="v2-tasks-none">{column === 'review' ? W.colReviewHint : W.emptyColumn}</p> : null}
       {cards.map((card) => (
-        <TaskCardView key={cardKey(card.group.sessionId, card.todo.id)} card={card} actions={actions} busy={busy.has(cardKey(card.group.sessionId, card.todo.id))} now={now} />
+        <TaskCardView key={cardKey(card.group.sessionId, card.todo.id)} card={card} actions={actions} busy={busy.has(cardKey(card.group.sessionId, card.todo.id))} now={now} extras={extras} />
       ))}
       {footer ? (
         <p className="v2-tasks-accuracy" data-testid="v2-tasks-accuracy">
@@ -263,6 +272,7 @@ function TaskDetail({ card, onClose, actions, busy, now }: { readonly card: Task
 export function TasksPage() {
   const groups = useApi(api.todos);
   const sessions = useSessionListOf('open');
+  const plans = usePlans();
   const toast = useToast();
   const { navigate } = useV2Router();
   const now = useClock();
@@ -410,6 +420,15 @@ export function TasksPage() {
       });
     },
     open: (card) => setDetail({ sessionId: card.group.sessionId, todoId: card.todo.id }),
+    save: async (card, fields) => (await write(cardKey(card.group.sessionId, card.todo.id), () => api.updateTodo(card.group.sessionId, card.todo.id, savePatch(fields)))) !== null,
+  };
+  const extras: CardExtras = {
+    statusOf,
+    planLink: (todo) => (plans.on ? todoPlanLink(plans.plans, todo) : null),
+    runTitle: (id) => {
+      const session = id ? (list ?? []).find((candidate) => candidate.id === id) : undefined;
+      return session ? displayTitle(session) : null;
+    },
   };
 
   const detailCard = useMemo(() => {
@@ -507,7 +526,7 @@ export function TasksPage() {
           </div>
           <div className="v2-tasks-board" data-show={phoneColumn} data-testid="v2-tasks-board">
             {TASK_COLUMNS.map((column) => (
-              <Column key={column} column={column} cards={board[column]} actions={actions} busy={busy} now={now} footer={column === 'done' && accuracy ? W.accuracy(accuracy.percent, accuracy.count) : null} />
+              <Column key={column} column={column} cards={board[column]} actions={actions} busy={busy} now={now} extras={extras} footer={column === 'done' && accuracy ? W.accuracy(accuracy.percent, accuracy.count) : null} />
             ))}
           </div>
         </>

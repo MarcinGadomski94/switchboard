@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import type { AccountProfile } from '../../../core/accounts.ts';
-import type { CliOverview, SessionProcesses, SessionTodo } from '../../../core/api.ts';
+import type { CliOverview, SessionProcesses } from '../../../core/api.ts';
 import { CLI_LABELS, type CliProviderId, readCliProvider } from '../../../core/cli-providers.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { cliChoices } from '../../components/cli.ts';
@@ -12,6 +12,10 @@ import { terminalLines } from '../../views/session/right-panel.ts';
 import { actionErrorText, remoteToggle, rootLine } from '../../views/session/session-header.ts';
 import { switchConfirmText } from '../../views/session/provider-switch.ts';
 import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
+import { turnBusy } from '../../views/session/needs-you.ts';
+import { useAgentTaskCards } from '../shared/session-tasks.ts';
+import { TodoCard } from '../shared/TodoCard.tsx';
+import { stripOrder } from '../shared/todo-card-model.ts';
 import { Button, Icon, Segmented, Select, StatusBadge, useToast } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
@@ -136,7 +140,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
       )}
       {data.conversation ? null : (
         <Group id="tasks" title={AGENT_WORDS.tasks} icon="rules" summary={session.openTodoCount ? `${session.openTodoCount} open` : undefined} open={open.tasks} onToggle={toggle}>
-          <TasksGroup sessionId={data.sessionId} blocked={data.blocked} />
+          <TasksGroup sessionId={data.sessionId} blocked={data.blocked} working={data.session !== null && turnBusy(data.session)} />
         </Group>
       )}
       {(session.ownedLoops ?? []).some((loop) => loop.state === 'active' || loop.state === 'paused') ? (
@@ -393,41 +397,27 @@ function BackgroundGroup({ sessionId, blocked }: { readonly sessionId: string; r
   );
 }
 
-function todoIcon(todo: SessionTodo): string {
-  return todo.state === 'done' ? 'check-circle' : todo.state === 'in_progress' ? 'dot' : 'circle';
-}
-
-function TasksGroup({ sessionId, blocked }: { readonly sessionId: string; readonly blocked: string | null }) {
+/**
+ * Fix after 2.0 · the agent's tasks as classic's cards (`shared/TodoCard.tsx`), one under
+ * another: in progress first, open by priority, done last; Start, Run, done / reopen, edit,
+ * delete with Undo, the details in place.
+ */
+function TasksGroup({ sessionId, blocked, working }: { readonly sessionId: string; readonly blocked: string | null; readonly working: boolean }) {
   const todos = useSessionTodos(sessionId);
-  const toast = useToast();
-  const list = todos.list?.todos ?? [];
+  const cards = useAgentTaskCards(sessionId, todos, blocked, working);
   if (todos.list === null) return <div className="v2-skel" style={{ height: 40 }} />;
-  if (list.length === 0) return <p className="v2-muted v2-ag-none">{AGENT_WORDS.noTasks}</p>;
+  if (cards.visible.length === 0) return <p className="v2-muted v2-ag-none">{AGENT_WORDS.noTasks}</p>;
   return (
-    <>
-      {list.map((todo) => (
-        <div className="v2-ag-prow" key={todo.id} data-state={todo.state} data-testid="v2-agent-side-task">
-          <Icon name={todoIcon(todo)} size="s" />
-          <span className="v2-grow">{todo.title}</span>
-          {todo.estimateMinutes ? <span className="v2-muted v2-ag-small">est {todo.estimateMinutes}m</span> : null}
-          {todo.state === 'open' ? (
-            <Button
-              size="sm"
-              icon="play"
-              disabled={blocked !== null}
-              onClick={() =>
-                api.runTodo(sessionId, todo.id).then(
-                  () => toast({ text: `Started a new agent for “${todo.title}”.` }),
-                  (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
-                )
-              }
-            >
-              {AGENT_WORDS.run}
-            </Button>
-          ) : null}
-        </div>
+    <div className="v2-ag-side-tasks" data-testid="v2-agent-side-tasks">
+      {stripOrder(cards.visible).map((todo) => (
+        <TodoCard key={todo.id} layout="list" {...cards.cardProps(todo)} />
       ))}
-    </>
+      {cards.error ? (
+        <p className="v2-ag-dock-error" role="alert">
+          {cards.error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
