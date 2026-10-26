@@ -9,6 +9,8 @@ import { openNew } from '../new/index.tsx';
 import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton, type OpenTarget, type QuestionDraft, batchAnswers, cardButtons, followUpOf, questionAnswer, questionReady, summaryOf, togglePick } from './answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from './needs-you.ts';
 import type { NeedsItem } from './needs-you-model.ts';
+import { CardMarkdown } from './CardMarkdown.tsx';
+import { clampsIn, plainText } from './card-markdown.ts';
 import { markRecent } from './recent.ts';
 import { displayNameById, useTeamMembers } from './teammates.ts';
 import { clock, timeAgo } from './time.ts';
@@ -84,7 +86,7 @@ export function AnsweredLine({ info, testId = 'v2-answered' }: { readonly info: 
         {clock(info.at)} · {ANSWERED_WHERE[info.where]}
       </span>
       <span className="v2-answered-q">
-        {NEEDS_KIND_LOOK[info.kind].label}: {info.title}
+        {NEEDS_KIND_LOOK[info.kind].label}: {plainText(info.title).replace(/\n/g, ' ')}
       </span>
     </div>
   );
@@ -92,6 +94,8 @@ export function AnsweredLine({ info, testId = 'v2-answered' }: { readonly info: 
 
 /** One question's options (single-select: buttons; multi-select: checkboxes), with Other…. */
 function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { readonly question: Question; readonly draft: QuestionDraft | undefined; readonly onDraft: (next: QuestionDraft) => void; readonly keys: boolean; readonly immediate: boolean; readonly onSend: (draft: QuestionDraft) => void }) {
+  // Fix after 2.0: the header is Markdown; a description stays a plain-text tooltip (classic's `title`).
+  const header = question.header ? <CardMarkdown className="v2-qi-hint" text={question.header} testId="v2-answer-header" /> : null;
   const [otherOpen, setOtherOpen] = useState(draft?.other ?? false);
   const num = (index: number): number | undefined => (keys ? index + 1 : undefined);
   if (question.multiSelect) {
@@ -99,14 +103,14 @@ function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { 
     const count = picks.size + (draft?.other && (draft.text ?? '').trim() ? 1 : 0);
     return (
       <div className="v2-qi-q" data-question={question.id}>
-        {question.header ? <div className="v2-qi-hint">{question.header}</div> : null}
+        {header}
         <p className="v2-qi-hint">
           {ANSWER.chooseAny}
           {count > 0 ? <b> {ANSWER.choicesKept}</b> : null}
         </p>
         <div className="v2-chk-grid">
           {question.options.map((option, index) => (
-            <Checkbox key={option.label} num={num(index)} label={option.label} title={option.description} checked={picks.has(index)} onChange={() => onDraft(togglePick(draft, index))} />
+            <Checkbox key={option.label} num={num(index)} label={option.label} title={option.description ? plainText(option.description) : undefined} checked={picks.has(index)} onChange={() => onDraft(togglePick(draft, index))} />
           ))}
           <Checkbox num={num(question.options.length)} label={ANSWER.other} checked={draft?.other ?? false} onChange={(event) => onDraft({ ...draft, other: event.currentTarget.checked })} />
         </div>
@@ -123,7 +127,7 @@ function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { 
   }
   return (
     <div className="v2-qi-q" data-question={question.id}>
-      {question.header && question.header !== question.text ? <div className="v2-qi-hint">{question.header}</div> : null}
+      {question.header && question.header !== question.text ? header : null}
       {immediate ? <p className="v2-qi-hint">{ANSWER.tapToSend}</p> : null}
       <div className="v2-qi-actions" style={{ marginTop: 6 }}>
         {question.options.map((option, index) => (
@@ -134,7 +138,7 @@ function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { 
             data-option={index}
             {...(keys ? { 'data-num': index + 1 } : {})}
             aria-pressed={immediate ? undefined : draft?.index === index}
-            title={option.description}
+            title={option.description ? plainText(option.description) : undefined}
             onClick={() => {
               const next = { index, other: false };
               if (immediate) onSend(next);
@@ -200,6 +204,9 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
   const members = useTeamMembers();
   const source = item.agent ? displayNameById(item.agent.sessionId, item.agent.name, members) : '';
   const place = defaultWhere(where);
+  // Fix after 2.0: the card's texts are Markdown (the chat's renderer); long ones fold in the queue.
+  const clamp = clampsIn(variant);
+  const md = (text: string, className: string, testId?: string): ReactNode => <CardMarkdown text={text} className={className} clamp={clamp} {...(testId ? { testId } : {})} />;
 
   const answer = (action: AnswerAction): void => {
     needsYouStore.answer(item, action, place);
@@ -237,10 +244,10 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
     const single = questions.length === 1 && !questions[0]?.multiSelect;
     body = (
       <>
-        {item.text ? <p className="v2-qi-text">{item.text}</p> : null}
+        {item.text ? md(item.text, 'v2-qi-text', 'v2-answer-text') : null}
         {questions.map((question) => (
           <div key={question.id}>
-            {questions.length > 1 ? <p className="v2-qi-title" style={{ fontSize: 15 }}>{question.text}</p> : null}
+            {questions.length > 1 ? <CardMarkdown className="v2-qi-title v2-qi-title-sub" text={question.text} clamp={clamp} testId="v2-answer-question" /> : null}
             <QuestionBlock
               question={question}
               draft={draft[question.id]}
@@ -277,7 +284,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
     } else if (item.kind === 'ask') {
       body = (
         <>
-          {item.quote ? <div className="v2-quote" data-testid="v2-answer-ask">{item.quote}</div> : null}
+          {item.quote ? md(item.quote, 'v2-quote', 'v2-answer-ask') : null}
           <span className="v2-waiting">
             <Icon name="hourglass" size="s" />
             {WORDS.waitingForYou}
@@ -312,7 +319,8 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
         </>
       );
     } else {
-      body = item.text ? <p className="v2-qi-text">{item.text}</p> : null;
+      // Stopped messages, alerts and the other kinds: their detail is Markdown.
+      body = item.text ? md(item.text, 'v2-qi-text', 'v2-answer-text') : null;
     }
     actions = (
       <>
@@ -373,7 +381,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
   ) : null;
 
   const card = (
-    <article className="v2-qi" data-kind={item.kind} data-key={item.key} data-source={item.source} data-testid={testId} tabIndex={0} aria-label={`${look.label} from ${source || 'Switchboard'}: ${item.title}`} onKeyDown={onCardKey}>
+    <article className="v2-qi" data-kind={item.kind} data-key={item.key} data-source={item.source} data-testid={testId} tabIndex={0} aria-label={`${look.label} from ${source || 'Switchboard'}: ${plainText(item.title).replace(/\n/g, ' ')}`} onKeyDown={onCardKey}>
       {variant !== 'chat' ? (
         <div className="v2-qi-head">
           <Chip tone={STATUS[look.status].tone} icon={look.icon} size="s">
@@ -405,7 +413,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
           ) : null}
         </div>
       ) : null}
-      <p className="v2-qi-title">{item.title}</p>
+      {item.kind === 'question' || item.kind === 'multi' ? md(item.title, 'v2-qi-title', 'v2-answer-title') : <p className="v2-qi-title">{item.title}</p>}
       {/* Lane H: a fieldset, so an offline computer's card disables every answer (the options too), not only the action row. */}
       <fieldset className="v2-qi-body" disabled={off || undefined}>
         {body}
