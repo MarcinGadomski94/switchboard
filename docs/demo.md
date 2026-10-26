@@ -57,15 +57,24 @@ The data files are the prototype's arrays with positional entries turned into na
 Since M8.1 the Codebase Memory strip also reads `solutions.json` → `codebaseMemoryDirty` (with today's times) + `codebaseMemoryIndexed`, and the demo tool probes always answer `down` (no network, as in the prototype's offline screenshots).
 
 ## Screenshot extras (`SWITCHBOARD_DEMO_EXTRAS=1`)
-Demo mode never starts Team (D100) or Plans (D99) and keeps the prototype's footer figure, so the visual oracle is unaffected. `npm run screenshots` (`tools/screenshots/readme.ts`) also sets `SWITCHBOARD_DEMO_EXTRAS=1` (`config.demoExtras`, ignored without `SWITCHBOARD_DEMO=1`), which changes two things and nothing else:
-- `installTeam` and `installPlans` read their switches in demo mode too (each stays off until Settings → Experimental switches it on);
+Demo mode never starts Team (D100) or Plans (D99) on the plain seed and keeps the prototype's footer figure, so the visual oracle is unaffected. `SWITCHBOARD_DEMO_EXTRAS=1` (`config.demoExtras`, ignored without `SWITCHBOARD_DEMO=1`) changes two things and nothing else:
+- `installTeam` and `installPlans` read their switches in demo mode too;
 - the footer grid reads the accounts' stored usage readings (`withAccountUsage`), so an account "on credits" (D103) can be shown.
 
-No demo data file changes. The script itself adds the README's extra data to its throwaway folder: two accounts with Acme credit readings stored before the start, a plan "PROJ-123 Acme checkout" whose todos go in through the API and whose item states and history are written into the throwaway `plans.db` while Plans is off (demo folders are not real, so items cannot run), and two teams adopting four demo sessions through the API.
+It was written for the classic README screenshots. Since 2.0 `npm run screenshots` shoots the v2 theme on the v2 layer below and no longer sets it.
 
+## README screenshots (`npm run screenshots`)
+`tools/screenshots/readme.ts` retakes every image in `docs/screenshots/` (all of them are README images) from the demo with its v2 layer, in the v2 theme:
+```sh
+npm run screenshots
+```
+- It builds the UI into `.e2e-dist/web` first (`npm run screenshots -- --no-build` reuses the last build) and starts the app as a test server: a test port (`SWITCHBOARD_TEST_PORTS`, default 4871–4879), a throwaway data folder, the fake CLIs, the in-memory secret store, the setup wizard and the tours off, plus `SWITCHBOARD_DEMO=1`, `SWITCHBOARD_DEMO_V2=1` and `SWITCHBOARD_UI_THEME_DEFAULT=v2`. It never touches the real app's port or data.
+- Before the start it names the machine `studio-mac` in the throwaway database, so no shot shows this computer's host name (the v2 layer adopts the teammates before the port opens, and each keeps the machine name it was adopted on).
+- The browser is Playwright's bundled Chromium, headless. Desktop shots are 1440×900, phone shots 390×844 with touch, all at device scale 2 and light unless the name ends in `-dark`; `home-full.png` is Home's whole scrolling content. A welcome tour that shows is ended with Esc, and any console error fails the run.
+- To add or change a shot, edit `SHOTS` in the script; a shot whose file the README no longer links should be removed with it.
 
 ## The v2 layer (D131, `config.demoV2`)
-The prototype-verbatim seed above leaves several v2 pages empty (no folders, projects, crews, notes, tasks or Insights) and demo mode does not run Team, Plans or Project memory. The v2 layer (`src/server/demo/v2.ts`) adds plausible Acme rows for them. It runs with `SWITCHBOARD_DEMO=1` **unless the service's default theme is `classic`** (`SWITCHBOARD_UI_THEME_DEFAULT=classic`, which every E2E server and the README screenshot tool set), so the classic visual oracle (`tests/e2e/visual/`) and `npm run screenshots` keep the plain seed; `SWITCHBOARD_DEMO_V2=1` / `0` forces it on or off. With it, Team, Plans and Project memory run in demo mode.
+The prototype-verbatim seed above leaves several v2 pages empty (no folders, projects, crews, notes, tasks or Insights) and demo mode does not run Team, Plans or Project memory. The v2 layer (`src/server/demo/v2.ts`) adds plausible Acme rows for them. It runs with `SWITCHBOARD_DEMO=1` **unless the service's default theme is `classic`** (`SWITCHBOARD_UI_THEME_DEFAULT=classic`, which every E2E server sets), so the classic visual oracle (`tests/e2e/visual/`) keeps the plain seed; `npm run screenshots` uses it (*README screenshots* above); `SWITCHBOARD_DEMO_V2=1` / `0` forces it on or off. With it, Team, Plans and Project memory run in demo mode.
 
 It runs once per data folder (the setting `demo.v2` = `{version, files, api}`), in two parts:
 - **Before the app is built** (`seedDemoV2Files`, main database and `plans.db`): four teammates' agents with a two-message chat (`acme-web-lead`, `acme-web-reviewer`, `acme-release-manager`, `acme-mobile-dev`); tasks with estimates (open, in progress, and three done within the hour with their actual time, since done tasks leave the list after an hour); a week of `insight_turns_daily` rows for five agents (Insights); and three projects in `plans.db` before Plans opens it: "PROJ-123 Acme checkout" running (two steps done, one ready for approval, one with a question, one working, two waiting), "PROJ-140 Acme alerts digest" done and "PROJ-150 Acme loyalty points" a draft. Each step is a task of its project's agent, in the matching state. Steps run in existing demo agents; demo folders are not real, so nothing new starts.

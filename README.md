@@ -4,30 +4,55 @@
 
 <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="48"></a>
 
-Switchboard is a local web app for running many **Claude Code**, **Codex CLI** and **OpenCode** sessions at once. Watch every agent work live, answer all their questions from one Inbox, and let Switchboard handle the repetitive parts: todos, plans, loops, CI fixes and account switching. It runs on `127.0.0.1` only, drives the unmodified CLIs with your own logins, sends no telemetry, and updates itself from GitHub releases.
+Switchboard is a local web app for running many **Claude Code**, **Codex CLI** and **OpenCode** agents at once. Watch every agent work live, answer all their questions from one place, and let Switchboard handle the repetitive parts: tasks, projects, routines, test fixes and account switching. It runs on `127.0.0.1` only, drives the unmodified CLIs with your own logins, sends no telemetry, and updates itself from GitHub releases.
 
-<img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with its icon navigation, pinned sessions and a folder, and the usage footer with an account on credits">
+<img src="docs/screenshots/home.png" alt="Switchboard 2 Home in light mode: a greeting with five things that need you, four working and fifteen done today, the start box, and the first Needs-you card with three questions from the web, mobile and orchestrator agents">
 
 ## Switchboard 2
 
-Switchboard 2.0 ships a new UI, the **v2 theme**, as the default: **Home** with what needs you and a start box, **Agents** (List, Chats or Board, in folders), each agent's chat with a side panel (⌘.), **Projects**, **Crews**, **Results**, **Notes**, a ⌘K palette, light and dark, and phone and tablet layouts. The 1.x UI stays as the **Classic theme** (pictured above). Switch in Settings › Appearance in either theme, or type "classic" in ⌘K; each browser and phone keeps its own choice. A short tour, "Welcome to Switchboard 2", shows the new places once. [v2 and the glossary](docs/v2.md)
+Switchboard 2 opens in a new look, the **v2 theme**, with plain words instead of jargon (agents, tasks, projects, results; [the glossary](docs/v2.md#glossary-the-new-names)), in light or dark, on desktop, tablet and phone:
+
+- **Home:** what needs you, what is working now and what got done today, with a box to start an agent ([the whole page](docs/screenshots/home-full.png)).
+- **Needs you:** one queue for every question, approval and alert, from every agent, project step, teammate and computer; the same cards sit in each agent's chat.
+- **Agents:** List, Chats or Board, sorted into folders you drag agents into.
+- **The agent view:** the chat with its answer cards, and a side panel (⌘.) with the agent's project, notes, working memory, helpers and settings.
+- **Projects:** multi-step work whose steps start on their own when the steps before them are done (Steps, Board, Graph, Timeline).
+- **Crews:** long-lived teammates with a job description, grouped into crews, handing work to each other.
+- **Results:** everything agents saved on purpose, with versions.
+- ⌘K for everything; a short tour, "Welcome to Switchboard 2", shows the new places once.
+
+<img src="docs/screenshots/agent.png" alt="The agent view: the chat with a Needs-you card holding three questions, and the side panel with the agent's project, notes, working memory, how it works and its helpers">
+
+| Agents · Board | Agents · List and folders |
+|---|---|
+| <img src="docs/screenshots/agents-board.png" alt="Agents as a board: Needs you, Working, Ready for approval and Done columns, rows grouped by project, the folder tree on the left"> | <img src="docs/screenshots/agents-list.png" alt="Agents as a list next to the folder tree with Acme web, Maintenance and Releases folders"> |
+| **A project (Graph)** | **A crew** |
+| <img src="docs/screenshots/project.png" alt="Project PROJ-123 Acme checkout as a graph of seven steps: done, ready for approval, needs your answer, working and waiting"> | <img src="docs/screenshots/crews.png" alt="The Acme web crew: Web lead, Reviewer and Release manager with their job descriptions and status"> |
+| **Needs you** | **Dark** |
+| <img src="docs/screenshots/needs-you.png" alt="The Needs-you queue with filters for questions, approvals, ready for approval, notes and setup, asks, and stopped and alerts"> | <img src="docs/screenshots/agent-dark.png" alt="An agent's chat in dark mode with a question card and the side panel"> |
+
+<p><img src="docs/screenshots/phone-home.png" alt="Home on a phone: what needs you, the start box and the bottom tabs" width="260"> <img src="docs/screenshots/phone-agent.png" alt="An agent's chat on a phone with a question card to tap" width="260"></p>
+
+**Prefer the 1.x look?** It stays as the **Classic theme**, with the same agents, data and settings. Switch in Settings → Appearance → Theme, or press ⌘K and type "classic"; Classic switches back in its Settings → Appearance. Each browser and phone keeps its own choice. [More on the themes](docs/v2.md#switching-themes-for-users)
 
 ## Features
 
-- **Sessions** on three CLIs in any folder or git worktree, with subagent and Workflow agent chats, undo per turn and CLI switching mid-way. [new session](docs/new-session.md) · [chat](docs/chat.md) · [undo](docs/undo.md)
-- **Chats** to plan with a read-only agent, then continue as a session to code. [chats](docs/chats.md)
-- **Inbox and Needs you:** every question and permission request in one place; agents report with `turn_status`, so a session waiting on you says so. [inbox](docs/inbox.md)
-- **Todo lists** kept by the agent, with estimates, a board, issue import and runs in their own worktree. [todos](docs/todos.md)
-- **Artifacts** saved on purpose (Markdown, HTML, Mermaid, images, CSV, PDF), with versions and deletion. [artifacts](docs/artifacts.md)
-- **Search** across every message, artifact and todo on every machine. [search](docs/search.md)
-- **Loops and schedules** that Switchboard fires and keeps across restarts. [loops](docs/loops.md) · [schedules](docs/schedules.md)
-- **CI loop:** failing PR checks go back to the agent; green PRs offer Merge. [ci](docs/ci.md)
-- **Accounts and credits:** several logins per CLI, switched on usage limits, allowance before paid credits. [accounts](docs/accounts.md) · [usage](docs/usage.md)
+- **Agents** on three AI engines in any folder or separate copy (git worktree), with helper chats, undo per turn and engine switching mid-way. [new agent](docs/new-session.md) · [chat](docs/chat.md) · [undo](docs/undo.md)
+- **Conversations** to plan with a read-only agent, then continue as an agent to code. [conversations](docs/chats.md)
+- **Needs you:** every question and permission request in one place; agents report with `turn_status`, so an agent waiting on you says so. [needs you](docs/inbox.md)
+- **Tasks** kept by the agent, with estimates, a board, issue import and runs in their own copy. [tasks](docs/todos.md)
+- **Results** saved on purpose (Markdown, HTML, Mermaid, images, CSV, PDF), with versions and deletion. [results](docs/artifacts.md)
+- **Search** across every message, result and task on every computer. [search](docs/search.md)
+- **Routines** that Switchboard fires on a schedule or in a loop, kept across restarts. [loops](docs/loops.md) · [schedules](docs/schedules.md)
+- **Automatic tests:** failing checks on a change request go back to the agent; green ones offer Combine. [ci](docs/ci.md)
+- **Accounts and credits:** several logins per AI engine, switched on usage limits, allowance before paid credits. [accounts](docs/accounts.md) · [usage](docs/usage.md)
 - **Insights** into time, tokens, estimate accuracy, rework, cost and limit forecasts. [insights](docs/insights.md)
-- **Paired machines** over Tailscale, with shared accounts, sidebar layout and power stats, and session take-over. [peers](docs/peers.md) · [power](docs/power.md)
-- **Phones and tablets:** pair with a QR code, get push notifications, install as an app. [devices](docs/devices.md) · [app](docs/install-app.md)
-- **Built-in `switchboard` MCP tools** for todos, artifacts, loops and `turn_status` in every session. [mcp](docs/mcp.md)
-- **Plans** (Projects in v2) run todos as a dependency graph with Jira import, merge modes and Done-on-merge ([plans](docs/plans.md)); **Team** (Crews) of role agents ([team](docs/team.md)); **Project memory** (Notes) approved by you before any session gets it ([memory](docs/memory.md)). They graduated from Experimental in 2.0: always on, in both themes.
+- **Computers** paired over Tailscale, with shared accounts, folders and power stats, and agent take-over. [computers](docs/peers.md) · [power](docs/power.md)
+- **Phones and tablets:** pair with a QR code, get push notifications, install as an app. [phones](docs/devices.md) · [app](docs/install-app.md)
+- **Projects** run tasks as steps of a dependency graph, with Jira import, approval modes and Done on combine. [projects](docs/plans.md)
+- **Crews** of teammates with job descriptions, budgets and access. [crews](docs/team.md)
+- **Notes** ("What agents know") that you approve before any agent gets them. [notes](docs/memory.md)
+- **Built-in `switchboard` MCP tools** (connections) for tasks, results, routines and `turn_status` in every agent. [mcp](docs/mcp.md)
 
 ## Requirements
 

@@ -308,7 +308,7 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** server-written crew activity lines are reworded in v2 only for the server's own fixed phrases ("adopted from session …" → "joined from agent …"); hand-off briefs are never touched. (X)
 - **ASSUMED** visible classic words were renamed where they slipped through: "Terminal session" → "Terminal", "Its plan agent" → "Project agent", "on this machine" → "on this computer". Inline text links inside a paragraph are exempt from the 44 px rule. (X)
 - **ASSUMED** the rail highlights Settings on Insights, as the prototype does, and the palette gets the prototype's "Replay tour: what's new in Switchboard 2". (X)
-- **ASSUMED** `tools/screenshots/readme.ts` (the classic README shots) is left as it is: it still toggles the removed `experimental.*` settings and needs its own rework, outside v2. Gap. (X)
+- **ASSUMED** `tools/screenshots/readme.ts` (the classic README shots) is left as it is: it still toggles the removed `experimental.*` settings and needs its own rework, outside v2. Gap. (X) Closed after 2.0: it shoots the v2 theme on the v2 demo layer (`docs/demo.md` → *README screenshots*).
 
 ## Fixes after 2.0 (2026-10-26)
 
