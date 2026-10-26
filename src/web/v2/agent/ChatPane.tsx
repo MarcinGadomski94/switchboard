@@ -253,6 +253,15 @@ const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need
       );
     case 'divider':
       return <Divider row={row} data={data} />;
+    case 'routine':
+      return (
+        <div className="v2-ag-rtrow" data-testid="v2-agent-routine-row" data-event-id={row.id} data-mark={row.mark} title={row.text}>
+          <Icon name={row.icon} size="s" />
+          <span className="v2-ag-rtrow-text">{row.text}</span>
+          {row.mark === '✕' ? <span className="v2-ag-rtrow-bad">failed</span> : null}
+          {row.time ? <span className="v2-ag-rtrow-time">{row.time}</span> : null}
+        </div>
+      );
   }
 });
 

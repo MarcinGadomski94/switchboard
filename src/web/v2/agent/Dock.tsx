@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Attachment, SessionDetail, SessionTodo } from '../../../core/api.ts';
 import type { QueuedReason } from '../../../core/event-payload.ts';
 import { type ComposerDraft, draftField } from '../../../core/drafts.ts';
@@ -31,6 +31,7 @@ import { TodoCard } from '../shared/TodoCard.tsx';
 import { readStripOpen, stripOrder, writeStripOpen } from '../shared/todo-card-model.ts';
 import { clock } from '../shared/time.ts';
 import { type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, joinWithdrawn, liveLine, resetTimeOf } from './composer-model.ts';
+import { RoutinesIndicator } from './Routines.tsx';
 import type { AgentData } from './useAgent.ts';
 import { DraftChips } from './Attachments.tsx';
 import { computerOf, continueAsAgent } from './agent-bits.ts';
@@ -352,6 +353,7 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
         draftSaved={draft.trim() !== '' && full}
         queueOpen={queueOpen}
         onQueue={() => setQueueOpen((v) => !v)}
+        routines={<RoutinesIndicator data={data} compact={!full} />}
       />
       {stripOpen && !conversation && (todos.list?.todos.length ?? 0) > 0 ? <TaskStrip sessionId={sessionId} todos={todos} blocked={blocked} working={working} /> : null}
       {stopTimedOut ? (
@@ -560,6 +562,7 @@ function StatusRow({
   draftSaved,
   queueOpen,
   onQueue,
+  routines,
 }: {
   readonly status: DockStatus;
   readonly live: ReturnType<typeof liveLine>;
@@ -575,6 +578,8 @@ function StatusRow({
   readonly draftSaved: boolean;
   readonly queueOpen: boolean;
   readonly onQueue: () => void;
+  /** Fix after 2.0 · the agent's loops and schedules (`Routines.tsx`), after the tasks. */
+  readonly routines: ReactNode;
 }) {
   const icon = liveIcon(live.kind);
   const tasks = status.parts.find((part) => part.id === 'tasks') ?? null;
@@ -612,6 +617,7 @@ function StatusRow({
           </button>
         </>
       ) : null}
+      {routines}
       {mem ? (
         <>
           <span className="v2-ag-sep" aria-hidden="true">

@@ -22,6 +22,7 @@ import { V2Link } from '../nav.tsx';
 import { NotesLine, OverviewGroup, ProjectLine } from './SideExtras.tsx';
 import { depthOptions, exactModel, howSummary, speedModels, speedOf } from './how-model.ts';
 import type { AgentData } from './useAgent.ts';
+import { RoutinesGroupBody, useAgentRoutines } from './Routines.tsx';
 import { browserStorage } from './useAgent.ts';
 
 function errorText(caught: unknown): string {
@@ -81,6 +82,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
     });
   };
   const { session } = data;
+  const routines = useAgentRoutines(data);
   if (!session) {
     return (
       <div className="v2-ag-side-body" aria-busy="true">
@@ -143,9 +145,9 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
           <TasksGroup sessionId={data.sessionId} blocked={data.blocked} working={data.session !== null && turnBusy(data.session)} />
         </Group>
       )}
-      {(session.ownedLoops ?? []).some((loop) => loop.state === 'active' || loop.state === 'paused') ? (
-        <Group id="routines" title="Routines" icon="routine" summary={`${(session.ownedLoops ?? []).filter((loop) => loop.state === 'active').length} on`} open={open.routines} onToggle={toggle}>
-          <RoutinesGroup data={data} />
+      {routines.count > 0 ? (
+        <Group id="routines" title="Routines" icon="routine" summary={routines.next?.nextText ? `${routines.count} · next ${routines.next.nextText}` : String(routines.count)} open={open.routines} onToggle={toggle}>
+          <RoutinesGroupBody data={data} routines={routines} />
         </Group>
       ) : null}
       <Group id="handoff" title={AGENT_WORDS.handoff} icon="book" open={open.handoff} onToggle={toggle}>
@@ -418,45 +420,6 @@ function TasksGroup({ sessionId, blocked, working }: { readonly sessionId: strin
         </p>
       ) : null}
     </div>
-  );
-}
-
-/** D94 · the routines (Switchboard loops) this agent runs: Pause / Resume, Run now, Cancel. */
-function RoutinesGroup({ data }: { readonly data: AgentData }) {
-  const { session, sessionId, blocked } = data;
-  const toast = useToast();
-  const loops = (session?.ownedLoops ?? []).filter((loop) => loop.state === 'active' || loop.state === 'paused');
-  const act = (work: () => Promise<unknown>, text: string): void => {
-    work().then(
-      () => {
-        toast({ text });
-        data.reload();
-      },
-      (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
-    );
-  };
-  return (
-    <>
-      {loops.map((loop) => (
-        <div className="v2-ag-prow" key={loop.id} data-testid="v2-agent-routine" data-state={loop.state}>
-          <div className="v2-grow">
-            <b>{loop.title}</b>
-            <div className="v2-muted v2-ag-small">
-              {loop.scheduleText} · {loop.state === 'paused' ? 'paused' : `${loop.runs} run${loop.runs === 1 ? '' : 's'}`}
-            </div>
-          </div>
-          <Button size="sm" disabled={blocked !== null} onClick={() => act(() => api.loopAction(sessionId, loop.id, loop.state === 'paused' ? 'resume' : 'pause'), loop.state === 'paused' ? 'Routine resumed.' : 'Routine paused.')}>
-            {loop.state === 'paused' ? 'Resume' : 'Pause'}
-          </Button>
-          <Button size="sm" variant="ghost" disabled={blocked !== null} onClick={() => act(() => api.loopAction(sessionId, loop.id, 'run'), 'Ran it now.')}>
-            Run now
-          </Button>
-          <Button size="sm" variant="ghost" disabled={blocked !== null} aria-label={`Cancel ${loop.title}`} onClick={() => act(() => api.cancelLoop(sessionId, loop.id), 'Routine cancelled.')}>
-            Cancel
-          </Button>
-        </div>
-      ))}
-    </>
   );
 }
 
