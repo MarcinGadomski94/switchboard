@@ -226,6 +226,7 @@ export class MemoryChecks {
   readonly #o: MemoryCheckOptions;
   readonly #a: MemoryCheckAccess;
   #timer: ReturnType<typeof setInterval> | null = null;
+  #first: ReturnType<typeof setTimeout> | null = null;
   #closed = false;
   /** Runs one at a time per kind (a proposal check never waits behind a periodic run). */
   #periodicQueue: Promise<unknown> = Promise.resolve();
@@ -244,14 +245,19 @@ export class MemoryChecks {
     this.#timer = setInterval(() => void this.tick().catch((error: unknown) => this.#a.onError(error)), this.#o.tickMs ?? MEMORY_CHECK_TICK_MS);
     this.#timer.unref?.();
     // A first look soon after start (purges, first sightings); runs are still gated by their due time.
-    const first = setTimeout(() => void this.tick().catch((error: unknown) => this.#a.onError(error)), 30_000);
-    first.unref?.();
+    this.#first = setTimeout(() => {
+      this.#first = null;
+      void this.tick().catch((error: unknown) => this.#a.onError(error));
+    }, 30_000);
+    this.#first.unref?.();
   }
 
   async close(): Promise<void> {
     this.#closed = true;
     if (this.#timer) clearInterval(this.#timer);
+    if (this.#first) clearTimeout(this.#first);
     this.#timer = null;
+    this.#first = null;
     await Promise.allSettled([this.#periodicQueue, this.#proposalQueue]);
   }
 
