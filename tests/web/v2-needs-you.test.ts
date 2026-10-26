@@ -4,7 +4,7 @@ import type { MemoryEntry } from '../../src/core/memory.ts';
 import type { TeamNeedsYouItem } from '../../src/core/team.ts';
 import { batchAnswers, cardButtons, questionAnswer, questionReady, summaryOf, togglePick, answeredFromServer, isLinkAction } from '../../src/web/v2/shared/answer-model.ts';
 import { commandOf, fromInbox, inboxKindOf, memoryScopeOf, mergeNeedsYou, planIdOf, itemsOfSession, countByCrew, type NeedsItem } from '../../src/web/v2/shared/needs-you-model.ts';
-import { DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
+import { ANSWERED_FADE_MS, ANSWERED_LINE_MS, DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
 
 const AT = '2026-10-25T12:00:00.000Z';
 const LATER = '2026-10-25T12:05:00.000Z';
@@ -323,5 +323,110 @@ describe('D131 · the store: answering anywhere answers it everywhere, with Undo
     expect(store.getSnapshot().items[0]?.computer?.state).toBe('online');
     store.computersChanged({ studio: 'offline' });
     expect(store.getSnapshot().items[0]?.computer?.state).toBe('offline');
+  });
+});
+
+describe('fix after 2.0 · the transient answered line: shown a few seconds, gone for good', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A store whose server keeps listing the ask after the answer (a D124 ask until the agent's next turn). */
+  function setup(overrides: Partial<NeedsYouDeps> = {}) {
+    let list: InboxItem[] = [WAITING, PERMISSION];
+    const sent: string[] = [];
+    const store = createNeedsYouStore({
+      inbox: async () => list,
+      team: async () => [],
+      notes: async () => [],
+      system: async () => ({}) as SystemInfo,
+      send: async (item) => void sent.push(item.key),
+      now: () => Date.now(),
+      storage: null,
+      undoMs: 5_000,
+      ...overrides,
+    });
+    return { store, sent, setList: (next: InboxItem[]) => (list = next) };
+  }
+  const line = (store: ReturnType<typeof setup>['store'], key: string): string => {
+    const snap = store.getSnapshot();
+    if (!snap.answered.has(key)) return 'none';
+    return snap.settled.has(key) ? 'gone' : snap.leaving.has(key) ? 'leaving' : 'shown';
+  };
+
+  it('keeps the line until the Undo window ends (5 s > 4 s), Undo works throughout, then fades and goes', async () => {
+    expect(ANSWERED_LINE_MS).toBe(4_000);
+    const { store, sent } = setup();
+    await store.reload();
+    const ask = store.getSnapshot().items.find((item) => item.key === 'inbox:w1') as NeedsItem;
+    store.answer(ask, { type: 'reply', text: 'merged' }, 'chat');
+    // Badges and counts drop at once.
+    expect(store.getSnapshot().items.map((item) => item.key)).toEqual(['inbox:p1']);
+    expect(line(store, 'inbox:w1')).toBe('shown');
+    await vi.advanceTimersByTimeAsync(4_500);
+    // Past 4 s but still in the Undo window: the line stays, and Undo still works.
+    expect(line(store, 'inbox:w1')).toBe('shown');
+    expect(store.undo('inbox:w1')).toBe(true);
+    expect(line(store, 'inbox:w1')).toBe('none');
+    expect(store.getSnapshot().items.map((item) => item.key)).toContain('inbox:w1');
+    // Answered again: the line has its full time again, leaves when the window ends.
+    store.answer(ask, { type: 'reply', text: 'merged' }, 'chat');
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(line(store, 'inbox:w1')).toBe('shown');
+    expect(store.getSnapshot().pending.has('inbox:w1')).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent).toEqual(['inbox:w1']);
+    expect(line(store, 'inbox:w1')).toBe('leaving');
+    expect(store.undo('inbox:w1')).toBe(false);
+    await vi.advanceTimersByTimeAsync(ANSWERED_FADE_MS);
+    expect(line(store, 'inbox:w1')).toBe('gone');
+  });
+
+  it('a shorter Undo window: the line still shows its 4 s', async () => {
+    const { store } = setup({ undoMs: 1_000 });
+    await store.reload();
+    const ask = store.getSnapshot().items[0] as NeedsItem;
+    store.answer(ask, { type: 'not-waiting' }, 'chat');
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(line(store, ask.key)).toBe('shown');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(line(store, ask.key)).toBe('leaving');
+  });
+
+  it('with reduced motion the line goes without a fade', async () => {
+    const { store } = setup({ reducedMotion: () => true });
+    await store.reload();
+    const ask = store.getSnapshot().items[0] as NeedsItem;
+    store.answer(ask, { type: 'reply', text: 'ok' }, 'chat');
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(line(store, ask.key)).toBe('gone');
+    expect(store.getSnapshot().leaving.size).toBe(0);
+  });
+
+  it('does not resurface for the same episode while the server still lists it; a new episode shows normally', async () => {
+    const { store, setList } = setup();
+    await store.reload();
+    const ask = store.getSnapshot().items.find((item) => item.key === 'inbox:w1') as NeedsItem;
+    store.answer(ask, { type: 'reply', text: 'merged' }, 'chat');
+    await vi.advanceTimersByTimeAsync(10_000);
+    // The server still lists w1 (the reply is queued until the agent's next turn).
+    await store.reload();
+    expect(store.getSnapshot().items.map((item) => item.key)).toEqual(['inbox:p1']);
+    expect(line(store, 'inbox:w1')).toBe('gone');
+    // The next turn closes w1; the agent waits again: a new episode, a new item.
+    const NEXT = { ...WAITING, id: 'w2', detail: 'Ship it now?' };
+    setList([NEXT, PERMISSION]);
+    await store.reload();
+    expect(store.getSnapshot().items.map((item) => item.key)).toEqual(['inbox:w2', 'inbox:p1']);
+    expect(line(store, 'inbox:w2')).toBe('none');
+    // The old answer's line stays gone.
+    expect(line(store, 'inbox:w1')).toBe('gone');
+    // And should the same key be listed again after the server dropped it, it waits again (the live card wins).
+    setList([WAITING, NEXT, PERMISSION]);
+    await store.reload();
+    expect(store.getSnapshot().items.map((item) => item.key)).toContain('inbox:w1');
   });
 });

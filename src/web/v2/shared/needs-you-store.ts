@@ -26,6 +26,12 @@ import { usageWarningAlerts } from './usage-warning-model.ts';
  * - **Undo:** an answer waits {@link UNDO_WINDOW_MS} before it is sent (the toast's
  *   Undo takes it back); it is sent at once when the page is hidden or closed.
  * - A refused answer brings the item back with the server's reason.
+ * - **The transient answered line** (fix after 2.0): an answered item's compact line
+ *   outside the chat's history (the card at a chat's end) shows for
+ *   {@link ANSWERED_LINE_MS}, or until its Undo window ends when that is later, then
+ *   leaves ({@link ANSWERED_FADE_MS} fade, none with reduced motion) and stays gone
+ *   for that answer (`settled`, keyed by item key + answer time) even while the
+ *   server still lists the item; forgotten with the answer itself.
  *
  * The factory ({@link createNeedsYouStore}) takes its I/O, so the merge, the hiding
  * and the undo are unit-tested without a browser.
@@ -33,6 +39,12 @@ import { usageWarningAlerts } from './usage-warning-model.ts';
 
 /** How long an answer can be taken back before it is sent (ms). */
 export const UNDO_WINDOW_MS = 5_000;
+
+/** How long an answered item's transient compact line shows (ms; at least until its Undo window ends). */
+export const ANSWERED_LINE_MS = 4_000;
+
+/** How long the transient compact line takes to fade out and collapse (ms; 0 with reduced motion). */
+export const ANSWERED_FADE_MS = 240;
 
 /** Where the browser keeps the usage alerts it dismissed. */
 export const DISMISSED_ALERTS_KEY = 'switchboard.v2.dismissedAlerts';
@@ -49,6 +61,12 @@ export interface NeedsYouDeps {
   readonly now: () => number;
   readonly storage: { getItem(key: string): string | null; setItem(key: string, value: string): void } | null;
   readonly undoMs: number;
+  /** How long the transient answered line shows; {@link ANSWERED_LINE_MS} when absent. */
+  readonly lineMs?: number;
+  /** How long it fades; {@link ANSWERED_FADE_MS} when absent. */
+  readonly fadeMs?: number;
+  /** `true` when the developer asked for reduced motion: the line goes without a fade. */
+  readonly reducedMotion?: () => boolean;
 }
 
 /** The store's state. */
@@ -65,6 +83,10 @@ export interface NeedsYouSnapshot {
   readonly pending: ReadonlySet<string>;
   /** Why an answer was refused, by item key (cleared on the next answer). */
   readonly errors: ReadonlyMap<string, string>;
+  /** Item keys whose transient answered line is fading out now. */
+  readonly leaving: ReadonlySet<string>;
+  /** Item keys whose transient answered line is gone (for their current answer). */
+  readonly settled: ReadonlySet<string>;
 }
 
 /** The store's interface (see {@link createNeedsYouStore}). */
@@ -86,7 +108,7 @@ export interface NeedsYouStore {
   readonly flush: () => Promise<void>;
 }
 
-const EMPTY: NeedsYouSnapshot = { items: [], loaded: false, error: null, answered: new Map(), pending: new Set(), errors: new Map() };
+const EMPTY: NeedsYouSnapshot = { items: [], loaded: false, error: null, answered: new Map(), pending: new Set(), errors: new Map(), leaving: new Set(), settled: new Set() };
 
 /**
  * The usage alerts of a `GET /api/system` reading: an account out of usage, or
@@ -138,6 +160,15 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
   const answered = new Map<string, AnsweredInfo>();
   const errors = new Map<string, string>();
   const seenAt = new Map<string, string>();
+  const lineMs = deps.lineMs ?? ANSWERED_LINE_MS;
+  const fadeMs = deps.fadeMs ?? ANSWERED_FADE_MS;
+  /** The transient line's timers, by item key. */
+  const lineTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Keys whose line's time is up but whose answer still waits out its Undo window. */
+  const lineDue = new Set<string>();
+  /** Fading lines and gone lines: item key → the answer time they belong to. */
+  const leaving = new Map<string, string>();
+  const settled = new Map<string, string>();
   let readers = 0;
   let generation = 0;
 
@@ -163,14 +194,61 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
     const gone = dismissed();
     const usage = usageAlerts(system, deps.now(), firstSeen).filter((alert) => !gone.has(alert.key));
     const items = mergeNeedsYou({ inbox, team, notes, usage, computers }, hidden);
-    snapshot = { items, loaded, error, answered: new Map(answered), pending: new Set(pending.keys()), errors: new Map(errors) };
+    const current = (marks: ReadonlyMap<string, string>): Set<string> => new Set([...marks].filter(([key, at]) => answered.get(key)?.at === at).map(([key]) => key));
+    snapshot = { items, loaded, error, answered: new Map(answered), pending: new Set(pending.keys()), errors: new Map(errors), leaving: current(leaving), settled: current(settled) };
     for (const listener of listeners) listener();
+  };
+
+  /** Stops `key`'s transient line timers. */
+  const stopLine = (key: string): void => {
+    const timer = lineTimers.get(key);
+    if (timer !== undefined) clearTimeout(timer);
+    lineTimers.delete(key);
+    lineDue.delete(key);
+  };
+  /** The line of answer `at` leaves: a fade, then gone (at once with reduced motion). */
+  const settle = (key: string, at: string): void => {
+    stopLine(key);
+    if (answered.get(key)?.at !== at) return;
+    if (fadeMs <= 0 || deps.reducedMotion?.()) {
+      settled.set(key, at);
+    } else {
+      leaving.set(key, at);
+      lineTimers.set(
+        key,
+        setTimeout(() => {
+          lineTimers.delete(key);
+          leaving.delete(key);
+          if (answered.get(key)?.at === at) settled.set(key, at);
+          emit();
+        }, fadeMs),
+      );
+    }
+    while (settled.size > 200) settled.delete(settled.keys().next().value as string);
+    emit();
+  };
+  /** Starts the line of answer `at`: it shows {@link lineMs}, and never leaves while its Undo window is open. */
+  const startLine = (key: string, at: string): void => {
+    stopLine(key);
+    leaving.delete(key);
+    settled.delete(key);
+    lineTimers.set(
+      key,
+      setTimeout(() => {
+        lineTimers.delete(key);
+        if (pending.has(key)) lineDue.add(key);
+        else settle(key, at);
+      }, lineMs),
+    );
   };
 
   /** Forgets a hidden key once the server no longer lists it (sent and gone). */
   const prune = (): void => {
     const listed = new Set(mergeNeedsYou({ inbox, team, notes, usage: [], computers }).map((item) => item.key));
     for (const key of hidden) if (!pending.has(key) && !listed.has(key) && !key.startsWith('usage:')) hidden.delete(key);
+    // A gone line's record lives as long as its answer (`answered`, the newest 200): it only ever hides that answer's
+    // line, so an item the server lists again (or a new answer) shows normally (`AnswerSlot` prefers a live item).
+    for (const key of settled.keys()) if (!answered.has(key)) settled.delete(key);
   };
 
   const readNotes = async (items: readonly InboxItem[]): Promise<Record<string, readonly MemoryEntry[]>> => {
@@ -212,11 +290,17 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
     if (!entry) return;
     clearTimeout(entry.timer);
     pending.delete(key);
+    // The Undo window is over: a line whose time is already up leaves now.
+    const at = answered.get(key)?.at;
+    if (lineDue.has(key) && at) settle(key, at);
     try {
       await deps.send(entry.item, entry.action);
     } catch (caught) {
       hidden.delete(key);
       answered.delete(key);
+      stopLine(key);
+      leaving.delete(key);
+      settled.delete(key);
       errors.set(key, errorText(caught));
     }
     emit();
@@ -251,8 +335,11 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
       if (pending.has(item.key)) return;
       errors.delete(item.key);
       hidden.add(item.key);
-      answered.set(item.key, { key: item.key, summary: summaryOf(item, action), at: new Date(deps.now()).toISOString(), where, kind: item.kind, title: item.title });
+      const at = new Date(deps.now()).toISOString();
+      answered.delete(item.key);
+      answered.set(item.key, { key: item.key, summary: summaryOf(item, action), at, where, kind: item.kind, title: item.title });
       while (answered.size > 200) answered.delete(answered.keys().next().value as string);
+      startLine(item.key, at);
       if (action.type === 'dismiss-local') {
         // Nothing to send: remembered on this browser.
         try {
@@ -275,6 +362,9 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
       pending.delete(key);
       hidden.delete(key);
       answered.delete(key);
+      stopLine(key);
+      leaving.delete(key);
+      settled.delete(key);
       emit();
       return true;
     },
