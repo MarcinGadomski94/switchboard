@@ -1,7 +1,7 @@
 # M9.1 · per-user background service on every OS (docs/service.md → CI).
-# Written but never run from here: the repo has no remote (D12). On the runners it
-# checks the generated launchd / systemd / Task Scheduler files with each OS's own
-# tools. Everything that registers a service uses a temp home and the fake service
+# Runs on GitHub Actions for pushes that touch the service files, for pull
+# requests and on demand. On the runners it checks the generated launchd /
+# systemd / Task Scheduler files with each OS's own tools. Everything that registers a service uses a temp home and the fake service
 # manager, except the Windows job's round trip, which registers and deletes a task
 # under a CI-only name on the throwaway runner.
 name: service

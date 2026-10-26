@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an idea or an improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please check the [FAQ](https://github.com/MarcinGadomski94/switchboard/blob/master/docs/faq.md) and the existing issues first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like
+      description: How it could work. Screens, steps or examples help.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+  - type: checkboxes
+    id: clis
+    attributes:
+      label: Which agent CLIs it concerns
+      options:
+        - label: Claude Code
+        - label: Codex CLI
+        - label: OpenCode
+        - label: Not specific to a CLI

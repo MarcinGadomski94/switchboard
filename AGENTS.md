@@ -1,6 +1,8 @@
 # AGENTS.md — switchboard
 
-Location: `~/RiderProjects/Personal/switchboard` (a standalone repo; it began in the Acme workspace's `other/` folder). This is a non-product company tool: the product per-type rules don't apply. These rules do, and so does the workspace router's universal canon where relevant (no inference, reuse-first, no unsolicited refactors, blocked-task behavior, living document).
+This file holds the working rules for AI coding agents (Claude Code, Codex and others) that develop Switchboard. Switchboard is a local web app that runs many Claude Code, Codex and OpenCode agents at once and puts everything that needs the developer into one queue. Humans should start with the [README](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md); this file is the stricter version for agents.
+
+Switchboard started as a personal tool inside a larger multi-repo workspace and now lives in its own repo. That workspace's product rules (for its other kinds of solution) don't apply here; its general rules do, where they make sense: no inference (stop and ask instead of guessing), reuse what exists first, no unsolicited refactors, stop and explain when a rule blocks a task, and treat these files as living documents (when reality and a rule disagree, raise it and update the rule in the same change).
 
 ## Scope
 - Work only inside this repo. Never edit other workspace folders, even though the app reads them.

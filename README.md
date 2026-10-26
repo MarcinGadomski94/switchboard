@@ -62,8 +62,9 @@ Switchboard 2 opens in a new look, the **v2 theme**, with plain words instead of
 ## Requirements
 
 - Node.js 24 or newer, and git
-- Claude Code (`claude`), signed in with a claude.ai subscription
-- Optional: Codex CLI, OpenCode, the GitHub CLI (`gh`), Tailscale, a Jira Cloud token
+- At least one agent CLI, installed and signed in: Claude Code (`claude`), Codex CLI (`codex`) or OpenCode (`opencode`). New agents start on Claude Code unless you pick another default CLI in Settings → CLIs, and the setup wizard checks only Claude Code (its rows are information and never block you).
+- Claude Code for a few features: Remote Control from the Claude app (needs a claude.ai subscription, not an API key), workflow agents, background tasks and hooking into sessions started in a terminal. [What each CLI supports](docs/providers.md#capability-matrix)
+- Optional: the GitHub CLI (`gh`), Tailscale, a Jira Cloud token
 
 How to install them per OS: [docs/setup.md](docs/setup.md#requirements).
 
@@ -81,12 +82,6 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex
 ```
 
-Or with npm, once the package is published:
-
-```sh
-npx @marcingadomski94/switchboard
-```
-
 The installer needs Node.js 24 or newer ([how to install it](docs/setup.md#requirements)). It downloads the latest release and installs it only when its SHA-256 checksum matches. It installs the release into `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) or `%LOCALAPPDATA%\Programs\Switchboard` (Windows). It asks whether to start Switchboard at every sign-in, then starts it. Run it again to upgrade or repair. It never uses sudo, never changes your shell profile and sends no telemetry. You can read [install.sh](install.sh) and [install.ps1](install.ps1) before you run them. The options (`--service`, `--dir`, `--version`, `--uninstall`) and the manual install are in [docs/setup.md](docs/setup.md#one-line-install).
 
 Then open **http://127.0.0.1:13001** (type it or use a bookmark). A setup wizard walks you through the first folder and notifications.
@@ -101,7 +96,9 @@ Release installs update themselves: **Update** in the banner or Settings → Upd
 
 ## More
 
+- [FAQ](docs/faq.md): how it differs from Claude Code's own tools, accounts, `curl | sh`, AI, data, platforms
 - [Setup, start at login, troubleshooting and development](docs/setup.md)
+- [Contributing](CONTRIBUTING.md) · [Reporting a vulnerability](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 - [Configuration](docs/configuration.md) · [Security](docs/security.md) · [Privacy policy](PRIVACY.md)
 - [Changelog](CHANGELOG.md) · [All docs](docs/) · [Decisions log](docs/decisions.md)
 

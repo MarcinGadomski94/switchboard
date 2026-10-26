@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in Switchboard does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't paste tokens, private repository names, company names or other personal data; use placeholders such as `Acme` or `PROJ-123`. Security problems go through [SECURITY.md](https://github.com/MarcinGadomski94/switchboard/blob/master/SECURITY.md), not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Switchboard version
+      description: Settings → Updates, or `version` in package.json for a git checkout.
+      placeholder: "2.0.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - One-line installer (install.sh / install.ps1)
+        - Manual install from a release
+        - Git checkout
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: checkboxes
+    id: clis
+    attributes:
+      label: Agent CLIs involved
+      options:
+        - label: Claude Code
+        - label: Codex CLI
+        - label: OpenCode
+  - type: input
+    id: cli-versions
+    attributes:
+      label: CLI versions
+      description: For example the output of `claude --version`, `codex --version` or `opencode --version`.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser or device
+      description: For example Chrome on macOS, or Safari on an iPhone paired as a device.
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Theme
+      options:
+        - v2
+        - Classic
+        - Not sure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Relevant log lines or screenshots, with anything private removed.
+      render: text

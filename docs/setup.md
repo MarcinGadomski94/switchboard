@@ -10,9 +10,10 @@ Copyable command blocks on this page have no comments, so they paste safely into
 |---|---|---|
 | **Node.js 24 or newer** (with npm), on `PATH` | Switchboard runs its TypeScript directly on Node (type stripping). | `node --version` |
 | **git** | Worktrees, branches and diffs. On Windows, Git for Windows is also what Claude Code needs. | `git --version` |
-| **Claude Code CLI** (`claude`), signed in with your claude.ai subscription | Every Claude Code session is a real `claude` process. An API key alone is not enough for Remote Control. | `claude --version`, `claude auth status` |
+| **At least one agent CLI**, signed in: Claude Code, Codex CLI or OpenCode (the next two rows) | Switchboard runs no model itself; every agent is one of these CLIs. | |
+| **Claude Code CLI** (`claude`), signed in with your claude.ai subscription | Every Claude Code session is a real `claude` process, and new sessions start on it unless Settings → CLIs sets another default CLI. Remote Control, workflow agents, background tasks and hooked terminal sessions exist only on Claude Code (`docs/providers.md` → *Capability matrix*). An API key alone is not enough for Remote Control. | `claude --version`, `claude auth status` |
+| **Codex CLI** (`codex`) and / or **OpenCode** (`opencode`), signed in | Sessions on those CLIs (`docs/providers.md`). Without them, they just can't be chosen. | `codex login status`, `opencode auth list` |
 | **A browser**: Chrome (recommended), Edge, Firefox or Safari | The UI. Embedding signed-in sites such as Jira needs Chrome (`docs/frame-helper.md`). | |
-| **Codex CLI** (`codex`) and / or **OpenCode** (`opencode`), signed in (optional) | Sessions on those CLIs (`docs/providers.md`). Without them, they just can't be chosen. | `codex login status`, `opencode auth list` |
 | **GitHub CLI** (`gh`), signed in (optional) | Merged pull requests of session worktrees, and the CI loop (`docs/ci.md`). | `gh auth status` |
 | **Jira Cloud** API token (optional) | Importing a Jira epic into a plan, and its status sync (`docs/plans.md`). | |
 | **Tailscale** (optional) | Paired machines (`docs/peers.md`) and phones / tablets (`docs/devices.md`). | `tailscale status` |

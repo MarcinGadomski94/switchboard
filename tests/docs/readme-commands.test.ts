@@ -53,13 +53,13 @@ describe('copyable command blocks', () => {
     expect(found).toEqual([]);
   });
 
-  it('finds the README one-liners: install.sh piped to sh, install.ps1 piped to iex, npx', () => {
+  // The npx line comes back once @marcingadomski94/switchboard is on npm (docs/publishing.md).
+  it('finds the README one-liners: install.sh piped to sh, install.ps1 piped to iex', () => {
     const blocks = shellBlocks(readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8'));
     const lines = blocks.flatMap((block) => block.lines.filter((line) => line.trim() !== ''));
     expect(lines).toEqual(expect.arrayContaining([
       'curl -fsSL https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.sh | sh',
       'irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex',
-      'npx @marcingadomski94/switchboard',
     ]));
     expect(blocks.map((block) => block.lang)).toEqual(expect.arrayContaining(['sh', 'powershell']));
   });

@@ -25,6 +25,8 @@ The package's version follows Switchboard's: `npm version <x.y.z>` in the repo r
 
 `package.json` carries `"mcpName": "io.github.MarcinGadomski94/switchboard"`. The MCP Registry reads that field to check that the npm package belongs to the server named in `server.json`.
 
+<!-- TODO: after the first `npm publish`, add the npx one-liner back to the README's Install section ("Or with npm:" and an `sh` block with `npx @marcingadomski94/switchboard`), and add it back to the expected lines in tests/docs/readme-commands.test.ts. It was taken out while the package is not on npm yet. -->
+
 ## Publishing it (once, by the developer)
 
 The GitHub release of the version must exist first, because the launcher downloads it. In the repo root, on the release commit, with Node 24:
