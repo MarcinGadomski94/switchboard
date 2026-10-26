@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0 (2026-10-26)
+
+### Project memory
+- **Agents can propose changing or removing an approved note:** `memory_propose_edit` and `memory_propose_retract` create a proposal that waits for your review, like a new note; `memory_list` now shows each entry's id. You review an edit as a side-by-side diff in Classic Memory, v2 Notes and Needs you ("Note edit" / "Note removal"); approving a removal deletes the note. See `docs/memory.md`.
+
+### v2 theme
+- **The "You replied …" line leaves:** after you answer an ask or approval in an agent's chat, the line goes once the 5-second Undo window ends instead of staying pinned at the bottom of the chat.
+
 ## 2.1.0 (2026-10-27)
 
 ### Insights
