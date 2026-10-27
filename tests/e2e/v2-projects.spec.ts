@@ -259,14 +259,16 @@ test('delete a project (a running one is cancelled and its running steps stop)',
   expect((await world.call(page, 'GET', `/api/plans/${planId}`)).status).toBe(404);
 });
 
-test('phone: the list, then a project as its steps list', async ({ page }) => {
+test('phone: the list, then a project as its steps list (Steps or Graph to choose)', async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${world.baseUrl}/projects`);
   const card = page.getByTestId('v2-project-card').filter({ hasText: 'Acme views' });
   await card.click();
   await expect(page.getByTestId('v2-steps')).toBeVisible();
-  await expect(page.getByTestId('v2-project-views')).toHaveCount(0);
+  // Phones offer Steps and Graph only; Steps is the default.
+  await expect(page.getByTestId('v2-project-views').getByRole('button')).toHaveText(['Steps', 'Graph']);
+  await expect(page.getByTestId('v2-project-views').getByRole('button', { name: 'Steps' })).toHaveAttribute('aria-pressed', 'true');
   await expect(step(page, 'PROJ-1')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

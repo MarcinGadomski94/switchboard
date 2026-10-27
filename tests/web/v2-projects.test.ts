@@ -21,6 +21,7 @@ import {
   projectStatus,
   projectsTimeline,
   protectedAckText,
+  readPhoneProjectView,
   readProjectView,
   remoteBlock,
   reopenedNotice,
@@ -349,6 +350,10 @@ describe('the list', () => {
     expect(readProjectView('graph')).toBe('graph');
     expect(readProjectView('nope')).toBe('steps');
     expect(readProjectView(null)).toBe('steps');
+    // A phone offers Steps and Graph; Steps unless Graph was chosen there.
+    expect(readPhoneProjectView('graph')).toBe('graph');
+    expect(readPhoneProjectView('board')).toBe('steps');
+    expect(readPhoneProjectView(null)).toBe('steps');
   });
 });
 

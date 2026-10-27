@@ -5,7 +5,12 @@ import {
   MINIMAP,
   PROJECT_GRAPH,
   SEVERAL_LANE,
+  ZOOM,
   crossingCount,
+  doubleTapView,
+  isNarrowCanvas,
+  openingView,
+  pinchView,
   elapsedMinutes,
   fitView,
   frameHeight,
@@ -272,8 +277,11 @@ describe('fit and zoom', () => {
     const next = zoomAt(view, 1.2, 300, 200);
     expect((300 - next.x) / next.k).toBeCloseTo((300 - view.x) / view.k);
     expect((200 - next.y) / next.k).toBeCloseTo((200 - view.y) / view.k);
-    expect(zoomAt({ x: 0, y: 0, k: 1.9 }, 2, 0, 0).k).toBe(2);
-    expect(zoomAt({ x: 0, y: 0, k: 0.3 }, 0.5, 0, 0).k).toBe(0.25);
+    expect(zoomAt({ x: 0, y: 0, k: 1.9 }, 2, 0, 0).k).toBe(2.5);
+    expect(zoomAt({ x: 0, y: 0, k: 0.4 }, 0.5, 0, 0).k).toBe(0.3);
+    // Below the limit (a big project fitted) zooming out stays where it is, zooming in works.
+    expect(zoomAt({ x: 0, y: 0, k: 0.2 }, 0.5, 0, 0).k).toBe(0.2);
+    expect(zoomAt({ x: 0, y: 0, k: 0.2 }, 1.2, 0, 0).k).toBeCloseTo(0.24);
   });
 
   it('sizes the frame to the fitted graph and the minimap’s room, within limits', () => {
@@ -286,6 +294,57 @@ describe('fit and zoom', () => {
     const view = fitView({ width: 1000, height: 600 }, { width: 1000, height: 700 }, 12, 104);
     expect(view.y + 600 * view.k).toBeLessThanOrEqual(700 - 104);
     expect(view.x).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('touch: pinch, double tap, the phone’s opening view', () => {
+  it('pinches around the midpoint: the content under it stays under it, and it follows the fingers', () => {
+    const start = { view: { x: 20, y: 40, k: 1 }, mx: 200, my: 300, distance: 100 };
+    const twice = pinchView(start, 200, 300, 200);
+    expect(twice.k).toBe(2);
+    expect((200 - twice.x) / twice.k).toBeCloseTo((200 - start.view.x) / start.view.k);
+    expect((300 - twice.y) / twice.k).toBeCloseTo((300 - start.view.y) / start.view.k);
+    // The midpoint moved 50 px right with the same spread: a pan, no zoom.
+    const panned = pinchView(start, 250, 300, 100);
+    expect(panned.k).toBe(1);
+    expect(panned.x).toBeCloseTo(start.view.x + 50);
+    expect(panned.y).toBeCloseTo(start.view.y);
+  });
+
+  it('clamps a pinch to 0.3…2.5', () => {
+    const start = { view: { x: 0, y: 0, k: 1 }, mx: 0, my: 0, distance: 100 };
+    expect(pinchView(start, 0, 0, 1000).k).toBe(ZOOM.max);
+    expect(pinchView(start, 0, 0, 10).k).toBe(ZOOM.min);
+    expect(pinchView({ ...start, distance: 0 }, 0, 0, 50).k).toBe(ZOOM.max);
+  });
+
+  it('a double tap zooms in ×1.6 around the tap, or fits at 1.4 and above', () => {
+    const next = doubleTapView({ x: 0, y: 0, k: 0.5 }, 100, 80);
+    expect(next?.k).toBeCloseTo(0.8);
+    expect((100 - (next?.x ?? 0)) / (next?.k ?? 1)).toBeCloseTo(200);
+    expect(doubleTapView({ x: 0, y: 0, k: 1.4 }, 0, 0)).toBeNull();
+  });
+
+  it('a narrow canvas opens at 0.55 centred on the first working step, else the first not-done one', () => {
+    const items = [
+      { id: 'a', position: 1, state: 'done' as const, solutions: [] },
+      { id: 'b', position: 2, state: 'waiting' as const, solutions: [] },
+      { id: 'c', position: 3, state: 'running' as const, solutions: [] },
+    ];
+    const layout = projectGraphLayout(items, [e('a', 'b'), e('a', 'c')]);
+    const frame = { width: 360, height: 600 };
+    const view = openingView(layout, items, frame);
+    const c = layout.nodes.find((node) => node.id === 'c');
+    expect(view?.k).toBe(0.55);
+    expect(((c?.x ?? 0) + PROJECT_GRAPH.cardWidth / 2) * (view?.k ?? 0) + (view?.x ?? 0)).toBeCloseTo(frame.width / 2);
+    expect(((c?.y ?? 0) + PROJECT_GRAPH.cardHeight / 2) * (view?.k ?? 0) + (view?.y ?? 0)).toBeCloseTo(frame.height / 2);
+    const idle = items.map((item) => (item.id === 'c' ? { ...item, state: 'waiting' as const } : item));
+    const b = layout.nodes.find((node) => node.id === 'b');
+    const second = openingView(layout, idle, frame);
+    expect(((b?.x ?? 0) + PROJECT_GRAPH.cardWidth / 2) * 0.55 + (second?.x ?? 0)).toBeCloseTo(frame.width / 2);
+    expect(openingView(projectGraphLayout([], []), [], frame)).toBeNull();
+    expect(isNarrowCanvas(390)).toBe(true);
+    expect(isNarrowCanvas(560)).toBe(false);
   });
 });
 

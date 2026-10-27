@@ -495,50 +495,7 @@
   transform: rotate(90deg);
 }
 
-/* Graph */
-.sb2 .v2-p-graph {
-  padding: 16px;
-}
-
-.sb2 .v2-p-graph-scroll {
-  overflow-x: auto;
-}
-
-.sb2 .v2-p-graph svg {
-  display: block;
-  font-family: var(--v2-font);
-}
-
-.sb2 .v2-p-graph-node {
-  cursor: pointer;
-}
-
-.sb2 .v2-p-graph-node:focus-visible rect {
-  stroke: var(--v2-accent);
-  stroke-width: 2.5;
-}
-
-.sb2 .v2-p-graph-key {
-  fill: var(--v2-muted);
-  font-size: 11.5px;
-  font-weight: 650;
-}
-
-.sb2 .v2-p-graph-title {
-  fill: var(--v2-text);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.sb2 .v2-p-graph-state {
-  fill: var(--v2-muted);
-  font-size: 12px;
-}
-
-.sb2 .v2-p-graph-legend {
-  font-size: 13px;
-  margin: 10px 0 0;
-}
+/* Graph: see the end of this file (Fixes after 2.0 → The Project graph, redrawn). */
 
 /* Timeline */
 .sb2 .v2-p-tl {
@@ -935,10 +892,741 @@
   min-height: 0;
   overflow-y: auto;
 }
-.sb2 .v2-p-graph-menu {
+
+
+/*
+ * The Project graph, redrawn (Fixes after 2.0; GraphView.tsx, graph-parts.tsx, graph-layout.ts).
+ * Colours are v2 tokens only: a step's tone sets --c (its ring, icon, meta and the header's
+ * segments); a lane's --lane is set inline from the token palette (graph-parts.tsx → laneColour).
+ * "Ready" has no token of its own: a mix of --v2-blue and --v2-green reads teal in both schemes.
+ * Every animation and transition is off under reduced motion (tokens.css), and the travelling
+ * dots are not rendered at all then (GraphView.tsx).
+ */
+.sb2 .v2-p-graph {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  --g-working: var(--v2-accent);
+  --g-working-2: var(--v2-violet);
+  --g-ready: color-mix(in srgb, var(--v2-blue) 45%, var(--v2-green));
+  --g-waiting: var(--v2-muted);
+  --g-needs: var(--v2-amber-dot);
+  --g-approval: var(--v2-violet);
+  --g-failed: var(--v2-red);
+  --g-done: var(--v2-green);
+  --g-edge: var(--v2-border-strong);
+  --g-grid: color-mix(in srgb, var(--v2-text) 9%, transparent);
+  --g-shadow: 0 1px 2px rgba(20, 20, 10, 0.05), 0 6px 18px rgba(20, 20, 10, 0.07);
+}
+
+:root[data-scheme='dark'] .sb2 .v2-p-graph {
+  --g-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.sb2 .v2-p-graph [data-tone='working'] { --c: var(--g-working); }
+.sb2 .v2-p-graph [data-tone='ready'] { --c: var(--g-ready); }
+.sb2 .v2-p-graph [data-tone='waiting'] { --c: var(--g-waiting); }
+.sb2 .v2-p-graph [data-tone='needs'] { --c: var(--g-needs); }
+.sb2 .v2-p-graph [data-tone='approval'] { --c: var(--g-approval); }
+.sb2 .v2-p-graph [data-tone='failed'] { --c: var(--g-failed); }
+.sb2 .v2-p-graph [data-tone='done'] { --c: var(--g-done); }
+
+/* Rings */
+.sb2 .v2-p-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  --c: var(--g-done);
+}
+
+.sb2 .v2-p-gnode .v2-p-ring {
+  --c: inherit;
+}
+
+.sb2 .v2-p-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.sb2 .v2-p-ring-trk {
+  stroke: var(--v2-border);
+}
+
+.sb2 .v2-p-ring-val {
+  stroke: var(--c);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.7s var(--v2-ease), stroke var(--v2-slow);
+}
+
+.sb2 .v2-p-ring-ico {
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--c);
+}
+
+/* Header */
+.sb2 .v2-p-ghead {
   display: flex;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-p-ghead-ring {
+  --c: var(--g-done);
+}
+
+.sb2 .v2-p-ghead-pct {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--v2-text);
+}
+
+.sb2 .v2-p-ghead-main {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sb2 .v2-p-ghead-sum {
+  font-size: var(--v2-fs-sm);
+}
+
+.sb2 .v2-p-gbar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--v2-r-pill);
+  overflow: hidden;
+  background: var(--v2-border);
+}
+
+.sb2 .v2-p-gbar span {
+  height: 100%;
+  background: var(--c);
+  transition: width 0.6s var(--v2-ease);
+}
+
+.sb2 .v2-p-gbar-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: var(--v2-fs-s);
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-p-gbar-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.sb2 .v2-p-gcrit[aria-pressed='true'] {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+  color: var(--v2-accent-text);
+}
+
+/* Canvas */
+.sb2 .v2-p-gframe {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-l);
+  background-color: var(--v2-surface);
+  background-image: radial-gradient(var(--g-grid) 1.2px, transparent 1.3px);
+  background-size: 22px 22px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.sb2 .v2-p-gframe[data-panning] {
+  cursor: grabbing;
+}
+
+.sb2 .v2-p-gstage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.sb2 .v2-p-gstage[data-anim] {
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sb2 .v2-p-gzoom {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb2 .v2-p-gzoom .v2-btn {
+  min-width: 34px;
+  padding: 0 8px;
+  box-shadow: var(--g-shadow);
+}
+
+/* Lanes */
+.sb2 .v2-p-glane {
+  position: absolute;
+  border-radius: var(--v2-r-l);
+  border: 1px solid color-mix(in srgb, var(--lane) 22%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--lane) 10%, transparent), color-mix(in srgb, var(--lane) 3%, transparent) 60%);
+}
+
+.sb2 .v2-p-glane[data-neutral] {
+  border-style: dashed;
+}
+
+.sb2 .v2-p-glane-h {
+  position: absolute;
+  left: 14px;
+  top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--v2-fs-s);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sb2 .v2-p-glane-ic {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--lane) 22%, var(--v2-surface));
+  color: color-mix(in srgb, var(--lane) 75%, var(--v2-text));
+}
+
+.sb2 .v2-p-glane-bar {
+  width: 70px;
+  height: 5px;
+  border-radius: var(--v2-r-pill);
+  background: color-mix(in srgb, var(--lane) 18%, transparent);
+  overflow: hidden;
+}
+
+.sb2 .v2-p-glane-bar b {
+  display: block;
+  height: 100%;
+  background: var(--lane);
+  transition: width 0.6s var(--v2-ease);
+}
+
+.sb2 .v2-p-glane-n {
+  color: var(--v2-muted);
+  font-weight: 500;
+}
+
+/* Edges */
+.sb2 .v2-p-gedges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.sb2 .v2-p-garrow {
+  fill: var(--v2-muted);
+}
+
+.sb2 .v2-p-gedge {
+  stroke: var(--g-edge);
+  stroke-width: 2;
+  transition: opacity var(--v2-med), stroke-width var(--v2-med), d 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sb2 .v2-p-gedge[data-kind='live'] {
+  stroke-width: 2.4;
+}
+
+.sb2 .v2-p-gedge[data-kind='final'] {
+  stroke-dasharray: 4 5;
+}
+
+.sb2 .v2-p-gedge[data-crit] {
+  stroke-width: 3.2;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--g-working) 70%, transparent));
+}
+
+.sb2 .v2-p-gedge[data-kind='wait'][data-crit] {
+  stroke: color-mix(in srgb, var(--g-working) 55%, var(--g-edge));
+}
+
+.sb2 .v2-p-gedge[data-enter] {
+  stroke-dasharray: 600;
+  animation: v2-gdraw 0.8s ease-out both;
+}
+
+.sb2 .v2-p-gedge[data-hot='true'] {
+  stroke-width: 3;
+}
+
+.sb2 .v2-p-gedge[data-hot='false'],
+.sb2 .v2-p-gdot[data-hot='false'] {
+  opacity: 0.12;
+}
+
+.sb2 .v2-p-gdot {
+  fill: var(--g-working);
+}
+
+@keyframes v2-gdraw {
+  from {
+    stroke-dashoffset: 600;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Cards */
+.sb2 .v2-p-gnode {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 236px;
+  height: 104px;
+  border-radius: 14px;
+  padding: 11px 10px 10px 12px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  gap: 0 10px;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--g-shadow);
+  color: var(--v2-text);
+  cursor: pointer;
+  --c: var(--g-waiting);
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), opacity var(--v2-med), border-color var(--v2-slow), box-shadow var(--v2-slow);
+}
+
+.sb2 .v2-p-gnode:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-p-gnode:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+  border-radius: 14px;
+}
+
+.sb2 .v2-p-gnode[data-enter] {
+  animation: v2-genter 0.5s var(--v2-ease) both;
+}
+
+@keyframes v2-genter {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The gradient border of a working step, breathing. */
+.sb2 .v2-p-gnode::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 14px;
+  padding: 1.5px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(135deg, var(--g-working), var(--g-working-2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.sb2 .v2-p-gnode[data-tone='working'] {
+  box-shadow: var(--g-shadow), 0 8px 26px color-mix(in srgb, var(--g-working) 22%, transparent);
+}
+
+.sb2 .v2-p-gnode[data-tone='working']::after {
+  opacity: 1;
+  animation: v2-gbreathe 2.6s ease-in-out infinite;
+}
+
+.sb2 .v2-p-gnode[data-tone='working'] .v2-p-ring svg {
+  animation: v2-gspin 2.4s linear infinite;
+}
+
+.sb2 .v2-p-gnode[data-tone='needs'] {
+  border-color: color-mix(in srgb, var(--g-needs) 45%, var(--v2-border));
+}
+
+.sb2 .v2-p-gnode[data-tone='needs'] .v2-p-ring-ico {
+  animation: v2-gnudge 2.2s ease-in-out infinite;
+}
+
+.sb2 .v2-p-gnode[data-tone='failed'] {
+  border-color: color-mix(in srgb, var(--g-failed) 45%, var(--v2-border));
+}
+
+.sb2 .v2-p-gnode[data-tone='done'] {
+  opacity: 0.78;
+}
+
+.sb2 .v2-p-gnode[data-tone='done'] .v2-p-gnode-title {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-p-gnode[data-pop] .v2-p-ring {
+  animation: v2-gpop 0.7s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.sb2 .v2-p-gnode[data-pop]::before {
+  content: '';
+  position: absolute;
+  left: 29px;
+  top: 48px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: v2-gburst 0.8s ease-out both;
+}
+
+.sb2 .v2-p-gnode[data-crit]:not([data-tone='done']) {
+  border-color: color-mix(in srgb, var(--g-working) 55%, var(--v2-border));
+}
+
+.sb2 .v2-p-gnode[data-hot='true'] {
+  opacity: 1;
+  box-shadow: var(--g-shadow), 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-p-gnode[data-hot='false'],
+.sb2 .v2-p-gfinal[data-hot='false'] {
+  opacity: 0.25;
+}
+
+.sb2 .v2-p-gnode-ring {
+  grid-row: 1 / span 3;
+  align-self: center;
+  width: 42px;
+  height: 42px;
+}
+
+.sb2 .v2-p-gnode-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 22px;
+}
+
+.sb2 .v2-p-gnode-key {
+  font: 600 11px/1 var(--v2-mono);
+  color: var(--v2-muted);
+  white-space: nowrap;
+}
+
+.sb2 .v2-p-gnode-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  background: color-mix(in srgb, var(--lane) 16%, transparent);
+  color: color-mix(in srgb, var(--lane) 70%, var(--v2-text));
+}
+
+.sb2 .v2-p-gnode-chip[data-neutral] {
+  background: var(--v2-grey-bg);
+  color: var(--v2-grey);
+}
+
+.sb2 .v2-p-gnode-hold {
+  color: var(--v2-muted);
+  flex: none;
+}
+
+.sb2 .v2-p-gnode-more {
+  margin-left: auto;
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--v2-fast);
+}
+
+.sb2 .v2-p-gnode:hover .v2-p-gnode-more,
+.sb2 .v2-p-gnode:focus-within .v2-p-gnode-more,
+.sb2 .v2-p-gnode-more:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.sb2 .v2-p-gnode-more .v2-icon-btn {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 7px;
+}
+
+/* No hover on touch: the ⋯ shows always (a long press opens it too). */
+@media (hover: none) {
+  .sb2 .v2-p-gnode-more {
+    opacity: 1;
+  }
+}
+
+.sb2 .v2-p-gnode-title {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.28;
+  margin-top: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sb2 .v2-p-gnode-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--c);
+  white-space: nowrap;
+  overflow: hidden;
+  align-self: end;
+  padding-bottom: 2px;
+}
+
+.sb2 .v2-p-gnode-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-p-gnode-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--v2-muted);
+  font-weight: 500;
+  flex: none;
+}
+
+.sb2 .v2-p-gnode-who .v2-i {
+  width: 12px;
+  height: 12px;
+  color: var(--g-working-2);
+}
+
+.sb2 .v2-p-gnode-eta {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: var(--v2-r-pill);
+  background: var(--v2-border);
+  overflow: hidden;
+}
+
+.sb2 .v2-p-gnode-eta b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--g-working), var(--g-working-2));
+  transition: width 1s linear;
+}
+
+@keyframes v2-gspin {
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+@keyframes v2-gbreathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes v2-gpop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes v2-gburst {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--g-done) 70%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 26px transparent;
+  }
+}
+
+@keyframes v2-gnudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* The final node */
+.sb2 .v2-p-gfinal {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px dashed var(--v2-border-strong);
+  background: var(--v2-surface);
+  box-shadow: var(--g-shadow);
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), opacity var(--v2-med);
+}
+
+.sb2 .v2-p-gfinal-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--v2-text);
+}
+
+.sb2 .v2-p-gfinal-text {
+  font-size: 12px;
+  color: var(--v2-muted);
+  text-align: center;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* The minimap */
+.sb2 .v2-p-gmini {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: 10px;
+  box-shadow: var(--g-shadow);
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.sb2 .v2-p-gmini svg {
+  display: block;
+}
+
+.sb2 .v2-p-gmini-lane {
+  fill: color-mix(in srgb, var(--lane) 14%, transparent);
+}
+
+.sb2 .v2-p-gmini-node {
+  fill: var(--c, var(--g-waiting));
+}
+
+.sb2 .v2-p-gmini-node[data-tone='done'] {
+  opacity: 0.55;
+}
+
+.sb2 .v2-p-gmini-view {
+  fill: color-mix(in srgb, var(--v2-accent) 8%, transparent);
+  stroke: var(--v2-accent);
+  stroke-width: 1.5;
+}
+
+/* The tooltip */
+.sb2 .v2-p-gtip {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  box-shadow: var(--v2-shadow-2);
+  font-size: var(--v2-fs-s);
+  line-height: 1.4;
+}
+
+.sb2 .v2-p-gtip b {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.sb2 .v2-p-gtip span {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-p-graph-legend {
+  font-size: var(--v2-fs-s);
+  margin: 0;
+}
+
+/* Phones (a narrow canvas): taller canvas, 44 px zoom buttons. */
+.sb2 .v2-p-gframe[data-narrow] .v2-p-gzoom .v2-btn {
+  min-width: var(--v2-touch);
+  min-height: var(--v2-touch);
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-p-graph {
+    padding: 10px;
+  }
+
+  .sb2 .v2-p-gframe {
+    border-radius: var(--v2-r);
+  }
+
+  .sb2 .v2-p-ghead-main {
+    min-width: 100%;
+    order: 3;
+  }
+}
+
+/* Reduced motion: tokens.css stops every animation and transition; the dots are not drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .sb2 .v2-p-gparticles {
+    display: none;
+  }
 }

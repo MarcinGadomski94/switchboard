@@ -244,6 +244,14 @@ export function readProjectView(stored: string | null): ProjectView {
   return (PROJECT_VIEWS as readonly string[]).includes(stored ?? '') ? (stored as ProjectView) : 'steps';
 }
 
+/** The views a phone offers (the Board and the Timeline need a wider screen). */
+export const PHONE_PROJECT_VIEWS = ['steps', 'graph'] as const;
+
+/** A phone's stored view: Graph when chosen there, else Steps (its default). */
+export function readPhoneProjectView(stored: string | null): ProjectView {
+  return stored === 'graph' ? 'graph' : 'steps';
+}
+
 /** The board's columns: the shared board's (`../shared/board-model.ts`: Needs you · Working · Ready for approval · Done). */
 export { BOARD_COLUMNS, type BoardColumn } from '../shared/board-model.ts';
 

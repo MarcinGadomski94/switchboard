@@ -1,4 +1,5 @@
 import { DEFAULT_ITEM_MINUTES, type PlanEdge, type PlanItem } from '../../../core/plans.ts';
+import { GRAPH_WORDS } from '../glossary.ts';
 
 /**
  * v2 Project graph (Fixes after 2.0 → *The Project graph, redrawn*): the pure layout, DOM-free and
@@ -110,7 +111,7 @@ export function laneOf(item: Pick<PlanItem, 'solutions'>): string {
 
 /** The label of a lane. */
 export function laneLabel(key: string): string {
-  return key === SEVERAL_LANE ? 'Several repositories' : repoName(key);
+  return key === SEVERAL_LANE ? GRAPH_WORDS.severalRepos : repoName(key);
 }
 
 /** The cubic curve from (sx, sy) to (ex, ey): control points at the horizontal middle, so it stays inside their box. */
@@ -430,7 +431,7 @@ export interface GraphView {
 }
 
 /** The zoom limits. */
-export const ZOOM = { min: 0.25, max: 2, fitMax: 1, step: 1.2 } as const;
+export const ZOOM = { min: 0.3, max: 2.5, fitMax: 1, step: 1.2, doubleTap: 1.6, doubleTapFitAt: 1.4, phone: 0.55, narrow: 560 } as const;
 
 /**
  * The view that fits the content into the frame (never above 100 %), centred, `margin` px around;
@@ -447,6 +448,48 @@ export function zoomAt(view: GraphView, factor: number, cx: number, cy: number):
   const k = Math.min(ZOOM.max, Math.max(Math.min(ZOOM.min, view.k), view.k * factor));
   const ratio = k / view.k;
   return { k, x: cx - (cx - view.x) * ratio, y: cy - (cy - view.y) * ratio };
+}
+
+/** The pinch gesture's start: the view then, and the two fingers' midpoint and distance (frame px). */
+export interface PinchStart {
+  readonly view: GraphView;
+  readonly mx: number;
+  readonly my: number;
+  readonly distance: number;
+}
+
+/**
+ * The view during a pinch: scaled by the fingers' distance against the start (clamped to
+ * {@link ZOOM}), around the start midpoint, which follows the fingers (so the midpoint also pans).
+ */
+export function pinchView(start: PinchStart, mx: number, my: number, distance: number): GraphView {
+  const wanted = start.view.k * (distance / Math.max(1, start.distance));
+  const k = Math.min(ZOOM.max, Math.max(Math.min(ZOOM.min, start.view.k), wanted));
+  const ratio = k / start.view.k;
+  return { k, x: mx - (start.mx - start.view.x) * ratio, y: my - (start.my - start.view.y) * ratio };
+}
+
+/** A double tap at (cx, cy): zoom in ×1.6 around it, or Fit (`null`) when already at 1.4 or more. */
+export function doubleTapView(view: GraphView, cx: number, cy: number): GraphView | null {
+  return view.k >= ZOOM.doubleTapFitAt ? null : zoomAt(view, ZOOM.doubleTap, cx, cy);
+}
+
+/** Whether a canvas is too narrow to open fitted (a phone): the whole project would be unreadable. */
+export function isNarrowCanvas(width: number): boolean {
+  return width < ZOOM.narrow;
+}
+
+/**
+ * The view a narrow canvas opens at: zoom {@link ZOOM.phone}, centred on the first working step in
+ * plan order, else the first not-done one, else the first; `null` without steps (then Fit).
+ */
+export function openingView(layout: Pick<ProjectGraphLayout, 'nodes'>, items: readonly Pick<PlanItem, 'id' | 'state' | 'position'>[], frame: { readonly width: number; readonly height: number }): GraphView | null {
+  const sorted = [...items].sort((a, b) => a.position - b.position);
+  const target = sorted.find((item) => item.state === 'running') ?? sorted.find((item) => item.state !== 'done') ?? sorted[0];
+  const node = target ? layout.nodes.find((entry) => entry.id === target.id) : undefined;
+  if (!node) return null;
+  const k = ZOOM.phone;
+  return { k, x: frame.width / 2 - (node.x + PROJECT_GRAPH.cardWidth / 2) * k, y: frame.height / 2 - (node.y + PROJECT_GRAPH.cardHeight / 2) * k };
 }
 
 /** The frame's height for a graph: its fitted-to-width height plus margins and `reserveBottom`, at least `min`, at most `max`. */
