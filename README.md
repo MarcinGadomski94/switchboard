@@ -12,7 +12,7 @@
 
 **[Get started](#install)** · macOS, Linux and Windows · MIT
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme) <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="28"></a>
+[![npm](https://img.shields.io/npm/v/@marcingadomski94/switchboard?logo=npm&label=npm)](https://www.npmjs.com/package/@marcingadomski94/switchboard) [![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme) <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="28"></a>
 
 ## Switchboard 2
 
