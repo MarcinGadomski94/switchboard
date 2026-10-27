@@ -22,14 +22,14 @@ import { ARCHIVE_WORDS, SETTINGS_WORDS as W } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { V2ToursSection } from '../tour/ToursSection.tsx';
 import { ClassicFrame, useClassicModals } from './ClassicFrame.tsx';
-import { ADVANCED_PAGES, type AdvancedKind, type AdvancedPage, resolveAdvanced } from './settings-map.ts';
+import { type AdvancedKind, type AdvancedPage, advancedGroups, resolveAdvanced } from './settings-map.ts';
 import { useKnownSettings } from './sections.tsx';
 
 /**
  * D131 · lane R · Settings › Advanced (the prototype's `#set-advanced`): a list of
  * pages, each `/settings/advanced/<key>`, that embed the classic Settings section
  * (or classic page) in a v2 frame, so nothing of classic Settings is lost
- * (`settings-map.ts` → `ADVANCED_PAGES`).
+ * (`settings-map.ts` → `ADVANCED_PAGES`; the list is grouped under `ADVANCED_GROUPS`).
  */
 export function AdvancedSection({ sub }: { readonly sub: string | null }) {
   if (!sub) return <AdvancedList />;
@@ -58,24 +58,32 @@ export function AdvancedSection({ sub }: { readonly sub: string | null }) {
   );
 }
 
+/** The Advanced list under its headings (fix after 2.0: `ADVANCED_GROUPS`). */
 function AdvancedList() {
   return (
     <div className="v2-set-stack" data-testid="v2-advanced-list">
       <p className="v2-muted v2-set-p">{W.advancedSub}</p>
-      <Card className="v2-adv-list">
-        {ADVANCED_PAGES.map((page: AdvancedPage) => (
-          <V2Link key={page.key} to={{ area: 'settings', section: 'advanced', sub: page.key }} className="v2-adv-row" data-testid={`v2-advanced-${page.key}`}>
-            <span className="v2-comp-icon v2-adv-icon">
-              <Icon name={page.icon} />
-            </span>
-            <span className="v2-grow">
-              <span className="v2-adv-ttl">{page.label}</span>
-              <span className="v2-muted v2-set-small v2-adv-sub">{page.sub}</span>
-            </span>
-            <Icon name="chev" className="v2-muted" />
-          </V2Link>
-        ))}
-      </Card>
+      {advancedGroups().map(({ group, pages }) => (
+        <section key={group.id} className="v2-adv-group" data-testid="v2-advanced-group" data-group={group.id} aria-labelledby={`v2-adv-group-${group.id}`}>
+          <h3 className="v2-adv-group-h" id={`v2-adv-group-${group.id}`}>
+            {group.label}
+          </h3>
+          <Card className="v2-adv-list">
+            {pages.map((page: AdvancedPage) => (
+              <V2Link key={page.key} to={{ area: 'settings', section: 'advanced', sub: page.key }} className="v2-adv-row" data-testid={`v2-advanced-${page.key}`}>
+                <span className="v2-comp-icon v2-adv-icon">
+                  <Icon name={page.icon} />
+                </span>
+                <span className="v2-grow">
+                  <span className="v2-adv-ttl">{page.label}</span>
+                  <span className="v2-muted v2-set-small v2-adv-sub">{page.sub}</span>
+                </span>
+                <Icon name="chev" className="v2-muted" />
+              </V2Link>
+            ))}
+          </Card>
+        </section>
+      ))}
     </div>
   );
 }

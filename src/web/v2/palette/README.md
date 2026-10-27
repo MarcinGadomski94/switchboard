@@ -6,7 +6,7 @@
 Agents, messages, results, settings and actions. The shell binds ⌘K and the top bar's search button to `openPalette()`; the stub already navigates, searches, lists shortcuts and switches the theme.
 
 ## What is built (lane R)
-- `index.tsx`: `openPalette`, `closePalette`, `Palette` — messages (D97 search), agents (paired too), projects, crews, results, every page and Settings / Advanced page, actions (New …, `task …` quick capture, Search everything, theme and light / dark, shortcuts, tours, routines).
+- `index.tsx`: `openPalette`, `closePalette`, `Palette` — messages (D97 search), agents (paired too), projects, crews, results, every page and Settings / Advanced page, every single setting (the Settings search's index, fix after 2.0), actions (New …, `task …` quick capture, Search everything, theme and light / dark, shortcuts, tours, routines).
 - `palette-model.ts` (pure, `tests/web/v2-palette.test.ts`): rows, ranking, quick-task target, deep links.
 - Decisions: `docs/design/v2-decisions.md` → Lane R → ⌘K palette.
 

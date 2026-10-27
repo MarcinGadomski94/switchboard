@@ -1,4 +1,5 @@
 import { SETTINGS_SECTIONS } from '../../views/settings/model.ts';
+import { SETTINGS_WORDS } from '../glossary.ts';
 import { V2_SETTINGS_SECTIONS, type V2SettingsSection } from '../routes.ts';
 
 /**
@@ -43,32 +44,69 @@ export interface AdvancedPage {
   readonly icon: string;
 }
 
-/** The Advanced list, in the prototype's order first, then the rest of classic Settings. */
+/**
+ * The Advanced pages, in the order the grouped list shows them ({@link ADVANCED_GROUPS}:
+ * Agents, Projects & code, Accounts & devices, Notifications, App). The keys and URLs are
+ * unchanged by the grouping (bookmarks, `classicSectionTarget` and deep links keep working).
+ */
 export const ADVANCED_PAGES: readonly AdvancedPage[] = [
-  { key: 'code-projects', label: 'Code projects', sub: 'Folders, conflicts and freshness', icon: 'folder' },
-  { key: 'connections', label: 'Connections', sub: 'Tools agents can use (Figma, Jira, App Store Connect…)', icon: 'plug' },
+  // Agents
   { key: 'clis', label: 'AI engines & models', sub: 'Engines, model by task, exact model names', icon: 'agents' },
-  { key: 'workspace', label: 'Folders', sub: 'The folders agents start in', icon: 'folder-plus' },
   { key: 'sessions', label: 'Agents & separate copies', sub: 'Separate copies and branches, archived agents, Ultracode, checkpoints, task reminders', icon: 'copy' },
   { key: 'schedules', label: 'Schedules', sub: 'Every routine’s schedule', icon: 'routine' },
+  // Project memory (D107) hook, D136: its automatic checks (the notes agents know).
+  { key: 'memory', label: 'Notes checks', sub: 'Check notes automatically, how often, per folder', icon: 'book' },
+  { key: 'processes', label: 'Background apps', sub: 'Auto-stop when idle', icon: 'cpu' },
   { key: 'tools', label: 'Embedded tools', sub: 'Code graph, browser preview', icon: 'sliders' },
+  { key: 'connections', label: 'Connections', sub: 'Tools agents can use (Figma, Jira, App Store Connect…)', icon: 'plug' },
+  // Projects & code
+  { key: 'workspace', label: 'Folders', sub: 'The folders agents start in', icon: 'folder-plus' },
+  { key: 'code-projects', label: 'Code projects', sub: 'Folders, conflicts and freshness', icon: 'folder' },
   { key: 'github', label: 'GitHub', sub: 'Sign-in, change-request detection', icon: 'merge' },
   { key: 'ci', label: 'CI & change requests', sub: 'Automatic tests: retries, who can combine', icon: 'check-circle' },
-  { key: 'processes', label: 'Background apps', sub: 'Auto-stop when idle', icon: 'cpu' },
   { key: 'jira', label: 'Jira', sub: 'The Jira connection projects import from', icon: 'jira' },
-  { key: 'updates', label: 'Updates', sub: 'Version, check for updates, update now', icon: 'refresh' },
-  { key: 'tutorial', label: 'What’s new tours', sub: 'Replay a tour', icon: 'book' },
-  { key: 'cleanup', label: 'Clean-up', sub: 'Preview what can be removed', icon: 'trash' },
-  { key: 'setup', label: 'Setup wizard', sub: 'Run setup again', icon: 'sparkle' },
-  { key: 'login', label: 'Start at login', sub: 'Start Switchboard when you log in', icon: 'laptop' },
-  { key: 'claude', label: 'Claude Code service', sub: 'The engine’s path, sign-in, service and permissions', icon: 'shield' },
-  { key: 'notify', label: 'Notifications & prices', sub: 'Test notification, usage warning, prices per model', icon: 'bell' },
+  // Accounts & devices
   { key: 'accounts', label: 'Accounts: every option', sub: 'Add accounts, per-engine switching, other computers', icon: 'wallet' },
   { key: 'machines', label: 'Computers: every option', sub: 'Peer listener, pair by address, terminal hooks', icon: 'desktop' },
   { key: 'devices', label: 'Phones: every option', sub: 'Phone access over Tailscale, rename', icon: 'phone' },
-  // Project memory (D107) hook, D136: its automatic checks (the notes agents know).
-  { key: 'memory', label: 'Notes checks', sub: 'Check notes automatically, how often, per folder', icon: 'book' },
+  { key: 'claude', label: 'Claude Code service', sub: 'The engine’s path, sign-in, service and permissions', icon: 'shield' },
+  // Notifications
+  { key: 'notify', label: 'Notifications & prices', sub: 'Test notification, usage warning, prices per model', icon: 'bell' },
+  // App
+  { key: 'updates', label: 'Updates', sub: 'Version, check for updates, update now', icon: 'refresh' },
+  { key: 'login', label: 'Start at login', sub: 'Start Switchboard when you log in', icon: 'laptop' },
+  { key: 'cleanup', label: 'Clean-up', sub: 'Preview what can be removed', icon: 'trash' },
+  { key: 'tutorial', label: 'What’s new tours', sub: 'Replay a tour', icon: 'book' },
+  { key: 'setup', label: 'Setup wizard', sub: 'Run setup again', icon: 'sparkle' },
 ];
+
+/** A heading of the Advanced list. */
+export type AdvancedGroupId = keyof typeof SETTINGS_WORDS.advancedGroups;
+
+/** One heading of the Advanced list and its pages, in order. */
+export interface AdvancedGroup {
+  readonly id: AdvancedGroupId;
+  readonly label: string;
+  readonly keys: readonly AdvancedKind[];
+}
+
+/**
+ * Fix after 2.0 · the Advanced list under headings (the developer's order). Every
+ * Advanced page sits in exactly one group (unit-tested); `ADVANCED_PAGES` lists them
+ * in this order.
+ */
+export const ADVANCED_GROUPS: readonly AdvancedGroup[] = [
+  { id: 'agents', label: SETTINGS_WORDS.advancedGroups.agents, keys: ['clis', 'sessions', 'schedules', 'memory', 'processes', 'tools', 'connections'] },
+  { id: 'code', label: SETTINGS_WORDS.advancedGroups.code, keys: ['workspace', 'code-projects', 'github', 'ci', 'jira'] },
+  { id: 'accounts', label: SETTINGS_WORDS.advancedGroups.accounts, keys: ['accounts', 'machines', 'devices', 'claude'] },
+  { id: 'notifications', label: SETTINGS_WORDS.advancedGroups.notifications, keys: ['notify'] },
+  { id: 'app', label: SETTINGS_WORDS.advancedGroups.app, keys: ['updates', 'login', 'cleanup', 'tutorial', 'setup'] },
+];
+
+/** The Advanced list's groups with their pages (a key without a page is skipped). */
+export function advancedGroups(): ReadonlyArray<{ readonly group: AdvancedGroup; readonly pages: readonly AdvancedPage[] }> {
+  return ADVANCED_GROUPS.map((group) => ({ group, pages: group.keys.map((key) => ADVANCED_PAGES.find((page) => page.key === key)).filter((page): page is AdvancedPage => page !== undefined) }));
+}
 
 /** The Advanced page of a `/settings/advanced/<sub>` address; old classic keys resolve (`folders` → Folders, `experimental` → Jira); `null` = the list. */
 export function resolveAdvanced(sub: string | null): AdvancedPage | null {

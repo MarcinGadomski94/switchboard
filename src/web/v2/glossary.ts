@@ -885,6 +885,23 @@ export const SETTINGS_WORDS = {
   rulesTooLong: 'Too long: at most 4,000 characters.',
   rulesAtDefault: 'These are already the default rules.',
   rulesAllCurrent: 'Every open agent already uses these rules.',
+  // Fix after 2.0 · search in Settings and the grouped Advanced list
+  searchLabel: 'Search settings',
+  searchPlaceholder: 'Search settings: archive, port, sound…',
+  searchResults: 'Matching settings',
+  searchClear: 'Clear search',
+  searchNone: (q: string): string => `No setting matches “${q}”`,
+  searchNoneSub: 'Try another word, or look under Advanced.',
+  searchCount: (n: number): string => `${n} setting${n === 1 ? '' : 's'}`,
+  searchHint: '↑↓ move · ↩ open · Esc clear',
+  crumbSep: ' › ',
+  advancedGroups: {
+    agents: 'Agents',
+    code: 'Projects & code',
+    accounts: 'Accounts & devices',
+    notifications: 'Notifications',
+    app: 'App',
+  },
 } as const;
 
 // ── (lane R · + New) ──
@@ -1026,6 +1043,7 @@ export const PALETTE_WORDS = {
     agents: 'Agents & projects',
     results: 'Results',
     pages: 'Pages',
+    settings: 'Settings',
     actions: 'Actions',
     search: 'Search',
   },

@@ -9,10 +9,11 @@ import { V2_WELCOME_ID } from '../../../core/tutorial.ts';
 import { SETTINGS_SECTIONS } from '../../views/settings/model.ts';
 import { PALETTE_WORDS, RAIL_LABELS, SETTINGS_LABELS, WORDS } from '../glossary.ts';
 import { V2_SETTINGS_SECTIONS } from '../routes.ts';
+import { SETTINGS_INDEX, settingPath, settingPlace } from '../settings/settings-index.ts';
 import { NO_TEAM_MEMBERS, type TeamMembers, agentDisplayName, sessionOwnName, teammateOf } from '../shared/teammate-name.ts';
 
 /** The palette's groups, in the order shown. */
-export const PALETTE_GROUPS = ['quick', 'messages', 'agents', 'results', 'pages', 'actions', 'search'] as const;
+export const PALETTE_GROUPS = ['quick', 'messages', 'agents', 'results', 'pages', 'settings', 'actions', 'search'] as const;
 /** One of {@link PALETTE_GROUPS}. */
 export type PaletteGroup = (typeof PALETTE_GROUPS)[number];
 
@@ -141,6 +142,26 @@ export function pageRows(): PaletteRow[] {
     ...V2_SETTINGS_SECTIONS.map((section) => page(`settings-${section}`, `${PALETTE_WORDS.settingsPrefix} ${SETTINGS_LABELS[section]}`, 'settings', `/settings/${section}`, 'settings')),
     ...advancedPages().map((entry) => page(`advanced-${entry.key}`, `${PALETTE_WORDS.advancedPrefix} ${entry.label}`, 'sliders', `/settings/advanced/${entry.key}`, 'settings advanced')),
   ];
+}
+
+/**
+ * Fix after 2.0 · every single setting (`settings/settings-index.ts`, the index the
+ * Settings search uses) as a "Settings" row: its label, where it is, and its other
+ * words; it opens its page with the row highlighted (`?setting=`).
+ */
+export function settingRows(): PaletteRow[] {
+  return SETTINGS_INDEX.map((entry) => {
+    const place = settingPlace(entry);
+    return {
+      id: `setting:${entry.id}`,
+      group: 'settings',
+      icon: 'sliders',
+      label: entry.label,
+      hint: place.join(' › '),
+      keywords: `${entry.keywords.join(' ')} ${place.join(' ')} settings`,
+      action: { go: settingPath(entry) },
+    };
+  });
 }
 
 /** The actions (New …, quick task, search, theme, shortcuts, the v2 welcome tour's replay, tours, routines). */

@@ -20,7 +20,7 @@ import { timeAgo } from '../shared/time.ts';
 import { openShortcuts } from '../shell/ShortcutsDialog.tsx';
 import { replayV2Tours } from '../tour/TourHost.tsx';
 import { modKey } from '../shell/shortcuts.ts';
-import { type PaletteRow, actionRows, agentRow, hitPath, isTaskPrefix, pageRows, quickTaskAgent, quickTaskTitle, rankRows, resultPath, searchRow } from './palette-model.ts';
+import { type PaletteRow, actionRows, agentRow, hitPath, isTaskPrefix, pageRows, quickTaskAgent, quickTaskTitle, rankRows, resultPath, searchRow, settingRows } from './palette-model.ts';
 import './palette.css';
 
 const palette = openStore<{ readonly query: string }>();
@@ -41,7 +41,7 @@ export function closePalette(): void {
  * jump to any page, agent (this computer's and the paired ones'), project, crew or
  * result; the messages that match (D97 search); actions (New …, `task …` quick
  * capture, Search everything for "…", the theme and light / dark, shortcuts,
- * tours, routines). ↑↓ move, ↩ opens, Esc closes. Ranking is `palette-model.ts`.
+ * tours, routines) and, fix after 2.0, every single setting (`settingRows`). ↑↓ move, ↩ opens, Esc closes. Ranking is `palette-model.ts`.
  */
 export function Palette() {
   const state = palette.use();
@@ -134,7 +134,7 @@ function PaletteBody({ initial }: { readonly initial: string }) {
               })),
           )
         : [];
-    const ranked = rankRows([...messages.slice(0, 3), ...agents, ...projectRows, ...crewRows, ...resultRows, ...pageRows(), ...actions], q, 11);
+    const ranked = rankRows([...messages.slice(0, 3), ...agents, ...projectRows, ...crewRows, ...resultRows, ...pageRows(), ...actions, ...settingRows()], q, 11);
     return [...ranked, searchRow(q)];
   }, [taskTitle, taskAgent, taskAgentName, sessions.data, members, q, query, plans, crews, results, found]);
 

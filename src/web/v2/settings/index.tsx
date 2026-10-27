@@ -3,7 +3,7 @@ import { useLayout } from '../../shell/useLayout.ts';
 import { ToolView } from '../../views/ToolView.tsx';
 import { Icon } from '../components/index.ts';
 import { SETTINGS_LABELS, SETTINGS_WORDS as W } from '../glossary.ts';
-import { V2Link } from '../nav.tsx';
+import { V2Link, useV2Router } from '../nav.tsx';
 import { V2_SETTINGS_SECTIONS, type V2SettingsSection } from '../routes.ts';
 import { AdvancedSection } from './AdvancedSection.tsx';
 import { ClassicFrame } from './ClassicFrame.tsx';
@@ -11,6 +11,7 @@ import { ComputersSection } from './ComputersSection.tsx';
 import { PhonesSection } from './PhonesSection.tsx';
 import { AppearanceSection, RulesSection } from './sections.tsx';
 import { shownSection } from './settings-map.ts';
+import { SettingsSearch, settingsQuery, useSettingFlash } from './SettingsSearch.tsx';
 import { UsageSection } from './UsageSection.tsx';
 import './settings.css';
 
@@ -48,11 +49,15 @@ function Section({ section, sub }: { readonly section: V2SettingsSection; readon
  * `#s-settings`): Usage & accounts, Computers, Phones, Rules for every agent,
  * Appearance and Advanced (every classic section, `settings-map.ts`). Desktop and
  * tablet: the list of sections on the left (`/settings` opens Usage & accounts);
- * phone: `/settings` is the list and a section drills down with a back link.
+ * phone: `/settings` is the list and a section drills down with a back link. Fix
+ * after 2.0: the search at the top of every Settings page (`SettingsSearch.tsx`).
  */
 export function SettingsPage({ section, sub }: { readonly section: V2SettingsSection | null; readonly sub: string | null }) {
   const phone = useLayout() === 'phone';
   const current = shownSection(section, phone);
+  // Fix after 2.0: the search at the top (`?q=`) shows its results instead of the sections; `?setting=` highlights a row.
+  const searching = settingsQuery(useV2Router().search).trim() !== '';
+  useSettingFlash();
   return (
     <div className="v2-page" data-wide="" data-testid="v2-page-settings" data-area="settings" data-section={current ?? 'list'} data-pane={phone ? (current ? 'detail' : 'list') : undefined}>
       {phone && current ? (
@@ -63,6 +68,8 @@ export function SettingsPage({ section, sub }: { readonly section: V2SettingsSec
       ) : null}
       <h1>{phone && current ? SETTINGS_LABELS[current] : W.title}</h1>
       {!phone || !current ? <p className="v2-page-sub">{W.sub}</p> : null}
+      <SettingsSearch />
+      {searching ? null : (
       <div className="v2-set-layout">
         {!phone || !current ? (
           <nav className="v2-subnav" aria-label={W.sectionsLabel} data-testid="v2-settings-nav">
@@ -81,6 +88,7 @@ export function SettingsPage({ section, sub }: { readonly section: V2SettingsSec
           </div>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

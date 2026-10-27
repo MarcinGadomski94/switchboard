@@ -199,7 +199,7 @@ export function UsageSection() {
           return <OrderList key={cli} cli={cli} profiles={mine} onReorder={reorder} onSignIn={setSigningIn} onSignOut={signOut} />;
         })}
         <div className="v2-set-grid2">
-          <label className="v2-set-label">
+          <label className="v2-set-label" data-row="accounts-switch-at">
             {W.switchAt}
             <select className="v2-field" data-testid="v2-accounts-switch-at" value={switchAt} onChange={(event) => saveRules(switchAtPatch(Number(event.target.value)))}>
               {switchAtChoices(switchAt).map((pct) => (
@@ -209,7 +209,7 @@ export function UsageSection() {
               ))}
             </select>
           </label>
-          <div>
+          <div data-row="accounts-all-out">
             <span className="v2-set-label">{W.whenAllOut}</span>
             <Segmented
               label={W.whenAllOut}
@@ -223,7 +223,7 @@ export function UsageSection() {
             />
           </div>
         </div>
-        <div className="v2-set-row">
+        <div className="v2-set-row" data-row="accounts-switch-back">
           <span className="v2-grow">{W.switchBack}</span>
           <Switch checked={settings.afterReset === 'back-to-first'} label={W.switchBack} testId="v2-accounts-switch-back" onChange={(on) => saveRules({ afterReset: on ? 'back-to-first' : 'stay' })} />
         </div>

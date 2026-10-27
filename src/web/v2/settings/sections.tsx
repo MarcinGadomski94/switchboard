@@ -78,7 +78,7 @@ export function RulesSection() {
   return (
     <div className="v2-set-stack" data-testid="v2-set-rules">
       <Card pad className="v2-set-card">
-        <div className="v2-set-card-h">
+        <div className="v2-set-card-h" data-row="rules-enabled">
           <h3 className="v2-grow">{SETTINGS_LABELS.rules}</h3>
           <Switch checked={settings['agents.standingInstruction.enabled']} label={W.rulesOn} testId="v2-rules-enabled" disabled={busy} onChange={(on) => run({ 'agents.standingInstruction.enabled': on }, on ? 'Agents get the rules again.' : 'Agents no longer get the rules.')} />
         </div>
@@ -94,7 +94,7 @@ export function RulesSection() {
             {W.saveRules}
           </Button>
         </div>
-        <div className="v2-set-row">
+        <div className="v2-set-row" data-row="rules-apply">
           <span className="v2-grow" data-testid="v2-rules-stale">
             {stale > 0 ? `${stale} open agent${stale === 1 ? ' uses' : 's use'} older rules.` : 'Every open agent uses these rules.'}
           </span>

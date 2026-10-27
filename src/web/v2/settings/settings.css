@@ -563,3 +563,156 @@
     grid-column: 1 / -1;
   }
 }
+
+/* ── Fix after 2.0 · the search at the top of Settings, its results, the found row ── */
+.sb2 .v2-set-search {
+  margin: 0 0 20px;
+}
+
+.sb2 .v2-set-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 14px;
+  max-width: 640px;
+  border-radius: var(--v2-r-xl);
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-set-search-box:focus-within {
+  border-color: var(--v2-accent);
+  box-shadow: 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-set-search-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--v2-text);
+  outline: none;
+}
+
+.sb2 .v2-set-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* The browser's own clear button: the IconButton clears. */
+.sb2 .v2-set-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.sb2 .v2-set-results {
+  margin-top: 14px;
+  max-width: 820px;
+}
+
+.sb2 .v2-set-results-head {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.sb2 .v2-set-hits {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r-l);
+  background: var(--v2-surface);
+  overflow: hidden;
+}
+
+.sb2 .v2-set-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-set-hit:last-child {
+  border-bottom: 0;
+}
+
+.sb2 .v2-set-hit[aria-selected='true'] {
+  background: var(--v2-accent-soft);
+  box-shadow: inset 3px 0 0 var(--v2-accent);
+}
+
+.sb2 .v2-set-hit-label {
+  font-weight: 600;
+}
+
+.sb2 .v2-set-hit-crumbs {
+  font-size: 12.5px;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-set-hit-help {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.sb2 .v2-set-mark {
+  background: var(--v2-amber-bg);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* A row found by the search or ⌘K: highlighted for 2 s (a steady highlight with reduced motion). */
+.sb2 [data-v2-flash] {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 3px;
+  border-radius: 8px;
+  background-color: var(--v2-accent-soft);
+  animation: v2-set-flash 2s ease-out;
+}
+
+@keyframes v2-set-flash {
+  0%,
+  60% {
+    background-color: var(--v2-accent-soft);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* The Advanced list under its headings. */
+.sb2 .v2-adv-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb2 .v2-adv-group-h {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--v2-text-2);
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-set-search {
+    margin-bottom: 14px;
+  }
+
+  .sb2 .v2-set-search-box {
+    max-width: none;
+  }
+
+  .sb2 .v2-set-results-keys {
+    display: none;
+  }
+}

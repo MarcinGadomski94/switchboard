@@ -6,11 +6,13 @@
 - `index.tsx`: the page (desktop list of sections, phone drill-down), `ToolPage`, `SharePage`.
 - `UsageSection.tsx`, `ComputersSection.tsx`, `PhonesSection.tsx`, `sections.tsx` (Rules, Appearance, `useKnownSettings`), `AdvancedSection.tsx`.
 - `ClassicFrame.tsx`: a classic section inside v2 (contexts, re-pointed tokens, modals, toasts).
-- Pure: `settings-map.ts` (the Advanced pages, where every classic section lives), `settings-model.ts` (account cards, switch at), `density.ts` (the per-browser density lane S reads).
-- Tests: `tests/web/v2-settings.test.ts`, `tests/e2e/v2-settings.spec.ts`.
+- Pure: `settings-map.ts` (the Advanced pages, where every classic section lives, and their headings `ADVANCED_GROUPS`), `settings-model.ts` (account cards, switch at), `density.ts` (the per-browser density lane S reads), `settings-index.ts` (fix after 2.0: every searchable setting, the ranking, breadcrumbs, marks).
+- `SettingsSearch.tsx` (fix after 2.0): the search at the top of every Settings page (`?q=`) and `useSettingFlash` (`?setting=<id>`: scroll to the row, highlight it 2 s). ⌘K reads the same index (`../palette/palette-model.ts` → `settingRows`).
+- Tests: `tests/web/v2-settings.test.ts`, `tests/web/v2-settings-search.test.ts`, `tests/e2e/v2-settings.spec.ts`, `tests/e2e/v2-settings-search.spec.ts`.
+- **A new setting row:** an anchor (`data-row` or `data-testid`) and an entry in `SETTINGS_INDEX` (label, help, other words); a new Advanced page: a place in `ADVANCED_GROUPS`.
 
 ## Scope
-Usage & accounts, Computers, Phones, Rules for every agent, Appearance (theme v2 / Classic — lane F built `ThemeRow` and `SchemeRow` — density, light / dark), Advanced (a page per classic section: `/settings/advanced/<classic key>`; `code-projects` and `connections` are the classic Solutions and MCP pages).
+Usage & accounts, Rules for every agent, Appearance (theme v2 / Classic — lane F built `ThemeRow` and `SchemeRow` — density, light / dark), Computers, Phones, Advanced (a page per classic section: `/settings/advanced/<classic key>`, grouped under Agents · Projects & code · Accounts & devices · Notifications · App; `code-projects` and `connections` are the classic Solutions and MCP pages). Fix after 2.0: that order, and a search over single settings at the top.
 
 ## Shared modules to use
 - `settings/ThemeRow.tsx` → `ThemeRow`, `SchemeRow` (keep them in Appearance)
