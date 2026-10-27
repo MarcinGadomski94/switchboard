@@ -111,7 +111,7 @@ describe('v2 Routines · Switchboard loops', () => {
     const offline = loopRoutine(session({ machine: { id: 'studio', name: 'Studio-PC', state: 'offline' } }), owned(), NOW);
     expect(offline.actions.run).toEqual({ ok: false, reason: 'Studio-PC is unreachable' });
     const closed = loopRoutine(session({ closedAt: at(9) }), owned(), NOW);
-    expect(closed.actions.pause).toEqual({ ok: false, reason: 'Its agent is closed.' });
+    expect(closed.actions.pause).toEqual({ ok: false, reason: 'Its agent is archived.' });
     expect(closed.actions.cancel.ok).toBe(true);
   });
 });
