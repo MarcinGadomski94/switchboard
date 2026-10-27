@@ -146,6 +146,9 @@ const V2_4 = '2.4.0';
 /** The version the redrawn v2 Project graph (Fixes after 2.0 → The Project graph, redrawn) ships in. */
 const V2_4_2 = '2.4.2';
 
+/** The version the Project graph's full screen (Fixes after 2.0 → The Project graph in full screen) ships in. */
+const V2_4_3 = '2.4.3';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1355,11 +1358,31 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'graph',
         title: 'A project as a living graph',
-        what: 'A project’s Graph now shows its steps by repository, each with a progress ring, arrows that move into the steps being worked on, and the critical path: the longest chain still to do. Hover a step to light up what it waits on and what waits on it. A minimap appears when the project does not fit. On a phone you can choose Graph too: pinch or double-tap to zoom, and long-press a step for its menu.',
+        what: 'A project’s Graph now shows its steps by repository, each with a progress ring, arrows that move into the steps being worked on, and the critical path: the longest chain still to do. Hover a step to light up what it waits on and what waits on it. A minimap appears when the project does not fit. On a phone you can choose Graph too: pinch or double-tap to zoom, and long-press a step for its menu. Full screen shows it on the whole screen, live, and ⋯ › Open in a new window puts it on a second monitor.',
         todo: ['Open a project and choose Graph.', 'Turn Critical path on or off; zoom with + / −, ⌘-scroll or a pinch.'],
         anchors: ['v2-project-graph', 'v2-nav-projects', 'v2-tab-more'],
         v2Route: '/projects',
         missing: 'Open a project in Projects and choose Graph to see it. ',
+      },
+    ],
+  },
+  // The Project graph in full screen (docs/v2.md → Projects: the Graph view): its own tour, since a
+  // tour already seen never opens again (the project-graph tour's version cannot bring it back).
+  {
+    id: 'project-graph-fullscreen',
+    decision: 'D131',
+    version: V2_4_3,
+    title: 'The Project graph in full screen',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'fullscreen',
+        title: 'Watch a project on the whole screen',
+        what: 'Full screen shows a project’s graph on the whole screen and keeps it live: it fits itself as the window or the project changes, and Follow keeps the steps being worked on in view. Esc leaves. ⋯ › Open in a new window gives it a window of its own, for a second monitor.',
+        todo: ['Open a project, choose Graph and press Full screen.', 'Zoom or drag to look closer; Fit brings the whole project back.'],
+        anchors: ['v2-graph-fullscreen', 'v2-project-graph', 'v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'Open a project in Projects, choose Graph, then Full screen. ',
       },
     ],
   },

@@ -47,16 +47,21 @@ describe('the v2 welcome tour', () => {
     expect(welcome?.steps.find((step) => step.id === 'appearance')?.anchors).toEqual(['v2-theme']);
   });
 
-  it('the v2 tours are the welcome and the redrawn Project graph; the classic What’s new gains the theme switch', () => {
+  it('the v2 tours are the welcome, the redrawn Project graph and its full screen; the classic What’s new gains the theme switch', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen']);
     // The redrawn Project graph (2.4.2): one step, on the graph when it is on screen, else on Projects in the rail or More.
     const graph = WHATS_NEW.find((feature) => feature.id === 'project-graph');
     expect(graph?.version).toBe('2.4.2');
     expect(graph?.steps.map((step) => step.anchors)).toEqual([['v2-project-graph', 'v2-nav-projects', 'v2-tab-more']]);
     expect(graph?.steps[0]?.v2Route).toBe('/projects');
+    // Its full screen (2.4.3): a tour of its own (a tour once seen never opens again, whatever its version).
+    const full = WHATS_NEW.find((feature) => feature.id === 'project-graph-fullscreen');
+    expect(full?.version).toBe('2.4.3');
+    expect(full?.ui).toBe('v2');
+    expect(full?.steps.map((step) => step.anchors)).toEqual([['v2-graph-fullscreen', 'v2-project-graph', 'v2-nav-projects', 'v2-tab-more']]);
     const themes = WHATS_NEW.find((feature) => feature.id === 'two-themes');
     expect(themes?.ui).toBeUndefined();
     expect(themes?.steps[0]?.anchors).toEqual(['theme-switch']);
