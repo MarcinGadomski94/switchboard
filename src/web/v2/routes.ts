@@ -11,6 +11,7 @@
  * | `/agents/:id/results/:resultId` | The agent's Results tab with that result open (S) |
  * | `/agents/:id/events/:eventId` | The chat at that message (a search hit) (S) |
  * | `/projects`, `/projects/:id` | Projects (P) |
+ * | `/projects/:id/graph` | A project's graph alone, filling the window (P; classic has none: its plan page) |
  * | `/crews`, `/crews/:id` | Crews (P) |
  * | `/results` | Results (R) |
  * | `/search` | Search (R), the query in `?q=` |
@@ -51,6 +52,8 @@ export type V2Route =
       readonly eventId?: number;
     }
   | { readonly area: 'project'; readonly id: string }
+  /** The project's graph alone, filling the window (a second monitor; Fixes after 2.0 → *The Project graph in full screen*). */
+  | { readonly area: 'project-graph'; readonly id: string }
   | { readonly area: 'crew'; readonly id: string }
   | { readonly area: 'tool'; readonly id: string }
   | { readonly area: 'settings'; readonly section: V2SettingsSection | null; readonly sub: string | null };
@@ -91,6 +94,7 @@ export function parseV2Route(pathname: string): V2Route {
     return { area: 'agent', id: a, tab };
   }
   if (head === 'projects' && a && parts.length === 2) return { area: 'project', id: a };
+  if (head === 'projects' && a && b === 'graph' && parts.length === 3) return { area: 'project-graph', id: a };
   if (head === 'crews' && a && parts.length === 2) return { area: 'crew', id: a };
   if (head === 'tools' && a) return { area: 'tool', id: a };
   if (head === 'settings') {
@@ -114,6 +118,8 @@ export function v2Path(route: V2Route): string {
     }
     case 'project':
       return `/projects/${enc(route.id)}`;
+    case 'project-graph':
+      return `/projects/${enc(route.id)}/graph`;
     case 'crew':
       return `/crews/${enc(route.id)}`;
     case 'tool':
@@ -141,6 +147,7 @@ export function railAreaOf(route: V2Route): RailArea | null {
       return 'tasks';
     case 'projects':
     case 'project':
+    case 'project-graph':
       return 'projects';
     case 'crews':
     case 'crew':
@@ -247,6 +254,7 @@ export function toClassicPath(target: string): string {
       return tab === 'chat' ? base : `${base}/${tab}`;
     }
     case 'projects':
+      // `/projects/:id/graph` has no classic page: the plan's own page.
       return a ? `/plans/${raw(a)}` : '/plans';
     case 'crews':
       return a ? `/team/${raw(a)}` : '/team';
