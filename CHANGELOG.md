@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.1 (2026-10-27)
+
+### Fixes
+- **An account that needs you no longer stalls your work:** when Claude Code refuses to run on an account until you accept Anthropic's updated terms or sign in again (Codex too), Switchboard says so in Needs you ("Work (Claude Code) needs you: accept Anthropic's updated terms") with the exact command to run and **Retry stopped agents**. Steps of a Project set to that account wait instead of failing one after another; agents on Automatic or your overall choice use another account meanwhile. See `docs/accounts.md` (D139).
+- **Stopped Project steps restart:** a per-step **Restart**, "Restart stopped steps (N)" and the Project's Resume bring them back (a conversation that was never saved starts fresh), and dead steps no longer hold the Project's running slots.
+- **v2 Projects:** clicking a stopped or failed step in any view opens its details with Try again / Restart; Graph and Timeline steps have the ⋯ menu.
+
 ## 2.4.0 (2026-10-27)
 
 ### Accounts
