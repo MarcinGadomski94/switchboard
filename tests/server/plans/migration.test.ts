@@ -27,6 +27,7 @@ describe('D99 follow-up 2026-10-15 · plans.db migration 3', () => {
       [3, 'plans_any_target'],
       [4, 'plans_repos_ask'],
       [5, 'plans_sidebar_folder'],
+      [6, 'plans_accounts'],
     ]);
     // Applied migrations are checksummed (even their comments): never edit them, add a new one.
     expect(PLANS_MIGRATIONS[0]?.checksum).toBe('09299d9f83949d7041a0fa60b82d19adc56546746ffb7dc612c1e10ed8c75152');
@@ -35,6 +36,25 @@ describe('D99 follow-up 2026-10-15 · plans.db migration 3', () => {
     expect(PLANS_MIGRATIONS[2]?.checksum).toBe('ba41d940c4acea0565f48d1ec6f54a72d3b6bcc06f57c823f2d1eee88bb7f358');
     // D130: migration 4 is released too (1.33 / 1.34).
     expect(PLANS_MIGRATIONS[3]?.checksum).toBe('f73bd0e7fa82262a9ef972c96661793764a9e35a0cb4f15ab99a99c236ddbdc0');
+    // D138: migration 5 is released too (2.x).
+    expect(PLANS_MIGRATIONS[4]?.checksum).toBe('6a42b48e7d2ee765dce7b98fb62ba00b0e98527513aa92315cf611fb4c755283');
+  });
+
+  it("D138 · migration 6: a plan from a plans.db at migration 5 is on Automatic; a Project's accounts round-trip", async () => {
+    dir = await makeTempDir('plans-migration-6');
+    const old = await PlansDb.open(dir, () => NOW, PLANS_MIGRATIONS.slice(0, 5));
+    await old.plans.create({ id: 'p-old', title: 'Old epic', sourceSessionId: 's1', targetBranch: null, repos: [], baseBranch: 'dev', maxConcurrency: 3, usageThreshold: 85, answers: null, external: null });
+    old.close();
+    const upgraded = await PlansDb.open(dir, () => NOW);
+    try {
+      expect((await upgraded.plans.get('p-old'))?.accounts).toEqual({});
+      await upgraded.plans.update('p-old', { accounts: { claude: 'work', codex: 'cx' } });
+      expect((await upgraded.plans.get('p-old'))?.accounts).toEqual({ claude: 'work', codex: 'cx' });
+      await upgraded.plans.update('p-old', { accounts: {} });
+      expect((await upgraded.plans.get('p-old'))?.accounts).toEqual({});
+    } finally {
+      upgraded.close();
+    }
   });
 
   it('D130 · migration 5: a plan from a plans.db at migration 4 has no runs\' subfolder; the subfolder round-trips', async () => {

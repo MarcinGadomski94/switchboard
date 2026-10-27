@@ -861,7 +861,8 @@ AccountProfile { id, cli: CliProviderId, name, dir: string | null /* null = the 
   signInCommand: string /* the terminal fallback */, sessions: number }
 ProfileUsage { fiveHourPct, fiveHourResetsAt, sevenDayPct, sevenDayResetsAt, receivedAt }   // nullable fields
 AccountSettings { enabled, perCli: Record<CliProviderId, boolean>, thresholds: { enabled, fiveHourPct, weeklyPct },
-  afterReset: "stay" | "back-to-first", newSessions: { rule: "first-with-allowance" | "fixed", fixed: { [cli]?: profileId } },
+  afterReset: "stay" | "back-to-first", newSessions: { rule: "first-with-allowance" | "fixed", fixed: { [cli]?: profileId } } /* D138: a mirror of `choice` */,
+  choice: { [cli]?: profileId } /* D138, additive */,
   exhausted: { action: "notify" | "switch-cli", cli: CliProviderId | null }, cooldownSeconds }
 AccountSignIn { id, profileId, cli, state: "starting" | "waiting" | "done" | "failed" | "cancelled" | "timeout", url: string | null, code: string | null,
   instructions: string | null, error: string | null, command: string, canPasteBack: boolean, startedAt, expiresAt }
@@ -952,6 +953,41 @@ AccountUsageRow.credits?: AccountCredits, ActiveAccount.credits?: AccountCredits
 AccountSettings.outOfAllowance: "use-credits" | "pause"
 QueuedReason: "turn" | "resume" | "credits"   // D103: held by Switchboard until an account has allowance
 UserPayload.heldNote?: string                 // with queued "credits": what it waits for
+```
+
+## Choosing the account (D138, 2026-10-27, additive)
+
+Developer request D138 (`docs/decisions.md` → *Choose the account overall and per Project*): the account every new and running session of a CLI uses (the **overall choice**), and a Project's (plan's) own account per CLI. Details: `docs/accounts.md` → *Choosing the account (D138)*. **Precedence:** a session's pin > its Project's account > the overall choice > the automatic rules. Every field and route is additive; the choice is this machine's (profile ids are per machine; D98 shares no choice).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/accounts/choice/preview | { cli, profileId: string \| null, planId? } | AccountChoicePreview: what the choice would move now (live sessions of the CLI: idle and running; pinned ones and, overall, those whose Project has its own account are skipped; with `planId`, only that Project's sessions, and `profileId: null` means the overall choice); 422 `cli` / `profileId` (unknown, another CLI's, disabled); 404 unknown plan |
+| PUT | /api/accounts/choice | { cli, profileId: string \| null, move?: boolean } | AccountChoiceResult. Saves the overall choice (`null` = Automatic) and, unless `move: false`, moves the sessions the preview lists through the D63 switch, one after another in the background (each one's `sessionUpdated` shows its new account); 422 as above |
+
+Paired devices (D73) may call both (the status pill's picker on a phone); they are not on the peer allow-list (a paired machine's choice is set through its `PUT /api/accounts/settings` `choice`, which moves nothing).
+
+- `AccountSettings.choice: { [cli]?: profileId }` (absent = Automatic). It replaces D63's "New sessions start on": `newSessions` is now its mirror (`rule: "fixed"`, `fixed` = the choice, while any CLI has one) for older clients, and a stored `newSessions.rule: "fixed"` without `choice` (an install from before D138) reads as the choice. `PUT /api/accounts/settings` accepts `choice` (merged per CLI; `null` / `""` = Automatic; 422 `choice` for an unknown, another CLI's or a disabled account) and, from an older client, `newSessions` alone (sets the choice from its rule); neither moves sessions.
+- New sessions (`POST /api/sessions` without `profileId`, chats, todo runs, takeovers) start on the choice while it has allowance (and while automatic switching is off, always); out of allowance, the automatic pick, and the choice again once it has allowance.
+- `Plan.accounts?: { [cli]?: profileId }` (plans.db migration 6; absent / missing CLI = Automatic). Set with `POST /api/plans` / `PUT /api/plans/{id}` / `POST /api/plans/{id}/start` `accounts: { [cli]: profileId | null }` (merged per CLI; `null` = back to Automatic; 422 `accounts`). Every item run session starts on it (for the run's CLI, after D82 routing; the automatic pick while it is out of allowance), and a Start or a change moves the plan's live sessions (its own session and its items' run sessions, pinned ones excepted) to it, or, for Automatic, to the overall choice.
+- `Session.accountChoice?: SessionAccountChoice`: where the session's account comes from (open sessions; absent = automatic).
+- `/hub`: `accountChoiceChanged` `{ cli, profileId, planId, moving }` (this machine's only, never forwarded): the overall choice of `cli` changed (`planId: null`), or a Project's accounts (`cli: null`); the pickers read `GET /api/accounts` again.
+- The chat divider of a move: `LifecyclePayload` action `account-switched` with `reason: "overall choice"` or `"the project's account"` ("Switched account: A → B (overall choice)"); a running turn it interrupted is continued with "Continue where you left off: the account changed because a different account was chosen, …". When the automatic rules move a session off its chosen account because it ran out, the divider's label is "B is out of usage until 14:05; switched to A" (or "B is near its limit (session at 98 %); switched to A").
+
+```ts
+AccountChoicePreview { cli, profileId: string | null, profileName: string | null, move: number, running: number,
+  skipped: { pinned: number, project: number, already: number }, sessionIds: string[], confirm: string | null /* "Move 5 agents to B? 1 running turn will be interrupted." */ }
+AccountChoiceResult { settings: AccountSettings, moving: number, running: number }
+SessionAccountChoice { source: "pinned" | "project" | "overall" | "automatic", profileId?: string, project?: { id, title } }
+AccountChoiceChanged { cli: CliProviderId | null, profileId: string | null, planId: string | null, moving: number }
+```
+
+```json
+POST /api/accounts/choice/preview { "cli": "claude", "profileId": "8d3f…" }
+200 { "cli": "claude", "profileId": "8d3f…", "profileName": "Private", "move": 5, "running": 1, "skipped": { "pinned": 1, "project": 2, "already": 0 }, "sessionIds": ["s1", …], "confirm": "Move 5 agents to Private? 1 running turn will be interrupted." }
+PUT /api/accounts/choice { "cli": "claude", "profileId": "8d3f…" }
+200 { "settings": { …, "choice": { "claude": "8d3f…" }, "newSessions": { "rule": "fixed", "fixed": { "claude": "8d3f…" } } }, "moving": 5, "running": 1 }
+GET /api/sessions/s1
+200 { "id": "s1", "profileId": "8d3f…", "profileName": "Private", "accountChoice": { "source": "overall", "profileId": "8d3f…" }, … }
 ```
 
 ## Standing instruction for agents (D64, 2026-10-02, additive)
@@ -1561,6 +1597,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (D111: `sessionId` is `null` for an artifact deleted after its session was gone) (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox (D102: `review` removed), title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
 | ciChanged | { sessionId } (additive, D109: a session's pull-request status changed; the session header's PR chip reads `GET /api/sessions/{id}/ci` again; forwarded between peers with the remote session id) |
+| accountChoiceChanged | { cli, profileId, planId, moving } (additive, D138: the overall account choice of `cli` changed (`planId: null`), or a Project's accounts (`cli: null`); `moving` sessions are being moved; the account pickers read `GET /api/accounts` again; this machine's only, never forwarded between peers) |
 
 ## Paged events (D95, 2026-10-10, additive)
 `docs/performance.md` → *Paged events*. `GET /api/sessions/{id}/events` takes three more queries, each optional and combinable with `since`; without them the answer is every event, as before.

@@ -1,9 +1,10 @@
 import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react';
-import type { AccountProfile, AccountSettings } from '../../../core/accounts.ts';
+import { type AccountProfile, type AccountSettings, moveConfirmText, overallChoiceOf } from '../../../core/accounts.ts';
 import type { AccountsOverview } from '../../../core/api.ts';
 import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId } from '../../../core/cli-providers.ts';
 import { type AccountSignIn, ApiError, accountsApi, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
+import { useHubEvent } from '../../api/useHub.ts';
 import { Row, SectionTitle, ToggleValue } from './rows.tsx';
 import { TERMINAL_HINT, creditsText, droppedOrder, exhaustedText, movedOrder, peerAccountText, sharedText, sharedUsageText, signInStatusText, signInText, usageText } from './accounts.ts';
 import type { PeerOnlyAccount } from '../../../core/shared-accounts.ts';
@@ -547,7 +548,89 @@ function PercentInput({ testId, label, value, onCommit }: { readonly testId: str
   );
 }
 
-function Rules({ settings, profiles, save }: { readonly settings: AccountSettings; readonly profiles: readonly AccountProfile[]; readonly save: (patch: Record<string, unknown>) => void }) {
+/**
+ * D138 (`docs/accounts.md` → *Choosing the account*): "Account for sessions" per CLI with more
+ * than one account (it replaced "New sessions start on"): Automatic or an account. On this machine
+ * the running sessions move to it now, after the confirm ("Move 5 sessions to B? 1 running turn
+ * will be interrupted."); on a paired machine only the choice is saved (new sessions there).
+ */
+function AccountChoiceRow({ settings, profiles, save, machine, onChosen }: { readonly settings: AccountSettings; readonly profiles: readonly AccountProfile[]; readonly save: (patch: Record<string, unknown>) => void; readonly machine: string | null; readonly onChosen: () => void }) {
+  const [pending, setPending] = useState<{ readonly cli: CliProviderId; readonly id: string | null; readonly text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const rows = CLI_PROVIDERS.map((cli) => ({ cli, mine: profiles.filter((p) => p.cli === cli && p.enabled) })).filter((row) => row.mine.length > 1);
+  if (rows.length === 0) return null;
+  const apply = (cli: CliProviderId, id: string | null): void => {
+    setBusy(true);
+    api.setAccountChoice(cli, id).then(
+      (result) => {
+        setNote(result.moving > 0 ? `Moving ${result.moving} ${result.moving === 1 ? 'session' : 'sessions'}.` : null);
+        onChosen();
+      },
+      (caught: unknown) => setNote(errorText(caught)),
+    ).finally(() => {
+      setBusy(false);
+      setPending(null);
+    });
+  };
+  const choose = (cli: CliProviderId, id: string | null): void => {
+    setNote(null);
+    if (machine !== null) {
+      save({ choice: { [cli]: id } });
+      return;
+    }
+    api.accountChoicePreview({ cli, profileId: id }).then(
+      (preview) => {
+        if (preview.move === 0 || !preview.confirm) apply(cli, id);
+        else setPending({ cli, id, text: moveConfirmText({ move: preview.sessionIds, running: preview.running }, preview.profileName ?? 'it', { one: 'session', many: 'sessions' }) ?? preview.confirm });
+      },
+      (caught: unknown) => setNote(errorText(caught)),
+    );
+  };
+  return (
+    <Row
+      id="accounts-choice"
+      tour="accounts-choice"
+      label="Account for sessions"
+      description={machine === null ? 'Automatic (the first account with allowance), or an account: new sessions start on it and running ones move to it now (pinned sessions, and plans with their own account, keep theirs). If it runs out, the rules here take over.' : 'New sessions on that machine start on it (its running sessions are not moved from here).'}
+    >
+      <span className="sb-acc-inline" data-testid="accounts-choice">
+        {rows.map(({ cli, mine }) => (
+          <select
+            key={cli}
+            className="sb-set-select"
+            data-testid={`accounts-choice-${cli}`}
+            aria-label={`${CLI_LABELS[cli]} account for sessions`}
+            disabled={busy}
+            value={overallChoiceOf(settings, cli) ?? ''}
+            onChange={(event) => choose(cli, event.target.value === '' ? null : event.target.value)}
+          >
+            <option value="">{CLI_LABELS[cli]}: automatic</option>
+            {mine.map((p) => (
+              <option key={p.id} value={p.id}>
+                {CLI_LABELS[cli]}: {p.name}
+              </option>
+            ))}
+          </select>
+        ))}
+        {pending ? (
+          <span className="sb-acc-inline" role="alertdialog" aria-label="Confirm the move" data-testid="accounts-choice-confirm">
+            <span>{pending.text}</span>
+            <button type="button" className="sb-set-button sb-sv-primary" disabled={busy} data-testid="accounts-choice-move" onClick={() => apply(pending.cli, pending.id)}>
+              Move
+            </button>
+            <button type="button" className="sb-set-button" onClick={() => setPending(null)}>
+              Cancel
+            </button>
+          </span>
+        ) : null}
+        {note ? <span className="sb-acc-muted" role="status">{note}</span> : null}
+      </span>
+    </Row>
+  );
+}
+
+function Rules({ settings, profiles, save, machine, onChosen }: { readonly settings: AccountSettings; readonly profiles: readonly AccountProfile[]; readonly save: (patch: Record<string, unknown>) => void; readonly machine: string | null; readonly onChosen: () => void }) {
   return (
     <div className="sb-acc-rules" data-testid="accounts-rules">
       <Row id="accounts-enabled" label="Switch accounts automatically" description="When a session hits its session or weekly limit, it continues on the next account with allowance.">
@@ -584,43 +667,7 @@ function Rules({ settings, profiles, save }: { readonly settings: AccountSetting
           <option value="back-to-first">Switch back to the first account</option>
         </select>
       </Row>
-      <Row id="accounts-new" label="New sessions start on" description="The first account with allowance, or a fixed account per CLI.">
-        <span className="sb-acc-inline">
-          <select
-            className="sb-set-select"
-            data-testid="accounts-new-rule"
-            aria-label="New sessions start on"
-            value={settings.newSessions.rule}
-            onChange={(event) => save({ newSessions: { rule: event.target.value } })}
-          >
-            <option value="first-with-allowance">The first account with allowance</option>
-            <option value="fixed">A fixed account</option>
-          </select>
-          {settings.newSessions.rule === 'fixed'
-            ? CLI_PROVIDERS.map((cli) => {
-                const mine = profiles.filter((p) => p.cli === cli && p.enabled);
-                if (mine.length < 2) return null;
-                return (
-                  <select
-                    key={cli}
-                    className="sb-set-select"
-                    data-testid={`accounts-fixed-${cli}`}
-                    aria-label={`Fixed ${CLI_LABELS[cli]} account`}
-                    value={settings.newSessions.fixed[cli] ?? ''}
-                    onChange={(event) => save({ newSessions: { fixed: { ...settings.newSessions.fixed, [cli]: event.target.value } } })}
-                  >
-                    <option value="">{CLI_LABELS[cli]}: the first with allowance</option>
-                    {mine.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {CLI_LABELS[cli]}: {p.name}
-                      </option>
-                    ))}
-                  </select>
-                );
-              })
-            : null}
-        </span>
-      </Row>
+      <AccountChoiceRow settings={settings} profiles={profiles} save={save} machine={machine} onChosen={onChosen} />
       <Row
         id="accounts-out-of-allowance"
         label="When every account is out of allowance"
@@ -687,6 +734,10 @@ export function AccountsSection() {
     load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
+  // D138: the account choice changed elsewhere (the v2 pill, another tab).
+  useHubEvent('accountChoiceChanged', () => {
+    if (machine === null) load(false);
+  });
   const saveRules = (patch: Record<string, unknown>): void => {
     setError(null);
     client.saveSettings(patch).then(
@@ -724,7 +775,7 @@ export function AccountsSection() {
       ) : null}
       {overview ? (
         <>
-          <Rules settings={overview.settings} profiles={overview.profiles} save={saveRules} />
+          <Rules settings={overview.settings} profiles={overview.profiles} save={saveRules} machine={machine} onChosen={() => load(false)} />
           {CLI_PROVIDERS.map((cli) => {
             const mine = overview.profiles.filter((p) => p.cli === cli);
             const ids = mine.map((p) => p.id);

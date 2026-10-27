@@ -2,6 +2,8 @@ import { forgetGraduatedSwitches } from './settings/graduated.ts';
 import { AccountService } from './accounts/service.ts';
 import { SharedAccounts } from './accounts/shared.ts';
 import { AutoSwitcher } from './accounts/auto-switch.ts';
+import { AccountChoice } from './accounts/choice.ts';
+import { registerAccountChoiceSource } from './sessions/wire.ts';
 import { SignInManager } from './accounts/signin.ts';
 import { CliRegistry } from './cli/registry.ts';
 import { CliStatusService, envCommandFlags } from './cli/status.ts';
@@ -342,7 +344,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('preClose', async () => {
     await signIn.close();
   });
-  const autoSwitcher = new AutoSwitcher({ store: options.store, supervisor, accounts, dataDir: config.dataDir, systemItems, clis });
+  // D138: the account chosen overall and per Project (precedence, moving the sessions now).
+  const accountChoice = new AccountChoice({ store: options.store, supervisor, accounts, dataDir: config.dataDir, bus, systemItems });
+  const offAccountChoice = registerAccountChoiceSource(options.store, accountChoice);
+  app.addHook('preClose', async () => {
+    await accountChoice.settled();
+  });
+  app.addHook('onClose', async () => {
+    offAccountChoice();
+  });
+  const autoSwitcher = new AutoSwitcher({ store: options.store, supervisor, accounts, dataDir: config.dataDir, systemItems, clis, preference: (session) => accountChoice.preference(session) });
   autoSwitcher.start();
   app.addHook('preClose', async () => {
     await autoSwitcher.stop();
@@ -633,7 +644,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D84 Clean-up and D137 the archive (archived sessions deleted after their period, with their safe worktrees).
   const cleanup = new CleanupService({ store: options.store, dataDir: config.dataDir, isLive: (sessionId) => supervisor.isLive(sessionId), takeover });
   const archive = new ArchiveService({ store: options.store, cleanup, isLive: (sessionId) => supervisor.isLive(sessionId) });
-  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
+  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

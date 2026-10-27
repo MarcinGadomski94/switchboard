@@ -8,9 +8,9 @@ import { dropPlan } from '../../plans/store.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Button, Checkbox, Chip, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Segmented, Select, Skeleton, useToast } from '../components/index.ts';
-import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '../glossary.ts';
+import { ACCOUNT_CHOICE_WORDS, MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
-import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
+import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
 import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readProjectView, remoteBlock, timeLeft } from './project-model.ts';
 import { ProgressBar } from './ProjectsPage.tsx';
@@ -69,7 +69,8 @@ type Overlay =
   | { readonly kind: 'ack'; readonly mode: PlanMergeMode }
   | { readonly kind: 'sendback'; readonly item: PlanItem }
   | { readonly kind: 'edit'; readonly item: PlanItem }
-  | { readonly kind: 'details'; readonly itemId: string };
+  | { readonly kind: 'details'; readonly itemId: string }
+  | { readonly kind: 'account' };
 
 function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly plan: Plan; readonly jira: PlanJiraState | null; readonly proposals: ReturnType<typeof useProject>['proposals']; readonly todos: ReturnType<typeof useProject>['todos']; readonly put: (plan: Plan) => void; readonly reload: () => Promise<void> }) {
   const layout = useLayout();
@@ -164,6 +165,8 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
         }
       },
     },
+    // D138: the project's account per engine.
+    { id: 'account', label: ACCOUNT_CHOICE_WORDS.projectAccountMenu, icon: 'wallet', ...(finished ? { disabledReason: `It is ${plan.state} already.` } : blocked ? { disabledReason: blocked } : {}), onSelect: () => setOverlay({ kind: 'account' }) },
     { separator: true, id: 'sep' },
     { id: 'cancel', label: PROJECT_WORDS.cancel, icon: 'stop', ...(finished ? { disabledReason: `It is ${plan.state} already.` } : {}), onSelect: () => setOverlay({ kind: 'cancel' }) },
     { id: 'delete', label: PROJECT_WORDS.deleteProject, icon: 'trash', danger: true, ...(blocked ? { disabledReason: blocked } : {}), onSelect: () => setOverlay({ kind: 'delete' }) },
@@ -360,6 +363,7 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
           }}
         />
       ) : null}
+      {overlay?.kind === 'account' ? <ProjectAccountDialog plan={plan} onClose={close} onChanged={put} /> : null}
       {overlay?.kind === 'sendback' ? <SendBackDialog item={overlay.item} onClose={close} onSend={(comment) => actions.sendBack(overlay.item, comment)} /> : null}
       {overlay?.kind === 'edit' ? <EditStepDialog item={overlay.item} onClose={close} onSave={(title, estimate) => actions.edit(overlay.item, title, estimate)} /> : null}
       {overlay?.kind === 'delete' ? (

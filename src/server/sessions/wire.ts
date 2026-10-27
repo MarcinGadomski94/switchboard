@@ -1,6 +1,6 @@
 import type { ArchiveInfo } from '../../core/session-archive.ts';
 import { sessionProfileId } from '../../core/accounts.ts';
-import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionFreshContinue, SessionLink, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionAccountChoice, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionFreshContinue, SessionLink, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { effectiveSessionStatus } from '../../core/derive/turn-status.ts';
@@ -93,6 +93,28 @@ export function registerArchiveSource(store: Store, source: ArchiveSource): () =
   return () => {
     if (archiveSources.get(store) === source) archiveSources.delete(store);
   };
+}
+
+/** D138: where a session's account comes from (the `AccountChoice`, registered when the app makes it). */
+export interface AccountChoiceSourceOfSessions {
+  sessionInfo(record: SessionRecord): Promise<SessionAccountChoice>;
+}
+
+const accountChoiceSources = new WeakMap<Store, AccountChoiceSourceOfSessions>();
+
+/** D138: registers where `toSession` reads `Session.accountChoice`. */
+export function registerAccountChoiceSource(store: Store, source: AccountChoiceSourceOfSessions): () => void {
+  accountChoiceSources.set(store, source);
+  return () => {
+    if (accountChoiceSources.get(store) === source) accountChoiceSources.delete(store);
+  };
+}
+
+/** D138: `Session.accountChoice` of an open session (nothing for a closed one, a hooked one, or without the source). */
+async function accountChoiceOf(store: Store, record: SessionRecord): Promise<{ accountChoice?: SessionAccountChoice }> {
+  const source = accountChoiceSources.get(store);
+  if (!source || record.closedAt !== null || record.hooked) return {};
+  return { accountChoice: await source.sessionInfo(record).catch(() => ({ source: 'automatic' as const })) };
 }
 
 /** D137: `deletesAt` / `keptReason` of a closed session (nothing for an open one, or without the archive). */
@@ -253,6 +275,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     profileName: (await store.profiles.get(sessionProfileId(record)))?.name ?? 'Default',
     profilePinned: record.profilePinned,
     accountSwitching: switchSources.get(store)?.accountSwitching?.(record.id) ?? false,
+    // D138: where its account comes from (pin > Project > overall choice > automatic).
+    ...(await accountChoiceOf(store, record)),
     // D65: taken over to / from another machine.
     movedTo: record.movedTo,
     movedFrom: record.movedFrom,

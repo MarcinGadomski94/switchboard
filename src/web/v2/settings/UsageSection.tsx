@@ -10,7 +10,9 @@ import { droppedOrder, movedOrder } from '../../views/settings/accounts.ts';
 import { warnAtOptions } from '../../views/settings/model.ts';
 import { SignInPanel } from '../../views/settings/AccountsSection.tsx';
 import { Button, Card, Dialog, EmptyState, Icon, IconButton, Segmented, Skeleton, StatusBadge, Switch, useToast } from '../components/index.ts';
-import { SETTINGS_WORDS as W } from '../glossary.ts';
+import { ACCOUNT_CHOICE_WORDS, SETTINGS_WORDS as W } from '../glossary.ts';
+import { accountChoiceRows } from '../../api/account-choice.ts';
+import { AccountChoiceRows, useChooseAccount } from '../shared/AccountChoice.tsx';
 import { V2Link } from '../nav.tsx';
 import { agentName } from '../shared/agent-line.ts';
 import { saveWarnAt, useWarnAt } from '../shared/warn-at.ts';
@@ -95,6 +97,9 @@ export function UsageSection() {
   useEffect(() => load(false), []);
   // The readings move with every usage event (the status pill's `system` event).
   useHubEvent('system', () => load(false));
+  // D138: the overall choice changed (here, in the pill, on another tab).
+  useHubEvent('accountChoiceChanged', () => load(false));
+  const chooser = useChooseAccount(() => load(false));
   const now = Date.now();
   const saveRules = (patch: Record<string, unknown>): void => {
     setError(null);
@@ -186,6 +191,17 @@ export function UsageSection() {
           </Card>
         );
       })}
+
+      {accountChoiceRows(overview, now).length > 0 ? (
+        <Card pad className="v2-set-card" data-testid="v2-account-choice-card">
+          <div className="v2-set-card-h">
+            <h3 className="v2-grow">{ACCOUNT_CHOICE_WORDS.title}</h3>
+          </div>
+          <p className="v2-muted v2-set-p">{ACCOUNT_CHOICE_WORDS.sub}</p>
+          <AccountChoiceRows rows={accountChoiceRows(overview, now)} disabled={chooser.busy} testId="v2-set-account-choice" onChoose={(row, profileId) => void chooser.choose(row.cli, profileId)} />
+        </Card>
+      ) : null}
+      {chooser.dialog}
 
       <Card pad className="v2-set-card" data-testid="v2-account-rules">
         <div className="v2-set-card-h">

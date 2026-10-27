@@ -8,7 +8,7 @@ import { installPlansJira } from './jira/install.ts';
 import { ciSettingsOf } from '../settings/settings.ts';
 
 /** What {@link installPlans} needs from the app (the route context it already built). */
-export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers' | 'ci'>;
+export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers' | 'ci' | 'accountChoice'>;
 
 /** The Plans service of an app (tests). */
 const services = new WeakMap<FastifyInstance, PlanService>();
@@ -53,6 +53,8 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
         prOpened: async (sessionId) => {
           for (const worktree of await context.store.worktrees.list({ sessionId })) await context.ci.watchSoon(worktree.id);
         },
+        // D138: a Project's sessions follow its accounts.
+        ...(context.accountChoice ? { applyProjectAccounts: async (planId: string) => void (await context.accountChoice?.applyProject(planId)) } : {}),
       }),
     });
     app.addHook('onReady', async () => {
@@ -65,6 +67,12 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
     plans = own;
   }
   services.set(app, plans);
+  // D138: which Project a session belongs to, for the account choice's precedence (Plans hook).
+  const service = plans;
+  context.accountChoice?.useProjects({ ofSession: (sessionId) => service.accountsOfSession(sessionId), sessionsOf: (planId) => service.accountSessions(planId) });
+  app.addHook('onClose', async () => {
+    context.accountChoice?.useProjects(null);
+  });
   await registerPlanRoutes(app, plans, context);
   // D99-Jira: the Jira import and status sync (src/server/plans/jira/; its routes answer plans-unavailable while plans.db is broken).
   await installPlansJira(app, context, plans);

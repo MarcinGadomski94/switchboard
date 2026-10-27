@@ -11,6 +11,41 @@ import { planRunFolderDefault } from '../../core/plan-run-folder.ts';
 import { SIDEBAR_FOLDER_NAME_MAX } from '../../core/sidebar-layout.ts';
 import { useSidebarLayout } from '../shell/SidebarSessions.tsx';
 import { alwaysOnNote, isProtectedTargetName, mergeModeOptions, shortLabel } from './model.ts';
+import { type CliAccountChoice, useAccountChoices } from '../api/account-choice.ts';
+import type { CliProviderId } from '../../core/cli-providers.ts';
+import { moveConfirmText } from '../../core/accounts.ts';
+
+/** D138: a plan's account per CLI as the dialogs edit it (`null` = Automatic). */
+type AccountsDraft = Partial<Record<CliProviderId, string | null>>;
+
+/**
+ * D138 (`docs/accounts.md` → *Choosing the account*): the plan's account per CLI with more than
+ * one account: Automatic (the overall choice in Settings → Accounts) or an account. Every item's
+ * session and the plan's own session use it.
+ */
+function PlanAccountFields({ plan, rows, value, onChange }: { readonly plan: Plan; readonly rows: readonly CliAccountChoice[]; readonly value: AccountsDraft; readonly onChange: (cli: CliProviderId, id: string | null) => void }) {
+  if (rows.length === 0) return null;
+  return (
+    <label className="sb-plan-field" data-testid="plan-accounts">
+      <span>Account</span>
+      {rows.map((row) => {
+        const current = value[row.cli] !== undefined ? value[row.cli] : (plan.accounts?.[row.cli] ?? null);
+        return (
+          <select key={row.cli} className="sb-plan-input" data-testid="plan-account" data-cli={row.cli} aria-label={`${row.label} account of the plan`} value={current ?? ''} onChange={(event) => onChange(row.cli, event.target.value === '' ? null : event.target.value)}>
+            <option value="">{row.label}: automatic (the overall choice)</option>
+            {row.options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {row.label}: {option.name}
+                {option.out ? ' (out of usage)' : ''}
+              </option>
+            ))}
+          </select>
+        );
+      })}
+      <span className="sb-plan-muted">Every item's session, and the plan's own session, use it; if it runs out, the automatic switching takes over.</span>
+    </label>
+  );
+}
 
 /**
  * D99 · the Plans page's dialogs (`docs/plans-ui.md`): the merge-mode dialog (Start and "Change
@@ -62,6 +97,9 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
   const suggestedFolder = useMemo(() => planRunFolderDefault(layout, plan.sourceSessionId, plan.title), [layout, plan.sourceSessionId, plan.title]);
   const [folderName, setFolderName] = useState<string | null>(null);
   const sidebarFolder = folderName ?? suggestedFolder;
+  // D138: the plan's account per CLI (Start only).
+  const choices = useAccountChoices(purpose === 'start');
+  const [accounts, setAccounts] = useState<AccountsDraft>({});
   const open = plan.items.filter((item) => item.state !== 'done');
   const agents = mode === 'agents' || mode === 'agents-with-holds';
   const needsAck = agents && (isProtectedTargetName(plan.targetBranch) || refusedTarget);
@@ -72,7 +110,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
     try {
       const changed = Object.fromEntries(Object.entries(holds).filter(([id, hold]) => plan.items.find((item) => item.id === id)?.hold !== hold && plan.items.find((item) => item.id === id)?.state !== 'done'));
       if ((mode === 'agents-with-holds' || mode === 'none') && Object.keys(changed).length > 0) await plansApi.setHolds(plan.id, changed);
-      const extra = { ...(needsAck && ack ? { allowProtectedTarget: true } : {}), ...(purpose === 'start' ? { sidebarFolder: sidebarFolder.trim() } : {}) };
+      const extra = { ...(needsAck && ack ? { allowProtectedTarget: true } : {}), ...(purpose === 'start' ? { sidebarFolder: sidebarFolder.trim(), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) } : {}) };
       const answer = purpose === 'start' ? await plansApi.start(plan.id, mode, extra) : await plansApi.setMode(plan.id, mode, extra);
       onDone(answer);
     } catch (caught) {
@@ -132,6 +170,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
           <span className="sb-plan-muted">The plan's sessions go into this folder, inside the plan's session's folder (an existing one with this name is reused). Clear it to keep them next to the session.</span>
         </label>
       ) : null}
+      {purpose === 'start' ? <PlanAccountFields plan={plan} rows={choices.rows} value={accounts} onChange={(cli, id) => setAccounts((current) => ({ ...current, [cli]: id }))} /> : null}
       <div className="sb-plan-note" data-testid="plan-mode-note">
         {alwaysOnNote(plan, mode)}
       </div>
@@ -330,11 +369,32 @@ export function LimitsDialog({ plan, onDone, onClose }: { readonly plan: Plan; r
   const [threshold, setThreshold] = useState(String(plan.usageThreshold));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // D138: the plan's account per CLI; a change on a started plan moves its sessions (confirmed first).
+  const choices = useAccountChoices(true);
+  const [accounts, setAccounts] = useState<AccountsDraft>({});
+  const [confirmText, setConfirmText] = useState<string | null>(null);
+  const changed = Object.entries(accounts).filter(([cli, id]) => (plan.accounts?.[cli as CliProviderId] ?? null) !== id) as Array<[CliProviderId, string | null]>;
   const save = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      onDone(await plansApi.update(plan.id, { maxConcurrency: Number(concurrency), usageThreshold: Number(threshold) }));
+      if (changed.length > 0 && plan.state !== 'draft' && confirmText === null) {
+        let move: string[] = [];
+        let running = 0;
+        let name = 'the new account';
+        for (const [cli, id] of changed) {
+          const preview = await api.accountChoicePreview({ cli, profileId: id, planId: plan.id });
+          move = [...move, ...preview.sessionIds];
+          running += preview.running;
+          name = preview.profileName ?? name;
+        }
+        const text = moveConfirmText({ move, running }, name, { one: 'session', many: 'sessions' });
+        if (text !== null) {
+          setConfirmText(text);
+          return;
+        }
+      }
+      onDone(await plansApi.update(plan.id, { maxConcurrency: Number(concurrency), usageThreshold: Number(threshold), ...(changed.length > 0 ? { accounts: Object.fromEntries(changed) } : {}) }));
     } catch (caught) {
       setError(refusalText(caught));
     } finally {
@@ -353,13 +413,27 @@ export function LimitsDialog({ plan, onDone, onClose }: { readonly plan: Plan; r
           <input className="sb-plan-input" type="number" min={1} max={100} data-testid="plan-limits-threshold" value={threshold} onChange={(event) => setThreshold(event.target.value)} />
         </label>
       </div>
+      <PlanAccountFields
+        plan={plan}
+        rows={choices.rows}
+        value={accounts}
+        onChange={(cli, id) => {
+          setConfirmText(null);
+          setAccounts((current) => ({ ...current, [cli]: id }));
+        }}
+      />
+      {confirmText ? (
+        <div className="sb-plan-note" role="alert" data-testid="plan-account-confirm">
+          {confirmText}
+        </div>
+      ) : null}
       {error ? <div className="sb-plan-error">{error}</div> : null}
       <div className="sb-plan-dialog__actions">
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
           Cancel
         </button>
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-limits-save" disabled={busy} onClick={() => void save()}>
-          Save
+          {confirmText ? 'Move and save' : 'Save'}
         </button>
       </div>
     </PlanDialog>

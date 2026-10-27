@@ -3,7 +3,9 @@ import { api } from '../../api/client.ts';
 import { rememberMachine } from '../../api/useMachines.ts';
 import { Button, Chip, Icon, Popover } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
-import { type Tone, USAGE_WORDS } from '../glossary.ts';
+import { ACCOUNT_CHOICE_WORDS, type Tone, USAGE_WORDS } from '../glossary.ts';
+import { useAccountChoices } from '../../api/account-choice.ts';
+import { AccountChoiceRows, useChooseAccount } from '../shared/AccountChoice.tsx';
 import { pillUsageHref } from '../insights/usage-model.ts';
 import type { StatusPill as Pill, PillComputer } from './status-model.ts';
 
@@ -72,6 +74,9 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
     navigate(path);
   };
   const usage = pill.usage;
+  // D138: the account for agents, per engine with more than one account (read while the details are open).
+  const choices = useAccountChoices(open);
+  const chooser = useChooseAccount(choices.reload);
   return (
     <>
       <button ref={setAnchor} type="button" className="v2-pill" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="v2-status-pill" aria-label={`Usage and computers: ${[usage?.label, pill.power?.text, pill.computers.text].filter(Boolean).join(', ')}`}>
@@ -133,8 +138,21 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
             </button>
           </div>
         ))}
+        {choices.rows.length > 0 ? (
+          <div className="v2-pill-choice">
+            <AccountChoiceRows
+              rows={choices.rows}
+              disabled={chooser.busy}
+              testId="v2-pill-account-choice"
+              onChoose={(row, profileId) => {
+                setOpen(false);
+                void chooser.choose(row.cli, profileId);
+              }}
+            />
+          </div>
+        ) : null}
         <p className="v2-muted" style={{ fontSize: 13, margin: '6px 0 14px' }}>
-          Switches accounts automatically at the limit.
+          {choices.rows.some((row) => row.chosen !== null) ? `${ACCOUNT_CHOICE_WORDS.title}: ${choices.rows.map((row) => row.options.find((o) => o.id === row.chosen)?.name ?? ACCOUNT_CHOICE_WORDS.automatic).join(', ')}. Switches automatically when it runs out.` : 'Switches accounts automatically at the limit.'}
           {pill.backgroundApps ? ` ${pill.backgroundApps}.` : ''}
         </p>
         <h4>Computers</h4>
@@ -153,6 +171,7 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
           </Button>
         </div>
       </Popover>
+      {chooser.dialog}
     </>
   );
 }

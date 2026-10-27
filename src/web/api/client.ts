@@ -13,6 +13,8 @@ import type {
   DiffCount,
   DiffTargets,
   AccountsOverview,
+  AccountChoicePreview,
+  AccountChoiceResult,
   FreshContinueResult,
   NewProfileInput,
   CliMcpServerInput,
@@ -454,6 +456,10 @@ export const api = {
   switchAccount: (id: string, profileId: string) => request<Session>('POST', `/api/sessions/${enc(id)}/account`, { profileId }),
   /** D63: pins a session to its account (automatic switching leaves it) or unpins it. */
   pinProfile: (id: string, pinned: boolean) => request<Session>('PUT', `/api/sessions/${enc(id)}/profile-pin`, { pinned }),
+  /** D138: what choosing an account (overall, or for Project `planId`) would move: the confirm's counts. */
+  accountChoicePreview: (body: { readonly cli: CliProviderId; readonly profileId: string | null; readonly planId?: string }) => request<AccountChoicePreview>('POST', '/api/accounts/choice/preview', body),
+  /** D138: the overall account choice of a CLI (`null` = Automatic); the live sessions it applies to move now. */
+  setAccountChoice: (cli: CliProviderId, profileId: string | null) => request<AccountChoiceResult>('PUT', '/api/accounts/choice', { cli, profileId }),
 
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),

@@ -95,7 +95,10 @@ export const ACCOUNT_SETTINGS_KEY = 'accounts.settings';
 /** What happens when every profile of a CLI is spent. */
 export type ExhaustedAction = 'notify' | 'switch-cli';
 
-/** Which profile a new session starts on. */
+/**
+ * Which profile a new session starts on. Since D138 a mirror of {@link AccountSettings.choice}
+ * kept for older clients: `fixed` while the CLI has an overall account choice.
+ */
 export type NewSessionRule = 'first-with-allowance' | 'fixed';
 
 /** After a reset: go back to the first profile, or stay where the session is. */
@@ -117,7 +120,19 @@ export interface AccountSettings {
   /** Switch earlier than the limit error, at these percentages (separate for the 5-hour and the weekly window). */
   readonly thresholds: { readonly enabled: boolean; readonly fiveHourPct: number; readonly weeklyPct: number };
   readonly afterReset: AfterReset;
+  /**
+   * D138: a mirror of {@link choice} for older clients (`fixed` = the CLI has a choice). A PUT
+   * that sends only `newSessions` (an older client) still sets the choice, without moving sessions.
+   */
   readonly newSessions: { readonly rule: NewSessionRule; readonly fixed: Readonly<Partial<Record<CliProviderId, string>>> };
+  /**
+   * D138 (`docs/accounts.md` → *Choosing the account*): the overall account choice per CLI
+   * (profile id; absent = Automatic). New sessions start on it and running ones are moved to
+   * it when it is chosen (`PUT /api/accounts/choice`); it is the preferred account of the
+   * automatic switcher, not a pin. It absorbs D63's "New sessions start on: a fixed account"
+   * (a stored `newSessions.rule: fixed` is read as the choice).
+   */
+  readonly choice: Readonly<Partial<Record<CliProviderId, string>>>;
   readonly exhausted: { readonly action: ExhaustedAction; readonly cli: CliProviderId | null };
   /** No threshold / reset switch of a session within this many seconds of its last switch. */
   readonly cooldownSeconds: number;
@@ -131,6 +146,7 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   thresholds: { enabled: true, fiveHourPct: 98, weeklyPct: 98 },
   afterReset: 'stay',
   newSessions: { rule: 'first-with-allowance', fixed: {} },
+  choice: {},
   exhausted: { action: 'notify', cli: null },
   cooldownSeconds: 120,
   outOfAllowance: 'use-credits',
@@ -153,6 +169,13 @@ export function readAccountSettings(value: unknown): AccountSettings {
   const fixed: Partial<Record<CliProviderId, string>> = {};
   for (const [cli, id] of Object.entries(fixedRaw)) if (isCliProviderId(cli) && typeof id === 'string' && id !== '') fixed[cli] = id;
   const cooldown = o['cooldownSeconds'];
+  // D138: the overall choice; an install from before D138 has only the "fixed account" rule, read as the choice.
+  const choice: Partial<Record<CliProviderId, string>> = {};
+  if (typeof o['choice'] === 'object' && o['choice'] !== null && !Array.isArray(o['choice'])) {
+    for (const [cli, id] of Object.entries(rec(o['choice']))) if (isCliProviderId(cli) && typeof id === 'string' && id !== '') choice[cli] = id;
+  } else if (newSessions['rule'] === 'fixed') {
+    Object.assign(choice, fixed);
+  }
   return {
     enabled: typeof o['enabled'] === 'boolean' ? o['enabled'] : d.enabled,
     perCli: {
@@ -166,7 +189,8 @@ export function readAccountSettings(value: unknown): AccountSettings {
       weeklyPct: pct(thresholds['weeklyPct'], d.thresholds.weeklyPct),
     },
     afterReset: o['afterReset'] === 'back-to-first' || o['afterReset'] === 'stay' ? o['afterReset'] : d.afterReset,
-    newSessions: { rule: newSessions['rule'] === 'fixed' || newSessions['rule'] === 'first-with-allowance' ? newSessions['rule'] : d.newSessions.rule, fixed },
+    newSessions: choiceMirror(choice),
+    choice,
     exhausted: {
       action: exhausted['action'] === 'switch-cli' || exhausted['action'] === 'notify' ? exhausted['action'] : d.exhausted.action,
       cli: isCliProviderId(exhausted['cli']) ? exhausted['cli'] : null,
@@ -174,6 +198,18 @@ export function readAccountSettings(value: unknown): AccountSettings {
     cooldownSeconds: typeof cooldown === 'number' && Number.isFinite(cooldown) ? Math.max(0, Math.min(3600, Math.round(cooldown))) : d.cooldownSeconds,
     outOfAllowance: o['outOfAllowance'] === 'pause' || o['outOfAllowance'] === 'use-credits' ? o['outOfAllowance'] : d.outOfAllowance,
   };
+}
+
+/** D138: the `newSessions` mirror of an overall choice (older clients read the rule from it). */
+export function choiceMirror(choice: Readonly<Partial<Record<CliProviderId, string>>>): AccountSettings['newSessions'] {
+  return Object.keys(choice).length > 0 ? { rule: 'fixed', fixed: { ...choice } } : { rule: 'first-with-allowance', fixed: {} };
+}
+
+/** D138: the overall account choice of `cli` (`null` = Automatic); settings built without `choice` read the D63 fixed rule. */
+export function overallChoiceOf(settings: AccountSettings, cli: CliProviderId): string | null {
+  const choice = (settings.choice as AccountSettings['choice'] | undefined) ?? {};
+  if (Object.keys(choice).length > 0) return choice[cli] ?? null;
+  return settings.newSessions.rule === 'fixed' ? (settings.newSessions.fixed[cli] ?? null) : null;
 }
 
 // ── limit errors ─────────────────────────────────────────────────────────────
@@ -290,6 +326,12 @@ export interface DecideInput {
   /** When the session last switched (epoch ms), `null` when never. */
   readonly lastSwitchAt: number | null;
   readonly now: number;
+  /**
+   * D138: the session's chosen account (its Project's, else the overall choice), `null` /
+   * absent = Automatic. A preference, not a pin: it is the first target when it has allowance,
+   * and when the session leaves it because it ran out the divider says so ({@link chosenOutLabel}).
+   */
+  readonly preferredId?: string | null;
 }
 
 /** A profile to mark spent. */
@@ -310,6 +352,8 @@ export type SwitchDecision = {
   readonly reason: string;
   /** The current profile is spent: remember it until its reset. */
   readonly mark?: ExhaustedMark;
+  /** D138: the whole divider text when it is not "Switched account: A → B (reason)" (the chosen account ran out). */
+  readonly label?: string;
 };
 
 /** The unread-reset fallbacks of {@link exhaustedUntil} (ASSUMED D63-reset-fallback). */
@@ -413,17 +457,137 @@ export function creditsPause(settings: AccountSettings, cli: CliProviderId, prof
   return best;
 }
 
-/** The profile a new session of `cli` starts on (`null` = none has allowance: the caller uses the Default / first enabled). */
-export function pickProfileForNewSession(settings: AccountSettings, cli: CliProviderId, profiles: readonly ProfileSnapshot[], now: number): string | null {
-  const fixed = settings.newSessions.rule === 'fixed' ? settings.newSessions.fixed[cli] : undefined;
-  if (fixed) {
-    const chosen = profiles.find((p) => p.id === fixed && p.enabled);
-    if (chosen) return chosen.id;
-  }
-  if (!settings.enabled || !settings.perCli[cli]) return null;
+/**
+ * The profile a new session of `cli` starts on (`null` = none has allowance: the caller uses the Default / first enabled).
+ * D138: `preferred` is the chosen account (a Project's, else the overall choice; `undefined` = the
+ * overall choice of `settings`, `null` = Automatic). It is a preference, not a pin: while automatic
+ * switching is on for the CLI and the chosen account has no allowance, the automatic pick takes over
+ * (and the chosen one is still used when nothing else has allowance either).
+ */
+export function pickProfileForNewSession(settings: AccountSettings, cli: CliProviderId, profiles: readonly ProfileSnapshot[], now: number, preferred?: string | null): string | null {
+  const chosenId = preferred === undefined ? overallChoiceOf(settings, cli) : preferred;
+  const chosen = chosenId ? (profiles.find((p) => p.id === chosenId && p.enabled) ?? null) : null;
+  const switching = settings.enabled && settings.perCli[cli];
+  if (chosen && (!switching || hasAllowance(chosen, settings, settings.thresholds.enabled ? 'threshold' : 'hard', now))) return chosen.id;
+  if (!switching) return null;
   // D103: an account with allowance first; none: one that pays from credits (unless new turns pause instead).
-  return firstWithAllowance(profiles, settings, now, null)?.id ?? (settings.outOfAllowance === 'use-credits' ? firstOnCredits(profiles, now, null)?.id ?? null : null);
+  const auto = firstWithAllowance(profiles, settings, now, null)?.id ?? (settings.outOfAllowance === 'use-credits' ? firstOnCredits(profiles, now, null)?.id ?? null : null);
+  return auto ?? chosen?.id ?? null;
 }
+
+// ── D138: choosing the account (docs/accounts.md → *Choosing the account*) ─────
+
+/** D138: where a session's account comes from, strongest first. */
+export type AccountChoiceSource = 'pinned' | 'project' | 'overall' | 'automatic';
+
+/** D138: the account a session should be on, and why ({@link resolveAccountPreference}). */
+export interface AccountPreference {
+  /** The preferred profile id; `null` = Automatic (the rules decide). */
+  readonly profileId: string | null;
+  readonly source: AccountChoiceSource;
+}
+
+/**
+ * D138 precedence, one place: a session's own **pin** > its **Project's** account > the
+ * **overall** choice > the **automatic** rules. `project` / `overall` are profile ids of the
+ * session's CLI (`null` / absent = Automatic); `usable` filters out ids that are gone, disabled
+ * or of another CLI (they count as Automatic).
+ */
+export function resolveAccountPreference(input: {
+  readonly pinned: boolean;
+  readonly currentId: string;
+  readonly project?: string | null;
+  readonly overall?: string | null;
+  readonly usable?: (profileId: string) => boolean;
+}): AccountPreference {
+  const ok = (id: string | null | undefined): id is string => typeof id === 'string' && id !== '' && (input.usable ? input.usable(id) : true);
+  if (input.pinned) return { profileId: input.currentId, source: 'pinned' };
+  if (ok(input.project)) return { profileId: input.project, source: 'project' };
+  if (ok(input.overall)) return { profileId: input.overall, source: 'overall' };
+  return { profileId: null, source: 'automatic' };
+}
+
+/** D138: one open session as the move selection sees it. */
+export interface MoveCandidate {
+  readonly id: string;
+  readonly cli: CliProviderId;
+  /** The profile it runs on now. */
+  readonly profileId: string;
+  readonly pinned: boolean;
+  /** Its Project's account for its CLI (`null` = none: the Project is on Automatic, or there is no Project). */
+  readonly projectAccount: string | null;
+  /** A turn runs now (moving interrupts it). */
+  readonly running: boolean;
+}
+
+/** D138: which sessions a new choice moves, and the counts the confirm shows. */
+export interface MoveSelection {
+  /** The sessions to move (in the order given). */
+  readonly move: readonly string[];
+  /** How many of them have a running turn (it is interrupted, then continued). */
+  readonly running: number;
+  /** Left where they are: pinned, on a Project with its own account, already there. */
+  readonly skipped: { readonly pinned: number; readonly project: number; readonly already: number };
+}
+
+/**
+ * D138: the live sessions a choice moves to `toId` (`null` = Automatic: nothing moves).
+ * `scope: overall`: every session of the CLI except pinned ones and those whose Project has
+ * its own account; `scope: project`: only the sessions given (the Project's), except pinned ones.
+ * Sessions already on `toId` stay.
+ */
+export function selectSessionsToMove(candidates: readonly MoveCandidate[], cli: CliProviderId, toId: string | null, scope: 'overall' | 'project'): MoveSelection {
+  const move: string[] = [];
+  let running = 0;
+  const skipped = { pinned: 0, project: 0, already: 0 };
+  if (toId === null) return { move, running, skipped };
+  for (const c of candidates) {
+    if (c.cli !== cli) continue;
+    if (c.pinned) {
+      skipped.pinned++;
+      continue;
+    }
+    if (scope === 'overall' && c.projectAccount !== null) {
+      skipped.project++;
+      continue;
+    }
+    if (c.profileId === toId) {
+      skipped.already++;
+      continue;
+    }
+    move.push(c.id);
+    if (c.running) running++;
+  }
+  return { move, running, skipped };
+}
+
+/**
+ * D138: the confirm of a choice: "Move 5 agents to B? 1 running turn will be interrupted."
+ * (`null` when nothing moves).
+ */
+export function moveConfirmText(selection: Pick<MoveSelection, 'move' | 'running'>, toName: string, nouns: { readonly one: string; readonly many: string } = { one: 'agent', many: 'agents' }): string | null {
+  const n = selection.move.length;
+  if (n === 0) return null;
+  const head = `Move ${n} ${n === 1 ? nouns.one : nouns.many} to ${toName}?`;
+  if (selection.running === 0) return head;
+  return `${head} ${selection.running} running ${selection.running === 1 ? 'turn' : 'turns'} will be interrupted.`;
+}
+
+/** D138: the reason a choice moved a session (the divider says "Switched account: A → B (overall choice)"). */
+export function choiceMoveReason(source: 'overall' | 'project'): string {
+  return source === 'project' ? "the project's account" : 'overall choice';
+}
+
+/**
+ * D138: the chat divider when the chosen account (a Project's or the overall choice) runs out and
+ * the automatic rules move the session: "B is out of usage until 14:05; switched to A".
+ */
+export function chosenOutLabel(fromName: string, toName: string, until: string | null, now: number): string {
+  return `${fromName} is out of usage${until ? ` until ${clock(until, new Date(now))}` : ''}; switched to ${toName}`;
+}
+
+/** D138: the message that picks a session up after a choice moved it mid-turn. */
+export const CONTINUE_AFTER_CHOICE = 'Continue where you left off: the account changed because a different account was chosen, and the turn that was running was interrupted.';
 
 /**
  * The automatic switch rules (`docs/accounts.md` → *Rules*), one decision:
@@ -453,11 +617,19 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
   const cooling = input.lastSwitchAt !== null && now - input.lastSwitchAt < settings.cooldownSeconds * 1000;
   // The profiles as the decision sees them: the spent mark of this very error counts at once.
   const view = profiles.map((p) => (mark && p.id === mark.profileId ? { ...p, exhaustedUntil: mark.until } : p));
+  // D138: the chosen account (a Project's, else the overall choice) is the first target while it has allowance.
+  const preferred = input.preferredId ? (view.find((p) => p.id === input.preferredId && p.id !== input.currentId) ?? null) : null;
+  const prefer = (fallback: ProfileSnapshot | null, level: 'threshold' | 'any'): ProfileSnapshot | null =>
+    preferred && (hasAllowance(preferred, settings, 'threshold', now) || (level === 'any' && hasAllowance(preferred, settings, 'hard', now))) ? preferred : fallback;
+  // D138: leaving the chosen account because it ran out: the divider says so.
+  const leavingChosen = input.preferredId !== null && input.preferredId !== undefined && input.preferredId === input.currentId;
+  const chosenOut = (target: ProfileSnapshot, until: string | null, why?: string): { label?: string } =>
+    leavingChosen ? { label: why ? `${current?.name ?? 'The chosen account'} is near its limit (${why}); switched to ${target.name}` : chosenOutLabel(current?.name ?? 'The chosen account', target.name, until, now) } : {};
 
   if (trigger.kind === 'limit') {
-    const target = firstWithAllowance(view, settings, now, input.currentId);
+    const target = prefer(firstWithAllowance(view, settings, now, input.currentId), 'any');
     const label = limitLabel(trigger.hit, now);
-    if (target) return { action: 'switch', to: target.id, reason: label, ...(mark ? { mark } : {}) };
+    if (target) return { action: 'switch', to: target.id, reason: label, ...(mark ? { mark } : {}), ...chosenOut(target, mark?.until ?? null) };
     if (settings.exhausted.action === 'switch-cli' && settings.exhausted.cli && settings.exhausted.cli !== cli) {
       return { action: 'switch-cli', toCli: settings.exhausted.cli, reason: `every ${cli} account is out of usage (${label})`, ...(mark ? { mark } : {}) };
     }
@@ -473,27 +645,33 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
     // D98: the current account is known spent (here, or by a paired machine sharing it): move before a turn fails on it,
     // to an account with allowance (under the thresholds, else just under 100 %), never a stop.
     if (current.exhaustedUntil && Date.parse(current.exhaustedUntil) > now) {
-      const target = firstWithAllowance(view, settings, now, current.id);
+      const target = prefer(firstWithAllowance(view, settings, now, current.id), 'any');
       if (!target) return none('no other account has allowance');
-      return { action: 'switch', to: target.id, reason: `out of usage until ${clock(current.exhaustedUntil, new Date(now))}` };
+      return { action: 'switch', to: target.id, reason: `out of usage until ${clock(current.exhaustedUntil, new Date(now))}`, ...chosenOut(target, current.exhaustedUntil) };
     }
     // D103: the current account pays from credits: back to an account with allowance as soon as one has it,
     // at a turn boundary only (never mid-turn), also with early switching off; none: stay on credits.
     if (onCredits(current, now)) {
-      const target = firstWithAllowance(view, settings, now, current.id);
+      const target = prefer(firstWithAllowance(view, settings, now, current.id), 'any');
       if (!target) return none('no account has allowance: staying on credits');
       if (!input.idle) return none('a turn is running: moving off credits when it ends');
       return { action: 'switch', to: target.id, reason: `moved off credits: ${target.name} has allowance again` };
     }
     if (!settings.thresholds.enabled) return none('early switching is off');
     if (hasAllowance(current, settings, 'threshold', now)) return none('under the thresholds');
-    const target = view.filter((p) => p.id !== current.id).sort((a, b) => a.position - b.position).find((p) => hasAllowance(p, settings, 'threshold', now));
+    const target = prefer(view.filter((p) => p.id !== current.id).sort((a, b) => a.position - b.position).find((p) => hasAllowance(p, settings, 'threshold', now)) ?? null, 'threshold');
     if (!target) return none('no other account is under the thresholds');
-    return { action: 'switch', to: target.id, reason: thresholdLabel(current, settings) };
+    return { action: 'switch', to: target.id, reason: thresholdLabel(current, settings), ...chosenOut(target, null, thresholdLabel(current, settings)) };
   }
   // reset
   if (settings.afterReset !== 'back-to-first') return none('staying on the current account');
   if (!input.idle) return none('a turn is running');
+  // D138: with a chosen account, "switch back" means back to it (when it has allowance again), never away from it.
+  if (input.preferredId) {
+    if (input.preferredId === current.id) return none('already on the chosen account');
+    if (preferred && hasAllowance(preferred, settings, 'threshold', now)) return { action: 'switch', to: preferred.id, reason: `${preferred.name} has allowance again` };
+    if (preferred) return none('the chosen account has no allowance yet');
+  }
   const first = firstWithAllowance(view, settings, now, null);
   if (!first || first.id === current.id || first.position > current.position) return none('already on the first account with allowance');
   return { action: 'switch', to: first.id, reason: 'the first account has allowance again' };

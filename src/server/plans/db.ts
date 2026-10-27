@@ -158,6 +158,16 @@ ALTER TABLE plans ADD COLUMN repos_ask_raised INTEGER NOT NULL DEFAULT 0 CHECK (
 ALTER TABLE plans ADD COLUMN sidebar_folder TEXT CHECK (sidebar_folder IS NULL OR (json_valid(sidebar_folder) AND json_type(sidebar_folder) = 'object'));
 `,
   ),
+  makeMigration(
+    6,
+    'plans_accounts',
+    `-- D138 (docs/accounts.md → Choosing the account): the account a Project (plan) runs on, per CLI.
+-- plans.accounts: JSON {"claude"?: profileId, "codex"?: profileId, "opencode"?: profileId}: the profile (switchboard.db's
+--   cli_profiles id, this machine's) every step session and the plan's own session use for that CLI; a CLI that is
+--   missing (or NULL) = Automatic (the overall choice, then the automatic rules).
+ALTER TABLE plans ADD COLUMN accounts TEXT CHECK (accounts IS NULL OR (json_valid(accounts) AND json_type(accounts) = 'object'));
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */

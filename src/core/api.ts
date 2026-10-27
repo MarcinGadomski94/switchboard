@@ -16,7 +16,7 @@ import type { ArchiveKeptReason } from './session-archive.ts';
 import type { SessionKind } from './chats.ts';
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
-import type { AccountProfile, AccountSettings } from './accounts.ts';
+import type { AccountChoiceSource, AccountProfile, AccountSettings } from './accounts.ts';
 import type { PeerOnlyAccount } from './shared-accounts.ts';
 import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
@@ -813,6 +813,12 @@ export interface Session {
   readonly profileName?: string;
   readonly profilePinned?: boolean;
   readonly accountSwitching?: boolean;
+  /**
+   * Additive (D138, `docs/accounts.md` → *Choosing the account*): where the session's account
+   * comes from (pin > its Project's account > the overall choice > automatic) and that account;
+   * the header's "Account: B (from project)". Absent (an older Switchboard, a closed session) = automatic.
+   */
+  readonly accountChoice?: SessionAccountChoice;
   /**
    * Additive (D65, migration 0025, `docs/peers.md` → *Taking a session over*): set
    * once the session was taken over to another machine (it is closed and read-only:
@@ -2578,6 +2584,12 @@ export interface HubEvents {
    * `Machine.power` (published with `machineState`) and never republishes it.
    */
   readonly machinePower: PowerStatus;
+  /**
+   * Additive (D138, `docs/accounts.md` → *Choosing the account*): the overall account choice
+   * or a Project's accounts changed (the pill's picker, Settings and the Projects page read
+   * again). This machine's only: never forwarded between peers.
+   */
+  readonly accountChoiceChanged: AccountChoiceChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2621,6 +2633,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'ciChanged',
   // D125.
   'machinePower',
+  // D138.
+  'accountChoiceChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */
@@ -2737,6 +2751,51 @@ export interface AccountsOverview {
    * Omitted when there are none, and in the answer to a paired machine.
    */
   readonly others?: readonly PeerOnlyAccount[];
+}
+
+/** Additive (D138): `Session.accountChoice`. */
+export interface SessionAccountChoice {
+  readonly source: AccountChoiceSource;
+  /** The preferred account (`pinned`: the one it is pinned to); absent = automatic. */
+  readonly profileId?: string;
+  /** The Project whose account it is (`source: project`). */
+  readonly project?: { readonly id: string; readonly title: string };
+}
+
+/**
+ * Additive (D138): `POST /api/accounts/choice/preview` → what choosing an account would move
+ * (the confirm: "Move 5 agents to B? 1 running turn will be interrupted.").
+ */
+export interface AccountChoicePreview {
+  readonly cli: CliProviderId;
+  /** The account the sessions would move to (`null` = Automatic: nothing moves). */
+  readonly profileId: string | null;
+  readonly profileName: string | null;
+  /** Live sessions that would move, and how many of them have a running turn. */
+  readonly move: number;
+  readonly running: number;
+  /** Left where they are: pinned, on a Project with its own account (overall only), already on it. */
+  readonly skipped: { readonly pinned: number; readonly project: number; readonly already: number };
+  readonly sessionIds: readonly string[];
+  /** The confirm's text, `null` when nothing moves. */
+  readonly confirm: string | null;
+}
+
+/** Additive (D138): `PUT /api/accounts/choice` → the settings and how many sessions are being moved. */
+export interface AccountChoiceResult {
+  readonly settings: AccountSettings;
+  readonly moving: number;
+  readonly running: number;
+}
+
+/** Additive (D138): the `accountChoiceChanged` hub event: the overall choice of a CLI, or a Project's accounts, changed. */
+export interface AccountChoiceChanged {
+  /** The CLI of an overall choice; `null` for a Project's. */
+  readonly cli: CliProviderId | null;
+  readonly profileId: string | null;
+  readonly planId: string | null;
+  /** Sessions being moved. */
+  readonly moving: number;
 }
 
 /** Additive (D63): body of `POST /api/accounts/profiles`. */

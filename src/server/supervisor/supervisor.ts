@@ -503,6 +503,10 @@ export interface AccountSwitchOptions {
   readonly handoverDir: string;
   /** A turn was interrupted by the switch (default: whether one runs now): it is picked up with a "continue" message. */
   readonly interrupted?: boolean;
+  /** D138: the whole divider text instead of "Switched account: A → B (reason)" ("B is out of usage until 14:05; switched to A"). */
+  readonly label?: string;
+  /** D138: the "continue" message of an interrupted turn instead of the usage-limit one (a choice moved the session). */
+  readonly continueMessage?: string;
 }
 
 /** D62 P5: how long the outgoing agent may take to write its handover (ms). */
@@ -2038,7 +2042,7 @@ export class SessionSupervisor {
         carried = false;
         why = 'the folders are not known';
       }
-      let message: string | null = interrupted ? CONTINUE_AFTER_SWITCH : null;
+      let message: string | null = interrupted ? (options.continueMessage ?? CONTINUE_AFTER_SWITCH) : null;
       if (!carried) {
         // The D62 handover inside the same CLI: the exported chat (and the CLI's own record when it is still readable).
         const at = new Date();
@@ -2050,7 +2054,7 @@ export class SessionSupervisor {
         message = incomingAfterAccountSwitch({ cli: provider, cwd, fromName, toName: to.name, reason: options.reason, exportPath, transcriptPath });
         await this.recordServiceEvent(sessionId, 'text', `The conversation was not carried over (${why}): the new account reads the exported chat`, { type: 'lifecycle', action: 'account-switched', message: why }).catch(() => undefined);
       }
-      const label = accountSwitchLabel(fromName, to.name, options.reason);
+      const label = options.label ?? accountSwitchLabel(fromName, to.name, options.reason);
       const updated =
         (await this.#store.sessions.update(sessionId, { profileId: toProfileId, status: outgoing ? 'idle' : session.status, ...(carried ? {} : { context: null }) })) ?? session;
       if (!outgoing) {

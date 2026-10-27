@@ -7,7 +7,7 @@
  *
  * Allowed is what a phone needs for normal use: sessions (list, detail, events,
  * diff, attachments, messages, stop, pause / resume, close / reopen, D83's continue in a fresh session, title,
- * model, CLI / account switch, todos, D80's revert of a turn and Redo), the Inbox and its answers, starting a
+ * model, CLI / account switch (D138: and the overall account choice), todos, D80's revert of a turn and Redo), the Inbox and its answers, starting a
  * session (folders read, models, solutions, branching preflight, staged
  * attachments), the sidebar layout, History and its Continue, schedules and
  * loops (save, run, pause / resume, delete, hook a terminal session), the reads
@@ -59,6 +59,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D103: Edit / Remove of a message held for an account with allowance (normal use, like editing a queued message).
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/withdraw$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],
+  // D138: the status pill's account picker (the overall choice moves sessions like a session's own account switch; normal use, also on a phone).
+  ['PUT', /^\/api\/accounts\/choice$/],
+  ['POST', /^\/api\/accounts\/choice\/preview$/],
   // D106: chats (start one, the folders it looks at, delete it): normal use, like a session.
   ['POST', /^\/api\/chats$/],
   ['PUT', /^\/api\/chats\/[^/]+\/look-at$/],
@@ -225,8 +228,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/service$/],
   // CLIs: command overrides, the default, checks.
   [WRITE, /^\/api\/clis\/.+$/],
-  // Account profiles and their sign-ins.
-  ['*', /^\/api\/accounts\/.+$/],
+  // Account profiles and their sign-ins (D138: not the overall account choice, allowed above).
+  ['*', /^\/api\/accounts\/(?!choice(?:\/preview)?$).+$/],
   // Embedded tools' URLs, the frame helper's openers.
   ['PUT', /^\/api\/tools$/],
   [WRITE, /^\/api\/frame-helper\/.+$/],

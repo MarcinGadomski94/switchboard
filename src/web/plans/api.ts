@@ -1,4 +1,5 @@
 import type { Plan, PlanMergeMode, PlansState } from '../../core/plans.ts';
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import { ApiError, keepaliveNow } from '../api/client.ts';
 
 /**
@@ -50,6 +51,8 @@ export interface StartOptions {
   readonly allowProtectedTarget?: boolean;
   /** D130: the runs' sidebar subfolder's name (`''` = none). */
   readonly sidebarFolder?: string;
+  /** D138: the Project's account per CLI (`null` = Automatic). */
+  readonly accounts?: Readonly<Partial<Record<CliProviderId, string | null>>>;
 }
 
 /** The error code of a refusal (`{ error }`), `null` when there is none. */

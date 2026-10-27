@@ -6,8 +6,11 @@ import type { JiraRelinkDiff, JiraSyncMode, PlanJiraState } from '../../../core/
 import { api } from '../../api/client.ts';
 import { plansApi, refusalCode, refusalText } from '../../plans/api.ts';
 import { jiraApi } from '../../plans/jira/api.ts';
-import { Button, Checkbox, Dialog, Field, Icon, Sheet, StatusBadge, TextArea, useToast } from '../components/index.ts';
-import { ANSWER, MODE_LABELS, PROJECT_WORDS } from '../glossary.ts';
+import { Button, Checkbox, Dialog, Field, Icon, Select, Sheet, StatusBadge, TextArea, useToast } from '../components/index.ts';
+import { ACCOUNT_CHOICE_WORDS, ANSWER, MODE_LABELS, PROJECT_WORDS } from '../glossary.ts';
+import { type CliAccountChoice, useAccountChoices } from '../../api/account-choice.ts';
+import { choiceOptions, useChooseAccount } from '../shared/AccountChoice.tsx';
+import type { CliProviderId } from '../../../core/cli-providers.ts';
 import { canStart, checkStepEdit, checkSubfolder, estimateLine, modeLabel, modeOptions, needsProtectedAck, protectedAckText, stepLook, stepName } from './project-model.ts';
 
 /**
@@ -41,6 +44,9 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
   const [folder, setFolder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // D138: the project's account per engine (Automatic = the overall choice).
+  const choices = useAccountChoices(true);
+  const [accounts, setAccounts] = useState<Partial<Record<CliProviderId, string | null>>>({});
   useEffect(() => {
     let alive = true;
     api
@@ -58,7 +64,7 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
     setBusy(true);
     setError(null);
     try {
-      const started = await plansApi.start(plan.id, mode, { ...(needsProtectedAck(plan, mode, refused) ? { allowProtectedTarget: ack } : {}), sidebarFolder: (folder ?? '').trim() });
+      const started = await plansApi.start(plan.id, mode, { ...(needsProtectedAck(plan, mode, refused) ? { allowProtectedTarget: ack } : {}), sidebarFolder: (folder ?? '').trim(), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) });
       onStarted(started);
     } catch (e) {
       if (refusalCode(e) === 'target-forbidden') setRefused(true);
@@ -97,12 +103,55 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
         error={folderError}
         data-testid="v2-start-folder"
       />
+      <ProjectAccountSelects plan={plan} rows={choices.rows} value={accounts} onChange={(cli, id) => setAccounts((current) => ({ ...current, [cli]: id }))} testId="v2-start-account" />
       {error ? (
         <p className="v2-field-error" role="alert" data-testid="v2-start-error">
           {error}
         </p>
       ) : null}
     </Dialog>
+  );
+}
+
+/** D138: one select per engine with several accounts: the project's account (Automatic = the overall choice). */
+function ProjectAccountSelects({ plan, rows, value, onChange, disabled, testId }: { readonly plan: Plan; readonly rows: readonly CliAccountChoice[]; readonly value: Partial<Record<CliProviderId, string | null>>; readonly onChange: (cli: CliProviderId, id: string | null) => void; readonly disabled?: boolean; readonly testId: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="v2-p-accounts">
+      {rows.map((row) => {
+        const current = value[row.cli] !== undefined ? value[row.cli] : (plan.accounts?.[row.cli] ?? null);
+        return (
+          <Select
+            key={row.cli}
+            label={rows.length > 1 ? ACCOUNT_CHOICE_WORDS.picker(row.label) : ACCOUNT_CHOICE_WORDS.projectAccount}
+            value={current ?? ''}
+            disabled={disabled}
+            options={choiceOptions(row, ACCOUNT_CHOICE_WORDS.projectAuto)}
+            onChange={(event) => onChange(row.cli, event.target.value === '' ? null : event.target.value)}
+            data-testid={testId}
+            data-cli={row.cli}
+          />
+        );
+      })}
+      <p className="v2-muted v2-p-dialog-p" style={{ fontSize: 13 }}>
+        {ACCOUNT_CHOICE_WORDS.projectAccountHint}
+      </p>
+    </div>
+  );
+}
+
+/** D138: the project's ⋯ → Account…: its account per engine; a change moves its agents now (confirmed first). */
+export function ProjectAccountDialog({ plan, onClose, onChanged }: { readonly plan: Plan; readonly onClose: () => void; readonly onChanged: (plan: Plan) => void }) {
+  const choices = useAccountChoices(true);
+  const chooser = useChooseAccount();
+  return (
+    <>
+      <Dialog open onClose={onClose} title={ACCOUNT_CHOICE_WORDS.projectAccountTitle(plan.title)} icon="wallet" testId="v2-project-account-dialog" footer={<Button onClick={onClose}>Done</Button>}>
+        {choices.rows.length === 0 ? <p className="v2-muted">Add a second account in Settings › Usage & accounts to choose one here.</p> : null}
+        <ProjectAccountSelects plan={plan} rows={choices.rows} value={{}} disabled={chooser.busy} onChange={(cli, id) => void chooser.chooseForProject(plan, cli, id, onChanged)} testId="v2-project-account" />
+      </Dialog>
+      {chooser.dialog}
+    </>
   );
 }
 

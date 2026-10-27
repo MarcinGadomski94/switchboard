@@ -274,6 +274,20 @@ export interface PlanEdge {
   readonly to: string;
 }
 
+/** D138: a Project's (plan's) account per CLI: profile id; a missing CLI = Automatic. */
+export type PlanAccounts = Readonly<Partial<Record<'claude' | 'codex' | 'opencode', string>>>;
+
+/** D138: a stored / sent `accounts` value read defensively (unknown CLIs and empty ids dropped). */
+export function readPlanAccounts(value: unknown): PlanAccounts {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const out: Partial<Record<'claude' | 'codex' | 'opencode', string>> = {};
+  for (const cli of ['claude', 'codex', 'opencode'] as const) {
+    const id = (value as Record<string, unknown>)[cli];
+    if (typeof id === 'string' && id.trim() !== '') out[cli] = id.trim();
+  }
+  return out;
+}
+
 /** A plan with its computed view model (`GET /api/plans/{id}`). */
 export interface Plan {
   readonly id: string;
@@ -311,6 +325,12 @@ export interface Plan {
    * the source session). Additive: absent (a paired machine's older Switchboard) = none.
    */
   readonly sidebarFolder?: PlanSidebarFolderRef | null;
+  /**
+   * D138 (`docs/accounts.md` → *Choosing the account*): the Project's account per CLI (profile
+   * id; a missing CLI = Automatic). Every step session it starts, and its own session, use it.
+   * Additive: absent (a paired machine's older Switchboard) = Automatic for every CLI.
+   */
+  readonly accounts?: PlanAccounts;
   /** Why new starts are held right now (paused, an account above the usage threshold); `null` = not held. */
   readonly held: string | null;
   /** Why Switchboard paused the plan ({@link PLANS_OFF_REASON}); `null` = the developer paused it, or it is not paused. */
