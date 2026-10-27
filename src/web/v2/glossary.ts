@@ -1524,6 +1524,20 @@ export const MODE_LABELS = {
   unset: 'Not chosen yet',
 } as const;
 
+/** A project's Steps, Board and Timeline in the Graph's look (`projects/views.tsx`, Fixes after 2.0 → *Steps, Board and Timeline in the Graph's look*). */
+export const PROJECT_VIEW_WORDS = {
+  groupBy: 'Group steps by',
+  byState: 'State',
+  byRepo: 'Repository',
+  sections: { needs: 'Needs you', working: 'Working', ready: 'Ready to start', waiting: 'Waiting', done: 'Done' },
+  emptyColumn: { needs: 'Nothing needs you', working: 'Nothing in progress', ready: 'Nothing to approve', done: 'Nothing done yet' },
+  columnOf: (n: number, total: number): string => `${n} of ${total} steps`,
+  now: 'now',
+  timelineOf: (title: string): string => `Timeline of ${title}`,
+  timelineLegend: 'Bars take the step’s colour; the lighter part is projected. Arrows point to the steps that wait for it. Hover a step to light up what it waits on and what waits on it.',
+  legend: { working: 'Worked on', you: 'Waiting on you', paused: 'Paused', projected: 'Projected', dependency: 'Waiting on an earlier step' },
+} as const;
+
 /** The Projects pages' words. */
 export const PROJECT_WORDS = {
   pageSub: 'Multi-step work. Steps start on their own when the steps before them are done.',
