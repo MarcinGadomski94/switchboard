@@ -500,14 +500,24 @@ export function frameHeight(content: { readonly width: number; readonly height: 
 
 // ── the minimap ─────────────────────────────────────────────────────────
 
-/** The minimap's size (px) and the room Fit leaves under the graph for it. */
-export const MINIMAP = { width: 180, height: 92, inset: 12 } as const;
+/** The minimap's size (px; a phone's is 120 × 62) and its inset; Fit leaves room for it only while it shows. */
+export const MINIMAP = { width: 180, height: 92, phoneWidth: 120, phoneHeight: 62, inset: 12 } as const;
 
 /** Where the content sits in the minimap: scale `s`, offset (ox, oy) (the content fitted and centred). */
 export interface MinimapFrame {
   readonly s: number;
   readonly ox: number;
   readonly oy: number;
+}
+
+/**
+ * Whether some of the content is outside the frame at this view (more than `slack` px): the
+ * minimap shows then (on a desktop), and only then.
+ */
+export function contentOutside(view: GraphView, content: { readonly width: number; readonly height: number }, frame: { readonly width: number; readonly height: number }, slack = 1): boolean {
+  const right = view.x + content.width * view.k;
+  const bottom = view.y + content.height * view.k;
+  return view.x < -slack || view.y < -slack || right > frame.width + slack || bottom > frame.height + slack;
 }
 
 /** The minimap's scale and offset for content of this size. */

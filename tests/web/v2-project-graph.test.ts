@@ -6,6 +6,7 @@ import {
   PROJECT_GRAPH,
   SEVERAL_LANE,
   ZOOM,
+  contentOutside,
   crossingCount,
   doubleTapView,
   isNarrowCanvas,
@@ -352,6 +353,15 @@ describe('the minimap', () => {
   const content = { width: 1800, height: 600 };
   const frame = { width: 900, height: 500 };
   const mini = minimapFrame(content);
+
+  it('shows only while some of the content is outside the frame (after Fit it is not)', () => {
+    expect(contentOutside(fitView(content, frame), content, frame)).toBe(false);
+    expect(contentOutside({ x: 0, y: 0, k: 1 }, content, frame)).toBe(true);
+    expect(contentOutside({ x: 10, y: 10, k: 0.4 }, content, frame)).toBe(false);
+    expect(contentOutside({ x: -5, y: 10, k: 0.4 }, content, frame)).toBe(true);
+    expect(contentOutside({ x: 10, y: 300, k: 0.4 }, content, frame)).toBe(true);
+    expect(contentOutside({ x: -0.5, y: 0, k: 0.4 }, content, frame)).toBe(false);
+  });
 
   it('fits the content into the minimap, centred', () => {
     expect(mini.s).toBeCloseTo(Math.min(MINIMAP.width / 1800, MINIMAP.height / 600));

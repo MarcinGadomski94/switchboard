@@ -1596,6 +1596,8 @@ export const GRAPH_WORDS = {
   fit: 'Fit',
   fitHint: 'Fit the whole project',
   minimap: 'Overview: click or drag to move the view',
+  map: 'Map',
+  mapHint: 'Show or hide the overview map',
   openToRestart: 'open to restart',
   estimate: (text: string): string => `estimate ${text}`,
   after: (names: string): string => `after ${names}`,

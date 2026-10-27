@@ -11,6 +11,7 @@ import {
   MINIMAP,
   type PinchStart,
   ZOOM,
+  contentOutside,
   doubleTapView,
   elapsedMinutes,
   fitView,
@@ -179,9 +180,13 @@ function GraphCanvas({
   const opened = useRef(false);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const [mapOpen, setMapOpen] = useState(false);
   const narrow = frame.width > 0 && isNarrowCanvas(frame.width);
-  const mapSize = narrow ? { width: 120, height: 62 } : { width: MINIMAP.width, height: MINIMAP.height };
-  const reserve = mapSize.height + MINIMAP.inset;
+  const mapSize = narrow ? { width: MINIMAP.phoneWidth, height: MINIMAP.phoneHeight } : { width: MINIMAP.width, height: MINIMAP.height };
+  // The minimap: on a desktop while some steps are outside the view; on a phone only when asked for (Map).
+  const showMap = frame.width > 0 && (narrow ? mapOpen : contentOutside(view, content, frame));
+  // Fit keeps the minimap's corner free only while it is asked to show (a phone's Map).
+  const reserve = narrow && mapOpen ? mapSize.height + MINIMAP.inset : 0;
 
   useEffect(() => {
     const el = frameRef.current;
@@ -378,8 +383,13 @@ function GraphCanvas({
         >
           {GRAPH_WORDS.fit}
         </Button>
+        {narrow ? (
+          <Button size="sm" aria-pressed={mapOpen} title={GRAPH_WORDS.mapHint} onClick={() => setMapOpen((open) => !open)} data-testid="v2-graph-map" className="v2-p-gmap-btn">
+            {GRAPH_WORDS.map}
+          </Button>
+        ) : null}
       </div>
-      {frame.width > 0 ? minimap(view, frame, mapSize, (next) => change(next)) : null}
+      {showMap ? minimap(view, frame, mapSize, (next) => change(next)) : null}
       {tip}
     </div>
   );
@@ -551,7 +561,7 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
 
   const finalHot = hot === null ? undefined : hot.nodes.has('final');
   return (
-    <div className="v2-card v2-p-graph" data-testid="v2-project-graph" data-motion={reduced ? 'reduced' : undefined}>
+    <div className="v2-card v2-p-graph" data-testid="v2-project-graph" data-tour="v2-project-graph" data-motion={reduced ? 'reduced' : undefined}>
       <GraphHeader
         done={plan.progress.done}
         total={plan.progress.total}

@@ -176,6 +176,8 @@ test('fits a 15-step project in three repository lanes without sideways overflow
     await expect(page.getByTestId('v2-graph-summary')).toHaveText('1 of 15 done · 1 working · 2 need you');
     await page.getByTestId('v2-graph-fit').click();
     await expect.poll(() => fitsWithoutOverflow(page)).toBe(true);
+    // Everything fits: no minimap (it shows only while steps are outside the view).
+    await expect(page.getByTestId('v2-graph-minimap')).toHaveCount(0);
     for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
       await page.mouse.move(0, 0);
@@ -255,6 +257,9 @@ test('the critical path toggle (remembered), the minimap pans, zoom buttons', as
   await page.getByTestId('v2-graph-zoom-in').click();
   await page.getByTestId('v2-graph-zoom-in').click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-zoom'))).toBeGreaterThan(zoom0 * 1.4);
+  // Steps are outside the view now: the minimap shows.
+  await expect(page.getByTestId('v2-graph-minimap')).toBeVisible();
+  await expect(page.getByTestId('v2-graph-map')).toHaveCount(0);
   const view = page.getByTestId('v2-graph-minimap-view');
   const before = Number(await view.getAttribute('x'));
   await page.getByTestId('v2-graph-minimap').scrollIntoViewIfNeeded();
@@ -274,6 +279,7 @@ test('the critical path toggle (remembered), the minimap pans, zoom buttons', as
   await expect.poll(async () => Number(await canvas.getAttribute('data-zoom'))).toBeLessThan(zoomed);
   await page.getByTestId('v2-graph-fit').click();
   await expect.poll(() => fitsWithoutOverflow(page)).toBe(true);
+  await expect(page.getByTestId('v2-graph-minimap')).toHaveCount(0);
   // A drag on empty canvas pans.
   const stage = page.getByTestId('v2-graph-stage');
   const t0 = await stage.evaluate((el) => getComputedStyle(el).transform);
@@ -324,11 +330,22 @@ test('phone: Graph is offered, opens on the working step; pinch, double tap, tap
     expect(Math.abs(work.x + work.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(4);
     expect(Math.abs(work.y + work.height / 2 - (frame.y + frame.height / 2))).toBeLessThan(4);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    // No minimap on a phone unless asked for: Map next to Fit toggles it.
+    await expect(page.getByTestId('v2-graph-minimap')).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await canvas.screenshot({ path: 'test-results/v2-project-graph-390-light.png' });
     await page.emulateMedia({ colorScheme: 'dark' });
     await canvas.screenshot({ path: 'test-results/v2-project-graph-390-dark.png' });
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+    const map = page.getByTestId('v2-graph-map');
+    await expect(map).toHaveAttribute('aria-pressed', 'false');
+    await map.tap();
+    await expect(map).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('v2-graph-minimap')).toBeVisible();
+    const mapBox = await page.getByTestId('v2-graph-minimap').boundingBox();
+    expect(Math.round(mapBox?.width ?? 0)).toBe(120);
+    await map.tap();
+    await expect(page.getByTestId('v2-graph-minimap')).toHaveCount(0);
 
     // Pinch: two touch pointers spreading from 100 px to 200 px apart double the zoom.
     await canvas.evaluate((el) => {

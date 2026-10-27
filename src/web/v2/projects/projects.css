@@ -1028,7 +1028,8 @@
   margin-right: 5px;
 }
 
-.sb2 .v2-p-gcrit[aria-pressed='true'] {
+.sb2 .v2-p-gcrit[aria-pressed='true'],
+.sb2 .v2-p-gmap-btn[aria-pressed='true'] {
   border-color: var(--v2-accent);
   background: var(--v2-accent-soft);
   color: var(--v2-accent-text);

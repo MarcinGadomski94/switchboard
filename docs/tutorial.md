@@ -50,6 +50,12 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   every tour (`PUT /api/tutorial/tours/welcome-v2`): once per machine, shared by its
   browsers and phones. When it opened by itself, its outcome is also recorded for the
   classic tours it covers (`V2_COVERS`: `graduated`, `two-themes`) that were still pending.
+- **"The Project graph, redrawn"** (`project-graph`, version 2.5.0, `ui: 'v2'`): one step on
+  a project's Graph (`v2-project-graph`) when it is on screen, else on Projects in the rail
+  (`v2-nav-projects`) or the phone's More tab (`v2-tab-more`); `v2Route: '/projects'`. A v2
+  tour because the redrawn graph is v2-only (the classic plan graph is unchanged). An
+  existing install that updates to 2.5 gets it `pending`, after the welcome when that is
+  pending too (a chain: "(1 of 2)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)
