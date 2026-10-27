@@ -621,7 +621,7 @@ sidebarLayoutChanged { "pinned": ["5c1e0b52-…"], "folders": [{ "id": "7d2c…"
 ```
 
 ## Updates from GitHub releases (D55, 2026-09-30, additive)
-Developer request D55 (`docs/decisions.md` → *Updates from GitHub releases*). Additive; nothing above changes meaning. No migration. This machine's only: none of these routes is on the peer API and `updateChanged` is not forwarded between peers. Details: `docs/updates.md`.
+Developer request D55 (`docs/decisions.md` → *Updates from GitHub releases*). Additive; nothing above changes meaning. No migration. This machine's only: none of these routes is on the peer API and `updateChanged` is not forwarded between peers (D140 changed this: *Remote updates (D140)* below). Details: `docs/updates.md`.
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
@@ -1618,6 +1618,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | machinePower | PowerStatus (additive, D125: this machine's power reading changed; forwarded between peers, where the receiver keeps it as `Machine.power` and never republishes it) |
+| machineUpdate | MachineUpdate (additive, D140: this machine's update state in short, with every `updateChanged`; forwarded between peers, where the receiver keeps it as `Machine.update` and never republishes it) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
 
 
@@ -2256,4 +2257,24 @@ The v2 agent view folds helpers that ended more than ten minutes ago (`docs/v2.m
 
 ```json
 Agent { …, "startedAt": "2026-10-27T09:00:00.000Z", "updatedAt": "2026-10-27T09:04:10.000Z", "endedAt": "2026-10-27T09:04:10.000Z" | null }
+```
+
+## Remote updates (D140, 2026-10-27, additive; no migration)
+Developer request D140 (`docs/decisions.md`; details `docs/updates.md` → *Remote updates*): a paired phone or a paired computer can check for and install an update of Switchboard. Additive; nothing above changes meaning. Types in `src/core/updates.ts`.
+
+- **Who may call:** a paired device: `GET /api/updates`, `POST /api/updates/check`, `POST /api/updates/install`, `POST /api/updates/dismiss` (any other `/api/updates/…` write stays `403 local-only`). The peer API (`/peer/v1/api/…`, so also `/api/machines/{id}/api/…` from a computer or a phone): `GET /api/updates`, `POST /api/updates/check`, `POST /api/updates/install` (dismiss and anything else `403 peer-forbidden`).
+- **`POST /api/updates/install`** from a device or a peer additionally answers `409 { error: "git-checkout", message }` (a git checkout) and `409 { error: "manual-restart", message }` (not running as its login service), both "Can't update itself here: … restart it by hand."; and `429 { error: "rate-limited", message }` for a second remote install within 10 minutes. This machine's own UI is not limited and still updates a by-hand install.
+- **UpdateStatus** gains `remote?: { allowed, reason: "git-checkout" | "manual-restart" | null, message: string | null }` and `lastRemote?: RemoteUpdateRecord | null`.
+- **RemoteUpdateRecord** `{ version, from, by: { kind: "device" | "peer", id, name }, at, outcome: "started" | "updated" | "failed", error: string | null }`.
+- **MachineUpdate** `{ current, kind, restart, remote, checking, latest: { version, tag, url } | null, available, lastCheck, progress: UpdateProgress without dir, liveSessions, lastRemote }`.
+- **Machine** (`GET /api/machines`, `machineState`) gains `update?: MachineUpdate`: as the machine last reported it; while online or reconnecting, and while away after an update made it restart.
+- **`/hub` `machineUpdate`** (additive): `MachineUpdate`, published with every `updateChanged`. On the peer stream (`PEER_HUB_EVENTS`): sent once when the stream opens and on each change; the receiver never republishes it.
+- **InboxItem** of kind `system` gains `Updated to <v> from …` / `Update to <v> from … failed` (system item kind `update-remote`, action `dismiss`).
+
+```
+POST /api/machines/abcd2345efgh/api/updates/install { "version": "2.4.3" }
+→ 202 { "current": "2.4.2", …, "progress": { "phase": "downloading", "version": "2.4.3", … }, "remote": { "allowed": true, "reason": null, "message": null },
+        "lastRemote": { "version": "2.4.3", "from": "2.4.2", "by": { "kind": "peer", "id": "q7r2…", "name": "Marcins-Mac" }, "at": "2026-10-27T10:00:00.000Z", "outcome": "started", "error": null } }
+→ 409 { "error": "manual-restart", "message": "Can't update itself here: it doesn't run as its login service (Start at login). Update it there and restart it by hand." }
+→ 429 { "error": "rate-limited", "message": "An update was asked for from a phone or another computer less than 10 minutes ago; try again in 6 min." }
 ```
