@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.2 (2026-10-27)
+
+### v2 theme
+- **The Project graph, redrawn:** steps in repository lanes left to right with fewer crossing arrows; each step has a progress ring with its state icon, "Working · 25m" with the model and a time-against-estimate bar, and what it waits on. Dots travel into steps being worked on, the critical path (the longest chain still to do) glows and can be switched off, hovering a step lights up what it waits on and what waits on it, and a header ring and bar show the whole project's progress. Zoom, pan and Fit, a minimap when the project doesn't fit, and every animation off with reduced motion.
+- **Graph on phones:** pinch to zoom, double-tap to zoom in, long-press a step for its menu; it opens on the step being worked on, with a Map button for the overview.
+- **Finished helpers fold away:** in long sessions the Helpers list, tab, peek and Timeline show only helpers that are working or finished in the last 10 minutes; older ones fold under "Show N helpers finished earlier", and badges count active helpers only.
+
 ## 2.4.1 (2026-10-27)
 
 ### Fixes
