@@ -148,7 +148,8 @@ test.afterAll(async () => {
 test('every view opens with the Graph’s header; light and dark screenshots at 1440', async ({ page }) => {
   test.setTimeout(90_000);
   await serve(page);
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  // Tall enough for the whole view in one picture (the app scrolls inside its shell).
+  await page.setViewportSize({ width: 1440, height: 1900 });
   await page.goto(`${server.baseUrl}/projects/${PLAN_ID}`);
   for (const name of ['Steps', 'Board', 'Timeline'] as const) {
     await openView(page, name);
@@ -226,10 +227,12 @@ test('Steps: by state or by repository; a working step has its ring, meta and es
   await expect(steps.getByTestId('v2-steps-lane')).toHaveText([/acme-api.*1\/3/s, /acme-web.*0\/3/s, /acme-sdk.*0\/2/s, /Several repositories.*0\/2/s]);
   await page.reload();
   await expect(page.getByTestId('v2-steps')).toHaveAttribute('data-group', 'repo');
+  await page.setViewportSize({ width: 1440, height: 1900 });
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
     await page.getByTestId('v2-steps').screenshot({ path: `test-results/v2-project-steps-repo-1440-${scheme}.png` });
   }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
   await page.getByTestId('v2-steps-group').getByRole('button', { name: 'State' }).click();
 });

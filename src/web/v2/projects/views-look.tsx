@@ -109,23 +109,27 @@ export function useStepModels(): (item: PlanItem, tone: GraphTone) => string | n
 /**
  * Moves the elements marked `data-flip="<id>"` inside `root` from where they were to where they
  * are now when `key` changes (FLIP; a step that changes section, lane or column glides there).
+ * Places are measured from `root`'s corner, so scrolling the page in between moves nothing.
  * Never under reduced motion.
  */
 export function useFlip(root: RefObject<HTMLElement | null>, key: unknown): void {
-  const last = useRef(new Map<string, DOMRect>());
+  const last = useRef(new Map<string, { readonly left: number; readonly top: number }>());
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    const now = new Map<string, DOMRect>();
+    const origin = el.getBoundingClientRect();
+    const now = new Map<string, { left: number; top: number }>();
     for (const node of el.querySelectorAll<HTMLElement>('[data-flip]')) {
       const id = node.dataset['flip'] ?? '';
       const box = node.getBoundingClientRect();
-      now.set(id, box);
+      if (box.width === 0) continue;
+      const at = { left: box.left - origin.left, top: box.top - origin.top };
+      now.set(id, at);
       const before = last.current.get(id);
-      if (reduce || !before || !node.animate || box.width === 0) continue;
-      const dx = before.left - box.left;
-      const dy = before.top - box.top;
+      if (reduce || !before || !node.animate) continue;
+      const dx = before.left - at.left;
+      const dy = before.top - at.top;
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.2,.8,.2,1)' });
     }
     last.current = now;
