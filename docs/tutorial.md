@@ -56,6 +56,12 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   tour because the redrawn graph is v2-only (the classic plan graph is unchanged). An
   existing install that updates to 2.5 gets it `pending`, after the welcome when that is
   pending too (a chain: "(1 of 2)").
+- **"The Project graph in full screen"** (`project-graph-fullscreen`, version 2.4.3, `ui: 'v2'`):
+  one step on the graph's Full screen button (`v2-graph-fullscreen`), else the graph, Projects
+  in the rail or More; `v2Route: '/projects'`. A tour of its own rather than a version bump
+  of `project-graph`: a tour once completed or skipped never opens again (its row is never
+  re-queued), so a new version on the same id would show nothing to installs that saw it.
+  An existing install with all three pending gets them chained ("(1 of 3)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

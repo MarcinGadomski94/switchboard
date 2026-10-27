@@ -1,4 +1,4 @@
-# v2 · Projects (`/projects`, `/projects/:id`)
+# v2 · Projects (`/projects`, `/projects/:id`, `/projects/:id/graph`)
 
 **Owner: lane P.** Lane F (Foundation) made this stub and wired it into the router (`../shell/Outlet.tsx`); the page's exports in `index.tsx` are what the router mounts, so keep their names and props.
 
@@ -10,6 +10,7 @@ The list, then Steps / Board / Graph / Timeline (a phone: Steps / Graph); approv
 - Pure rules: `project-model.ts` (`tests/web/v2-projects.test.ts`); data: `useProject.ts` (the plan, live, its Jira state, proposals and tasks), actions: `useStepActions.ts`.
 - E2E: `tests/e2e/v2-projects.spec.ts`. Decisions: `docs/design/v2-decisions.md` → *Lane P*.
 - **Graph** (Fixes after 2.0 → *The Project graph, redrawn*; `docs/v2.md` → *Projects: the Graph view*): `GraphView.tsx` (the view, its header and the canvas: fit, zoom, pan, pinch, double tap, minimap, the phone's opening view), `graph-parts.tsx` (the renderers: card, edges with the travelling dots, lanes, final node, ring, minimap, tooltip), `graph-layout.ts` (pure: layers, repository lanes, crossing reduction, the hover path, fit / zoom / pinch maths, the minimap, the critical path; `tests/web/v2-project-graph.test.ts`). E2E: `tests/e2e/v2-project-graph.spec.ts`. Phones offer Steps and Graph (`PHONE_PROJECT_VIEWS`). The minimap shows only while steps are outside the view (a phone: on Map). What's new: the v2 tour `project-graph` (`src/core/tutorial.ts`, anchor `v2-project-graph`).
+- **Graph in full screen** (Fixes after 2.0 → *The Project graph in full screen*; `docs/v2.md` → *Projects: the Graph view*): `GraphView.tsx` (`useGraphFullscreen`: the Fullscreen API or the overlay, Esc; `useIdle`; Follow; the Fit pill; the overlay layer it registers with `components/Portal.tsx`), `graph-fullscreen.ts` (pure: when to fit or follow, Follow's view, the title; `tests/web/v2-project-graph-fullscreen.test.ts`), `ProjectGraphPage.tsx` (`/projects/:id/graph`, mounted bare by the shell). E2E: `tests/e2e/v2-project-graph-fullscreen.spec.ts` (sample plan shared with the graph spec: `tests/e2e/project-graph-sample.ts`). What's new: the v2 tour `project-graph-fullscreen` (2.4.3, anchor `v2-graph-fullscreen`).
 
 ## Shared modules to use
 - `glossary.ts` → `planItemStateToV2`, `TERMS.project`, `TERMS.step`, `WORDS.combine`
