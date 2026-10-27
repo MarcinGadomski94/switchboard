@@ -1,5 +1,7 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon.tsx';
+import { useFullscreenOverlayHost } from './Portal.tsx';
 
 /** One toast. `undo` adds the Undo button (or `actionLabel`); `tone: 'error'` for a refusal, `'warn'` for a warning (a usage warning). */
 export interface ToastInput {
@@ -54,6 +56,19 @@ function ToastView({ entry, onDone }: { readonly entry: ToastEntry; readonly onD
   );
 }
 
+/** The toasts; while an element fills the screen (the Project graph's full screen) they show inside it (`Portal.tsx`). */
+function ToastList({ entries, onDone }: { readonly entries: readonly ToastEntry[]; readonly onDone: (id: number) => void }) {
+  const host = useFullscreenOverlayHost();
+  const list = (
+    <div className="v2-toasts" aria-live="polite">
+      {entries.map((entry) => (
+        <ToastView key={entry.id} entry={entry} onDone={onDone} />
+      ))}
+    </div>
+  );
+  return host ? createPortal(list, host) : list;
+}
+
 /** D131 · the toast host (bottom centre; above the phone's tab bar). */
 export function ToastProvider({ children }: { readonly children: ReactNode }) {
   const [entries, setEntries] = useState<readonly ToastEntry[]>([]);
@@ -67,11 +82,7 @@ export function ToastProvider({ children }: { readonly children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="v2-toasts" aria-live="polite">
-        {entries.map((entry) => (
-          <ToastView key={entry.id} entry={entry} onDone={done} />
-        ))}
-      </div>
+      <ToastList entries={entries} onDone={done} />
     </ToastContext.Provider>
   );
 }

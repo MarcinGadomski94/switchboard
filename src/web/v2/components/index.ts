@@ -16,4 +16,4 @@ export { Avatar, ComputerTag, colorFor, initials } from './Avatar.tsx';
 export { Checkbox, Field, Select, Switch, TextArea, type SelectOption } from './Field.tsx';
 export { focusables, useEscape, useFocusScope, useOutside } from './overlay.ts';
 export { placeBelow } from './place.ts';
-export { OverlayRoot, Portal } from './Portal.tsx';
+export { OverlayRoot, Portal, setFullscreenOverlayHost, useFullscreenOverlayHost } from './Portal.tsx';
