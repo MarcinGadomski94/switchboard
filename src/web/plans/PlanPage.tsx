@@ -33,6 +33,7 @@ import {
   progressText,
   refuseEdge,
   repoLine,
+  restartableItems,
   statusLine,
   stoppedChip,
   targetChip,
@@ -66,7 +67,8 @@ function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly p
         const look = STATE_LOOK[item.state];
         const action = inlineAction(item);
         // D120: a row opens the item's run session; Details shows its detail (an item without a session: the row does).
-        const opensSession = itemSessionId(item) !== null;
+        // D139: a stopped item whose agent failed opens its detail (Restart there), not its stopped session.
+        const opensSession = itemSessionId(item) !== null && item.stoppedBy === undefined;
         return (
           <div key={item.id} className="sb-plan-row" data-testid="plan-row" data-item-id={item.id} data-state={item.state} aria-selected={selectedId === item.id}>
             <button
@@ -133,6 +135,28 @@ function PlanList({ plan, selectedId, onSelect, onOpen, onMerged }: { readonly p
                   </span>
                 ) : null}
               </span>
+            ) : null}
+            {/* D139: an item whose agent failed: Restart (the same session goes on). */}
+            {item.stoppedBy !== undefined && restartableItems(plan).some((candidate) => candidate.id === item.id) ? (
+              <button
+                type="button"
+                className="sb-button sb-plan-btn sb-plan-btn--primary"
+                data-testid="plan-row-restart"
+                disabled={busy !== null}
+                onClick={() => {
+                  setBusy(item.id);
+                  setError(null);
+                  plansApi
+                    .restartItem(plan.id, item.id)
+                    .then(
+                      () => onMerged(),
+                      (caught: unknown) => setError(refusalText(caught)),
+                    )
+                    .finally(() => setBusy(null));
+                }}
+              >
+                Restart
+              </button>
             ) : null}
             {action === 'answer' ? (
               <button type="button" className="sb-button sb-plan-btn" data-testid="plan-row-answer" onClick={() => onSelect(item.id)}>
@@ -387,6 +411,12 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           {plan.state === 'paused' && !remote ? (
             <button type="button" className="sb-button sb-plan-btn" data-testid="plan-resume" disabled={busy} onClick={() => void act(() => plansApi.resume(plan.id))}>
               ▶ Resume
+            </button>
+          ) : null}
+          {/* D139: the items whose agent failed start again (those whose account still needs you wait). */}
+          {restartableItems(plan).length > 0 ? (
+            <button type="button" className="sb-button sb-plan-btn" data-testid="plan-restart-stopped" disabled={busy} onClick={() => void act(async () => (await plansApi.restartStopped(plan.id)).plan)}>
+              ↻ Restart stopped steps ({restartableItems(plan).length})
             </button>
           ) : null}
           {plan.state === 'draft' && !remote && plan.items.length > 1 ? (

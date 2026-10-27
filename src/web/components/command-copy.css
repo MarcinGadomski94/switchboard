@@ -1,0 +1,35 @@
+/* D139: a terminal command with a Copy button (both themes; colors come from the surrounding text). */
+.sb-command-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 6px 8px;
+  max-width: 720px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  text-align: left;
+}
+.sb-command-copy__code {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.sb-command-copy__button {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sb-command-copy__button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}

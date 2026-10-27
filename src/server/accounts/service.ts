@@ -1,9 +1,13 @@
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  type AccountActionKind,
   type AccountProfile,
   type AccountSettings,
+  ACCOUNT_BLOCKED_KEY,
   ACCOUNT_SETTINGS_KEY,
+  type ProfileNeedsYou,
+  readAccountBlocks,
   type ExhaustedMark,
   type LimitWindow,
   type ProfileSignIn,
@@ -465,6 +469,44 @@ export class AccountService {
     await this.#changed({ kind: 'spent' });
   }
 
+  // ── D139: the account needs the developer (docs/accounts.md → *The account needs you*) ──
+
+  /** D139: the profiles that wait for the developer (the setting `accounts.blocked`). */
+  async blocks(): Promise<Record<string, ProfileNeedsYou>> {
+    return readAccountBlocks(await this.#store.settings.get(ACCOUNT_BLOCKED_KEY));
+  }
+
+  /** D139: the profile's block, `null` when it does not wait for the developer. */
+  async blockOf(profileId: string): Promise<ProfileNeedsYou | null> {
+    return (await this.blocks())[profileId] ?? null;
+  }
+
+  /**
+   * D139: marks the profile as waiting for the developer (or adds `sessionId` to its stopped
+   * sessions when it already waits). Answers the block and whether it is new.
+   */
+  async block(profileId: string, input: { readonly kind: AccountActionKind; readonly text: string; readonly command: string | null; readonly sessionId: string | null }): Promise<{ readonly block: ProfileNeedsYou; readonly fresh: boolean }> {
+    const all = await this.blocks();
+    const before = all[profileId];
+    const sessionIds = [...(before?.sessionIds ?? [])];
+    if (input.sessionId !== null && !sessionIds.includes(input.sessionId)) sessionIds.push(input.sessionId);
+    const block: ProfileNeedsYou = before
+      ? { ...before, kind: input.kind, text: input.text, command: input.command, sessionIds }
+      : { kind: input.kind, text: input.text, since: new Date(this.#now()).toISOString(), command: input.command, sessionIds };
+    await this.#store.settings.set(ACCOUNT_BLOCKED_KEY, { ...all, [profileId]: block });
+    return { block, fresh: before === undefined };
+  }
+
+  /** D139: the profile no longer waits (a session on it started, or the developer said it is done). Answers the block it had. */
+  async unblock(profileId: string): Promise<ProfileNeedsYou | null> {
+    const all = await this.blocks();
+    const before = all[profileId] ?? null;
+    if (before === null) return null;
+    const { [profileId]: _gone, ...rest } = all;
+    await this.#store.settings.set(ACCOUNT_BLOCKED_KEY, rest);
+    return before;
+  }
+
   async clearExhausted(profileId: string): Promise<void> {
     await this.#store.profiles.update(profileId, { exhaustedUntil: null, exhaustedWindow: null, exhaustedText: null });
   }
@@ -480,6 +522,7 @@ export class AccountService {
     const records = await this.#store.profiles.list(cli);
     if (options.check === true) await Promise.all(records.filter((r) => r.enabled).map((r) => this.check(r.id).catch(() => null)));
     const now = this.#now();
+    const blocks = await this.blocks();
     for (const record of records) {
       const checked = this.#checks.get(record.id);
       // D98: the same account on a paired machine: its newest reading and a spent mark found there count here too.
@@ -494,6 +537,7 @@ export class AccountService {
         signedIn: checked ? (checked.signIn === 'signed-in' ? true : checked.signIn === 'signed-out' ? false : null) : null,
         exhaustedUntil: spent.from !== null && spent.exhausted ? spent.exhausted.until : record.exhaustedUntil,
         usage: newestUsage(await this.usageOf(record), copies).usage,
+        ...(blocks[record.id] ? { blocked: true } : {}),
       });
     }
     return out;
@@ -538,6 +582,7 @@ export class AccountService {
     }
     const checks = options.check === false ? null : await Promise.all(records.map((record) => this.check(record.id, options.refresh === true ? { refresh: true } : {}).catch(() => ({ signIn: 'unknown' as const, account: null }))));
     const now = this.#now();
+    const blocks = await this.blocks();
     const out: AccountProfile[] = [];
     for (const [index, record] of records.entries()) {
       const checked = checks?.[index] ?? this.#checks.get(record.id) ?? { signIn: 'unknown' as const, account: null };
@@ -566,6 +611,7 @@ export class AccountService {
         ...(identity !== null ? { identity } : {}),
         ...(elsewhere.length > 0 ? { elsewhere } : {}),
         ...(newest.from !== null ? { usageFrom: newest.from } : {}),
+        ...(blocks[record.id] ? { needsYou: blocks[record.id] as ProfileNeedsYou } : {}),
       });
     }
     return out;

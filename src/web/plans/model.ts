@@ -109,9 +109,16 @@ export function cardStatusLine(item: PlanItem, items: readonly PlanItem[]): stri
   return item.state === 'needs-you' ? needsYouReason(item) : statusLine(item, items);
 }
 
-/** D120: a stopped item's reason line: "Stopped: <the agent's last message, cut>". */
-export function stoppedReason(item: Pick<PlanItem, 'reason'>): string {
+/** D120: a stopped item's reason line: "Stopped: <the agent's last message, cut>"; D139: a failed agent's own reason ("Stopped (account needs you): …"). */
+export function stoppedReason(item: Pick<PlanItem, 'reason' | 'stoppedBy'>): string {
+  if (item.stoppedBy === 'account') return item.reason ?? 'Stopped (account needs you)';
   return `Stopped: ${item.reason ?? 'its agent ended its turn without finishing its todo'}`;
+}
+
+/** D139: the items the plan's "Restart stopped steps (N)" starts again (their run session failed). */
+export function restartableItems(plan: Pick<Plan, 'items' | 'state' | 'machine'>): PlanItem[] {
+  if ((plan.state !== 'running' && plan.state !== 'paused') || plan.machine !== null) return [];
+  return plan.items.filter((item) => item.stoppedBy !== undefined);
 }
 
 /** D120: how many of a plan's items are stopped. */

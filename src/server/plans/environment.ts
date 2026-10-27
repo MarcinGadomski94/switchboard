@@ -1,3 +1,4 @@
+import { accountActionWhat, accountWaitReason, sessionProfileId } from '../../core/accounts.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { repoSolutionName } from '../folders/ref.ts';
@@ -48,6 +49,17 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
   const { context, accounts, systemItems } = deps;
   const { store, folders, worktrees } = context;
   const now = deps.now ?? Date.now;
+  /** The CLI and account a step of `plan` for `todo` would start on (D82's routing, D138's Project account, then D63's pick). */
+  const stepAccount = async (plan: PlanRecord, todo: TodoRecord): Promise<{ readonly provider: CliProviderId | null; readonly profileId: string }> => {
+    const source = await store.sessions.get(plan.sourceSessionId);
+    if (!source) return { provider: null, profileId: '' };
+    const routed = todoRunOptions({ source: { provider: source.provider, model: source.model, effort: source.effort, profileId: source.profileId }, todo, rules: await modelRulesOf(store.settings) });
+    const provider = routed.settings.provider;
+    // D138: the Project's account for that CLI first (as the run would start on it).
+    const chosen = plan.accounts[provider];
+    const profileId = (chosen ? await accounts.pick(provider, { check: false, preferred: chosen }) : null) ?? chosen ?? routed.settings.profileId ?? (await accounts.pick(provider, { check: false })) ?? `default-${provider}`;
+    return { provider, profileId };
+  };
   return {
     async repos(sourceSessionId: string, names: readonly string[] | null) {
       const source = await store.sessions.get(sourceSessionId);
@@ -108,9 +120,15 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     async run(input: PlanRunInput) {
       try {
         // D138: the Project's account for the run's CLI, as a preference (it out of usage: the automatic pick).
+        // D139: a Project's own account that needs the developer is never left for another (the step waits: usageHeld);
+        // without one, a step whose account (D76's, a D82 rule's) needs the developer starts on another with allowance.
         const profileFor = async (provider: CliProviderId): Promise<string | null> => {
           const chosen = input.plan.accounts[provider];
-          return chosen ? ((await accounts.pick(provider, { check: false, preferred: chosen })) ?? chosen) : null;
+          if (chosen) return (await accounts.blockOf(chosen)) !== null ? chosen : ((await accounts.pick(provider, { check: false, preferred: chosen })) ?? chosen);
+          const own = (await stepAccount(input.plan, input.todo)).profileId;
+          if ((await accounts.blockOf(own)) === null) return null;
+          const other = await accounts.pick(provider, { check: false, preferred: null });
+          return other !== null && (await accounts.blockOf(other)) === null ? other : null;
         };
         const outcome = await runTodo(context, input.plan.sourceSessionId, input.todo.id, { branch: input.branch, from: input.from, repoPaths: input.repoPaths, task: input.task, answers: input.answers, sidebarFolder: input.plan.sidebarFolder, profileFor });
         if (!outcome.ok) return { ok: false as const, message: refusalText(outcome.body) };
@@ -124,14 +142,23 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     },
 
     async usageHeld(plan: PlanRecord, todo: TodoRecord) {
-      const source = await store.sessions.get(plan.sourceSessionId);
-      if (!source) return null;
-      const routed = todoRunOptions({ source: { provider: source.provider, model: source.model, effort: source.effort, profileId: source.profileId }, todo, rules: await modelRulesOf(store.settings) });
-      const provider = routed.settings.provider;
-      // D138: the Project's account for that CLI first (as the run would start on it).
+      const step = await stepAccount(plan, todo);
+      if (step.provider === null) return null;
+      const provider = step.provider;
+      const snapshots = await accounts.snapshots(provider);
+      // D139: the Project's own account needs the developer: its steps wait (never moved off it silently).
       const chosen = plan.accounts[provider];
-      const profileId = (chosen ? await accounts.pick(provider, { check: false, preferred: chosen }) : null) ?? chosen ?? routed.settings.profileId ?? (await accounts.pick(provider, { check: false })) ?? `default-${provider}`;
-      const snapshot = (await accounts.snapshots(provider)).find((candidate) => candidate.id === profileId);
+      const chosenSnapshot = chosen ? snapshots.find((candidate) => candidate.id === chosen) : undefined;
+      if (chosenSnapshot?.blocked === true) return accountWaitReason(chosenSnapshot.name);
+      let profileId = step.profileId;
+      // D139: without one, a blocked account gives way to another that can take the step (as the run picks it); none: wait.
+      if (!chosen && snapshots.find((candidate) => candidate.id === profileId)?.blocked === true) {
+        const other = await accounts.pick(provider, { check: false, preferred: null });
+        const otherSnapshot = other !== null ? snapshots.find((candidate) => candidate.id === other) : undefined;
+        if (!otherSnapshot || otherSnapshot.blocked === true) return accountWaitReason(snapshots.find((candidate) => candidate.id === profileId)?.name ?? profileId);
+        profileId = otherSnapshot.id;
+      }
+      const snapshot = snapshots.find((candidate) => candidate.id === profileId);
       if (!snapshot) return null;
       if (snapshot.exhaustedUntil !== null && Date.parse(snapshot.exhaustedUntil) > now()) return `the account ${snapshot.name} is out of usage until ${snapshot.exhaustedUntil}`;
       const windows: Array<[string, number | null]> = [
@@ -145,6 +172,27 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     },
 
     send: deps.send,
+
+    // D139: why a run session cannot start again now: its account needs the developer.
+    async accountBlockOf(sessionId: string) {
+      const session = await store.sessions.get(sessionId);
+      if (!session) return null;
+      const profileId = sessionProfileId(session);
+      const block = await accounts.blockOf(profileId);
+      if (block === null) return null;
+      const name = (await store.profiles.get(profileId))?.name ?? profileId;
+      return `${accountWaitReason(name)} — ${accountActionWhat(block.kind, session.provider)}`;
+    },
+
+    // D139: Restart: the same run session starts again (its lost messages go out again).
+    async restartSession(sessionId: string) {
+      try {
+        await context.supervisor.restartStopped(sessionId);
+        return { ok: true as const };
+      } catch (error) {
+        return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
+      }
+    },
 
     // D117 follow-up: Delete plan stops its running item sessions through the session's own Stop (D50, the supervisor's interrupt).
     async stopTurn(sessionId: string) {

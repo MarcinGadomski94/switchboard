@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
+import { CommandCopy } from '../components/CommandCopy.tsx';
 import { BackButton, useListDetail } from '../components/ListDetail.tsx';
 import type { AnswerBatch, InboxAction, InboxItem, Session, SessionListItem } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
@@ -188,10 +189,12 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
       ) : null}
       {item.detail ? (
         // D96: a question's context (the agent's message right above it) keeps its line breaks.
-        <div className={body === 'questions' ? 'sb-inbox__text sb-inbox__text--context' : 'sb-inbox__text'} data-testid="inbox-text">
+        <div className={body === 'questions' ? 'sb-inbox__text sb-inbox__text--context' : 'sb-inbox__text'} data-testid="inbox-text" style={item.command ? { whiteSpace: 'pre-wrap' } : undefined}>
           {item.detail}
         </div>
       ) : null}
+      {/* D139: an account's "needs you" item: the command that fixes it, copyable. */}
+      {item.command ? <CommandCopy command={item.command} testId="inbox-command" /> : null}
       {body === 'questions' ? (
         <QuestionCard key={item.id} questions={item.questions ?? []} variant="inbox" busy={busy} error={error} onSend={onAnswers} />
       ) : null}

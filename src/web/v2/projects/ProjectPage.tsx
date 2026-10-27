@@ -12,7 +12,7 @@ import { ACCOUNT_CHOICE_WORDS, MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '.
 import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
-import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readProjectView, remoteBlock, timeLeft } from './project-model.ts';
+import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
 import { ProgressBar } from './ProjectsPage.tsx';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
@@ -172,6 +172,17 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
     { id: 'delete', label: PROJECT_WORDS.deleteProject, icon: 'trash', danger: true, ...(blocked ? { disabledReason: blocked } : {}), onSelect: () => setOverlay({ kind: 'delete' }) },
   ];
 
+  const restartable = restartableSteps(plan);
+  const restartAll = async (): Promise<void> => {
+    try {
+      const answer = await plansApi.restartStopped(plan.id);
+      put(answer.plan);
+      toast({ text: answer.waiting > 0 ? `Restarted ${answer.restarted}; ${answer.waiting} wait for their account (see Needs you).` : `Restarted ${answer.restarted} stopped step${answer.restarted === 1 ? '' : 's'}.` });
+    } catch (e) {
+      toast({ text: refusalText(e), tone: 'error' });
+    }
+  };
+
   const viewProps = { plan, actions, onDetails: (item: PlanItem) => setOverlay({ kind: 'details', itemId: item.id }), onSendBack: (item: PlanItem) => setOverlay({ kind: 'sendback', item }) };
   const detailsItem = overlay?.kind === 'details' ? plan.items.find((item) => item.id === overlay.itemId) : undefined;
   const ackShown = mode !== null && agentsCombine(mode) && needsProtectedAck(plan, mode);
@@ -245,6 +256,12 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
           {plan.state === 'running' || plan.state === 'paused' ? (
             <Button icon={plan.state === 'paused' ? 'play' : 'pause'} disabled={blocked !== null} onClick={() => void pauseResume()} data-testid="v2-project-hold">
               {plan.state === 'paused' ? PROJECT_WORDS.resume : PROJECT_WORDS.pause}
+            </Button>
+          ) : null}
+          {/* D139: the steps whose agent failed start again (those whose account still needs you wait). */}
+          {restartable.length > 0 ? (
+            <Button icon="refresh" disabled={blocked !== null} onClick={() => void restartAll()} data-testid="v2-project-restart-stopped">
+              {PROJECT_WORDS.restartStopped(restartable.length)}
             </Button>
           ) : null}
           <MenuButton items={projectMenu} label="Project actions" testId="v2-project-menu" />
@@ -409,10 +426,22 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
           }}
         />
       ) : null}
-      {detailsItem ? <StepDetailSheet plan={plan} item={detailsItem} todo={todos.get(detailsItem.todoId) ?? null} onClose={close} onOpenAgent={() => {
+      {detailsItem ? (
+        <StepDetailSheet
+          plan={plan}
+          item={detailsItem}
+          todo={todos.get(detailsItem.todoId) ?? null}
+          onClose={close}
+          onOpenAgent={() => {
             close();
-            actions.open(detailsItem);
-          }} /> : null}
+            actions.openAgent(detailsItem);
+          }}
+          onAction={(action) => {
+            close();
+            void actions.run(detailsItem, action);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -272,9 +272,21 @@ export function PlanDetail({
           <div className="sb-plan-detail__reason" data-testid="plan-detail-stopped-reason">
             {stoppedReason(item)}
           </div>
-          <div className="sb-plan-detail__text">Its agent ended its turn without marking its todo done. Reply in its session; the item runs again once its agent works.</div>
+          <div className="sb-plan-detail__text">
+            {item.stoppedBy === 'account'
+              ? 'Its agent stopped because its account needs you. Do what the Inbox item says, then Retry stopped agents there, or Restart here.'
+              : item.stoppedBy === 'error'
+                ? 'Its agent stopped with an error. Restart starts the same agent again.'
+                : 'Its agent ended its turn without marking its todo done. Reply in its session; the item runs again once its agent works.'}
+          </div>
           {item.runSessionId ? (
             <div className="sb-plan-detail__actions">
+              {/* D139: a failed agent starts again (the same session). */}
+              {item.stoppedBy !== undefined && !remote ? (
+                <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-restart" disabled={busy} onClick={() => void run(() => plansApi.restartItem(plan.id, item.id))}>
+                  Restart
+                </button>
+              ) : null}
               <Link to={{ view: 'session', id: item.runSessionId, tab: 'chat' }} className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-detail-stopped-open">
                 Open session
               </Link>

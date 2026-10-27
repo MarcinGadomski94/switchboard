@@ -1,4 +1,4 @@
-import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_NO_MESSAGE } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_ACCOUNT, PLAN_STOPPED_NO_MESSAGE } from '../../../core/plans.ts';
 import { durationShort, earlyStartWarning, isProtectedTargetName, shortLabel, timeline } from '../../plans/model.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS, type V2Status } from '../glossary.ts';
 import type { BoardColumn } from '../shared/board-model.ts';
@@ -94,6 +94,8 @@ export function stepLook(item: PlanItem, items: readonly PlanItem[]): StepLook {
     case 'needs':
       return { kind, status, label: STEP_LABELS.needs, detail: item.reason };
     case 'stopped':
+      // D139: its agent stopped because its account needs you: said in the label, the reason without the prefix.
+      if (item.stoppedBy === 'account') return { kind, status, label: PROJECT_WORDS.stoppedAccount, detail: (item.reason ?? '').replace(`${PLAN_STOPPED_ACCOUNT}: `, '') || null };
       return { kind, status, label: STEP_LABELS.stopped, detail: item.reason ?? PLAN_STOPPED_NO_MESSAGE };
     case 'approval':
       return { kind, status, label: STEP_LABELS.approval, detail: 'Its agent is done. Combine it, or send it back.' };
@@ -311,7 +313,7 @@ export function axisPercent(at: number, start: number, end: number): number {
 // ── step actions ────────────────────────────────────────────────────────
 
 /** A step's ⋯ action. */
-export type StepActionId = 'hold' | 'release' | 'reopen' | 'retry' | 'done' | 'change' | 'edit' | 'remove';
+export type StepActionId = 'hold' | 'release' | 'reopen' | 'retry' | 'restart' | 'done' | 'change' | 'edit' | 'remove';
 
 /** One entry of the step's ⋯ menu: enabled, or disabled with the reason. */
 export interface StepAction {
@@ -335,7 +337,7 @@ export function remoteBlock(plan: Pick<Plan, 'machine'>): string | null {
  * Edit (D129), Remove), each with the reason when it cannot be used (the menu shows why, never
  * hides an action).
  */
-export function stepActions(plan: Pick<Plan, 'state' | 'machine' | 'targetBranch' | 'mergeMode'>, item: Pick<PlanItem, 'state' | 'storedState' | 'hold' | 'prUrl'>): StepAction[] {
+export function stepActions(plan: Pick<Plan, 'state' | 'machine' | 'targetBranch' | 'mergeMode'>, item: Pick<PlanItem, 'state' | 'storedState' | 'hold' | 'prUrl' | 'stoppedBy'>): StepAction[] {
   const blocked = remoteBlock(plan) ?? (finished(plan) ? `The project is ${plan.state}.` : null);
   const why = (reason: string | null): { disabledReason?: string } => (blocked ? { disabledReason: blocked } : reason ? { disabledReason: reason } : {});
   const actions: StepAction[] = [];
@@ -344,6 +346,8 @@ export function stepActions(plan: Pick<Plan, 'state' | 'machine' | 'targetBranch
   const reopenWhy = item.state !== 'done' ? 'Only done steps can be reopened.' : plan.state !== 'running' && plan.state !== 'paused' ? 'Start the project first.' : null;
   actions.push({ id: 'reopen', label: PROJECT_WORDS.reopen, ...why(reopenWhy) });
   actions.push({ id: 'retry', label: PROJECT_WORDS.retry, ...why(item.storedState !== 'failed' ? 'Only a failed step can be tried again.' : null) });
+  // D139: a step whose agent failed starts again, the same agent.
+  actions.push({ id: 'restart', label: PROJECT_WORDS.restart, ...why(item.stoppedBy === undefined ? 'Only a step whose agent stopped with an error can be restarted.' : null) });
   actions.push({ id: 'done', label: PROJECT_WORDS.markDone, ...why(item.state === 'done' ? 'It’s done already.' : plan.state === 'draft' ? 'Start the project first.' : null) });
   const changeWhy = item.prUrl ? null : item.state === 'ready-to-merge' ?(plan.targetBranch === null || plan.mergeMode === 'none' ? 'This project has no combine step.' : null) : 'No change request yet.';
   actions.push({ id: 'change', label: PROJECT_WORDS.openChange, ...(item.prUrl ? {} : why(changeWhy)) });
@@ -352,9 +356,19 @@ export function stepActions(plan: Pick<Plan, 'state' | 'machine' | 'targetBranch
   return actions;
 }
 
-/** What a step's primary click does: open its agent (it has a run session), else show its detail. */
-export function stepOpens(item: Pick<PlanItem, 'runSessionId'>): { readonly agent: string } | { readonly detail: true } {
+/**
+ * What a step's primary click does: open its agent (it has a run session), else show its detail.
+ * D139: a failed or stopped step shows its detail (Try again / Restart there), not its stopped agent.
+ */
+export function stepOpens(item: Pick<PlanItem, 'runSessionId' | 'state' | 'storedState'>): { readonly agent: string } | { readonly detail: true } {
+  if (item.state === 'stopped' || item.storedState === 'failed') return { detail: true };
   return item.runSessionId ? { agent: item.runSessionId } : { detail: true };
+}
+
+/** D139: the steps the project's "Restart stopped steps (N)" starts again (their agent failed). */
+export function restartableSteps(plan: Pick<Plan, 'items' | 'state'>): PlanItem[] {
+  if (plan.state !== 'running' && plan.state !== 'paused') return [];
+  return plan.items.filter((item) => item.stoppedBy !== undefined);
 }
 
 /** D129: checks a pending step's edit; `null` = fine, else the field's problem. */

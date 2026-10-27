@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useState, useSyncExternalStore } from 'react';
+import { CommandCopy } from '../../components/CommandCopy.tsx';
 import type { Question } from '../../../core/api.ts';
 // Project memory (D107) hook, D136: a flagged proposal's finding (docs/memory-removal.md).
 import { checkFindingText } from '../../../core/memory-check.ts';
@@ -341,7 +342,13 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
       );
     } else {
       // Stopped messages, alerts and the other kinds: their detail is Markdown.
-      body = item.text ? md(item.text, 'v2-qi-text', 'v2-answer-text') : null;
+      body = (
+        <>
+          {item.text ? md(item.text, 'v2-qi-text', 'v2-answer-text') : null}
+          {/* D139: an account's "needs you" item: the command that fixes it, copyable (phones too: it is read-only text). */}
+          {item.command ? <CommandCopy command={item.command} testId="v2-answer-command" /> : null}
+        </>
+      );
     }
     actions = (
       <>

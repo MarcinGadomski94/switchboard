@@ -11,7 +11,7 @@ import { ACCOUNT_CHOICE_WORDS, ANSWER, MODE_LABELS, PROJECT_WORDS } from '../glo
 import { type CliAccountChoice, useAccountChoices } from '../../api/account-choice.ts';
 import { choiceOptions, useChooseAccount } from '../shared/AccountChoice.tsx';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
-import { canStart, checkStepEdit, checkSubfolder, estimateLine, modeLabel, modeOptions, needsProtectedAck, protectedAckText, stepLook, stepName } from './project-model.ts';
+import { canStart, checkStepEdit, checkSubfolder, estimateLine, modeLabel, modeOptions, needsProtectedAck, protectedAckText, stepActions, stepLook, stepName } from './project-model.ts';
 
 /**
  * D131 · lane P · the Projects dialogs: Start (approval mode, the protected-destination
@@ -514,9 +514,26 @@ export function JiraSyncDialog({ plan, state, onClose, onSaved }: { readonly pla
 }
 
 /** A step's details (the eye button; a click on a step without an agent): its state, what it waits on, its task's text, its change request. */
-export function StepDetailSheet({ plan, item, todo, onClose, onOpenAgent }: { readonly plan: Plan; readonly item: PlanItem; readonly todo: SessionTodo | null; readonly onClose: () => void; readonly onOpenAgent: () => void }) {
+export function StepDetailSheet({
+  plan,
+  item,
+  todo,
+  onClose,
+  onOpenAgent,
+  onAction,
+}: {
+  readonly plan: Plan;
+  readonly item: PlanItem;
+  readonly todo: SessionTodo | null;
+  readonly onClose: () => void;
+  readonly onOpenAgent: () => void;
+  /** D139: Try again / Restart from the details (a failed or stopped step's click opens them). */
+  readonly onAction?: (action: 'retry' | 'restart') => void;
+}) {
   const look = stepLook(item, plan.items);
   const estimate = estimateLine(item);
+  // D139: what a failed (Try again) or a stopped step (Restart) offers first.
+  const fix = onAction ? stepActions(plan, item).filter((action) => (action.id === 'retry' || action.id === 'restart') && !action.disabledReason) : [];
   return (
     <Sheet open onClose={onClose} title={stepName(item)} testId="v2-step-sheet">
       <div className="v2-p-step-detail" data-kind={look.kind}>
@@ -553,8 +570,17 @@ export function StepDetailSheet({ plan, item, todo, onClose, onOpenAgent }: { re
             </>
           ) : null}
         </dl>
+        {fix.length > 0 ? (
+          <div className="v2-row v2-p-wrap" style={{ gap: 8 }}>
+            {fix.map((action) => (
+              <Button key={action.id} variant="primary" icon="refresh" onClick={() => onAction?.(action.id as 'retry' | 'restart')} data-testid={`v2-step-sheet-${action.id}`}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {item.runSessionId ? (
-          <Button variant={look.kind === 'stopped' || look.kind === 'needs' ? 'primary' : 'default'} icon="chat" onClick={onOpenAgent} data-testid="v2-step-sheet-open">
+          <Button variant={fix.length === 0 && (look.kind === 'stopped' || look.kind === 'needs') ? 'primary' : 'default'} icon="chat" onClick={onOpenAgent} data-testid="v2-step-sheet-open">
             {ANSWER.openChat}
           </Button>
         ) : null}

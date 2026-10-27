@@ -497,8 +497,17 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
                   label={W.account}
                   value={agent.form.profileId ?? ''}
                   onChange={(event) => setForm({ profileId: event.currentTarget.value === '' ? null : event.currentTarget.value })}
-                  options={[{ value: '', label: W.accountAuto }, ...(accounts.data?.profiles ?? []).filter((p) => p.cli === provider && p.enabled).map((p) => ({ value: p.id, label: p.exhausted ? `${p.name} (out of usage)` : p.name }))]}
+                  options={[{ value: '', label: W.accountAuto }, ...(accounts.data?.profiles ?? []).filter((p) => p.cli === provider && p.enabled).map((p) => ({ value: p.id, label: p.needsYou ? `${p.name} (needs you)` : p.exhausted ? `${p.name} (out of usage)` : p.name }))]}
                 />
+                {/* D139: an account that needs the developer can be picked on purpose, with a warning. */}
+                {(() => {
+                  const picked = (accounts.data?.profiles ?? []).find((p) => p.id === agent.form.profileId);
+                  return picked?.needsYou ? (
+                    <p className="v2-field-error" role="note" data-testid="v2-new-account-needs-you">
+                      {picked.name} needs you: {picked.needsYou.text} The agent may stop at once until that is done.
+                    </p>
+                  ) : null;
+                })()}
                 <Select label={W.model} value={agent.exactModel} onChange={(event) => setAgent({ exactModel: event.currentTarget.value })} options={[{ value: '', label: W.modelBySpeed }, ...(offered ?? []).filter((o) => o.value !== 'default').map((o) => ({ value: o.value, label: o.label }))]} />
                 <div className="v2-row v2-new-switch-row">
                   <Switch label={W.ultracode} checked={agent.form.ultracode} onChange={(ultracode) => setForm({ ultracode })} />

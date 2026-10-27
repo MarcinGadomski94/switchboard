@@ -143,6 +143,13 @@ export interface PlanEnvironment {
   usageHeld(plan: PlanRecord, todo: TodoRecord): Promise<string | null>;
   /** Sends a service message to a session (red checks, a conflict, a changed merge rule). */
   send(sessionId: string, text: string): Promise<void>;
+  /**
+   * D139: why run session `sessionId` cannot start again now (its account needs the developer:
+   * "the account Work needs you — accept Anthropic's updated terms"), `null` = it can. Absent (tests' fakes): never.
+   */
+  accountBlockOf?(sessionId: string): Promise<string | null>;
+  /** D139: starts a failed run session again, the same session (`SessionSupervisor.restartStopped`). Absent: a stopped item restarts as a fresh run. */
+  restartSession?(sessionId: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }>;
   /** Raises an Inbox system item (once per `dedupe`). */
   notice(input: { readonly kind: 'plan-ready' | 'plan-conflict' | 'plan-confirm' | 'plan-reopened'; readonly sessionId: string; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<void>;
   /** D102: raises the Inbox's "Ready to merge: <item> (<plan>)" item (Merge / Open plan; once per `dedupe`). */
@@ -582,7 +589,8 @@ export class PlanService {
         if (!item) continue;
         if (item.state === 'done') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'merged', at: item.mergedAt ?? item.doneAt ?? item.updatedAt });
         else if (item.state === 'failed') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'failed', at: item.doneAt ?? item.updatedAt });
-        else if (view.state === 'blocked') out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'blocked', at: item.updatedAt });
+        // D139: an item whose run session failed shows `stopped` (Restart) now; for Insights it is still blocked.
+        else if (view.state === 'blocked' || view.stoppedBy !== undefined) out.push({ itemId: item.id, runSessionId: item.runSessionId, outcome: 'blocked', at: item.updatedAt });
       }
     }
     return out;
@@ -885,6 +893,8 @@ export class PlanService {
         // D120: a turn over with the todo open is `stopped` once the grace period has passed.
         todoDone: todo ? todo.state === 'done' : undefined,
         idleSince: sessionless ? null : session ? session.lastActivityAt : null,
+        // D139: a failed run session whose account needs the developer: "Stopped (account needs you)".
+        accountStop: session && session.status === 'fail' && session.closedAt === null && this.#env.accountBlockOf ? await this.#env.accountBlockOf(session.id) : null,
       });
     }
     const perItem = reposPerItem(plan);
@@ -892,7 +902,8 @@ export class PlanService {
     // D120: a stopped item's reason is its agent's last message (cut).
     const reasons = new Map<string, string>();
     for (const item of model.items) {
-      if (item.state !== 'stopped') continue;
+      // D139: a failed run session keeps its own reason (an error, or its account needing the developer).
+      if (item.state !== 'stopped' || item.stoppedBy !== undefined) continue;
       const stored = items.find((candidate) => candidate.id === item.id);
       if (stored && reopenedWithoutSession(stored) && (!item.runSessionId || (await this.#store.sessions.get(item.runSessionId))?.closedAt != null)) reasons.set(item.id, `${stored.note ?? PLAN_REOPENED_PREFIX}; its run session is closed: reopen it to go on, or Mark done`);
       else if (item.runSessionId) reasons.set(item.id, stoppedExcerpt(await this.#lastAgentMessage(item.runSessionId)));
@@ -1743,11 +1754,78 @@ export class PlanService {
     return this.get(planId);
   }
 
-  /** `POST /api/plans/{id}/resume`: ready items start again (also a plan paused because Plans was switched off). */
+  /**
+   * `POST /api/plans/{id}/resume`: ready items start again (also a plan paused because Plans was
+   * switched off). D139: and its **stopped** items (a failed run session) start again
+   * ({@link restartStopped}); a running plan with stopped items is resumed that way too (not 409).
+   */
   async resume(planId: string): Promise<Plan> {
     const plan = await this.#plan(planId);
-    if (plan.state !== 'paused') throw new PlanError(409, 'not-paused', `the plan is ${plan.state}`);
-    await this.#repo().update(planId, { state: 'running', pausedReason: null });
+    const stopped = plan.state === 'running' || plan.state === 'paused' ? await this.#stoppedItems(plan) : [];
+    if (plan.state !== 'paused' && stopped.length === 0) throw new PlanError(409, 'not-paused', `the plan is ${plan.state}`);
+    if (plan.state === 'paused') await this.#repo().update(planId, { state: 'running', pausedReason: null });
+    for (const item of stopped) await this.#restart(item);
+    await this.#publish(planId);
+    this.kick();
+    return this.get(planId);
+  }
+
+  /** D139: the plan's items whose run session failed (stored `running`, the session `fail` and not closed). */
+  async #stoppedItems(plan: PlanRecord): Promise<PlanItemRecord[]> {
+    const out: PlanItemRecord[] = [];
+    for (const item of await this.#repo().items(plan.id)) {
+      if (item.state !== 'running' || item.runSessionId === null) continue;
+      const session = await this.#store.sessions.get(item.runSessionId);
+      if (session && session.status === 'fail' && session.closedAt === null) out.push(item);
+    }
+    return out;
+  }
+
+  /**
+   * D139: starts a stopped item again: its run session, the same session (the conversation kept,
+   * its lost messages sent again); a session that cannot start again → a fresh run of the item
+   * (back to `pending`, the scheduler starts it as usual). While its account needs the developer it
+   * waits (the item keeps "Stopped (account needs you)"). Answers what happened.
+   */
+  async #restart(item: PlanItemRecord): Promise<'restarted' | 'fresh' | 'waiting'> {
+    const sessionId = item.runSessionId as string;
+    if ((await this.#env.accountBlockOf?.(sessionId)) != null) return 'waiting';
+    const outcome = this.#env.restartSession ? await this.#env.restartSession(sessionId) : { ok: false as const, message: 'no restart' };
+    if (outcome.ok) {
+      this.#dirty.set(item.id, this.#dirty.get(item.id) === true);
+      return 'restarted';
+    }
+    this.#runs.delete(sessionId);
+    await this.#repo().updateItem(item.id, { state: 'pending', reason: null, note: `restarted in a new session (${outcome.message})`, waitingOn: null, waitingSince: null, runSessionId: null, branch: null, cut: {}, prUrl: null, checks: null, conflicts: 0, startedAt: null });
+    return 'fresh';
+  }
+
+  /** D139 · `POST /api/plans/{id}/restart-stopped`: every stopped item starts again ({@link #restart}); 409 when there is none. */
+  async restartStopped(planId: string): Promise<{ readonly plan: Plan; readonly restarted: number; readonly waiting: number }> {
+    const plan = await this.#plan(planId);
+    if (plan.state !== 'running' && plan.state !== 'paused') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
+    const stopped = await this.#stoppedItems(plan);
+    if (stopped.length === 0) throw new PlanError(409, 'not-stopped', 'no step of this plan is stopped');
+    let restarted = 0;
+    let waiting = 0;
+    for (const item of stopped) {
+      if ((await this.#restart(item)) === 'waiting') waiting += 1;
+      else restarted += 1;
+    }
+    await this.#publish(planId);
+    this.kick();
+    return { plan: await this.get(planId), restarted, waiting };
+  }
+
+  /** D139 · `POST /api/plans/{id}/items/{itemId}/restart`: a stopped item starts again; 409 when it is not stopped, or (`account`) its account needs the developer. */
+  async restartItem(planId: string, itemId: string): Promise<Plan> {
+    const plan = await this.#plan(planId);
+    if (plan.state !== 'running' && plan.state !== 'paused') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
+    const item = await this.#item(planId, itemId);
+    if (!(await this.#stoppedItems(plan)).some((candidate) => candidate.id === item.id)) throw new PlanError(409, 'not-stopped', `${itemLabel(item)} is not stopped: only a step whose session failed is restarted`);
+    const block = await this.#env.accountBlockOf?.(item.runSessionId as string);
+    if (block != null) throw new PlanError(409, 'account', `${block}: do that first (the Inbox item has the command), then Retry stopped agents there`);
+    await this.#restart(item);
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -2087,7 +2165,8 @@ export class PlanService {
     // 2. Start the ready items (running plans only), as long as a slot is free and usage allows.
     let held: string | null = null;
     if (plan.state === 'running') {
-      const running = items.filter((item) => item.state === 'running').length;
+      // D139: an item whose run session failed holds no slot (it is stopped until Restart): the pending steps may start.
+      const running = (await Promise.all(items.filter((item) => item.state === 'running').map(async (item) => (item.runSessionId ? (await this.#store.sessions.get(item.runSessionId))?.status : null) !== 'fail'))).filter(Boolean).length;
       // D115: an item whose repositories the plan's agent has not picked yet waits.
       const perItem = reposPerItem(plan);
       const startable = readyItems(items, edges, items.length).filter((item) => !perItem || item.solutions.length > 0);

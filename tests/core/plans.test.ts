@@ -245,9 +245,15 @@ describe('D99 · plan graph rules', () => {
       expect(stoppedSince(idle({ sessionStatus: 'run' }), 'agents')).toBeNull();
     });
 
-    it('a question → question; an error → blocked; a todo done → not stopped', () => {
+    it('a question → question; an error → stopped (D139: Restart), its account waiting → says so; a todo done → not stopped', () => {
       expect(view(idle({ sessionStatus: 'need' }))[0]?.state).toBe('question');
-      expect(view(idle({ sessionStatus: 'fail' }))[0]?.state).toBe('blocked');
+      expect(view(idle({ sessionStatus: 'fail' }))[0]).toMatchObject({ state: 'stopped', stoppedBy: 'error', reason: 'its session stopped with an error' });
+      expect(view(idle({ sessionStatus: 'fail', accountStop: "the account Work needs you — accept Anthropic's updated terms" }))[0]).toMatchObject({
+        state: 'stopped',
+        stoppedBy: 'account',
+        reason: "Stopped (account needs you): the account Work needs you — accept Anthropic's updated terms",
+      });
+      expect(view(idle({ sessionStatus: 'fail' }))[0]?.stoppedSince).toBeNull();
       expect(view(idle({ todoDone: true }))[0]?.state).toBe('running');
       // Unknown todo (an older caller): never stopped.
       expect(view(idle({ todoDone: undefined }))[0]?.state).toBe('running');

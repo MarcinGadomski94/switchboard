@@ -28,15 +28,26 @@ export function AccountPicker({
   const profiles = (overview.data?.profiles ?? []).filter((p) => p.cli === provider && p.enabled);
   if (profiles.length < 2) return null;
   const shown = profiles.some((p) => p.id === value) ? value : null;
-  return (
+  // D139: an account that needs the developer can still be picked on purpose, with a warning.
+  const picked = profiles.find((p) => p.id === shown);
+  const select = (
     <select className="sb-cli-picker" data-testid={testId} aria-label="Account" value={shown ?? ''} disabled={disabled} onChange={(event) => onPick(event.target.value === '' ? null : event.target.value)}>
       <option value="">Account: automatic</option>
       {profiles.map((profile) => (
         <option key={profile.id} value={profile.id} title={exhaustedText(profile) ?? undefined}>
           {profile.name}
-          {profile.exhausted ? ' (out of usage)' : ''}
+          {profile.needsYou ? ' (needs you)' : profile.exhausted ? ' (out of usage)' : ''}
         </option>
       ))}
     </select>
+  );
+  if (!picked?.needsYou) return select;
+  return (
+    <>
+      {select}
+      <span className="sb-account-picker-warning" role="note" data-testid={`${testId}-needs-you`}>
+        {picked.name} needs you: {picked.needsYou.text} The agent may stop at once until that is done.
+      </span>
+    </>
   );
 }

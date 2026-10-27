@@ -1583,8 +1583,10 @@ export interface InboxItem {
   readonly url?: string;
   /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
   readonly teamRole?: string;
-  /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item; absent on every other item. */
+  /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item (D139: `account-needs-you` on an account's); absent on every other item. */
   readonly systemKind?: string;
+  /** Additive (D139): the terminal command an account's "needs you" item shows, copyable (`CLAUDE_CONFIG_DIR="<dir>" claude`). */
+  readonly command?: string;
 }
 
 /**

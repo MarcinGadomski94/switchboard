@@ -56,9 +56,17 @@ function InlineButtons({ plan, item, actions, onSendBack, compact = false }: { r
       </span>
     );
   }
+  // D139: a step whose agent failed: Restart (the same agent goes on).
+  if (look.kind === 'stopped' && item.stoppedBy !== undefined && (plan.state === 'running' || plan.state === 'paused')) {
+    return (
+      <Button size="sm" variant="primary" icon="refresh" onClick={() => void actions.run(item, 'restart')} data-testid="v2-step-restart">
+        {PROJECT_WORDS.restart}
+      </Button>
+    );
+  }
   if ((look.kind === 'question' || look.kind === 'needs' || look.kind === 'stopped') && item.runSessionId && !compact) {
     return (
-      <Button size="sm" icon="hand" onClick={() => actions.open(item)} data-testid="v2-step-answer">
+      <Button size="sm" icon="hand" onClick={() => actions.openAgent(item)} data-testid="v2-step-answer">
         {look.kind === 'stopped' ? 'Decide' : 'Answer'}
       </Button>
     );
@@ -318,6 +326,13 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
                 tabIndex={0}
                 aria-label={`${name} · ${look.label}`}
                 onClick={activate}
+                onContextMenu={(event) => {
+                  // D139: a right-click (a long press on touch) opens the node's step menu.
+                  const button = (event.currentTarget as SVGGElement).querySelector<HTMLButtonElement>('[data-testid="v2-step-menu"]');
+                  if (!button) return;
+                  event.preventDefault();
+                  button.click();
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
@@ -336,6 +351,12 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
                 <text x={node.x + 12} y={node.y + 66} className="v2-p-graph-state">
                   {cut(look.kind === 'needs' && look.detail ? `Needs you: ${look.detail}` : look.label, 28)}
                 </text>
+                {/* D139: the same step menu as the Steps list (⋯ on the node; a right-click opens it too). */}
+                <foreignObject x={node.x + GRAPH.cardWidth - 38} y={node.y + 4} width={34} height={34}>
+                  <div className="v2-p-graph-menu" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                    <MenuButton items={stepMenu(plan, item, actions)} label={`Step actions for ${name}`} testId="v2-step-menu" />
+                  </div>
+                </foreignObject>
               </g>
             );
           })}
@@ -393,6 +414,8 @@ export function TimelineView({ plan, actions, onDetails }: ViewProps) {
                     <span>{stepName(item)}</span>
                     <span className="v2-sr"> · {look.label}</span>
                   </button>
+                  {/* D139: the same step menu as the Steps list. */}
+                  <MenuButton items={stepMenu(plan, item, actions)} label={`Step actions for ${stepName(item)}`} testId="v2-step-menu" />
                   <div className="v2-p-tl-r">
                     {row.segments.map((segment, index) => {
                       const style: CSSProperties = { left: pct(segment.from), width: `calc(${pct(segment.to)} - ${pct(segment.from)})` };

@@ -12,6 +12,8 @@ import { type StepActionId, stepName, stepOpens } from './project-model.ts';
 export interface StepActions {
   /** Opens the step's agent (its run session: the peek sheet, its page on a phone); `false` when it has none (the caller shows its details). */
   readonly open: (item: PlanItem) => boolean;
+  /** Opens the step's agent whatever its state (Decide, the details' Open chat); `false` without one. */
+  readonly openAgent: (item: PlanItem) => boolean;
   readonly run: (item: PlanItem, action: StepActionId) => Promise<void>;
   readonly combine: (item: PlanItem) => Promise<void>;
   readonly sendBack: (item: PlanItem, comment: string) => Promise<boolean>;
@@ -31,6 +33,15 @@ export function useStepActions(plan: Plan, put: (plan: Plan) => void, onEdit: (i
         return true;
       }
       return false;
+    },
+    [openAgent],
+  );
+
+  const openStepAgent = useCallback(
+    (item: PlanItem): boolean => {
+      if (!item.runSessionId) return false;
+      openAgent(item.runSessionId);
+      return true;
     },
     [openAgent],
   );
@@ -64,6 +75,9 @@ export function useStepActions(plan: Plan, put: (plan: Plan) => void, onEdit: (i
           return;
         case 'retry':
           await attempt(() => plansApi.retryItem(plan.id, item.id), `${name} will try again.`);
+          return;
+        case 'restart':
+          await attempt(() => plansApi.restartItem(plan.id, item.id), `${name} restarted. Its agent goes on.`);
           return;
         case 'done':
           await attempt(() => plansApi.markItemDone(plan.id, item.id), `${name} marked done.`);
@@ -119,5 +133,5 @@ export function useStepActions(plan: Plan, put: (plan: Plan) => void, onEdit: (i
     [plan.id, put, toast],
   );
 
-  return { open, run, combine, sendBack, edit };
+  return { open, openAgent: openStepAgent, run, combine, sendBack, edit };
 }

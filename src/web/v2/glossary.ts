@@ -1547,6 +1547,10 @@ export const PROJECT_WORDS = {
   onHold: 'On hold',
   reopen: 'Reopen',
   retry: 'Try again',
+  // D139: a step whose agent failed (its account needed you, or an error) starts again, the same agent.
+  restart: 'Restart',
+  restartStopped: (n: number): string => `Restart stopped steps (${n})`,
+  stoppedAccount: 'Stopped (account needs you)',
   markDone: 'Mark done',
   openChange: 'Open change request',
   remove: 'Remove from project',

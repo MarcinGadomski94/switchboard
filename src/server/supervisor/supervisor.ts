@@ -1247,6 +1247,38 @@ export class SessionSupervisor {
     return this.#get(sessionId);
   }
 
+  /**
+   * D139 (`docs/accounts.md` → *The account needs you*): starts a session that stopped (its
+   * process failed, e.g. its account needed the developer) again, **the same session**. Its
+   * messages the CLI never took up (`delivered: false`; a process that died before `init`
+   * took up none) go out again in order; with none, D7's "Continue.". A Claude Code
+   * conversation that was never written (no transcript: the process died before it began)
+   * starts as new with the session's own id instead of `--resume`, so nothing is lost.
+   * @throws {SupervisorError} `not-found`, `closed`, `detached`, `switching`, `already-running`.
+   */
+  async restartStopped(sessionId: string): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
+    await this.#instructionReloads.get(sessionId)?.catch(() => undefined);
+    if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
+    const lost: Array<{ readonly text: string; readonly origin: UserMessageOrigin }> = [];
+    for (const event of await this.#store.events.latest(sessionId, 200)) {
+      const payload = event.payload as { readonly type?: string; readonly text?: unknown; readonly origin?: unknown; readonly delivered?: unknown; readonly withdrawn?: unknown; readonly queued?: unknown } | null;
+      if (payload?.type !== 'user' || payload.delivered !== false || payload.withdrawn === true || payload.queued === 'credits') continue;
+      if (typeof payload.text !== 'string' || payload.text.trim() === '') continue;
+      lost.push({ text: payload.text, origin: (typeof payload.origin === 'string' ? payload.origin : 'user') as UserMessageOrigin });
+    }
+    const fresh = session.provider === 'claude' && (await this.findTranscript(session.claudeSessionId)) === null;
+    const live = await this.#spawn(session, { kind: fresh ? 'new' : 'resume', claudeSessionId: session.claudeSessionId }, fresh ? 'started' : 'resumed');
+    if (lost.length === 0) await this.#send(live, RESUME_MESSAGE, 'resume');
+    for (const message of lost) await this.#send(live, message.text, message.origin);
+    return this.#get(sessionId);
+  }
+
   /** "Continue in terminal": the D7 stop, then the session is no longer attached. */
   async detach(sessionId: string): Promise<ResumeCommand> {
     await this.#gate;
@@ -3711,4 +3743,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'look-at-updated': LOOK_AT_UPDATED_DIVIDER,
   'tools-updated': TOOLS_UPDATED_DIVIDER,
   'processes-stopped': 'Stopped processes the session left running',
+  'account-needs-you': 'Stopped: the account needs you',
 };

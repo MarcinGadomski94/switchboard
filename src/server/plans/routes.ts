@@ -32,7 +32,7 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  *   `POST /api/plans` → 201 `Plan` (a draft); `GET|PUT|DELETE /api/plans/{id}` (D117 follow-up: `DELETE …?stop=1`
  *   cancels a running or paused plan and stops its running item sessions first, → 200 `{ cancelled, stopped }`);
  * - `POST /api/plans/{id}/items` → 201 `{ plan, itemId }`; `PUT|DELETE /api/plans/{id}/items/{itemId}`;
- *   `POST /api/plans/{id}/items/{itemId}/retry | done | reopen` (D121); D102, the Merge step of a ready-to-merge item:
+ *   `POST /api/plans/{id}/items/{itemId}/retry | done | reopen` (D121) | `restart` (D139); `POST /api/plans/{id}/restart-stopped` (D139); D102, the Merge step of a ready-to-merge item:
  *   `POST /api/plans/{id}/items/{itemId}/merge | open-pr | send-back` (`{ comment }`);
  * - `POST /api/plans/{id}/edges` `{ from, to }`; `DELETE /api/plans/{id}/edges/{from}/{to}`;
  * - `POST /api/plans/{id}/start` `{ mergeMode }` (required), `…/pause`, `…/resume`, `…/cancel`;
@@ -123,17 +123,27 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     }
   });
 
-  // D121: reopen a done item (a running or paused plan).
-  for (const action of ['retry', 'done', 'reopen'] as const) {
+  // D121: reopen a done item (a running or paused plan). D139: restart a stopped item (its run session failed).
+  for (const action of ['retry', 'restart', 'done', 'reopen'] as const) {
     app.post<{ Params: { id: string; itemId: string } }>(`/api/plans/:id/items/:itemId/${action}`, async (request, reply) => {
       try {
         if (action === 'reopen') return await plans.reopenItem(request.params.id, request.params.itemId);
+        if (action === 'restart') return await plans.restartItem(request.params.id, request.params.itemId);
         return action === 'retry' ? await plans.retryItem(request.params.id, request.params.itemId) : await plans.markItemDone(request.params.id, request.params.itemId);
       } catch (error) {
         return sendPlanError(reply, error);
       }
     });
   }
+
+  // D139: every stopped step of a plan starts again → `{ plan, restarted, waiting }`.
+  app.post<{ Params: { id: string } }>('/api/plans/:id/restart-stopped', async (request, reply) => {
+    try {
+      return await plans.restartStopped(request.params.id);
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
 
   // D102: the developer's Merge step (merge locally into the target, open a PR, send it back).
   for (const action of ['merge', 'open-pr', 'send-back'] as const) {

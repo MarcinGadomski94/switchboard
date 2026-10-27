@@ -292,7 +292,9 @@ export type LifecycleAction =
   /** 2026-10-16: the process was restarted (`--resume`, no message) so its CLI lists a Switchboard tool an ask needs (the chat's divider "Switchboard tools updated"; `docs/mcp.md`). */
   | 'tools-updated'
   /** D127: processes the session left running were stopped (idle, closed, or the developer's Stop; `stoppedProcesses`, `reason`; `docs/processes.md`). */
-  | 'processes-stopped';
+  | 'processes-stopped'
+  /** D139: the session stopped because its account needs the developer (the chat's divider "Stopped: the account Work needs you — …"; `message` = the CLI's words, `command`, `fromProfile`). */
+  | 'account-needs-you';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -329,6 +331,8 @@ export interface LifecyclePayload {
   readonly linkedSessionId?: string;
   readonly linkedTitle?: string;
   /** D127 (`processes-stopped`): what was stopped (`reason` = `idle` / `closed` / `developer`). */
+  /** D139 (`account-needs-you`): the terminal command that fixes the account (absent: open the CLI with it). */
+  readonly command?: string;
   readonly stoppedProcesses?: ReadonlyArray<{ readonly pid: number; readonly name: string; readonly kind: string; readonly rssBytes: number }>;
 }
 

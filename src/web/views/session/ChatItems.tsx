@@ -1,4 +1,5 @@
 import { loopChipText } from '../../../core/owned-loops.ts';
+import { CommandCopy } from '../../components/CommandCopy.tsx';
 import '../owned-loops.css';
 import { Fragment, type ReactNode, useState } from 'react';
 import { NOT_SENT_NOTE, RESEND_LABEL } from '../../../core/hooked-continue.ts';
@@ -261,6 +262,13 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             {item.text}
             {/* D80: the newest revert can be undone. */}
             {redo && item.revert === 'reverted' ? <RedoButton sessionId={sessionId} /> : null}
+            {/* D139: the account needs the developer: the CLI's words and the command that fixes it. */}
+            {item.needsYou ? (
+              <span className="sb-chat-divider-needs" data-testid="chat-divider-needs-you" style={{ display: 'block' }}>
+                {item.needsYou.text ? <span style={{ display: 'block', marginTop: 4 }}>{item.needsYou.text}</span> : null}
+                {item.needsYou.command ? <CommandCopy command={item.needsYou.command} testId="chat-divider-command" /> : null}
+              </span>
+            ) : null}
           </span>
         )}
       </div>

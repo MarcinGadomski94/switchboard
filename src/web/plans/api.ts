@@ -91,6 +91,10 @@ export const plansApi = {
   updateItem: (id: string, itemId: string, body: Readonly<Record<string, unknown>>) => call<Plan>('PUT', `/api/plans/${enc(id)}/items/${enc(itemId)}`, body),
   removeItem: (id: string, itemId: string) => call<Plan>('DELETE', `/api/plans/${enc(id)}/items/${enc(itemId)}`),
   retryItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/retry`),
+  /** D139: a step whose run session failed starts again, the same session. */
+  restartItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/restart`),
+  /** D139: every stopped step starts again (those whose account still needs the developer wait). */
+  restartStopped: (id: string) => call<{ readonly plan: Plan; readonly restarted: number; readonly waiting: number }>('POST', `/api/plans/${enc(id)}/restart-stopped`),
   /** D121: Reopen a done item of a running or paused plan (it runs again; its dependents that started early are flagged). */
   reopenItem: (id: string, itemId: string) => call<Plan>('POST', `/api/plans/${enc(id)}/items/${enc(itemId)}/reopen`),
   /** Mark done (also the developer's confirmation of a held item of a plan without a merge step). */

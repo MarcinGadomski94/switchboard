@@ -271,6 +271,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   // D109: the PR watcher.
   'ci-failing': 'CI keeps failing',
   'ci-ready': 'Ready to merge',
+  // D139: an account the CLI refuses to run until the developer acts (new terms, signed out).
+  'account-needs-you': 'Account needs you',
 };
 
 /**
@@ -295,6 +297,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
   const route = isRecord(record.payload) && typeof record.payload['route'] === 'string' ? record.payload['route'] : null;
   // D109: the PR an item is about (Open PR's link).
   const url = isRecord(record.payload) && typeof record.payload['url'] === 'string' && /^https:\/\//.test(record.payload['url']) ? record.payload['url'] : null;
+  // D139: the terminal command an account's "needs you" item shows (copyable).
+  const command = record.kind === 'account-needs-you' && isRecord(record.payload) && typeof record.payload['command'] === 'string' ? record.payload['command'] : null;
   return {
     id: record.id,
     kind: 'system',
@@ -304,7 +308,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     title: record.title,
     label: `${SYSTEM_ITEM_LABELS[record.kind] ?? record.kind}${record.kind === 'turn-waiting' && isRecord(record.payload) && record.payload['detected'] === true ? ' · detected' : ''}`,
     // D124: a "Waiting for you" item says its kind (the push and Team read it).
-    ...(record.kind === 'turn-waiting' ? { systemKind: record.kind } : {}),
+    ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' ? { systemKind: record.kind } : {}),
+    ...(command !== null ? { command } : {}),
     detail: record.detail,
     createdAt: record.createdAt,
     branches: record.branches.map((branch) => ({ solution: branch.solution, branch: branch.branch })),

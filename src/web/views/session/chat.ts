@@ -142,6 +142,8 @@ export type ChatItem =
       readonly revert?: 'reverted' | 'undone';
       /** D83: the other session of a continuation ("Continued from / in <title>" opens it); absent otherwise. */
       readonly linkedSessionId?: string;
+      /** D139: a session stopped because its account needs the developer: the CLI's words and the command that fixes it. */
+      readonly needsYou?: { readonly text: string | null; readonly command: string | null };
     };
 
 /**
@@ -388,6 +390,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // D80: "Reverted to before turn N" (the newest one carries Redo) and "Undid the revert to before turn N".
       if ((lifecycle.action === 'reverted' || lifecycle.action === 'revert-undone') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null, revert: lifecycle.action === 'reverted' ? 'reverted' : 'undone' });
+      }
+      // D139: "Stopped: the account Work needs you — accept Anthropic's updated terms", with the CLI's words and the command.
+      if (lifecycle.action === 'account-needs-you' && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null, needsYou: { text: lifecycle.message ?? null, command: lifecycle.command ?? null } });
       }
       // D83: a fresh session starts with "Continued from <old>", the session it continues ends with "Continued in <new>" (each a link).
       if ((lifecycle.action === 'continued-from' || lifecycle.action === 'continued-in') && event.kind === 'text') {

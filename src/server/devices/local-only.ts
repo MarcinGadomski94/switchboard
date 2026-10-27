@@ -149,10 +149,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // phone's ▸ Run in new session (D76) many times; its safeguards (target branch, merge mode, green checks) hold on any device.
   ['GET|POST', /^\/api\/plans$/],
   ['GET|PUT|DELETE', /^\/api\/plans\/[^/]+$/],
-  ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
+  ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel|restart-stopped)$/],
   ['PUT|DELETE', /^\/api\/plans\/[^/]+\/items\/[^/]+$/],
   // D102: a ready-to-merge item's Merge (local only), Open PR and Send back, as the review cards' were.
-  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done|reopen|merge|open-pr|send-back)$/],
+  ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|restart|done|reopen|merge|open-pr|send-back)$/],
   ['DELETE', /^\/api\/plans\/[^/]+\/edges\/[^/]+\/[^/]+$/],
   ['PUT', /^\/api\/plans\/[^/]+\/(?:mode|holds)$/],
   // Project memory (D107) hook (docs/memory.md → *Phones and paired machines*): read it, and review proposals on the phone:

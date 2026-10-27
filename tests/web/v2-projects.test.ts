@@ -30,6 +30,7 @@ import {
   stepLook,
   stepName,
   stepNeedsYou,
+  restartableSteps,
   stepOpens,
   timeLeft,
   waitingOn,
@@ -182,6 +183,9 @@ describe('step states', () => {
   it('a click opens the step’s agent when it has one, else its details', () => {
     expect(stepOpens(item('1', { runSessionId: 's9' }))).toEqual({ agent: 's9' });
     expect(stepOpens(item('1'))).toEqual({ detail: true });
+    // D139: a failed or stopped step opens its details (Try again / Restart there), not its stopped agent.
+    expect(stepOpens(item('1', { runSessionId: 's9', state: 'stopped', storedState: 'running', stoppedBy: 'account' }))).toEqual({ detail: true });
+    expect(stepOpens(item('1', { runSessionId: 's9', state: 'blocked', storedState: 'failed' }))).toEqual({ detail: true });
   });
 });
 
@@ -232,7 +236,8 @@ describe('the step menu', () => {
 
   it('has Hold, Reopen, Try again, Mark done, Open change request, Edit and Remove, each with its reason', () => {
     const pending = stepActions(running, item('1'));
-    expect(ids(pending)).toEqual(['hold', 'reopen', 'retry', 'done', 'change', 'edit', 'remove']);
+    expect(ids(pending)).toEqual(['hold', 'reopen', 'retry', 'restart', 'done', 'change', 'edit', 'remove']);
+    expect(why(pending, 'restart')).toBe('Only a step whose agent stopped with an error can be restarted.');
     expect(why(pending, 'hold')).toBeUndefined();
     expect(why(pending, 'reopen')).toBe('Only done steps can be reopened.');
     expect(why(pending, 'retry')).toBe('Only a failed step can be tried again.');
@@ -252,6 +257,14 @@ describe('the step menu', () => {
     expect(why(done, 'edit')).toBe('Only a step that hasn’t started can be edited.');
     expect(why(done, 'remove')).toBe('A running or done step can’t be removed.');
     expect(why(stepActions(plan([], { state: 'draft' }), item('1', { state: 'done', storedState: 'done' })), 'reopen')).toBe('Start the project first.');
+  });
+
+  it('D139: a step whose agent failed can be restarted (also when its account needed you); the project counts them', () => {
+    const stopped = item('1', { state: 'stopped', storedState: 'running', runSessionId: 's1', stoppedBy: 'account', reason: "Stopped (account needs you): the account Work needs you — accept Anthropic's updated terms" });
+    expect(why(stepActions(running, stopped), 'restart')).toBeUndefined();
+    expect(stepLook(stopped, [stopped])).toMatchObject({ kind: 'stopped', label: 'Stopped (account needs you)', detail: "the account Work needs you — accept Anthropic's updated terms" });
+    expect(restartableSteps(plan([stopped, item('2')], { state: 'running' })).map((entry) => entry.id)).toEqual(['1']);
+    expect(restartableSteps(plan([stopped], { state: 'done' }))).toEqual([]);
   });
 
   it('a failed step can be tried again; a step ready for approval opens its change request', () => {

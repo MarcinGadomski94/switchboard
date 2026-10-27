@@ -87,6 +87,8 @@ export interface AccountProfile {
   readonly elsewhere?: readonly AccountElsewhere[];
   /** Additive (D98): `usage` is a paired machine's newer reading (that machine's name). */
   readonly usageFrom?: string;
+  /** Additive (D139, `docs/accounts.md` → *The account needs you*): the account waits for the developer (omitted when it does not). */
+  readonly needsYou?: ProfileNeedsYou;
 }
 
 /** Where the settings live (`settings` table, one JSON value). */
@@ -288,6 +290,149 @@ export function parseLimitError(text: string, cli: LimitStrictness, now: Date = 
   return { window, resetsAt: parseResetTime(one, now), text: one.slice(0, 300) };
 }
 
+// ── D139: the account needs the developer (docs/accounts.md → *The account needs you*) ──
+
+/**
+ * D139: why an account cannot run anything until the developer acts in the CLI itself:
+ * `terms` (Claude Code's "[ACTION REQUIRED] … review the updated terms"), `login` (signed
+ * out, a key or token that no longer works), `action` (another "[ACTION REQUIRED]" the CLI
+ * prints).
+ */
+export type AccountActionKind = 'terms' | 'login' | 'action';
+
+/** D139: an exit / failed turn that needs the developer, read from the CLI's own text. */
+export interface AccountActionHit {
+  readonly kind: AccountActionKind;
+  /** The CLI's own words (the matching line, whitespace folded, ≤ 500 characters). */
+  readonly text: string;
+}
+
+/**
+ * D139: the CLIs' own "needs you" wordings, strongest first. Each is **VERIFIED** in the
+ * CLI's binary (Claude Code 2.1.311, Codex CLI 0.160.0, read-only strings); the
+ * `[ACTION REQUIRED]` terms line is also the incident's stderr verbatim (2026-10-27).
+ * OpenCode has none: its errors are its provider's and were not read (nothing is guessed).
+ */
+const ACCOUNT_ACTION_PATTERNS: ReadonlyArray<{ readonly cli: 'claude' | 'codex'; readonly kind: AccountActionKind; readonly re: RegExp }> = [
+  // VERIFIED (incident + 2.1.311): "[ACTION REQUIRED] An update to our Consumer Terms and Privacy Policy has taken effect on October 8, 2025. You must run `claude` to review the updated terms."
+  { cli: 'claude', kind: 'terms', re: /\[ACTION REQUIRED\][^\n]*\b(?:terms|privacy policy)\b/i },
+  // VERIFIED marker (2.1.311): any other "[ACTION REQUIRED]" line is the CLI asking for something before it runs.
+  { cli: 'claude', kind: 'action', re: /\[ACTION REQUIRED\]/ },
+  // VERIFIED (2.1.311): "API Error: 401 Invalid API key · Please run /login", "Please run /login", "(run /login to renew)".
+  { cli: 'claude', kind: 'login', re: /please run \/login|\(run \/login to renew\)/i },
+  // VERIFIED (2.1.311): "Invalid API key" (not "Invalid API key format", a settings mistake).
+  { cli: 'claude', kind: 'login', re: /\binvalid api key\b(?! format)/i },
+  // VERIFIED (2.1.311): the CLI's own pattern "^OAuth (?:access )?token has expired\b".
+  { cli: 'claude', kind: 'login', re: /\boauth (?:access )?token has expired\b/i },
+  // VERIFIED (2.1.311): "Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator."
+  { cli: 'claude', kind: 'login', re: /\boauth token revoked\b/i },
+  // VERIFIED (2.1.311): "Not logged in. Run claude auth login to authenticate." (a line that starts with it).
+  { cli: 'claude', kind: 'login', re: /(?:^|\n)\s*not logged in\b/i },
+  // VERIFIED (codex-cli 0.160.0): "Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again."
+  { cli: 'codex', kind: 'login', re: /your access token could not be refreshed\b/i },
+  // VERIFIED (codex-cli 0.160.0): "ChatGPT account ID not available, please re-run `codex login`".
+  { cli: 'codex', kind: 'login', re: /please re-run `?codex login`?/i },
+];
+
+/**
+ * D139: reads an exit's stderr / stdout (or a failed turn's error text) for a CLI that
+ * stopped because **the account needs the developer** (accept new terms, sign in again);
+ * `null` for anything else: an ordinary error, a usage limit ({@link parseLimitError} wins),
+ * a tool failure. Only the CLIs' own wordings count; the kept text is the matching line.
+ */
+export function parseAccountAction(text: string, cli: LimitStrictness): AccountActionHit | null {
+  if (text.trim() === '' || cli === 'opencode') return null;
+  if (parseLimitError(text, cli) !== null) return null;
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '');
+  for (const pattern of ACCOUNT_ACTION_PATTERNS) {
+    if (pattern.cli !== cli || !pattern.re.test(text)) continue;
+    const line = lines.find((candidate) => pattern.re.test(candidate)) ?? text;
+    return { kind: pattern.kind, text: line.replace(/\s+/g, ' ').trim().slice(0, 500) };
+  }
+  return null;
+}
+
+/** D139: what the developer has to do, per kind (the titles' and dividers' words). */
+export function accountActionWhat(kind: AccountActionKind, cli: CliProviderId): string {
+  if (kind === 'terms') return cli === 'claude' ? "accept Anthropic's updated terms" : 'accept the updated terms';
+  if (kind === 'login') return 'sign in again';
+  return 'open the CLI with this account';
+}
+
+/** D139: the Inbox item's title: "Work (Claude Code) needs you: accept Anthropic's updated terms". */
+export function accountNeedsYouTitle(name: string, cli: CliProviderId, cliLabel: string, kind: AccountActionKind): string {
+  return `${name} (${cliLabel}) needs you: ${accountActionWhat(kind, cli)}`;
+}
+
+/** D139: a stopped session's divider: "Stopped: the account Work needs you — accept Anthropic's updated terms". */
+export function accountStoppedLabel(name: string, cli: CliProviderId, kind: AccountActionKind): string {
+  return `Stopped: the account ${name} needs you — ${accountActionWhat(kind, cli)}`;
+}
+
+/** D139: why a Project's steps wait: "the account Work needs you". */
+export function accountWaitReason(name: string): string {
+  return `the account ${name} needs you`;
+}
+
+function shellQuote(value: string): string {
+  return `"${value.replace(/(["\\$`])/g, '\\$1')}"`;
+}
+
+/**
+ * D139: the terminal command that lets the developer act for the account: the CLI itself
+ * with the profile's folder (`CLAUDE_CONFIG_DIR="<dir>" claude`; just `claude` for the
+ * built-in Default, as the CLI's own text says "run `claude`"). Codex and OpenCode have no
+ * evidenced "open it to accept" step: for `login` their D63 sign-in commands
+ * (`CODEX_HOME="<dir>" codex login`, `XDG_DATA_HOME="<dir>" opencode auth login`), otherwise
+ * `null` (the UI says "open <CLI> with this account").
+ */
+export function accountFixCommand(cli: CliProviderId, kind: AccountActionKind, dir: string | null): string | null {
+  if (cli === 'claude') return dir === null ? 'claude' : `CLAUDE_CONFIG_DIR=${shellQuote(dir)} claude`;
+  if (kind !== 'login') return null;
+  if (cli === 'codex') return dir === null ? 'codex login' : `CODEX_HOME=${shellQuote(dir)} codex login`;
+  return dir === null ? 'opencode auth login' : `XDG_DATA_HOME=${shellQuote(dir)} opencode auth login`;
+}
+
+/**
+ * D139: a profile that waits for the developer (`AccountProfile.needsYou`; stored in the
+ * setting `accounts.blocked`). The automatic picks treat it like a spent account; a
+ * Project's own account, or a pinned session, waits instead.
+ */
+export interface ProfileNeedsYou {
+  readonly kind: AccountActionKind;
+  /** The CLI's own words. */
+  readonly text: string;
+  /** Since when (ISO). */
+  readonly since: string;
+  /** The command that fixes it (`null`: open the CLI with this account). */
+  readonly command: string | null;
+  /** The sessions it stopped (Retry resumes them). */
+  readonly sessionIds: readonly string[];
+}
+
+/** D139: the setting that keeps the blocked profiles (`{ [profileId]: ProfileNeedsYou }`; no migration). */
+export const ACCOUNT_BLOCKED_KEY = 'accounts.blocked';
+
+/** D139: the stored blocks, read defensively. */
+export function readAccountBlocks(value: unknown): Record<string, ProfileNeedsYou> {
+  const out: Record<string, ProfileNeedsYou> = {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return out;
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const r = raw as Record<string, unknown>;
+    const kind = r['kind'] === 'terms' || r['kind'] === 'login' || r['kind'] === 'action' ? r['kind'] : null;
+    if (kind === null || typeof r['text'] !== 'string' || typeof r['since'] !== 'string') continue;
+    out[id] = {
+      kind,
+      text: r['text'],
+      since: r['since'],
+      command: typeof r['command'] === 'string' ? r['command'] : null,
+      sessionIds: Array.isArray(r['sessionIds']) ? r['sessionIds'].filter((s): s is string => typeof s === 'string') : [],
+    };
+  }
+  return out;
+}
+
 // ── the switch decision ──────────────────────────────────────────────────────
 
 /** What the decision needs to know about one profile. */
@@ -300,6 +445,8 @@ export interface ProfileSnapshot {
   readonly signedIn: boolean | null;
   readonly exhaustedUntil: string | null;
   readonly usage: ProfileUsage | null;
+  /** D139: the account needs the developer (new terms, signed out): like spent for the automatic picks. */
+  readonly blocked?: boolean;
 }
 
 /** Why the decision runs. */
@@ -381,7 +528,7 @@ export type AllowanceLevel = 'threshold' | 'hard';
 
 /** `true` when the profile can take work: enabled, not signed out, not spent, and under the limit of `level`. */
 export function hasAllowance(profile: ProfileSnapshot, settings: AccountSettings, level: AllowanceLevel, now: number): boolean {
-  if (!profile.enabled || profile.signedIn === false) return false;
+  if (!profile.enabled || profile.signedIn === false || profile.blocked === true) return false;
   if (profile.exhaustedUntil && Date.parse(profile.exhaustedUntil) > now) return false;
   const five = level === 'hard' ? 100 : settings.thresholds.fiveHourPct;
   const week = level === 'hard' ? 100 : settings.thresholds.weeklyPct;
@@ -411,7 +558,7 @@ export function onCredits(profile: Pick<ProfileSnapshot, 'usage'>, now: number):
  * limit not reached). An account with allowance is always preferred to one of these.
  */
 export function canUseCredits(profile: ProfileSnapshot, now: number): boolean {
-  if (!profile.enabled || profile.signedIn === false) return false;
+  if (!profile.enabled || profile.signedIn === false || profile.blocked === true) return false;
   if (profile.exhaustedUntil && Date.parse(profile.exhaustedUntil) > now) return false;
   return creditsUsable(profile.usage?.credits, now);
 }
@@ -468,6 +615,11 @@ export function pickProfileForNewSession(settings: AccountSettings, cli: CliProv
   const chosenId = preferred === undefined ? overallChoiceOf(settings, cli) : preferred;
   const chosen = chosenId ? (profiles.find((p) => p.id === chosenId && p.enabled) ?? null) : null;
   const switching = settings.enabled && settings.perCli[cli];
+  // D139: a chosen account that needs the developer is skipped like a spent one (also with switching off), when another can take the session.
+  if (chosen?.blocked === true) {
+    const other = firstWithAllowance(profiles, settings, now, null);
+    if (other) return other.id;
+  }
   if (chosen && (!switching || hasAllowance(chosen, settings, settings.thresholds.enabled ? 'threshold' : 'hard', now))) return chosen.id;
   if (!switching) return null;
   // D103: an account with allowance first; none: one that pays from credits (unless new turns pause instead).

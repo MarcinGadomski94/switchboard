@@ -74,6 +74,18 @@ function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * D139 (`docs/accounts.md` → *The account needs you*): kind of "Work (Claude Code) needs you: …"
+ * (an account the CLI refuses to run until the developer acts), its **Retry stopped agents**
+ * (the account no longer waits; the sessions it stopped start again) and **Dismiss**.
+ */
+export const ACCOUNT_NEEDS_YOU = 'account-needs-you';
+export const ACCOUNT_RETRY = 'retry-stopped';
+export const ACCOUNT_NEEDS_YOU_ACTIONS: readonly InboxAction[] = [
+  { id: ACCOUNT_RETRY, label: 'Retry stopped agents' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
 /** Kind of the item a failed scheduled run raises. */
 export const SCHEDULE_RUN_FAILED = 'schedule-run-failed';
 /** Kind of the item a removable worktree raises. */
@@ -230,6 +242,8 @@ export class SystemItemService {
   readonly #busy = new Set<string>();
   #runner: ScheduleRunner | null;
   #ci: CiActions | null = null;
+  /** D139: Retry stopped agents of an account's "needs you" item (the `AccountNeedsYou` watcher). */
+  #accountRetry: ((profileId: string) => Promise<unknown>) | null = null;
   /** D124: clears a session's turn wait (`at` = that episode) when its "Waiting for you" item is dismissed. */
   #notWaiting: ((sessionId: string, at: string | null) => Promise<unknown>) | null = null;
   #unsubscribe: (() => void) | null = null;
@@ -264,6 +278,54 @@ export class SystemItemService {
   /** Plugs in the scheduler that serves "Retry run" (M7.1). */
   useScheduleRunner(runner: ScheduleRunner | null): void {
     this.#runner = runner;
+  }
+
+  /** D139: plugs in what Retry stopped agents runs (the account's sessions start again). */
+  useAccountRetry(retry: ((profileId: string) => Promise<unknown>) | null): void {
+    this.#accountRetry = retry;
+  }
+
+  /**
+   * D139: "Work (Claude Code) needs you: accept Anthropic's updated terms", once per block of a
+   * profile (`dedupe` names the profile and since when it waits; open or closed). Its detail is
+   * the CLI's own words; `payload.command` the terminal command that fixes it (the UIs show it
+   * copyable). **Retry stopped agents** and **Dismiss**. Closed by itself when the account works again.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async accountNeedsYouNotice(input: { readonly profileId: string; readonly sessionId: string | null; readonly title: string; readonly detail: string; readonly command: string | null; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: ACCOUNT_NEEDS_YOU,
+        source: 'accounts',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: ACCOUNT_NEEDS_YOU_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, profileId: input.profileId, ...(input.command !== null ? { command: input.command } : {}) },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D139: closes the open "needs you" items of profile `profileId` with `outcome`; answers how many. */
+  async closeAccountNeedsYouNotices(profileId: string, outcome: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== ACCOUNT_NEEDS_YOU || !isPayload(item.payload) || item.payload['profileId'] !== profileId) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
   }
 
   /** D109: plugs in the PR watcher that serves Merge PR and Try again. */
@@ -866,6 +928,14 @@ export class SystemItemService {
     // D124: dismissing "Waiting for you" says the session is not waiting (a false positive): its turn wait goes.
     if (item.kind === TURN_WAITING && action === 'dismiss') {
       if (item.sessionId && this.#notWaiting) await this.#notWaiting(item.sessionId, isPayload(item.payload) && typeof item.payload['at'] === 'string' ? item.payload['at'] : null);
+      return;
+    }
+    // D139: the account no longer waits; the sessions it stopped start again (the item is closed by the retry itself).
+    if (item.kind === ACCOUNT_NEEDS_YOU && action === ACCOUNT_RETRY) {
+      const profileId = isPayload(item.payload) ? item.payload['profileId'] : null;
+      if (typeof profileId !== 'string') throw new SystemItemError('gone', 'the account is no longer known');
+      if (!this.#accountRetry) throw new SystemItemError('unavailable', 'retrying is not available');
+      await this.#accountRetry(profileId);
       return;
     }
     // Plans (D99) hook (D102): a plan item's Merge from its "Ready to merge" item.

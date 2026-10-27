@@ -346,6 +346,9 @@ function phoneAnswer(open: OpenRequest): JsonObject {
  * `can_use_tool` requests, interrupts, SIGINT, EOF, control requests) and
  * writes the transcript + live-process file under `CLAUDE_CONFIG_DIR`.
  */
+/** D139: Claude Code's own "[ACTION REQUIRED]" terms line (the 2026-10-27 incident's stderr; also in its 2.1.311 binary). */
+export const FAKE_TERMS_TEXT = '[ACTION REQUIRED] An update to our Consumer Terms and Privacy Policy has taken effect on October 8, 2025. You must run `claude` to review the updated terms.';
+
 export class Runner {
   private readonly o: RunnerOptions;
   private readonly args: RunArgs;
@@ -429,6 +432,9 @@ export class Runner {
   /** Starts the run; the process ends through {@link RunnerOptions.exit}. */
   async start(): Promise<void> {
     if (!this.isScenario(this.scenario)) return this.fail(`fake-claude: unknown scenario "${this.scenario}" (FAKE_CLAUDE_SCENARIO)`);
+    // D139: the account needs the developer (new terms, signed out): the process prints the CLI's text and exits 1 before anything else.
+    const needsYou = await this.actionRequiredText();
+    if (needsYou !== null) return this.fail(`\n${needsYou}\n`);
     const startup = startupDelayMs(this.o.env);
     if (typeof startup !== 'number') return this.fail(startup.error);
     this.startupMs = startup;
@@ -1073,6 +1079,23 @@ export class Runner {
     try {
       const text = (await readFile(path.join(this.configDir, '.fake-limit'), 'utf8')).trim();
       return text === '' ? "You've hit your session limit · resets 2pm" : text;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * D139: what the CLI prints when the account needs the developer before it runs anything: the
+   * content of `<CLAUDE_CONFIG_DIR>/.fake-action-required` (empty = the terms line of the incident,
+   * verbatim from Claude Code), or `FAKE_CLAUDE_ACTION_REQUIRED`; `null` = nothing (it runs).
+   */
+  private async actionRequiredText(): Promise<string | null> {
+    const fromEnv = this.o.env['FAKE_CLAUDE_ACTION_REQUIRED'];
+    if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
+    if (this.configDir === null) return null;
+    try {
+      const text = (await readFile(path.join(this.configDir, '.fake-action-required'), 'utf8')).trim();
+      return text === '' ? FAKE_TERMS_TEXT : text;
     } catch {
       return null;
     }

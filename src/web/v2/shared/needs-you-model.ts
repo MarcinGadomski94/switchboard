@@ -73,7 +73,7 @@ export interface NeedsItem {
    * `turn_status`; the card says "detected", as the classic session header does.
    */
   readonly detected?: boolean;
-  /** An approval's command or call, verbatim. */
+  /** An approval's command or call, verbatim (D139: an account's "needs you" item's terminal command, copyable). */
   readonly command?: string;
   /** The questions of a batch (`question` / `multi`). */
   readonly questions?: readonly Question[];
@@ -224,7 +224,8 @@ export function fromInbox(item: InboxItem, live?: Readonly<Record<string, Machin
     case 'ask':
       return { ...base, text: '', quote: item.detail, ...(item.label.endsWith(' · detected') ? { detected: true } : {}) };
     default:
-      return { ...base, text: item.detail };
+      // D139: an account's "needs you" item carries the terminal command that fixes it.
+      return { ...base, text: item.detail, ...(item.command ? { command: item.command } : {}) };
   }
 }
 

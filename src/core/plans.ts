@@ -218,6 +218,12 @@ export interface PlanItem {
    * is the agent's last message, cut); `null` otherwise. Additive: absent from older machines.
    */
   readonly stoppedSince?: string | null;
+  /**
+   * D139: a `stopped` item whose run session **failed** (`error`), or stopped because its account
+   * needs the developer (`account`): **Restart** starts the same session again
+   * (`POST /api/plans/{id}/items/{itemId}/restart`). Absent on every other item (and from older machines).
+   */
+  readonly stoppedBy?: 'error' | 'account';
 }
 
 /**
@@ -478,6 +484,12 @@ export interface PlanItemFacts {
    * `sessionStatus` `need`); absent / `null` = none (a `need` is then a question or a permission).
    */
   readonly sessionAsk?: string | null;
+  /**
+   * D139: its run session stopped because its account needs the developer and the account
+   * still waits: why ("the account Work needs you — accept Anthropic's updated terms");
+   * absent / `null` = not that (a failed session is then an ordinary error).
+   */
+  readonly accountStop?: string | null;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -517,15 +529,29 @@ export function stoppedSince(item: Pick<PlanItemFacts, 'state' | 'sessionStatus'
   return item.idleSince ?? item.startedAt ?? null;
 }
 
+/** D139: the reason of an item whose run session failed (Restart starts it again). */
+export const PLAN_STOPPED_ERROR = 'its session stopped with an error';
+/** D139: the reason's start for an item whose run session stopped because its account needs the developer. */
+export const PLAN_STOPPED_ACCOUNT = 'Stopped (account needs you)';
+
+/** An item's view state while it is computed. */
+interface ItemView {
+  state: PlanItemState;
+  reason: string | null;
+  stoppedSince?: string;
+  stoppedBy?: 'error' | 'account';
+}
+
 /** An item's own view state and reason, before its dependencies are looked at. */
-function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string | null, now: number, graceMs: number): { state: PlanItemState; reason: string | null; stoppedSince?: string } | null {
+function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch: string | null, now: number, graceMs: number): ItemView | null {
   switch (item.state) {
     case 'done':
       return { state: 'done', reason: null };
     case 'failed':
       return { state: 'blocked', reason: item.reason ?? 'it failed' };
     case 'running':
-      if (item.sessionStatus === 'fail') return { state: 'blocked', reason: 'its session stopped with an error' };
+      // D139: a run session that failed is `stopped` (Restart starts it again), not `blocked`; its account waiting for the developer says so.
+      if (item.sessionStatus === 'fail') return item.accountStop ? { state: 'stopped', reason: `${PLAN_STOPPED_ACCOUNT}: ${item.accountStop}`, stoppedBy: 'account' } : { state: 'stopped', reason: PLAN_STOPPED_ERROR, stoppedBy: 'error' };
       if (item.waitingOn === 'conflict' && item.conflicts >= 2) return { state: 'blocked', reason: `its branch conflicts with ${targetBranch ?? 'its base'} again: waiting for you in the Inbox` };
       // D124: a turn that ended waiting for the developer (its turn_status or the text check): amber, with the ask.
       if (item.sessionStatus === 'need' && item.sessionAsk) return { state: 'needs-you', reason: item.sessionAsk };
@@ -579,7 +605,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
   const ids = [...input.items].sort((a, b) => a.position - b.position).map((item) => item.id);
   const byId = new Map(input.items.map((item) => [item.id, item]));
   const order = topologicalOrder(ids, input.edges) ?? ids;
-  const views = new Map<string, { state: PlanItemState; reason: string | null; stoppedSince?: string }>();
+  const views = new Map<string, ItemView>();
   for (const id of order) {
     const item = byId.get(id) as PlanItemFacts;
     const own = ownState(item, input.mode, input.targetBranch, input.now, input.stoppedGraceMs ?? PLAN_STOPPED_GRACE_MS);
@@ -658,7 +684,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
 
   const items: PlanItem[] = ids.map((id) => {
     const item = byId.get(id) as PlanItemFacts;
-    const view = views.get(id) as { state: PlanItemState; reason: string | null; stoppedSince?: string };
+    const view = views.get(id) as ItemView;
     const actualMinutes = item.startedAt ? (item.doneAt ? minutesBetween(item.startedAt, Date.parse(item.doneAt)) : item.state === 'running' ? minutesBetween(item.startedAt, input.now) : null) : null;
     return {
       id,
@@ -689,6 +715,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
       doneAt: item.doneAt,
       spans: [],
       stoppedSince: view.stoppedSince ?? null,
+      ...(view.stoppedBy ? { stoppedBy: view.stoppedBy } : {}),
     };
   });
   return {

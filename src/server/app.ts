@@ -2,6 +2,7 @@ import { forgetGraduatedSwitches } from './settings/graduated.ts';
 import { AccountService } from './accounts/service.ts';
 import { SharedAccounts } from './accounts/shared.ts';
 import { AutoSwitcher } from './accounts/auto-switch.ts';
+import { AccountNeedsYou } from './accounts/needs-you.ts';
 import { AccountChoice } from './accounts/choice.ts';
 import { registerAccountChoiceSource } from './sessions/wire.ts';
 import { SignInManager } from './accounts/signin.ts';
@@ -69,7 +70,7 @@ import { DeviceService } from './devices/service.ts';
 import { WorktreeAdoption } from './worktrees/adopt.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 // Plans (D99) hook (docs/plans-removal.md).
-import { installPlans } from './plans/install.ts';
+import { installPlans, planServiceOf } from './plans/install.ts';
 import type { PlanService } from './plans/service.ts';
 // Project memory (D107) hook (docs/memory-removal.md).
 import { installMemory } from './memory/install.ts';
@@ -357,6 +358,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   autoSwitcher.start();
   app.addHook('preClose', async () => {
     await autoSwitcher.stop();
+  });
+  // D139: an account the CLI refuses to run until the developer acts (new terms, signed out): blocked, an Inbox item, Retry.
+  const accountNeedsYou = new AccountNeedsYou({ store: options.store, supervisor, accounts, systemItems, changed: () => planServiceOf(app)?.kick() });
+  accountNeedsYou.start();
+  systemItems.useAccountRetry((profileId) => accountNeedsYou.retry(profileId));
+  app.addHook('preClose', async () => {
+    systemItems?.useAccountRetry(null);
+    await accountNeedsYou.stop();
   });
   let scheduler = options.scheduler;
   if (!scheduler) {

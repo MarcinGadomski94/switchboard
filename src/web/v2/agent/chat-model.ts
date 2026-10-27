@@ -117,6 +117,8 @@ export type ChatRow =
       readonly text: string;
       readonly linkedSessionId: string | null;
       readonly revert: 'reverted' | 'undone' | null;
+      /** D139: the account needs the developer: the CLI's words and the command (`null` = not that divider). */
+      readonly needsYou?: { readonly text: string | null; readonly command: string | null } | null;
     }
   | { readonly kind: 'gap'; readonly key: string; readonly text: string }
   /**
@@ -519,7 +521,7 @@ export function chatRows(input: ChatRowsInput): ChatRow[] {
     }
     const at = timeOf(item.id);
     if (at !== null) prevAt = at;
-    out.push({ kind: 'divider', key: item.key, id: item.id, text: item.text, linkedSessionId: item.linkedSessionId ?? null, revert: item.revert ?? null });
+    out.push({ kind: 'divider', key: item.key, id: item.id, text: item.text, linkedSessionId: item.linkedSessionId ?? null, revert: item.revert ?? null, ...(item.needsYou ? { needsYou: item.needsYou } : {}) });
     prevSender = null;
   }
   return out;

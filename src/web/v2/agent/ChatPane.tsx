@@ -1,4 +1,5 @@
 import { type MutableRefObject, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { CommandCopy } from '../../components/CommandCopy.tsx';
 import type { Question } from '../../../core/api.ts';
 import { closedBatchText } from '../../../core/session-close.ts';
 import { NOT_SENT_NOTE } from '../../../core/hooked-continue.ts';
@@ -606,6 +607,13 @@ function Divider({ row, data }: { readonly row: Extract<ChatRow, { kind: 'divide
             <Button size="sm" variant="ghost" icon="refresh" data-testid="v2-agent-redo" disabled={busy} onClick={doRedo}>
               {AGENT_WORDS.redo}
             </Button>
+          ) : null}
+          {/* D139: the account needs the developer: the CLI's words and the command that fixes it. */}
+          {row.needsYou ? (
+            <span data-testid="v2-agent-divider-needs-you" style={{ display: 'block' }}>
+              {row.needsYou.text ? <span style={{ display: 'block', marginTop: 4 }}>{row.needsYou.text}</span> : null}
+              {row.needsYou.command ? <CommandCopy command={row.needsYou.command} testId="v2-agent-divider-command" /> : null}
+            </span>
           ) : null}
         </span>
       )}

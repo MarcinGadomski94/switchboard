@@ -935,3 +935,10 @@
   min-height: 0;
   overflow-y: auto;
 }
+.sb2 .v2-p-graph-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+}
