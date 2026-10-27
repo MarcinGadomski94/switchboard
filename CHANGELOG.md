@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0 (2026-10-27)
+
+### Accounts
+- **Choose the account:** pick the account per engine from the v2 top bar's usage pill (or Settings → Usage & accounts): new agents start on it, and running and idle agents move to it after you confirm ("Move 5 agents to B? 1 running turn will be interrupted."). Pinned agents keep theirs. It replaces "New sessions start on: a fixed account" (your setting carries over).
+- **An account per Project:** set it in the Project's Start dialog or ⋯ → Account…; every step's agent uses it. Order: an agent's pin, then its Project's account, then your overall choice, then automatic switching.
+- When the chosen account runs out, agents switch automatically with a note in the chat ("B is out of usage until 14:05; switched to A"); new agents prefer your choice again once it has usage. The agent header shows where its account comes from. See `docs/accounts.md` (D138).
+
+### v2 theme
+- **Search in Settings:** find any single setting by its name, help text or a common word ("archive", "sound", "port"); the result opens its page and highlights it. ⌘K finds settings too.
+- **Settings in a better order:** Advanced is grouped under Agents, Projects & code, Accounts & devices, Notifications and App; the everyday sections come first.
+- **Archived crew members leave the crew view** and come back with their role on Restore; they get no new work while archived.
+
 ## 2.3.0 (2026-10-26)
 
 ### Project memory
