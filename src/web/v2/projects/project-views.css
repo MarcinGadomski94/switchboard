@@ -1,0 +1,1178 @@
+/*
+ * Fixes after 2.0 → Steps, Board and Timeline in the Graph's look (views.tsx, views-look.tsx,
+ * views-model.ts). Kept apart from projects.css so the Graph's lane and this one merge cleanly.
+ * The tone palette repeats the Graph's (`.v2-p-graph` in projects.css; dedupe later): a step's
+ * tone (`data-gtone`, or `data-tone` on the header's segments) sets --c; a lane's --lane is set
+ * inline (graph-parts.tsx → laneColour). The header itself is the Graph's (`.v2-p-ghead`).
+ * Every animation and transition is off under reduced motion (tokens.css); the FLIP glides and
+ * the timeline's shine are not run at all then (views-look.tsx, views.tsx).
+ */
+.sb2 .v2-pv {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  --g-working: var(--v2-accent);
+  --g-working-2: var(--v2-violet);
+  --g-ready: color-mix(in srgb, var(--v2-blue) 45%, var(--v2-green));
+  --g-waiting: var(--v2-muted);
+  --g-needs: var(--v2-amber-dot);
+  --g-approval: var(--v2-violet);
+  --g-failed: var(--v2-red);
+  --g-done: var(--v2-green);
+  --g-edge: var(--v2-border-strong);
+  --g-shadow: 0 1px 2px rgba(20, 20, 10, 0.05), 0 6px 18px rgba(20, 20, 10, 0.07);
+}
+
+:root[data-scheme='dark'] .sb2 .v2-pv {
+  --g-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.sb2 .v2-pv [data-tone='working'],
+.sb2 .v2-pv [data-gtone='working'] { --c: var(--g-working); }
+.sb2 .v2-pv [data-tone='ready'],
+.sb2 .v2-pv [data-gtone='ready'] { --c: var(--g-ready); }
+.sb2 .v2-pv [data-tone='waiting'],
+.sb2 .v2-pv [data-gtone='waiting'] { --c: var(--g-waiting); }
+.sb2 .v2-pv [data-tone='needs'],
+.sb2 .v2-pv [data-gtone='needs'] { --c: var(--g-needs); }
+.sb2 .v2-pv [data-tone='approval'],
+.sb2 .v2-pv [data-gtone='approval'] { --c: var(--g-approval); }
+.sb2 .v2-pv [data-tone='failed'],
+.sb2 .v2-pv [data-gtone='failed'] { --c: var(--g-failed); }
+.sb2 .v2-pv [data-tone='done'],
+.sb2 .v2-pv [data-gtone='done'] { --c: var(--g-done); }
+
+/* A step's ring takes its row's / card's tone; working spins. */
+.sb2 .v2-pv .v2-pv-ring {
+  --c: inherit;
+}
+
+.sb2 .v2-pv-ring .v2-p-ring-val,
+.sb2 .v2-pv-ring .v2-p-ring-ico {
+  transition: stroke-dashoffset 0.7s var(--v2-ease), stroke var(--v2-slow), color var(--v2-slow);
+}
+
+.sb2 .v2-pv [data-gtone='working'] > .v2-pv-ring svg,
+.sb2 .v2-pv-tl-mark .v2-pv-ring svg,
+.sb2 .v2-pv-tl-n .v2-pv-ring svg {
+  transform-origin: 50% 50%;
+}
+
+.sb2 .v2-pv [data-gtone='working'] > .v2-pv-ring svg,
+.sb2 .v2-pv-tl-row[data-gtone='working'] .v2-pv-ring svg {
+  animation: v2-pv-spin 2.4s linear infinite;
+}
+
+.sb2 .v2-pv [data-gtone='needs'] > .v2-pv-ring .v2-p-ring-ico {
+  animation: v2-pv-nudge 2.2s ease-in-out infinite;
+}
+
+/* The check pops when a step becomes done. */
+.sb2 .v2-pv [data-pop] > .v2-pv-ring {
+  animation: v2-pv-pop 0.7s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.sb2 .v2-pv [data-pop] > .v2-pv-ring::after {
+  content: '';
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  animation: v2-pv-burst 0.8s ease-out both;
+}
+
+/* Chips, meta, estimate bar */
+.sb2 .v2-pv-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 18px;
+}
+
+.sb2 .v2-pv-key {
+  font: 600 11px/1 var(--v2-mono);
+  color: var(--v2-muted);
+  white-space: nowrap;
+}
+
+.sb2 .v2-pv-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 14em;
+  background: color-mix(in srgb, var(--lane) 16%, transparent);
+  color: color-mix(in srgb, var(--lane) 70%, var(--v2-text));
+}
+
+.sb2 .v2-pv-chip[data-neutral] {
+  background: var(--v2-grey-bg);
+  color: var(--v2-grey);
+}
+
+.sb2 .v2-pv-crit {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  color: var(--g-working);
+  background: color-mix(in srgb, var(--g-working) 14%, transparent);
+  flex: none;
+}
+
+.sb2 .v2-pv-crit .v2-i {
+  width: 12px;
+  height: 12px;
+}
+
+.sb2 .v2-pv-hold {
+  color: var(--v2-muted);
+  flex: none;
+}
+
+.sb2 .v2-pv-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.3;
+  color: var(--v2-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-pv-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--v2-muted);
+  min-width: 0;
+}
+
+.sb2 .v2-pv-state {
+  color: var(--c);
+  font-weight: 600;
+  transition: color var(--v2-slow);
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-pv-est {
+  white-space: nowrap;
+}
+
+.sb2 .v2-pv-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--v2-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sb2 .v2-pv-who .v2-i {
+  width: 12px;
+  height: 12px;
+  color: var(--g-working-2);
+}
+
+.sb2 .v2-pv-detail {
+  font-size: 12.5px;
+  color: var(--v2-text-2);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sb2 .v2-pv-detail[data-kind='needs'],
+.sb2 .v2-pv-detail[data-kind='question'] {
+  font-style: italic;
+}
+
+.sb2 .v2-pv-eta {
+  display: block;
+  height: 3px;
+  border-radius: var(--v2-r-pill);
+  background: var(--v2-border);
+  overflow: hidden;
+}
+
+.sb2 .v2-pv-eta b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--g-working), var(--g-working-2));
+  transition: width 1s linear;
+}
+
+/* Toolbar (group by) */
+.sb2 .v2-pv-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: -4px;
+}
+
+/* ── Steps ─────────────────────────────────────────────────────────── */
+.sb2 .v2-pv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sb2 .v2-pv-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb2 .v2-pv-sec-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px;
+  font-size: var(--v2-fs-s);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-pv-sec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent);
+}
+
+.sb2 .v2-pv-sec-n {
+  font-weight: 600;
+  color: var(--c);
+  letter-spacing: 0;
+}
+
+.sb2 .v2-pv .v2-p-steps-done {
+  border-top: 0;
+}
+
+.sb2 .v2-pv .v2-p-steps-done > summary {
+  min-height: 40px;
+  padding: 0 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sb2 .v2-pv .v2-p-steps-done[open] > summary {
+  margin-bottom: 6px;
+}
+
+.sb2 .v2-pv-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  grid-template-areas: 'ring main btns tools';
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 10px 10px 14px;
+  border-radius: 14px;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--g-shadow);
+  --c: var(--g-waiting);
+  transition: border-color var(--v2-slow), box-shadow var(--v2-slow), opacity var(--v2-med), background var(--v2-slow);
+}
+
+/* The lane's tint on the left edge (the repository colour). */
+.sb2 .v2-pv-row::before,
+.sb2 .v2-pv-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--lane, transparent);
+  opacity: 0.75;
+}
+
+.sb2 .v2-pv-row:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-pv-row:focus-within {
+  border-color: color-mix(in srgb, var(--v2-accent) 45%, var(--v2-border));
+}
+
+.sb2 .v2-pv-row-ring {
+  grid-area: ring;
+}
+
+.sb2 .v2-pv-row-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.sb2 .v2-pv-row-main:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 4px;
+}
+
+.sb2 .v2-pv-row-eta {
+  margin-top: 4px;
+  max-width: 280px;
+}
+
+.sb2 .v2-pv-row-btns {
+  grid-area: btns;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sb2 .v2-pv-row-btns:empty {
+  display: none;
+}
+
+.sb2 .v2-pv-row-tools {
+  grid-area: tools;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The working step: the Graph card's breathing gradient border. */
+.sb2 .v2-pv-row::after,
+.sb2 .v2-pv-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(135deg, var(--g-working), var(--g-working-2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity var(--v2-slow);
+}
+
+.sb2 .v2-pv-row[data-gtone='working'],
+.sb2 .v2-pv-card[data-gtone='working'] {
+  box-shadow: var(--g-shadow), 0 8px 26px color-mix(in srgb, var(--g-working) 18%, transparent);
+}
+
+.sb2 .v2-pv-row[data-gtone='working']::after,
+.sb2 .v2-pv-card[data-gtone='working']::after {
+  opacity: 1;
+  animation: v2-pv-breathe 2.6s ease-in-out infinite;
+}
+
+.sb2 .v2-pv-row[data-gtone='needs'],
+.sb2 .v2-pv-card[data-gtone='needs'] {
+  border-color: color-mix(in srgb, var(--g-needs) 45%, var(--v2-border));
+}
+
+.sb2 .v2-pv-row[data-gtone='failed'],
+.sb2 .v2-pv-card[data-gtone='failed'] {
+  border-color: color-mix(in srgb, var(--g-failed) 45%, var(--v2-border));
+}
+
+.sb2 .v2-pv-row[data-gtone='approval'],
+.sb2 .v2-pv-card[data-gtone='approval'] {
+  border-color: color-mix(in srgb, var(--g-approval) 40%, var(--v2-border));
+}
+
+.sb2 .v2-pv-row[data-gtone='done'],
+.sb2 .v2-pv-card[data-gtone='done'] {
+  background: color-mix(in srgb, var(--v2-surface) 70%, transparent);
+  box-shadow: none;
+}
+
+.sb2 .v2-pv-row[data-gtone='done'] .v2-pv-title,
+.sb2 .v2-pv-card[data-gtone='done'] .v2-pv-title {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-pv-row[data-gtone='done'] > .v2-pv-ring,
+.sb2 .v2-pv-row[data-gtone='done'] .v2-pv-top,
+.sb2 .v2-pv-card[data-gtone='done'] > .v2-pv-ring {
+  opacity: 0.8;
+}
+
+/* The critical path: the Graph's accent border. */
+.sb2 .v2-pv-row[data-crit]:not([data-gtone='done']),
+.sb2 .v2-pv-card[data-crit]:not([data-gtone='done']) {
+  border-color: color-mix(in srgb, var(--g-working) 55%, var(--v2-border));
+}
+
+.sb2 .v2-pv-row[data-hold] .v2-pv-title {
+  color: var(--v2-text-2);
+}
+
+/* Steps by repository: the Graph's lanes, a tinted band each. */
+.sb2 .v2-pv-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--lane) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lane) 22%, transparent);
+}
+
+.sb2 .v2-pv-lane[data-neutral] {
+  background: color-mix(in srgb, var(--v2-text) 3%, transparent);
+  border-color: var(--v2-border);
+}
+
+.sb2 .v2-pv-lane-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.sb2 .v2-pv-lane-ic {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex: none;
+  background: color-mix(in srgb, var(--lane) 20%, transparent);
+  color: color-mix(in srgb, var(--lane) 80%, var(--v2-text));
+}
+
+.sb2 .v2-pv-lane-ic .v2-i {
+  width: 12px;
+  height: 12px;
+}
+
+.sb2 .v2-pv-lane-name {
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sb2 .v2-pv-lane-bar {
+  width: 54px;
+  height: 4px;
+  border-radius: var(--v2-r-pill);
+  background: var(--v2-border);
+  overflow: hidden;
+  flex: none;
+}
+
+.sb2 .v2-pv-lane-bar b {
+  display: block;
+  height: 100%;
+  background: var(--lane);
+  transition: width 0.6s var(--v2-ease);
+}
+
+.sb2 .v2-pv-lane-n {
+  color: var(--v2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Board ─────────────────────────────────────────────────────────── */
+.sb2 .v2-pv-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.sb2 .v2-pv-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--v2-text) 3%, transparent);
+  border: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-pv-col-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 4px;
+  font-weight: 650;
+  font-size: var(--v2-fs-sm);
+  min-width: 0;
+}
+
+.sb2 .v2-pv .v2-pv-col-ring {
+  --c: inherit;
+}
+
+.sb2 .v2-pv-col-ring .v2-i {
+  width: 12px;
+  height: 12px;
+}
+
+.sb2 .v2-pv-col-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sb2 .v2-pv-col-n {
+  margin-left: auto;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--v2-r-pill);
+  display: inline-grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--c) 80%, var(--v2-text));
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+
+.sb2 .v2-pv-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 64px;
+}
+
+.sb2 .v2-pv-col-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 64px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--v2-border);
+  color: var(--v2-muted);
+  font-size: var(--v2-fs-s);
+  text-align: center;
+  padding: 8px;
+}
+
+.sb2 .v2-pv-col-empty .v2-i {
+  opacity: 0.6;
+}
+
+.sb2 .v2-pv-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 3px 10px;
+  padding: 11px 10px 12px 12px;
+  border-radius: 14px;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--g-shadow);
+  cursor: pointer;
+  --c: var(--g-waiting);
+  transition: border-color var(--v2-slow), box-shadow var(--v2-slow), background var(--v2-slow);
+}
+
+.sb2 .v2-pv-card:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-pv-card:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-pv-card-ring {
+  grid-row: 1 / span 3;
+  align-self: start;
+  margin-top: 2px;
+}
+
+.sb2 .v2-pv-card > .v2-pv-top,
+.sb2 .v2-pv-card > .v2-pv-title,
+.sb2 .v2-pv-card > .v2-pv-meta,
+.sb2 .v2-pv-card > .v2-pv-card-detail,
+.sb2 .v2-pv-card > .v2-pv-card-btns {
+  grid-column: 2;
+}
+
+.sb2 .v2-pv-card-detail {
+  margin-top: 2px;
+}
+
+.sb2 .v2-pv-card-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sb2 .v2-pv-card-eta {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+}
+
+.sb2 .v2-pv-more {
+  margin-left: auto;
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--v2-fast);
+}
+
+.sb2 .v2-pv-card:hover .v2-pv-more,
+.sb2 .v2-pv-card:focus-within .v2-pv-more,
+.sb2 .v2-pv-more:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.sb2 .v2-pv-more .v2-icon-btn {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 7px;
+}
+
+@media (hover: none) {
+  .sb2 .v2-pv-more {
+    opacity: 1;
+  }
+}
+
+/* ── Timeline ──────────────────────────────────────────────────────── */
+.sb2 .v2-pv-tl {
+  --tl-name: 264px;
+}
+
+.sb2 .v2-pv-tl-grid {
+  position: relative;
+  min-width: 0;
+}
+
+.sb2 .v2-pv-tl-axis {
+  display: flex;
+  height: 22px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.sb2 .v2-pv-tl-axis-pad {
+  width: var(--tl-name);
+  flex: none;
+}
+
+.sb2 .v2-pv-tl-axis-track {
+  position: relative;
+  flex: 1;
+  font-size: 11px;
+  color: var(--v2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb2 .v2-pv-tl-axis-track > span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.sb2 .v2-pv-tl-now-tag {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border-radius: var(--v2-r-pill);
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #fff;
+  background: var(--v2-red);
+  z-index: 1;
+}
+
+.sb2 .v2-pv-tl-body {
+  position: relative;
+}
+
+.sb2 .v2-pv-tl-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--lane) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lane) 20%, transparent);
+}
+
+.sb2 .v2-pv-tl-lane[data-neutral] {
+  background: color-mix(in srgb, var(--v2-text) 3%, transparent);
+  border-color: var(--v2-border);
+}
+
+.sb2 .v2-pv-tl-lane > .v2-pv-lane-h {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.sb2 .v2-pv-tl-row {
+  position: relative;
+  display: flex;
+  height: 40px;
+  align-items: center;
+  transition: opacity var(--v2-med);
+}
+
+.sb2 .v2-pv-tl-name {
+  width: var(--tl-name);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 8px;
+  min-width: 0;
+}
+
+.sb2 .v2-pv-tl-name .v2-icon-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+}
+
+.sb2 .v2-pv-tl-n {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 6px 0 2px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--v2-text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-pv-tl-n:hover {
+  background: color-mix(in srgb, var(--v2-text) 5%, transparent);
+}
+
+.sb2 .v2-pv-tl-n:focus-visible {
+  outline: 2px solid var(--v2-accent);
+}
+
+.sb2 .v2-pv-tl-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  font-weight: 550;
+}
+
+.sb2 .v2-pv-tl-row[data-gtone='done'] .v2-pv-tl-title {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-pv-tl-track {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  margin-right: 10px;
+}
+
+.sb2 .v2-pv-tl-wait {
+  position: absolute;
+  top: 50%;
+  height: 0;
+  border-top: 2px dotted color-mix(in srgb, var(--v2-muted) 55%, transparent);
+}
+
+.sb2 .v2-pv-tl-bar {
+  position: absolute;
+  top: calc(50% - 8px);
+  height: 16px;
+  border-radius: var(--v2-r-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent);
+  transition: box-shadow var(--v2-slow), background var(--v2-slow);
+}
+
+.sb2 .v2-pv-tl-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.sb2 .v2-pv-tl-seg[data-seg='working'] {
+  background: var(--c);
+}
+
+.sb2 .v2-pv-tl-row[data-gtone='working'] .v2-pv-tl-seg[data-seg='working'] {
+  background: linear-gradient(90deg, var(--g-working), var(--g-working-2));
+}
+
+.sb2 .v2-pv-tl-seg[data-seg='you'] {
+  background: repeating-linear-gradient(135deg, var(--g-needs) 0 5px, color-mix(in srgb, var(--g-needs) 65%, transparent) 5px 9px);
+}
+
+.sb2 .v2-pv-tl-seg[data-seg='usage'],
+.sb2 .v2-pv-tl-seg[data-seg='paused'] {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--v2-muted) 55%, transparent) 0 4px, transparent 4px 8px);
+}
+
+.sb2 .v2-pv-tl-seg[data-seg='projected'] {
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent) 0 6px, color-mix(in srgb, var(--c) 14%, transparent) 6px 10px);
+}
+
+/* A travelling shine on the working bar (not rendered under reduced motion). */
+.sb2 .v2-pv-tl-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: v2-pv-shine 2.2s linear infinite;
+}
+
+.sb2 .v2-pv-tl-mark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--v2-surface);
+  box-shadow: 0 0 0 2px var(--v2-surface);
+  pointer-events: none;
+}
+
+.sb2 .v2-pv-tl-mark .v2-p-ring-ico .v2-i {
+  width: 10px;
+  height: 10px;
+}
+
+.sb2 .v2-pv-tl-n .v2-p-ring-ico .v2-i {
+  width: 11px;
+  height: 11px;
+}
+
+/* The critical path glows. */
+.sb2 .v2-pv-tl-row[data-crit]:not([data-gtone='done']) .v2-pv-tl-bar {
+  box-shadow: inset 0 0 0 1.5px var(--g-working), 0 0 0 3px color-mix(in srgb, var(--g-working) 18%, transparent);
+}
+
+.sb2 .v2-pv-tl-over {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--tl-name);
+  right: 10px;
+  pointer-events: none;
+}
+
+.sb2 .v2-pv-tl-arrows {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.sb2 .v2-pv-tl-arrowhead {
+  fill: var(--g-edge);
+}
+
+.sb2 .v2-pv-tl-arrow {
+  stroke-width: 1.6;
+  opacity: 0.85;
+  transition: opacity var(--v2-med), stroke-width var(--v2-med);
+}
+
+.sb2 .v2-pv-tl-arrow[data-kind='wait'] {
+  stroke: var(--g-edge);
+  stroke-dasharray: 4 4;
+}
+
+.sb2 .v2-pv-tl-arrow[data-kind='live'] {
+  stroke-width: 2.2;
+}
+
+.sb2 .v2-pv-tl-arrow[data-crit] {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--g-working) 55%, transparent));
+}
+
+.sb2 .v2-pv-tl-arrow[data-kind='wait'][data-crit] {
+  stroke: var(--g-working);
+}
+
+.sb2 .v2-pv-tl-arrow[data-hot='true'] {
+  opacity: 1;
+  stroke-width: 2.6;
+}
+
+.sb2 .v2-pv-tl-arrow[data-hot='false'] {
+  opacity: 0.12;
+}
+
+.sb2 .v2-pv-tl-row[data-hot='false'] {
+  opacity: 0.3;
+}
+
+.sb2 .v2-pv-tl-row[data-hot='true'] .v2-pv-tl-bar {
+  box-shadow: inset 0 0 0 1.5px var(--c), 0 0 0 3px var(--v2-accent-soft);
+}
+
+.sb2 .v2-pv-tl-now {
+  position: absolute;
+  top: -4px;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--v2-red);
+  opacity: 0.8;
+  border-radius: 1px;
+}
+
+.sb2 .v2-pv-tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: var(--v2-fs-s);
+  color: var(--v2-muted);
+  --c: var(--g-working);
+}
+
+.sb2 .v2-pv-tl-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb2 .v2-pv-tl-key {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 9px;
+  border-radius: var(--v2-r-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+
+.sb2 .v2-pv-tl-key[data-seg='working'] {
+  background: linear-gradient(90deg, var(--g-working), var(--g-working-2));
+}
+
+.sb2 .v2-pv-tl-key[data-seg='you'] {
+  background: repeating-linear-gradient(135deg, var(--g-needs) 0 4px, color-mix(in srgb, var(--g-needs) 65%, transparent) 4px 7px);
+}
+
+.sb2 .v2-pv-tl-key[data-seg='paused'] {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--v2-muted) 55%, transparent) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--v2-border);
+}
+
+.sb2 .v2-pv-tl-key[data-seg='projected'] {
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent) 0 5px, color-mix(in srgb, var(--c) 14%, transparent) 5px 8px);
+}
+
+.sb2 .v2-pv-tl-key[data-seg='dependency'] {
+  background: none;
+  height: 0;
+  border-top: 2px dotted var(--v2-muted);
+}
+
+.sb2 .v2-pv-tl-sum,
+.sb2 .v2-pv-legend-note {
+  margin: 0;
+  font-size: var(--v2-fs-s);
+}
+
+/* ── Keyframes (the Graph's, under their own names; dedupe later) ──── */
+@keyframes v2-pv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes v2-pv-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes v2-pv-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes v2-pv-burst {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--g-done) 70%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 24px transparent;
+  }
+}
+
+@keyframes v2-pv-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes v2-pv-shine {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
+/* ── Tablet and phone ──────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .sb2 .v2-pv-tl {
+    --tl-name: 200px;
+  }
+
+  .sb2 .v2-pv-cols {
+    gap: 8px;
+  }
+
+  .sb2 .v2-pv-col {
+    padding: 6px;
+  }
+}
+
+@media (max-width: 900px) {
+  .sb2 .v2-pv-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb2 .v2-pv-card-ring {
+    display: none;
+  }
+
+  .sb2 .v2-pv-card > .v2-pv-top,
+  .sb2 .v2-pv-card > .v2-pv-title,
+  .sb2 .v2-pv-card > .v2-pv-meta,
+  .sb2 .v2-pv-card > .v2-pv-card-detail,
+  .sb2 .v2-pv-card > .v2-pv-card-btns {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-pv {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .sb2 .v2-pv .v2-p-ghead-main {
+    min-width: 100%;
+    order: 3;
+  }
+
+  .sb2 .v2-pv-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'ring main tools'
+      '. btns btns';
+    align-items: start;
+    gap: 6px 10px;
+    padding: 12px 6px 12px 12px;
+  }
+
+  .sb2 .v2-pv-row-ring {
+    margin-top: 2px;
+  }
+
+  .sb2 .v2-pv-row-btns {
+    justify-content: flex-start;
+  }
+
+  .sb2 .v2-pv-row-tools {
+    margin-top: -6px;
+  }
+
+  .sb2 .v2-pv-row-tools .v2-icon-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .sb2 .v2-pv-row-eta {
+    max-width: none;
+  }
+
+  .sb2 .v2-pv-toolbar {
+    justify-content: flex-start;
+  }
+
+  .sb2 .v2-pv-lane {
+    padding: 6px;
+  }
+}
+
+/* The ring's icon stays in the middle: `.v2-p-ring svg` (the ring's own drawing) also matches the icon's svg. */
+.sb2 .v2-pv .v2-p-ring-ico > .v2-i {
+  position: static;
+  transform: none;
+  animation: none;
+}

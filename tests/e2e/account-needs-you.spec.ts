@@ -104,7 +104,7 @@ test('v2: a Project on a blocked account — Stopped (account needs you), the de
   // Board: the stopped card's click opens the details too; its ⋯ has Restart.
   await page.getByTestId('v2-project-views').getByRole('button', { name: 'Board' }).click();
   const card0 = page.locator('[data-testid="v2-board-card"][data-key="PROJ-1"]');
-  await card0.getByText('Build PROJ-1').click();
+  await card0.locator('.v2-pv-title').click();
   await expect(page.getByTestId('v2-step-sheet')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('v2-step-sheet')).toHaveCount(0);

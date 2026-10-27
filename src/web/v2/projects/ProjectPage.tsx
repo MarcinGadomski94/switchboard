@@ -13,7 +13,6 @@ import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
 import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
-import { ProgressBar } from './ProjectsPage.tsx';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
 import { GraphView } from './GraphView.tsx';
@@ -277,33 +276,6 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
             </Button>
           ) : null}
           <MenuButton items={projectMenu} label="Project actions" testId="v2-project-menu" />
-        </div>
-        <ProgressBar plan={plan} />
-        <div className="v2-p-legend" aria-hidden="true">
-          <span>
-            <Icon name="check-circle" size="s" className="is-green" />
-            {STEP_LABELS.done}
-          </span>
-          <span>
-            <Icon name="half" size="s" className="is-violet" />
-            {STEP_LABELS.approval}
-          </span>
-          <span>
-            <Icon name="dot" size="s" className="is-blue" />
-            Running
-          </span>
-          <span>
-            <Icon name="circle" size="s" />
-            {STEP_LABELS.waiting}
-          </span>
-          <span>
-            <Icon name="hand" size="s" className="is-amber" />
-            {STEP_LABELS.needs}
-          </span>
-          <span>
-            <Icon name="octagon" size="s" className="is-red" />
-            Stopped
-          </span>
         </div>
         {ackShown ? (
           <div className="v2-row v2-p-wrap v2-p-ack-row">
