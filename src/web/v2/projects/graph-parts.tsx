@@ -381,7 +381,11 @@ export function GraphMinimap({
       style={{ width: size.width, height: size.height }}
       onPointerDown={(event) => {
         event.stopPropagation();
-        event.currentTarget.setPointerCapture?.(event.pointerId);
+        try {
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        } catch {
+          // Not an active pointer: a click still moves the view.
+        }
         point(event);
       }}
       onPointerMove={(event) => {

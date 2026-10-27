@@ -4,7 +4,7 @@ import { modelLabel } from '../../../core/model-choice.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { finalNodeText, shortLabel } from '../../plans/model.ts';
 import { Button } from '../components/index.ts';
-import { GRAPH_WORDS } from '../glossary.ts';
+import { GRAPH_WORDS, PROJECT_WORDS, STATUS } from '../glossary.ts';
 import {
   type GraphTone,
   type GraphView as View,
@@ -101,6 +101,15 @@ function useFresh(ids: readonly string[], ms: number): ReadonlySet<string> {
   return fresh;
 }
 
+/** Captures a pointer when it can (a pointer that is no longer active cannot be). */
+export function capture(element: Element, pointerId: number): void {
+  try {
+    element.setPointerCapture?.(pointerId);
+  } catch {
+    // Not an active pointer: the moves still bubble to the frame.
+  }
+}
+
 /** The segments of the header's bar, in this order. */
 const SEGMENTS: readonly GraphTone[] = ['done', 'working', 'needs', 'approval', 'failed', 'ready', 'waiting'];
 
@@ -186,11 +195,13 @@ function GraphCanvas({
 
   const fit = useCallback(
     (smooth: boolean): void => {
-      if (frame.width === 0) return;
+      const el = frameRef.current;
+      const size = el ? { width: el.clientWidth, height: el.clientHeight } : frame;
+      if (size.width === 0) return;
       setAnimate(smooth);
-      setView(fitView(content, frame, 12, reserve));
+      setView(fitView(content, size, 12, reserve));
     },
-    [content, frame, reserve],
+    [content, frame, reserve, frameRef],
   );
 
   // The opening view; later a desktop resize or a new layout re-fits until the view was moved by hand.
@@ -198,8 +209,11 @@ function GraphCanvas({
   useEffect(() => {
     if (frame.width === 0 || frame.height === 0) return;
     if (!opened.current) {
+      // The element's own size now: the narrow canvas's height (70svh) may not be measured yet.
+      const el = frameRef.current;
+      const real = el ? { width: el.clientWidth, height: el.clientHeight } : frame;
       opened.current = true;
-      const first = narrow ? opening(frame) : null;
+      const first = narrow ? opening(real) : null;
       if (first) {
         setAnimate(false);
         setView(first);
@@ -252,6 +266,8 @@ function GraphCanvas({
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 && event.pointerType === 'mouse') return;
     const at = local(event);
+    // A new gesture: the click a pinch's last finger may cause is no longer pending.
+    if (pointers.current.size === 0) swallowClick.current = 0;
     pointers.current.set(event.pointerId, at);
     if (pointers.current.size === 2) {
       const mid = midpoint();
@@ -263,7 +279,7 @@ function GraphCanvas({
     if (onControl(event.target)) return;
     down.current = at;
     drag.current = { x: event.clientX, y: event.clientY, vx: viewRef.current.x, vy: viewRef.current.y, id: event.pointerId };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    capture(event.currentTarget, event.pointerId);
     setPanning(true);
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -416,7 +432,7 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
       let meta: string = look.label;
       if (tone === 'working' && elapsed !== null) meta = `${look.label} · ${minutesText(elapsed)}`;
       else if (look.kind === 'waiting') meta = look.detail ?? look.label;
-      else if (look.kind === 'stopped' && item.stoppedBy !== undefined) meta = `${look.label} — ${GRAPH_WORDS.openToRestart}`;
+      else if (look.kind === 'stopped' && item.stoppedBy !== undefined) meta = `${item.stoppedBy === 'account' ? PROJECT_WORDS.stoppedAccount : STATUS.stopped.label} — ${GRAPH_WORDS.openToRestart}`;
       else if (tone === 'done' && item.actualMinutes !== null) meta = `${look.label} · ${minutesText(item.actualMinutes)}`;
       const progress = stepProgress(item, now);
       const name = stepName(item);

@@ -115,7 +115,7 @@ test('v2: a Project on a blocked account — Stopped (account needs you), the de
   // Graph: the node's click opens the details; its ⋯ (and a right-click) is the step menu.
   await page.getByTestId('v2-project-views').getByRole('button', { name: 'Graph' }).click();
   const node = page.locator('[data-testid="v2-graph-node"][data-key="PROJ-1"]');
-  await node.locator('rect').click({ position: { x: 30, y: 30 } });
+  await node.click();
   await expect(page.getByTestId('v2-step-sheet')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('v2-step-sheet')).toHaveCount(0);
@@ -123,7 +123,7 @@ test('v2: a Project on a blocked account — Stopped (account needs you), the de
   await expect(page.getByRole('menuitem', { name: 'Restart' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Mark done' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await node.locator('rect').click({ button: 'right', position: { x: 30, y: 30 } });
+  await node.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Restart' })).toBeVisible();
   await page.keyboard.press('Escape');
   // Timeline: each row has the step menu too.
