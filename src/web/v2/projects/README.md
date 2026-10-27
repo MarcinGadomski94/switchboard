@@ -3,12 +3,13 @@
 **Owner: lane P.** Lane F (Foundation) made this stub and wired it into the router (`../shell/Outlet.tsx`); the page's exports in `index.tsx` are what the router mounts, so keep their names and props.
 
 ## Scope
-The list, then Steps / Board / Graph / Timeline; approval modes, holds, Combine / Send back, Reopen, stopped and needs-you steps, Jira import, delete, the run subfolder.
+The list, then Steps / Board / Graph / Timeline (a phone: Steps / Graph); approval modes, holds, Combine / Send back, Reopen, stopped and needs-you steps, Jira import, delete, the run subfolder.
 
 ## Built (lane P, 2026-10-25)
 - `index.tsx` mounts `ProjectsPage` (`ProjectsPage.tsx`: cards with progress, time left, mode, Jira tag, needs-you / stopped counts; the Timeline; Import from Jira, `JiraImport.tsx`; New project → `openNew`) and `ProjectPage` (`ProjectPage.tsx`: the header with the approval mode, the acknowledgement, Start / Hold / Resume and the ⋯ menu; `views.tsx`: Steps / Board / Graph / Timeline; `dialogs.tsx`; `JiraSection.tsx`: From Jira, proposals).
 - Pure rules: `project-model.ts` (`tests/web/v2-projects.test.ts`); data: `useProject.ts` (the plan, live, its Jira state, proposals and tasks), actions: `useStepActions.ts`.
 - E2E: `tests/e2e/v2-projects.spec.ts`. Decisions: `docs/design/v2-decisions.md` → *Lane P*.
+- **Graph** (Fixes after 2.0 → *The Project graph, redrawn*; `docs/v2.md` → *Projects: the Graph view*): `GraphView.tsx` (the view, its header and the canvas: fit, zoom, pan, pinch, double tap, minimap, the phone's opening view), `graph-parts.tsx` (the renderers: card, edges with the travelling dots, lanes, final node, ring, minimap, tooltip), `graph-layout.ts` (pure: layers, repository lanes, crossing reduction, the hover path, fit / zoom / pinch maths, the minimap, the critical path; `tests/web/v2-project-graph.test.ts`). E2E: `tests/e2e/v2-project-graph.spec.ts`. Phones offer Steps and Graph (`PHONE_PROJECT_VIEWS`).
 
 ## Shared modules to use
 - `glossary.ts` → `planItemStateToV2`, `TERMS.project`, `TERMS.step`, `WORDS.combine`
