@@ -951,6 +951,13 @@
   transform: rotate(-90deg);
 }
 
+/* The ring's icon stays in the middle: `.v2-p-ring svg` (the ring's own drawing) also matches the icon's svg. */
+.sb2 .v2-p-ring-ico > .v2-i {
+  position: static;
+  transform: none;
+  animation: none;
+}
+
 .sb2 .v2-p-ring-trk {
   stroke: var(--v2-border);
 }
