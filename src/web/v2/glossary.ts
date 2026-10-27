@@ -1795,7 +1795,6 @@ export const AGENT_WORDS = {
   earlierLanes: (n: number): string => `${n} earlier ${n === 1 ? TERMS.helper.one.toLowerCase() : TERMS.helper.many.toLowerCase()}`,
   activeHelpers: (n: number): string => `${n} active`,
   noActiveHelpers: 'none active',
-  helpersTabActive: (n: number): string => `${AGENT_TAB_LABELS.helpers} · ${n} active`,
   backgroundApps: 'Background apps',
   noBackgroundApps: 'Nothing left running.',
   keep: 'Keep',

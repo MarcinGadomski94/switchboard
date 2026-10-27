@@ -64,20 +64,32 @@ export function useHelpersFold(session: SessionDetail | null): HelperFold<Sessio
 }
 
 /** The row under a list: "Show N helpers finished earlier" (folded) or "Hide …" (expanded); nothing when none is folded. */
-export function EarlierToggle({ count, expanded, onToggle, words = AGENT_WORDS.showEarlierHelpers }: { readonly count: number; readonly expanded: boolean; readonly onToggle: () => void; readonly words?: (n: number) => string }) {
+export function EarlierToggle({
+  count,
+  expanded,
+  onToggle,
+  words = AGENT_WORDS.showEarlierHelpers,
+  testId = 'v2-agent-helpers-earlier',
+}: {
+  readonly count: number;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+  readonly words?: (n: number) => string;
+  readonly testId?: string;
+}) {
   if (count === 0) return null;
   return (
-    <Button size="sm" variant="ghost" icon={expanded ? 'chev-down' : 'chev'} className="v2-ag-fold" data-testid="v2-agent-helpers-earlier" aria-expanded={expanded} onClick={onToggle}>
+    <Button size="sm" variant="ghost" icon={expanded ? 'chev-down' : 'chev'} className="v2-ag-fold" data-testid={testId} aria-expanded={expanded} onClick={onToggle}>
       {expanded ? AGENT_WORDS.hideEarlierHelpers : words(count)}
     </Button>
   );
 }
 
 /** "Show more" under an expanded list with more folded helpers than are rendered. */
-export function ShowMoreHelpers({ more, onMore }: { readonly more: number; readonly onMore: () => void }) {
+export function ShowMoreHelpers({ more, onMore, testId = 'v2-agent-helpers-more' }: { readonly more: number; readonly onMore: () => void; readonly testId?: string }) {
   if (more === 0) return null;
   return (
-    <Button size="sm" variant="ghost" className="v2-ag-fold" data-testid="v2-agent-helpers-more" onClick={onMore}>
+    <Button size="sm" variant="ghost" className="v2-ag-fold" data-testid={testId} onClick={onMore}>
       {AGENT_WORDS.showMoreHelpers(Math.min(more, HELPERS_PAGE), more)}
     </Button>
   );

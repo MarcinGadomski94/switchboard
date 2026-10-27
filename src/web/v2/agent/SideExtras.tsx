@@ -14,7 +14,9 @@ import { Button, Icon, StatusBadge } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { Group, type GroupKey } from './SidePanel.tsx';
-import { agentProjects, notesHref, type OverviewItem, overviewItems, overviewSummary, reportedView } from './side-model.ts';
+import { agentProjects, foldOverview, notesHref, type OverviewItem, overviewItems, overviewSummary, reportedView } from './side-model.ts';
+import { EarlierToggle, ShowMoreHelpers, useFoldClock } from './HelpersFold.tsx';
+import { HELPERS_PAGE } from './helpers-model.ts';
 import type { AgentData } from './useAgent.ts';
 
 /** The overview's live activity text refreshes this often (the classic overview's tick). */
@@ -113,12 +115,23 @@ export function OverviewGroup({
   readonly onToggle: (id: GroupKey, open: boolean) => void;
 }) {
   const session = data.session;
-  const items = useMemo(() => (session ? overviewItems(session) : []), [session]);
+  const all = useMemo(() => (session ? overviewItems(session) : []), [session]);
+  // 2026-10-27 · the helpers fold: helpers and runs that ended over 10 minutes ago fold under one row.
+  const now = useFoldClock(session);
+  const fold = useMemo(() => (session ? foldOverview(all, session, now) : { shown: [], earlier: [], earlierCount: 0 }), [all, session, now]);
+  const [expanded, setExpanded] = useState(false);
+  const [limit, setLimit] = useState(HELPERS_PAGE);
+  useEffect(() => {
+    setExpanded(false);
+    setLimit(HELPERS_PAGE);
+  }, [data.sessionId]);
   const reported = useMemo(() => (session ? reportedView(session) : null), [session]);
   if (!session) return null;
-  const resumable = items.some((item) => item.kind === 'workflow' && item.resume !== null);
+  const earlierRows = expanded ? cutRows(fold.earlier, limit) : { rows: [], more: 0 };
+  const items = [...fold.shown, ...earlierRows.rows];
+  const resumable = fold.shown.some((item) => item.kind === 'workflow' && item.resume !== null);
   return (
-    <Group id="overview" title={AGENT_WORDS.overview} icon="table" summary={overviewSummary(items)} open={open || resumable} onToggle={onToggle}>
+    <Group id="overview" title={AGENT_WORDS.overview} icon="table" summary={overviewSummary(fold.shown)} open={open || resumable} onToggle={onToggle}>
       <table className="v2-ag-ov" data-testid="v2-agent-overview">
         <colgroup>
           <col />
@@ -140,6 +153,17 @@ export function OverviewGroup({
           )}
         </tbody>
       </table>
+      <ShowMoreHelpers more={earlierRows.more} testId="v2-agent-overview-more" onMore={() => setLimit((value) => value + HELPERS_PAGE)} />
+      <EarlierToggle
+        count={fold.earlierCount}
+        expanded={expanded}
+        words={AGENT_WORDS.showEarlierOverview}
+        testId="v2-agent-overview-earlier"
+        onToggle={() => {
+          setExpanded((value) => !value);
+          setLimit(HELPERS_PAGE);
+        }}
+      />
       {session.reportedTable ? (
         <div className="v2-ag-ov-rep" data-testid="v2-agent-overview-reported">
           <div className="v2-muted v2-ag-small">
@@ -179,6 +203,20 @@ export function OverviewGroup({
       ) : null}
     </Group>
   );
+}
+
+/** The first `limit` folded units' rows (a run's agents stay with their run) and how many units wait behind "Show more". */
+function cutRows(rows: readonly OverviewItem[], limit: number): { readonly rows: readonly OverviewItem[]; readonly more: number } {
+  const out: OverviewItem[] = [];
+  let units = 0;
+  let more = 0;
+  for (const row of rows) {
+    const starts = !(row.kind === 'agent' && row.depth === 1);
+    if (starts) units += 1;
+    if (units <= limit) out.push(row);
+    else if (starts) more += 1;
+  }
+  return { rows: out, more };
 }
 
 function AgentRow({ data, item, href }: { readonly data: AgentData; readonly item: Extract<OverviewItem, { kind: 'agent' }>; readonly href: string | null }) {

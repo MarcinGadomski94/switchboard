@@ -10,6 +10,7 @@ import { isFinishedSubagent } from '../../views/session/right-panel.ts';
 import { overviewEntries, resumeRunMessage } from '../../views/session/workflow-agents.ts';
 import { type V2Status, sessionStatusToV2 } from '../glossary.ts';
 import { projectStatus, stepLook, stepName } from '../projects/project-model.ts';
+import { type HelperBucket, helperActivityAt, helperBucket, runActivityAt, runBucket } from './helpers-model.ts';
 
 /**
  * D131 · lane X · the side panel's added groups, pure: the agents overview (D21 /
@@ -81,6 +82,50 @@ export function overviewItems(session: Pick<SessionDetail, 'agents' | 'status' |
     });
   }
   return out;
+}
+
+/** The overview folded (2026-10-27, the helpers fold): what shows, and what folds under "Show N finished earlier". */
+export interface OverviewFold {
+  /** The main agent, then the active rows (newest activity first), then the ones that ended within 10 minutes. */
+  readonly shown: readonly OverviewItem[];
+  /** The rows of helpers and Workflow runs that ended earlier, newest first (a run with its agents under it). */
+  readonly earlier: readonly OverviewItem[];
+  /** How many folded: a helper counts one, a run (with its agents) counts one. */
+  readonly earlierCount: number;
+}
+
+/**
+ * The overview's rows folded at `now`: each helper and each Workflow run (its row
+ * and its agents under it, as one) is active, recent (ended within 10 minutes) or
+ * earlier (folded); a run that is still active keeps every agent under it. The
+ * main agent stays on top.
+ */
+export function foldOverview(items: readonly OverviewItem[], session: Pick<SessionDetail, 'agents' | 'workflows'>, now: number): OverviewFold {
+  const runs = session.workflows ?? [];
+  const byRun = new Map(runs.map((run) => [run.runId, run]));
+  const agents = new Map(session.agents.map((agent) => [agent.id, agent]));
+  const top: OverviewItem[] = [];
+  const units: Array<{ readonly rows: OverviewItem[]; readonly bucket: HelperBucket; readonly at: number; readonly index: number }> = [];
+  for (const item of items) {
+    if (item.kind === 'agent' && item.main) {
+      top.push(item);
+      continue;
+    }
+    if (item.kind === 'agent' && item.depth === 1) {
+      units[units.length - 1]?.rows.push(item);
+      continue;
+    }
+    if (item.kind === 'workflow') {
+      const run = byRun.get(item.runId);
+      units.push({ rows: [item], bucket: run ? runBucket(run, session.agents, now) : 'active', at: run ? runActivityAt(run, session.agents) : 0, index: units.length });
+      continue;
+    }
+    const agent = agents.get(item.id);
+    units.push({ rows: [item], bucket: agent ? helperBucket(agent, now, byRun) : 'active', at: agent ? helperActivityAt(agent, byRun) : 0, index: units.length });
+  }
+  const sorted = [...units].sort((a, b) => b.at - a.at || b.index - a.index);
+  const rowsOf = (bucket: HelperBucket): OverviewItem[] => sorted.filter((unit) => unit.bucket === bucket).flatMap((unit) => unit.rows);
+  return { shown: [...top, ...rowsOf('active'), ...rowsOf('recent')], earlier: rowsOf('earlier'), earlierCount: sorted.filter((unit) => unit.bucket === 'earlier').length };
 }
 
 /** The overview's summary in the group's header: "3 agents · 1 working". */

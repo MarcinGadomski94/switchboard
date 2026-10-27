@@ -162,7 +162,6 @@ describe('words', () => {
     expect(AGENT_WORDS.showEarlierHelpers(12)).toBe('Show 12 helpers finished earlier');
     expect(AGENT_WORDS.earlierLanes(1)).toBe('1 earlier helper');
     expect(AGENT_WORDS.earlierLanes(3)).toBe('3 earlier helpers');
-    expect(AGENT_WORDS.helpersTabActive(2)).toBe('Helpers · 2 active');
     expect(AGENT_WORDS.showMoreHelpers(50, 80)).toBe('Show 50 more (80 left)');
   });
 });

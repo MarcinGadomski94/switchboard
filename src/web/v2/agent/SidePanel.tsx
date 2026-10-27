@@ -21,6 +21,7 @@ import { Button, Icon, Segmented, Select, StatusBadge, useToast } from '../compo
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { NotesLine, OverviewGroup, ProjectLine } from './SideExtras.tsx';
+import { EarlierToggle, ShowMoreHelpers, useHelperList, useHelpersFold } from './HelpersFold.tsx';
 import { depthOptions, exactModel, howSummary, speedModels, speedOf } from './how-model.ts';
 import type { AgentData } from './useAgent.ts';
 import { RoutinesGroupBody, useAgentRoutines } from './Routines.tsx';
@@ -62,6 +63,37 @@ export function Group({ id, title, icon, summary, open, onToggle, children }: { 
 }
 
 /**
+ * The Helpers group: active helpers and those that ended within 10 minutes, the
+ * older ones under "Show N helpers finished earlier" (2026-10-27, the helpers
+ * fold); its summary counts the active ones.
+ */
+function HelpersGroup({ data, helperHref, open, onToggle }: { readonly data: AgentData; readonly helperHref: (agentId: string) => string; readonly open: boolean; readonly onToggle: (id: GroupKey, open: boolean) => void }) {
+  const fold = useHelpersFold(data.session);
+  const list = useHelperList(fold, data.sessionId);
+  const active = fold.active.length;
+  const total = active + fold.recent.length + fold.earlier.length;
+  const summary = total === 0 ? 'none' : active > 0 ? AGENT_WORDS.activeHelpers(active) : AGENT_WORDS.noActiveHelpers;
+  return (
+    <Group id="helpers" title={AGENT_WORDS.helpers} icon="crew" summary={summary} open={open} onToggle={onToggle}>
+      {list.shown.length === 0 ? <p className="v2-muted v2-ag-none">{AGENT_WORDS.noHelpers}</p> : null}
+      {list.shown.map((agent) => (
+        <div className="v2-ag-prow" key={agent.id} data-testid="v2-agent-side-helper" data-agent-id={agent.id}>
+          <span className="v2-grow">{agent.description || agent.name}</span>
+          <StatusBadge status={sessionStatusToV2(agent.status)} size="s" />
+          {hasSubagentChat(agent) ? (
+            <V2Link to={helperHref(agent.id)} className="v2-btn" data-variant="ghost" data-size="sm" aria-label={`${AGENT_WORDS.openHelperChat}: ${agent.description || agent.name}`}>
+              <Icon name="chev" size="s" />
+            </V2Link>
+          ) : null}
+        </div>
+      ))}
+      <ShowMoreHelpers more={list.more} onMore={list.showMore} />
+      <EarlierToggle count={list.earlier} expanded={list.expanded} onToggle={list.toggle} />
+    </Group>
+  );
+}
+
+/**
  * D131 · lane S · the agent's side panel (Details, ⌘.): collapsible groups, each
  * remembered: Working memory (with the clean slate, D83), How it works (Smart /
  * Fast, thinking depth, AI engine, account and pin: D31, D62, D63), Helpers (their
@@ -91,8 +123,6 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
       </div>
     );
   }
-  const helpers = session.agents.filter((agent) => agent.kind !== 'main');
-  const working = helpers.filter((agent) => agent.status === 'run' || agent.status === 'need').length;
   const pct = session.context?.percent ?? null;
   return (
     <div className="v2-ag-side-body">
@@ -117,23 +147,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
         <HowGroup data={data} />
       </Group>
       {data.conversation ? null : (
-        <Group id="helpers" title={AGENT_WORDS.helpers} icon="crew" summary={helpers.length ? `${helpers.length} · ${working} working` : 'none'} open={open.helpers} onToggle={toggle}>
-          {helpers.length === 0 ? (
-            <p className="v2-muted v2-ag-none">{AGENT_WORDS.noHelpers}</p>
-          ) : (
-            helpers.map((agent) => (
-              <div className="v2-ag-prow" key={agent.id} data-testid="v2-agent-side-helper">
-                <span className="v2-grow">{agent.description || agent.name}</span>
-                <StatusBadge status={sessionStatusToV2(agent.status)} size="s" />
-                {hasSubagentChat(agent) ? (
-                  <V2Link to={helperHref(agent.id)} className="v2-btn" data-variant="ghost" data-size="sm" aria-label={`${AGENT_WORDS.openHelperChat}: ${agent.description || agent.name}`}>
-                    <Icon name="chev" size="s" />
-                  </V2Link>
-                ) : null}
-              </div>
-            ))
-          )}
-        </Group>
+        <HelpersGroup data={data} helperHref={helperHref} open={open.helpers} onToggle={toggle} />
       )}
       {data.conversation ? null : <OverviewGroup data={data} helperHref={helperHref} open={open.overview} onToggle={toggle} />}
       {data.conversation ? null : (

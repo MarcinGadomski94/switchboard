@@ -1440,6 +1440,42 @@
   min-width: 4px;
 }
 
+/* 2026-10-27 · the helpers fold: the summary lane of helpers that ended earlier. */
+.sb2 .v2-ag-lane-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--v2-muted, inherit);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-lane-toggle:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-ag-lane-sum .v2-ag-lane {
+  opacity: 0.7;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-ag-lane-toggle {
+    min-height: 44px;
+  }
+}
+
+/* 2026-10-27 · the helpers fold: "Show N helpers finished earlier" / "Show more" under a list. */
+.sb2 .v2-ag-fold {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 .sb2 .v2-ag-ticks {
   justify-content: space-between;
   margin: 6px 0 0 160px;

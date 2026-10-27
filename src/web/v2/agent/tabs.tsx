@@ -8,7 +8,7 @@ import { deltaText, diffModel, fileKey, scopeOptions, shownScope } from '../../v
 import { useDiffScope } from '../../views/session/useDiffScope.ts';
 import { useSessionRefresh } from '../../views/session/useSessionRefresh.ts';
 import { hasSubagentChat } from '../../views/session/chat.ts';
-import { PLAY_MAX, PLAY_TICK_MS, TIMELINE_EVENTS_PAGE, formatClock, playStep, timelineModel } from '../../views/session/timeline.ts';
+import { PLAY_MAX, PLAY_TICK_MS, TIMELINE_EVENTS_PAGE, type TimelineBlock, formatClock, playStep, timelineModel } from '../../views/session/timeline.ts';
 import { rootPath } from '../../views/session/right-panel.ts';
 import { Button, Card, Chip, EmptyState, Icon, IconButton, Segmented, Skeleton, StatusBadge, TOAST_MS, useToast } from '../components/index.ts';
 import { AGENT_WORDS, RESULTS_WORDS, sessionStatusToV2 } from '../glossary.ts';
@@ -18,6 +18,8 @@ import { resultMeta } from './chat-model.ts';
 import { openResult, resultItemOf, shownResults } from './results-bits.ts';
 import { LOG_LOOKS, SCRUB_STEP, blockOf, nextMoment, playOf, previousMoment } from './timeline-model.ts';
 import type { AgentData } from './useAgent.ts';
+import { EarlierToggle, ShowMoreHelpers, useFoldClock, useHelperList, useHelpersFold } from './HelpersFold.tsx';
+import { foldLanes } from './helpers-model.ts';
 
 /** The v2 names of the classic diff views (D90). */
 const SCOPE_WORDS: Readonly<Record<DiffScope, string>> = { head: AGENT_WORDS.sinceSavePoint, branch: AGENT_WORDS.wholeCopy, repo: AGENT_WORDS.allUnsaved };
@@ -268,6 +270,9 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
   const [playing, setPlaying] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const reduced = useReducedMotion();
+  // 2026-10-27 · the helpers fold: lanes of helpers that ended over 10 minutes ago fold into one summary lane.
+  const foldNow = useFoldClock(data.session);
+  const [earlierOpen, setEarlierOpen] = useState(false);
   const playRef = useRef(play);
   playRef.current = play;
   const live = data.session?.status === 'run' || data.session?.status === 'need';
@@ -280,6 +285,7 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
     setPlay(PLAY_MAX);
     setPlaying(false);
     setSelected(null);
+    setEarlierOpen(false);
   }, [data.sessionId]);
   useEffect(() => {
     if (!playing) return undefined;
@@ -299,6 +305,7 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
   if (!model) return <Skeleton lines={4} height={20} />;
   if (model.empty) return <EmptyState icon="clock" tone="grey" title={AGENT_WORDS.noTimeline} />;
   const lanes = model.lanes;
+  const laneFold = session ? foldLanes(lanes, session.agents, foldNow, session.workflows ?? []) : { shown: lanes, earlier: [] };
   const seek = (value: number): void => {
     setPlaying(false);
     setPlay(Math.min(PLAY_MAX, Math.max(0, value)));
@@ -330,30 +337,33 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
         {AGENT_WORDS.timelineNote} {model.range}
       </p>
       <div className="v2-ag-lanes">
-        {lanes.map((lane) => (
-          <div className="v2-ag-lane-row" key={lane.id ?? 'main'} data-testid="v2-agent-lane">
+        {laneFold.shown.map((lane) => (
+          <div className="v2-ag-lane-row" key={lane.id ?? 'main'} data-testid="v2-agent-lane" data-lane-id={lane.id ?? undefined}>
             <span className="v2-ag-lane-name" title={lane.sub}>
               {lane.name}
             </span>
-            <div className="v2-ag-lane">
-              {lane.blocks.map((block) => (
-                <i
-                  key={block.id}
-                  title={`${block.label} · ${formatClock(block.start)}`}
-                  style={{ left: `${block.left}%`, width: `${Math.max(block.width, 0.6)}%`, background: LANE_COLORS[block.kind] ?? 'var(--v2-grey)' }}
-                  data-open={block.open ? 'true' : undefined}
-                  data-dim={block.dim ? 'true' : undefined}
-                  data-selected={block.id === selected ? 'true' : undefined}
-                  data-testid="v2-agent-timeline-block"
-                  data-event-id={block.id}
-                >
-                  {block.label}
-                </i>
-              ))}
-              <span className="v2-ag-playhead" aria-hidden="true" style={{ left: `${model.head}%` }} data-testid="v2-agent-playhead" />
-            </div>
+            <LaneTrack blocks={lane.blocks} selected={selected} head={model.head} />
           </div>
         ))}
+        {laneFold.earlier.length > 0 ? (
+          <div className="v2-ag-lane-row v2-ag-lane-sum" data-testid="v2-agent-lane-earlier" data-open={earlierOpen ? 'true' : 'false'}>
+            <button type="button" className="v2-ag-lane-name v2-ag-lane-toggle" aria-expanded={earlierOpen} data-testid="v2-agent-lane-earlier-toggle" title={laneFold.earlier.map((lane) => lane.name).join(', ')} onClick={() => setEarlierOpen((value) => !value)}>
+              <Icon name={earlierOpen ? 'chev-down' : 'chev'} size="s" />
+              {AGENT_WORDS.earlierLanes(laneFold.earlier.length)}
+            </button>
+            <LaneTrack blocks={earlierOpen ? [] : laneFold.earlier.flatMap((lane) => lane.blocks)} selected={selected} head={model.head} />
+          </div>
+        ) : null}
+        {earlierOpen
+          ? laneFold.earlier.map((lane) => (
+              <div className="v2-ag-lane-row" key={lane.id ?? 'main'} data-testid="v2-agent-lane" data-lane-id={lane.id ?? undefined} data-earlier="true">
+                <span className="v2-ag-lane-name" title={lane.sub}>
+                  {lane.name}
+                </span>
+                <LaneTrack blocks={lane.blocks} selected={selected} head={model.head} />
+              </div>
+            ))
+          : null}
       </div>
       <div className="v2-row v2-ag-ticks v2-muted v2-ag-small">
         {model.ticks.map((tick, index) => (
@@ -425,15 +435,45 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
   );
 }
 
-/** The Helpers tab: each helper with its status, what it was asked, and its own chat. */
+/** One lane's blocks and the playhead. */
+function LaneTrack({ blocks, selected, head }: { readonly blocks: readonly TimelineBlock[]; readonly selected: number | null; readonly head: number }) {
+  return (
+    <div className="v2-ag-lane">
+      {blocks.map((block) => (
+        <i
+          key={block.id}
+          title={`${block.label} · ${formatClock(block.start)}`}
+          style={{ left: `${block.left}%`, width: `${Math.max(block.width, 0.6)}%`, background: LANE_COLORS[block.kind] ?? 'var(--v2-grey)' }}
+          data-open={block.open ? 'true' : undefined}
+          data-dim={block.dim ? 'true' : undefined}
+          data-selected={block.id === selected ? 'true' : undefined}
+          data-testid="v2-agent-timeline-block"
+          data-event-id={block.id}
+        >
+          {block.label}
+        </i>
+      ))}
+      <span className="v2-ag-playhead" aria-hidden="true" style={{ left: `${head}%` }} data-testid="v2-agent-playhead" />
+    </div>
+  );
+}
+
+/**
+ * The Helpers tab: each helper with its status, what it was asked, and its own
+ * chat. Active helpers and those that ended within 10 minutes; the older ones
+ * fold under "Show N helpers finished earlier" (2026-10-27, the helpers fold),
+ * expanded 50 at a time.
+ */
 export function HelpersTab({ data, helperHref }: { readonly data: AgentData; readonly helperHref: (agentId: string) => string }) {
-  const helpers = (data.session?.agents ?? []).filter((agent) => agent.kind !== 'main');
+  const fold = useHelpersFold(data.session);
+  const list = useHelperList(fold, data.sessionId);
   if (!data.session) return <Skeleton lines={3} height={40} />;
-  if (helpers.length === 0) return <EmptyState icon="crew" tone="grey" title={AGENT_WORDS.noHelpersTitle} text={AGENT_WORDS.noHelpersText} />;
+  if (list.shown.length === 0 && list.earlier === 0) return <EmptyState icon="crew" tone="grey" title={AGENT_WORDS.noHelpersTitle} text={AGENT_WORDS.noHelpersText} />;
   return (
     <div className="v2-ag-tab v2-ag-helpers" data-testid="v2-agent-helpers-tab">
-      {helpers.map((agent) => (
-        <Card key={agent.id} pad className="v2-ag-helper-card" data-testid="v2-agent-helper-card">
+      {list.shown.length === 0 ? <p className="v2-muted v2-ag-small">{AGENT_WORDS.noHelpers}</p> : null}
+      {list.shown.map((agent) => (
+        <Card key={agent.id} pad className="v2-ag-helper-card" data-testid="v2-agent-helper-card" data-agent-id={agent.id}>
           <div className="v2-row">
             <span className="v2-ag-tav" aria-hidden="true">
               {(agent.description || agent.name).charAt(0).toUpperCase()}
@@ -450,6 +490,8 @@ export function HelpersTab({ data, helperHref }: { readonly data: AgentData; rea
           ) : null}
         </Card>
       ))}
+      <ShowMoreHelpers more={list.more} onMore={list.showMore} />
+      <EarlierToggle count={list.earlier} expanded={list.expanded} onToggle={list.toggle} />
     </div>
   );
 }
