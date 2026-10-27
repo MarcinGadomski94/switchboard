@@ -21,6 +21,7 @@ import type { CleanupArchive, CleanupArchiveSnapshot, CleanupService } from '../
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { toLoop } from '../loops/wire.ts';
+// Plans (D99) hook (docs/plans-removal.md): the archive keeps the source session of an unfinished plan and a running / paused plan's item sessions.
 import { plansArchiveHolds } from '../plans/hooks.ts';
 // Team (D100) hook (docs/team-removal.md): a member's archived session is kept (`crew`); 2026-10-27, the developer chose B: it stays a member, only hidden.
 import { teamMemberOf } from '../team/hooks.ts';

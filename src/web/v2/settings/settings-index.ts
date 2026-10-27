@@ -56,7 +56,7 @@ function entry(id: string, where: Where, label: string, help: string, keywords: 
 export const SETTINGS_INDEX: readonly SettingEntry[] = [
   // ── Usage & accounts (v2) ──
   entry('usage.accounts', at('usage'), SETTINGS_LABELS.usage, W.usageSub, 'accounts usage limit left 5-hour week weekly subscription sign in login plan', tid('v2-set-usage')),
-  entry('usage.switching', at('usage'), W.switchingOn, W.switchingSub, 'switch rotate accounts order automatic limit', tid('v2-account-rules')),
+  entry('usage.switching', at('usage'), W.switchingOn, W.switchingSub, 'switch rotate accounts order automatic limit choose pick account for agents overall which account', tid('v2-account-rules')),
   entry('usage.switch-at', at('usage'), W.switchAt, W.switchingSub, 'threshold percent limit switch earlier', row('accounts-switch-at')),
   entry('usage.all-out', at('usage'), W.whenAllOut, `${W.usePaidExtra} or ${W.pauseNewWork}.`, 'credits paid extra pause out of usage limit exhausted', row('accounts-all-out')),
   entry('usage.switch-back', at('usage'), W.switchBack, W.switchingSub, 'reset first account return back', row('accounts-switch-back')),
@@ -125,7 +125,6 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('accounts.per-cli', adv('accounts'), 'For', 'Each CLI switches on its own.', 'accounts engine cli per', row('accounts-per-cli')),
   entry('accounts.thresholds', adv('accounts'), 'Switch earlier, before the limit error', 'At these percentages of the 5-hour and the weekly allowance', 'accounts threshold percent limit', row('accounts-thresholds')),
   entry('accounts.after-reset', adv('accounts'), 'After the limit resets', 'Stay where the session is, or go back to the first account as soon as it has allowance', 'accounts reset back first', row('accounts-after-reset')),
-  entry('accounts.new', adv('accounts'), 'New sessions start on', 'The first account with allowance, or a fixed account per CLI.', 'accounts new start fixed', row('accounts-new')),
   entry('accounts.out-of-allowance', adv('accounts'), 'When every account is out of allowance', 'An account past its plan limit can keep working on credits (paid extra usage)', 'accounts credits paid extra exhausted', row('accounts-out-of-allowance')),
   entry('accounts.exhausted', adv('accounts'), 'When every account of a CLI is out of usage', 'Stop and tell you, or hand the session over to another CLI with a handover summary', 'accounts handover engine exhausted', row('accounts-exhausted')),
   entry('machines.self', adv('machines'), 'This machine', 'This computer’s name, id, power and terminal hooks', 'computer machine hooks terminal name id', row('self')),
@@ -160,6 +159,8 @@ export const UNINDEXED_ROWS: Readonly<Record<string, string>> = {
   'claude.install-app / phones.install': `shown only when the browser offers the install (${INSTALL_APP_DESCRIPTION})`,
   'updates.*': 'the rows appear only when updates are on (the section is one entry)',
   'notify.warn-at': 'the same setting as Usage & accounts › Warn at Max usage (indexed there)',
+  'accounts.choice': 'classic Account for sessions (D138, replaced New sessions start on) shows only with two or more accounts of an engine',
+  'usage.account-choice': 'the Account for agents card shows only with two or more accounts of an engine (found through usage.switching\'s keywords, on the same page)',
 };
 
 /** The words of a query (lower case, no empty ones). */
