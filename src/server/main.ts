@@ -19,6 +19,7 @@ import { loadServiceRedirect } from './service/target.ts';
 import { loadUpdateConfig } from './updates/config.ts';
 import type { UpdateService } from './updates/service.ts';
 import { createUpdateService } from './updates/wire.ts';
+import { machineUpdateOf } from '../core/updates.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
@@ -160,7 +161,8 @@ async function main(): Promise<void> {
     const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders, clis }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
     // D48 (docs/peers.md): paired machines and the optional peer listener; started once the UI port is ours. The demo has none.
-    const peers = new PeerService({ config, store, bus, token, ...(power ? { power } : {}) });
+    // D140: the update state in short goes to the paired computers (their Settings → Computers update this one).
+    const peers = new PeerService({ config, store, bus, token, ...(power ? { power } : {}), ...(updates ? { update: { current: () => machineUpdateOf(updates.status()) } } : {}) });
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });

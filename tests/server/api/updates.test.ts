@@ -94,6 +94,33 @@ describe('/api/updates', () => {
     expect(calls).toEqual(['check', 'install 1.1.0', 'install 9.9.9', 'install busy', 'dismiss 1.1.0']);
   });
 
+  it('D140: passes who asked to the updater (this computer, a paired computer by its header) and answers a rate limit with 429', async () => {
+    const triggers: unknown[] = [];
+    const updates: UpdatesProvider = {
+      status: () => STATUS,
+      check: async () => STATUS,
+      install: (_version, trigger) => {
+        triggers.push(trigger);
+        if (triggers.length === 3) throw new UpdateError('rate-limited', 'try again in 6 min');
+        if (triggers.length === 4) throw new UpdateError('manual-restart', "Can't update itself here");
+        return STATUS;
+      },
+      dismiss: async () => STATUS,
+    };
+    const server = await start({ updates });
+    expect((await server.inject({ method: 'POST', url: '/api/updates/install', headers: headers(), payload: { version: '1.1.0' } })).statusCode).toBe(202);
+    const peer = { ...headers(), 'x-switchboard-peer': 'unknownpeer12' };
+    expect((await server.inject({ method: 'POST', url: '/api/updates/install', headers: peer, payload: { version: '1.1.0' } })).statusCode).toBe(202);
+    const limited = await server.inject({ method: 'POST', url: '/api/updates/install', headers: peer, payload: { version: '1.1.0' } });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toEqual({ error: 'rate-limited', message: 'try again in 6 min' });
+    const manual = await server.inject({ method: 'POST', url: '/api/updates/install', headers: peer, payload: { version: '1.1.0' } });
+    expect(manual.statusCode).toBe(409);
+    expect(manual.json().error).toBe('manual-restart');
+    expect(triggers[0]).toEqual({ kind: 'local' });
+    expect(triggers[1]).toEqual({ kind: 'peer', id: 'unknownpeer12', name: 'unknownpeer12' });
+  });
+
   it('is behind the guard (no cookie → 401)', async () => {
     const server = await start({ updates: { status: () => STATUS, check: async () => STATUS, install: () => STATUS, dismiss: async () => STATUS } });
     const response = await server.inject({ method: 'POST', url: '/api/updates/install', headers: { host: HOST }, payload: { version: '1.1.0' } });

@@ -52,8 +52,9 @@ describe('D73 local-only routes', () => {
       ['GET', '/api/mcp/auth/x'],
       ['POST', '/api/mcp/cli/codex/servers'],
       ['DELETE', '/api/mcp/cli/codex/servers/a'],
-      ['POST', '/api/updates/install'],
-      ['POST', '/api/updates/check'],
+      // D140: only check / install / dismiss are allowed; any other update route stays local.
+      ['POST', '/api/updates/rollback'],
+      ['PUT', '/api/updates/settings'],
       ['PUT', '/api/service'],
       ['PUT', '/api/clis/claude/command'],
       ['PUT', '/api/accounts/order'],
@@ -110,6 +111,11 @@ describe('D73 local-only routes', () => {
       ['PUT', '/api/device/push'],
       ['POST', '/api/schedules'],
       ['GET', '/api/updates'],
+      // D140: updating this computer from the phone, and a paired computer through the proxy.
+      ['POST', '/api/updates/check'],
+      ['POST', '/api/updates/install'],
+      ['POST', '/api/updates/dismiss'],
+      ['POST', '/api/machines/r1/api/updates/install'],
       ['GET', '/hub'],
       ['HEAD', '/api/sessions'],
       ['GET', '/'],

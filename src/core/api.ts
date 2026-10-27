@@ -22,7 +22,7 @@ import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { TurnWait } from './derive/turn-status.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
-import type { UpdateStatus } from './updates.ts';
+import type { MachineUpdate, UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
@@ -2597,6 +2597,14 @@ export interface HubEvents {
    */
   readonly machinePower: PowerStatus;
   /**
+   * Additive (D140, `docs/updates.md` → *Remote updates*): this machine's update
+   * state in short (version, the newest release, the progress), published with
+   * every `updateChanged`. Forwarded between peers: the receiving machine keeps it
+   * as that machine's `Machine.update` (published with `machineState`) and never
+   * republishes it. The local UI uses `updateChanged`.
+   */
+  readonly machineUpdate: MachineUpdate;
+  /**
    * Additive (D138, `docs/accounts.md` → *Choosing the account*): the overall account choice
    * or a Project's accounts changed (the pill's picker, Settings and the Projects page read
    * again). This machine's only: never forwarded between peers.
@@ -2645,6 +2653,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'ciChanged',
   // D125.
   'machinePower',
+  // D140.
+  'machineUpdate',
   // D138.
   'accountChoiceChanged',
 ];

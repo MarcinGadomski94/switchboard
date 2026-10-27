@@ -9,6 +9,7 @@ import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, p
 // Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
 import { type PowerStatus, readPowerStatus } from '../../core/power.ts';
+import { type MachineUpdate, readMachineUpdate } from '../../core/updates.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -298,6 +299,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/memory\/(?:removed|check|check\/settings)$/],
   ['POST', /^\/api\/memory\/(?:removed\/[^/]+\/restore|check\/run)$/],
   ['PUT', /^\/api\/memory\/check(?:\/settings)?$/],
+  // D140: that machine's updater (its version and the newest release, Check for updates, Update to the latest release:
+  // checksum required, refused where it cannot restart itself, one per 10 minutes, recorded with the caller's name).
+  // Dismiss, rollback and the updater's settings stay on that machine.
+  ['GET', /^\/api\/updates$/],
+  ['POST', /^\/api\/updates\/(?:check|install)$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */
@@ -348,6 +354,12 @@ export interface PeerServiceOptions {
    * machine reports no power.
    */
   readonly power?: { current(): PowerStatus | null };
+  /**
+   * D140 (`docs/updates.md` → *Remote updates*): this machine's update state in
+   * short. A peer's stream gets it when it opens; changes go out as
+   * `machineUpdate` (the updater publishes them). Absent = no updater here.
+   */
+  readonly update?: { current(): MachineUpdate | null };
 }
 
 /** Fix · peer reconnects: tunable timings of the peer connections. */
@@ -419,6 +431,10 @@ export class PeerService implements PeerHandlers {
   readonly #power: { current(): PowerStatus | null } | null;
   /** D125: each paired machine's power as it last reported it (`machinePower` on its stream). */
   readonly #peerPower = new Map<string, PowerStatus>();
+  /** D140: this machine's update state in short (`null`: no updater). */
+  readonly #update: { current(): MachineUpdate | null } | null;
+  /** D140: each paired machine's update state as it last reported it (`machineUpdate` on its stream). */
+  readonly #peerUpdate = new Map<string, MachineUpdate>();
   /** D113: per `<machine> <list>` (artifacts, inbox): a fetch is running, and when the last one arrived (ms). */
   readonly #listSync = new Map<string, { syncing: boolean; syncedAt: number | null }>();
   /** D113: machines whose Inbox has not arrived since they came online (its count is published when it does). */
@@ -436,6 +452,7 @@ export class PeerService implements PeerHandlers {
     this.#onError = options.onError ?? ((error) => console.error('switchboard peers:', error));
     this.#version = options.version ?? '0.1.0';
     this.#power = options.power ?? null;
+    this.#update = options.update ?? null;
     this.#timings = options.timings ?? options.config.peerTimings ?? {};
     this.#log =
       options.log ??
@@ -644,7 +661,20 @@ export class PeerService implements PeerHandlers {
       sidebarSync: this.#sidebar.view(record.id),
       listSync: this.#listSyncView(record.id),
       ...this.#powerView(record.id, connection?.state),
+      ...this.#updateView(record.id, connection?.state),
     };
+  }
+
+  /**
+   * D140: a machine's update state while it is online or reconnecting; while it
+   * is away after an update made it restart, the last state too (the UI says it
+   * reconnects when it is back).
+   */
+  #updateView(id: string, state: MachineState | undefined): { update?: MachineUpdate } {
+    const update = this.#peerUpdate.get(id);
+    if (!update) return {};
+    if (state === 'online' || state === 'reconnecting') return { update };
+    return update.progress.phase === 'restarting' || update.progress.phase === 'switching' ? { update } : {};
   }
 
   /** D125: a machine's power while it is online or reconnecting (a stale reading of an unreachable machine is not shown). */
@@ -871,6 +901,7 @@ export class PeerService implements PeerHandlers {
     this.#savedLists.delete(id);
     for (const list of PEER_SYNCED_LISTS) this.#listSync.delete(`${id} ${list}`);
     this.#peerPower.delete(id);
+    this.#peerUpdate.delete(id);
     this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
     this.#saveTimers.delete(id);
@@ -1005,6 +1036,15 @@ export class PeerService implements PeerHandlers {
       const power = readPowerStatus(payload);
       if (power) {
         this.#peerPower.set(id, power);
+        this.#publishMachine(id);
+      }
+      return;
+    }
+    if (name === 'machineUpdate') {
+      // D140: the machine's update state: kept as its Machine.update (machineState), never republished.
+      const update = readMachineUpdate(payload);
+      if (update) {
+        this.#peerUpdate.set(id, update);
         this.#publishMachine(id);
       }
       return;
@@ -1472,6 +1512,9 @@ export class PeerService implements PeerHandlers {
     // D125: this machine's power: the last reading now, and a fresh sample asked for at each keepalive (at most every 30 s).
     const power = this.#power?.current() ?? null;
     if (power) write(formatEvent('machinePower', power));
+    // D140: this machine's update state (version, newest release, progress); changes follow as machineUpdate.
+    const update = this.#update?.current() ?? null;
+    if (update) write(formatEvent('machineUpdate', update));
     const keepalive = setInterval(() => {
       write(KEEPALIVE_FRAME);
       this.#power?.current();

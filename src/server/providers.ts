@@ -1,6 +1,6 @@
 import type { CodebaseMemoryStatus, DiffScope, DiffTargets, DiffCount, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
-import type { UpdateStatus } from '../core/updates.ts';
+import type { UpdateStatus, UpdateTrigger } from '../core/updates.ts';
 import type { FolderRef } from './folders/ref.ts';
 import type { FrameHelperOpener } from './tools/frame-helper.ts';
 import type { FramingHeaders } from './tools/framing.ts';
@@ -141,7 +141,10 @@ export interface Providers {
 export interface UpdatesProvider {
   status(): UpdateStatus;
   check(): Promise<UpdateStatus>;
-  /** Starts the update to `version`; throws an `UpdateError` (`updates/service.ts`) when refused. */
-  install(version: string): UpdateStatus;
+  /**
+   * Starts the update to `version`; throws an `UpdateError` (`updates/service.ts`) when refused.
+   * D140: `trigger` says who asked (a paired phone or computer: allowed only where it restarts itself, rate-limited, recorded).
+   */
+  install(version: string, trigger?: UpdateTrigger): UpdateStatus;
   dismiss(version: string): Promise<UpdateStatus>;
 }

@@ -8,6 +8,7 @@
  */
 
 import type { PowerStatus } from './power.ts';
+import type { MachineUpdate } from './updates.ts';
 
 /** How the local service sees a paired machine right now. */
 export type MachineState =
@@ -54,6 +55,14 @@ export interface Machine {
    * none) and for phones (paired devices are not machines).
    */
   readonly power?: PowerStatus;
+  /**
+   * Additive (D140, `docs/updates.md` → *Remote updates*): the machine's update
+   * state as it last reported it over its event stream (its version, the newest
+   * release, an update's progress); while it is online or reconnecting, and while
+   * it is away after an update asked it to restart. Absent from machines before
+   * D140 and from machines whose updater is off.
+   */
+  readonly update?: MachineUpdate;
 }
 
 /** D113: a paired machine's list that a local page merges in (the Artifacts page, the Inbox). */
