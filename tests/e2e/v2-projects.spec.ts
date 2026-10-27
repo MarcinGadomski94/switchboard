@@ -62,17 +62,17 @@ test('the project list and the four views (remembered)', async ({ page }) => {
   const views = page.getByTestId('v2-project-views');
   await views.getByRole('button', { name: 'Board' }).click();
   await expect(page.getByTestId('v2-project-board')).toBeVisible();
-  await expect(page.locator('[data-testid="v2-bcell"][data-col="working"] [data-testid="v2-board-card"]')).toHaveCount(3);
-  // Lane X: the shared board (the Agents board's look): the project is its one lane, four columns with counts.
+  await expect(page.locator('[data-testid="v2-board-col"][data-col="working"] [data-testid="v2-board-card"]')).toHaveCount(3);
+  // The shared board's four columns in the Graph's look (Fixes after 2.0): each with its count and mini ring; empty ones say so.
   const board = page.getByTestId('v2-project-board');
-  await expect(board.getByTestId('v2-lane')).toHaveCount(1);
-  await expect(board.locator('.v2-bd-col-h')).toHaveCount(4);
-  await expect(board.locator('.v2-bd-col-h[data-col="working"] .v2-count')).toHaveText('3');
+  await expect(board.getByTestId('v2-board-col')).toHaveCount(4);
+  await expect(board.locator('[data-testid="v2-board-col"][data-col="working"] [data-testid="v2-board-count"]')).toHaveText('3');
+  await expect(board.getByTestId('v2-board-empty')).toHaveCount(3);
   // Tablet (1024 and 768): the four columns fit; neither the board nor the page scrolls sideways.
   for (const width of [1024, 768]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(board.getByTestId('v2-bcell')).toHaveCount(4);
-    expect(await board.locator('.v2-bd').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await expect(board.getByTestId('v2-board-col')).toHaveCount(4);
+    expect(await board.locator('.v2-pv-cols').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -149,7 +149,7 @@ test('Combine and Send back a step ready for approval', async ({ page }) => {
   await world.agentWorks(page, planId, 'PROJ-1');
   await world.itemIn(page, planId, 'PROJ-1', 'ready-to-merge', 45_000);
   await expect(step(page, 'PROJ-1')).toHaveAttribute('data-kind', 'approval');
-  await expect(step(page, 'PROJ-1').getByTestId('v2-status')).toHaveText('Ready for approval');
+  await expect(step(page, 'PROJ-1').getByTestId('v2-step-state')).toHaveText('Ready for approval');
 
   // Send back with a note: the step works again.
   await step(page, 'PROJ-1').getByTestId('v2-step-sendback').click();
@@ -187,8 +187,8 @@ test('a stopped step shows red with its agent’s last message; a click opens it
   const row = step(page, 'PROJ-7');
   await expect(row).toHaveAttribute('data-kind', 'stopped');
   await expect(row).toHaveAttribute('data-tone', 'red');
-  await expect(row.getByTestId('v2-step-detail')).toHaveText(`Stopped — needs you. ${LAST}`);
-  await expect(row.getByTestId('v2-status')).toHaveText('Stopped — needs you');
+  await expect(row.getByTestId('v2-step-detail')).toHaveText(LAST);
+  await expect(row.getByTestId('v2-step-state')).toHaveText('Stopped — needs you');
   // The card on the list counts it.
   await page.goto(`${world.baseUrl}/projects`);
   await expect(page.locator(`[data-testid="v2-project-card"][data-plan-id="${planId}"]`)).toContainText('1 stopped');
