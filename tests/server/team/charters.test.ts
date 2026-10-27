@@ -26,6 +26,7 @@ const peers = {
   self: async () => SELF,
   machines: async () => [],
   remoteSessions: () => [],
+  remoteArchived: () => [],
   remoteInbox: () => [],
   forward: async () => ({ status: 404, body: { error: 'not-found', message: 'no peers here' } }),
   ask: async () => ({ status: null, reason: 'no peers here' }),

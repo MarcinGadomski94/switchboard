@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type TeamMember, type TeamNeedsYouItem, type TeamSuggestion, parseHandoffTarget } from '../../src/core/team.ts';
+import { type TeamMember, type TeamNeedsYouItem, type TeamRosterEntry, type TeamSuggestion, archivedMemberText, memberSessionArchived, parseHandoffTarget, shownMembers } from '../../src/core/team.ts';
 import { TEAM_TEMPLATES, templateById } from '../../src/core/team-templates.ts';
 import { clearDraftCache, draftAll, draftCharter } from '../../src/web/team/charter-draft.ts';
 import {
+  archivedMembersText,
+  visibleMembers,
+  visibleTeam,
   EMPTY_FORM,
   LEFT_COLUMN_KEY,
   type LeftColumnPress,
@@ -160,6 +163,42 @@ describe('D100 · Team page: status and counts', () => {
 
   it('names the synced peers that are online', () => {
     expect(syncedPeers([{ name: 'Windows PC', state: 'online' }, { name: 'Laptop', state: 'offline' }])).toEqual(['Windows PC']);
+  });
+});
+
+describe('2026-10-27 (D137 follow-up, choice B) · archived members are hidden, not removed', () => {
+  const entry = (id: string, archived?: boolean): TeamRosterEntry => ({ id, name: id, status: 'offline', sessionRef: `s-${id}`, machineName: 'Mac', local: true, current: null, turnStartedAt: null, lastActivityAt: null, ...(archived === undefined ? {} : { archived }) });
+
+  it('the page shows only members whose session is not archived, and says how many are', () => {
+    const list = [member({ id: 'a' }), member({ id: 'b', archived: true }), member({ id: 'c', archived: false })];
+    expect(shownMembers(list).map((m) => m.id)).toEqual(['a', 'c']);
+    expect(visibleMembers(list)).toEqual({ shown: [list[0], list[2]], archived: 1 });
+    expect(visibleMembers([member({ id: 'x', archived: true })])).toEqual({ shown: [], archived: 1 });
+    expect(archivedMembersText(1)).toBe('1 archived member');
+    expect(archivedMembersText(3)).toBe('3 archived members');
+    expect(archivedMembersText(0)).toBe('');
+    // Counts leave them out (the header's "N members · …").
+    expect(headerCounts(visibleMembers(list).shown, [])).toBe('2 members · 0 working · 0 need you');
+  });
+
+  it('a team summary: archived members leave its roster and its member count (the sidebar, v2 Crews)', () => {
+    const team = { id: 't', name: 'Team', order: 0, members: 3, needsYou: 0, archived: 1, roster: [entry('a'), entry('b', true), entry('c', false)] };
+    expect(visibleTeam(team)).toMatchObject({ members: 2, archived: 1, roster: [entry('a'), entry('c', false)] });
+    // An older answer without `archived` (and without a roster) is left as it is.
+    expect(visibleTeam({ id: 't', name: 'Team', order: 0, members: 2, needsYou: 0 })).toEqual({ id: 't', name: 'Team', order: 0, members: 2, needsYou: 0, archived: 0 });
+    expect(sidebarTeamText('Team', visibleTeam(team).members)).toBe('Team · 2 members');
+  });
+
+  it('a session closed by a move to another computer (D65) is not archived: the member continues there', () => {
+    expect(memberSessionArchived({ closedAt: '2026-10-27T09:00:00.000Z' })).toBe(true);
+    expect(memberSessionArchived({ closedAt: '2026-10-27T09:00:00.000Z', movedTo: null })).toBe(true);
+    expect(memberSessionArchived({ closedAt: '2026-10-27T09:00:00.000Z', movedTo: { machineId: 'm-pc', machineName: 'PC', sessionId: 's' } })).toBe(false);
+    expect(memberSessionArchived({ closedAt: null })).toBe(false);
+    expect(memberSessionArchived({})).toBe(false);
+  });
+
+  it('the refusal of new work names the member and the way back', () => {
+    expect(archivedMemberText('Builder')).toBe("Builder's session is archived: restore it first");
   });
 });
 

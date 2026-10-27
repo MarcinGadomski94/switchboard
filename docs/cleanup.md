@@ -82,7 +82,7 @@ Code: `src/core/session-archive.ts` (rules and words), `src/server/sessions/arch
 | Reason (`keptReason`) | When |
 |---|---|
 | `running` | its process runs (a closed session should not; checked anyway) |
-| `crew` | it is a Team member (`teamMemberOf`) |
+| `crew` | it is a Team member (`teamMemberOf`; 2026-10-27, the developer chose B: an archived member stays in its crew, only hidden from the crew views, `docs/team.md` → *Archived members*) |
 | `plan` | it is the source (owner) session of a plan that is not done or cancelled |
 | `plan-step` | it runs an item of a plan that is running or paused |
 | `routine` | it has a Switchboard loop (D94) that has not ended (active or paused) |

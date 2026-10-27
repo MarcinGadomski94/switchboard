@@ -294,6 +294,18 @@ describe('D107 follow-up · Draft memory from this session', () => {
     expect(again.asked).toEqual([]);
     expect(again.skipped[0]).toEqual({ memberId: 'm-builder', name: 'Builder', reason: 'asked in the last 24 hours' });
   });
+
+  it('2026-10-27 (D137 follow-up): an archived member is skipped as "archived" and stays a member', async () => {
+    const r = await setup();
+    const { memberSession } = await world(r);
+    const other = await session(r, 'reviewer', { root: r.workspace, rootKind: 'workspace' });
+    member(r, other, 'Reviewer');
+    await r.store.sessions.update(other, { closedAt: new Date().toISOString() });
+    const answer = await r.memory.draftAll({});
+    expect(answer.asked).toEqual([{ memberId: 'm-builder', name: 'Builder' }]);
+    expect(answer.skipped).toEqual([{ memberId: 'm-reviewer', name: 'Reviewer', reason: 'archived' }]);
+    expect(r.sent.map((s) => s.sessionId)).toEqual([memberSession]);
+  });
 });
 
 describe('D107 follow-up · storage and moves', () => {

@@ -11,7 +11,8 @@ import { V2Link, useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
 import { AgentComputerTag } from '../shared/agent-row.tsx';
 import { timeAgo } from '../shared/time.ts';
-import { type AgentEntry, matchesQuery, nameOf, teammateIds } from './agents-model.ts';
+import { type AgentEntry, matchesQuery, nameOf, openTeammateIds } from './agents-model.ts';
+import { agentDisplayName, teamMembersOf } from '../shared/teammate-name.ts';
 import { type NewDraft, useTeams } from './useAgentsData.ts';
 
 /**
@@ -107,9 +108,11 @@ export function ClosedView() {
   const all = useSessionListOf('all');
   const settings = useApi(api.settings);
   const archiveDays = settings.data ? readKnownSettings(settings.data)['sessions.archiveDays'] : null;
-  // Teammates are the Crews pages' (fix after 2.0), closed or not.
+  // Teammates are the Crews pages' (fix after 2.0); an archived one is listed here (2026-10-27, D137
+  // follow-up: the developer chose B), under its teammate's name, so Restore brings it back to its crew.
   const teams = useTeams();
-  const mates = useMemo(() => teammateIds(teams), [teams]);
+  const mates = useMemo(() => openTeammateIds(teams), [teams]);
+  const names = useMemo(() => teamMembersOf(teams), [teams]);
   const toast = useToast();
   const { navigate } = useV2Router();
   const [query, setQuery] = useState('');
@@ -119,8 +122,8 @@ export function ClosedView() {
       (all.data ?? [])
         .filter((session) => session.closedAt && !mates.has(session.id))
         .sort((a, b) => Date.parse(b.closedAt ?? '') - Date.parse(a.closedAt ?? ''))
-        .filter((session) => !query.trim() || matchesQuery(`${nameOf(session)} ${session.folderPath ?? ''} ${session.machine?.name ?? ''}`, query)),
-    [all.data, query, mates],
+        .filter((session) => !query.trim() || matchesQuery(`${agentDisplayName(session, names)} ${nameOf(session)} ${session.folderPath ?? ''} ${session.machine?.name ?? ''}`, query)),
+    [all.data, query, mates, names],
   );
   const total = (all.data ?? []).filter((session) => session.closedAt && !mates.has(session.id)).length;
   const reopen = async (id: string, name: string): Promise<void> => {
@@ -174,7 +177,7 @@ export function ClosedView() {
       ) : (
         <Card>
           {closed.slice(0, CLOSED_SHOWN).map((session) => {
-            const name = nameOf(session);
+            const name = agentDisplayName(session, names);
             const offline = session.machine ? session.machine.state !== 'online' : false;
             return (
               <div key={session.id} className="v2-plain-row" data-testid="v2-closed-row" data-session={session.id}>

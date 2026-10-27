@@ -36,7 +36,7 @@ import { newestAt } from './activity.ts';
 import { isTextEntry } from '../shell/panes.ts';
 import { MemberCard } from './MemberCard.tsx';
 import { MemberPanel, type PanelTab, type SettingsFocus } from './MemberPanel.tsx';
-import { type MenuItem, adoptedToast, canDropOnTeam, movedToast, restoredOrder, isLeftColumnShortcut, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
+import { type MenuItem, archivedMembersText, visibleMembers, adoptedToast, canDropOnTeam, movedToast, restoredOrder, isLeftColumnShortcut, charterAskedToast, charterOfferText, modelLine, teamTitle, bannerText, bannerVisible, cardStatus, formFromSuggestion, formFromTemplate, headerCounts, inOrder, memberMenu, moveInOrder, needsYouCounts, placeLabel, returnedToast, syncedPeers } from './model.ts';
 import { ReorderStrip } from './ReorderStrip.tsx';
 import { DeleteTeamDialog, NewTeamDialog, TeamTabs, teamTabAt } from './TeamTabs.tsx';
 import { ActivityFeed, NeedsYouList } from './NeedsYou.tsx';
@@ -45,6 +45,21 @@ import { reloadTeam, showTeam, useTeamData } from './useTeamData.ts';
 import { DRAFT_ALL_LABEL, DRAFT_MEMORY_LABEL, draftAllText, draftAnswerText, draftMemory, draftMemoryForMembers } from '../memory/draft.ts';
 import { useMemory } from '../memory/store.ts';
 import './team.css';
+
+/**
+ * 2026-10-27 (D137 follow-up, the developer chose B): "1 archived member · Show in History".
+ * Archived members stay in the team (role and charter kept) but the page hides them until restored.
+ */
+function ArchivedMembers({ archived }: { readonly archived: number }) {
+  return (
+    <span className="sb-team-counts sb-team-archived" data-testid="team-archived">
+      {archivedMembersText(archived)} ·{' '}
+      <Link to={{ view: 'history' }} data-testid="team-archived-link">
+        Show in History
+      </Link>
+    </span>
+  );
+}
 
 /** The dialog open on the page (one at a time). */
 type Open =
@@ -144,7 +159,10 @@ export function TeamPage() {
     api.sidebarLayout().then(setLayoutSidebar, () => setLayoutSidebar(null));
   }, [on, loadSuggestions]);
 
-  const members = inOrder(view?.members ?? [], pendingOrder as string[] | null);
+  // 2026-10-27 (D137 follow-up, the developer chose B): members whose session is archived stay in the team, hidden until restored.
+  const allMembers = view?.members ?? [];
+  const { shown: shownList, archived: archivedHere } = visibleMembers(allMembers);
+  const members = inOrder(shownList, pendingOrder as string[] | null);
   const counts = useMemo(() => needsYouCounts(items), [items]);
   const selected = members.find((member) => member.id === selectedId) ?? (phone ? null : (members[0] ?? null));
   const selfId = view?.self.id ?? machines.data?.self.id ?? '';
@@ -521,7 +539,7 @@ export function TeamPage() {
       {open?.kind === 'delete-team' && view ? (
         <DeleteTeamDialog
           team={view.team}
-          members={members.length}
+          members={allMembers.length}
           onClose={() => setOpen(null)}
           onDone={(returned) => {
             setOpen(null);
@@ -603,6 +621,7 @@ export function TeamPage() {
             <span className="sb-team-counts" data-testid="team-counts">
               {headerCounts(members, items)}
             </span>
+            {archivedHere > 0 ? <ArchivedMembers archived={archivedHere} /> : null}
           </div>
           <div className="sb-team-header__actions">
             {/* Any team while another one remains (the first team too). */}
@@ -679,8 +698,8 @@ export function TeamPage() {
       ) : null}
       {empty ? (
         <div className="sb-team-empty" data-testid="team-empty">
-          <div className="sb-team-empty__title">No team members yet</div>
-          <div className="sb-team-muted">Adopt one of your sessions, or start a new member from a template.</div>
+          <div className="sb-team-empty__title">{archivedHere > 0 ? 'Every member of this team is archived' : 'No team members yet'}</div>
+          <div className="sb-team-muted">{archivedHere > 0 ? 'Restore one from History to bring it back here with its role, or adopt another session.' : 'Adopt one of your sessions, or start a new member from a template.'}</div>
           <div className="sb-team-need__actions">
             <button type="button" className="sb-button sb-team-btn" data-testid="team-empty-review" onClick={() => setOpen({ kind: 'review' })}>
               Review suggestions
@@ -721,7 +740,7 @@ export function TeamPage() {
             <>
               <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onEditCharter={editCharter} onChanged={refresh} />
               {cards}
-              <ActivityFeed activity={view?.activity ?? []} members={members} />
+              <ActivityFeed activity={view?.activity ?? []} members={allMembers} />
             </>
           ) : (
             <>
@@ -729,7 +748,7 @@ export function TeamPage() {
               <div className="sb-team-split" data-testid="team-split" data-left={leftCollapsed ? 'collapsed' : undefined} data-left-sliding={leftSliding ? 'true' : undefined}>
                 <LeftColumn collapsed={leftCollapsed} items={items} activity={view?.activity ?? []} focus={leftFocus} onFold={foldLeft}>
                   <NeedsYouList items={items} onReply={(memberId) => replyTo(memberId)} onSetUp={setUpAccess} onEditCharter={editCharter} onChanged={refresh} />
-                  <ActivityFeed activity={view?.activity ?? []} members={members} />
+                  <ActivityFeed activity={view?.activity ?? []} members={allMembers} />
                 </LeftColumn>
                 {selected ? (
                   <MemberPanel

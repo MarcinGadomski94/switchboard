@@ -3,7 +3,7 @@ import type { SessionListItem } from '../../src/core/api.ts';
 import type { Plan } from '../../src/core/plans.ts';
 import type { SidebarLayout } from '../../src/core/sidebar-layout.ts';
 import type { TeamSummary } from '../../src/core/team.ts';
-import { type AgentEntry, GROUP_BYS, askStatusOf, boardLanes, buildAgents, cellOf, chatSections, columnOf, isGroupBy, listSections, matchesQuery, offBoard, sortAgents, teammateIds, topFolderOf } from '../../src/web/v2/agents/agents-model.ts';
+import { type AgentEntry, GROUP_BYS, askStatusOf, boardLanes, buildAgents, cellOf, chatSections, columnOf, isGroupBy, listSections, matchesQuery, offBoard, openTeammateIds, sortAgents, teammateIds, topFolderOf } from '../../src/web/v2/agents/agents-model.ts';
 import { agentsOf, buildTree, canNest, checkMove, deleteSummary, drill, findFolder, flatFolders, pathOf, pickRows } from '../../src/web/v2/agents/tree-model.ts';
 
 /** D131 · lane A · the Agents page's pure model: agents, sorting, the Board's columns and swimlanes, the folder tree and the move rules. */
@@ -41,6 +41,11 @@ describe('buildAgents', () => {
     expect(byId('step').kind).toBe('step');
     expect(byId('step').plan?.title).toBe('PROJ-100 Checkout v2');
     expect(byId('a').kind).toBe('agent');
+  });
+  it('2026-10-27 (D137 follow-up): Archived lists an archived teammate (to restore it), never an open one', () => {
+    const crews = [{ roster: [{ sessionRef: 'mate', archived: false }, { sessionRef: 'gone', archived: true }, { sessionRef: 'old' }] }] as never;
+    expect(openTeammateIds(crews)).toEqual(new Set(['mate', 'old']));
+    expect(teammateIds(crews)).toEqual(new Set(['mate', 'gone', 'old']));
   });
   it('takes the status from open items first', () => {
     expect(byId('b').status).toBe('needs');

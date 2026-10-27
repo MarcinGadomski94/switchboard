@@ -1,7 +1,7 @@
 import type { TeamActivityRecord, TeamHandoff, TeamMember, TeamMemberStatus, TeamNeedsYouItem, TeamSummary } from '../../../core/team.ts';
 import type { Machine } from '../../../core/peers.ts';
 import { stripActor } from '../../team/activity.ts';
-import { cardStatus, moveInOrder, needsYouCounts, restoredOrder, rhythmLine } from '../../team/model.ts';
+import { cardStatus, moveInOrder, needsYouCounts, restoredOrder, rhythmLine, visibleTeam } from '../../team/model.ts';
 import { CREW_WORDS, type V2Status, computerStateToV2, teammateStatusToV2 } from '../glossary.ts';
 
 /**
@@ -21,20 +21,32 @@ export interface CrewStats {
   readonly needs: number;
   /** The computers its teammates run on (by name, in first-seen order), each with its local flag. */
   readonly computers: readonly { readonly name: string; readonly local: boolean }[];
+  /** 2026-10-27 (D137 follow-up): its archived teammates, hidden from every count above. */
+  readonly archived: number;
 }
 
-/** A crew's counts from `GET /api/team/teams` (its roster). */
-export function crewStats(crew: Pick<TeamSummary, 'members' | 'needsYou' | 'roster'>): CrewStats {
-  const roster = crew.roster ?? [];
+/** A crew's counts from `GET /api/team/teams` (its roster); archived teammates are left out (2026-10-27, D137 follow-up). */
+export function crewStats(crew: Pick<TeamSummary, 'members' | 'needsYou' | 'roster' | 'archived'>): CrewStats {
+  const shown = visibleTeam(crew);
+  const roster = shown.roster ?? [];
   const seen = new Map<string, boolean>();
   for (const entry of roster) if (!seen.has(entry.machineName)) seen.set(entry.machineName, entry.local);
   return {
-    members: crew.members,
+    members: shown.members,
     working: roster.filter((entry) => entry.status === 'working').length,
     needs: crew.needsYou,
     computers: [...seen].map(([name, local]) => ({ name, local })),
+    archived: shown.archived,
   };
 }
+
+/** The crew's quiet archived line: "1 archived teammate" (`null` = none archived); it links to Archived (`/agents?show=closed`). */
+export function archivedLine(archived: number): string | null {
+  return archived > 0 ? CREW_WORDS.archivedTeammates(archived) : null;
+}
+
+/** Where the archived line links: v2 Agents › Archived. */
+export const ARCHIVED_HREF = '/agents?show=closed';
 
 /** A crew's initials for its square avatar ("Acme Mobile" → "AM"). */
 export function crewInitials(name: string): string {

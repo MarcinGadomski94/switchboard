@@ -22,6 +22,7 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { toLoop } from '../loops/wire.ts';
 import { plansArchiveHolds } from '../plans/hooks.ts';
+// Team (D100) hook (docs/team-removal.md): a member's archived session is kept (`crew`); 2026-10-27, the developer chose B: it stays a member, only hidden.
 import { teamMemberOf } from '../team/hooks.ts';
 import { registerArchiveSource } from './wire.ts';
 

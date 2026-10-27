@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { TeamActivityRecord, TeamHandoff, TeamMember, TeamRosterEntry, TeamSummary } from '../../src/core/team.ts';
 import {
   activityRows,
+  ARCHIVED_HREF,
   activityText,
+  archivedLine,
   budgetMeter,
   checkBudget,
   computerChoices,
@@ -78,9 +80,26 @@ function member(id: string, patch: Partial<TeamMember> = {}): TeamMember {
 describe('a crew', () => {
   it('counts its teammates, who works, who needs you and its computers', () => {
     const stats = crewStats(crew('c', [roster('a', { status: 'working' }), roster('b', { status: 'needs-you', machineName: 'Studio-PC', local: false }), roster('c', { status: 'working', machineName: 'Studio-PC', local: false })], 1));
-    expect(stats).toEqual({ members: 3, working: 2, needs: 1, computers: [{ name: 'Acme-MacBook', local: true }, { name: 'Studio-PC', local: false }] });
+    expect(stats).toEqual({ members: 3, working: 2, needs: 1, computers: [{ name: 'Acme-MacBook', local: true }, { name: 'Studio-PC', local: false }], archived: 0 });
     expect(crewLine(stats)).toBe('3 teammates · 2 working');
-    expect(crewStats({ members: 0, needsYou: 0 })).toEqual({ members: 0, working: 0, needs: 0, computers: [] });
+    expect(crewStats({ members: 0, needsYou: 0 })).toEqual({ members: 0, working: 0, needs: 0, computers: [], archived: 0 });
+  });
+
+  it('2026-10-27 (D137 follow-up): archived teammates leave its counts, its computers and its line', () => {
+    const entries = [roster('a', { status: 'working' }), roster('b', { status: 'offline', machineName: 'Studio-PC', local: false, archived: true }), roster('c', { status: 'offline', archived: true })];
+    const stats = crewStats({ ...crew('c', entries, 0), archived: 2 });
+    expect(stats).toEqual({ members: 1, working: 1, needs: 0, computers: [{ name: 'Acme-MacBook', local: true }], archived: 2 });
+    expect(crewLine(stats)).toBe('1 teammate · 1 working');
+    expect(archivedLine(stats.archived)).toBe('2 archived teammates');
+    expect(archivedLine(1)).toBe('1 archived teammate');
+    expect(archivedLine(0)).toBeNull();
+    expect(ARCHIVED_HREF).toBe('/agents?show=closed');
+    // An answer without the count (only the flags): counted from the roster.
+    expect(crewStats(crew('c', entries, 0))).toMatchObject({ members: 1, archived: 2 });
+    // Every teammate archived: the crew is still there, with none shown.
+    const gone = crewStats({ ...crew('d', [roster('x', { archived: true })]), archived: 1 });
+    expect(gone).toEqual({ members: 0, working: 0, needs: 0, computers: [], archived: 1 });
+    expect(CREW_WORDS.showInArchived).toBe('Show in Archived');
   });
 
   it('initials for its avatar', () => {

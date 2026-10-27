@@ -4,7 +4,7 @@ import { useMachines } from '../../api/useMachines.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { refusalText, teamApi } from '../../team/api.ts';
 import { setLastTeam } from '../../team/local.ts';
-import { modelLine } from '../../team/model.ts';
+import { modelLine, visibleMembers } from '../../team/model.ts';
 import { reloadTeam, showTeam, useTeamData } from '../../team/useTeamData.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, ComputerTag, EmptyState, Icon, IconButton, MenuButton, type MenuItem, Sheet, Skeleton, StatusBadge, Tabs, useToast } from '../components/index.ts';
@@ -16,7 +16,7 @@ import { useOpenAgent } from '../shared/open-agent.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock } from '../shared/time.ts';
 import { AccessPanel } from './AccessPanel.tsx';
-import { CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
+import { ArchivedLine, CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
 import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
 import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
@@ -296,7 +296,10 @@ export function CrewPage({ id }: { readonly id: string }) {
   const view = data.view?.team.id === id ? data.view : null;
   const crew = ordered.find((entry) => entry.id === id) ?? null;
   const actions = useTeammateActions(view, ordered, setOverlay);
-  const members = view?.members ?? [];
+  // 2026-10-27 (D137 follow-up, the developer chose B): archived teammates stay in the crew but are not shown;
+  // every member still names the activity and hand-off rows.
+  const everyone = view?.members ?? [];
+  const members = useMemo(() => visibleMembers(everyone).shown, [everyone]);
   const items = needs.items;
   const needsOf = useMemo(() => {
     const map = new Map<string, NeedsItem[]>();
@@ -427,9 +430,10 @@ export function CrewPage({ id }: { readonly id: string }) {
           <ComputerTag key={computer.name} name={computer.name} kind={computer.local ? 'laptop' : 'desktop'} short />
         ))}
       </p>
+      <ArchivedLine archived={stats.archived} />
 
       {members.length === 0 ? (
-        <EmptyState icon="crew" tone="grey" title={CREW_WORDS.noTeammates} testId="v2-crew-empty" />
+        <EmptyState icon="crew" tone="grey" title={stats.archived > 0 ? CREW_WORDS.allArchived : CREW_WORDS.noTeammates} testId="v2-crew-empty" />
       ) : phone ? (
         <div className="v2-c-plist" data-testid="v2-teammate-list">
           {members.map((member) => {
@@ -465,7 +469,7 @@ export function CrewPage({ id }: { readonly id: string }) {
           <h2 id="v2-crew-activity-h">{CREW_WORDS.crewActivity}</h2>
         </div>
         <div className="v2-card v2-c-list" data-testid="v2-crew-activity">
-          {activityRows(view.activity, members).map((row) => (
+          {activityRows(view.activity, everyone).map((row) => (
             <div key={row.id} className="v2-c-lrow v2-c-act">
               <span className="v2-muted v2-mono v2-c-time">{clock(row.at)}</span>
               <b className="v2-c-who">{row.who}</b>
@@ -482,7 +486,7 @@ export function CrewPage({ id }: { readonly id: string }) {
           <span className="v2-muted v2-c-small">{CREW_WORDS.handoffsSub}</span>
         </div>
         <div className="v2-card v2-c-list" data-testid="v2-crew-handoffs">
-          {handoffRows(view.handoffs, members).map((row) => (
+          {handoffRows(view.handoffs, everyone).map((row) => (
             <div key={row.id} className="v2-c-lrow" data-state={row.state}>
               <b>{row.from}</b>
               <Icon name="arrow-r" size="s" />

@@ -46,6 +46,8 @@ import {
   type TeamSummary,
   type TeamView,
   type TeamWorkplace,
+  archivedMemberText,
+  memberSessionArchived,
   byOrder,
   charterInstruction,
   checkTeamName,
@@ -103,7 +105,7 @@ export class TeamError extends Error {
 }
 
 /** The parts of the peer service Team uses. */
-export type TeamPeers = Pick<PeerService, 'self' | 'machines' | 'remoteSessions' | 'remoteInbox' | 'forward' | 'ask' | 'hasMachine' | 'sidebarChanged'>;
+export type TeamPeers = Pick<PeerService, 'self' | 'machines' | 'remoteSessions' | 'remoteArchived' | 'remoteInbox' | 'forward' | 'ask' | 'hasMachine' | 'sidebarChanged'>;
 
 /** Options of {@link TeamService}. */
 export interface TeamServiceOptions {
@@ -165,6 +167,8 @@ interface SessionFacts {
    * wait, another background task, a wake-up) and since when (`null` = none).
    */
   readonly wait: BackgroundWait | null;
+  /** 2026-10-27 (D137 follow-up): the session is archived (closed), here or, as last known, on its paired machine. */
+  readonly archived: boolean;
 }
 
 /** 2026-10-16: the Team fields of a session's background wait (a member's, a roster entry's). */
@@ -204,6 +208,8 @@ export class TeamService {
   #offHooks: (() => void) | null = null;
   /** The members (not deleted) by local or remote session ref, for the synchronous hooks. */
   #roles = new Map<string, string>();
+  /** 2026-10-27: the members' sessions last seen archived (by ref), so only an archive or a restore publishes. */
+  readonly #archivedRefs = new Map<string, boolean>();
   #queue: Promise<unknown> = Promise.resolve();
   readonly #moves = new Map<string, TeamMoveRun>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
@@ -351,6 +357,7 @@ export class TeamService {
     this.#offBus ??= this.#o.bus.subscribe((message) => {
       if (message.name === 'todosChanged') void this.#todosChanged(message.payload.sessionId).catch((error: unknown) => this.#error(error));
       else if (message.name === 'machineState' && message.payload.state === 'online' && !message.payload.removed) this.#syncSoon();
+      else if (message.name === 'sessionUpdated') this.#memberSessionUpdated(message.payload);
     });
     this.#syncSoon();
   }
@@ -364,6 +371,22 @@ export class TeamService {
     this.#soon = undefined;
     this.#offBus?.();
     this.#offBus = null;
+  }
+
+  /**
+   * 2026-10-27 (D137 follow-up): a member's session was archived or restored (here, or on a
+   * paired machine: its `sessionUpdated` comes through with the `r~` ref): `teamChanged`, so
+   * every crew view (and the v2 teammates store, which reads only on `teamChanged`) hides it or
+   * brings it back at once. Other updates of the session publish nothing new.
+   */
+  #memberSessionUpdated(session: { readonly id: string; readonly closedAt?: string | null; readonly movedTo?: unknown }): void {
+    if (!this.#roles.has(session.id)) return;
+    const archived = memberSessionArchived(session);
+    const before = this.#archivedRefs.get(session.id) ?? false;
+    this.#archivedRefs.set(session.id, archived);
+    if (before === archived) return;
+    const member = this.#db ? this.#liveMembers().find((m) => this.#sessionRef(m) === session.id) : undefined;
+    this.#publish(['members'], member?.teamId ?? this.#defaultTeamId());
   }
 
   /** `GET /api/team/state`: the switch and what the sidebar hides. */
@@ -487,7 +510,7 @@ export class TeamService {
   async #sessionFacts(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<SessionFacts> {
     if (member.machineId === this.#selfId()) {
       const record = await this.#o.store.sessions.get(member.sessionId);
-      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null, lastActivityAt: record?.lastActivityAt ?? null, turnStartedAt: null, wait: null };
+      if (!record || record.closedAt !== null) return { reachable: true, status: null, title: record ? (record.title ?? record.name) : null, lastActivityAt: record?.lastActivityAt ?? null, turnStartedAt: null, wait: null, archived: !!record && memberSessionArchived(record) };
       const activity = this.#o.supervisor.activity(member.sessionId);
       return {
         reachable: true,
@@ -497,20 +520,39 @@ export class TeamService {
         lastActivityAt: record.lastActivityAt,
         turnStartedAt: activity?.turnStartedAt ?? null,
         wait: backgroundWait(activity),
+        archived: false,
       };
     }
     const machine = machines.get(member.machineId);
     const ref = remoteId(member.machineId, member.sessionId);
     const session = this.#o.peers.remoteSessions().find((s) => s.id === ref) as (Session & { readonly title?: string | null; readonly unreachable?: boolean }) | undefined;
     const reachable = machine?.online === true;
+    // D137 follow-up 2026-10-26: its archived list (last known, also while it is unreachable); an open session wins.
+    const archived = !session && this.#o.peers.remoteArchived().some((s) => s.id === ref && memberSessionArchived(s));
     return {
       reachable,
+      archived,
       status: session && STATUSES.has(session.status) ? (session.status as SessionStatusLike) : null,
       title: session ? (session.title ?? session.name) : null,
       lastActivityAt: session?.lastActivityAt ?? null,
       turnStartedAt: session?.activity?.turnStartedAt ?? null,
       wait: backgroundWait(session?.activity),
     };
+  }
+
+  /**
+   * 2026-10-27 (D137 follow-up, the developer chose B): the member's session is archived
+   * (closed): here from the record, on a paired machine from its archived list as last known
+   * (an open session there wins). Archived members stay members but get no new work.
+   */
+  async #archived(member: Pick<TeamMemberRecord, 'machineId' | 'sessionId'>): Promise<boolean> {
+    if (member.machineId === this.#selfId()) {
+      const record = await this.#o.store.sessions.get(member.sessionId);
+      return !!record && memberSessionArchived(record);
+    }
+    const ref = remoteId(member.machineId, member.sessionId);
+    if (this.#o.peers.remoteSessions().some((session) => session.id === ref)) return false;
+    return this.#o.peers.remoteArchived().some((session) => session.id === ref && memberSessionArchived(session));
   }
 
   async #toMember(member: TeamMemberRecord, machines: Map<string, { readonly name: string; readonly online: boolean }>): Promise<TeamMember> {
@@ -529,6 +571,7 @@ export class TeamService {
       usedTodayPct: local && member.budget.dailyPct !== null ? await this.#usedToday(member) : null,
       charterRequest: this.#charterRequestView(member.id),
       ...waitFields(facts.wait),
+      archived: facts.archived,
     };
   }
 
@@ -578,14 +621,17 @@ export class TeamService {
     for (const team of this.#teams()) {
       const members = this.#teamMembers(team.id);
       let needsYou = 0;
+      let archived = 0;
       const roster: TeamRosterEntry[] = [];
       for (const member of members) {
         const facts = await this.#sessionFacts(member, machines);
-        const waiting = (counts.get(member.id) ?? 0) > 0 || facts.status === 'need';
+        // 2026-10-27 (D137 follow-up): an archived member is listed (flagged) but never counts as waiting.
+        const waiting = !facts.archived && ((counts.get(member.id) ?? 0) > 0 || facts.status === 'need');
         if (waiting) needsYou += 1;
+        if (facts.archived) archived += 1;
         roster.push(await this.#rosterEntry(member, facts, waiting, machines));
       }
-      out.push({ id: team.id, name: team.name, order: team.order, members: members.length, needsYou, roster, collapsed: collapsed.has(team.id) });
+      out.push({ id: team.id, name: team.name, order: team.order, members: members.length, needsYou, archived, roster, collapsed: collapsed.has(team.id) });
     }
     return out;
   }
@@ -612,6 +658,7 @@ export class TeamService {
       turnStartedAt: working ? (facts.wait?.since ?? facts.turnStartedAt) : null,
       ...waitFields(working ? facts.wait : null),
       lastActivityAt: facts.lastActivityAt,
+      archived: facts.archived,
     };
   }
 
@@ -1357,6 +1404,8 @@ export class TeamService {
     const sender = input.from ? (this.#liveMembers().find((member) => member.id === input.from) ?? null) : null;
     const scope = sender?.teamId ?? (typeof input.teamId === 'string' && input.teamId !== '' ? input.teamId : this.#defaultTeamId());
     const to = this.#receiver(input.to, input.team, scope);
+    // 2026-10-27 (D137 follow-up): an archived member gets no new work (the hand-off is not stored).
+    if (await this.#archived(to)) throw new TeamError(409, 'closed', archivedMemberText(to.name));
     const brief = typeof input.brief === 'string' ? input.brief.trim() : '';
     const expected = typeof input.expected === 'string' ? input.expected.trim() : '';
     if (brief === '' || brief.length > HANDOFF_TEXT_MAX) throw new TeamError(422, 'invalid', `brief is required (at most ${HANDOFF_TEXT_MAX} characters)`);
@@ -1426,6 +1475,8 @@ export class TeamService {
       if (handoff.deleted || handoff.state !== 'open' && handoff.state !== 'accepted') continue;
       const to = members.get(handoff.toMemberId);
       if (!to || to.machineId !== this.#selfId()) continue;
+      // 2026-10-27 (D137 follow-up): one that came before the archiving waits for the restore (the next tick delivers it).
+      if (await this.#archived(to)) continue;
       const fromName = handoff.fromMemberId ? (members.get(handoff.fromMemberId)?.name ?? 'a former member') : 'the developer';
       let current = handoff;
       if (current.todoId === null) {
@@ -1518,7 +1569,9 @@ export class TeamService {
     const lines = view.members.map((member) => {
       const you = member.id === me.id ? ' (you)' : '';
       const how = member.charter.howItWorks ? `\n  how it works: ${member.charter.howItWorks}` : '';
-      return `- ${member.name}${you} · ${member.status}${member.local ? '' : ` · on ${member.machineName}`}\n  owns: ${member.charter.owns || '—'}\n  produces: ${member.charter.produces || '—'}${how}\n  never does: ${member.charter.neverDoes || '—'}`;
+      // 2026-10-27 (D137 follow-up): an archived member is named so, and gets no hand-offs until it is restored.
+      const status = member.archived ? 'archived: no hand-offs until the developer restores it' : member.status;
+      return `- ${member.name}${you} · ${status}${member.local ? '' : ` · on ${member.machineName}`}\n  owns: ${member.charter.owns || '—'}\n  produces: ${member.charter.produces || '—'}${how}\n  never does: ${member.charter.neverDoes || '—'}`;
     });
     const open = view.handoffs.filter((h) => h.toMemberId === me.id && (h.state === 'open' || h.state === 'accepted'));
     const otherLine =
@@ -1551,7 +1604,10 @@ export class TeamService {
     this.#need();
     // One team's (without one: the first team's), or every team's with `all` (D100 follow-up 2026-10-14).
     const all = teamId === ALL_TEAMS;
-    const members = all ? this.#liveMembers() : this.#teamMembers(this.#team(teamId).id);
+    // 2026-10-27 (D137 follow-up): an archived member's items wait hidden (its Inbox items stay in the Inbox) until it is restored.
+    const listed = all ? this.#liveMembers() : this.#teamMembers(this.#team(teamId).id);
+    const archived = await Promise.all(listed.map((member) => this.#archived(member)));
+    const members = listed.filter((_member, index) => !archived[index]);
     const names = new Map(this.#teams().map((team) => [team.id, team.name]));
     const teamOf = (member: TeamMemberRecord) => ({ teamId: member.teamId, teamName: names.get(member.teamId) ?? '' });
     const bySession = new Map(members.map((member) => [this.#sessionRef(member), member]));
@@ -1690,7 +1746,8 @@ export class TeamService {
     }
     if (before.paused) throw new TeamError(409, 'paused', `${before.name} is paused: resume it first`);
     const session = await this.#o.store.sessions.get(before.sessionId);
-    if (!session || session.closedAt !== null) throw new TeamError(409, 'closed', `${before.name}'s session is closed: reopen it first`);
+    if (!session) throw new TeamError(409, 'closed', `${before.name}'s session is gone`);
+    if (session.closedAt !== null) throw new TeamError(409, 'closed', archivedMemberText(before.name));
     const request = await this.#serial(async () => {
       const member = this.#memberRecord(id);
       const open = this.#openCharterRequest(id);
@@ -1743,6 +1800,7 @@ export class TeamService {
       const open = this.#openCharterRequest(member.id);
       if (open) skipped.push({ memberId: member.id, name: member.name, reason: open.proposal ? 'a proposal waits for you' : 'asked already' });
       else if (member.paused) skipped.push({ memberId: member.id, name: member.name, reason: 'paused' });
+      else if (await this.#archived(member)) skipped.push({ memberId: member.id, name: member.name, reason: 'archived' });
       else if (member.machineId !== this.#selfId() && machines.get(member.machineId)?.online !== true) skipped.push({ memberId: member.id, name: member.name, reason: `${machines.get(member.machineId)?.name ?? 'its machine'} is offline` });
       else {
         try {

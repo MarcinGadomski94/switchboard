@@ -8,7 +8,7 @@ import { DEFAULT_TEAM_ID, DEFAULT_TEAM_NAME, type TeamSummary } from '../../core
 import { teamApi } from './api.ts';
 import { requestMember } from './local.ts';
 import { collapsedSummary, rosterGlyph, hasDuration, rosterLine, rosterTitle, untouchedTeams } from './sidebar-roster.ts';
-import { sidebarTeamText } from './model.ts';
+import { sidebarTeamText, visibleTeam } from './model.ts';
 import { reloadTeam, useTeamData } from './useTeamData.ts';
 import './team.css';
 
@@ -96,7 +96,8 @@ export function TeamSidebarEntry() {
   const panes = usePanes();
   useSyncExternalStore(subscribeFolds, () => foldVersion, () => 0);
   // Before the first read: the first team as it was (no jump when the list lands).
-  const shown: readonly TeamSummary[] = loaded || teams.length > 0 ? teams : [{ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, order: 0, members: 0, needsYou: 0 }];
+  // 2026-10-27 (D137 follow-up): archived members are left out of the rows and counts (they stay members).
+  const shown: readonly TeamSummary[] = loaded || teams.length > 0 ? teams.map((team) => visibleTeam(team)) : [{ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, order: 0, members: 0, needsYou: 0 }];
   const foldedOf = (team: TeamSummary): boolean => folds.get(team.id)?.folded ?? team.collapsed ?? false;
   const listed = shown.flatMap((team) => (foldedOf(team) ? [] : (team.roster ?? [])));
   const now = useMinute(on && hasDuration(listed));

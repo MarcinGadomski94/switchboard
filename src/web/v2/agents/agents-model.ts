@@ -103,6 +103,17 @@ export function teammateIds(teams: readonly Pick<TeamSummary, 'roster'>[]): Set<
   return out;
 }
 
+/**
+ * The session ids of the teammates Archived leaves out: every crew's teammates except the
+ * archived ones (2026-10-27, D137 follow-up, the developer chose B: an archived teammate is
+ * hidden from its crew and listed in Archived, where Restore brings it back to the crew).
+ */
+export function openTeammateIds(teams: readonly Pick<TeamSummary, 'roster'>[]): Set<string> {
+  const out = new Set<string>();
+  for (const team of teams) for (const member of team.roster ?? []) if (member.archived !== true) out.add(member.sessionRef);
+  return out;
+}
+
 /** Every open agent as an {@link AgentEntry} (closed ones and teammates are left out), in the service's order. */
 export function buildAgents(sources: AgentSources): AgentEntry[] {
   const mates = teammateIds(sources.teams);

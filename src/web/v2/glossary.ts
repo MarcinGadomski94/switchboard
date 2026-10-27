@@ -1599,6 +1599,10 @@ export const CREW_WORDS = {
   movedTo: (who: string, crew: string): string => `Moved ${who} to ${crew}. Synced everywhere.`,
   jdProposed: 'Proposed a new job description',
   jdAsked: 'Asked for a job description — waiting for its agent',
+  /** 2026-10-27 (D137 follow-up, the developer chose B): archived teammates are hidden from the crew, never removed. */
+  archivedTeammates: (n: number): string => `${n} archived teammate${n === 1 ? '' : 's'}`,
+  showInArchived: 'Show in Archived',
+  allArchived: 'Every teammate of this crew is archived. Restore one to bring it back here.',
 } as const;
 
 /** 1st, 2nd, 3rd, 4th … (the crews' order). */

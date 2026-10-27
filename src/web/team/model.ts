@@ -19,6 +19,8 @@ import {
   type TeamNeedsYouItem,
   type TeamOriginalPlace,
   type TeamSuggestion,
+  type TeamSummary,
+  shownMembers,
 } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import type { MemberBody } from './api.ts';
@@ -40,6 +42,30 @@ export const STATUS_META: Readonly<Record<TeamMemberStatus, { readonly icon: str
   paused: { icon: '⏸', label: 'Paused' },
   offline: { icon: '⌁', label: 'Offline' },
 };
+
+// ── archived members (2026-10-27, D137 follow-up: the developer chose B) ──
+
+/**
+ * A team as the crew views show it: its archived members (their session is archived) are left
+ * out of its roster and its member count; `archived` says how many. They stay members (the
+ * server keeps listing them, flagged): Restore brings them back with their role.
+ */
+export function visibleTeam<T extends Pick<TeamSummary, 'members' | 'roster' | 'archived'>>(team: T): T & { readonly archived: number } {
+  const archived = team.archived ?? (team.roster ?? []).filter((entry) => entry.archived === true).length;
+  const members = Math.max(0, team.members - archived);
+  return team.roster ? { ...team, members, roster: shownMembers(team.roster), archived } : { ...team, members, archived };
+}
+
+/** The members a team page shows and how many are archived (hidden). */
+export function visibleMembers<T extends { readonly archived?: boolean }>(members: readonly T[]): { readonly shown: T[]; readonly archived: number } {
+  const shown = shownMembers(members);
+  return { shown, archived: members.length - shown.length };
+}
+
+/** The classic Team page's quiet line: "1 archived member" (`''` for none); History lists them. */
+export function archivedMembersText(archived: number): string {
+  return archived > 0 ? `${archived} archived member${archived === 1 ? '' : 's'}` : '';
+}
 
 /** The page's title: "Team", or "Team · <name>" once the developer renamed it. */
 export function teamTitle(name: string): string {

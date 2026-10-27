@@ -5,8 +5,9 @@ import { reloadTeam, useTeamData } from '../../team/useTeamData.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, Card, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Skeleton, StatusBadge, useToast } from '../components/index.ts';
 import { CREW_WORDS, teammateStatusToV2 } from '../glossary.ts';
-import { useV2Router } from '../nav.tsx';
-import { crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, orderedCrews } from './crew-model.ts';
+import { V2Link, useV2Router } from '../nav.tsx';
+import { ARCHIVED_HREF, archivedLine, crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, orderedCrews } from './crew-model.ts';
+import { visibleTeam } from '../../team/model.ts';
 import { DeleteCrewDialog, NewCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
 
@@ -16,6 +17,23 @@ export function CrewAvatar({ name, size = 44 }: { readonly name: string; readonl
     <span className="v2-c-crew-av" style={{ width: size, height: size }} aria-hidden="true">
       {crewInitials(name)}
     </span>
+  );
+}
+
+/**
+ * 2026-10-27 (D137 follow-up, the developer chose B): "1 archived teammate · Show in Archived".
+ * Archived teammates stay in their crew but are hidden until restored; the link opens Agents › Archived.
+ */
+export function ArchivedLine({ archived }: { readonly archived: number }) {
+  const text = archivedLine(archived);
+  if (!text) return null;
+  return (
+    <p className="v2-muted v2-c-small v2-c-archived" data-testid="v2-crew-archived">
+      {text} ·{' '}
+      <V2Link to={ARCHIVED_HREF} data-testid="v2-crew-archived-link" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+        {CREW_WORDS.showInArchived}
+      </V2Link>
+    </p>
   );
 }
 
@@ -133,7 +151,10 @@ export function CrewsPage() {
                 <CrewAvatar name={crew.name} size={40} />
                 <span className="v2-grow">
                   <b>{crew.name}</b>
-                  <span className="v2-muted v2-c-small">{crewLine(stats)}</span>
+                  <span className="v2-muted v2-c-small">
+                    {crewLine(stats)}
+                    {stats.archived > 0 ? <span data-testid="v2-crew-archived"> · {archivedLine(stats.archived)}</span> : null}
+                  </span>
                 </span>
                 {stats.needs > 0 ? <StatusBadge status="needs" label={String(stats.needs)} size="s" /> : null}
                 <Icon name="chev" size="s" />
@@ -207,7 +228,7 @@ export function CrewsPage() {
                   </div>
                   <div className="v2-row v2-c-wrap v2-c-crewcard-foot">
                     <span className="v2-c-avs" aria-hidden="true">
-                      {(crew.roster ?? []).map((entry) => (
+                      {(visibleTeam(crew).roster ?? []).map((entry) => (
                         <span key={entry.id} title={`${entry.name} · ${entry.status}`}>
                           <Avatar name={entry.name} status={teammateStatusToV2(entry.status)} size="m" />
                         </span>
@@ -224,6 +245,7 @@ export function CrewsPage() {
                       <ComputerTag key={computer.name} name={computer.name} kind={computer.local ? 'laptop' : 'desktop'} short />
                     ))}
                   </div>
+                  {stats.archived > 0 ? <ArchivedLine archived={stats.archived} /> : null}
                 </Card>
               );
             })}

@@ -863,8 +863,8 @@ export class MemoryService {
 
   /**
    * `POST /api/memory/draft-all` `{ teamId? }` ("Draft memory for all members"): {@link draft} for
-   * every Team member (of `teamId`, else every team), on whichever machine it runs; paused members
-   * and the ones asked in the last 24 hours are skipped (with the reason).
+   * every Team member (of `teamId`, else every team), on whichever machine it runs; paused members,
+   * archived ones (2026-10-27) and the ones asked in the last 24 hours are skipped (with the reason).
    */
   async draftAll(body: unknown): Promise<MemoryDraftAllAnswer> {
     this.#need();
@@ -880,7 +880,8 @@ export class MemoryService {
       }
       const answer = await this.draft({ memberId: member.id }).catch((error: unknown) => ({ asked: false, reason: error instanceof Error ? error.message : String(error), askedAt: null }));
       if (answer.asked) asked.push({ memberId: member.id, name: member.name });
-      else skipped.push({ memberId: member.id, name: member.name, reason: answer.reason === 'asked-recently' ? 'asked in the last 24 hours' : (answer.reason ?? 'not asked') });
+      // 2026-10-27 (D137 follow-up): a closed session is an archived member (skipped, it stays in its crew).
+      else skipped.push({ memberId: member.id, name: member.name, reason: answer.reason === 'asked-recently' ? 'asked in the last 24 hours' : answer.reason === 'closed' ? 'archived' : (answer.reason ?? 'not asked') });
     }
     return { asked, skipped };
   }

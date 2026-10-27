@@ -53,6 +53,19 @@ The sidebar's SESSIONS list leaves member sessions out through **one filter** (`
 
 **Team loops** are the session's Switchboard loops; the rhythm names the ones that are the member's routine (`rhythm.loops`, by id, found again by prompt and schedule after a move) plus **on hand-off** (a new hand-off wakes the agent).
 
+### Archived members (2026-10-27)
+
+Developer request: "once I archive a crew member chat, it should disappear from crew overview." Asked what archiving means for membership, the developer chose **B: archived members are only hidden** (D137 follow-up 2026-10-27).
+
+- **Archived** = the member's session is closed (D137's Archive; D33's `closedAt`), here or, as last known, on its paired machine (`PeerService.remoteArchived`; an open session there wins). A session closed by a **move** (D65 `movedTo`) is not archived (`memberSessionArchived`, `src/core/team.ts`).
+- **It stays a member:** `team.db` keeps the record (role, charter, rhythm, budget, gates, order, hand-offs), the sidebar still hides its session, and D137 keeps its session (`keptReason: crew`), so the sweep never deletes it while it is in a crew.
+- **The API keeps returning it, flagged:** `TeamMember.archived` and `TeamRosterEntry.archived` (`true`), `TeamSummary.archived` (how many; `members` still counts them). It never counts in `TeamSummary.needsYou`, and `GET /api/team/needs-you` leaves its items out (its Inbox items stay in the Inbox) until it is restored.
+- **The views hide it** (`visibleTeam` / `visibleMembers`, `src/web/team/model.ts`): the classic Team page (cards, the header's counts, the phone list), the classic sidebar's team rows and counts, v2 Crews (cards, avatars, "N teammates", working, computers) and the crew page (cards, phone rows). Activity and hand-off rows still name it. A team or crew with archived members shows a quiet line: **"1 archived member · Show in History"** (classic) / **"1 archived teammate · Show in Archived"** (v2, `/agents?show=closed`); one whose members are all archived still shows, with its empty state ("Every member of this team is archived" / "Every teammate of this crew is archived. Restore one to bring it back here.") and that line. v2 Archived lists archived teammates (under their teammate's name, "Kept: a teammate in a crew"); open teammates stay out of it.
+- **No new work:** a hand-off to it (by name, "Role (Team)" or id; the developer's or `team_handoff`) is refused with 409 `closed` "Builder's session is archived: restore it first" (the charter ask too); "Draft better charters" and "Draft memory for all members" skip it with the reason `archived`; a hand-off stored before (or synced while) it was archived waits and becomes its todo at the first tick after the restore. `team_members` lists it as "archived: no hand-offs until the developer restores it".
+- **Restore** (`POST /api/sessions/{id}/reopen`, v2 Archived, classic History, a paired computer's Restore) brings it straight back with its role: an archive or a restore of a member's session publishes `teamChanged` (`what: ["members"]`; a paired machine's comes through its `sessionUpdated`), so every crew view and v2's teammates store update live.
+- Reordering a team while a member is archived puts the archived one after the shown ones (the order route lists the shown ids first).
+- Tests: `tests/server/team/archived.test.ts`, `tests/server/memory/scopes.test.ts`, `tests/web/team.test.ts`, `tests/web/v2-crews.test.ts`, `tests/web/v2-agents.test.ts`, `tests/e2e/crew-archived.spec.ts` (v2 desktop and 390 × 844, classic).
+
 ## Hand-offs
 
 A written work item between members: from (a member or the developer), to, brief, expected result, state (`open` → `accepted` → `done`, or `declined`), links, the receiver's todo id, and `planRef`, the **seam for Plans (D99)** (null until Plans uses it).

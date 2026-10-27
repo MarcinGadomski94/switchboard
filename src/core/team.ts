@@ -331,6 +331,13 @@ export interface TeamMember extends Omit<TeamMemberRecord, 'clock' | 'deleted'> 
   readonly waitingOn?: TeamWaitKind | null;
   /** 2026-10-16: `waitingOn: 'wakeup'`: when it wakes up (ISO); additive. */
   readonly wakeAt?: string | null;
+  /**
+   * 2026-10-27 (D137 follow-up, the developer chose B): its session is archived (closed). It
+   * stays a member (role, charter, order and the archive's "Kept: a Team member" hold
+   * untouched) but the crew views hide it until it is restored, and it gets no new work.
+   * Additive: absent from an older machine = not archived.
+   */
+  readonly archived?: boolean;
 }
 
 /** 2026-10-16: the background work a member waits on besides subagents (`docs/team.md` → *Waiting on background work*). */
@@ -366,10 +373,12 @@ export interface TeamSummary {
   readonly id: string;
   readonly name: string;
   readonly order: number | null;
-  /** Its members. */
+  /** Its members (archived ones included: see {@link archived}). */
   readonly members: number;
-  /** Its members that need the developer (the session waits, or Needs-you items are open). */
+  /** Its members that need the developer (the session waits, or Needs-you items are open); archived members never count. */
   readonly needsYou: number;
+  /** 2026-10-27 (D137 follow-up): how many of its members are archived (hidden from the crew views); additive, absent = 0. */
+  readonly archived?: number;
   /**
    * D100 follow-up 2026-10-16 (the sidebar's member rows): its members in the team's
    * order, each with its status and what it works on. Additive: absent from an older
@@ -413,6 +422,8 @@ export interface TeamRosterEntry {
   readonly wakeAt?: string | null;
   /** The session's last activity (ISO; an idle member's "idle · 2h"), `null` when unknown. */
   readonly lastActivityAt: string | null;
+  /** 2026-10-27 (D137 follow-up): its session is archived; the views leave it out (additive, absent = no). */
+  readonly archived?: boolean;
 }
 
 /** `GET /api/team`. */
@@ -589,6 +600,29 @@ export function memberStatus(input: {
   if (input.sessionStatus === 'run') return 'working';
   if (((input.subagents ?? 0) > 0 || input.waiting === true) && input.sessionStatus !== 'paused') return 'working';
   return 'idle';
+}
+
+/**
+ * 2026-10-27 (D137 follow-up, the developer chose B) · why an archived member gets no new
+ * work: hand-offs to it, charter asks, "for all members" actions (409 `closed`, the same
+ * code as a closed session's other refusals; UI words: archive / restore).
+ */
+export function archivedMemberText(name: string): string {
+  return `${name}'s session is archived: restore it first`;
+}
+
+/**
+ * 2026-10-27 · a member's session counts as archived when it is closed by the developer: a
+ * session closed because it was taken over to another machine (D65 `movedTo`, a member's move)
+ * is not archived, it continues there.
+ */
+export function memberSessionArchived(session: { readonly closedAt?: string | null; readonly movedTo?: unknown }): boolean {
+  return session.closedAt !== null && session.closedAt !== undefined && !session.movedTo;
+}
+
+/** The members the crew views show: the ones whose session is not archived (2026-10-27). */
+export function shownMembers<T extends { readonly archived?: boolean }>(members: readonly T[]): T[] {
+  return members.filter((member) => member.archived !== true);
 }
 
 /**

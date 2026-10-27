@@ -157,6 +157,25 @@
   gap: 10px;
 }
 
+/* 2026-10-27 (D137 follow-up): "1 archived teammate · Show in Archived" */
+.sb2 .v2-c-archived {
+  margin: 8px 0 0;
+}
+.sb2 .v2-c-archived a {
+  color: inherit;
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .sb2 .v2-c-archived a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+.sb2 .v2-c-crew-sub + .v2-c-archived {
+  margin: -6px 0 14px;
+}
+
 /* Phone lists */
 .sb2 .v2-c-plist {
   display: flex;
