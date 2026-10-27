@@ -279,7 +279,8 @@ test('phone 390 × 844: the overlay fills the screen; pinch still zooms; Exit le
     await expect(root).toHaveAttribute('data-fs', 'overlay');
     // A phone's top bar wraps (title and Exit; the ring and the bar; Critical path and Follow).
     await expectFillsScreen(page, 180);
-    await expect.poll(() => fitted(page)).toBe(true);
+    // A phone opens full screen on the work at the phone zoom (a fitted 15-step project is unreadable at 390).
+    await expect.poll(async () => Number(await page.getByTestId('v2-graph-canvas').getAttribute('data-zoom'))).toBeCloseTo(0.55, 2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     // Touch screens never auto-hide the top bar.
     await page.waitForTimeout(3300);

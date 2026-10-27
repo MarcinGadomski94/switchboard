@@ -417,6 +417,17 @@ function GraphCanvas({
       const trigger: RefitTrigger = !before.full || !opened.current ? 'enter' : before.shape !== shape ? 'layout' : before.progress !== progress || (follow && !before.follow) ? 'progress' : 'resize';
       opened.current = true;
       if (trigger === 'enter') setMoved(false);
+      // A phone (a narrow canvas): fitting a whole project makes its cards unreadable, so full screen
+      // opens on the work like the normal phone view, and a resize (its address bar) never resets it.
+      if (narrow && (trigger === 'enter' || trigger === 'resize')) {
+        const first = trigger === 'enter' ? opening(real) : null;
+        if (first) {
+          setAnimate(false);
+          setView(first);
+          setMoved(true);
+        } else if (trigger === 'enter') fit(false);
+        return;
+      }
       const action = fullscreenRefit(trigger, { moved: trigger === 'enter' ? false : moved.current, follow });
       if (action === 'fit') fit(trigger === 'progress');
       else if (action === 'follow') {
