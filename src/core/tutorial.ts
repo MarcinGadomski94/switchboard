@@ -144,7 +144,7 @@ const V2_3 = '2.3.0';
 const V2_4 = '2.4.0';
 
 /** The version the redrawn v2 Project graph (Fixes after 2.0 → The Project graph, redrawn) ships in. */
-const V2_5 = '2.5.0';
+const V2_4_2 = '2.4.2';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1348,7 +1348,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
   {
     id: 'project-graph',
     decision: 'D131',
-    version: V2_5,
+    version: V2_4_2,
     title: 'The Project graph, redrawn',
     ui: 'v2',
     steps: [

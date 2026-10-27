@@ -52,9 +52,9 @@ describe('the v2 welcome tour', () => {
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
     expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph']);
-    // The redrawn Project graph (2.5.0): one step, on the graph when it is on screen, else on Projects in the rail or More.
+    // The redrawn Project graph (2.4.2): one step, on the graph when it is on screen, else on Projects in the rail or More.
     const graph = WHATS_NEW.find((feature) => feature.id === 'project-graph');
-    expect(graph?.version).toBe('2.5.0');
+    expect(graph?.version).toBe('2.4.2');
     expect(graph?.steps.map((step) => step.anchors)).toEqual([['v2-project-graph', 'v2-nav-projects', 'v2-tab-more']]);
     expect(graph?.steps[0]?.v2Route).toBe('/projects');
     const themes = WHATS_NEW.find((feature) => feature.id === 'two-themes');

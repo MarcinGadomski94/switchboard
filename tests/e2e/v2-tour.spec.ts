@@ -271,7 +271,7 @@ test.describe('an existing install (data from before the tutorial)', () => {
     expect(statusOf(before, 'project-graph')).toBe('pending');
     expect(statusOf(before, 'graduated')).toBe('pending');
     await page.goto(server.baseUrl);
-    // The welcome, then the redrawn Project graph (2.5.0): the two v2 tours, chained.
+    // The welcome, then the redrawn Project graph (2.4.2): the two v2 tours, chained.
     await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 2)');
     await page.getByTestId('v2-tour-skip').click();
     await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 2)');
