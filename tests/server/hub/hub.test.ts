@@ -109,6 +109,7 @@ const SESSION_KEYS = keys<Session>()([
   'profileName',
   'profilePinned',
   'accountSwitching',
+  'accountChoice',
   'movedTo',
   'movedFrom',
   // additive, D68 (the session's open todos)

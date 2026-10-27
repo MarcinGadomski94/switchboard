@@ -1,4 +1,5 @@
 import type { StatementSync } from 'node:sqlite';
+import { type PlanAccounts, readPlanAccounts } from '../../core/plans.ts';
 import type { PlanAnswers, PlanChecks, PlanSidebarFolderRef, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
 import type { RepoContext } from '../db/context.ts';
 import { transaction } from '../db/database.ts';
@@ -30,6 +31,8 @@ export interface PlanRecord {
   readonly reposAskRaised: boolean;
   /** D130 (migration 5): the runs' sidebar subfolder chosen at Start (its id in this machine's layout, its name), `null` = none. */
   readonly sidebarFolder: PlanSidebarFolderRef | null;
+  /** D138 (migration 6): the Project's account per CLI (profile id; a missing CLI = Automatic). */
+  readonly accounts: PlanAccounts;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly startedAt: string | null;
@@ -113,6 +116,7 @@ function planOf(row: Row): PlanRecord {
     reposAskedAt: text(row['repos_asked_at'] ?? null),
     reposAskRaised: Number(row['repos_ask_raised'] ?? 0) === 1,
     sidebarFolder: json<PlanSidebarFolderRef | null>(row['sidebar_folder'] ?? null, null),
+    accounts: readPlanAccounts(json<unknown>(row['accounts'] ?? null, null)),
     createdAt: String(row['created_at']),
     updatedAt: String(row['updated_at']),
     startedAt: text(row['started_at'] ?? null),
@@ -181,6 +185,7 @@ const PLAN_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'tex
   startedAt: ['started_at', 'text'],
   finishedAt: ['finished_at', 'text'],
   sidebarFolder: ['sidebar_folder', 'json'],
+  accounts: ['accounts', 'json'],
 };
 
 const ITEM_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'text' | 'int' | 'json' | 'bool']>> = {

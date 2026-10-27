@@ -15,6 +15,14 @@ import {
   pickProfileForNewSession,
   readAccountSettings,
   sessionProfileId,
+  type MoveCandidate,
+  CONTINUE_AFTER_CHOICE,
+  choiceMirror,
+  chosenOutLabel,
+  moveConfirmText,
+  overallChoiceOf,
+  resolveAccountPreference,
+  selectSessionsToMove,
 } from '../../src/core/accounts.ts';
 
 const NOW = new Date(2026, 9, 1, 12, 0, 0); // local time, 12:00
@@ -262,5 +270,102 @@ describe('D103 · prefer subscription allowance over credits', () => {
     expect(creditsPause({ ...pause, enabled: false }, 'claude', [work, privateOut], now)).toBe(false);
     expect(readAccountSettings({ outOfAllowance: 'pause' }).outOfAllowance).toBe('pause');
     expect(readAccountSettings({ outOfAllowance: 'x' }).outOfAllowance).toBe('use-credits');
+  });
+});
+
+describe('D138 · choosing the account', () => {
+  const C = profile('c', 2);
+
+  it('precedence: a pin > the Project\'s account > the overall choice > automatic', () => {
+    expect(resolveAccountPreference({ pinned: true, currentId: 'a', project: 'b', overall: 'c' })).toEqual({ profileId: 'a', source: 'pinned' });
+    expect(resolveAccountPreference({ pinned: false, currentId: 'a', project: 'b', overall: 'c' })).toEqual({ profileId: 'b', source: 'project' });
+    expect(resolveAccountPreference({ pinned: false, currentId: 'a', project: null, overall: 'c' })).toEqual({ profileId: 'c', source: 'overall' });
+    expect(resolveAccountPreference({ pinned: false, currentId: 'a' })).toEqual({ profileId: null, source: 'automatic' });
+    // An account that is gone / disabled / of another CLI counts as Automatic at its level.
+    const usable = (id: string): boolean => id !== 'gone';
+    expect(resolveAccountPreference({ pinned: false, currentId: 'a', project: 'gone', overall: 'c', usable })).toEqual({ profileId: 'c', source: 'overall' });
+    expect(resolveAccountPreference({ pinned: false, currentId: 'a', project: 'gone', overall: 'gone', usable })).toEqual({ profileId: null, source: 'automatic' });
+  });
+
+  it('new sessions start on the chosen account (overall, or a Project\'s), and on the automatic pick while it is out', () => {
+    const choice = settings({ choice: { claude: 'b' } });
+    expect(pickProfileForNewSession(choice, 'claude', [A, B], now)).toBe('b');
+    // A Project's account wins over the overall choice; `null` = Automatic for that session.
+    expect(pickProfileForNewSession(choice, 'claude', [A, B, C], now, 'c')).toBe('c');
+    expect(pickProfileForNewSession(choice, 'claude', [A, B, C], now, null)).toBe('a');
+    // B out of usage: the automatic rules take over (a preference, not a pin) ...
+    const bOut = profile('b', 1, { exhaustedUntil: new Date(now + HOUR).toISOString() });
+    expect(pickProfileForNewSession(choice, 'claude', [A, bOut], now)).toBe('a');
+    expect(pickProfileForNewSession(choice, 'claude', [A, profile('b', 1, { usage: usage(99, 5) })], now)).toBe('a');
+    // ... and once B has allowance again, new sessions prefer it again.
+    expect(pickProfileForNewSession(choice, 'claude', [A, profile('b', 1, { exhaustedUntil: new Date(now - HOUR).toISOString() })], now)).toBe('b');
+    // Nothing else has allowance either: still the chosen one.
+    expect(pickProfileForNewSession(choice, 'claude', [profile('a', 0, { exhaustedUntil: new Date(now + HOUR).toISOString() }), bOut], now)).toBe('b');
+    // Automatic switching off: the choice holds, out of usage or not.
+    expect(pickProfileForNewSession(settings({ choice: { claude: 'b' }, enabled: false }), 'claude', [A, bOut], now)).toBe('b');
+    // A disabled chosen account is no choice.
+    expect(pickProfileForNewSession(choice, 'claude', [A, profile('b', 1, { enabled: false })], now)).toBe('a');
+  });
+
+  it('the old "New sessions start on: a fixed account" rule is read as the overall choice (stored settings keep working)', () => {
+    const old = readAccountSettings({ newSessions: { rule: 'fixed', fixed: { claude: 'b', codex: 'x' } } });
+    expect(old.choice).toEqual({ claude: 'b', codex: 'x' });
+    expect(overallChoiceOf(old, 'claude')).toBe('b');
+    expect(old.newSessions).toEqual({ rule: 'fixed', fixed: { claude: 'b', codex: 'x' } });
+    // "First with allowance" (or nothing stored) = Automatic.
+    expect(readAccountSettings({ newSessions: { rule: 'first-with-allowance', fixed: { claude: 'b' } } }).choice).toEqual({});
+    expect(readAccountSettings(undefined).choice).toEqual({});
+    // A stored choice wins over the mirror; the mirror follows it.
+    const now2 = readAccountSettings({ choice: { claude: 'c' }, newSessions: { rule: 'fixed', fixed: { claude: 'b' } } });
+    expect(now2.choice).toEqual({ claude: 'c' });
+    expect(now2.newSessions).toEqual(choiceMirror({ claude: 'c' }));
+    expect(readAccountSettings({ choice: {} , newSessions: { rule: 'fixed', fixed: { claude: 'b' } } }).choice).toEqual({});
+    // Settings built by hand without `choice` (an old caller) still read the fixed rule.
+    expect(overallChoiceOf({ ...DEFAULT_ACCOUNT_SETTINGS, newSessions: { rule: 'fixed', fixed: { claude: 'b' } }, choice: {} }, 'claude')).toBe('b');
+  });
+
+  it('the chosen account runs out: automatic switching takes over, the divider says why', () => {
+    const decision = decideAccountSwitch({ ...base, currentId: 'b', preferredId: 'b', settings: settings(), trigger: limit, profiles: [A, B] });
+    expect(decision).toMatchObject({ action: 'switch', to: 'a' });
+    expect(decision.label).toBe(chosenOutLabel('B', 'A', limit.hit.resetsAt, now));
+    expect(decision.label).toBe('B is out of usage until 14:00; switched to A');
+    // Not on the chosen account: the usual divider.
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'b', settings: settings(), trigger: limit, profiles: [A, B, C] })).toMatchObject({ action: 'switch', to: 'b' });
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'b', settings: settings(), trigger: limit, profiles: [A, B, C] }).label).toBeUndefined();
+    // Known spent (here or on a paired machine): moved off before a turn fails, with the same note.
+    const bSpent = profile('b', 1, { exhaustedUntil: new Date(now + 2 * HOUR).toISOString() });
+    expect(decideAccountSwitch({ ...base, currentId: 'b', preferredId: 'b', settings: settings(), trigger: { kind: 'threshold' }, profiles: [A, bSpent] })).toMatchObject({ action: 'switch', to: 'a', label: 'B is out of usage until 14:00; switched to A' });
+    // The preferred account is the first target while it has allowance (not the first in order).
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'c', settings: settings(), trigger: limit, profiles: [A, B, C] }).to).toBe('c');
+    // A pinned session never switches, whatever the choice.
+    expect(decideAccountSwitch({ ...base, currentId: 'b', preferredId: 'a', pinned: true, settings: settings(), trigger: limit, profiles: [A, B] }).action).toBe('none');
+  });
+
+  it('B has allowance again: sessions do not jump back unless "switch back after a reset" says so', () => {
+    const reset = { kind: 'reset' as const };
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'b', settings: settings(), trigger: reset, profiles: [A, B] }).action).toBe('none');
+    // "Switch back": back to the chosen account (not the first one), never away from it.
+    const back = settings({ afterReset: 'back-to-first' });
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'b', settings: back, trigger: reset, profiles: [A, B] })).toMatchObject({ action: 'switch', to: 'b' });
+    expect(decideAccountSwitch({ ...base, currentId: 'b', preferredId: 'b', settings: back, trigger: reset, profiles: [A, B] }).action).toBe('none');
+    expect(decideAccountSwitch({ ...base, currentId: 'a', preferredId: 'b', settings: back, trigger: reset, profiles: [A, profile('b', 1, { exhaustedUntil: new Date(now + HOUR).toISOString() })] }).action).toBe('none');
+    // A running turn is never interrupted for it.
+    expect(decideAccountSwitch({ ...base, idle: false, currentId: 'a', preferredId: 'b', settings: back, trigger: reset, profiles: [A, B] }).action).toBe('none');
+  });
+
+  it('move selection: pinned sessions and sessions whose Project has its own account stay; the counts', () => {
+    const s = (id: string, extra: Partial<MoveCandidate> = {}): MoveCandidate => ({ id, cli: 'claude', profileId: 'a', pinned: false, projectAccount: null, running: false, ...extra });
+    const candidates = [s('idle'), s('running', { running: true }), s('pinned', { pinned: true }), s('project', { projectAccount: 'c' }), s('there', { profileId: 'b' }), s('codex', { cli: 'codex' })];
+    const overall = selectSessionsToMove(candidates, 'claude', 'b', 'overall');
+    expect(overall).toEqual({ move: ['idle', 'running'], running: 1, skipped: { pinned: 1, project: 1, already: 1 } });
+    expect(moveConfirmText(overall, 'B')).toBe('Move 2 agents to B? 1 running turn will be interrupted.');
+    expect(moveConfirmText({ move: ['x'], running: 0 }, 'B')).toBe('Move 1 agent to B?');
+    expect(moveConfirmText({ move: ['x', 'y', 'z'], running: 2 }, 'B')).toBe('Move 3 agents to B? 2 running turns will be interrupted.');
+    expect(moveConfirmText({ move: [], running: 0 }, 'B')).toBeNull();
+    // A Project's own change moves its sessions (pinned ones excepted), the Project account is the target.
+    expect(selectSessionsToMove(candidates.filter((c) => c.id !== 'codex'), 'claude', 'c', 'project')).toEqual({ move: ['idle', 'running', 'project', 'there'], running: 1, skipped: { pinned: 1, project: 0, already: 0 } });
+    // Automatic: nothing moves.
+    expect(selectSessionsToMove(candidates, 'claude', null, 'overall').move).toEqual([]);
+    expect(CONTINUE_AFTER_CHOICE).toMatch(/^Continue where you left off/);
   });
 });

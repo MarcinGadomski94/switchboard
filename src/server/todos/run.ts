@@ -48,6 +48,12 @@ export interface TodoRunOverrides {
   readonly answers: { readonly workType: WorkType; readonly mode: SessionMode; readonly phase: Phase; readonly coordination: Coordination | null } | null;
   /** D130: the plan's runs' sidebar subfolder (the run's `todoLink.sidebarFolder`); absent / `null` = next to the source. */
   readonly sidebarFolder?: { readonly id: string; readonly name: string } | null;
+  /**
+   * D138: the account of the run on its (routed) CLI when its Project has one for that CLI (the
+   * Accounts pick with the Project's account preferred: `docs/accounts.md` → *Choosing the
+   * account*); answers `null` = no Project account for that CLI (D76's own: the source's account).
+   */
+  readonly profileFor?: (provider: CliProviderId) => Promise<string | null>;
 }
 
 /** The answer of {@link runTodo}: the run, or a refusal to send as it is. */
@@ -113,7 +119,9 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
     rules,
     labels: (provider) => ({ models: routingModelOptions(provider, reported.get(provider) ?? null), profileName: (id) => profileNames.get(id) ?? null }),
   });
-  const launch = routed.settings;
+  // D138: a Project's account for the routed CLI wins over the source's (and a D82 rule's) account.
+  const projectProfile = overrides?.profileFor ? await overrides.profileFor(routed.settings.provider) : null;
+  const launch = projectProfile ? { ...routed.settings, profileId: projectProfile } : routed.settings;
   const names = new Set((await store.sessions.list()).map((record) => record.name));
   const name = shortNameFromTitle(todo.title, names);
 

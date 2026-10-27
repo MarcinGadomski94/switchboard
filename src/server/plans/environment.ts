@@ -1,3 +1,4 @@
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
@@ -25,6 +26,8 @@ export interface PlanEnvironmentDeps {
   /** D109: a PR was opened for a run session (the watcher reads it now). */
   readonly prOpened?: (sessionId: string) => Promise<void>;
   readonly now?: () => number;
+  /** D138: moves a Project's live sessions to its accounts after they changed (the `AccountChoice`); absent: nothing moves. */
+  readonly applyProjectAccounts?: (planId: string) => Promise<void>;
 }
 
 function refusalText(body: unknown): string {
@@ -104,7 +107,12 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
 
     async run(input: PlanRunInput) {
       try {
-        const outcome = await runTodo(context, input.plan.sourceSessionId, input.todo.id, { branch: input.branch, from: input.from, repoPaths: input.repoPaths, task: input.task, answers: input.answers, sidebarFolder: input.plan.sidebarFolder });
+        // D138: the Project's account for the run's CLI, as a preference (it out of usage: the automatic pick).
+        const profileFor = async (provider: CliProviderId): Promise<string | null> => {
+          const chosen = input.plan.accounts[provider];
+          return chosen ? ((await accounts.pick(provider, { check: false, preferred: chosen })) ?? chosen) : null;
+        };
+        const outcome = await runTodo(context, input.plan.sourceSessionId, input.todo.id, { branch: input.branch, from: input.from, repoPaths: input.repoPaths, task: input.task, answers: input.answers, sidebarFolder: input.plan.sidebarFolder, profileFor });
         if (!outcome.ok) return { ok: false as const, message: refusalText(outcome.body) };
         const own = await store.worktrees.list({ sessionId: outcome.result.session.id });
         return { ok: true as const, sessionId: outcome.result.session.id, branch: own[0]?.branch ?? null };
@@ -120,7 +128,9 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
       if (!source) return null;
       const routed = todoRunOptions({ source: { provider: source.provider, model: source.model, effort: source.effort, profileId: source.profileId }, todo, rules: await modelRulesOf(store.settings) });
       const provider = routed.settings.provider;
-      const profileId = routed.settings.profileId ?? (await accounts.pick(provider, { check: false })) ?? `default-${provider}`;
+      // D138: the Project's account for that CLI first (as the run would start on it).
+      const chosen = plan.accounts[provider];
+      const profileId = (chosen ? await accounts.pick(provider, { check: false, preferred: chosen }) : null) ?? chosen ?? routed.settings.profileId ?? (await accounts.pick(provider, { check: false })) ?? `default-${provider}`;
       const snapshot = (await accounts.snapshots(provider)).find((candidate) => candidate.id === profileId);
       if (!snapshot) return null;
       if (snapshot.exhaustedUntil !== null && Date.parse(snapshot.exhaustedUntil) > now()) return `the account ${snapshot.name} is out of usage until ${snapshot.exhaustedUntil}`;
@@ -143,6 +153,7 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     },
 
     ...(deps.ciSendsFailures ? { ciSendsFailures: deps.ciSendsFailures } : {}),
+    ...(deps.applyProjectAccounts ? { accountsChanged: deps.applyProjectAccounts } : {}),
     ...(deps.prOpened ? { prOpened: deps.prOpened } : {}),
 
     async notice(input) {

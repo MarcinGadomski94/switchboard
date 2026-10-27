@@ -12,10 +12,11 @@ import {
   cleanProfileName,
   creditsPause,
   defaultProfileId,
+  overallChoiceOf,
   pickProfileForNewSession,
   readAccountSettings,
 } from '../../core/accounts.ts';
-import { CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
+import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId, isCliProviderId } from '../../core/cli-providers.ts';
 import { accountCredits } from '../../core/credits.ts';
 import { ACCOUNT_IDENTITIES_KEY, type PeerAccounts, type RemoteCopy, accountIdentity, newestUsage, spentAcross } from '../../core/shared-accounts.ts';
 import type { ProfileRecord } from '../db/repos/profiles.ts';
@@ -196,23 +197,62 @@ export class AccountService {
     return readAccountSettings(await this.#store.settings.get(ACCOUNT_SETTINGS_KEY));
   }
 
-  /** Merges a (partial) settings object over the stored one; each field is read defensively. */
+  /**
+   * Merges a (partial) settings object over the stored one; each field is read defensively.
+   * D138: `choice` (per CLI, `null` = Automatic) is merged per CLI and checked (an enabled
+   * profile of that CLI); an older client's `newSessions` alone sets the choice from its rule.
+   * Moving the running sessions is `AccountChoice.setOverall`'s (`PUT /api/accounts/choice`).
+   */
   async setSettings(patch: unknown): Promise<AccountSettings> {
     if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new AccountError(422, 'invalid', 'the body must be a settings object');
     const current = await this.settings();
     const p = patch as Record<string, Record<string, unknown> | unknown>;
+    let choice: Record<string, string> = { ...current.choice };
+    if (p['choice'] !== undefined) {
+      const given = p['choice'];
+      if (typeof given !== 'object' || given === null || Array.isArray(given)) throw new AccountError(422, 'invalid', 'choice is an object of CLI → account id (or null for Automatic)', 'choice');
+      for (const [cli, id] of Object.entries(given as Record<string, unknown>)) {
+        if (!isCliProviderId(cli)) continue;
+        if (id === null || id === '') delete choice[cli];
+        else if (typeof id === 'string') choice[cli] = await this.#chosenProfile(cli, id);
+        else throw new AccountError(422, 'invalid', 'an account id or null', 'choice');
+      }
+    } else if (p['newSessions'] !== undefined) {
+      // An older client: its "New sessions start on" rule is the choice now.
+      const ns = { ...current.newSessions, ...((p['newSessions'] as object) ?? {}) } as { rule?: unknown; fixed?: unknown };
+      choice = {};
+      if (ns.rule === 'fixed' && typeof ns.fixed === 'object' && ns.fixed !== null) {
+        for (const [cli, id] of Object.entries(ns.fixed as Record<string, unknown>)) if (isCliProviderId(cli) && typeof id === 'string' && id !== '') choice[cli] = id;
+      }
+    }
     const merged = {
       ...current,
       ...p,
       perCli: { ...current.perCli, ...((p['perCli'] as object) ?? {}) },
       thresholds: { ...current.thresholds, ...((p['thresholds'] as object) ?? {}) },
-      newSessions: { ...current.newSessions, ...((p['newSessions'] as object) ?? {}) },
+      choice,
       exhausted: { ...current.exhausted, ...((p['exhausted'] as object) ?? {}) },
     };
     const next = readAccountSettings(merged);
     if (next.exhausted.action === 'switch-cli' && next.exhausted.cli === null) throw new AccountError(422, 'invalid', 'pick the CLI to switch to', 'exhausted.cli');
     await this.#store.settings.set(ACCOUNT_SETTINGS_KEY, next);
     return next;
+  }
+
+  /** D138: `id` when it is an enabled profile of `cli`; 422 `choice` otherwise. */
+  async #chosenProfile(cli: CliProviderId, id: string): Promise<string> {
+    const record = await this.#store.profiles.get(id);
+    if (!record || record.cli !== cli) throw new AccountError(422, 'invalid', `no ${CLI_LABELS[cli]} account ${id}`, 'choice');
+    if (!record.enabled) throw new AccountError(422, 'invalid', `the account ${record.name} is disabled`, 'choice');
+    return id;
+  }
+
+  /** D138: the overall account choice of `cli` (`null` = Automatic; a profile that is gone or disabled counts as Automatic). */
+  async overallChoice(cli: CliProviderId): Promise<string | null> {
+    const id = overallChoiceOf(await this.settings(), cli);
+    if (id === null) return null;
+    const record = await this.#store.profiles.get(id);
+    return record && record.cli === cli && record.enabled ? id : null;
   }
 
   // ── profiles ────────────────────────────────────────────────────────────────
@@ -469,12 +509,17 @@ export class AccountService {
     return creditsPause(settings, cli, await this.snapshots(cli), this.#now());
   }
 
-  /** The profile a new session of `cli` starts on (`null` = the Default / none has allowance). */
-  async pick(cli: CliProviderId, options: { readonly check?: boolean } = {}): Promise<string | null> {
+  /**
+   * The profile a new session of `cli` starts on (`null` = the Default / none has allowance).
+   * D138: `preferred` is the chosen account (a Project's); absent = the overall choice; it is a
+   * preference: out of allowance, the automatic pick takes over.
+   */
+  async pick(cli: CliProviderId, options: { readonly check?: boolean; readonly preferred?: string | null } = {}): Promise<string | null> {
     const records = await this.#store.profiles.list(cli);
+    const preferred = options.preferred === undefined ? undefined : options.preferred;
     // One account (the Default only): nothing to choose between, and no status command to run.
-    if (records.filter((r) => r.enabled).length < 2) return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli), this.#now());
-    return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli, options.check === false ? {} : { check: true }), this.#now());
+    if (records.filter((r) => r.enabled).length < 2) return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli), this.#now(), preferred);
+    return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli, options.check === false ? {} : { check: true }), this.#now(), preferred);
   }
 
   // ── the API's view ──────────────────────────────────────────────────────────

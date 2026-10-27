@@ -25,6 +25,7 @@ function record(value: unknown): Record<string, unknown> {
  * D63 routes (`docs/accounts.md`, `docs/handoff/contracts/local-api.md` → *CLI accounts (D63)*):
  * - `GET /api/accounts[?refresh=1]` → {@link AccountsOverview}: the profiles (status from each CLI's own status command) and the rules;
  * - `PUT /api/accounts/settings` (partial) → the settings;
+ * - D138: `POST /api/accounts/choice/preview { cli, profileId, planId? }` → the confirm's counts; `PUT /api/accounts/choice { cli, profileId, move? }` → the overall choice, moving the live sessions;
  * - `POST /api/accounts/profiles { cli, name, shareSettings? }` → 201 profile; `PUT|DELETE /api/accounts/profiles/{id}`; `PUT /api/accounts/order { cli, order }`;
  * - `POST /api/accounts/profiles/{id}/check | sync-settings | signin | signout`; `GET|DELETE /api/accounts/signin/{id}`, `POST …/paste`;
  * - `POST /api/sessions/{id}/account { profileId }` (the Switch account action) and `PUT /api/sessions/{id}/profile-pin { pinned }`.
@@ -64,6 +65,38 @@ export async function registerAccountRoutes(app: FastifyInstance, context: ApiCo
   app.put('/api/accounts/settings', async (request, reply) => {
     try {
       return await accounts.setSettings(request.body);
+    } catch (error) {
+      return refuse(reply, error);
+    }
+  });
+
+  // D138 (`docs/accounts.md` → *Choosing the account*): the overall choice per CLI, and the confirm's counts first.
+  const choice = context.accountChoice ?? null;
+  const choiceInput = (body: Record<string, unknown>): { cli: 'claude' | 'codex' | 'opencode'; profileId: string | null } | string => {
+    if (!isCliProviderId(body['cli'])) return 'cli must be claude, codex or opencode';
+    const id = body['profileId'];
+    if (id !== null && id !== undefined && id !== '' && typeof id !== 'string') return 'profileId is an account id, or null for Automatic';
+    return { cli: body['cli'], profileId: typeof id === 'string' && id !== '' ? id : null };
+  };
+  app.post('/api/accounts/choice/preview', async (request, reply) => {
+    if (!choice) return reply.code(404).send({ error: 'not-found', message: 'the account choice is not set up in this Switchboard' });
+    const body = record(request.body);
+    const input = choiceInput(body);
+    if (typeof input === 'string') return reply.code(422).send({ error: 'invalid', errors: [{ field: 'cli', message: input }] });
+    const planId = typeof body['planId'] === 'string' && body['planId'] !== '' ? body['planId'] : null;
+    try {
+      return await choice.preview({ ...input, planId });
+    } catch (error) {
+      return refuse(reply, error);
+    }
+  });
+  app.put('/api/accounts/choice', async (request, reply) => {
+    if (!choice) return reply.code(404).send({ error: 'not-found', message: 'the account choice is not set up in this Switchboard' });
+    const body = record(request.body);
+    const input = choiceInput(body);
+    if (typeof input === 'string') return reply.code(422).send({ error: 'invalid', errors: [{ field: 'cli', message: input }] });
+    try {
+      return await choice.setOverall(input.cli, input.profileId, { move: body['move'] !== false });
     } catch (error) {
       return refuse(reply, error);
     }

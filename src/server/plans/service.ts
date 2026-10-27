@@ -58,6 +58,8 @@ import {
   readyItems,
   stoppedExcerpt,
   stoppedSince,
+  type PlanAccounts,
+  readPlanAccounts,
 } from '../../core/plans.ts';
 import { PlansDb } from './db.ts';
 import { type PlanItemOutcome, type PlanItemRef, registerPlanHooks } from './hooks.ts';
@@ -169,6 +171,12 @@ export interface PlanEnvironment {
   stoppedNotice?(input: PlanStoppedNotice): Promise<void>;
   /** D120: closes plan item `itemId`'s open "Stopped" items with `outcome` (it works again, it ended, the plan ended). */
   closeStoppedNotices?(itemId: string, outcome: string): Promise<void>;
+  /**
+   * D138: the plan's accounts changed (a Start with accounts, an edit): its live sessions (the
+   * plan's own and its steps') move to the new accounts, pinned ones excepted. Absent (tests'
+   * fakes): nothing moves.
+   */
+  accountsChanged?(planId: string): Promise<void>;
   /**
    * D117 follow-up: stops a run session's current turn the way the session's Stop does
    * (`POST /api/sessions/{id}/interrupt`, the supervisor's interrupt; the process and the session
@@ -907,6 +915,7 @@ export class PlanService {
       state: plan.state,
       external: plan.external,
       sidebarFolder: plan.sidebarFolder,
+      accounts: plan.accounts,
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
       items: model.items.map((item) => ({ ...item, reason: reasons.get(item.id) ?? item.reason, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),
@@ -956,7 +965,8 @@ export class PlanService {
     // D115: a workspace without repos is fine: the plan's agent picks each item's repositories (plan_set_solutions).
     if (targetBranch !== null && resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a target branch needs one (leave the target out for a plan without a merge step)");
     const answers = checkAnswers(input['answers'], { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination, notes: null });
-    return this.#repo().create({
+    const accounts = input['accounts'] === undefined || input['accounts'] === null ? null : await this.#checkAccounts(input['accounts']);
+    const created = await this.#repo().create({
       id: newId(),
       title,
       sourceSessionId,
@@ -968,6 +978,66 @@ export class PlanService {
       answers,
       external: checkExternal(input['external']),
     });
+    return accounts !== null && Object.keys(accounts).length > 0 ? ((await this.#repo().update(created.id, { accounts })) ?? created) : created;
+  }
+
+  /**
+   * D138: `accounts` of a create / update / Start: `{ claude?, codex?, opencode? }`, each a profile id of
+   * that CLI that is enabled on this machine (`null` / empty = Automatic). 422 `accounts` otherwise.
+   */
+  async #checkAccounts(value: unknown): Promise<PlanAccounts> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid('accounts', 'accounts is an object of CLI → account id (or null for Automatic)');
+    const accounts = readPlanAccounts(value);
+    for (const [cli, id] of Object.entries(accounts)) {
+      const profile = await this.#store.profiles.get(id);
+      if (!profile || profile.cli !== cli) throw invalid('accounts', `no ${cli} account ${id}`);
+      if (!profile.enabled) throw invalid('accounts', `the account ${profile.name} is disabled`);
+    }
+    return accounts;
+  }
+
+  /** D138: merges an `accounts` patch over the plan's (a CLI set to `null` / `''` goes back to Automatic). */
+  async #mergedAccounts(current: PlanAccounts, value: unknown): Promise<PlanAccounts> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid('accounts', 'accounts is an object of CLI → account id (or null for Automatic)');
+    const next: Record<string, unknown> = { ...current };
+    for (const cli of ['claude', 'codex', 'opencode'] as const) {
+      if (!(cli in value)) continue;
+      const id = (value as Record<string, unknown>)[cli];
+      if (id === null || id === '' || id === undefined) delete next[cli];
+      else next[cli] = id;
+    }
+    return this.#checkAccounts(next);
+  }
+
+  /**
+   * D138: the active Project (plan: not done or cancelled) a session belongs to (its own session or one of its
+   * steps' run sessions) with its accounts, `null` when none (or Plans' database is not open). With several, the
+   * newest one that has an account set, else the newest.
+   */
+  async accountsOfSession(sessionId: string): Promise<{ readonly planId: string; readonly title: string; readonly accounts: PlanAccounts } | null> {
+    if (!this.#db) return null;
+    const repo = this.#db.plans;
+    const ids = new Set<string>();
+    for (const plan of await repo.list({ sourceSessionId: sessionId })) ids.add(plan.id);
+    for (const item of await repo.itemsByRunSession(sessionId)) ids.add(item.planId);
+    const plans: PlanRecord[] = [];
+    for (const id of ids) {
+      const plan = await repo.get(id);
+      if (plan && plan.state !== 'done' && plan.state !== 'cancelled') plans.push(plan);
+    }
+    plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const chosen = plans.find((plan) => Object.keys(plan.accounts).length > 0) ?? plans[0];
+    return chosen ? { planId: chosen.id, title: chosen.title, accounts: chosen.accounts } : null;
+  }
+
+  /** D138: a Project's accounts and its sessions (its own and its steps' run sessions), `null` when there is no such plan. */
+  async accountSessions(planId: string): Promise<{ readonly title: string; readonly accounts: PlanAccounts; readonly sessionIds: readonly string[] } | null> {
+    if (!this.#db) return null;
+    const plan = await this.#db.plans.get(planId);
+    if (!plan) return null;
+    const ids = [plan.sourceSessionId];
+    for (const item of await this.#db.plans.items(planId)) if (item.runSessionId && !ids.includes(item.runSessionId)) ids.push(item.runSessionId);
+    return { title: plan.title, accounts: plan.accounts, sessionIds: ids };
   }
 
   /**
@@ -985,6 +1055,7 @@ export class PlanService {
     if (input['usageThreshold'] !== undefined) patch['usageThreshold'] = checkInt(input['usageThreshold'], 'usageThreshold', 1, 100, DEFAULT_PLAN_USAGE_THRESHOLD);
     if (input['answers'] !== undefined) patch['answers'] = checkAnswers(input['answers'], plan.answers ?? { workType: null, mode: null, phase: null, coordination: null, notes: null });
     if (input['external'] !== undefined) patch['external'] = checkExternal(input['external']);
+    if (input['accounts'] !== undefined) patch['accounts'] = await this.#mergedAccounts(plan.accounts, input['accounts']);
     if (input['targetBranch'] !== undefined || input['repos'] !== undefined) {
       if (plan.state !== 'draft') throw new PlanError(409, 'started', 'the target branch and the repos change only before the plan starts');
       if (input['targetBranch'] !== undefined) patch['targetBranch'] = checkTarget(input['targetBranch']);
@@ -999,7 +1070,13 @@ export class PlanService {
     await this.#repo().update(planId, patch);
     await this.#publish(planId);
     this.kick();
+    if (patch['accounts'] !== undefined && JSON.stringify(patch['accounts']) !== JSON.stringify(plan.accounts)) await this.#accountsChanged(planId);
     return this.get(planId);
+  }
+
+  /** D138: the plan's sessions follow its new accounts (`PlanEnvironment.accountsChanged`); a failure is logged, never thrown. */
+  async #accountsChanged(planId: string): Promise<void> {
+    await this.#env.accountsChanged?.(planId).catch((error: unknown) => this.#onError(error));
   }
 
   /**
@@ -1592,6 +1669,8 @@ export class PlanService {
     const mode = checkMergeMode(input['mergeMode'], plan.targetBranch);
     const ack = input['allowProtectedTarget'] === undefined || input['allowProtectedTarget'] === null ? plan.allowProtectedTarget : checkBool(input['allowProtectedTarget'], 'allowProtectedTarget');
     const folderName = checkSidebarFolderName(input['sidebarFolder']);
+    // D138: the Start dialog's account per CLI (checked before anything changes).
+    const accounts = input['accounts'] === undefined || input['accounts'] === null ? null : await this.#mergedAccounts(plan.accounts, input['accounts']);
     if (plan.state !== 'draft') throw new PlanError(409, plan.state === 'paused' ? 'paused' : 'started', plan.state === 'paused' ? 'the plan is paused: resume it' : `the plan is ${plan.state}`);
     const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
@@ -1611,8 +1690,10 @@ export class PlanService {
       }
     }
     const sidebarFolder = folderName === null ? null : await this.#runsSubfolder(plan.sourceSessionId, folderName);
-    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso(), ...(sidebarFolder ? { sidebarFolder } : {}) });
+    await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso(), ...(sidebarFolder ? { sidebarFolder } : {}), ...(accounts !== null ? { accounts } : {}) });
     await this.#publish(planId);
+    // D138: the plan's own session moves to its account before the first step starts on it.
+    if (accounts !== null && JSON.stringify(accounts) !== JSON.stringify(plan.accounts)) await this.#accountsChanged(planId);
     this.kick();
     return this.get(planId);
   }

@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, firstProfileWithAllowance, hasAllowance, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
+import { type AccountPreference, type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, firstProfileWithAllowance, hasAllowance, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
 import { CLI_LABELS } from '../../core/cli-providers.ts';
 import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText, creditsResetDay } from '../../core/credits.ts';
 import type { SessionEvent } from '../../core/api.ts';
 import type { CliStatusService } from '../cli/status.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { SystemItemService } from '../inbox/system-items.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
@@ -21,6 +22,11 @@ export interface AutoSwitcherOptions {
   /** CLIs' status (a "switch to another CLI" rule checks the target can be chosen). */
   readonly clis?: Pick<CliStatusService, 'refusal'>;
   readonly now?: () => number;
+  /**
+   * D138: a session's chosen account (its Project's, else the overall choice; `AccountChoice.preference`):
+   * the switcher's preferred target, and the divider says so when the session leaves it. Absent: none.
+   */
+  readonly preference?: (session: SessionRecord) => Promise<AccountPreference>;
   /** Gap between the periodic threshold / reset checks (default 30 s). */
   readonly intervalMs?: number;
   readonly onError?: (error: unknown) => void;
@@ -217,12 +223,20 @@ export class AutoSwitcher {
         idle,
         lastSwitchAt: this.#o.supervisor.lastAccountSwitch(sessionId),
         now,
+        // D138: the chosen account (a pin is `pinned` above, never a preference here).
+        preferredId: await this.#preferred(session),
       });
       if (decision.mark) await accounts.markExhausted(decision.mark);
       await this.#carryOut(sessionId, session.provider, trigger, decision);
     } finally {
       this.#busy.delete(sessionId);
     }
+  }
+
+  async #preferred(session: SessionRecord): Promise<string | null> {
+    if (!this.#o.preference || session.profilePinned) return null;
+    const pref = await this.#o.preference(session).catch(() => null);
+    return pref && pref.source !== 'pinned' ? pref.profileId : null;
   }
 
   async #carryOut(sessionId: string, cli: 'claude' | 'codex' | 'opencode', trigger: SwitchTrigger, decision: SwitchDecision): Promise<void> {
@@ -241,7 +255,7 @@ export class AutoSwitcher {
         return;
       case 'switch':
         try {
-          await this.#o.supervisor.switchAccount(sessionId, decision.to as string, { reason: decision.reason, handoverDir, ...(trigger.kind === 'limit' ? { interrupted: true } : {}) });
+          await this.#o.supervisor.switchAccount(sessionId, decision.to as string, { reason: decision.reason, handoverDir, ...(trigger.kind === 'limit' ? { interrupted: true } : {}), ...(decision.label ? { label: decision.label } : {}) });
           log(`${sessionId} switched account (${decision.reason})`);
         } catch (error) {
           this.#error(error);
