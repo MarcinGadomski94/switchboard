@@ -149,6 +149,10 @@ const AGENT_KEYS = keys<Agent>()([
   'toolUseId',
   // additive, D51 (a workflow agent's facts; null for the others)
   'workflow',
+  // additive, 2026-10-27 (the helpers fold: when it was recorded, last changed, ended)
+  'startedAt',
+  'updatedAt',
+  'endedAt',
 ]);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);
 const SESSION_EVENT_KEYS = keys<SessionEvent>()(['id', 'sessionId', 'agentId', 'ts', 'endTs', 'kind', 'label', 'payload']);

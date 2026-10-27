@@ -413,6 +413,16 @@ export interface Agent {
    * for every other agent. `docs/derivations.md` → *Workflow agents*.
    */
   readonly workflow?: AgentWorkflow | null;
+  /**
+   * Additive (2026-10-27, the helpers fold): when the agent was recorded, last
+   * changed and ended (ISO), from its row (`created_at` / `updated_at` /
+   * `ended_at`). The v2 agent view folds helpers that finished more than ten
+   * minutes ago (`docs/v2.md` → *Helpers fold*). `null` / absent when unknown (a
+   * Workflow's agents have theirs in {@link AgentWorkflow}; older payloads).
+   */
+  readonly startedAt?: string | null;
+  readonly updatedAt?: string | null;
+  readonly endedAt?: string | null;
 }
 
 /**

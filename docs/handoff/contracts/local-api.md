@@ -2248,3 +2248,12 @@ PUT /api/settings { "sessions.archiveDays": 30 }
 GET /api/sessions?closed=only
 → 200 [{ "id": "r~abcd2345efgh~5e1f…", "closedAt": "2026-10-25T09:00:00.000Z", "deletesAt": "2026-11-01T09:00:00.000Z", "keptReason": null, "machine": { "id": "abcd2345efgh", "name": "studio-pc", "state": "online" }, "…": "…" }]
 ```
+
+## Helper times (2026-10-27, additive; no migration)
+The v2 agent view folds helpers that ended more than ten minutes ago (`docs/v2.md` → *Helpers fold*). Additive; nothing above changes meaning.
+
+- **Agent** (in `Session.agents`, `SessionDetail.agents` and `sessionUpdated`) gains `startedAt`, `updatedAt` and `endedAt` (ISO): when the agent's row was recorded, last changed and ended (the `agents` table's `created_at` / `updated_at` / `ended_at`; `endedAt` is `null` while it has not ended). A Workflow's agents (`kind: "workflow"`, not stored) repeat `workflow.startedAt` / `workflow.endedAt` and send `updatedAt: null`. Optional in `src/core/api.ts` so older payloads (a paired computer on an older version) type-check.
+
+```json
+Agent { …, "startedAt": "2026-10-27T09:00:00.000Z", "updatedAt": "2026-10-27T09:04:10.000Z", "endedAt": "2026-10-27T09:04:10.000Z" | null }
+```

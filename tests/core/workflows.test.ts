@@ -300,6 +300,10 @@ describe('deriveWorkflowRun', () => {
       statusText: null,
       toolUseId: null,
       workflow: agents[2]?.workflow,
+      // 2026-10-27 · the helpers fold: its own times repeated.
+      startedAt: agents[2]?.workflow.startedAt,
+      updatedAt: null,
+      endedAt: agents[2]?.workflow.endedAt,
     });
     expect(api[0]?.solutionPath).toBeNull();
     // D51-solution: the first successful write wins over the cwd.

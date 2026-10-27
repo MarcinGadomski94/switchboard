@@ -149,6 +149,10 @@ export function toAgent(record: AgentRecord): Agent {
     toolUseId: record.toolUseId,
     // D51: only a workflow's agents have one (they are not stored: `toSession` adds them).
     workflow: null,
+    // 2026-10-27 · the helpers fold: the v2 view folds helpers that ended a while ago.
+    startedAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    endedAt: record.endedAt,
   };
 }
 

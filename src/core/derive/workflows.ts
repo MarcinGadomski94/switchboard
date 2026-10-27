@@ -711,6 +711,10 @@ export function workflowAgents(views: readonly WorkflowAgentView[], solutionOf: 
     statusText: view.statusText,
     toolUseId: null,
     workflow: view.workflow,
+    // 2026-10-27 · the helpers fold: its own times (a workflow agent has no row).
+    startedAt: view.workflow.startedAt,
+    updatedAt: null,
+    endedAt: view.workflow.endedAt,
   }));
 }
 
