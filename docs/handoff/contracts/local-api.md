@@ -990,6 +990,34 @@ GET /api/sessions/s1
 200 { "id": "s1", "profileId": "8d3f…", "profileName": "Private", "accountChoice": { "source": "overall", "profileId": "8d3f…" }, … }
 ```
 
+## The account needs you (D139, 2026-10-27, additive)
+
+Found on the developer's install (`docs/decisions.md` → D139): a CLI that refuses to run until the developer acts for the account (Claude Code's "[ACTION REQUIRED] … review the updated terms", a login that no longer works). Details: `docs/accounts.md` → *The account needs you (D139)*, `docs/plans.md` → *Stopped steps whose agent failed (D139)*. Every field and route is additive; no migration (the setting `accounts.blocked`).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/inbox/{id}/actions/retry-stopped | — | the closed item (as every system item's action). On an `account-needs-you` item: the account no longer waits and the sessions it stopped start again (the same sessions); 404 / 409 as every action |
+| POST | /api/plans/{id}/items/{itemId}/restart | — | Plan. A step whose run session failed starts again (the same session; a session that cannot: a fresh run); 409 `not-stopped`, 409 `account` (its account still needs the developer: the reason), 409 `finished` |
+| POST | /api/plans/{id}/restart-stopped | — | `{ plan: Plan, restarted: number, waiting: number }`: every stopped step starts again; those whose account still needs the developer wait (`waiting`); 409 `not-stopped` (none), 409 `finished` |
+
+- `POST /api/plans/{id}/resume` now also restarts the stopped steps; a **running** plan with stopped steps answers 200 (before: 409 `not-paused`, which stays for a running plan without any).
+- `AccountProfile.needsYou?: { kind: "terms" | "login" | "action", text, since, command: string | null, sessionIds: string[] }` (`GET /api/accounts`): the account waits for the developer. New sessions on Automatic or the overall choice skip it (like a spent account) when another can take them; a Project's own account waits instead (the plan's `held`: "the account Work needs you").
+- `InboxItem.command?: string`: the terminal command an `account-needs-you` item shows, copyable (`CLAUDE_CONFIG_DIR="<dir>" claude`; `claude` for the Default; Codex / OpenCode only for a `login`). `InboxItem.systemKind: "account-needs-you"`, label "Account needs you", actions `retry-stopped` ("Retry stopped agents"), `dismiss`. One item per block of a profile; closed `resolved` when a turn on that account ends well.
+- `LifecyclePayload` action `account-needs-you` (kind `text`): the stopped session's divider "Stopped: the account Work needs you — accept Anthropic's updated terms", with `message` (the CLI's words), `command`, `fromProfile` (the account's name).
+- `PlanItem.stoppedBy?: "error" | "account"`: a `stopped` step whose run session failed (Restart). Such a step holds no concurrency slot and its dependents wait (it used to be `blocked`).
+- Paired devices (D73) may call all three routes (Inbox actions were already allowed; the two plan routes are added to `DEVICE_ALLOWED`).
+
+```json
+GET /api/inbox
+200 [{ "id": "i9", "kind": "system", "systemKind": "account-needs-you", "label": "Account needs you", "source": "accounts", "sessionId": "s4",
+  "title": "Work (Claude Code) needs you: accept Anthropic's updated terms",
+  "detail": "[ACTION REQUIRED] An update to our Consumer Terms and Privacy Policy has taken effect on October 8, 2025. You must run `claude` to review the updated terms.\n\nRun this in a terminal, do what it asks, then choose Retry stopped agents:",
+  "command": "CLAUDE_CONFIG_DIR=\"/data/profiles/claude/0aa0…\" claude",
+  "actions": [{ "id": "retry-stopped", "label": "Retry stopped agents" }, { "id": "dismiss", "label": "Dismiss" }], … }]
+POST /api/plans/p1/restart-stopped
+200 { "plan": { …, "held": null }, "restarted": 2, "waiting": 0 }
+```
+
 ## Standing instruction for agents (D64, 2026-10-02, additive)
 
 Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*): one instruction every session's agent gets. Additive; no new route, no `/hub` event, no migration (two rows of the existing `settings` table). Details: `docs/settings.md`, `docs/supervisor.md` → *Spawning*, `docs/providers.md` → *Standing instruction (D64)*.

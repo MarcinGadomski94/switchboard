@@ -174,7 +174,7 @@ test('Combine and Send back a step ready for approval', async ({ page }) => {
   await expect(page.getByTestId('v2-project-count')).toHaveText('1 of 1 steps done');
 });
 
-test('a stopped step shows red with its agent’s last message, and a click opens its agent', async ({ page }) => {
+test('a stopped step shows red with its agent’s last message; a click opens its details (D139), Open chat there its agent', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(`${world.baseUrl}/projects`);
   const todo = await world.addTodo(page, source, `Fix check [fake:say ${JSON.stringify(LAST)}]`, 30);
@@ -197,7 +197,10 @@ test('a stopped step shows red with its agent’s last message, and a click open
   await row.getByTestId('v2-step-details').click();
   await expect(page.getByTestId('v2-step-sheet-detail')).toHaveText(`Stopped: ${LAST}`);
   await page.keyboard.press('Escape');
+  // D139: a click on a stopped step opens its details (not its agent); Open chat there peeks at its agent.
   await row.getByTestId('v2-step-open').click();
+  await expect(page.getByTestId('v2-step-sheet')).toBeVisible();
+  await page.getByTestId('v2-step-sheet-open').click();
   const peek = page.getByTestId('v2-agent-peek');
   await expect(peek).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/projects/${planId}$`));
