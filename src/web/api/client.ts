@@ -322,10 +322,14 @@ export const api = {
   placeSidebarSession: (input: SidebarPlaceInput) => request<SidebarLayout>('POST', '/api/sidebar/place', input),
   /** D55, additive: the updater (`docs/updates.md`); 501 when it is off (the demo, `SWITCHBOARD_UPDATES=off`). */
   updates: () => request<UpdateStatus>('GET', '/api/updates'),
-  /** D55: check GitHub releases now. */
-  checkUpdates: () => request<UpdateStatus>('POST', '/api/updates/check'),
-  /** D55: start the update to `version` (202; the progress comes as `updateChanged`). */
-  installUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/install', { version } satisfies UpdateVersionInput),
+  /** D55: check GitHub releases now; D140: on a paired computer (`machine`) through its peer API. */
+  checkUpdates: (machine: string | null = null) => request<UpdateStatus>('POST', onMachine(machine, '/api/updates/check')),
+  /**
+   * D55: start the update to `version` (202; the progress comes as `updateChanged`). D140: on a paired
+   * computer (`machine`): refused where it cannot restart itself (409 `git-checkout` / `manual-restart`),
+   * one per 10 minutes (429 `rate-limited`); its progress comes as that machine's `Machine.update`.
+   */
+  installUpdate: (version: string, machine: string | null = null) => request<UpdateStatus>('POST', onMachine(machine, '/api/updates/install'), { version } satisfies UpdateVersionInput),
   /** D55: hide the banner of `version`. */
   dismissUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/dismiss', { version } satisfies UpdateVersionInput),
   /** D33: reopen a closed session (no process starts). */

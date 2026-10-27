@@ -144,3 +144,25 @@
   font-family: var(--font-mono, 'Geist Mono', monospace);
   font-size: 11px;
 }
+
+/* D140: a paired machine's version and updates. */
+.sb-mach-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.sb-mach-update-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sb-mach-update-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { availableText, phaseText } from '../../core/updates.ts';
-import { api } from '../api/client.ts';
+import { api, onDeviceOrigin } from '../api/client.ts';
+import { remoteBlockOf } from './machine-update.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { bannerKind, canUpdate, hideKey } from './updates-view.ts';
 import { useUpdates } from './useUpdates.ts';
@@ -45,7 +46,8 @@ export function UpdateBanner() {
           {kind === 'progress' ? 'Details' : "What's new"}
         </button>
       )}
-      {kind === 'available' && canUpdate(status) ? (
+      {/* D140: a phone whose computer cannot restart itself gets What's new (with the reason) only. */}
+      {kind === 'available' && canUpdate(status) && !remoteBlockOf(status, onDeviceOrigin()) ? (
         <button type="button" className="sb-button sb-update-banner-action sb-update-banner-primary" data-testid="update-banner-update" onClick={() => open('update', { updateConfirm: true })}>
           Update
         </button>

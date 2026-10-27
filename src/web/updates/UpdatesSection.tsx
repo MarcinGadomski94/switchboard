@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { gitUpdateCommands, installKindLabel, lastCheckText, phaseText } from '../../core/updates.ts';
-import { ApiError, api } from '../api/client.ts';
+import { ApiError, api, onDeviceOrigin } from '../api/client.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Row, SectionTitle, Value } from '../views/settings/rows.tsx';
 import { ReleaseNotes } from './ReleaseNotes.tsx';
+import { remoteBlockOf } from './machine-update.ts';
 import { canUpdate, formatWhen, latestDescription, restartRow } from './updates-view.ts';
 import { useUpdates } from './useUpdates.ts';
 import './updates.css';
@@ -14,6 +15,9 @@ import './updates.css';
  * notes, how the restart happens, the version kept for a rollback; **Check for
  * updates**, **Update…** (a release install with a newer release) or the git
  * commands (a git checkout); an error line for a failed check or update.
+ * D140: works the same on a paired phone; where this computer cannot restart
+ * itself, the phone gets the reason ("Can't update itself here: … restart it
+ * by hand.") instead of **Update…**.
  */
 export function UpdatesSection() {
   const { status, off, set } = useUpdates();
@@ -45,6 +49,7 @@ export function UpdatesSection() {
   const restart = restartRow(status);
   const error = status.progress.phase === 'failed' ? phaseText(status.progress) : status.lastCheck && !status.lastCheck.ok ? status.lastCheck.error : checkError;
   const busyCheck = checking || status.checking;
+  const blocked = remoteBlockOf(status, onDeviceOrigin());
   return (
     <>
       <SectionTitle>Updates</SectionTitle>
@@ -82,12 +87,17 @@ export function UpdatesSection() {
         <button type="button" className="sb-set-button" data-testid="updates-check" disabled={busyCheck} onClick={() => void check()}>
           {busyCheck ? 'Checking…' : 'Check for updates'}
         </button>
-        {canUpdate(status) ? (
+        {canUpdate(status) && !blocked ? (
           <button type="button" className="sb-set-button sb-update-set-primary" data-testid="updates-update" onClick={() => open('update', { updateConfirm: true })}>
             {`Update to ${status.latest?.version ?? ''}…`}
           </button>
         ) : null}
       </div>
+      {blocked ? (
+        <div className="sb-set-note" data-testid="updates-remote-blocked">
+          {blocked}
+        </div>
+      ) : null}
       {status.install.kind === 'git' && status.available && status.latest ? (
         <div className="sb-update-git" data-testid="updates-git">
           <div>This is a git checkout, so Switchboard only tells you about new releases. Update it with:</div>
