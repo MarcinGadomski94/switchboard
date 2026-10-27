@@ -27,24 +27,31 @@ The package's version follows Switchboard's: `npm version <x.y.z>` in the repo r
 
 <!-- TODO: after the first `npm publish`, add the npx one-liner back to the README's Install section ("Or with npm:" and an `sh` block with `npx @marcingadomski94/switchboard`), and add it back to the expected lines in tests/docs/readme-commands.test.ts. It was taken out while the package is not on npm yet. -->
 
-## Publishing it (once, by the developer)
+## Publishing it: the npm-publish workflow
 
-The GitHub release of the version must exist first, because the launcher downloads it. In the repo root, on the release commit, with Node 24:
+The package is published by `.github/workflows/npm-publish.yml`, with npm **trusted publishing**: npm trusts that workflow through GitHub's OIDC token, so no npm token is stored anywhere, and each version carries a provenance statement linking it to this repository.
+
+- **When it runs:** when a GitHub release is published (`gh release create`, the last step of every release), or by hand from the repository's Actions tab (**npm-publish → Run workflow**) for an existing release tag such as `v2.3.0`.
+- **What it does:** checks out the tag, checks that `packages/npx/package.json` has the tag's version (`npm version` in the release keeps them in step), skips a version that is already on npm, then runs `npm publish --access public --provenance` in `packages/npx`.
+- **A failure** (a version mismatch, the trust missing) shows in the Actions tab; the GitHub release itself is unaffected, and the installer keeps installing the latest release from GitHub.
+
+### Setting it up (once, by the developer)
+
+The package `@marcingadomski94/switchboard` exists on npm (a first publish attempt on 2026-10-27 created it with npm's staged-publishing placeholder `0.0.0-stage`), so trusted publishing can be configured. Either on npmjs.com (the package → **Settings → Trusted publishing → GitHub Actions**: owner `MarcinGadomski94`, repository `switchboard`, workflow `npm-publish.yml`, no environment), or in a terminal, which asks for the account's second factor (a security key opens the browser):
 
 ```sh
-npm login
-cd packages/npx
-npm pack --dry-run
-npm publish --access public
+npm trust github @marcingadomski94/switchboard --file npm-publish.yml --repo MarcinGadomski94/switchboard --allow-publish
 ```
 
-`npm pack --dry-run` lists the four files that go out (`bin/switchboard.mjs`, `lib/installer.mjs`, `README.md`, `package.json`). `--access public` is needed because a scoped package is private by default. With two-factor authentication on, npm asks for a one-time code.
+Then publish the current release once: Actions → **npm-publish** → **Run workflow** with its tag. From then on every release reaches npm by itself.
 
 Check it from a clean folder. This installs and starts Switchboard for real, so use `--dir` and `SWITCHBOARD_PORT` to keep it away from an existing install:
 
 ```sh
 npx @marcingadomski94/switchboard --help
 ```
+
+Why not `npm publish` from a terminal at every release: the account's second factor is a security key, which needs the developer at the browser for every publish, and npm is restricting tokens that bypass two-factor authentication for publishing.
 
 ## The MCP Registry entry (optional)
 
@@ -58,6 +65,6 @@ mcp-publisher publish
 
 After a later release, bump with `npm version` as usual, publish the npm package of that version, then run `mcp-publisher publish` again. The registry refuses a version whose npm package is missing.
 
-## Never from an agent
+## Who runs what
 
-Agents in this repo never run `npm publish`, `mcp-publisher publish`, `gh release create` or a push; these steps belong to the developer.
+The npm publish runs in GitHub Actions, started by the release (or by the developer from the Actions tab); agents never start or re-run that workflow, and never run `mcp-publisher publish`. The developer authorizes each release (`gh release create`) and sets up the trust once.

@@ -1,0 +1,63 @@
+# Publishes the npm installer (packages/npx, @marcingadomski94/switchboard) when a
+# GitHub release is published, or by hand for an existing release tag
+# (docs/publishing.md). npm trusted publishing: npm trusts this workflow through
+# GitHub's OIDC token, so no npm token is stored anywhere, and each version gets a
+# provenance statement. The package's version must equal the release tag.
+name: npm-publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v2.3.0'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@latest
+
+      - name: The package version matches the tag
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          version="$(node -p "require('./packages/npx/package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "packages/npx is $version but the tag is $TAG" >&2
+            exit 1
+          fi
+
+      - name: Skip a version that is already on npm
+        id: check
+        run: |
+          version="$(node -p "require('./packages/npx/package.json').version")"
+          if npm view "@marcingadomski94/switchboard@$version" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "$version is already on npm; nothing to do."
+          fi
+
+      - name: Publish
+        if: steps.check.outputs.already != 'true'
+        working-directory: packages/npx
+        run: npm publish --access public --provenance
