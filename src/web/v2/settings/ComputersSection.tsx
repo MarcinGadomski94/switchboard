@@ -278,7 +278,7 @@ function ComputerUpdate({ machine, ask, onAsked }: { readonly machine: Machine; 
     });
   };
   return (
-    <div className="v2-comp-update" data-testid="v2-computer-update" data-stage={view.stage}>
+    <div className="v2-comp-update" data-testid="v2-computer-update" data-tour="v2-computer-update" data-stage={view.stage}>
       <div className="v2-comp-update-line">
         {view.current ? (
           <span className="v2-muted v2-set-small" data-testid="v2-computer-version">

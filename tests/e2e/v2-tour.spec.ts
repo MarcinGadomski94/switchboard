@@ -271,13 +271,16 @@ test.describe('an existing install (data from before the tutorial)', () => {
     expect(statusOf(before, 'project-graph')).toBe('pending');
     expect(statusOf(before, 'graduated')).toBe('pending');
     await page.goto(server.baseUrl);
-    // The welcome, then the redrawn Project graph (2.4.2): the two v2 tours, chained.
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 2)');
+    // The welcome, then the redrawn Project graph (2.4.2) and D140's remote update (2.4.3): the three v2 tours, chained.
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 3)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 2)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 3)');
+    await page.getByTestId('v2-tour-skip').click();
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Update your other computers from here (3 of 3)');
     await page.getByTestId('v2-tour-skip').click();
     await expect(page.getByTestId('v2-tour')).toHaveCount(0);
     expect(statusOf(await tutorialState(api), 'project-graph')).toBe('skipped');
+    expect(statusOf(await tutorialState(api), 'remote-update')).toBe('skipped');
     await expect.poll(async () => statusOf(await tutorialState(api), 'two-themes')).toBe('skipped');
     const after = await tutorialState(api);
     expect(statusOf(after, V2_WELCOME_ID)).toBe('skipped');

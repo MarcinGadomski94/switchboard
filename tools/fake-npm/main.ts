@@ -10,6 +10,7 @@
  * - No `package-lock.json` → npm's own complaint, exit 1.
  * - `FAKE_NPM_FAIL=<text>` → `<text>` on stderr, exit 1 (a failed install).
  * - `FAKE_NPM_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
+ * - `FAKE_NPM_DELAY_MS=<ms>` waits that long before `ci` answers (D140's specs watch the progress).
  * - anything else → `Unknown command`, exit 1.
  */
 import { appendFile, mkdir, stat, writeFile } from 'node:fs/promises';
@@ -33,6 +34,8 @@ async function main(): Promise<never> {
   const log = process.env['FAKE_NPM_LOG'];
   if (log) await appendFile(log, `${JSON.stringify({ argv: args, cwd })}\n`);
   if (args[0] !== 'ci') return finish(1, `Unknown command: "${args[0] ?? ''}"\n`);
+  const delay = Number(process.env['FAKE_NPM_DELAY_MS'] ?? 0);
+  if (Number.isFinite(delay) && delay > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 60_000)));
   const fail = process.env['FAKE_NPM_FAIL'];
   if (fail) return finish(1, `${fail}\n`);
   try {
