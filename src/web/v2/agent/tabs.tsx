@@ -19,7 +19,7 @@ import { openResult, resultItemOf, shownResults } from './results-bits.ts';
 import { LOG_LOOKS, SCRUB_STEP, blockOf, nextMoment, playOf, previousMoment } from './timeline-model.ts';
 import type { AgentData } from './useAgent.ts';
 import { EarlierToggle, ShowMoreHelpers, useFoldClock, useHelperList, useHelpersFold } from './HelpersFold.tsx';
-import { foldLanes } from './helpers-model.ts';
+import { foldLanes, withPendingHelpers } from './helpers-model.ts';
 
 /** The v2 names of the classic diff views (D90). */
 const SCOPE_WORDS: Readonly<Record<DiffScope, string>> = { head: AGENT_WORDS.sinceSavePoint, branch: AGENT_WORDS.wholeCopy, repo: AGENT_WORDS.allUnsaved };
@@ -305,7 +305,7 @@ export function TimelineTab({ data }: { readonly data: AgentData }) {
   if (!model) return <Skeleton lines={4} height={20} />;
   if (model.empty) return <EmptyState icon="clock" tone="grey" title={AGENT_WORDS.noTimeline} />;
   const lanes = model.lanes;
-  const laneFold = session ? foldLanes(lanes, session.agents, foldNow, session.workflows ?? []) : { shown: lanes, earlier: [] };
+  const laneFold = session ? foldLanes(lanes, withPendingHelpers(session.agents, data.activity?.background), foldNow, session.workflows ?? []) : { shown: lanes, earlier: [] };
   const seek = (value: number): void => {
     setPlaying(false);
     setPlay(Math.min(PLAY_MAX, Math.max(0, value)));
@@ -465,7 +465,7 @@ function LaneTrack({ blocks, selected, head }: { readonly blocks: readonly Timel
  * expanded 50 at a time.
  */
 export function HelpersTab({ data, helperHref }: { readonly data: AgentData; readonly helperHref: (agentId: string) => string }) {
-  const fold = useHelpersFold(data.session);
+  const fold = useHelpersFold(data.session, data.activity?.background);
   const list = useHelperList(fold, data.sessionId);
   if (!data.session) return <Skeleton lines={3} height={40} />;
   if (list.shown.length === 0 && list.earlier === 0) return <EmptyState icon="crew" tone="grey" title={AGENT_WORDS.noHelpersTitle} text={AGENT_WORDS.noHelpersText} />;

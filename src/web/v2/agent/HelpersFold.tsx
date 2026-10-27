@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SessionDetail } from '../../../core/api.ts';
+import type { SessionActivity, SessionDetail } from '../../../core/api.ts';
 import { Button } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
-import { HELPERS_PAGE, HELPERS_TICK_MS, type HelperFold, type HelperRows, foldHelpers, helperRows, nextFoldAt } from './helpers-model.ts';
+import { HELPERS_PAGE, HELPERS_TICK_MS, type HelperFold, type HelperRows, foldHelpers, helperRows, nextFoldAt, withPendingHelpers } from './helpers-model.ts';
 
 /**
  * 2026-10-27 · the helpers fold (`helpers-model.ts`, `docs/v2.md` → *Helpers
@@ -57,10 +57,16 @@ export function useHelperList<A>(fold: HelperFold<A>, sessionId: string): Helper
   };
 }
 
-/** The helpers of a session folded at the fold clock's time. */
-export function useHelpersFold(session: SessionDetail | null): HelperFold<SessionDetail['agents'][number]> {
+/** The helpers of a session folded at the fold clock's time (an async helper still pending counts as active); the rows are the session's own agents. */
+export function useHelpersFold(session: SessionDetail | null, background: SessionActivity['background'] | null | undefined): HelperFold<SessionDetail['agents'][number]> {
   const now = useFoldClock(session);
-  return useMemo(() => foldHelpers(session?.agents ?? [], now, session?.workflows ?? []), [session?.agents, session?.workflows, now]);
+  return useMemo(() => {
+    const agents = session?.agents ?? [];
+    const fold = foldHelpers(withPendingHelpers(agents, background), now, session?.workflows ?? []);
+    const own = new Map(agents.map((agent) => [agent.id, agent]));
+    const back = (list: readonly SessionDetail['agents'][number][]) => list.map((agent) => own.get(agent.id) ?? agent);
+    return { active: back(fold.active), recent: back(fold.recent), earlier: back(fold.earlier) };
+  }, [session?.agents, session?.workflows, background, now]);
 }
 
 /** The row under a list: "Show N helpers finished earlier" (folded) or "Hide …" (expanded); nothing when none is folded. */

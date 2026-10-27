@@ -16,7 +16,7 @@ import { RevertHost, SaveResultHost, openSaveResult } from './dialogs.tsx';
 import { Dock } from './Dock.tsx';
 import { MoveDialogsHost } from './MoveDialog.tsx';
 import { ChangesTab, HelpersTab, ResultsTab } from './tabs.tsx';
-import { activeHelperCount } from './helpers-model.ts';
+import { activeHelperCount, withPendingHelpers } from './helpers-model.ts';
 import { useAgent } from './useAgent.ts';
 import { useChatRows } from './useChatRows.ts';
 import './agent.css';
@@ -100,7 +100,7 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
   // The same counts as the full view's tabs (`AgentView.tsx`).
   const changes = useDiffCount(sessionId, session ? session.files.length : null);
   // 2026-10-27 · the helpers fold: the count is the active helpers'.
-  const helpers = activeHelperCount(session?.agents ?? [], session?.workflows ?? []);
+  const helpers = activeHelperCount(withPendingHelpers(session?.agents ?? [], data.activity?.background), session?.workflows ?? []);
   const tabs = [
     { id: 'chat' as const, label: AGENT_TAB_LABELS.chat, icon: 'chat' },
     ...(data.conversation ? [] : [{ id: 'changes' as const, label: AGENT_TAB_LABELS.changes, icon: 'copy', ...(changes ? { count: changes } : {}) }]),

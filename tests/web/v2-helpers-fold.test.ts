@@ -11,8 +11,11 @@ import {
   nextFoldAt,
   runActivityAt,
   runBucket,
+  withPendingHelpers,
 } from '../../src/web/v2/agent/helpers-model.ts';
 import { AGENT_WORDS } from '../../src/web/v2/glossary.ts';
+import type { SessionDetail } from '../../src/core/api.ts';
+import { foldOverview, overviewItems, overviewSummary } from '../../src/web/v2/agent/side-model.ts';
 
 /** 2026-10-27 · the helpers fold: active + ended within 10 minutes show, older ones fold. */
 
@@ -163,5 +166,46 @@ describe('words', () => {
     expect(AGENT_WORDS.earlierLanes(1)).toBe('1 earlier helper');
     expect(AGENT_WORDS.earlierLanes(3)).toBe('3 earlier helpers');
     expect(AGENT_WORDS.showMoreHelpers(50, 80)).toBe('Show 50 more (80 left)');
+  });
+});
+
+describe('the agents overview', () => {
+  it('folds old helpers and old finished runs, each run as one row with its agents; the main agent stays on top', () => {
+    const runs = [run('wf_old', 'fail', ago(40)), run('wf_live', 'run', null, ago(5)), run('wf_recent', 'idle', ago(4))];
+    const session = {
+      status: 'idle',
+      task: 'Task',
+      agents: [
+        { ...main, status: 'idle' as const },
+        agent('stuck-old', 'fail', { endedAt: ago(30) }),
+        agent('stopped-new', 'idle', { endedAt: ago(1) }),
+        agent('working', 'run', { updatedAt: ago(3) }),
+        wfAgent('o1', 'wf_old', 'fail', ago(40)),
+        wfAgent('l1', 'wf_live', 'run', null, ago(2)),
+        wfAgent('r1', 'wf_recent', 'idle', ago(4)),
+      ],
+      workflows: runs,
+    } as unknown as SessionDetail;
+    const fold = foldOverview(overviewItems(session), session, NOW);
+    const ids = (items: typeof fold.shown) => items.map((item) => (item.kind === 'workflow' ? `run:${item.runId}` : `${item.id}:${item.depth}`));
+    expect(ids(fold.shown)).toEqual(['main:0', 'run:wf_live', 'l1:1', 'working:0', 'stopped-new:0', 'run:wf_recent', 'r1:1']);
+    expect(ids(fold.earlier)).toEqual(['stuck-old:0', 'run:wf_old', 'o1:1']);
+    expect(fold.earlierCount).toBe(2);
+    expect(overviewSummary(fold.shown)).toBe('5 agents · 2 working');
+    expect(AGENT_WORDS.showEarlierOverview(2)).toBe('Show 2 finished earlier');
+  });
+});
+
+describe('async helpers still pending', () => {
+  it('count as active for the fold while the live activity waits on them (the rows keep their status)', () => {
+    const agents = [main, agent('async', 'done', { endedAt: ago(30), toolUseId: 'tu-async' }), agent('other', 'done', { endedAt: ago(30), toolUseId: 'tu-other' })];
+    const background = [{ kind: 'agent' as const, toolUseId: 'tu-async' }, { kind: 'bash' as const, toolUseId: 'tu-other' }];
+    const overlaid = withPendingHelpers(agents, background);
+    expect(foldHelpers(overlaid, NOW).active.map((a) => a.id)).toEqual(['async']);
+    expect(foldHelpers(overlaid, NOW).earlier.map((a) => a.id)).toEqual(['other']);
+    expect(activeHelperCount(overlaid)).toBe(1);
+    expect(agents[1]?.status).toBe('done');
+    expect(withPendingHelpers(agents, [])).toBe(agents);
+    expect(withPendingHelpers(agents, null)).toBe(agents);
   });
 });

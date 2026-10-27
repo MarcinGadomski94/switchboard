@@ -1465,7 +1465,8 @@
 }
 
 @media (pointer: coarse), (max-width: 767px) {
-  .sb2 .v2-ag-lane-toggle {
+  .sb2 .v2-ag-lane-toggle,
+  .sb2 .v2-ag-fold {
     min-height: 44px;
   }
 }

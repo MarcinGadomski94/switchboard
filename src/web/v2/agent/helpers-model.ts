@@ -1,4 +1,4 @@
-import type { Agent, WorkflowRun } from '../../../core/api.ts';
+import type { Agent, BackgroundTask, WorkflowRun } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
 
 /**
@@ -177,4 +177,23 @@ export function foldLanes<L extends { readonly id: string | null }>(lanes: reado
   const byRun = runMap(runs);
   const folded = new Set(agents.filter((agent) => agent.kind !== 'main' && helperBucket(agent, now, byRun) === 'earlier').map((agent) => agent.id));
   return { shown: lanes.filter((lane) => lane.id === null || !folded.has(lane.id)), earlier: lanes.filter((lane) => lane.id !== null && folded.has(lane.id)) };
+}
+
+/**
+ * The agents with an async helper the main agent still waits on counted as
+ * working: an async `Agent` call's row ends at its launch (the CLI streams no task
+ * events for it, `docs/derivations.md` → *Background work*), while the live
+ * activity lists it as a pending background task by the call's id. For the fold
+ * only (the lists show the row's own status). The same array when nothing changes.
+ */
+export function withPendingHelpers<A extends Pick<Agent, 'kind' | 'status'> & { readonly toolUseId?: string | null }>(agents: readonly A[], background: readonly Pick<BackgroundTask, 'kind' | 'toolUseId'>[] | null | undefined): readonly A[] {
+  const pending = new Set((background ?? []).filter((task) => task.kind === 'agent').map((task) => task.toolUseId));
+  if (pending.size === 0) return agents;
+  let changed = false;
+  const out = agents.map((agent) => {
+    if (agent.kind === 'main' || !agent.toolUseId || !pending.has(agent.toolUseId) || !hasEnded(agent.status)) return agent;
+    changed = true;
+    return { ...agent, status: 'run' as const };
+  });
+  return changed ? out : agents;
 }

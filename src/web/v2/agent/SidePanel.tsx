@@ -68,7 +68,7 @@ export function Group({ id, title, icon, summary, open, onToggle, children }: { 
  * fold); its summary counts the active ones.
  */
 function HelpersGroup({ data, helperHref, open, onToggle }: { readonly data: AgentData; readonly helperHref: (agentId: string) => string; readonly open: boolean; readonly onToggle: (id: GroupKey, open: boolean) => void }) {
-  const fold = useHelpersFold(data.session);
+  const fold = useHelpersFold(data.session, data.activity?.background);
   const list = useHelperList(fold, data.sessionId);
   const active = fold.active.length;
   const total = active + fold.recent.length + fold.earlier.length;

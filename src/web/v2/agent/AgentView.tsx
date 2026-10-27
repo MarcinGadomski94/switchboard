@@ -14,7 +14,7 @@ import { openSaveResult } from './dialogs.tsx';
 import { Dock } from './Dock.tsx';
 import { AgentHeader } from './Header.tsx';
 import { HelperChat } from './HelperChat.tsx';
-import { activeHelperCount } from './helpers-model.ts';
+import { activeHelperCount, withPendingHelpers } from './helpers-model.ts';
 import { SidePanel } from './SidePanel.tsx';
 import { ChangesTab, HelpersTab, ResultsTab, TimelineTab } from './tabs.tsx';
 import { useAgent } from './useAgent.ts';
@@ -76,7 +76,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     stick.current = true;
   }, [sessionId]);
   const changes = useDiffCount(sessionId, data.session ? data.session.files.length : null);
-  const counts = { changes, results: data.session?.artifacts.length ?? 0, helpers: activeHelperCount(data.session?.agents ?? [], data.session?.workflows ?? []) };
+  const counts = { changes, results: data.session?.artifacts.length ?? 0, helpers: activeHelperCount(withPendingHelpers(data.session?.agents ?? [], data.activity?.background), data.session?.workflows ?? []) };
   const base = `/agents/${encodeURIComponent(sessionId)}`;
   const helperHref = useCallback((agentId: string) => `${base}/helpers/${encodeURIComponent(agentId)}`, [base]);
   const onTab = (next: AgentTab): void => navigate(next === 'chat' ? base : `${base}/${next}`);

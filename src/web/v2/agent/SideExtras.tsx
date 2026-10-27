@@ -16,7 +16,7 @@ import { V2Link } from '../nav.tsx';
 import { Group, type GroupKey } from './SidePanel.tsx';
 import { agentProjects, foldOverview, notesHref, type OverviewItem, overviewItems, overviewSummary, reportedView } from './side-model.ts';
 import { EarlierToggle, ShowMoreHelpers, useFoldClock } from './HelpersFold.tsx';
-import { HELPERS_PAGE } from './helpers-model.ts';
+import { HELPERS_PAGE, withPendingHelpers } from './helpers-model.ts';
 import type { AgentData } from './useAgent.ts';
 
 /** The overview's live activity text refreshes this often (the classic overview's tick). */
@@ -118,7 +118,8 @@ export function OverviewGroup({
   const all = useMemo(() => (session ? overviewItems(session) : []), [session]);
   // 2026-10-27 · the helpers fold: helpers and runs that ended over 10 minutes ago fold under one row.
   const now = useFoldClock(session);
-  const fold = useMemo(() => (session ? foldOverview(all, session, now) : { shown: [], earlier: [], earlierCount: 0 }), [all, session, now]);
+  const background = data.activity?.background;
+  const fold = useMemo(() => (session ? foldOverview(all, { agents: withPendingHelpers(session.agents, background), workflows: session.workflows }, now) : { shown: [], earlier: [], earlierCount: 0 }), [all, session, background, now]);
   const [expanded, setExpanded] = useState(false);
   const [limit, setLimit] = useState(HELPERS_PAGE);
   useEffect(() => {
