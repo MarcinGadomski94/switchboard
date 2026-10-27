@@ -58,16 +58,31 @@ function runMap(runs: readonly FoldRun[]): ReadonlyMap<string, FoldRun> {
   return new Map(runs.map((run) => [run.runId, run]));
 }
 
+/** The newest time the helper was seen at (its last change, its current action, its start), `null` when none is known. */
+function lastSeen(agent: FoldAgent): number | null {
+  return latest(ms(agent.updatedAt), ms(agent.workflow?.action?.since), ms(agent.startedAt), ms(agent.workflow?.startedAt));
+}
+
+/**
+ * When an ended run ended (ms): its end, else its agents' newest end; a run that
+ * was cut off (stopped, its process ended) may have neither: then the newest time
+ * it was seen at (its start, its agents' last actions). `null` when nothing says.
+ */
+function runEndedAt(run: FoldRun, own: readonly FoldAgent[]): number | null {
+  return latest(ms(run.endedAt), ...own.map((agent) => ms(agent.workflow?.endedAt ?? agent.endedAt))) ?? latest(ms(run.startedAt), ...own.map(lastSeen));
+}
+
 /**
  * When the helper ended (ms), `null` while it is active or when nothing says
- * (then it counts as ended long ago: an older payload without times). A Workflow
- * agent of an ended run ends with its run.
+ * (then it counts as ended long ago: an older payload without times). Without an
+ * end time, the newest time it was seen at (a helper cut off by a stop). A
+ * Workflow agent of an ended run ends with its run.
  */
 export function helperEndedAt(agent: FoldAgent, runs: ReadonlyMap<string, FoldRun> = new Map()): number | null {
   const run = runOf(agent, runs);
-  if (run && hasEnded(run.status)) return latest(ms(run.endedAt), ms(agent.workflow?.endedAt), ms(agent.endedAt));
+  if (run && hasEnded(run.status)) return latest(ms(run.endedAt), ms(agent.workflow?.endedAt), ms(agent.endedAt)) ?? latest(ms(run.startedAt), lastSeen(agent));
   if (!hasEnded(agent.status)) return null;
-  return ms(agent.endedAt) ?? ms(agent.workflow?.endedAt) ?? ms(agent.updatedAt);
+  return ms(agent.endedAt) ?? ms(agent.workflow?.endedAt) ?? lastSeen(agent);
 }
 
 /** Whether the helper counts as active (its run's state rules a Workflow agent once the run ended). */
@@ -80,7 +95,7 @@ export function isActiveHelper(agent: FoldAgent, runs: ReadonlyMap<string, FoldR
 /** The helper's newest sign of activity (ms): its end once ended, else its last change, its current action or its start; 0 when unknown. */
 export function helperActivityAt(agent: FoldAgent, runs: ReadonlyMap<string, FoldRun> = new Map()): number {
   if (!isActiveHelper(agent, runs)) return helperEndedAt(agent, runs) ?? 0;
-  return latest(ms(agent.updatedAt), ms(agent.workflow?.action?.since), ms(agent.startedAt), ms(agent.workflow?.startedAt)) ?? 0;
+  return lastSeen(agent) ?? 0;
 }
 
 /** The helper's bucket at `now`: active, ended within {@link RECENT_HELPER_MS} (the boundary itself is still recent), else earlier. */
@@ -150,7 +165,7 @@ export function nextFoldAt(agents: readonly FoldAgent[], now: number, runs: read
 export function runBucket(run: FoldRun, agents: readonly FoldAgent[], now: number): HelperBucket {
   if (!hasEnded(run.status)) return 'active';
   const own = agents.filter((agent) => agent.kind === 'workflow' && agent.workflow?.runId === run.runId);
-  const ended = latest(ms(run.endedAt), ...own.map((agent) => ms(agent.workflow?.endedAt ?? agent.endedAt)));
+  const ended = runEndedAt(run, own);
   return ended !== null && now - ended <= RECENT_HELPER_MS ? 'recent' : 'earlier';
 }
 
@@ -158,7 +173,7 @@ export function runBucket(run: FoldRun, agents: readonly FoldAgent[], now: numbe
 export function runActivityAt(run: FoldRun, agents: readonly FoldAgent[]): number {
   const own = agents.filter((agent) => agent.kind === 'workflow' && agent.workflow?.runId === run.runId);
   const byRun = runMap([run]);
-  if (hasEnded(run.status)) return latest(ms(run.endedAt), ...own.map((agent) => helperEndedAt(agent, byRun))) ?? 0;
+  if (hasEnded(run.status)) return runEndedAt(run, own) ?? 0;
   return latest(ms(run.startedAt), ...own.map((agent) => helperActivityAt(agent, byRun))) ?? 0;
 }
 

@@ -52,9 +52,10 @@ describe('classification by state and time', () => {
     expect(helperBucket(agent('a', 'done', { endedAt: ago(10) }), NOW)).toBe('recent');
     expect(helperBucket(agent('a', 'done', { endedAt: new Date(NOW - RECENT_HELPER_MS - 1).toISOString() }), NOW)).toBe('earlier');
     expect(helperBucket(agent('a', 'fail', { endedAt: ago(30) }), NOW)).toBe('earlier');
-    // No end time: its last change; nothing at all: earlier (an older payload).
+    // No end time: its last change (else its start); nothing at all: earlier (an older payload).
     expect(helperBucket(agent('a', 'idle', { endedAt: null, updatedAt: ago(2) }), NOW)).toBe('recent');
-    expect(helperBucket(agent('a', 'idle', { endedAt: null, updatedAt: null }), NOW)).toBe('earlier');
+    expect(helperBucket(agent('a', 'idle', { endedAt: null, updatedAt: null, startedAt: null }), NOW)).toBe('earlier');
+    expect(helperBucket(agent('a', 'idle', { endedAt: null, updatedAt: null, startedAt: ago(4) }), NOW)).toBe('recent');
   });
 
   it('a helper that is active again un-folds', () => {
@@ -140,8 +141,11 @@ describe('Workflow runs', () => {
     expect(runBucket(run('wf_1', 'run', null), agents, NOW)).toBe('active');
     expect(runBucket(run('wf_1', 'done', ago(9)), agents, NOW)).toBe('recent');
     expect(runBucket(run('wf_1', 'idle', ago(11)), agents, NOW)).toBe('earlier');
-    // No end on the run: its agents' newest end.
+    // No end on the run: its agents' newest end; a run cut off with no end at all: when it was last seen (its start).
     expect(runBucket(run('wf_1', 'fail', null), agents, NOW)).toBe('earlier');
+    expect(runBucket(run('wf_1', 'idle', null, ago(3)), [wfAgent('a', 'wf_1', 'idle', null, ago(3))], NOW)).toBe('recent');
+    expect(runBucket(run('wf_1', 'idle', null, ago(30)), [wfAgent('a', 'wf_1', 'idle', null, ago(30))], NOW)).toBe('earlier');
+    expect(helperBucket(wfAgent('a', 'wf_1', 'idle', null, ago(3)), NOW, new Map([['wf_1', run('wf_1', 'idle', null, ago(3))]]))).toBe('recent');
     expect(runBucket(run('wf_1', 'fail', null), [wfAgent('a', 'wf_1', 'fail', ago(4))], NOW)).toBe('recent');
     expect(runActivityAt(run('wf_1', 'done', ago(9)), agents)).toBe(Date.parse(ago(9)));
     expect(runActivityAt(run('wf_1', 'run', null, ago(30)), [wfAgent('a', 'wf_1', 'run', null, ago(2))])).toBe(Date.parse(ago(2)));
