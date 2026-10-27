@@ -1878,3 +1878,31 @@ export const TOUR_WORDS = {
   classicNote: 'The other What’s new tours point at the Classic theme. Switch to Classic in Settings › Appearance to replay them under Settings › Tutorial.',
   loadError: 'The tours’ state could not be loaded.',
 } as const;
+
+/**
+ * D138 · choosing the account (`docs/accounts.md` → *Choosing the account*): the status pill's
+ * picker, Settings › Usage & accounts, a Project's account, the agent's "Account: B (from project)".
+ */
+export const ACCOUNT_CHOICE_WORDS = {
+  title: 'Account for agents',
+  sub: 'New agents start on it, and running agents move to it now. Pinned agents, and projects with their own account, keep theirs. If it runs out, agents switch automatically.',
+  automatic: 'Automatic',
+  automaticHint: 'Automatic: the first account with usage left',
+  picker: (engine: string): string => `${engine} account`,
+  out: 'out of usage',
+  confirmTitle: 'Move agents?',
+  move: 'Move',
+  cancel: 'Cancel',
+  saved: (name: string): string => `New agents start on ${name}.`,
+  savedAuto: 'New agents use the first account with usage left.',
+  moving: (count: number, name: string): string => `Moving ${count} ${count === 1 ? 'agent' : 'agents'} to ${name}.`,
+  sources: { pinned: 'pinned', project: 'from project', overall: 'overall choice', automatic: 'automatic' },
+  line: (name: string, source: string): string => `Account: ${name} (${source})`,
+  // A Project's account.
+  projectAccount: 'Account',
+  projectAccountMenu: 'Account…',
+  projectAccountTitle: (title: string): string => `Account for “${title}”`,
+  projectAccountHint: 'Every step’s agent, and the project’s own agent, use it. Automatic follows your choice in the usage pill. If it runs out, agents switch automatically.',
+  projectAuto: 'Automatic (your overall choice)',
+  projectSaved: (title: string): string => `“${title}” uses the new account.`,
+} as const;

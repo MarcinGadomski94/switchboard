@@ -580,3 +580,14 @@
     min-height: var(--v2-touch);
   }
 }
+
+/* D138: the account for agents in the pill's details (one select per engine with several accounts). */
+.sb2 .v2-pill-choice {
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-acct-choice {
+  display: grid;
+  gap: 8px;
+}

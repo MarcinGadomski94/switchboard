@@ -15,6 +15,7 @@ import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { needsYouOf } from '../../views/session/needs-you.ts';
 import { actionErrorText, attachWarningText, pauseButton, remoteToggle, rootLine } from '../../views/session/session-header.ts';
 import { stoppableBackground } from '../../views/session/stop.ts';
+import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, Select, StatusBadge, Tabs, TextArea, useToast } from '../components/index.ts';
 import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
@@ -172,6 +173,14 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
           {mate ? <CrewTag crew={mate.crewName} /> : null}
         </div>
         {status ? <StatusBadge status={status} size={phone ? 's' : undefined} /> : null}
+        {/* D138: where its account comes from, when it is not the automatic rules' ("Account: B (from project)"). */}
+        {session && !phone && session.accountChoice && session.accountChoice.source !== 'automatic' ? (
+          <span data-testid="v2-agent-account-chip" data-source={session.accountChoice.source}>
+            <Chip tone="outline" icon="wallet" size="s" title={accountLineTitle(session)}>
+              {accountLine(session)}
+            </Chip>
+          </span>
+        ) : null}
         {data.conversation && !phone ? (
           <Chip tone="outline" icon="chat" size="s">
             {AGENT_WORDS.conversation}
@@ -249,6 +258,10 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
                 <span>{rootLine(session)}</span>
               </div>
             ) : null}
+            <div className="v2-ag-info-row" title={accountLineTitle(session)} data-testid="v2-agent-account-line">
+              <Icon name="wallet" size="s" />
+              <span>{accountLine(session)}</span>
+            </div>
             <div className="v2-ag-info-row" title={session.model?.current ?? undefined}>
               <Icon name="sparkle" size="s" />
               <span>{howSummary(session.model)}</span>

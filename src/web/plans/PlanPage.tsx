@@ -354,6 +354,12 @@ export function PlanPage({ planId }: { readonly planId: string }) {
           <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-limits-chip" disabled={finished || remote} onClick={() => setOpen('limits')}>
             {limitsChip(plan)}
           </button>
+          {Object.keys(plan.accounts ?? {}).length > 0 ? (
+            // D138: the plan's own account (set in the limits dialog, or at Start).
+            <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-account-chip" disabled={finished || remote} onClick={() => setOpen('limits')}>
+              Own account
+            </button>
+          ) : null}
           <button type="button" className="sb-button sb-plan-chip sb-plan-chip--button" data-testid="plan-critical-chip" aria-pressed={critical} data-on={critical || undefined} onClick={() => setCritical(!critical)}>
             Critical path {critical ? 'on' : 'off'}
           </button>

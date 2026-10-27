@@ -140,6 +140,9 @@ const V2_2 = '2.2.0';
 /** The version D136 (Project memory checks: duplicates and contradictions of a proposal, a periodic check per folder) ships in. */
 const V2_3 = '2.3.0';
 
+/** The version D138 (choose the account overall and per Project) ships in. */
+const V2_4 = '2.4.0';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1317,6 +1320,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['setting-archive'],
         route: { view: 'settings', section: 'sessions' },
         missing: 'Settings → Sessions & worktrees has Delete archived sessions after. ',
+      },
+    ],
+  },
+  // D138: choosing the account overall and per plan (docs/accounts.md → Choosing the account); in classic (v2 runs only its welcome tour).
+  {
+    id: 'account-choice',
+    decision: 'D138',
+    version: V2_4,
+    title: 'Choose the account',
+    steps: [
+      {
+        id: 'overall',
+        title: 'One account for every session',
+        what: 'Pick the account sessions run on, per CLI: new sessions start on it and running ones move to it now (the same conversation; a running turn is interrupted and picked up again). Pinned sessions, and plans with their own account, keep theirs. If it runs out, automatic switching takes over and the chat says why; new sessions prefer it again once it has allowance. It replaces "New sessions start on: a fixed account". In the v2 theme it is in the usage pill.',
+        todo: ['Pick an account (or Automatic) under Account for sessions.', 'Give a plan its own account when you start it, or in its limits.'],
+        anchors: ['accounts-choice'],
+        route: { view: 'settings', section: 'accounts' },
+        missing: 'Settings → Accounts has Account for sessions once a CLI has a second account. ',
       },
     ],
   },

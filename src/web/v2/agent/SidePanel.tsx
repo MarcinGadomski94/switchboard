@@ -16,6 +16,7 @@ import { turnBusy } from '../../views/session/needs-you.ts';
 import { useAgentTaskCards } from '../shared/session-tasks.ts';
 import { TodoCard } from '../shared/TodoCard.tsx';
 import { stripOrder } from '../shared/todo-card-model.ts';
+import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Icon, Segmented, Select, StatusBadge, useToast } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
@@ -318,6 +319,10 @@ function HowGroup({ data }: { readonly data: AgentData }) {
               }}
               data-testid="v2-agent-account"
             />
+            {/* D138: where the account comes from (pin > project > overall choice > automatic). */}
+            <p className="v2-ag-small v2-muted" data-testid="v2-agent-account-source" title={accountLineTitle(session)}>
+              {accountLine(session)}
+            </p>
             <label className="v2-chk" data-plain="">
               <input type="checkbox" checked={session.profilePinned === true} disabled={disabled} onChange={() => run(() => api.pinProfile(sessionId, session.profilePinned !== true))} data-testid="v2-agent-pin" />
               {AGENT_WORDS.pinAccount}
@@ -458,7 +463,7 @@ function AdvancedGroup({ data }: { readonly data: AgentData }) {
   const remote = remoteToggle(session);
   const rows: Array<[string, ReactNode]> = [
     [AGENT_WORDS.engine, `${CLI_LABELS[readCliProvider(session.provider)]} · ${exactModel(session.model)}${session.model?.effort ? ` · effort ${session.model.effort}` : ''}`],
-    [AGENT_WORDS.account, session.profileName ?? 'Default'],
+    [AGENT_WORDS.account, accountLine(session)],
     [AGENT_WORDS.branch, branches.length ? branches.join(', ') : '—'],
     [AGENT_WORDS.separateCopy, session.worktrees ? 'Yes (a worktree per code project)' : 'No, it works in place'],
     [AGENT_WORDS.folderPath, <span className="v2-mono">{rootLine(session)}</span>],
