@@ -1,6 +1,6 @@
 # Publishing the npm installer and the MCP Registry entry
 
-Switchboard ships as a GitHub release (`docs/updates.md` → *Release packages*). Two more channels sit on top of the release. Both are prepared in the repo but not yet published:
+Switchboard ships as a GitHub release (`docs/updates.md` → *Release packages*). Two more channels sit on top of the release. Both are prepared in the repo; the npm package is published (since 2.3.0, 2026-10-27), the MCP Registry entry is not:
 
 - **npm:** `@marcingadomski94/switchboard`, the package in `packages/npx/`. `npx @marcingadomski94/switchboard` installs Switchboard.
 - **The official MCP Registry** (`registry.modelcontextprotocol.io`): `server.json` at the repo root, whose package entry is that npm package.
@@ -24,8 +24,6 @@ Why not publish Switchboard itself as the package (a `files` whitelist, a `bin` 
 The package's version follows Switchboard's: `npm version <x.y.z>` in the repo root runs `tools/release/server-json.ts`, which writes the version into `packages/npx/package.json`, `server.json` and `docs/setup.md`. `tests/docs/server-json.test.ts` checks that they agree. The launcher always installs the **latest** release unless `--version` says otherwise. Publishing the package for every release is therefore optional: it is needed only when the launcher itself changed, or to keep npm's version in step with the release.
 
 `package.json` carries `"mcpName": "io.github.MarcinGadomski94/switchboard"`. The MCP Registry reads that field to check that the npm package belongs to the server named in `server.json`.
-
-<!-- TODO: after the first `npm publish`, add the npx one-liner back to the README's Install section ("Or with npm:" and an `sh` block with `npx @marcingadomski94/switchboard`), and add it back to the expected lines in tests/docs/readme-commands.test.ts. It was taken out while the package is not on npm yet. -->
 
 ## Publishing it: the npm-publish workflow
 

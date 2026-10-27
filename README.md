@@ -82,7 +82,13 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/MarcinGadomski94/switchboard/master/install.ps1 | iex
 ```
 
-The installer needs Node.js 24 or newer ([how to install it](docs/setup.md#requirements)). It downloads the latest release and installs it only when its SHA-256 checksum matches. It installs the release into `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) or `%LOCALAPPDATA%\Programs\Switchboard` (Windows). It asks whether to start Switchboard at every sign-in, then starts it. Run it again to upgrade or repair. It never uses sudo, never changes your shell profile and sends no telemetry. You can read [install.sh](install.sh) and [install.ps1](install.ps1) before you run them. The options (`--service`, `--dir`, `--version`, `--uninstall`) and the manual install are in [docs/setup.md](docs/setup.md#one-line-install).
+Or with npm, on any OS:
+
+```sh
+npx @marcingadomski94/switchboard
+```
+
+The installer needs Node.js 24 or newer ([how to install it](docs/setup.md#requirements)). It downloads the latest release and installs it only when its SHA-256 checksum matches. It installs the release into `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) or `%LOCALAPPDATA%\Programs\Switchboard` (Windows). It asks whether to start Switchboard at every sign-in, then starts it. Run it again to upgrade or repair. It never uses sudo, never changes your shell profile and sends no telemetry. You can read [install.sh](install.sh), [install.ps1](install.ps1) and the [npm installer](packages/npx) before you run them. The options (`--service`, `--dir`, `--version`, `--uninstall`) and the manual install are in [docs/setup.md](docs/setup.md#one-line-install).
 
 Then open **http://127.0.0.1:13001** (type it or use a bookmark). A setup wizard walks you through the first folder and notifications.
 
