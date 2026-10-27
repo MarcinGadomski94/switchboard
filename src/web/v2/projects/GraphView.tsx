@@ -3,7 +3,10 @@ import type { PlanItem } from '../../../core/plans.ts';
 import { modelLabel } from '../../../core/model-choice.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { finalNodeText, shortLabel } from '../../plans/model.ts';
-import { Button } from '../components/index.ts';
+import { useCoarsePointer } from '../../shell/useLayout.ts';
+import { Button, Icon, MenuButton, type MenuItem, setFullscreenOverlayHost, useToast } from '../components/index.ts';
+import { V2Link } from '../nav.tsx';
+import { v2Path } from '../routes.ts';
 import { GRAPH_WORDS, PROJECT_WORDS, STATUS } from '../glossary.ts';
 import {
   type GraphTone,
@@ -30,6 +33,7 @@ import {
   viewAtMinimapPoint,
   zoomAt,
 } from './graph-layout.ts';
+import { FULLSCREEN_IDLE_MS, type FullscreenMode, type RefitTrigger, followKey, followView, followIds, fullscreenRefit, fullscreenTitle, mayAutoHide, shapeKey, showFitPill, wantsNativeFullscreen } from './graph-fullscreen.ts';
 import { type CardHandlers, type CardModel, type EdgeModel, GraphCard, GraphEdges, GraphFinal, GraphLanes, GraphMinimap, GraphTooltip, Ring, minutesText, toneColour } from './graph-parts.tsx';
 import { projectCounts, stepLook, stepName } from './project-model.ts';
 import { type ViewProps, stepMenu } from './views.tsx';
@@ -45,6 +49,8 @@ import { type ViewProps, stepMenu } from './views.tsx';
  */
 
 const CRITICAL_KEY = 'switchboard.v2.projectGraph.critical';
+/** Follow in full screen (on unless turned off in this browser). */
+const FOLLOW_KEY = 'switchboard.v2.projectGraph.follow';
 const NOW_TICK_MS = 30_000;
 const POP_MS = 900;
 const ENTER_MS = 900;
@@ -57,6 +63,137 @@ function readCritical(): boolean {
   } catch {
     return true;
   }
+}
+
+function readFollow(): boolean {
+  try {
+    return window.localStorage.getItem(FOLLOW_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function storeFlag(key: string, value: boolean): void {
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0');
+  } catch {
+    // No storage: the choice lasts for this page.
+  }
+}
+
+/**
+ * Full screen for the graph (Fixes after 2.0 → *The Project graph in full screen*): the Fullscreen
+ * API on `root` when the browser offers it for elements and lets it; otherwise (iOS Safari, a
+ * refusal) a fixed layer over the whole window. `page` (the `/projects/:id/graph` page) already fills
+ * the window: entering asks only for the Fullscreen API, and leaving it goes back to the page. Esc
+ * leaves the overlay (the browser handles it for the API) unless a menu or dialog takes it first.
+ */
+function useGraphFullscreen(root: RefObject<HTMLDivElement | null>, page: boolean): { readonly mode: FullscreenMode; readonly enter: () => Promise<void>; readonly exit: () => void } {
+  const [mode, setMode] = useState<FullscreenMode>(page ? 'page' : 'off');
+  const rest: FullscreenMode = page ? 'page' : 'off';
+
+  useEffect(() => {
+    const onChange = (): void => {
+      const el = root.current;
+      if (el && document.fullscreenElement === el) setMode('native');
+      else setMode((current) => (current === 'native' ? rest : current));
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, [root, rest]);
+
+  // Esc leaves; a menu, a popover or a dialog closes first (they prevent the key's default). With the
+  // Fullscreen API the browser may take Esc itself; where the Keyboard Lock API exists the page gets
+  // a short press first (so Esc closes a menu without leaving), and a long press still leaves.
+  useEffect(() => {
+    if (mode !== 'overlay' && mode !== 'native') return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (document.querySelector('.sb2 [aria-modal="true"], .sb2 [role="menu"]')) return;
+      event.preventDefault();
+      const el = root.current;
+      if (el && document.fullscreenElement === el) void document.exitFullscreen().catch(() => undefined);
+      setMode(rest);
+    };
+    document.addEventListener('keydown', onKey);
+    const keyboard = (navigator as Navigator & { keyboard?: { lock?: (codes: string[]) => Promise<void>; unlock?: () => void } }).keyboard;
+    if (mode === 'native') void keyboard?.lock?.(['Escape']).catch(() => undefined);
+    // Nothing scrolls behind the overlay.
+    const html = document.documentElement;
+    const before = html.style.overflow;
+    if (mode === 'overlay') html.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (mode === 'native') keyboard?.unlock?.();
+      html.style.overflow = before;
+    };
+  }, [mode, rest, root]);
+
+  // Leaving the view (another project view, another page) leaves the API's full screen too.
+  useEffect(
+    () => () => {
+      if (root.current && document.fullscreenElement === root.current) void document.exitFullscreen?.().catch(() => undefined);
+    },
+    [root],
+  );
+
+  const enter = useCallback(async (): Promise<void> => {
+    const el = root.current;
+    if (!el) return;
+    if (wantsNativeFullscreen({ api: typeof el.requestFullscreen === 'function', enabled: document.fullscreenEnabled === true })) {
+      try {
+        await el.requestFullscreen({ navigationUI: 'hide' });
+        setMode('native');
+        return;
+      } catch {
+        // Refused (no user gesture, a policy): the overlay.
+      }
+    }
+    if (!page) setMode('overlay');
+  }, [root, page]);
+
+  const exit = useCallback((): void => {
+    if (root.current && document.fullscreenElement === root.current) void document.exitFullscreen().catch(() => undefined);
+    setMode(rest);
+  }, [root, rest]);
+
+  return { mode, enter, exit };
+}
+
+/**
+ * In full screen: `true` after {@link FULLSCREEN_IDLE_MS} without a pointer move or a key (the top
+ * bar fades, the pointer hides); never on a touch screen or while the keyboard is in the top bar.
+ */
+function useIdle(active: boolean, root: RefObject<HTMLDivElement | null>, bar: RefObject<HTMLDivElement | null>): boolean {
+  const coarse = useCoarsePointer();
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    setIdle(false);
+    const el = root.current;
+    if (!active || coarse || !el) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = (): void => {
+      setIdle(false);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const focusInBar = bar.current?.contains(document.activeElement) ?? false;
+        if (mayAutoHide({ coarse, focusInBar })) setIdle(true);
+      }, FULLSCREEN_IDLE_MS);
+    };
+    arm();
+    el.addEventListener('pointermove', arm);
+    el.addEventListener('pointerdown', arm);
+    el.addEventListener('keydown', arm);
+    el.addEventListener('focusin', arm);
+    return () => {
+      if (timer) clearTimeout(timer);
+      el.removeEventListener('pointermove', arm);
+      el.removeEventListener('pointerdown', arm);
+      el.removeEventListener('keydown', arm);
+      el.removeEventListener('focusin', arm);
+    };
+  }, [active, coarse, root, bar]);
+  return idle;
 }
 
 /** `prefers-reduced-motion`, live. */
@@ -115,12 +252,38 @@ export function capture(element: Element, pointerId: number): void {
 const SEGMENTS: readonly GraphTone[] = ['done', 'working', 'needs', 'approval', 'failed', 'ready', 'waiting'];
 
 /** The header: the % done ring, "N of M done · K working · J need you", the bar by state, Critical path. */
-function GraphHeader({ done, total, working, needs, tones, critical, onCritical }: { readonly done: number; readonly total: number; readonly working: number; readonly needs: number; readonly tones: ReadonlyMap<string, GraphTone>; readonly critical: boolean; readonly onCritical: () => void }) {
+function GraphHeader({
+  done,
+  total,
+  working,
+  needs,
+  tones,
+  critical,
+  onCritical,
+  title,
+  barRef,
+  children,
+}: {
+  readonly done: number;
+  readonly total: number;
+  readonly working: number;
+  readonly needs: number;
+  readonly tones: ReadonlyMap<string, GraphTone>;
+  readonly critical: boolean;
+  readonly onCritical: () => void;
+  /** Full screen: the compact top bar with the project's title. */
+  readonly title?: ReactNode;
+  readonly barRef?: RefObject<HTMLDivElement | null>;
+  /** After Critical path: Full screen, Follow, Exit, the ⋯ menu. */
+  readonly children?: ReactNode;
+}) {
+  const compact = title !== undefined;
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
   const count = (tone: GraphTone): number => [...tones.values()].filter((value) => value === tone).length;
   return (
-    <div className="v2-p-ghead">
-      <Ring value={percent / 100} size={56} stroke={6} className="v2-p-ghead-ring">
+    <div className="v2-p-ghead" ref={barRef} data-compact={compact || undefined} data-testid={compact ? 'v2-graph-fs-bar' : undefined}>
+      {title}
+      <Ring value={percent / 100} size={compact ? 40 : 56} stroke={compact ? 5 : 6} className="v2-p-ghead-ring">
         <span className="v2-p-ghead-pct">{percent}%</span>
       </Ring>
       <div className="v2-p-ghead-main">
@@ -133,6 +296,7 @@ function GraphHeader({ done, total, working, needs, tones, critical, onCritical 
             return n > 0 ? <span key={tone} data-tone={tone} style={{ width: `${(n / Math.max(1, total)) * 100}%` }} /> : null;
           })}
         </div>
+        {compact ? null : (
         <div className="v2-p-gbar-legend">
           {SEGMENTS.map((tone) => {
             const n = count(tone);
@@ -144,10 +308,12 @@ function GraphHeader({ done, total, working, needs, tones, critical, onCritical 
             ) : null;
           })}
         </div>
+        )}
       </div>
       <Button size="sm" icon="diagram" aria-pressed={critical} title={GRAPH_WORDS.criticalPathHint} onClick={onCritical} data-testid="v2-graph-critical" className="v2-p-gcrit">
         {GRAPH_WORDS.criticalPath}
       </Button>
+      {children}
     </div>
   );
 }
@@ -161,6 +327,12 @@ function GraphCanvas({
   opening,
   minimap,
   tip,
+  full,
+  follow,
+  shape,
+  progress,
+  followTo,
+  extra,
   children,
 }: {
   readonly content: { readonly width: number; readonly height: number };
@@ -170,6 +342,18 @@ function GraphCanvas({
   readonly opening: (frame: { readonly width: number; readonly height: number }) => View | null;
   readonly minimap: (view: View, frame: { readonly width: number; readonly height: number }, size: { readonly width: number; readonly height: number }, onView: (next: View) => void) => ReactNode;
   readonly tip: ReactNode;
+  /** The graph fills the screen: the canvas takes all the room, re-fits by itself and follows the work ({@link fullscreenRefit}). */
+  readonly full: boolean;
+  /** Follow (full screen): keep the work in view as the project progresses. */
+  readonly follow: boolean;
+  /** Changes when steps are added or removed ({@link shapeKey}). */
+  readonly shape: string;
+  /** Changes when the steps being worked on change ({@link followKey}). */
+  readonly progress: string;
+  /** Follow's view at this view and frame (`null`: fit). */
+  readonly followTo: (view: View, frame: { readonly width: number; readonly height: number }) => View | null;
+  /** More buttons at the end of the zoom stack (Full screen). */
+  readonly extra?: ReactNode;
   readonly children: ReactNode;
 }) {
   const [frame, setFrame] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -177,7 +361,15 @@ function GraphCanvas({
   const [animate, setAnimate] = useState(false);
   const [panning, setPanning] = useState(false);
   const moved = useRef(false);
+  // `moved` as state: the Fit pill shows while the view was moved by hand (full screen).
+  const [manual, setManual] = useState(false);
+  const setMoved = useCallback((value: boolean): void => {
+    moved.current = value;
+    setManual(value);
+  }, []);
   const opened = useRef(false);
+  // Full screen's own triggers (graph-fullscreen.ts): what it last saw.
+  const seen = useRef<{ full: boolean; shape: string; progress: string; follow: boolean }>({ full, shape, progress, follow });
   const viewRef = useRef(view);
   viewRef.current = view;
   const [mapOpen, setMapOpen] = useState(false);
@@ -209,33 +401,60 @@ function GraphCanvas({
     [content, frame, reserve, frameRef],
   );
 
-  // The opening view; later a desktop resize or a new layout re-fits until the view was moved by hand.
-  // A phone (a narrow canvas) never resets on a resize (its address bar comes and goes).
+  // Full screen (graph-fullscreen.ts → fullscreenRefit): entering fits; a resize, a new shape and
+  // (with Follow) progress re-fit until the view is moved by hand; after that only Follow moves it.
+  // Leaving full screen opens the normal canvas again (Fit, or a phone's opening view).
+  // The normal canvas: the opening view; later a desktop resize or a new layout re-fits until the
+  // view was moved by hand. A phone (a narrow canvas) never resets on a resize (its address bar).
   useEffect(() => {
     if (frame.width === 0 || frame.height === 0) return;
+    // The element's own size now: the narrow canvas's height (70svh) may not be measured yet.
+    const el = frameRef.current;
+    const real = el ? { width: el.clientWidth, height: el.clientHeight } : frame;
+    const before = seen.current;
+    seen.current = { full, shape, progress, follow };
+    if (full) {
+      const trigger: RefitTrigger = !before.full || !opened.current ? 'enter' : before.shape !== shape ? 'layout' : before.progress !== progress || (follow && !before.follow) ? 'progress' : 'resize';
+      opened.current = true;
+      if (trigger === 'enter') setMoved(false);
+      const action = fullscreenRefit(trigger, { moved: trigger === 'enter' ? false : moved.current, follow });
+      if (action === 'fit') fit(trigger === 'progress');
+      else if (action === 'follow') {
+        const next = followTo(viewRef.current, real);
+        if (next) {
+          setAnimate(true);
+          setView(next);
+        } else fit(true);
+      }
+      return;
+    }
+    if (before.full) {
+      opened.current = false;
+      setMoved(false);
+    }
     if (!opened.current) {
-      // The element's own size now: the narrow canvas's height (70svh) may not be measured yet.
-      const el = frameRef.current;
-      const real = el ? { width: el.clientWidth, height: el.clientHeight } : frame;
       opened.current = true;
       const first = narrow ? opening(real) : null;
       if (first) {
         setAnimate(false);
         setView(first);
-        moved.current = true;
+        setMoved(true);
       } else fit(false);
       return;
     }
     if (moved.current || narrow) return;
     fit(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame.width, frame.height, content.width, content.height]);
+  }, [frame.width, frame.height, content.width, content.height, full, shape, progress, follow]);
 
-  const change = useCallback((next: View, smooth = false): void => {
-    moved.current = true;
-    setAnimate(smooth);
-    setView(next);
-  }, []);
+  const change = useCallback(
+    (next: View, smooth = false): void => {
+      if (!moved.current) setMoved(true);
+      setAnimate(smooth);
+      setView(next);
+    },
+    [setMoved],
+  );
 
   // ⌘/ctrl-wheel (and a trackpad pinch, which arrives as ctrl-wheel) zooms around the pointer.
   useEffect(() => {
@@ -262,7 +481,7 @@ function GraphCanvas({
     const box = frameRef.current?.getBoundingClientRect();
     return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
   };
-  const onControl = (target: EventTarget | null): boolean => target instanceof Element && target.closest('[data-graph-node], .v2-p-gzoom, .v2-p-gmini, .v2-p-gfinal') !== null;
+  const onControl = (target: EventTarget | null): boolean => target instanceof Element && target.closest('[data-graph-node], .v2-p-gzoom, .v2-p-gmini, .v2-p-gfinal, .v2-p-gfit-pill') !== null;
   const midpoint = (): { mx: number; my: number; distance: number } | null => {
     const [a, b] = [...pointers.current.values()];
     if (!a || !b) return null;
@@ -331,14 +550,14 @@ function GraphCanvas({
       const next = doubleTapView(viewRef.current, at.x, at.y);
       if (next) change(next, true);
       else {
-        moved.current = false;
+        setMoved(false);
         fit(true);
       }
     } else tap.current = { at: now, ...at };
   };
 
   const transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
-  const style: CSSProperties = narrow ? { height: '70svh' } : { height: frameHeight(content, frame.width || 800, reserve) };
+  const style: CSSProperties | undefined = full ? undefined : narrow ? { height: '70svh' } : { height: frameHeight(content, frame.width || 800, reserve) };
   return (
     <div
       ref={frameRef}
@@ -350,6 +569,8 @@ function GraphCanvas({
       data-dim={dim || undefined}
       data-panning={panning || undefined}
       data-narrow={narrow || undefined}
+      data-full={full || undefined}
+      data-moved={manual || undefined}
       data-zoom={view.k.toFixed(3)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -376,7 +597,7 @@ function GraphCanvas({
           size="sm"
           title={GRAPH_WORDS.fitHint}
           onClick={() => {
-            moved.current = false;
+            setMoved(false);
             fit(true);
           }}
           data-testid="v2-graph-fit"
@@ -388,15 +609,53 @@ function GraphCanvas({
             {GRAPH_WORDS.map}
           </Button>
         ) : null}
+        {extra}
       </div>
+      {showFitPill(full, manual) ? (
+        <button
+          type="button"
+          className="v2-p-gfit-pill"
+          title={GRAPH_WORDS.fitAgainHint}
+          onClick={() => {
+            setMoved(false);
+            fit(true);
+          }}
+          data-testid="v2-graph-fit-pill"
+        >
+          {GRAPH_WORDS.fitAgain}
+        </button>
+      ) : null}
       {showMap ? minimap(view, frame, mapSize, (next) => change(next)) : null}
       {tip}
     </div>
   );
 }
 
-/** The Graph view of a project. */
-export function GraphView({ plan, actions, onDetails }: ViewProps) {
+/** The Graph view of a project; `page` = the `/projects/:id/graph` page (the graph alone, filling the window). */
+export function GraphView({ plan, actions, onDetails, page = false }: ViewProps & { readonly page?: boolean }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const screen = useGraphFullscreen(rootRef, page);
+  const full = screen.mode !== 'off';
+  const idle = useIdle(full, rootRef, barRef);
+  const [follow, setFollow] = useState(readFollow);
+  // Menus, dialogs, tooltips and toasts render inside the element that fills the screen.
+  const [layer, setLayer] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!full || !layer) return;
+    setFullscreenOverlayHost(layer);
+    return () => setFullscreenOverlayHost(null);
+  }, [full, layer]);
+  // The tab's title says how far the project is ("▶ 45% · Acme orders").
+  const title = fullscreenTitle(plan);
+  useEffect(() => {
+    if (!full) return;
+    const before = document.title;
+    document.title = title;
+    return () => {
+      document.title = before;
+    };
+  }, [full, title]);
   const now = useNow(NOW_TICK_MS);
   const reduced = useReducedMotion();
   const sessions = useSessionListOf();
@@ -556,13 +815,78 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
   const content = useMemo(() => ({ width: layout.width, height: layout.height }), [layout.width, layout.height]);
   const opening = useCallback((frame: { readonly width: number; readonly height: number }) => openingView(layout, plan.items, frame), [layout, plan.items]);
   const mini = useMemo(() => minimapFrame(content), [content]);
+  const shape = useMemo(() => shapeKey(layout), [layout]);
+  const progressKey = followKey(plan.items);
+  const followTo = useCallback((view: View, frame: { readonly width: number; readonly height: number }) => followView(layout, followIds(plan.items), view, frame), [layout, plan.items]);
+  const toast = useToast();
+  const graphPath = v2Path({ area: 'project-graph', id: plan.id });
+  const graphMenu: MenuItem[] = [
+    ...(page
+      ? []
+      : [
+          {
+            id: 'window',
+            label: GRAPH_WORDS.openInWindow,
+            icon: 'external',
+            onSelect: () => {
+              window.open(graphPath, `switchboard-graph-${plan.id}`, 'popup,width=1280,height=800');
+            },
+          },
+        ]),
+    {
+      id: 'copy',
+      label: GRAPH_WORDS.copyLink,
+      icon: 'copy',
+      onSelect: async () => {
+        try {
+          await navigator.clipboard.writeText(new URL(graphPath, window.location.origin).href);
+          toast({ text: GRAPH_WORDS.linkCopied });
+        } catch (e) {
+          toast({ text: e instanceof Error ? e.message : String(e), tone: 'error' });
+        }
+      },
+    },
+  ];
+  const fullButton =
+    screen.mode === 'native' || screen.mode === 'overlay' ? (
+      <Button size="sm" icon="shrink" onClick={screen.exit} title={GRAPH_WORDS.exitFullScreen} aria-label={GRAPH_WORDS.exitFullScreen} data-testid="v2-graph-exit">
+        {GRAPH_WORDS.exit}
+      </Button>
+    ) : (
+      <Button size="sm" icon="expand" onClick={() => void screen.enter()} title={GRAPH_WORDS.fullScreenHint} data-testid="v2-graph-fullscreen" data-tour="v2-graph-fullscreen">
+        {GRAPH_WORDS.fullScreen}
+      </Button>
+    );
 
   if (plan.items.length === 0) return <div className="v2-card v2-p-steps-empty">No steps yet.</div>;
 
   const finalHot = hot === null ? undefined : hot.nodes.has('final');
   return (
-    <div className="v2-card v2-p-graph" data-testid="v2-project-graph" data-tour="v2-project-graph" data-motion={reduced ? 'reduced' : undefined}>
+    <div
+      ref={rootRef}
+      className="v2-card v2-p-graph"
+      data-testid="v2-project-graph"
+      data-tour="v2-project-graph"
+      data-motion={reduced ? 'reduced' : undefined}
+      data-fs={full ? screen.mode : undefined}
+      data-idle={(full && idle) || undefined}
+      role={full ? 'region' : undefined}
+      aria-label={full ? GRAPH_WORDS.graphOf(plan.title) : undefined}
+    >
       <GraphHeader
+        barRef={barRef}
+        title={
+          full ? (
+            <div className="v2-p-gfs-title">
+              {page ? (
+                <V2Link to={{ area: 'project', id: plan.id }} className="v2-p-gfs-back" title={GRAPH_WORDS.backToProject} aria-label={GRAPH_WORDS.backToProject} data-testid="v2-graph-back">
+                  <Icon name="back" size="s" />
+                </V2Link>
+              ) : null}
+              <h2 data-testid="v2-graph-fs-title">{plan.title}</h2>
+            </div>
+          ) : undefined
+        }
         done={plan.progress.done}
         total={plan.progress.total}
         working={counts.running}
@@ -579,13 +903,46 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
             return !value;
           });
         }}
-      />
+      >
+        {full ? (
+          <Button
+            size="sm"
+            icon="eye"
+            aria-pressed={follow}
+            title={GRAPH_WORDS.followHint}
+            onClick={() => {
+              setFollow((value) => {
+                storeFlag(FOLLOW_KEY, !value);
+                return !value;
+              });
+            }}
+            data-testid="v2-graph-follow"
+            className="v2-p-gcrit"
+          >
+            {GRAPH_WORDS.follow}
+          </Button>
+        ) : null}
+        {fullButton}
+        <MenuButton items={graphMenu} label={GRAPH_WORDS.graphMenu} testId="v2-graph-menu" />
+      </GraphHeader>
       <GraphCanvas
         content={content}
         label={GRAPH_WORDS.graphOf(plan.title)}
         dim={hot !== null}
         frameRef={frameRef}
         opening={opening}
+        full={full}
+        follow={follow}
+        shape={shape}
+        progress={progressKey}
+        followTo={followTo}
+        extra={
+          screen.mode === 'native' || screen.mode === 'overlay' ? (
+            <Button size="sm" icon="shrink" aria-label={GRAPH_WORDS.exitFullScreen} title={GRAPH_WORDS.exitFullScreen} onClick={screen.exit} data-testid="v2-graph-zoom-fullscreen" />
+          ) : (
+            <Button size="sm" icon="expand" aria-label={GRAPH_WORDS.fullScreen} title={GRAPH_WORDS.fullScreenHint} onClick={() => void screen.enter()} data-testid="v2-graph-zoom-fullscreen" />
+          )
+        }
         tip={<GraphTooltip tip={tip} />}
         minimap={(view, frame, size, onView) => {
           const scaled = size.width === MINIMAP.width ? mini : minimapFrame(content, size);
@@ -599,9 +956,12 @@ export function GraphView({ plan, actions, onDetails }: ViewProps) {
         ))}
         <GraphFinal layout={layout} percent={percent} text={capitalise(finalNodeText(plan))} hot={finalHot} />
       </GraphCanvas>
-      <p className="v2-muted v2-p-graph-legend">
-        {GRAPH_WORDS.legend} {GRAPH_WORDS.legendMotion}
-      </p>
+      {full ? null : (
+        <p className="v2-muted v2-p-graph-legend">
+          {GRAPH_WORDS.legend} {GRAPH_WORDS.legendMotion}
+        </p>
+      )}
+      {full ? <div ref={setLayer} className="v2-overlays v2-p-gfs-layer" /> : null}
     </div>
   );
 }

@@ -70,6 +70,20 @@ export function Shell() {
     return () => document.removeEventListener('keydown', onKey);
   }, [navigate]);
 
+  // `/projects/:id/graph`: the graph alone, filling the window (a second monitor): no rail, top bar or tabs.
+  if (route.area === 'project-graph') {
+    return (
+      <div className="v2-app" data-layout={layout} data-testid="v2-shell" data-bare="">
+        <main className="v2-content" id="v2-content" data-area={route.area}>
+          <Outlet route={route} search={search} pill={pill} counts={counts} />
+        </main>
+        <Palette />
+        <ShortcutsDialog />
+        <PeekHost />
+      </div>
+    );
+  }
+
   return (
     <div className="v2-app" data-layout={layout} data-testid="v2-shell">
       {phone ? null : <Rail route={route} counts={counts} pill={pill} />}

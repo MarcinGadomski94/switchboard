@@ -1625,6 +1625,169 @@
   }
 }
 
+/*
+ * Full screen (Fixes after 2.0 → The Project graph in full screen; GraphView.tsx → useGraphFullscreen):
+ * data-fs = native (the Fullscreen API), overlay (a fixed layer over the window: iOS Safari, a
+ * refusal) or page (/projects/:id/graph). The graph is a column: the compact top bar, then the
+ * canvas, which takes all the remaining room. Menus, dialogs and toasts render in .v2-p-gfs-layer
+ * inside it (components/Portal.tsx), so the Fullscreen API shows them.
+ */
+.sb2 .v2-p-graph[data-fs] {
+  border-radius: 0;
+  border: 0;
+  margin: 0;
+  padding: 10px 12px 12px;
+  gap: 8px;
+  background: var(--v2-bg);
+  box-shadow: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.sb2 .v2-p-graph[data-fs='overlay'],
+.sb2 .v2-p-graph[data-fs='page'] {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  width: auto;
+  height: auto;
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+
+.sb2 .v2-p-graph[data-fs='native'] {
+  width: 100vw;
+  height: 100vh;
+}
+
+.sb2 .v2-p-graph[data-fs] .v2-p-gframe {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sb2 .v2-p-ghead[data-compact] {
+  gap: 12px;
+  flex-wrap: nowrap;
+  transition: opacity var(--v2-slow) var(--v2-ease);
+}
+
+.sb2 .v2-p-ghead[data-compact] .v2-p-ghead-pct {
+  font-size: 11.5px;
+}
+
+.sb2 .v2-p-ghead[data-compact] .v2-p-ghead-main {
+  min-width: 160px;
+  gap: 5px;
+}
+
+.sb2 .v2-p-ghead[data-compact] .v2-p-gbar {
+  height: 8px;
+}
+
+.sb2 .v2-p-gfs-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 34%;
+}
+
+.sb2 .v2-p-gfs-title h2 {
+  margin: 0;
+  font-size: var(--v2-fs-h3);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-p-gfs-back {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--v2-r);
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-p-gfs-back:hover {
+  background: var(--v2-sunken);
+  color: var(--v2-text);
+}
+
+/* The Fit pill: the view was moved by hand; a click fits again (and resumes the automatic fit). */
+.sb2 .v2-p-gfit-pill {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: var(--v2-r-pill);
+  border: 1px solid var(--v2-accent);
+  background: var(--v2-surface);
+  color: var(--v2-accent-text);
+  font: inherit;
+  font-weight: 600;
+  box-shadow: var(--g-shadow);
+  cursor: pointer;
+}
+
+.sb2 .v2-p-gframe[data-narrow] .v2-p-gfit-pill {
+  min-height: var(--v2-touch);
+}
+
+/* Idle in full screen (3 s, never on touch screens): the top bar fades, the pointer hides; a move brings them back. */
+.sb2 .v2-p-graph[data-idle] .v2-p-ghead[data-compact] {
+  opacity: 0;
+}
+
+.sb2 .v2-p-graph[data-idle],
+.sb2 .v2-p-graph[data-idle] * {
+  cursor: none !important;
+}
+
+/* The overlay layer inside the full-screen element (dialogs, menus, toasts). */
+.sb2 .v2-p-gfs-layer:empty {
+  display: none;
+}
+
+.sb2 .v2-p-graph-page {
+  min-height: 100%;
+}
+
+@media (max-width: 767px) {
+  .sb2 .v2-p-graph[data-fs] {
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+
+  .sb2 .v2-p-ghead[data-compact] {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+  }
+
+  .sb2 .v2-p-ghead[data-compact] .v2-p-gfs-title {
+    max-width: calc(100% - 60px);
+    flex: 1;
+  }
+
+  .sb2 .v2-p-ghead[data-compact] .v2-p-ghead-main {
+    min-width: 100%;
+    order: 3;
+  }
+
+  .sb2 .v2-p-ghead[data-compact] .v2-btn {
+    order: 4;
+  }
+}
+
 /* Reduced motion: tokens.css stops every animation and transition; the dots are not drawn. */
 @media (prefers-reduced-motion: reduce) {
   .sb2 .v2-p-gparticles {

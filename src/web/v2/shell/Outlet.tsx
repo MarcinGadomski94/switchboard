@@ -4,7 +4,7 @@ import { CrewPage, CrewsPage } from '../crews/index.tsx';
 import { HomePage } from '../home/index.tsx';
 import { InsightsPage } from '../insights/index.tsx';
 import { NeedsYouPage } from '../needs-you/index.tsx';
-import { ProjectPage, ProjectsPage } from '../projects/index.tsx';
+import { ProjectGraphPage, ProjectPage, ProjectsPage } from '../projects/index.tsx';
 import { ResultsPage } from '../results/index.tsx';
 import type { V2Route } from '../routes.ts';
 import { SearchPage } from '../search/index.tsx';
@@ -32,6 +32,8 @@ export function Outlet({ route, search, pill, counts }: { readonly route: V2Rout
       return <ProjectsPage />;
     case 'project':
       return <ProjectPage key={route.id} id={route.id} />;
+    case 'project-graph':
+      return <ProjectGraphPage key={route.id} id={route.id} />;
     case 'crews':
       return <CrewsPage />;
     case 'crew':
