@@ -14,7 +14,7 @@
  * the UI needs (system / usage, settings, CLIs, accounts, machines, tools and
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
- * and notifications (D87: and its pages' presence), and (D85) the
+ * and notifications (D87: and its pages' presence), (D140) updating this computer (check, install, dismiss), and (D85) the
  * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, (D108) Insights (a read), (D99) plans (all of their routes, D102: a ready item's Merge, Open PR and Send back too), (D107) project memory (read, approve, reject, edit, pin), (D109) Import issues… and a session's PR status (Merge PR is an Inbox action), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop), (D124) a session's Not waiting, and (D127) the processes sessions left running (read, Stop, Keep).
  *
@@ -123,6 +123,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/frame-helper\/check$/],
   ['PUT', /^\/api\/settings$/],
   ['POST', /^\/api\/tools\/[^/]+\/probe$/],
+  // D140: updating this computer from the phone: Check for updates, Update (the latest release, checksum, refused where it
+  // cannot restart itself, one per 10 minutes, recorded with the phone's name) and the banner's ×. Through the machines proxy
+  // the same on a paired computer (its peer API takes check / install). Rollback and the updater's settings are no routes: local.
+  ['POST', /^\/api\/updates\/(?:check|install|dismiss)$/],
   // A paired machine's Reconnect.
   ['POST', /^\/api\/machines\/[^/]+\/reconnect$/],
   // D88: a session's drafts (they follow the developer to the phone: read, save, clear).
@@ -223,8 +227,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   [WRITE, /^\/api\/mcp\/servers(?:\/.*)?$/],
   ['*', /^\/api\/mcp\/(?:auth|check)(?:\/.*)?$/],
   [WRITE, /^\/api\/mcp\/cli\/[^/]+\/servers(?:\/.*)?$/],
-  // Updates, Start at login.
-  [WRITE, /^\/api\/updates\/.+$/],
+  // Updates: anything but D140's check / install / dismiss (allowed above); Start at login.
+  [WRITE, /^\/api\/updates\/(?!(?:check|install|dismiss)$).+$/],
   ['PUT', /^\/api\/service$/],
   // CLIs: command overrides, the default, checks.
   [WRITE, /^\/api\/clis\/.+$/],

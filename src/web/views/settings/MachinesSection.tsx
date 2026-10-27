@@ -9,6 +9,7 @@ import { machineStatusView } from '../../components/machine-status.ts';
 import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText, sidebarSyncText } from './machines.ts';
 import { Row, SectionTitle } from './rows.tsx';
 import { MachineHooks } from './MachineHooks.tsx';
+import { MachineUpdate } from './MachineUpdate.tsx';
 import { PowerLine } from '../../components/Power.tsx';
 import { PowerEstimateRow } from './PowerEstimateRow.tsx';
 import type { SystemInfo } from '../../../core/api.ts';
@@ -33,7 +34,8 @@ function errorText(caught: unknown, fallback: string): string {
  * one, its terminal hooks and "Hook into…" (`MachineHooks`); D71: per machine,
  * the "Share sidebar layout" switch (off by default) and what it is doing.
  * D125: this machine's and each online machine's power line, and this
- * machine's *Power estimate* (used while it has no battery).
+ * machine's *Power estimate* (used while it has no battery). D140: each paired
+ * machine's version and updates (`MachineUpdate`).
  */
 export function MachinesSection() {
   const view = useApi(api.machines);
@@ -250,6 +252,8 @@ function MachineRow({
             <PowerLine power={machine.power} testId="machine-power-line" />
           </div>
         ) : null}
+        {/* D140: its version and updates (Update with a confirm, Check for updates, the progress). */}
+        <MachineUpdate machine={machine} />
         {status ? (
           <div className="sb-set-row-desc sb-mach-status" data-testid="machine-status" role="status">
             <span data-testid="machine-status-text">{status.line}</span>

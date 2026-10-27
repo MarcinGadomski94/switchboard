@@ -187,6 +187,12 @@ export function cardButtons(item: NeedsItem): CardButton[] {
           { id: 'manage', label: ANSWER.manageUsage, variant: 'ghost', intent: { type: 'open', target: { type: 'path', path: '/settings/usage' } } },
         ];
       }
+      // D140: a paired computer's "Switchboard 2.4.3 is available": Update it from here (Settings › Computers asks first).
+      // Its "What's new" action marks the item (`update-available`; also from a computer before D140).
+      if (item.computer && item.inbox?.kind === 'system' && item.actions.some((action) => action.id === 'whats-new')) {
+        const update: CardButton = { id: 'update-computer', label: ANSWER.updateComputer, variant: 'primary', icon: 'download', intent: { type: 'open', target: { type: 'path', path: `/settings/computers?update=${encodeURIComponent(item.computer.id)}` } } };
+        return [update, ...serverButtons(item).map((button) => (button.variant === 'primary' ? { ...button, variant: 'default' as const } : button))];
+      }
       return serverButtons(item);
     default:
       // `pick` and anything else the server offers actions for.

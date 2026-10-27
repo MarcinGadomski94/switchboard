@@ -1,6 +1,7 @@
-import { type MouseEvent, useState } from 'react';
-import { confirmText, gitUpdateCommands, installKindLabel, manualStartCommand, phaseText, sessionsNote, updateRunning } from '../../core/updates.ts';
-import { ApiError, api } from '../api/client.ts';
+import { type MouseEvent, useEffect, useState } from 'react';
+import { confirmText, gitUpdateCommands, installKindLabel, manualStartCommand, phaseText, remoteAgentsText, remoteConfirmText, remoteConfirmTitle, sessionsNote, updateRunning } from '../../core/updates.ts';
+import { ApiError, api, onDeviceOrigin } from '../api/client.ts';
+import { remoteBlockOf } from './machine-update.ts';
 import { ReleaseNotes } from './ReleaseNotes.tsx';
 import { canUpdate } from './updates-view.ts';
 import { useUpdates } from './useUpdates.ts';
@@ -21,14 +22,28 @@ function refusal(error: unknown): string {
  * says what happens and how many sessions resume after the restart; the
  * update's progress while it runs; for a git checkout the commands instead
  * (no Update). Opened from the banner, the Inbox item (through Settings) and
- * Settings → Updates.
+ * Settings → Updates. D140: on a paired phone the confirm names the computer
+ * ("Update Marcins-PC to 2.4.3? It restarts Switchboard there; running agents
+ * resume after the restart." and how many run there), and where the computer
+ * cannot restart itself the dialog says so instead of offering **Update**.
  */
 export function UpdateDialog({ onClose, confirm = false }: { readonly onClose: () => void; readonly confirm?: boolean }) {
   const { status, set } = useUpdates();
   const [confirming, setConfirming] = useState(confirm);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const onDevice = onDeviceOrigin();
+  const [computer, setComputer] = useState<string | null>(null);
+  useEffect(() => {
+    if (!onDevice) return;
+    api.machines().then(
+      (view) => setComputer(view.self.name),
+      () => undefined,
+    );
+  }, [onDevice]);
   if (!status) return null;
+  const blocked = remoteBlockOf(status, onDevice);
+  const offer = canUpdate(status) && !blocked;
   const latest = status.latest;
   const running = updateRunning(status.progress);
   const start = async (): Promise<void> => {
@@ -68,10 +83,23 @@ export function UpdateDialog({ onClose, confirm = false }: { readonly onClose: (
               <pre className="sb-update-code">{gitUpdateCommands(latest.tag).join('\n')}</pre>
             </div>
           ) : null}
-          {confirming && latest && canUpdate(status) ? (
+          {confirming && latest && offer && onDevice ? (
+            <div className="sb-update-confirm" data-testid="update-confirm">
+              <div>
+                <b>{remoteConfirmTitle(computer ?? 'this computer', latest.version)}</b> {remoteConfirmText()}
+              </div>
+              <div data-testid="update-sessions">{remoteAgentsText(status.liveSessions)}</div>
+            </div>
+          ) : null}
+          {confirming && latest && offer && !onDevice ? (
             <div className="sb-update-confirm" data-testid="update-confirm">
               <div>{confirmText(latest.version, status.restart)}</div>
               {status.restart === 'service' && sessionsNote(status.liveSessions) ? <div data-testid="update-sessions">{sessionsNote(status.liveSessions)}</div> : null}
+            </div>
+          ) : null}
+          {blocked ? (
+            <div className="sb-update-muted" data-testid="update-remote-blocked">
+              {blocked}
             </div>
           ) : null}
           {progress ? (
@@ -90,12 +118,12 @@ export function UpdateDialog({ onClose, confirm = false }: { readonly onClose: (
           ) : null}
         </div>
         <div className="sb-update-footer">
-          {canUpdate(status) && !confirming ? (
+          {offer && !confirming ? (
             <button type="button" className="sb-button sb-update-primary" data-testid="update-start" onClick={() => setConfirming(true)}>
               {`Update to ${latest?.version ?? ''}`}
             </button>
           ) : null}
-          {canUpdate(status) && confirming ? (
+          {offer && confirming ? (
             <>
               <button type="button" className="sb-button sb-update-primary" data-testid="update-confirm-button" disabled={busy} onClick={() => void start()}>
                 {status.restart === 'service' ? 'Update and restart' : 'Update'}

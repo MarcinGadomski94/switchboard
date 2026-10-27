@@ -7,7 +7,10 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { rememberMachine, rememberMachines } from '../../api/useMachines.ts';
 import { codeTimeLeft, refusalText } from '../../views/settings/machines.ts';
 import { Button, Card, Chip, Dialog, EmptyState, Field, Icon, Skeleton, StatusBadge, Switch, useToast } from '../components/index.ts';
-import { SETTINGS_WORDS as W, computerProblem, computerStateToV2 } from '../glossary.ts';
+import { COMPUTER_UPDATE_WORDS as U, SETTINGS_WORDS as W, computerProblem, computerStateToV2 } from '../glossary.ts';
+import { useV2Router } from '../nav.tsx';
+import { machineUpdateView } from '../../updates/machine-update.ts';
+import { useMachineUpdate } from '../../updates/useMachineUpdate.ts';
 import { useStatusPill } from '../shell/useShellData.ts';
 import { formatBytes } from '../shell/status-model.ts';
 import { offlineSince, secondsLeft } from './settings-model.ts';
@@ -34,10 +37,15 @@ function useTick(on: boolean): number {
  * Reconnect now / offline since …), their power (battery or ~W), CPU and memory,
  * background apps per computer (D127, Stop / Keep), the shared layout per
  * computer (D71) and the shared accounts (D98), Add a computer (D48's pairing
- * code) and Forget. Live from `/hub` (`machineState`, `system`).
+ * code) and Forget. Live from `/hub` (`machineState`, `system`). D140: each
+ * paired computer's version and updates (Update with a confirm, Check for
+ * updates, the progress, "Restarting… reconnects when it's back");
+ * `?update=<machine id>` (a peer's "is available" item's Update) opens the confirm.
  */
 export function ComputersSection() {
   const view = useApi(api.machines);
+  const router = useV2Router();
+  const askUpdate = new URLSearchParams(router.search).get('update');
   const { pill } = useStatusPill();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
@@ -96,7 +104,16 @@ export function ComputersSection() {
       </Card>
       {machines.length === 0 ? <p className="v2-muted v2-set-small">{W.noComputers}</p> : null}
       {machines.map((machine) => (
-        <ComputerCard key={machine.id} machine={machine} now={now} power={pill.computerRows.find((row) => row.id === machine.id)?.power ?? null} onForget={() => setForgetting(machine)} onChanged={view.reload} />
+        <ComputerCard
+          key={machine.id}
+          machine={machine}
+          now={now}
+          power={pill.computerRows.find((row) => row.id === machine.id)?.power ?? null}
+          onForget={() => setForgetting(machine)}
+          onChanged={view.reload}
+          askUpdate={askUpdate === machine.id}
+          onAsked={() => router.navigate('/settings/computers', { replace: true })}
+        />
       ))}
       <BackgroundApps selfName={data.self.name} machines={machines} />
       <SharedLayout machines={machines} onChanged={view.reload} />
@@ -144,7 +161,23 @@ export function ComputersSection() {
 }
 
 /** A paired computer: its state (icon + word + colour), the countdown and Reconnect now, power, Forget. */
-function ComputerCard({ machine, now, power, onForget, onChanged }: { readonly machine: Machine; readonly now: number; readonly power: string | null; readonly onForget: () => void; readonly onChanged: () => void }) {
+function ComputerCard({
+  machine,
+  now,
+  power,
+  onForget,
+  onChanged,
+  askUpdate,
+  onAsked,
+}: {
+  readonly machine: Machine;
+  readonly now: number;
+  readonly power: string | null;
+  readonly onForget: () => void;
+  readonly onChanged: () => void;
+  readonly askUpdate: boolean;
+  readonly onAsked: () => void;
+}) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const state = computerStateToV2(machine.state);
@@ -199,6 +232,7 @@ function ComputerCard({ machine, now, power, onForget, onChanged }: { readonly m
         ) : null}
         {machine.connection?.lastFailure && state !== 'online' ? <div className="v2-muted v2-set-small">{`Last error: ${machine.connection.lastFailure.message}`}</div> : null}
         {state === 'online' && machine.address ? <div className="v2-muted v2-set-small">{machine.address}</div> : null}
+        <ComputerUpdate machine={machine} ask={askUpdate} onAsked={onAsked} />
       </div>
       <div className="v2-comp-side">
         <StatusBadge status={state} />
@@ -213,6 +247,113 @@ function ComputerCard({ machine, now, power, onForget, onChanged }: { readonly m
         </Button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * D140: a paired computer's version and updates on its card: "Update available:
+ * 2.4.3" with **Update** (a confirm first: what happens, how many agents run
+ * there) and **Check for updates**, the progress while it updates, "Restarting…
+ * reconnects when it's back" while it is away, the reason where it cannot update
+ * itself, and a refused call's message. Nothing for a computer that reports no
+ * update state.
+ */
+function ComputerUpdate({ machine, ask, onAsked }: { readonly machine: Machine; readonly ask: boolean; readonly onAsked: () => void }) {
+  const view = machineUpdateView(machine);
+  const actions = useMachineUpdate(machine.id);
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (!ask) return;
+    if (view.canUpdate) setConfirming(true);
+    onAsked();
+  }, [ask, view.canUpdate]);
+  if (view.stage === 'unknown') return null;
+  const latest = view.latest;
+  const install = (): void => {
+    setConfirming(false);
+    if (!latest) return;
+    void actions.install(latest).then((ok) => {
+      if (ok) toast({ text: U.started(machine.name, latest) });
+    });
+  };
+  return (
+    <div className="v2-comp-update" data-testid="v2-computer-update" data-tour="v2-computer-update" data-stage={view.stage}>
+      <div className="v2-comp-update-line">
+        {view.current ? (
+          <span className="v2-muted v2-set-small" data-testid="v2-computer-version">
+            {U.version(view.current)}
+          </span>
+        ) : null}
+        {view.stage === 'available' || view.stage === 'blocked' || view.stage === 'failed' ? (
+          <Chip tone="green" icon="download" size="s">
+            <span data-testid="v2-computer-update-available">{U.available(latest ?? '')}</span>
+          </Chip>
+        ) : null}
+        {view.stage === 'up-to-date' ? <span className="v2-muted v2-set-small">{U.upToDate}</span> : null}
+        {view.stage === 'checking' ? <span className="v2-muted v2-set-small">{U.checking}</span> : null}
+        {view.stage === 'restarting' ? (
+          <Chip tone="amber" icon="refresh" size="s">
+            <span data-testid="v2-computer-update-restarting">{U.restarting}</span>
+          </Chip>
+        ) : null}
+        {view.updatedBy && view.current && view.stage !== 'running' && view.stage !== 'restarting' ? <span className="v2-muted v2-set-small">{U.updatedBy(view.current, view.updatedBy)}</span> : null}
+      </div>
+      {view.stage === 'running' ? (
+        <div className="v2-set-small" data-testid="v2-computer-update-progress">
+          {view.detail}
+        </div>
+      ) : null}
+      {view.stage === 'blocked' && view.blocked ? (
+        <div className="v2-muted v2-set-small" data-testid="v2-computer-update-blocked">
+          {view.blocked}
+        </div>
+      ) : null}
+      {(view.stage === 'failed' || view.stage === 'check-failed') && view.detail ? (
+        <div className="v2-set-small v2-comp-update-error" role="alert" data-testid="v2-computer-update-error">
+          {view.stage === 'check-failed' ? `${U.checkFailed}: ${view.detail}` : view.detail}
+        </div>
+      ) : null}
+      {actions.error ? (
+        <div className="v2-set-small v2-comp-update-error" role="alert" data-testid="v2-computer-update-refused">
+          {actions.error}
+        </div>
+      ) : null}
+      {view.canUpdate || view.canCheck ? (
+        <div className="v2-comp-update-actions">
+          {view.canUpdate ? (
+            <Button size="sm" variant="primary" disabled={actions.busy !== null} onClick={() => setConfirming(true)} data-testid="v2-computer-update-button">
+              {U.update}
+            </Button>
+          ) : null}
+          {view.canCheck ? (
+            <Button size="sm" disabled={actions.busy !== null} onClick={() => void actions.check()} data-testid="v2-computer-update-check">
+              {actions.busy === 'check' ? U.checking : U.check}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <Dialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={U.confirmTitle(machine.name, latest ?? '')}
+        icon="refresh"
+        testId="v2-computer-update-confirm"
+        footer={
+          <>
+            <Button onClick={() => setConfirming(false)}>{U.cancel}</Button>
+            <Button variant="primary" onClick={install} data-testid="v2-computer-update-confirm-button">
+              {U.confirm}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>{U.confirmText}</p>
+        <p className="v2-muted" style={{ margin: '8px 0 0' }} data-testid="v2-computer-update-agents">
+          {U.agents(view.liveSessions)}
+        </p>
+      </Dialog>
+    </div>
   );
 }
 

@@ -146,7 +146,7 @@ const V2_4 = '2.4.0';
 /** The version the redrawn v2 Project graph (Fixes after 2.0 → The Project graph, redrawn) ships in. */
 const V2_4_2 = '2.4.2';
 
-/** The version the Project graph's full screen (Fixes after 2.0 → The Project graph in full screen) ships in. */
+/** The version the Project graph's full screen (Fixes after 2.0) and D140 (update Switchboard from a phone or another computer) ship in. */
 const V2_4_3 = '2.4.3';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -1383,6 +1383,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-graph-fullscreen', 'v2-project-graph', 'v2-nav-projects', 'v2-tab-more'],
         v2Route: '/projects',
         missing: 'Open a project in Projects, choose Graph, then Full screen. ',
+      },
+    ],
+  },
+  // D140: update Switchboard remotely (docs/updates.md → Remote updates): a v2 tour on Settings › Computers.
+  {
+    id: 'remote-update',
+    decision: 'D140',
+    version: V2_4_3,
+    title: 'Update your other computers from here',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'computers',
+        title: 'Update a paired computer remotely',
+        what: 'Each paired computer’s card in Settings › Computers now shows its Switchboard version and, when a newer release is out, Update. You confirm first, then follow it: downloading, checking, installing, restarting, and the new version once it reconnects. The same works from your phone, and the phone’s Settings › Advanced › Updates updates the computer it is paired with. A computer that runs from a git checkout or is started by hand says it has to be updated there.',
+        todo: ['Open Settings › Computers and look at a paired computer’s card.', 'Press Update when a newer version is available, or Check for updates.'],
+        anchors: ['v2-computer-update'],
+        v2Route: '/settings/computers',
+        missing: 'Pair another computer in Settings › Computers to see its version and Update. ',
       },
     ],
   },

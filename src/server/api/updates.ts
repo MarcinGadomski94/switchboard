@@ -1,5 +1,7 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { UpdateVersionInput } from '../../core/updates.ts';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { UpdateErrorCode, UpdateTrigger, UpdateVersionInput } from '../../core/updates.ts';
+import type { Store } from '../db/store.ts';
+import { PEER_REQUEST_HEADER } from '../peers/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { UpdateError } from '../updates/service.ts';
 import { sendNotImplemented } from './not-implemented.ts';
@@ -17,9 +19,32 @@ function invalid(reply: FastifyReply): FastifyReply {
   return reply.code(422).send({ error: 'invalid', errors: [{ field: 'version', message: 'version must be a non-empty string' }] });
 }
 
+/** D140: the HTTP status of a refusal: 422 invalid, 429 rate-limited, else 409. */
+export function refusalStatus(code: UpdateErrorCode): number {
+  if (code === 'invalid') return 422;
+  if (code === 'rate-limited') return 429;
+  return 409;
+}
+
 function refusal(reply: FastifyReply, error: unknown): FastifyReply {
   if (!(error instanceof UpdateError)) throw error;
-  return reply.code(error.code === 'invalid' ? 422 : 409).send({ error: error.code, message: error.message });
+  return reply.code(refusalStatus(error.code)).send({ error: error.code, message: error.message });
+}
+
+/**
+ * D140: who asks: a paired phone (the device guard set `request.device`), a
+ * paired computer (the peer API injected the request with its machine id in
+ * {@link PEER_REQUEST_HEADER}), else this computer's own UI.
+ */
+export async function updateTriggerOf(request: FastifyRequest, store: Store): Promise<UpdateTrigger> {
+  const device = request.device;
+  if (device) return { kind: 'device', id: device.id, name: device.name };
+  const peer = request.headers[PEER_REQUEST_HEADER];
+  if (typeof peer === 'string' && peer !== '') {
+    const machine = await store.machines.get(peer);
+    return { kind: 'peer', id: peer, name: machine?.name ?? peer };
+  }
+  return { kind: 'local' };
 }
 
 /**
@@ -32,7 +57,12 @@ function refusal(reply: FastifyReply, error: unknown): FastifyReply {
  * - `POST /api/updates/dismiss { version }` → `UpdateStatus` (hides the banner of that version).
  * A body without a `version` → 422. Without an updater (the demo, tests that
  * build the app bare, `SWITCHBOARD_UPDATES=off`) every route answers 501.
- * This machine's only: none is on the peer API.
+ *
+ * D140 (`docs/updates.md` → *Remote updates*): a paired phone may call all four,
+ * a paired computer (the peer API) `GET`, `check` and `install`. An install from
+ * either is refused where this Switchboard cannot restart itself (409
+ * `git-checkout` / `manual-restart`), limited to one per 10 minutes (429
+ * `rate-limited`) and recorded with the device's or the computer's name.
  */
 export async function registerUpdateRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const updates = context.providers.updates;
@@ -51,8 +81,9 @@ export async function registerUpdateRoutes(app: FastifyInstance, context: ApiCon
     if (!updates) return sendNotImplemented(reply, ITEM);
     const version = versionOf(request.body);
     if (!version) return invalid(reply);
+    const trigger = await updateTriggerOf(request, context.store);
     try {
-      return reply.code(202).send(updates.install(version));
+      return reply.code(202).send(updates.install(version, trigger));
     } catch (error) {
       return refusal(reply, error);
     }

@@ -107,6 +107,9 @@ export const UPDATE_AVAILABLE_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/** D140: kind of the item that says an update asked for from a phone or another computer ended ("Updated to 2.4.3 from your phone"). */
+export const UPDATE_REMOTE = 'update-remote';
+
 /** "Open fix session": closes the item; the UI opens the New-session modal with the item's `prefill`. */
 export const OPEN_FIX_SESSION = 'open-fix-session';
 /** "Retry run": runs the schedule again through the {@link ScheduleRunner} (M7.1). */
@@ -439,6 +442,34 @@ export class SystemItemService {
     const created = await this.#store.systemItems.createOnceByPayload(updateAvailableItem(update), 'version', update.version);
     if (created) changed = true;
     if (changed) await this.#publishInbox();
+    return created;
+  }
+
+  /**
+   * D140 (`docs/updates.md` → *Remote updates*): an update a paired phone or
+   * another computer asked for ended: "Updated to 2.4.3 from your phone" (after
+   * the restart into it) or "Update to 2.4.3 from Marcins-Mac failed". Once per
+   * `dedupe` key (open or closed); dismiss-only. A new Inbox item is what the
+   * devices' push announces.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async remoteUpdateNotice(input: { readonly title: string; readonly detail: string; readonly failed: boolean; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: UPDATE_REMOTE,
+        source: 'switchboard',
+        status: input.failed ? 'need' : 'idle',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: [{ id: 'dismiss', label: 'Dismiss' }],
+        sessionId: null,
+        payload: { dedupe: input.dedupe },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
     return created;
   }
 

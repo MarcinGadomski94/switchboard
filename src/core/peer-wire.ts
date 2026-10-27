@@ -218,6 +218,8 @@ export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(
   'memoryChanged',
   // D125: the machine's power reading; the receiver keeps it as `Machine.power` and never republishes it (peerHubEvent answers null).
   'machinePower',
+  // D140: the machine's update state in short; the receiver keeps it as `Machine.update` and never republishes it (peerHubEvent answers null).
+  'machineUpdate',
 ]);
 
 /**

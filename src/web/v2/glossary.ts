@@ -3,6 +3,7 @@ import { type ArchiveKeptReason, archiveCountdownText, archivePolicyText } from 
 import type { PlanItemState } from '../../core/plans.ts';
 import type { TeamMemberStatus } from '../../core/team.ts';
 import type { MachineState } from '../../core/peers.ts';
+import { remoteAgentsText, remoteConfirmText, remoteConfirmTitle } from '../../core/updates.ts';
 
 /**
  * D131 · the single source of the v2 UI's words (`docs/v2.md` → *Glossary*;
@@ -385,6 +386,8 @@ export type AnsweredWhere = keyof typeof ANSWERED_WHERE;
 
 /** The answer cards' buttons and lines (the prototype's `cardHTML`). */
 export const ANSWER = {
+  /** D140: a paired computer's "Switchboard 2.4.3 is available" item: update it from here (with the confirm). */
+  updateComputer: 'Update',
   tapToSend: 'Tap an answer to send it.',
   other: 'Other…',
   otherPlaceholder: 'Type your answer',
@@ -787,6 +790,29 @@ export const USAGE_WORDS = {
 // ── (lane R · Settings) ──
 
 /** Lane R · Settings (`/settings/*`). */
+/**
+ * D140 (`docs/updates.md` → *Remote updates*): a paired computer's updates on its
+ * Settings › Computers card (also on a phone), and the confirm before updating it.
+ */
+export const COMPUTER_UPDATE_WORDS = {
+  version: (v: string): string => `Switchboard ${v}`,
+  available: (v: string): string => `Update available: ${v}`,
+  upToDate: 'Up to date',
+  checking: 'Checking for updates…',
+  checkFailed: 'The last check failed',
+  restarting: 'Restarting… reconnects when it’s back',
+  updatedBy: (v: string, who: string): string => `Updated to ${v} (asked from ${who})`,
+  notReported: 'Its version shows once it runs Switchboard 2.4.3 or later with updates on.',
+  update: 'Update',
+  check: 'Check for updates',
+  confirmTitle: remoteConfirmTitle,
+  confirmText: remoteConfirmText(),
+  agents: remoteAgentsText,
+  confirm: 'Update and restart',
+  cancel: 'Cancel',
+  started: (name: string, v: string): string => `${name} is updating to ${v}.`,
+};
+
 export const SETTINGS_WORDS = {
   title: 'Settings',
   sub: 'The few things most people need. Everything else is under Advanced.',

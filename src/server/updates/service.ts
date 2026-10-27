@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { checksumName, packagePrefix, parseChecksum, tarballName } from '../../core/release.ts';
 import { compareSemVer, isNewerRelease, parseSemVer } from '../../core/semver.ts';
-import type { InstallKind, ReleaseInfo, RestartMode, UpdateCheck, UpdateErrorCode, UpdateProgress, UpdateStatus } from '../../core/updates.ts';
-import { updateRunning } from '../../core/updates.ts';
+import type { InstallKind, ReleaseInfo, RemoteUpdateRecord, RestartMode, UpdateCheck, UpdateErrorCode, UpdateProgress, UpdateStatus, UpdateTrigger } from '../../core/updates.ts';
+import { REMOTE_INSTALL_INTERVAL_MS, machineUpdateOf, remoteBlockText, remoteUpdateAbility, triggerText, updateRunning } from '../../core/updates.ts';
 import type { SettingRepository } from '../db/repos/settings.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { type RunResult, failureText, succeeded } from '../exec.ts';
@@ -49,6 +49,8 @@ export class UpdateError extends Error {
 export interface UpdateItems {
   updateAvailable(update: { readonly version: string; readonly tag: string; readonly current: string; readonly kind: InstallKind }): Promise<unknown>;
   updatesResolved(current: string, isAtOrBelow: (version: string, current: string) => boolean): Promise<number>;
+  /** D140: "Updated to 2.4.3 from your phone" / "Update to 2.4.3 from Marcins-Mac failed" (once per `dedupe`). */
+  remoteUpdateNotice?(notice: { readonly title: string; readonly detail: string; readonly failed: boolean; readonly dedupe: string }): Promise<unknown>;
 }
 
 /** Switches the login service's definition to another install folder (`LoginService.pointTo`). */
@@ -85,12 +87,16 @@ export interface UpdateServiceOptions {
   readonly onError?: (error: unknown) => void;
   /** After a restart request on Linux: how long to wait for the SIGTERM before reporting a failure. */
   readonly restartTimeoutMs?: number;
+  /** D140: a phone or another computer may start one update per this period (default {@link REMOTE_INSTALL_INTERVAL_MS}). */
+  readonly remoteIntervalMs?: number;
 }
 
 interface StoredState {
   readonly lastCheck: UpdateCheck | null;
   readonly latest: ReleaseInfo | null;
   readonly dismissed: string | null;
+  /** D140: the last update a phone or another computer asked for. */
+  readonly lastRemote: RemoteUpdateRecord | null;
 }
 
 const IDLE: UpdateProgress = { phase: 'idle', version: null, message: '', error: null, dir: null, at: null };
@@ -146,7 +152,7 @@ export class UpdateService {
   readonly #options: UpdateServiceOptions;
   readonly #now: () => Date;
   readonly #onError: (error: unknown) => void;
-  #state: StoredState = { lastCheck: null, latest: null, dismissed: null };
+  #state: StoredState = { lastCheck: null, latest: null, dismissed: null, lastRemote: null };
   #release: FoundRelease | null = null;
   #checking: Promise<UpdateStatus> | null = null;
   #progress: UpdateProgress = IDLE;
@@ -168,11 +174,58 @@ export class UpdateService {
     const stored = await this.#options.settings.get(UPDATE_STATE_SETTING);
     if (typeof stored === 'object' && stored !== null) {
       const record = stored as Partial<StoredState>;
-      this.#state = { lastCheck: record.lastCheck ?? null, latest: record.latest ?? null, dismissed: record.dismissed ?? null };
+      this.#state = { lastCheck: record.lastCheck ?? null, latest: record.latest ?? null, dismissed: record.dismissed ?? null, lastRemote: record.lastRemote ?? null };
     }
     this.#ledger = await readLedger(this.#options.paths);
     this.#restartMode = await this.#options.restartMode().catch(() => 'manual' as const);
     await this.#options.items?.updatesResolved(this.#options.current, isAtOrBelow).catch(this.#onError);
+    await this.#resolveRemote().catch(this.#onError);
+  }
+
+  /**
+   * D140: a start after an update a phone or another computer asked for: on that
+   * version (or a newer one) it is `updated` ("Updated to 2.4.3 from your phone"
+   * in the Inbox); still on the version it was asked from, it did not get there
+   * (`failed`: the restart did not happen or went back).
+   */
+  async #resolveRemote(): Promise<void> {
+    const record = this.#state.lastRemote;
+    if (!record || record.outcome !== 'started') return;
+    const current = this.#options.current;
+    if (isAtOrBelow(record.version, current)) {
+      await this.#finishRemote({ ...record, outcome: 'updated', error: null });
+      return;
+    }
+    if (record.from === current) await this.#finishRemote({ ...record, outcome: 'failed', error: `Switchboard started again on ${current}` });
+  }
+
+  /** D140: stores the remote update's outcome, logs it and tells the Inbox. */
+  async #finishRemote(record: RemoteUpdateRecord): Promise<void> {
+    this.#state = { ...this.#state, lastRemote: record };
+    await this.#save();
+    const from = triggerText(record.by);
+    const failed = record.outcome === 'failed';
+    await this.#log(failed ? `update to ${record.version} ${from} failed: ${record.error ?? 'unknown error'}` : `updated to ${record.version} ${from}`);
+    await this.#options.items
+      ?.remoteUpdateNotice?.({
+        title: failed ? `Update to ${record.version} ${from} failed` : `Updated to ${record.version} ${from}`,
+        detail: failed
+          ? `${record.by.name} asked for Switchboard ${record.version} at ${record.at}. It did not get there: ${record.error ?? 'unknown error'}. This computer still runs ${this.#options.current}; Settings → Updates can try again.`
+          : `${record.by.name} asked for Switchboard ${record.version} at ${record.at}; this computer was on ${record.from}. The agents that were running resumed after the restart.`,
+        failed,
+        dedupe: `${record.outcome} ${record.version} ${record.at}`,
+      })
+      .catch(this.#onError);
+  }
+
+  /** D140: one line in `<dataDir>/logs/update.log` (who asked for which update, and how it ended). */
+  async #log(line: string): Promise<void> {
+    try {
+      await mkdir(path.dirname(this.#options.paths.log), { recursive: true });
+      await appendFile(this.#options.paths.log, `${this.#now().toISOString()} ${line}\n`);
+    } catch (error) {
+      this.#onError(error);
+    }
   }
 
   /**
@@ -215,11 +268,16 @@ export class UpdateService {
       progress: this.#progress,
       previous,
       liveSessions: this.#options.liveSessions?.() ?? 0,
+      remote: remoteUpdateAbility(this.#options.kind, this.#restartMode),
+      lastRemote: this.#state.lastRemote,
     };
   }
 
   #publish(): void {
-    this.#options.bus?.publish('updateChanged', this.status());
+    const status = this.status();
+    this.#options.bus?.publish('updateChanged', status);
+    // D140: the compact state for the paired computers (the peer stream forwards it; the local UI ignores it).
+    this.#options.bus?.publish('machineUpdate', machineUpdateOf(status));
   }
 
   async #save(): Promise<void> {
@@ -272,22 +330,50 @@ export class UpdateService {
 
   /**
    * Starts the update to `version` (the latest found) in the background; the
-   * progress goes out as `updateChanged`.
-   * @throws {UpdateError} `git-checkout`, `busy`, `checking`, `no-update`, `stale-version`, `invalid`.
+   * progress goes out as `updateChanged`. D140: `trigger` says who asked; a
+   * phone or another computer (`device` / `peer`) may update only a release
+   * install that runs as its login service, at most once per 10 minutes, and is
+   * recorded (the update log, `lastRemote`, the Inbox after the restart).
+   * @throws {UpdateError} `git-checkout`, `manual-restart`, `busy`, `checking`, `no-update`, `stale-version`, `rate-limited`, `invalid`.
    */
-  install(version: string): UpdateStatus {
-    if (this.#options.kind === 'git') throw new UpdateError('git-checkout', 'This is a git checkout: update it with git (the commands are in Settings → Updates).');
+  install(version: string, trigger: UpdateTrigger = { kind: 'local' }): UpdateStatus {
+    const remote = trigger.kind !== 'local';
+    if (this.#options.kind === 'git') {
+      throw new UpdateError('git-checkout', remote ? remoteBlockText('git-checkout') : 'This is a git checkout: update it with git (the commands are in Settings → Updates).');
+    }
+    if (remote && this.#restartMode !== 'service') throw new UpdateError('manual-restart', remoteBlockText('manual-restart'));
     if (this.#job || updateRunning(this.#progress)) throw new UpdateError('busy', 'An update is already running.');
     if (this.#checking) throw new UpdateError('checking', 'A check for updates is running; try again in a moment.');
     const latest = this.#state.latest;
     const release = this.#release;
     if (!latest || !release || !isNewerRelease(latest.version, this.#options.current)) throw new UpdateError('no-update', 'There is no newer release to install. Check for updates first.');
     if (latest.version !== version) throw new UpdateError('stale-version', `The newest release is ${latest.version}, not ${version}.`);
+    const now = this.#now();
+    if (remote) {
+      const wait = this.remoteWaitMs(now);
+      if (wait > 0) throw new UpdateError('rate-limited', `An update was asked for from a phone or another computer less than ${Math.round(this.#remoteInterval / 60_000)} minutes ago; try again in ${Math.max(1, Math.ceil(wait / 60_000))} min.`);
+      this.#state = { ...this.#state, lastRemote: { version, from: this.#options.current, by: { kind: trigger.kind, id: trigger.id, name: trigger.name }, at: now.toISOString(), outcome: 'started', error: null } };
+      void this.#save().catch(this.#onError);
+    }
+    void this.#log(`update to ${version} asked for ${triggerText(trigger.kind === 'local' ? trigger : { kind: trigger.kind, name: trigger.name })} (running ${this.#options.current})`);
     this.#setProgress('downloading', version);
     this.#job = this.#run(release).finally(() => {
       this.#job = null;
     });
     return this.status();
+  }
+
+  get #remoteInterval(): number {
+    return this.#options.remoteIntervalMs ?? REMOTE_INSTALL_INTERVAL_MS;
+  }
+
+  /** D140: how long a phone or another computer still waits before it may start an update here (0: now). */
+  remoteWaitMs(now: Date = this.#now()): number {
+    const last = this.#state.lastRemote;
+    if (!last) return 0;
+    const at = Date.parse(last.at);
+    if (Number.isNaN(at)) return 0;
+    return Math.max(0, at + this.#remoteInterval - now.getTime());
   }
 
   #setProgress(phase: UpdateProgress['phase'], version: string, extra: Partial<UpdateProgress> = {}): void {
@@ -369,7 +455,16 @@ export class UpdateService {
         ...(switched ? { dir: versionDir(paths, version) } : {}),
       });
       if (!switched) this.#onError(error);
+      await this.#remoteFailed(version, message);
     }
+  }
+
+  /** D140: the update a phone or another computer asked for failed here. */
+  async #remoteFailed(version: string, message: string): Promise<void> {
+    const record = this.#state.lastRemote;
+    if (!record || record.outcome !== 'started' || record.version !== version) return;
+    await this.#finishRemote({ ...record, outcome: 'failed', error: message }).catch(this.#onError);
+    this.#publish();
   }
 
   /** On Linux the manager stops this process; if nothing happens in time, say so. */
@@ -377,7 +472,9 @@ export class UpdateService {
     const ms = this.#options.restartTimeoutMs ?? 60_000;
     this.#restartTimer = setTimeout(() => {
       if (this.#closed || this.#progress.phase !== 'restarting') return;
-      this.#setProgress('failed', version, { dir, error: `the login service did not restart Switchboard within ${Math.round(ms / 1000)} s; ${version} is installed at ${dir}: restart Switchboard yourself` });
+      const error = `the login service did not restart Switchboard within ${Math.round(ms / 1000)} s; ${version} is installed at ${dir}: restart Switchboard yourself`;
+      this.#setProgress('failed', version, { dir, error });
+      void this.#remoteFailed(version, error);
     }, ms);
     this.#restartTimer.unref();
   }

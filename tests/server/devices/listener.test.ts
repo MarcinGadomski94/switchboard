@@ -206,7 +206,8 @@ describe('D73 paired devices', () => {
       ['POST', '/api/mcp/servers', {}],
       ['PUT', '/api/mcp/servers/x', {}],
       ['POST', '/api/mcp/servers/x/toggle', {}],
-      ['POST', '/api/updates/install', {}],
+      // D140: check / install / dismiss are allowed; any other update route is not.
+      ['POST', '/api/updates/rollback', {}],
       ['PUT', '/api/service', { enabled: true }],
       ['PUT', '/api/clis/claude/command', { command: ['/bin/sh'] }],
       ['POST', '/api/accounts/profiles', {}],
@@ -227,6 +228,8 @@ describe('D73 paired devices', () => {
     expect((await w.device('GET', '/api/machines', { cookie })).status).toBe(200);
     expect((await w.device('GET', '/api/inbox', { cookie })).status).toBe(200);
     expect((await w.device('GET', '/api/settings', { cookie })).status).toBe(200);
+    // D140: updating this computer passes the guard (501 here: this world has no updater).
+    expect((await w.device('POST', '/api/updates/install', { cookie, body: { version: '9.9.9' } })).status).toBe(501);
     // This machine's own UI still may.
     expect((await w.ui('GET', '/api/devices')).status).toBe(200);
   });
