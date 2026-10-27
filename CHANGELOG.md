@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.3 (2026-10-27)
+
+### Updates
+- **Update Switchboard remotely:** from a paired phone or another paired computer. Settings › Computers shows each computer's version with **Update** and **Check for updates**, the progress and the restart; a phone can update the computer it is paired with (Settings › Updates). It asks first, installs only the checksum-verified GitHub release as before, allows one remote update per 10 minutes per computer and records who asked ("Updated to 2.4.3 from your phone"). Rollback and the updater's settings stay local. See `docs/updates.md` (D140).
+
+### v2 theme
+- **The Project graph in full screen:** a Full screen button (or the page `/projects/<id>/graph`, "Open in a new window" for a second monitor) with a compact top bar; **Follow** keeps the graph fitted or centred on the working steps as the project moves, a Fit pill brings it back after you zoom or pan, and the tab title shows "▶ 45% · Project". On a phone it opens on the working step.
+- **Steps, Board and Timeline in the graph's look:** the same progress header on every tab; Steps rows with progress rings, repository chips, "Working · 25m" and estimate bars, grouped by state (or by repository); Board cards like the graph's; Timeline bars in repository lanes with the graph's arrows, the critical path and hover highlighting.
+- The graph's step icons sit in the middle of their rings again.
+
 ## 2.4.2 (2026-10-27)
 
 ### v2 theme
