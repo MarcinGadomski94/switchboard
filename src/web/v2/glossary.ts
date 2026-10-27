@@ -1581,6 +1581,40 @@ export const PROJECT_WORDS = {
   openNotes: 'Open notes',
 } as const;
 
+/** The v2 Project graph's words (`projects/GraphView.tsx`, Fixes after 2.0 → *The Project graph, redrawn*). */
+export const GRAPH_WORDS = {
+  summary: (done: number, total: number, working: number, needs: number): string => `${done} of ${total} done · ${working} working · ${needs} need${needs === 1 ? 's' : ''} you`,
+  percentDone: (percent: number): string => `${percent}% done`,
+  criticalPath: 'Critical path',
+  criticalPathHint: 'Highlight the longest chain of steps still to do',
+  onCriticalPath: 'on the critical path',
+  severalRepos: 'Several repositories',
+  repos: (n: number): string => `${n} repos`,
+  laneDone: (done: number, total: number): string => `${done} of ${total} steps done`,
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  fit: 'Fit',
+  fitHint: 'Fit the whole project',
+  minimap: 'Overview: click or drag to move the view',
+  map: 'Map',
+  mapHint: 'Show or hide the overview map',
+  openToRestart: 'open to restart',
+  estimate: (text: string): string => `estimate ${text}`,
+  after: (names: string): string => `after ${names}`,
+  graphOf: (title: string): string => `Dependency graph of ${title}`,
+  legend: 'Arrows point to the steps that wait for it. Lanes group steps by repository.',
+  legendMotion: 'Dots travel into steps being worked on; the glowing line is the critical path (the longest chain still to do).',
+  segments: {
+    done: 'done',
+    working: 'working',
+    needs: 'need you',
+    approval: 'for approval',
+    failed: 'failed',
+    ready: 'ready',
+    waiting: 'waiting',
+  },
+} as const;
+
 /** The Crews pages' words. */
 export const CREW_WORDS = {
   pageSub: 'Long-lived teammates, grouped into crews. Drag to reorder; the order is shared across your computers and phone.',

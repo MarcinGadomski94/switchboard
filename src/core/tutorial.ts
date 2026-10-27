@@ -143,6 +143,9 @@ const V2_3 = '2.3.0';
 /** The version D138 (choose the account overall and per Project) ships in. */
 const V2_4 = '2.4.0';
 
+/** The version the redrawn v2 Project graph (Fixes after 2.0 → The Project graph, redrawn) ships in. */
+const V2_5 = '2.5.0';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1338,6 +1341,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['accounts-choice'],
         route: { view: 'settings', section: 'accounts' },
         missing: 'Settings → Accounts has Account for sessions once a CLI has a second account. ',
+      },
+    ],
+  },
+  // D131 · the redrawn v2 Project graph (docs/v2.md → Projects: the Graph view): a v2 tour, since the classic plan graph is unchanged.
+  {
+    id: 'project-graph',
+    decision: 'D131',
+    version: V2_5,
+    title: 'The Project graph, redrawn',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'graph',
+        title: 'A project as a living graph',
+        what: 'A project’s Graph now shows its steps by repository, each with a progress ring, arrows that move into the steps being worked on, and the critical path: the longest chain still to do. Hover a step to light up what it waits on and what waits on it. A minimap appears when the project does not fit. On a phone you can choose Graph too: pinch or double-tap to zoom, and long-press a step for its menu.',
+        todo: ['Open a project and choose Graph.', 'Turn Critical path on or off; zoom with + / −, ⌘-scroll or a pinch.'],
+        anchors: ['v2-project-graph', 'v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'Open a project in Projects and choose Graph to see it. ',
       },
     ],
   },

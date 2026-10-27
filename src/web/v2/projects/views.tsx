@@ -1,6 +1,6 @@
 import { type CSSProperties, useMemo, useState } from 'react';
 import type { Plan, PlanItem } from '../../../core/plans.ts';
-import { GRAPH, axisTicks, criticalEdgeKeys, edgePath, finalNodeText, graphLayout, shortLabel, timeline, timelineSummary } from '../../plans/model.ts';
+import { axisTicks, shortLabel, timeline, timelineSummary } from '../../plans/model.ts';
 import { Button, Chip, Icon, IconButton, MenuButton, type MenuItem, StatusBadge } from '../components/index.ts';
 import { AGENTS_WORDS, PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { Board, BoardActivity, BoardButtons, BoardCard, BoardLane, BoardProgress, BoardQuote } from '../shared/Board.tsx';
@@ -10,7 +10,7 @@ import { BOARD_COLUMNS, axisPercent, boardColumns, earlyStart, estimateLine, reo
 import type { StepActions } from './useStepActions.ts';
 
 /**
- * D131 · lane P · a project's four views (Steps, Board, Graph, Timeline): the same steps, their
+ * D131 · lane P · a project's views (Steps, Board, Timeline here; Graph in `GraphView.tsx`): the same steps, their
  * v2 states (icon + word + colour), and the same actions everywhere (a click opens the step's
  * agent; ⓘ its details; ⋯ the step menu; Combine / Send back on a step ready for approval).
  */
@@ -29,8 +29,8 @@ function Mark({ status }: { readonly status: V2Status }) {
   return look.icon === 'pulse' ? <span className="v2-pulse" aria-hidden="true" /> : <Icon name={look.icon} size="s" />;
 }
 
-/** The step's ⋯ menu entries. */
-function stepMenu(plan: Plan, item: PlanItem, actions: StepActions): MenuItem[] {
+/** The step's ⋯ menu entries (also the Graph's, `GraphView.tsx`). */
+export function stepMenu(plan: Plan, item: PlanItem, actions: StepActions): MenuItem[] {
   return stepActions(plan, item).map((action) => ({ id: action.id, label: action.label, ...(action.disabledReason ? { disabledReason: action.disabledReason } : {}), danger: action.id === 'remove', onSelect: () => void actions.run(item, action.id) }));
 }
 
@@ -257,118 +257,6 @@ export function BoardView({ plan, actions, onDetails, onSendBack }: ViewProps) {
           }
         />
       </Board>
-    </div>
-  );
-}
-
-const TONE_FILL: Readonly<Record<string, [string, string]>> = {
-  blue: ['var(--v2-blue-bg)', 'var(--v2-blue)'],
-  amber: ['var(--v2-amber-bg)', 'var(--v2-amber-dot)'],
-  red: ['var(--v2-red-bg)', 'var(--v2-red)'],
-  green: ['var(--v2-green-bg)', 'var(--v2-green)'],
-  violet: ['var(--v2-violet-bg)', 'var(--v2-violet)'],
-  grey: ['var(--v2-grey-bg)', 'var(--v2-border-strong)'],
-};
-
-function cut(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-/** Graph: the dependencies with arrows (the classic layout: layers by the longest path), the critical path in amber. */
-export function GraphView({ plan, actions, onDetails }: ViewProps) {
-  const layout = useMemo(() => graphLayout(plan.items, plan.edges), [plan.items, plan.edges]);
-  const critical = useMemo(() => criticalEdgeKeys(plan), [plan]);
-  const at = new Map(layout.nodes.map((node) => [node.id, node]));
-  const byId = new Map(plan.items.map((item) => [item.id, item]));
-  if (plan.items.length === 0) return <div className="v2-card v2-p-steps-empty">No steps yet.</div>;
-  return (
-    <div className="v2-card v2-p-graph" data-testid="v2-project-graph">
-      <div className="v2-p-graph-scroll">
-        <svg width={layout.width} height={layout.height} viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={`Dependency graph of ${plan.title}`}>
-          <defs>
-            <marker id="v2-graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-              <path d="M0 0 10 5 0 10z" fill="var(--v2-border-strong)" />
-            </marker>
-            <marker id="v2-graph-arrow-crit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-              <path d="M0 0 10 5 0 10z" fill="var(--v2-amber-dot)" />
-            </marker>
-          </defs>
-          <g fill="none">
-            {plan.edges.map((edge) => {
-              const from = at.get(edge.from);
-              const to = at.get(edge.to);
-              if (!from || !to) return null;
-              const hot = critical.has(`${edge.from}>${edge.to}`);
-              return <path key={`${edge.from}>${edge.to}`} data-testid="v2-graph-edge" data-from={byId.get(edge.from)?.key ?? edge.from} data-to={byId.get(edge.to)?.key ?? edge.to} d={edgePath(from, to)} stroke={hot ? 'var(--v2-amber-dot)' : 'var(--v2-border-strong)'} strokeWidth={hot ? 2.5 : 1.8} markerEnd={`url(#${hot ? 'v2-graph-arrow-crit' : 'v2-graph-arrow'})`} />;
-            })}
-            {layout.sinks.map((id) => {
-              const from = at.get(id);
-              return from ? <path key={`final-${id}`} d={edgePath(from, layout.final)} stroke="var(--v2-border-strong)" strokeWidth={1.4} strokeDasharray="4 4" markerEnd="url(#v2-graph-arrow)" /> : null;
-            })}
-          </g>
-          {layout.nodes.map((node) => {
-            const item = byId.get(node.id);
-            if (!item) return null;
-            const look = stepLook(item, plan.items);
-            const [fill, stroke] = TONE_FILL[STATUS[look.status].tone] ?? TONE_FILL['grey'] ?? ['', ''];
-            const name = stepName(item);
-            const activate = (): void => {
-              if (!actions.open(item)) onDetails(item);
-            };
-            return (
-              <g
-                key={node.id}
-                className="v2-p-graph-node"
-                data-testid="v2-graph-node"
-                data-key={item.key ?? item.id}
-                data-kind={look.kind}
-                role="button"
-                tabIndex={0}
-                aria-label={`${name} · ${look.label}`}
-                onClick={activate}
-                onContextMenu={(event) => {
-                  // D139: a right-click (a long press on touch) opens the node's step menu.
-                  const button = (event.currentTarget as SVGGElement).querySelector<HTMLButtonElement>('[data-testid="v2-step-menu"]');
-                  if (!button) return;
-                  event.preventDefault();
-                  button.click();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    activate();
-                  }
-                }}
-              >
-                <rect x={node.x} y={node.y} width={GRAPH.cardWidth} height={GRAPH.cardHeight} rx={12} fill={fill} stroke={stroke} strokeWidth={1.5} strokeDasharray={item.onCriticalPath ? '5 3' : undefined} />
-                <text x={node.x + 12} y={node.y + 24} className="v2-p-graph-key">
-                  {item.key ? shortLabel(item, plan.items) : ''}
-                  {item.hold ? ' · on hold' : ''}
-                </text>
-                <text x={node.x + 12} y={node.y + 44} className="v2-p-graph-title">
-                  {cut(item.title.replace(item.key ?? '\u0000', '').trim() || item.title, 24)}
-                </text>
-                <text x={node.x + 12} y={node.y + 66} className="v2-p-graph-state">
-                  {cut(look.kind === 'needs' && look.detail ? `Needs you: ${look.detail}` : look.label, 28)}
-                </text>
-                {/* D139: the same step menu as the Steps list (⋯ on the node; a right-click opens it too). */}
-                <foreignObject x={node.x + GRAPH.cardWidth - 38} y={node.y + 4} width={34} height={34}>
-                  <div className="v2-p-graph-menu" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                    <MenuButton items={stepMenu(plan, item, actions)} label={`Step actions for ${name}`} testId="v2-step-menu" />
-                  </div>
-                </foreignObject>
-              </g>
-            );
-          })}
-          <g>
-            <rect x={layout.final.x} y={layout.final.y} width={GRAPH.cardWidth} height={GRAPH.cardHeight} rx={12} fill="var(--v2-surface)" stroke="var(--v2-border-strong)" strokeDasharray="4 4" />
-            <text x={layout.final.x + GRAPH.cardWidth / 2} y={layout.final.y + GRAPH.cardHeight / 2 + 5} textAnchor="middle" className="v2-p-graph-state">
-              {cut(finalNodeText(plan), 28)}
-            </text>
-          </g>
-        </svg>
-      </div>
-      <p className="v2-muted v2-p-graph-legend">Arrows point from a step to the steps that wait on it. The amber path is the longest chain left.</p>
     </div>
   );
 }

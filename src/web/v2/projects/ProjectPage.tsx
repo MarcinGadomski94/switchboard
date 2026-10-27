@@ -12,18 +12,29 @@ import { ACCOUNT_CHOICE_WORDS, MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '.
 import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
-import { PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
+import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
 import { ProgressBar } from './ProjectsPage.tsx';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
-import { BoardView, GraphView, StepsView, TimelineView } from './views.tsx';
+import { GraphView } from './GraphView.tsx';
+import { BoardView, StepsView, TimelineView } from './views.tsx';
 import './projects.css';
 
 const VIEW_KEY = 'switchboard.v2.projectView';
+/** A phone's own choice (Steps or Graph), kept apart from the desktop's. */
+const PHONE_VIEW_KEY = 'switchboard.v2.projectView.phone';
 
 function storedView(): ProjectView {
   try {
     return readProjectView(window.localStorage.getItem(VIEW_KEY));
+  } catch {
+    return 'steps';
+  }
+}
+
+function storedPhoneView(): ProjectView {
+  try {
+    return readPhoneProjectView(window.localStorage.getItem(PHONE_VIEW_KEY));
   } catch {
     return 'steps';
   }
@@ -76,7 +87,9 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
   const layout = useLayout();
   const phone = layout === 'phone';
   const [viewChoice, setViewChoice] = useState<ProjectView>(storedView);
-  const view: ProjectView = phone ? 'steps' : viewChoice;
+  const [phoneChoice, setPhoneChoice] = useState<ProjectView>(storedPhoneView);
+  // Phones offer Steps and Graph (Steps unless Graph was chosen on this browser's phone layout).
+  const view: ProjectView = phone ? phoneChoice : viewChoice;
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const [draftMode, setDraftMode] = useState<PlanMergeMode | null>(null);
   const [jiraState, setJiraState] = useState<PlanJiraState | null>(null);
@@ -97,9 +110,10 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
   const notesHref = projectNotesHref(plan, sessions.data ?? []);
 
   const setView = (next: ProjectView): void => {
-    setViewChoice(next);
+    if (phone) setPhoneChoice(next);
+    else setViewChoice(next);
     try {
-      window.localStorage.setItem(VIEW_KEY, next);
+      window.localStorage.setItem(phone ? PHONE_VIEW_KEY : VIEW_KEY, next);
     } catch {
       // No storage: the choice lasts for this page.
     }
@@ -209,15 +223,13 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
         ) : null}
         {plan.machine ? <ComputerTag name={plan.machine.name} state={plan.machine.state === 'online' ? 'online' : plan.machine.state === 'reconnecting' ? 'reconnecting' : 'offline'} /> : null}
         <span className="v2-grow" />
-        {phone ? null : (
-          <Segmented
-            label="Project view"
-            value={view}
-            onChange={setView}
-            testId="v2-project-views"
-            options={PROJECT_VIEWS.map((value) => ({ value, label: PROJECT_WORDS[value], icon: value === 'steps' ? 'list' : value === 'board' ? 'board' : value === 'graph' ? 'diagram' : 'gantt' }))}
-          />
-        )}
+        <Segmented
+          label="Project view"
+          value={view}
+          onChange={setView}
+          testId="v2-project-views"
+          options={(phone ? PHONE_PROJECT_VIEWS : PROJECT_VIEWS).map((value) => ({ value, label: PROJECT_WORDS[value], icon: value === 'steps' ? 'list' : value === 'board' ? 'board' : value === 'graph' ? 'diagram' : 'gantt' }))}
+        />
       </div>
 
       <section className="v2-card v2-p-project-head" aria-label="Progress and approval">

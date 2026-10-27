@@ -264,16 +264,20 @@ test.describe('an existing install (data from before the tutorial)', () => {
     await removeTempDir(tmp);
   });
 
-  test('v2 opens only the welcome (no classic-anchored tour); skipping it also settles the classic tours it covers', async ({ page }) => {
+  test('v2 opens only its own tours (no classic-anchored tour); skipping them also settles the classic tours the welcome covers', async ({ page }) => {
     await stubToolProbes(page);
     const before = await tutorialState(api);
     expect(statusOf(before, V2_WELCOME_ID)).toBe('pending');
+    expect(statusOf(before, 'project-graph')).toBe('pending');
     expect(statusOf(before, 'graduated')).toBe('pending');
     await page.goto(server.baseUrl);
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2');
-    await expect(page.getByTestId('v2-tour-skip-all')).toHaveCount(0);
+    // The welcome, then the redrawn Project graph (2.5.0): the two v2 tours, chained.
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 2)');
+    await page.getByTestId('v2-tour-skip').click();
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 2)');
     await page.getByTestId('v2-tour-skip').click();
     await expect(page.getByTestId('v2-tour')).toHaveCount(0);
+    expect(statusOf(await tutorialState(api), 'project-graph')).toBe('skipped');
     await expect.poll(async () => statusOf(await tutorialState(api), 'two-themes')).toBe('skipped');
     const after = await tutorialState(api);
     expect(statusOf(after, V2_WELCOME_ID)).toBe('skipped');
