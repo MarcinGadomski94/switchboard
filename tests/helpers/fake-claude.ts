@@ -101,7 +101,16 @@ export function spawnFake(args: readonly string[], options: { cwd: string; env: 
     while (nl >= 0) {
       const text = partial.slice(0, nl);
       partial = partial.slice(nl + 1);
-      if (text.trim().startsWith('{')) lines.push(JSON.parse(text) as JsonObject);
+      // One NDJSON message per line; anything else (plain text, or `auth status --json`'s pretty-printed
+      // object spread over several lines) is not a stream message: keep it in `out`, never throw here
+      // (a throw in this callback is an unhandled error that fails the whole vitest run).
+      if (text.trim().startsWith('{')) {
+        try {
+          lines.push(JSON.parse(text) as JsonObject);
+        } catch {
+          // not a one-line message
+        }
+      }
       nl = partial.indexOf('\n');
     }
     for (const listener of listeners) listener();
