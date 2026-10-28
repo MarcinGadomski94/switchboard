@@ -23,7 +23,6 @@ import {
   sheetFromDraft,
   sheetFromRequest,
   sheetHasText,
-  speedModel,
   stepIndex,
   taskBody,
   taskProblems,
@@ -54,36 +53,42 @@ describe('+ New · agent', () => {
   });
 
   it('posts a Simple start by default, the Full one with the workspace questions', () => {
-    const simple = agentBody(withTask, repo, [], null) as unknown as Record<string, unknown>;
+    const simple = agentBody(withTask, repo, [], null, 'claude') as unknown as Record<string, unknown>;
     expect(simple['simple']).toBe(true);
     expect(simple['task']).toBe('Fix the login timeout');
     expect(simple['folder']).toBe('f1');
-    const full = agentBody({ ...withTask, askQuestions: true, form: { ...withTask.form, folder: 'f2' } }, workspace, [], null) as unknown as Record<string, unknown>;
+    const full = agentBody({ ...withTask, askQuestions: true, form: { ...withTask.form, folder: 'f2' } }, workspace, [], null, 'claude') as unknown as Record<string, unknown>;
     expect(full['simple']).toBeUndefined();
     expect(full['workType']).toBe('feature');
   });
 
   it('never asks for a separate copy in a plain folder', () => {
-    const body = agentBody({ ...withTask, form: { ...withTask.form, folder: 'f3' } }, plain, [], null) as unknown as Record<string, unknown>;
+    const body = agentBody({ ...withTask, form: { ...withTask.form, folder: 'f3' } }, plain, [], null, 'claude') as unknown as Record<string, unknown>;
     expect(body['worktrees']).toBe(false);
   });
 
-  it('maps Smart / Fast and the thinking depth to a model and effort', () => {
-    // Lane X: the shared mapping (Smart = Opus, as on Home and in the agent panel).
-    expect(speedModel('smart', 'normal', 'claude', null)).toEqual({ model: 'opus', effort: null });
-    expect(speedModel('smart', 'deep', 'claude', null)).toEqual({ model: 'opus', effort: 'high' });
-    expect(speedModel('smart', 'normal', 'codex', null)).toEqual({ model: null, effort: null });
-    expect(speedModel('fast', 'normal', 'claude', null)).toEqual({ model: 'sonnet', effort: null });
-    expect(speedModel('fast', 'normal', 'codex', [{ value: 'default' }, { value: 'gpt-5-mini' }])).toEqual({ model: 'gpt-5-mini', effort: null });
-    expect(speedModel('fast', 'normal', 'codex', null)).toEqual({ model: null, effort: null });
-    expect(speedModel('fast', 'deep', 'claude', null, 'opus')).toEqual({ model: 'opus', effort: 'high' });
-    const body = agentBody({ ...withTask, speed: 'fast' }, repo, [], null) as unknown as Record<string, unknown>;
-    expect(body['model']).toBe('sonnet');
+  it('starts with the picked model and effort, else the engine’s last choice (D42), fitted to its models', () => {
+    const models = { options: [{ value: 'default', label: 'Default (recommended)', efforts: ['low', 'high'] }, { value: 'opus', label: 'Opus 5.5', efforts: ['low', 'high', 'max'] }, { value: 'haiku', label: 'Haiku 4.5' }], last: { model: 'opus', effort: 'max' } };
+    const picked = agentBody({ ...withTask, form: { ...withTask.form, model: { model: 'opus', effort: 'high' } } }, repo, [], models, 'claude') as unknown as Record<string, unknown>;
+    expect(picked).toMatchObject({ model: 'opus', effort: 'high' });
+    const last = agentBody(withTask, repo, [], models, 'claude') as unknown as Record<string, unknown>;
+    expect(last).toMatchObject({ model: 'opus', effort: 'max' });
+    // A model the engine no longer lists falls back to its default; an effort the model lacks to Default.
+    const gone = agentBody({ ...withTask, form: { ...withTask.form, model: { model: 'claude-opus-3', effort: 'high' } } }, repo, [], models, 'claude') as unknown as Record<string, unknown>;
+    expect(gone).toMatchObject({ model: null, effort: 'high' });
+    const haiku = agentBody({ ...withTask, form: { ...withTask.form, model: { model: 'haiku', effort: 'high' } } }, repo, [], models, 'claude') as unknown as Record<string, unknown>;
+    expect(haiku).toMatchObject({ model: 'haiku', effort: null });
+    // Models not loaded yet: no model fields (the CLI's defaults).
+    const loading = agentBody(withTask, repo, [], null, 'claude') as unknown as Record<string, unknown>;
+    expect(loading['model']).toBeUndefined();
   });
 
   it('a conversation needs only the message', () => {
     expect(conversationProblems(DEFAULT_AGENT_FORM)).toEqual([NEW_WORDS.errors.message]);
-    expect(chatBody(withTask, null, ['a1'])).toEqual({ message: 'Fix the login timeout', attachments: ['a1'], model: 'opus', effort: null });
+    expect(chatBody(withTask, null, 'claude', ['a1'])).toEqual({ message: 'Fix the login timeout', attachments: ['a1'] });
+    const codex = { options: [{ value: 'gpt-6', label: 'GPT-6', efforts: ['low', 'medium', 'high'] }], last: null };
+    const chat = { ...withTask, form: { ...withTask.form, provider: 'codex' as const, model: { model: 'gpt-6', effort: 'medium' } } };
+    expect(chatBody(chat, codex, 'codex', [])).toEqual({ message: 'Fix the login timeout', provider: 'codex', model: 'gpt-6', effort: 'medium' });
   });
 });
 

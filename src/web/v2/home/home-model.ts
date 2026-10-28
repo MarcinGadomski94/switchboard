@@ -1,10 +1,9 @@
-import type { ArtifactListItem, Folder, NewSimpleSession, SessionActivity, SessionListItem, SessionModelOption } from '../../../core/api.ts';
+import type { ArtifactListItem, Folder, NewSimpleSession, SessionActivity, SessionListItem, SessionModelChoice } from '../../../core/api.ts';
 import type { SessionPr } from '../../../core/ci.ts';
 import { ciChip } from '../../../core/ci.ts';
 import { simpleShortName, simpleTitle } from '../../../core/simple-session.ts';
 import { HOME_WORDS } from '../glossary.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
-import { type Speed, speedModel as sharedSpeedModel } from '../shared/speed.ts';
 
 /**
  * D131 · Home's pure part (lane H; `README.md`): which agents are "Working now",
@@ -148,40 +147,30 @@ export function workSummary(working: number, done: number): string {
 
 // ── The start box ──────────────────────────────────────────────────────
 
-/** The start box's speed (Smart / Fast). */
-export type { Speed } from '../shared/speed.ts';
-
-/** The model each speed starts with (the CLI's aliases: `--model opus` / `--model sonnet`). */
-export { SPEED_ALIAS as SPEED_MODEL } from '../shared/speed.ts';
-
 /**
- * The model a speed starts with on a computer whose CLI reported `options`
- * (`GET /api/models`): the shared Smart / Fast mapping (`shared/speed.ts`).
+ * Where this browser remembers the start box's last folder (per computer:
+ * `<machine or "local">`) and computer. The model and effort are not kept here:
+ * a start with them becomes the engine's last choice on the service (D42), which
+ * the box starts on next time. A `speed` stored before 2.4.7 (Smart / Fast) is ignored.
  */
-export function speedModel(speed: Speed, options: readonly Pick<SessionModelOption, 'value' | 'label'>[] | null): string | null {
-  return sharedSpeedModel(speed, options);
-}
-
-/** Where this browser remembers the start box's last folder and speed (per computer: `<machine or "local">`). */
 export const START_PREFS_KEY = 'switchboard.v2.home.start';
 
 /** The start box's remembered choices. */
 export interface StartPrefs {
   /** The last folder started in, per computer (`local` = this one). */
   readonly folders: Readonly<Record<string, string>>;
-  readonly speed: Speed;
   /** The last computer (`null` = this one). */
   readonly machine: string | null;
 }
 
-/** The prefs as stored, or the defaults (Smart, this computer, no folder). */
+/** The prefs as stored, or the defaults (this computer, no folder). */
 export function readStartPrefs(raw: string | null): StartPrefs {
   try {
     const value = raw ? (JSON.parse(raw) as Partial<StartPrefs>) : {};
     const folders = value.folders && typeof value.folders === 'object' ? Object.fromEntries(Object.entries(value.folders).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {};
-    return { folders, speed: value.speed === 'fast' ? 'fast' : 'smart', machine: typeof value.machine === 'string' && value.machine ? value.machine : null };
+    return { folders, machine: typeof value.machine === 'string' && value.machine ? value.machine : null };
   } catch {
-    return { folders: {}, speed: 'smart', machine: null };
+    return { folders: {}, machine: null };
   }
 }
 
@@ -209,9 +198,10 @@ export function startFolder(folders: readonly Pick<Folder, 'id' | 'isDefault' | 
 /**
  * The `POST /api/sessions` body of a start from the box: the simple form's
  * (D56): the message as the task and the title it gives, a free short name, the
- * folder, no separate copy, and the speed's model ({@link speedModel}).
+ * folder, no separate copy, and the chosen model and effort (`null` while the
+ * models load: the service then uses the CLI's defaults).
  */
-export function startBody(text: string, folder: string | null, model: string | null, takenNames: readonly string[]): NewSimpleSession {
+export function startBody(text: string, folder: string | null, model: SessionModelChoice | null, takenNames: readonly string[]): NewSimpleSession {
   const task = text.trim();
   const title = simpleTitle('', task);
   return {
@@ -221,7 +211,7 @@ export function startBody(text: string, folder: string | null, model: string | n
     ...(folder ? { folder } : {}),
     worktrees: false,
     ...(title ? { title } : {}),
-    ...(model ? { model } : {}),
+    ...(model ? { model: model.model, effort: model.effort } : {}),
   };
 }
 

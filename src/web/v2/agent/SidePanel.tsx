@@ -9,7 +9,7 @@ import { PROCESSES_POLL_MS, processTitle, stopLine } from '../../processes/proce
 import { hasSubagentChat } from '../../views/session/chat.ts';
 import { freshBusy, freshEligible } from '../../views/session/fresh-offer.ts';
 import { terminalLines } from '../../views/session/right-panel.ts';
-import { actionErrorText, remoteToggle, rootLine } from '../../views/session/session-header.ts';
+import { actionErrorText, effortPickBody, modelPickBody, remoteToggle, rootLine } from '../../views/session/session-header.ts';
 import { switchConfirmText } from '../../views/session/provider-switch.ts';
 import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
 import { turnBusy } from '../../views/session/needs-you.ts';
@@ -17,12 +17,13 @@ import { useAgentTaskCards } from '../shared/session-tasks.ts';
 import { TodoCard } from '../shared/TodoCard.tsx';
 import { stripOrder } from '../shared/todo-card-model.ts';
 import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
-import { Button, Icon, Segmented, Select, StatusBadge, useToast } from '../components/index.ts';
+import { Button, Icon, Select, StatusBadge, useToast } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { NotesLine, OverviewGroup, ProjectLine } from './SideExtras.tsx';
 import { EarlierToggle, ShowMoreHelpers, useHelperList, useHelpersFold } from './HelpersFold.tsx';
-import { depthOptions, exactModel, howSummary, speedModels, speedOf } from './how-model.ts';
+import { ModelEffortSelects } from '../shared/ModelEffort.tsx';
+import { modelEffortField, modelName, modelSummary } from '../shared/model-effort.ts';
 import type { AgentData } from './useAgent.ts';
 import { RoutinesGroupBody, useAgentRoutines } from './Routines.tsx';
 import { browserStorage } from './useAgent.ts';
@@ -95,8 +96,8 @@ function HelpersGroup({ data, helperHref, open, onToggle }: { readonly data: Age
 
 /**
  * D131 · lane S · the agent's side panel (Details, ⌘.): collapsible groups, each
- * remembered: Working memory (with the clean slate, D83), How it works (Smart /
- * Fast, thinking depth, AI engine, account and pin: D31, D62, D63), Helpers (their
+ * remembered: Working memory (with the clean slate, D83), How it works (Model and
+ * Effort, AI engine, account and pin: D31, D62, D63), Helpers (their
  * own chats, D36), Background apps (D127: Keep / Stop), Tasks (D68), Handoff note &
  * terminal, Advanced (branch, separate copy, path, CLI, Remote Control, hooked).
  */
@@ -143,7 +144,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
           <MemoryGroup data={data} />
         </Group>
       )}
-      <Group id="how" title={AGENT_WORDS.howItWorks} icon="sliders" summary={howSummary(session.model)} open={open.how} onToggle={toggle}>
+      <Group id="how" title={AGENT_WORDS.howItWorks} icon="sliders" summary={modelSummary(session.model)} open={open.how} onToggle={toggle}>
         <HowGroup data={data} />
       </Group>
       {data.conversation ? null : (
@@ -245,9 +246,7 @@ function HowGroup({ data }: { readonly data: AgentData }) {
   }, [machine, session?.profileId]);
   if (!session) return null;
   const model = session.model ?? null;
-  const speeds = speedModels(model?.available ?? null);
-  const speed = speedOf(model);
-  const depth = depthOptions(model);
+  const field = modelEffortField({ model: model?.current ?? null, effort: model?.effort ?? null }, model?.available ?? null);
   const cli = readCliProvider(session.provider);
   const mine = profiles.filter((p) => p.cli === cli);
   const account = mine.find((p) => p.id === session.profileId) ?? mine.find((p) => p.builtin) ?? mine[0] ?? null;
@@ -269,36 +268,18 @@ function HowGroup({ data }: { readonly data: AgentData }) {
       },
     );
   };
-  const setSpeed = (next: 'smart' | 'fast'): void => {
-    const value = next === 'fast' ? speeds.fast : speeds.smart;
-    if (!value || next === speed) return;
-    run(() => api.setModel(sessionId, { model: value }), `${next === 'fast' ? 'Fast' : 'Smart'} from the next reply.`);
+  const setModel = (value: string): void => {
+    const body = model ? modelPickBody(model, value) : null;
+    if (body) run(() => api.setModel(sessionId, body), `${modelName(model?.available ?? null, body.model ?? null)} from the next reply.`);
+  };
+  const setEffort = (value: string): void => {
+    const body = model ? effortPickBody(model, value === '' ? null : value) : null;
+    if (body) run(() => api.setModel(sessionId, body), `Effort ${body.effort ?? 'default'} from the next reply.`);
   };
   const running = session.providerSwitch ?? null;
   return (
     <div className="v2-ag-how">
-      <Segmented
-        label={AGENT_WORDS.speed}
-        value={speed}
-        size="s"
-        testId="v2-agent-speed"
-        options={[
-          { value: 'smart', label: 'Smart', title: speeds.smart ? `Uses ${speeds.smart}` : AGENT_WORDS.modelUnknown },
-          { value: 'fast', label: 'Fast', title: speeds.fast ? `Uses ${speeds.fast}` : AGENT_WORDS.modelUnknown },
-        ]}
-        onChange={(value) => (disabled || !model?.available ? undefined : setSpeed(value))}
-      />
-      {!model?.available ? <p className="v2-muted v2-ag-small">{AGENT_WORDS.modelUnknown}</p> : null}
-      {depth.length > 0 ? (
-        <Select
-          label={AGENT_WORDS.thinkingDepth}
-          value={model?.effort ?? ''}
-          disabled={disabled}
-          options={depth.map((d) => ({ value: d.value ?? '', label: d.label }))}
-          onChange={(event) => run(() => api.setModel(sessionId, { effort: event.target.value === '' ? null : event.target.value }))}
-          data-testid="v2-agent-depth"
-        />
-      ) : null}
+      {model ? <ModelEffortSelects field={field} testId="v2-agent" disabled={disabled} onModel={setModel} onEffort={setEffort} /> : <p className="v2-muted v2-ag-small">{AGENT_WORDS.modelUnknown}</p>}
       {data.conversation ? null : running ? (
         <p className="v2-ag-small" role="status">
           Switching to {CLI_LABELS[running.to]}…
@@ -476,7 +457,7 @@ function AdvancedGroup({ data }: { readonly data: AgentData }) {
   const branches = [...new Set(session.agents.map((a) => (a.branch ? `${a.solutionPath ?? ''}${a.solutionPath ? ' · ' : ''}${a.branch}` : null)).filter((b): b is string => b !== null))];
   const remote = remoteToggle(session);
   const rows: Array<[string, ReactNode]> = [
-    [AGENT_WORDS.engine, `${CLI_LABELS[readCliProvider(session.provider)]} · ${exactModel(session.model)}${session.model?.effort ? ` · effort ${session.model.effort}` : ''}`],
+    [AGENT_WORDS.engine, `${CLI_LABELS[readCliProvider(session.provider)]} · ${modelSummary(session.model)}`],
     [AGENT_WORDS.account, accountLine(session)],
     [AGENT_WORDS.branch, branches.length ? branches.join(', ') : '—'],
     [AGENT_WORDS.separateCopy, session.worktrees ? 'Yes (a worktree per code project)' : 'No, it works in place'],

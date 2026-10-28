@@ -86,7 +86,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('clis.default', adv('clis'), 'Default CLI', 'What new sessions start on (also in the sidebar’s footer)', 'engine ai claude codex opencode default cli', row('cli-default')),
   entry('clis.models', adv('clis'), 'Models', 'What the New-session forms and the header offer', 'model models opus sonnet haiku names engine', '[data-row^="cli-"][data-row$="-models"]'),
   entry('clis.command', adv('clis'), 'Command', 'The command each engine starts with', 'path binary executable cli engine command', '[data-row^="cli-"][data-row$="-command"]'),
-  entry('clis.model-rules', adv('clis'), MODEL_RULES_LABEL, MODEL_RULES_DESCRIPTION, 'routing model by task priority estimate smart fast', row('model-rules')),
+  entry('clis.model-rules', adv('clis'), MODEL_RULES_LABEL, MODEL_RULES_DESCRIPTION, 'routing model effort by task priority estimate', row('model-rules')),
   entry('sessions.working-folder', adv('sessions'), 'Working folder', 'A workspace session starts at the folder root, so the router applies; a repo session in the repo or its worktree', 'folder start directory cwd', row('working-folder')),
   entry('sessions.worktrees', adv('sessions'), 'Worktree per session', 'One worktree per solution the session writes to', 'separate copy copies branch branches worktree git isolation', row('worktrees')),
   entry('sessions.worktree-location', adv('sessions'), 'Worktree location', 'Next to the repo', 'separate copy where path worktree', row('worktree-location')),

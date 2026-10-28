@@ -1,17 +1,20 @@
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
-import type { Folder, ModelSettings, Session } from '../../../core/api.ts';
+import type { Folder, ModelSettings, Session, SessionModelChoice } from '../../../core/api.ts';
+import type { CliProviderId } from '../../../core/cli-providers.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
-import { startErrorText } from '../../modals/new-session.ts';
-import { Button, Icon, Segmented, useToast } from '../components/index.ts';
-import { HOME_WORDS, WORDS } from '../glossary.ts';
+import { formModelOptions, startErrorText } from '../../modals/new-session.ts';
+import { Button, Icon, useToast } from '../components/index.ts';
+import { HOME_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { type NewKind, openNew } from '../new/index.tsx';
-import { START_PREFS_KEY, type Speed, type StartPrefs, canStartFrom, machineKey, readStartPrefs, speedModel, startBody, startFolder } from './home-model.ts';
+import { pickEffort, pickModel, startField } from '../shared/model-effort.ts';
+import { START_PREFS_KEY, type StartPrefs, canStartFrom, machineKey, readStartPrefs, startBody, startFolder } from './home-model.ts';
 
 /**
  * D131 · Home's start box (lane H; the prototype's `#startbox`): "What should an
- * agent do?", the folder (the last one used), the computer, Smart / Fast, More
+ * agent do?", the folder (the last one used), the computer, the model and its
+ * effort (the default engine's own list, starting on its last choice), More
  * options (the + New sheet with the text) and Start agent. Enter (or ⌘↩) starts
  * an agent with the text as its first message through `POST /api/sessions` (the
  * simple form's body, D56), on the chosen computer (D48). Shift+Enter is a new line.
@@ -58,7 +61,9 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
   const [selfName, setSelfName] = useState<string>('This computer');
   const machine = prefs.machine && machines.some((m) => m.id === prefs.machine) ? prefs.machine : null;
   const [folders, setFolders] = useState<{ readonly machine: string | null; readonly list: readonly Folder[] } | null>(null);
-  const [models, setModels] = useState<{ readonly machine: string | null; readonly settings: ModelSettings | null } | null>(null);
+  const [models, setModels] = useState<{ readonly machine: string | null; readonly provider: CliProviderId; readonly settings: ModelSettings | null } | null>(null);
+  // The model and effort picked here (`null` = the engine's last choice); dropped with another computer.
+  const [picked, setPicked] = useState<SessionModelChoice | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,9 +88,17 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
         setFolder(startFolder(list, prefs.folders[machineKey(machine)]));
       })
       .catch(() => live && setFolders({ machine, list: [] }));
-    on.models()
-      .then((settings) => live && setModels({ machine, settings }))
-      .catch(() => live && setModels({ machine, settings: null }));
+    // The models of the engine a start uses (the computer's default CLI).
+    setPicked(null);
+    on.clis()
+      .then((overview) => overview.default)
+      .catch((): CliProviderId => 'claude')
+      .then((provider) =>
+        on
+          .models(provider)
+          .then((settings) => live && setModels({ machine, provider, settings }))
+          .catch(() => live && setModels({ machine, provider, settings: null })),
+      );
     return () => {
       live = false;
     };
@@ -93,6 +106,11 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
   }, [machine]);
 
   const list = folders?.machine === machine ? folders.list : null;
+  const modelsHere = models?.machine === machine ? models : null;
+  const provider = modelsHere?.provider ?? 'claude';
+  const modelField = startField(picked, modelsHere?.settings ?? null, modelsHere !== null, provider);
+  const modelOptions = formModelOptions(modelsHere?.settings ?? null, provider);
+  const choice: SessionModelChoice = { model: modelField.model === 'default' ? null : modelField.model, effort: modelField.effort === '' ? null : modelField.effort };
   const chosen = list?.find((f) => f.id === folder) ?? null;
   const offline = machine !== null && machines.find((m) => m.id === machine)?.state !== 'online';
   const ready = canStartFrom(text) && !busy && !offline && list !== null;
@@ -118,7 +136,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
     const task = text.trim();
     setBusy(true);
     setError(null);
-    const body = startBody(task, folder, speedModel(prefs.speed, models?.machine === machine ? (models.settings?.options ?? null) : null), takenNames);
+    const body = startBody(task, folder, modelsHere ? choice : null, takenNames);
     events.onStarting(body.title ?? task);
     try {
       const session = await machineApi(machine).createSession(body);
@@ -209,17 +227,31 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
             {selfName}
           </span>
         )}
-        <Segmented<Speed>
-          label={HOME_WORDS.speed}
-          size="s"
-          value={prefs.speed}
-          onChange={(speed) => choose({ speed })}
-          options={[
-            { value: 'smart', label: WORDS.modelSmart },
-            { value: 'fast', label: WORDS.modelFast },
-          ]}
-          testId="v2-start-speed"
-        />
+        <label className="v2-home-picker" title={modelField.reason ?? HOME_WORDS.model}>
+          <Icon name="sparkle" size="s" />
+          <span className="v2-sr">{HOME_WORDS.model}</span>
+          <select value={modelField.model} disabled={modelField.disabled} onChange={(event) => setPicked(pickModel(choice, modelOptions, event.currentTarget.value))} data-testid="v2-start-model">
+            {modelField.models.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <Icon name="chev-down" size="s" />
+        </label>
+        {modelField.efforts ? (
+          <label className="v2-home-picker" title={HOME_WORDS.effort}>
+            <span className="v2-sr">{HOME_WORDS.effort}</span>
+            <select value={modelField.effort} disabled={modelField.disabled} onChange={(event) => setPicked(pickEffort(choice, event.currentTarget.value))} data-testid="v2-start-effort">
+              {modelField.efforts.map((e) => (
+                <option key={e.value} value={e.value}>
+                  {e.value === '' ? `${HOME_WORDS.effort}: ${e.label}` : e.label}
+                </option>
+              ))}
+            </select>
+            <Icon name="chev-down" size="s" />
+          </label>
+        ) : null}
         <span className="v2-grow" />
         <Button variant="ghost" size="sm" onClick={() => more('agent')} data-testid="v2-start-more">
           {HOME_WORDS.moreOptions}

@@ -212,7 +212,7 @@
   }
 }
 
-/* The ⓘ popover: computer, folders, Smart / Fast, separate copy, the notes. */
+/* The ⓘ popover: computer, folders, model and effort, separate copy, the notes. */
 .sb2 .v2-ag-info {
   display: flex;
   flex-direction: column;
@@ -2276,7 +2276,7 @@
 
 /*
  * Lane X polish · 44 px touch targets on touch screens and phones: the small segmented
- * switches (Changes' scope, How it works' Smart / Fast; the base kit's `size="s"` beats its
+ * switches (Changes' scope; the base kit's `size="s"` beats its
  * own coarse-pointer rule), the side panel's selects, the icon-only Details button, and the
  * title (click to rename; negative margins keep the layout as it was).
  */

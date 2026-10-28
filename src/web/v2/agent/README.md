@@ -8,7 +8,7 @@
 |---|---|
 | `index.tsx` | `AgentPage` (the router's page), and the peek exports |
 | `AgentView.tsx` | The full view: header, tabs, chat + dock or a tab, the side panel (desktop column, tablet drawer, phone bottom sheet), ⌘. |
-| `Header.tsx` | One compact row (fix after 2.0): back, the title (click to rename; a teammate's name, renamed through its crew), status, the automatic-tests chip and the Needs-you ask inline, the tabs, ⓘ (computer, folders, Smart / Fast, separate copy, the notes), View, Details, the agent ⋯ menu (`AgentMenuButton`) and its dialogs |
+| `Header.tsx` | One compact row (fix after 2.0): back, the title (click to rename; a teammate's name, renamed through its crew), status, the automatic-tests chip and the Needs-you ask inline, the tabs, ⓘ (computer, folders, model and effort, separate copy, the notes), View, Details, the agent ⋯ menu (`AgentMenuButton`) and its dialogs |
 | `ChatPane.tsx` | The chat ("E. Chat text space"): rows, paging (D95), a search hit (D97), in-chat answer cards (`AnswerSlot`), the reply ⋯ menu |
 | `Dock.tsx` | The composer dock: ONE status row (live line with Stop / Esc · "Tasks n/m" opening the task strip · working memory and the clean-slate offer · "2 queued ▸" unfolding the queued and paused messages), the task strip (classic's todo cards side by side, `shared/TodoCard.tsx`; collapsed by default, remembered per browser), 📎 + a capped box + Send (⌘↩) |
 | `SidePanel.tsx` | Details: the project line and What agents know (`SideExtras.tsx`), Working memory, How it works, Helpers, Agents overview (`SideExtras.tsx`: D21 / D27 / D51 with Resume run), Background apps, Tasks (the shared task cards, one under another), Handoff note & terminal, Advanced (each group remembered) |
@@ -20,7 +20,7 @@
 | `Peek.tsx` | `openPeek`, `closePeek`, `PeekHost`, `PeekSheet` |
 | `dialogs.tsx` | Undo from here (D80), Save as result (D89), Rename, Continue in a terminal, Remote control (QR), confirmations |
 | `useAgent.ts`, `useChatRows.ts` | Data: the classic session data (`useSessionData`), hub reloads, activity, computer, save points; the chat rows |
-| `chat-model.ts`, `composer-model.ts`, `header-model.ts`, `reply-menu.ts`, `how-model.ts`, `view-settings.ts` | Pure, unit-tested (`tests/web/v2-agent.test.ts`) |
+| `chat-model.ts`, `composer-model.ts`, `header-model.ts`, `reply-menu.ts`, `view-settings.ts` (Model and Effort: `../shared/model-effort.ts`) | Pure, unit-tested (`tests/web/v2-agent.test.ts`) |
 | `results-bits.ts`, `move-model.ts`, `side-model.ts`, `timeline-model.ts` | Lane X, pure, unit-tested (`tests/web/v2-x-agent.test.ts`) |
 | `agent.css` | Styles, all under `.sb2`, classes `v2-ag-*` |
 
