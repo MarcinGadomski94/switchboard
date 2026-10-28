@@ -36,7 +36,8 @@ the server's `instructions` and the standing instruction (below) say the same.
 
 `content` is the text; `path` instead copies a file **at save time**: absolute or
 relative to the session's working folder, and (symbolic links resolved) inside
-the session's folder, its working folder or one of its worktrees; anything else
+the session's folder, its working folder or one of its worktrees (a chat, D106:
+its scratch folder, the folders it looks at or its attachments); anything else
 is refused. The helper never reads the file: Switchboard does. An `image` needs a
 `path` (a png, jpg, gif or webp, recognised by its bytes); so does a `pdf` (D126:
 a file that starts with `%PDF-`). The tool's description tells the agent that a

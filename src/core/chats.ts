@@ -168,8 +168,31 @@ export function chatInstruction(lookAt: readonly string[]): string {
     folders,
     "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.",
     "Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes).",
-    'Save deliverables the developer should see (reports, plans, docs, diagrams, mockups) with the switchboard artifact_save tool; update the same artifact instead of creating new ones.',
+    CHAT_SWITCHBOARD_TOOLS_LINE,
+    'Save deliverables the developer should see (plans, reports, docs, tables, diagrams, mockups) with the switchboard artifact_save tool, giving the text as content; update the same artifact (its id) instead of creating new ones. An image or PDF artifact needs path instead: a file in the folders you may read or one the developer attached (it is copied; nothing is written).',
   ].join(' ');
+}
+
+/**
+ * D106 follow-up (2026-10-28, "chats should have access to write artifacts"): the
+ * line of the chat's instruction that tells its agent Switchboard's own tools are
+ * allowed in a chat. Without it the agent read "never edit or write files" and plan
+ * mode's own "run no non-readonly tools" as covering `artifact_save` too, and saved
+ * nothing. Artifacts and todos live in Switchboard, not in the project.
+ */
+export const CHAT_SWITCHBOARD_TOOLS_LINE =
+  "Switchboard's own tools (the switchboard MCP server: artifact_save, artifact_list, artifact_get and the todo tools) are allowed in this chat, also in plan mode: they change nothing in any project. Artifacts and todos are kept by Switchboard, not as files in a project, so saving one is not editing or writing a file.";
+
+/** The prefixes of the `switchboard` MCP server's tools as each CLI names them: Claude Code / Codex `mcp__switchboard__<tool>`, OpenCode `switchboard_<tool>`. */
+const SWITCHBOARD_TOOL_PREFIXES: readonly string[] = ['mcp__switchboard__', 'switchboard_'];
+
+/**
+ * D106 follow-up (2026-10-28): `true` for a tool of Switchboard's own `switchboard`
+ * MCP server (todos, artifacts…). A chat's permission request for one is allowed at
+ * once instead of refused; every other request in a chat stays refused.
+ */
+export function isSwitchboardTool(toolName: string): boolean {
+  return SWITCHBOARD_TOOL_PREFIXES.some((prefix) => toolName.startsWith(prefix) && toolName.length > prefix.length);
 }
 
 /** "Continued as <session>" (the chat's note and divider once it was continued as a session). */

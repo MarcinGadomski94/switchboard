@@ -39,7 +39,7 @@ import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { sessionInstruction } from '../sessions/instruction.ts';
-import { CHAT_PERMISSION_MODE, CHAT_REMOTE_REFUSAL, CHAT_TERMINAL_REFUSAL, LOOK_AT_UPDATED_DIVIDER, chatRefusal, chatRefusedLabel } from '../../core/chats.ts';
+import { CHAT_PERMISSION_MODE, CHAT_REMOTE_REFUSAL, CHAT_TERMINAL_REFUSAL, LOOK_AT_UPDATED_DIVIDER, chatRefusal, chatRefusedLabel, isSwitchboardTool } from '../../core/chats.ts';
 // Team (D100) hook: a member session's charter rides on the standing instruction (docs/team-removal.md).
 import { teamAccessEnv } from '../team/hooks.ts';
 import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
@@ -3381,6 +3381,12 @@ export class SessionSupervisor {
     const message = parseStreamLine(line);
     // D106: a chat never asks the developer to allow a tool: anything that asks (an edit, a command, leaving plan mode)
     // is refused at once, before it reaches the recorder or the Inbox. Questions (AskUserQuestion) go on as usual.
+    // D106 follow-up (2026-10-28): Switchboard's own MCP tools (artifacts, todos) are allowed at once instead: they
+    // change nothing in a project, and a chat keeps them (should the CLI ask for one, e.g. in plan mode).
+    if (message.kind === 'can-use-tool' && live.chat && isSwitchboardTool(message.toolName)) {
+      live.proc.write(controlSuccessLine(message.requestId, { behavior: 'allow', updatedInput: message.input }));
+      return;
+    }
     if (message.kind === 'can-use-tool' && message.toolName !== 'AskUserQuestion' && live.chat) {
       live.proc.write(controlSuccessLine(message.requestId, { behavior: 'deny', message: chatRefusal(message.toolName) }));
       await live.recorder.recordLifecycle('text', chatRefusedLabel(message.toolName), { type: 'lifecycle', action: 'chat-refused', message: message.toolName });

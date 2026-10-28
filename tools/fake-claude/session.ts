@@ -859,6 +859,8 @@ export class Runner {
     let wakeAfterMs: number | null = null;
     const remoteAnswerMs = msg.fired ? null : remoteAnswerToken(msg.text);
     let say: string | null = null;
+    /** D106 follow-up: why the host refused a plan-mode ask for a `[fake:tool mcp__…]` call (`null` = allowed or not asked). */
+    let denied: string | null = null;
     if (msg.fired) {
       // A turn of its own (a cron firing): no stdin message, so no replay echo.
       steps = (this.core.base.turns[0] ?? []).filter((s) => s.t !== 'replay');
@@ -898,6 +900,12 @@ export class Runner {
       // D106: a tool the CLI does not offer (`--disallowedTools`) is never called: the reply says so.
       steps = this.core.base.turns[0] ?? [];
       say = `fake-claude: ${toolCall.name} is not available (--disallowedTools)`;
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
+    } else if (toolCall !== null && (denied = await this.planModeAsk(toolCall.name, toolCall.input)) !== null) {
+      // D106 follow-up: plan mode asked to use an MCP tool and the host refused it: the tool is never called.
+      steps = this.core.base.turns[0] ?? [];
+      say = `fake-claude: ${toolCall.name} was not used (permission denied: ${denied})`;
       scenario = DEFAULT_FIXTURE;
       turnIndex = 0;
     } else if (toolCall !== null) {
@@ -1796,6 +1804,35 @@ export class Runner {
     if (asObject(line['origin'])?.['kind'] === 'task-notification') return;
     this.turnsCompleted++;
     this.transcript?.endTurn();
+  }
+
+  /**
+   * D106 follow-up (2026-10-28): plan mode and MCP tools. In plan mode a `[fake:tool mcp__<server>__<tool>]`
+   * call that no `--allowedTools` rule covers (the tool's name, or `mcp__<server>` for all of a server's
+   * tools) asks the host first (`can_use_tool` over stdio), as the CLI's permission check falls through to
+   * "ask" for a tool no rule allows; `FAKE_CLAUDE_PLAN_ASK_MCP=1` asks even for an allowed one (the case
+   * Switchboard must also handle: the real CLI's plan-mode handling of an allowed, non-read-only MCP tool
+   * was never probed). Returns `null` when the call may go ahead (allowed, or not asked), else the deny
+   * message. An interrupt or SIGINT meanwhile is kept for the turn (it ends it), EOF denies.
+   */
+  private async planModeAsk(name: string, input: JsonObject): Promise<string | null> {
+    if (this.permissionMode !== 'plan' || !name.startsWith('mcp__') || !this.stdio) return null;
+    const rules = this.args.allowedTools.flatMap((value) => value.split(/[,\s]+/)).filter((rule) => rule !== '');
+    const allowed = rules.some((rule) => rule === name || (rule.startsWith('mcp__') && !rule.slice(5).includes('__') && name.startsWith(`${rule}__`)));
+    if (allowed && this.o.env['FAKE_CLAUDE_PLAN_ASK_MCP'] !== '1') return null;
+    const requestId = randomUUID();
+    this.writeJson({
+      type: 'control_request',
+      request_id: requestId,
+      request: { subtype: 'can_use_tool', tool_name: name, display_name: name, input, description: name, decision_reason: 'Plan mode: this tool needs approval', decision_reason_type: 'other', tool_use_id: `toolu_${randomBytes(12).toString('hex')}` },
+    });
+    const event = await this.waitFor(requestId, true);
+    if (event.kind === 'interrupt') this.pendingInterrupt = event.requestId;
+    if (event.kind === 'sigint') this.pendingSigint = true;
+    if (event.kind !== 'response') return 'the request was cancelled';
+    const answer = asObject(event.response['response']);
+    if (event.response['subtype'] === 'success' && answer?.['behavior'] === 'allow') return null;
+    return asString(answer?.['message']) ?? 'denied';
   }
 
   private writeJson(line: JsonObject): void {

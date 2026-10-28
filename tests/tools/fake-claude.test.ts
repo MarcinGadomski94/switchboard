@@ -584,3 +584,60 @@ describe('fake-claude control requests (usage, initialize)', () => {
     await fake.exited;
   });
 });
+
+/**
+ * D106 follow-up (2026-10-28): plan mode and MCP tools. In plan mode a `[fake:tool mcp__…]` call
+ * that no `--allowedTools` rule covers asks the host first (`can_use_tool`); allowed, the tool is
+ * called; denied, it is not. A rule (`mcp__<server>` or the tool's name) covers it: no ask, unless
+ * `FAKE_CLAUDE_PLAN_ASK_MCP=1`. Outside plan mode nothing changes.
+ */
+describe('fake-claude · plan mode asks for MCP tools (D106 follow-up)', () => {
+  const PLAN = [...BASELINE.slice(0, -1), 'plan'];
+  const TOKEN = '[fake:tool mcp__switchboard__artifact_save {"title":"Plan","kind":"markdown","content":"x"}]';
+  const isToolUse = (l: JsonObject): boolean => l['type'] === 'assistant' && contentOf(l).some((b) => b['type'] === 'tool_use' && b['name'] === 'mcp__switchboard__artifact_save');
+
+  it('not covered: asks; allow → the call is made', async () => {
+    const fake = start(PLAN);
+    fake.send(userLine(`Save it. ${TOKEN}`));
+    const request = await fake.waitFor(isRequest);
+    expect(obj(request['request'])).toMatchObject({ subtype: 'can_use_tool', tool_name: 'mcp__switchboard__artifact_save', input: { title: 'Plan', kind: 'markdown', content: 'x' } });
+    fake.send({ type: 'control_response', response: { subtype: 'success', request_id: String(request['request_id']), response: { behavior: 'allow', updatedInput: {} } } });
+    await fake.waitFor(isResult);
+    expect(fake.lines.some(isToolUse)).toBe(true);
+    fake.end();
+    await fake.exited;
+  });
+
+  it('not covered: asks; deny → no call, the reply says so', async () => {
+    const fake = start(PLAN);
+    fake.send(userLine(`Save it. ${TOKEN}`));
+    const request = await fake.waitFor(isRequest);
+    fake.send({ type: 'control_response', response: { subtype: 'success', request_id: String(request['request_id']), response: { behavior: 'deny', message: 'no' } } });
+    const result = await fake.waitFor(isResult);
+    expect(String(result['result'])).toContain('mcp__switchboard__artifact_save was not used (permission denied: no)');
+    expect(fake.lines.some(isToolUse)).toBe(false);
+    fake.end();
+    await fake.exited;
+  });
+
+  it('covered by --allowedTools mcp__switchboard: no ask (unless FAKE_CLAUDE_PLAN_ASK_MCP=1); not in plan mode: no ask', async () => {
+    for (const [args, extra, asks] of [
+      [[...PLAN, '--allowedTools', 'mcp__switchboard,WebFetch'], {}, false],
+      [[...PLAN, '--allowedTools', 'mcp__switchboard__artifact_save'], {}, false],
+      [[...PLAN, '--allowedTools', 'mcp__switchboard'], { FAKE_CLAUDE_PLAN_ASK_MCP: '1' }, true],
+      [[...BASELINE], {}, false],
+    ] as const) {
+      const fake = start(args, extra);
+      fake.send(userLine(`Save it. ${TOKEN}`));
+      if (asks) {
+        const request = await fake.waitFor(isRequest);
+        fake.send({ type: 'control_response', response: { subtype: 'success', request_id: String(request['request_id']), response: { behavior: 'allow', updatedInput: {} } } });
+      }
+      await fake.waitFor(isResult);
+      expect(fake.lines.some(isRequest)).toBe(asks);
+      expect(fake.lines.some(isToolUse)).toBe(true);
+      fake.end();
+      await fake.exited;
+    }
+  });
+});

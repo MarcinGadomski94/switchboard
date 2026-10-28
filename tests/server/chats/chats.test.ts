@@ -14,6 +14,9 @@ import { PEER_API_ALLOW } from '../../../src/server/peers/service.ts';
 import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
 import { computeSuggestions } from '../../../src/server/team/suggestions.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
+import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
+import { freeTestPorts } from '../../helpers/net.ts';
 import { seedFolder } from '../../helpers/folders.ts';
 import { type SupervisorWorld, makeSupervisorWorld, spawnedArgv, stdinOf, until, waitForEvent, waitForStatus } from '../../helpers/supervisor.ts';
 
@@ -31,6 +34,9 @@ const PORT = 4962; // inject() opens no socket; the port feeds the Host check on
 let world: SupervisorWorld | undefined;
 let app: FastifyInstance | undefined;
 let token = '';
+/** The port of a listening app (the D106 follow-up's tests); the others inject on {@link PORT}. */
+let currentPort = PORT;
+const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 /** What the hub published (the rename test reads `sessionUpdated`). */
 let published: HubMessage[] = [];
 
@@ -39,6 +45,7 @@ afterEach(async () => {
   await world?.cleanup();
   app = undefined;
   world = undefined;
+  currentPort = PORT;
 });
 
 async function setup(): Promise<{ w: SupervisorWorld; folderId: string }> {
@@ -62,7 +69,7 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
   return app.inject({
     method,
     url,
-    headers: { host: `127.0.0.1:${PORT}`, cookie: `sb_token=${token}`, ...(payload === undefined ? {} : { 'content-type': 'application/json' }) },
+    headers: { host: `127.0.0.1:${currentPort}`, cookie: `sb_token=${token}`, ...(payload === undefined ? {} : { 'content-type': 'application/json' }) },
     ...(payload === undefined ? {} : { payload: JSON.stringify(payload) }),
   });
 }
@@ -370,5 +377,116 @@ describe('D106 · chats on Codex CLI and OpenCode (their read-only modes)', () =
     const prompt = log.find((line) => line['kind'] === 'prompt')?.['body'] as Record<string, unknown> | undefined;
     expect(prompt?.['agent']).toBe('plan');
     expect(String(prompt?.['system'])).toContain('This is a Switchboard chat');
+  });
+});
+
+/**
+ * D106 follow-up (2026-10-28, "chats should have access to write artifacts"): a chat's agent
+ * saves artifacts through Switchboard's own MCP server. fake-claude runs the real `switchboard`
+ * helper (`FAKE_CLAUDE_MCP_RUN=1`) against this app, listening on a test port; in plan mode the
+ * fake asks the host before an MCP tool no `--allowedTools` rule covers (and, with
+ * `FAKE_CLAUDE_PLAN_ASK_MCP=1`, before every MCP tool): Switchboard allows its own tools at once
+ * and still refuses everything else.
+ */
+describe('D106 follow-up · a chat saves artifacts', () => {
+  async function listening(env: Record<string, string>): Promise<{ w: SupervisorWorld; port: number }> {
+    world = await makeSupervisorWorld({ parentEnv: { FAKE_CLAUDE_MCP_RUN: '1', ...env } });
+    const w = world;
+    token = generateToken();
+    const bus = new HubBus();
+    published = [];
+    bus.subscribe((message) => published.push(message));
+    for (const port of (await freeTestPorts()).reverse()) {
+      const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
+      const candidate = await buildApp({ config: { ...base, port }, token, store: w.store, webRoot: w.root, supervisor: w.supervisor, bus });
+      try {
+        await candidate.listen({ host: '127.0.0.1', port });
+        app = candidate;
+        currentPort = port;
+        return { w, port };
+      } catch {
+        await candidate.close();
+      }
+    }
+    throw new Error('no free test port');
+  }
+
+  async function artifactsOf(id: string): Promise<Array<{ id: string; title: string; kind: string }>> {
+    const answer = await call('GET', `/api/sessions/${id}/artifacts`);
+    expect(answer.statusCode, answer.body).toBe(200);
+    return answer.json() as Array<{ id: string; title: string; kind: string }>;
+  }
+
+  it('artifact_save with content: the call goes through (pre-approved, no ask), the artifact is in the chat\'s Artifacts and nothing is written in the scratch folder', async () => {
+    const { w } = await listening({});
+    const chat = await startChat({ message: 'Plan the billing split. [fake:tool mcp__switchboard__artifact_save {"title":"Billing split plan","kind":"markdown","content":"# Plan\\n\\n1. Split the module"}]' });
+    await waitForStatus(w.store, chat.id, ['done']);
+    const record = (await w.store.sessions.get(chat.id)) as SessionRecord;
+    const argv = (await spawnedArgv(w.logFile)).find((line) => line.argv?.includes(record.claudeSessionId))?.argv ?? [];
+    expect(flag(argv, '--allowedTools')).toEqual(['mcp__switchboard,WebFetch,WebSearch']);
+    expect(flag(argv, '--permission-mode')).toEqual(['plan']);
+    const artifacts = await until(async () => {
+      const list = await artifactsOf(chat.id);
+      return list.length > 0 ? list : undefined;
+    }, 'the chat artifact');
+    expect(artifacts).toMatchObject([{ title: 'Billing split plan', kind: 'markdown' }]);
+    expect(await readdir(chatScratchDir(w.root, chat.id))).toEqual([]);
+    // Not asked, not refused, nothing in the Inbox.
+    const stdin = JSON.stringify(await stdinOf(w.logFile, record.pid ?? -1, { all: true }));
+    expect(stdin).not.toContain('"behavior":"deny"');
+    expect((await w.store.events.list(chat.id)).some((event) => event.label.startsWith('Refused in a chat'))).toBe(false);
+    expect(await w.store.permissions.list({ sessionId: chat.id })).toEqual([]);
+  });
+
+  it("plan mode asks for MCP tools: Switchboard's own (artifact_save, todo_add) are allowed at once, another server's tool is still refused", async () => {
+    const { w } = await listening({ FAKE_CLAUDE_PLAN_ASK_MCP: '1' });
+    const chat = await startChat({ message: 'Keep a note. [fake:tool mcp__switchboard__artifact_save {"title":"Notes","kind":"markdown","content":"- one"}]' });
+    await waitForStatus(w.store, chat.id, ['done']);
+    await until(async () => ((await artifactsOf(chat.id)).length === 1 ? true : undefined), 'the artifact after the allowed ask');
+    await call('POST', `/api/sessions/${chat.id}/messages`, { text: 'Add a todo. [fake:tool mcp__switchboard__todo_add {"title":"Split billing","description":"Split it","plan":"No plan: test","priority":"medium","estimate_minutes":10}]' });
+    await until(async () => ((await w.store.todos.list(chat.id)).length === 1 ? true : undefined), 'the todo after the allowed ask');
+    await waitForStatus(w.store, chat.id, ['done']);
+    await call('POST', `/api/sessions/${chat.id}/messages`, { text: 'Use the other tool. [fake:tool mcp__other__save {"x":1}]' });
+    await waitForEvent(w.store, chat.id, (event) => event.label.startsWith('Refused in a chat: mcp__other__save'));
+    await waitForEvent(w.store, chat.id, (event) => event.label.includes('mcp__other__save was not used (permission denied'));
+    await waitForStatus(w.store, chat.id, ['done']);
+    const record = (await w.store.sessions.get(chat.id)) as SessionRecord;
+    const stdin = (await stdinOf(w.logFile, record.pid ?? -1, { all: true })).map((line) => JSON.stringify(line));
+    expect(stdin.filter((line) => line.includes('"behavior":"allow"'))).toHaveLength(2);
+    expect(stdin.filter((line) => line.includes('"behavior":"deny"'))).toHaveLength(1);
+    expect((await w.store.events.list(chat.id)).filter((event) => event.label.startsWith('Refused in a chat')).map((event) => event.label)).toEqual(['Refused in a chat: mcp__other__save (chats can plan but not edit)']);
+    expect(await w.store.permissions.list({ sessionId: chat.id })).toEqual([]);
+  });
+
+  it('an image by path: from a folder it looks at or its attachments (copied); from anywhere else refused', async () => {
+    const { w, port } = await listening({});
+    const look = path.join(w.root, 'look');
+    await mkdir(look, { recursive: true });
+    await writeFile(path.join(look, 'shot.png'), PNG);
+    const chat = await startChat({ message: 'Hello.', lookAt: [look] });
+    await waitForStatus(w.store, chat.id, ['done']);
+    const attachments = path.join(w.root, 'attachments', chat.id);
+    await mkdir(attachments, { recursive: true });
+    await writeFile(path.join(attachments, 'a1-pasted.png'), PNG);
+    const outside = path.join(w.root, 'elsewhere');
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, 'shot.png'), PNG);
+    const agent = async (body: unknown) => {
+      const response = await fetch(`http://127.0.0.1:${port}/agent/v1/artifacts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${agentTokenFor(token, chat.id)}`, [AGENT_SESSION_HEADER]: chat.id },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: (await response.json()) as { message?: string } };
+    };
+    expect((await agent({ title: 'Looked at', kind: 'image', path: path.join(look, 'shot.png') })).status).toBe(201);
+    expect((await agent({ title: 'Attached', kind: 'image', path: path.join(attachments, 'a1-pasted.png') })).status).toBe(201);
+    const refused = await agent({ title: 'Elsewhere', kind: 'image', path: path.join(outside, 'shot.png') });
+    expect(refused.status).toBe(422);
+    expect(refused.body.message).toContain("outside the session's working folders");
+    expect((await artifactsOf(chat.id)).map((artifact) => artifact.title).sort()).toEqual(['Attached', 'Looked at']);
+    // Copied, never moved.
+    expect(await readdir(look)).toEqual(['shot.png']);
+    expect(await readdir(attachments)).toEqual(['a1-pasted.png']);
   });
 });

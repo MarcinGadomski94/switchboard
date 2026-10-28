@@ -20,6 +20,7 @@ import {
   utf8Size,
 } from '../../core/artifacts.ts';
 import { sniffType } from '../../core/attachments.ts';
+import { ATTACHMENTS_DIR } from '../attachments/service.ts';
 import type { ArtifactRecord, ArtifactVersionInput, ArtifactVersionRecord } from '../db/repos/artifacts.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -310,7 +311,8 @@ export class ArtifactService {
 
   /**
    * A file the agent names: relative to the session's working folder, and (symbolic
-   * links resolved) inside its folder, its working folder or one of its worktrees;
+   * links resolved) inside its folder, its working folder or one of its worktrees
+   * (a chat, D106: its scratch folder, the folders it looks at or its attachments);
    * a regular file of at most `max` bytes.
    */
   async #readSessionFile(session: SessionRecord, given: string, max: number): Promise<Buffer> {
@@ -323,7 +325,10 @@ export class ArtifactService {
       throw new ArtifactError(422, 'invalid', `no file ${given}`);
     }
     const worktrees = await this.#store.worktrees.list({ sessionId: session.id });
-    const roots = [session.root, session.cwd, ...worktrees.map((worktree) => worktree.path)].filter((dir): dir is string => typeof dir === 'string' && dir !== '');
+    // D106 follow-up (2026-10-28): a chat writes no files, so its working folders are what it may read: its scratch
+    // folder, the folders it looks at and its attachments (`<dataDir>/attachments/<id>/`). Copied, never moved.
+    const chatRoots = session.kind === 'chat' ? [...session.lookAt, path.join(this.#dataDir, ATTACHMENTS_DIR, session.id)] : [];
+    const roots = [session.root, session.cwd, ...worktrees.map((worktree) => worktree.path), ...chatRoots].filter((dir): dir is string => typeof dir === 'string' && dir !== '');
     const realRoots = await Promise.all(roots.map((dir) => realpath(dir).catch(() => null)));
     const inside = realRoots.some((dir) => dir !== null && real.startsWith(dir + path.sep));
     if (!inside) throw new ArtifactError(422, 'invalid', `${given} is outside the session's working folders`);
