@@ -16,6 +16,7 @@ import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachme
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { restoreFullEvent } from '../sessions/full-event.ts';
 import { startNewSession } from '../sessions/start.ts';
+import { closeSession } from '../sessions/close.ts';
 import { deleteChat, resolveLookAt, startChat } from '../chats/start.ts';
 import { isCliProviderId, supports } from '../../core/cli-providers.ts';
 import { outgoingCapacity } from '../cli/capacity.ts';
@@ -406,9 +407,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const confirm = parseCloseInput(request.body);
     if (confirm === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'confirm', message: 'the body must be empty or { confirm: true | false }' }] });
     try {
-      const record = await supervisor.close(request.params.id, { confirm, beforePublish: (id) => context.questions.closeSession(id) });
       // D48 P4: closing a hooked terminal session unhooks it (the terminal keeps running; its held hook calls get no decision).
-      if (record.hooked) await context.hooks.unhooked(record.id);
+      const record = await closeSession(context, request.params.id, confirm);
       return await toSession(store, record, supervisor.activity(record.id));
     } catch (error) {
       return sendError(reply, error);

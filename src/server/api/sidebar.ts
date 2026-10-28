@@ -16,7 +16,20 @@ import {
   removeFolder,
   updateFolder,
 } from '../../core/sidebar-layout.ts';
+import {
+  type FolderArchiveAgent,
+  type FolderArchiveCandidate,
+  type FolderArchiveHolds,
+  type SidebarFolderArchiveResult,
+  folderSessionIds,
+  removeFolderTree,
+  splitFolderArchive,
+} from '../../core/sidebar-folder-archive.ts';
 import type { SidebarWrite } from '../db/repos/sidebar.ts';
+import { plansArchiveHolds } from '../plans/hooks.ts';
+import { closeSession } from '../sessions/close.ts';
+import { SupervisorError } from '../supervisor/supervisor.ts';
+import { teamMemberOf } from '../team/hooks.ts';
 import type { ApiContext } from '../routes.ts';
 
 interface FolderParams {
@@ -30,6 +43,13 @@ function invalid(reply: FastifyReply, errors: ReadonlyArray<{ readonly field: st
 
 function noFolder(reply: FastifyReply, id: string): FastifyReply {
   return reply.code(404).send({ error: 'not-found', message: `no sidebar folder ${id}` });
+}
+
+/** D141: `?archive=1` (or `true`) archives the folder's agents; absent, `0` or `false` = D54 / D58's delete; anything else `null`. */
+function parseArchiveFlag(value: string | undefined): boolean | null {
+  if (value === undefined || value === '0' || value === 'false') return false;
+  if (value === '1' || value === 'true') return true;
+  return null;
 }
 
 /** D58: a refused place in the folder tree: 404 for an unknown folder, 422 on `parentId` for a loop or too deep. */
@@ -114,10 +134,73 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     return layout ? changed(layout) : treeRefusal(reply, problem ?? { kind: 'not-found', id: folderId });
   });
 
-  app.delete<{ Params: FolderParams }>('/api/sidebar/folders/:folderId', async (request, reply): Promise<SidebarLayout | FastifyReply> => {
-    const layout = await store.sidebar.change((current) => removeFolder(current, request.params.folderId));
-    return layout ? changed(layout) : noFolder(reply, request.params.folderId);
+  app.delete<{ Params: FolderParams; Querystring: { archive?: string } }>('/api/sidebar/folders/:folderId', async (request, reply): Promise<SidebarLayout | SidebarFolderArchiveResult | FastifyReply> => {
+    const archive = parseArchiveFlag(request.query.archive);
+    if (archive === null) return invalid(reply, [{ field: 'archive', message: 'archive must be 1 or 0' }]);
+    const { folderId } = request.params;
+    if (!archive) {
+      const layout = await store.sidebar.change((current) => removeFolder(current, folderId));
+      return layout ? changed(layout) : noFolder(reply, folderId);
+    }
+    // D141: archive the agents in the folder and its subfolders (those nothing holds back), then delete the whole subtree.
+    const before = await store.sidebar.read();
+    if (!before.folders.some((f) => f.id === folderId)) return noFolder(reply, folderId);
+    const candidates = await folderCandidates(before, folderId);
+    const { archive: toArchive, kept } = splitFolderArchive(candidates, await archiveHolds(before, candidates.map((c) => c.sessionId)));
+    const archived: FolderArchiveAgent[] = [];
+    const outcomes = await Promise.all(toArchive.map(async (candidate) => ({ candidate, failure: await archiveOne(candidate.sessionId) })));
+    for (const { candidate, failure } of outcomes) {
+      const agent: FolderArchiveAgent = { sessionId: candidate.sessionId, name: candidate.name, machine: candidate.machine?.name ?? null };
+      if (failure === null) archived.push(agent);
+      else kept.push({ ...agent, reason: 'failed', message: failure });
+    }
+    const write = await store.sidebar.change((current) => removeFolderTree(current, folderId));
+    // Deleted meanwhile (another tab): the archiving stands; the layout is the current one.
+    const layout = write ? changed(write) : await store.sidebar.read();
+    return { layout, archived, kept } satisfies SidebarFolderArchiveResult;
   });
+
+  /** D141: the listed (open) agents placed in the folder or its subfolders, this machine's and the paired computers'. */
+  const folderCandidates = async (layout: SidebarLayout, folderId: string): Promise<FolderArchiveCandidate[]> => {
+    const local = new Map((await store.sessions.list({ closed: false })).filter((record) => !supervisor.isStarting(record.id)).map((record) => [record.id, record]));
+    const remote = new Map(peers.remoteSessions().map((session) => [session.id, session]));
+    const out: FolderArchiveCandidate[] = [];
+    for (const id of folderSessionIds(layout, folderId)) {
+      const record = local.get(id);
+      if (record) {
+        out.push({ sessionId: id, name: record.title ?? record.name, machine: null });
+        continue;
+      }
+      const session = remote.get(id);
+      if (session) out.push({ sessionId: id, name: session.displayTitle ?? session.title ?? session.name, machine: { name: session.machine?.name ?? '', online: session.machine?.state === 'online' } });
+    }
+    return out;
+  };
+
+  /** D141: the archive's own holds (D137) that keep an agent out of a folder delete: pinned, a crew member, a plan's source or running step. */
+  const archiveHolds = async (layout: SidebarLayout, ids: readonly string[]): Promise<FolderArchiveHolds> => {
+    // Plans not ready (`null`): nothing is known to hold (the agents' plans may still be loading); the close itself never deletes anything.
+    const plans = (await plansArchiveHolds(store)) ?? new Map<string, 'plan' | 'plan-step'>();
+    return { pinned: new Set(layout.pinned), crew: new Set(ids.filter((id) => teamMemberOf(store, id) !== null)), plans };
+  };
+
+  /** D141: archives one agent the way Archive does (D33 / D137): this computer's here, a paired computer's on it through the proxy (D48). `null` = archived, else why not. */
+  const archiveOne = async (sessionId: string): Promise<string | null> => {
+    const remote = parseRemoteId(sessionId);
+    if (remote) {
+      const answer = await peers.forward(remote.machineId, 'POST', `/api/sessions/${encodeURIComponent(remote.id)}/close`, { confirm: true });
+      if (answer.status >= 200 && answer.status < 300) return null;
+      const body = answer.body as { message?: unknown } | null;
+      return typeof body?.message === 'string' ? body.message : `HTTP ${answer.status}`;
+    }
+    try {
+      await closeSession(context, sessionId, true);
+      return null;
+    } catch (error) {
+      if (error instanceof SupervisorError) return error.message;
+      throw error;
+    }
+  };
 
   app.post('/api/sidebar/place', async (request, reply): Promise<SidebarLayout | FastifyReply> => {
     const input = parsePlaceInput(request.body);
