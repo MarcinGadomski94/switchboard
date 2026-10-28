@@ -5,7 +5,7 @@ import { draftField } from '../../../core/drafts.ts';
 import type { MachinesView } from '../../../core/peers.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import { TODO_PRIORITY_LABELS } from '../../../core/todos.ts';
-import { COORDINATION_OPTIONS, MODE_OPTIONS, PHASE_OPTIONS, WORK_TYPE_OPTIONS, chipGroups, formFromPrefill, isPlainFolder, isRepoFolder, toggleSolution } from '../../modals/new-session.ts';
+import { COORDINATION_OPTIONS, MODE_OPTIONS, PHASE_OPTIONS, WORK_TYPE_OPTIONS, chipGroups, formFromPrefill, formModelOptions, isPlainFolder, isRepoFolder, toggleSolution } from '../../modals/new-session.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
@@ -13,8 +13,10 @@ import { AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '..
 import { attachmentsBlocker } from '../../components/attachments.ts';
 import { plansApi, refusalText as planRefusal } from '../../plans/api.ts';
 import { pageClientId } from '../../pwa/presence.ts';
-import { Button, Checkbox, Dialog, Field, Icon, Kbd, Segmented, Select, Switch, TextArea, useToast } from '../components/index.ts';
-import { NEW_WORDS, THINKING_DEPTH } from '../glossary.ts';
+import { Button, Checkbox, Dialog, Field, Icon, Kbd, Select, Switch, TextArea, useToast } from '../components/index.ts';
+import { NEW_WORDS } from '../glossary.ts';
+import { ModelEffortSelects } from '../shared/ModelEffort.tsx';
+import { pickEffort, pickModel, startField } from '../shared/model-effort.ts';
 import { useV2Router } from '../nav.tsx';
 import { JiraImportDialog } from '../projects/JiraImport.tsx';
 import { agentName } from '../shared/agent-line.ts';
@@ -161,6 +163,11 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
   const machineOffline = chosenPeer !== null && chosenPeer.state === 'offline';
   const takenNames = (sessions.data ?? []).filter((s) => (s.machine?.id ?? null) === machine).map((s) => s.name);
   const offered = models.data?.options ?? clis.data?.clis.find((c) => c.provider === provider)?.models ?? null;
+  // The engine's models (its reported list, else the CLI overview's) and its last choice (D42).
+  const modelSettings = models.data ?? (offered ? { options: offered, last: null } : null);
+  const modelField = startField(agent.form.model, modelSettings, !models.loading, provider);
+  const modelOptions = formModelOptions(modelSettings, provider);
+  const chosenModel = { model: modelField.model === 'default' ? null : modelField.model, effort: modelField.effort === '' ? null : modelField.effort };
 
   const attach = useAttachmentDraft();
   const drop = useFileDrop(attach.add);
@@ -210,7 +217,7 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
       switch (kind) {
         case 'agent': {
           const ids = attach.items.length > 0 ? await attach.uploadAll((body) => machineApi(machine).uploadAttachment(body)) : [];
-          const body = agentBody(formAgent, folder, takenNames, offered);
+          const body = agentBody(formAgent, folder, takenNames, modelSettings, provider);
           const session = await machineApi(machine).createSession({ ...body, ...(ids.length > 0 ? { attachments: ids } : {}) });
           if (agent.sidebarFolder && machine === null) await api.placeSidebarSession({ sessionId: session.id, place: 'folder', folderId: agent.sidebarFolder }).catch(() => undefined);
           finish(W.started(agentName(session)), `/agents/${encodeURIComponent(session.id)}`);
@@ -218,7 +225,7 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
         }
         case 'conversation': {
           const ids = attach.items.length > 0 ? await attach.uploadAll((body) => machineApi(null).uploadAttachment(body)) : [];
-          const chat = await api.createChat(chatBody(agent, offered, ids));
+          const chat = await api.createChat(chatBody(agent, modelSettings, provider, ids));
           finish(W.started(agentName(chat)), `/agents/${encodeURIComponent(chat.id)}`);
           break;
         }
@@ -417,14 +424,12 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
 
         {kind === 'agent' || kind === 'conversation' ? (
           <div className="v2-new-choices">
-            <div>
-              <Label>{W.speed}</Label>
-              <Segmented label={W.speed} testId="v2-new-speed" value={agent.speed} onChange={(speed) => setAgent({ speed })} options={[{ value: 'smart', label: W.smart }, { value: 'fast', label: W.fast }]} />
-            </div>
-            <div>
-              <Label>{W.depth}</Label>
-              <Segmented label={W.depth} testId="v2-new-depth" value={agent.depth} onChange={(depth) => setAgent({ depth })} options={[{ value: 'normal', label: THINKING_DEPTH['medium'] ?? W.depthNormal }, { value: 'deep', label: THINKING_DEPTH['high'] ?? W.depthDeep }]} />
-            </div>
+            <ModelEffortSelects
+              field={modelField}
+              testId="v2-new"
+              onModel={(value) => setForm({ model: pickModel(chosenModel, modelOptions, value) })}
+              onEffort={(value) => setForm({ model: pickEffort(chosenModel, value) })}
+            />
             {kind === 'agent' && peerList.length > 0 ? (
               <div>
                 <Label>{W.computer}</Label>
@@ -508,7 +513,6 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
                     </p>
                   ) : null;
                 })()}
-                <Select label={W.model} value={agent.exactModel} onChange={(event) => setAgent({ exactModel: event.currentTarget.value })} options={[{ value: '', label: W.modelBySpeed }, ...(offered ?? []).filter((o) => o.value !== 'default').map((o) => ({ value: o.value, label: o.label }))]} />
                 <div className="v2-row v2-new-switch-row">
                   <Switch label={W.ultracode} checked={agent.form.ultracode} onChange={(ultracode) => setForm({ ultracode })} />
                   <span>

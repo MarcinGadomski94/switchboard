@@ -26,7 +26,7 @@ import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, 
 import { continueAsAgent } from './agent-bits.ts';
 import { ConfirmDialog, RemoteDialog, RenameDialog, TerminalDialog } from './dialogs.tsx';
 import { type AgentMenuId, type AgentMenuSpec, agentMenu, ciView, folderTrail } from './header-model.ts';
-import { howSummary } from './how-model.ts';
+import { modelSummary } from '../shared/model-effort.ts';
 import type { AgentData } from './useAgent.ts';
 import { useAgentCi } from './useAgent.ts';
 import type { ChatViewSettings } from './view-settings.ts';
@@ -81,7 +81,7 @@ export interface AgentHeaderProps {
  * the chat keeps the room. Back, the title (click to rename; a teammate shows its
  * teammate's name and crew, renamed through the crew), its status (icon + word),
  * the automatic-tests chip and the Needs-you ask inline and compact, the tabs,
- * then ⓘ (computer, folder, Smart / Fast, separate copy, the moved / continued /
+ * then ⓘ (computer, folder, model and effort, separate copy, the moved / continued /
  * terminal notes), View, Details (⌘.) and ⋯. On a phone: back, title, status and
  * ⋯ (the tabs, Details and ⓘ are in ⋯; the tab strip shows only off the chat).
  */
@@ -264,7 +264,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
             </div>
             <div className="v2-ag-info-row" title={session.model?.current ?? undefined}>
               <Icon name="sparkle" size="s" />
-              <span>{howSummary(session.model)}</span>
+              <span data-testid="v2-agent-model-line">{modelSummary(session.model)}</span>
             </div>
             {session.worktrees ? (
               <div className="v2-ag-info-row" title={AGENT_WORDS.separateCopyHint}>

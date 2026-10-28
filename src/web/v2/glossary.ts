@@ -85,9 +85,8 @@ export const WORDS = {
   contextMeter: 'Working memory',
   contextFull: 'Agent memory full',
   cleanSlate: 'Continue with a clean slate',
-  modelSmart: 'Smart',
-  modelFast: 'Fast',
-  effort: 'Thinking depth',
+  model: 'Model',
+  effort: 'Effort',
   needsYou: 'Needs you',
   pinned: 'Pinned',
   /** The rail's empty Pinned list (2.4.4: crews pin too). */
@@ -114,9 +113,6 @@ export const WORDS = {
   /** The phone top bar's ⌘K button (the palette). */
   quickOpen: 'Go to or do anything',
 } as const;
-
-/** Thinking depth (effort) in plain words, by the CLI's effort id. */
-export const THINKING_DEPTH: Readonly<Record<string, string>> = { low: 'Light', medium: 'Normal', high: 'Deep', xhigh: 'Deeper', max: 'Deepest' };
 
 // ── Status ───────────────────────────────────────────────────────────
 
@@ -314,7 +310,8 @@ export const HOME_WORDS = {
   folder: 'Project folder',
   noFolder: 'No folder saved',
   computer: 'Computer',
-  speed: 'Speed',
+  model: 'Model',
+  effort: 'Effort',
   moreOptions: 'More options',
   startAgent: 'Start agent',
   starting: 'Starting…',
@@ -961,12 +958,6 @@ export const NEW_WORDS = {
   whatToDo: 'What should it do?',
   whatToDoPlaceholder: 'Describe the outcome you want, like you’d ask a colleague. Paste or drop images and files.',
   attach: 'Attach a file or image',
-  speed: 'Speed',
-  smart: 'Smart · best results',
-  fast: 'Fast · cheaper',
-  depth: 'Thinking depth',
-  depthNormal: 'Normal',
-  depthDeep: 'Deep',
   computer: 'Computer',
   thisComputer: (name: string) => `${name} · this one`,
   offlineSuffix: 'offline',
@@ -977,7 +968,7 @@ export const NEW_WORDS = {
   putItIn: 'Put it in',
   notInFolder: 'Not in a folder',
   advanced: 'Advanced',
-  advancedNote: 'engine, account, model names, workspace questions, code projects, branch, Ultracode',
+  advancedNote: 'engine, account, workspace questions, code projects, branch, Ultracode',
   askQuestions: 'Answer the workspace questions now',
   askQuestionsNote: 'Off: the agent asks what the workspace needs. On: you answer here (work type, mode, phase, coordination).',
   workType: 'Work type',
@@ -991,8 +982,6 @@ export const NEW_WORDS = {
   engine: 'AI engine',
   account: 'Account',
   accountAuto: 'Automatic (the first with usage left)',
-  model: 'Model',
-  modelBySpeed: 'By speed (Smart / Fast)',
   ultracode: 'Ultracode',
   ultracodeNote: 'Runs larger work as tracked workflows.',
   titleField: 'Title',
@@ -1889,11 +1878,9 @@ export const AGENT_WORDS = {
   tasksStrip: (open: number, done: number): string => `Tasks · ${done} of ${open + done} done`,
   // Side panel.
   howItWorks: 'How it works',
-  speed: 'Speed',
   engine: 'AI engine',
   account: 'Account',
   pinAccount: 'Pin this account to this agent',
-  thinkingDepth: 'Thinking depth',
   modelUnknown: 'The choices show once the agent has run.',
   switchEngineConfirm: 'Switch',
   switchAccountConfirm: 'Switch account',

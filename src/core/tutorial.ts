@@ -1469,6 +1469,26 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // Fixes after 2.0 (2.4.7): the v2 Model and Effort pickers replace Smart / Fast and Thinking depth
+  // (docs/v2.md → Model and effort; docs/design/v2-decisions.md → Model and effort instead of Smart / Fast).
+  {
+    id: 'v2-model-effort',
+    decision: 'D131',
+    version: V2_4_7,
+    title: 'Choose the model and effort',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'model',
+        title: 'The engine’s own models and effort levels',
+        what: 'Smart / Fast and Thinking depth are gone: Home’s start box, + New and an agent’s How it works now list the AI engine’s own models by their names (Opus 5.5, Sonnet 5, GPT-5.5 Codex, …) with Default (the CLI’s) first, and the chosen model’s effort levels as the engine names them (low, medium, high, xhigh, max). A model without effort levels says so instead. A new agent starts on your last choice for that engine; agents you started with Smart or Fast keep their model.',
+        todo: ['Pick a model next to the folder on Home, or in + New.', 'Change a running agent’s model or effort under Details › How it works.'],
+        anchors: ['v2-start-model', 'v2-new'],
+        v2Route: '/',
+        missing: 'Press + New: Model and Effort are under the message. ',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

@@ -13,7 +13,6 @@ import {
   isToday,
   needsSummary,
   readStartPrefs,
-  speedModel,
   startBody,
   startFolder,
   testsLine,
@@ -25,7 +24,7 @@ import { applyFilter, crewChips, isPageFilter, kindCounts, matchesFilter, stepIn
 
 /**
  * D131 · lane H: Home's section selection and sorting (Working now, Done today,
- * the top of Needs you), the start box's folder / speed / body, and the Needs-you
+ * the top of Needs you), the start box's folder / model / body, and the Needs-you
  * page's filters (`src/web/v2/home/home-model.ts`, `src/web/v2/needs-you/needs-filter.ts`).
  */
 
@@ -145,23 +144,16 @@ describe('Home · the start box', () => {
     expect(startFolder([], null)).toBeNull();
   });
 
-  it('reads the remembered prefs (Smart and this computer by default)', () => {
-    expect(readStartPrefs(null)).toEqual({ folders: {}, speed: 'smart', machine: null });
-    expect(readStartPrefs('not json')).toEqual({ folders: {}, speed: 'smart', machine: null });
-    expect(readStartPrefs(JSON.stringify({ folders: { local: 'f1', bad: 3 }, speed: 'fast', machine: 'studio' }))).toEqual({ folders: { local: 'f1' }, speed: 'fast', machine: 'studio' });
-  });
-
-  it('starts Smart on opus and Fast on sonnet, as the computer’s CLI names them', () => {
-    expect(speedModel('smart', null)).toBe('opus');
-    expect(speedModel('fast', null)).toBe('sonnet');
-    expect(speedModel('smart', [{ value: 'default', label: 'Default' }, { value: 'opus', label: 'Opus' }])).toBe('opus');
-    expect(speedModel('fast', [{ value: 'claude-sonnet-5', label: 'Sonnet 5' }])).toBe('claude-sonnet-5');
-    expect(speedModel('smart', [{ value: 'gpt-6', label: 'GPT 6' }])).toBeNull();
+  it('reads the remembered prefs (this computer by default; a Smart / Fast stored before 2.4.7 is ignored)', () => {
+    expect(readStartPrefs(null)).toEqual({ folders: {}, machine: null });
+    expect(readStartPrefs('not json')).toEqual({ folders: {}, machine: null });
+    expect(readStartPrefs(JSON.stringify({ folders: { local: 'f1', bad: 3 }, speed: 'fast', machine: 'studio' }))).toEqual({ folders: { local: 'f1' }, machine: 'studio' });
   });
 
   it('sends the simple start body: the text as the task and title, a free name, the folder and the model', () => {
-    const body = startBody('  Fix the login timeout on the checkout page  ', 'f1', 'opus', ['fix-the-login-timeout-on-the-checkout-page']);
-    expect(body).toMatchObject({ simple: true, task: 'Fix the login timeout on the checkout page', folder: 'f1', worktrees: false, title: 'Fix the login timeout on the checkout page', model: 'opus' });
+    const body = startBody('  Fix the login timeout on the checkout page  ', 'f1', { model: 'opus', effort: 'high' }, ['fix-the-login-timeout-on-the-checkout-page']);
+    expect(body).toMatchObject({ simple: true, task: 'Fix the login timeout on the checkout page', folder: 'f1', worktrees: false, title: 'Fix the login timeout on the checkout page', model: 'opus', effort: 'high' });
+    expect(startBody('Hi', null, { model: null, effort: null }, [])).toMatchObject({ model: null, effort: null });
     expect(body.name).not.toBe('fix-the-login-timeout-on-the-checkout-page');
     expect(startBody('Hi', null, null, [])).not.toHaveProperty('model');
     expect(startBody('Hi', null, null, [])).not.toHaveProperty('folder');

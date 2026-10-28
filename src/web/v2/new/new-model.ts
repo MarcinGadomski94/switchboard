@@ -8,15 +8,14 @@
  * (`toSimpleBody`, no workspace questions) unless Advanced › "Answer the
  * workspace questions now" is on, then the **Full** one (`toStartBody`).
  */
-import type { NewRepoSession, NewSession, NewSimpleSession, OwnedLoopInput, TodoFieldsInput } from '../../../core/api.ts';
+import type { ModelSettings, NewRepoSession, NewSession, NewSimpleSession, OwnedLoopInput, TodoFieldsInput } from '../../../core/api.ts';
 import type { TodoPriority } from '../../../core/api.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
 import { TITLE_MAX } from '../../../core/session-title.ts';
 import { TODO_NO_PLAN, TODO_TITLE_MAX } from '../../../core/todos.ts';
-import { type FormFolder, DEFAULT_FORM, type NewSessionForm, canStart, formFromDraft, isPlainFolder, toStartBody } from '../../modals/new-session.ts';
+import { type FormFolder, DEFAULT_FORM, type NewSessionForm, canStart, formFromDraft, formModel, isPlainFolder, toStartBody, withFormModel } from '../../modals/new-session.ts';
 import { simpleBlockers, toSimpleBody } from '../../modals/simple-session.ts';
 import { NEW_WORDS } from '../glossary.ts';
-import { type Speed, speedModel as sharedSpeedModel } from '../shared/speed.ts';
 
 /** What the + New sheet can make (the prototype's types, in its order). */
 export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in'] as const;
@@ -30,19 +29,15 @@ export function isNewKind(value: unknown): value is NewKindId {
 
 // ── Agent / conversation ─────────────────────────────────────────────────
 
-/** Smart / Fast (the prototype's Speed). */
-export type { Speed } from '../shared/speed.ts';
-/** Normal / Deep (the prototype's Thinking depth). */
-export type Depth = 'normal' | 'deep';
-
-/** The Agent and Conversation forms (the classic form underneath, plus the v2 choices). */
+/**
+ * The Agent and Conversation forms (the classic form underneath, plus the v2
+ * choices). The model and effort are the classic form's `model` (D42: `null` =
+ * start on the engine's last choice; the + New sheet's Model and Effort selects
+ * set it, `shared/model-effort.ts`).
+ */
 export interface AgentForm {
-  /** The classic form (folder, title, message, router answers, branch, CLI, account, Ultracode). */
+  /** The classic form (folder, title, message, router answers, branch, CLI, account, model, Ultracode). */
   readonly form: NewSessionForm;
-  readonly speed: Speed;
-  readonly depth: Depth;
-  /** The exact model from Advanced (`''` = by speed). */
-  readonly exactModel: string;
   /** Advanced › "Answer the workspace questions now" (the Full start). */
   readonly askQuestions: boolean;
   /** The sidebar folder it goes into (`''` = none). */
@@ -54,24 +49,10 @@ export interface AgentForm {
 /** The Agent form as the sheet opens it. */
 export const DEFAULT_AGENT_FORM: AgentForm = {
   form: DEFAULT_FORM,
-  speed: 'smart',
-  depth: 'normal',
-  exactModel: '',
   askQuestions: false,
   sidebarFolder: '',
   machine: null,
 };
-
-/**
- * The `--model` / `--effort` the speed and depth mean (`null` = the CLI's default):
- * Smart / Fast through the shared mapping (`shared/speed.ts`: Opus / Sonnet),
- * Deep = `high`, Normal = the default. An exact model wins.
- */
-export function speedModel(speed: Speed, depth: Depth, provider: CliProviderId | null, offered: readonly { readonly value: string; readonly label?: string }[] | null, exact = ''): { readonly model: string | null; readonly effort: string | null } {
-  const effort = depth === 'deep' ? 'high' : null;
-  if (exact.trim() !== '') return { model: exact.trim(), effort };
-  return { model: sharedSpeedModel(speed, offered, provider), effort };
-}
 
 /** Why the agent cannot start yet (empty = it can), in the order shown. */
 export function agentProblems(agent: AgentForm, folder: FormFolder | null, takenNames: readonly string[], machineOffline: boolean): string[] {
@@ -90,26 +71,28 @@ export function agentProblems(agent: AgentForm, folder: FormFolder | null, taken
   return out;
 }
 
-/** The classic form with the model choice and the worktree rule applied. */
-function launchForm(agent: AgentForm, offered: readonly { readonly value: string }[] | null): NewSessionForm {
-  const choice = speedModel(agent.speed, agent.depth, agent.form.provider, offered, agent.exactModel);
-  const changed = choice.model !== null || choice.effort !== null;
-  return { ...agent.form, model: changed ? choice : agent.form.model };
+/**
+ * The classic form with the model choice filled in (D42's `withFormModel`: the
+ * pick, else the engine's last choice, fitted to `models`). `provider` is the
+ * engine it starts on (the form's, else the computer's default CLI).
+ */
+function launchForm(agent: AgentForm, models: ModelSettings | null, provider: CliProviderId): NewSessionForm {
+  return withFormModel(agent.form, models, provider);
 }
 
 /**
  * The `POST /api/sessions` body: Simple (the message alone, no router answers)
  * unless the workspace questions are answered here, then the Full body (D22/D32).
  */
-export function agentBody(agent: AgentForm, folder: FormFolder | null, takenNames: readonly string[], offered: readonly { readonly value: string }[] | null): NewSimpleSession | NewSession | NewRepoSession {
-  const form = launchForm(agent, offered);
+export function agentBody(agent: AgentForm, folder: FormFolder | null, takenNames: readonly string[], models: ModelSettings | null, provider: CliProviderId): NewSimpleSession | NewSession | NewRepoSession {
+  const form = launchForm(agent, models, provider);
   if (agent.askQuestions && folder !== null && !isPlainFolder(folder)) return toStartBody(form, folder, takenNames);
   return toSimpleBody({ form: { ...form, worktrees: form.worktrees && !isPlainFolder(folder) }, folder, branch: form.branch, takenNames });
 }
 
 /** The `POST /api/chats` body (D106): the message, the CLI, account and model. */
-export function chatBody(agent: AgentForm, offered: readonly { readonly value: string }[] | null, attachments: readonly string[]): { readonly message: string; readonly attachments?: readonly string[]; readonly provider?: CliProviderId; readonly profileId?: string; readonly model?: string | null; readonly effort?: string | null } {
-  const choice = speedModel(agent.speed, agent.depth, agent.form.provider, offered, agent.exactModel);
+export function chatBody(agent: AgentForm, models: ModelSettings | null, provider: CliProviderId, attachments: readonly string[]): { readonly message: string; readonly attachments?: readonly string[]; readonly provider?: CliProviderId; readonly profileId?: string; readonly model?: string | null; readonly effort?: string | null } {
+  const choice = formModel(agent.form, models, provider) ?? { model: null, effort: null };
   return {
     message: agent.form.task.trim(),
     ...(attachments.length > 0 ? { attachments } : {}),

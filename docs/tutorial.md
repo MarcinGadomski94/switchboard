@@ -77,7 +77,13 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   a computer with one Claude Code account signed in can't switch, that Needs you and the accounts page say
   so when a paired computer has another, and that Add it there opens that computer's accounts with the
   name filled in (sign-ins never travel). An existing install with every v2 tour pending gets them
-  chained ("(7 of 7)").
+  chained ("(7 of 8)").
+- **"Choose the model and effort"** (`v2-model-effort`, version 2.4.7, `ui: 'v2'`, decision D131, Fixes after 2.0):
+  one step on Home's model picker (`v2-start-model`), else the + New button (`v2-new`, on both top bars);
+  `v2Route: '/'`. It says that Smart / Fast and Thinking depth are gone: Home, + New and How it works list
+  the engine's own models and the chosen model's effort levels by their CLI names, a new agent starts on
+  the last choice for that engine, and agents started with Smart or Fast keep their model
+  (`docs/v2.md` → *Model and effort*). The last of the chain ("(8 of 8)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

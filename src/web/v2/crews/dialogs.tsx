@@ -10,7 +10,7 @@ import { draftCharter } from '../../team/charter-draft.ts';
 import { useTeamSwitch } from '../../team/hidden.ts';
 import { EMPTY_FORM, type MemberForm, formBody, formFromSuggestion, formFromTemplate, newMemberSession } from '../../team/model.ts';
 import { Button, Checkbox, Dialog, Field, Select, TextArea, useToast } from '../components/index.ts';
-import { CREW_WORDS, THINKING_DEPTH } from '../glossary.ts';
+import { CREW_WORDS, WORDS } from '../glossary.ts';
 import { checkBudget, computerChoices } from './crew-model.ts';
 
 /**
@@ -292,7 +292,7 @@ export function BudgetDialog({ member, onClose }: { readonly member: TeamMember;
   );
 }
 
-/** Model…: the models its engine offers (the session's list), and the thinking depth when the model has levels. */
+/** Model…: the models its engine offers (the session's list), and the effort (the CLI's level names) when the model has levels. */
 export function ModelDialog({ member, onClose }: { readonly member: TeamMember; readonly onClose: () => void }) {
   const sessions = useSessionListOf();
   const session = sessions.data?.find((entry) => entry.id === member.sessionRef) ?? null;
@@ -343,9 +343,9 @@ export function ModelDialog({ member, onClose }: { readonly member: TeamMember; 
         </>
       }
     >
-      <Select label="Model" value={model} onChange={(event) => setModel(event.currentTarget.value)} options={[...(model === '' ? [{ value: '', label: 'Choose a model', disabled: true }] : []), ...(available ?? []).map((option) => ({ value: option.value, label: option.label }))]} data-testid="v2-model-select" />
+      <Select label={WORDS.model} value={model} onChange={(event) => setModel(event.currentTarget.value)} options={[...(model === '' ? [{ value: '', label: 'Choose a model', disabled: true }] : []), ...(available ?? []).map((option) => ({ value: option.value, label: option.label }))]} data-testid="v2-model-select" />
       {levels.length > 0 ? (
-        <Select label="Thinking depth" value={effort} onChange={(event) => setEffort(event.currentTarget.value)} options={[{ value: '', label: 'Default' }, ...levels.map((level) => ({ value: level, label: THINKING_DEPTH[level] ?? level }))]} />
+        <Select label={WORDS.effort} value={effort} onChange={(event) => setEffort(event.currentTarget.value)} options={[{ value: '', label: 'Default' }, ...levels.map((level) => ({ value: level, label: level }))]} data-testid="v2-model-effort-select" />
       ) : null}
       <p className="v2-muted v2-c-small">Its agent uses it from its next reply; a running reply finishes on the current one.</p>
       <ErrorLine text={error} />

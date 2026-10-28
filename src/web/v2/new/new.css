@@ -431,3 +431,8 @@
     transition: none;
   }
 }
+
+/* Fixes after 2.0 · Model and Effort take the row's room; the computer switch wraps under them. */
+.sb2 .v2-new-choices > .v2-model-effort {
+  flex: 1 1 360px;
+}

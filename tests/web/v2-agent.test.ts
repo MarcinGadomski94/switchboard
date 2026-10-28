@@ -287,24 +287,19 @@ describe('header folder trail', () => {
   });
 });
 
-describe('how it works (Smart / Fast) and results in the chat', () => {
-  it('maps the models to Smart and Fast', async () => {
-    const { speedModels, speedOf, depthOptions, howSummary, exactModel } = await import('../../src/web/v2/agent/how-model.ts');
+describe('how it works (Model and Effort) and results in the chat', () => {
+  it('names the agent’s model and effort as the CLI does', async () => {
+    const { modelSummary, modelEffortField } = await import('../../src/web/v2/shared/model-effort.ts');
     const available = [
       { value: 'default', label: 'Default (recommended)' },
       { value: 'opus', label: 'Opus 5.5', efforts: ['low', 'medium', 'high'] },
       { value: 'sonnet', label: 'Sonnet 5' },
     ];
-    expect(speedModels(available)).toEqual({ smart: 'opus', fast: 'sonnet' });
-    expect(speedModels(null)).toEqual({ smart: null, fast: null });
-    expect(speedOf({ current: 'sonnet', effort: null, available })).toBe('fast');
-    expect(speedOf({ current: null, effort: null, available })).toBe('smart');
-    expect(speedOf({ current: 'haiku', effort: null, available: null })).toBe('fast');
-    expect(depthOptions({ current: 'opus', effort: 'high', available }).map((d) => d.label)).toEqual(['Default', 'Light', 'Normal', 'Deep']);
-    expect(depthOptions({ current: 'sonnet', effort: null, available })).toEqual([]);
-    expect(howSummary({ current: 'opus', effort: 'high', available })).toBe('Smart · Deep');
-    expect(exactModel({ current: 'opus', effort: null, available })).toBe('Opus 5.5');
-    expect(exactModel(null)).toBe('Default');
+    expect(modelSummary({ current: 'opus', effort: 'high', available })).toBe('Opus 5.5 · high');
+    expect(modelSummary({ current: null, effort: null, available })).toBe('Default');
+    expect(modelSummary(null)).toBe('Default');
+    expect(modelEffortField({ model: 'opus', effort: 'high' }, available).efforts?.map((e) => e.label)).toEqual(['Default', 'low', 'medium', 'high']);
+    expect(modelEffortField({ model: 'sonnet', effort: null }, available).efforts).toBeNull();
   });
   it('places results after the last message before they were saved', async () => {
     const { placeResults, resultMeta } = await import('../../src/web/v2/agent/chat-model.ts');

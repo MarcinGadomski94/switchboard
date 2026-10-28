@@ -959,3 +959,34 @@ button.v2-qi-src:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Fixes after 2.0 · Model and Effort (ModelEffort.tsx): two selects side by side, stacked on phones. */
+.sb2 .v2-model-effort {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.sb2 .v2-model-effort > .v2-field-wrap {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.sb2 .v2-model-effort select {
+  max-width: 100%;
+}
+
+.sb2 .v2-model-effort-none {
+  flex: 1 1 180px;
+  align-self: center;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .sb2 .v2-model-effort > .v2-field-wrap,
+  .sb2 .v2-model-effort-none {
+    flex-basis: 100%;
+  }
+}
