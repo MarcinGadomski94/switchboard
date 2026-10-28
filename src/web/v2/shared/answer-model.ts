@@ -1,3 +1,4 @@
+import { ADD_ACCOUNT_ACTION, addAccountPath } from '../../../core/account-hint.ts';
 import type { BatchAnswer, NewSessionPrefill, Question } from '../../../core/api.ts';
 import type { TeamCharter } from '../../../core/team.ts';
 import { ANSWER, type AnsweredWhere, actionLabel } from '../glossary.ts';
@@ -57,7 +58,7 @@ export interface CardButton {
 }
 
 /** The server action ids that only open something (the item stays open). */
-const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory']);
+const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION]);
 
 /** `true` for an action id that only opens something. */
 export function isLinkAction(id: string): boolean {
@@ -69,6 +70,8 @@ export function openTargetOf(item: NeedsItem, actionId: string): OpenTarget | nu
   if (actionId === 'open-session') return item.agent?.sessionId ? { type: 'agent', sessionId: item.agent.sessionId } : null;
   if (actionId === 'open-pr') return item.url && /^https:\/\//.test(item.url) ? { type: 'url', url: item.url } : null;
   if (actionId === 'open-plan' || actionId === 'open-memory') return item.route ? { type: 'path', path: item.route } : null;
+  // D142: "Add it there": Advanced › Accounts: every option, with the item's computer picked and the Add form prefilled.
+  if (actionId === ADD_ACCOUNT_ACTION) return item.inbox?.addAccount ? { type: 'path', path: addAccountPath('v2', item.computer?.id ?? null, item.inbox.addAccount) } : null;
   return null;
 }
 
@@ -80,7 +83,8 @@ function serverButtons(item: NeedsItem, skip: ReadonlySet<string> = new Set()): 
     const label = actionLabel(action.id, action.label);
     if (isLinkAction(action.id)) {
       const target = openTargetOf(item, action.id);
-      if (target) out.push({ id: action.id, label, variant: 'ghost', intent: { type: 'open', target } });
+      // D142: "Add it there" is the item's first and main action, so it is primary; other links stay quiet.
+      if (target) out.push({ id: action.id, label, variant: index === 0 && action.id === ADD_ACCOUNT_ACTION ? 'primary' : 'ghost', intent: { type: 'open', target } });
       return;
     }
     const icon = action.id === 'plan-merge' || action.id === 'merge-pr' ? 'merge' : action.id === 'retry-run' ? 'play' : action.id === 'try-again' ? 'refresh' : undefined;

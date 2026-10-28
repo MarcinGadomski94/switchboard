@@ -1,3 +1,4 @@
+import { ADD_ACCOUNT_ACTION, addAccountPath } from '../../core/account-hint.ts';
 import type { InboxItem, NewSessionPrefill } from '../../core/api.ts';
 
 /**
@@ -95,11 +96,13 @@ export const OPEN_MEMORY = 'open-memory';
 export const OPEN_SESSION_ACTION = 'open-session';
 export const OPEN_PR_ACTION = 'open-pr';
 
-/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review; D109: Open session), else `null`. */
+/** D102: the route an action goes to without calling the server (Open plan; D107: a memory item's Review; D109: Open session; D142: Add it there), else `null`. */
 export function openRoute(item: InboxItem, actionId: string): string | null {
   if (item.kind !== 'system') return null;
   if (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) return item.route ?? null;
   if (actionId === OPEN_SESSION_ACTION && item.sessionId) return `/sessions/${encodeURIComponent(item.sessionId)}`;
+  // D142: "Add it there": Settings → Accounts with the item's machine picked and the Add form prefilled.
+  if (actionId === ADD_ACCOUNT_ACTION && item.addAccount) return addAccountPath('classic', item.machine?.id ?? null, item.addAccount);
   return null;
 }
 

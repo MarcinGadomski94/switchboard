@@ -483,6 +483,8 @@ export const SERVER_ACTION_LABELS: Readonly<Record<string, string>> = {
   'open-memory': 'Review notes',
   'memory-copy-retry': 'Try again',
   'memory-copy-keep': 'Keep on this computer',
+  // D142: a computer that can't switch accounts: its Settings › Accounts with the Add form prefilled.
+  'add-account': 'Add it there',
 };
 
 /** The server's system-item labels (`SYSTEM_ITEM_LABELS`, src/server/inbox/wire.ts) in v2 words. */
@@ -500,6 +502,8 @@ export const SYSTEM_LABELS: Readonly<Record<string, string>> = {
   Reopened: 'Reopened',
   Memory: 'Notes',
   'CI keeps failing': 'Automatic tests keep failing',
+  // D142: a computer that can't switch accounts (informational).
+  Accounts: 'Accounts',
 };
 
 /** A server action's v2 label (falls back to the server's own). */

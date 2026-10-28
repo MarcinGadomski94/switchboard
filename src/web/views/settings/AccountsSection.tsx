@@ -9,6 +9,8 @@ import { Row, SectionTitle, ToggleValue } from './rows.tsx';
 import { TERMINAL_HINT, creditsText, droppedOrder, exhaustedText, movedOrder, peerAccountText, sharedText, sharedUsageText, signInStatusText, signInText, usageText } from './accounts.ts';
 import type { PeerOnlyAccount } from '../../../core/shared-accounts.ts';
 import { currencyGlyph } from '../../../core/credits.ts';
+import { type AccountHintView, readAddAccountQuery } from '../../../core/account-hint.ts';
+import { useRouter } from '../../router.tsx';
 import './accounts.css';
 
 type Client = ReturnType<typeof accountsApi>;
@@ -477,10 +479,48 @@ function PeerAccountRow({ account, onManage }: { readonly account: PeerOnlyAccou
   );
 }
 
+// ── one account here, more on a paired machine (D142) ─────────────────────────
+
+/**
+ * D142 (`docs/accounts.md` → *One account here, more on a paired machine*): the machine shown
+ * has a single usable account of this CLI while a paired machine has more: one line saying so,
+ * and **Add it here**, which prefills the Add form below with the first missing account's name.
+ */
+function HintLine({ hint, onAdd }: { readonly hint: AccountHintView; readonly onAdd: () => void }) {
+  return (
+    <div className="sb-acc-hint" data-testid="account-hint" data-cli={hint.cli}>
+      <span className="sb-acc-hint-text" data-testid="account-hint-text">
+        {hint.text}
+      </span>
+      <button type="button" className="sb-set-button" data-testid="account-hint-add" onClick={onAdd}>
+        {hint.missing.length === 1 ? 'Add it here' : `Add ${hint.add.name} here`}
+      </button>
+    </div>
+  );
+}
+
 // ── add ──────────────────────────────────────────────────────────────────────
 
-function AddProfile({ cli, client, onAdded, builtinName }: { readonly cli: CliProviderId; readonly client: Client; readonly onAdded: () => void; readonly builtinName: string }) {
-  const [name, setName] = useState('');
+/** D142: a name the Add form takes ("Add it there" / "Add it here"); `nonce` makes the same name apply again. */
+interface AddPrefill {
+  readonly cli: CliProviderId;
+  readonly name: string;
+  readonly nonce: number;
+}
+
+function AddProfile({ cli, client, onAdded, builtinName, prefill }: { readonly cli: CliProviderId; readonly client: Client; readonly onAdded: () => void; readonly builtinName: string; readonly prefill?: AddPrefill | null }) {
+  const [name, setName] = useState(prefill?.name ?? '');
+  const input = useRef<HTMLInputElement | null>(null);
+  // D142: the form is prefilled (and shown) when an "Add it …" action points at this CLI.
+  useEffect(() => {
+    if (!prefill) return;
+    setName(prefill.name);
+    const field = input.current;
+    if (field) {
+      field.scrollIntoView({ block: 'center' });
+      field.focus();
+    }
+  }, [prefill]);
   const [share, setShare] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -498,6 +538,7 @@ function AddProfile({ cli, client, onAdded, builtinName }: { readonly cli: CliPr
   return (
     <div className="sb-acc-add" data-testid="account-add" data-cli={cli}>
       <input
+        ref={input}
         className="sb-set-input"
         data-testid="account-add-name"
         aria-label={`New ${CLI_LABELS[cli]} account name`}
@@ -716,7 +757,16 @@ function Rules({ settings, profiles, save, machine, onChosen }: { readonly setti
  */
 export function AccountsSection() {
   const machines = useApi(() => api.machines().catch(() => null), []);
-  const [machine, setMachine] = useState<string | null>(null);
+  const { search } = useRouter();
+  // D142: "Add it there" (`?machine=<id>&add=<cli>&name=<name>`): that machine picked, the Add form prefilled.
+  const asked = useMemo(() => readAddAccountQuery(search), [search]);
+  const [machine, setMachine] = useState<string | null>(() => asked?.machine ?? null);
+  const [prefill, setPrefill] = useState<AddPrefill | null>(() => (asked ? { cli: asked.cli, name: asked.name, nonce: 0 } : null));
+  useEffect(() => {
+    if (!asked) return;
+    setMachine(asked.machine);
+    setPrefill({ cli: asked.cli, name: asked.name, nonce: Date.now() });
+  }, [asked]);
   const client = useMemo(() => accountsApi(machine), [machine]);
   const [overview, setOverview] = useState<AccountsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -803,7 +853,21 @@ export function AccountsSection() {
                     selfName={selfName}
                   />
                 ))}
-                <AddProfile cli={cli} client={client} onAdded={() => load(false)} builtinName={builtinName} />
+                {(() => {
+                  // D142: one usable account here, more on a paired machine: the line and "Add it here".
+                  const hint = overview.hints?.find((h) => h.cli === cli);
+                  return hint ? <HintLine hint={hint} onAdd={() => setPrefill({ cli, name: hint.add.name, nonce: Date.now() })} /> : null;
+                })()}
+                <AddProfile
+                  cli={cli}
+                  client={client}
+                  onAdded={() => {
+                    if (prefill?.cli === cli) setPrefill(null);
+                    load(false);
+                  }}
+                  builtinName={builtinName}
+                  prefill={prefill?.cli === cli ? prefill : null}
+                />
                 {(() => {
                   // D98: the connected paired machines' accounts of this CLI that are not here (read-only; Manage opens their machine).
                   const others = (overview.others ?? []).filter((o) => o.cli === cli);

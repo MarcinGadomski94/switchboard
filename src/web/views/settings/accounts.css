@@ -203,3 +203,23 @@
   font-weight: 500;
   color: var(--text-strong);
 }
+
+/* D142: one usable account here, more on a paired machine (the line under the CLI's accounts). */
+.sb-acc-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-2);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.sb-acc-hint-text {
+  flex: 1 1 260px;
+  min-width: 0;
+}

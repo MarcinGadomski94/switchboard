@@ -9,6 +9,7 @@ import {
   formatToolInput,
   linksSession,
   newSessionAfter,
+  openRoute,
   refusalText,
   selectedItem,
   visibleItems,
@@ -82,5 +83,22 @@ describe('Inbox view state (src/web/views/inbox.ts, prototype inboxRaw / ib)', (
     expect(newSessionAfter({ ...fix, prefill: undefined }, 'open-fix-session')).toEqual({});
     expect(newSessionAfter(fix, 'dismiss')).toBeNull();
     expect(newSessionAfter(item('p', 'permission'), 'open-fix-session')).toBeNull();
+  });
+});
+
+describe('D142 · a computer that can\'t switch accounts: Add it there', () => {
+  const hint: InboxItem = {
+    ...item('h', 'system', null),
+    label: 'Accounts',
+    status: 'idle',
+    systemKind: 'account-hint',
+    actions: [{ id: 'add-account', label: 'Add it there' }, { id: 'dismiss', label: 'Dismiss' }],
+    addAccount: { cli: 'claude', name: 'Personal' },
+  };
+  it('opens Settings → Accounts with the item\'s machine picked and the Add form prefilled (a link: the item stays open)', () => {
+    expect(openRoute(hint, 'add-account')).toBe('/settings/accounts?add=claude&name=Personal');
+    expect(openRoute({ ...hint, id: 'r~m-pc~h', machine: { id: 'm-pc', name: 'Marcins-PC', state: 'online' } }, 'add-account')).toBe('/settings/accounts?machine=m-pc&add=claude&name=Personal');
+    expect(openRoute(hint, 'dismiss')).toBeNull();
+    expect(openRoute({ ...hint, addAccount: undefined }, 'add-account')).toBeNull();
   });
 });

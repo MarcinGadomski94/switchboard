@@ -457,3 +457,35 @@ describe('fix after 2.0 · the transient answered line: shown a few seconds, gon
     expect(store.getSnapshot().items.map((item) => item.key)).toContain('inbox:w1');
   });
 });
+
+describe('D142 · a computer that can\'t switch accounts in Needs you', () => {
+  const raw: InboxItem = {
+    id: 'r~m-pc~h1',
+    kind: 'system',
+    sessionId: null,
+    source: 'accounts',
+    status: 'idle',
+    title: "Marcins-PC can't switch Claude Code accounts",
+    label: 'Accounts',
+    systemKind: 'account-hint',
+    detail: 'It has only one account signed in (Work). 1 more is signed in on Mac (Personal). Add it on Marcins-PC so agents there switch when one runs out.',
+    createdAt: '2026-10-28T10:00:00.000Z',
+    branches: [],
+    actions: [{ id: 'add-account', label: 'Add it there' }, { id: 'dismiss', label: 'Dismiss' }],
+    addAccount: { cli: 'claude', name: 'Personal' },
+    machine: { id: 'm-pc', name: 'Marcins-PC', state: 'online' },
+  };
+  it('is an informational alert of its computer; Add it there opens Advanced › Accounts with that computer and the name, Dismiss answers', () => {
+    const needs = fromInbox(raw);
+    expect(needs.kind).toBe('alert');
+    expect(needs.computer).toEqual({ id: 'm-pc', name: 'Marcins-PC', state: 'online' });
+    expect(needs.agent).toEqual({ sessionId: null, name: 'Accounts' });
+    expect(isLinkAction('add-account')).toBe(true);
+    const buttons = cardButtons(needs);
+    expect(buttons.map((b) => `${b.id}:${b.label}:${b.variant}`)).toEqual(['add-account:Add it there:primary', 'dismiss:Dismiss:ghost']);
+    expect(buttons[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/settings/advanced/accounts?machine=m-pc&add=claude&name=Personal' } });
+    // This computer's own item: no machine in the address.
+    const own = fromInbox({ ...raw, id: 'h1', machine: undefined });
+    expect(cardButtons(own)[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/settings/advanced/accounts?add=claude&name=Personal' } });
+  });
+});
