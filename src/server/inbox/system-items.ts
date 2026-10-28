@@ -487,6 +487,26 @@ export class SystemItemService {
   }
 
   /**
+   * D145: the worktree was cleaned up by itself: its open "PR merged" item (Remove worktree)
+   * has nothing left to do and is closed (`resolved`).
+   * @returns how many items were closed.
+   */
+  async worktreeGone(worktreeId: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== WORKTREE_REMOVABLE || item.worktreeId !== worktreeId) continue;
+      try {
+        await this.#store.systemItems.close(item.id, 'resolved');
+        closed++;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  /**
    * D47: raises the "Parent … merged" item of a stacked worktree whose parent's PR
    * was seen merged (once per worktree) and, with it, tells the session to
    * retarget and rebase ({@link parentMergedMessage}): sent at once (resuming a

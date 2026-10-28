@@ -23,6 +23,7 @@ import { StandingInstructionRow } from './StandingInstruction.tsx';
 import { ModelRulesRow } from './ModelRulesRow.tsx';
 import { PricesRow } from './PricesRow.tsx';
 import { ArchiveRow, type ArchiveRowWords } from './ArchiveRow.tsx';
+import { AutoCleanRows, type AutoCleanWords } from './AutoCleanRow.tsx';
 import { FRESH_OFFER_PCT_CHOICES } from '../../../core/fresh-session.ts';
 
 /** D83: the Settings row of the fresh-session offer. */
@@ -84,9 +85,21 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
 
 /**
  * Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder,
- * D80's checkpoints, D81's captured-todo fill-in, D137's archive period, D83's fresh-session offer, D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
+ * D80's checkpoints, D81's captured-todo fill-in, D137's archive period, D145's automatic clean-up of merged worktrees, D83's fresh-session offer, D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
  */
-export function SessionsSection({ settings, save, onSaved, archiveWords }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void; readonly archiveWords?: ArchiveRowWords }) {
+export function SessionsSection({
+  settings,
+  save,
+  onSaved,
+  archiveWords,
+  autoCleanWords,
+}: {
+  readonly settings: KnownSettings;
+  readonly save: SaveSettings;
+  readonly onSaved?: (body: Settings) => void;
+  readonly archiveWords?: ArchiveRowWords;
+  readonly autoCleanWords?: AutoCleanWords;
+}) {
   const [busy, setBusy] = useState(false);
   const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.checkpoints' | 'sessions.todoEnrich' | 'sessions.freshOffer'): void => {
     setBusy(true);
@@ -123,6 +136,8 @@ export function SessionsSection({ settings, save, onSaved, archiveWords }: { rea
       </Row>
       {/* D137: the archive's period and its last sweep (after the prototype's rows: the visual oracle compares those by position). */}
       <ArchiveRow settings={settings} save={save} {...(archiveWords ? { words: archiveWords } : {})} />
+      {/* D145: merged worktrees (and those the agents made) are cleaned up by themselves, with the branch on the remote. */}
+      <AutoCleanRows settings={settings} save={save} {...(autoCleanWords ? { words: autoCleanWords } : {})} />
       {/* D75: one reminder when a turn ends with a started todo still in progress and untouched. */}
       <Row
         id="todo-reminder"

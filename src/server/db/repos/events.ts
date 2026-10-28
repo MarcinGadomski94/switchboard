@@ -172,6 +172,21 @@ export class EventRepository {
     return this.#table.get(id);
   }
 
+  /** D145: the newest event id (0 when there is none). */
+  async maxId(): Promise<number> {
+    const row = this.#table.statement('SELECT coalesce(max(id), 0) AS n FROM events').get() as { n: number } | undefined;
+    return Number(row?.n ?? 0);
+  }
+
+  /**
+   * D145: the tool events of every session with an id in (`afterId`, `uptoId`] whose payload
+   * contains `needle` (a cheap filter: callers read the payload themselves), oldest first.
+   * Callers read in id windows, so a scan of a large table never blocks for long.
+   */
+  async toolEventsMentioning(afterId: number, uptoId: number, needle: string): Promise<EventRecord[]> {
+    return this.#table.select("id > ? AND id <= ? AND instr(payload, ?) > 0 AND json_extract(payload, '$.type') = 'tool'", [afterId, uptoId, needle], 'id');
+  }
+
   /** The session's events in time order (ts, then id). */
   async list(sessionId: string, query: EventQuery = {}): Promise<EventRecord[]> {
     const where = ['session_id = ?'];

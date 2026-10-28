@@ -77,13 +77,19 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   a computer with one Claude Code account signed in can't switch, that Needs you and the accounts page say
   so when a paired computer has another, and that Add it there opens that computer's accounts with the
   name filled in (sign-ins never travel). An existing install with every v2 tour pending gets them
-  chained ("(7 of 8)").
+  chained ("(7 of 9)").
 - **"Choose the model and effort"** (`v2-model-effort`, version 2.4.7, `ui: 'v2'`, decision D131, Fixes after 2.0):
   one step on Home's model picker (`v2-start-model`), else the + New button (`v2-new`, on both top bars);
   `v2Route: '/'`. It says that Smart / Fast and Thinking depth are gone: Home, + New and How it works list
   the engine's own models and the chosen model's effort levels by their CLI names, a new agent starts on
   the last choice for that engine, and agents started with Smart or Fast keep their model
-  (`docs/v2.md` → *Model and effort*). The last of the chain ("(8 of 8)").
+  (`docs/v2.md` → *Model and effort*). Eighth of the chain ("(8 of 9)").
+- **"Merged worktrees clean up after themselves"** (`auto-clean-worktrees`, version 2.4.8, `ui: 'v2'`, decision D145):
+  one step on the clean-up switch in Advanced › Agents & separate copies (`setting-auto-clean`);
+  `v2Route: '/settings/advanced/sessions'`. It says that a merged agent's worktree, its local branch and
+  the remote branch the agent pushed go by themselves, also the copies agents make themselves, never while
+  the agent works or anything is uncommitted, unpushed or running there, and that the chat says what went
+  (`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*). The last of the chain ("(9 of 9)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

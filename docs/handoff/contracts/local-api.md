@@ -2313,3 +2313,16 @@ GET /api/inbox   (on the Mac; the item is the PC's)
        "addAccount": { "cli": "claude", "name": "Personal" },
        "machine": { "id": "m-pc", "name": "Marcins-PC", "state": "online" }, "branches": [], "createdAt": "2026-10-28T10:00:00.000Z" }]
 ```
+
+## Automatic clean-up of merged worktrees (D145, additive; no migration)
+`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*. Nothing above changes meaning.
+
+- **Settings** (additive): `worktrees.autoClean` (editable, boolean, default `true`), `worktrees.autoCleanRemote` (editable, boolean, default `true`), `worktrees.autoCleanRecord` (read-only) `{ cleaned: number, lastCleanedAt: string | null, recent: [{ at, path, text }] (at most 20), kept: [{ path, reason }] (at most 50) }`. The server also stores `worktrees.agentMadeScannedTo` (an event id), which `GET` does not return.
+- **Events:** a clean-up records a lifecycle event (kind `text`) in the owning session, `{ type: "lifecycle", action: "worktree-cleaned", message }`, label = message, e.g. "Cleaned up worktree x: merged into dev; removed the folder, the local branch and origin/worktree-x". `LifecycleAction` gains `worktree-cleaned` (additive); the chat shows it as a divider.
+- **Worktrees:** a row the clean-up removed reads like one removed by hand (`removedAt` set). Rows are also created for worktrees a session's agent made itself (adopted, as D38's).
+- **Inbox:** the worktree's open "PR merged" system item closes with `closedAction: "resolved"`.
+
+```
+PUT /api/settings { "worktrees.autoCleanRemote": false }
+→ 200 { "worktrees.autoClean": true, "worktrees.autoCleanRemote": false, "worktrees.autoCleanRecord": { "cleaned": 3, "lastCleanedAt": "2026-10-28T13:02:00.000Z", "recent": [], "kept": [] }, "…": "…" }
+```

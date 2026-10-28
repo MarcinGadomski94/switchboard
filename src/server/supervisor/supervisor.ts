@@ -3750,4 +3750,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'tools-updated': TOOLS_UPDATED_DIVIDER,
   'processes-stopped': 'Stopped processes the session left running',
   'account-needs-you': 'Stopped: the account needs you',
+  'worktree-cleaned': 'Cleaned up a merged worktree',
 };

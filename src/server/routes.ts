@@ -54,6 +54,7 @@ import { registerDeviceRoutes } from './api/devices.ts';
 import { registerCleanupRoutes } from './api/cleanup.ts';
 import type { CleanupService } from './cleanup/service.ts';
 import type { ArchiveService } from './sessions/archive.ts';
+import type { AutoCleanService } from './worktrees/auto-clean.ts';
 import type { DeviceService } from './devices/service.ts';
 import { registerCheckpointRoutes } from './api/checkpoints.ts';
 import type { CheckpointService } from './checkpoints/service.ts';
@@ -151,6 +152,8 @@ export interface ApiContext {
   readonly cleanup?: CleanupService;
   /** D137: the archive: deletes archived sessions after their period (docs/cleanup.md → The archive). */
   readonly archive?: ArchiveService;
+  /** D145: the automatic clean-up of merged worktrees (docs/cleanup.md → Automatic clean-up of merged worktrees). */
+  readonly autoClean?: AutoCleanService;
 }
 
 /**

@@ -325,6 +325,20 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
     expect(r.w.errors).toEqual([]);
   });
 
+  it('D145: a worktree cleaned up by itself closes its open "PR merged" item (resolved); nothing else', async () => {
+    const r = await setup();
+    const [cleaned] = await r.m.createForSession('cleaned', ['web-front'], r.w.folder);
+    const [other] = await r.m.createForSession('other', ['mobile'], r.w.folder);
+    if (!cleaned || !other) throw new Error('no worktree');
+    for (const row of [cleaned, other]) await r.w.store.worktrees.update(row.id, { prNumber: 3, prState: 'MERGED', removable: true });
+    await r.service.sync();
+    expect(await r.service.worktreeGone(cleaned.id)).toBe(1);
+    expect(await r.service.worktreeGone(cleaned.id)).toBe(0);
+    const items = await r.w.store.systemItems.list();
+    expect(items.find((item) => item.worktreeId === cleaned.id)).toMatchObject({ state: 'closed', closedAction: 'resolved' });
+    expect(items.find((item) => item.worktreeId === other.id)).toMatchObject({ state: 'open' });
+  });
+
   it('Keep closes the item and leaves the worktree; sync raises a removable worktree that has no item; an already removed folder counts as done', async () => {
     const r = await setup();
     const [kept] = await r.m.createForSession('kept', ['web-front'], r.w.folder);

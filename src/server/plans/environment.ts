@@ -26,6 +26,8 @@ export interface PlanEnvironmentDeps {
   readonly ciSendsFailures?: () => Promise<boolean>;
   /** D109: a PR was opened for a run session (the watcher reads it now). */
   readonly prOpened?: (sessionId: string) => Promise<void>;
+  /** D145: an item was merged: its run session's merged worktrees are cleaned up. */
+  readonly itemMerged?: (sessionId: string) => Promise<void>;
   readonly now?: () => number;
   /** D138: moves a Project's live sessions to its accounts after they changed (the `AccountChoice`); absent: nothing moves. */
   readonly applyProjectAccounts?: (planId: string) => Promise<void>;
@@ -203,6 +205,7 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     ...(deps.ciSendsFailures ? { ciSendsFailures: deps.ciSendsFailures } : {}),
     ...(deps.applyProjectAccounts ? { accountsChanged: deps.applyProjectAccounts } : {}),
     ...(deps.prOpened ? { prOpened: deps.prOpened } : {}),
+    ...(deps.itemMerged ? { itemMerged: deps.itemMerged } : {}),
 
     async notice(input) {
       await systemItems.planNotice(input);
