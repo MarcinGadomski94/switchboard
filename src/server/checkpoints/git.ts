@@ -102,8 +102,9 @@ export class CheckpointGit {
    * untracked files, `.gitignore` respected). Only objects are added to the repo.
    */
   async snapshot(top: string): Promise<TreeSnapshot> {
-    const commonDir = await this.run(top, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-    const realIndex = await this.run(top, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
+    // D144: both paths in one call (a capture before each turn runs this for every working tree of the session).
+    const [commonDir = '', realIndex = ''] = (await this.run(top, ['rev-parse', '--path-format=absolute', '--git-common-dir', '--git-path', 'index'])).split('\n').map((line) => line.trim());
+    if (commonDir === '' || realIndex === '') throw new CheckpointGitError(`git rev-parse gave no git dir in ${top}`);
     const head = await this.head(top);
     const branch = await this.branch(top);
     const temp = path.join(os.tmpdir(), `switchboard-checkpoint-${randomUUID()}.index`);

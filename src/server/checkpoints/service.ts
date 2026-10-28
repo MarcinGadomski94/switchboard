@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import {
   CHECKPOINT_FILES_SHOWN,
@@ -89,8 +90,8 @@ export interface CheckpointServiceOptions {
   readonly onError?: (error: unknown) => void;
 }
 
-/** D144: working trees read or snapshotted at once before a turn. */
-export const CAPTURE_CONCURRENCY = 4;
+/** D144: working trees read or snapshotted at once before a turn (half the cores, 2 to 8). */
+export const CAPTURE_CONCURRENCY = Math.max(2, Math.min(8, Math.floor(os.availableParallelism() / 2)));
 
 /** Why a session gets no checkpoints, as the turn action says it. */
 export const UNSUPPORTED = {
