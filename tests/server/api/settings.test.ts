@@ -120,6 +120,10 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       // D137: the archive's period (days; 0 = never) and its sweep's record.
       'sessions.archiveDays': 14,
       'sessions.archiveSweep': expect.objectContaining({ lastDeleted: null }) as unknown as KnownSettings['sessions.archiveSweep'],
+      // D145: merged worktrees are cleaned up by themselves, with the branch on the remote; nothing done yet.
+      'worktrees.autoClean': true,
+      'worktrees.autoCleanRemote': true,
+      'worktrees.autoCleanRecord': { cleaned: 0, lastCleanedAt: null, recent: [], kept: [] },
       'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,

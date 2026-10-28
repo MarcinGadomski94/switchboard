@@ -14,6 +14,7 @@ import { EXAMPLE_PRICES, type PriceTable, readPriceTable } from './insights.ts';
 import { type CiMergeMethod, isCiMergeMethod } from './ci.ts';
 import { IDLE_STOP_DEFAULT_MINUTES } from './processes.ts';
 import { ARCHIVE_DAYS_DEFAULT, type ArchiveSweepRecord, readArchiveSweep } from './session-archive.ts';
+import { type AutoCleanRecord, readAutoCleanRecord } from './auto-clean.ts';
 import { POWER_ESTIMATE_UNSET, type PowerEstimateModel, type PowerEstimateSettings, readPowerEstimateSettings } from './power.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
@@ -114,6 +115,16 @@ export interface KnownSettings {
   readonly 'sessions.archiveDays': number;
   /** D137: the archive sweep's record (the last run, the last deletions). Read-only. */
   readonly 'sessions.archiveSweep': ArchiveSweepRecord;
+  /**
+   * D145 (`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*): a merged worktree of
+   * Switchboard's agents is removed by itself (with its local branch) once nothing in it would be
+   * lost. Editable, default `true`.
+   */
+  readonly 'worktrees.autoClean': boolean;
+  /** D145: the clean-up also deletes the branch on its remote when the agent pushed it (never a protected one). Editable, default `true`. */
+  readonly 'worktrees.autoCleanRemote': boolean;
+  /** D145: what the clean-up did (how many, the last ones, what it kept and why). Read-only. */
+  readonly 'worktrees.autoCleanRecord': AutoCleanRecord;
   /**
    * D125: Settings → Machines → *Power estimate* (`docs/power.md`): this machine's CPU idle
    * and max watts and the rest of the system, used only while it has no battery; `null` =
@@ -226,7 +237,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes', 'sessions.archiveDays'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'ui.toolsCollapsed', 'ui.sessionsCollapsed', 'ui.chatsCollapsed', 'ui.theme', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'insights.prices', 'ci.sendFailures', 'ci.pendingPollMinutes', 'ci.idlePollMinutes', 'ci.maxAttempts', 'ci.logTailLines', 'ci.mergeMethod', 'power.estimate', 'processes.idleStopMinutes', 'sessions.archiveDays', 'worktrees.autoClean', 'worktrees.autoCleanRemote'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -269,6 +280,9 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'processes.idleStopMinutes': IDLE_STOP_DEFAULT_MINUTES,
   // D137: the archive's period (docs/cleanup.md → The archive).
   'sessions.archiveDays': ARCHIVE_DAYS_DEFAULT,
+  // D145: merged worktrees are cleaned up by themselves, with the branch on the remote.
+  'worktrees.autoClean': true,
+  'worktrees.autoCleanRemote': true,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -323,6 +337,9 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'processes.idleStopMinutes': num('processes.idleStopMinutes', SETTING_DEFAULTS['processes.idleStopMinutes']),
     'sessions.archiveDays': num('sessions.archiveDays', SETTING_DEFAULTS['sessions.archiveDays']),
     'sessions.archiveSweep': readArchiveSweep(value['sessions.archiveSweep']),
+    'worktrees.autoClean': bool('worktrees.autoClean', SETTING_DEFAULTS['worktrees.autoClean']),
+    'worktrees.autoCleanRemote': bool('worktrees.autoCleanRemote', SETTING_DEFAULTS['worktrees.autoCleanRemote']),
+    'worktrees.autoCleanRecord': readAutoCleanRecord(value['worktrees.autoCleanRecord']),
     'power.estimateDefaults': readPowerEstimateModel(value['power.estimateDefaults']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',

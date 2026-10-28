@@ -20,6 +20,7 @@ import {
 import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { CI_LIMITS, isCiMergeMethod } from '../../core/ci.ts';
 import { IDLE_STOP_MAX_MINUTES, IDLE_STOP_MIN_MINUTES } from '../../core/processes.ts';
+import { AUTO_CLEAN_RECORD_SETTING, readAutoCleanRecord } from '../../core/auto-clean.ts';
 import { ARCHIVE_DAYS_MAX, ARCHIVE_DAYS_MIN, ARCHIVE_SWEEP_SETTING, archiveDaysOf, parseArchiveDays, readArchiveSweep } from '../../core/session-archive.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import { type PriceTable, parsePriceTable, readPriceTable } from '../../core/insights.ts';
@@ -45,6 +46,7 @@ const READ_ONLY_KEYS: readonly SettingKey[] = [
   'github.prPollMinutes',
   'power.estimateDefaults',
   'sessions.archiveSweep',
+  'worktrees.autoCleanRecord',
 ];
 
 /** Result of {@link validateSettingsPatch}. */
@@ -242,6 +244,7 @@ export async function readSettings(
     'github.prPollMinutes': DEFAULT_PR_POLL_MS / 60_000,
     'power.estimateDefaults': defaultPowerEstimate(os.cpus().length, process.platform, process.arch),
     'sessions.archiveSweep': readArchiveSweep(stored[ARCHIVE_SWEEP_SETTING]),
+    'worktrees.autoCleanRecord': readAutoCleanRecord(stored[AUTO_CLEAN_RECORD_SETTING]),
   };
 }
 
