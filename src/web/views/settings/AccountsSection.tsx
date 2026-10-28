@@ -488,7 +488,7 @@ function PeerAccountRow({ account, onManage }: { readonly account: PeerOnlyAccou
  */
 function HintLine({ hint, onAdd }: { readonly hint: AccountHintView; readonly onAdd: () => void }) {
   return (
-    <div className="sb-acc-hint" data-testid="account-hint" data-cli={hint.cli}>
+    <div className="sb-acc-hint" data-testid="account-hint" data-cli={hint.cli} data-tour="account-hint">
       <span className="sb-acc-hint-text" data-testid="account-hint-text">
         {hint.text}
       </span>

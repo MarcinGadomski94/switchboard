@@ -152,6 +152,9 @@ const V2_4_3 = '2.4.3';
 /** The version v2's Bring in a terminal conversation (D16 in the v2 theme) and pinned crews with compact teammate cards (Fixes after 2.0) ship in. */
 const V2_4_4 = '2.4.4';
 
+/** The version D142 (a computer that can't switch accounts: one usable account there, more on a paired one) ships in. */
+const V2_4_7 = '2.4.7';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1444,6 +1447,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-rail-pins', 'v2-nav-crews', 'v2-tab-more'],
         v2Route: '/crews',
         missing: 'Open Crews and pin a crew from its ⋯ menu. ',
+      },
+    ],
+  },
+  // D142: a computer that can't switch accounts (docs/accounts.md → One account here, more on a paired machine): a v2 tour on Advanced › Accounts.
+  {
+    id: 'account-hint',
+    decision: 'D142',
+    version: V2_4_7,
+    title: 'Add an account another computer has',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'hint',
+        title: 'One account here, more on a paired computer',
+        what: 'A computer with only one account signed in for Claude Code can’t switch when that account runs out. When a paired computer has another one signed in, Needs you says so on every computer ("Marcins-PC can’t switch Claude Code accounts"), and so does Settings › Advanced › Accounts: every option on that computer. Add it there opens that computer’s accounts with the name filled in: add it, sign in on that computer, and its agents switch from then on. Sign-ins never travel between computers.',
+        todo: ['Press Add it there on the item in Needs you, or Add it here under the accounts.', 'Add the account, then sign in to it on that computer.'],
+        anchors: ['account-hint', 'accounts-list'],
+        v2Route: '/settings/advanced/accounts',
+        missing: 'This shows when a computer has one Claude Code account signed in and a paired computer has another. ',
       },
     ],
   },

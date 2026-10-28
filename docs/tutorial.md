@@ -71,6 +71,13 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   rail's Pinned list (`v2-rail-pins`), else Crews in the rail (`v2-nav-crews`) or the phone's
   More tab (`v2-tab-more`); `v2Route: '/crews'`. It also mentions the compact teammate cards.
   An existing install with every v2 tour pending gets them chained ("(1 of 5)").
+- **"Add an account another computer has"** (`account-hint`, version 2.4.7, `ui: 'v2'`, decision D142):
+  one step on the "can't switch accounts" line in Advanced › Accounts: every option (`account-hint`),
+  else the Claude Code accounts (`accounts-list`); `v2Route: '/settings/advanced/accounts'`. It says that
+  a computer with one Claude Code account signed in can't switch, that Needs you and the accounts page say
+  so when a paired computer has another, and that Add it there opens that computer's accounts with the
+  name filled in (sign-ins never travel). An existing install with every v2 tour pending gets them
+  chained ("(7 of 7)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

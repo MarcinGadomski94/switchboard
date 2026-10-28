@@ -47,11 +47,17 @@ describe('the v2 welcome tour', () => {
     expect(welcome?.steps.find((step) => step.id === 'appearance')?.anchors).toEqual(['v2-theme']);
   });
 
-  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation and pinned crews; the classic What’s new gains the theme switch', () => {
+  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation, pinned crews and D142\'s account hint; the classic What’s new gains the theme switch', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint']);
+    // D142 (2.4.7): one step, on the "can't switch accounts" line in Advanced › Accounts, else the Claude Code accounts.
+    const hint = WHATS_NEW.find((feature) => feature.id === 'account-hint');
+    expect(hint?.version).toBe('2.4.7');
+    expect(hint?.ui).toBe('v2');
+    expect(hint?.steps.map((step) => step.anchors)).toEqual([['account-hint', 'accounts-list']]);
+    expect(hint?.steps[0]?.v2Route).toBe('/settings/advanced/accounts');
     // D16 in v2 (2.4.4): one step, on Agents' "Bring in from a terminal", else the + New button.
     const bringIn = WHATS_NEW.find((feature) => feature.id === 'bring-in-terminal');
     expect(bringIn?.version).toBe('2.4.4');

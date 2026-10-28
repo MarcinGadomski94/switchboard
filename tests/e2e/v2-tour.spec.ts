@@ -273,20 +273,23 @@ test.describe('an existing install (data from before the tutorial)', () => {
     expect(statusOf(before, 'remote-update')).toBe('pending');
     expect(statusOf(before, 'bring-in-terminal')).toBe('pending');
     expect(statusOf(before, 'crews-pin')).toBe('pending');
+    expect(statusOf(before, 'account-hint')).toBe('pending');
     expect(statusOf(before, 'graduated')).toBe('pending');
     await page.goto(server.baseUrl);
-    // The welcome, the redrawn Project graph (2.4.2), its full screen and D140's remote update (2.4.3), Bring in a terminal conversation and pinned crews (2.4.4): the six v2 tours, chained.
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 6)');
+    // The welcome, the redrawn Project graph (2.4.2), its full screen and D140's remote update (2.4.3), Bring in a terminal conversation and pinned crews (2.4.4), D142's account hint (2.4.7): the seven v2 tours, chained.
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 7)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 6)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 7)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph in full screen (3 of 6)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph in full screen (3 of 7)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Update your other computers from here (4 of 6)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Update your other computers from here (4 of 7)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Bring in a terminal conversation (5 of 6)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Bring in a terminal conversation (5 of 7)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Pin a crew to the sidebar (6 of 6)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Pin a crew to the sidebar (6 of 7)');
+    await page.getByTestId('v2-tour-skip').click();
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Add an account another computer has (7 of 7)');
     await page.getByTestId('v2-tour-skip').click();
     await expect(page.getByTestId('v2-tour')).toHaveCount(0);
     expect(statusOf(await tutorialState(api), 'project-graph')).toBe('skipped');
@@ -294,6 +297,7 @@ test.describe('an existing install (data from before the tutorial)', () => {
     expect(statusOf(await tutorialState(api), 'remote-update')).toBe('skipped');
     expect(statusOf(await tutorialState(api), 'bring-in-terminal')).toBe('skipped');
     expect(statusOf(await tutorialState(api), 'crews-pin')).toBe('skipped');
+    expect(statusOf(await tutorialState(api), 'account-hint')).toBe('skipped');
     await expect.poll(async () => statusOf(await tutorialState(api), 'two-themes')).toBe('skipped');
     const after = await tutorialState(api);
     expect(statusOf(after, V2_WELCOME_ID)).toBe('skipped');
