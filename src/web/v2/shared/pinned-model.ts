@@ -1,9 +1,9 @@
 import type { SessionListItem } from '../../../core/api.ts';
 import { crewOfPin, crewPinId } from '../../../core/crew-pins.ts';
 import type { SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
-import type { TeamSummary } from '../../../core/team.ts';
+import type { TeamRosterEntry, TeamSummary } from '../../../core/team.ts';
 import { visibleTeam } from '../../team/model.ts';
-import { type V2Status, teammateStatusToV2 } from '../glossary.ts';
+import { type V2Status, sessionStatusToV2, teammateStatusToV2 } from '../glossary.ts';
 
 /**
  * Fix after 2.0 (2.4.4) · the rail's Pinned list with pinned crews (`docs/v2.md` → *Shell*,
@@ -51,11 +51,22 @@ export function needsByAgent(items: readonly { readonly agent: { readonly sessio
   return counts;
 }
 
+/**
+ * A teammate's status in the rail. The roster is read again only on `teamChanged`, so its
+ * status goes stale while the teammate works; the live session list (refreshed on every
+ * session event) decides instead. Offline and paused (the roster's) still win, and an open
+ * Needs-you item reads needs-you; without a live session the roster's status stays.
+ */
+export function mateStatus(entry: Pick<TeamRosterEntry, 'status'>, needs: number, session: Pick<SessionListItem, 'status'> | undefined): V2Status {
+  if (entry.status === 'offline' || entry.status === 'paused') return teammateStatusToV2(entry.status);
+  if (needs > 0) return 'needs';
+  return session ? sessionStatusToV2(session.status) : teammateStatusToV2(entry.status);
+}
+
 /** A crew as the rail shows it: its shown teammates with their status and Needs-you count, and its counts. */
-export function pinnedCrewOf(crew: TeamSummary, needs: ReadonlyMap<string, number>): PinnedCrew {
+export function pinnedCrewOf(crew: TeamSummary, needs: ReadonlyMap<string, number>, sessions: ReadonlyMap<string, Pick<SessionListItem, 'status'>> = new Map()): PinnedCrew {
   const shown = visibleTeam(crew);
-  // The roster's status already reads needs-you while its Needs-you items are open (offline / paused win).
-  const mates = (shown.roster ?? []).map((entry): PinnedMate => ({ id: entry.id, sessionRef: entry.sessionRef, name: entry.name, status: teammateStatusToV2(entry.status), needs: needs.get(entry.sessionRef) ?? 0 }));
+  const mates = (shown.roster ?? []).map((entry): PinnedMate => ({ id: entry.id, sessionRef: entry.sessionRef, name: entry.name, status: mateStatus(entry, needs.get(entry.sessionRef) ?? 0, sessions.get(entry.sessionRef)), needs: needs.get(entry.sessionRef) ?? 0 }));
   return { teamId: crew.id, name: crew.name, working: mates.filter((mate) => mate.status === 'working').length, needs: crew.needsYou, mates, archived: shown.archived };
 }
 
@@ -72,7 +83,7 @@ export function pinnedEntries(pinned: readonly string[], sessions: readonly Sess
     const teamId = crewOfPin(id);
     if (teamId !== null) {
       const crew = crewById.get(teamId);
-      if (crew) entries.push({ kind: 'crew', id, crew: pinnedCrewOf(crew, needs) });
+      if (crew) entries.push({ kind: 'crew', id, crew: pinnedCrewOf(crew, needs, byId) });
       continue;
     }
     const session = byId.get(id);

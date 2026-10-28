@@ -6,7 +6,7 @@ import { type SidebarLayout, placeSession } from '../../src/core/sidebar-layout.
 import { EMPTY_RECORDS, layoutFromRecords, mergeRecords, recordsAfter } from '../../src/core/sidebar-records.ts';
 import { fromWire, sessionIdOf, sessionKey, toWire } from '../../src/core/sidebar-sync.ts';
 import type { TeamRosterEntry, TeamSummary } from '../../src/core/team.ts';
-import { crewPinInput, isCrewPinned, needsByAgent, pinnedCrewLabel, pinnedCrewLine, pinnedCrewOf, pinnedEntries, readOpenCrews, setCrewOpen } from '../../src/web/v2/shared/pinned-model.ts';
+import { crewPinInput, isCrewPinned, mateStatus, needsByAgent, pinnedCrewLabel, pinnedCrewLine, pinnedCrewOf, pinnedEntries, readOpenCrews, setCrewOpen } from '../../src/web/v2/shared/pinned-model.ts';
 
 /**
  * Fix after 2.0 (2.4.4) · pinned crews: the pin id (`src/core/crew-pins.ts`), the D71 wire key it
@@ -91,6 +91,20 @@ describe('the Pinned list', () => {
     expect(pinnedCrewLine(pinned)).toBe('1 working');
     expect(pinnedCrewLine({ working: 0 })).toBe('');
     expect(pinnedCrewLabel(pinned)).toBe('Crew m, crew, 1 working, 1 needs you');
+  });
+
+  it('a teammate\'s status follows its live session, not the roster read at load time (offline / paused / Needs you still win)', () => {
+    // The roster is read again only on teamChanged, so it says idle while the agent works.
+    expect(mateStatus({ status: 'idle' }, 0, { status: 'run' })).toBe('working');
+    expect(mateStatus({ status: 'working' }, 0, { status: 'idle' })).toBe('idle');
+    expect(mateStatus({ status: 'working' }, 0, { status: 'done' })).toBe('done');
+    expect(mateStatus({ status: 'idle' }, 2, { status: 'run' })).toBe('needs');
+    expect(mateStatus({ status: 'offline' }, 0, { status: 'run' })).toBe('offline');
+    expect(mateStatus({ status: 'paused' }, 0, { status: 'run' })).toBe('paused');
+    expect(mateStatus({ status: 'working' }, 0, undefined)).toBe('working');
+    const live = pinnedCrewOf(mobile, new Map(), new Map([['s-a', { status: 'idle' as const }], ['s-b', { status: 'run' as const }]]));
+    expect(live.mates.map((mate) => [mate.name, mate.status])).toEqual([['Role a', 'idle'], ['Role b', 'working']]);
+    expect(live.working).toBe(1);
   });
 
   it('archived count from the roster when the server sends none; an all-archived crew shows no teammate', () => {
