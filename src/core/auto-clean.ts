@@ -69,7 +69,7 @@ export interface AutoCleanFacts {
 export type AutoCleanDecision = { readonly remove: true } | { readonly remove: false; readonly reason: string };
 
 function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+  return `${n} ${noun}${n === 1 ? '' : noun.endsWith('s') ? 'es' : 's'}`;
 }
 
 /**

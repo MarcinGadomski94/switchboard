@@ -140,6 +140,8 @@ export class AutoCleanService {
   #first: NodeJS.Timeout | undefined;
   #cwds: { readonly at: number; readonly list: Promise<readonly ProcessCwd[] | null> } | null = null;
   #closed = false;
+  /** Sessions' and sweeps' batches running (the process listing is shared within them). */
+  #batch = 0;
 
   constructor(options: AutoCleanServiceOptions) {
     this.#options = options;
@@ -199,9 +201,14 @@ export class AutoCleanService {
     const out = new Map<string, AutoCleanOutcome>();
     if (this.#closed || !(await this.enabled())) return out;
     if (this.#options.adoptAgentMade) await this.#options.adoptAgentMade().catch(this.#onError);
-    for (const row of await this.#store.worktrees.list({ sessionId })) {
-      const outcome = await this.#enqueue(row.id, cause);
-      if (outcome) out.set(row.id, outcome);
+    this.#batch++;
+    try {
+      for (const row of await this.#store.worktrees.list({ sessionId })) {
+        const outcome = await this.#enqueue(row.id, cause);
+        if (outcome) out.set(row.id, outcome);
+      }
+    } finally {
+      this.#batch--;
     }
     return out;
   }
@@ -211,10 +218,15 @@ export class AutoCleanService {
     const out = new Map<string, AutoCleanOutcome>();
     if (this.#closed || !(await this.enabled())) return out;
     if (this.#options.adoptAgentMade) await this.#options.adoptAgentMade().catch(this.#onError);
-    for (const row of await this.#store.worktrees.list()) {
-      if (row.sessionId === null) continue;
-      const outcome = await this.#enqueue(row.id, 'sweep');
-      if (outcome) out.set(row.id, outcome);
+    this.#batch++;
+    try {
+      for (const row of await this.#store.worktrees.list()) {
+        if (row.sessionId === null) continue;
+        const outcome = await this.#enqueue(row.id, 'sweep');
+        if (outcome) out.set(row.id, outcome);
+      }
+    } finally {
+      this.#batch--;
     }
     return out;
   }
@@ -248,17 +260,17 @@ export class AutoCleanService {
     if (row.sessionId === null) return { removed: false, reason: 'it belongs to no session' };
     if (!(await isDirectory(row.path))) return this.#keep(row, 'its folder is gone (Clean-up lists it)');
     if ((await canonical(row.path)) === (await canonical(row.repoPath))) return this.#keep(row, 'it is the main checkout');
-    const first = await this.#inspect(row);
+    const first = await this.#inspect(row, this.#batch > 0);
     if (!first.decision.remove) return this.#keep(row, first.decision.reason);
-    // Read again right before removing: a turn, a process or a change may have started meanwhile.
-    this.#cwds = null;
-    const again = await this.#inspect(row);
+    // Read again right before removing (the processes too): a turn, a process or a change may have started meanwhile.
+    const again = await this.#inspect(row, false);
     if (!again.decision.remove) return this.#keep(row, again.decision.reason);
     if (again.head !== first.head) return this.#keep(row, 'its branch moved while it was checked');
     const session = await this.#store.sessions.get(row.sessionId);
     // What the branch and its remote copy are (read before `git branch -d` drops its config).
     const upstreamRemote = await this.#config(row.repoPath, `branch.${row.branch}.remote`);
     const upstreamMerge = await this.#config(row.repoPath, `branch.${row.branch}.merge`);
+    const created = (await createdBranches(this.#store.settings)).find((entry) => entry.repoPath === row.repoPath && entry.branch === row.branch) ?? null;
     const removed = await this.#runGit(row.repoPath, ['worktree', 'remove', row.path]);
     if (!succeeded(removed)) return this.#keep(row, `git worktree remove refused: ${firstLine(failureText(removed))}`);
     await this.#runGit(row.repoPath, ['worktree', 'prune']);
@@ -266,7 +278,7 @@ export class AutoCleanService {
     this.#kept.delete(row.id);
     const how = again.facts.merged === 'pr' ? (row.prNumber !== null ? `PR #${row.prNumber} merged` : 'its PR was merged') : `merged into ${row.baseRef ?? 'its base'}`;
     const local = await this.#deleteLocalBranch(row);
-    const remote = await this.#deleteRemoteBranch(row, again, upstreamRemote, upstreamMerge);
+    const remote = await this.#deleteRemoteBranch(row, again, upstreamRemote, upstreamMerge, created?.kind === 'tracking');
     const cleaned: CleanedWorktree = { name: path.basename(row.path), how, localBranch: local.deleted, localKept: local.reason, remote: remote.deleted, remoteKept: remote.kept };
     const text = cleanedText(cleaned);
     this.#log(`[auto-clean] ${text} (${row.path}; ${session ? `agent ${session.name}` : 'its agent was deleted'}; ${cause})`);
@@ -291,7 +303,7 @@ export class AutoCleanService {
 
   // ── the facts ────────────────────────────────────────────────────────
 
-  async #inspect(row: WorktreeRecord): Promise<Inspection> {
+  async #inspect(row: WorktreeRecord, cachedProcesses: boolean): Promise<Inspection> {
     const dir = await canonical(row.path);
     const owner = row.sessionId !== null ? await this.#store.sessions.get(row.sessionId) : null;
     const agent = this.#agentState(owner);
@@ -303,7 +315,7 @@ export class AutoCleanService {
       if (session.closedAt === null) cwdOf ??= session.name;
       else if (session.id !== row.sessionId) usedBy.push(session.name);
     }
-    const processes = await this.#processesIn([dir, row.path], row.sessionId);
+    const processes = await this.#processesIn([dir, row.path], row.sessionId, cachedProcesses);
     const status = await this.#runGit(row.path, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
     const uncommitted = succeeded(status) ? status.stdout.split('\0').filter((entry) => entry.trim() !== '' && /^.. /.test(entry)).length : Number.POSITIVE_INFINITY;
     const head = await this.#resolve(row.path, 'HEAD');
@@ -391,9 +403,10 @@ export class AutoCleanService {
     return false;
   }
 
-  async #processesIn(dirs: readonly string[], sessionId: string | null): Promise<readonly string[] | null> {
-    const now = this.#now().getTime();
-    if (!this.#cwds || now - this.#cwds.at > 10_000) this.#cwds = { at: now, list: this.#options.processCwds().catch(() => null) };
+  /** The processes working inside; within a session's or a sweep's batch one listing serves 10 s (the re-check right before removing reads it fresh). */
+  async #processesIn(dirs: readonly string[], sessionId: string | null, cached: boolean): Promise<readonly string[] | null> {
+    const now = Date.now();
+    if (!cached || !this.#cwds || now - this.#cwds.at > 10_000) this.#cwds = { at: now, list: this.#options.processCwds().catch(() => null) };
     const listed = await this.#cwds.list;
     if (listed === null) {
       if (!this.#options.trackedProcesses || sessionId === null) return null;
@@ -424,7 +437,13 @@ export class AutoCleanService {
     return { deleted: true, reason: null };
   }
 
-  async #deleteRemoteBranch(row: WorktreeRecord, inspection: Inspection, upstreamRemote: string | null, upstreamMerge: string | null): Promise<{ readonly deleted: string | null; readonly kept: string | null }> {
+  async #deleteRemoteBranch(
+    row: WorktreeRecord,
+    inspection: Inspection,
+    upstreamRemote: string | null,
+    upstreamMerge: string | null,
+    tracking: boolean,
+  ): Promise<{ readonly deleted: string | null; readonly kept: string | null }> {
     const enabled = (await this.#store.settings.get(AUTO_CLEAN_REMOTE_SETTING)) !== false;
     const remote = upstreamRemote && upstreamRemote !== '.' ? upstreamRemote : (await this.#hasRemote(row.repoPath, 'origin')) ? 'origin' : null;
     const branch = upstreamMerge?.startsWith('refs/heads/') ? upstreamMerge.slice('refs/heads/'.length) : row.branch;
@@ -435,7 +454,6 @@ export class AutoCleanService {
       tipMerged = tip === inspection.head;
       if (!tipMerged && (await this.#refExists(row.repoPath, tip))) for (const base of inspection.bases) if (await this.#isAncestor(row.repoPath, tip, base)) tipMerged = true;
     }
-    const created = (await createdBranches(this.#store.settings)).find((entry) => entry.repoPath === row.repoPath && entry.branch === row.branch);
     const remotes = (await this.#runGit(row.repoPath, ['remote'])).stdout.split('\n').map((line) => line.trim()).filter(Boolean);
     const decision = decideRemote({
       enabled,
@@ -444,7 +462,7 @@ export class AutoCleanService {
       tip,
       tipMerged,
       protectedReason: protectedBranchReason(branch, { base: row.baseRef, defaultBranch: await this.#defaultBranch(row.repoPath, remote), remotes }),
-      tracking: created?.kind === 'tracking',
+      tracking,
     });
     const label = `${remote}/${branch}`;
     if (!decision.delete) return { deleted: null, kept: decision.reason ? `${label} (${decision.reason})` : null };
