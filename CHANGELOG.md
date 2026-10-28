@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.5 (2026-10-28)
+
+### Sessions
+- **Deleting a folder can archive its agents:** the confirmation asks "Delete “X” and archive its N agents?" with **Also archive the agents in it** ticked by default; it counts subfolders, names the ones that are working and will be stopped, and keeps crew members, a project's agents, pinned agents and an offline computer's agents (moved out, with the reason in the toast). Undo brings the agents and the folder back. Both themes. See `docs/sidebar.md` (D141).
+
+### v2 theme
+- **Open a teammate's chat straight from the crew view:** click the teammate's card (name, avatar or summary) or its new **Open chat** button; in the Crews list, click a teammate's avatar.
+
 ## 2.4.4 (2026-10-28)
 
 ### v2 theme

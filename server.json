@@ -3,7 +3,7 @@
   "name": "io.github.MarcinGadomski94/switchboard",
   "title": "Switchboard",
   "description": "Run and supervise many Claude Code, Codex CLI and OpenCode agents from one local web app.",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "websiteUrl": "https://github.com/MarcinGadomski94/switchboard#readme",
   "repository": {
     "url": "https://github.com/MarcinGadomski94/switchboard",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@marcingadomski94/switchboard",
-      "version": "2.4.4",
+      "version": "2.4.5",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
