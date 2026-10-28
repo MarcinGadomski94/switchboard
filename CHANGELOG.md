@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.4.7 (2026-10-28)
+
+### v2 theme
+- **Choose the model and effort again:** Smart / Fast and "Thinking depth" are replaced by a **Model** list per engine (the CLI's own models) and the CLI's **Effort** levels, in Home, + New, the agent's How it works and the teammate dialog. Agents started with Smart / Fast keep their model.
+- **Continue with a clean slate works:** the button was disabled whenever an agent had left a background app running, with its reason hidden in a tooltip. It now works, says why when it can't, shows its progress and opens the fresh agent; also in the agent's ⋯ menu.
+- **Multi-select answers** get room for their text instead of one word per line (one column on a phone).
+
+### Sessions
+- **Background apps don't keep an agent "working":** after its turn, an agent that left a dev server, script or watcher running reads Done / Idle · 1 background app. Helper agents it waits on still count as working. See `docs/processes.md` (D143).
+- **Chats can save artifacts:** a chat's instructions now allow Switchboard's own tools (artifacts, todos) in plan mode, and their permission asks are approved; images and PDFs can come from its attachments or the folders it reads.
+
+### Accounts
+- **A paired computer that can't switch accounts says so:** when it has only one Claude Code account and another computer has more, Needs you shows "… can't switch Claude Code accounts" with **Add it there**, and Settings › Accounts shows the same (D142). Logins still never travel between computers.
+
 ## 2.4.6 (2026-10-28)
 
 ### Fixes
