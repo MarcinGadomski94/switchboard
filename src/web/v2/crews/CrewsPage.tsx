@@ -6,6 +6,7 @@ import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, Card, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Skeleton, StatusBadge, useToast } from '../components/index.ts';
 import { CREW_WORDS, teammateStatusToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
+import { useCrewPins } from '../shared/crew-pins.ts';
 import { ARCHIVED_HREF, archivedLine, crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, orderedCrews } from './crew-model.ts';
 import { visibleTeam } from '../../team/model.ts';
 import { DeleteCrewDialog, NewCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
@@ -39,12 +40,17 @@ export function ArchivedLine({ archived }: { readonly archived: number }) {
 
 type Overlay = { readonly kind: 'new-crew' } | { readonly kind: 'new-teammate'; readonly crewId: string | null } | { readonly kind: 'rename'; readonly crew: TeamSummary } | { readonly kind: 'delete'; readonly crew: TeamSummary };
 
-/** The crew ⋯ menu (Open, Move up / down, New teammate here, Rename, Delete). */
-export function crewMenuItems(crew: TeamSummary, ids: readonly string[], actions: { readonly open: () => void; readonly move: (delta: -1 | 1) => void; readonly newTeammate: () => void; readonly rename: () => void; readonly remove: () => void }): MenuItem[] {
+/** The crew ⋯ menu (Open, Pin to sidebar / Unpin, Move up / down, New teammate here, Rename, Delete). */
+export function crewMenuItems(
+  crew: TeamSummary,
+  ids: readonly string[],
+  actions: { readonly open: () => void; readonly pinned: boolean; readonly togglePin: () => void; readonly move: (delta: -1 | 1) => void; readonly newTeammate: () => void; readonly rename: () => void; readonly remove: () => void },
+): MenuItem[] {
   const up = moveCrewReason(ids, crew.id, -1);
   const down = moveCrewReason(ids, crew.id, 1);
   return [
     { id: 'open', label: CREW_WORDS.openCrew, icon: 'crew', onSelect: actions.open },
+    { id: 'pin', label: actions.pinned ? CREW_WORDS.unpinFromSidebar : CREW_WORDS.pinToSidebar, icon: 'pin', onSelect: actions.togglePin },
     { id: 'up', label: CREW_WORDS.moveUp, icon: 'chev-down', ...(up ? { disabledReason: up } : {}), onSelect: () => actions.move(-1) },
     { id: 'down', label: CREW_WORDS.moveDown, icon: 'chev-down', ...(down ? { disabledReason: down } : {}), onSelect: () => actions.move(1) },
     { id: 'new', label: 'New teammate here', icon: 'plus', onSelect: actions.newTeammate },
@@ -93,6 +99,7 @@ export function CrewsPage() {
   const toast = useToast();
   const { ordered, ids, save } = useCrewOrder(data.teams);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const pins = useCrewPins();
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const open = (id: string): void => navigate({ area: 'crew', id });
@@ -218,6 +225,8 @@ export function CrewsPage() {
                         testId="v2-crew-menu"
                         items={crewMenuItems(crew, ids, {
                           open: () => open(crew.id),
+                          pinned: pins.isPinned(crew.id),
+                          togglePin: () => void pins.toggle(crew),
                           move: (delta) => move(crew, delta),
                           newTeammate: () => setOverlay({ kind: 'new-teammate', crewId: crew.id }),
                           rename: () => setOverlay({ kind: 'rename', crew }),

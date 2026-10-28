@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SessionListItem, SystemInfo } from '../../../core/api.ts';
+import type { SystemInfo } from '../../../core/api.ts';
 import type { DevicesView } from '../../../core/devices.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import { api } from '../../api/client.ts';
@@ -10,7 +10,8 @@ import { useSessionListOf } from '../../api/session-list.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { unfinishedCount } from '../agents/tasks/tasks-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
-import { useTeamMembers } from '../shared/teammates.ts';
+import { type PinnedEntry, needsByAgent, pinnedEntries } from '../shared/pinned-model.ts';
+import { useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { useWarnAt } from '../shared/warn-at.ts';
 import { type RailCounts, type StatusPill, railCounts, statusPill } from './status-model.ts';
 
@@ -20,7 +21,7 @@ export { type RailCounts, railCounts } from './status-model.ts';
  * D131 · what the shell shows, from the APIs and hub events the classic sidebar
  * and footer use: the usage and computers (`/api/system`, `system`; the paired
  * machines), this computer's name (`/api/machines` → `self`), the phones
- * (`/api/devices`), the pins (`/api/sidebar`, `sidebarLayoutChanged`) and the
+ * (`/api/devices`), the pins (`/api/sidebar`, `sidebarLayoutChanged`; pinned agents and crews) and the
  * "needs you" counts per rail item.
  */
 
@@ -49,16 +50,20 @@ export function usePhones(): DevicesView['devices'] {
   return devices.data?.devices ?? [];
 }
 
-/** The pinned agents (the shared sidebar layout's pins, D71), in order, with their sessions. */
-export function usePins(): readonly SessionListItem[] {
+/**
+ * The Pinned list (the shared sidebar layout's pins, D71), in order: the pinned open agents
+ * with their sessions and (2.4.4) the pinned crews with their teammates (`shared/pinned-model.ts`).
+ */
+export function usePinned(): readonly PinnedEntry[] {
   const layout = useApi(api.sidebarLayout);
   useHubEvent('sidebarLayoutChanged', () => layout.reload());
   const sessions = useSessionListOf();
+  const crews = useCrewsList();
+  const { items } = useNeedsYou();
   return useMemo(() => {
     const pinned = (layout.data as SidebarLayout | null)?.pinned ?? [];
-    const byId = new Map((sessions.data ?? []).map((session) => [session.id, session]));
-    return pinned.map((id) => byId.get(id)).filter((session): session is SessionListItem => session !== undefined && !session.closedAt);
-  }, [layout.data, sessions.data]);
+    return pinnedEntries(pinned, sessions.data ?? [], crews, needsByAgent(items));
+  }, [layout.data, sessions.data, crews, items]);
 }
 
 /** The rail's counts, live. */

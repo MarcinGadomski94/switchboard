@@ -6,7 +6,8 @@ import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.t
 import { RecentList } from '../shared/RecentList.tsx';
 import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import type { StatusPill } from './status-model.ts';
-import { type RailCounts, usePhones, usePins, useUnfinishedTaskCount } from './useShellData.ts';
+import { PinnedCrew } from './PinnedCrew.tsx';
+import { type RailCounts, usePhones, usePinned, useUnfinishedTaskCount } from './useShellData.ts';
 
 const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', tasks: 'task', settings: 'settings' };
 const TARGETS: Readonly<Record<RailArea, V2Route>> = {
@@ -22,15 +23,16 @@ const TARGETS: Readonly<Record<RailArea, V2Route>> = {
 /**
  * D131 · the left rail (the prototype's `.rail`): the brand, seven labelled items
  * (Home · Agents · Projects · Crews · Results · Tasks · Settings), each with its "needs
- * you" count (Tasks: its tasks not done yet; fix after 2.0), the Pinned list (the shared sidebar layout's pins, D71) and the
+ * you" count (Tasks: its tasks not done yet; fix after 2.0), the Pinned list (the shared sidebar layout's pins, D71:
+ * agents and, 2.4.4, crews with their teammates) and the
  * computers and phones at its foot. ≤ 1279 px it narrows to icons with their
  * labels under them and the pins and foot hide (the prototype's tablet rail).
  */
 export function Rail({ route, counts, pill }: { readonly route: V2Route; readonly counts: RailCounts; readonly pill: StatusPill }) {
   const current = railAreaOf(route);
-  const pins = usePins();
+  const pins = usePinned();
   const members = useTeamMembers();
-  const pinnedIds = useMemo(() => pins.map((session) => session.id), [pins]);
+  const pinnedIds = useMemo(() => pins.filter((entry) => entry.kind === 'agent').map((entry) => entry.id), [pins]);
   const phones = usePhones();
   const unfinished = useUnfinishedTaskCount();
   const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : area === 'tasks' ? unfinished : 0);
@@ -65,7 +67,9 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
           <Icon name="pin" size="s" />
           {WORDS.pinned}
         </h5>
-        {pins.map((session) => {
+        {pins.map((entry) => {
+          if (entry.kind === 'crew') return <PinnedCrew key={entry.id} crew={entry.crew} route={route} />;
+          const session = entry.session;
           const status = sessionStatusToV2(session.status);
           const name = agentDisplayName(session, members);
           return (
@@ -75,7 +79,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
             </V2Link>
           );
         })}
-        {pins.length === 0 ? <p className="v2-rail-note">Pin agents from their ⋯ menu.</p> : null}
+        {pins.length === 0 ? <p className="v2-rail-note">{WORDS.pinnedHint}</p> : null}
       </div>
       <RecentList pinned={pinnedIds} currentId={route.area === 'agent' ? route.id : null} />
       <div className="v2-rail-foot" data-testid="v2-rail-foot">
