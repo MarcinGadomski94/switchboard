@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { isCrewPinId } from '../../core/crew-pins.ts';
 import { parseRemoteId } from '../../core/peers.ts';
 import {
   type SidebarLayout,
@@ -122,6 +123,12 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     const input = parsePlaceInput(request.body);
     if (!input.ok) return invalid(reply, input.errors);
     const { value } = input;
+    // 2.4.4: a pinned crew (`crew~<team id>`, `docs/sidebar.md` → *Pinned crews*) is only ever pinned or unpinned (no folder, no loose order).
+    if (isCrewPinId(value.sessionId)) {
+      if (value.place === 'folder' || (value.place === 'loose' && value.index !== undefined)) return invalid(reply, [{ field: 'place', message: 'a crew is only pinned or unpinned' }]);
+      const write = await store.sidebar.change((current) => placeSession(current, value));
+      return write ? changed(write) : store.sidebar.read();
+    }
     if (!(await known(value.sessionId))) return reply.code(404).send({ error: 'not-found', message: `no session ${value.sessionId}` });
     // D71: a loose drop at a position counts in the whole loose list as shown (the unplaced sessions first).
     const order = value.place === 'loose' && value.index !== undefined ? await listed() : [];
