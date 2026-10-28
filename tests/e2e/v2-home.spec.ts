@@ -46,10 +46,11 @@ test('an empty Home: the greeting, all clear, nothing running, nothing done', as
   await expect(page.getByTestId('v2-home-needs-empty')).toContainText('All clear');
   await expect(page.getByTestId('v2-working-empty')).toHaveText('Nothing running. Start an agent above.');
   await expect(page.getByTestId('v2-done-empty')).toHaveText('Nothing finished yet today.');
-  // The start box: the saved folder (the last used, else the default), this computer, Smart.
+  // The start box: the saved folder (the last used, else the default), this computer, the CLI's default model.
   await expect(page.getByTestId('v2-start-folder')).toHaveValue(/.+/);
   await expect(page.getByTestId('v2-start-folder').locator('option:checked')).toHaveText('work space');
-  await expect(page.getByTestId('v2-start-speed').locator('[aria-pressed="true"]')).toHaveText('Smart');
+  await expect(page.getByTestId('v2-start-model')).toHaveValue('default');
+  await expect(page.getByTestId('v2-start-model').locator('option:checked')).toHaveText('Default (the CLI’s)');
   await expect(page.getByTestId('v2-start-go')).toBeDisabled();
 });
 
@@ -115,7 +116,7 @@ test('working, asking and done agents land live; a question answered on Home lea
 test('the start box: Enter starts an agent (skeleton, then its live card); More options opens + New with the text', async ({ page }) => {
   await openWithHub(page, `${world.baseUrl}/`);
   const box = page.getByTestId('v2-start-text');
-  await page.getByTestId('v2-start-speed').getByRole('button', { name: 'Fast' }).click();
+  await page.getByTestId('v2-start-model').selectOption('sonnet');
   await box.fill('[fake:hold 300] Fix the login timeout on the checkout page');
   // The start answers a moment later: the skeleton card shows meanwhile.
   await page.route('**/api/sessions', async (route) => {
@@ -135,9 +136,9 @@ test('the start box: Enter starts an agent (skeleton, then its live card); More 
   const started = (await sessions(page)).find((s) => s.title?.includes('Fix the login timeout'));
   await expect(page.locator(`[data-testid="v2-working-card"][data-session="${started?.id}"]`)).toBeVisible();
   await expect(page.getByTestId('v2-working-pending')).toHaveCount(0);
-  // Fast is remembered for the next start.
+  // The model is the engine's last choice now (D42): the next start begins on it.
   await page.reload();
-  await expect(page.getByTestId('v2-start-speed').locator('[aria-pressed="true"]')).toHaveText('Fast');
+  await expect(page.getByTestId('v2-start-model')).toHaveValue('sonnet');
 
   // Shift+Enter is a new line; More options opens + New with the text.
   await box.fill('First line');

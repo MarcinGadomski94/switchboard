@@ -53,6 +53,18 @@
   flex-wrap: wrap;
 }
 
+.sb2 .v2-home-start-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The model picker's long names (`Default (the CLI’s)`, `Claude Opus 4.7 (1M context)`) end in an ellipsis. */
+.sb2 .v2-home-picker select[data-testid='v2-start-model'] {
+  max-width: 170px;
+}
+
 .sb2 .v2-home-picker {
   position: relative;
   display: inline-flex;

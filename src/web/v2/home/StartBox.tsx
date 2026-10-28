@@ -241,24 +241,27 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
         </label>
         {modelField.efforts ? (
           <label className="v2-home-picker" title={HOME_WORDS.effort}>
+            <Icon name="sliders" size="s" />
             <span className="v2-sr">{HOME_WORDS.effort}</span>
             <select value={modelField.effort} disabled={modelField.disabled} onChange={(event) => setPicked(pickEffort(choice, event.currentTarget.value))} data-testid="v2-start-effort">
               {modelField.efforts.map((e) => (
                 <option key={e.value} value={e.value}>
-                  {e.value === '' ? `${HOME_WORDS.effort}: ${e.label}` : e.label}
+                  {e.label}
                 </option>
               ))}
             </select>
             <Icon name="chev-down" size="s" />
           </label>
         ) : null}
-        <span className="v2-grow" />
-        <Button variant="ghost" size="sm" onClick={() => more('agent')} data-testid="v2-start-more">
-          {HOME_WORDS.moreOptions}
-        </Button>
-        <Button variant="primary" icon="sparkle" kbd="⌘↩" disabled={!ready} title={why} onClick={() => void start()} data-testid="v2-start-go">
-          {busy ? HOME_WORDS.starting : HOME_WORDS.startAgent}
-        </Button>
+        {/* The actions stay together at the right, also when the pickers wrap them to a second line. */}
+        <span className="v2-home-start-actions">
+          <Button variant="ghost" size="sm" onClick={() => more('agent')} data-testid="v2-start-more">
+            {HOME_WORDS.moreOptions}
+          </Button>
+          <Button variant="primary" icon="sparkle" kbd="⌘↩" disabled={!ready} title={why} onClick={() => void start()} data-testid="v2-start-go">
+            {busy ? HOME_WORDS.starting : HOME_WORDS.startAgent}
+          </Button>
+        </span>
       </div>
       {error ? (
         <p className="v2-home-start-error" role="alert" data-testid="v2-start-error">

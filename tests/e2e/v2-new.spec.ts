@@ -42,13 +42,16 @@ test('+ New starts an agent in the chosen folder and opens it', async ({ page })
   await expect(sheet.getByTestId('v2-new-problems')).toHaveText('Say what it should do.');
 
   await sheet.getByTestId('v2-new-message').fill('Summarise the README for me');
-  await sheet.getByTestId('v2-new-speed').getByRole('button', { name: 'Fast · cheaper' }).click();
+  // Model and Effort (fix after 2.0): no claude process has reported its models yet, so Claude Code's aliases.
+  await expect(sheet.getByTestId('v2-new-model').locator('option')).toHaveText(['Default (the CLI’s)', 'Opus', 'Sonnet', 'Haiku']);
+  await sheet.getByTestId('v2-new-model').selectOption('sonnet');
   await sheet.getByTestId('v2-new-go').click();
   await expect(sheet).toHaveCount(0);
   await expect(page).toHaveURL(/\/agents\/[^/]+$/);
   const id = decodeURIComponent(new URL(page.url()).pathname.split('/')[2] ?? '');
   const session = await page.evaluate(async (sid) => (await (await fetch(`/api/sessions/${sid}`)).json()) as { task: string | null; model?: { current: string | null } | null }, id);
   expect(JSON.stringify(session)).toContain('Summarise the README for me');
+  expect(session.model?.current).toBe('sonnet');
 });
 
 test('+ New adds a task to an agent and makes a routine for it', async ({ page }) => {
