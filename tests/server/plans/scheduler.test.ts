@@ -97,6 +97,8 @@ interface Rig {
   readonly mergeNotices: string[];
   /** D120: the Inbox's "Stopped" items raised (`+ title | detail`) and closed (`- itemId outcome`). */
   readonly stoppedNotices: string[];
+  /** D145: the run sessions whose item was merged (their worktrees are cleaned up). */
+  readonly merged: string[];
   readonly changed: string[];
   readonly errors: unknown[];
   held: string | null;
@@ -145,6 +147,9 @@ function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
     async closeMergeNotice(itemId, outcome) {
       r.mergeNotices.push(`- ${itemId} ${outcome}`);
     },
+    async itemMerged(sessionId) {
+      r.merged.push(sessionId);
+    },
     async stoppedNotice(input) {
       r.stoppedNotices.push(`+ ${input.title} | ${input.dedupe}`);
     },
@@ -162,7 +167,7 @@ async function setup(options: { pollMs?: number; stoppedGraceMs?: number } = {})
   const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new FakeGit();
-  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
+  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], merged: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
   bus.subscribe((message) => {
     if (message.name === 'planChanged') base.changed.push(message.payload.planId);
   });
@@ -297,6 +302,8 @@ describe('D99 · plan scheduler', () => {
     await r.plans.mergeItem(plan.id, ids.A);
     await settle(r);
     expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    // D145: the merged item's run session gets the automatic clean-up of its worktrees.
+    expect(r.merged).toEqual([(await item(r, plan.id, ids.A)).runSessionId]);
 
     // B conflicts with the target: refused with the files, still ready to merge.
     await agentFinishes(r, plan.id, ids.B);
