@@ -15,6 +15,9 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     exclude: [...configDefaults.exclude, ...IGNORED, 'tests/e2e/**'],
     environment: 'node',
+    // No test server outlives a run (tests/helpers/server-registry.ts, CONTRIBUTING.md).
+    globalSetup: ['tests/helpers/vitest-global.ts'],
+    setupFiles: ['tests/helpers/vitest-setup.ts'],
     testTimeout: 20_000,
     hookTimeout: 20_000,
   },

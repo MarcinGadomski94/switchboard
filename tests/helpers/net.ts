@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_PORT } from '../../src/server/config.ts';
+import { stopServersUnder } from './server-registry.ts';
 
 /** The default test ports: 127.0.0.1:4871–4879. */
 const DEFAULT_TEST_PORTS: readonly number[] = [4871, 4872, 4873, 4874, 4875, 4876, 4877, 4878, 4879];
@@ -59,8 +60,13 @@ export function makeTempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), `switchboard-${prefix}-`));
 }
 
-/** Removes a temp folder made by {@link makeTempDir}. */
+/**
+ * Removes a temp folder made by {@link makeTempDir}. First stops every test server
+ * whose data folder is inside it (also one a timed-out test was still starting) and
+ * refuses new ones there (tests/helpers/server-registry.ts).
+ */
 export async function removeTempDir(dir: string): Promise<void> {
+  await stopServersUnder(dir);
   await rm(dir, { recursive: true, force: true });
 }
 
