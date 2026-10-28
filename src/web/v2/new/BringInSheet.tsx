@@ -178,7 +178,7 @@ export function BringInSheet({ onClose }: { readonly onClose: () => void }) {
             ) : (
               <>
                 <div className="v2-muted v2-bring-count" data-testid="v2-bring-in-count">
-                  {list.length === all.length ? W.count(all.length) : `${W.count(list.length)} · ${all.length}`}
+                  {list.length === all.length ? W.count(all.length) : W.countOf(list.length, all.length)}
                 </div>
                 <div className="v2-bring-list" role="list" data-testid="v2-bring-in-list">
                   {list.map((row) => {

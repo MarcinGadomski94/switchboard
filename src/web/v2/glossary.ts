@@ -2050,6 +2050,7 @@ export const BRING_IN_WORDS = {
   emptyText: 'Conversations you have in a terminal (claude, without Switchboard) show here until they are in Switchboard.',
   noMatch: 'No conversation matches.',
   count: (n: number): string => `${n} conversation${n === 1 ? '' : 's'}`,
+  countOf: (n: number, total: number): string => `${n} of ${total} conversations`,
   started: (ago: string): string => `started ${ago}`,
   noPrompt: 'No first message',
   back: 'Back to the list',
