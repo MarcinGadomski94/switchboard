@@ -53,7 +53,7 @@ export function FreshOffer({
 }: {
   readonly sessionId: string;
   readonly session: Session | null;
-  readonly activity: unknown;
+  readonly activity: { readonly state: string } | null;
   readonly blocked: string | null;
   /** The composer's "+ Todo" sits over the bar's right end (an empty todo list): the buttons keep clear of it. */
   readonly reserveTodo?: boolean;

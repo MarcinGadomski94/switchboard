@@ -26,6 +26,8 @@ import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, 
 import { continueAsAgent } from './agent-bits.ts';
 import { ConfirmDialog, RemoteDialog, RenameDialog, TerminalDialog } from './dialogs.tsx';
 import { type AgentMenuId, type AgentMenuSpec, agentMenu, ciView, folderTrail } from './header-model.ts';
+import { cleanSlateView } from './side-model.ts';
+import { markFreshAsked, takeFreshAsked } from '../../views/session/fresh-offer.ts';
 import { modelSummary } from '../shared/model-effort.ts';
 import type { AgentData } from './useAgent.ts';
 import { useAgentCi } from './useAgent.ts';
@@ -448,6 +450,9 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   const online = machines.filter((machine) => machine.state === 'online');
   const remote = session ? remoteToggle(session) : null;
   const background = session && blocked === null ? stoppableBackground({ live: session.live, status: session.status, activity: data.activity, hooked: session.hooked === true }).length : 0;
+  // Fixes after 2.0 · D83: Continue with a clean slate (classic's Continue in a fresh session); none for a closed or moved agent.
+  const slate = session && !data.conversation && !data.closed && !session.movedTo ? cleanSlateView(session, data.activity, blocked) : null;
+  const slateReason = slate === null ? undefined : slate.enabled ? null : (slate.running ?? slate.reason);
   const specs: AgentMenuSpec[] = useMemo(
     () =>
       session
@@ -466,9 +471,10 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
             computers: online.length,
             teammate: memberId !== null,
             crews: crews.length,
+            ...(slateReason === undefined ? {} : { cleanSlate: slateReason }),
           })
         : [],
-    [session, data.conversation, data.closed, blocked, remote, background, online.length, memberId, crews.length],
+    [session, data.conversation, data.closed, blocked, remote, background, online.length, memberId, crews.length, slateReason],
   );
   const members = useTeamMembers();
   const name = session ? agentDisplayName(session, members) : '';
@@ -510,6 +516,16 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         if (!session) return;
         if (session.machine) openTakeover({ sessionId, targetMachine: null, machineName: session.machine.name, title: name });
         else if (online[0]) openTakeover({ sessionId, targetMachine: online[0].id, machineName: online[0].name, title: name });
+        return;
+      case 'clean-slate':
+        // The agent view opens the fresh agent once it exists (`useFollowFresh`); a refusal is a toast.
+        markFreshAsked(sessionId);
+        act(() =>
+          api.freshSession(sessionId).catch((caught: unknown) => {
+            takeFreshAsked(sessionId);
+            throw caught;
+          }),
+        );
         return;
       case 'continue-hooked':
         if (session) openContinueHooked({ sessionId, title: name, machineName: session.machine?.name ?? null });

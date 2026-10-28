@@ -10,6 +10,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { useLiveMachine } from '../../api/useMachines.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { checkpointsKey, useCheckpoints } from '../../views/session/checkpoints.ts';
+import { takeFreshAsked } from '../../views/session/fresh-offer.ts';
 import { type SessionData, useSessionData } from '../../views/session/useSessionData.ts';
 import type { SessionCheckpoints } from '../../../core/checkpoints.ts';
 
@@ -61,6 +62,18 @@ export function useAgent(sessionId: string, wantEvents: boolean, eventId: number
   const key = useMemo(() => checkpointsKey(data.events, status), [data.events, status]);
   const checkpoints = useCheckpoints(isChat(session) ? '' : sessionId, key);
   return { ...data, sessionId, session, activity, machine, blocked, conversation: isChat(session), closed: session ? isClosed(session) : false, checkpoints };
+}
+
+/**
+ * D83 · Fixes after 2.0: once the agent this tab asked to continue with a clean
+ * slate (the side panel, the ⋯ menu or the Dock's banner: `markFreshAsked`) has its
+ * fresh agent (`continuedTo`), open it, as classic's view does.
+ */
+export function useFollowFresh(sessionId: string, session: Pick<SessionDetail, 'continuedTo'> | null, open: (id: string) => void): void {
+  const target = session?.continuedTo?.sessionId ?? null;
+  useEffect(() => {
+    if (target && takeFreshAsked(sessionId)) open(target);
+  }, [sessionId, target, open]);
 }
 
 /** D109 · the agent's watched change requests, live (`ciChanged`); `null` while unknown or on a computer without the watch. */

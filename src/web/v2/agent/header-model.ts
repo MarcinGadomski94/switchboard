@@ -46,6 +46,7 @@ export type AgentMenuId =
   | 'resume'
   | 'stop-background'
   | 'move'
+  | 'clean-slate'
   | 'terminal'
   | 'attach'
   | 'remote'
@@ -94,6 +95,11 @@ export interface AgentMenuInput {
    * agent (`offersHookedContinue`); `false` for every other agent. Optional: absent = `false`.
    */
   readonly hookedContinue?: boolean;
+  /**
+   * Fixes after 2.0 · D83: Continue with a clean slate: `null` = it can start now, a
+   * string = why not (or the step while it runs). Absent = no entry (a closed or moved agent).
+   */
+  readonly cleanSlate?: string | null;
 }
 
 /** The agent ⋯ menu (the prototype's `agentMenu`, today's actions): every action listed, disabled with the reason where it cannot run. */
@@ -114,6 +120,7 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
             ? 'No other computer is paired and online.'
             : undefined;
     items.push({ id: 'move', label: AGENT_WORDS.moveToComputer, icon: 'desktop', ...(moveReason ? { disabledReason: moveReason } : {}) });
+    if (input.cleanSlate !== undefined) items.push({ id: 'clean-slate', label: AGENT_WORDS.cleanSlateMenu, icon: 'refresh', ...(input.cleanSlate ? { disabledReason: input.cleanSlate } : {}) });
   }
   items.push({ sep: 'a' });
   if (!input.conversation) {

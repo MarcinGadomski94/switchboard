@@ -19,7 +19,7 @@ import { turnBusy } from '../../views/session/needs-you.ts';
 import { canStop, escStops, stoppableBackground } from '../../views/session/stop.ts';
 import { OVERLAY_SELECTOR } from '../../views/session/subagent-chat.ts';
 import { isEditing } from '../../views/session/SubagentChat.tsx';
-import { freshBusy, freshEligible, loadSnooze, saveSnooze } from '../../views/session/fresh-offer.ts';
+import { freshBusy, freshEligible, loadSnooze, markFreshAsked, saveSnooze, takeFreshAsked } from '../../views/session/fresh-offer.ts';
 import { freshStepText } from '../../../core/fresh-session.ts';
 import { useSessionTodos } from '../../views/session/TodoStrip.tsx';
 import { Button, Icon, IconButton, useToast } from '../components/index.ts';
@@ -746,18 +746,9 @@ export interface MemoryState {
 export function useMemoryState(data: AgentData): MemoryState {
   const { session, sessionId, activity, blocked } = data;
   const settings = useFreshSettings();
-  const { navigate } = useV2Router();
   const [snoozedAt, setSnoozedAt] = useState<number | null>(() => loadSnooze(browserStorage(), sessionId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const asked = useRef(false);
-  const target = session?.continuedTo?.sessionId ?? null;
-  useEffect(() => {
-    if (target && asked.current) {
-      asked.current = false;
-      navigate(`/agents/${encodeURIComponent(target)}`);
-    }
-  }, [target, navigate]);
   const context = session?.context ?? null;
   const pct = context?.percent == null ? null : Math.round(context.percent);
   const running = session?.freshContinue ? freshStepText(session.freshContinue.step) : null;
@@ -776,10 +767,11 @@ export function useMemoryState(data: AgentData): MemoryState {
     setBusy(true);
     setError(null);
     try {
-      asked.current = true;
+      // The agent view opens the fresh agent once it exists (`useFollowFresh`).
+      markFreshAsked(sessionId);
       await api.freshSession(sessionId);
     } catch (caught) {
-      asked.current = false;
+      takeFreshAsked(sessionId);
       setError(refusal(caught));
     } finally {
       setBusy(false);
