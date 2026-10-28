@@ -1,6 +1,7 @@
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
+import type { SidebarFolderArchiveResult } from '../../core/sidebar-folder-archive.ts';
 import type { InsightsAnswer } from '../../core/insights.ts';
 import type { UsageAnswer } from '../../core/usage-breakdown.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
@@ -318,6 +319,8 @@ export const api = {
     request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}/position`, parentId === undefined ? { index } : { index, parentId }),
   /** D54: delete a folder (its sessions become loose; D58: in a subfolder they go to its parent, and its subfolders move up a level). */
   deleteSidebarFolder: (id: string) => request<SidebarLayout>('DELETE', `/api/sidebar/folders/${enc(id)}`),
+  /** D141: delete a folder with its subfolders and archive the agents in them (the held-back ones move out; `docs/sidebar.md`). */
+  deleteSidebarFolderArchiving: (id: string) => request<SidebarFolderArchiveResult>('DELETE', `/api/sidebar/folders/${enc(id)}?archive=1`),
   /** D54: pin, unpin, put into / take out of a folder, or re-order a session. */
   placeSidebarSession: (input: SidebarPlaceInput) => request<SidebarLayout>('POST', '/api/sidebar/place', input),
   /** D55, additive: the updater (`docs/updates.md`); 501 when it is off (the demo, `SWITCHBOARD_UPDATES=off`). */

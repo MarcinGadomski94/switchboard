@@ -1,11 +1,13 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import { SIDEBAR_FOLDER_NAME_MAX } from '../../../core/sidebar-layout.ts';
-import { Button, Dialog, Field, Icon, Select } from '../components/index.ts';
+import { closeAsks } from '../../../core/session-close.ts';
+import { folderArchiveConfirm } from '../../../core/sidebar-folder-archive.ts';
+import { Button, Checkbox, Dialog, Field, Icon, Select } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
 import type { FolderDialogRequest } from './context.tsx';
-import { type AgentTree, deleteSummary, findFolder, parentOptions, pickRows } from './tree-model.ts';
+import { type AgentTree, agentsUnder, deleteSummary, findFolder, parentOptions, pickRows } from './tree-model.ts';
 import type { TreeActions } from './useTreeActions.ts';
 
 /**
@@ -75,13 +77,31 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
 }
 
 /** New folder (with "Inside"), Rename folder, Delete folder. */
-export function FolderDialog({ request, tree, actions, onClose, onCreated }: { readonly request: FolderDialogRequest | null; readonly tree: AgentTree; readonly actions: TreeActions; readonly onClose: () => void; readonly onCreated: (id: string) => void }) {
+export function FolderDialog({
+  request,
+  tree,
+  actions,
+  onClose,
+  onCreated,
+  activityOf = () => null,
+}: {
+  readonly request: FolderDialogRequest | null;
+  readonly tree: AgentTree;
+  readonly actions: TreeActions;
+  readonly onClose: () => void;
+  readonly onCreated: (id: string) => void;
+  /** D141: a turn runs (the confirmation's "working" count). */
+  readonly activityOf?: (id: string) => unknown;
+}) {
   const folder = request && request.mode !== 'new' ? findFolder(tree, request.folderId) : null;
   const [name, setName] = useState('');
   const [parent, setParent] = useState('');
+  // D141: deleting a folder with agents also archives them, ticked by default.
+  const [archive, setArchive] = useState(true);
   const input = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (!request) return;
+    setArchive(true);
     setName(request.mode === 'rename' ? (folder?.name ?? '') : request.mode === 'new' ? AGENTS_WORDS.newFolder : '');
     setParent(request.mode === 'new' ? (request.parentId ?? '') : '');
     window.setTimeout(() => {
@@ -98,10 +118,13 @@ export function FolderDialog({ request, tree, actions, onClose, onCreated }: { r
     } else if (request.mode === 'rename' && folder) {
       const next = name.trim();
       if (next && next !== folder.name) void actions.renameFolder(folder.id, next);
-    } else if (folder) void actions.deleteFolder(folder.id);
+    } else if (folder) void actions.deleteFolder(folder.id, inside.length > 0 && archive);
   };
   const parentName = folder?.parentId ? (findFolder(tree, folder.parentId)?.name ?? null) : null;
-  const title = request.mode === 'new' ? AGENTS_WORDS.newFolder : request.mode === 'rename' ? AGENTS_WORDS.renameFolderTitle : AGENTS_WORDS.deleteTitle(folder?.name ?? '');
+  // D141: the agents in the folder and its subfolders (an empty folder keeps the simple confirm).
+  const inside = request.mode === 'delete' && folder ? agentsUnder(folder).map((agent) => ({ name: agent.name, working: closeAsks({ status: agent.session.status, activity: activityOf(agent.id) }) })) : [];
+  const confirm = inside.length > 0 && folder ? folderArchiveConfirm(folder.name, inside, archive, 'v2') : null;
+  const title = request.mode === 'new' ? AGENTS_WORDS.newFolder : request.mode === 'rename' ? AGENTS_WORDS.renameFolderTitle : (confirm?.title ?? AGENTS_WORDS.deleteTitle(folder?.name ?? ''));
   return (
     <Dialog
       open
@@ -119,7 +142,30 @@ export function FolderDialog({ request, tree, actions, onClose, onCreated }: { r
         </>
       }
     >
-      {request.mode === 'delete' && folder ? (
+      {request.mode === 'delete' && folder && confirm ? (
+        <div data-testid="v2-folder-archive">
+          <Checkbox label={confirm.checkbox} checked={archive} onChange={(event) => setArchive(event.target.checked)} data-testid="v2-folder-archive-check" />
+          {archive ? (
+            <>
+              {confirm.working ? (
+                <p className="v2-muted" style={{ margin: '10px 0 0', fontSize: 13.5 }} data-testid="v2-folder-archive-working">
+                  {confirm.working}
+                </p>
+              ) : null}
+              <ul style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: 13.5 }} data-testid="v2-folder-archive-names">
+                {confirm.names.map((agentName, i) => (
+                  <li key={`${i}:${agentName}`}>{agentName}</li>
+                ))}
+                {confirm.more ? <li className="v2-muted">{confirm.more}</li> : null}
+              </ul>
+            </>
+          ) : (
+            <p style={{ margin: '10px 0 0' }} data-testid="v2-folder-delete-text">
+              {deleteSummary(folder, parentName)}
+            </p>
+          )}
+        </div>
+      ) : request.mode === 'delete' && folder ? (
         <p style={{ margin: 0 }} data-testid="v2-folder-delete-text">
           {deleteSummary(folder, parentName)}
         </p>

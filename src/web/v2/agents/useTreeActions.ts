@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import type { SidebarLayout, SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
+import { folderArchiveResultText } from '../../../core/sidebar-folder-archive.ts';
 import { api } from '../../api/client.ts';
+import { snapshotFolderTree, undoFolderArchive } from '../../shell/folder-archive-undo.ts';
 import { useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
@@ -10,7 +12,7 @@ import { type AgentTree, type MoveTarget, checkMove, findFolder } from './tree-m
  * D131 · lane A · what the folder tree and the rows do to the shared sidebar
  * layout, through the same routes the classic sidebar uses (`/api/sidebar*`), each
  * with Undo: move an agent (drag, Move to folder… / M), pin / unpin, create /
- * rename / delete a folder, fold a folder. (Teammates are the Crews pages'.)
+ * rename / delete a folder (D141: optionally archiving its agents), fold a folder. (Teammates are the Crews pages'.)
  */
 
 /** Where a session sits, as a place input that puts it back exactly there. */
@@ -111,9 +113,24 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
   );
 
   const deleteFolder = useCallback(
-    async (id: string) => {
+    async (id: string, archive = false) => {
       const stored = layout.folders.find((f) => f.id === id);
       if (!stored) return;
+      // D141: with its subfolders, archiving the agents in them (Undo restores them and rebuilds the tree).
+      if (archive) {
+        const snapshot = snapshotFolderTree(layout, id);
+        try {
+          const result = await api.deleteSidebarFolderArchiving(id);
+          apply(result.layout);
+          toast({
+            text: folderArchiveResultText(stored.name, result, 'v2'),
+            ...(snapshot ? { undo: async () => apply(await undoFolderArchive(snapshot, result.archived.map((agent) => agent.sessionId))) } : {}),
+          });
+        } catch (error) {
+          toast({ text: errorText(error), tone: 'error' });
+        }
+        return;
+      }
       const parentId = stored.parentId ?? null;
       const siblings = layout.folders.filter((f) => (f.parentId ?? null) === parentId);
       const index = siblings.findIndex((f) => f.id === id);

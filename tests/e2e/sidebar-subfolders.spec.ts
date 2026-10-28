@@ -223,14 +223,20 @@ test('menus: Move to folder ▸ is the tree without the folder and its subfolder
   await target.click();
   await expect.poll(async () => (await layoutOf(page)).folders.find((f) => f.name === 'Reviews')?.sessionIds).toEqual([s]);
 
-  // Delete Work (it has a subfolder): the menu asks; Cancel goes back; the confirm moves Reviews up, with its session.
+  // Delete Work (it has a subfolder holding a session): D141's confirmation asks; Cancel keeps everything; unticked, the
+  // delete moves Reviews up, with its session (nothing archived).
   menu = await openFolderMenu(page, 'Work');
   await menu.getByTestId('sidebar-menu-delete').click();
-  await expect(menu.getByTestId('sidebar-menu-delete-confirm')).toContainText('1 subfolder');
-  await menu.getByTestId('sidebar-menu-delete-cancel').click();
-  await expect(menu.getByTestId('sidebar-menu-rename')).toBeVisible();
+  const confirm = page.getByTestId('folder-delete-confirm');
+  await expect(confirm.getByTestId('folder-delete-title')).toHaveText('Delete “Work” and archive its session?');
+  await confirm.getByTestId('folder-delete-cancel').click();
+  await expect(confirm).toHaveCount(0);
+  await expect.poll(() => treeOf(page)).toEqual(['-/Work', 'Work/Reviews', '-/Deep', '-/Later']);
+  menu = await openFolderMenu(page, 'Work');
   await menu.getByTestId('sidebar-menu-delete').click();
-  await menu.getByTestId('sidebar-menu-delete-confirm').click();
+  await confirm.getByTestId('folder-delete-archive').uncheck();
+  await expect(confirm.getByTestId('folder-delete-note')).toHaveText('Nothing is archived: its 1 subfolder and the sessions move to the top level.');
+  await confirm.getByTestId('folder-delete-go').click();
   await expect.poll(() => treeOf(page)).toEqual(['-/Reviews', '-/Deep', '-/Later']);
   expect((await layoutOf(page)).folders.find((f) => f.name === 'Reviews')?.sessionIds).toEqual([s]);
   await expect(row(page, s)).toHaveAttribute('data-group', 'folder');

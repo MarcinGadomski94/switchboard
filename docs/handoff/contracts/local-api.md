@@ -2279,3 +2279,17 @@ POST /api/machines/abcd2345efgh/api/updates/install { "version": "2.4.3" }
 → 409 { "error": "manual-restart", "message": "Can't update itself here: it doesn't run as its login service (Start at login). Update it there and restart it by hand." }
 → 429 { "error": "rate-limited", "message": "An update was asked for from a phone or another computer less than 10 minutes ago; try again in 6 min." }
 ```
+
+## Delete a folder and archive its agents (D141, 2026-10-28, additive; no migration)
+Developer request D141 (`docs/decisions.md`; details `docs/sidebar.md` → *Delete a folder and archive its agents (D141)*). Types in `src/core/sidebar-folder-archive.ts`. Additive; without the new query nothing changes meaning.
+
+- **`DELETE /api/sidebar/folders/{folderId}?archive=1`** (also `true`; `0` / `false` / absent = the D54 / D58 delete, answering `SidebarLayout` as before; anything else `422 { error: "invalid", errors: [{ field: "archive" }] }`; an unknown folder `404` before anything is archived). Archives every open session placed in the folder or its subfolders (any depth) through the close path (`confirm: true`; a paired computer's on that computer through the peer proxy), except the held-back ones, then deletes the folder and all its subfolders; every session placed in them goes to the end of the folder's parent (unplaced for a top-level folder). Publishes `sidebarLayoutChanged` once, plus each archived session's `sessionUpdated`.
+- **Answer** `SidebarFolderArchiveResult` `{ layout: SidebarLayout, archived: [{ sessionId, name, machine: string | null }], kept: [{ sessionId, name, machine, reason: "pinned" | "crew" | "plan" | "plan-step" | "offline" | "failed", message? }] }` (`machine` = the paired computer's name, `null` here; `message` on `failed`).
+- Allowed from a paired device like the plain delete; not on the peer API (as every sidebar route).
+
+```
+DELETE /api/sidebar/folders/6f1c…?archive=1
+→ 200 { "layout": { "pinned": [], "folders": […], "loose": […] },
+        "archived": [{ "sessionId": "0b7c…", "name": "Checkout fix", "machine": null }],
+        "kept": [{ "sessionId": "r~abcd2345efgh~5e1f…", "name": "Pricing", "machine": "studio-pc", "reason": "offline" }] }
+```

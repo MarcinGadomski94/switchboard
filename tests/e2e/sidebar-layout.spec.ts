@@ -250,6 +250,9 @@ test('keyboard path: Move to folder ▸, Move up / down, folder Rename / re-orde
   await page.getByTestId('sidebar-folder').filter({ hasText: 'Reviews' }).hover();
   await page.getByTestId('sidebar-folder').filter({ hasText: 'Reviews' }).getByTestId('sidebar-folder-menu').click();
   await page.getByTestId('sidebar-menu-delete').click();
+  // D141: a folder holding sessions asks whether to archive them too (ticked by default); unticked, they become loose as before.
+  await page.getByTestId('folder-delete-archive').uncheck();
+  await page.getByTestId('folder-delete-go').click();
   await expect(page.getByTestId('sidebar-folder')).toHaveCount(1);
   await expect.poll(async () => (await shown(page)).filter(([, g]) => g === 'loose').map(([id]) => id)).toEqual(all.map((s) => s.id));
 });

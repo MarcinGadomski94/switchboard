@@ -66,3 +66,29 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* D141: the folder delete's "Also archive the sessions in it" (FolderDeleteConfirm.tsx). */
+.sb-folder-archive-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-body);
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.sb-folder-archive-working,
+.sb-folder-archive-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-1);
+}
+
+.sb-folder-archive-names {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
