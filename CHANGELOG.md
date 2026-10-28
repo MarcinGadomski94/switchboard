@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.4 (2026-10-28)
+
+### v2 theme
+- **Bring in a terminal conversation:** + New › From a terminal (also ⌘K and Agents › Also) lists this computer's Claude Code conversations that never ran in Switchboard, newest first, searchable by folder, first message, name or id. Continue in Switchboard imports the chat and resumes the same conversation, waiting for you; it warns if the terminal may still have it open. Codex and OpenCode conversations behind the same switch as classic History.
+- **Compact crew cards:** teammates in a denser grid (four per row on a wide screen); the long job description scrolls in a three-line box.
+- **Pin a crew to the sidebar:** a crew's ⋯ › Pin to sidebar puts it under Pinned in the rail with its working and needs-you counts; the arrow expands it to its teammates. Pins sync to paired computers.
+
+### Fixes
+- The test helper for the fake Claude CLI no longer throws on multi-line JSON output, so CI reports green when every test passes.
+
 ## 2.4.3 (2026-10-27)
 
 ### Updates
