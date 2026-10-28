@@ -271,21 +271,25 @@ test.describe('an existing install (data from before the tutorial)', () => {
     expect(statusOf(before, 'project-graph')).toBe('pending');
     expect(statusOf(before, 'project-graph-fullscreen')).toBe('pending');
     expect(statusOf(before, 'remote-update')).toBe('pending');
+    expect(statusOf(before, 'crews-pin')).toBe('pending');
     expect(statusOf(before, 'graduated')).toBe('pending');
     await page.goto(server.baseUrl);
-    // The welcome, the redrawn Project graph (2.4.2), its full screen and D140's remote update (2.4.3): the four v2 tours, chained.
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 4)');
+    // The welcome, the redrawn Project graph (2.4.2), its full screen and D140's remote update (2.4.3), pinned crews (2.4.4): the five v2 tours, chained.
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Welcome to Switchboard 2 (1 of 5)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 4)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph, redrawn (2 of 5)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph in full screen (3 of 4)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · The Project graph in full screen (3 of 5)');
     await page.getByTestId('v2-tour-skip').click();
-    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Update your other computers from here (4 of 4)');
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Update your other computers from here (4 of 5)');
+    await page.getByTestId('v2-tour-skip').click();
+    await expect(card(page).getByTestId('v2-tour-kicker')).toHaveText('What’s new · Pin a crew to the sidebar (5 of 5)');
     await page.getByTestId('v2-tour-skip').click();
     await expect(page.getByTestId('v2-tour')).toHaveCount(0);
     expect(statusOf(await tutorialState(api), 'project-graph')).toBe('skipped');
     expect(statusOf(await tutorialState(api), 'project-graph-fullscreen')).toBe('skipped');
     expect(statusOf(await tutorialState(api), 'remote-update')).toBe('skipped');
+    expect(statusOf(await tutorialState(api), 'crews-pin')).toBe('skipped');
     await expect.poll(async () => statusOf(await tutorialState(api), 'two-themes')).toBe('skipped');
     const after = await tutorialState(api);
     expect(statusOf(after, V2_WELCOME_ID)).toBe('skipped');

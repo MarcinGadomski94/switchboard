@@ -62,7 +62,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
           </V2Link>
         );
       })}
-      <div className="v2-rail-pins" aria-label={WORDS.pinned} role="group" data-testid="v2-rail-pins">
+      <div className="v2-rail-pins" aria-label={WORDS.pinned} role="group" data-testid="v2-rail-pins" data-tour="v2-rail-pins">
         <h5>
           <Icon name="pin" size="s" />
           {WORDS.pinned}

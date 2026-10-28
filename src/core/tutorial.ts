@@ -149,6 +149,9 @@ const V2_4_2 = '2.4.2';
 /** The version the Project graph's full screen (Fixes after 2.0) and D140 (update Switchboard from a phone or another computer) ship in. */
 const V2_4_3 = '2.4.3';
 
+/** The version pinned crews and the compact teammate cards (Fixes after 2.0) ship in. */
+const V2_4_4 = '2.4.4';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1402,6 +1405,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-computer-update'],
         v2Route: '/settings/computers',
         missing: 'Pair another computer in Settings › Computers to see its version and Update. ',
+      },
+    ],
+  },
+  // Fixes after 2.0 (2.4.4): pin a crew to the v2 rail (docs/v2.md → Shell; docs/sidebar.md → Pinned crews).
+  {
+    id: 'crews-pin',
+    decision: 'D131',
+    version: V2_4_4,
+    title: 'Pin a crew to the sidebar',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'pin',
+        title: 'Your crews, one click away',
+        what: 'A crew’s ⋯ menu now has Pin to sidebar: the crew shows under Pinned in the left rail with how many of its teammates are working and how many need you. Its arrow opens the list of its teammates; click one to open its agent, or the crew to open its page. Pinned crews follow you to the computers you share the sidebar with. The teammate cards on a crew page are smaller too, and a long job description scrolls inside its card.',
+        todo: ['Open a crew, press ⋯ and choose Pin to sidebar.', 'Press the arrow next to the pinned crew to see its teammates.'],
+        anchors: ['v2-rail-pins', 'v2-nav-crews', 'v2-tab-more'],
+        v2Route: '/crews',
+        missing: 'Open Crews and pin a crew from its ⋯ menu. ',
       },
     ],
   },
