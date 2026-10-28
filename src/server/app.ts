@@ -79,6 +79,7 @@ import { CiGh } from './ci/gh.ts';
 import { PrWatcher, ciPollMs } from './ci/watcher.ts';
 import { ProcessService } from './processes/service.ts';
 import { processSessions, withTrackedProcesses } from './processes/wire.ts';
+import { DiffCache, diffFingerprint } from './worktrees/diff-cache.ts';
 import { platformScanner } from './processes/scan.ts';
 
 /** Options for {@link buildApp}. */
@@ -309,7 +310,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await processes.close();
   });
   // D127: the system reads (`GET /api/system`, the hub's `system` ticks) carry the footer's tracked-process totals.
-  const providers = withTrackedProcesses(options.providers ?? {}, processes);
+  const tracked = withTrackedProcesses(options.providers ?? {}, processes);
+  // D144: the Diff reads behind a per-session cache (the tab count and the detail's files never wait for git on a large tree).
+  const diffCache = tracked.diff ? (tracked.diff instanceof DiffCache ? tracked.diff : new DiffCache({ inner: tracked.diff, fingerprint: (sessionId) => diffFingerprint(options.store, sessionId) })) : null;
+  const providers: Providers = diffCache ? { ...tracked, diff: diffCache } : tracked;
+  if (diffCache) {
+    const stopDiffCache = diffCache.listen(bus);
+    app.addHook('onClose', async () => {
+      stopDiffCache();
+      await diffCache.stop();
+    });
+  }
   const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
   options.usage?.watchViewers(() => hub.clientCount);
   const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });

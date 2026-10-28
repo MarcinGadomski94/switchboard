@@ -327,14 +327,14 @@ export class EventRepository {
       )
       .all(afterId, sessionId, ...names);
     let lastId = afterId;
-    const paths: string[] = [];
+    const paths = new Set<string>();
     for (const row of rows) {
       const id = Number(row['id']);
       if (id > lastId) lastId = id;
       const value = row['p'];
-      if (typeof value === 'string' && value !== '' && !paths.includes(value)) paths.push(value);
+      if (typeof value === 'string' && value !== '') paths.add(value);
     }
-    return { paths, lastId };
+    return { paths: [...paths], lastId };
   }
 
   /** D96-q1: the session's tool call event (`payload.type` = `tool`) of a `tool_use` id, not its permission request or denial. */

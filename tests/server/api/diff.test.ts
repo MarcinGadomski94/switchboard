@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FileDiff } from '../../../src/core/api.ts';
 import { isDiffFilePath } from '../../../src/server/api/sessions.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -96,8 +96,15 @@ describe('GET /api/sessions/{id}/diff (M4.5)', () => {
     expect((committed.json() as FileDiff[]).map((f) => [f.path, f.uncommitted])).toEqual([['src/app.txt', false]]);
     expect((await get(`/api/sessions/${id}/diff?file=nope.txt`)).json()).toEqual([]);
 
-    // The session detail carries the same files.
-    const detail = (await get(`/api/sessions/${id}`)).json() as { files: FileDiff[] };
+    // The session detail carries the same files (D144: read in the background; `filesStale` until then).
+    const detail = await vi.waitFor(
+      async () => {
+        const answer = (await get(`/api/sessions/${id}`)).json() as { files: FileDiff[]; filesStale?: true };
+        expect(answer.filesStale).toBeUndefined();
+        return answer;
+      },
+      { timeout: 10_000, interval: 100 },
+    );
     expect(detail.files).toEqual(response.json());
     // Reading a diff never changes anyone's tree.
     expect(forbiddenGitCalls(await w.gitCalls())).toEqual([]);

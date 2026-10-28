@@ -389,9 +389,12 @@ export async function toSessionDetail(
   const events = await store.events.latest(record.id, DETAIL_EVENT_LIMIT);
   const artifacts = await store.artifacts.list({ sessionId: record.id });
   let files: FileDiff[] = [];
+  let filesStale = false;
   if (providers.diff) {
     try {
-      files = await providers.diff.diff(record.id);
+      // D144: the cached list (the detail never waits for git on a large working tree); the demo's provider reads it.
+      if (providers.diff.detailFiles) ({ files, stale: filesStale } = await providers.diff.detailFiles(record.id));
+      else files = await providers.diff.diff(record.id);
     } catch {
       files = [];
     }
@@ -401,6 +404,7 @@ export async function toSessionDetail(
     task: record.task,
     events: events.map(toEvent),
     files,
+    ...(filesStale ? { filesStale: true as const } : {}),
     artifacts: artifacts.map(toArtifact),
     questions: await sessionQuestions(store, record.id),
     reportedTable: await reportedTable(store, record.id, session.agents.find((agent) => agent.kind === 'main')?.id ?? null),

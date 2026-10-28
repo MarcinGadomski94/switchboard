@@ -40,6 +40,17 @@ const MAX_ENDS = 2_000;
 /** Memoized tree-to-tree path lists (trees are immutable, so a pair's answer never changes). */
 const MAX_PAIRS = 2_000;
 
+/** Sessions whose edited files are remembered (oldest dropped first). */
+const MAX_EDITED_SESSIONS = 500;
+
+/** One session's edited files, read incrementally. */
+interface EditedEntry {
+  readonly cwd: string | null;
+  lastId: number;
+  readonly files: Set<string>;
+  reading: Promise<void> | null;
+}
+
 /** The git the touched files need (the D80 helper; tests may pass their own). */
 export interface TouchedGit {
   snapshot(top: string): Promise<{ readonly tree: string }>;
@@ -94,6 +105,8 @@ export class SessionTouchedFiles {
   readonly #pending = new Map<string, Promise<string | null>>();
   readonly #pairs = new Map<string, readonly string[]>();
   readonly #status = new Map<string, SessionStatus>();
+  /** D144: per session, the canonical edited files read so far ({@link #editedCanonical}). */
+  readonly #edited = new Map<string, EditedEntry>();
   #unsubscribe: (() => void) | null = null;
 
   constructor(options: SessionTouchedFilesOptions) {
@@ -173,10 +186,8 @@ export class SessionTouchedFiles {
   async paths(session: Pick<SessionRecord, 'id' | 'cwd' | 'status'>, top: string): Promise<Set<string>> {
     const repo = await canonicalPath(top);
     const out = new Set<string>();
-    for (const written of await this.#store.events.editedFilePaths(session.id, EDIT_TOOLS)) {
-      const absolute = editedAbsolute(session, written);
-      if (absolute === null) continue;
-      const relative = insideRelative(repo, await canonicalPath(absolute));
+    for (const file of await this.#editedCanonical(session)) {
+      const relative = insideRelative(repo, file);
       if (relative !== null) out.add(relative);
     }
     // The listing of a just-ended turn's snapshots starts synchronously; wait for it.
@@ -209,6 +220,35 @@ export class SessionTouchedFiles {
       if (absolute !== null) files.push(await canonicalPath(absolute));
     }
     return { files, lastId };
+  }
+
+  /**
+   * D144: the canonical paths of every file the session's edit tools named, read
+   * incrementally (only the edit events stored since the last call; the canonical
+   * form of a path is resolved once). Before D144 each {@link paths} call scanned all
+   * the session's events and resolved every path again, once per working tree, on
+   * every Diff and count request.
+   */
+  async #editedCanonical(session: Pick<SessionRecord, 'id' | 'cwd'>): Promise<ReadonlySet<string>> {
+    let entry = this.#edited.get(session.id);
+    if (!entry || entry.cwd !== session.cwd) {
+      entry = { cwd: session.cwd, lastId: 0, files: new Set(), reading: null };
+      this.#edited.set(session.id, entry);
+      if (this.#edited.size > MAX_EDITED_SESSIONS) this.#edited.delete(this.#edited.keys().next().value as string);
+    }
+    const current = entry;
+    // One read at a time per session: concurrent callers share it (the event ids only move forward).
+    current.reading ??= (async () => {
+      try {
+        const { files, lastId } = await this.editedFilesAfter(session, current.lastId);
+        for (const file of files) current.files.add(file);
+        current.lastId = lastId;
+      } finally {
+        current.reading = null;
+      }
+    })();
+    await current.reading;
+    return current.files;
   }
 
   /** The session's turn checkpoints in `repo` (one per turn, oldest first). */

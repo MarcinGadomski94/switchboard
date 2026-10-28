@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DiffCount, DiffTargets, FileDiff } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { CheckpointGit } from '../../../src/server/checkpoints/git.ts';
@@ -139,7 +139,15 @@ describe('GET /api/sessions/{id}/diff?scope= (D90)', () => {
       ['notes/new.md', true],
       ['src/app.txt', false],
     ]);
-    const detail = (await get(`/api/sessions/${id}`)).json() as { files: FileDiff[] };
+    // D144: the detail's files are read in the background (`filesStale` until then).
+    const detail = await vi.waitFor(
+      async () => {
+        const answer = (await get(`/api/sessions/${id}`)).json() as { files: FileDiff[]; filesStale?: true };
+        expect(answer.filesStale).toBeUndefined();
+        return answer;
+      },
+      { timeout: 10_000, interval: 100 },
+    );
     expect(detail.files.map((f) => f.path)).toEqual(['README.md', 'notes/new.md', 'src/app.txt']);
     // ?file= works in each scope.
     expect(await paths(`/api/sessions/${id}/diff?scope=branch&file=src/app.txt`)).toEqual(['web-front:src/app.txt']);
