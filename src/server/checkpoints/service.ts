@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import {
   CHECKPOINT_FILES_SHOWN,
@@ -24,6 +25,7 @@ import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { CheckpointGit, type TreeSnapshot } from './git.ts';
+import { mapLimit } from '../map-limit.ts';
 
 /** Why a revert / Redo was refused (the API's `{ error, message }`). */
 export type CheckpointErrorCode = 'not-found' | 'no-checkpoint' | 'turn-running' | 'hooked-unavailable' | 'files-only-needed' | 'nothing-to-redo' | 'revert-failed';
@@ -87,6 +89,9 @@ export interface CheckpointServiceOptions {
   readonly pruneIntervalMs?: number;
   readonly onError?: (error: unknown) => void;
 }
+
+/** D144: working trees read or snapshotted at once before a turn (half the cores, 2 to 8). */
+export const CAPTURE_CONCURRENCY = Math.max(2, Math.min(8, Math.floor(os.availableParallelism() / 2)));
 
 /** Why a session gets no checkpoints, as the turn action says it. */
 export const UNSUPPORTED = {
@@ -171,11 +176,11 @@ export class CheckpointService {
 
   /** The top-level folders of the git working trees the session uses (its cwd's first, unless `includeCwd` is off), without duplicates. */
   async treesOf(session: SessionRecord): Promise<string[]> {
+    const dirs = [...(this.#includeCwd && session.cwd ? [session.cwd] : []), ...(await this.#foldersOf(session))];
+    // D144: a few at a time (a session can use dozens of working trees), in their order.
+    const found = await mapLimit(dirs, CAPTURE_CONCURRENCY, (dir) => this.#git.toplevel(dir).catch(() => null));
     const tops: string[] = [];
-    for (const dir of [...(this.#includeCwd && session.cwd ? [session.cwd] : []), ...(await this.#foldersOf(session))]) {
-      const top = await this.#git.toplevel(dir).catch(() => null);
-      if (top !== null && !tops.includes(top)) tops.push(top);
-    }
+    for (const top of found) if (top !== null && !tops.includes(top)) tops.push(top);
     return tops;
   }
 
@@ -193,16 +198,18 @@ export class CheckpointService {
       // D106: a chat changes no files: no checkpoints.
       if (!session || session.hooked || session.kind === 'chat') return null;
       return await this.#exclusive(sessionId, async () => {
-        const items: Array<{ snapshot: TreeSnapshot; sha: string }> = [];
-        for (const top of await this.treesOf(session)) {
+        // D144: the working trees are snapshotted a few at a time (each its own repository or worktree), in their order.
+        const taken = await mapLimit(await this.treesOf(session), CAPTURE_CONCURRENCY, async (top) => {
           try {
             const snapshot = await this.#git.snapshot(top);
-            items.push({ snapshot, sha: await this.#commitOf(sessionId, snapshot, `Switchboard checkpoint before a turn of session ${sessionId}`) });
+            return { snapshot, sha: await this.#commitOf(sessionId, snapshot, `Switchboard checkpoint before a turn of session ${sessionId}`) };
           } catch (error) {
             this.#problems.set(sessionId, `The last checkpoint of ${path.basename(top)} failed: ${error instanceof Error ? error.message : String(error)}`);
             this.#onError(error);
+            return null;
           }
-        }
+        });
+        const items = taken.filter((item): item is { snapshot: TreeSnapshot; sha: string } => item !== null);
         return items.length > 0 ? { sessionId, groupId: randomUUID(), items } : null;
       });
     } catch (error) {

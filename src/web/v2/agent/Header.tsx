@@ -74,7 +74,8 @@ export interface AgentHeaderProps {
   /** The side panel is shown (desktop) or open (tablet drawer / phone sheet). */
   readonly sideShown: boolean;
   readonly onToggleSide: () => void;
-  readonly counts: { readonly changes: number | null; readonly results: number; readonly helpers: number };
+  /** D144: `changes` may be a label while it is counted again ("3…", "…"). */
+  readonly counts: { readonly changes: number | string | null; readonly results: number; readonly helpers: number };
   readonly phone: boolean;
 }
 
@@ -126,7 +127,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
       },
     );
   };
-  const tabs: Array<{ id: AgentTab; label: string; icon: string; count?: number }> = data.conversation
+  const tabs: Array<{ id: AgentTab; label: string; icon: string; count?: number | string }> = data.conversation
     ? [
         { id: 'chat', label: AGENT_TAB_LABELS.chat, icon: 'chat' },
         { id: 'results', label: AGENT_TAB_LABELS.results, icon: 'results', ...(counts.results ? { count: counts.results } : {}) },

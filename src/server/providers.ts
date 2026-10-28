@@ -30,6 +30,12 @@ export interface DiffProvider {
    * patches; absent → the route counts `diff()`'s answer.
    */
   count?(sessionId: string, scope: DiffScope): Promise<DiffCount>;
+  /**
+   * D144: `SessionDetail.files` (the whole branch) without waiting for git: the last
+   * list read and whether it is `stale` (a read runs in the background); absent → the
+   * detail reads {@link diff} (the demo's).
+   */
+  detailFiles?(sessionId: string): Promise<{ readonly files: FileDiff[]; readonly stale: boolean }>;
 }
 
 /**

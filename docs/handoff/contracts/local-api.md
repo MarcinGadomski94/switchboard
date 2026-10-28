@@ -2325,4 +2325,17 @@ GET /api/inbox   (on the Mac; the item is the PC's)
 ```
 PUT /api/settings { "worktrees.autoCleanRemote": false }
 → 200 { "worktrees.autoClean": true, "worktrees.autoCleanRemote": false, "worktrees.autoCleanRecord": { "cleaned": 3, "lastCleanedAt": "2026-10-28T13:02:00.000Z", "recent": [], "kept": [] }, "…": "…" }
+## Cached Diff counts and detail files (D144, 2026-10-28, additive; no migration)
+Found on the developer's machine (`docs/decisions.md` → D144; details `docs/worktrees.md` → *Cached counts (D144)*): a session in a large non-git root with many working trees took seconds per detail and up to minutes per Diff count. The count and the detail's files are now answered from a per-session cache; nothing else changes meaning.
+
+- **`DiffCount.stale?: true` and `DiffCount.at?: string | null`** (`GET /api/sessions/{id}/diff/count`): `stale` = the number is the last one counted, not yet of the session's latest change (a count runs in the background), or none was counted yet (`files: 0`, `at: null`); `at` = when the number shown was counted (ISO 8601). Absent = fresh. Ask again for the fresh number (the UI does after 1 s, doubling to 8 s). A client that ignores them sees the last number, as a slower answer would have given.
+- **`SessionDetail.filesStale?: true`** (`GET /api/sessions/{id}`): `files` is the last list read (empty when none was read yet), not yet of the latest change; the detail no longer waits for git beyond a few milliseconds. Absent = fresh.
+- `GET …/diff` and `GET …/diff/targets` are unchanged (read on each ask; identical concurrent asks share one read).
+- Peers and devices pass the fields through like any other; a machine before D144 never sends them.
+
+```
+GET /api/sessions/0b7c…/diff/count?scope=head
+→ 200 { "scope": "head", "files": 3, "stale": true, "at": "2026-10-28T10:00:00.000Z" }
+GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
+→ 200 { "scope": "head", "files": 4 }
 ```

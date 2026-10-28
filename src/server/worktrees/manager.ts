@@ -47,6 +47,7 @@ import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { SessionRepos } from './session-repos.ts';
 import { SessionTouchedFiles } from './touched.ts';
 import { toWorktree } from './wire.ts';
+import { mapLimit } from '../map-limit.ts';
 import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
 import { recordCreatedBranch } from '../cleanup/created-branches.ts';
 
@@ -131,7 +132,7 @@ export interface WorktreeManagerOptions {
    * `fetch` bounds the git calls that reach origin over the network (`git fetch`,
    * `git ls-remote`; default 60 s).
    */
-  readonly timeouts?: { readonly git?: number; readonly gh?: number; readonly fetch?: number };
+  readonly timeouts?: { readonly git?: number; readonly gh?: number; readonly fetch?: number; readonly diff?: number };
   /** Called when a background step fails (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
 }
@@ -268,6 +269,18 @@ export const DEFAULT_PR_POLL_MS = 5 * 60_000;
 /** Untracked files bigger than this are listed without their lines. */
 export const UNTRACKED_READ_LIMIT = 1024 * 1024;
 
+/** D144: working trees a Diff, count or targets read reads at once. */
+export const DIFF_TARGET_CONCURRENCY = 4;
+
+/** D144: up to this many touched files are passed to git as pathspecs (more: git reads the whole tree, the list filters). */
+export const TOUCHED_PATHSPEC_LIMIT = 200;
+
+/** D144: the touched files as literal pathspecs, so git reads only them; none (the whole tree) without a set or for a large one. */
+export function touchedPathspec(touched: ReadonlySet<string> | null): string[] {
+  if (touched === null || touched.size === 0 || touched.size > TOUCHED_PATHSPEC_LIMIT) return [];
+  return [...touched].sort().map((relative) => `:(literal)${relative}`);
+}
+
 interface Plan {
   readonly solution: string;
   readonly repoPath: string;
@@ -350,6 +363,8 @@ export class WorktreeManager implements DiffProvider {
   readonly #ghTimeout: number;
   readonly #onError: (error: unknown) => void;
   readonly #fetchTimeout: number;
+  /** D144: ms before one of the Diff's git reads is killed (default 60 s). */
+  readonly #diffTimeout: number;
   readonly #listeners = new Set<Listener>();
   /** D47: `parentMerged` listeners. */
   readonly #parentListeners = new Set<ParentMergedListener>();
@@ -378,6 +393,7 @@ export class WorktreeManager implements DiffProvider {
     this.#gitTimeout = options.timeouts?.git ?? 120_000;
     this.#ghTimeout = options.timeouts?.gh ?? 30_000;
     this.#fetchTimeout = options.timeouts?.fetch ?? 60_000;
+    this.#diffTimeout = options.timeouts?.diff ?? 60_000;
     this.#onError = options.onError ?? ((error) => console.error('switchboard worktrees:', error));
     this.touched = new SessionTouchedFiles({ store: this.#store, env: this.#env, onError: this.#onError });
     this.repos = new SessionRepos({ store: this.#store, touched: this.touched });
@@ -1411,16 +1427,17 @@ export class WorktreeManager implements DiffProvider {
   async diff(sessionId: string, file?: string, scope: DiffScope = 'branch'): Promise<FileDiff[]> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
-    const files: FileDiff[] = [];
-    for (const target of await this.#diffTargets(session)) {
+    // D144: a few working trees at a time (a session can use dozens), answers in the targets' order.
+    const per = await mapLimit(await this.#diffTargets(session), DIFF_TARGET_CONCURRENCY, async (target) => {
       try {
         const touched = scope === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
-        files.push(...(await this.#diffTarget(target, file, scope === 'branch' && target.worktree, touched)));
+        return await this.#diffTarget(target, file, scope === 'branch' && target.worktree, touched);
       } catch (error) {
         this.#onError(error);
+        return [];
       }
-    }
-    return files;
+    });
+    return per.flat();
   }
 
   /**
@@ -1431,22 +1448,28 @@ export class WorktreeManager implements DiffProvider {
   async targets(sessionId: string): Promise<DiffTargets> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return { worktrees: [], inPlace: [] };
-    const worktrees: Array<DiffTargets['worktrees'][number]> = [];
-    const inPlace: Array<DiffTargets['inPlace'][number]> = [];
-    for (const target of await this.#diffTargets(session)) {
+    type Row = { readonly worktree: DiffTargets['worktrees'][number] } | { readonly inPlace: DiffTargets['inPlace'][number] } | null;
+    const rows = await mapLimit(await this.#diffTargets(session), DIFF_TARGET_CONCURRENCY, async (target): Promise<Row> => {
       try {
-        if (!(await isDirectory(target.dir))) continue;
+        if (!(await isDirectory(target.dir))) return null;
         if (target.worktree) {
           const base = target.baseRef === null ? null : await this.#mergeBase(target.dir, target.baseRef);
-          const count = base === null ? null : await this.#runGit(target.dir, ['rev-list', '--count', `${base}..HEAD`]);
+          const count = base === null ? null : await this.#runDiffGit(target.dir, ['rev-list', '--count', `${base}..HEAD`]);
           const commits = count !== null && succeeded(count) ? Number.parseInt(count.stdout.trim(), 10) || 0 : 0;
-          worktrees.push({ solution: target.solution, branch: target.branch ?? '', base: target.baseRef, commits });
-        } else {
-          inPlace.push({ solution: target.solution, branch: await this.#currentBranch(target.dir) });
+          return { worktree: { solution: target.solution, branch: target.branch ?? '', base: target.baseRef, commits } };
         }
+        return { inPlace: { solution: target.solution, branch: await this.#currentBranch(target.dir) } };
       } catch (error) {
         this.#onError(error);
+        return null;
       }
+    });
+    const worktrees: Array<DiffTargets['worktrees'][number]> = [];
+    const inPlace: Array<DiffTargets['inPlace'][number]> = [];
+    for (const row of rows) {
+      if (row === null) continue;
+      if ('worktree' in row) worktrees.push(row.worktree);
+      else inPlace.push(row.inPlace);
     }
     return { worktrees, inPlace };
   }
@@ -1462,32 +1485,35 @@ export class WorktreeManager implements DiffProvider {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return { scope: 'head', files: 0 };
     // The working trees that exist, as `targets()` lists them (so the view is the tab's).
-    const targets: DiffTarget[] = [];
-    for (const target of await this.#diffTargets(session)) if (await isDirectory(target.dir)) targets.push(target);
+    const all = await this.#diffTargets(session);
+    const exists = await mapLimit(all, DIFF_TARGET_CONCURRENCY, (target) => isDirectory(target.dir));
+    const targets = all.filter((_, index) => exists[index] === true);
     const shown = offeredDiffScope(scope, { worktrees: targets.filter((t) => t.worktree), inPlace: targets.filter((t) => !t.worktree) });
-    let files = 0;
-    for (const target of targets) {
+    const counts = await mapLimit(targets, DIFF_TARGET_CONCURRENCY, async (target) => {
       try {
         const touched = shown === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
-        files += await this.#countTarget(target, shown === 'branch' && target.worktree, touched);
+        return await this.#countTarget(target, shown === 'branch' && target.worktree, touched);
       } catch (error) {
         this.#onError(error);
+        return 0;
       }
-    }
-    return { scope: shown, files };
+    });
+    return { scope: shown, files: counts.reduce((sum, n) => sum + n, 0) };
   }
 
   /** {@link #diffTarget}'s file count from names only. */
   async #countTarget(target: DiffTarget, wholeBranch: boolean, touched: ReadonlySet<string> | null): Promise<number> {
     if (!(await isDirectory(target.dir))) return 0;
-    const head = await this.#runGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    const head = await this.#runDiffGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (!succeeded(head) || head.stdout.trim() === '') return 0;
     if (touched !== null && touched.size === 0) return 0;
     let base = head.stdout.trim();
     if (wholeBranch && target.baseRef !== null) base = (await this.#mergeBase(target.dir, target.baseRef)) ?? base;
-    const names = await this.#runGit(target.dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, '--']);
+    // D144: only the session's own files are counted in place: git reads only them (no walk of every untracked folder).
+    const scoped = touchedPathspec(touched);
+    const names = await this.#runDiffGit(target.dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, '--', ...scoped]);
     if (!succeeded(names)) throw new WorktreeError('git-failed', `git diff --name-only failed in ${target.dir}: ${failureText(names)}`);
-    const untracked = await this.#runGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', '--']);
+    const untracked = await this.#runDiffGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...scoped]);
     if (!succeeded(untracked)) throw new WorktreeError('git-failed', `git ls-files failed in ${target.dir}: ${failureText(untracked)}`);
     const keep = (relative: string): boolean => touched === null || touched.has(relative);
     return new Set([...splitNulList(names.stdout), ...splitNulList(untracked.stdout)].filter(keep)).size;
@@ -1507,13 +1533,13 @@ export class WorktreeManager implements DiffProvider {
 
   /** The merge-base of `ref` and HEAD, `null` when it does not resolve. */
   async #mergeBase(dir: string, ref: string): Promise<string | null> {
-    const mergeBase = await this.#runGit(dir, ['merge-base', ref, 'HEAD']);
+    const mergeBase = await this.#runDiffGit(dir, ['merge-base', ref, 'HEAD']);
     return succeeded(mergeBase) && mergeBase.stdout.trim() !== '' ? mergeBase.stdout.trim() : null;
   }
 
   /** The checked-out branch, `null` when detached. */
   async #currentBranch(dir: string): Promise<string | null> {
-    const symbolic = await this.#runGit(dir, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const symbolic = await this.#runDiffGit(dir, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
     return succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : null;
   }
 
@@ -1524,15 +1550,16 @@ export class WorktreeManager implements DiffProvider {
    */
   async #diffTarget(target: DiffTarget, file: string | undefined, wholeBranch: boolean, touched: ReadonlySet<string> | null): Promise<FileDiff[]> {
     if (!(await isDirectory(target.dir))) return [];
-    const head = await this.#runGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    const head = await this.#runDiffGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (!succeeded(head) || head.stdout.trim() === '') return [];
     if (touched !== null && touched.size === 0) return [];
     const headSha = head.stdout.trim();
     let base = headSha;
     if (wholeBranch && target.baseRef !== null) base = (await this.#mergeBase(target.dir, target.baseRef)) ?? headSha;
     const branch = target.branch ?? (await this.#currentBranch(target.dir));
-    const pathspec = file === undefined ? ['--'] : ['--', `:(literal)${file}`];
-    const patch = await this.#runGit(target.dir, [
+    // D144: in place, git reads only the session's own files (no walk of every untracked folder).
+    const pathspec = file === undefined ? ['--', ...touchedPathspec(touched)] : ['--', `:(literal)${file}`];
+    const patch = await this.#runDiffGit(target.dir, [
       '-c',
       'core.quotePath=false',
       'diff',
@@ -1548,7 +1575,7 @@ export class WorktreeManager implements DiffProvider {
     if (!succeeded(patch)) throw new WorktreeError('git-failed', `git diff failed in ${target.dir}: ${failureText(patch)}`);
     const keep = (relative: string): boolean => touched === null || touched.has(relative);
     const parsed: PatchFile[] = parsePatch(patch.stdout).filter((entry) => keep(entry.path));
-    const untracked = await this.#runGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', ...pathspec]);
+    const untracked = await this.#runDiffGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', ...pathspec]);
     if (!succeeded(untracked)) throw new WorktreeError('git-failed', `git ls-files failed in ${target.dir}: ${failureText(untracked)}`);
     const untrackedPaths = new Set(splitNulList(untracked.stdout).filter(keep));
     for (const relative of untrackedPaths) parsed.push(await this.#untracked(target.dir, relative));
@@ -1560,7 +1587,7 @@ export class WorktreeManager implements DiffProvider {
 
   /** Tracked files whose working tree or index differs from HEAD (`FileDiff.uncommitted`). */
   async #changedSinceHead(dir: string, pathspec: readonly string[]): Promise<Set<string>> {
-    const changed = await this.#runGit(dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', 'HEAD', ...pathspec]);
+    const changed = await this.#runDiffGit(dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', 'HEAD', ...pathspec]);
     if (!succeeded(changed)) throw new WorktreeError('git-failed', `git diff --name-only failed in ${dir}: ${failureText(changed)}`);
     return new Set(splitNulList(changed.stdout));
   }
@@ -1601,6 +1628,16 @@ export class WorktreeManager implements DiffProvider {
       timeoutMs,
     };
     return runCommand(this.#git, args, options);
+  }
+
+  /**
+   * D144: the Diff's and its count's read-only git: never takes an optional lock
+   * (`--no-optional-locks`: no index refresh written), never starts or asks a file
+   * system monitor (`core.fsmonitor=false`: no daemon left behind by a read), and is
+   * bounded by the diff timeout.
+   */
+  #runDiffGit(cwd: string, args: readonly string[]): Promise<RunResult> {
+    return this.#runGit(cwd, ['--no-optional-locks', '-c', 'core.fsmonitor=false', ...args], this.#diffTimeout);
   }
 
   #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {

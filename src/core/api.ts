@@ -1243,6 +1243,14 @@ export interface DiffTargets {
 export interface DiffCount {
   readonly scope: DiffScope;
   readonly files: number;
+  /**
+   * Additive (D144): the number is the last one counted, not yet of the session's
+   * latest change (a count runs in the background), or none was counted yet
+   * (`files` 0, `at` `null`). Ask again for the fresh number. Absent = fresh.
+   */
+  readonly stale?: true;
+  /** Additive (D144), with `stale`: when the number shown was counted (ISO 8601), `null` when none was yet. */
+  readonly at?: string | null;
 }
 
 /** D90: the view the Diff tab shows for a remembered `scope` once the targets are known (the server's and the tab's rule). */
@@ -1352,6 +1360,12 @@ export interface SessionDetail extends Session {
   readonly task: string;
   readonly events: readonly SessionEvent[];
   readonly files: readonly FileDiff[];
+  /**
+   * Additive (D144): `files` is the last list read (or empty when none was read yet),
+   * not yet of the session's latest change: the detail never waits for git on a large
+   * working tree; the list is read in the background. Absent = fresh.
+   */
+  readonly filesStale?: true;
   /** D89: the session's saved artifacts, newest first (no content). */
   readonly artifacts: readonly Artifact[];
   /**

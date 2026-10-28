@@ -193,6 +193,20 @@ The Timeline tab (`TimelineTab.tsx`, `timeline.ts`) shows the session's **last 5
 - `tests/core/loops.test.ts` (*loopPayloadEssentials*), `tests/server/db/event-memo.test.ts` (revisions, the change log, `EventMemo`, the turn count, the agents cache), `tests/server/db/maintenance.test.ts`, `tests/server/api/sessions.test.ts` (*D95 pages*), `tests/web/session-loading.test.ts` (*the chat window*: cursor, `inWindow`, older pages, trimming, the cache budget), `tests/web/chat.test.ts` (trailing batches), `tests/web/undo.test.ts` (`checkpointsKey`).
 - Unchanged and still green: `typing-long-chat.spec.ts` (no message re-renders while typing), `session-loading.spec.ts`, `subagent-chat.spec.ts`, `session-chat.spec.ts`, `undo.spec.ts`, `drafts.spec.ts`.
 
+### Large non-git roots (D144)
+A session in a big folder that is no repository (80 GB, 405,000 files, one declared solution, 89 agent worktrees under the solution's `.claude/worktrees`, 10,627 events) took a median 3.2 s per detail, 11 s per Diff count (up to 125 s), ~2 min per full diff and 5.1 s per sent message on the developer's machine; every other session answered in 0.2 to 1.2 s. Cause: the session's working trees include every repo it edited (`docs/worktrees.md` → *Which repositories*), and every detail, count and diff read all of them **one after another**, re-reading all the session's edit events and resolving every edited path again **for each working tree**; the agent views asked again on every `/hub` event (throttled) and dropped the answer in flight, and each message waited for a checkpoint of every working tree, one at a time. Fix: the count and the detail's files come from a per-session cache with one computation in flight (`docs/worktrees.md` → *Cached counts (D144)*), working trees are read and snapshotted a few at a time, the edited paths are read once per session, git reads only the touched files in place, and the clients never drop a load in flight (`SingleFlight`).
+
+Synthetic tree (`tests/server/perf/large-root-bench.test.ts`, `SB_BENCH=1 SB_WT=40`: 20,000 sibling files incl. a fake `node_modules`, one solution repo, 40 agent worktrees with 1,000 `node_modules` files each that the session edited in, 10,000 events; real git, Apple silicon, 12 cores):
+
+| | before | after |
+|---|---|---|
+| `GET /api/sessions/{id}` (median of 6) | 3.0 s | 63 ms (first 91 ms) |
+| `GET …/diff/count` Since last commit (median) | 17.3 s | 0 ms (first 1.5 s, `stale`, counted in the background) |
+| `GET …/diff/count?scope=repo` (median) | 2.5 s | 0 ms (first 0.7 s) |
+| `GET …/diff?scope=head` (median) | 18.0 s | 0.85 s |
+| 20 details + 20 counts at once after an event | 133 s | 0.16 s |
+| checkpoint before a turn (41 working trees) | 5.6 s | 0.9 to 1.9 s |
+
 ## Remaining hotspots
 - ~~**`sessionUpdated` size.**~~ Done in the follow-ups (*Agent deltas*, *Heavy fields only when they change*): 27.1 → 0.81 MB per 100 turns on the page's stream.
 - ~~**The Timeline tab**~~ Done in the follow-up (*Windowed Timeline*).

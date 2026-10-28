@@ -11,6 +11,7 @@ import {
   REPO_NOTE,
   SCOPE_LABELS,
   deltaText,
+  diffCountShown,
   diffTabCount,
   emptyState,
   headerLine,
@@ -211,6 +212,15 @@ describe('Diff tab count (D90 ruling)', () => {
     expect(diffTabCount(null, true, 5)).toBe(5);
     expect(diffTabCount(null, false, 5)).toBeNull();
     expect(diffTabCount(null, true, null)).toBeNull();
+  });
+
+  it('D144: while the server counts again, the last number shows with "…"; "…" alone without one or for 0', () => {
+    expect(diffCountShown(3, false)).toBe(3);
+    expect(diffCountShown(0, false)).toBe(0);
+    expect(diffCountShown(null, false)).toBeNull();
+    expect(diffCountShown(3, true)).toBe('3…');
+    expect(diffCountShown(0, true)).toBe('…');
+    expect(diffCountShown(null, true)).toBe('…');
   });
 
   it('the server counts the view the tab shows (offeredDiffScope = scopeOptions)', () => {

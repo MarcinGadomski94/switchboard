@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
+import { SingleFlight } from '../../api/single-flight.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { upsertEvent } from './chat.ts';
 import { CHAT_EVENTS_PAGE, type LoadState, PlaceholderDelay, aroundWindow, byTime, inWindow, mergeFetchedEvents, pageCursor, sessionCache, withNewerPage, withOlderPage } from './session-loading.ts';
@@ -120,26 +121,42 @@ export function useSessionData(sessionId: string, wantEvents: boolean, focusEven
   /** Events streamed for the session while its events fetch runs. */
   const streamed = useRef<{ readonly id: string; readonly list: SessionEvent[] } | null>(null);
 
+  // D144: one detail load at a time per session, never dropped for a newer one: a reload asked while it is on its
+  // way runs once after it (a slow detail on a busy agent used to be restarted by every event and never land).
+  const detailLoads = useRef<{ readonly id: string; readonly flight: SingleFlight } | null>(null);
   useEffect(() => {
     let cancelled = false;
-    api.getSession(sessionId).then(
-      (data) => {
-        if (cancelled) return;
-        sessionCache.putDetail(sessionId, data);
-        setDetail({ id: sessionId, data, error: null });
-      },
-      (caught: unknown) => {
-        if (cancelled) return;
-        const error = asApiError(caught);
-        // A session that is gone leaves the cache; any other failure keeps what is shown (a background refresh failed).
-        const gone = error.status === 404;
-        if (gone) sessionCache.drop(sessionId);
-        setDetail((current) => ({ id: sessionId, data: gone ? null : (current.id === sessionId ? current : cachedDetail(sessionId)).data, error }));
-      },
+    const flight = new SingleFlight(() =>
+      api.getSession(sessionId).then(
+        (data) => {
+          if (cancelled) return;
+          sessionCache.putDetail(sessionId, data);
+          setDetail({ id: sessionId, data, error: null });
+        },
+        (caught: unknown) => {
+          if (cancelled) return;
+          const error = asApiError(caught);
+          // A session that is gone leaves the cache; any other failure keeps what is shown (a background refresh failed).
+          const gone = error.status === 404;
+          if (gone) sessionCache.drop(sessionId);
+          setDetail((current) => ({ id: sessionId, data: gone ? null : (current.id === sessionId ? current : cachedDetail(sessionId)).data, error }));
+        },
+      ),
     );
+    detailLoads.current = { id: sessionId, flight };
+    flight.run();
     return () => {
       cancelled = true;
+      flight.close();
+      if (detailLoads.current?.flight === flight) detailLoads.current = null;
     };
+  }, [sessionId]);
+  const seenTick = useRef(tick);
+  useEffect(() => {
+    if (tick === seenTick.current) return;
+    seenTick.current = tick;
+    const loads = detailLoads.current;
+    if (loads?.id === sessionId) loads.flight.run();
   }, [sessionId, tick]);
 
   // D97: a result of a search opened while the session is on screen: around it, unless the window holds it.
