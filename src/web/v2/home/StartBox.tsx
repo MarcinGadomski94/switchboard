@@ -227,7 +227,7 @@ export function StartBox({ phone, takenNames, events }: { readonly phone: boolea
             {selfName}
           </span>
         )}
-        <label className="v2-home-picker" title={modelField.reason ?? HOME_WORDS.model}>
+        <label className="v2-home-picker" title={modelField.reason ?? HOME_WORDS.model} data-tour="v2-start-model">
           <Icon name="sparkle" size="s" />
           <span className="v2-sr">{HOME_WORDS.model}</span>
           <select value={modelField.model} disabled={modelField.disabled} onChange={(event) => setPicked(pickModel(choice, modelOptions, event.currentTarget.value))} data-testid="v2-start-model">
