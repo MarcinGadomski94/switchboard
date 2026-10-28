@@ -47,17 +47,23 @@ describe('the v2 welcome tour', () => {
     expect(welcome?.steps.find((step) => step.id === 'appearance')?.anchors).toEqual(['v2-theme']);
   });
 
-  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update and Bring in a terminal conversation; the classic What’s new gains the theme switch', () => {
+  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation and pinned crews; the classic What’s new gains the theme switch', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin']);
     // D16 in v2 (2.4.4): one step, on Agents' "Bring in from a terminal", else the + New button.
     const bringIn = WHATS_NEW.find((feature) => feature.id === 'bring-in-terminal');
     expect(bringIn?.version).toBe('2.4.4');
     expect(bringIn?.ui).toBe('v2');
     expect(bringIn?.steps.map((step) => step.anchors)).toEqual([['v2-tree-bring-in', 'v2-new']]);
     expect(bringIn?.steps[0]?.v2Route).toBe('/agents');
+    // Pinned crews (2.4.4): one step, on the rail's Pinned list, else Crews in the rail or More.
+    const crews = WHATS_NEW.find((feature) => feature.id === 'crews-pin');
+    expect(crews?.version).toBe('2.4.4');
+    expect(crews?.ui).toBe('v2');
+    expect(crews?.steps.map((step) => step.anchors)).toEqual([['v2-rail-pins', 'v2-nav-crews', 'v2-tab-more']]);
+    expect(crews?.steps[0]?.v2Route).toBe('/crews');
     // D140 (2.4.3): one step, on a paired computer's update line in Settings › Computers.
     const remote = WHATS_NEW.find((feature) => feature.id === 'remote-update');
     expect(remote?.version).toBe('2.4.3');

@@ -11,11 +11,13 @@ import { Avatar, Button, ComputerTag, EmptyState, Icon, IconButton, MenuButton, 
 import { CREW_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { AnswerCard } from '../shared/AnswerCard.tsx';
+import { useCrewPins } from '../shared/crew-pins.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
 import { useOpenAgent } from '../shared/open-agent.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { clock } from '../shared/time.ts';
 import { AccessPanel } from './AccessPanel.tsx';
+import { ScrollText } from './ScrollText.tsx';
 import { ArchivedLine, CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
 import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
 import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
@@ -175,7 +177,7 @@ function CharterProposalBlock({ member, onEdit }: { readonly member: TeamMember;
   );
 }
 
-/** One teammate's card on its crew page. */
+/** One teammate's card on its crew page (2.4.4: compact; the job description scrolls in a three-line box). */
 function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { readonly member: TeamMember; readonly status: V2Status; readonly needs: readonly NeedsItem[]; readonly menu: MenuItem[]; readonly onOverlay: (overlay: Overlay) => void; readonly onDetails: (tab: TeammateTab) => void }) {
   const meter = budgetMeter(member);
   const offline = member.status === 'offline';
@@ -185,14 +187,16 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { r
         <Avatar name={member.name} shape="square" status={status} />
         <div className="v2-grow">
           <h3 className="v2-c-mate-name">{member.name}</h3>
-          <span className="v2-muted v2-c-small">{rhythmText(member)}</span>
+          <span className="v2-muted v2-c-small v2-c-ellipsis v2-c-block" title={rhythmText(member)}>
+            {rhythmText(member)}
+          </span>
         </div>
         <StatusBadge status={status} size="s" />
         <MenuButton items={menu} label={`Actions for ${member.name}`} testId="v2-teammate-menu" />
       </div>
-      <p className="v2-c-jd" data-testid="v2-teammate-jd">
-        {jobText(member)}
-      </p>
+      <ScrollText label={CREW_WORDS.jdRegion(member.name)} testId="v2-teammate-jd">
+        <p className="v2-c-jd">{jobText(member)}</p>
+      </ScrollText>
       {needs.length > 0 ? (
         <div className="v2-c-needs">
           {needs.map((item) => (
@@ -200,9 +204,9 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { r
           ))}
         </div>
       ) : (
-        <div className={status === 'working' ? 'v2-c-activity' : 'v2-muted v2-c-line'}>
+        <div className={status === 'working' ? 'v2-c-activity' : 'v2-muted v2-c-line'} title={workLine(member)} data-testid="v2-teammate-work">
           {status === 'working' ? <span className="v2-pulse" aria-hidden="true" /> : null}
-          {workLine(member)}
+          <span className="v2-c-ellipsis">{workLine(member)}</span>
         </div>
       )}
       {needs.some((item) => item.kind === 'jd') ? null : <CharterProposalBlock member={member} onEdit={(requestId) => onOverlay({ kind: 'charter', member, requestId })} />}
@@ -216,8 +220,8 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { r
         </span>
         <IconButton icon="edit" label={`Edit the budget of ${member.name}`} onClick={() => onOverlay({ kind: 'budget', member })} data-testid="v2-teammate-budget-edit" />
       </div>
-      <div className="v2-row v2-c-wrap">
-        <ComputerTag name={member.machineName} kind={member.local ? 'laptop' : 'desktop'} state={offline ? 'offline' : 'online'} />
+      <div className="v2-row v2-c-mate-foot">
+        <ComputerTag name={member.machineName} kind={member.local ? 'laptop' : 'desktop'} state={offline ? 'offline' : 'online'} short />
         <span className="v2-grow" />
         <Button size="sm" variant="ghost" icon="shield" onClick={() => onDetails('access')} data-testid="v2-teammate-access">
           {CREW_WORDS.access}
@@ -289,6 +293,7 @@ export function CrewPage({ id }: { readonly id: string }) {
   const toast = useToast();
   const { ordered, ids, save } = useCrewOrder(data.teams);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const pins = useCrewPins();
   useEffect(() => {
     showTeam(id);
     setLastTeam(id);
@@ -356,7 +361,9 @@ export function CrewPage({ id }: { readonly id: string }) {
           <MenuButton items={actions.menu(selected, () => openDetails(selected, 'access'))} label={`Actions for ${selected.name}`} testId="v2-teammate-menu" />
         </div>
         <StatusBadge status={status} />
-        <p className="v2-c-jd">{jobText(selected)}</p>
+        <ScrollText label={CREW_WORDS.jdRegion(selected.name)} testId="v2-teammate-jd" className="v2-c-scroll-phone">
+          <p className="v2-c-jd">{jobText(selected)}</p>
+        </ScrollText>
         {(needsOf.get(selected.id) ?? []).map((item) => (
           <AnswerCard key={item.key} item={item} variant="phone" where="phone" />
         ))}
@@ -409,6 +416,8 @@ export function CrewPage({ id }: { readonly id: string }) {
           testId="v2-crew-menu"
           items={crewMenuItems(crew, ids, {
             open: () => undefined,
+            pinned: pins.isPinned(crew.id),
+            togglePin: () => void pins.toggle(crew),
             move: (delta) => {
               const index = ids.indexOf(id);
               const next = [...ids];

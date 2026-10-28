@@ -8,6 +8,7 @@ All crews (ordered), crew detail with a switcher, teammates, job descriptions, a
 ## Built (lane P, 2026-10-25)
 - `index.tsx` mounts `CrewsPage` (`CrewsPage.tsx`: crews in order, drag and ⋯ › Move up / down, New crew, New teammate) and `CrewPage` (`CrewPage.tsx`: the switcher, teammate cards with Needs-you AnswerCards, budgets, the teammate ⋯ menu, activity and hand-offs, the teammate panel `?member=&tab=access`, the phone's drill-down); `dialogs.tsx` (New crew / teammate, Move to crew / computer, Budget, Model, job description edit), `AccessPanel.tsx` (Add key).
 - 2026-10-27 (D137 follow-up, the developer chose B): archived teammates are hidden from both pages and every count (`crewStats` via `visibleTeam`, `CrewPage` via `visibleMembers`), with the quiet `ArchivedLine` ("1 archived teammate · Show in Archived"); `docs/team.md` → *Archived members*.
+- 2.4.4 (Fixes after 2.0): compact teammate cards (`ScrollText.tsx`: the job description in a three-line scroll box) and ⋯ › Pin to sidebar (`../shared/crew-pins.ts`; the rail's side is `../shell/PinnedCrew.tsx`); `docs/team.md` → *v2: compact cards and pinned crews*.
 - Pure rules: `crew-model.ts` (`tests/web/v2-crews.test.ts`). E2E: `tests/e2e/v2-crews.spec.ts`. Decisions: `docs/design/v2-decisions.md` → *Lane P*.
 
 ## Shared modules to use

@@ -90,6 +90,8 @@ export const WORDS = {
   effort: 'Thinking depth',
   needsYou: 'Needs you',
   pinned: 'Pinned',
+  /** The rail's empty Pinned list (2.4.4: crews pin too). */
+  pinnedHint: 'Pin agents or crews from their ⋯ menu.',
   recent: 'Recent',
   recentActions: 'Recent: more',
   clearRecent: 'Clear recent',
@@ -1716,6 +1718,18 @@ export const CREW_WORDS = {
   /** 2026-10-27 (D137 follow-up, the developer chose B): archived teammates are hidden from the crew, never removed. */
   archivedTeammates: (n: number): string => `${n} archived teammate${n === 1 ? '' : 's'}`,
   showInArchived: 'Show in Archived',
+  /** Fix after 2.0 (2.4.4): pin a crew to the rail's Pinned list (the shared sidebar layout, D71). */
+  pinToSidebar: 'Pin to sidebar',
+  unpinFromSidebar: 'Unpin from sidebar',
+  pinnedToast: (name: string): string => `Pinned “${name}” to the sidebar.`,
+  unpinnedToast: (name: string): string => `Unpinned “${name}”.`,
+  /** The rail's pinned crew: its disclosure button and the hint for its hidden archived teammates. */
+  showTeammates: (crew: string): string => `Show the teammates of ${crew}`,
+  hideTeammates: (crew: string): string => `Hide the teammates of ${crew}`,
+  archivedShort: (n: number): string => `${n} archived`,
+  noShownTeammates: 'No teammates yet.',
+  /** The compact card's scrollable job description. */
+  jdRegion: (who: string): string => `Job description of ${who}`,
   allArchived: 'Every teammate of this crew is archived. Restore one to bring it back here.',
 } as const;
 

@@ -66,6 +66,13 @@ Developer request: "once I archive a crew member chat, it should disappear from 
 - Reordering a team while a member is archived puts the archived one after the shown ones (the order route lists the shown ids first).
 - Tests: `tests/server/team/archived.test.ts`, `tests/server/memory/scopes.test.ts`, `tests/web/team.test.ts`, `tests/web/v2-crews.test.ts`, `tests/web/v2-agents.test.ts`, `tests/e2e/crew-archived.spec.ts` (v2 desktop and 390 × 844, classic).
 
+### v2: compact cards and pinned crews (2.4.4)
+
+Developer request (2026-10-28): "In the crews, there is very long text for every agent. Is it possible to have it scrollable and the cards to be smaller? Also it would be cool if we could pin the crew on the left sidebar …".
+
+- **Compact teammate cards** (v2 crew page, `src/web/v2/crews/CrewPage.tsx`): as many to a row as fit (four at 1440 px, `repeat(auto-fill, minmax(250px, 1fr))`; two to four on a tablet). The long text was the job description (`charter.owns` + `charter.produces`); it now sits in a **scroll box three lines tall** (`ScrollText.tsx`): while it overflows it is a labelled region with keyboard focus ("Job description of Reviewer") and fades at the bottom until scrolled to the end; when it fits it takes no focus. The rhythm and the work line are one line each (cut with …, the full text as a tooltip); every action stays (⋯, budget edit, Access, Details, the Needs-you answer cards, a proposed job description). The phone keeps its rows; its teammate screen scrolls the job description in a five-line box (Overview below still shows it in full). The Crews list's cards show teammates as avatars only, so they are unchanged.
+- **Pinned crews:** a crew's ⋯ → **Pin to sidebar** puts it in the v2 rail's Pinned list with its teammates under a disclosure (`docs/v2.md` → *Shell*). Archived teammates are left out there as everywhere else ("1 archived"). Stored in the shared sidebar layout (`docs/sidebar.md` → *Pinned crews*), not in `team.db`; deleting a crew leaves its pin hidden.
+
 ## Hand-offs
 
 A written work item between members: from (a member or the developer), to, brief, expected result, state (`open` → `accepted` → `done`, or `declined`), links, the receiver's todo id, and `planRef`, the **seam for Plans (D99)** (null until Plans uses it).

@@ -137,6 +137,27 @@ describe('/api/sidebar (D54)', () => {
     expect((await store.sidebar.read()).pinned).toEqual([local]);
   });
 
+  it('2.4.4: a crew pins next to the agents (crew~<team id>), in pin order, unpins, and goes nowhere else', async () => {
+    const local = await session('local');
+    await call('POST', '/api/sidebar/place', { sessionId: local, place: 'pinned' });
+    const pinned = await call('POST', '/api/sidebar/place', { sessionId: 'crew~team', place: 'pinned' });
+    expect(pinned.statusCode).toBe(200);
+    expect((pinned.json() as SidebarLayout).pinned).toEqual([local, 'crew~team']);
+    expect(layoutEvents().at(-1)?.pinned).toEqual([local, 'crew~team']);
+    // Undo of an Unpin puts it back at its index.
+    await call('POST', '/api/sidebar/place', { sessionId: 'crew~team', place: 'loose' });
+    expect((await store.sidebar.read()).pinned).toEqual([local]);
+    expect((await store.sidebar.read()).loose).toEqual([]);
+    await call('POST', '/api/sidebar/place', { sessionId: 'crew~team', place: 'pinned', index: 0 });
+    expect((await store.sidebar.read()).pinned).toEqual(['crew~team', local]);
+    // A crew is never put in a folder or the loose order, and a malformed crew id is an unknown session.
+    const fid = ((await call('POST', '/api/sidebar/folders', { name: 'F' })).json() as SidebarLayout).folders[0]?.id as string;
+    expect((await call('POST', '/api/sidebar/place', { sessionId: 'crew~team', place: 'folder', folderId: fid })).statusCode).toBe(422);
+    expect((await call('POST', '/api/sidebar/place', { sessionId: 'crew~team', place: 'loose', index: 0 })).statusCode).toBe(422);
+    expect((await call('POST', '/api/sidebar/place', { sessionId: 'crew~a b', place: 'pinned' })).statusCode).toBe(404);
+    expect((await store.sidebar.read()).pinned).toEqual(['crew~team', local]);
+  });
+
   it('a closed session keeps its place (reopening restores it); deleting its record removes it', async () => {
     const s1 = await session('one');
     const fid = ((await call('POST', '/api/sidebar/folders', { name: 'F' })).json() as SidebarLayout).folders[0]?.id as string;

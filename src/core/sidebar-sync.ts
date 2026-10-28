@@ -8,6 +8,7 @@
  * id>:<session id>`). Folder ids are random UUIDs, the same everywhere. The
  * `collapsed` state of a folder is each machine's own and never sent.
  */
+import { isCrewPinId } from './crew-pins.ts';
 import { isClock } from './hlc.ts';
 import { isMachineId, isRemoteId, parseRemoteId, remoteId } from './peers.ts';
 import { isOrderKey } from './sidebar-keys.ts';
@@ -66,12 +67,15 @@ export interface SidebarSyncAnswer {
 
 /** The machine-independent key of a session id as this machine (`selfId`) knows it. */
 export function sessionKey(sessionId: string, selfId: string): string {
+  // 2.4.4: a pinned crew's id is the same on every machine, so it is its own key (no `:`; a machine from before reads it as malformed and leaves it out).
+  if (isCrewPinId(sessionId)) return sessionId;
   const remote = parseRemoteId(sessionId);
   return remote ? `${remote.machineId}:${remote.id}` : `${selfId}:${sessionId}`;
 }
 
 /** The session id this machine (`selfId`) knows a key by: its own id, or a remote id. `null` for a malformed key. */
 export function sessionIdOf(key: string, selfId: string): string | null {
+  if (isCrewPinId(key)) return key;
   const at = key.indexOf(':');
   if (at <= 0 || at === key.length - 1) return null;
   const machine = key.slice(0, at);

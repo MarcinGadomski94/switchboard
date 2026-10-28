@@ -122,6 +122,14 @@ Developer rulings (2026-10-05): a **shared two-way layout** — paired machines 
 - **Hidden ids:** a third machine's session, a closed one or a deleted one keeps its place in the shared layout and is not shown where it is not listed (as D54 / D58 keep a closed session's place).
 - **Unplaced sessions** are each machine's own list (its service order: its own sessions first); the shared part is pinned, the folders and the loose order.
 
+## Pinned crews (2.4.4)
+
+v2 Fixes after 2.0 (`docs/v2.md` → *Shell*): a crew (a team, D100) can be pinned in the v2 rail. **No migration:** the pin is the id `crew~<team id>` (`src/core/crew-pins.ts`) in the layout's `pinned` list, next to the pinned sessions, so it has a place record, an order key and a clock like a pinned session and moves with the D54 rules (pin at the end, Unpin = unplaced, a pin at `index` for Undo).
+
+- **`POST /api/sidebar/place`** accepts a well-formed crew pin id (letters, digits, `-`, `_` after `crew~`) for `pinned` and for `loose` without `index` (Unpin); `folder` or a loose `index` is 422 on `place` ("a crew is only pinned or unpinned"). The team need not exist here yet (a paired machine's crew may not have synced); an unknown crew is simply not shown. A malformed one is an unknown session (404).
+- **Sync (D71):** a team's id is the same on every paired machine (D100's team sync), so a crew pin's wire key is the pin id itself (`sessionKey` / `sessionIdOf` in `src/core/sidebar-sync.ts`), never `<machine>:<id>`: pinned on A, the same crew is pinned on B, in the same order. A machine from before 2.4.4 reads the key as malformed and drops it (counted, nothing else changes); it just shows no pinned crew.
+- **Where it shows:** only the v2 rail (`shell/PinnedCrew.tsx`). Every other reader of `pinned` looks ids up as sessions, so the classic sidebar, v2 Agents' tree, D83, D99 and D137 never see it (an unknown id is hidden, as D71 already does for a third machine's session). A deleted crew's pin stays hidden.
+
 ## API (additive; `contracts/local-api.md` → *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*)
 | Method | Path | Body | Returns |
 |---|---|---|---|

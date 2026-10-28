@@ -151,6 +151,98 @@
   margin: 0 10px;
 }
 
+/* 2.4.4 · a pinned crew: its row opens the crew page, the chevron shows its teammates. */
+.sb2 .v2-pin-crew-row {
+  display: flex;
+  align-items: center;
+}
+
+.sb2 .v2-pin-crew-link {
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.sb2 .v2-pin-crew-av {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--v2-violet);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sb2 .v2-pin-crew-line {
+  flex: none;
+  font-size: 12px;
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-pin-crew-link .v2-nav-badge {
+  margin-left: 0;
+  padding: 1px 6px;
+}
+
+.sb2 .v2-pin-chev {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: var(--v2-touch);
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--v2-muted);
+  cursor: pointer;
+}
+
+.sb2 .v2-pin-chev:hover {
+  background: var(--v2-sunken);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-pin-chev:focus-visible {
+  outline: 2px solid var(--v2-blue);
+  outline-offset: -2px;
+}
+
+.sb2 .v2-pin-chev svg {
+  transition: transform 0.15s ease;
+}
+
+.sb2 .v2-pin-chev[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.sb2 .v2-pin-mates {
+  display: flex;
+  flex-direction: column;
+  margin-left: 19px;
+  padding-left: 6px;
+  border-left: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-pin-mate {
+  min-height: 34px;
+  font-size: 13.5px;
+  gap: 8px;
+}
+
+.sb2 .v2-pin-mates-note {
+  margin: 4px 10px;
+  font-size: 12px;
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-pin-mate {
+    min-height: var(--v2-touch);
+  }
+}
+
 .sb2 .v2-rail-foot {
   margin-top: auto;
   padding: 12px 10px 0;
