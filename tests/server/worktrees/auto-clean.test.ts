@@ -149,10 +149,10 @@ describe('the automatic clean-up · removal (D145)', { timeout: 120_000 }, () =>
     expect(r.lines.some((line) => line.startsWith('[auto-clean] Cleaned up worktree x'))).toBe(true);
     const record = readAutoCleanRecord(await r.w.store.settings.get(AUTO_CLEAN_RECORD_SETTING));
     expect(record).toMatchObject({ cleaned: 1, recent: [{ path: row.path }] });
-    // `git worktree remove` (never --force), then `git worktree prune`; `git branch -d` (never -D).
+    // `git worktree remove` (never --force), never `git worktree prune` (it touches other worktrees); `git branch -d` (never -D).
     const calls = (await r.w.gitCalls()).map((call) => call.argv.join(' '));
     expect(calls).toContain(`worktree remove ${row.path}`);
-    expect(calls).toContain('worktree prune');
+    expect(calls).not.toContain('worktree prune');
     expect(calls).toContain('branch -d worktree-x');
     expect(calls.some((call) => call.startsWith('push --porcelain --force-with-lease=refs/heads/worktree-x:') && call.endsWith('origin --delete refs/heads/worktree-x'))).toBe(true);
     await neverForced(r);

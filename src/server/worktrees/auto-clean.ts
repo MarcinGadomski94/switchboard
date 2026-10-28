@@ -273,7 +273,7 @@ export class AutoCleanService {
     const created = (await createdBranches(this.#store.settings)).find((entry) => entry.repoPath === row.repoPath && entry.branch === row.branch) ?? null;
     const removed = await this.#runGit(row.repoPath, ['worktree', 'remove', row.path]);
     if (!succeeded(removed)) return this.#keep(row, `git worktree remove refused: ${firstLine(failureText(removed))}`);
-    await this.#runGit(row.repoPath, ['worktree', 'prune']);
+    // No `git worktree prune` (developer, 2026-10-28): it would also drop git's entries of other worktrees whose folder is missing (an unmounted drive); `worktree remove` already drops this one's.
     await this.#store.worktrees.markRemoved(row.id);
     this.#kept.delete(row.id);
     const how = again.facts.merged === 'pr' ? (row.prNumber !== null ? `PR #${row.prNumber} merged` : 'its PR was merged') : `merged into ${row.baseRef ?? 'its base'}`;
