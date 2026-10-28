@@ -244,6 +244,122 @@
   cursor: not-allowed;
 }
 
+/* D16 in v2 · + New › From a terminal (BringInSheet.tsx). */
+.sb2 .v2-bring-meta {
+  margin: 8px 0 2px;
+  font-size: 13px;
+}
+
+.sb2 .v2-bring-meta svg {
+  vertical-align: -2px;
+}
+
+.sb2 .v2-bring-count {
+  font-size: 12.5px;
+  margin: 10px 0 6px;
+}
+
+.sb2 .v2-bring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(52vh, 460px);
+  overflow: auto;
+}
+
+.sb2 .v2-bring-row,
+.sb2 .v2-bring-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  min-height: var(--v2-touch, 44px);
+  padding: 10px 12px;
+  border: 1px solid var(--v2-border);
+  border-radius: 12px;
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  text-align: left;
+  font: inherit;
+}
+
+.sb2 .v2-bring-row {
+  cursor: pointer;
+}
+
+.sb2 .v2-bring-row:hover {
+  border-color: var(--v2-border-strong);
+}
+
+.sb2 .v2-bring-row:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 1px;
+}
+
+.sb2 .v2-bring-title {
+  font-weight: 600;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-bring-prompt {
+  color: var(--v2-muted);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-bring-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--v2-muted);
+  font-size: 12.5px;
+}
+
+.sb2 .v2-bring-line svg {
+  vertical-align: -2px;
+}
+
+.sb2 .v2-bring-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.sb2 .v2-bring-facts dt {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-bring-facts dd {
+  margin: 0;
+  font-family: var(--v2-mono);
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-bring-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--v2-amber-bg);
+  color: var(--v2-text);
+  font-size: 13.5px;
+}
+
+.sb2 .v2-bring-warn[data-state='refused'] {
+  background: var(--v2-red-bg);
+}
+
 @media (max-width: 1279px) {
   .sb2 .v2-new-types {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -252,11 +368,13 @@
 
 /* Phone: the sheet fills the screen; the kinds scroll sideways. */
 @media (max-width: 767px) {
-  .sb2 .v2-scrim:has(> [data-testid='v2-new-sheet']) {
+  .sb2 .v2-scrim:has(> [data-testid='v2-new-sheet']),
+  .sb2 .v2-scrim:has(> [data-testid='v2-bring-in']) {
     padding-top: 0;
   }
 
-  .sb2 .v2-modal[data-testid='v2-new-sheet'] {
+  .sb2 .v2-modal[data-testid='v2-new-sheet'],
+  .sb2 .v2-modal[data-testid='v2-bring-in'] {
     width: 100vw !important;
     max-width: 100vw;
     height: 100dvh;
@@ -266,13 +384,15 @@
     flex-direction: column;
   }
 
-  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-b {
+  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-b,
+  .sb2 .v2-modal[data-testid='v2-bring-in'] .v2-modal-b {
     flex: 1;
     overflow: auto;
     padding: 10px 16px 16px;
   }
 
-  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-f {
+  .sb2 .v2-modal[data-testid='v2-new-sheet'] .v2-modal-f,
+  .sb2 .v2-modal[data-testid='v2-bring-in'] .v2-modal-f {
     border-radius: 0;
     flex-wrap: wrap;
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
@@ -297,6 +417,12 @@
 
   .sb2 .v2-new-kbd {
     display: none;
+  }
+
+  /* The list scrolls with the sheet's body. */
+  .sb2 .v2-bring-list {
+    max-height: none;
+    overflow: visible;
   }
 }
 

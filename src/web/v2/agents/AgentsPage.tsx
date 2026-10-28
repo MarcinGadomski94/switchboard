@@ -218,7 +218,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
                 <>
                   <Crumbs selection={selection} count={listed.length} data={data} onSelect={setSelection} />
                   {listed.length === 0 ? (
-                    <EmptyState icon={selection.startsWith('folder:') ? 'folder' : 'agents'} tone="grey" title={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderTitle : AGENTS_WORDS.emptyTitle} text={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderText : AGENTS_WORDS.emptyText} testId="v2-agents-empty" />
+                    <EmptyState icon={selection.startsWith('folder:') ? 'folder' : 'agents'} tone="grey" title={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderTitle : AGENTS_WORDS.emptyTitle} text={selection.startsWith('folder:') ? AGENTS_WORDS.emptyFolderText : AGENTS_WORDS.emptyText} action={selection === 'all' ? <Button icon="download" onClick={() => openNew({ kind: 'bring-in' })} data-testid="v2-agents-empty-bring-in">{AGENTS_WORDS.bringInEmpty}</Button> : undefined} testId="v2-agents-empty" />
                   ) : view === 'list' ? (
                     <ListView agents={listed} />
                   ) : view === 'chats' ? (

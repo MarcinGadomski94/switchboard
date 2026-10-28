@@ -33,7 +33,7 @@ test('+ New starts an agent in the chosen folder and opens it', async ({ page })
   const sheet = page.getByTestId('v2-new-sheet');
   await expect(sheet).toBeVisible();
   await expect(sheet.getByTestId('v2-new-kind-agent')).toHaveAttribute('aria-pressed', 'true');
-  await expect(sheet.locator('.v2-new-type b')).toHaveText(['Agent', 'Conversation', 'Task', 'Project', 'Routine', 'Teammate', 'Crew']);
+  await expect(sheet.locator('.v2-new-type b')).toHaveText(['Agent', 'Conversation', 'Task', 'Project', 'Routine', 'Teammate', 'Crew', 'From a terminal']);
   await expect(sheet.getByTestId('v2-new-folder')).toHaveCount(1);
   await expect(sheet.getByTestId('v2-new-folder')).toHaveAttribute('aria-pressed', 'true');
 

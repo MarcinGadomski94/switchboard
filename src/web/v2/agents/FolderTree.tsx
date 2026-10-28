@@ -1,6 +1,7 @@
 import { type KeyboardEvent, useState } from 'react';
 import { Icon, IconButton, Menu, type MenuItem } from '../components/index.ts';
 import { V2Link } from '../nav.tsx';
+import { openNew } from '../new/index.tsx';
 import { AGENTS_WORDS, computerProblem } from '../glossary.ts';
 import { type AgentEntry, offline } from './agents-model.ts';
 import { MiniStatus, useAgentsPage } from './context.tsx';
@@ -10,8 +11,8 @@ import { type AgentTree, type Selection, type TreeFolder, canNest } from './tree
 /**
  * D131 · lane A · the folder tree left of Agents (`.ftree`): All agents, Needs
  * you, Pinned, the folders (nested, counts, a Needs-you badge on a folded one,
- * project subfolders), Not in a folder, Drafts, Closed, and the links
- * to Notes, Tasks and Routines. Agents drag onto folders; ⋯ on a folder makes a
+ * project subfolders), Not in a folder, Drafts, Closed, the links
+ * to Notes, Tasks and Routines, and Bring in from a terminal (D16). Agents drag onto folders; ⋯ on a folder makes a
  * subfolder, pins, renames or deletes it; ⋯ on an agent offers Move to folder…
  * (or `M`). Teammates are not here: the Crews pages own them (fix after 2.0).
  */
@@ -61,6 +62,14 @@ export function FolderTree({ tree, selection, onSelect, draftCount, closedCount,
       <LinkRow to="/notes" icon="book" label={AGENTS_WORDS.notes} />
       <LinkRow to="/tasks" icon="task" label={AGENTS_WORDS.tasks} />
       <LinkRow to="/routines" icon="routine" label={AGENTS_WORDS.routines} />
+      {/* D16 in v2: a conversation that only ran in a terminal comes in from here too (+ New › From a terminal). */}
+      <div className="v2-fn">
+        <span className="v2-fn-tog" data-blank="" />
+        <button type="button" className="v2-fn-main" onClick={() => openNew({ kind: 'bring-in' })} data-testid="v2-tree-bring-in" data-tour="v2-tree-bring-in">
+          <Icon name="download" size="s" />
+          <span className="v2-nm">{AGENTS_WORDS.bringIn}</span>
+        </button>
+      </div>
       <p className="v2-tree-note" data-testid="v2-tree-note">
         <Icon name="refresh" size="s" />
         <span>{shareText}</span>

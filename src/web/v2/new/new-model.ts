@@ -19,7 +19,7 @@ import { NEW_WORDS } from '../glossary.ts';
 import { type Speed, speedModel as sharedSpeedModel } from '../shared/speed.ts';
 
 /** What the + New sheet can make (the prototype's types, in its order). */
-export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew'] as const;
+export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in'] as const;
 /** One of {@link NEW_KINDS}. */
 export type NewKindId = (typeof NEW_KINDS)[number];
 
@@ -271,16 +271,23 @@ export function projectProblems(project: ProjectForm): Partial<Record<'title' | 
   return out;
 }
 
-// ── Teammate / crew ──────────────────────────────────────────────────────
-
-/** The kinds the Crews dialogs make (lane P's New teammate / New crew; the sheet opens them, it has no form of its own). */
-export const DIALOG_KINDS = ['teammate', 'crew'] as const;
-/** One of {@link DIALOG_KINDS}. */
-export type DialogKindId = (typeof DIALOG_KINDS)[number];
+// ── Teammate / crew / bring in ───────────────────────────────────────────
 
 /**
- * D131 · lane X · `true` for a kind the + New sheet hands to the Crews dialogs (role templates,
- * suggestions, adopting an agent, budget, hand-offs: `crews/dialogs.tsx`) instead of a form here.
+ * The kinds that open a dialog of their own instead of a form in the sheet: the Crews dialogs
+ * (lane P's New teammate / New crew) and Bring in a terminal conversation (D16 in v2,
+ * `BringInSheet.tsx`).
+ */
+export const DIALOG_KINDS = ['teammate', 'crew', 'bring-in'] as const;
+/** One of {@link DIALOG_KINDS}. */
+export type DialogKindId = (typeof DIALOG_KINDS)[number];
+/** The kinds the Crews dialogs make. */
+export type CrewKindId = Exclude<DialogKindId, 'bring-in'>;
+
+/**
+ * D131 · lane X · `true` for a kind the + New sheet hands to a dialog of its own: the Crews
+ * dialogs (role templates, suggestions, adopting an agent, budget, hand-offs:
+ * `crews/dialogs.tsx`) or the bring-in list (D16) instead of a form here.
  */
 export function opensDialog(kind: NewKindId): kind is DialogKindId {
   return (DIALOG_KINDS as readonly string[]).includes(kind);

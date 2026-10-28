@@ -176,6 +176,7 @@ export function actionRows(): PaletteRow[] {
     run('new', a.newRoutine, 'routine', 'new routine schedule loop', undefined, 'routine'),
     run('new', a.newTeammate, 'crew', 'new teammate crew member', undefined, 'teammate'),
     run('new', a.newCrew, 'crew', 'new crew team', undefined, 'crew'),
+    run('new', a.bringIn, 'download', 'bring in terminal conversation continue resume claude cli import', undefined, 'bring-in'),
     run('task-prefix', a.quickTask, 'task', 'task add quick capture todo'),
     run('search', a.searchEverything, 'search', 'search find messages', '⌘⇧F'),
     run('theme-classic', a.classic, 'sliders', 'theme classic old look'),

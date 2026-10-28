@@ -4,6 +4,7 @@ import type { PlanItemState } from '../../core/plans.ts';
 import type { TeamMemberStatus } from '../../core/team.ts';
 import type { MachineState } from '../../core/peers.ts';
 import { remoteAgentsText, remoteConfirmText, remoteConfirmTitle } from '../../core/updates.ts';
+import { CONTINUE_ANYWAY, CONTINUE_IN_SWITCHBOARD } from '../views/history-move.ts';
 
 /**
  * D131 · the single source of the v2 UI's words (`docs/v2.md` → *Glossary*;
@@ -945,6 +946,7 @@ export const NEW_WORDS = {
     routine: { label: 'Routine', sub: 'Repeats on a schedule', go: 'Create routine', icon: 'routine' },
     teammate: { label: 'Teammate', sub: 'A long-lived role in a crew', go: 'Add teammate', icon: 'crew' },
     crew: { label: 'Crew', sub: 'A team of teammates', go: 'Create crew', icon: 'crew' },
+    'bring-in': { label: 'From a terminal', sub: 'Bring in a conversation', go: CONTINUE_IN_SWITCHBOARD, icon: 'download' },
   },
   whichFolder: 'Which project folder?',
   noFolders: 'No project folder yet. Add one in Settings › Advanced › Code projects.',
@@ -1098,6 +1100,7 @@ export const PALETTE_WORDS = {
     newRoutine: 'New routine',
     newTeammate: 'New teammate',
     newCrew: 'New crew',
+    bringIn: 'Bring in a terminal conversation',
     quickTask: 'task … quick capture',
     searchEverything: 'Search everything',
     classic: 'Switch to the classic theme',
@@ -1157,6 +1160,8 @@ export const AGENTS_WORDS = {
   drafts: 'Drafts',
   closed: 'Archived',
   also: 'Also',
+  bringIn: 'Bring in from a terminal',
+  bringInEmpty: 'Bring in a terminal conversation',
   notes: 'Notes · what agents know',
   tasks: 'Tasks',
   routines: 'Routines',
@@ -2022,4 +2027,47 @@ export const ACCOUNT_CHOICE_WORDS = {
   projectAccountHint: 'Every step’s agent, and the project’s own agent, use it. Automatic follows your choice in the usage pill. If it runs out, agents switch automatically.',
   projectAuto: 'Automatic (your overall choice)',
   projectSaved: (title: string): string => `“${title}” uses the new account.`,
+} as const;
+
+/**
+ * D16 in v2 · + New › From a terminal (`new/BringInSheet.tsx`): this computer's terminal
+ * conversations that are not in Switchboard yet, a search, and the confirm step that moves the
+ * picked one in (`POST /api/history/{id}/continue`, the classic History's **Continue in
+ * Switchboard**).
+ */
+export const BRING_IN_WORDS = {
+  title: 'Bring in a terminal conversation',
+  sub: 'Continue a conversation you had in a terminal, here, as the same conversation.',
+  search: 'Search by folder, first message, name or id',
+  searchLabel: 'Search terminal conversations',
+  thisComputer: (name: string): string => `On ${name}. A paired computer’s conversations are brought in from its own Switchboard.`,
+  claudeOnly: 'Claude Code conversations.',
+  withCli: 'Also list Codex CLI and OpenCode conversations',
+  loading: 'Looking for terminal conversations…',
+  failed: 'Couldn’t read the terminal conversations.',
+  retry: 'Try again',
+  emptyTitle: 'Nothing to bring in',
+  emptyText: 'Conversations you have in a terminal (claude, without Switchboard) show here until they are in Switchboard.',
+  noMatch: 'No conversation matches.',
+  count: (n: number): string => `${n} conversation${n === 1 ? '' : 's'}`,
+  started: (ago: string): string => `started ${ago}`,
+  noPrompt: 'No first message',
+  back: 'Back to the list',
+  name: 'Name',
+  namePlaceholder: (name: string): string => `Optional · ${name}`,
+  nameHint: 'Leave it empty to keep the conversation’s own name.',
+  continuesIn: 'Continues in',
+  projectFolder: 'Project folder',
+  notSaved: 'Not in a saved project folder yet: you’ll be asked to add it.',
+  putItIn: 'Put it in',
+  notInFolder: 'Not in a folder',
+  whatHappens: 'It continues as the same conversation: its history shows in the chat and the agent waits for you. No message is sent.',
+  go: CONTINUE_IN_SWITCHBOARD,
+  moving: 'Bringing it in…',
+  openTitle: 'Is it still open in a terminal?',
+  continueAnyway: CONTINUE_ANYWAY,
+  cancel: 'Cancel',
+  refusedTitle: 'It couldn’t be brought in',
+  openIt: 'Open it',
+  brought: (name: string): string => `Brought in “${name}”.`,
 } as const;

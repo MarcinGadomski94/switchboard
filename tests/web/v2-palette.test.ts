@@ -82,7 +82,9 @@ describe('⌘K · pages, actions and links', () => {
   it('offers New for every kind and the theme switch', () => {
     const actions = actionRows();
     const kinds = actions.filter((r) => 'run' in r.action && r.action.run === 'new').map((r) => ('run' in r.action ? r.action.arg : ''));
-    expect(kinds).toEqual(['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew']);
+    expect(kinds).toEqual(['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in']);
+    // D16 in v2: "terminal" finds Bring in a terminal conversation.
+    expect(rankRows(actions, 'terminal conversation')[0]?.id).toBe('action:new:bring-in');
     expect(rankRows(actions, 'classic')[0]?.id).toBe('action:theme-classic');
   });
 

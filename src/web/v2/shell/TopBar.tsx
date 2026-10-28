@@ -31,7 +31,7 @@ export function TopBar({ pill, needs, phone }: { readonly pill: Pill; readonly n
         <StatusPill pill={pill} compact />
         <IconButton icon="cmd" label={`${WORDS.quickOpen} (${modKey('K')})`} size="l" onClick={() => openPalette()} data-testid="v2-palette-open" />
         <IconButton icon="search" label={WORDS.searchEverything} size="l" onClick={() => navigate('/search')} data-testid="v2-search-open" />
-        <IconButton icon="plus" label="New" size="l" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new" />
+        <IconButton icon="plus" label="New" size="l" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new" data-tour="v2-new" />
       </header>
     );
   }
@@ -52,7 +52,7 @@ export function TopBar({ pill, needs, phone }: { readonly pill: Pill; readonly n
       ) : null}
       <StatusPill pill={pill} />
       <IconButton icon="bell" label={needs > 0 ? `${WORDS.needsYou}: ${needs}` : WORDS.needsYou} badge={needs} onClick={() => navigate('/needs-you')} data-testid="v2-needs-button" data-tour="v2-needs" />
-      <Button variant="primary" icon="plus" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new">
+      <Button variant="primary" icon="plus" onClick={() => openNew({ kind: 'agent' })} data-testid="v2-new" data-tour="v2-new">
         {WORDS.newThing}
       </Button>
     </header>
