@@ -54,8 +54,9 @@ async function expectContinued(page: Page, id: string, title: string): Promise<s
   const path = decodeURIComponent(new URL(page.url()).pathname);
   expect(path).toMatch(/^\/agents\/[^/]+$/);
   const freshId = path.split('/')[2] ?? '';
+  // The tab follows `continuedTo` as soon as the fresh agent exists; the old one is closed a moment later (D83's last step).
+  await expect.poll(async () => (await detail(page, id)).closedAt, { timeout: 15_000 }).not.toBeNull();
   const old = await detail(page, id);
-  expect(old.closedAt).not.toBeNull();
   expect(old.continuedTo).toEqual({ sessionId: freshId, title: `${title} (2)` });
   expect((await detail(page, freshId)).continuedFrom).toEqual({ sessionId: id, title });
   await expect(page.getByTestId('v2-agent-view')).toHaveAttribute('data-session-id', freshId);
