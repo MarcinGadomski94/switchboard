@@ -1,6 +1,6 @@
 {
   "name": "@marcingadomski94/switchboard",
-  "version": "2.4.5",
+  "version": "2.4.6",
   "description": "Installs Switchboard, the local web app to run, supervise and switch many Claude Code, Codex CLI and OpenCode sessions at once: npx @marcingadomski94/switchboard",
   "license": "MIT",
   "mcpName": "io.github.MarcinGadomski94/switchboard",

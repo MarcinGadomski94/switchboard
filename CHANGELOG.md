@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.6 (2026-10-28)
+
+### Fixes
+- **v2 rail:** a pinned crew's teammates show their live status (working, idle, done, needs you) instead of the status they had when the page loaded; the crew row's "N working" count follows too.
+
 ## 2.4.5 (2026-10-28)
 
 ### Sessions
