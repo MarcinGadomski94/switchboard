@@ -34,6 +34,14 @@ and taken once. A workspace session's cwd (the workspace root) is not checkpoint
 unless it edited files there or nothing else applies. A folder that is no git
 repository gets no checkpoint; the turn action says why.
 
+D144: the working trees are found and snapshotted a few at a time (half the
+machine's cores, 2 to 8; `CAPTURE_CONCURRENCY`), in their order, and a snapshot
+reads the common git dir and the index path in one `rev-parse`. A session that
+edited in dozens of agent worktrees (a large non-git root) sent each message after
+a checkpoint of every one of them, one after another: ≈ 5.6 s for 41 working trees
+on the synthetic tree of `tests/server/perf/large-root-bench.test.ts`, ≈ 1 to 1.9 s
+now.
+
 Checkpoints are taken **before** a turn, so the edited-repos part covers the repos
 edited in earlier turns: a repo the session first edits during a turn gets its
 first checkpoint at the **next** turn (that first turn cannot be reverted there).
