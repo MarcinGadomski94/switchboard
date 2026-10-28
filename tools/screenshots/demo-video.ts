@@ -262,13 +262,21 @@ async function socialPreview(browser: Browser, baseUrl: string): Promise<Buffer>
     const shot = (await page.screenshot({ type: 'png' })).toString('base64');
     // The v2 brand mark (the sparkle in the rail), not the app icon's classic "S".
     const mark = (await page.locator('.v2-brand-mark').first().screenshot({ type: 'png' })).toString('base64');
-    return await compose(page, shot, mark);
+    // A project's live Graph (2.4.2), laid over Home: the picture's second card.
+    await page.getByRole('link', { name: /^Projects/ }).first().click();
+    await page.getByTestId('v2-project-card').filter({ hasText: 'PROJ-123' }).click();
+    await page.getByTestId('v2-project-views').getByText('Graph', { exact: true }).click();
+    const graphView = page.getByTestId('v2-project-view');
+    await graphView.waitFor();
+    await page.waitForTimeout(1_800);
+    const graph = (await graphView.screenshot({ type: 'png' })).toString('base64');
+    return await compose(page, shot, mark, graph);
   } finally {
     await context.close();
   }
 }
 
-async function compose(page: Page, shot: string, mark: string): Promise<Buffer> {
+async function compose(page: Page, shot: string, mark: string, graph: string): Promise<Buffer> {
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.setContent(`<!doctype html><html><head><style>
     * { box-sizing: border-box; margin: 0; }
@@ -282,6 +290,9 @@ async function compose(page: Page, shot: string, mark: string): Promise<Buffer> 
     .shot { position: absolute; left: 590px; top: 70px; width: 960px; border-radius: 16px; overflow: hidden;
       box-shadow: 0 30px 80px rgba(40, 35, 90, .22), 0 0 0 1px rgba(0,0,0,.06); }
     .shot img { display: block; width: 100%; }
+    .graph { position: absolute; left: 610px; top: 318px; width: 620px; border-radius: 14px; overflow: hidden; background: #fff;
+      box-shadow: 0 24px 60px rgba(40, 35, 90, .28), 0 0 0 1px rgba(0,0,0,.07); }
+    .graph img { display: block; width: 100%; }
   </style></head><body>
     <div class="text">
       <div class="brand"><img src="data:image/png;base64,${mark}" alt="">Switchboard</div>
@@ -289,6 +300,7 @@ async function compose(page: Page, shot: string, mark: string): Promise<Buffer> 
       <div class="tags">Local · open source · no telemetry</div>
     </div>
     <div class="shot"><img src="data:image/png;base64,${shot}" alt=""></div>
+    <div class="graph"><img src="data:image/png;base64,${graph}" alt=""></div>
   </body></html>`);
   await page.evaluate(async () => {
     await document.fonts.ready;
