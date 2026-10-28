@@ -266,15 +266,18 @@
 
 .sb2 .v2-c-mates {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  /* 2.4.4: compact cards, as many to a row as fit (four at 1440 px). */
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 .sb2 .v2-c-mate {
-  padding: 20px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .sb2 .v2-c-mate[data-needs] {
@@ -287,7 +290,14 @@
 
 .sb2 .v2-c-mate-name {
   margin: 0;
-  font-size: 17px;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-c-mate .v2-grow {
+  min-width: 0;
 }
 
 .sb2 .v2-c-jd {
@@ -296,20 +306,71 @@
   margin: 0;
 }
 
+/* 2.4.4 · a long text in a short scrollable box (ScrollText): three lines, then it scrolls, faded at the bottom while more is below. */
+.sb2 .v2-c-scrollwrap {
+  position: relative;
+}
+
+.sb2 .v2-c-scroll {
+  max-height: calc(3 * 1.45 * 13.5px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 6px;
+}
+
+.sb2 .v2-c-scroll .v2-c-jd {
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-c-scroll:focus-visible {
+  outline: 2px solid var(--v2-blue);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-c-scrollwrap[data-overflow]:not([data-end])::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.6em;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--v2-surface));
+}
+
+.sb2 .v2-c-scroll-phone .v2-c-scroll {
+  max-height: calc(5 * 1.45 * 13.5px);
+}
+
+/* The phone's teammate screen sits on the page, not on a card. */
+.sb2 .v2-c-scrollwrap.v2-c-scroll-phone[data-overflow]::after {
+  background: linear-gradient(to bottom, transparent, var(--v2-bg));
+}
+
+.sb2 .v2-c-ellipsis {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sb2 .v2-c-activity {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: var(--v2-surface-2);
   border: 1px solid var(--v2-border);
   border-radius: 10px;
-  padding: 10px 12px;
-  min-height: 44px;
-  font-size: 14px;
+  padding: 6px 10px;
+  min-height: 32px;
+  font-size: 13px;
 }
 
 .sb2 .v2-c-line {
-  font-size: 14px;
+  display: flex;
+  font-size: 13px;
 }
 
 .sb2 .v2-c-needs {
@@ -360,7 +421,38 @@
 .sb2 .v2-c-meter-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.sb2 .v2-c-mate .v2-c-meter-row .v2-c-small {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-c-mate-foot {
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+/* One row: the computer's name gives way (cut with …) before the buttons do. */
+.sb2 .v2-c-mate-foot .v2-ctag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-c-mate-foot .v2-btn {
+  flex: none;
+}
+
+.sb2 .v2-c-mate-foot .v2-btn {
+  padding-inline: 6px;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.sb2 .v2-c-block {
+  display: block;
 }
 
 .sb2 .v2-c-meter {
@@ -566,8 +658,7 @@
 }
 
 @media (max-width: 1279px) {
-  .sb2 .v2-c-crews,
-  .sb2 .v2-c-mates {
+  .sb2 .v2-c-crews {
     grid-template-columns: 1fr;
   }
 }
