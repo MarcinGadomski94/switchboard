@@ -197,11 +197,6 @@ export function parentOptions(tree: AgentTree): Array<{ readonly id: string; rea
     .map((folder) => ({ id: folder.id, label: `${'— '.repeat(folder.level - 1)}${folder.name}` }));
 }
 
-/** D141: the agents in `folder` and its subfolders at any depth (its own first, then each subfolder's in tree order). */
-export function folderAgents(folder: TreeFolder): AgentEntry[] {
-  return [...folder.agents, ...folder.children.flatMap(folderAgents)];
-}
-
 /** What deleting `folder` does, in words ("No agents are deleted. The 3 agents inside move to …"). */
 export function deleteSummary(folder: TreeFolder, parentName: string | null): string {
   const n = folder.agents.length;

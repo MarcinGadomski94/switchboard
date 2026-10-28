@@ -7,7 +7,7 @@ import { Button, Checkbox, Dialog, Field, Icon, Select } from '../components/ind
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
 import type { FolderDialogRequest } from './context.tsx';
-import { type AgentTree, deleteSummary, findFolder, folderAgents, parentOptions, pickRows } from './tree-model.ts';
+import { type AgentTree, agentsUnder, deleteSummary, findFolder, parentOptions, pickRows } from './tree-model.ts';
 import type { TreeActions } from './useTreeActions.ts';
 
 /**
@@ -122,7 +122,7 @@ export function FolderDialog({
   };
   const parentName = folder?.parentId ? (findFolder(tree, folder.parentId)?.name ?? null) : null;
   // D141: the agents in the folder and its subfolders (an empty folder keeps the simple confirm).
-  const inside = request.mode === 'delete' && folder ? folderAgents(folder).map((agent) => ({ name: agent.name, working: closeAsks({ status: agent.session.status, activity: activityOf(agent.id) }) })) : [];
+  const inside = request.mode === 'delete' && folder ? agentsUnder(folder).map((agent) => ({ name: agent.name, working: closeAsks({ status: agent.session.status, activity: activityOf(agent.id) }) })) : [];
   const confirm = inside.length > 0 && folder ? folderArchiveConfirm(folder.name, inside, archive, 'v2') : null;
   const title = request.mode === 'new' ? AGENTS_WORDS.newFolder : request.mode === 'rename' ? AGENTS_WORDS.renameFolderTitle : (confirm?.title ?? AGENTS_WORDS.deleteTitle(folder?.name ?? ''));
   return (
