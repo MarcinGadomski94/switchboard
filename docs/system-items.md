@@ -99,3 +99,9 @@ The PR watcher (`docs/ci.md`) raises two kinds, source `ci`, each with its workt
 
 After **Merge PR** the worktree's PR is checked at once, so the "PR merged" item above (Remove worktree / Keep) follows as the clean-up offer.
 
+## Accounts hint (D142)
+Raised by `AccountHint` (`src/server/accounts/hint.ts`; `docs/accounts.md` → *One account here, more on a paired machine (D142)*) through `SystemItemService.accountHintNotice`, closed by `closeAccountHints`:
+
+- **`account-hint`**, label *Accounts*, source `accounts`, status `idle` (informational), no session: "Marcins-PC can't switch Claude Code accounts" / "It has only one account signed in (Work). 1 more is signed in on Marcins-MacBook-Pro (Personal). Add it on Marcins-PC so agents there switch when one runs out." One open per CLI (`payload.cli`), updated in place (`payload.identities`, `payload.addAccount`); closed `resolved` by the service when it no longer holds (`superseded` for an extra one).
+- Actions: **Add it there** (`add-account`, a link the UIs follow: Settings › Accounts with the item's machine and the Add form prefilled, `InboxItem.addAccount`; as a server action it is refused, 409 `refused`, and the item stays open) and **Dismiss**. A dismissed item is the record that keeps it away: a new one is raised only while a missing identity was never dismissed (`dismissedHintIdentities`), so it is not `createOnce`.
+

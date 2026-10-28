@@ -2293,3 +2293,21 @@ DELETE /api/sidebar/folders/6f1c…?archive=1
         "archived": [{ "sessionId": "0b7c…", "name": "Checkout fix", "machine": null }],
         "kept": [{ "sessionId": "r~abcd2345efgh~5e1f…", "name": "Pricing", "machine": "studio-pc", "reason": "offline" }] }
 ```
+
+## Accounts hint (D142, 2026-10-28, additive; no migration)
+Found on the developer's machines (`docs/decisions.md` → D142; details `docs/accounts.md` → *One account here, more on a paired machine (D142)*): a machine with a single usable account of a CLI (Claude Code in practice: only it has an identity) while a paired machine has another one. Types in `src/core/account-hint.ts`. Every field is additive.
+
+- **New system item kind `account-hint`** (`GET /api/inbox`): one per CLI on the machine that lacks the account (a paired machine's merged Inbox shows it with `machine` like every system item). `systemKind: "account-hint"`, `label: "Accounts"`, `source: "accounts"`, `status: "idle"` (informational), `sessionId: null`, actions `add-account` ("Add it there", a **link**: the UI navigates, the item stays open; `POST …/actions/add-account` answers 409 `refused`) and `dismiss`. Updated in place while open; closed `resolved` by the service when it no longer holds.
+- **`InboxItem.addAccount?: { cli: CliProviderId, name: string }`**: what Add it there prefills: Settings › Accounts on the item's machine (`machine.id`, absent = this one) with the Add form of `cli` prefilled with `name`. The UI's addresses: classic `/settings/accounts?machine=<id>&add=<cli>&name=<name>`, v2 `/settings/advanced/accounts?…` (`machine` omitted for this machine).
+- **`AccountsOverview.hints?: AccountHintView[]`** (`GET /api/accounts`): `{ cli, text, add: { cli, name }, missing: [{ name, account: string | null, machines: string[] }] }` per CLI where the hint holds; omitted when none. Also in the answer to a paired machine (`GET /api/machines/{id}/api/accounts`): it is that machine's own fact.
+- The "Every … account is out of usage" / "Could not switch …" items' `detail` ends with "N more account(s) … signed in on <machine> — add it here." when the hint holds; on a CLI with a single enabled account a limit error raises the out-of-usage item only then.
+
+```json
+GET /api/inbox   (on the Mac; the item is the PC's)
+200 [{ "id": "r~m-pc~5d1…", "kind": "system", "systemKind": "account-hint", "label": "Accounts", "source": "accounts", "status": "idle", "sessionId": null,
+       "title": "Marcins-PC can't switch Claude Code accounts",
+       "detail": "It has only one account signed in (Work). 1 more is signed in on Marcins-MacBook-Pro (Personal). Add it on Marcins-PC so agents there switch when one runs out.",
+       "actions": [{ "id": "add-account", "label": "Add it there" }, { "id": "dismiss", "label": "Dismiss" }],
+       "addAccount": { "cli": "claude", "name": "Personal" },
+       "machine": { "id": "m-pc", "name": "Marcins-PC", "state": "online" }, "branches": [], "createdAt": "2026-10-28T10:00:00.000Z" }]
+```

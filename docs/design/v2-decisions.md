@@ -497,3 +497,9 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** the phone's Folders drill-down still offers no folder delete (it never had one), so nothing changes there; the classic drawer has the dialog.
 - **ASSUMED** no What's-new tour: it is a choice inside an existing confirmation.
 - Tests: `tests/e2e/folder-archive.spec.ts` (v2 desktop: the dialog's words and counts, ticked by default, the toast, Archived, Undo; v2 phone Archived after a delete).
+
+### A computer that can't switch accounts (2026-10-28, D142)
+- **FIX** (found on the developer's machines 2026-10-28: a paired PC stuck on one Claude Code account while the Mac had two). Needs you shows "Marcins-PC can't switch Claude Code accounts" on every paired computer (the computer tag names the one that lacks the account), kind *alert* (informational, the server's status `idle`; label *Accounts*). **Add it there** (primary; a link, so the item stays) opens Settings › Advanced › Accounts: every option with that computer picked in the Machine picker and the Add form of Claude Code prefilled (and focused) with the account's name; **Dismiss** answers it. The same page shows the line under Claude Code's accounts with **Add it here**. Details: `docs/accounts.md` → *One account here, more on a paired machine (D142)*.
+- **ASSUMED** Add it there goes to Advanced › Accounts: every option (the classic accounts page, where adding an account lives), not Settings › Usage & accounts, which has no Add form or Machine picker.
+- **ASSUMED** a v2 What's-new tour (`account-hint`, 2.4.7) on that page: the hint is a new thing to find, and v2 is where most installs see it.
+- Tests: `tests/web/v2-needs-you.test.ts` (the kind, the computer, the buttons and the address), `tests/e2e/account-hint.spec.ts` (v2 Needs you → Add it there → the computer picked and the name prefilled).
