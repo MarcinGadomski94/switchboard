@@ -266,3 +266,16 @@ export function diffTabCount(counted: number | null, unsupported: boolean, detai
   if (counted !== null) return counted;
   return unsupported ? detailFiles : null;
 }
+
+/** D144: the tab's count label: a number, `"n…"` (the last count while a fresher one is counted), `"…"` (none yet), `null` (no count). */
+export type DiffCountLabel = number | string | null;
+
+/**
+ * D144: the tab count shown: the number when it is fresh; while the server counts
+ * again in the background (`refreshing`), the last number followed by "…" ("…" alone
+ * without one, or when it was 0, so a 0 does not read as "nothing changed").
+ */
+export function diffCountShown(files: number | null, refreshing: boolean): DiffCountLabel {
+  if (!refreshing) return files;
+  return files === null || files === 0 ? '…' : `${files}…`;
+}

@@ -128,7 +128,7 @@ export interface SessionHeaderProps {
   readonly placeholder?: boolean;
   readonly tab: SessionTab;
   /** Changed files (D90 ruling: of the Diff tab's view, `useDiffCount`) and session artifacts, for the tab counts; `null` while unknown (no count). */
-  readonly files: number | null;
+  readonly files: number | string | null;
   readonly artifacts: number | null;
   /** A header action changed the session: reload it. */
   readonly onChanged: () => void;

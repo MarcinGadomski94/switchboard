@@ -6,8 +6,8 @@ export interface TabItem<T extends string> {
   readonly id: T;
   readonly label: ReactNode;
   readonly icon?: IconName | string;
-  /** A count after the label. */
-  readonly count?: number;
+  /** A count after the label (D144: or a label such as "3…" while it is counted again). */
+  readonly count?: number | string;
   /** A tooltip (e.g. the label of a tab drawn as its icon only). */
   readonly title?: string;
 }

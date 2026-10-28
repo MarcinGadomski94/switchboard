@@ -76,7 +76,7 @@ export interface TabLabel {
  * (gap #9). D45 (developer ruling): a count is `null` while the session's detail
  * loads, and its tab reads just `Diff` / `Artifacts` until it is there.
  */
-export function tabLabels(files: number | null, artifacts: number | null, chat = false): TabLabel[] {
+export function tabLabels(files: number | string | null, artifacts: number | null, chat = false): TabLabel[] {
   return [
     { tab: 'chat', label: 'Chat' },
     { tab: 'timeline', label: 'Timeline' },
