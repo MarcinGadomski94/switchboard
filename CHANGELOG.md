@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.8 (2026-10-28)
+
+### Sessions
+- **Big folders stay fast:** an agent working in a large multi-repo folder with many worktrees no longer takes seconds to minutes to open, count its changes or send to. Its change count and file list are cached and refreshed in the background (one computation at a time), worktrees are read in parallel, and the agent view never restarts a slow load, so it settles on a phone too; the count shows "…" while it refreshes. See `docs/worktrees.md` (D144).
+- **Merged worktrees clean up after themselves:** when a worktree's branch is merged (or its PR is), it has nothing uncommitted or only local, nothing runs in it and its agent is idle, Switchboard removes the folder, the local branch and the branch on the remote, with a line in the agent's chat. It covers worktrees its agents made themselves (e.g. `.claude/worktrees`). Never `--force` or `-D`, never `git worktree prune`, and never main / master / dev / develop / release / `feature/*` / the default branch. Settings › Sessions & worktrees: on by default, with a switch for the remote branch. See `docs/cleanup.md` (D145).
+
+### Docs
+- A new social preview and README demo animation from the current v2 theme.
+
 ## 2.4.7 (2026-10-28)
 
 ### v2 theme
