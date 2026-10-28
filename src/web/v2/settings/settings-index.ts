@@ -2,7 +2,7 @@ import { INSTALL_APP_DESCRIPTION } from '../../views/settings/install-app.ts';
 import { MODEL_RULES_DESCRIPTION, MODEL_RULES_LABEL } from '../../views/settings/model-rules.ts';
 import { STANDING_INSTRUCTION_DESCRIPTION, STANDING_INSTRUCTION_LABEL } from '../../views/settings/standing-instruction.ts';
 import { START_AT_LOGIN_DESCRIPTION, START_AT_LOGIN_LABEL } from '../../views/settings/start-at-login.ts';
-import { ARCHIVE_WORDS, SETTINGS_LABELS, SETTINGS_WORDS as W, THEME_LABELS } from '../glossary.ts';
+import { ARCHIVE_WORDS, AUTO_CLEAN_WORDS, SETTINGS_LABELS, SETTINGS_WORDS as W, THEME_LABELS } from '../glossary.ts';
 import type { V2SettingsSection } from '../routes.ts';
 import { type AdvancedKind, resolveAdvanced } from './settings-map.ts';
 
@@ -94,6 +94,8 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('sessions.ultracode', adv('sessions'), 'Ultracode by default', 'Pre-select workflows in the new-session form', 'ultracode workflow workflows default', row('ultracode')),
   entry('sessions.session-start', adv('sessions'), 'Session-start questions', 'Asked in the new-session form and passed to the agent as confirmed answers', 'questions agents.md start', row('session-start')),
   entry('sessions.archive', adv('sessions'), ARCHIVE_WORDS.label, ARCHIVE_WORDS.description, 'archive archived delete old retention days keep history closed', row('archive')),
+  entry('sessions.auto-clean', adv('sessions'), AUTO_CLEAN_WORDS.label, AUTO_CLEAN_WORDS.description, 'separate copy copies worktree worktrees clean cleanup remove delete merged branch automatic', row('auto-clean')),
+  entry('sessions.auto-clean-remote', adv('sessions'), AUTO_CLEAN_WORDS.remoteLabel, AUTO_CLEAN_WORDS.remoteDescription, 'remote origin branch delete push merged cleanup', row('auto-clean-remote')),
   entry('sessions.todo-reminder', adv('sessions'), 'Remind the agent to finish started todos', 'When a turn ends with an item it started still in progress, send it one reminder to mark it done or say what’s left', 'task tasks todo reminder finish', row('todo-reminder')),
   entry('sessions.checkpoints', adv('sessions'), 'Save a checkpoint before each turn', 'Snapshots the session’s git working trees so a turn can be reverted; kept 7 days or 100 turns', 'undo revert checkpoint snapshot turn', row('checkpoints')),
   entry('sessions.todo-enrich', adv('sessions'), 'Let the agent fill in captured todos', 'A todo captured from ⌘K, a chat selection or the share sheet is filled in by its agent when it is next idle', 'task tasks todo capture fill describe', row('todo-enrich')),

@@ -69,6 +69,7 @@ import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
 import { DeviceService } from './devices/service.ts';
 import { WorktreeAdoption } from './worktrees/adopt.ts';
+import { wireAutoClean } from './worktrees/auto-clean-wire.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { installPlans, planServiceOf } from './plans/install.ts';
@@ -671,7 +672,23 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D84 Clean-up and D137 the archive (archived sessions deleted after their period, with their safe worktrees).
   const cleanup = new CleanupService({ store: options.store, dataDir: config.dataDir, isLive: (sessionId) => supervisor.isLive(sessionId), takeover });
   const archive = new ArchiveService({ store: options.store, cleanup, isLive: (sessionId) => supervisor.isLive(sessionId) });
-  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
+  // D145: merged worktrees of Switchboard's agents (and the ones they made themselves) are cleaned up by themselves.
+  const { autoClean, agentMade, off: stopAutoClean } = wireAutoClean({
+    store: options.store,
+    sessions: supervisor,
+    worktrees,
+    systemItems,
+    trackedProcesses: async (sessionId) => (await processes.forSession(sessionId)).processes.map((proc) => proc.name),
+  });
+  app.addHook('onReady', async () => {
+    if (!config.demo) autoClean.start();
+  });
+  app.addHook('preClose', async () => {
+    stopAutoClean();
+    await autoClean.stop();
+    await agentMade.close();
+  });
+  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

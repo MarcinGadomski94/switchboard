@@ -8,7 +8,7 @@ import { installPlansJira } from './jira/install.ts';
 import { ciSettingsOf } from '../settings/settings.ts';
 
 /** What {@link installPlans} needs from the app (the route context it already built). */
-export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers' | 'ci' | 'accountChoice'>;
+export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers' | 'ci' | 'accountChoice' | 'autoClean'>;
 
 /** The Plans service of an app (tests). */
 const services = new WeakMap<FastifyInstance, PlanService>();
@@ -52,6 +52,10 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
         ciSendsFailures: async () => (await ciSettingsOf(context.store.settings))['ci.sendFailures'],
         prOpened: async (sessionId) => {
           for (const worktree of await context.store.worktrees.list({ sessionId })) await context.ci.watchSoon(worktree.id);
+        },
+        // D145: a merged item's worktrees are cleaned up like any merged worktree of an agent.
+        itemMerged: async (sessionId) => {
+          context.autoClean?.requestSession(sessionId, 'plan-merge');
         },
         // D138: a Project's sessions follow its accounts.
         ...(context.accountChoice ? { applyProjectAccounts: async (planId: string) => void (await context.accountChoice?.applyProject(planId)) } : {}),

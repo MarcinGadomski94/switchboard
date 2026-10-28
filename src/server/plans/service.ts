@@ -164,6 +164,8 @@ export interface PlanEnvironment {
   ciSendsFailures?(): Promise<boolean>;
   /** D109: a PR was opened for a run session's branch (Open PR): the shared watcher reads it now. */
   prOpened?(sessionId: string): Promise<void>;
+  /** D145: an item's work was merged (the Merge step, its PR, or found in the target): its run session's merged worktrees are cleaned up. */
+  itemMerged?(sessionId: string): Promise<void>;
   /**
    * D115 follow-ups: raises the Inbox's "<n> items of <plan> wait for repositories" item (Ask again,
    * Open plan, Dismiss; one open item per plan). Absent (tests' fakes): none is raised.
@@ -2493,6 +2495,8 @@ export class PlanService {
     const todo = await this.#store.todos.get(item.todoId);
     if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done' }, 'developer').catch((error: unknown) => this.#onError(error));
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
+    // D145: the run's worktrees go once merged (the same automatic clean-up as a turn's end).
+    if (plan.mergeMode !== 'none' && item.runSessionId) await this.#env.itemMerged?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
     await this.#publish(plan.id);
     this.kick();
     return true;

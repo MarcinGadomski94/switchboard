@@ -1135,6 +1135,15 @@ export const ARCHIVE_WORDS = {
   noun: 'agent',
 } as const;
 
+/** D145: Settings › Advanced › Agents & separate copies → the automatic clean-up's rows (`AutoCleanRows`) in v2 words. */
+export const AUTO_CLEAN_WORDS = {
+  label: 'Clean up merged worktrees automatically',
+  description:
+    'Once an agent’s work is merged (into its base, or its pull request), its separate copy of the code and the local branch are removed by themselves, also the copies the agent made itself. Never while the agent works, or with changes that are not committed or pushed, or an app still running in it: those stay for Clean-up.',
+  remoteLabel: 'Also delete the branch on the remote',
+  remoteDescription: 'Only a merged branch the agent pushed itself; never main, master, dev, develop, a release branch, the base or the default branch.',
+} as const;
+
 /** Lane A · the Agents page: List / Chats / Board, the folder tree, Drafts, Archived (D137; was Closed). */
 export const AGENTS_WORDS = {
   title: 'Agents',
