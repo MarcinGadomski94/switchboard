@@ -149,6 +149,9 @@ const V2_4_2 = '2.4.2';
 /** The version the Project graph's full screen (Fixes after 2.0) and D140 (update Switchboard from a phone or another computer) ship in. */
 const V2_4_3 = '2.4.3';
 
+/** The version v2's Bring in a terminal conversation (D16 in the v2 theme, Fixes after 2.0) ships in. */
+const V2_4_4 = '2.4.4';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1402,6 +1405,26 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-computer-update'],
         v2Route: '/settings/computers',
         missing: 'Pair another computer in Settings › Computers to see its version and Update. ',
+      },
+    ],
+  },
+  // D16 in the v2 theme (docs/v2.md → + New: From a terminal): classic had it in History and the
+  // New-session form; v2 gets it in + New, ⌘K and the Agents page.
+  {
+    id: 'bring-in-terminal',
+    decision: 'D16',
+    version: V2_4_4,
+    title: 'Bring in a terminal conversation',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'bring-in',
+        title: 'Continue a terminal conversation here',
+        what: 'A Claude Code conversation you had only in a terminal can continue in Switchboard as the same conversation: + New › From a terminal lists this computer’s conversations that are not in Switchboard yet, newest first, with a search by folder, first message, name or id. Pick one, give it a name if you like, choose the folder it goes into and press Continue in Switchboard: its history shows in the chat and the agent waits for you. If a terminal may still have it open, you are asked first.',
+        todo: ['Press + New and choose From a terminal.', 'Search for the conversation, pick it and press Continue in Switchboard.'],
+        anchors: ['v2-tree-bring-in', 'v2-new'],
+        v2Route: '/agents',
+        missing: 'Press + New and choose From a terminal to see your terminal conversations. ',
       },
     ],
   },
