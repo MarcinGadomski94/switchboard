@@ -155,6 +155,9 @@ const V2_4_4 = '2.4.4';
 /** The version D142 (a computer that can't switch accounts: one usable account there, more on a paired one) ships in. */
 const V2_4_7 = '2.4.7';
 
+/** The version D145 (merged worktrees of Switchboard's agents are cleaned up by themselves) ships in. */
+const V2_4_8 = '2.4.8';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1486,6 +1489,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-start-model', 'v2-new'],
         v2Route: '/',
         missing: 'Press + New: Model and Effort are under the message. ',
+      },
+    ],
+  },
+  // D145: merged worktrees clean up after themselves (docs/cleanup.md → Automatic clean-up of merged worktrees (D145)).
+  {
+    id: 'auto-clean-worktrees',
+    decision: 'D145',
+    version: V2_4_8,
+    title: 'Merged worktrees clean up after themselves',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'auto-clean',
+        title: 'Agents clean up their merged worktrees',
+        what: 'Once an agent’s work is merged into its base (or its pull request is merged), its separate copy of the code goes by itself: the worktree folder, its local branch and, when the agent pushed it, the branch on the remote. Also the copies agents make themselves, such as Claude Code’s .claude/worktrees. Nothing goes while the agent works, or with changes that are not committed or pushed, or an app still running in it; those stay for Clean-up. The agent’s chat says what was removed. Turn it off, or keep remote branches, here.',
+        todo: ['Open Settings › Advanced › Agents & separate copies.', 'Leave Clean up merged worktrees automatically on, or turn it off.'],
+        anchors: ['setting-auto-clean'],
+        v2Route: '/settings/advanced/sessions',
+        missing: 'Open Settings › Advanced › Agents & separate copies to see the clean-up switch. ',
       },
     ],
   },

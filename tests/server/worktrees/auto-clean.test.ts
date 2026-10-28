@@ -278,10 +278,27 @@ describe('the automatic clean-up · the remote branch (D145)', () => {
     const outcome = await r.service.clean(row.id);
     expect(outcome).toMatchObject({
       removed: true,
-      text: 'Cleaned up worktree rel: merged into dev; removed the folder; kept the local branch (release/9.9 is a release branch) and origin/release/9.9 (release/9.9 is a release branch)',
+      text: 'Cleaned up worktree rel: merged into dev; removed the folder; kept the local branch (release/9.9 is a protected branch (release/*)) and origin/release/9.9 (release/9.9 is a protected branch (release/*))',
     });
     expect(await local(r, 'release/9.9')).toBe(true);
     expect(await onOrigin(r, 'release/9.9')).toBe(true);
+  });
+
+  it('a feature/* (epic) branch: the clean, merged folder goes; the branch stays locally and on origin', async () => {
+    const r = await rig();
+    const id = await session(r, 'epic');
+    const row = await agentWorktree(r, 'ep', id, { branch: 'feature/checkout' });
+    await mergeIntoDev(r, 'feature/checkout');
+    const outcome = await r.service.clean(row.id);
+    expect(outcome).toMatchObject({
+      removed: true,
+      text: 'Cleaned up worktree ep: merged into dev; removed the folder; kept the local branch (feature/checkout is a protected branch (feature/*)) and origin/feature/checkout (feature/checkout is a protected branch (feature/*))',
+    });
+    expect(await exists(row.path)).toBe(false);
+    expect(await local(r, 'feature/checkout')).toBe(true);
+    expect(await onOrigin(r, 'feature/checkout')).toBe(true);
+    const calls = (await r.w.gitCalls()).map((call) => call.argv.join(' '));
+    expect(calls.some((call) => call.startsWith('branch -d') || call.includes('--delete'))).toBe(false);
   });
 
   it('the repository default branch is never deleted on the remote', async () => {

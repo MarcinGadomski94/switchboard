@@ -17,11 +17,45 @@ export const AUTO_CLEAN_RECORD_SETTING = 'worktrees.autoCleanRecord';
 /** How far the scan for agent-made worktrees read the events table (an event id; internal). */
 export const AGENT_WORKTREES_SCANNED_SETTING = 'worktrees.agentMadeScannedTo';
 
-/** Branch names never deleted on a remote (nor locally) whatever the evidence says. */
-export const PROTECTED_BRANCH_NAMES: readonly string[] = ['main', 'master', 'dev', 'develop', 'development', 'trunk', 'staging', 'production', 'HEAD'];
+/**
+ * D145: the branches the clean-up never deletes, locally or on a remote, however merged they
+ * are: the one list of patterns (`*` matches any characters, `/` included; compared without a
+ * `refs/heads/` or remote prefix). Long-lived names, release branches and (the developer's
+ * addition, 2026-10-28) `feature/*`, the epic branches task branches merge into. The worktree's
+ * base and the repository's default branch are protected too ({@link protectedBranchReason}).
+ * A worktree on such a branch may still be removed when it is clean and merged: the folder
+ * goes, the branch stays (the divider says "kept the local branch (…)").
+ */
+export const PROTECTED_BRANCH_PATTERNS: readonly string[] = [
+  'main',
+  'master',
+  'dev',
+  'develop',
+  'development',
+  'trunk',
+  'staging',
+  'production',
+  'HEAD',
+  'release',
+  'release/*',
+  'release-*',
+  'release_*',
+  'releases/*',
+  'feature/*',
+];
+
+function patternMatches(pattern: string, name: string): boolean {
+  const source = pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+  return new RegExp(`^${source}$`).test(name);
+}
+
+/** The {@link PROTECTED_BRANCH_PATTERNS} entry `branch` (without a remote prefix) matches, else `null`. */
+export function protectedPattern(branch: string): string | null {
+  return PROTECTED_BRANCH_PATTERNS.find((pattern) => patternMatches(pattern, branch)) ?? null;
+}
 
 /**
- * Why `branch` must never be deleted (a well-known long-lived name, `release…`, the worktree's
+ * Why `branch` must never be deleted (a {@link PROTECTED_BRANCH_PATTERNS} match, the worktree's
  * base or the repository's default branch), else `null`. Names are compared without a remote
  * prefix (`origin/dev` → `dev`).
  */
@@ -33,8 +67,8 @@ export function protectedBranchReason(branch: string, context: { readonly base?:
     return out;
   };
   const name = bare(branch) ?? branch;
-  if (PROTECTED_BRANCH_NAMES.includes(name)) return `${name} is a protected branch`;
-  if (/^release([/_-]|$)/i.test(name) || /^releases?\//i.test(name)) return `${name} is a release branch`;
+  const pattern = protectedPattern(name);
+  if (pattern !== null) return pattern.includes('*') || pattern === 'release' ? `${name} is a protected branch (${pattern})` : `${name} is a protected branch`;
   if (bare(context.base) === name) return `${name} is the base branch`;
   if (bare(context.defaultBranch) === name) return `${name} is the repository's default branch`;
   return null;

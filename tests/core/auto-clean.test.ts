@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evidenceNames, worktreeAdds, worktreeEvidence } from '../../src/core/agent-worktrees.ts';
 import {
+  PROTECTED_BRANCH_PATTERNS,
   type AutoCleanFacts,
   EMPTY_AUTO_CLEAN_RECORD,
   autoCleanRecordText,
@@ -65,11 +66,18 @@ describe('decideAutoClean (D145)', () => {
 });
 
 describe('protectedBranchReason (D145)', () => {
+  it('the protected patterns are one list: long-lived names, release and feature branches', () => {
+    expect(PROTECTED_BRANCH_PATTERNS).toEqual(['main', 'master', 'dev', 'develop', 'development', 'trunk', 'staging', 'production', 'HEAD', 'release', 'release/*', 'release-*', 'release_*', 'releases/*', 'feature/*']);
+  });
+
   it('never main, master, dev, develop, release branches, the base or the default branch', () => {
     for (const name of ['main', 'master', 'dev', 'develop', 'origin/dev', 'refs/heads/main']) expect(protectedBranchReason(name), name).not.toBeNull();
-    expect(protectedBranchReason('release/2.4')).toBe('release/2.4 is a release branch');
-    expect(protectedBranchReason('release-2.4')).toBe('release-2.4 is a release branch');
-    expect(protectedBranchReason('releases/2.4')).toBe('releases/2.4 is a release branch');
+    expect(protectedBranchReason('release/2.4')).toBe('release/2.4 is a protected branch (release/*)');
+    expect(protectedBranchReason('release-2.4')).toBe('release-2.4 is a protected branch (release-*)');
+    expect(protectedBranchReason('releases/2.4')).toBe('releases/2.4 is a protected branch (releases/*)');
+    // The developer's addition (2026-10-28): feature/* are epic branches, never deleted.
+    expect(protectedBranchReason('feature/checkout')).toBe('feature/checkout is a protected branch (feature/*)');
+    expect(protectedBranchReason('origin/feature/SLIT-1/pay')).toBe('feature/SLIT-1/pay is a protected branch (feature/*)');
     expect(protectedBranchReason('epic/checkout', { base: 'origin/epic/checkout' })).toBe('epic/checkout is the base branch');
     expect(protectedBranchReason('trunk-next', { defaultBranch: 'trunk-next' })).toBe("trunk-next is the repository's default branch");
     expect(protectedBranchReason('upstream/stable', { defaultBranch: 'stable', remotes: ['upstream'] })).toBe("stable is the repository's default branch");
@@ -79,6 +87,8 @@ describe('protectedBranchReason (D145)', () => {
     expect(protectedBranchReason('worktree-x', { base: 'dev', defaultBranch: 'main' })).toBeNull();
     expect(protectedBranchReason('session/fix-login')).toBeNull();
     expect(protectedBranchReason('releasenotes-fix')).toBeNull();
+    expect(protectedBranchReason('features/x')).toBeNull();
+    expect(protectedBranchReason('my-feature/x')).toBeNull();
   });
 });
 
@@ -111,8 +121,8 @@ describe('the divider and the record (D145)', () => {
     expect(cleanedText({ name: 'x', how: 'PR #12 merged', localBranch: true, localKept: null, remote: null, remoteKept: 'origin/worktree-x (the remote refused: protected)' })).toBe(
       'Cleaned up worktree x: PR #12 merged; removed the folder and the local branch; kept origin/worktree-x (the remote refused: protected)',
     );
-    expect(cleanedText({ name: 'x', how: 'merged into dev', localBranch: false, localKept: 'release/1 is a release branch', remote: null, remoteKept: null })).toBe(
-      'Cleaned up worktree x: merged into dev; removed the folder; kept the local branch (release/1 is a release branch)',
+    expect(cleanedText({ name: 'x', how: 'merged into dev', localBranch: false, localKept: 'release/1 is a protected branch (release/*)', remote: null, remoteKept: null })).toBe(
+      'Cleaned up worktree x: merged into dev; removed the folder; kept the local branch (release/1 is a protected branch (release/*))',
     );
   });
 
