@@ -40,7 +40,7 @@ async function addWorktree(w: GitWorld, dir: string, branch: string): Promise<st
   return realpath(dir);
 }
 
-describe('AgentWorktrees (D145)', () => {
+describe('AgentWorktrees (D145)', { timeout: 60_000 }, () => {
   it("adopts Claude Code's .claude/worktrees/<name> its EnterWorktree named, once; never a hand-made one", async () => {
     const { w, scanner } = await rig();
     const id = await repoSession(w, 'agent');

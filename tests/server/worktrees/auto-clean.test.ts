@@ -54,7 +54,7 @@ interface Rig {
 }
 
 /** web-front with its origin, a `dev` branch (pushed) checked out in the main checkout. */
-async function rig(options: Partial<AutoCleanServiceOptions> = {}): Promise<Rig> {
+async function rig(options: Partial<AutoCleanServiceOptions> & { readonly spy?: boolean } = {}): Promise<Rig> {
   world = await makeGitWorld();
   const w = world;
   const repo = w.web;
@@ -74,7 +74,8 @@ async function rig(options: Partial<AutoCleanServiceOptions> = {}): Promise<Rig>
   } as Rig;
   const service = new AutoCleanService({
     store: w.store,
-    gitCommand: GIT_SPY_COMMAND,
+    // The spy (a node process per git call) only where a test reads the calls: it is slow under load.
+    gitCommand: options.spy ? GIT_SPY_COMMAND : ['git'],
     env: w.env,
     isBusy: (id) => r.busy.has(id),
     isLive: (id) => r.live.has(id),
@@ -83,7 +84,7 @@ async function rig(options: Partial<AutoCleanServiceOptions> = {}): Promise<Rig>
     worktreeGone: async (id) => r.gone.push(id),
     log: (line) => r.lines.push(line),
     onError: (error) => w.errors.push(error),
-    ...options,
+    ...Object.fromEntries(Object.entries(options).filter(([key]) => key !== 'spy')),
   });
   services.push(service);
   return Object.assign(r, { service });
@@ -131,9 +132,9 @@ async function neverForced(r: Rig): Promise<void> {
   }
 }
 
-describe('the automatic clean-up · removal (D145)', () => {
+describe('the automatic clean-up · removal (D145)', { timeout: 120_000 }, () => {
   it('an agent worktree merged into dev: the folder, the local branch and origin/<branch> go; the divider and the record say so', async () => {
-    const r = await rig();
+    const r = await rig({ spy: true });
     const id = await session(r, 'fix-login');
     const row = await agentWorktree(r, 'x', id);
     await mergeIntoDev(r, 'worktree-x');
@@ -169,7 +170,7 @@ describe('the automatic clean-up · removal (D145)', () => {
   });
 
   it('a squash-merged PR (the base has none of its commits): removed, with its local and remote branch', async () => {
-    const r = await rig();
+    const r = await rig({ spy: true });
     const id = await session(r, 'squashy');
     const row = await agentWorktree(r, 'sq', id);
     // The PR was squash-merged on GitHub: dev gets one new commit with the same change.
@@ -187,9 +188,9 @@ describe('the automatic clean-up · removal (D145)', () => {
   });
 });
 
-describe('the automatic clean-up · kept (D145)', () => {
+describe('the automatic clean-up · kept (D145)', { timeout: 120_000 }, () => {
   it('not merged; a fresh branch with no commits of its own; uncommitted; untracked (ignored files do not count)', async () => {
-    const r = await rig();
+    const r = await rig({ spy: true });
     const id = await session(r, 'keeper');
     const unmerged = await agentWorktree(r, 'u', id);
     expect(await r.service.clean(unmerged.id)).toEqual({ removed: false, reason: 'not merged into dev' });
@@ -269,7 +270,7 @@ describe('the automatic clean-up · kept (D145)', () => {
   });
 });
 
-describe('the automatic clean-up · the remote branch (D145)', () => {
+describe('the automatic clean-up · the remote branch (D145)', { timeout: 120_000 }, () => {
   it('a protected name: the folder goes, the local and remote branch stay with the reason', async () => {
     const r = await rig();
     const id = await session(r, 'rel');
@@ -285,7 +286,7 @@ describe('the automatic clean-up · the remote branch (D145)', () => {
   });
 
   it('a feature/* (epic) branch: the clean, merged folder goes; the branch stays locally and on origin', async () => {
-    const r = await rig();
+    const r = await rig({ spy: true });
     const id = await session(r, 'epic');
     const row = await agentWorktree(r, 'ep', id, { branch: 'feature/checkout' });
     await mergeIntoDev(r, 'feature/checkout');
@@ -355,7 +356,7 @@ describe('the automatic clean-up · the remote branch (D145)', () => {
   });
 });
 
-describe('the automatic clean-up · triggers (D145)', () => {
+describe('the automatic clean-up · triggers (D145)', { timeout: 120_000 }, () => {
   it('a session request cleans its worktrees; the setting off: nothing at all', async () => {
     const r = await rig({ settleMs: 0 });
     const id = await session(r, 'switch');

@@ -104,7 +104,7 @@ function divider(event: EventRecord): boolean {
   return (event.payload as { action?: string } | null)?.action === 'worktree-cleaned';
 }
 
-describe('the automatic clean-up after a turn (D145)', () => {
+describe('the automatic clean-up after a turn (D145)', { timeout: 90_000 }, () => {
   it("an agent-made .claude/worktrees/x merged into dev: after the turn the folder, the local and the remote branch are gone; the chat says so", async () => {
     const w = await setup();
     const session = await startSession(w, 'agent-x');

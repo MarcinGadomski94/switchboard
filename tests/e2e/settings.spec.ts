@@ -246,6 +246,10 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Cleanup',
     'Ultracode by default',
     'Session-start questions',
+    // D137: the archive's period; D145: the automatic clean-up of merged worktrees and its remote option.
+    'Delete archived sessions after',
+    'Clean up merged worktrees automatically',
+    'Also delete the branch on the remote',
     'Remind the agent to finish started todos',
     'Save a checkpoint before each turn',
     'Let the agent fill in captured todos',
@@ -262,6 +266,9 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'keep until merged',
     'off',
     'from AGENTS.md',
+    // D145: the clean-up and its remote option (the archive's period is a select, not a value).
+    'on',
+    'on',
     'on',
     'on',
     'on',

@@ -443,6 +443,9 @@ describe('settings helpers (M8.2)', () => {
       'power.estimateDefaults': { cpuIdleW: 0, cpuMaxW: 0, baseW: 0 },
       // D137: no sweep yet.
       'sessions.archiveSweep': { lastRunAt: null, lastDeleted: null },
+      'worktrees.autoClean': true,
+      'worktrees.autoCleanRemote': true,
+      'worktrees.autoCleanRecord': { cleaned: 0, lastCleanedAt: null, recent: [], kept: [] },
     });
     expect(readKnownSettings({ 'sessions.ultracode': 'yes', 'workspace.root': '/w', 'usage.warnAtPct': 80 })).toMatchObject({
       'sessions.ultracode': false,
