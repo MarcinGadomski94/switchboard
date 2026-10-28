@@ -52,6 +52,7 @@ npm run e2e
 - **Ports.** Test servers use ports 4871–4879 (or `SWITCHBOARD_TEST_PORTS`), never 13001, so they do not clash with a Switchboard you have running.
 - **Browser tests** (`tests/e2e/`) run with Playwright in headless Chromium by default and build their own copy of the UI first. Install the browser once with `npx playwright install chromium`. Add `--headed` to watch a run, or `--debug` to step through it.
 - **Visual checks** compare screens with the design; see [docs/visual/](docs/visual/).
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), the badge in the README) runs on every push to `master` and every pull request: the typecheck and the core, web, docs and tools tests on Linux and macOS must pass. The server tests run in a separate job that reports without failing the build, because some of them (peers, hooks, worktrees) still have timing failures; that job becomes required once they are stable. Browser tests do not run in CI yet.
 
 ## Commit style
 

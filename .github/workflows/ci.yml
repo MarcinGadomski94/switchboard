@@ -1,0 +1,65 @@
+# CI: typecheck and the unit tests on every push to master and every pull request
+# (CONTRIBUTING.md → Run the tests that matter). The `checks` job is what the README badge shows: the
+# typecheck plus the deterministic suites (core, web, docs, tools) on Linux and
+# macOS. The server suites start real processes (peers, hooks, git worktrees) and
+# still have known timing failures, so they run in their own job that reports but
+# never fails the workflow; make it required once they are stable.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Git identity for tests that commit
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Unit tests (core, web, docs, tools)
+        run: npx vitest run tests/core tests/web tests/docs tests/tools
+        env:
+          SWITCHBOARD_TEST_SECRET_STORE: memory
+
+  server-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Git identity for tests that commit
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - run: npm ci
+      - name: Server tests (informational)
+        run: npx vitest run tests/server
+        env:
+          SWITCHBOARD_TEST_SECRET_STORE: memory
