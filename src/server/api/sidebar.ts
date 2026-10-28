@@ -68,7 +68,9 @@ function treeRefusal(reply: FastifyReply, problem: SidebarTreeProblem): FastifyR
  * here, never forwarded to the peer). D71: the records a write changed go to
  * the paired machines the layout is shared with (`PeerService.sidebarChanged`,
  * `docs/peers.md` → *Shared sidebar layout (D71)*); D71 M2: a loose `index`
- * counts in the whole loose list (the unplaced sessions first).
+ * counts in the whole loose list (the unplaced sessions first). D141: a folder
+ * delete with `?archive=1` archives the agents in it and its subfolders first
+ * (`docs/sidebar.md` → *Delete a folder and archive its agents (D141)*).
  */
 export async function registerSidebarRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, bus, supervisor, peers } = context;
