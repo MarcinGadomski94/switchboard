@@ -18,6 +18,7 @@ import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AccountChoiceSource, AccountProfile, AccountSettings } from './accounts.ts';
 import type { PeerOnlyAccount } from './shared-accounts.ts';
+import type { AccountHintView } from './account-hint.ts';
 import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { TurnWait } from './derive/turn-status.ts';
@@ -1597,6 +1598,12 @@ export interface InboxItem {
   readonly systemKind?: string;
   /** Additive (D139): the terminal command an account's "needs you" item shows, copyable (`CLAUDE_CONFIG_DIR="<dir>" claude`). */
   readonly command?: string;
+  /**
+   * Additive (D142): an `account-hint` item's "Add it there" (action `add-account`, a link): the
+   * account to add on the item's machine (its Settings › Accounts with that machine picked and the
+   * Add form of `cli` prefilled with `name`). Absent on every other item.
+   */
+  readonly addAccount?: { readonly cli: CliProviderId; readonly name: string };
 }
 
 /**
@@ -2772,7 +2779,13 @@ export interface AccountsOverview {
    * same identity on several of them merged), with the machines they are on.
    * Omitted when there are none, and in the answer to a paired machine.
    */
-  readonly others?: readonly PeerOnlyAccount[];
+  readonly others?: readonly PeerOnlyAccount[];  /**
+   * Additive (D142, `docs/accounts.md` → *One account here, more on a paired machine*): per CLI
+   * where this machine has a single usable account and a paired machine has more (Settings ›
+   * Accounts' line under the CLI, with "Add it here"). Omitted when there are none. Also in the
+   * answer to a paired machine (it is this machine's own fact).
+   */
+  readonly hints?: readonly AccountHintView[];
 }
 
 /** Additive (D138): `Session.accountChoice`. */

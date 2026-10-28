@@ -2,6 +2,7 @@ import { forgetGraduatedSwitches } from './settings/graduated.ts';
 import { AccountService } from './accounts/service.ts';
 import { SharedAccounts } from './accounts/shared.ts';
 import { AutoSwitcher } from './accounts/auto-switch.ts';
+import { AccountHint } from './accounts/hint.ts';
 import { AccountNeedsYou } from './accounts/needs-you.ts';
 import { AccountChoice } from './accounts/choice.ts';
 import { registerAccountChoiceSource } from './sessions/wire.ts';
@@ -354,7 +355,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     offAccountChoice();
   });
-  const autoSwitcher = new AutoSwitcher({ store: options.store, supervisor, accounts, dataDir: config.dataDir, systemItems, clis, preference: (session) => accountChoice.preference(session) });
+  // D142: the "can't switch accounts" hint (set once the paired machines' accounts are shared, below): the switcher's cue.
+  let accountHint: AccountHint | null = null;
+  const autoSwitcher = new AutoSwitcher({
+    store: options.store,
+    supervisor,
+    accounts,
+    dataDir: config.dataDir,
+    systemItems,
+    clis,
+    preference: (session) => accountChoice.preference(session),
+    hint: (cli) => accountHint?.hintFor(cli) ?? Promise.resolve(null),
+  });
   autoSwitcher.start();
   app.addHook('preClose', async () => {
     await autoSwitcher.stop();
@@ -392,7 +404,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   if (sharedAccounts) {
     accounts.useShared(sharedAccounts);
     sharedAccounts.start();
+    // D142 (docs/accounts.md → One account here, more on a paired machine): one usable account here, more on a paired machine.
+    const hint = new AccountHint({ accounts, shared: sharedAccounts, systemItems });
+    accountHint = hint;
+    hint.start();
     app.addHook('preClose', async () => {
+      await hint.stop();
+      accountHint = null;
       await sharedAccounts.stop();
       accounts.useShared(null);
     });
@@ -653,7 +671,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D84 Clean-up and D137 the archive (archived sessions deleted after their period, with their safe worktrees).
   const cleanup = new CleanupService({ store: options.store, dataDir: config.dataDir, isLive: (sessionId) => supervisor.isLive(sessionId), takeover });
   const archive = new ArchiveService({ store: options.store, cleanup, isLive: (sessionId) => supervisor.isLive(sessionId) });
-  const apiContext: ApiContext = { ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
+  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { type AccountPreference, type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, firstProfileWithAllowance, hasAllowance, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
-import { CLI_LABELS } from '../../core/cli-providers.ts';
+import { type SingleAccountHint, hintCue } from '../../core/account-hint.ts';
+import { CLI_LABELS, type CliProviderId } from '../../core/cli-providers.ts';
 import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText, creditsResetDay } from '../../core/credits.ts';
 import type { SessionEvent } from '../../core/api.ts';
 import type { CliStatusService } from '../cli/status.ts';
@@ -27,6 +28,11 @@ export interface AutoSwitcherOptions {
    * the switcher's preferred target, and the divider says so when the session leaves it. Absent: none.
    */
   readonly preference?: (session: SessionRecord) => Promise<AccountPreference>;
+  /**
+   * D142: this machine's "can't switch accounts" hint of a CLI (one usable account here, more on a
+   * paired machine; `AccountHint.hintFor`), for the cue in the out-of-usage / could-not-switch items.
+   */
+  readonly hint?: (cli: CliProviderId) => Promise<SingleAccountHint | null>;
   /** Gap between the periodic threshold / reset checks (default 30 s). */
   readonly intervalMs?: number;
   readonly onError?: (error: unknown) => void;
@@ -211,7 +217,11 @@ export class AutoSwitcher {
       const settings = await accounts.settings();
       // Accounts are dormant until a CLI has a second one (or "switch to another CLI" is the rule): a single login is never touched.
       const enabled = (await this.#o.store.profiles.list(session.provider)).filter((p) => p.enabled).length;
-      if (enabled < 2 && !(trigger.kind === 'limit' && settings.exhausted.action === 'switch-cli')) return;
+      if (enabled < 2 && !(trigger.kind === 'limit' && settings.exhausted.action === 'switch-cli')) {
+        // D142: nothing to switch to here, but a paired machine has more: one item says where (no mark, no switch).
+        if (trigger.kind === 'limit') await this.#dormantCue(session, trigger.hit.text, trigger.hit.resetsAt);
+        return;
+      }
       const decision = decideAccountSwitch({
         settings,
         cli: session.provider,
@@ -233,6 +243,32 @@ export class AutoSwitcher {
     }
   }
 
+  /** D142: the cue of `cli`'s hint (" 1 more account is signed in on Mac — add it here."), `''` when it does not hold. */
+  async #cue(cli: CliProviderId): Promise<string> {
+    const hint = await this.#o.hint?.(cli).catch(() => null);
+    return hint ? ` ${hintCue(hint)}.` : '';
+  }
+
+  /**
+   * D142: a session on a CLI with a single enabled account hit its limit (D63 *Dormant*: no mark, no
+   * switch). When a paired machine has another account of that CLI, the "every account is out of
+   * usage" item says so; otherwise nothing, as before.
+   */
+  async #dormantCue(session: SessionRecord, text: string, resetsAt: string | null): Promise<void> {
+    const settings = await this.#o.accounts.settings();
+    if (!settings.enabled || !settings.perCli[session.provider]) return;
+    const cue = await this.#cue(session.provider);
+    if (cue === '') return;
+    const name = session.title ?? session.id;
+    await this.#o.systemItems?.accountNotice({
+      kind: 'account-exhausted',
+      sessionId: session.id,
+      title: `Every ${CLI_LABELS[session.provider]} account is out of usage`,
+      detail: `${name}: ${text}.${cue}`,
+      dedupe: `account-exhausted:${session.id}:${resetsAt ?? text}`,
+    });
+  }
+
   async #preferred(session: SessionRecord): Promise<string | null> {
     if (!this.#o.preference || session.profilePinned) return null;
     const pref = await this.#o.preference(session).catch(() => null);
@@ -243,7 +279,9 @@ export class AutoSwitcher {
     const handoverDir = path.join(this.#o.dataDir, 'handovers');
     const log = this.#o.log ?? ((line: string) => console.info(`switchboard accounts: ${line}`));
     const notice = async (kind: 'account-exhausted' | 'account-switch-failed', title: string, detail: string): Promise<void> => {
-      await this.#o.systemItems?.accountNotice({ kind, sessionId, title, detail, dedupe: `${kind}:${sessionId}:${decision.mark?.until ?? decision.reason}` });
+      // D142: when a paired machine has another account of this CLI that this machine lacks, the item says so.
+      const cue = await this.#cue(cli);
+      await this.#o.systemItems?.accountNotice({ kind, sessionId, title, detail: `${detail}${cue}`, dedupe: `${kind}:${sessionId}:${decision.mark?.until ?? decision.reason}` });
     };
     const name = (await this.#o.store.sessions.get(sessionId))?.title ?? sessionId;
     switch (decision.action) {

@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { BranchRef, InboxAction, NewSessionPrefill, Worktree } from '../../core/api.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES } from '../../core/model.ts';
 import type { InstallKind } from '../../core/updates.ts';
+import { ACCOUNT_HINT, ADD_ACCOUNT_ACTION, type AddAccountTarget } from '../../core/account-hint.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import { type MergeKind, type ParentMerged, parentMergedMessage, parentMergedTitle, rebaseCommand } from '../../core/stacking.ts';
 import type { ScheduleRecord, ScheduleRunRecord } from '../db/repos/schedules.ts';
@@ -83,6 +84,17 @@ export const ACCOUNT_NEEDS_YOU = 'account-needs-you';
 export const ACCOUNT_RETRY = 'retry-stopped';
 export const ACCOUNT_NEEDS_YOU_ACTIONS: readonly InboxAction[] = [
   { id: ACCOUNT_RETRY, label: 'Retry stopped agents' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
+/**
+ * D142 (`docs/accounts.md` → *One account here, more on a paired machine*): kind of "Marcins-PC can't
+ * switch Claude Code accounts" (this machine has a single usable account of a CLI, a paired machine
+ * one more), its **Add it there** (a link: Settings › Accounts on this machine, the Add form
+ * prefilled; the item stays open) and **Dismiss**. Informational (status `idle`).
+ */
+export const ACCOUNT_HINT_ACTIONS: readonly InboxAction[] = [
+  { id: ADD_ACCOUNT_ACTION, label: 'Add it there' },
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
@@ -329,6 +341,75 @@ export class SystemItemService {
     }
     if (closed > 0) await this.#publishInbox();
     return closed;
+  }
+
+  /**
+   * D142: the one "can't switch accounts" item of `cli` (`ACCOUNT_HINT`). An open one is brought up
+   * to date in place (its words, the missing identities); without one, a new item is raised unless
+   * every missing identity was dismissed before ({@link dismissedHintIdentities}). Not tied to a
+   * session; status `idle` (informational). Answers the new item, `null` when none was raised.
+   */
+  async accountHintNotice(input: { readonly cli: string; readonly title: string; readonly detail: string; readonly key: string; readonly identities: readonly string[]; readonly add: AddAccountTarget }): Promise<SystemItemRecord | null> {
+    const payload = { dedupe: input.key, cli: input.cli, identities: [...input.identities], addAccount: { cli: input.add.cli, name: input.add.name } };
+    const open = (await this.#store.systemItems.list(['open'])).filter((item) => item.kind === ACCOUNT_HINT && isPayload(item.payload) && item.payload['cli'] === input.cli);
+    const [current, ...extra] = open;
+    for (const item of extra) await this.#closeQuietly(item.id, 'superseded');
+    if (current) {
+      if (current.title !== input.title || current.detail !== input.detail || JSON.stringify(current.payload) !== JSON.stringify(payload)) {
+        await this.#store.systemItems.update(current.id, { title: input.title, detail: input.detail, payload });
+        await this.#publishInbox();
+      } else if (extra.length > 0) {
+        await this.#publishInbox();
+      }
+      return null;
+    }
+    const dismissed = await this.dismissedHintIdentities(input.cli);
+    if (input.identities.every((identity) => dismissed.has(identity))) return null;
+    const created = await this.#store.systemItems.create({
+      kind: ACCOUNT_HINT,
+      source: 'accounts',
+      status: 'idle',
+      title: input.title,
+      detail: input.detail,
+      branches: [],
+      actions: ACCOUNT_HINT_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+      sessionId: null,
+      payload,
+    });
+    await this.#publishInbox();
+    return created;
+  }
+
+  /** D142: the identities of `cli`'s "can't switch accounts" items the developer dismissed (any time before). */
+  async dismissedHintIdentities(cli: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (const item of await this.#store.systemItems.list(['closed'])) {
+      if (item.kind !== ACCOUNT_HINT || item.closedAction !== 'dismiss' || !isPayload(item.payload) || item.payload['cli'] !== cli) continue;
+      const identities = item.payload['identities'];
+      if (Array.isArray(identities)) for (const identity of identities) if (typeof identity === 'string') out.add(identity);
+    }
+    return out;
+  }
+
+  /** D142: closes `cli`'s open "can't switch accounts" items (`resolved`: the machine can switch again, or nothing more is known elsewhere). */
+  async closeAccountHints(cli: string, outcome: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== ACCOUNT_HINT || !isPayload(item.payload) || item.payload['cli'] !== cli) continue;
+      if (await this.#closeQuietly(item.id, outcome)) closed += 1;
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  async #closeQuietly(id: string, outcome: string): Promise<boolean> {
+    try {
+      await this.#store.systemItems.close(id, outcome);
+      return true;
+    } catch (error) {
+      if (error instanceof StoreError && error.code === 'conflict') return false;
+      throw error;
+    }
   }
 
   /** D109: plugs in the PR watcher that serves Merge PR and Try again. */
@@ -987,6 +1068,8 @@ export class SystemItemService {
       return;
     }
     if (action === OPEN_PLAN) throw new SystemItemError('refused', 'Open plan is a link: open the plan page');
+    // D142: Add it there is a link (Settings › Accounts on the item's machine, the Add form prefilled); the item stays open.
+    if (action === ADD_ACCOUNT_ACTION) throw new SystemItemError('refused', 'Add it there is a link: open Settings › Accounts');
     // Project memory (D107) hook (follow-up 2026-10-16): copy a moved member's memory again, or keep it on this PC.
     if (action === MEMORY_COPY_RETRY || action === MEMORY_COPY_KEEP) {
       const refused = await memoryInboxAction(this.#store, item.payload, action);

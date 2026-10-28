@@ -181,6 +181,25 @@ export class AccountService {
 
   async #changed(change: LocalAccountChange): Promise<void> {
     await this.#shared?.changed(change).catch(() => undefined);
+    this.#localChanged();
+  }
+
+  readonly #listeners = new Set<() => void>();
+
+  /** D142: `listener` runs after a local change of the accounts or of the rules (the "can't switch" hint looks again). */
+  onLocalChange(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #localChanged(): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener();
+      } catch {
+        // A listener's own problem: never the change's.
+      }
+    }
   }
 
   get #store(): Store {
@@ -240,6 +259,7 @@ export class AccountService {
     const next = readAccountSettings(merged);
     if (next.exhausted.action === 'switch-cli' && next.exhausted.cli === null) throw new AccountError(422, 'invalid', 'pick the CLI to switch to', 'exhausted.cli');
     await this.#store.settings.set(ACCOUNT_SETTINGS_KEY, next);
+    this.#localChanged();
     return next;
   }
 

@@ -1,4 +1,5 @@
 import type { BranchRef, InboxAction, InboxItem, NewSessionPrefill, Question } from '../../core/api.ts';
+import { type CliProviderId, isCliProviderId } from '../../core/cli-providers.ts';
 import { toolLabel } from '../../core/derive/event-kind.ts';
 import { type QueuedReason, clipInput } from '../../core/event-payload.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -273,6 +274,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'ci-ready': 'Ready to merge',
   // D139: an account the CLI refuses to run until the developer acts (new terms, signed out).
   'account-needs-you': 'Account needs you',
+  // D142: this machine has a single usable account of a CLI, a paired machine one more.
+  'account-hint': 'Accounts',
 };
 
 /**
@@ -299,6 +302,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
   const url = isRecord(record.payload) && typeof record.payload['url'] === 'string' && /^https:\/\//.test(record.payload['url']) ? record.payload['url'] : null;
   // D139: the terminal command an account's "needs you" item shows (copyable).
   const command = record.kind === 'account-needs-you' && isRecord(record.payload) && typeof record.payload['command'] === 'string' ? record.payload['command'] : null;
+  // D142: what "Add it there" prefills (Settings › Accounts on the item's machine).
+  const addAccount = record.kind === 'account-hint' ? addAccountOf(record.payload) : null;
   return {
     id: record.id,
     kind: 'system',
@@ -308,7 +313,7 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     title: record.title,
     label: `${SYSTEM_ITEM_LABELS[record.kind] ?? record.kind}${record.kind === 'turn-waiting' && isRecord(record.payload) && record.payload['detected'] === true ? ' · detected' : ''}`,
     // D124: a "Waiting for you" item says its kind (the push and Team read it).
-    ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' ? { systemKind: record.kind } : {}),
+    ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' || record.kind === 'account-hint' ? { systemKind: record.kind } : {}),
     ...(command !== null ? { command } : {}),
     detail: record.detail,
     createdAt: record.createdAt,
@@ -317,7 +322,14 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     ...(prefill ? { prefill } : {}),
     ...(route ? { route } : {}),
     ...(url ? { url } : {}),
+    ...(addAccount ? { addAccount } : {}),
   };
+}
+
+/** D142: an account-hint item's `payload.addAccount` (`{ cli, name }`), `null` when it has none. */
+function addAccountOf(payload: unknown): { readonly cli: CliProviderId; readonly name: string } | null {
+  const add = isRecord(payload) && isRecord(payload['addAccount']) ? payload['addAccount'] : null;
+  return add && isCliProviderId(add['cli']) && typeof add['name'] === 'string' && add['name'] !== '' ? { cli: add['cli'], name: add['name'] } : null;
 }
 
 /** Newest first by `createdAt`; ties keep the given order. */

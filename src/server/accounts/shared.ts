@@ -80,6 +80,9 @@ export class SharedAccounts implements SharedAccountsSource {
   #again = false;
   #closed = false;
   #off: (() => void) | null = null;
+  /** D142: an exchange round finished since this service started (the paired machines' accounts are known as far as they can be). */
+  #ready = false;
+  readonly #listeners = new Set<() => void>();
 
   constructor(options: SharedAccountsOptions) {
     this.#o = options;
@@ -95,6 +98,27 @@ export class SharedAccounts implements SharedAccountsSource {
 
   #log(line: string): void {
     (this.#o.log ?? ((l: string) => console.info(`switchboard accounts: ${l}`)))(line);
+  }
+
+  /** D142: `true` once an exchange round with the online machines finished since the start (before it, nothing is known yet). */
+  get ready(): boolean {
+    return this.#ready;
+  }
+
+  /** D142: `listener` runs after each exchange round and each machine's message (the "can't switch" hint looks again). */
+  onChange(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #notify(): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.#error(error);
+      }
+    }
   }
 
   /** Starts the periodic exchange and follows the machines' states. */
@@ -125,6 +149,7 @@ export class SharedAccounts implements SharedAccountsSource {
     clearTimeout(this.#soon);
     this.#off?.();
     this.#off = null;
+    this.#listeners.clear();
     await this.#running?.catch(() => undefined);
   }
 
@@ -145,9 +170,13 @@ export class SharedAccounts implements SharedAccountsSource {
       return this.#running;
     }
     this.#running = this.#sync()
+      .then(() => {
+        this.#ready = true;
+      })
       .catch((error: unknown) => this.#error(error))
       .finally(() => {
         this.#running = null;
+        if (!this.#closed) this.#notify();
         if (this.#again && !this.#closed) {
           this.#again = false;
           void this.sync();
@@ -242,6 +271,7 @@ export class SharedAccounts implements SharedAccountsSource {
       await this.#savePrefs(merge.prefs);
       await this.#apply(merge, machineName);
     }
+    this.#notify();
     return true;
   }
 

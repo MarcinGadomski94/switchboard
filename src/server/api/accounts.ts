@@ -39,12 +39,15 @@ export async function registerAccountRoutes(app: FastifyInstance, context: ApiCo
   const overview = async (refresh: boolean, fromPeer = false): Promise<AccountsOverview> => {
     const profiles = await accounts.list({ refresh, ...(fromPeer ? { local: true } : {}) });
     const settings = await accounts.settings();
+    // D142: this machine's own fact, so also in the answer to a paired machine (its Machine picker shows it).
+    const hintViews = (await context.accountHint?.views().catch(() => [])) ?? [];
+    const hints = hintViews.length > 0 ? { hints: hintViews } : {};
     const shared = fromPeer ? null : accounts.shared;
-    if (!shared) return { profiles, settings };
+    if (!shared) return { profiles, settings, ...hints };
     const peers = await shared.peers();
     const now = Date.now();
     const others = CLI_PROVIDERS.flatMap((cli) => peerOnlyAccounts(peers, cli, new Set(profiles.filter((p) => p.cli === cli && p.identity).map((p) => p.identity as string)), now));
-    return { profiles, settings, ...(others.length > 0 ? { others } : {}) };
+    return { profiles, settings, ...(others.length > 0 ? { others } : {}), ...hints };
   };
 
   app.get<{ Querystring: { refresh?: string } }>('/api/accounts', async (request) => overview(request.query.refresh === '1', request.headers[PEER_REQUEST_HEADER] !== undefined));

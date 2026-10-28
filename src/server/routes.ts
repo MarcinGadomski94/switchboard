@@ -2,6 +2,7 @@ import type { CliStatusService } from './cli/status.ts';
 import { registerCliRoutes } from './api/clis.ts';
 import { registerAccountRoutes } from './api/accounts.ts';
 import type { SharedAccounts } from './accounts/shared.ts';
+import type { AccountHint } from './accounts/hint.ts';
 import type { AccountChoice } from './accounts/choice.ts';
 import type { AccountService } from './accounts/service.ts';
 import type { SignInManager } from './accounts/signin.ts';
@@ -84,6 +85,8 @@ export interface ApiContext {
   readonly accountChoice?: AccountChoice;
   /** D98: the paired machines' accounts, shared and merged by identity (absent in demo mode). */
   readonly sharedAccounts?: SharedAccounts;
+  /** D142: the "can't switch accounts" hint (Settings › Accounts' line; absent in demo mode). */
+  readonly accountHint?: AccountHint;
   /** D63: signing profiles in and out. */
   readonly signIn: SignInManager;
   /** D62: the CLIs sessions run on: status, default, command overrides (docs/providers.md). */
