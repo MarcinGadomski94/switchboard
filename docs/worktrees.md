@@ -59,6 +59,13 @@ A worktree the session's **agent** created itself (D38: a session started withou
 - A repository git cannot list is skipped (reported through `onError`); nothing is ever created, moved or removed by an adoption.
 - Tests: `tests/server/worktrees/adopt.test.ts` (the triggers), `tests/server/sessions/agent-solutions.test.ts` (real git: the sweep and a `git worktree add` by the fake, the row, the Diff, idempotence, another session's worktree untouched, only `worktree list` in the main checkout), `tests/core/session-solutions.test.ts` (parsing and matching), `tests/e2e/agent-solutions.spec.ts` (real path through the UI).
 
+## Worktrees an agent made (D145)
+D38 adopts a workspace session's worktrees by its branch or `<repo>-wt-<name>`. D145 (`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*) also adopts, in **any** supervised session, the worktrees its agent's tool calls name (`AgentWorktrees`, `src/server/worktrees/agent-made.ts`; the evidence rules in `src/core/agent-worktrees.ts`):
+- Claude Code's `EnterWorktree` (its `name`, or the `.claude/worktrees/<name>` path its result prints), an `Agent` / `Task` call with `isolation: "worktree"` (the worktree path its result names; read again until the result arrives, at most a day), a Bash `git worktree add` (its folder name or `-b` branch, once its result arrived);
+- only when git lists it in a repository of that session (the path the call named, the session's repo folder or workspace solutions, its working folder's repository), it is on a branch, has no live row, and its `.git/worktrees/<id>` folder was born after the session started (a minute of slack);
+- never in a terminal (hooked) session, never the main checkout.
+The scan runs before each clean-up (a turn's end, the 30-minute sweep): it reads the events stored since the last scan (a high-water mark, `worktrees.agentMadeScannedTo`, in windows of 5 000 ids), so the first one after the upgrade finds older leftovers whose sessions still exist. The row: `repo` = the solution (else the repository's folder name), `base_ref` = the main worktree's branch at that moment, `session_id` = the session. Off with the clean-up's setting.
+
 ## Isolate (gap #2)
 `isolate(repo, sessionId, { branch? })`, served as `POST /api/solutions/{repo}/isolate` `{ sessionId, branch }` → `Worktree` (201 when created). D32: the route requires `branch`, a ticket branch (422 on field `branch` before anything else happens; the UI asks for it in the card's confirm step, `docs/solutions.md` → *Conflicts*). It:
 1. refuses an unknown session (404 `session-not-found`) and a detached one (409 `detached`, the terminal owns it) before anything is created;

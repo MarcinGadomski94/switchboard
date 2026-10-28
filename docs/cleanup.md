@@ -108,3 +108,35 @@ Then `git worktree remove <path>` (never `--force`) and the row is marked remove
 **Archiving a folder's agents (D141 follow-up, 2026-10-28):** deleting a sidebar folder can archive the agents in it and its subfolders in one go (ticked by default), each exactly as Archive does; pinned, crew and plan sessions (the kept reasons `pinned`, `crew`, `plan`, `plan-step`) and an offline paired computer's are held back and moved out instead. `docs/sidebar.md` → *Delete a folder and archive its agents (D141)*.
 
 Tests: `tests/core/session-archive.test.ts`, `tests/server/sessions/archive.test.ts` (the grace, a restore, the period and Never, every kept reason, Plans not ready, the worktree conditions, idempotence and the record, Clean-up's group), `tests/server/api/settings.test.ts` (and the grace on a period change), `tests/server/api/sessions-archived.test.ts`, `tests/server/peers/archive.test.ts`, `tests/e2e/archive.spec.ts` (the sweep at start, v2 desktop and 390 × 844, classic History and Settings), `tests/e2e/archive-peers.spec.ts` (a paired computer's archived agents, Restore).
+
+## Automatic clean-up of merged worktrees (D145)
+
+Developer request 2026-10-28 (`docs/decisions.md` → D145): agents clean up after themselves once their work is merged, locally and in the git repo, for worktrees only. Code: `src/core/auto-clean.ts` (the rules: `decideAutoClean`, `decideRemote`, `PROTECTED_BRANCH_PATTERNS`, the divider's words, the record), `src/core/agent-worktrees.ts` (how a tool call names a worktree), `src/server/worktrees/auto-clean.ts` (`AutoCleanService`), `src/server/worktrees/agent-made.ts` (`AgentWorktrees`), `src/server/worktrees/auto-clean-wire.ts` (the triggers), `src/server/processes/cwd.ts` (processes' working folders). UI: `src/web/views/settings/AutoCleanRow.tsx`.
+
+**Which worktrees:** live `worktrees` rows with a session: the ones Switchboard made, D38's adopted ones, and the ones its agents made themselves (Claude Code's `EnterWorktree` / `.claude/worktrees/<name>`, an `Agent` run with `isolation: "worktree"`, a Bash `git worktree add`), adopted from the session's tool calls (`docs/worktrees.md` → *Worktrees an agent made (D145)*). Never a hand-made worktree, a terminal session's, the main checkout or another tool's.
+
+**Removed only when all of these hold** (read twice, the second time right before removing; the first that fails is the reason it stays):
+
+| Condition | Kept with |
+|---|---|
+| the owning agent is idle (no turn, no helper agents) or archived | "its agent is working" |
+| no open agent has its working folder in it (kept until that agent is archived) | "it is the working folder of … (removed once that agent is archived)" |
+| no other session works in it | "also used by …" |
+| no process has its working folder inside it (macOS `lsof`, Linux `/proc`; Windows: the session's tracked processes, D127) | "1 process still running in it (node)" |
+| nothing uncommitted or untracked (ignored files do not count) | "2 uncommitted changes" |
+| merged: `HEAD` in its base (or the base's remote-tracking copy) with commits of its own (D121), or its PR `MERGED` | "not merged into dev", "no commits of its own yet" |
+| no commit only on this computer | "1 commit only on this computer" |
+
+**What goes:** `git worktree remove <path>` (never `--force`), `git worktree prune`, the row; the local branch with `git branch -d` (never `-D`); the branch on its remote (its upstream's remote, else `origin`) with `git push --force-with-lease=refs/heads/<b>:<tip> <remote> --delete refs/heads/<b>` when **Also delete the branch on the remote** is on, the branch is there (`git ls-remote`), its tip is merged, it was not on the remote before (a `tracking` created branch) and it is not protected. A remote that refuses keeps it ("kept origin/x (the remote refused: …)"). Never a tag, `gc` or anything in the main checkout's working tree.
+
+**Protected branches** (`PROTECTED_BRANCH_PATTERNS`, one list; `*` matches anything): `main`, `master`, `dev`, `develop`, `development`, `trunk`, `staging`, `production`, `HEAD`, `release`, `release/*`, `release-*`, `release_*`, `releases/*`, `feature/*` (epic branches), plus the worktree's base and the repository's default branch. Never deleted, locally or on the remote. A clean, merged worktree on one still loses its folder; the branch stays and the divider says why.
+
+**When:** a session's turn end (its worktrees, after adopting what its agent made), its archiving, a merged PR seen by the poll, a plan's merge step, and every 30 minutes. One worktree at a time, requests coalesced; never in demo mode.
+
+**What you see:** the agent's chat divider "Cleaned up worktree x: merged into dev; removed the folder, the local branch and origin/worktree-x"; a server log line per removal and per new kept reason (`[auto-clean] …`); the Inbox's "PR merged" item of that worktree closes; under the setting, "Cleaned up 3 worktrees so far, the last today 14:02 · 1 kept for now (see Clean-up)" (`worktrees.autoCleanRecord`). What stays is listed by Clean-up as before.
+
+**Settings:** Settings → Sessions & worktrees (v2: Settings › Advanced › Agents & separate copies): **Clean up merged worktrees automatically** (`worktrees.autoClean`, on) and **Also delete the branch on the remote** (`worktrees.autoCleanRemote`, on). Off: nothing is adopted or removed.
+
+**Paired computers:** each computer cleans its own worktrees with its own settings.
+
+Tests: `tests/core/auto-clean.test.ts`, `tests/server/worktrees/auto-clean.test.ts` (temp repos with a bare origin: every condition, squash merge, protected / default / `feature/*` branches, a refusing remote, the setting off, never `--force` / `-D`), `tests/server/worktrees/agent-made.test.ts`, `tests/server/worktrees/auto-clean-turn.test.ts` (fake-claude's `EnterWorktree` turn end to end), `tests/e2e/auto-clean.spec.ts` (the switch in both themes, the v2 chat divider).
