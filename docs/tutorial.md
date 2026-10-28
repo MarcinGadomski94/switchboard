@@ -62,6 +62,11 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   of `project-graph`: a tour once completed or skipped never opens again (its row is never
   re-queued), so a new version on the same id would show nothing to installs that saw it.
   An existing install with all three pending gets them chained ("(1 of 3)").
+- **"Bring in a terminal conversation"** (`bring-in-terminal`, version 2.4.4, `ui: 'v2'`, decision D16):
+  one step on Agents' Also › Bring in from a terminal (`v2-tree-bring-in`), else the + New button
+  (`v2-new`, on both top bars); `v2Route: '/agents'`. It says that + New › From a terminal continues a
+  terminal-only Claude Code conversation in Switchboard. With the other v2 tours pending it is the
+  last of the chain ("(5 of 5)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

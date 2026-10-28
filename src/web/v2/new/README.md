@@ -10,6 +10,7 @@ Agent / conversation / task / project / routine / teammate / crew. Opened from a
 - `NewSheet.tsx`: the sheet (kinds, forms, Save as draft, ⌘↩); a full-screen sheet on a phone.
 - `new-model.ts` (pure, `tests/web/v2-new.test.ts`): the kinds, checks, API bodies, routine presets, project steps, the `new-session` draft.
 - APIs: `machineApi(machine).createSession` (Simple, or Full with the workspace questions), `api.createChat`, `api.addTodo`, `api.createLoop`, `plansApi.create` + `addItem` (or Import from Jira: the Projects page's v2 `JiraImportDialog`, D112), `api.putMachineDraft('new-session')`.
+- From a terminal (D16 in v2): `BringInSheet.tsx` (pure part `bring-in-model.ts`, `tests/web/v2-bring-in.test.ts`) lists this computer's terminal conversations not in Switchboard yet and moves one with classic's `useConversationMoves`; `openNew({ kind: 'bring-in' })` opens it.
 - Teammate and Crew (lane X): `CrewDialogs.tsx` opens the Crews page's `NewTeammateDialog` / `NewCrewDialog` (`../crews/`), one New teammate and one New crew for the whole app; `openNew({ kind: 'teammate' | 'crew' })` opens them.
 - Decisions: `docs/design/v2-decisions.md` → Lane R → + New.
 
