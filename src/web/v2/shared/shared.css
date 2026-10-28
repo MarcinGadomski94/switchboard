@@ -320,9 +320,24 @@ button.v2-qi-src:hover {
 
 .v2-chk-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* Wide enough for a few words per line: at 150px the checkbox, the number and the padding left
+     ~50px for the text, which then broke after every word. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
   gap: 8px;
   margin-top: 6px;
+}
+
+.v2-chk-grid .v2-chk {
+  align-items: center;
+  padding: 8px 12px;
+  line-height: 1.35;
+}
+
+.v2-chk-grid .v2-chk > span:last-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
 
 .v2-code {
@@ -539,7 +554,7 @@ button.v2-qi-src:hover {
   }
 
   .v2-chk-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .v2-qi-actions .v2-btn,

@@ -83,6 +83,10 @@ async function expectBatchCard(card: Locator): Promise<void> {
   await expect(blocks.nth(1).locator('label', { hasText: 'Tests' })).toHaveAttribute('title', 'Unit and E2E tests');
   await expect(card.getByRole('button', { name: 'Go ahead' })).toHaveCount(0);
   await expect(card.getByTestId('v2-answer-send')).toBeDisabled();
+  // Fix after 2.4.6: each multi-select option's text gets room for a few words per line (it used
+  // to get ~50px and broke after every word).
+  const widths = await blocks.nth(1).locator('.v2-chk-grid .v2-chk > span:last-child').evaluateAll((spans) => spans.map((span) => span.getBoundingClientRect().width));
+  for (const width of widths) expect(width).toBeGreaterThanOrEqual(120);
 }
 
 /** Picks Acme US + Code and Docs, sends; the agent gets the exact labels (D128 join) in one control_response. */
