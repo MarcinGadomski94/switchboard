@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { Session } from '../../src/core/api.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { seedFolderInDataDir } from './folders.ts';
+import { stopServersUnder } from './server-registry.ts';
 import { enableListener, gitEnv, machineOn, type PeerNode, startPeerNode, pair, waitFor } from './peers.ts';
 
 /**
@@ -79,6 +80,8 @@ async function acquireWorld(root: string): Promise<void> {
 /** Removes a temp folder (retrying while a stopping process still writes into it) and releases the world lock. */
 export async function removeWorld(dir: string): Promise<void> {
   try {
+    // The world's servers first, also one still starting (tests/helpers/server-registry.ts).
+    await stopServersUnder(dir);
     await removeFolder(dir);
   } finally {
     if (HELD.delete(dir)) await rm(LOCK, { recursive: true, force: true });

@@ -9,6 +9,7 @@ import { fakeOpenerEnv } from '../../tools/fake-opener/command.ts';
 import { fakeServiceCtlEnv } from '../../tools/fake-servicectl/command.ts';
 import { fakeTailscaleBinEnv } from '../../tools/fake-tailscale/command.ts';
 import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
+import { SERVER_DETACHED, assertSpawnAllowed, stopTrackedServer, trackServer } from './server-registry.ts';
 
 /** The UI build E2E servers serve (`tests/e2e/global-setup.ts` builds it): never `dist/web`, which a running Switchboard may be serving. */
 export const E2E_WEB_ROOT = path.join(REPO_ROOT, '.e2e-dist', 'web');
@@ -26,7 +27,7 @@ export interface SpawnedServer {
 export interface ServerProcess extends SpawnedServer {
   readonly port: number;
   readonly baseUrl: string;
-  /** SIGTERM, then SIGKILL after 5 s; resolves with the exit code. */
+  /** SIGTERM, then SIGKILL to its process group after 5 s; resolves with the exit code (`null` if it never drained). */
   stop(): Promise<number | null>;
 }
 
@@ -102,11 +103,16 @@ export function testServerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
  * `nodeArgs` go before the script (the benches' `--cpu-prof`, `--inspect`): the server's own, never its children's.
  */
 export function spawnServer(port: number | string, env: Record<string, string>, nodeArgs: readonly string[] = []): SpawnedServer {
+  const dataDir = env['SWITCHBOARD_DATA_DIR'] ?? null;
+  assertSpawnAllowed(dataDir);
   const child = spawn(process.execPath, [...nodeArgs, path.join('src', 'server', 'main.ts')], {
     cwd: REPO_ROOT,
     env: testServerEnv({ ...env, SWITCHBOARD_PORT: String(port) }),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Its own process group (POSIX), so a stop or a sweep takes it and everything it started
+    // (tests/helpers/server-registry.ts). Not on Windows, where taskkill /T takes the tree.
+    detached: SERVER_DETACHED,
   });
   let output = '';
   child.stdout?.setEncoding('utf8').on('data', (chunk: string) => {
@@ -115,20 +121,19 @@ export function spawnServer(port: number | string, env: Record<string, string>, 
   child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
     output += chunk;
   });
-  const closed = new Promise<number | null>((resolve) => child.once('close', (code) => resolve(code)));
+  const closed = new Promise<number | null>((resolve) => {
+    child.once('close', (code) => resolve(code));
+    child.once('error', () => resolve(null));
+  });
+  // Tracked before anything awaits its start: a test that times out mid-start cannot lose it.
+  trackServer(child, dataDir, REPO_ROOT, closed);
   return { child, output: () => output, closed };
 }
 
 function stopper(spawned: SpawnedServer): () => Promise<number | null> {
   return async () => {
     const { child } = spawned;
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM');
-      const killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-      const code = await spawned.closed;
-      clearTimeout(killTimer);
-      return code;
-    }
+    if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) return stopTrackedServer(child.pid);
     return spawned.closed;
   };
 }
