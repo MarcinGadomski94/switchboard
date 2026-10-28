@@ -19,7 +19,7 @@ import { clock } from '../shared/time.ts';
 import { AccessPanel } from './AccessPanel.tsx';
 import { ScrollText } from './ScrollText.tsx';
 import { ArchivedLine, CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
-import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
+import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, openChatReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
 import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
 
@@ -93,11 +93,16 @@ function useTeammateActions(view: TeamView | null, crews: readonly TeamSummary[]
       toast({ text: refusalText(e), tone: 'error' });
     }
   };
+  // Fix after 2.0 (2.4.5): the card itself, its Open chat button and ⋯ › Open chat all go here.
+  const openChat = (member: TeamMember): void => {
+    if (openChatReason(member) === null) openAgent(member.sessionRef);
+  };
   const menu = (member: TeamMember, openAccess: () => void): MenuItem[] => {
     const charterOpen = member.charterRequest ?? null;
     const computerWhy = moveComputerReason(member, machines);
+    const chatWhy = openChatReason(member);
     return [
-      { id: 'open', label: 'Open chat', icon: 'chat', onSelect: () => openAgent(member.sessionRef) },
+      { id: 'open', label: CREW_WORDS.openChat, icon: 'chat', ...(chatWhy ? { disabledReason: chatWhy } : {}), onSelect: () => openChat(member) },
       { id: 'crew', label: CREW_WORDS.moveToCrew, icon: 'crew', kbd: 'M', ...(crews.length < 2 ? { disabledReason: 'Make another crew first.' } : {}), onSelect: () => setOverlay({ kind: 'crew', member }) },
       { id: 'computer', label: CREW_WORDS.moveToComputer, icon: 'desktop', ...(computerWhy ? { disabledReason: computerWhy } : {}), onSelect: () => setOverlay({ kind: 'computer', member }) },
       { separator: true, id: 'sep1' },
@@ -118,7 +123,7 @@ function useTeammateActions(view: TeamView | null, crews: readonly TeamSummary[]
       { id: 'return', label: CREW_WORDS.returnToAgents, icon: 'agents', onSelect: () => void run(() => teamApi.returnMember(member.id), `“${member.name}” is back in Agents, not in a crew.`) },
     ];
   };
-  return { moveTo, menu, run };
+  return { moveTo, menu, run, openChat };
 }
 
 /** A proposed (or asked-for) job description on a teammate: Accept / Edit / Dismiss (D105). */
@@ -177,19 +182,30 @@ function CharterProposalBlock({ member, onEdit }: { readonly member: TeamMember;
   );
 }
 
-/** One teammate's card on its crew page (2.4.4: compact; the job description scrolls in a three-line box). */
-function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { readonly member: TeamMember; readonly status: V2Status; readonly needs: readonly NeedsItem[]; readonly menu: MenuItem[]; readonly onOverlay: (overlay: Overlay) => void; readonly onDetails: (tab: TeammateTab) => void }) {
+/**
+ * One teammate's card on its crew page (2.4.4: compact; the job description scrolls in a three-line box).
+ * Fix after 2.0 (2.4.5): its main area (avatar, name, rhythm) is a button that opens the teammate's
+ * chat, as ⋯ › Open chat does, and the foot has an Open chat button; the other controls are separate
+ * hit areas, so they keep their own behaviour.
+ */
+function TeammateCard({ member, status, needs, menu, onOverlay, onDetails, onOpen }: { readonly member: TeamMember; readonly status: V2Status; readonly needs: readonly NeedsItem[]; readonly menu: MenuItem[]; readonly onOverlay: (overlay: Overlay) => void; readonly onDetails: (tab: TeammateTab) => void; readonly onOpen: () => void }) {
   const meter = budgetMeter(member);
   const offline = member.status === 'offline';
+  const chatWhy = openChatReason(member);
   return (
     <article className="v2-card v2-c-mate" data-testid="v2-teammate" data-member={member.id} data-status={status} data-needs={needs.length > 0 || undefined} data-offline={offline || undefined} aria-label={`${member.name} · ${STATUS[status].label}`}>
       <div className="v2-row">
-        <Avatar name={member.name} shape="square" status={status} />
-        <div className="v2-grow">
-          <h3 className="v2-c-mate-name">{member.name}</h3>
-          <span className="v2-muted v2-c-small v2-c-ellipsis v2-c-block" title={rhythmText(member)}>
-            {rhythmText(member)}
-          </span>
+        {/* The name's button stretches over the avatar and the rhythm line (crews.css), so the whole area opens the chat. */}
+        <div className="v2-row v2-grow v2-c-mate-main" data-disabled={chatWhy !== null || undefined}>
+          <Avatar name={member.name} shape="square" status={status} />
+          <div className="v2-grow">
+            <h3 className="v2-c-mate-name">
+              <button type="button" className="v2-c-mate-open" onClick={onOpen} disabled={chatWhy !== null} title={chatWhy ?? CREW_WORDS.openChatOf(member.name)} data-testid="v2-teammate-open">
+                {member.name}
+              </button>
+            </h3>
+            <span className="v2-muted v2-c-small v2-c-ellipsis v2-c-block">{rhythmText(member)}</span>
+          </div>
         </div>
         <StatusBadge status={status} size="s" />
         <MenuButton items={menu} label={`Actions for ${member.name}`} testId="v2-teammate-menu" />
@@ -228,6 +244,9 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails }: { r
         </Button>
         <Button size="sm" variant="ghost" icon="eye" onClick={() => onDetails('overview')} data-testid="v2-teammate-details">
           Details
+        </Button>
+        <Button size="sm" variant="ghost" icon="chat" className="v2-c-mate-chat" onClick={onOpen} disabled={chatWhy !== null} title={chatWhy ?? CREW_WORDS.openChatOf(member.name)} aria-label={CREW_WORDS.openChatOf(member.name)} data-testid="v2-teammate-chat">
+          <span className="v2-c-mate-chat-label">{CREW_WORDS.openChat}</span>
         </Button>
       </div>
     </article>
@@ -358,6 +377,9 @@ export function CrewPage({ id }: { readonly id: string }) {
         <div className="v2-row v2-c-phone-head">
           <Avatar name={selected.name} shape="square" status={status} />
           <h1 className="v2-grow">{selected.name}</h1>
+          <Button size="sm" icon="chat" onClick={() => actions.openChat(selected)} disabled={openChatReason(selected) !== null} title={openChatReason(selected) ?? CREW_WORDS.openChatOf(selected.name)} data-testid="v2-teammate-chat">
+            {CREW_WORDS.openChat}
+          </Button>
           <MenuButton items={actions.menu(selected, () => openDetails(selected, 'access'))} label={`Actions for ${selected.name}`} testId="v2-teammate-menu" />
         </div>
         <StatusBadge status={status} />
@@ -448,22 +470,25 @@ export function CrewPage({ id }: { readonly id: string }) {
           {members.map((member) => {
             const status = statusOf(member);
             return (
-              <button key={member.id} type="button" className="v2-c-prow" onClick={() => openDetails(member, 'overview')} data-testid="v2-teammate-row" data-member={member.id}>
-                <Avatar name={member.name} shape="square" status={status} size="m" />
-                <span className="v2-grow">
-                  <b>{member.name}</b>
-                  <span className="v2-muted v2-c-small">{workLine(member)}</span>
-                </span>
-                <StatusBadge status={status} size="s" compact />
-                <Icon name="chev" size="s" />
-              </button>
+              <div key={member.id} className="v2-c-prow-wrap">
+                <button type="button" className="v2-c-prow" onClick={() => openDetails(member, 'overview')} data-testid="v2-teammate-row" data-member={member.id}>
+                  <Avatar name={member.name} shape="square" status={status} size="m" />
+                  <span className="v2-grow">
+                    <b>{member.name}</b>
+                    <span className="v2-muted v2-c-small">{workLine(member)}</span>
+                  </span>
+                  <StatusBadge status={status} size="s" compact />
+                  <Icon name="chev" size="s" />
+                </button>
+                <IconButton icon="chat" size="l" label={CREW_WORDS.openChatOf(member.name)} title={openChatReason(member) ?? CREW_WORDS.openChatOf(member.name)} disabled={openChatReason(member) !== null} onClick={() => actions.openChat(member)} data-testid="v2-teammate-row-chat" data-member={member.id} />
+              </div>
             );
           })}
         </div>
       ) : (
         <div className="v2-c-mates" data-testid="v2-teammate-list">
           {members.map((member) => (
-            <TeammateCard key={member.id} member={member} status={statusOf(member)} needs={needsOf.get(member.id) ?? []} menu={actions.menu(member, () => openDetails(member, 'access'))} onOverlay={setOverlay} onDetails={(tab) => openDetails(member, tab)} />
+            <TeammateCard key={member.id} member={member} status={statusOf(member)} needs={needsOf.get(member.id) ?? []} menu={actions.menu(member, () => openDetails(member, 'access'))} onOverlay={setOverlay} onDetails={(tab) => openDetails(member, tab)} onOpen={() => actions.openChat(member)} />
           ))}
         </div>
       )}

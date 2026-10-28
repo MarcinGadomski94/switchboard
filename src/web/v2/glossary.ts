@@ -1731,6 +1731,9 @@ export const CREW_WORDS = {
   /** The compact card's scrollable job description. */
   jdRegion: (who: string): string => `Job description of ${who}`,
   allArchived: 'Every teammate of this crew is archived. Restore one to bring it back here.',
+  /** Fix after 2.0 (2.4.5): a teammate card (and a Crews card's avatar) opens its agent's chat straight away. */
+  openChat: 'Open chat',
+  openChatOf: (who: string): string => `Open the chat of ${who}`,
 } as const;
 
 /** 1st, 2nd, 3rd, 4th … (the crews' order). */

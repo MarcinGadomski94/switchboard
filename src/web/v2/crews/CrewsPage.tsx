@@ -7,7 +7,8 @@ import { Avatar, Button, Card, ComputerTag, EmptyState, Icon, MenuButton, type M
 import { CREW_WORDS, teammateStatusToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { useCrewPins } from '../shared/crew-pins.ts';
-import { ARCHIVED_HREF, archivedLine, crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, orderedCrews } from './crew-model.ts';
+import { useOpenAgent } from '../shared/open-agent.ts';
+import { ARCHIVED_HREF, archivedLine, crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, openChatReason, orderedCrews } from './crew-model.ts';
 import { visibleTeam } from '../../team/model.ts';
 import { DeleteCrewDialog, NewCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
@@ -100,6 +101,7 @@ export function CrewsPage() {
   const { ordered, ids, save } = useCrewOrder(data.teams);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const pins = useCrewPins();
+  const openAgent = useOpenAgent();
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const open = (id: string): void => navigate({ area: 'crew', id });
@@ -236,12 +238,27 @@ export function CrewsPage() {
                     </span>
                   </div>
                   <div className="v2-row v2-c-wrap v2-c-crewcard-foot">
-                    <span className="v2-c-avs" aria-hidden="true">
-                      {(visibleTeam(crew).roster ?? []).map((entry) => (
-                        <span key={entry.id} title={`${entry.name} · ${entry.status}`}>
-                          <Avatar name={entry.name} status={teammateStatusToV2(entry.status)} size="m" />
-                        </span>
-                      ))}
+                    {/* Fix after 2.0 (2.4.5): a teammate's avatar opens its chat; the rest of the card opens the crew. */}
+                    <span className="v2-c-avs" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      {(visibleTeam(crew).roster ?? []).map((entry) => {
+                        const why = openChatReason(entry);
+                        return (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            className="v2-c-av-open"
+                            draggable={false}
+                            onClick={() => openAgent(entry.sessionRef)}
+                            disabled={why !== null}
+                            title={why ?? `${entry.name} · ${entry.status} · ${CREW_WORDS.openChat}`}
+                            aria-label={why ? `${entry.name}: ${why}` : CREW_WORDS.openChatOf(entry.name)}
+                            data-testid="v2-crew-card-mate"
+                            data-session={entry.sessionRef}
+                          >
+                            <Avatar name={entry.name} status={teammateStatusToV2(entry.status)} size="m" />
+                          </button>
+                        );
+                      })}
                     </span>
                     <span className="v2-grow" />
                     <span className="v2-c-kvs">

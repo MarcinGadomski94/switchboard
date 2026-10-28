@@ -721,3 +721,93 @@
 .sb2 :is([data-testid='v2-new-teammate']) .v2-c-chips {
   margin-bottom: 0;
 }
+
+/* Fix after 2.0 (2.4.5) · a teammate card's main area (avatar, name, rhythm) opens its chat. */
+.sb2 .v2-c-mate {
+  container: v2-c-mate / inline-size;
+}
+.sb2 .v2-c-mate-main {
+  position: relative;
+  gap: 10px;
+  min-width: 0;
+  border-radius: var(--v2-r-s);
+}
+.sb2 .v2-c-mate-open {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+/* Stretched over the avatar and the rhythm line: one hit area, one focus ring. */
+.sb2 .v2-c-mate-open::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--v2-r-s);
+}
+.sb2 .v2-c-mate-main:has(.v2-c-mate-open:hover:not(:disabled)) {
+  background: var(--v2-accent-soft);
+  box-shadow: 0 0 0 4px var(--v2-accent-soft);
+}
+.sb2 .v2-c-mate-open:hover:not(:disabled) {
+  color: var(--v2-accent-text);
+  text-decoration: underline;
+}
+.sb2 .v2-c-mate-open:focus-visible {
+  outline: none;
+}
+.sb2 .v2-c-mate-open:focus-visible::after {
+  outline: 2px solid var(--v2-blue);
+  outline-offset: 2px;
+}
+.sb2 .v2-c-mate-open:disabled {
+  cursor: not-allowed;
+}
+/* The foot's Open chat: icon + word, the icon alone (its tooltip names it) on a narrow card. */
+@container v2-c-mate (max-width: 300px) {
+  .sb2 .v2-c-mate-chat-label {
+    display: none;
+  }
+}
+
+/* The Crews card's teammate avatars: each opens its teammate's chat. */
+.sb2 .v2-c-av-open {
+  display: inline-grid;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.sb2 .v2-c-av-open:hover:not(:disabled) .v2-av,
+.sb2 .v2-c-av-open:focus-visible .v2-av {
+  box-shadow: 0 0 0 2px var(--v2-accent);
+}
+.sb2 .v2-c-av-open:focus-visible {
+  outline: none;
+}
+.sb2 .v2-c-av-open:disabled {
+  cursor: not-allowed;
+}
+
+/* The phone's teammate row: the row opens the teammate's screen, the chat button its chat. */
+.sb2 .v2-c-prow-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sb2 .v2-c-prow-wrap .v2-c-prow {
+  flex: 1;
+  min-width: 0;
+}
+.sb2 .v2-c-prow-wrap .v2-icon-btn {
+  flex: none;
+}

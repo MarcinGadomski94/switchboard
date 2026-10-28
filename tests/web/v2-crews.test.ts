@@ -18,6 +18,7 @@ import {
   moveComputerReason,
   moveCrew,
   moveCrewReason,
+  openChatReason,
   orderedCrews,
   rhythmText,
   teammateStatus,
@@ -255,5 +256,15 @@ describe('the lists', () => {
       ['h2', 'You', 'Role a'],
       ['h1', 'Role a', 'Role b'],
     ]);
+  });
+});
+
+describe('openChatReason (Fix after 2.0, 2.4.5: the card opens the teammate’s chat)', () => {
+  it('opens for a shown teammate, offline computer or not', () => {
+    expect(openChatReason({ name: 'Reviewer' })).toBeNull();
+    expect(openChatReason({ name: 'Reviewer', archived: false })).toBeNull();
+  });
+  it('is off for an archived teammate, with the restore reason', () => {
+    expect(openChatReason({ name: 'Reviewer', archived: true })).toBe("Reviewer's session is archived: restore it first");
   });
 });

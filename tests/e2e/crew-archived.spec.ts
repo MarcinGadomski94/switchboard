@@ -71,7 +71,7 @@ test('v2: archived from its chat, a teammate leaves its crew (live) and the Crew
   await page.goto(`${world.baseUrl}/crews`);
   const card = page.getByTestId('v2-crew-card').filter({ hasText: 'Team' });
   await expect(card).toContainText('1st in your order · 1 teammate');
-  await expect(card.locator('.v2-c-avs > span')).toHaveCount(1);
+  await expect(card.getByTestId('v2-crew-card-mate')).toHaveCount(1);
   await expect(card.getByTestId('v2-crew-archived')).toHaveText('1 archived teammate · Show in Archived');
 
   // The link opens Archived (not the crew), which lists it under its teammate's name, kept for its crew.

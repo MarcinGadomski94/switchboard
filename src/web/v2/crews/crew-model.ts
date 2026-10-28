@@ -1,4 +1,4 @@
-import type { TeamActivityRecord, TeamHandoff, TeamMember, TeamMemberStatus, TeamNeedsYouItem, TeamSummary } from '../../../core/team.ts';
+import { type TeamActivityRecord, type TeamHandoff, type TeamMember, type TeamMemberStatus, type TeamNeedsYouItem, type TeamSummary, archivedMemberText } from '../../../core/team.ts';
 import type { Machine } from '../../../core/peers.ts';
 import { stripActor } from '../../team/activity.ts';
 import { cardStatus, moveInOrder, needsYouCounts, restoredOrder, rhythmLine, visibleTeam } from '../../team/model.ts';
@@ -87,6 +87,16 @@ export function moveCrewReason(ids: readonly string[], id: string, delta: -1 | 1
 // ── a teammate ──────────────────────────────────────────────────────────
 
 /** A teammate's v2 status: needs you also while Needs-you items of it wait (paused and offline win). */
+/**
+ * Fix after 2.0 (2.4.5) · why a teammate's Open chat (the card, its Open chat button, ⋯ › Open
+ * chat, a Crews card's avatar) is off, `null` when it opens. Only an archived teammate's is: the
+ * views hide those, so this guards a stale card; an offline computer's teammate still opens (its
+ * chat shows the computer offline), as ⋯ › Open chat always did.
+ */
+export function openChatReason(member: { readonly name: string; readonly archived?: boolean }): string | null {
+  return member.archived === true ? archivedMemberText(member.name) : null;
+}
+
 export function teammateStatus(member: Pick<TeamMember, 'id' | 'status'>, items: readonly Pick<TeamNeedsYouItem, 'memberId'>[]): V2Status {
   const status: TeamMemberStatus = cardStatus(member, needsYouCounts(items as readonly TeamNeedsYouItem[]));
   return teammateStatusToV2(status);
