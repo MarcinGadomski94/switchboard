@@ -3,7 +3,8 @@ import { lastTurnRevert, openRevert, useCheckpoints } from '../views/session/che
 import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionActivity, SessionListItem } from '../../core/api.ts';
-import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
+import { CLOSE_TOOLTIP, closeAsks } from '../../core/session-close.ts';
+import { folderArchiveResultText, folderSubtree } from '../../core/sidebar-folder-archive.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import {
   type ArrangedFolder,
@@ -26,6 +27,7 @@ import { SessionActivityOr } from '../activity/ActivityViews.tsx';
 import { ApiError, api } from '../api/client.ts';
 import { useHubEvent, useHubStatus } from '../api/useHub.ts';
 import type { CloseSessionControl } from '../components/CloseSession.tsx';
+import { FolderDeleteConfirm } from '../components/FolderDeleteConfirm.tsx';
 import { InlineTitle } from '../components/InlineTitle.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
@@ -33,6 +35,7 @@ import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link, useRouter } from '../router.tsx';
 import { DETECTED_HINT, needsYouOf } from '../views/session/needs-you.ts';
 import { formatAge, modeLine, statusColor } from './format.ts';
+import { snapshotFolderTree, undoFolderArchive } from './folder-archive-undo.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
 import { FRESH_ACTION_LABEL } from '../../core/fresh-session.ts';
@@ -385,6 +388,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   /** The folder a new folder's name field is in (`null` = the top level, D54's "+"); `undefined` = no field. */
   const [creating, setCreating] = useState<string | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<string | null>(null);
+  /** D141: the folder whose delete confirmation (archive its sessions?) is open. */
+  const [deleting, setDeleting] = useState<string | null>(null);
   const arranged = arrangeSidebar(sessions, layout);
   /** D71: the listed sessions in the service's order (a loose drop's position counts in the whole loose list). */
   const listedIds = sessions.map((s) => s.id);
@@ -777,9 +782,12 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       { label: 'Move up', testId: 'sidebar-menu-up', run: () => void run(() => api.moveSidebarFolder(folder.id, at - 1)), disabled: at <= 0 },
       { label: 'Move down', testId: 'sidebar-menu-down', run: () => void run(() => api.moveSidebarFolder(folder.id, at + 1)), disabled: at >= ids.length - 1 },
       { label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: view('move') },
-      hasSubfolders
-        ? { label: 'Delete folder…', testId: 'sidebar-menu-delete', keepOpen: true, run: view('delete') }
-        : { label: 'Delete folder', testId: 'sidebar-menu-delete', run: () => void run(() => api.deleteSidebarFolder(folder.id)) },
+      // D141: a folder holding sessions (at any depth) asks whether to archive them too.
+      folderSessions(folder.id).length > 0
+        ? { label: 'Delete folder…', testId: 'sidebar-menu-delete', run: () => setDeleting(folder.id) }
+        : hasSubfolders
+          ? { label: 'Delete folder…', testId: 'sidebar-menu-delete', keepOpen: true, run: view('delete') }
+          : { label: 'Delete folder', testId: 'sidebar-menu-delete', run: () => void run(() => api.deleteSidebarFolder(folder.id)) },
     ];
   };
 
@@ -809,6 +817,36 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     }
     if (items.length === 0) items.push({ label: 'No other folders', testId: 'sidebar-menu-no-folders', run: () => undefined, disabled: true });
     return items;
+  };
+
+  /** D141: the listed sessions in the folder and its subfolders (at any depth), as the sidebar shows them. */
+  const folderSessions = (folderId: string): SessionListItem[] => {
+    const inside = new Set(folderSubtree(layout, folderId).map((f) => f.id));
+    return arranged.folders.filter((entry) => inside.has(entry.folder.id)).flatMap((entry) => entry.sessions);
+  };
+
+  /** D141: the confirmation's answer: delete (and archive the sessions in it, or move them out as before). */
+  const deleteFolder = (folder: SidebarFolder, archive: boolean): void => {
+    setDeleting(null);
+    if (!archive) {
+      void run(() => api.deleteSidebarFolder(folder.id));
+      return;
+    }
+    const snapshot = snapshotFolderTree(layout, folder.id);
+    void run(async () => {
+      const result = await api.deleteSidebarFolderArchiving(folder.id);
+      const archivedIds = result.archived.map((agent) => agent.sessionId);
+      showToast({
+        id: `folder-archive-${folder.id}`,
+        title: 'Folder deleted',
+        sub: folder.name,
+        branch: '',
+        text: folderArchiveResultText(folder.name, result, 'classic'),
+        sessionId: null,
+        ...(snapshot ? { action: { label: 'Undo', run: () => void run(() => undoFolderArchive(snapshot, archivedIds)) } } : {}),
+      });
+      return result.layout;
+    });
   };
 
   /** D58: deleting a folder with subfolders asks first (nothing is lost: they move up a level). */
@@ -926,6 +964,14 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   })();
   const menuView = menu ? (menu.kind === 'session' ? (menu.folders ? 'f' : '') : menu.view) : '';
   const openMenu = menu && menuItems ? <Menu key={`${menu.kind}:${menu.id}:${menuView}`} anchor={menu.anchor} label={menuItems.label} items={menuItems.items} onClose={closeMenu} /> : null;
+
+  const deletingFolder = deleting === null ? undefined : layout.folders.find((f) => f.id === deleting);
+  /** D141: what an unticked delete does, in D58's words. */
+  const deleteMoveNote = (folder: SidebarFolder): string => {
+    const count = childFolders(layout, folder.id).length;
+    const up = parentOf(folder) === null ? 'the top level' : 'its parent folder';
+    return `Nothing is archived: ${count > 0 ? `its ${count} subfolder${count === 1 ? '' : 's'} and ` : ''}the sessions move to ${up}.`;
+  };
 
   const pinnedIds = arranged.pinned.map((s) => s.id);
   const looseIds = arranged.loose.map((s) => s.id);
@@ -1103,6 +1149,15 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         {arranged.loose.map((session) => row(session, { kind: 'loose' }, looseIds))}
       </div>
       {openMenu}
+      {deletingFolder ? (
+        <FolderDeleteConfirm
+          name={deletingFolder.name}
+          sessions={folderSessions(deletingFolder.id).map((session) => ({ name: displayTitle(session), working: closeAsks({ status: session.status, activity: activityOf(session.id) }) }))}
+          moveNote={deleteMoveNote(deletingFolder)}
+          onConfirm={(archive) => deleteFolder(deletingFolder, archive)}
+          onCancel={() => setDeleting(null)}
+        />
+      ) : null}
       {/* D74: the lifted row's label under the finger. */}
       {ghost
         ? createPortal(

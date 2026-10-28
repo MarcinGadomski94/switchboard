@@ -233,7 +233,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
         )}
       </div>
       <MoveDialog agent={moving} layout={data.layout} tree={data.tree} actions={actions} onClose={() => setMoving(null)} />
-      <FolderDialog request={folderRequest} tree={data.tree} actions={actions} onClose={() => setFolderRequest(null)} onCreated={(id) => setSelection(`folder:${id}`)} />
+      <FolderDialog request={folderRequest} tree={data.tree} actions={actions} activityOf={activityOf} onClose={() => setFolderRequest(null)} onCreated={(id) => setSelection(`folder:${id}`)} />
       <RenameDialog agent={renaming} onClose={() => setRenaming(null)} onRename={(agent, title) => void rename(agent, title)} />
       <Dialog
         open={confirmClose !== null}
