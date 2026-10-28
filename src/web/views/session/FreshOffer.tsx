@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Session } from '../../../core/api.ts';
+import type { Session, SessionActivity } from '../../../core/api.ts';
 import { FRESH_CONTINUE, FRESH_NOT_NOW, freshOfferState, freshOfferText, freshStepText, keepSnooze } from '../../../core/fresh-session.ts';
 import { readKnownSettings } from '../../../core/settings.ts';
 import { ApiError, api } from '../../api/client.ts';
@@ -53,7 +53,7 @@ export function FreshOffer({
 }: {
   readonly sessionId: string;
   readonly session: Session | null;
-  readonly activity: unknown;
+  readonly activity: Pick<SessionActivity, 'state' | 'background'> | null;
   readonly blocked: string | null;
   /** The composer's "+ Todo" sits over the bar's right end (an empty todo list): the buttons keep clear of it. */
   readonly reserveTodo?: boolean;

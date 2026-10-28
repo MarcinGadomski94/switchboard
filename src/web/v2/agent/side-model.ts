@@ -1,4 +1,5 @@
-import type { SessionDetail } from '../../../core/api.ts';
+import type { SessionActivity, SessionDetail } from '../../../core/api.ts';
+import { freshStepText } from '../../../core/fresh-session.ts';
 import type { MemorySessionCount } from '../../../core/memory.ts';
 // Project memory (D107) hook (docs/memory-removal.md): the imports above.
 import type { SessionStatus } from '../../../core/model.ts';
@@ -8,7 +9,9 @@ import { reportedTableView, overviewRows, type ReportedTableView } from '../../v
 import { hasSubagentChat } from '../../views/session/chat.ts';
 import { isFinishedSubagent } from '../../views/session/right-panel.ts';
 import { overviewEntries, resumeRunMessage } from '../../views/session/workflow-agents.ts';
-import { type V2Status, sessionStatusToV2 } from '../glossary.ts';
+import { freshBusy } from '../../views/session/fresh-offer.ts';
+import { isClosed } from '../../../core/session-close.ts';
+import { AGENT_WORDS, type V2Status, sessionStatusToV2 } from '../glossary.ts';
 import { projectStatus, stepLook, stepName } from '../projects/project-model.ts';
 import { type HelperBucket, helperActivityAt, helperBucket, runActivityAt, runBucket } from './helpers-model.ts';
 
@@ -191,4 +194,48 @@ export function agentProjects(plans: readonly Plan[], sessionId: string): AgentP
 export function notesHref(count: Pick<MemorySessionCount, 'folder'> | null, folderPath: string | null | undefined): string | null {
   const folder = count?.folder ?? folderPath ?? null;
   return folder ? `/notes?scope=${encodeURIComponent(folder)}` : null;
+}
+
+/** Fixes after 2.0 · Continue with a clean slate (D83) as the side panel and the agent ⋯ menu show it. */
+export interface CleanSlateView {
+  /** It can start now. */
+  readonly enabled: boolean;
+  /** Why it cannot (shown under the button / on the menu entry), `null` when it can or while it runs. */
+  readonly reason: string | null;
+  /** The step while a continuation runs (`Session.freshContinue.step`), `null` otherwise. */
+  readonly running: string | null;
+}
+
+/**
+ * Whether the agent can continue with a clean slate now, and if not, why (in
+ * plain words, never only a tooltip). The rules are D83's (`freshEligible`,
+ * `freshBusy`): its computer is online, it is open and runs here (not hooked or
+ * detached), no switch runs, its working memory is measured, and no turn runs
+ * (background work left running, e.g. a dev server, does not count).
+ */
+export function cleanSlateView(
+  session: Pick<SessionDetail, 'hooked' | 'closedAt' | 'attached' | 'context' | 'providerSwitch' | 'accountSwitching' | 'movedTo' | 'freshContinue' | 'status' | 'turnWait'>,
+  activity: Pick<SessionActivity, 'state'> | null,
+  offline: string | null,
+): CleanSlateView {
+  const why = AGENT_WORDS.cleanSlateWhy;
+  if (session.freshContinue) return { enabled: false, reason: null, running: freshStepText(session.freshContinue.step) };
+  const reason =
+    offline ??
+    (isClosed(session)
+      ? why.closed
+      : session.movedTo
+        ? why.moved
+        : session.hooked === true
+          ? why.hooked
+          : session.attached === false
+            ? why.detached
+            : session.providerSwitch || session.accountSwitching === true
+              ? why.switching
+              : !session.context
+                ? why.unmeasured
+                : freshBusy(session, activity)
+                  ? why.busy
+                  : null);
+  return { enabled: reason === null, reason, running: null };
 }

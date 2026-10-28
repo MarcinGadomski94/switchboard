@@ -17,7 +17,7 @@ import { HelperChat } from './HelperChat.tsx';
 import { activeHelperCount, withPendingHelpers } from './helpers-model.ts';
 import { SidePanel } from './SidePanel.tsx';
 import { ChangesTab, HelpersTab, ResultsTab, TimelineTab } from './tabs.tsx';
-import { useAgent } from './useAgent.ts';
+import { useAgent, useFollowFresh } from './useAgent.ts';
 import { browserStorage } from './useAgent.ts';
 import { useChatRows } from './useChatRows.ts';
 import { type ChatViewSettings, columnWidth, loadView, saveView, textMetrics } from './view-settings.ts';
@@ -51,6 +51,8 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const helperId = route.helperId ?? null;
   const tab: AgentTab = helperId ? 'chat' : route.tab;
   const data = useAgent(sessionId, tab === 'chat' && helperId === null, helperId === null ? (route.eventId ?? null) : null);
+  const openAgent = useCallback((id: string) => navigate(`/agents/${encodeURIComponent(id)}`), [navigate]);
+  useFollowFresh(sessionId, data.session, openAgent);
   const [view, setView] = useViewSettings();
   const [drawer, setDrawer] = useState(false);
   const desktop = layout === 'desktop';

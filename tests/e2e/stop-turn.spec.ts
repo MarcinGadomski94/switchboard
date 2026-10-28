@@ -171,7 +171,7 @@ test('only background work: "Stop background tasks" beside Send, with a confirma
   await offer.click();
   const dialog = page.getByTestId('stop-background-confirm');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId('stop-background-task')).toHaveText(['Waiting for a background task: npm run dev']);
+  await expect(dialog.getByTestId('stop-background-task')).toHaveText(['Running in the background: npm run dev']);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   expect(stops).toHaveLength(0);

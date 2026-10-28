@@ -1875,6 +1875,18 @@ export const AGENT_WORDS = {
   cleanSlate: 'Continue with a clean slate',
   cleanSlateShort: 'Clean slate',
   cleanSlateRunning: 'Writing a summary for the clean slate…',
+  /** Fixes after 2.0 · why Continue with a clean slate is unavailable now (shown under the button). */
+  cleanSlateWhy: {
+    busy: 'Available when the agent isn’t replying.',
+    closed: 'Archived agents cannot continue: restore it first.',
+    moved: 'It moved to another computer: continue it there.',
+    hooked: 'Available for agents Switchboard runs, not one started in a terminal.',
+    detached: 'It continues in a terminal: bring it back here first.',
+    switching: 'Available once the switch of AI engine or account finishes.',
+    unmeasured: 'Available once its working memory is measured (after its first reply here).',
+  },
+  /** The agent ⋯ menu's entry (classic's Continue in a fresh session). */
+  cleanSlateMenu: 'Continue with a clean slate',
   tasksStrip: (open: number, done: number): string => `Tasks · ${done} of ${open + done} done`,
   // Side panel.
   howItWorks: 'How it works',

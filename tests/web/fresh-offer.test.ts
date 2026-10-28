@@ -28,6 +28,9 @@ describe('D83 · the offer bar (UI rules)', () => {
     expect(freshBusy(session({ status: 'need' }), null)).toBe(true);
     expect(freshBusy(session(), { state: 'thinking' })).toBe(true);
     expect(freshBusy(session(), null)).toBe(false);
+    // Fixes after 2.0: only background work left running (a dev server, a watcher) is no turn.
+    expect(freshBusy(session(), { state: 'background' })).toBe(false);
+    expect(freshBusy(session({ status: 'run' }), { state: 'background' })).toBe(true);
   });
 
   it('snoozes per session in storage; forgetting one keeps the others', () => {

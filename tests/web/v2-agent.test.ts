@@ -5,6 +5,8 @@ import { DEFAULT_VIEW, VIEW_SETTINGS_KEY, columnWidth, loadView, saveView, textM
 import { MEMORY_SHOWN_FROM, YOU_FOLD_LINES, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, foldsYou, joinWithdrawn, liveLine, resetTimeOf, splitDock, youWaitNote } from '../../src/web/v2/agent/composer-model.ts';
 import { firstSentence, replyMenu, shortQuote, taskTitle, undoReason } from '../../src/web/v2/agent/reply-menu.ts';
 import { agentMenu, ciView } from '../../src/web/v2/agent/header-model.ts';
+import { cleanSlateView } from '../../src/web/v2/agent/side-model.ts';
+import type { SessionDetail } from '../../src/core/api.ts';
 import type { SessionPr } from '../../src/core/ci.ts';
 import type { SessionCheckpoints } from '../../src/core/checkpoints.ts';
 
@@ -273,6 +275,36 @@ describe('header', () => {
     expect(offline.filter((i) => !('sep' in i) && i.disabledReason).length).toBeGreaterThan(6);
     expect(ids(agentMenu({ ...input, conversation: true }))).toEqual(['rename', '-', '-', 'notes', 'continue-agent', '-', 'close', 'delete']);
     expect(ids(agentMenu({ ...input, teammate: true, closed: true, running: false }))).toContain('return');
+    // Fixes after 2.0 · D83: Continue with a clean slate after Move, with its reason when it cannot start.
+    expect(ids(agentMenu({ ...input, cleanSlate: null }))).toEqual(['rename', 'pause', 'stop-background', 'move', 'clean-slate', '-', 'terminal', 'remote', 'claude-app', '-', 'routine', 'notes', 'teammate', '-', 'close']);
+    const slate = agentMenu({ ...input, cleanSlate: 'Available when the agent isn’t replying.' }).find((i) => !('sep' in i) && i.id === 'clean-slate');
+    expect(slate).toMatchObject({ label: 'Continue with a clean slate', disabledReason: 'Available when the agent isn’t replying.' });
+    expect(agentMenu({ ...input, cleanSlate: null }).find((i) => !('sep' in i) && i.id === 'clean-slate')).not.toHaveProperty('disabledReason');
+    expect(ids(agentMenu({ ...input, conversation: true, cleanSlate: null }))).not.toContain('clean-slate');
+  });
+});
+
+describe('clean slate (Fixes after 2.0 · D83)', () => {
+  const context = { tokens: 170000, window: 200000, percent: 85, band: 'high' } as unknown as SessionDetail['context'];
+  const base = { hooked: false, closedAt: null, attached: true, context, providerSwitch: null, accountSwitching: false, movedTo: null, freshContinue: null, status: 'done', turnWait: null } as unknown as Parameters<typeof cleanSlateView>[0];
+  const why = (over: Record<string, unknown>, activity: { state: string } | null = null, offline: string | null = null): string | null => cleanSlateView({ ...base, ...over } as typeof base, activity as never, offline).reason;
+  it('can start between replies, also while only background work is left running (a dev server)', () => {
+    expect(cleanSlateView(base, null, null)).toEqual({ enabled: true, reason: null, running: null });
+    expect(cleanSlateView(base, { state: 'background' }, null)).toEqual({ enabled: true, reason: null, running: null });
+  });
+  it('says why it cannot, in words', () => {
+    expect(why({ status: 'run' })).toBe('Available when the agent isn’t replying.');
+    expect(why({}, { state: 'thinking' })).toBe('Available when the agent isn’t replying.');
+    expect(why({}, null, 'Studio-PC is offline')).toBe('Studio-PC is offline');
+    expect(why({ closedAt: '2026-10-28T10:00:00.000Z' })).toBe('Archived agents cannot continue: restore it first.');
+    expect(why({ hooked: true })).toBe('Available for agents Switchboard runs, not one started in a terminal.');
+    expect(why({ attached: false })).toBe('It continues in a terminal: bring it back here first.');
+    expect(why({ accountSwitching: true })).toBe('Available once the switch of AI engine or account finishes.');
+    expect(why({ context: null })).toBe('Available once its working memory is measured (after its first reply here).');
+  });
+  it('shows the step while it runs', () => {
+    expect(cleanSlateView({ ...base, freshContinue: { step: 'handover' } } as typeof base, null, null)).toEqual({ enabled: false, reason: null, running: 'Writing the handover for the fresh session…' });
+    expect(cleanSlateView({ ...base, freshContinue: { step: 'starting' } } as typeof base, null, null).running).toBe('Starting the fresh session…');
   });
 });
 

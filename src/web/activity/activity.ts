@@ -149,9 +149,9 @@ export type ActivityGlyph = 'spinner' | '●' | '⏸' | '⏳';
  * subagents, a wake-up: `backgroundWait`). Background shells alone (a dev server, a GitHub
  * wait) give `undefined`: the agent is not working, its line still names what runs.
  */
-export function workingActivityState(activity: Pick<SessionActivity, 'state' | 'background'> | null | undefined): ActivityState | undefined {
+export function workingActivityState(activity: { readonly state: ActivityState; readonly background?: readonly BackgroundTask[] } | null | undefined): ActivityState | undefined {
   if (!activity) return undefined;
-  if (activity.state === 'background' && backgroundWait(activity) === null) return undefined;
+  if (activity.state === 'background' && backgroundWait({ state: 'background', background: activity.background ?? [] }) === null) return undefined;
   return activity.state;
 }
 

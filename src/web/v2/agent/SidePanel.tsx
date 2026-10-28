@@ -7,7 +7,7 @@ import { cliChoices } from '../../components/cli.ts';
 import { memoryLabel } from '../../../core/processes.ts';
 import { PROCESSES_POLL_MS, processTitle, stopLine } from '../../processes/processes.ts';
 import { hasSubagentChat } from '../../views/session/chat.ts';
-import { freshBusy, freshEligible } from '../../views/session/fresh-offer.ts';
+import { markFreshAsked, takeFreshAsked } from '../../views/session/fresh-offer.ts';
 import { terminalLines } from '../../views/session/right-panel.ts';
 import { actionErrorText, effortPickBody, modelPickBody, remoteToggle, rootLine } from '../../views/session/session-header.ts';
 import { switchConfirmText } from '../../views/session/provider-switch.ts';
@@ -26,6 +26,7 @@ import { ModelEffortSelects } from '../shared/ModelEffort.tsx';
 import { modelEffortField, modelName, modelSummary } from '../shared/model-effort.ts';
 import type { AgentData } from './useAgent.ts';
 import { RoutinesGroupBody, useAgentRoutines } from './Routines.tsx';
+import { cleanSlateView } from './side-model.ts';
 import { browserStorage } from './useAgent.ts';
 
 function errorText(caught: unknown): string {
@@ -183,13 +184,20 @@ function MemoryGroup({ data }: { readonly data: AgentData }) {
   if (!session) return null;
   const pct = session.context?.percent === null || session.context?.percent === undefined ? null : Math.round(session.context.percent);
   const full = pct !== null && pct >= 80;
-  const can = blocked === null && freshEligible(session) && !freshBusy(session, activity) && !session.freshContinue;
+  // Fixes after 2.0: why it is unavailable is said under the button (a disabled button shows no tooltip);
+  // while it runs, the step; the agent view opens the fresh agent once it exists (`useFollowFresh`).
+  const view = cleanSlateView(session, activity, blocked);
   const clean = (): void => {
     setBusy(true);
     setError(null);
+    markFreshAsked(sessionId);
     api.freshSession(sessionId).then(
-      () => setBusy(false),
+      () => {
+        setBusy(false);
+        data.reload();
+      },
       (caught: unknown) => {
+        takeFreshAsked(sessionId);
         setBusy(false);
         setError(errorText(caught));
       },
@@ -209,9 +217,18 @@ function MemoryGroup({ data }: { readonly data: AgentData }) {
           <b>{AGENT_WORDS.almostFull}.</b> {AGENT_WORDS.memoryWarn}
         </div>
       ) : null}
-      <Button size="sm" variant={full ? 'primary' : 'default'} icon="refresh" style={{ marginTop: 10 }} disabled={!can || busy} title={can ? undefined : 'Available between replies, for an agent that runs here.'} data-testid="v2-agent-side-clean-slate" onClick={clean}>
-        {session.freshContinue ? AGENT_WORDS.cleanSlateRunning : AGENT_WORDS.cleanSlate}
+      <Button size="sm" variant={full ? 'primary' : 'default'} icon="refresh" style={{ marginTop: 10 }} disabled={!view.enabled || busy} aria-describedby={view.reason || view.running ? 'v2-agent-side-clean-slate-note' : undefined} data-testid="v2-agent-side-clean-slate" onClick={clean}>
+        {view.running ? AGENT_WORDS.cleanSlateRunning : AGENT_WORDS.cleanSlate}
       </Button>
+      {view.running ? (
+        <p className="v2-muted v2-ag-small" id="v2-agent-side-clean-slate-note" role="status" data-testid="v2-agent-side-clean-slate-step" style={{ marginTop: 6 }}>
+          {view.running}
+        </p>
+      ) : view.reason ? (
+        <p className="v2-muted v2-ag-small" id="v2-agent-side-clean-slate-note" data-testid="v2-agent-side-clean-slate-why" style={{ marginTop: 6 }}>
+          {view.reason}
+        </p>
+      ) : null}
       {error ? (
         <p className="v2-ag-dock-error" role="alert">
           {error}

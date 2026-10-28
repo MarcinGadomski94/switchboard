@@ -1,6 +1,7 @@
-import type { Session } from '../../../core/api.ts';
+import type { ActivityState, BackgroundTask, Session } from '../../../core/api.ts';
 import { FRESH_BUSY_REASON, FRESH_HOOKED_REASON } from '../../../core/fresh-session.ts';
 import { isClosed } from '../../../core/session-close.ts';
+import { workingActivityState } from '../../activity/activity.ts';
 import { turnBusy } from './needs-you.ts';
 
 /**
@@ -62,9 +63,17 @@ export function freshEligible(session: Pick<Session, 'hooked' | 'closedAt' | 'at
   return !session.providerSwitch && session.accountSwitching !== true;
 }
 
-/** A turn runs (or waits for the developer): the offer waits for its end. */
-export function freshBusy(session: Pick<Session, 'status' | 'turnWait'> | null, activity: unknown): boolean {
-  return session !== null && (turnBusy(session) || (activity !== null && activity !== undefined));
+/**
+ * A turn runs (or waits for the developer): the offer waits for its end. A live
+ * activity counts unless it is only `background` (D30: the turn is over and the
+ * agent left tasks running, e.g. a dev server or a watcher). Background work the
+ * session waits on keeps its status `run`, which counts already; the rest never
+ * ends a turn, so it must not hold the offer back for good (Fixes after 2.0, the
+ * v2 clean slate). The route refuses on the same terms (`continueFresh`).
+ */
+export function freshBusy(session: Pick<Session, 'status' | 'turnWait'> | null, activity: { readonly state: ActivityState; readonly background?: readonly BackgroundTask[] } | null | undefined): boolean {
+  // D143: one rule with the running dot: only background work the agent does not wait on (shells) is no turn.
+  return session !== null && (turnBusy(session) || workingActivityState(activity) !== undefined);
 }
 
 /**

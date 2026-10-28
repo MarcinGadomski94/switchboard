@@ -6,13 +6,21 @@ When a supervised session's context reaches the threshold, Switchboard offers to
 
 - **Where:** a bar right above the composer (under the todo strip), only in the Chat tab. **Context 82% — Continue in a fresh session** with **Continue** and **Not now**.
 - **When:** Settings → Sessions → **Fresh session when the context fills** is on (`sessions.freshOffer`, default **on**) and the session's context meter (D49, `Session.context.percent`) is at or past the threshold (`sessions.freshOfferPct`, default **80 %**, 50–95 in steps of 5 in the select; any whole number 50–95 through the API).
-- **Not while a turn runs:** the bar is hidden while the session runs or waits for the developer (`status` `run` / `need`, or a live activity) and shows once the turn ends. The route refuses then too (409 `turn-running`).
+- **Not while a turn runs:** the bar is hidden while the session runs or waits for the developer (`status` `run` / `need`, or a live activity other than background work left running) and shows once the turn ends. The route refuses then too (409 `turn-running`).
 - **Never for:** a hooked terminal session (D48 P4: Switchboard cannot ask the terminal's `claude` for a handover or start its next session there; the ⋯ menu shows the action disabled with that reason, the route answers 409 `hooked-unavailable` with it), a closed or moved session, a detached one (continued in a terminal), one without a meter (the demo seed), one that is switching CLI or account, an offline peer's session.
 - **Not now** snoozes it until the context is **10 points** higher (82 % → shown again at 92 %). The snooze is this browser's (`localStorage` `switchboard.freshSnoozes`, session id → percent) and is forgotten once the context drops below the threshold (a compaction), so the next fill offers it at the threshold again.
 - **While it runs** the bar says *Writing the handover for the fresh session…*, then *Starting the fresh session…* (`Session.freshContinue.step`, on every tab). The tab that asked opens the fresh session as soon as it exists (`continuedTo` arrives on `sessionUpdated`).
 - A refusal shows its message in the bar.
 
 The **session's ⋯ menu** in the sidebar has the same action, **Continue in a fresh session**, at any percent (the developer decides): it opens the session's chat (the bar shows the progress) and then the fresh session. A refusal shows as a toast.
+
+## v2 (the agent view)
+
+- **Side panel → Working memory → Continue with a clean slate** (`v2/agent/SidePanel.tsx`) starts it at any percent. When it cannot, the reason is written under the button (`cleanSlateView` in `v2/agent/side-model.ts`): its computer offline, archived, moved, hooked, continued in a terminal, a switch running, the memory not measured yet, or *Available when the agent isn’t replying.* While it runs the step shows there.
+- **Agent ⋯ → Continue with a clean slate**: the same, disabled with the same reason; not for a conversation, an archived or a moved agent.
+- The Dock's banner (*Working memory is N% full… Start fresh*) is the bar above the composer: from the threshold, with Not now.
+- Whichever started it, the agent view opens the fresh agent once it exists (`useFollowFresh` in `v2/agent/useAgent.ts`, the shared `markFreshAsked` set).
+- **Busy** means a turn runs (`status` `run`, a `need` that is no turn-end wait, or a live activity that is not only `background`). An agent whose turn is over but that left work running (a dev server, a watcher: activity state `background`, status `done`) can continue; work it waits on keeps it `run`. Before this (Fixes after 2.0, 2026-10-28) any live activity counted, which kept the button off with only a tooltip.
 
 ## What happens (`SessionSupervisor.continueFresh`, `src/server/supervisor/supervisor.ts`)
 
@@ -48,3 +56,4 @@ Migration **0036** adds `sessions.continued_to` (on the old session: the fresh o
 - `tests/server/peers/fresh-session.test.ts`: B continues A's session through the proxy; namespaced links; B's pin follows.
 - `tests/web/fresh-offer.test.ts`: eligibility, busy, the snooze storage, the ⋯ menu state, the chat dividers.
 - `tests/e2e/fresh-session.spec.ts`: the bar at 85 %, Not now, Continue (todos, pin, close, links both ways, History), the ⋯ menu at 10 %, Settings off / threshold, the phone layout.
+- `tests/web/v2-agent.test.ts` (`cleanSlateView`, the ⋯ entry) and `tests/e2e/v2-clean-slate.spec.ts`: v2's side panel with a dev server left running, the reason while a turn runs, the ⋯ menu, the phone.
