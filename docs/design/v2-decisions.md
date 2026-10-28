@@ -513,3 +513,8 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** stored choices are left as they are: an agent or teammate that started with Smart / Fast keeps the model it resolved to and is named by its label (an alias without a list: "Sonnet"); a Home `speed` stored in the browser is ignored. No migration.
 - **ASSUMED** a v2 What's-new tour (`v2-model-effort`, 2.4.7, after `account-hint`) on Home's model picker, else + New: the pickers changed under the developer's hands.
 - Tests: `tests/web/v2-x.test.ts`, `tests/web/v2-new.test.ts`, `tests/web/v2-home.test.ts`, `tests/web/v2-agent.test.ts`, `tests/web/v2-tour.test.ts`; `tests/e2e/v2-model-effort.spec.ts`, `tests/e2e/v2-new.spec.ts`, `tests/e2e/v2-home.spec.ts`, `tests/e2e/v2-tour.spec.ts` (eight chained v2 tours).
+
+### Background apps don't keep an agent working (2026-10-28, D143)
+- **FIX** (report 2026-10-28: "sometimes an agent seems like it's still working, but it isn't really working anymore"). An agent whose turn is over with only background shells left running (a dev server, a watcher, a GitHub wait) is no longer Working: the Agents list row reads "Idle · 1 background app" / "Done 5 min ago · 1 background app", the agent header's status "Done · 1 background app", the Details panel's main-agent row its turn's status; Home's Working now, crews and phones follow the session's status. Helper agents still running (subagents, background agents, Workflow agents) keep it Working as before.
+- **ASSUMED** the dock's live line still names what runs ("Running in the background: npm run dev", a GitHub wait's "⏳ Waiting for GitHub Actions: …") with Stop background tasks: it is where those tasks can be stopped.
+- Tests: `tests/web/v2-shell.test.ts`, `tests/e2e/v2-background-apps.spec.ts`.

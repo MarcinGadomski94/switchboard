@@ -24,6 +24,7 @@ import {
   stepPosition,
 } from '../../core/sidebar-layout.ts';
 import { SessionActivityOr } from '../activity/ActivityViews.tsx';
+import { workingActivityState } from '../activity/activity.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useHubEvent, useHubStatus } from '../api/useHub.ts';
 import type { CloseSessionControl } from '../components/CloseSession.tsx';
@@ -894,8 +895,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         onPointerDown={touchStart({ kind: 'session', id: session.id }, displayTitle(session))}
         {...target(at)}
       >
-        {/* D30: waiting on background work reads as working: the running color, pulsing. */}
-        <span className="sb-session-dot" data-activity={activity?.state} style={{ background: statusColor(activity?.state === 'background' ? 'run' : session.status) }} />
+        {/* D30: waiting on background work reads as working: the running color, pulsing; D143: not a background shell alone. */}
+        <span className="sb-session-dot" data-activity={workingActivityState(activity)} style={{ background: statusColor(workingActivityState(activity) === 'background' ? 'run' : session.status) }} />
         <div className="sb-session-body">
           <div className="sb-session-head">
             {/* D22: the display title; a double-click renames it in place. */}

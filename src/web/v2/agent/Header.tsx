@@ -21,7 +21,7 @@ import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
 import { AgentComputerTag, CrewTag } from '../shared/agent-row.tsx';
-import { agentName, agentStatusOf } from '../shared/agent-line.ts';
+import { agentName, agentStatusOf, statusWithApps } from '../shared/agent-line.ts';
 import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, teammateOf, useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { continueAsAgent } from './agent-bits.ts';
 import { ConfirmDialog, RemoteDialog, RenameDialog, TerminalDialog } from './dialogs.tsx';
@@ -137,6 +137,8 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
         { id: 'helpers', label: AGENT_TAB_LABELS.helpers, icon: 'crew', ...(counts.helpers ? { count: counts.helpers } : {}) },
       ];
   const status = session ? agentStatusOf(session) : null;
+  // D143: an agent whose turn is over with a dev server left running reads "Idle · 1 background app".
+  const statusLabel = status ? statusWithApps(status, data.activity) : null;
   const head = useRef<HTMLDivElement | null>(null);
   // A narrow tab row scrolls sideways: keep the open tab in sight (a phone opening /timeline or /helpers).
   useEffect(() => {
@@ -172,7 +174,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
           {session ? <InlineTitle sessionId={sessionId} name={name} mate={mate} disabled={blocked !== null} onRenamed={data.reload} /> : <span className="v2-skel" style={{ width: 200, height: 22 }} />}
           {mate ? <CrewTag crew={mate.crewName} /> : null}
         </div>
-        {status ? <StatusBadge status={status} size={phone ? 's' : undefined} /> : null}
+        {status ? <StatusBadge status={status} size={phone ? 's' : undefined} {...(statusLabel ? { label: statusLabel } : {})} /> : null}
         {/* D138: where its account comes from, when it is not the automatic rules' ("Account: B (from project)"). */}
         {session && !phone && session.accountChoice && session.accountChoice.source !== 'automatic' ? (
           <span data-testid="v2-agent-account-chip" data-source={session.accountChoice.source}>

@@ -4,6 +4,7 @@ import type { Agent, ReportedTable, SessionActivity, SessionDetail, WorkflowRun 
 import type { SessionStatus } from '../../../core/model.ts';
 import { OverviewActivityText } from '../../activity/ActivityViews.tsx';
 import { useTick } from '../../activity/useActivity.ts';
+import { workingActivityState } from '../../activity/activity.ts';
 import { Link, useRouter } from '../../router.tsx';
 import { UNKNOWN, statusColor } from '../../shell/format.ts';
 import { hasSubagentChat } from './chat.ts';
@@ -224,7 +225,7 @@ function OverviewRowView({
       <td
         className="sb-overview-status"
         data-testid="overview-status"
-        style={{ color: statusColor(entry?.state === 'background' ? 'run' : row.status) }}
+        style={{ color: statusColor(entry?.state === 'background' && workingActivityState(activity) === 'background' ? 'run' : row.status) }}
         title={entry ? undefined : row.statusText}
       >
         {entry ? (

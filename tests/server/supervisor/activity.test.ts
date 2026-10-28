@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SessionActivity } from '../../../src/core/api.ts';
 import { ActivityTracker, toolSummary } from '../../../src/core/derive/activity.ts';
-import { backgroundWait, waitingOnSubagents } from '../../../src/core/derive/background.ts';
+import { backgroundAppCount, backgroundWait, waitingOnSubagents } from '../../../src/core/derive/background.ts';
 import { parseStreamLine } from '../../../src/core/stream-json.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { LatestThrottle, type ThrottleTimers } from '../../../src/server/supervisor/activity-throttle.ts';
@@ -12,7 +12,7 @@ import { FIXTURES_DIR } from '../../../tools/fake-claude/fixtures.ts';
 import { FAKE_AGENT_DESCRIPTION, FAKE_TASK_DESCRIPTION, FAKE_WORKFLOW_SUMMARY } from '../../../tools/fake-claude/scenarios.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForEvent, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * D19 live activity (`docs/derivations.md` → *Live activity*): the recorder turns
@@ -246,7 +246,7 @@ describe('background work · the recorder (D30)', () => {
     ]);
     // The pending task: the CLI's task id, the call's time, not a GitHub wait; the list rides along while the turn still ran.
     const callAt = lines.findIndex((l) => l.includes('"run_in_background":true')) + 1;
-    const task = { id: 'b6kg3qgya', toolUseId: 'toolu_015CF9hU9QYxEENHZV9RFzmY', kind: 'bash', summary: 'sleep 5; echo done', startedAt: w.at(callAt), github: false, waiting: true };
+    const task = { id: 'b6kg3qgya', toolUseId: 'toolu_015CF9hU9QYxEENHZV9RFzmY', kind: 'bash', summary: 'sleep 5; echo done', startedAt: w.at(callAt), github: false, waiting: false };
     expect(w.emitted[4]?.background).toEqual([task]);
     const waiting = w.emitted[6] as SessionActivity;
     expect(waiting).toMatchObject({ turnStartedAt: w.at(callAt), since: w.at(callAt), background: [task] });
@@ -357,7 +357,7 @@ describe('every background task counts · real path (D43)', () => {
   });
 });
 
-describe('waiting on background work · real path (2026-10-16)', () => {
+describe('waiting on background work · real path (2026-10-16; D143: only subagents and wake-ups)', () => {
   const until = async (check: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> => {
     const deadline = Date.now() + ms;
     while (!(await check()) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
@@ -365,25 +365,46 @@ describe('waiting on background work · real path (2026-10-16)', () => {
   /** The real case: a Team member's background PR-checks watch (no `]` allowed in the token). */
   const PR_WATCH = 'gh pr checks 42 --watch --interval 60 > /tmp/prstop.txt 2>&1';
 
-  it('fake-claude: a background `gh pr checks --watch` outlives the main turn: run, "waiting on GitHub Actions"; its notification makes the session done', async () => {
-    world = await makeSupervisorWorld();
+  it('D143 · the reported bug: a background shell that never ends (an unrecognised server) does not keep the session working: done at once, 1 background app', async () => {
+    const warnings: string[] = [];
+    world = await makeSupervisorWorld({ onWarn: (message) => warnings.push(message) });
     const w = world;
     const statuses: string[] = [];
+    let id = '';
     w.supervisor.on('sessionUpdated', (payload) => {
-      if (payload.id === session?.id) statuses.push(payload.status);
+      if (payload.id === id) statuses.push(payload.status);
     });
-    let session: { id: string } | undefined;
-    session = await w.supervisor.start(newSession({ task: `Watch the PR checks. [fake:background 3 ${PR_WATCH}]` }), w.place);
-    const id = session.id;
+    // 3600 s: it never ends within the test (the fake's longest), like a dev server.
+    const session = await w.supervisor.start(newSession({ task: 'Start the app. [fake:background 3600 PORT=4000 node server.js]' }), w.place);
+    id = session.id;
+    await waitForStatus(w.store, id, ['done']);
     await until(() => w.supervisor.activity(id)?.state === 'background');
-    expect((await w.store.sessions.get(id))?.status).toBe('run');
-    expect(w.supervisor.activity(id)?.background).toMatchObject([{ kind: 'bash', github: true, waiting: true }]);
-    expect(backgroundWait(w.supervisor.activity(id))).toMatchObject({ kind: 'github' });
-    // The notification, then the CLI's own turn: done, never idle / done meanwhile.
-    await waitForStatus(w.store, id, ['done'], 15_000);
-    expect(w.supervisor.activity(id)).toBeNull();
+    const activity = w.supervisor.activity(id);
+    expect(activity?.background).toMatchObject([{ kind: 'bash', github: false, waiting: false, summary: 'PORT=4000 node server.js' }]);
+    expect(backgroundWait(activity)).toBeNull();
+    expect(backgroundAppCount(activity)).toBe(1);
+    // The read status (REST / every view) is the turn's: done, never `run` after the result.
+    expect((await w.store.sessions.get(id))?.status).toBe('done');
     const firstDone = statuses.indexOf('done');
-    expect(firstDone === -1 || statuses.slice(0, firstDone).every((status) => status !== 'idle')).toBe(true);
+    expect(statuses.slice(firstDone)).not.toContain('run');
+    expect(warnings.some((message) => message.includes(id))).toBe(false);
+    expect(w.errors).toEqual([]);
+    await w.supervisor.pause(id);
+  });
+
+  it('D143: a background GitHub wait (`gh pr checks --watch`) is a shell: done at once; its end comes as the CLI\'s own turn (run while it runs), then done again', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: `Watch the PR checks. [fake:background 3 ${PR_WATCH}]` }), w.place);
+    const id = session.id;
+    await waitForStatus(w.store, id, ['done']);
+    await until(() => w.supervisor.activity(id)?.state === 'background');
+    expect(w.supervisor.activity(id)?.background).toMatchObject([{ kind: 'bash', github: true, waiting: false }]);
+    expect(backgroundWait(w.supervisor.activity(id))).toBeNull();
+    // The notification, then the CLI's own turn: the task is gone, the session done again.
+    await waitForEvent(w.store, id, (e) => (e.payload as { taskNotification?: boolean }).taskNotification === true, 15_000);
+    await until(() => w.supervisor.activity(id) === null, 15_000);
+    await waitForStatus(w.store, id, ['done'], 15_000);
     expect(w.errors).toEqual([]);
     await w.supervisor.pause(id);
   });
@@ -399,19 +420,27 @@ describe('waiting on background work · real path (2026-10-16)', () => {
     await w.supervisor.pause(session.id);
   });
 
-  it('a plain background shell keeps run for its wait window, then reads as left running (logged): the session goes done', async () => {
-    const warnings: string[] = [];
-    world = await makeSupervisorWorld({ backgroundWaitMs: 600, onWarn: (message) => warnings.push(message) });
+  it('D143: a background subagent keeps the session working until it ends, then done', async () => {
+    world = await makeSupervisorWorld();
     const w = world;
-    const session = await w.supervisor.start(newSession({ task: 'Soak it. [fake:background 600 sleep 600; echo soaked]' }), w.place);
-    await until(() => w.supervisor.activity(session.id)?.state === 'background');
-    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
-    expect(backgroundWait(w.supervisor.activity(session.id))).toMatchObject({ kind: 'background' });
-    await waitForStatus(w.store, session.id, ['done'], 10_000);
-    await until(() => w.supervisor.activity(session.id)?.background[0]?.waiting === false);
-    expect(w.supervisor.activity(session.id)).toMatchObject({ state: 'background', background: [{ waiting: false }] });
-    expect(warnings.some((message) => message.includes('wait window') && message.includes(session.id))).toBe(true);
-    await w.supervisor.pause(session.id);
+    const statuses: string[] = [];
+    let id = '';
+    w.supervisor.on('sessionUpdated', (payload) => {
+      if (payload.id === id) statuses.push(payload.status);
+    });
+    const session = await w.supervisor.start(newSession({ task: 'Review in the background. [fake:bg-agent 2]' }), w.place);
+    id = session.id;
+    await until(() => w.supervisor.activity(id)?.state === 'background');
+    expect((await w.store.sessions.get(id))?.status).toBe('run');
+    expect(backgroundWait(w.supervisor.activity(id))).toMatchObject({ kind: 'subagents', count: 1 });
+    expect(backgroundAppCount(w.supervisor.activity(id))).toBe(0);
+    await waitForStatus(w.store, id, ['done'], 15_000);
+    expect(w.supervisor.activity(id)).toBeNull();
+    // Working until the subagent's end: never idle / done meanwhile.
+    const firstDone = statuses.indexOf('done');
+    expect(statuses.slice(0, firstDone)).not.toContain('idle');
+    expect(w.errors).toEqual([]);
+    await w.supervisor.pause(id);
   });
 
   it('a wake-up keeps run, "waking up at HH:MM"; it fires as a turn of its own, then the session is done', async () => {
@@ -428,24 +457,10 @@ describe('waiting on background work · real path (2026-10-16)', () => {
     await w.supervisor.pause(session.id);
   });
 
-  it('the stale guard: a GitHub wait with no sign of life past the limit stops counting (logged); the session goes done, the task stays listed', async () => {
-    const warnings: string[] = [];
-    world = await makeSupervisorWorld({ subagentQuietMs: 500, onWarn: (message) => warnings.push(message) });
-    const w = world;
-    const session = await w.supervisor.start(newSession({ task: 'Watch CI. [fake:background-gh 600]' }), w.place);
-    await until(() => w.supervisor.activity(session.id)?.state === 'background');
-    expect((await w.store.sessions.get(session.id))?.status).toBe('run');
-    await waitForStatus(w.store, session.id, ['done'], 10_000);
-    expect(w.supervisor.activity(session.id)?.background).toMatchObject([{ github: true, waiting: false }]);
-    expect(backgroundWait(w.supervisor.activity(session.id))).toBeNull();
-    expect(warnings.some((message) => message.includes('GitHub Actions wait') && message.includes('no longer counted as working'))).toBe(true);
-    await w.supervisor.pause(session.id);
-  });
-
   it('the process ending ends a background wait at once', async () => {
     world = await makeSupervisorWorld();
     const w = world;
-    const session = await w.supervisor.start(newSession({ task: `Watch the PR checks. [fake:background 600 ${PR_WATCH}]` }), w.place);
+    const session = await w.supervisor.start(newSession({ task: 'Review in the background. [fake:bg-agent 600]' }), w.place);
     await until(() => w.supervisor.activity(session.id)?.state === 'background');
     expect((await w.store.sessions.get(session.id))?.status).toBe('run');
     await w.supervisor.pause(session.id);

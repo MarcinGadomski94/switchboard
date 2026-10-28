@@ -148,6 +148,10 @@ A Keep mark is stored by pid and start time in the internal `settings` row `proc
   - A paired machine's sessions are listed with its machine tag. Their Stop and Keep go to that machine (the session routes are forwarded). A machine that could not be asked is named.
 - **The sidebar footer:** a `procs <memory>` line under RAM and PWR while this machine tracks any process (`SystemInfo.trackedProcesses`). It opens Settings → Processes.
 
+## Background apps of an agent (D143)
+
+A background shell an agent started (a dev server through `run_in_background`, a watcher, a GitHub wait, a `Monitor`) never keeps the agent **working** once its turn is over (D143, `docs/decisions.md`): only its helper agents still running (subagents, background agents, Workflow agents) and a scheduled wake-up do. The agent reads its turn's status (`done` / `idle` / `need`), and the v2 Agents list row and agent header add the shells it left running in this page's words: **"Idle · 1 background app"**, "Done 5 min ago · 2 background apps". The count is the session's pending background tasks the agent does not wait on (`backgroundAppCount`, `src/core/derive/background.ts`), from `Session.activity.background`, so it is live (no 30-second sample) and works for paired machines' agents too. A process the agent detached by itself (`nohup … &` in a foreground `Bash`) is no background task: it is tracked here (Processes) but not counted on the row. The idle stop's 10 minutes start at the turn's end for these, as for recognised dev servers before.
+
 ## Limits
 
 - **Hooked sessions:** no environment can be injected, so their builds keep their servers. Their processes are tracked only by tree, from the terminal's reported pid. Processes started before Switchboard learned that pid, or after the terminal's `claude` ended, are not linked.

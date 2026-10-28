@@ -1,4 +1,5 @@
 import type { ActivityState, AgentActivity, BackgroundTask, SessionActivity } from '../../core/api.ts';
+import { backgroundWait } from '../../core/derive/background.ts';
 import { staleFor } from '../../core/derive/hooked-status.ts';
 import { workflowBackgroundProgress } from '../views/session/workflow-agents.ts';
 
@@ -141,6 +142,18 @@ export function toolText(tool: string | null, summary: string | null): string {
 
 /** The glyph in front of the chat line: the spinner while working, `●` for a running tool, `⏸` while waiting, `⏳` while background work runs (D30). */
 export type ActivityGlyph = 'spinner' | '●' | '⏸' | '⏳';
+
+/**
+ * D143: the activity state that reads as working (the running colour, the pulsing dot):
+ * a running turn's state, or `background` only while the agent waits on that work (its
+ * subagents, a wake-up: `backgroundWait`). Background shells alone (a dev server, a GitHub
+ * wait) give `undefined`: the agent is not working, its line still names what runs.
+ */
+export function workingActivityState(activity: Pick<SessionActivity, 'state' | 'background'> | null | undefined): ActivityState | undefined {
+  if (!activity) return undefined;
+  if (activity.state === 'background' && backgroundWait(activity) === null) return undefined;
+  return activity.state;
+}
 
 /** `HH:MM` (24 h, local time) of an ISO time; empty for an unreadable one. */
 export function formatClockTime(iso: string): string {

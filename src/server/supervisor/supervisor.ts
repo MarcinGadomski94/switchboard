@@ -326,9 +326,9 @@ export interface SupervisorOptions {
    */
   readonly subagentQuietMs?: number;
   /**
-   * 2026-10-16 (*Waiting on background work*): how long a plain background shell / monitor /
-   * task keeps the session `run` without a sign of life (default `BACKGROUND_WAIT_MS`, 30
-   * min). A GitHub wait and a wake-up use {@link subagentQuietMs} as their stale guard.
+   * 2026-10-16 (*Waiting on background work*): how long a CLI-reported background task that
+   * is no shell keeps the session `run` without a sign of life (default `BACKGROUND_WAIT_MS`,
+   * 30 min; D143: a shell never does). A wake-up uses {@link subagentQuietMs} as its stale guard.
    */
   readonly backgroundWaitMs?: number;
   /** Where the guard's notes go (a subagent taken as stopped, subagents cut off by a process end); default `console.warn`. */

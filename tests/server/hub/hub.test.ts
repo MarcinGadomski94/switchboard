@@ -443,10 +443,10 @@ describe('/hub · events (contract, field by field)', () => {
     const main = (await sw.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
     expect(Object.keys(waiting.agents)).toEqual([main?.id]);
     expect(keysOf(waiting.agents[main?.id ?? ''])).toEqual(AGENT_ACTIVITY_KEYS);
-    // REST agrees while it waits; 2026-10-16: a GitHub wait the agent waits on keeps the session `run`.
+    // REST agrees while it waits; D143: a background shell (a GitHub wait included) does not keep `run`: the turn is over.
     const detail = (await requestJson(port, 'GET', `/api/sessions/${session.id}`, cookie)).body as Session;
-    expect(detail.status).toBe('run');
-    expect(task.waiting).toBe(true);
+    expect(detail.status).toBe('done');
+    expect(task.waiting).toBe(false);
     expect(detail.activity).toMatchObject({ state: 'background', background: [{ id: task.id, toolUseId: task.toolUseId }] });
     // The task ends (its notification, then the CLI's own turn, a burst the throttle folds): idle again, the last event null.
     await waitForEvent(sw.store, session.id, (e) => (e.payload as { taskNotification?: boolean }).taskNotification === true, 15_000);

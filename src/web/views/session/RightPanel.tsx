@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 import type { AgentActivity, BackgroundTask, SessionDetail } from '../../../core/api.ts';
 import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
+import { workingActivityState } from '../../activity/activity.ts';
 import { Link } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import { PANE_ID, PaneHideButton } from '../../shell/Panes.tsx';
@@ -217,7 +218,8 @@ function AgentCardView({
   readonly background: readonly BackgroundTask[];
 }) {
   // D30: an agent waiting on background work reads as working (the running color).
-  const color = statusColor(activity?.state === 'background' ? 'run' : card.status);
+  // D143: background shells alone (a dev server) do not: only a wait (subagents, a wake-up).
+  const color = statusColor(activity?.state === 'background' && workingActivityState({ state: 'background', background }) === 'background' ? 'run' : card.status);
   return (
     <CardBox sessionId={sessionId} card={card} opensChat={opensChat}>
       <div className="sb-agent-top">

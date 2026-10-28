@@ -1,4 +1,5 @@
 import type { SessionActivity, SessionListItem } from '../../../core/api.ts';
+import { backgroundAppCount, backgroundAppsText } from '../../../core/derive/background.ts';
 import { sessionActivityLabel } from '../../activity/activity.ts';
 import { STATUS, type V2Status, sessionStatusToV2 } from '../glossary.ts';
 import { timeAgo } from './time.ts';
@@ -29,6 +30,22 @@ export function agentStatusOf(session: Pick<SessionListItem, 'status' | 'turnWai
   return sessionStatusToV2(session.status);
 }
 
+/**
+ * D143: the background apps an agent that is not working left running (`1 background app`,
+ * D127's words): its pending background shells (a dev server, a watcher, a GitHub wait);
+ * `null` while it works (a turn, its helper agents) or has none.
+ */
+export function backgroundAppsOf(status: V2Status, activity: Pick<SessionActivity, 'background'> | null): string | null {
+  if (status === 'working') return null;
+  return backgroundAppsText(backgroundAppCount(activity));
+}
+
+/** D143: the status word with the background apps: `Idle · 1 background app`; `null` without any (the plain word). */
+export function statusWithApps(status: V2Status, activity: Pick<SessionActivity, 'background'> | null): string | null {
+  const apps = backgroundAppsOf(status, activity);
+  return apps ? `${STATUS[status].label} · ${apps}` : null;
+}
+
 /** The agent's one-line activity: what it does now (`Running tests` + `0:42`), its ask, or how it ended. */
 export interface AgentLine {
   readonly text: string;
@@ -47,15 +64,18 @@ export function agentLine(session: Pick<SessionListItem, 'status' | 'lastActivit
   }
   if (session.turnWait?.ask && status === 'needs') return { text: `“${session.turnWait.ask}”`, time: '', tone: 'amber' };
   const ago = timeAgo(session.lastActivityAt, now);
+  // D143: its turn is over, what it left running shows after the word ("Idle · 1 background app").
+  const apps = backgroundAppsOf(status, activity);
+  const tail = apps ? ` · ${apps}` : '';
   switch (status) {
     case 'done':
-      return { text: `Done${ago ? ` ${ago}` : ''}`, time: '', tone: 'green' };
+      return { text: `Done${ago ? ` ${ago}` : ''}${tail}`, time: '', tone: 'green' };
     case 'stopped':
-      return { text: 'Stopped', time: ago, tone: 'red' };
+      return { text: `Stopped${tail}`, time: ago, tone: 'red' };
     case 'paused':
-      return { text: 'Paused', time: ago, tone: 'grey' };
+      return { text: `Paused${tail}`, time: ago, tone: 'grey' };
     default:
-      return { text: STATUS[status].label, time: ago, tone: 'grey' };
+      return { text: `${STATUS[status].label}${tail}`, time: ago, tone: 'grey' };
   }
 }
 

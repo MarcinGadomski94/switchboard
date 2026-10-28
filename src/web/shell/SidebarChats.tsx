@@ -4,6 +4,7 @@ import { RENAME_CHAT_LABEL, continuedAsLabel } from '../../core/chats.ts';
 import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { SessionActivityOr } from '../activity/ActivityViews.tsx';
+import { workingActivityState } from '../activity/activity.ts';
 import type { CloseSessionControl } from '../components/CloseSession.tsx';
 import { InlineTitle } from '../components/InlineTitle.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
@@ -88,7 +89,7 @@ export function SidebarChats({ chats, loaded, activityOf, closer, isCurrent, now
           const activity = activityOf(chat.id);
           return (
             <Link key={chat.id} to={{ view: 'session', id: chat.id, tab: 'chat' }} className="sb-session sb-chat-row" data-testid="sidebar-chat" data-session-id={chat.id} aria-current={isCurrent(chat.id) ? 'page' : undefined}>
-              <span className="sb-session-dot" data-activity={activity?.state} style={{ background: statusColor(activity?.state === 'background' ? 'run' : chat.status) }} />
+              <span className="sb-session-dot" data-activity={workingActivityState(activity)} style={{ background: statusColor(workingActivityState(activity) === 'background' ? 'run' : chat.status) }} />
               <div className="sb-session-body">
                 <div className="sb-session-head">
                   {/* D22's rename in place (a double-click, or the ⋯ → Rename…). */}

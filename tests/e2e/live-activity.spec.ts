@@ -168,10 +168,10 @@ test('D30: a background GitHub Actions wait after the turn: chat line, sidebar r
   const { id } = await world.startSession(page, 'background-e2e', 'Wait for the CI run. [fake:background-gh 20]');
   await expect.poll(async () => (await detail(page, id)).activity?.state).toBe('background');
   const waiting = await detail(page, id);
-  // The turn is over, the wait is the activity; 2026-10-16: the agent waits on GitHub Actions, so the session stays run.
-  expect(waiting.status).toBe('run');
+  // The turn is over, the wait is the activity; D143: a background shell (a GitHub wait included) does not keep run.
+  expect(waiting.status).toBe('done');
   expect(waiting.activity).toMatchObject({ state: 'background', tool: 'Bash', summary: GH, thinkingTokens: null });
-  expect(waiting.activity?.background).toMatchObject([{ kind: 'bash', github: true, summary: GH, waiting: true }]);
+  expect(waiting.activity?.background).toMatchObject([{ kind: 'bash', github: true, summary: GH, waiting: false }]);
 
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
   await expect(page.getByTestId('session-chat')).toContainText('STARTED');
@@ -192,16 +192,16 @@ test('D30: a background GitHub Actions wait after the turn: chat line, sidebar r
   const order = await page.locator('.sb-sv-main > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
   expect(order.indexOf('chat-composer')).toBe(order.indexOf('chat-activity') + 1);
 
-  // Sidebar: the wait and its time in place of the mode line; the dot pulses in the running color.
+  // Sidebar: the wait and its time in place of the mode line; D143: the dot is still (not working), the session's own color.
   const row = page.getByTestId('sidebar-sessions').locator('a').filter({ hasText: 'background-e2e' });
   await expect(row.getByTestId('session-activity')).toHaveAttribute('data-state', 'background');
   await expect(row.getByTestId('session-activity')).toContainText(WAIT);
   await expect(row.locator('.sb-session-mode')).not.toContainText('single · feature · UI-first');
   await expectGrowing(row.getByTestId('session-activity-time'), 'the sidebar time');
   const dot = row.locator('.sb-session-dot');
-  await expect(dot).toHaveAttribute('data-activity', 'background');
-  await expect(dot).toHaveCSS('animation-name', 'sb-activity-pulse');
-  await expect(dot).toHaveCSS('background-color', await tokenColor(page, '--status-run'));
+  await expect(dot).not.toHaveAttribute('data-activity');
+  await expect(dot).toHaveCSS('animation-name', 'none');
+  await expect(dot).not.toHaveCSS('background-color', await tokenColor(page, '--status-run'));
 
   // Right panel: the main agent's card and its overview row show the same wait (the overview with ⏳).
   const card = page.getByTestId('session-right-panel').getByTestId('agent-card').first();

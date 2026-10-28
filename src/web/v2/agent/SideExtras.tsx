@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemorySessionCount } from '../../../core/memory.ts';
 import { memoryCountTooltip } from '../../../core/memory.ts';
-import { overviewActivityLabel } from '../../activity/activity.ts';
+import { overviewActivityLabel, workingActivityState } from '../../activity/activity.ts';
 import { useTick } from '../../activity/useActivity.ts';
 import { api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
@@ -226,7 +226,8 @@ function AgentRow({ data, item, href }: { readonly data: AgentData; readonly ite
   const entry = agent ? agentActivity(data.activity, agent) : null;
   const live = entry ? overviewActivityLabel(entry, item.main && data.activity ? data.activity.turnStartedAt : null, now, data.activity?.background ?? []) : null;
   // D30: an agent waiting on background work reads as working.
-  const status = entry?.state === 'background' ? 'working' : item.status;
+  // D143: not for background shells alone (a dev server): only a wait (subagents, a wake-up).
+  const status = entry?.state === 'background' && workingActivityState(data.activity) === 'background' ? 'working' : item.status;
   const text = live ? `${live.text}${live.time ? ` ${live.time}` : ''}` : item.statusText;
   return (
     <tr data-testid="v2-agent-overview-row" data-agent-id={item.id} data-depth={item.depth} data-status={status}>

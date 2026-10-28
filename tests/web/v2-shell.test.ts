@@ -23,7 +23,9 @@ import {
   sessionStatusToV2,
   teammateStatusToV2,
 } from '../../src/web/v2/glossary.ts';
-import { agentLine, agentStatusOf } from '../../src/web/v2/shared/agent-line.ts';
+import { agentLine, agentStatusOf, statusWithApps } from '../../src/web/v2/shared/agent-line.ts';
+import { workingActivityState } from '../../src/web/activity/activity.ts';
+import type { BackgroundTask, SessionActivity } from '../../src/core/api.ts';
 import { clock, elapsed, timeAgo } from '../../src/web/v2/shared/time.ts';
 import { type KeyLike, shellKeyOf, shortcutList } from '../../src/web/v2/shell/shortcuts.ts';
 import { formatBytes, railCounts, statusPill, usageTone } from '../../src/web/v2/shell/status-model.ts';
@@ -191,6 +193,28 @@ describe('D131 · the shell: status pill, rail counts, shortcuts', () => {
     expect(agentLine(session, null, { ask: 'Which quarter?' }, now)).toEqual({ text: '“Which quarter?”', time: '', tone: 'amber' });
     expect(agentLine({ ...session, status: 'need', turnWait: { status: 'waiting_for_you', ask: 'Approve?', source: 'declared', at: 'x' } } as never, null, {}, now).text).toBe('“Approve?”');
     expect(agentLine({ ...session, status: 'fail' }, null, {}, now)).toMatchObject({ text: 'Stopped', tone: 'red' });
+  });
+
+  it('D143: an agent whose turn is over with a background shell left running reads Idle / Done · 1 background app, never working', () => {
+    const now = Date.parse('2026-10-25T12:00:00.000Z');
+    const task = (over: Partial<BackgroundTask>): BackgroundTask => ({ id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'npm run dev', startedAt: '2026-10-25T11:50:00.000Z', github: false, waiting: false, ...over });
+    const activity = (background: BackgroundTask[]): SessionActivity => ({ turnStartedAt: '2026-10-25T11:50:00.000Z', state: 'background', since: '2026-10-25T11:50:00.000Z', tool: 'Bash', summary: 'npm run dev', thinkingTokens: null, agents: {}, background });
+    const dev = activity([task({})]);
+    const idle = { status: 'idle' as const, lastActivityAt: '2026-10-25T11:55:00.000Z', turnWait: null };
+    expect(agentStatusOf(idle)).toBe('idle');
+    expect(agentLine(idle, dev, {}, now)).toEqual({ text: 'Idle · 1 background app', time: '5 min ago', tone: 'grey' });
+    expect(agentLine({ ...idle, status: 'done' }, activity([task({}), task({ id: 'b2', toolUseId: 't2', github: true })]), {}, now).text).toBe('Done 5 min ago · 2 background apps');
+    expect(statusWithApps('idle', dev)).toBe('Idle · 1 background app');
+    expect(statusWithApps('idle', null)).toBeNull();
+    // A helper agent still running: working, no apps word (its line is the activity's).
+    const sub = activity([task({ id: 'a1', toolUseId: 'ta', kind: 'agent', summary: 'Review', waiting: true })]);
+    expect(statusWithApps('working', dev)).toBeNull();
+    expect(agentLine({ ...idle, status: 'run' }, sub, {}, now).tone).toBe('blue');
+    // The running dot: a wait (a subagent) pulses, background shells alone do not.
+    expect(workingActivityState(dev)).toBeUndefined();
+    expect(workingActivityState(sub)).toBe('background');
+    expect(workingActivityState({ ...dev, state: 'tool' })).toBe('tool');
+    expect(workingActivityState(null)).toBeUndefined();
   });
 
   it('times in v2 words', () => {
