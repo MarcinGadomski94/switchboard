@@ -170,17 +170,19 @@ describe('migration 0045 (D108)', () => {
 
   it('an upgrade from 0044 applies 0045 then 0046 (D109) in order; a database that already has 0046 still gets 0045', async () => {
     const shipped = await loadMigrations();
-    expect(shipped.map((m) => m.version).filter((v) => v >= 44)).toEqual([44, 45, 46]);
+    // Later migrations (0047+) follow; they apply after these, in order.
+    const later = shipped.map((m) => m.version).filter((v) => v > 46);
+    expect(shipped.map((m) => m.version).filter((v) => v >= 44)).toEqual([44, 45, 46, ...later]);
     const db = await openDatabase(':memory:');
     migrate(db, shipped.filter((m) => m.version <= 44));
-    expect(migrate(db, shipped).applied).toEqual([45, 46]);
+    expect(migrate(db, shipped).applied).toEqual([45, 46, ...later]);
     db.close();
     // The CI lane shipped first (0046 without 0045): 0045 applies afterwards, its rollup boundary at the newest event.
     const gap = await openDatabase(':memory:');
     migrate(gap, shipped.filter((m) => m.version <= 44 || m.version === 46));
     gap.prepare("INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES ('s', 's', 'c', 'x', 'x')").run();
     gap.prepare("INSERT INTO events (session_id, ts, kind, label, payload) VALUES ('s', 'x', 'ok', 'x', '{}')").run();
-    expect(migrate(gap, shipped).applied).toEqual([45]);
+    expect(migrate(gap, shipped).applied).toEqual([45, ...later]);
     expect(gap.prepare("SELECT value FROM insight_state WHERE key = 'events.upto'").get()?.['value']).toBe('1');
     gap.close();
   });
