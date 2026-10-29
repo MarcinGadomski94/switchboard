@@ -12,7 +12,11 @@ export type { ProcessExit };
  * recorder, the status, the question pipeline and the chat stay one code path.
  */
 export interface AgentProcess {
-  /** The child's pid (the CLI, or the CLI's server for a bridge), `null` when it could not be started. */
+  /**
+   * The child's pid (the CLI, or the CLI's server for a bridge), `null` when it could not be started,
+   * or while it is not started yet (OpenCode spawns its server once a free port is found and reports
+   * the pid through `SpawnRequest.onPid`).
+   */
   readonly pid: number | null;
   /** `true` until the process has ended. */
   readonly running: boolean;

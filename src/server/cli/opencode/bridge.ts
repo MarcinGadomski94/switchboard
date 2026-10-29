@@ -252,7 +252,11 @@ export class OpenCodeBridge implements AgentProcess {
     const child = spawn(cmd, [...prefix, 'serve', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: this.#options.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...serverSpawnOptions });
     this.#child = child;
     const pid = child.pid;
-    if (pid !== undefined) registerServer(pid);
+    if (pid !== undefined) {
+      registerServer(pid);
+      // The server starts after the constructor returned (the free port first): the session records its pid now.
+      this.#options.onPid?.(pid);
+    }
     let listening: (url: string) => void = () => undefined;
     const url = new Promise<string>((resolve) => {
       listening = resolve;

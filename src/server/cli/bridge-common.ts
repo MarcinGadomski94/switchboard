@@ -50,6 +50,8 @@ export interface BridgeCommon {
   readonly onNativeId?: (nativeId: string) => void;
   /** Something the developer should know that is no chat line (a conversation that could not be reopened). */
   readonly onNotice?: (text: string) => void;
+  /** The CLI's pid once it exists, when that is after the bridge was created (`SpawnRequest.onPid`). */
+  readonly onPid?: (pid: number) => void;
   readonly onUsage?: (usage: ProviderUsage) => void;
   /** Switchboard's version, told to the CLI as the client's. */
   readonly clientVersion?: string;

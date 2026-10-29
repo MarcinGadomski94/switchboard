@@ -3260,6 +3260,11 @@ export class SessionSupervisor {
           });
         }
       },
+      // OpenCode: its server's pid, known once the server is spawned (after this call returned); stored like the others'.
+      onPid: () => {
+        const live = holder.live;
+        if (live) void this.#enqueue(live, () => this.#recordPid(live));
+      },
       onUsage: (usage) => {
         this.#providerUsage.set(usage.provider, usage);
         this.#accounts?.recordProviderUsage(sessionProfileId(prepared), usage);
@@ -3318,6 +3323,18 @@ export class SessionSupervisor {
     // D62: Claude Code's own id is the session's (a switch back resumes it); a teleport learns its id at `init`.
     if (provider === 'claude' && start.kind !== 'teleport') await this.#store.providers.rememberNative(session.id, 'claude', start.claudeSessionId);
     return live;
+  }
+
+  /**
+   * Stores the live process's pid when it became known after the spawn (OpenCode's server), so the
+   * session is `live`, crash recovery sees it and the process tracker has it as for the other CLIs.
+   * On the session's queue, so it lands before `#onExit` clears it; nothing once the process is gone.
+   */
+  async #recordPid(live: Live): Promise<void> {
+    const pid = live.proc.pid;
+    if (pid === null || this.#live.get(live.sessionId) !== live || !live.proc.running) return;
+    await this.#store.sessions.update(live.sessionId, { pid });
+    await this.#emitSession(live.sessionId);
   }
 
   #enqueue(live: Live, work: () => Promise<void>): Promise<void> {

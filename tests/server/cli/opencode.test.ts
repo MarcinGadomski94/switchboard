@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ToolPayload } from '../../../src/core/event-payload.ts';
 import { configContent, listOpencodeModels, opencodeModels, opencodeToolInput } from '../../../src/server/cli/opencode/bridge.ts';
 import { runCommand } from '../../../src/server/exec.ts';
-import type { CanUseToolContext } from '../../../src/server/supervisor/supervisor.ts';
+import { toSession } from '../../../src/server/sessions/wire.ts';
+import { recoverSessions } from '../../../src/server/supervisor/recovery.ts';
+import { type CanUseToolContext, SessionSupervisor } from '../../../src/server/supervisor/supervisor.ts';
+import { fakeClaudeCommand } from '../../../tools/fake-claude/command.ts';
 import { fakeOpencodeCommand } from '../../../tools/fake-opencode/command.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, payloadType, until, waitForStatus } from '../../helpers/supervisor.ts';
 
@@ -225,6 +228,45 @@ describe('D62 · OpenCode through the bridge (fake-opencode)', () => {
     const events = await w.store.events.list(session.id);
     expect(events.at(-1)?.payload).toMatchObject({ type: 'result', isError: false, text: 'OK' });
     expect(events.filter((event) => payloadType(event) === 'result')).toHaveLength(1);
+  });
+
+  it("the session records the server's pid once it is spawned (live while it runs), and clears it when it ends", async () => {
+    const { w, session } = await startOpencode('[fake:hold 20]');
+    await until(async () => (await prompts(w.opencodeLog)).length === 1, 'the prompt');
+    const serverPid = (await opencodeLog(w.opencodeLog)).find((line) => line.kind === 'argv')?.pid;
+    expect(serverPid).toBeGreaterThan(1);
+    // `opencode serve` starts after the spawn returned (a free port first): its pid is stored once it exists.
+    const running = await until(async () => {
+      const record = await w.store.sessions.get(session.id);
+      return record && record.pid === serverPid ? record : undefined;
+    }, "the server's pid on the session");
+    expect((await toSession(w.store, running)).live).toBe(true);
+    expect(w.supervisor.pid(session.id)).toBe(serverPid);
+    expect((await w.supervisor.pause(session.id)).status).toBe('paused');
+    const paused = await w.store.sessions.get(session.id);
+    expect(paused?.pid).toBeNull();
+    expect(paused && (await toSession(w.store, paused)).live).toBe(false);
+  });
+
+  it('crash recovery (D62): a session whose OpenCode server is still alive is not resumed and the server is not signalled', async () => {
+    const { w, session } = await startOpencode('[fake:hold 30]');
+    await until(async () => (await prompts(w.opencodeLog)).length === 1, 'the prompt');
+    const serverPid = (await opencodeLog(w.opencodeLog)).find((line) => line.kind === 'argv')?.pid ?? 0;
+    await until(async () => (await w.store.sessions.get(session.id))?.pid === serverPid, "the server's pid on the session");
+    // The service "crashed": a new supervisor on the same store starts while the first one's server still runs.
+    const after = new SessionSupervisor({ store: w.store, providers: w.registry, claudeCommand: fakeClaudeCommand(), env: w.env, onError: (error) => w.errors.push(error) });
+    try {
+      const report = await recoverSessions({ store: w.store, supervisor: after, listLive: async () => [], onError: () => undefined });
+      expect(report.sessions).toEqual([
+        { sessionId: session.id, action: 'not-resumed', reason: expect.stringContaining(`the OpenCode process left from before the restart (pid ${serverPid}) may still run`) },
+      ]);
+      expect((await w.store.sessions.get(session.id))?.status).toBe('paused');
+      // No second server on the same conversation, and the first one was left alone.
+      expect((await opencodeLog(w.opencodeLog)).filter((line) => line.kind === 'argv')).toHaveLength(1);
+      expect(() => process.kill(serverPid, 0)).not.toThrow();
+    } finally {
+      await after.shutdown();
+    }
   });
 
   it('a session OpenCode cannot reopen: a new one starts, and the chat says so', async () => {
