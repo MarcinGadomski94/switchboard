@@ -96,6 +96,8 @@ export interface NeedsItem {
   /** The raw source records, for the answer calls. */
   readonly inbox?: InboxItem;
   readonly request?: TeamRequest;
+  /** An access request's access (D100-T2): Add key opens the Access tab at it. */
+  readonly accessId?: string;
   readonly charter?: { readonly before: TeamCharter; readonly after: TeamCharter; readonly notes: string };
   readonly memory?: MemoryEntry;
   /** The permission request (`approval` from the Inbox). */
@@ -248,6 +250,7 @@ export function fromTeam(item: TeamNeedsYouItem): NeedsItem | null {
     computer: null,
     actions: [],
     ...(item.request ? { request: item.request } : {}),
+    ...(item.access ? { accessId: item.access.id } : {}),
     ...(item.charter ? { charter: item.charter } : {}),
   };
 }

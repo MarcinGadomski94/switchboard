@@ -183,9 +183,12 @@ describe('a teammate', () => {
 
 describe('the deep link', () => {
   it('Needs you’s Add key opens the teammate’s Access tab', () => {
-    expect(crewQuery('?member=m1&tab=access')).toEqual({ member: 'm1', tab: 'access' });
-    expect(crewQuery('member=m1')).toEqual({ member: 'm1', tab: 'overview' });
-    expect(crewQuery('')).toEqual({ member: null, tab: 'overview' });
+    expect(crewQuery('?member=m1&tab=access')).toEqual({ member: 'm1', tab: 'access', access: null });
+    // The access whose form opens (the card's own, not the first one waiting).
+    expect(crewQuery('?member=m1&tab=access&access=a2')).toEqual({ member: 'm1', tab: 'access', access: 'a2' });
+    expect(crewQuery('?member=m1&access=a2')).toEqual({ member: 'm1', tab: 'overview', access: null });
+    expect(crewQuery('member=m1')).toEqual({ member: 'm1', tab: 'overview', access: null });
+    expect(crewQuery('')).toEqual({ member: null, tab: 'overview', access: null });
     expect(crewHref('team', 'm1', 'access')).toBe('/crews/team?member=m1&tab=access');
     expect(crewHref('team', 'm1')).toBe('/crews/team?member=m1');
     expect(crewHref('a b')).toBe('/crews/a%20b');

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TeamAccessEntryView, TeamAccessView } from '../../../core/team-access.ts';
 import { onHubEvent } from '../../api/useHub.ts';
 import { AccessApiError, accessApi } from '../../team/access/api.ts';
@@ -12,22 +12,30 @@ import { timeAgo } from '../shared/time.ts';
  * exactly the declared fields, sent once to this computer's Switchboard, which keeps them in the
  * OS keychain (`POST /api/team/access/{id}/setup`); never shown again. Test connection and
  * Revoke. A phone reads it only ("Set this up on a computer"). Opened from Needs you's Add key
- * by `/crews/<crew>?member=<id>&tab=access`.
+ * by `/crews/<crew>?member=<id>&tab=access&access=<id>` (that access's form opens).
  */
-export function AccessPanel({ memberId, onChanged }: { readonly memberId: string; readonly onChanged?: () => void }) {
+export function AccessPanel({ memberId, focusAccess = null, onChanged }: { readonly memberId: string; /** The access whose form opens (Needs you's Add key); else the first one waiting. */ readonly focusAccess?: string | null; readonly onChanged?: () => void }) {
   const [view, setView] = useState<TeamAccessView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // The form opens by itself once per member / asked access, never again on a reload: a reload racing a
+  // save (the hub's teamChanged) would otherwise open the just-saved form again, as if Save did nothing.
+  const opened = useRef<string | null>(null);
   const load = useCallback(async () => {
     try {
       const next = await accessApi.view(memberId);
       setView(next);
       setError(null);
-      setOpen((current) => current ?? next.entries.find((entry) => entry.canSetUp && (entry.status === 'requested' || entry.status === 'needs-setup'))?.id ?? null);
+      const key = `${memberId}|${focusAccess ?? ''}`;
+      if (opened.current !== key) {
+        opened.current = key;
+        const asked = focusAccess ? next.entries.find((entry) => entry.id === focusAccess && entry.canSetUp) : undefined;
+        setOpen(asked?.id ?? next.entries.find((entry) => entry.canSetUp && (entry.status === 'requested' || entry.status === 'needs-setup'))?.id ?? null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [memberId]);
+  }, [memberId, focusAccess]);
   useEffect(() => {
     void load();
     return onHubEvent('teamChanged', () => void load());
@@ -51,6 +59,13 @@ export function AccessPanel({ memberId, onChanged }: { readonly memberId: string
           Set this up on a computer: keys never go through a phone.
         </p>
       ) : null}
+      {!view.member.local ? (
+        // D100-T2: values stay in the keychain of the computer they are typed on; the teammate's agent reads its own computer's.
+        <p className="v2-c-note" data-testid="v2-access-elsewhere">
+          <Icon name="alert" size="s" />
+          {view.member.name}’s agent runs on {view.member.machineName}: a key saved here stays on {view.self.name} and does not reach it. Set it up on {view.member.machineName} for its agent to get it.
+        </p>
+      ) : null}
       {!view.keychain.available ? (
         <p className="v2-c-note">
           <Icon name="alert" size="s" />
@@ -58,7 +73,7 @@ export function AccessPanel({ memberId, onChanged }: { readonly memberId: string
         </p>
       ) : null}
       {view.entries.map((entry) => (
-        <AccessEntry key={entry.id} entry={entry} device={view.device} keychain={view.keychain.available} open={open === entry.id} onToggle={() => setOpen((current) => (current === entry.id ? null : entry.id))} onChanged={() => void load().then(() => onChanged?.())} />
+        <AccessEntry key={entry.id} entry={entry} device={view.device} keychain={view.keychain.available} local={view.member.local} self={view.self.name} open={open === entry.id} onToggle={() => setOpen((current) => (current === entry.id ? null : entry.id))} onChanged={() => void load().then(() => onChanged?.())} />
       ))}
     </div>
   );
@@ -71,7 +86,7 @@ function statusTone(entry: TeamAccessEntryView): 'green' | 'amber' | 'grey' | 'r
   return 'grey';
 }
 
-function AccessEntry({ entry, device, keychain, open, onToggle, onChanged }: { readonly entry: TeamAccessEntryView; readonly device: boolean; readonly keychain: boolean; readonly open: boolean; readonly onToggle: () => void; readonly onChanged: () => void }) {
+function AccessEntry({ entry, device, keychain, local, self, open, onToggle, onChanged }: { readonly entry: TeamAccessEntryView; readonly device: boolean; readonly keychain: boolean; /** The teammate runs on this computer. */ readonly local: boolean; /** This computer's name. */ readonly self: string; readonly open: boolean; readonly onToggle: () => void; readonly onChanged: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -83,7 +98,7 @@ function AccessEntry({ entry, device, keychain, open, onToggle, onChanged }: { r
     try {
       await accessApi.setUp(entry.id, { values });
       setValues({});
-      toast({ text: `${entry.service} set up on this computer. Its agent gets it from its next start.` });
+      toast({ text: local ? `${entry.service} set up on this computer. Its agent gets it from its next start.` : `${entry.service} set up on ${self} only: its agent runs on another computer and does not get it.` });
       onToggle();
       onChanged();
     } catch (e) {

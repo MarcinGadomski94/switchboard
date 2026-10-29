@@ -141,11 +141,13 @@ export function checkBudget(value: string): { readonly ok: true; readonly dailyP
 /** A teammate's tabs in its panel. */
 export type TeammateTab = 'overview' | 'access';
 
-/** `?member=<id>&tab=access` (Needs you's Add key) → which teammate and tab the crew page opens. */
-export function crewQuery(search: string): { readonly member: string | null; readonly tab: TeammateTab } {
+/** `?member=<id>&tab=access[&access=<id>]` (Needs you's Add key) → which teammate and tab the crew page opens, and which access's form. */
+export function crewQuery(search: string): { readonly member: string | null; readonly tab: TeammateTab; readonly access: string | null } {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   const member = params.get('member');
-  return { member: member && member.trim() !== '' ? member : null, tab: params.get('tab') === 'access' ? 'access' : 'overview' };
+  const tab = params.get('tab') === 'access' ? 'access' : 'overview';
+  const access = tab === 'access' ? params.get('access') : null;
+  return { member: member && member.trim() !== '' ? member : null, tab, access: access && access.trim() !== '' ? access : null };
 }
 
 /** The address of a crew page with a teammate's tab open. */

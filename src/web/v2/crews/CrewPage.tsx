@@ -254,7 +254,7 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails, onOpe
 }
 
 /** A teammate's details: its job description, rhythm, model, gates (Overview) and its Access tab. */
-function TeammateDetails({ member, tab, onTab, modelText }: { readonly member: TeamMember; readonly tab: TeammateTab; readonly onTab: (tab: TeammateTab) => void; readonly modelText: string }) {
+function TeammateDetails({ member, tab, onTab, modelText, focusAccess = null }: { readonly member: TeamMember; readonly tab: TeammateTab; readonly onTab: (tab: TeammateTab) => void; readonly modelText: string; /** Needs you's Add key: this access's form opens. */ readonly focusAccess?: string | null }) {
   return (
     <div className="v2-c-details" data-testid="v2-teammate-panel" data-tab={tab}>
       <Tabs
@@ -270,7 +270,7 @@ function TeammateDetails({ member, tab, onTab, modelText }: { readonly member: T
       />
       <div id="v2-teammate-tabpanel" role="tabpanel" className="v2-c-tabpanel">
         {tab === 'access' ? (
-          <AccessPanel memberId={member.id} onChanged={() => void reloadTeam()} />
+          <AccessPanel memberId={member.id} focusAccess={focusAccess} onChanged={() => void reloadTeam()} />
         ) : (
           <dl className="v2-c-kv">
             <dt>Owns</dt>
@@ -390,7 +390,7 @@ export function CrewPage({ id }: { readonly id: string }) {
           <AnswerCard key={item.key} item={item} variant="phone" where="phone" />
         ))}
         {(needsOf.get(selected.id) ?? []).some((item) => item.kind === 'jd') ? null : <CharterProposalBlock member={selected} onEdit={(requestId) => setOverlay({ kind: 'charter', member: selected, requestId })} />}
-        <TeammateDetails member={selected} tab={query.tab} onTab={(tab) => navigate(crewHref(id, selected.id, tab), { replace: true })} modelText={modelText(selected)} />
+        <TeammateDetails member={selected} tab={query.tab} onTab={(tab) => navigate(crewHref(id, selected.id, tab), { replace: true })} modelText={modelText(selected)} focusAccess={query.access} />
         <CrewOverlays overlay={overlay} setOverlay={setOverlay} crews={ordered} crewId={id} onMove={actions.moveTo} />
       </div>
     );
@@ -535,7 +535,7 @@ export function CrewPage({ id }: { readonly id: string }) {
 
       {selected && !phone ? (
         <Sheet open onClose={closeDetails} title={selected.name} testId="v2-teammate-sheet">
-          <TeammateDetails member={selected} tab={query.tab} onTab={(tab) => navigate(crewHref(id, selected.id, tab), { replace: true })} modelText={modelText(selected)} />
+          <TeammateDetails member={selected} tab={query.tab} onTab={(tab) => navigate(crewHref(id, selected.id, tab), { replace: true })} modelText={modelText(selected)} focusAccess={query.access} />
         </Sheet>
       ) : null}
       <CrewOverlays overlay={overlay} setOverlay={setOverlay} crews={ordered} crewId={id} onMove={actions.moveTo} />
