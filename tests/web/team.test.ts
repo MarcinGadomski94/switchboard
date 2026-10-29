@@ -121,6 +121,12 @@ describe('D100 · Team page: status and counts', () => {
     expect(headerCounts([member({ id: 'a' })], [need('a')])).toBe('1 member · 0 working · 1 needs you');
   });
 
+  it("the header counts who needs you by Team's one rule (as the crews list and the pinned rail do)", () => {
+    // A waiting session counts with no item; an archived member never counts, even with an item.
+    expect(headerCounts([member({ id: 'w', status: 'needs-you' })], [])).toBe('1 member · 0 working · 1 needs you');
+    expect(headerCounts([member({ id: 'z', archived: true })], [need('z')])).toBe('1 member · 0 working · 0 need you');
+  });
+
   it('colours a card needs-you when only Needs-you items wait, but keeps paused and offline', () => {
     const counts = needsYouCounts([need('a'), need('a'), need('p')]);
     expect(counts.get('a')).toBe(2);

@@ -12,6 +12,7 @@ import {
   GATE_KINDS,
   GATE_LABELS,
   TEAM_NAME_MAX,
+  memberNeedsYou,
   type TeamCharter,
   type TeamGateKind,
   type TeamMember,
@@ -112,11 +113,11 @@ export function cardStatus(member: Pick<TeamMember, 'id' | 'status'>, counts: Re
   return needsYou(member, counts) ? 'needs-you' : member.status;
 }
 
-/** The header's line: "3 members · 1 working · 2 need you". */
-export function headerCounts(members: readonly Pick<TeamMember, 'id' | 'status'>[], items: readonly TeamNeedsYouItem[]): string {
+/** The header's line: "3 members · 1 working · 2 need you" (who needs you by Team's one rule, {@link memberNeedsYou}). */
+export function headerCounts(members: readonly Pick<TeamMember, 'id' | 'status' | 'archived'>[], items: readonly TeamNeedsYouItem[]): string {
   const counts = needsYouCounts(items);
   const working = members.filter((member) => member.status === 'working').length;
-  const waiting = members.filter((member) => needsYou(member, counts)).length;
+  const waiting = members.filter((member) => memberNeedsYou({ archived: member.archived ?? false, items: counts.get(member.id) ?? 0, sessionWaits: member.status === 'needs-you' })).length;
   return `${membersLabel(members.length)} · ${working} working · ${waiting} need${waiting === 1 ? 's' : ''} you`;
 }
 
