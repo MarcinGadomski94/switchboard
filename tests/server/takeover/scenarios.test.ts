@@ -214,7 +214,10 @@ describe('D65: a workspace session with two repos', () => {
     expect(await remoteHeads(w, w.remotes.front)).toEqual(['refs/heads/main']);
     expect(await remoteHeads(w, w.remotes.back)).toEqual(['refs/heads/main']);
     // The first message lists both repos' path changes.
-    const stdin = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line'])).join('\n');
+    const stdin = await waitFor('the first message in the fake log', async () => {
+      const text = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line'])).join('\n');
+      return text.includes(`${front} → ${w.paths.b.front} (front)`) ? text : null;
+    });
     expect(stdin).toContain(`${front} → ${w.paths.b.front} (front)`);
     expect(stdin).toContain(`${back} → ${w.paths.b.back} (back)`);
   }, 120_000);
