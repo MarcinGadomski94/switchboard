@@ -12,6 +12,8 @@
 
 **[Get started](#install)** · macOS, Linux and Windows · MIT
 
+Why I built it and how I use it: **[How I run many Claude Code agents at once without losing track](https://dev.to/marcingadomski94/how-i-run-many-claude-code-agents-at-once-without-losing-track-60)** (dev.to)
+
 [![CI](https://github.com/MarcinGadomski94/switchboard/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MarcinGadomski94/switchboard/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@marcingadomski94/switchboard?logo=npm&label=npm)](https://www.npmjs.com/package/@marcingadomski94/switchboard) [![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme) <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="28"></a>
 
 ## Switchboard 2
