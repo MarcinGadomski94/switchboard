@@ -106,6 +106,9 @@ describe('D65: a running turn and a paused session', () => {
     expect(created.status).toBe(201);
     const id = (created.body as Session).id;
     await waitFor('the turn is running', async () => ((await w.a.call('GET', `/api/sessions/${id}`)).body as Session).status === 'run');
+    // The take-over copies the conversation: wait until the fake has written its transcript (it does so a moment after the turn starts).
+    const claudeSessionId = (created.body as Session).claudeSessionId;
+    await waitFor('the transcript on the pc', async () => (await readdir(path.join(w.a.configDir, 'projects'), { recursive: true }).catch(() => [])).some((file) => String(file).endsWith(`${claudeSessionId}.jsonl`)));
     const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, id) })).body as TakeoverPreview;
     expect(preview.source).toMatchObject({ busy: true, live: true });
 
