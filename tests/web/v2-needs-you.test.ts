@@ -149,12 +149,22 @@ describe('D131 · answering: the buttons, the drafts and the summaries', () => {
     const merged = mergeNeedsYou({ inbox: [MEMORY], team: [ACCESS, CHARTER, GATE], notes: { '/w/checkout': [note('n1')] }, usage: [{ key: 'u', title: 't', text: '', createdAt: AT }] });
     const by = (key: string): NeedsItem => merged.find((entry) => entry.key === key) as NeedsItem;
     expect(ids(by('notes:n1'))).toEqual(['note-approve:Approve', 'note-edit:Edit first', 'note-reject:Reject']);
-    expect(ids(by('crew:req-a'))).toEqual(['add-key:Add key', 'not-now:Not now']);
+    // D100-T2: Deny and Not now are two answers (Not now defers; it is not a denial).
+    expect(ids(by('crew:req-a'))).toEqual(['add-key:Add key', 'deny:Deny', 'not-now:Not now']);
+    expect(cardButtons(by('crew:req-a')).slice(1).map((b) => b.intent)).toEqual([
+      { type: 'answer', action: { type: 'team', decision: 'decline' } },
+      { type: 'answer', action: { type: 'team', decision: 'dismiss' } },
+    ]);
+    expect(summaryOf(by('crew:req-a'), { type: 'team', decision: 'dismiss' })).toBe('You said not now');
+    expect(summaryOf(by('crew:req-a'), { type: 'team', decision: 'decline' })).toBe(summaryOf(by('crew:req-g'), { type: 'team', decision: 'decline' }));
     expect(ids(by('crew:req-c'))).toEqual(['jd-accept:Accept', 'jd-edit:Edit', 'jd-dismiss:Dismiss']);
     expect(ids(by('crew:req-g'))).toEqual(['approve:Approve', 'decline:Deny']);
     expect(ids(by('usage:u'))).toEqual(['ok:OK', 'manage:Manage usage']);
     // Add key opens the teammate's Access tab; View changes the agent's Changes tab.
     expect(cardButtons(by('crew:req-a'))[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/crews/t-mob?member=m-dev&tab=access' } });
+    // With its access (as `GET /api/team/needs-you` sends it): the Access tab opens at that access.
+    const withAccess = mergeNeedsYou({ inbox: [], team: [{ ...ACCESS, access: { id: 'acc 7' } as TeamNeedsYouItem['access'] }], notes: {}, usage: [] })[0] as NeedsItem;
+    expect(cardButtons(withAccess)[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/crews/t-mob?member=m-dev&tab=access&access=acc%207' } });
     expect(cardButtons(item(READY)).at(-1)?.intent).toEqual({ type: 'open', target: { type: 'agent', sessionId: 's1', tab: 'changes' } });
     expect(isLinkAction('open-plan')).toBe(true);
     expect(isLinkAction('plan-merge')).toBe(false);

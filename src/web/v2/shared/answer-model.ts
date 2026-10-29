@@ -172,10 +172,13 @@ export function cardButtons(item: NeedsItem): CardButton[] {
       ];
     case 'access': {
       const crewId = item.crew?.id;
-      const path = crewId ? `/crews/${encodeURIComponent(crewId)}?member=${encodeURIComponent(item.crew?.memberId ?? '')}&tab=access` : '/crews';
+      // The Access tab opens with this access's form (`&access=`), not the first one waiting.
+      const path = crewId ? `/crews/${encodeURIComponent(crewId)}?member=${encodeURIComponent(item.crew?.memberId ?? '')}&tab=access${item.accessId ? `&access=${encodeURIComponent(item.accessId)}` : ''}` : '/crews';
+      // D100-T2's three answers: Deny (`decline`: the agent is told not to ask again) and Not now (`dismiss`: deferred, set up later).
       return [
         { id: 'add-key', label: ANSWER.addKey, variant: 'primary', icon: 'shield', intent: { type: 'open', target: { type: 'path', path } } },
-        { id: 'not-now', label: ANSWER.notNow, variant: 'ghost', intent: { type: 'answer', action: { type: 'team', decision: 'decline' } } },
+        { id: 'deny', label: ANSWER.deny, variant: 'danger', icon: 'x', intent: { type: 'answer', action: { type: 'team', decision: 'decline' } } },
+        { id: 'not-now', label: ANSWER.notNow, variant: 'ghost', intent: { type: 'answer', action: { type: 'team', decision: 'dismiss' } } },
       ];
     }
     case 'jd':
@@ -322,7 +325,8 @@ export function summaryOf(item: NeedsItem, action: AnswerAction): string {
       return ANSWER.youSentBack;
     case 'team':
       if (item.kind === 'jd') return action.decision === 'approve' ? ANSWER.youAccepted : ANSWER.youDismissed;
-      return action.decision === 'approve' ? 'You approved it' : action.decision === 'decline' ? (item.kind === 'access' ? 'You said not now' : ANSWER.youDenied) : ANSWER.youDismissed;
+      if (item.kind === 'access') return action.decision === 'approve' ? 'You approved it' : action.decision === 'decline' ? ANSWER.youDenied : 'You said not now';
+      return action.decision === 'approve' ? 'You approved it' : action.decision === 'decline' ? ANSWER.youDenied : ANSWER.youDismissed;
     case 'note':
       if (item.kind === 'note-edit') return action.decision === 'approve' ? ANSWER.youApprovedNoteEdit : ANSWER.youRejectedNoteEdit;
       if (item.kind === 'note-removal') return action.decision === 'approve' ? ANSWER.youApprovedNoteRemoval : ANSWER.youRejectedNoteRemoval;
