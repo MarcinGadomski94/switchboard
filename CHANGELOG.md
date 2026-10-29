@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.4.10 (2026-10-29)
+
+### Teams
+- **Keys reach the computer the teammate runs on:** when an agent asks for an API key and its teammate runs on another paired computer, Add key, Test connection and Revoke from this computer now act there. The key is sent once over the paired connection, stored only in that computer's keychain, and the teammate restarts with it; this computer keeps no copy unless you choose "Set up here too". The card and the Access tab say which computer, and the audit reads "Set up on <computer> from <computer>". If that computer is offline, nothing is stored. See `docs/team.md` and `docs/security.md` (D146).
+- **Crew counts stay right:** a pinned crew no longer keeps showing "1 needs you" after you answered. The pinned crews, the Crews page, the classic sidebar and the classic team header count by one rule and refresh when a teammate starts or stops waiting.
+
+### v2 theme
+- **Access requests:** **Not now** defers a request instead of denying it, **Deny** is its own button, **Add key** opens the access you clicked, and the form no longer reopens after Save. A request you pressed "Not now" on before this release was recorded as denied: set it up from the teammate's Access tab if you still want it.
+- **Review notes** opens a paired computer's notes at the right folder.
+
+### Sessions
+- **OpenCode:** a short turn whose events arrive before OpenCode confirms the prompt now ends instead of staying "working". OpenCode sessions record their server's process, so they show as live and a restart leaves a still-running OpenCode alone instead of starting a second one.
+- **Account hint:** no `claude auth status` check every 30 s on a computer without paired computers.
+
+### Development
+- The server test suite is reliable (a port range per test worker, fixed races) and is now a required CI check.
+- README links the dev.to article.
+
 ## 2.4.9 (2026-10-29)
 
 ### Fixes
