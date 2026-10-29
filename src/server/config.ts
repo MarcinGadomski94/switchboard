@@ -4,7 +4,7 @@ import path from 'node:path';
 /** The only address Switchboard ever binds to. Not configurable (ARCHITECTURE → Security). */
 export const LOOPBACK_HOST = '127.0.0.1';
 
-/** Default HTTP port of the real app. Tests use 4871–4879 instead. */
+/** Default HTTP port of the real app. Tests use 24000–27999 instead (`tests/helpers/net.ts`). */
 export const DEFAULT_PORT = 13001;
 
 /** Runtime configuration, read once at startup from environment variables. */

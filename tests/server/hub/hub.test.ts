@@ -30,7 +30,7 @@ import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForEvent, wa
 
 /**
  * Contract oracle for `/hub` (M2.3, D5, contracts/local-api.md → Event hub):
- * a real socket on a 4871–4879 test port, the real guard, and every event name
+ * a real socket on a test port (tests/helpers/net.ts), the real guard, and every event name
  * with its payload checked field by field. `sessionUpdated` / `event` come from
  * a real fake-claude session started through `POST /api/sessions`,
  * `worktreeRemovable` from a real worktree in a temp git repo with the fake gh

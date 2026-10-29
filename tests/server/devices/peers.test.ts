@@ -44,8 +44,8 @@ function payloadOf(push: ReceivedPush): { kind: string; title: string; url: stri
 describe('D73 pushes for a paired machine', () => {
   it("notifies this machine's devices of the peer's questions and finished turns, once each, linking the remote session", async () => {
     tmp = await makeTempDir('devices-peers');
-    // Six test ports (two servers, two peer listeners, the device listener, the fake push service) while other test
-    // files share the range: the setup is retried when a port is taken meanwhile.
+    // Six test ports of this worker's slice (two servers, two peer listeners, the device listener, the fake push
+    // service; tests/helpers/net.ts): the setup is retried when a port is taken meanwhile.
     let world: { a: PeerNode; b: PeerNode; bId: string; devicePort: number; origin: string } | null = null;
     for (let attempt = 0; attempt < 6 && !world; attempt++) {
       const free = await freeTestPorts();
@@ -53,9 +53,9 @@ describe('D73 pushes for a paired machine', () => {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         continue;
       }
-      push = await startFakePush(free.at(-1) as number).catch(() => null);
+      push = await startFakePush(free[0] as number).catch(() => null);
       if (!push) continue;
-      const port = free.at(-2) as number;
+      const port = free[1] as number;
       const release = await reserve(port).catch(() => null);
       if (!release) {
         await push.close();

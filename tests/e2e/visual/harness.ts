@@ -32,7 +32,7 @@ export interface DemoApp {
 
 /**
  * Starts the app with `SWITCHBOARD_DEMO=1` and a temp data folder. The port is
- * `SWITCHBOARD_E2E_PORT` when set (4871–4879), else the first free test port.
+ * `SWITCHBOARD_E2E_PORT` when set (a test port), else the first free test port.
  */
 export async function startDemoApp(extraEnv: Record<string, string> = {}, options: { readonly folder?: string } = {}): Promise<DemoApp> {
   const tmp = await makeTempDir('visual');

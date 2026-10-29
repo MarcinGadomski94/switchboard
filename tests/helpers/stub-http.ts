@@ -24,9 +24,9 @@ export function htmlPage(text: string): StubHandler {
 }
 
 /**
- * Starts a stub on 127.0.0.1 at the first free test port (tests/helpers/net.ts →
- * TEST_PORTS), or on `port` when given; retries the next port if a parallel test
- * took one.
+ * Starts a stub on 127.0.0.1 at the first free port of this worker's slice
+ * (tests/helpers/net.ts → freeTestPorts), or on `port` when given; retries the next
+ * port if one is taken meanwhile.
  */
 export async function startStubServer(handler: StubHandler, port?: number): Promise<StubServer> {
   const candidates = port === undefined ? await freeTestPorts() : [port];

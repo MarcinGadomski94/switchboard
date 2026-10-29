@@ -30,7 +30,7 @@ async function makeApp(port: number, token = generateToken()): Promise<FastifyIn
   return app;
 }
 
-/** Listens on the first free test port (4871–4879), retrying if a parallel test took it. */
+/** Listens on the first free test port of this worker's slice (tests/helpers/net.ts), retrying if it is taken meanwhile. */
 async function listenOnTestPort(token?: string): Promise<{ app: FastifyInstance; port: number }> {
   for (const port of await freeTestPorts()) {
     const app = await makeApp(port, token);
@@ -41,7 +41,7 @@ async function listenOnTestPort(token?: string): Promise<{ app: FastifyInstance;
       if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
     }
   }
-  throw new Error('no free test port in 4871-4879');
+  throw new Error(`no free test port in ${TEST_PORTS[0]}-${TEST_PORTS.at(-1)}`);
 }
 
 /** A non-loopback IPv4 address of this machine, if it has one. */

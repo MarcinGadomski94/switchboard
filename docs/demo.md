@@ -68,7 +68,7 @@ It was written for the classic README screenshots. Since 2.0 `npm run screenshot
 ```sh
 npm run screenshots
 ```
-- It builds the UI into `.e2e-dist/web` first (`npm run screenshots -- --no-build` reuses the last build) and starts the app as a test server: a test port (`SWITCHBOARD_TEST_PORTS`, default 4871–4879), a throwaway data folder, the fake CLIs, the in-memory secret store, the setup wizard and the tours off, plus `SWITCHBOARD_DEMO=1`, `SWITCHBOARD_DEMO_V2=1` and `SWITCHBOARD_UI_THEME_DEFAULT=v2`. It never touches the real app's port or data.
+- It builds the UI into `.e2e-dist/web` first (`npm run screenshots -- --no-build` reuses the last build) and starts the app as a test server: a test port (`SWITCHBOARD_TEST_PORTS`, default 24000–27999), a throwaway data folder, the fake CLIs, the in-memory secret store, the setup wizard and the tours off, plus `SWITCHBOARD_DEMO=1`, `SWITCHBOARD_DEMO_V2=1` and `SWITCHBOARD_UI_THEME_DEFAULT=v2`. It never touches the real app's port or data.
 - Before the start it names the machine `studio-mac` in the throwaway database, so no shot shows this computer's host name (the v2 layer adopts the teammates before the port opens, and each keeps the machine name it was adopted on).
 - The browser is Playwright's bundled Chromium, headless. Desktop shots are 1440×900, phone shots 390×844 with touch, all at device scale 2 and light unless the name ends in `-dark`; `home-full.png` is Home's whole scrolling content. A welcome tour that shows is ended with Esc, and any console error fails the run.
 - To add or change a shot, edit `SHOTS` in the script; a shot whose file the README no longer links should be removed with it.

@@ -159,7 +159,7 @@ describe('D140 · updating a paired computer', () => {
 describe('D140 · updating this computer from a paired phone', () => {
   it('the phone checks and updates; rollback-like routes stay refused; the phone is recorded', async () => {
     const free = await freeTestPorts();
-    const devicePort = free.at(-1) as number;
+    const devicePort = free[0] as number;
     const node = await startPeerNode(tmp, 'solo', { env: { ...updaterEnv('solo'), SWITCHBOARD_DEVICE_TEST_ORIGIN: `http://localhost:${devicePort}` } });
     nodes.push(node);
     const access = await node.call('PUT', '/api/devices/access', { enabled: true, port: devicePort });

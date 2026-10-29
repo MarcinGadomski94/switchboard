@@ -7,7 +7,7 @@ import { appliedMigrations, loadMigrations, makeMigration, migrate } from '../..
 import { TOKEN_FILE } from '../../src/server/token.ts';
 import net from 'node:net';
 import type { Tool } from '../../src/core/api.ts';
-import { TEST_PORTS, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
+import { WORKER_TEST_PORTS, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../helpers/server-process.ts';
 import { htmlAnswer, startToolStub } from '../helpers/tool-stub.ts';
 
@@ -70,7 +70,7 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const db = await openDatabase(path.join(dataDir, DB_FILE));
     migrate(db, [...(await loadMigrations()), makeMigration(9999, 'future', 'CREATE TABLE future (id INTEGER) STRICT;')]);
     db.close();
-    const bad = spawnServer(TEST_PORTS[TEST_PORTS.length - 1] as number, { SWITCHBOARD_DATA_DIR: dataDir });
+    const bad = spawnServer(WORKER_TEST_PORTS[WORKER_TEST_PORTS.length - 1] as number, { SWITCHBOARD_DATA_DIR: dataDir });
     expect(await bad.closed).toBe(1);
     expect(bad.output()).toContain('switchboard: the database has migration 9999 (future)');
     expect(bad.output()).not.toContain('Server listening');

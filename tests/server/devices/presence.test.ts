@@ -117,7 +117,7 @@ const settle = (ms = 300): Promise<void> => new Promise((resolve) => setTimeout(
 
 describe('D87 no system notification while Switchboard is open on the device', () => {
   it('skips the devices in front (this machine’s and the paired machines’ happenings), sends to the others, and never sends the skipped ones later', async () => {
-    push = await startFakePush((await freeTestPorts()).at(-1) as number);
+    push = await startFakePush((await freeTestPorts())[0] as number);
     world = await startDeviceWorld({ env: { SWITCHBOARD_PUSH_TEST_ENDPOINTS: push.origin } });
     const w = world;
     const fake = push;
@@ -187,7 +187,7 @@ describe('D87 no system notification while Switchboard is open on the device', (
   });
 
   it('the test notification is sent while the page is open (it was asked for there)', async () => {
-    push = await startFakePush((await freeTestPorts()).at(-1) as number);
+    push = await startFakePush((await freeTestPorts())[0] as number);
     world = await startDeviceWorld({ env: { SWITCHBOARD_PUSH_TEST_ENDPOINTS: push.origin } });
     const a = await world.pair('A');
     const sub = push.subscribe();

@@ -62,7 +62,7 @@ afterEach(async () => {
 
 /** The agent routes the helper calls (no token check here: the stand-in serves this test's sessions only). */
 async function agentServer(r: Omit<Rig, 'agent'> & { probeFails: boolean }): Promise<{ app: FastifyInstance; port: number }> {
-  for (const port of (await freeTestPorts()).reverse()) {
+  for (const port of await freeTestPorts()) {
     const app = Fastify();
     const session = (request: { headers: Record<string, unknown> }) => String(request.headers[AGENT_SESSION_HEADER] ?? '');
     app.get('/agent/v1/team', async (request, reply) => {

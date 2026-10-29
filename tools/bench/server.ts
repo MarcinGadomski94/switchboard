@@ -1,7 +1,7 @@
 /**
  * `node tools/bench/server.ts [--profile <dir>] [--out <file.json>]`: the server half
  * of the performance harness (`docs/performance.md`). Runs on a test port
- * (`SWITCHBOARD_TEST_PORTS`, default 4871–4879) with a throwaway data folder, fake
+ * (`SWITCHBOARD_TEST_PORTS`, default 24000–27999) with a throwaway data folder, fake
  * CLIs only; never the real app's port, data or CLI config.
  *
  * Scenarios:
