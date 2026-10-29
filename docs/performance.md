@@ -207,6 +207,52 @@ Synthetic tree (`tests/server/perf/large-root-bench.test.ts`, `SB_BENCH=1 SB_WT=
 | 20 details + 20 counts at once after an event | 133 s | 0.16 s |
 | checkpoint before a turn (41 working trees) | 5.6 s | 0.9 to 1.9 s |
 
+## Typing in a long chat (2026-10-29)
+
+Developer report (a Windows PC): "for some chats, it feels like there is a lag when I'm writing in a text box." The developer's Mac showed one big session (10,627 events, 24 MB) with 122 `PUT …/drafts/composer` in the log window.
+
+### The harness
+`tools/bench/typing.ts` (`SWITCHBOARD_TEST_PORTS=4800-4899 node tools/bench/typing.ts [--events 3000] [--throttle 4] [--delay 50] [--only v2|classic] [--phone no|only] [--profile <dir>] [--out <file.json>]`): a live fake-claude session with `--events` events of the benchmark history (`world.ts`: Markdown, code blocks, tables, tool calls, subagents) and three messages with an image, opened in headless Chromium with the CPU throttled (`Emulation.setCPUThrottlingRate`), in the v2 agent view and the classic session view, at 1440 × 900 and 390 × 844. Per view: **typing** a 76-key line at 50 ms a key; **streaming**, the same line while the agent fires 40 short turns (`[fake:fire 40 120]`); **idle** 11 s; **received**, one `[fake:say]` turn. The in-page probe (`tests/e2e/typing-probe.ts`) records keydown → the task after the next animation frame (p50 / p95 / max), Event Timing durations, React commits and the components rendered inside the conversation (a stub of React's DevTools hook); the harness adds main-thread time (CDP `Performance.getMetrics`), the page's `/api` requests and the `/hub` events.
+
+### What it showed
+1. **Every row of the window rendered again on every render of the agent view** (v2). `Row` is memoized, but it got a new `AgentData` object and new `onSave` / `onOpenResult` closures on each render, the rows were built anew (new objects) on each `/hub` event, and the needs-you map passed to each row was new whenever the needs store changed. The agent view renders on every `/hub` event of its session (`event`, `sessionUpdated`, `activity`), and the v2 shell (status pill, rail) renders every 5 s on `/hub` `system`, taking the agent view with it. 3,000 events = ≈165 rows ≈ 1,050 components a render: while the agent streamed, 72,000 components rendered in the conversation during one typed line.
+2. **The chat clock built an `Intl.DateTimeFormat` per row.** `defaultClock` / `defaultGapText` called `toLocaleTimeString(…, options)`, and `chatRows` runs on each `/hub` event: 726 ms of 2,485 ms busy (CPU profile, typing while streaming, 4×), ≈7 ms a build.
+3. **The v2 composer collapsed the field on every key** (`height = 'auto'`, read `scrollHeight`, write the height and `overflow-y`), laying the composer and the chat above it out twice a key. Classic had been fixed for this on 2026-10-08 (`docs/chat.md` → *Composer*); v2's Dock had the old pattern.
+4. Classic: the same whole-window render on each `/hub` event (`ChatItemView` was not memoized): ≈7,000–8,000 components for one received turn. Typing itself rendered nothing there.
+5. **Not causes:** draft saves. They are already debounced (`DRAFT_SAVE_MS` = 400 ms after the last change, plus blur / hide / unmount): one `PUT` per pause in typing, none per key (76 keys at 50 ms: 1 PUT), and the `draftChanged` it publishes renders nothing in the typing tab (the page's own client is skipped). 122 PUTs in a log window are 122 pauses. The derivations are memoized per event list, not per keystroke; the composer's `@` / slash suggestions do not scan the chat.
+
+### Fixes
+- `AgentPage` is `memo` (`src/web/v2/agent/index.tsx`): the shell's own renders skip the agent view (`route` keeps its identity while the address does).
+- Rows get stable props (`ChatPane.tsx`): `RowData` (session id, `working`, blocked, closed, conversation, a checkpoints source), the same object while those are (`useRowData`); `onSave` / `onOpenResult` through `useStableCallback`; a question row gets its own needs item, the other rows `null`; `sameRowProps` compares only the fields a row's kind reads (a turn starting renders your messages, not the replies).
+- The save points (D80) change every turn but are read only by an open reply menu and a revert divider's Redo: rows read them through a `useSyncExternalStore` source with a selector (`useCheckpointsPick`), so a new turn renders those, not every reply.
+- Rows that did not change stay the same objects (`keepIdentity` + `samePlain`, `src/web/views/session/keep-identity.ts`, in `useChatRows` and classic's `MainChat`); classic's items render through `MemoChatItemView` (`ChatItems.tsx`), with `answer` / `onHeld` stable and the revert compared by value.
+- `defaultClock` / `defaultGapText` use formatters made once (same output).
+- The v2 composer's autosize (`Dock.tsx`, `composerMayShrink` in `composer-model.ts`) collapses the field only when it may have shrunk (shorter text, fewer line breaks, emptied, a new cap) and writes `height` / `overflow-y` only when they change; the cap's line height is read only when the visible height or variant changes.
+
+### Numbers (Apple silicon, Chromium of Playwright, 3,000 events ≈ 165 messages in the window)
+
+4× CPU, v2 at 1440 × 900 (before = `7a0cb40d`, after = `fix/composer-typing-lag`):
+
+| | Before | After |
+|---|---|---|
+| Typing: keystroke → frame p50 / p95 / max | 5.2 / 9.0 / 40.7 ms | 4.9 / 8.6 / 39.2 ms |
+| … components rendered per key / in the conversation for the whole line | 47.4 / 2,110 | 11.9 / 2 |
+| … draft PUTs for the line (76 keys, 4.2 s) | 1 | 1 |
+| Typing while the agent streams: p50 / p95 / max | 9.4 / 49.9 / 80.3 ms | 8.9 / 17.4 / 26.7 ms |
+| … main-thread time per key | 37.0 ms | 20.4 ms |
+| … components rendered in the conversation | 71,828 | 522 |
+| Idle 11 s: components in the conversation | 4,888 | 4 |
+| One received turn: components in the conversation | 8,608 | 38 |
+
+10× CPU (a slow PC), v2 desktop: typing while the agent streams p95 **389 → 72 ms** (max 486 → 111 ms; main thread per key 69 → 43 ms); typing alone p95 20 → 17 ms. v2 at 390 × 844 (4×): streaming 54,930 → 336 components, a received turn 7,499 → 30. Classic (4×, desktop / phone): a received turn 7,871 / 7,773 → 41 / 43 components, streaming 68,514 / 65,492 → 399 / 393, typing unchanged (0 in the conversation, p95 6–11 ms).
+
+Left as is: a key still renders the v2 dock (≈12 components: the dock, its status row, the routines indicator, the chips, the buttons; classic ≈4); the dock re-renders once a second for its clock. Both cost under 1 ms at 4×.
+
+### Guards
+- `tests/e2e/typing-perf.spec.ts` (always on, counts only): a fake-claude session grown to 3,000 events, v2 desktop and phone and classic: typing 30 keys renders fewer than 20 components in the conversation, 6 s idle (a `system` tick) fewer than 20, one received turn fewer than 300; v2 typing one line writes nothing to the field's style. Fails on the code before the fix (v2: the style writes; classic: ≈1,030 components per commit for a received turn). With `SWITCHBOARD_PERF=1` also timings at 4× CPU: keystroke → frame p95 under 50 ms idle and under 100 ms while the agent streams, at most one draft PUT per 0.5 s of typing.
+- `tests/web/typing-lag.test.ts`: `samePlain`, `keepIdentity` (also over `chatRows` with an appended message), `composerMayShrink`, `lineBreaks`, the clock's output against `toLocaleTimeString`.
+- Still green: `typing-long-chat.spec.ts`, `drafts.spec.ts`, `v2-drafts.spec.ts`, `v2-send.spec.ts`, `v2-agent.spec.ts`, `v2-agent-space.spec.ts`, `undo.spec.ts`, `queued-send.spec.ts`, `queued-messages.spec.ts`, `attachments.spec.ts`, `long-session.spec.ts`, `session-chat.spec.ts`.
+
 ## Remaining hotspots
 - ~~**`sessionUpdated` size.**~~ Done in the follow-ups (*Agent deltas*, *Heavy fields only when they change*): 27.1 → 0.81 MB per 100 turns on the page's stream.
 - ~~**The Timeline tab**~~ Done in the follow-up (*Windowed Timeline*).

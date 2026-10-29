@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useFullText } from '../../views/session/FullText.tsx';
 import { type ChatItem, chatItems } from '../../views/session/chat.ts';
 import { OUTGOING_SETTLE_MS, type OutgoingMessage, dropOutgoing, matchOutgoing, outgoingOf, settledOutgoing, subscribeOutgoing } from '../../views/session/outgoing.ts';
+import { keepIdentity } from '../../views/session/keep-identity.ts';
 import { type ChatRow, chatRows, placeResults } from './chat-model.ts';
 import { resultRefs } from './tabs.tsx';
 import type { AgentData } from './useAgent.ts';
@@ -46,13 +47,21 @@ export function useChatRows(data: AgentData): { readonly rows: readonly ChatRow[
   }, [sessionId, outgoing, match]);
   const times = useMemo(() => new Map(fullText.events.map((event) => [event.id, { ts: event.ts, endTs: event.endTs }])), [fullText.events]);
   const artifacts = session?.artifacts;
-  const rows = useMemo(() => {
+  // Typing lag fix (2026-10-29): rows that did not change stay the same objects (the chat's rows are memoized).
+  const previousRows = useRef<{ readonly sessionId: string; readonly rows: readonly ChatRow[] } | null>(null);
+  const built = useMemo(() => {
     const base = chatRows({ items: all, times, agents: agents ?? [], now: Date.now() });
     // Results older than the loaded window belong to a page not loaded yet.
     const first = base.find((row): row is Extract<ChatRow, { kind: 'you' | 'reply' }> => (row.kind === 'you' || row.kind === 'reply') && row.at !== null);
     const refs = resultRefs(artifacts).filter((r) => complete || !first || first.at === null || Date.parse(r.createdAt) >= first.at);
     return placeResults(base, refs);
   }, [all, times, agents, artifacts, complete]);
+  const rows = useMemo(() => {
+    const last = previousRows.current;
+    const kept = keepIdentity(last !== null && last.sessionId === sessionId ? last.rows : null, built);
+    previousRows.current = { sessionId, rows: kept };
+    return kept;
+  }, [built, sessionId]);
   const newest = useMemo(() => events.reduce((max, event) => Math.max(max, event.id), 0), [events]);
   const newestRef = useRef(newest);
   newestRef.current = newest;

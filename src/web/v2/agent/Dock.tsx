@@ -30,7 +30,7 @@ import { useAgentTaskCards } from '../shared/session-tasks.ts';
 import { TodoCard } from '../shared/TodoCard.tsx';
 import { readStripOpen, stripOrder, writeStripOpen } from '../shared/todo-card-model.ts';
 import { clock } from '../shared/time.ts';
-import { type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerPlaceholder, dockStatus, joinWithdrawn, liveLine, resetTimeOf } from './composer-model.ts';
+import { type ComposerMeasure, type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerMayShrink, composerPlaceholder, dockStatus, joinWithdrawn, lineBreaks, liveLine, resetTimeOf } from './composer-model.ts';
 import { RoutinesIndicator } from './Routines.tsx';
 import type { AgentData } from './useAgent.ts';
 import { DraftChips } from './Attachments.tsx';
@@ -283,14 +283,26 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
   // Fix after 2.0: the box starts at one line and grows with its text only up to about a fifth of the
   // visible height (never under 4 lines), then scrolls inside: a long message never pushes the chat away.
   // The visible height follows a phone's keyboard (visualViewport).
+  // Typing lag fix (2026-10-29, as classic's of 2026-10-08): the field is collapsed to measure its natural
+  // height only when it may have shrunk (`composerMayShrink`); collapsing it on every key laid the composer
+  // and the chat above it out twice per key. Its style is written only when a value changes.
   const viewHeight = useViewHeight();
+  const measured = useRef<ComposerMeasure | null>(null);
   useLayoutEffect(() => {
     const field = input.current;
     if (!field) return;
-    field.style.height = 'auto';
-    const max = composerMaxHeight(viewHeight, parseFloat(getComputedStyle(field).lineHeight || '22'), variant === 'phone' ? 0.17 : 0.22);
-    field.style.height = `${Math.min(field.scrollHeight, max)}px`;
-    field.style.overflowY = field.scrollHeight > max ? 'auto' : 'hidden';
+    const last = measured.current;
+    const share = variant === 'phone' ? 0.17 : 0.22;
+    const max = last !== null && last.viewHeight === viewHeight && last.share === share ? last.max : composerMaxHeight(viewHeight, parseFloat(getComputedStyle(field).lineHeight || '22'), share);
+    const next: ComposerMeasure = { length: field.value.length, breaks: lineBreaks(field.value), viewHeight, share, max };
+    measured.current = next;
+    if (composerMayShrink(last, next)) field.style.height = 'auto';
+    // At its current height, scrollHeight is the text's height when it overflows, else the field's own.
+    const needed = field.scrollHeight;
+    const height = `${Math.min(needed, max)}px`;
+    if (field.style.height !== height) field.style.height = height;
+    const overflow = needed > max ? 'auto' : 'hidden';
+    if (field.style.overflowY !== overflow) field.style.overflowY = overflow;
   }, [draft, viewHeight, variant]);
   const todos = useSessionTodos(sessionId);
   const memory = useMemoryState(data);

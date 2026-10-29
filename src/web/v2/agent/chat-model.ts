@@ -156,19 +156,36 @@ export interface ChatRowsInput {
   readonly gapText?: (fromMs: number, toMs: number) => string;
 }
 
+/**
+ * Typing lag fix (2026-10-29): the clock's and the gap's formatters, made once.
+ * `toLocaleTimeString(…, options)` builds an `Intl.DateTimeFormat` on every call,
+ * and the chat's rows (a few hundred times per build) are built again on every
+ * `/hub` event: that was most of the work a received event cost the page.
+ */
+let timeFormat: Intl.DateTimeFormat | null = null;
+let dayFormat: Intl.DateTimeFormat | null = null;
+
+function formatTime(date: Date): string {
+  timeFormat ??= new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' });
+  return timeFormat.format(date);
+}
+
 /** `13:05` in the browser's locale (24 h unless it says otherwise). */
 export function defaultClock(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(date);
 }
 
 /** A gap's words: "2 hours later · 16:42", or the day when it changed ("Thursday 23 Oct · 09:10"). */
 export function defaultGapText(fromMs: number, toMs: number): string {
   const from = new Date(fromMs);
   const to = new Date(toMs);
-  const time = to.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (from.toDateString() !== to.toDateString()) return `${to.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })} · ${time}`;
+  const time = formatTime(to);
+  if (from.toDateString() !== to.toDateString()) {
+    dayFormat ??= new Intl.DateTimeFormat([], { weekday: 'long', day: 'numeric', month: 'short' });
+    return `${dayFormat.format(to)} · ${time}`;
+  }
   return `${laterText(toMs - fromMs)} · ${time}`;
 }
 

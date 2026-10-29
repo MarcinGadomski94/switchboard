@@ -206,6 +206,37 @@ export function composerMaxHeight(viewportHeight: number, lineHeight: number, sh
   return Math.max(lines, Math.round(viewportHeight * share));
 }
 
+/** What the composer's autosize measured last (`Dock`): the text's length and line breaks, and the cap it used. */
+export interface ComposerMeasure {
+  readonly length: number;
+  readonly breaks: number;
+  readonly viewHeight: number;
+  readonly share: number;
+  /** The cap ({@link composerMaxHeight}) for that visible height and share. */
+  readonly max: number;
+}
+
+/** The number of line breaks in `text`. */
+export function lineBreaks(text: string): number {
+  let count = 0;
+  for (let at = text.indexOf('\n'); at >= 0; at = text.indexOf('\n', at + 1)) count += 1;
+  return count;
+}
+
+/**
+ * Typing lag fix (2026-10-29): `true` when the composer must be collapsed to measure
+ * its natural height, i.e. when it may have shrunk: the first measure, the text got
+ * shorter or lost a line break, it was emptied, or the cap changed. Growing needs no
+ * collapse (at its current height the field's `scrollHeight` is the text's height),
+ * so a keystroke that only adds text costs one layout read and no write.
+ */
+export function composerMayShrink(last: ComposerMeasure | null, next: ComposerMeasure): boolean {
+  if (last === null) return true;
+  if (next.length === 0) return true;
+  if (next.length < last.length || next.breaks < last.breaks) return true;
+  return next.max !== last.max;
+}
+
 /** Your long message folds after this many lines (Show more). */
 export const YOU_FOLD_LINES = 12;
 

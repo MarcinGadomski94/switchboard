@@ -1,4 +1,4 @@
-import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { NewerEvents, OlderEvents } from './useSessionData.ts';
 import { revealEvent } from './reveal-event.ts';
 import { useReleaseFocus } from '../../components/release-focus.ts';
@@ -11,7 +11,8 @@ import { ApiError, api } from '../../api/client.ts';
 import { AttachButton, type AttachmentDraft, AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '../../components/Attachments.tsx';
 import { attachmentsBlocker, messageToSend } from '../../components/attachments.ts';
 import { refusalText } from '../inbox.ts';
-import { type Answering, ChatItemView } from './ChatItems.tsx';
+import { type Answering, MemoChatItemView } from './ChatItems.tsx';
+import { keepIdentity, useStableCallback } from './keep-identity.ts';
 import { useFullText } from './FullText.tsx';
 import { COMPOSER_MAX_LINES, type ChatItem, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
@@ -193,12 +194,12 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const blockedEarly = offlineReason(machine);
   const attachments = useAttachmentDraft(blockedEarly === null ? (body) => api.uploadAttachment(sessionId, body) : undefined);
   // D103: a held message taken back: Edit puts its text (and attachments) into the composer, Remove drops it.
-  const onHeld = async (eventId: number, action: 'edit' | 'remove'): Promise<void> => {
+  const onHeld = useStableCallback(async (eventId: number, action: 'edit' | 'remove'): Promise<void> => {
     const taken = await api.withdrawHeld(sessionId, eventId);
     if (action !== 'edit') return;
     if (taken.attachments.length > 0) attachments.restore(taken.attachments, sessionId);
     window.dispatchEvent(new CustomEvent(COMPOSER_INSERT_EVENT, { detail: { sessionId, text: taken.text } }));
-  };
+  });
   const drop = useFileDrop(attachments.add, blockedEarly === null);
   const clearAttachments = attachments.clear;
   useEffect(() => {
@@ -239,10 +240,18 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   // Fix · queued send feedback: a message the composer sent shows at once (with its clock), until its event is in the chat.
   const outgoing = useSyncExternalStore(subscribeOutgoing, () => outgoingOf(sessionId));
   const outgoingMatch = useMemo(() => matchOutgoing(events, outgoing), [events, outgoing]);
-  const shownItems = useMemo(
+  const builtItems = useMemo(
     () => (ready && outgoingMatch.waiting.length > 0 ? [...items, ...outgoingMatch.waiting.map(outgoingItem)] : items),
     [ready, items, outgoingMatch],
   );
+  // Typing lag fix (2026-10-29): the items that did not change stay the same objects (the items are memoized).
+  const previousItems = useRef<{ readonly sessionId: string; readonly items: readonly ChatItem[] } | null>(null);
+  const shownItems = useMemo(() => {
+    const last = previousItems.current;
+    const kept = keepIdentity(last !== null && last.sessionId === sessionId ? last.items : null, builtItems);
+    previousItems.current = { sessionId, items: kept };
+    return kept;
+  }, [builtItems, sessionId]);
   useEffect(() => {
     // Answered and shown by its event (or waited long enough): it goes; the rest are looked at again when they would time out.
     for (const key of settledOutgoing(outgoing, outgoingMatch.shown)) dropOutgoing(sessionId, key);
@@ -338,7 +347,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
 
   // D48 ruling D48-cache-persist: an unreachable machine's session is readable (its last known state), nothing more.
   const blocked = offlineReason(machine);
-  const answer = async (batchId: string, body: AnswerBatch): Promise<void> => {
+  const answer = useStableCallback(async (batchId: string, body: AnswerBatch): Promise<void> => {
     setAnswering({ batchId, busy: true, error: null });
     stick.current = true;
     try {
@@ -350,7 +359,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       setAnswering({ batchId, busy: false, error: refusal(error) });
     }
     onChanged();
-  };
+  });
+  const readOnlyNote = useCallback(() => blocked, [blocked]);
 
   return (
     <>
@@ -366,14 +376,14 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         {placeholder ? <ChatSkeleton /> : null}
         {loaded && older.available && !placeholder ? <OlderRow older={older} /> : null}
         {shownItems.map((item) => (
-          <ChatItemView
+          <MemoChatItemView
             key={item.key}
             sessionId={sessionId}
             item={item}
             answering={answering}
             onAnswer={answer}
             // D48 ruling D48-cache-persist: an unreachable machine's waiting questions are shown, not answerable.
-            {...(blocked ? { readOnlyNote: () => blocked } : {})}
+            {...(blocked ? { readOnlyNote } : {})}
             // D53: a hooked session's queued message says what it waits on.
             queuedNote={blocked ? null : hookedQueuedNote(session)}
             fullText={fullText.control}

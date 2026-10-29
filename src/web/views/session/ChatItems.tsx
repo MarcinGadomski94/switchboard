@@ -1,7 +1,8 @@
 import { loopChipText } from '../../../core/owned-loops.ts';
 import { CommandCopy } from '../../components/CommandCopy.tsx';
 import '../owned-loops.css';
-import { Fragment, type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, memo, useState } from 'react';
+import { samePlain } from './keep-identity.ts';
 import { NOT_SENT_NOTE, RESEND_LABEL } from '../../../core/hooked-continue.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { actionErrorText } from './session-header.ts';
@@ -331,3 +332,18 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
     </Fragment>
   );
 }
+
+/**
+ * Typing lag fix (2026-10-29): {@link ChatItemView} that renders again only when a
+ * prop changed (the item kept the same object while equal by the main chat,
+ * `keepIdentity`; the revert compared by value: it is made anew per render). The
+ * main chat rendered every item of its window again on every `/hub` event.
+ */
+export const MemoChatItemView = memo(ChatItemView, (prev, next) => {
+  for (const key of Object.keys(next) as Array<keyof ChatItemViewProps>) {
+    if (key === 'revert') continue;
+    if (prev[key] !== next[key]) return false;
+  }
+  if (Object.keys(prev).length !== Object.keys(next).length) return false;
+  return samePlain(prev.revert ?? null, next.revert ?? null);
+});

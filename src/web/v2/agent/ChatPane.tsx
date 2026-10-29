@@ -1,4 +1,5 @@
-import { type MutableRefObject, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type MutableRefObject, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { SessionCheckpoints } from '../../../core/checkpoints.ts';
 import { CommandCopy } from '../../components/CommandCopy.tsx';
 import type { Question } from '../../../core/api.ts';
 import { closedBatchText } from '../../../core/session-close.ts';
@@ -7,6 +8,7 @@ import { loopChipText } from '../../../core/owned-loops.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { ChatMarkdown, copyText } from '../../views/session/ChatMarkdown.tsx';
 import { CutNote, type FullTextControl } from '../../views/session/FullText.tsx';
+import { useStableCallback } from '../../views/session/keep-identity.ts';
 import { revealEvent } from '../../views/session/reveal-event.ts';
 import { refreshCheckpoints } from '../../views/session/checkpoints.ts';
 import { actionErrorText } from '../../views/session/session-header.ts';
@@ -35,6 +37,70 @@ function atBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
 }
 
+/**
+ * Typing lag fix (2026-10-29): what a chat row reads of the agent, kept as one
+ * object while those fields stay the same ({@link useRowData}), so the memoized
+ * rows skip the renders that change nothing of theirs (every `/hub` event and the
+ * shell's ticks used to render every row of the window again: a new `AgentData`
+ * and new callbacks on each render defeated the rows' memo).
+ */
+export interface RowData {
+  readonly sessionId: string;
+  /** A turn runs (`turnBusy`): your messages show what they wait for. */
+  readonly working: boolean;
+  /**
+   * The save points (D80), read only where they show: an open reply menu (Undo
+   * from here) and a revert divider's Redo. They change every turn; read through
+   * this source they render those, not every reply of the window.
+   */
+  readonly checkpoints: CheckpointsSource;
+  readonly blocked: string | null;
+  readonly closed: boolean;
+  readonly conversation: boolean;
+}
+
+/** The agent's newest save points for the chat's rows ({@link RowData}), with change notices. */
+export interface CheckpointsSource {
+  get(): SessionCheckpoints | null;
+  subscribe(listener: () => void): () => void;
+}
+
+/** A {@link CheckpointsSource} that holds `value` and tells its listeners when {@link set} changes it. */
+function checkpointsSource(): CheckpointsSource & { set(value: SessionCheckpoints | null): void } {
+  let value: SessionCheckpoints | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set: (next) => {
+      if (next === value) return;
+      value = next;
+      for (const listener of [...listeners]) listener();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+/** {@link RowData} of `data`, the same object while its fields are. */
+export function useRowData(data: AgentData): RowData {
+  const { sessionId, session, checkpoints, blocked, closed, conversation } = data;
+  const working = session !== null && turnBusy(session);
+  const [source] = useState(checkpointsSource);
+  // Set during the render, so the rows rendered with it read the same value; listeners hear of it after the commit.
+  const latest = useRef(checkpoints);
+  latest.current = checkpoints;
+  useLayoutEffect(() => source.set(latest.current), [source, checkpoints]);
+  const readable = useMemo<CheckpointsSource>(() => ({ get: () => latest.current, subscribe: source.subscribe }), [source]);
+  return useMemo(() => ({ sessionId, working, checkpoints: readable, blocked, closed, conversation }), [sessionId, working, readable, blocked, closed, conversation]);
+}
+
+/** The save points as a row reads them: `pick` of the newest ones, rendering again only when `pick`'s answer changes. */
+function useCheckpointsPick<T>(source: CheckpointsSource, pick: (checkpoints: SessionCheckpoints | null) => T): T {
+  return useSyncExternalStore(source.subscribe, () => pick(source.get()));
+}
+
 /** Props of {@link ChatPane}. */
 export interface ChatPaneProps {
   readonly data: AgentData;
@@ -61,8 +127,11 @@ export interface ChatPaneProps {
  * to the top it loads the page before (D95); opened at a search hit it loads the
  * window around it, scrolls there and highlights it (D97), like the classic chat.
  */
-export function ChatPane({ data, rows, fullText, focusEventId, stick, variant, onSave, onOpenResult, helperHref }: ChatPaneProps) {
+export function ChatPane({ data, rows, fullText, focusEventId, stick, variant, onSave: onSaveProp, onOpenResult: onOpenResultProp, helperHref }: ChatPaneProps) {
   const { sessionId, older, newer, eventsState, session } = data;
+  const rowData = useRowData(data);
+  const onSave = useStableCallback(onSaveProp);
+  const onOpenResult = useStableCallback(onOpenResultProp);
   const scroller = useRef<HTMLDivElement | null>(null);
   const loaded = eventsState === 'ready';
   const revealed = useRef<number | null>(null);
@@ -140,7 +209,7 @@ export function ChatPane({ data, rows, fullText, focusEventId, stick, variant, o
         {empty ? <EmptyState icon="chat" tone="grey" title={AGENT_WORDS.emptyChat} text={data.conversation ? AGENT_WORDS.placeholderConversation : AGENT_WORDS.emptyChatText} /> : null}
         {placeholder
           ? null
-          : rows.map((row) => <Row key={row.key} row={row} data={data} variant={variant} fullText={fullText} focusEventId={focusEventId} needs={needsByKey} onSave={onSave} onOpenResult={onOpenResult} helperHref={helperHref} />)}
+          : rows.map((row) => <Row key={row.key} row={row} data={rowData} variant={variant} fullText={fullText} focusEventId={focusEventId} need={row.kind === 'questions' ? (needsByKey.get(`inbox:${row.batchId}`) ?? null) : null} onSave={onSave} onOpenResult={onOpenResult} helperHref={helperHref} />)}
         {placeholder
           ? null
           : extraKeys.map((key) => (
@@ -204,13 +273,15 @@ function ChatSkeleton() {
   );
 }
 
-interface RowProps {
+/** Props of a chat row. */
+export interface RowProps {
   readonly row: ChatRow;
-  readonly data: AgentData;
+  readonly data: RowData;
   readonly variant: 'full' | 'peek' | 'phone';
   readonly fullText: FullTextControl | undefined;
   readonly focusEventId: number | null;
-  readonly needs: ReadonlyMap<string, NeedsItem>;
+  /** A question row's waiting item (its in-chat answer card); `null` for every other row. */
+  readonly need: NeedsItem | null;
   readonly onSave: ChatPaneProps['onSave'];
   readonly onOpenResult: (id: string) => void;
   readonly helperHref: (agentId: string) => string;
@@ -218,25 +289,51 @@ interface RowProps {
   readonly readOnly?: boolean;
 }
 
-const NO_NEEDS: ReadonlyMap<string, NeedsItem> = new Map();
+const NO_SAVE = (): void => undefined;
+const NO_OPEN = (): void => undefined;
 
 /** D36 · rows of a helper's chat (read-only: helpers take no messages; their questions are answered in the main chat). */
 export function ChatRowsView({ rows, data, fullText, focusEventId, variant }: { readonly rows: readonly ChatRow[]; readonly data: AgentData; readonly fullText: FullTextControl | undefined; readonly focusEventId: number | null; readonly variant: 'full' | 'peek' | 'phone'; readonly readOnly: true }) {
-  const helperHref = (agentId: string): string => `/agents/${encodeURIComponent(data.sessionId)}/helpers/${encodeURIComponent(agentId)}`;
+  const rowData = useRowData(data);
+  const helperHref = useCallback((agentId: string): string => `/agents/${encodeURIComponent(rowData.sessionId)}/helpers/${encodeURIComponent(agentId)}`, [rowData.sessionId]);
   return (
     <>
       {rows.map((row) => (
-        <Row key={row.key} row={row} data={data} variant={variant} fullText={fullText} focusEventId={focusEventId} needs={NO_NEEDS} onSave={() => undefined} onOpenResult={() => undefined} helperHref={helperHref} readOnly />
+        <Row key={row.key} row={row} data={rowData} variant={variant} fullText={fullText} focusEventId={focusEventId} need={null} onSave={NO_SAVE} onOpenResult={NO_OPEN} helperHref={helperHref} readOnly />
       ))}
     </>
   );
 }
 
+/**
+ * Typing lag fix (2026-10-29): a row renders again only when something it shows
+ * changed: its row object (kept while equal, `keepIdentity`), a prop, or the
+ * fields of {@link RowData} its kind reads (a turn starting renders your messages,
+ * not the replies).
+ */
+export function sameRowProps(prev: RowProps, next: RowProps): boolean {
+  if (prev.row !== next.row || prev.variant !== next.variant || prev.fullText !== next.fullText || prev.focusEventId !== next.focusEventId || prev.need !== next.need) return false;
+  if (prev.onSave !== next.onSave || prev.onOpenResult !== next.onOpenResult || prev.helperHref !== next.helperHref || prev.readOnly !== next.readOnly) return false;
+  const a = prev.data;
+  const b = next.data;
+  if (a === b) return true;
+  switch (next.row.kind) {
+    case 'you':
+      return a.sessionId === b.sessionId && a.working === b.working;
+    case 'reply':
+      return a.sessionId === b.sessionId && a.checkpoints === b.checkpoints && a.blocked === b.blocked && a.closed === b.closed && a.conversation === b.conversation;
+    case 'divider':
+      return a.sessionId === b.sessionId && a.checkpoints === b.checkpoints && a.blocked === b.blocked;
+    default:
+      return true;
+  }
+}
+
 /** One chat row. */
-const Row = memo(function Row({ row, data, variant, fullText, focusEventId, needs, onSave, onOpenResult, helperHref, readOnly = false }: RowProps) {
+const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need, onSave, onOpenResult, helperHref, readOnly = false }: RowProps) {
   switch (row.kind) {
     case 'you':
-      return <YouPill row={row} sessionId={data.sessionId} fullText={fullText} working={data.session !== null && turnBusy(data.session)} />;
+      return <YouPill row={row} sessionId={data.sessionId} fullText={fullText} working={data.working} />;
     case 'reply':
       return <Reply row={row} data={data} variant={readOnly ? 'phone' : variant} fullText={fullText} onSave={onSave} />;
     case 'activity':
@@ -244,7 +341,7 @@ const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need
     case 'helpers':
       return <HelpersThread row={row} helperHref={helperHref} />;
     case 'questions':
-      return <QuestionRow batchId={row.batchId} questions={row.questions} waiting={row.waiting} item={readOnly ? null : (needs.get(`inbox:${row.batchId}`) ?? null)} variant={variant} />;
+      return <QuestionRow batchId={row.batchId} questions={row.questions} waiting={row.waiting} item={readOnly ? null : need} variant={variant} />;
     case 'results':
       return <ResultsRow results={row.results} onOpen={onOpenResult} />;
     case 'gap':
@@ -265,7 +362,7 @@ const Row = memo(function Row({ row, data, variant, fullText, focusEventId, need
         </div>
       );
   }
-});
+}, sameRowProps);
 
 function YouPill({ row, sessionId, fullText, working }: { readonly row: Extract<ChatRow, { kind: 'you' }>; readonly sessionId: string; readonly fullText: FullTextControl | undefined; readonly working: boolean }) {
   // Fix after 2.0: a message the agent has not taken up shows in the chat at once, with what it waits for.
@@ -365,15 +462,17 @@ function selectionIn(node: Element | null): string | null {
   return text === '' ? null : text;
 }
 
-function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract<ChatRow, { kind: 'reply' }>; readonly data: AgentData; readonly variant: 'full' | 'peek' | 'phone'; readonly fullText: FullTextControl | undefined; readonly onSave: ChatPaneProps['onSave'] }) {
+function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract<ChatRow, { kind: 'reply' }>; readonly data: RowData; readonly variant: 'full' | 'peek' | 'phone'; readonly fullText: FullTextControl | undefined; readonly onSave: ChatPaneProps['onSave'] }) {
   const toast = useToast();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const [selection, setSelection] = useState<string | null>(null);
   const body = useRef<HTMLDivElement | null>(null);
+  // Only an open menu follows the save points (a closed one renders nothing of them).
+  const checkpoints = useCheckpointsPick(data.checkpoints, (value) => (open ? value : null));
   const items = useMemo(
-    () => (open ? replyMenu({ text: row.text, selection, turnEventId: row.turnEventId, checkpoints: data.checkpoints, blocked: data.blocked ?? (data.closed ? 'Archived agents do not change.' : null), conversation: data.conversation }) : []),
-    [open, row.text, selection, row.turnEventId, data.checkpoints, data.blocked, data.closed, data.conversation],
+    () => (open ? replyMenu({ text: row.text, selection, turnEventId: row.turnEventId, checkpoints, blocked: data.blocked ?? (data.closed ? 'Archived agents do not change.' : null), conversation: data.conversation }) : []),
+    [open, row.text, selection, row.turnEventId, checkpoints, data.blocked, data.closed, data.conversation],
   );
   const run = (item: ReplyMenuItem): void => {
     const action = item.action;
@@ -578,8 +677,9 @@ function ResultsRow({ results, onOpen }: { readonly results: readonly ResultRef[
   );
 }
 
-function Divider({ row, data }: { readonly row: Extract<ChatRow, { kind: 'divider' }>; readonly data: AgentData }) {
-  const redo = row.revert === 'reverted' && data.blocked === null && data.checkpoints?.redo?.eventId === row.id;
+function Divider({ row, data }: { readonly row: Extract<ChatRow, { kind: 'divider' }>; readonly data: RowData }) {
+  const redoHere = useCheckpointsPick(data.checkpoints, (value) => value?.redo?.eventId === row.id);
+  const redo = row.revert === 'reverted' && data.blocked === null && redoHere;
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const doRedo = (): void => {
