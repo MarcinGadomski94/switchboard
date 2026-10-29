@@ -1,4 +1,4 @@
-import { appendFile, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -64,6 +64,14 @@ const assistantEvents = async (w: SupervisorWorld, sessionId: string): Promise<E
   (await w.store.events.list(sessionId)).filter((event) => payloadType(event) === 'assistant');
 
 /** Makes an event look as the recorder stored it before the fix: its text cut at 4,000, no flag. */
+/** Waits until the fake's transcript of `session` holds `text` (it may still be writing it when the turn's `done` is stored). */
+async function transcriptWith(w: SupervisorWorld, claudeSessionId: string, text: string): Promise<void> {
+  await until(async () => {
+    const file = await findTranscriptFile(claudeConfigDir(w.env), claudeSessionId);
+    return file !== null && (await readFile(file, 'utf8')).includes(text) ? true : undefined;
+  }, 'the transcript');
+}
+
 async function cutLikeBefore(w: SupervisorWorld, event: EventRecord): Promise<EventRecord> {
   const payload = event.payload as AssistantPayload;
   const updated = await w.store.events.update(event.id, { payload: { type: payload.type, text: payload.text.slice(0, PAYLOAD_TEXT_LIMIT), messageId: payload.messageId } });
@@ -76,6 +84,7 @@ describe('Fix · long messages', () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Write a long reply. [fake:say-long 9000]' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
+    await transcriptWith(w, session.claudeSessionId, SAY_LONG_END);
     const [reply] = await assistantEvents(w, session.id);
     const text = (reply?.payload as AssistantPayload).text;
     expect(text).toHaveLength(9000);
@@ -107,6 +116,7 @@ describe('Fix · long messages', () => {
     const long = 'L'.repeat(6000);
     const session = await w.supervisor.start(newSession({ task: `Write it. [fake:tool Write {"file_path":"notes.txt","content":"${long}"}]` }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
+    await transcriptWith(w, session.claudeSessionId, long);
     const events = await w.store.events.list(session.id);
     const call = events.find((event) => payloadType(event) === 'tool');
     const stored = call?.payload as ToolPayload;
