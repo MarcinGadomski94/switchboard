@@ -210,6 +210,8 @@ export class TeamService {
   #roles = new Map<string, string>();
   /** 2026-10-27: the members' sessions last seen archived (by ref), so only an archive or a restore publishes. */
   readonly #archivedRefs = new Map<string, boolean>();
+  /** Fix after 2.4.8: the members' sessions last seen waiting for the developer (`need`, by ref), so a flip publishes. */
+  readonly #waitingRefs = new Map<string, boolean>();
   #queue: Promise<unknown> = Promise.resolve();
   readonly #moves = new Map<string, TeamMoveRun>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
@@ -379,14 +381,29 @@ export class TeamService {
    * 2026-10-27 (D137 follow-up): a member's session was archived or restored (here, or on a
    * paired machine: its `sessionUpdated` comes through with the `r~` ref): `teamChanged`, so
    * every crew view (and the v2 teammates store, which reads only on `teamChanged`) hides it or
-   * brings it back at once. Other updates of the session publish nothing new.
+   * brings it back at once.
+   *
+   * Fix after 2.4.8 (a pinned crew kept "1 needs you" after the teammate was answered): the
+   * same when the session starts or stops waiting for the developer (its read status turns
+   * `need` or leaves it), since a crew's `needsYou` and its roster's needs-you status count
+   * that and the crew views read the crews only on `teamChanged`. The first update of a
+   * member seen since the start publishes too (what was counted before is not known). Other
+   * updates of the session publish nothing new.
    */
-  #memberSessionUpdated(session: { readonly id: string; readonly closedAt?: string | null; readonly movedTo?: unknown }): void {
+  #memberSessionUpdated(session: { readonly id: string; readonly status?: unknown; readonly closedAt?: string | null; readonly movedTo?: unknown }): void {
     if (!this.#roles.has(session.id)) return;
     const archived = memberSessionArchived(session);
     const before = this.#archivedRefs.get(session.id) ?? false;
     this.#archivedRefs.set(session.id, archived);
-    if (before === archived) return;
+    let changed = before !== archived;
+    // A delta update may leave the status out (unchanged): nothing to compare then.
+    if (typeof session.status === 'string') {
+      const waiting = session.status === 'need';
+      const was = this.#waitingRefs.get(session.id);
+      this.#waitingRefs.set(session.id, waiting);
+      if (was !== waiting) changed = true;
+    }
+    if (!changed) return;
     const member = this.#db ? this.#liveMembers().find((m) => this.#sessionRef(m) === session.id) : undefined;
     this.#publish(['members'], member?.teamId ?? this.#defaultTeamId());
   }

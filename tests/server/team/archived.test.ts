@@ -186,6 +186,41 @@ describe('2026-10-27 · archived members are hidden, not removed (D137 follow-up
     }
   });
 
+  it('a member that starts or stops waiting for the developer publishes teamChanged, so the crew count does not stay stale (fix after 2.4.8)', async () => {
+    const r = await setup();
+    const { s2 } = await crew(r);
+    const seen: unknown[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'teamChanged') seen.push(message.payload);
+    });
+    const update = async (patch: Parameters<typeof r.world.store.sessions.update>[1]) => {
+      const record = await r.world.store.sessions.update(s2.id, patch);
+      r.bus.publish('sessionUpdated', record as never);
+    };
+    try {
+      // The first update seen since the start: what the crews were read with is not known.
+      await update({ status: 'done' });
+      expect(seen).toHaveLength(1);
+      await update({ title: 'renamed' });
+      expect(seen).toHaveLength(1);
+      // Its turn ends waiting: counted; answered (a new turn): not counted any more.
+      await update({ status: 'need' });
+      expect(seen).toHaveLength(2);
+      expect((await r.team.teamList())[0]?.needsYou).toBe(1);
+      await update({ status: 'run' });
+      expect(seen).toHaveLength(3);
+      expect(seen[2]).toEqual({ teamId: 'team', what: ['members'] });
+      expect((await r.team.teamList())[0]?.needsYou).toBe(0);
+      await update({ status: 'done' });
+      expect(seen).toHaveLength(3);
+      // A delta update without a status changes nothing.
+      r.bus.publish('sessionUpdated', { id: s2.id } as never);
+      expect(seen).toHaveLength(3);
+    } finally {
+      off();
+    }
+  });
+
   it("a paired machine's member is archived when that machine's archived list has its session (an open one there wins)", async () => {
     const r = await setup();
     const { planner } = await crew(r);
