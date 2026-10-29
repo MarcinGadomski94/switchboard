@@ -1,7 +1,7 @@
 import type { SessionListItem } from '../../../core/api.ts';
 import { crewOfPin, crewPinId } from '../../../core/crew-pins.ts';
 import type { SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
-import type { TeamRosterEntry, TeamSummary } from '../../../core/team.ts';
+import { type TeamRosterEntry, type TeamSummary, memberNeedsYou } from '../../../core/team.ts';
 import { visibleTeam } from '../../team/model.ts';
 import { type V2Status, sessionStatusToV2, teammateStatusToV2 } from '../glossary.ts';
 
@@ -67,14 +67,19 @@ export function mateStatus(entry: Pick<TeamRosterEntry, 'status'>, needs: number
  * A crew as the rail shows it: its shown teammates with their status and Needs-you count, and its counts.
  *
  * Fix after 2.4.8: the crew's needs count is its shown teammates that need the developer
- * now (an open Needs-you item, or a live session that waits: the rows' own rule), not the
- * crew's `needsYou` as last read: that is read again only on `teamChanged`, so a teammate
- * answered since kept the crew at "1 needs you" while nothing waited.
+ * now, by Team's one rule ({@link memberNeedsYou}, as `TeamSummary.needsYou` counts): an open
+ * Needs-you item, or its live session waits (without a live session, the roster's
+ * needs-you). Not the crew's `needsYou` as last read: a teammate answered since kept the
+ * crew at "1 needs you" while nothing waited.
  */
 export function pinnedCrewOf(crew: TeamSummary, needs: ReadonlyMap<string, number>, sessions: ReadonlyMap<string, Pick<SessionListItem, 'status'>> = new Map()): PinnedCrew {
   const shown = visibleTeam(crew);
-  const mates = (shown.roster ?? []).map((entry): PinnedMate => ({ id: entry.id, sessionRef: entry.sessionRef, name: entry.name, status: mateStatus(entry, needs.get(entry.sessionRef) ?? 0, sessions.get(entry.sessionRef)), needs: needs.get(entry.sessionRef) ?? 0 }));
-  const waiting = mates.filter((mate) => mate.needs > 0 || mate.status === 'needs').length;
+  const roster = shown.roster ?? [];
+  const mates = roster.map((entry): PinnedMate => ({ id: entry.id, sessionRef: entry.sessionRef, name: entry.name, status: mateStatus(entry, needs.get(entry.sessionRef) ?? 0, sessions.get(entry.sessionRef)), needs: needs.get(entry.sessionRef) ?? 0 }));
+  const waiting = roster.filter((entry) => {
+    const session = sessions.get(entry.sessionRef);
+    return memberNeedsYou({ archived: false, items: needs.get(entry.sessionRef) ?? 0, sessionWaits: session ? session.status === 'need' : entry.status === 'needs-you' });
+  }).length;
   return { teamId: crew.id, name: crew.name, working: mates.filter((mate) => mate.status === 'working').length, needs: waiting, mates, archived: shown.archived };
 }
 

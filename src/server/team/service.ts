@@ -18,6 +18,7 @@ import {
   EMPTY_CHARTER,
   HANDOFF_TEXT_MAX,
   MEMBERS_MAX,
+  memberNeedsYou,
   NO_BUDGET,
   REPORT_MAX,
   TEAMS_MAX,
@@ -210,8 +211,14 @@ export class TeamService {
   #roles = new Map<string, string>();
   /** 2026-10-27: the members' sessions last seen archived (by ref), so only an archive or a restore publishes. */
   readonly #archivedRefs = new Map<string, boolean>();
-  /** Fix after 2.4.8: the members' sessions last seen waiting for the developer (`need`, by ref), so a flip publishes. */
+  /** Fix after 2.4.8: the members' sessions last seen waiting for the developer (`need`, by ref). */
   readonly #waitingRefs = new Map<string, boolean>();
+  /** Fix after 2.4.8: the members' sessions with open Inbox items, as last read (by ref). */
+  readonly #itemRefs = new Map<string, boolean>();
+  /** Fix after 2.4.8: each member's needs-you state as last published (by ref), so only a flip publishes. */
+  readonly #needsRefs = new Map<string, boolean>();
+  /** An Inbox read for {@link #inboxChanged} runs (`again`: one more after it). */
+  #inboxScan: { again: boolean } | null = null;
   #queue: Promise<unknown> = Promise.resolve();
   readonly #moves = new Map<string, TeamMoveRun>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
@@ -362,6 +369,7 @@ export class TeamService {
       if (message.name === 'todosChanged') void this.#todosChanged(message.payload.sessionId).catch((error: unknown) => this.#error(error));
       else if (message.name === 'machineState' && message.payload.state === 'online' && !message.payload.removed) this.#syncSoon();
       else if (message.name === 'sessionUpdated') this.#memberSessionUpdated(message.payload);
+      else if (message.name === 'inboxChanged') this.#inboxChanged();
     });
     this.#syncSoon();
   }
@@ -384,28 +392,74 @@ export class TeamService {
    * brings it back at once.
    *
    * Fix after 2.4.8 (a pinned crew kept "1 needs you" after the teammate was answered): the
-   * same when the session starts or stops waiting for the developer (its read status turns
-   * `need` or leaves it), since a crew's `needsYou` and its roster's needs-you status count
-   * that and the crew views read the crews only on `teamChanged`. The first update of a
-   * member seen since the start publishes too (what was counted before is not known). Other
-   * updates of the session publish nothing new.
+   * same when the member's needs-you state flips ({@link memberNeedsYou}): its session starts or
+   * stops waiting (its read status turns `need` or leaves it) here, its Inbox items in
+   * {@link #inboxChanged}; the crew views read the crews only on `teamChanged`. A member's
+   * first state seen since the start publishes too (what was counted before is not known).
+   * Other updates of the session publish nothing new.
    */
   #memberSessionUpdated(session: { readonly id: string; readonly status?: unknown; readonly closedAt?: string | null; readonly movedTo?: unknown }): void {
     if (!this.#roles.has(session.id)) return;
     const archived = memberSessionArchived(session);
     const before = this.#archivedRefs.get(session.id) ?? false;
     this.#archivedRefs.set(session.id, archived);
-    let changed = before !== archived;
-    // A delta update may leave the status out (unchanged): nothing to compare then.
-    if (typeof session.status === 'string') {
-      const waiting = session.status === 'need';
-      const was = this.#waitingRefs.get(session.id);
-      this.#waitingRefs.set(session.id, waiting);
-      if (was !== waiting) changed = true;
+    // A delta update may leave the status out (unchanged): the last one seen stands.
+    if (typeof session.status === 'string') this.#waitingRefs.set(session.id, session.status === 'need');
+    const flipped = this.#needsFlipped(session.id);
+    if (before === archived && !flipped) return;
+    this.#publishMembersOf([session.id]);
+  }
+
+  /** `true` when the member's needs-you state (by session ref) differs from the one last published; records it. */
+  #needsFlipped(ref: string): boolean {
+    const now = memberNeedsYou({ archived: this.#archivedRefs.get(ref) ?? false, items: this.#itemRefs.get(ref) ? 1 : 0, sessionWaits: this.#waitingRefs.get(ref) ?? false });
+    const before = this.#needsRefs.get(ref);
+    this.#needsRefs.set(ref, now);
+    return before !== now;
+  }
+
+  /** `teamChanged` (`members`) once per team of the members' session refs. */
+  #publishMembersOf(refs: readonly string[]): void {
+    const members = this.#db ? this.#liveMembers() : [];
+    const teams = new Set<string>();
+    for (const ref of refs) teams.add(members.find((m) => this.#sessionRef(m) === ref)?.teamId ?? this.#defaultTeamId());
+    for (const teamId of teams) this.#publish(['members'], teamId);
+  }
+
+  /**
+   * Fix after 2.4.8 · an Inbox item appeared or closed (here or on a paired machine): which
+   * members' sessions have open items now; `teamChanged` only for a member whose needs-you
+   * state flipped (an item of a plain session, or a member's second item, publishes nothing).
+   * One read at a time; events meanwhile make one more read after it.
+   */
+  #inboxChanged(): void {
+    if (this.#roles.size === 0) return;
+    if (this.#inboxScan) {
+      this.#inboxScan.again = true;
+      return;
     }
-    if (!changed) return;
-    const member = this.#db ? this.#liveMembers().find((m) => this.#sessionRef(m) === session.id) : undefined;
-    this.#publish(['members'], member?.teamId ?? this.#defaultTeamId());
+    const scan = { again: false };
+    this.#inboxScan = scan;
+    void (async () => {
+      try {
+        do {
+          scan.again = false;
+          const items: readonly InboxItem[] = [...(await listInbox(this.#o.store)), ...this.#o.peers.remoteInbox()];
+          if (this.#closed) return;
+          const withItems = new Set(items.map((item) => item.sessionId).filter((id): id is string => !!id && this.#roles.has(id)));
+          const flipped: string[] = [];
+          for (const ref of this.#roles.keys()) {
+            this.#itemRefs.set(ref, withItems.has(ref));
+            if (this.#needsFlipped(ref)) flipped.push(ref);
+          }
+          if (flipped.length > 0) this.#publishMembersOf(flipped);
+        } while (scan.again);
+      } catch (error) {
+        this.#error(error);
+      } finally {
+        this.#inboxScan = null;
+      }
+    })();
   }
 
   /** `GET /api/team/state`: the switch and what the sidebar hides. */
@@ -645,7 +699,7 @@ export class TeamService {
       for (const member of members) {
         const facts = await this.#sessionFacts(member, machines);
         // 2026-10-27 (D137 follow-up): an archived member is listed (flagged) but never counts as waiting.
-        const waiting = !facts.archived && ((counts.get(member.id) ?? 0) > 0 || facts.status === 'need');
+        const waiting = memberNeedsYou({ archived: facts.archived, items: counts.get(member.id) ?? 0, sessionWaits: facts.status === 'need' });
         if (waiting) needsYou += 1;
         if (facts.archived) archived += 1;
         roster.push(await this.#rosterEntry(member, facts, waiting, machines));

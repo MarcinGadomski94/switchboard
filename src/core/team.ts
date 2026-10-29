@@ -666,6 +666,17 @@ export function returnNote(role: string, team: string): string {
   return `You are no longer ${role} in team ${team}: that charter no longer applies. Carry on as a plain session.`;
 }
 
+/**
+ * Fix after 2.4.8 · the one rule for "this member needs the developer", counted the same by
+ * `GET /api/team/teams` (`TeamSummary.needsYou`, the Crews page, the classic sidebar) and the
+ * v2 rail's pinned crews: not archived, and it has open Needs-you items or its session waits
+ * (reads `need`). Offline or paused do not change it (their rows say so; the count still
+ * tells the developer something waits).
+ */
+export function memberNeedsYou(input: { readonly archived: boolean; readonly items: number; readonly sessionWaits: boolean }): boolean {
+  return !input.archived && (input.items > 0 || input.sessionWaits);
+}
+
 /** "Tracker · question". */
 export function needsYouLabel(memberName: string, kind: string): string {
   // D124: `waiting` = its turn ended waiting for the developer (the "Waiting for you" Inbox item).
