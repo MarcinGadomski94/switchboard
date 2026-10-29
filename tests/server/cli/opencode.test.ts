@@ -218,6 +218,15 @@ describe('D62 · OpenCode through the bridge (fake-opencode)', () => {
     expect((await opencodeLog(w.opencodeLog)).filter((line) => line.kind === 'http' && line.path === '/event').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('a turn whose events all arrive before prompt_async answers still ends (its idle waits for the answer)', async () => {
+    // The event stream and the prompt are two connections: under load a short turn's whole stream, idle included, came first and the session stayed `run`.
+    const { w, session } = await startOpencode('Say OK.', { parentEnv: { FAKE_OPENCODE_PROMPT_REPLY_MS: '500' } });
+    await waitForStatus(w.store, session.id, ['done'], 15_000);
+    const events = await w.store.events.list(session.id);
+    expect(events.at(-1)?.payload).toMatchObject({ type: 'result', isError: false, text: 'OK' });
+    expect(events.filter((event) => payloadType(event) === 'result')).toHaveLength(1);
+  });
+
   it('a session OpenCode cannot reopen: a new one starts, and the chat says so', async () => {
     const { w, session } = await startOpencode('first');
     await waitForStatus(w.store, session.id, ['done']);
