@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.9 (2026-10-29)
+
+### Fixes
+- **No typing lag in long chats:** typing no longer redraws the whole conversation. Chat rows that didn't change are reused, the agent page skips the shell's periodic redraws, the message clock reuses its formatters and the v2 message box resizes only when needed. In a 3,000-event chat while the agent works, the slowest keystrokes went from 389 ms to 72 ms on a 10× slower CPU. Both themes. See `docs/performance.md`.
+- README screenshots show the current v2 (the live Project graph, Tasks in the rail, the model picker).
+
 ## 2.4.8 (2026-10-28)
 
 ### Sessions
