@@ -105,7 +105,10 @@ describe('D65: a session of the other machine is taken over to this one', () => 
     const resumed = await waitFor('the resumed spawn in the fake log', async () => (await sessionSpawns(w.logs.b)).find((entry) => (entry['argv'] as string[]).includes('--resume')));
     expect(resumed?.['cwd']).toBe(alphaB);
     expect((resumed?.['argv'] as string[])[(resumed?.['argv'] as string[]).indexOf('--resume') + 1]).toBe(started.claudeSessionId);
-    const stdin = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line']));
+    const stdin = await waitFor('the first message in the fake log', async () => {
+      const lines = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line']));
+      return lines.join('\n').includes('This session moved from') ? lines : null;
+    });
     expect(stdin.join('\n')).toContain('This session moved from');
     expect(stdin.join('\n')).toContain(`${alphaA} → ${alphaB}`);
     expect(stdin.join('\n')).toContain('The working tree was restored as it was.');

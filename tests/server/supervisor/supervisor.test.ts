@@ -218,7 +218,12 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(mismatch?.payload).toEqual({ type: 'mode-mismatch', requested: 'auto', observed: 'default', fallback: 'acceptEdits' });
     expect(events.filter((e) => payloadType(e) === 'mode-mismatch')).toHaveLength(1);
     expect((await w.store.sessions.get(session.id))?.requestedPermissionMode).toBe('acceptEdits');
-    const stdin = await stdinOf(w.logFile, session.pid ?? -1);
+    // The fake logs a stdin line once it has read it, which may be after the turn's `done` is stored.
+    const isSwitch = (line: Record<string, unknown>) => line['type'] === 'control_request' && JSON.stringify(line['request']) === JSON.stringify({ subtype: 'set_permission_mode', mode: 'acceptEdits' });
+    const stdin = await until(async () => {
+      const lines = await stdinOf(w.logFile, session.pid ?? -1);
+      return lines.some(isSwitch) ? lines : undefined;
+    }, 'the set_permission_mode request in the fake log');
     expect(stdin).toContainEqual(expect.objectContaining({ type: 'control_request', request: { subtype: 'set_permission_mode', mode: 'acceptEdits' } }));
     const denied = events.find((e) => payloadType(e) === 'denied');
     expect(denied?.kind).toBe('ask');
