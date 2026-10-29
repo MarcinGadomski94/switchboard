@@ -47,6 +47,12 @@ export interface SpawnRequest {
   readonly onNativeId?: (nativeId: string) => void;
   /** Something the developer should know that is no chat line (a conversation a bridge could not reopen): recorded as an error step. */
   readonly onNotice?: (text: string) => void;
+  /**
+   * The process's pid once it exists, for a process that starts after `spawn` returned
+   * (OpenCode: `opencode serve` is spawned once a free port is found), so the session
+   * records it as soon as it is known. Claude Code and Codex have it at once (`AgentProcess.pid`).
+   */
+  readonly onPid?: (pid: number) => void;
   /** D62 P7: the CLI's own usage limits, when it reports them (Codex). */
   readonly onUsage?: (usage: ProviderUsage) => void;
   /** Switchboard's version (told to a bridge's CLI as the client's). */

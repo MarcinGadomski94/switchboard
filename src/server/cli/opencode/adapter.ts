@@ -21,6 +21,7 @@ export const opencodeAdapter: CliAdapter = {
       onLine: request.onLine,
       ...(request.onNativeId ? { onNativeId: request.onNativeId } : {}),
       ...(request.onNotice ? { onNotice: request.onNotice } : {}),
+      ...(request.onPid ? { onPid: request.onPid } : {}),
       ...(request.onUsage ? { onUsage: request.onUsage } : {}),
       ...(request.clientVersion ? { clientVersion: request.clientVersion } : {}),
       // D106: a chat runs read-only.
