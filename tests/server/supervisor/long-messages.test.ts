@@ -64,11 +64,17 @@ const assistantEvents = async (w: SupervisorWorld, sessionId: string): Promise<E
   (await w.store.events.list(sessionId)).filter((event) => payloadType(event) === 'assistant');
 
 /** Makes an event look as the recorder stored it before the fix: its text cut at 4,000, no flag. */
-/** Waits until the fake's transcript of `session` holds `text` (it may still be writing it when the turn's `done` is stored). */
+/**
+ * Waits until the fake's transcript of `session` holds `text` on a complete line (it may
+ * still be writing it when the turn's `done` is stored; a line without its newline yet is
+ * not parsed).
+ */
 async function transcriptWith(w: SupervisorWorld, claudeSessionId: string, text: string): Promise<void> {
   await until(async () => {
     const file = await findTranscriptFile(claudeConfigDir(w.env), claudeSessionId);
-    return file !== null && (await readFile(file, 'utf8')).includes(text) ? true : undefined;
+    if (file === null) return undefined;
+    const complete = (await readFile(file, 'utf8')).split('\n').slice(0, -1);
+    return complete.some((line) => line.includes(text)) ? true : undefined;
   }, 'the transcript');
 }
 
