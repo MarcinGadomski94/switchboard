@@ -486,7 +486,8 @@ export function MemoryPage() {
   const { on, loaded } = useMemory();
   const { search, navigate } = useRouter();
   const [machines, setMachines] = useState<readonly Machine[]>([]);
-  const [machineId, setMachineId] = useState<string | null>(null);
+  // A paired machine's memory item links here with `?machine=` (the folder is that machine's).
+  const [machineId, setMachineId] = useState<string | null>(() => new URLSearchParams(search).get('machine') || null);
   const [scopes, setScopes] = useState<readonly MemoryScope[] | null>(null);
   const [scope, setScope] = useState<string | null>(() => new URLSearchParams(search).get('scope'));
   const [entries, setEntries] = useState<readonly MemoryEntry[]>([]);
@@ -508,8 +509,12 @@ export function MemoryPage() {
   const memory = memoryApi(machineId);
 
   useEffect(() => {
-    const wanted = new URLSearchParams(search).get('scope');
-    if (wanted) setScope(wanted);
+    const query = new URLSearchParams(search);
+    const wanted = query.get('scope');
+    if (wanted) {
+      setMachineId(query.get('machine') || null);
+      setScope(wanted);
+    }
   }, [search]);
 
   useEffect(() => {
@@ -618,7 +623,7 @@ export function MemoryPage() {
               setScope(event.target.value || null);
               setEditing(null);
               setAdding(false);
-              navigate(`/memory?scope=${encodeURIComponent(event.target.value)}`, { replace: true });
+              navigate(`/memory?scope=${encodeURIComponent(event.target.value)}${machineId ? `&machine=${encodeURIComponent(machineId)}` : ''}`, { replace: true });
             }}
           >
             {scope && !scopes?.some((candidate) => candidate.scope === scope) ? <option value={scope}>{scope}</option> : null}

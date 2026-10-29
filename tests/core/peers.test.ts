@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InboxItem, Session, SessionDetail } from '../../src/core/api.ts';
-import { mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSession, peerSessionDetail } from '../../src/core/peer-wire.ts';
+import { mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerRoute, peerSession, peerSessionDetail } from '../../src/core/peer-wire.ts';
 import {
   cleanMachineName,
   isMachineId,
@@ -148,6 +148,14 @@ describe('D48 peer wire mapping', () => {
     expect(mapped).toMatchObject({ id: 'r~abcdefghijkl~b1', sessionId: 'r~abcdefghijkl~s1', machine: MACHINE, actions: [{ id: 'allow-once', label: 'Allow once' }] });
     expect(mapped.questions?.[0]?.batchId).toBe('r~abcdefghijkl~b1');
     expect(peerInboxItem(MACHINE, { ...item, sessionId: null }).sessionId).toBeNull();
+  });
+
+  it("keeps a memory item's Review route (its folder, the machine added); other routes go to the Inbox (D102)", () => {
+    const item = { id: 'm1', kind: 'system', sessionId: null, route: '/memory?scope=%2Fw%2Fcheckout%20app', actions: [{ id: 'open-memory', label: 'Review' }] } as unknown as InboxItem;
+    expect(peerInboxItem(MACHINE, item).route).toBe('/memory?scope=%2Fw%2Fcheckout%20app&machine=abcdefghijkl');
+    expect(peerRoute(MACHINE, '/plans/p1')).toBe('/plans/r~abcdefghijkl~p1');
+    expect(peerRoute(MACHINE, '/memory')).toBe('/inbox');
+    expect(peerRoute(MACHINE, '/sessions/s1')).toBe('/inbox');
   });
 
   it('maps hub events; worktree and system events are not forwarded (D52: schedule runs are, namespaced)', () => {

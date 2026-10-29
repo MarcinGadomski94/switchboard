@@ -5,6 +5,8 @@ import type { TeamNeedsYouItem } from '../../src/core/team.ts';
 import { batchAnswers, cardButtons, questionAnswer, questionReady, summaryOf, togglePick, answeredFromServer, isLinkAction } from '../../src/web/v2/shared/answer-model.ts';
 import { commandOf, fromInbox, fromNote, inboxKindOf, memoryScopeOf, mergeNeedsYou, planIdOf, itemsOfSession, countByCrew, type NeedsItem } from '../../src/web/v2/shared/needs-you-model.ts';
 import { NEEDS_KIND_LOOK } from '../../src/web/v2/glossary.ts';
+import { toV2Path } from '../../src/web/v2/routes.ts';
+import { peerInboxItem } from '../../src/core/peer-wire.ts';
 import { ANSWERED_FADE_MS, ANSWERED_LINE_MS, DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
 
 const AT = '2026-10-25T12:00:00.000Z';
@@ -487,5 +489,41 @@ describe('D142 · a computer that can\'t switch accounts in Needs you', () => {
     // This computer's own item: no machine in the address.
     const own = fromInbox({ ...raw, id: 'h1', machine: undefined });
     expect(cardButtons(own)[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/settings/advanced/accounts?add=claude&name=Personal' } });
+  });
+});
+
+describe('a paired computer’s memory item in Needs you (Review notes)', () => {
+  const machine = { id: 'm-laptop', name: 'Laptop', state: 'online' as const };
+  // As the server lists it: the peer's own item (`/memory?scope=<its folder>`) through the D52 mapping.
+  const raw = peerInboxItem(machine, inbox({ id: 'm1', kind: 'system', sessionId: null, label: 'Memory', title: '1 memory proposal for checkout', route: '/memory?scope=%2Fw%2Fcheckout', actions: [{ id: 'open-memory', label: 'Review' }, { id: 'dismiss', label: 'Dismiss' }] }));
+
+  it('Review notes opens Notes at that computer’s folder (not Needs you again)', () => {
+    const needs = fromInbox(raw);
+    expect(needs.kind).toBe('note');
+    expect(memoryScopeOf(raw)).toBe('/w/checkout');
+    const review = cardButtons(needs).find((b) => b.id === 'open-memory');
+    expect(review?.label).toBe('Review notes');
+    expect(review?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/memory?scope=%2Fw%2Fcheckout&machine=m-laptop' } });
+    expect(toV2Path('/memory?scope=%2Fw%2Fcheckout&machine=m-laptop')).toBe('/notes?scope=%2Fw%2Fcheckout&machine=m-laptop');
+  });
+
+  it('the store reads that computer’s proposed notes, so they show as note cards of that computer', async () => {
+    const asked: Array<[string, string | null]> = [];
+    const store = createNeedsYouStore({
+      inbox: async () => [raw],
+      team: async () => [],
+      notes: async (scope, machineId) => {
+        asked.push([scope, machineId]);
+        return [note('n7')];
+      },
+      system: async () => ({}) as SystemInfo,
+      send: async () => undefined,
+      now: () => Date.parse(LATER),
+      storage: null,
+      undoMs: 5_000,
+    });
+    await store.reload();
+    expect(asked).toEqual([['/w/checkout', 'm-laptop']]);
+    expect(store.getSnapshot().items.map((item) => `${item.key}:${item.computer?.id ?? ''}`)).toEqual(['notes:n7:m-laptop']);
   });
 });

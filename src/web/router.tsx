@@ -26,7 +26,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/settings[/:section]` | Settings |
  * | `/team`, `/team/:teamId` | D100: the Team page (only while Team is on; Team (D100) hook, docs/team-removal.md); `/team` opens the last-used team, `/team/all` the All teams tab |
  * | `/plans`, `/plans/:id` | D99: the Plans list and a plan's page (only while Plans is on; Plans (D99) hook, docs/plans-removal.md) |
- * | `/memory?scope=` | D107: the Memory page at a folder (only while Project memory is on; docs/memory-removal.md) |
+ * | `/memory?scope=[&machine=]` | D107: the Memory page at a folder, of a paired machine with `machine` (only while Project memory is on; docs/memory-removal.md) |
  *
  * Unknown paths show the Inbox.
  */

@@ -114,10 +114,18 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
   };
 }
 
-/** D102: a peer's Inbox item route: a plan page (`/plans/<id>`) names the plan by its remote id; any other route is dropped. */
+/**
+ * D102: a peer's Inbox item route: a plan page (`/plans/<id>`) names the plan by its remote id; a
+ * memory item's Review (`/memory?scope=<folder>`, D107) keeps the folder and adds `machine=<id>`
+ * (the Memory page picks that machine; v2's Needs you reads that machine's proposed notes); any
+ * other route is dropped.
+ */
 export function peerRoute(machine: PeerMachineRef, route: string): string {
   const plan = /^\/plans\/([^/?#]+)$/.exec(route);
-  return plan ? `/plans/${ns(machine, decodeURIComponent(plan[1] as string))}` : '/inbox';
+  if (plan) return `/plans/${ns(machine, decodeURIComponent(plan[1] as string))}`;
+  const memory = /^\/memory\?(.+)$/.exec(route);
+  const scope = memory ? new URLSearchParams(memory[1]).get('scope') : null;
+  return scope ? `/memory?scope=${encodeURIComponent(scope)}&machine=${encodeURIComponent(machine.id)}` : '/inbox';
 }
 
 /**
