@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { LoopService } from '../../../src/server/loops/owned.ts';
 import { teamMemberOf } from '../../../src/server/team/hooks.ts';
@@ -17,14 +17,14 @@ const SELF = { id: 'm-mac-0001', name: 'Mac' };
 const PC = { id: 'm-pc-0002', name: 'PC' };
 
 /** The paired machine's sessions as Team reads them (open and archived, by `r~` ref). */
-const remote = { open: [] as { id: string; status: string; name: string }[], archived: [] as { id: string; closedAt: string; movedTo?: unknown }[] };
+const remote = { open: [] as { id: string; status: string; name: string }[], archived: [] as { id: string; closedAt: string; movedTo?: unknown }[], inbox: [] as unknown[] };
 
 const peers = {
   self: async () => SELF,
   machines: async () => [{ id: PC.id, name: PC.name, state: 'online' }],
   remoteSessions: () => remote.open,
   remoteArchived: () => remote.archived,
-  remoteInbox: () => [],
+  remoteInbox: () => remote.inbox,
   forward: async () => ({ status: 404, body: { error: 'not-found', message: 'no peers here' } }),
   ask: async () => ({ status: null, reason: 'no peers here' }),
   hasMachine: () => true,
@@ -49,6 +49,7 @@ afterEach(async () => {
   rig = undefined;
   remote.open = [];
   remote.archived = [];
+  remote.inbox = [];
 });
 
 async function setup(): Promise<Rig> {
@@ -181,6 +182,120 @@ describe('2026-10-27 · archived members are hidden, not removed (D137 follow-up
       const plain = await r.world.store.sessions.create({ name: 'plain', claudeSessionId: 'cccccccc-2222-4333-8444-955566667777', attached: true });
       await r.world.supervisor.close(plain.id);
       expect(seen).toHaveLength(2);
+    } finally {
+      off();
+    }
+  });
+
+  it('a member that starts or stops waiting for the developer publishes teamChanged, so the crew count does not stay stale (fix after 2.4.8)', async () => {
+    const r = await setup();
+    const { s2 } = await crew(r);
+    const seen: unknown[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'teamChanged') seen.push(message.payload);
+    });
+    const update = async (patch: Parameters<typeof r.world.store.sessions.update>[1]) => {
+      const record = await r.world.store.sessions.update(s2.id, patch);
+      r.bus.publish('sessionUpdated', record as never);
+    };
+    try {
+      // The first update seen since the start: what the crews were read with is not known.
+      await update({ status: 'done' });
+      expect(seen).toHaveLength(1);
+      await update({ title: 'renamed' });
+      expect(seen).toHaveLength(1);
+      // Its turn ends waiting: counted; answered (a new turn): not counted any more.
+      await update({ status: 'need' });
+      expect(seen).toHaveLength(2);
+      expect((await r.team.teamList())[0]?.needsYou).toBe(1);
+      await update({ status: 'run' });
+      expect(seen).toHaveLength(3);
+      expect(seen[2]).toEqual({ teamId: 'team', what: ['members'] });
+      expect((await r.team.teamList())[0]?.needsYou).toBe(0);
+      await update({ status: 'done' });
+      expect(seen).toHaveLength(3);
+      // A delta update without a status changes nothing.
+      r.bus.publish('sessionUpdated', { id: s2.id } as never);
+      expect(seen).toHaveLength(3);
+    } finally {
+      off();
+    }
+  });
+
+  it("a member's Inbox item appearing or closing publishes teamChanged only when its needs-you state flips (fix after 2.4.8)", async () => {
+    const r = await setup();
+    const { s1, s2 } = await crew(r);
+    const plain = await r.world.store.sessions.create({ name: 'plain', claudeSessionId: 'cccccccc-2222-4333-8444-955566667777', attached: true });
+    const seen: unknown[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'teamChanged') seen.push(message.payload);
+    });
+    /** An Inbox change, then the team's read of it settled (a `teams` read waits behind nothing). */
+    const inboxChanged = async (expected: number) => {
+      r.bus.publish('inboxChanged', { count: 0 });
+      await vi.waitFor(() => expect(seen).toHaveLength(expected));
+      // Nothing more comes after it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(seen).toHaveLength(expected);
+    };
+    const item = (id: string, sessionId: string) => r.world.store.systemItems.create({ id, kind: 'turn-waiting', source: 'test', title: 'Waiting for you', detail: '', branches: [], actions: [], sessionId });
+    try {
+      // The first read since the start: what the crews were counted with is not known.
+      await inboxChanged(1);
+      // A plain session's item is not Team's business.
+      await item('sys-plain', plain.id);
+      await inboxChanged(1);
+      // Builder's first item: it needs you now (once per team, Planner unchanged).
+      await item('sys-b1', s2.id);
+      await inboxChanged(2);
+      expect(seen[1]).toEqual({ teamId: 'team', what: ['members'] });
+      expect((await r.team.teamList())[0]?.needsYou).toBe(1);
+      // Its second item: still needs you, nothing to publish.
+      await item('sys-b2', s2.id);
+      await inboxChanged(2);
+      await r.world.store.systemItems.close('sys-b1', 'dismiss');
+      await inboxChanged(2);
+      // The last one closed: it no longer needs you.
+      await r.world.store.systemItems.close('sys-b2', 'dismiss');
+      await inboxChanged(3);
+      expect((await r.team.teamList())[0]?.needsYou).toBe(0);
+      // Planner waits by its status, then gets an item too: one flip only.
+      const record = await r.world.store.sessions.update(s1.id, { status: 'need' });
+      r.bus.publish('sessionUpdated', record as never);
+      expect(seen).toHaveLength(4);
+      await item('sys-p1', s1.id);
+      await inboxChanged(4);
+    } finally {
+      off();
+    }
+  });
+
+  it("a paired machine's member's Inbox item counts the same way (its r~ ref)", async () => {
+    const r = await setup();
+    const { planner } = await crew(r);
+    const mine = await r.team.message();
+    const template = mine.snapshot.members.find((m) => m.id === planner.id);
+    if (!template) throw new Error('no record');
+    const later = `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.0000.${PC.id}`;
+    await r.team.receive({ v: 1, machine: PC, snapshot: { ...mine.snapshot, members: [{ ...template, id: 'm-remote', name: 'Reviewer', machineId: PC.id, sessionId: 'rs-1', order: 5, clock: later }] } });
+    const ref = `r~${PC.id}~rs-1`;
+    remote.open = [{ id: ref, status: 'done', name: 'reviewer' }];
+    const seen: unknown[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'teamChanged') seen.push(message.payload);
+    });
+    try {
+      r.bus.publish('inboxChanged', { count: 0 });
+      await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+      const before = seen.length;
+      remote.inbox = [{ id: `r~${PC.id}~sys-1`, kind: 'system', sessionId: ref, source: 'x', status: 'need', title: 'Waiting for you', label: 'Waiting for you', detail: '', createdAt: new Date().toISOString(), branches: [], actions: [] }];
+      r.bus.publish('inboxChanged', { count: 1 });
+      await vi.waitFor(() => expect(seen).toHaveLength(before + 1));
+      expect((await r.team.teamList()).find((t) => t.id === 'team')?.needsYou).toBe(1);
+      remote.inbox = [];
+      r.bus.publish('inboxChanged', { count: 0 });
+      await vi.waitFor(() => expect(seen).toHaveLength(before + 2));
+      expect((await r.team.teamList()).find((t) => t.id === 'team')?.needsYou).toBe(0);
     } finally {
       off();
     }

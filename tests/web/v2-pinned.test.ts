@@ -5,7 +5,7 @@ import { HybridClock } from '../../src/core/hlc.ts';
 import { type SidebarLayout, placeSession } from '../../src/core/sidebar-layout.ts';
 import { EMPTY_RECORDS, layoutFromRecords, mergeRecords, recordsAfter } from '../../src/core/sidebar-records.ts';
 import { fromWire, sessionIdOf, sessionKey, toWire } from '../../src/core/sidebar-sync.ts';
-import type { TeamRosterEntry, TeamSummary } from '../../src/core/team.ts';
+import { type TeamRosterEntry, type TeamSummary, memberNeedsYou } from '../../src/core/team.ts';
 import { crewPinInput, isCrewPinned, mateStatus, needsByAgent, pinnedCrewLabel, pinnedCrewLine, pinnedCrewOf, pinnedEntries, readOpenCrews, setCrewOpen } from '../../src/web/v2/shared/pinned-model.ts';
 
 /**
@@ -105,6 +105,38 @@ describe('the Pinned list', () => {
     const live = pinnedCrewOf(mobile, new Map(), new Map([['s-a', { status: 'idle' as const }], ['s-b', { status: 'run' as const }]]));
     expect(live.mates.map((mate) => [mate.name, mate.status])).toEqual([['Role a', 'idle'], ['Role b', 'working']]);
     expect(live.working).toBe(1);
+  });
+
+  it('the crew needs count follows the live teammates: a teammate answered since the crews were read no longer counts (fix after 2.4.8)', () => {
+    // The shape seen live: the crews were read while a teammate's turn waited (needsYou 1, its
+    // roster row needs-you); it was answered and works on, no Needs-you item is left, but no
+    // teamChanged came, so the crew kept "1 needs you".
+    const stale = crew('p', [roster('a', { status: 'idle' }), roster('b', { status: 'needs-you' })], 1);
+    const answered = pinnedCrewOf(stale, new Map(), new Map([['s-a', { status: 'done' as const }], ['s-b', { status: 'run' as const }]]));
+    expect(answered.mates.map((mate) => mate.status)).toEqual(['done', 'working']);
+    expect(answered.needs).toBe(0);
+    expect(pinnedCrewLabel(answered)).toBe('Crew p, crew, 1 working');
+    // Still waiting (its live session reads `need`, its turn-waiting item counted once per teammate).
+    expect(pinnedCrewOf(stale, new Map([['s-b', 1]]), new Map([['s-b', { status: 'need' as const }]])).needs).toBe(1);
+    // A teammate that waits while its crew was read as nothing waiting counts at once.
+    const fresh = crew('q', [roster('a'), roster('b')], 0);
+    expect(pinnedCrewOf(fresh, new Map(), new Map([['s-a', { status: 'need' as const }]])).needs).toBe(1);
+    // An item of an offline or paused teammate still counts (its row reads offline / paused).
+    const away = crew('r', [roster('a', { status: 'offline' }), roster('b', { status: 'paused' })], 0);
+    expect(pinnedCrewOf(away, new Map([['s-a', 1], ['s-b', 2]])).needs).toBe(2);
+  });
+
+  it("the rail counts by Team's one rule (memberNeedsYou, as TeamSummary.needsYou): a paused teammate whose session waits counts, archived never", () => {
+    expect(memberNeedsYou({ archived: false, items: 0, sessionWaits: false })).toBe(false);
+    expect(memberNeedsYou({ archived: false, items: 2, sessionWaits: false })).toBe(true);
+    expect(memberNeedsYou({ archived: false, items: 0, sessionWaits: true })).toBe(true);
+    expect(memberNeedsYou({ archived: true, items: 1, sessionWaits: true })).toBe(false);
+    // The server counts a paused member whose session reads `need`; so does the rail (its row still reads paused).
+    const held = crew('h', [roster('a', { status: 'paused' }), roster('b', { status: 'needs-you' }), roster('c', { status: 'needs-you', archived: true })], 1, 1);
+    const pinned = pinnedCrewOf(held, new Map([['s-c', 1]]), new Map([['s-a', { status: 'need' as const }]]));
+    expect(pinned.mates.map((mate) => mate.status)).toEqual(['paused', 'needs']);
+    // Without a live session the roster's needs-you stands (Team publishes teamChanged when it flips).
+    expect(pinned.needs).toBe(2);
   });
 
   it('archived count from the roster when the server sends none; an all-archived crew shows no teammate', () => {
