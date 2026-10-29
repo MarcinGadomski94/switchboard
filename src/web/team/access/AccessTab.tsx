@@ -12,9 +12,10 @@ import './access.css';
  * Set up / Set up here too / Replace / Test connection / Revoke, an optional expiry
  * and the audit trail. T3 mounts it in the member's panel on the Team page.
  *
- * Values are typed here and sent once to this machine's Switchboard (its OS
- * keychain); they are never shown again. On a paired phone (D73) the tab is
- * read-only: "Set this up on a computer".
+ * Values are typed here and sent once to the Switchboard of the computer the member
+ * runs on (D146: over the paired connection when that is another computer; its OS
+ * keychain), or to this computer's with "Set up here too"; they are never shown
+ * again. On a paired phone (D73) the tab is read-only: "Set this up on a computer".
  */
 export interface AccessTabProps {
   /** The member (`TeamMember.id`). */
@@ -84,7 +85,10 @@ export function AccessTab({ memberId, focusAccessId = null, loopLabels = [], onC
   return (
     <div className="sb-access" data-testid="access-tab" data-member-id={memberId}>
       <div className="sb-access-intro">
-        Data access {view.member.name} asked for. Values go to the {view.keychain.name} of this computer ({view.self.name}) and only to {view.member.name}&apos;s session; they are never shown again or synced.
+        Data access {view.member.name} asked for.{' '}
+        {view.member.local
+          ? `Values go to the ${view.keychain.name} of this computer (${view.self.name}) and only to ${view.member.name}'s session; they are never shown again or synced.`
+          : `${view.member.name} runs on ${view.member.machineName}: values are sent once to ${view.member.machineName} over the paired connection, kept in its keychain and given only to ${view.member.name}'s session; nothing is stored on ${view.self.name}, and they are never shown again or synced.`}
         {!view.keychain.available ? <div className="sb-access-warning" data-testid="access-keychain-problem">{view.keychain.problem ?? `${view.keychain.name} cannot be used here.`}</div> : null}
         {device ? <div className="sb-access-device" data-testid="access-device-note">Set this up on a computer: secrets are never typed on a phone. You can deny or postpone requests from Needs you.</div> : null}
       </div>
@@ -134,8 +138,11 @@ function AccessSection(props: {
   const [problem, setProblem] = useState<string | null>(null);
   const [tested, setTested] = useState<AccessTestResult | null>(null);
   const [showAudit, setShowAudit] = useState(false);
-  const elsewhere = entry.setUpOnNames.filter((name) => name !== view.self.name);
-  const setupLabel = entry.here ? 'Replace' : elsewhere.length > 0 ? 'Set up here too' : 'Set up…';
+  // D146: setup, test and revoke go to the computer the member runs on; "Set up here too" keeps a copy on this one.
+  const [here, setHere] = useState(false);
+  const local = entry.member.local;
+  const onMember = entry.setUpOn.includes(entry.member.machineId);
+  const setupLabel = local ? (entry.here ? 'Replace' : entry.setUpOnNames.length > 0 ? 'Set up here too' : 'Set up…') : onMember ? `Replace on ${entry.member.machineName}` : `Set up on ${entry.member.machineName}…`;
   const usedBy = loopLabels.length > 0 ? `${view.member.name}'s session and its loops: ${loopLabels.join(', ')}` : `${view.member.name}'s session (and its loops)`;
 
   const act = async (what: string, work: () => Promise<unknown>): Promise<void> => {
@@ -199,12 +206,35 @@ function AccessSection(props: {
       {device ? null : (
         <div className="sb-access-actions">
           {entry.canSetUp && !open ? (
-            <button type="button" className="sb-button sb-access-primary" data-testid="access-setup" disabled={busy !== null} onClick={() => onOpen(true)}>
+            <button
+              type="button"
+              className="sb-button sb-access-primary"
+              data-testid="access-setup"
+              disabled={busy !== null}
+              onClick={() => {
+                setHere(false);
+                onOpen(true);
+              }}
+            >
               {setupLabel}
             </button>
           ) : null}
-          {entry.here && entry.status !== 'revoked' ? (
-            <button type="button" className="sb-button sb-access-secondary" data-testid="access-test" disabled={busy !== null} onClick={() => void act('test', async () => setTested(await accessApi.test(entry.id)))}>
+          {entry.canSetUp && !open && !local && onMember && !entry.here ? (
+            <button
+              type="button"
+              className="sb-button sb-access-secondary"
+              data-testid="access-setup-here"
+              disabled={busy !== null}
+              onClick={() => {
+                setHere(true);
+                onOpen(true);
+              }}
+            >
+              Set up here too
+            </button>
+          ) : null}
+          {(onMember || entry.here) && entry.status !== 'revoked' ? (
+            <button type="button" className="sb-button sb-access-secondary" data-testid="access-test" disabled={busy !== null} onClick={() => void act('test', async () => setTested(await accessApi.test(entry.id, !onMember)))}>
               {busy === 'test' ? 'Testing…' : 'Test connection'}
             </button>
           ) : null}
@@ -215,7 +245,7 @@ function AccessSection(props: {
               data-testid="access-revoke"
               disabled={busy !== null}
               onClick={() => {
-                if (globalThis.confirm?.(`Revoke ${entry.service}? Its values are removed from this computer's keychain (and from the others' when they sync), and ${view.member.name} restarts without it.`) === false) return;
+                if (globalThis.confirm?.(`Revoke ${entry.service}? Its values are removed from ${local ? "this computer's keychain" : `${entry.member.machineName}'s keychain`} (and from the others' when they sync), and ${view.member.name} restarts without it.`) === false) return;
                 void act('revoke', () => accessApi.revoke(entry.id));
               }}
             >
@@ -229,6 +259,7 @@ function AccessSection(props: {
         <SetupForm
           entry={entry}
           view={view}
+          here={here || local}
           onCancel={() => onOpen(false)}
           onSaved={() => {
             onOpen(false);
@@ -268,7 +299,9 @@ function ExpiryEditor({ entry, busy, onSave }: { readonly entry: TeamAccessEntry
 }
 
 /** The setup form: exactly the declared fields (secret ones as password fields), a custom server's command, or the MCP page server to share. */
-function SetupForm({ entry, view, onCancel, onSaved }: { readonly entry: TeamAccessEntryView; readonly view: TeamAccessView; readonly onCancel: () => void; readonly onSaved: () => void }) {
+function SetupForm({ entry, view, here, onCancel, onSaved }: { readonly entry: TeamAccessEntryView; readonly view: TeamAccessView; /** This computer's keychain (else the one of the computer the member runs on, D146). */ readonly here: boolean; readonly onCancel: () => void; readonly onSaved: () => void }) {
+  const where = here ? view.self.name : entry.member.machineName;
+  const replacing = here ? entry.here : entry.setUpOn.includes(entry.member.machineId);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(entry.fields.map((f) => [f.name, ''])));
   const customServer = entry.kind === 'mcp' && entry.source !== 'shared' && (entry.source === 'custom' || entry.mcp === null);
   const [transport, setTransport] = useState<'stdio' | 'http'>(entry.mcp?.transport ?? 'stdio');
@@ -312,6 +345,7 @@ function SetupForm({ entry, view, onCancel, onSaved }: { readonly entry: TeamAcc
       ...(customServer ? { server: transport === 'stdio' ? { transport, command, args: args.split('\n').map((a) => a.trim()).filter(Boolean) } : { transport, url, headers: entry.mcp?.headers ?? {} } } : {}),
       ...(entry.kind === 'mcp' && entry.source === 'shared' && shared ? { shared: { scope: shared.split(':')[0] as 'local' | 'project' | 'user', name: shared.slice(shared.indexOf(':') + 1) } } : {}),
       ...(expiry ? { expiresAt: new Date(`${expiry}T23:59:59`).toISOString() } : {}),
+      ...(here && !entry.member.local ? { here: true } : {}),
     };
     try {
       await accessApi.setUp(entry.id, body);
@@ -328,7 +362,7 @@ function SetupForm({ entry, view, onCancel, onSaved }: { readonly entry: TeamAcc
   return (
     <form className="sb-access-form" data-testid="access-form" onSubmit={(e) => void submit(e)} autoComplete="off">
       <div className="sb-access-form-title">
-        {entry.here ? 'Replace' : 'Set up'} {entry.service} on {view.self.name}: talks to <code>{entry.host}</code>
+        {replacing ? 'Replace' : 'Set up'} {entry.service} on {where}: talks to <code>{entry.host}</code>
       </div>
       {entry.fields.map((field) => (
         <label key={field.name} className="sb-access-field" data-testid={`access-field-${field.name}`}>
@@ -410,7 +444,7 @@ function SetupForm({ entry, view, onCancel, onSaved }: { readonly entry: TeamAcc
       ) : null}
       <div className="sb-access-actions">
         <button type="submit" className="sb-button sb-access-primary" data-testid="access-save" disabled={busy}>
-          {busy ? 'Saving…' : `Save to ${view.keychain.name}`}
+          {busy ? 'Saving…' : here ? `Save to ${view.keychain.name}` : `Save on ${where}`}
         </button>
         <button type="button" className="sb-button sb-access-secondary" data-testid="access-cancel" onClick={onCancel}>
           Cancel

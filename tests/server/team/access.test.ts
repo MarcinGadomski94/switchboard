@@ -434,7 +434,7 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
     expect(((await ui(r, 'GET', '/api/team/needs-you')).json() as TeamNeedsYouItem[]).filter((item) => item.kind === 'access')).toHaveLength(5);
   });
 
-  it('phones read the tab but never write values; peers get metadata only; every route is classified', async () => {
+  it('phones read the tab but never write values; peers set up, test and revoke only for a member that runs here (D146); every route is classified', async () => {
     const r = await setup();
     const s = await session(r, 'marketing-session');
     const m = await member(r, s, 'Marketing');
@@ -445,9 +445,14 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
     expect(onPhone.device).toBe(true);
     const refused = await ui(r, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: KEY } }, { 'x-test-device': '1' });
     expect([refused.statusCode, refused.json().message]).toEqual([403, 'Set this up on a computer: secrets are never typed on a phone.']);
-    // Through the peer API: refused too (values never travel).
-    expect((await ui(r, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: KEY } }, { [PEER_REQUEST_HEADER]: 'm-other' })).statusCode).toBe(403);
     expect(memory(r).entries()).toEqual([]);
+    // D146: through the peer API, the expiry stays local-only; setup from a paired machine is accepted for this member (it runs here).
+    expect((await ui(r, 'PUT', `/api/team/access/${accessId}`, { expiresAt: null }, { [PEER_REQUEST_HEADER]: 'm-other' })).statusCode).toBe(403);
+    const fromPeer = await ui(r, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: KEY } }, { [PEER_REQUEST_HEADER]: 'm-other' });
+    expect(fromPeer.statusCode, fromPeer.body).toBe(200);
+    expect(fromPeer.body).not.toContain(KEY);
+    expect(memory(r).entries().map((e) => e.value)).toEqual([KEY]);
+    expect((fromPeer.json() as TeamAccessEntryView).audit.at(-1)?.text).toMatch(/^Set up on .+ from m-other$/);
     for (const [method, url] of [
       ['GET', '/api/team/members/m1/access'],
       ['GET', '/api/team/members/m1/access/shareable'],
@@ -462,7 +467,8 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
       ['PUT', '/api/team/access/a1'],
     ] as const) {
       expect(isLocalOnly(method, url), `${method} ${url}`).toBe(true);
-      expect(peerApiAllowed(method, url), `${method} ${url}`).toBe(false);
+      // D146: setup, test and revoke are on the peer API (the route checks the member runs here); the expiry is not.
+      expect(peerApiAllowed(method, url), `${method} ${url}`).toBe(method === 'POST');
     }
     expect(peerApiAllowed('GET', '/api/team/members/m1/access')).toBe(true);
     expect(peerApiAllowed('GET', '/api/team/access/catalog')).toBe(true);
@@ -484,8 +490,14 @@ describe('D100-T2 · over the routes (in-memory keychain)', () => {
     const seen = onB.entries[0] as TeamAccessEntryView;
     expect([seen.status, seen.here, seen.canSetUp, seen.statusText]).toEqual(['ready', false, true, `Set up on ${onB.member.machineName} only`]);
     expect(memory(b).entries()).toEqual([]);
-    // "Set up here too" on B: B's own keychain; the record now names both machines.
-    expect((await ui(b, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: `${KEY}-b` } })).statusCode).toBe(200);
+    expect(seen.member).toMatchObject({ name: 'Marketing', local: false });
+    // D146: a paired machine's request for a member that does not run on B is refused (values go only to the member's machine).
+    const notHere = await ui(b, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: `${KEY}-x` } }, { [PEER_REQUEST_HEADER]: 'c' });
+    expect([notHere.statusCode, notHere.json().error]).toEqual([403, 'not-here']);
+    for (const action of ['test', 'revoke']) expect((await ui(b, 'POST', `/api/team/access/${accessId}/${action}`, {}, { [PEER_REQUEST_HEADER]: 'c' })).statusCode).toBe(403);
+    expect(memory(b).entries()).toEqual([]);
+    // "Set up here too" on B (`here: true`): B's own keychain; the record now names both machines.
+    expect((await ui(b, 'POST', `/api/team/access/${accessId}/setup`, { values: { ACME_ANALYTICS_KEY: `${KEY}-b` }, here: true })).statusCode).toBe(200);
     expect(memory(b).entries().map((e) => e.value)).toEqual([`${KEY}-b`]);
     expect(memory(a).entries().map((e) => e.value)).toEqual([KEY]);
     const fromB = (await ui(b, 'POST', '/api/team/sync', {})).json();

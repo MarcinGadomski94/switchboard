@@ -55,8 +55,10 @@ import { testHttpServer, testKey, testStdioServer } from './test-connection.ts';
  *    is masked in what Switchboard records of that session ({@link TeamAccess.maskerFor});
  * 4. revoke, replace, expiry, test connection, and the audit trail.
  *
- * Records sync with paired machines; values never do: another machine shows "set up
- * on <machine> only" and can set it up there too.
+ * Records sync with paired machines; values never do. D146: setup, test connection and
+ * revoke of an access whose member runs on another paired machine go to that machine
+ * (the values once, over the peer link, into its keychain only); "Set up here too"
+ * (`here: true`) keeps them in this machine's keychain instead.
  */
 
 /** What {@link TeamAccess} needs from the Team service. */
@@ -79,6 +81,13 @@ export interface AccessHost {
   memberOfSession(sessionId: string): TeamMemberRecord | null;
   requestGate(input: { readonly memberId: string; readonly kind: 'access'; readonly gate: null; readonly title: string; readonly detail: string; readonly action: TeamRequestAction }): Promise<TeamRequest>;
   machineNames(): Promise<Map<string, { readonly name: string; readonly online: boolean }>>;
+  /**
+   * D146: a call to the paired machine `machineId` through its peer API (the team's `#forward`): its answer, or a
+   * {@link TeamError} with its status (502 `peer-unreachable` while that machine is away).
+   */
+  forward<T>(machineId: string, method: string, path: string, body: unknown): Promise<T>;
+  /** The team exchange now (after a forwarded change, so this machine shows it at once). */
+  syncNow(): Promise<void>;
   /** D64 / D91: the member's process picks the changed charter (with its access lines) up. */
   reload(sessionId: string): Promise<'restarted' | 'pending' | 'not-running' | 'current' | 'failed'>;
   error(error: unknown): void;
@@ -200,6 +209,7 @@ export class TeamAccess {
       ready: accessReady(record, member.machineId, now),
       canSetUp: open,
       delivers: accessDelivers(record),
+      member: { name: member.name, machineId: member.machineId, machineName: names(member.machineId), local: member.machineId === self },
     };
   }
 
@@ -369,17 +379,48 @@ export class TeamAccess {
 
   // ── setup, replace, revoke, expiry ────────────────────────────────────
 
+  /** D146: `true` when the access's member runs on this machine (a paired machine may then set it up, test or revoke it here). */
+  runsHere(id: string): boolean {
+    const record = this.#records().find((r) => r.id === id && !r.deleted);
+    const member = record ? this.#h.members().find((m) => m.id === record.memberId) : undefined;
+    return member !== undefined && member.machineId === this.#h.selfId();
+  }
+
+  /** D146: "on Laptop" or "on Laptop from PC" (the machine a paired machine's request came from). */
+  #onWhere(names: (machineId: string) => string, from: string | null): string {
+    const self = this.#h.selfId();
+    return `on ${names(self)}${from && from !== self ? ` from ${names(from)}` : ''}`;
+  }
+
   /**
-   * `POST /api/team/access/{id}/setup` `{ values, server?, shared?, expiresAt? }`: the
-   * values go to **this machine's** keychain (also for a member that runs on another
-   * machine: "Set up here too"). A custom server's command, or the shared server, is
-   * confirmed here by the developer. Settles the open request (approved) and, when the
-   * member runs here, restarts its idle process once (D91) and tells its agent.
+   * D146: the member's machine when the action goes there (it runs elsewhere and `here` was not asked), else `null`
+   * (this machine). A paired machine's request is never sent on.
    */
-  async setUp(id: string, body: Record<string, unknown>): Promise<TeamAccessEntryView> {
+  #target(member: TeamMemberRecord, here: boolean, from: string | null): string | null {
+    if (from !== null || here || member.machineId === this.#h.selfId()) return null;
+    return member.machineId;
+  }
+
+  /**
+   * `POST /api/team/access/{id}/setup` `{ values, server?, shared?, expiresAt?, here? }`: the
+   * values go to the keychain of the **member's machine** (D146: forwarded once over the peer
+   * link when it runs on another paired machine; nothing is stored here), or to **this
+   * machine's** with `here: true` ("Set up here too"). A custom server's command, or the shared
+   * server, is confirmed by the developer. Settles the open request (approved) and, on the
+   * member's machine, restarts its idle process once (D91) and tells its agent. `from` is the
+   * paired machine a forwarded request came from (its name goes into the audit trail).
+   */
+  async setUp(id: string, body: Record<string, unknown>, from: string | null = null): Promise<TeamAccessEntryView> {
     this.#h.db();
     const before = this.#record(id);
     const member = this.#member(before.memberId);
+    const target = this.#target(member, body['here'] === true, from);
+    if (target) {
+      const { here: _here, ...forwarded } = body;
+      await this.#h.forward(target, 'POST', `/api/team/access/${encodeURIComponent(id)}/setup`, forwarded);
+      await this.#h.syncNow();
+      return this.#entry(this.#record(id), this.#member(member.id), await this.#names());
+    }
     if (before.state === 'denied' || before.state === 'revoked') throw new TeamError(409, 'closed', `this access is ${before.state}: the member has to ask again`);
     let mcp: AccessMcpServer | null = before.mcp;
     let shared: AccessSharedServer | null = before.shared;
@@ -436,15 +477,15 @@ export class TeamAccess {
       setUpOn: [...new Set([...current.setUpOn, self])],
       setUpAt: at,
       secretRefs: refs,
-      audit: withAudit(current.audit, { at, what: replaced ? 'replaced' : 'set-up', machineId: self, text: `${replaced ? 'Replaced' : 'Set up'} on ${names2(self)}` }),
+      audit: withAudit(current.audit, { at, what: replaced ? 'replaced' : 'set-up', machineId: self, text: `${replaced ? 'Replaced' : 'Set up'} ${this.#onWhere(names2, from)}` }),
     }));
     // The open request is settled by the setup.
     await this.#h.serial(async () => {
       const db = this.#h.db();
       for (const request of db.requests()) {
-        if (request.id === after.requestId && request.state === 'open') db.putRequest({ ...request, state: 'approved', note: `Set up on ${names2(self)}`, clock: this.#h.stamp(), updatedAt: at });
+        if (request.id === after.requestId && request.state === 'open') db.putRequest({ ...request, state: 'approved', note: `Set up ${this.#onWhere(names2, from)}`, clock: this.#h.stamp(), updatedAt: at });
       }
-      this.#h.activity('access', member.id, `${after.service} ${replaced ? 'replaced' : 'set up'} on ${names2(self)}`);
+      this.#h.activity('access', member.id, `${after.service} ${replaced ? 'replaced' : 'set up'} ${this.#onWhere(names2, from)}`);
     });
     this.#h.changed(['access', 'requests', 'activity', 'members']);
     if (member.machineId === self) await this.#reloadAndTell(member, `Access set up: ${after.service} is now available to you (${accessDelivers(after)}). Never print or ask for its values.`);
@@ -469,14 +510,28 @@ export class TeamAccess {
   }
 
   /**
-   * `POST /api/team/access/{id}/revoke`: this machine's values are removed from its
-   * keychain, the access is revoked everywhere (the other machines remove theirs when
-   * the record reaches them), and the member's process restarts without it.
+   * `POST /api/team/access/{id}/revoke`: D146: on the member's machine (forwarded when it runs
+   * on another paired machine): its values are removed from its keychain at once and its
+   * process restarts without it. This machine's own values (a "Set up here too") go too, and
+   * the access is revoked everywhere (the other machines remove theirs when the record reaches
+   * them). While the member's machine is away the revoke is done here and reaches it with the
+   * record (revoking is never refused for an offline machine).
    */
-  async revoke(id: string): Promise<TeamAccessEntryView> {
+  async revoke(id: string, from: string | null = null): Promise<TeamAccessEntryView> {
     this.#h.db();
     const before = this.#record(id);
     const member = this.#member(before.memberId);
+    const target = this.#target(member, false, from);
+    if (target) {
+      try {
+        await this.#h.forward(target, 'POST', `/api/team/access/${encodeURIComponent(id)}/revoke`, {});
+        await this.#removeLocalValues(before);
+        await this.#h.syncNow();
+        return this.#entry(this.#record(id), this.#member(member.id), await this.#names());
+      } catch (error) {
+        if (!(error instanceof TeamError && error.code === 'peer-unreachable')) throw error;
+      }
+    }
     await this.#removeLocalValues(before);
     const self = this.#h.selfId();
     const names = await this.#names();
@@ -485,14 +540,14 @@ export class TeamAccess {
       ...current,
       state: 'revoked',
       setUpOn: [],
-      audit: withAudit(current.audit, { at, what: 'revoked', machineId: self, text: `Revoked on ${names(self)}` }),
+      audit: withAudit(current.audit, { at, what: 'revoked', machineId: self, text: `Revoked ${this.#onWhere(names, from)}` }),
     }));
     await this.#h.serial(async () => {
       const db = this.#h.db();
       for (const request of db.requests()) {
         if (request.id === after.requestId && request.state === 'open') db.putRequest({ ...request, state: 'dismissed', note: 'Revoked', clock: this.#h.stamp(), updatedAt: at });
       }
-      this.#h.activity('access', member.id, `${after.service} revoked`);
+      this.#h.activity('access', member.id, `${after.service} revoked ${this.#onWhere(names, from)}`);
     });
     this.#h.changed(['access', 'requests', 'activity', 'members']);
     if (member.machineId === self) await this.#reloadAndTell(member, `Access revoked: ${after.service} is no longer available to you. Do not try to use it.`);
@@ -573,9 +628,18 @@ export class TeamAccess {
     return record.fields.filter((f) => f.secret).map((f) => ({ name: f.name, value: values[f.name] ?? '' }));
   }
 
-  /** `POST /api/team/access/{id}/test`: on this machine, with this machine's values. */
-  async test(id: string): Promise<AccessTestResult> {
+  /**
+   * `POST /api/team/access/{id}/test` `{ here? }`: on the member's machine with its values (D146: forwarded when it runs
+   * on another paired machine; the answer is masked there), or on this machine with this machine's (`here: true`).
+   */
+  async test(id: string, body: Record<string, unknown> = {}, from: string | null = null): Promise<AccessTestResult> {
     const record = this.#record(id);
+    const target = this.#target(this.#member(record.memberId), body['here'] === true, from);
+    if (target) {
+      const result = await this.#h.forward<AccessTestResult>(target, 'POST', `/api/team/access/${encodeURIComponent(id)}/test`, {});
+      await this.#h.syncNow();
+      return result;
+    }
     const self = this.#h.selfId();
     if (!record.setUpOn.includes(self)) throw new TeamError(409, 'not-set-up', 'it is not set up on this machine: set it up here first');
     const values = await this.#values(record);
@@ -591,7 +655,8 @@ export class TeamAccess {
           : await testHttpServer({ url: launch.url, headers: launch.headers, secrets });
     }
     const at = this.#iso();
-    await this.#update(id, (current) => ({ ...current, audit: withAudit(current.audit, { at, what: 'tested', machineId: self, text: `Test connection: ${result.ok ? 'OK' : 'failed'} · ${result.detail}`.slice(0, 500) }) }));
+    const names = await this.#names();
+    await this.#update(id, (current) => ({ ...current, audit: withAudit(current.audit, { at, what: 'tested', machineId: self, text: `Test connection ${this.#onWhere(names, from)}: ${result.ok ? 'OK' : 'failed'} · ${result.detail}`.slice(0, 500) }) }));
     this.#h.changed(['access']);
     return result;
   }

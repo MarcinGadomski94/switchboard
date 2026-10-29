@@ -50,6 +50,8 @@ export interface AccessSetupBody {
   readonly server?: { readonly transport: 'stdio' | 'http'; readonly command?: string; readonly args?: readonly string[]; readonly url?: string; readonly headers?: Readonly<Record<string, string>> };
   readonly shared?: AccessSharedServer;
   readonly expiresAt?: string | null;
+  /** D146 "Set up here too": this computer's keychain, not the one of the computer the member runs on (the default). */
+  readonly here?: boolean;
 }
 
 /** A server of the MCP page that can be shared. */
@@ -67,7 +69,8 @@ export const accessApi = {
   shareable: (memberId: string) => call<ShareableServer[]>('GET', `/api/team/members/${enc(memberId)}/access/shareable`),
   catalog: () => call<AccessCatalogEntry[]>('GET', '/api/team/access/catalog'),
   setUp: (accessId: string, body: AccessSetupBody) => call<TeamAccessEntryView>('POST', `/api/team/access/${enc(accessId)}/setup`, body),
-  test: (accessId: string) => call<AccessTestResult>('POST', `/api/team/access/${enc(accessId)}/test`),
+  /** D146: on the computer the member runs on (its values), or with `here` on this one (a "Set up here too" copy). */
+  test: (accessId: string, here = false) => call<AccessTestResult>('POST', `/api/team/access/${enc(accessId)}/test`, here ? { here: true } : {}),
   revoke: (accessId: string) => call<TeamAccessEntryView>('POST', `/api/team/access/${enc(accessId)}/revoke`),
   setExpiry: (accessId: string, expiresAt: string | null) => call<TeamAccessEntryView>('PUT', `/api/team/access/${enc(accessId)}`, { expiresAt }),
   /** Needs you: Deny (`decline`) / Not now (`dismiss`). */
