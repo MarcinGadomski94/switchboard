@@ -29,7 +29,8 @@ async function exists(file: string): Promise<boolean> {
 interface Setup {
   readonly w: GitWorld;
   readonly dataDir: string;
-  service(options?: { readonly daysAhead?: number; readonly live?: ReadonlySet<string>; readonly leftovers?: Parameters<typeof leftoverStub>[0] }): CleanupService;
+  /** `spy`: the service's git goes through the logging wrapper (`w.gitCalls()`); otherwise plain git, half the processes. */
+  service(options?: { readonly daysAhead?: number; readonly live?: ReadonlySet<string>; readonly leftovers?: Parameters<typeof leftoverStub>[0]; readonly spy?: boolean }): CleanupService;
 }
 
 function leftoverStub(entries: { id: string; repoPath: string; remoteName: string; remoteUrl: string; branch: string; at: string; reason: string | null }[], deleted: string[]) {
@@ -56,7 +57,9 @@ async function setup(): Promise<Setup> {
       return new CleanupService({
         store: w.store,
         dataDir,
-        gitCommand: GIT_SPY_COMMAND,
+        // A scan runs ~30 git commands; through the spy each is a node process plus git, which a full run's load
+        // made take over a minute for the tests with two scans. Only the test that reads the calls needs the spy.
+        gitCommand: options.spy ? GIT_SPY_COMMAND : ['git'],
         env: w.env,
         now: () => new Date(now),
         isLive: (id) => options.live?.has(id) ?? false,
@@ -318,7 +321,7 @@ describe('Clean-up · protections (D84)', () => {
     const closed = await session(w, 'spy', 40);
     const record = await sessionWorktree(w, 'spy', closed);
     await writeFile(path.join(record.path, 'x.txt'), 'x\n');
-    const svc = service({ daysAhead: 20 });
+    const svc = service({ daysAhead: 20, spy: true });
     const scan = await svc.scan();
     await run(svc, scan, scan.items.map((item) => item.id));
     const calls = (await w.gitCalls()).map((call) => call.argv);
