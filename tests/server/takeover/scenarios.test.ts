@@ -6,7 +6,7 @@ import { remoteId } from '../../../src/core/peers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../../src/core/takeover.ts';
 import { makeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, waitFor } from '../../helpers/peers.ts';
-import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld , removeWorld } from '../../helpers/takeover.ts';
+import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld, removeWorld, sessionSpawns } from '../../helpers/takeover.ts';
 
 /**
  * D65 scenarios on top of `flow.test.ts` (two real Switchboards, fake CLIs, temp
@@ -293,7 +293,7 @@ describe('D65: checks that stop before anything changes, and a failure half-way'
     await w.git(w.paths.b.alpha, 'checkout', '-q', 'main');
     const beforeA = await snapshot(w, w.paths.a.alpha);
     const beforeB = await snapshot(w, w.paths.b.alpha);
-    const spawnsBefore = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv').length;
+    const spawnsBefore = (await sessionSpawns(w.logs.a)).length;
 
     const finished = await run(w.b, { sessionId: remoteId(w.aId, started.id) });
     expect(finished.state).toBe('failed');
@@ -313,7 +313,7 @@ describe('D65: checks that stop before anything changes, and a failure half-way'
     expect(old).toMatchObject({ closedAt: null, movedTo: null, live: true });
     // The process is live once spawned; the fake writes its argv line a moment later.
     const spawns = await waitFor('the resumed spawn in the fake log', async () => {
-      const logged = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv');
+      const logged = await sessionSpawns(w.logs.a);
       return logged.length > spawnsBefore ? logged : null;
     });
     expect(spawns.length).toBe(spawnsBefore + 1);

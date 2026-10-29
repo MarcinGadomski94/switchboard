@@ -239,6 +239,15 @@ export async function fakeLog(file: string): Promise<Array<Record<string, any>>>
     .map((line) => JSON.parse(line) as Record<string, any>);
 }
 
+/**
+ * The session processes the fake claude logged (its `argv` lines), without the CLI status
+ * reads Switchboard runs beside them (`claude auth status`: D63 / D142 account checks, which
+ * paired machines with accounts trigger at their own times).
+ */
+export async function sessionSpawns(file: string): Promise<Array<Record<string, any>>> {
+  return (await fakeLog(file)).filter((entry) => entry['kind'] === 'argv' && (entry['argv'] as string[] | undefined)?.[0] !== 'auth');
+}
+
 /** Every file under `dir` (relative, sorted). */
 export async function listFiles(dir: string): Promise<string[]> {
   const out: string[] = [];
