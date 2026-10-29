@@ -131,9 +131,12 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(usage?.fiveHourResetsAt).toBe(new Date(1790552400 * 1000).toISOString());
 
     const stored = await w.store.sessions.get(session.id);
-    const [file] = await listTranscripts(w.configDir);
-    const entries = await readTranscript(file as string);
-    expect(entries.some((entry) => entry['uuid'] === stored?.lastTranscriptUuid && entry['type'] === 'assistant')).toBe(true);
+    // The fake appends its transcript a moment after the stdout line the sync point came from.
+    await until(async () => {
+      const [file] = await listTranscripts(w.configDir);
+      const entries = file ? await readTranscript(file).catch(() => []) : [];
+      return entries.some((entry) => entry['uuid'] === stored?.lastTranscriptUuid && entry['type'] === 'assistant') || undefined;
+    }, 'the sync point in the transcript');
     expect(stored?.lastActivityAt).not.toBeNull();
   });
 
