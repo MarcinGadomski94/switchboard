@@ -129,7 +129,8 @@ export function makeTempDir(prefix: string): Promise<string> {
  */
 export async function removeTempDir(dir: string): Promise<void> {
   await stopServersUnder(dir);
-  await rm(dir, { recursive: true, force: true });
+  // A child that is still exiting (a fake CLI's sign-in, a stopped session) may write one last file meanwhile: retry ENOTEMPTY / EBUSY.
+  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 /** A raw HTTP response. */

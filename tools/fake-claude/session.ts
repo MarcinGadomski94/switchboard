@@ -1556,8 +1556,9 @@ export class Runner {
     if (turn.questions) patchQuestions(line, turn.questions);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
-    this.writeJson(line);
+    // The transcript first (written at once), then stdout: whoever reads the line finds it in the transcript.
     this.transcript?.onStdout(line);
+    this.writeJson(line);
     if (turn.compact && line['type'] === 'system' && line['subtype'] === 'init') {
       // D49: the compaction comes right after the turn's start, once.
       const spec = turn.compact;
