@@ -331,6 +331,19 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
           ) : null}
         </>
       );
+    } else if (item.kind === 'access') {
+      body = (
+        <>
+          {item.text ? md(item.text, 'v2-qi-text', 'v2-answer-text') : null}
+          {item.accessFor ? (
+            // D146: whose access it is and where Add key puts it (another computer: sent there over the paired connection).
+            <p className="v2-qi-hint" data-testid="v2-answer-access-for">
+              <Icon name="desktop" size="s" /> For <b>{item.crew?.teammate ?? source}</b> on <b>{item.accessFor.machine}</b>
+              {item.accessFor.local ? ' (this computer)' : ' · the key is sent there'}
+            </p>
+          ) : null}
+        </>
+      );
     } else if (item.kind === 'jd') {
       body = item.quote ? <div className="v2-quote">{item.quote}</div> : null;
     } else if (item.kind === 'pick') {

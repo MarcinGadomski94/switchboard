@@ -98,6 +98,8 @@ export interface NeedsItem {
   readonly request?: TeamRequest;
   /** An access request's access (D100-T2): Add key opens the Access tab at it. */
   readonly accessId?: string;
+  /** D146: the computer an access request's teammate runs on (Add key sets it up there). */
+  readonly accessFor?: { readonly machine: string; readonly local: boolean };
   readonly charter?: { readonly before: TeamCharter; readonly after: TeamCharter; readonly notes: string };
   readonly memory?: MemoryEntry;
   /** The permission request (`approval` from the Inbox). */
@@ -251,6 +253,7 @@ export function fromTeam(item: TeamNeedsYouItem): NeedsItem | null {
     actions: [],
     ...(item.request ? { request: item.request } : {}),
     ...(item.access ? { accessId: item.access.id } : {}),
+    ...(item.access?.member ? { accessFor: { machine: item.access.member.machineName, local: item.access.member.local } } : {}),
     ...(item.charter ? { charter: item.charter } : {}),
   };
 }

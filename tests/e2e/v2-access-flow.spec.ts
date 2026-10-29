@@ -77,6 +77,9 @@ test('Needs you → Add key → that access’s form → Ready → the session h
   await expect(cards).toHaveCount(2);
   const crmCard = cards.filter({ hasText: 'Acme CRM' });
   await expect(crmCard.locator('button[data-action]')).toHaveText([/Add key/, /Deny/, /Not now/]);
+  // D146: whose access and which computer (this one).
+  await expect(crmCard.getByTestId('v2-answer-access-for')).toContainText('For Developer on');
+  await expect(crmCard.getByTestId('v2-answer-access-for')).toContainText('(this computer)');
   await crmCard.locator('[data-action="add-key"]').click();
 
   // The Access tab at the CRM access (the newer Analytics one waits too, but its form stays shut).
@@ -89,8 +92,9 @@ test('Needs you → Add key → that access’s form → Ready → the session h
   await expect(field).toHaveAttribute('type', 'password');
   await field.fill(KEY);
   await entry.getByTestId('v2-access-save').click();
+  // The save's own answer (after the member's restart) closes the form; it then stays closed (a reload racing the save does not open it again).
+  await expect(entry.getByTestId('v2-access-form')).toHaveCount(0, { timeout: 20_000 });
   await expect(entry).toHaveAttribute('data-status', 'ready');
-  // Saved: the form stays closed (a reload racing the save does not open it again).
   await page.waitForTimeout(1_500);
   await expect(entry.getByTestId('v2-access-form')).toHaveCount(0);
   expect(await page.content()).not.toContain(KEY);

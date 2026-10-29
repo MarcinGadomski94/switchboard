@@ -235,6 +235,8 @@ export class TeamService {
       memberOfSession: (sessionId) => this.memberOfSession(sessionId),
       requestGate: (input) => this.requestGate(input),
       machineNames: () => this.#machineNames(),
+      forward: (machineId, method, path, body) => this.#forward(machineId, method, path, body),
+      syncNow: () => this.syncNow(),
       reload: async (sessionId) => {
         await this.#o.supervisor.instructionSettingChanged().catch(() => undefined);
         try {

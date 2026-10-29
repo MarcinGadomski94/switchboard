@@ -181,6 +181,8 @@ export interface TeamAccessEntryView extends Omit<TeamAccessRecord, 'clock' | 'd
   readonly canSetUp: boolean;
   /** The environment variables the member gets (`api-key`), or the MCP server's name (`mcp`). */
   readonly delivers: string;
+  /** D146: whose access it is and the machine it runs on (setup, test and revoke go there; `local`: this machine). */
+  readonly member: { readonly name: string; readonly machineId: string; readonly machineName: string; readonly local: boolean };
 }
 
 /** `GET /api/team/members/{id}/access`. */

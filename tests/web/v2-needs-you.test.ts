@@ -165,6 +165,9 @@ describe('D131 · answering: the buttons, the drafts and the summaries', () => {
     // With its access (as `GET /api/team/needs-you` sends it): the Access tab opens at that access.
     const withAccess = mergeNeedsYou({ inbox: [], team: [{ ...ACCESS, access: { id: 'acc 7' } as TeamNeedsYouItem['access'] }], notes: {}, usage: [] })[0] as NeedsItem;
     expect(cardButtons(withAccess)[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/crews/t-mob?member=m-dev&tab=access&access=acc%207' } });
+    // D146: the computer the teammate runs on (the card's "For Mobile developer on Laptop").
+    const remote = mergeNeedsYou({ inbox: [], team: [{ ...ACCESS, access: { id: 'acc 7', member: { name: 'Mobile developer', machineId: 'm-laptop', machineName: 'Laptop', local: false } } as TeamNeedsYouItem['access'] }], notes: {}, usage: [] })[0] as NeedsItem;
+    expect(remote.accessFor).toEqual({ machine: 'Laptop', local: false });
     expect(cardButtons(item(READY)).at(-1)?.intent).toEqual({ type: 'open', target: { type: 'agent', sessionId: 's1', tab: 'changes' } });
     expect(isLinkAction('open-plan')).toBe(true);
     expect(isLinkAction('plan-merge')).toBe(false);

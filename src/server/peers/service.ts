@@ -269,9 +269,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
   // D105: a member's charter ask runs on the machine that runs it (the bulk ask forwards one by one).
   ['POST', /^\/api\/team\/members\/[^/]+\/charter\/ask$/],
-  // D100-T2: access metadata only (a member's Access tab, the catalog); setup / test / revoke never travel (values stay on their machine).
+  // D100-T2: access metadata (a member's Access tab, the catalog). D146: setup, test and revoke of an access whose member
+  // runs on this machine (the route itself refuses any other access; the expiry and everything else of a value stay local).
   ['GET', /^\/api\/team\/members\/[^/]+\/access$/],
   ['GET', /^\/api\/team\/access\/catalog$/],
+  ['POST', /^\/api\/team\/access\/[^/]+\/(?:setup|test|revoke)$/],
   // Plans (D99) hook: Jira import and sync run on the machine that owns the plan (its credentials); the credential routes are never forwarded.
   ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
   // D112: an import from a folder of that machine (the plan's new session starts there, with its Jira connection).

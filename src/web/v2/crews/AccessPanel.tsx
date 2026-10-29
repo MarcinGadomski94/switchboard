@@ -9,9 +9,10 @@ import { timeAgo } from '../shared/time.ts';
 /**
  * D131 · lane P · a teammate's **Access** tab (D100-T2): every access its agent asked for, with
  * the exact service, host and scope, its status on each computer, and **Add key**: the values of
- * exactly the declared fields, sent once to this computer's Switchboard, which keeps them in the
- * OS keychain (`POST /api/team/access/{id}/setup`); never shown again. Test connection and
- * Revoke. A phone reads it only ("Set this up on a computer"). Opened from Needs you's Add key
+ * exactly the declared fields, sent once to the Switchboard of the computer the teammate runs on
+ * (D146: over the paired connection when that is another computer), which keeps them in its OS
+ * keychain (`POST /api/team/access/{id}/setup`); never shown again. Test connection and Revoke
+ * run there too; "Set up here too" keeps a copy in this computer's keychain. A phone reads it only ("Set this up on a computer"). Opened from Needs you's Add key
  * by `/crews/<crew>?member=<id>&tab=access&access=<id>` (that access's form opens).
  */
 export function AccessPanel({ memberId, focusAccess = null, onChanged }: { readonly memberId: string; /** The access whose form opens (Needs you's Add key); else the first one waiting. */ readonly focusAccess?: string | null; readonly onChanged?: () => void }) {
@@ -60,13 +61,13 @@ export function AccessPanel({ memberId, focusAccess = null, onChanged }: { reado
         </p>
       ) : null}
       {!view.member.local ? (
-        // D100-T2: values stay in the keychain of the computer they are typed on; the teammate's agent reads its own computer's.
-        <p className="v2-c-note" data-testid="v2-access-elsewhere">
-          <Icon name="alert" size="s" />
-          {view.member.name}’s agent runs on {view.member.machineName}: a key saved here stays on {view.self.name} and does not reach it. Set it up on {view.member.machineName} for its agent to get it.
+        // D146: setup, test and revoke go to the computer the teammate runs on.
+        <p className="v2-c-note" data-testid="v2-access-target">
+          <Icon name="desktop" size="s" />
+          For {view.member.name} on {view.member.machineName}: keys you save here are sent once to {view.member.machineName} and kept in its keychain, not on {view.self.name}.
         </p>
       ) : null}
-      {!view.keychain.available ? (
+      {view.member.local && !view.keychain.available ? (
         <p className="v2-c-note">
           <Icon name="alert" size="s" />
           {view.keychain.name} can’t be used here{view.keychain.problem ? `: ${view.keychain.problem}` : ''}.
@@ -90,15 +91,20 @@ function AccessEntry({ entry, device, keychain, local, self, open, onToggle, onC
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // D146: "Set up here too" (this computer's keychain) instead of the teammate's computer (the default).
+  const [here, setHere] = useState(false);
   const toast = useToast();
-  const label = entry.here ? 'Replace' : entry.setUpOn.length > 0 ? 'Set up here too' : CREW_WORDS.addKey;
+  const machine = entry.member.machineName;
+  const onMember = entry.setUpOn.includes(entry.member.machineId);
+  const label = local ? (entry.here ? 'Replace' : entry.setUpOn.length > 0 ? 'Set up here too' : CREW_WORDS.addKey) : onMember ? 'Replace' : CREW_WORDS.addKey;
   const save = async (): Promise<void> => {
     setBusy(true);
     setErrors({});
     try {
-      await accessApi.setUp(entry.id, { values });
+      await accessApi.setUp(entry.id, { values, ...(here && !local ? { here: true } : {}) });
       setValues({});
-      toast({ text: local ? `${entry.service} set up on this computer. Its agent gets it from its next start.` : `${entry.service} set up on ${self} only: its agent runs on another computer and does not get it.` });
+      toast({ text: here && !local ? `${entry.service} set up on ${self} too.` : `${entry.service} set up on ${local ? 'this computer' : machine}. Its agent gets it from its next start.` });
+      setHere(false);
       onToggle();
       onChanged();
     } catch (e) {
@@ -131,16 +137,49 @@ function AccessEntry({ entry, device, keychain, local, self, open, onToggle, onC
       <p className="v2-muted v2-c-small">Gives: {entry.delivers}</p>
       <div className="v2-row v2-c-wrap">
         {entry.canSetUp && !device ? (
-          <Button size="sm" variant={entry.status === 'ready' ? 'default' : 'primary'} icon="plus" disabled={!keychain} onClick={onToggle} aria-expanded={open} data-testid="v2-access-add">
+          <Button
+            size="sm"
+            variant={entry.status === 'ready' ? 'default' : 'primary'}
+            icon="plus"
+            disabled={local && !keychain}
+            onClick={() => {
+              if (open && !here) onToggle();
+              else {
+                setHere(false);
+                if (!open) onToggle();
+              }
+            }}
+            aria-expanded={open && !here}
+            data-testid="v2-access-add"
+          >
             {label}
           </Button>
         ) : null}
-        {entry.here && !device ? (
+        {entry.canSetUp && !device && !local && onMember && !entry.here ? (
           <Button
             size="sm"
+            variant="ghost"
+            disabled={!keychain}
+            onClick={() => {
+              if (open && here) onToggle();
+              else {
+                setHere(true);
+                if (!open) onToggle();
+              }
+            }}
+            aria-expanded={open && here}
+            data-testid="v2-access-add-here"
+          >
+            Set up here too
+          </Button>
+        ) : null}
+        {(onMember || entry.here) && !device && entry.status !== 'revoked' ? (
+          <Button
+            size="sm"
+            data-testid="v2-access-test"
             onClick={async () => {
               try {
-                const result = await accessApi.test(entry.id);
+                const result = await accessApi.test(entry.id, !onMember);
                 toast({ text: result.detail || (result.ok ? 'Connected' : 'Test failed'), tone: result.ok ? 'ok' : 'error' });
               } catch (e) {
                 toast({ text: e instanceof Error ? e.message : String(e), tone: 'error' });
@@ -177,7 +216,9 @@ function AccessEntry({ entry, device, keychain, local, self, open, onToggle, onC
             void save();
           }}
         >
-          <p className="v2-muted v2-c-small">Stored in this computer’s keychain, given only to this teammate’s agent, never shown again.</p>
+          <p className="v2-muted v2-c-small" data-testid="v2-access-form-where">
+            {here || local ? 'Stored in this computer’s keychain' : `Sent once to ${machine} and stored in its keychain`}, given only to this teammate’s agent, never shown again.
+          </p>
           {entry.fields.map((field) => (
             <Field
               key={field.name}
