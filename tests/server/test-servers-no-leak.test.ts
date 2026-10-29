@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { REPO_ROOT, makeTempDir, removeTempDir } from '../helpers/net.ts';
+import { REPO_ROOT, makeTempDir, removeTempDir, workerTestPortsEnv } from '../helpers/net.ts';
 import { TEST_RUN_DIR_ENV } from '../helpers/server-registry.ts';
 
 /**
@@ -48,7 +48,8 @@ describe.skipIf(process.platform === 'win32')('test servers never outlive a run'
   it('servers of timed-out tests and hooks, a late start, a hung server and a killed worker are all gone after the run', { timeout: 180_000 }, async () => {
     root = await makeTempDir('leak-proof');
     const log = path.join(root, 'pids.log');
-    const env: NodeJS.ProcessEnv = { ...process.env, LEAK_LOG: log, LEAK_ROOT: root };
+    // The nested run's servers stay inside this worker's port slice (its own workers slice it further).
+    const env: NodeJS.ProcessEnv = { ...process.env, LEAK_LOG: log, LEAK_ROOT: root, SWITCHBOARD_TEST_PORTS: workerTestPortsEnv() };
     delete env[TEST_RUN_DIR_ENV]; // the nested run makes its own
 
     const { code, output } = await runNested(env);

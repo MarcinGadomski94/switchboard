@@ -71,10 +71,19 @@ async function paths(url: string): Promise<string[]> {
 }
 
 /** D90 ruling: the tab count's answer (`GET …/diff/count`). */
+/**
+ * The count once it is fresh: D144 answers the last count marked `stale` when the first
+ * computation takes longer than its short wait (a loaded machine), and goes on in the background.
+ */
 async function count(url: string): Promise<DiffCount> {
-  const response = await get(url);
-  expect(response.statusCode, url).toBe(200);
-  return response.json() as DiffCount;
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    const response = await get(url);
+    expect(response.statusCode, url).toBe(200);
+    const answer = response.json() as DiffCount;
+    if (!answer.stale || Date.now() > deadline) return answer;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 async function sessionRow(w: GitWorld, name: string, solutions: string[], worktrees: boolean): Promise<string> {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { access, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type Json, type JsonObject, asArray, asObject, asString, clone, isObject, parseNdjson } from './json.ts';
 
@@ -205,10 +206,15 @@ export class Transcript {
     this.pendingCopy = [];
     const text = [...pending, ...entries.map((e) => JSON.stringify(e))].map((l) => `${l}\n`).join('');
     const { file } = this;
-    this.writes = this.writes.then(async () => {
-      await mkdir(path.dirname(file), { recursive: true });
-      await appendFile(file, text);
-    });
+    // Written at once, before the stdout line that follows is read: a reader who saw the line finds it in the
+    // transcript, as with the real CLI (the server tests read both right after a turn ends). This fake is a
+    // test stand-in for the CLI, not the server: its sync I/O is not on a Switchboard request path.
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      appendFileSync(file, text);
+    } catch (error) {
+      this.writes = this.writes.then(() => Promise.reject(error));
+    }
   }
 
   private chain(entry: JsonObject): JsonObject {

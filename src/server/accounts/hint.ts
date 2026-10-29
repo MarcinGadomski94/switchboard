@@ -75,17 +75,23 @@ export class AccountHint {
     this.#soon.unref();
   }
 
-  /** The hints that hold now (each enabled Claude Code profile's sign-in read first, cached 60 s). */
+  /**
+   * The hints that hold now (each enabled Claude Code profile's sign-in read first, cached 60 s).
+   * No paired machine with a Claude Code account to offer → no hint, and no sign-in is read:
+   * a machine without peers never runs `claude auth status` for this.
+   */
   async hints(): Promise<SingleAccountHint[]> {
     const settings = await this.#o.accounts.settings();
-    if (!settings.enabled) return [];
+    if (!settings.enabled || !settings.perCli.claude) return [];
+    const peers = await this.#o.shared.peers();
+    if (!peers.some((peer) => !peer.legacy && peer.accounts.some((a) => a.cli === 'claude' && a.enabled && a.signIn !== 'signed-out' && a.identity !== null))) return [];
     const profiles: HintProfile[] = [];
     for (const profile of await this.#o.accounts.list({ check: false, local: true })) {
       // Only Claude Code accounts have an identity (D98): only its sign-ins are needed.
       const signIn = profile.cli === 'claude' && profile.enabled && settings.perCli.claude ? (await this.#o.accounts.check(profile.id).catch(() => ({ signIn: 'unknown' as const }))).signIn : profile.signIn;
       profiles.push({ id: profile.id, cli: profile.cli, name: profile.name, enabled: profile.enabled, signIn, identity: profile.identity ?? null });
     }
-    return singleAccountHints({ settings, profiles, peers: await this.#o.shared.peers() });
+    return singleAccountHints({ settings, profiles, peers });
   }
 
   /** The hint of `cli` now, `null` when it does not hold (the switcher's cue). */

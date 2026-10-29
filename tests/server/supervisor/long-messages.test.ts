@@ -1,4 +1,4 @@
-import { appendFile, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,7 +13,7 @@ import { generateToken } from '../../../src/server/token.ts';
 import { SAY_LONG_END } from '../../../tools/fake-claude/scenarios.ts';
 import { listTranscripts, runFake } from '../../helpers/fake-claude.ts';
 import { seedFolder } from '../../helpers/folders.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, payloadType, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, payloadType, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * Fix · long messages on the real path (fake-claude with a temp CLAUDE_CONFIG_DIR):
@@ -64,6 +64,20 @@ const assistantEvents = async (w: SupervisorWorld, sessionId: string): Promise<E
   (await w.store.events.list(sessionId)).filter((event) => payloadType(event) === 'assistant');
 
 /** Makes an event look as the recorder stored it before the fix: its text cut at 4,000, no flag. */
+/**
+ * Waits until the fake's transcript of `session` holds `text` on a complete line (it may
+ * still be writing it when the turn's `done` is stored; a line without its newline yet is
+ * not parsed).
+ */
+async function transcriptWith(w: SupervisorWorld, claudeSessionId: string, text: string): Promise<void> {
+  await until(async () => {
+    const file = await findTranscriptFile(claudeConfigDir(w.env), claudeSessionId);
+    if (file === null) return undefined;
+    const complete = (await readFile(file, 'utf8')).split('\n').slice(0, -1);
+    return complete.some((line) => line.includes(text)) ? true : undefined;
+  }, 'the transcript');
+}
+
 async function cutLikeBefore(w: SupervisorWorld, event: EventRecord): Promise<EventRecord> {
   const payload = event.payload as AssistantPayload;
   const updated = await w.store.events.update(event.id, { payload: { type: payload.type, text: payload.text.slice(0, PAYLOAD_TEXT_LIMIT), messageId: payload.messageId } });
@@ -76,6 +90,7 @@ describe('Fix · long messages', () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Write a long reply. [fake:say-long 9000]' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
+    await transcriptWith(w, session.claudeSessionId, SAY_LONG_END);
     const [reply] = await assistantEvents(w, session.id);
     const text = (reply?.payload as AssistantPayload).text;
     expect(text).toHaveLength(9000);
@@ -107,6 +122,7 @@ describe('Fix · long messages', () => {
     const long = 'L'.repeat(6000);
     const session = await w.supervisor.start(newSession({ task: `Write it. [fake:tool Write {"file_path":"notes.txt","content":"${long}"}]` }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
+    await transcriptWith(w, session.claudeSessionId, long);
     const events = await w.store.events.list(session.id);
     const call = events.find((event) => payloadType(event) === 'tool');
     const stored = call?.payload as ToolPayload;
@@ -171,8 +187,8 @@ describe('Fix · long messages', () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Reply with just OK.' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
-    const transcript = await findTranscriptFile(claudeConfigDir(w.env), session.claudeSessionId);
-    expect(transcript).not.toBeNull();
+    // The fake may still be writing its transcript when the turn's `done` is stored.
+    const transcript = await until(async () => (await findTranscriptFile(claudeConfigDir(w.env), session.claudeSessionId)) ?? undefined, 'the transcript file');
     const brief = `${'S'.repeat(5000)} the brief's end`;
     const folder = path.join(path.dirname(transcript as string), session.claudeSessionId, 'subagents');
     await mkdir(folder, { recursive: true });

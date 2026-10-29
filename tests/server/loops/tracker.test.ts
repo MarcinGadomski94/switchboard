@@ -105,7 +105,9 @@ describe('LoopTracker', () => {
     const plain = await w.supervisor.start(newSession({ name: 'plain', task: 'Just reply' }), w.place);
     const wake = await w.supervisor.start(newSession({ name: 'wake', task: '/loop watch the queue [fake:tool ScheduleWakeup {"delaySeconds":1200,"reason":"next check"}]' }), w.place);
     const flow = await w.supervisor.start(newSession({ name: 'flow', task: 'Roll out [fake:tool Workflow {"name":"button rollout"}]' }), w.place);
-    for (const id of [plain.id, wake.id, flow.id]) await waitForStatus(w.store, id, ['done']);
+    // A pending wake-up keeps its session `run` until it fires (docs/decisions.md → *Waiting on
+    // background work*, 2026-10-16): the wake session's turn end is awaited through its loop card below.
+    for (const id of [plain.id, flow.id]) await waitForStatus(w.store, id, ['done']);
 
     const [wakeLoop] = await until(async () => {
       await tracker?.idle();

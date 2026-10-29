@@ -316,9 +316,9 @@ describe.each(['source', 'bundle'] as const)('the real helper (%s) over stdio ag
     tmp = await makeTempDir('mcp-helper');
     store = await openTempStore(tmp);
     const secret = generateToken();
-    // Another test file may take a test port meanwhile: try the free ones from the end of the range.
+    // Try this worker's free test ports in turn (tests/helpers/net.ts).
     let port = 0;
-    for (const candidate of (await freeTestPorts()).reverse()) {
+    for (const candidate of await freeTestPorts()) {
       const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: candidate };
       const built = await buildApp({ config, token: secret, store, webRoot: tmp });
       try {

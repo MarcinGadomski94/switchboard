@@ -20,7 +20,7 @@ The whole security model in short; the sections below give the details.
 
 ## Bind address
 - The UI service listens on **127.0.0.1 only**. There is no host setting. (D48 adds one more, separate socket: the optional peer listener, bound only to the Tailscale address; *Peer listener (D48)* below. D73 adds the optional device listener, also on **127.0.0.1**, published to the tailnet by `tailscale serve`; *Device listener (D73)* below.) `listenLoopback` refuses any other address (`0.0.0.0`, `::`, a LAN address, `localhost` (which can also bind `::1`), `::1`, other `127.x`) before a socket is opened, then checks the address the socket actually bound and closes the server if it is not 127.0.0.1.
-- Port: `SWITCHBOARD_PORT`, default 13001. Tests use 127.0.0.1:4871–4879 only.
+- Port: `SWITCHBOARD_PORT`, default 13001. Tests use 127.0.0.1:24000–27999 only (`SWITCHBOARD_TEST_PORTS`).
 
 ## Request guard (every request, the UI page included)
 Installed as the first `onRequest` hook, so it also covers 404s and every route added later.

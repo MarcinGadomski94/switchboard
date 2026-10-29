@@ -6,7 +6,7 @@ function escapeRegExp(text: string): string {
 
 /**
  * Playwright E2E + screenshots. Specs live in `tests/e2e/` and start their own
- * server on 127.0.0.1 in the 4871–4879 test range, or the range in
+ * server on 127.0.0.1 in the 24000–27999 test range, or the range in
  * `SWITCHBOARD_TEST_PORTS` (tests/helpers/net.ts; never 4870, which the developer
  * may use for the real app) with a temp data dir.
  */

@@ -8,7 +8,7 @@ import { stubToolProbes } from './probes.ts';
 /**
  * Real browser check of gap #20: loading the UI sets an HttpOnly, SameSite=Strict
  * `sb_token` cookie that the page's own API calls carry, and a browser without it
- * gets 401. Runs the real `node src/server/main.ts` on a 4871–4879 test port with
+ * gets 401. Runs the real `node src/server/main.ts` on a test port (tests/helpers/net.ts) with
  * a temp data dir (no demo seed).
  */
 let tmp: string;

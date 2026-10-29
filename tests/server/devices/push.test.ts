@@ -92,7 +92,7 @@ function session(id: string, status: Session['status'], name = 'web'): Session {
 
 async function pushWorld(): Promise<{ w: DeviceWorld; fake: FakePushService }> {
   const { freeTestPorts } = await import('../../helpers/net.ts');
-  const port = (await freeTestPorts()).at(-1) as number;
+  const [port] = (await freeTestPorts()) as [number];
   push = await startFakePush(port);
   world = await startDeviceWorld({ env: { SWITCHBOARD_PUSH_TEST_ENDPOINTS: push.origin } });
   return { w: world, fake: push };

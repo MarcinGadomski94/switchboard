@@ -18,7 +18,9 @@ export default defineConfig({
     // No test server outlives a run (tests/helpers/server-registry.ts, CONTRIBUTING.md).
     globalSetup: ['tests/helpers/vitest-global.ts'],
     setupFiles: ['tests/helpers/vitest-setup.ts'],
-    testTimeout: 20_000,
-    hookTimeout: 20_000,
+    // The server tests start real processes (servers, fake CLIs, git): 2–6 s alone, several times that while every
+    // worker runs them at once (a full run puts a 12-core machine at a load of ~25). A hung test still fails, later.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 });

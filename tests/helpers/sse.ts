@@ -192,7 +192,7 @@ export function requestJson(port: number, method: string, path: string, cookie: 
 }
 
 /**
- * Builds an app for each free test port (4871–4879; the port feeds the Host
+ * Builds an app for each free test port of this worker's slice (tests/helpers/net.ts; the port feeds the Host
  * check) and listens on the first that binds, retrying when a parallel test took it.
  */
 export async function listenOnFreeTestPort(build: (port: number) => Promise<FastifyInstance>): Promise<{ app: FastifyInstance; port: number }> {
@@ -206,5 +206,5 @@ export async function listenOnFreeTestPort(build: (port: number) => Promise<Fast
       if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
     }
   }
-  throw new Error('no free test port in 4871-4879');
+  throw new Error("no free test port in this worker's slice (tests/helpers/net.ts)");
 }

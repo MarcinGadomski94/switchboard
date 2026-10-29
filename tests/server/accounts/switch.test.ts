@@ -220,7 +220,11 @@ describe('D63 · OpenCode: the D62 handover into a session on the new profile', 
       const id = await w.store.providers.nativeId(session.id, 'opencode');
       return id !== null && id !== first ? id : undefined;
     }, 'a new OpenCode session');
-    const log = (await readFile(w.opencodeLog, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; argv?: string[]; env?: Record<string, string>; body?: { parts?: Array<{ text?: string }> } });
+    // The new session id is stored before its first message is sent: wait for that message in the fake's log.
+    const log = await until(async () => {
+      const lines = (await readFile(w.opencodeLog, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; argv?: string[]; env?: Record<string, string>; body?: { parts?: Array<{ text?: string }> } });
+      return lines.filter((e) => e.kind === 'prompt').length >= 2 ? lines : undefined;
+    }, 'the handover message');
     const serves = log.filter((e) => e.kind === 'argv' && e.argv?.[0] === 'serve');
     expect(serves.at(-1)?.env?.['XDG_DATA_HOME']).toBe(b.dir);
     expect(serves[0]?.env?.['XDG_DATA_HOME']).toBe(w.opencodeData);

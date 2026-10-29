@@ -152,8 +152,10 @@ describe('PUT /api/sessions/{id}/title (D22)', () => {
     const renamed = await call('PUT', `/api/sessions/${session.id}/title`, { title: '  Billing: fix invoices  ' });
     expect(renamed.statusCode, renamed.body).toBe(200);
     expect(renamed.json()).toMatchObject({ id: session.id, name: 'jira-ticket-handling', title: 'Billing: fix invoices', displayTitle: 'Billing: fix invoices' });
+    // A late update of the finished turn (published after `done` was stored) may still carry the old title: the rename's is one, and the last.
     const updates = messages.filter((m) => m.name === 'sessionUpdated').map((m) => m.payload as Session);
-    expect(updates.map((s) => [s.id, s.title, s.displayTitle])).toEqual([[session.id, 'Billing: fix invoices', 'Billing: fix invoices']]);
+    expect(updates.filter((s) => s.title !== 'JIRA Ticket handling').map((s) => [s.id, s.title, s.displayTitle])).toEqual([[session.id, 'Billing: fix invoices', 'Billing: fix invoices']]);
+    expect(updates.at(-1)?.title).toBe('Billing: fix invoices');
     const stored = await w.store.sessions.get(session.id);
     expect(stored).toMatchObject({ name: 'jira-ticket-handling', title: 'Billing: fix invoices', claudeSessionId: session.claudeSessionId });
 

@@ -177,11 +177,21 @@ describe('D65: Codex and OpenCode sessions', () => {
   }, 120_000);
 
   it('OpenCode: the D62 handover (its storage cannot be copied)', async () => {
-    const w = (world = await takeoverWorld(tmp));
+    const w = (world = await takeoverWorld(tmp, { env: { FAKE_OPENCODE_LOG: path.join(tmp, 'a-fake-opencode.log') } }));
     const created = await w.a.call('POST', '/api/sessions', { name: 'opencode-work', task: 'Reply with just OK.', folder: w.folders.a.alpha, worktrees: false, ultracode: false, provider: 'opencode' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const started = created.body as Session;
-    await waitFor('the OpenCode turn', async () => ['idle', 'done'].includes(((await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session).status));
+    // A cold `opencode serve` plus its first turn can take longer than 15 s on a loaded machine.
+    let last: unknown = null;
+    await waitFor('the OpenCode turn', async () => {
+      const session = (await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session;
+      last = session;
+      return ['idle', 'done'].includes(session.status);
+    }, 60_000).catch(async (error: unknown) => {
+      const log = await readFile(path.join(tmp, 'a-fake-opencode.log'), 'utf8').catch(() => '');
+      // Rare under a full parallel run: the session stays `run` with no pid (docs: CONTRIBUTING.md → CI). Evidence for the next look.
+      throw new Error(`${String(error)}\nsession: ${JSON.stringify(last)}\nserver a (tail): ${w.a.server.output().slice(-8000)}\nfake opencode log (tail): ${log.slice(-8000)}`);
+    });
     const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, started.id) })).body as TakeoverPreview;
     expect(preview.source.conversation).toMatchObject({ kind: 'handover', files: [] });
     expect(preview.source.conversation.note).toContain('cannot be copied');

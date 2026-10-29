@@ -156,12 +156,16 @@ describe('D38: adopted worktrees', () => {
     expect(adopted).toMatchObject({ repo: 'web-front', repoPath: g.web, branch: 'PROJ-38-sweep', path: elsewhere, sessionId: session.id, baseRef: 'main', removedAt: null });
     expect((await s.store.sessions.get(session.id))?.solutions).toEqual(['web-front']);
     await until(async () => published.some((p) => p.id === session.id && p.solutions.includes('web-front')) || undefined, 'the published solutions');
-    // The Diff lists the worktree's branch (the in-place write is web-front's too, but its worktree now stands for it).
+    // The Diff lists the worktree's branch, then the in-place write in web-front's main checkout: the working tree of a
+    // file the session edited counts wherever it is (docs/worktrees.md → *Which repositories*, follow-up 2026-10-13).
     await g.commit(elsewhere, 'src/sweep.txt', 'swept\n');
     const diff = await call('GET', `/api/sessions/${session.id}/diff?scope=branch`);
     expect(diff.statusCode).toBe(200);
     expect(g.errors).toEqual([]);
-    expect((diff.json() as Array<{ path: string; branch: string }>).map((f) => [f.path, f.branch])).toEqual([['src/sweep.txt', 'PROJ-38-sweep']]);
+    expect((diff.json() as Array<{ path: string; branch: string }>).map((f) => [f.path, f.branch])).toEqual([
+      ['src/sweep.txt', 'PROJ-38-sweep'],
+      ['notes/plan.md', 'main'],
+    ]);
     // Idempotent: another sweep registers nothing new.
     const adoption = new WorktreeAdoption({ store: s.store, sessions: s.supervisor, worktrees: g.manager() });
     await adoption.adopt(session.id);

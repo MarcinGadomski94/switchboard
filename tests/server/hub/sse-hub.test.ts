@@ -79,7 +79,7 @@ describe('SSE framing', () => {
   });
 });
 
-// ── the hub on a plain node:http server (no Fastify), on a 4871–4879 test port ──
+// ── the hub on a plain node:http server (no Fastify), on a test port of this worker's slice ──
 
 const servers: http.Server[] = [];
 const hubs: SseHub[] = [];
@@ -105,7 +105,7 @@ async function serve(options: Omit<SseHubOptions, 'bus'> = {}): Promise<{ hub: S
       return { hub, bus, port, errors };
     }
   }
-  throw new Error('no free test port in 4871-4879');
+  throw new Error("no free test port in this worker's slice (tests/helpers/net.ts)");
 }
 
 const INFO: SystemInfo = { cli: null, cliVersion: null, signedIn: false, ghSignedIn: false, cpu: 1, ramUsed: 2, ramTotal: 3, processes: 0, usagePct: 40 };

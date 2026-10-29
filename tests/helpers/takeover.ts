@@ -1,5 +1,4 @@
-import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Session } from '../../src/core/api.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
@@ -52,40 +51,14 @@ export interface TakeoverWorld {
 }
 
 /**
- * One world at a time across test files: a world holds four test ports (two UI
- * listeners, two peer listeners) and the pool of test ports is small, so parallel
- * files would starve each other. A lock folder in the temp dir (atomic `mkdir`),
- * released by {@link removeWorld}; a lock left by a crashed run goes stale after 5 minutes.
+ * Removes a temp folder (retrying while a stopping process still writes into it).
+ * Worlds of parallel test files no longer wait for each other: each worker has its
+ * own test ports (tests/helpers/net.ts), so a world's four ports never starve another's.
  */
-const LOCK = path.join(os.tmpdir(), 'switchboard-takeover-world.lock');
-const HELD = new Set<string>();
-
-async function acquireWorld(root: string): Promise<void> {
-  for (let attempt = 0; attempt < 1200; attempt++) {
-    try {
-      await mkdir(LOCK);
-      await writeFile(path.join(LOCK, 'owner'), `${process.pid} ${root}`);
-      HELD.add(root);
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const age = Date.now() - (await stat(LOCK).then((info) => info.mtimeMs).catch(() => Date.now()));
-      if (age > 5 * 60_000) await rm(LOCK, { recursive: true, force: true });
-      else await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
-  throw new Error('timed out waiting for another take-over world to finish');
-}
-
-/** Removes a temp folder (retrying while a stopping process still writes into it) and releases the world lock. */
 export async function removeWorld(dir: string): Promise<void> {
-  try {
-    // The world's servers first, also one still starting (tests/helpers/server-registry.ts).
-    await stopServersUnder(dir);
-    await removeFolder(dir);
-  } finally {
-    if (HELD.delete(dir)) await rm(LOCK, { recursive: true, force: true });
-  }
+  // The world's servers first, also one still starting (tests/helpers/server-registry.ts).
+  await stopServersUnder(dir);
+  await removeFolder(dir);
 }
 
 async function removeFolder(dir: string): Promise<void> {
@@ -136,14 +109,7 @@ async function clone(root: string, remote: string, dir: string): Promise<string>
  * both have `alpha`). Both listeners are on and the machines are paired and online.
  */
 export async function takeoverWorld(root: string, options: { readonly aRepos?: NodeRepos; readonly bRepos?: NodeRepos; readonly env?: Record<string, string> } = {}): Promise<TakeoverWorld> {
-  await acquireWorld(root);
-  try {
-    return await startWorld(root, options);
-  } catch (error) {
-    await rm(LOCK, { recursive: true, force: true });
-    HELD.delete(root);
-    throw error;
-  }
+  return startWorld(root, options);
 }
 
 async function startWorld(root: string, options: { readonly aRepos?: NodeRepos; readonly bRepos?: NodeRepos; readonly env?: Record<string, string> }): Promise<TakeoverWorld> {
@@ -271,6 +237,15 @@ export async function fakeLog(file: string): Promise<Array<Record<string, any>>>
     .split('\n')
     .filter((line) => line.trim() !== '')
     .map((line) => JSON.parse(line) as Record<string, any>);
+}
+
+/**
+ * The session processes the fake claude logged (its `argv` lines), without the CLI status
+ * reads Switchboard runs beside them (`claude auth status`: D63 / D142 account checks, which
+ * paired machines with accounts trigger at their own times).
+ */
+export async function sessionSpawns(file: string): Promise<Array<Record<string, any>>> {
+  return (await fakeLog(file)).filter((entry) => entry['kind'] === 'argv' && (entry['argv'] as string[] | undefined)?.[0] !== 'auth');
 }
 
 /** Every file under `dir` (relative, sorted). */

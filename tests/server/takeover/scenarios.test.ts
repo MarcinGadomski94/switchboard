@@ -6,7 +6,7 @@ import { remoteId } from '../../../src/core/peers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../../src/core/takeover.ts';
 import { makeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, waitFor } from '../../helpers/peers.ts';
-import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld , removeWorld } from '../../helpers/takeover.ts';
+import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld, removeWorld, sessionSpawns } from '../../helpers/takeover.ts';
 
 /**
  * D65 scenarios on top of `flow.test.ts` (two real Switchboards, fake CLIs, temp
@@ -106,6 +106,9 @@ describe('D65: a running turn and a paused session', () => {
     expect(created.status).toBe(201);
     const id = (created.body as Session).id;
     await waitFor('the turn is running', async () => ((await w.a.call('GET', `/api/sessions/${id}`)).body as Session).status === 'run');
+    // The take-over copies the conversation: wait until the fake has written its transcript (it does so a moment after the turn starts).
+    const claudeSessionId = (created.body as Session).claudeSessionId;
+    await waitFor('the transcript on the pc', async () => (await readdir(path.join(w.a.configDir, 'projects'), { recursive: true }).catch(() => [])).some((file) => String(file).endsWith(`${claudeSessionId}.jsonl`)));
     const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, id) })).body as TakeoverPreview;
     expect(preview.source).toMatchObject({ busy: true, live: true });
 
@@ -211,7 +214,10 @@ describe('D65: a workspace session with two repos', () => {
     expect(await remoteHeads(w, w.remotes.front)).toEqual(['refs/heads/main']);
     expect(await remoteHeads(w, w.remotes.back)).toEqual(['refs/heads/main']);
     // The first message lists both repos' path changes.
-    const stdin = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line'])).join('\n');
+    const stdin = await waitFor('the first message in the fake log', async () => {
+      const text = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line'])).join('\n');
+      return text.includes(`${front} → ${w.paths.b.front} (front)`) ? text : null;
+    });
     expect(stdin).toContain(`${front} → ${w.paths.b.front} (front)`);
     expect(stdin).toContain(`${back} → ${w.paths.b.back} (back)`);
   }, 120_000);
@@ -293,7 +299,7 @@ describe('D65: checks that stop before anything changes, and a failure half-way'
     await w.git(w.paths.b.alpha, 'checkout', '-q', 'main');
     const beforeA = await snapshot(w, w.paths.a.alpha);
     const beforeB = await snapshot(w, w.paths.b.alpha);
-    const spawnsBefore = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv').length;
+    const spawnsBefore = (await sessionSpawns(w.logs.a)).length;
 
     const finished = await run(w.b, { sessionId: remoteId(w.aId, started.id) });
     expect(finished.state).toBe('failed');
@@ -311,7 +317,11 @@ describe('D65: checks that stop before anything changes, and a failure half-way'
     // The pc's session runs again: started again with --resume, not closed, not marked moved.
     const old = (await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session;
     expect(old).toMatchObject({ closedAt: null, movedTo: null, live: true });
-    const spawns = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv');
+    // The process is live once spawned; the fake writes its argv line a moment later.
+    const spawns = await waitFor('the resumed spawn in the fake log', async () => {
+      const logged = await sessionSpawns(w.logs.a);
+      return logged.length > spawnsBefore ? logged : null;
+    });
     expect(spawns.length).toBe(spawnsBefore + 1);
     expect(spawns.at(-1)?.['argv']).toContain('--resume');
     // And it can be taken over once the clash is gone.

@@ -124,16 +124,6 @@ export function deviceCookieOf(answer: Answer): string | null {
   return null;
 }
 
-/** Ports in a random order (parallel test files then rarely pick the same one). */
-function shuffled(ports: readonly number[]): number[] {
-  const list = [...ports];
-  for (let i = list.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [list[i], list[j]] = [list[j] as number, list[i] as number];
-  }
-  return list;
-}
-
 /** Starts a world (see the module comment), retrying on other ports when one is taken meanwhile. */
 export async function startDeviceWorld(options: DeviceWorldOptions = {}): Promise<DeviceWorld> {
   let last: unknown = null;
@@ -150,7 +140,7 @@ export async function startDeviceWorld(options: DeviceWorldOptions = {}): Promis
 }
 
 async function startOnce(options: DeviceWorldOptions): Promise<DeviceWorld> {
-  const ports = shuffled(await freeTestPorts());
+  const ports = await freeTestPorts();
   if (ports.length < 2) throw new Error('need two free test ports');
   const [uiPort, firstDevicePort, ...spare] = ports as [number, number, ...number[]];
   const dir = await makeTempDir('devices');
@@ -210,7 +200,7 @@ async function startOnce(options: DeviceWorldOptions): Promise<DeviceWorld> {
       let state: any = null;
       // Other test files share the port range (a two-machine test takes six): wait for a free one, up to ~15 s.
       for (let round = 0; round < 30; round++) {
-        for (const port of [world.devicePort, ...shuffled(await freeTestPorts()).filter((p) => p !== world.devicePort)]) {
+        for (const port of [world.devicePort, ...(await freeTestPorts()).filter((p) => p !== world.devicePort)]) {
           world.devicePort = port;
           world.origin = `http://localhost:${port}`;
           config.deviceTestOrigin = world.origin;

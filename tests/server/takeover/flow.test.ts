@@ -7,7 +7,7 @@ import { slugForCwd } from '../../../src/core/transcript.ts';
 import type { TakeoverRun } from '../../../src/core/takeover.ts';
 import { makeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, waitFor } from '../../helpers/peers.ts';
-import { type TakeoverWorld, fakeLog, gitIn, startRepoSession, startWorkspaceSession, takeoverWorld , removeWorld } from '../../helpers/takeover.ts';
+import { type TakeoverWorld, fakeLog, gitIn, startRepoSession, startWorkspaceSession, takeoverWorld, removeWorld, sessionSpawns } from '../../helpers/takeover.ts';
 
 /**
  * D65 with two real Switchboard processes ("pc" = a, "mac" = b), fake CLIs, temp
@@ -101,11 +101,14 @@ describe('D65: a session of the other machine is taken over to this one', () => 
     expect(created).toMatchObject({ claudeSessionId: started.claudeSessionId, cwd: alphaB, folder: w.folders.b.alpha, movedFrom: { machineId: w.aId, sessionId: started.id } });
     const transcript = path.join(w.b.configDir, 'projects', slugForCwd(alphaB), `${started.claudeSessionId}.jsonl`);
     expect((await stat(transcript)).size).toBeGreaterThan(0);
-    const spawns = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'argv');
-    const resumed = spawns.find((entry) => (entry['argv'] as string[]).includes('--resume'));
+    // The fake writes its argv line a moment after the process is spawned.
+    const resumed = await waitFor('the resumed spawn in the fake log', async () => (await sessionSpawns(w.logs.b)).find((entry) => (entry['argv'] as string[]).includes('--resume')));
     expect(resumed?.['cwd']).toBe(alphaB);
     expect((resumed?.['argv'] as string[])[(resumed?.['argv'] as string[]).indexOf('--resume') + 1]).toBe(started.claudeSessionId);
-    const stdin = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line']));
+    const stdin = await waitFor('the first message in the fake log', async () => {
+      const lines = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line']));
+      return lines.join('\n').includes('This session moved from') ? lines : null;
+    });
     expect(stdin.join('\n')).toContain('This session moved from');
     expect(stdin.join('\n')).toContain(`${alphaA} → ${alphaB}`);
     expect(stdin.join('\n')).toContain('The working tree was restored as it was.');

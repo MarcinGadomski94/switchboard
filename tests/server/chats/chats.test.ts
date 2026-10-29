@@ -396,7 +396,7 @@ describe('D106 follow-up · a chat saves artifacts', () => {
     const bus = new HubBus();
     published = [];
     bus.subscribe((message) => published.push(message));
-    for (const port of (await freeTestPorts()).reverse()) {
+    for (const port of await freeTestPorts()) {
       const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
       const candidate = await buildApp({ config: { ...base, port }, token, store: w.store, webRoot: w.root, supervisor: w.supervisor, bus });
       try {

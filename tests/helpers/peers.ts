@@ -125,10 +125,13 @@ export async function startPeerNode(root: string, label: string, options: PeerNo
   };
 }
 
-/** Switches the node's peer listener on, on a free test port (retrying when another test takes it); returns `127.0.0.1:<port>`. */
+/**
+ * Switches the node's peer listener on, on a free port of this worker's slice
+ * (tests/helpers/net.ts; the next one when it is taken meanwhile); returns `127.0.0.1:<port>`.
+ */
 export async function enableListener(node: PeerNode): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
-    const port = (await freeTestPorts()).at(-1 - attempt);
+    const [port] = await freeTestPorts();
     if (port === undefined) break;
     const answer = await node.call('PUT', '/api/machines/listener', { enabled: true, port });
     if (answer.status === 200 && answer.body.listening) return answer.body.listening as string;

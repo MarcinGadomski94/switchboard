@@ -137,13 +137,13 @@ describe('download()', () => {
       'http://github.com/acme/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz',
       'https://evil.example/acme/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz',
       'https://github.com/other/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz',
-      'https://git.acme.example/acme/switchboard/releases/download/v1.0.0/switchboard-1.1.0.tar.gz',
+      'https://github.com/acme/switchboard/releases/download/v1.0.0/switchboard-1.1.0.tar.gz',
       'https://user:pw@github.com/acme/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz',
     ]) {
       await expect(real.download(release(url), 'switchboard-1.1.0.tar.gz', tmp, 10), url).rejects.toThrow(/Refused to download/);
     }
     // The right URL passes the check and reaches fetch (which fails here: no network in tests).
-    await expect(real.download(release('https://git.acme.example/acme/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz'), 'switchboard-1.1.0.tar.gz', tmp, 10)).rejects.toThrow(/no network in tests/);
+    await expect(real.download(release('https://github.com/acme/switchboard/releases/download/v1.1.0/switchboard-1.1.0.tar.gz'), 'switchboard-1.1.0.tar.gz', tmp, 10)).rejects.toThrow(/no network in tests/);
   });
 
   it('downloads through gh when the release was found through gh', async () => {

@@ -33,7 +33,8 @@ describe('D83 · continuing a session in a fresh session', () => {
       },
     });
     expect(w.supervisor.currentFresh(old.id)).toEqual({ step: 'handover' });
-    expect((await toSession(w.store, started.record)).freshContinue).toEqual({ step: 'handover' });
+    // The API shape carries the step; the fake answers the handover turn at once, so on a busy machine it may already be starting.
+    expect(['handover', 'starting']).toContain((await toSession(w.store, started.record)).freshContinue?.step);
     // A message meanwhile is refused (the continuation sends the next ones itself).
     await expect(w.supervisor.sendMessage(old.id, 'meanwhile')).rejects.toMatchObject({ code: 'switching' });
     const outcome = await started.done;

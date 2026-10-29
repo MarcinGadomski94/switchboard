@@ -59,7 +59,7 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<World> {
-  const port = (await freeTestPorts()).at(-1);
+  const [port] = await freeTestPorts();
   if (port === undefined) throw new Error('no free test port');
   const root = await makeTempDir('waiter');
   const dataDir = path.join(root, 'data');

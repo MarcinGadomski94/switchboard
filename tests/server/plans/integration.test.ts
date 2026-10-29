@@ -511,6 +511,8 @@ describe('D99 · a plan on the real path', () => {
 
   it('D120: an item whose agent ended its turn without finishing turns stopped: one "Stopped" Inbox item, waiting-you, the slot held, the dependent waiting; a reply makes it run again and closes the item', async () => {
     const r = await setup({ stoppedGraceMs: 300 });
+    // No D75 finish reminder: its extra turn would end the episodes this test counts at a time that depends on load.
+    await r.s.store.settings.set('sessions.todoReminder', false);
     const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'], 'PROJ-3': [] }, { maxConcurrency: 1 });
     await startPlan(created.id, 'agents');
     // The run's first turn ends (fake claude answers the brief) without marking its todo done.

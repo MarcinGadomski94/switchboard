@@ -3,7 +3,7 @@
  * from the real app in demo mode, in the **v2 theme** (D131), so they can be
  * refreshed after UI changes (`docs/demo.md` → *README screenshots*).
  *
- * What runs (on a loopback test port, `SWITCHBOARD_TEST_PORTS` or 4871–4879, with a
+ * What runs (on a loopback test port, `SWITCHBOARD_TEST_PORTS` or 24000–27999, with a
  * throwaway data folder; never the real app's port or data):
  * - the UI is built into `.e2e-dist/web` first (the E2E global setup; skip with
  *   `--no-build`);
