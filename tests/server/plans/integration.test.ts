@@ -156,6 +156,9 @@ async function startPlan(id: string, mergeMode: PlanMergeMode): Promise<Plan> {
   return answer.json() as Plan;
 }
 
+/** Two items' run starts, one after the other (twice {@link settledItem}'s budget for one; real git and sessions are slow under a full run). */
+const TWO_STARTS_MS = 40_000;
+
 /** Waits for the item to be in `state`. */
 async function settledItem(planId: string, key: string, state: PlanItem['state'], timeoutMs = 20_000): Promise<PlanItem> {
   return until(
@@ -234,7 +237,8 @@ describe('D99 · a plan on the real path', () => {
       expect(first.branch).toBe('PROJ-1-work-proj-1');
       expect(await r.g.git(r.repoPath, 'rev-parse', TARGET)).toBe(await r.g.git(r.repoPath, 'rev-parse', 'main'));
       await finish('PROJ-1');
-      await until(async () => ((await runningKeys(created.id)).length === 2 ? true : undefined), 'B and C running');
+      // Two run starts (a worktree and a session each), one after the other: twice settledItem's budget for one.
+      await until(async () => ((await runningKeys(created.id)).length === 2 ? true : undefined), 'B and C running', TWO_STARTS_MS);
       expect(await runningKeys(created.id)).toEqual(['PROJ-2', 'PROJ-3']);
       expect((await itemOf(created.id, 'PROJ-4')).state).toBe('waiting');
       await finish('PROJ-2');
@@ -299,7 +303,7 @@ describe('D99 · a plan on the real path', () => {
     // The reading drops; a usage update (`system`) lets the plan go on, two at a time.
     await r.s.store.usage.add({ source: 'get_usage', fiveHourPct: 20, sevenDayPct: 40, profileId: 'default-claude' });
     r.bus.publish('system', {} as never);
-    await until(async () => ((await runningKeys(created.id)).length === 2 ? true : undefined), 'two running');
+    await until(async () => ((await runningKeys(created.id)).length === 2 ? true : undefined), 'two running', TWO_STARTS_MS);
     expect((await plan(created.id)).held).toBeNull();
     expect((await itemOf(created.id, 'PROJ-3')).state).toBe('ready');
     await agentWorks(r, created.id, 'PROJ-1', { merge: true });

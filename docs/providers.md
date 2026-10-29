@@ -86,6 +86,7 @@ Source root `O/` = `https://raw.githubusercontent.com/anomalyco/opencode/v1.18.3
 - VERIFIED CLI: `opencode --version` prints the bare version (`1.18.34`); `opencode auth list` (alias of `opencode providers list`) prints `N credentials` (`0 credentials` signed out; ANSI, not machine format); `opencode models [provider]` prints `provider/model` lines; `opencode mcp list|add|auth|logout`; `opencode session list --format json` → `[{id, title, updated, created, projectId, directory}]`; `opencode export <id>` → `{info, messages: [{info, parts}]}` (`O/packages/opencode/src/cli/cmd/*.ts`).
 - VERIFIED storage: sessions are in SQLite (`~/.local/share/opencode/opencode.db`; never read by Switchboard, which uses the CLI); `auth.json` in the same folder (never read); config in `~/.config/opencode/opencode.json(c)` and the project's `opencode.json`.
 - ASSUMED the SSE stream writes no `event:` line Switchboard needs (only `data:` is parsed, as the SDK does).
+- A turn ends on `session.status` idle (or `session.idle`) after its `busy`. The event stream and `prompt_async` are two connections, so a short turn's whole stream, idle included, can arrive before the 204; that idle is kept and the turn ends once the 204 comes (before this, the session stayed `run` for good).
 
 ## Capability matrix
 `src/core/cli-providers.ts` → `CLI_CAPABILITIES` is the source; the UI shows a missing feature as a disabled control with "Not available in <CLI>: <reason>".

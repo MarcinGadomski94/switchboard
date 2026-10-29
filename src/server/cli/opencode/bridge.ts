@@ -455,7 +455,7 @@ export class OpenCodeBridge implements AgentProcess {
     if (!(await this.#ready) || !this.#sessionId) return;
     if (this.#turn || this.#queue.length === 0) return;
     const message = this.#queue.shift() as JsonRecord;
-    const turn: Turn = { startedAt: Date.now(), text: null, error: null, aborted: false, posted: false, busy: false, done: false, model: this.#model };
+    const turn: Turn = { startedAt: Date.now(), text: null, error: null, aborted: false, posted: false, busy: false, idle: false, done: false, model: this.#model };
     this.#turn = turn;
     const body = isRecord(message['message']) ? message['message'] : {};
     this.#emit({ type: 'system', subtype: 'init', session_id: this.#sessionId, cwd: this.#options.cwd, model: this.#model ?? 'default', permissionMode: this.#options.permissionMode, tools: [], claude_code_version: this.#version });
@@ -470,10 +470,17 @@ export class OpenCodeBridge implements AgentProcess {
     try {
       await this.#http('POST', `/session/${encodeURIComponent(this.#sessionId)}/prompt_async`, { parts, ...(this.#options.readOnly ? { agent: OPENCODE_CHAT_AGENT } : {}), ...(this.#options.standingInstruction ? { system: this.#options.standingInstruction } : {}), ...(model ? { model } : {}), ...(this.#variant ? { variant: this.#variant } : {}) });
       turn.posted = true;
+      if (turn.idle) this.#finish(turn);
     } catch (error) {
       turn.error = error instanceof Error ? error.message : String(error);
       this.#finish(turn);
     }
+  }
+
+  /** The session went idle: the turn ends, or, while `prompt_async` has not answered, once it does ({@link Turn.idle}). */
+  #idle(turn: Turn): void {
+    if (turn.posted) this.#finish(turn);
+    else if (turn.busy) turn.idle = true;
   }
 
   #finish(turn: Turn): void {
@@ -715,11 +722,11 @@ export class OpenCodeBridge implements AgentProcess {
         if (str(properties['sessionID']) !== this.#sessionId || !turn) return;
         const status = isRecord(properties['status']) ? str(properties['status']['type']) : null;
         if (status === 'busy') turn.busy = true;
-        if (status === 'idle' && turn.posted) this.#finish(turn);
+        if (status === 'idle') this.#idle(turn);
         return;
       }
       case 'session.idle':
-        if (str(properties['sessionID']) === this.#sessionId && turn?.posted) this.#finish(turn);
+        if (str(properties['sessionID']) === this.#sessionId && turn) this.#idle(turn);
         return;
       case 'session.error': {
         if (str(properties['sessionID']) !== this.#sessionId || !turn) return;
@@ -805,6 +812,12 @@ interface Turn {
   /** `prompt_async` answered (the server took the prompt). */
   posted: boolean;
   busy: boolean;
+  /**
+   * The session went idle after this turn's `busy` while `prompt_async` had not answered yet: the
+   * event stream and the prompt's own request are two connections, so a short turn's whole stream
+   * can arrive before that answer. The turn ends once the answer comes.
+   */
+  idle: boolean;
   done: boolean;
   /** `provider/model` the reply came from (its context window). */
   model: string | null;

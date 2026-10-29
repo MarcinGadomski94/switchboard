@@ -429,6 +429,15 @@ export async function serve(args: readonly string[], options: { readonly log: (e
         });
         const turn: Turn = { sessionID, abort, fireAbort, aborted: false, done: false };
         turns.set(sessionID, turn);
+        // `FAKE_OPENCODE_PROMPT_REPLY_MS`: the turn plays first and the 204 comes that much later (its events beat the answer).
+        const replyMs = Number(env['FAKE_OPENCODE_PROMPT_REPLY_MS'] ?? 0);
+        if (replyMs > 0) {
+          void play(session, input, turn);
+          await new Promise((resolve) => setTimeout(resolve, replyMs));
+          response.writeHead(204);
+          response.end();
+          return;
+        }
         response.writeHead(204);
         response.end();
         void play(session, input, turn);
