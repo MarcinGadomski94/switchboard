@@ -13,7 +13,7 @@ import { generateToken } from '../../../src/server/token.ts';
 import { SAY_LONG_END } from '../../../tools/fake-claude/scenarios.ts';
 import { listTranscripts, runFake } from '../../helpers/fake-claude.ts';
 import { seedFolder } from '../../helpers/folders.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, payloadType, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, payloadType, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * Fix · long messages on the real path (fake-claude with a temp CLAUDE_CONFIG_DIR):
@@ -171,8 +171,8 @@ describe('Fix · long messages', () => {
     const w = await setup();
     const session = await w.supervisor.start(newSession({ task: 'Reply with just OK.' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
-    const transcript = await findTranscriptFile(claudeConfigDir(w.env), session.claudeSessionId);
-    expect(transcript).not.toBeNull();
+    // The fake may still be writing its transcript when the turn's `done` is stored.
+    const transcript = await until(async () => (await findTranscriptFile(claudeConfigDir(w.env), session.claudeSessionId)) ?? undefined, 'the transcript file');
     const brief = `${'S'.repeat(5000)} the brief's end`;
     const folder = path.join(path.dirname(transcript as string), session.claudeSessionId, 'subagents');
     await mkdir(folder, { recursive: true });

@@ -311,7 +311,11 @@ describe('D65: checks that stop before anything changes, and a failure half-way'
     // The pc's session runs again: started again with --resume, not closed, not marked moved.
     const old = (await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session;
     expect(old).toMatchObject({ closedAt: null, movedTo: null, live: true });
-    const spawns = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv');
+    // The process is live once spawned; the fake writes its argv line a moment later.
+    const spawns = await waitFor('the resumed spawn in the fake log', async () => {
+      const logged = (await fakeLog(w.logs.a)).filter((entry) => entry['kind'] === 'argv');
+      return logged.length > spawnsBefore ? logged : null;
+    });
     expect(spawns.length).toBe(spawnsBefore + 1);
     expect(spawns.at(-1)?.['argv']).toContain('--resume');
     // And it can be taken over once the clash is gone.

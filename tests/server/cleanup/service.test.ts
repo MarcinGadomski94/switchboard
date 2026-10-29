@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type CleanupItem, type CleanupRun, type CleanupScan, runRequestOf } from '../../../src/core/cleanup.ts';
 import { CleanupError, CleanupService, statusPaths } from '../../../src/server/cleanup/service.ts';
 import { createdBranches } from '../../../src/server/cleanup/created-branches.ts';
 import type { WorktreeRecord } from '../../../src/server/db/repos/worktrees.ts';
 import { GIT_SPY_COMMAND, type GitWorld, makeGitWorld } from '../../helpers/git.ts';
+
+// Real git worktrees and sessions: 2–6 s alone, several times that while every worker runs servers and git at once.
+vi.setConfig({ testTimeout: 60_000 });
 
 const DAY = 86_400_000;
 let world: GitWorld | undefined;

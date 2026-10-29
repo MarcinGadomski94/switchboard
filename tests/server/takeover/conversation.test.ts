@@ -181,7 +181,8 @@ describe('D65: Codex and OpenCode sessions', () => {
     const created = await w.a.call('POST', '/api/sessions', { name: 'opencode-work', task: 'Reply with just OK.', folder: w.folders.a.alpha, worktrees: false, ultracode: false, provider: 'opencode' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const started = created.body as Session;
-    await waitFor('the OpenCode turn', async () => ['idle', 'done'].includes(((await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session).status));
+    // A cold `opencode serve` plus its first turn can take longer than 15 s on a loaded machine.
+    await waitFor('the OpenCode turn', async () => ['idle', 'done'].includes(((await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session).status), 60_000);
     const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, started.id) })).body as TakeoverPreview;
     expect(preview.source.conversation).toMatchObject({ kind: 'handover', files: [] });
     expect(preview.source.conversation.note).toContain('cannot be copied');
