@@ -1,9 +1,10 @@
 # CI: typecheck and the unit tests on every push to master and every pull request
 # (CONTRIBUTING.md → Run the tests that matter). The `checks` job is what the README badge shows: the
 # typecheck plus the deterministic suites (core, web, docs, tools) on Linux and
-# macOS. The server suites start real processes (peers, hooks, git worktrees) and
-# still have known timing failures, so they run in their own job that reports but
-# never fails the workflow; make it required once they are stable.
+# macOS. The server suites start real processes (peers, hooks, git worktrees); each
+# Vitest worker gets its own slice of the test ports (24000-27999, tests/helpers/net.ts).
+# One rare stall remains (CONTRIBUTING.md -> CI), so they run in their own job that
+# reports but never fails the workflow; make it required once that is fixed.
 name: ci
 
 on:
