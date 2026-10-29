@@ -25,7 +25,7 @@ import { openStore, storeFile } from '../../src/server/db/store.ts';
 import { seedFolderInDataDir } from '../../tests/helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../../tests/helpers/net.ts';
 import { type ServerProcess, startServer } from '../../tests/helpers/server-process.ts';
-import { appendHistory, seedWorld } from './world.ts';
+import { type WorldShape, appendHistory, seedWorld } from './world.ts';
 
 const run = promisify(execFile);
 
@@ -118,7 +118,8 @@ export interface BenchWorld {
   readonly sizes: ReadonlyMap<string, { readonly events: number; readonly payloadBytes: number }>;
 }
 
-export async function makeBenchWorld(label: string): Promise<BenchWorld> {
+/** `shape`: the seeded world's size (default: `DEFAULT_SHAPE`, the D95 world). */
+export async function makeBenchWorld(label: string, shape?: WorldShape): Promise<BenchWorld> {
   const tmp = await realpath(await makeTempDir(label));
   const workspace = path.join(tmp, 'workspace');
   const repo = path.join(workspace, 'microfrontends', 'acme-web-front');
@@ -144,7 +145,7 @@ export async function makeBenchWorld(label: string): Promise<BenchWorld> {
   await git('commit', '-q', '-m', 'init');
   const dataDir = path.join(tmp, 'data');
   await seedFolderInDataDir(dataDir, workspace);
-  const world = await seedWorld(dataDir);
+  const world = await seedWorld(dataDir, shape);
   return {
     tmp,
     dataDir,
