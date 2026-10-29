@@ -113,6 +113,10 @@ test('request → Needs you → set up → only that member gets it, masked → 
   await expect(input).toHaveAttribute('type', 'password');
   await input.fill(KEY);
   await form.getByTestId('access-save').click();
+  // The save's own answer closes the form (the hub can show Ready a moment earlier: the server publishes the
+  // change, restarts the member, then answers); only then is nothing typed left in the page. The answer waits
+  // for the member's restart (as a session start does), hence the session-sized bound.
+  await expect(form).toHaveCount(0, { timeout: 20_000 });
   await expect(entry).toHaveAttribute('data-status', 'ready');
   await expect(entry.getByTestId('access-status')).toContainText('Ready on');
   await expect(page.getByTestId(`access-request-${accessId}`)).toHaveCount(0);
