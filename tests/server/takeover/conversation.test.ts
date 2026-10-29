@@ -189,7 +189,7 @@ describe('D65: Codex and OpenCode sessions', () => {
       return ['idle', 'done'].includes(session.status);
     }, 60_000).catch(async (error: unknown) => {
       const log = await readFile(path.join(tmp, 'a-fake-opencode.log'), 'utf8').catch(() => '');
-      // Rare under a full parallel run: the session stays `run` with no pid (docs: CONTRIBUTING.md → CI). Evidence for the next look.
+      // A turn that never ends shows here with its evidence (this caught the bridge dropping an idle that beat prompt_async's answer).
       throw new Error(`${String(error)}\nsession: ${JSON.stringify(last)}\nserver a (tail): ${w.a.server.output().slice(-8000)}\nfake opencode log (tail): ${log.slice(-8000)}`);
     });
     const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, started.id) })).body as TakeoverPreview;

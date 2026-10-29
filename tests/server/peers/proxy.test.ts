@@ -121,11 +121,13 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
       expect(events.length).toBeGreaterThan(0);
       expect(events.every((event) => event.sessionId === id)).toBe(true);
 
-      // No echo between the two machines (each listens and connects to the other): a quiet second stays quiet.
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const before = hub.events.length;
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-      expect(hub.events.length - before).toBeLessThanOrEqual(1);
+      // No echo between the two machines (each listens and connects to the other): the hub goes quiet. An echo
+      // never does; a fixed window right after the turn also caught its last updates arriving late under load.
+      await waitFor('the hub goes quiet (no echo)', async () => {
+        const before = hub.events.length;
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        return hub.events.length - before <= 1;
+      }, 30_000);
 
       // Pause / resume, model, title go through; the answer is B's view of the session.
       const paused = await b.call('POST', `/api/sessions/${encodeURIComponent(id)}/pause`);
