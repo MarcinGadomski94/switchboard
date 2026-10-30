@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 /** File name of the per-install token inside the data dir. */
@@ -38,17 +38,27 @@ export async function loadOrCreateToken(dataDir: string, name: string = TOKEN_FI
   const existing = await readToken(file);
   if (existing) return existing;
   const token = generateToken();
+  // The token is written whole to a file of this call's own, then linked into place: `link`
+  // fails if another starting process got there first, and the file never appears empty or
+  // half-written. (Writing it in place with 'wx' let a racer read the new, still empty file as
+  // unusable and replace it with a token of its own: two starts, two tokens.)
+  const own = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(own, `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
   try {
-    // 'wx' fails if another starting process created the file in the meantime.
-    await writeFile(file, `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    return token;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    try {
+      await link(own, file);
+      return token;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const raced = await readToken(file);
+    if (raced) return raced;
+    // The file exists but is unusable (empty or corrupt): replace it whole, then answer what is
+    // there (another start replacing it at the same time may have won).
+    await chmod(own, 0o600);
+    await rename(own, file);
+    return (await readToken(file)) ?? token;
+  } finally {
+    await rm(own, { force: true });
   }
-  const raced = await readToken(file);
-  if (raced) return raced;
-  // The file exists but is unusable (empty or corrupt): replace it.
-  await writeFile(file, `${token}\n`, { encoding: 'utf8', mode: 0o600 });
-  await chmod(file, 0o600);
-  return token;
 }
