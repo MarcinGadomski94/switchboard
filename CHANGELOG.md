@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.11 (2026-10-30)
+
+### Tasks
+- **Estimates measured on the agent's working time:** a task's "took" now counts only the time its agent was actually working. It pauses while the agent waits for your answer, a GitHub check or a wake-up it scheduled, and while it is idle or done; tasks in progress together split the time. Cards and totals show both numbers, e.g. `est ~45m · took 12m (open 51h 3m)`, and a task in progress shows its working time so far. v2's amber "over estimate" warning uses working time. See `docs/todos.md` (D147).
+- **Better calibration for agents:** instead of one "too low / too high" factor, agents see how their estimates turned out per size, e.g. `≤1 h estimates took 0.6× · 1–4 h took 1.3×`, from working-time data only. Tasks finished before this release are kept as open time: Insights still shows them, labelled, but they no longer steer the agents.
+
+### Fixes
+- Two Switchboard processes starting at the same moment could each create a different login token; the token file is now written whole and put in place in one step.
+- Insights: the classic page's test matches the Outcomes table with the Plans columns.
+
 ## 2.4.10 (2026-10-29)
 
 ### Teams
