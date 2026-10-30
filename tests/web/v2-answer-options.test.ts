@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import type { InboxItem, Question } from '../../src/core/api.ts';
+import { describe, expect, it, vi } from 'vitest';
+import type { InboxItem, Question, SystemInfo } from '../../src/core/api.ts';
 import type { TeamNeedsYouItem } from '../../src/core/team.ts';
 import { type QuestionPicks, answerBody } from '../../src/web/components/question-card.ts';
-import { type BatchDraft, batchAnswers, cardButtons, questionAnswer } from '../../src/web/v2/shared/answer-model.ts';
+import { type BatchDraft, answeredDetailFromServer, batchAnswers, cardButtons, detailOf, questionAnswer } from '../../src/web/v2/shared/answer-model.ts';
+import { createNeedsYouStore } from '../../src/web/v2/shared/needs-you-store.ts';
 import { type NeedsItem, fromInbox, inboxKindOf, mergeNeedsYou } from '../../src/web/v2/shared/needs-you-model.ts';
 
 /**
@@ -120,5 +121,65 @@ describe('Fix after 2.0 · v2 answer options match classic', () => {
     ];
     for (const [draft, picks] of cases) expect(batchAnswers([REGION, PARTS], draft)).toEqual(answerBody([REGION, PARTS], picks)?.answers);
     expect(questionAnswer(PARTS, { picks: [3, 1] })).toEqual({ questionId: PARTS.id, answerIndexes: [1, 3] });
+  });
+});
+
+/**
+ * Fix after 2.4.12 · an answer's description stays a hover tooltip in v2: on every
+ * option of the open card (the props `AnswerCard` reads), and on the answered line
+ * once the card folds (classic's answered card keeps each option's `title`; v2's
+ * line showed only the labels).
+ */
+describe('option descriptions as tooltips', () => {
+  it('the card model keeps every option description verbatim (what the option `title` shows)', () => {
+    const item = fromInbox(BATCH);
+    expect(item.questions?.map((question) => question.options.map((option) => option.description))).toEqual([
+      ['Acme EU (Frankfurt)', 'Acme US (Virginia)', 'Both regions, EU first'],
+      ['The source files', 'Unit and E2E tests', 'README and docs/', 'CHANGELOG.md'],
+    ]);
+  });
+
+  it("the answered line's tooltip: each chosen option's description, plain text, one per line", () => {
+    const item = fromInbox(BATCH);
+    const answers = [
+      { questionId: REGION.id, answerIndex: 1 },
+      { questionId: PARTS.id, answerIndexes: [0, 2], text: 'and the logs' },
+    ];
+    expect(detailOf(item, { type: 'questions', answers })).toBe('US: Acme US (Virginia)\nCode: The source files\nDocs: README and docs/');
+    // Markdown in a description is stripped, as on the option's own tooltip.
+    const md = { ...item, questions: [{ ...REGION, options: [{ label: 'EU', description: 'Uses **Frankfurt** via `eu-1`' }] }] };
+    expect(detailOf(md, { type: 'questions', answers: [{ questionId: REGION.id, answerIndex: 0 }] })).toBe('EU: Uses Frankfurt via eu-1');
+    // Nothing to show: own words only, options without descriptions, other kinds of answer.
+    expect(detailOf(item, { type: 'questions', answers: [{ questionId: REGION.id, text: 'Asia' }] })).toBeUndefined();
+    expect(detailOf({ questions: [{ ...REGION, options: [{ label: 'EU' }] }] }, { type: 'questions', answers: [{ questionId: REGION.id, answerIndex: 0 }] })).toBeUndefined();
+    expect(detailOf(item, { type: 'permission', decision: 'allow-once' })).toBeUndefined();
+  });
+
+  it("the chat's answered row (the server's record) gets the same tooltip; none while a question is open", () => {
+    const region = { ...REGION, state: 'answered' as const, answerIndex: 2, answeredAt: AT };
+    const parts = { ...PARTS, state: 'answered' as const, answerIndex: 1, answerIndexes: [1, 3], answeredAt: AT };
+    expect(answeredDetailFromServer([region, parts])).toBe('Both: Both regions, EU first\nTests: Unit and E2E tests\nChangelog: CHANGELOG.md');
+    expect(answeredDetailFromServer([region, PARTS])).toBeUndefined();
+    expect(answeredDetailFromServer([])).toBeUndefined();
+  });
+
+  it('the store keeps the tooltip with the answered line', async () => {
+    vi.useFakeTimers();
+    const store = createNeedsYouStore({
+      inbox: async () => [SINGLE],
+      team: async () => [],
+      notes: async () => [],
+      system: async () => ({}) as SystemInfo,
+      send: async () => undefined,
+      now: () => Date.parse(AT),
+      storage: { getItem: () => null, setItem: () => undefined },
+      undoMs: 5_000,
+    });
+    await store.reload();
+    const item = store.getSnapshot().items.find((entry) => entry.key === 'inbox:batch-2') as NeedsItem;
+    store.answer(item, { type: 'questions', answers: [{ questionId: 'batch-2:0', answerIndex: 0 }] }, 'needs');
+    expect(store.getSnapshot().answered.get('inbox:batch-2')).toMatchObject({ summary: 'You answered “EU”', detail: 'EU: Acme EU (Frankfurt)' });
+    store.undo('inbox:batch-2');
+    vi.useRealTimers();
   });
 });

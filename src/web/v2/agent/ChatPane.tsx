@@ -17,7 +17,7 @@ import { Button, EmptyState, Icon, IconButton, Menu, type MenuItem, Skeleton, us
 import { AGENT_WORDS, WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { AnswerSlot } from '../shared/AnswerCard.tsx';
-import { answeredFromServer } from '../shared/answer-model.ts';
+import { answeredDetailFromServer, answeredFromServer } from '../shared/answer-model.ts';
 import type { NeedsItem } from '../shared/needs-you-model.ts';
 import { useNeedsItemsOf, useNeedsYou } from '../shared/needs-you.ts';
 import { SentAttachments } from './Attachments.tsx';
@@ -651,7 +651,10 @@ function QuestionRow({ batchId, questions, waiting, item, variant }: { readonly 
         <span className="v2-answered-ok">
           <Icon name={closed ? 'x' : 'check'} size="s" />
         </span>
-        <b className="v2-grow">{summary}</b>
+        {/* Fix after 2.4.12: the chosen answers' descriptions stay a tooltip, as on the card's options. */}
+        <b className="v2-grow" title={closed ? undefined : answeredDetailFromServer(questions)}>
+          {summary}
+        </b>
         {time ? <span className="v2-muted">{new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> : null}
         <span className="v2-answered-q">{questions.map((q) => q.text).join(' · ')}</span>
       </div>
