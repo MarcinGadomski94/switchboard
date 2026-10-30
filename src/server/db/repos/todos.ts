@@ -46,6 +46,14 @@ export interface TodoRecord {
   readonly actualTokens: number | null;
   /** D108 (0045): those turns' tokens by kind (`unsplit` = turns without a split); `null` = none known. */
   readonly actualUsage?: TokenUsage | null;
+  /**
+   * D147 (0052): its working time so far (closed working spans), ms: the time its working session
+   * was working while it was in progress, split equally among that session's items in progress.
+   * `null` = no working clock (it was finished before D147: open time only).
+   */
+  readonly workingMs?: number | null;
+  /** D147 (0052): when its current working span began (in progress and its working session working); `null` otherwise. */
+  readonly workingSpanStartedAt?: string | null;
   /** D81 (0035): a captured item still waits for its agent to fill it in. */
   readonly needsEnrichment: boolean;
   /** D81 (0035): how it was captured; `null` for an item added any other way. */
@@ -81,11 +89,16 @@ const SPEC: TableSpec<TodoRecord> = {
     actualMs: ['actual_ms', 'int'],
     actualTokens: ['actual_tokens', 'int'],
     actualUsage: ['actual_usage', 'json'],
+    workingMs: ['working_ms', 'int'],
+    workingSpanStartedAt: ['working_span_started_at', 'text'],
     needsEnrichment: ['needs_enrichment', 'bool'],
     capturedFrom: ['captured_from', 'text'],
     enrichAskedAt: ['enrich_asked_at', 'text'],
   },
 };
+
+/** D147: the session working on an item (SQL): its active run's session, else its own (like {@link TodoRepository} `#workingSession`). */
+const WORKING_SESSION = `CASE WHEN run_state = 'active' AND run_session_id IS NOT NULL THEN run_session_id ELSE session_id END`;
 
 /** The states in which an item is not finished (the open count). */
 const OPEN_STATES = `state IN ('open', 'in_progress')`;
@@ -112,6 +125,8 @@ function newId(): string {
 export class TodoRepository {
   readonly #ctx: RepoContext;
   readonly #table: Table<TodoRecord>;
+  /** D147: the sessions working now (status `run`), as the work clock last heard ({@link setWorking}). */
+  readonly #working = new Set<string>();
 
   constructor(ctx: RepoContext) {
     this.#ctx = ctx;
@@ -185,6 +200,8 @@ export class TodoRepository {
         spanStartedAt: null,
         actualMs: null,
         actualTokens: null,
+        workingMs: null,
+        workingSpanStartedAt: null,
       });
     });
   }
@@ -193,6 +210,8 @@ export class TodoRepository {
   async import(sessionId: string, items: ReadonlyArray<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'> & Partial<Pick<TodoRecord, 'startedAt' | 'startedBy'>>>): Promise<number> {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
+      // D147: the session's in-progress items share its working time with the imported ones from now on.
+      this.#settle([sessionId], now);
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
       let position = Number(row?.['next'] ?? 0);
       for (const item of items) {
@@ -225,9 +244,13 @@ export class TodoRepository {
           spanStartedAt: state === 'in_progress' ? now : null,
           actualMs: null,
           actualTokens: null,
+          // D147: an imported item in progress starts its working clock here.
+          workingMs: state === 'in_progress' ? 0 : null,
+          workingSpanStartedAt: null,
         });
         position += 1;
       }
+      this.#settle([sessionId], now);
       return items.length;
     });
   }
@@ -253,16 +276,22 @@ export class TodoRepository {
       if (current.state === state) return current;
       const now = this.#ctx.now();
       this.#recordReopen(current, state, now);
+      // D147: the working time so far, at the old split, before the item joins or leaves its session's items in progress.
+      const sessions = [this.#workingSession(current)];
+      this.#settle(sessions, now);
+      const settled = this.#table.get(id) ?? current;
       // D78: leaving in progress closes the span (its time and its turns' tokens are added).
-      const closed = current.state === 'in_progress' ? this.#closeSpan(current, now) : {};
+      const closed = current.state === 'in_progress' ? this.#closeSpan(settled, now) : {};
       let updated: TodoRecord | null;
       if (state === 'in_progress') {
-        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now, startedFirstAt: current.startedFirstAt ?? now, spanStartedAt: now });
+        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now, startedFirstAt: current.startedFirstAt ?? now, spanStartedAt: now, ...firstClock(current) });
       } else if (state === 'open') {
-        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now, spanStartedAt: null });
+        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null });
       } else {
-        updated = this.#table.update(id, { ...closed, state, doneAt: now, updatedAt: now, spanStartedAt: null });
+        updated = this.#table.update(id, { ...closed, state, doneAt: now, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null });
       }
+      this.#settle(sessions, now);
+      updated = this.#table.get(id);
       if (updated) this.#recordActuals(updated, now);
       return updated;
     });
@@ -275,7 +304,9 @@ export class TodoRepository {
       if (!current) return null;
       const now = this.#ctx.now();
       this.#recordReopen(current, 'in_progress', now);
-      const updated = this.#table.update(id, {
+      const sessions = [this.#workingSession(current)];
+      this.#settle(sessions, now);
+      this.#table.update(id, {
         state: 'in_progress',
         doneAt: null,
         startedAt: now,
@@ -284,15 +315,18 @@ export class TodoRepository {
         updatedAt: now,
         startedFirstAt: current.startedFirstAt ?? now,
         spanStartedAt: current.state === 'in_progress' ? (current.spanStartedAt ?? now) : now,
+        ...(current.state === 'in_progress' ? {} : firstClock(current)),
       });
+      this.#settle(sessions, now);
+      const updated = this.#table.get(id);
       if (updated) this.#recordActuals(updated, now);
       return updated;
     });
   }
 
   /** D75: puts back an item's state and start as they were (a ▶ Start whose message could not be sent; D76: a run that could not start). */
-  async restoreState(record: Pick<TodoRecord, 'id' | 'state' | 'doneAt' | 'startedAt' | 'startedBy' | 'remindedAt' | 'updatedAt'> & Partial<Pick<TodoRecord, 'startedFirstAt' | 'spanStartedAt' | 'runSessionId' | 'runState'>>): Promise<TodoRecord | null> {
-    return this.#table.update(record.id, {
+  async restoreState(record: Pick<TodoRecord, 'id' | 'state' | 'doneAt' | 'startedAt' | 'startedBy' | 'remindedAt' | 'updatedAt'> & Partial<Pick<TodoRecord, 'startedFirstAt' | 'spanStartedAt' | 'runSessionId' | 'runState' | 'workingMs'>>): Promise<TodoRecord | null> {
+    return transaction(this.#ctx.db, () => this.#withClock([record.id], () => this.#table.update(record.id, {
       state: record.state,
       doneAt: record.doneAt,
       startedAt: record.startedAt,
@@ -302,12 +336,16 @@ export class TodoRepository {
       ...(record.startedFirstAt !== undefined ? { startedFirstAt: record.startedFirstAt } : {}),
       ...(record.spanStartedAt !== undefined ? { spanStartedAt: record.spanStartedAt } : {}),
       ...(record.runSessionId !== undefined ? { runSessionId: record.runSessionId, runState: record.runState ?? null } : {}),
-    });
+      // D147: its working clock as it was (the failed start's moment is dropped); the work clock re-opens a span for an item in progress.
+      ...(record.workingMs !== undefined ? { workingMs: record.workingMs } : {}),
+      workingSpanStartedAt: null,
+    })));
   }
 
   /** D76: links the item to its run session (`active`), or marks its run `discarded`. */
   async setRun(id: string, runSessionId: string, runState: TodoRunState): Promise<TodoRecord | null> {
-    return this.#table.update(id, { runSessionId, runState, updatedAt: this.#ctx.now() });
+    // D147: the item's working session may change (its run's, else its own): both are settled.
+    return transaction(this.#ctx.db, () => this.#withClock([id], () => this.#table.update(id, { runSessionId, runState, updatedAt: this.#ctx.now() })));
   }
 
   /** D76: the items run in session `runSessionId` (any state, any run state). */
@@ -316,8 +354,120 @@ export class TodoRepository {
   }
 
   /** D78: the session that works on the item: its active run's session, else its own. */
-  #workingSession(record: TodoRecord): string {
+  #workingSession(record: Pick<TodoRecord, 'runState' | 'runSessionId' | 'sessionId'>): string {
     return record.runState === 'active' && record.runSessionId ? record.runSessionId : record.sessionId;
+  }
+
+  // ── D147: the working clock ────────────────────────────────────────
+
+  /**
+   * D147: session `sessionId` started (`true`) or stopped working (status `run`, as the work clock
+   * reads `sessionUpdated`). The time so far is split among the items it works on, and their spans
+   * open (working) or close (not); `at` is when (ISO; default now). Answers the ids of the items
+   * whose working time changed.
+   */
+  async setWorking(sessionId: string, working: boolean, at?: string): Promise<string[]> {
+    if (this.#working.has(sessionId) === working) return [];
+    return transaction(this.#ctx.db, () => {
+      const now = at ?? this.#ctx.now();
+      const touched = this.#settle([sessionId], now);
+      if (working) this.#working.add(sessionId);
+      else this.#working.delete(sessionId);
+      return [...new Set([...touched, ...this.#settle([sessionId], now)])];
+    });
+  }
+
+  /** D147: whether session `sessionId` works, as the work clock last said (tests). */
+  isWorking(sessionId: string): boolean {
+    return this.#working.has(sessionId);
+  }
+
+  /**
+   * D147: closes every working span still open in the database (a start after a crash or a stop
+   * that did not close them): each at its working session's **last known working moment**, its
+   * newest event since the span began (else the span's start: nothing was seen working), never
+   * later than now. The time is split among that session's open spans as usual. The clock then
+   * forgets every session (they are working again only when their status says so).
+   */
+  async closeWorkSpans(): Promise<number> {
+    return transaction(this.#ctx.db, () => {
+      const now = this.#ctx.now();
+      this.#working.clear();
+      const open = this.#table.select(`working_span_started_at IS NOT NULL`, [], 'id');
+      const bySession = new Map<string, TodoRecord[]>();
+      for (const record of open) {
+        const key = this.#workingSession(record);
+        bySession.set(key, [...(bySession.get(key) ?? []), record]);
+      }
+      for (const [sessionId, records] of bySession) {
+        const from = records.reduce((min, record) => (record.workingSpanStartedAt && record.workingSpanStartedAt < min ? record.workingSpanStartedAt : min), records[0]?.workingSpanStartedAt ?? now);
+        const row = this.#ctx.db.prepare('SELECT MAX(ts) AS at FROM events WHERE session_id = ? AND ts >= ? AND ts <= ?').get(sessionId, from, now);
+        const last = typeof row?.['at'] === 'string' ? row['at'] : null;
+        for (const record of records) {
+          const start = record.workingSpanStartedAt ?? now;
+          const end = last !== null && last > start ? last : start;
+          const ms = Math.max(0, Date.parse(end) - Date.parse(start));
+          this.#table.update(record.id, { workingMs: (record.workingMs ?? 0) + (Number.isFinite(ms) ? Math.round(ms / records.length) : 0), workingSpanStartedAt: null });
+        }
+      }
+      return open.length;
+    });
+  }
+
+  /** D147: closes the open working spans now (Switchboard is stopping) and forgets every session. */
+  async stopWorkClock(): Promise<void> {
+    const sessions = [...this.#working];
+    if (sessions.length === 0) return;
+    transaction(this.#ctx.db, () => {
+      const now = this.#ctx.now();
+      this.#settle(sessions, now);
+      this.#working.clear();
+      this.#settle(sessions, now);
+    });
+  }
+
+  /**
+   * D147: runs `change` (one write to items `ids`) between two settlements of their working
+   * sessions before and after, so the time before it is split at the old share and the spans
+   * after it follow the new one. Runs inside the caller's transaction.
+   */
+  #withClock<T>(ids: readonly string[], change: () => T): T {
+    const sessionsOf = (): string[] => ids.map((id) => this.#table.get(id)).filter((record): record is TodoRecord => record !== null).map((record) => this.#workingSession(record));
+    const now = this.#ctx.now();
+    const before = sessionsOf();
+    this.#settle(before, now);
+    const result = change();
+    this.#settle([...before, ...sessionsOf()], now);
+    return result;
+  }
+
+  /**
+   * D147: brings the working time of the items in progress that sessions `sessionIds` work on up
+   * to `now`: each open span adds its time divided by how many such items have one (the equal
+   * split), then a span opens at `now` for every one of them (also one that had none) while its
+   * session works, and none stays open while it does not. Items without a working clock
+   * (`working_ms` NULL: finished before D147, reopened) take no part. Answers the ids it changed.
+   */
+  #settle(sessionIds: readonly string[], now: string): string[] {
+    const changed: string[] = [];
+    for (const sessionId of new Set(sessionIds)) {
+      const items = this.#table.select(`state = 'in_progress' AND working_ms IS NOT NULL AND ${WORKING_SESSION} = ?`, [sessionId], 'id');
+      const open = items.filter((record) => record.workingSpanStartedAt);
+      const working = this.#working.has(sessionId);
+      const nowMs = Date.parse(now);
+      for (const record of items) {
+        let workingMs = record.workingMs ?? 0;
+        if (record.workingSpanStartedAt) {
+          const ms = Math.max(0, nowMs - Date.parse(record.workingSpanStartedAt));
+          if (Number.isFinite(ms)) workingMs += Math.round(ms / open.length);
+        }
+        const span = working ? now : null;
+        if (workingMs === record.workingMs && span === (record.workingSpanStartedAt ?? null)) continue;
+        this.#table.update(record.id, { workingMs, workingSpanStartedAt: span });
+        changed.push(record.id);
+      }
+    }
+    return changed;
   }
 
   /**
@@ -398,8 +548,8 @@ export class TodoRepository {
     const usage = readTokenUsage(record.actualUsage) ?? (record.actualTokens === null ? null : { ...EMPTY_USAGE, unsplit: record.actualTokens });
     this.#ctx.db
       .prepare(
-        `INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, run_session_id, priority, provider, model, profile_id, usage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (todo_id) DO UPDATE SET title = excluded.title, estimate_minutes = excluded.estimate_minutes, actual_ms = excluded.actual_ms, actual_tokens = excluded.actual_tokens, priority = excluded.priority`,
+        `INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, run_session_id, priority, provider, model, profile_id, usage, working_ms, measure) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (todo_id) DO UPDATE SET title = excluded.title, estimate_minutes = excluded.estimate_minutes, actual_ms = excluded.actual_ms, actual_tokens = excluded.actual_tokens, priority = excluded.priority, working_ms = excluded.working_ms, measure = excluded.measure`,
       )
       .run(
         record.id,
@@ -416,6 +566,9 @@ export class TodoRepository {
         model,
         typeof session?.['profile_id'] === 'string' ? session['profile_id'] : null,
         usage === null ? null : JSON.stringify(usage),
+        // D147: its working time; an item without a working clock (finished before D147) is open time only.
+        typeof record.workingMs === 'number' ? record.workingMs : null,
+        typeof record.workingMs === 'number' ? 'working' : 'open',
       );
   }
 
@@ -423,7 +576,7 @@ export class TodoRepository {
   async actualsFor(sessionIds: readonly string[]): Promise<Map<string, TodoActualSample[]>> {
     const out = new Map<string, TodoActualSample[]>();
     if (sessionIds.length === 0) return out;
-    const rows = this.#ctx.db.prepare(`SELECT session_id, estimate_minutes, actual_ms, actual_tokens FROM todo_actuals WHERE session_id IN (${placeholders(sessionIds.length)}) ORDER BY completed_at`).all(...sessionIds);
+    const rows = this.#ctx.db.prepare(`SELECT session_id, estimate_minutes, actual_ms, actual_tokens, working_ms, measure FROM todo_actuals WHERE session_id IN (${placeholders(sessionIds.length)}) ORDER BY completed_at`).all(...sessionIds);
     for (const row of rows) {
       const list = out.get(String(row['session_id'])) ?? [];
       list.push(sampleOf(row));
@@ -432,11 +585,14 @@ export class TodoRepository {
     return out;
   }
 
-  /** D78: the most recent completed items with an estimate, newest first: of session `sessionId`, or of every session in folder `folder`. */
+  /**
+   * D78: the most recent completed items with an estimate, newest first: of session `sessionId`, or
+   * of every session in folder `folder`. D147: only those measured in working time (calibration's).
+   */
   async recentEstimated(where: { readonly sessionId: string } | { readonly folder: string }, limit: number): Promise<TodoActualSample[]> {
     const [column, value] = 'sessionId' in where ? ['session_id', where.sessionId] : ['folder', where.folder];
     const rows = this.#ctx.db
-      .prepare(`SELECT estimate_minutes, actual_ms, actual_tokens FROM todo_actuals WHERE ${column} = ? AND estimate_minutes IS NOT NULL ORDER BY completed_at DESC, rowid DESC LIMIT ?`)
+      .prepare(`SELECT estimate_minutes, actual_ms, actual_tokens, working_ms, measure FROM todo_actuals WHERE ${column} = ? AND estimate_minutes IS NOT NULL AND measure = 'working' ORDER BY completed_at DESC, rowid DESC LIMIT ?`)
       .all(value, limit);
     return rows.map(sampleOf);
   }
@@ -470,7 +626,17 @@ export class TodoRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    return this.#table.delete(id as SQLInputValue);
+    // D147: an item in progress leaves its session's split.
+    return transaction(this.#ctx.db, () => {
+      const record = this.#table.get(id);
+      if (!record) return false;
+      const now = this.#ctx.now();
+      const sessions = [this.#workingSession(record)];
+      this.#settle(sessions, now);
+      const deleted = this.#table.delete(id as SQLInputValue);
+      this.#settle(sessions, now);
+      return deleted;
+    });
   }
 
   /** Removes the session's done items; answers how many. */
@@ -514,7 +680,11 @@ export class TodoRepository {
     return transaction(this.#ctx.db, () => {
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(toSessionId);
       const offset = Number(row?.['next'] ?? 0);
+      // D147: the moved items in progress work on the fresh session's clock from now on.
+      const now = this.#ctx.now();
+      this.#settle([fromSessionId, toSessionId], now);
       const moved = this.#ctx.db.prepare('UPDATE session_todos SET session_id = ?, position = position + ? WHERE session_id = ?').run(toSessionId, offset, fromSessionId);
+      this.#settle([fromSessionId, toSessionId], now);
       return Number(moved.changes);
     });
   }
@@ -529,7 +699,10 @@ export class TodoRepository {
   async followContinuation(fromSessionId: string, toSessionId: string): Promise<string[]> {
     return transaction(this.#ctx.db, () => {
       const rows = this.#ctx.db.prepare('SELECT DISTINCT session_id FROM session_todos WHERE run_session_id = ?').all(fromSessionId);
-      this.#ctx.db.prepare('UPDATE session_todos SET run_session_id = ?, updated_at = ? WHERE run_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId);
+      const now = this.#ctx.now();
+      this.#settle([fromSessionId, toSessionId], now);
+      this.#ctx.db.prepare('UPDATE session_todos SET run_session_id = ?, updated_at = ? WHERE run_session_id = ?').run(toSessionId, now, fromSessionId);
+      this.#settle([fromSessionId, toSessionId], now);
       this.#ctx.db.prepare('UPDATE todo_actuals SET session_id = ? WHERE session_id = ?').run(toSessionId, fromSessionId);
       return rows.map((row) => String(row['session_id']));
     });
@@ -546,9 +719,17 @@ export class TodoRepository {
 function sampleOf(row: Readonly<Record<string, unknown>>): TodoActualSample {
   const estimate = row['estimate_minutes'];
   const tokens = row['actual_tokens'];
+  const working = row['working_ms'];
   return {
     estimateMinutes: typeof estimate === 'number' || typeof estimate === 'bigint' ? Number(estimate) : null,
     actualMs: Number(row['actual_ms'] ?? 0),
     actualTokens: typeof tokens === 'number' || typeof tokens === 'bigint' ? Number(tokens) : null,
+    // D147: an open-time-only row (finished before D147) has no working time.
+    workingMs: row['measure'] === 'working' && (typeof working === 'number' || typeof working === 'bigint') ? Number(working) : null,
   };
+}
+
+/** D147: an item going in progress for the first time starts its working clock (one that never had one before D147 too). */
+function firstClock(current: Pick<TodoRecord, 'startedFirstAt' | 'workingMs'>): Partial<TodoRecord> {
+  return current.startedFirstAt === null && (current.workingMs ?? null) === null ? { workingMs: 0, workingSpanStartedAt: null } : {};
 }

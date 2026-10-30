@@ -187,7 +187,7 @@ function Column({ column, cards, actions, busy, now, extras, footer }: { readonl
         <TaskCardView key={cardKey(card.group.sessionId, card.todo.id)} card={card} actions={actions} busy={busy.has(cardKey(card.group.sessionId, card.todo.id))} now={now} extras={extras} />
       ))}
       {footer ? (
-        <p className="v2-tasks-accuracy" data-testid="v2-tasks-accuracy">
+        <p className="v2-tasks-accuracy" data-testid="v2-tasks-accuracy" data-tour="v2-tasks-accuracy">
           {footer}
         </p>
       ) : null}

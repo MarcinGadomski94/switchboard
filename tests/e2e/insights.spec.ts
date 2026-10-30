@@ -41,6 +41,8 @@ test.beforeAll(async () => {
     // Opus 10 / 30 / 50 min against 20; Haiku 4 / 10 / 6 against 10 (the unit fixture's numbers).
     [10, 30, 50].forEach((minutes, i) => todo.run(`o${i}`, acme.id, '/work/acme', `Upload step ${i + 1}`, 20, minutes * MIN, 31_000, at(86_400_000 + i * MIN), 'claude-opus-5-5', split));
     [4, 10, 6].forEach((minutes, i) => todo.run(`h${i}`, docs.id, '/work/docs', `Docs page ${i + 1}`, 10, minutes * MIN, 31_000, at(2 * 86_400_000 + i * MIN), 'claude-haiku-4-5', split));
+    // D147: measured in working time (the same as their open time here).
+    store.db.prepare("UPDATE todo_actuals SET working_ms = actual_ms, measure = 'working'").run();
     store.db.prepare("INSERT INTO todo_reopens (todo_id, session_id, reopened_at) VALUES ('o1', ?, ?)").run(acme.id, at(86_400_000));
     // The Default account's 5-hour window: 20 → 40 % over the last hour, resetting in 2 hours.
     const reset = new Date(now + 2 * 3_600_000).toISOString();

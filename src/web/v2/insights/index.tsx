@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { CLI_LABELS, type CliProviderId } from '../../../core/cli-providers.ts';
-import type { InsightsAnswer } from '../../../core/insights.ts';
+import { type InsightsAnswer, openTimeNote } from '../../../core/insights.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { forecastText } from '../../views/insights/insights-view.ts';
@@ -333,6 +333,12 @@ function Body({ answer, trend, range }: { readonly answer: InsightsAnswer; reado
           {answer.estimates.median === null ? '' : ` · median ${answer.estimates.median.toFixed(1)}×`}
         </div>
         <HBars bars={accuracyRows} label={`${INSIGHTS_WORDS.estimateVsActual}: ${accuracyRows.map((b) => `${b.label}: ${b.valueText}`).join(', ')}`} testId="v2-insights-accuracy-bars" />
+        {/* D147: the accuracy is working time; the open-time-only tasks and the open time apart. */}
+        {openTimeNote(answer.estimates) ? (
+          <div className="v2-ins-chart-sub" data-testid="v2-insights-open-time">
+            {openTimeNote(answer.estimates)}
+          </div>
+        ) : null}
       </Card>
     </>
   );

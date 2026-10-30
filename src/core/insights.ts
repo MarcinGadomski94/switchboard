@@ -361,7 +361,13 @@ export interface TodoActualRow extends InsightDims {
   readonly title: string;
   readonly priority: TodoPriority | null;
   readonly estimateMinutes: number | null;
+  /** D78's actual time: D147, its open time (in progress → done). */
   readonly actualMs: number;
+  /**
+   * D147 (`todo_actuals.working_ms`, `measure = working`): its working time, what the estimate
+   * accuracy uses; `null` / absent = open time only (finished before D147, or an older peer's row).
+   */
+  readonly workingMs?: number | null;
   readonly actualTokens: number | null;
   /** Its tokens by kind (`unsplit` = D78's total without a split: items completed before 1.20). */
   readonly usage: TokenUsage;
@@ -547,7 +553,10 @@ export interface TodoCost {
   readonly model: string;
   readonly modelLabel: string;
   readonly tokens: number;
+  /** Its open time (D78's actual). */
   readonly actualMs: number;
+  /** D147 (additive): its working time; `null` = open time only. */
+  readonly workingMs?: number | null;
   /** `null` when its model has no price row. */
   readonly cost: number | null;
   /** Part of its tokens has no split: the cost is a lower bound. */
@@ -672,7 +681,12 @@ export interface InsightsAnswer {
     /** D106: chats, counted apart (never in the numbers above). */
     readonly chats: { readonly turns: number; readonly tokens: number; readonly durationMs: number };
   };
-  readonly estimates: AccuracyDistribution & { readonly byModel: readonly AccuracyGroup[]; readonly byFolder: readonly AccuracyGroup[] };
+  /**
+   * D147: the accuracy of the items measured in working time; `openOnly` = estimated items left out
+   * because they have open time only (finished before D147); `open` = every estimated item's open
+   * time ÷ estimate, apart (for planning).
+   */
+  readonly estimates: AccuracyDistribution & { readonly byModel: readonly AccuracyGroup[]; readonly byFolder: readonly AccuracyGroup[]; readonly openOnly?: number; readonly open?: AccuracyDistribution };
   readonly outcomes: { readonly plansOn: boolean; readonly byModel: readonly OutcomeRow[] };
   readonly cost: CostSection;
   readonly forecast: readonly AccountForecast[];
@@ -739,19 +753,38 @@ export function accuracyBucket(value: number): AccuracyBucketKey {
   return (ACCURACY_BUCKETS.find((bucket) => value < bucket.max) ?? ACCURACY_BUCKETS[3]).key;
 }
 
-/** `actual ÷ estimate` of a completed todo with an estimate; `null` without one. */
-export function accuracyRatio(todo: Pick<TodoActualRow, 'estimateMinutes' | 'actualMs'>): number | null {
-  return typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0 ? todo.actualMs / (todo.estimateMinutes * 60_000) : null;
+/**
+ * `actual ÷ estimate` of a completed todo with an estimate; `null` without one. D147: the actual
+ * is its working time (`null` for an open-time-only row), or with `measure: 'open'` its open time.
+ */
+export function accuracyRatio(todo: Pick<TodoActualRow, 'estimateMinutes' | 'actualMs' | 'workingMs'>, measure: 'working' | 'open' = 'working'): number | null {
+  if (typeof todo.estimateMinutes !== 'number' || todo.estimateMinutes <= 0) return null;
+  const actual = measure === 'open' ? todo.actualMs : todo.workingMs;
+  return typeof actual === 'number' ? actual / (todo.estimateMinutes * 60_000) : null;
 }
 
-/** The distribution of `actual ÷ estimate` over the todos with an estimate. */
-export function accuracyDistribution(todos: readonly Pick<TodoActualRow, 'estimateMinutes' | 'actualMs'>[]): AccuracyDistribution {
-  const ratios = todos.map(accuracyRatio).filter((value): value is number => value !== null);
+/** The distribution of `actual ÷ estimate` over the todos with an estimate (D147: and the measure). */
+export function accuracyDistribution(todos: readonly Pick<TodoActualRow, 'estimateMinutes' | 'actualMs' | 'workingMs'>[], measure: 'working' | 'open' = 'working'): AccuracyDistribution {
+  const ratios = todos.map((todo) => accuracyRatio(todo, measure)).filter((value): value is number => value !== null);
   return {
     count: ratios.length,
     median: median(ratios),
     buckets: ACCURACY_BUCKETS.map((bucket) => ({ key: bucket.key, label: bucket.label, count: ratios.filter((value) => accuracyBucket(value) === bucket.key).length })),
   };
+}
+
+/**
+ * D147: the line under the estimate accuracy that names what is left out and the open time:
+ * `Working time only · 12 finished before working time was measured (open time only) left out ·
+ * open time (in progress → done): median 3.4× over 20`; `''` when there is nothing to say.
+ */
+export function openTimeNote(estimates: Pick<InsightsAnswer['estimates'], 'openOnly' | 'open'>): string {
+  const parts: string[] = [];
+  const openOnly = estimates.openOnly ?? 0;
+  if (openOnly > 0) parts.push(`${openOnly} finished before working time was measured (open time only) left out`);
+  const open = estimates.open;
+  if (open && open.count > 0 && open.median !== null) parts.push(`open time (in progress → done): median ${open.median.toFixed(1)}× over ${open.count}`);
+  return parts.length === 0 ? '' : `Working time only · ${parts.join(' · ')}`;
 }
 
 function accuracyGroups(todos: readonly TodoActualRow[], keyOf: (todo: TodoActualRow) => string, labelOf: (key: string) => string): AccuracyGroup[] {
@@ -782,6 +815,7 @@ export function todoCost(todo: TodoActualRow, prices: PriceTable): TodoCost {
     modelLabel: modelLabel(todo.model),
     tokens: todoTokens(todo),
     actualMs: todo.actualMs,
+    workingMs: todo.workingMs ?? null,
     cost: price ? usageCost(todo.usage, price) : null,
     lowerBound: price !== null && todo.usage.unsplit > 0,
     completedAt: todo.completedAt,
@@ -971,7 +1005,9 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
   const chats = chatTurns.reduce((acc, row) => ({ turns: acc.turns + row.turns, tokens: acc.tokens + row.tokens, durationMs: acc.durationMs + row.durationMs }), { turns: 0, tokens: 0, durationMs: 0 });
 
   // 2 · Estimates.
-  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, labelFolder) };
+  // D147: working time; the open-time-only rows (before D147) are counted apart, and every row's open time is shown apart.
+  const openOnly = todos.filter((t) => accuracyRatio(t, 'open') !== null && accuracyRatio(t) === null).length;
+  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, labelFolder), openOnly, open: accuracyDistribution(todos, 'open') };
 
   // 3 · Outcomes and rework, per model.
   const plans = periodPlans?.filter((row) => matchesFilters(row, query)) ?? null;

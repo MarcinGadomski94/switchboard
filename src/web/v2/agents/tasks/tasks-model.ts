@@ -8,7 +8,7 @@
 import type { SessionStatus } from '../../../../core/model.ts';
 import type { SessionTodo, TodoActualsTotal, TodoGroup, TodoPatchInput, TodoPriority } from '../../../../core/api.ts';
 import type { MachineState } from '../../../../core/peers.ts';
-import { formatActual } from '../../../../core/todo-actuals.ts';
+import { formatActual, tookText } from '../../../../core/todo-actuals.ts';
 import { captureTitle } from '../../../../core/todo-capture.ts';
 import { TODO_TITLE_MAX, formatTodoMinutes, todoPriorityRank } from '../../../../core/todos.ts';
 import type { Tone } from '../../glossary.ts';
@@ -124,21 +124,27 @@ export function elapsedMs(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'starte
 
 /**
  * The card's estimate vs actual (the prototype's): `est 20m` (open), `est 15m · 18m so far`
- * (in progress), `est 1h · took 48m` (done); each part only when known; `''` for none.
+ * (in progress: its open time so far), `est 1h · took 12m (open 2h 5m)` (done, D147: its
+ * working time, with its open time; `est 1h · open 2h 5m` for one finished before D147); each
+ * part only when known; `''` for none.
  */
-export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt'>, now: number): string {
+export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs'>, now: number): string {
   const parts: string[] = [];
   if (typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0) parts.push(`est ${formatTodoMinutes(todo.estimateMinutes)}`);
   if (todo.state !== 'open') {
     const ms = elapsedMs(todo, now);
-    if (ms !== null) parts.push(todo.state === 'done' ? `took ${formatActual(ms)}` : `${formatActual(ms)} so far`);
+    if (ms !== null) parts.push(todo.state === 'done' ? tookText(todo.workingMs, ms) : `${formatActual(ms)} so far`);
   }
   return parts.join(' · ');
 }
 
-/** `true` when an in-progress item has run past its estimate (the line turns amber, with the word "over"). */
-export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt'>, now: number): boolean {
+/**
+ * `true` when an in-progress item has run past its estimate (the line turns amber, with the word
+ * "over"). D147: a done item compares its working time (one with open time only never reads over).
+ */
+export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs'>, now: number): boolean {
   if (typeof todo.estimateMinutes !== 'number' || todo.state === 'open') return false;
+  if (todo.state === 'done') return typeof todo.workingMs === 'number' && todo.workingMs > todo.estimateMinutes * 60_000;
   const ms = elapsedMs(todo, now);
   return ms !== null && ms > todo.estimateMinutes * 60_000;
 }
@@ -179,17 +185,20 @@ export function blockedReason(machine: { readonly name: string; readonly state: 
 /**
  * The estimates' accuracy over every agent's completed, estimated items (D78's
  * `actuals`): 100% minus the relative error of the summed actual time against the summed
- * estimates, never below 0. `null` while nothing estimated has completed.
+ * estimates, never below 0. D147: the actual is the working time, so only items measured in it
+ * count (those finished before D147, and an older peer's totals, have open time only). `null`
+ * while nothing estimated has completed.
  */
 export function estimateAccuracy(totals: ReadonlyArray<TodoActualsTotal | null | undefined>): { readonly percent: number; readonly count: number } | null {
   let estimate = 0;
   let actual = 0;
   let count = 0;
   for (const total of totals) {
-    if (!total || total.estimated <= 0) continue;
-    estimate += total.estimateMinutes * 60_000;
-    actual += total.estimatedActualMs;
-    count += total.estimated;
+    const working = total?.working;
+    if (!working || working.estimated <= 0) continue;
+    estimate += working.estimateMinutes * 60_000;
+    actual += working.estimatedMs;
+    count += working.estimated;
   }
   if (count === 0 || estimate <= 0) return null;
   const percent = Math.round(Math.max(0, 1 - Math.abs(actual - estimate) / estimate) * 100);

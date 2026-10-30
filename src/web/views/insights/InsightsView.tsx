@@ -1,5 +1,5 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ACCURACY_BUCKETS, INSIGHTS_PERIODS, type AccuracyDistribution, type InsightsAnswer, type PeriodCostRow, type TimeTokensRow, type TrendPoint } from '../../../core/insights.ts';
+import { ACCURACY_BUCKETS, INSIGHTS_PERIODS, openTimeNote, type AccuracyDistribution, type InsightsAnswer, type PeriodCostRow, type TimeTokensRow, type TrendPoint } from '../../../core/insights.ts';
 import { machinesNotice, useInsights } from './useInsights.ts';
 import { CLI_LABELS, type CliProviderId } from '../../../core/cli-providers.ts';
 import type { MachinesView } from '../../../core/peers.ts';
@@ -205,9 +205,9 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
         ) : null}
       </Section>
 
-      <Section id="estimates" title="Estimate accuracy" what="Completed todos with an estimate: the time they really took ÷ the estimate (1× = on the estimate; above 1× took longer).">
+      <Section id="estimates" title="Estimate accuracy" what="Completed todos with an estimate: their working time (while their agent was working, D147) ÷ the estimate (1× = on the estimate; above 1× took longer). Todos finished before working time was measured have open time only and are left out.">
         {estimates.count === 0 ? (
-          <p className="sb-ins-empty">No completed todo with an estimate in this period.</p>
+          <p className="sb-ins-empty">{(estimates.openOnly ?? 0) > 0 ? 'No completed todo with an estimate and a working time in this period.' : 'No completed todo with an estimate in this period.'}</p>
         ) : (
           <div className="sb-ins-grid sb-ins-grid-2">
             <Histogram title={`All · ${estimates.count} todos · median ${ratioText(estimates.median)}`} dist={estimates} testId="accuracy-all" />
@@ -244,6 +244,11 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
             </div>
           </div>
         )}
+        {openTimeNote(estimates) ? (
+          <p className="sb-ins-foot" data-testid="accuracy-open-time">
+            {openTimeNote(estimates)}
+          </p>
+        ) : null}
       </Section>
 
       <Section id="outcomes" title="Outcomes and rework" what="Per model. Reopened: completed todos that went from done back to open or in progress at least once (recorded from 1.20). Plans: items merged ÷ items that ended (merged, failed, blocked); sent back: Merge-step decisions that were Send back. Reverts: turns undone (Revert / Undo last turn, minus Redos) per 100 turns.">
@@ -342,7 +347,7 @@ function Sections({ answer, onOpen }: { readonly answer: InsightsAnswer; readonl
                         <Link to={{ view: 'session', id: row.runSessionId ?? row.sessionId, tab: 'chat' }}>{row.title}</Link>
                       </th>
                       <td>{row.modelLabel}</td>
-                      <td>{durationText(row.actualMs)}</td>
+                      <td>{typeof row.workingMs === 'number' ? durationText(row.workingMs) : `${durationText(row.actualMs)} (open)`}</td>
                       <td>{tokensText(row.tokens)}</td>
                       <td>
                         {row.lowerBound ? '≥ ' : ''}

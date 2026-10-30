@@ -89,7 +89,15 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   `v2Route: '/settings/advanced/sessions'`. It says that a merged agent's worktree, its local branch and
   the remote branch the agent pushed go by themselves, also the copies agents make themselves, never while
   the agent works or anything is uncommitted, unpushed or running there, and that the chat says what went
-  (`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*). The last of the chain ("(9 of 9)").
+  (`docs/cleanup.md` → *Automatic clean-up of merged worktrees (D145)*). Ninth of the chain ("(9 of 10)").
+- **"How long the agent really worked"** (`working-time`, version 2.4.11, `ui: 'v2'`, decision D147):
+  one step on Tasks: the estimates' accuracy under Done (`v2-tasks-accuracy`), else a card's estimate line
+  (`v2-todo-estimate`), Tasks in the rail (`v2-nav-tasks`) or the phone's More tab (`v2-tab-more`);
+  `v2Route: '/tasks'`. It says that a finished task's "took" is now the time its agent was working on it
+  (paused while it waits for the developer or is idle, split between tasks worked on at once), that the
+  start-to-finish time is still shown as "open", and that tasks finished before it have open time only and
+  are left out of the agents' estimate feedback, which now comes per estimate size
+  (`docs/todos.md` → *Actual vs. estimate (D78, D147)*). The last of the chain ("(10 of 10)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

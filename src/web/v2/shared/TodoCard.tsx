@@ -181,7 +181,7 @@ export function TodoCard({ todo, workerStatus, now, layout, handlers, blocked, b
           </Chip>
         )}
         {model.estimate ? (
-          <span className="v2-todo-est" data-over={model.over ? 'true' : undefined} data-testid="v2-todo-estimate">
+          <span className="v2-todo-est" data-over={model.over ? 'true' : undefined} data-testid="v2-todo-estimate" data-tour="v2-todo-estimate">
             {model.over ? <Icon name="clock" size="s" /> : null}
             {model.estimate}
           </span>

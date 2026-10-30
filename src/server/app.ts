@@ -36,6 +36,7 @@ import { HELPER_NODE_ARGS, helperScript } from './mcp/helper-bundle.ts';
 import { registerAgentToolRoutes } from './todos/agent-tools.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
+import { TodoWorkClock } from './todos/work-clock.ts';
 import { checkpointsEnabled, todoEnrichEnabled, todoReminderEnabled } from './settings/settings.ts';
 import { CheckpointService } from './checkpoints/service.ts';
 import { TodoEnricher } from './todos/enricher.ts';
@@ -501,6 +502,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.addHook('onClose', async () => {
     await reminder.stop();
+  });
+  // D147: an item's actual time counts only while its agent's session works (status run); spans a crash left open close at the session's last event.
+  const workClock = new TodoWorkClock({ store: options.store, bus });
+  app.addHook('onReady', async () => {
+    await workClock.start();
+  });
+  app.addHook('preClose', async () => {
+    await workClock.stop();
   });
   // D80: a checkpoint of the session's working trees before each turn (Settings → Sessions), the revert and Redo, the retention.
   const checkpoints = new CheckpointService({

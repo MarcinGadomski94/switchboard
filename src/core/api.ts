@@ -2945,6 +2945,13 @@ export interface SessionTodo {
   readonly actualMs?: number | null;
   /** D78: the tokens of the turns that worked on it (approximate, `docs/todos.md` → *Actual vs. estimate*); `null` = none known. */
   readonly actualTokens?: number | null;
+  /**
+   * D147 (additive): its working time so far (ms): the time its agent's session was working while
+   * it was in progress, split equally among that session's items in progress (`docs/todos.md` →
+   * *Actual vs. estimate*). What its "took" shows and calibration uses; {@link actualMs} is its
+   * open time. `null` = no working clock (finished before D147: open time only); absent from an older peer.
+   */
+  readonly workingMs?: number | null;
   /** D81 (additive): a captured item still waits for its agent to fill in its description, plan, priority and estimate; absent from an older peer. */
   readonly needsEnrichment?: boolean;
   /** D81 (additive): how it was captured ({@link TodoCaptureSource}); `null` for an item added any other way. */
@@ -2991,12 +2998,35 @@ export interface TodoActualsTotal {
   readonly estimated: number;
   /** Their estimates (minutes). */
   readonly estimateMinutes: number;
-  /** The actual time of the estimated ones (ms). */
+  /** The actual time of the estimated ones (ms): D147, their open time. */
   readonly estimatedActualMs: number;
-  /** The actual time of all of them (ms). */
+  /** The actual time of all of them (ms): D147, their open time. */
   readonly actualMs: number;
   /** Their tokens (approximate). */
   readonly tokens: number;
+  /**
+   * D147 (additive): the items with a working time (the rest finished before D147: open time
+   * only); absent from an older peer.
+   */
+  readonly working?: TodoWorkingTotal;
+}
+
+/** D147: the working-time part of {@link TodoActualsTotal}. */
+export interface TodoWorkingTotal {
+  /** Completed items with a working time. */
+  readonly count: number;
+  /** Their working time (ms). */
+  readonly ms: number;
+  /** Their open time (ms). */
+  readonly openMs: number;
+  /** How many of them had an estimate. */
+  readonly estimated: number;
+  /** Those estimates (minutes). */
+  readonly estimateMinutes: number;
+  /** The working time of the estimated ones (ms). */
+  readonly estimatedMs: number;
+  /** The open time of the estimated ones (ms). */
+  readonly estimatedOpenMs: number;
 }
 
 /** D68: `GET /api/sessions/{id}/todos` and the answer of every write under it: the whole list in order. */
