@@ -2432,16 +2432,25 @@ export class PlanService {
 
   async #inspect(plan: PlanRecord, item: PlanItemRecord, conflicts: boolean): Promise<PlanRepoState[]> {
     if (item.branch === null || plan.targetBranch === null) return [];
-    const records = item.runSessionId ? await this.#store.worktrees.list({ sessionId: item.runSessionId }) : [];
-    const out: PlanRepoState[] = [];
+    // D148: a removed worktree counts too (its branch is kept: a worktree removed once its PR was
+    // merged still holds the item's work); one record per repo, a live one before a removed one.
+    const records = item.runSessionId ? await this.#store.worktrees.list({ sessionId: item.runSessionId, includeRemoved: true }) : [];
+    const byRepo = new Map<string, (typeof records)[number]>();
     for (const record of records) {
       if (record.branch !== item.branch) continue;
+      const seen = byRepo.get(record.repo);
+      if (!seen || seen.removedAt !== null) byRepo.set(record.repo, record);
+    }
+    const out: PlanRepoState[] = [];
+    for (const record of byRepo.values()) {
       out.push(await this.#git.inspect({ repo: record.repo, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, cut: item.cut[record.repo] ?? null }, { conflicts }));
     }
-    if (out.length > 0 || Object.keys(item.cut).length === 0) return out;
-    // D121: its run session (and with it its worktree records) is gone: the repos it was cut in, by name.
-    const resolved = await this.#env.repos(plan.sourceSessionId, Object.keys(item.cut)).catch(() => null);
+    // D121 / D148: the repos it was cut in that no worktree record covers (its run session, and with it its records, is gone), by name.
+    const missing = Object.keys(item.cut).filter((name) => !byRepo.has(name));
+    if (missing.length === 0) return out;
+    const resolved = await this.#env.repos(plan.sourceSessionId, missing).catch(() => null);
     for (const repo of resolved?.repos ?? []) {
+      if (!missing.includes(repo.name)) continue;
       out.push(await this.#git.inspect({ repo: repo.name, repoPath: repo.repoPath, branch: item.branch, target: plan.targetBranch, cut: item.cut[repo.name] ?? null }, { conflicts }));
     }
     return out;
