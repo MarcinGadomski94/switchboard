@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
+import { TouchTooltip } from '../../shell/TouchTooltip.tsx';
 import { useLayout, useVisualViewportHeight } from '../../shell/useLayout.ts';
+import { Portal } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
 import { PeekHost } from '../agent/index.tsx';
 import { NewSheet } from '../new/index.tsx';
@@ -80,6 +82,7 @@ export function Shell() {
         <Palette />
         <ShortcutsDialog />
         <PeekHost />
+        <V2TouchTooltip />
       </div>
     );
   }
@@ -101,6 +104,24 @@ export function Shell() {
       <PeekHost />
       {/* Lane X · tour: the v2 tours (Welcome to Switchboard 2) and their replays. */}
       <V2TourHost />
+      <V2TouchTooltip />
     </div>
+  );
+}
+
+/** Where a long press already means something else in v2: a draggable card (agents, board) and a Project graph step (its menu). */
+const V2_NO_TOUCH_TOOLTIP = '[draggable="true"], [data-graph-node]';
+
+/**
+ * Fix after 2.4.12 · D74 in v2 (`docs/responsive.md` → *Touch*): classic's
+ * long-press tooltip (`TouchTooltip`), so on a touch screen a long press on an
+ * element with a `title` (an answer option's description) shows it. In the
+ * overlay layer, so it sits above v2's sheets and popovers; nothing on a fine pointer.
+ */
+function V2TouchTooltip() {
+  return (
+    <Portal>
+      <TouchTooltip skip={V2_NO_TOUCH_TOOLTIP} />
+    </Portal>
   );
 }

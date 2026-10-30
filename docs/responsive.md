@@ -68,7 +68,7 @@ On a coarse pointer (any width), `touch.css`:
 
 - **Tap targets ≥ 44 × 44 px**: nav grid cells (D101), the TOOLS toggle, session and folder rows, ⋯ buttons, tabs, header actions, Send, the composer's 📎, question options, todo controls, page actions and filters, dialog pills and buttons, menu items.
 - **Hover-only controls get a touch path:** a sidebar row's and a folder's **⋯** are always shown; the row's **×** (hover only) hides and **Close** is in the row's ⋯ menu instead (`sidebar-menu-close`, coarse pointers only).
-- **Tooltips:** a long press (~500 ms) on an element with a `title` shows it in a bubble above the element (`TouchTooltip.tsx`); the click that would follow is swallowed; the next touch dismisses it. Not in the sessions list, where a long press drags.
+- **Tooltips:** a long press (~500 ms) on an element with a `title` shows it in a bubble above the element (`TouchTooltip.tsx`); the click that would follow is swallowed; the next touch dismisses it. Not in the sessions list, where a long press drags. Both themes (fix after 2.4.12: v2 mounts the same `TouchTooltip` from its shell, `src/web/v2/shell/Shell.tsx`, in its overlay layer and v2's look, so an answer option's description shows on a long press; a normal tap still answers). In v2 a long press shows no bubble on a draggable element (an agent card, where it is the browser's drag) or a Project graph step (it opens the step menu). Oracle: `tests/e2e/v2-touch-tooltip.spec.ts`.
 - Fields are at least 16 px (iOS zooms into smaller ones).
 
 ## Long-press drag (sidebar)
