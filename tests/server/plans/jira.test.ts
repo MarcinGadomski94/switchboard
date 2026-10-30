@@ -586,6 +586,24 @@ describe('D116 · Move to Done when merged into the feature branch', () => {
     expect(r.errors).toEqual([]);
   });
 
+  it('D149: an agents-mode item done without a merge (nothing to merge) neither comments "Merged into" nor moves its ticket to Done', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'write', { doneOnMerge: true, transitions: { done: 'done' } });
+    await r.plans.startPlan(planId, { mergeMode: 'agents' });
+    await settle(r);
+    const p11 = await item(r, planId, 'PROJ-11');
+    r.git.branches.set(p11.branch as string, { hasWork: false });
+    await r.todos.update(r.sourceId, p11.todoId, { state: 'done' }, 'agent');
+    await status(r, p11.runSessionId as string, 'idle');
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + 5 * 60_000), () => settle(r));
+    await settle(r);
+    expect((await item(r, planId, 'PROJ-11')).state).toBe('done');
+    expect((await item(r, planId, 'PROJ-11')).note).toMatch(/^done: nothing to merge/);
+    expect(donePosts(r, 'PROJ-11')).toHaveLength(0);
+    expect(commentsOf(r, 'PROJ-11').some((text) => text.startsWith('Merged into'))).toBe(false);
+    expect(r.errors).toEqual([]);
+  });
+
   it('an agents-mode merge still comments "Merged into <target>" (Done off: the comment only)', async () => {
     const r = await setup();
     const { planId } = await importEpic(r, 'write', { doneOnMerge: false });

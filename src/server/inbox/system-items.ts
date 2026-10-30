@@ -61,6 +61,18 @@ export const PLAN_STOPPED_ACTIONS: readonly InboxAction[] = [
 ];
 
 /**
+ * D149: kind of a plan item's "Done without merging: <item> (<plan>)" item (an agents-mode item
+ * whose todo was done and turn over with its work not merged into the target) and its actions:
+ * **Open session**, **Open PR** (a link, `payload.url`; only with a PR) and **Dismiss**.
+ */
+export const PLAN_DONE_UNMERGED = 'plan-done-unmerged';
+export const PLAN_DONE_UNMERGED_ACTIONS: readonly InboxAction[] = [
+  { id: 'open-session', label: 'Open session' },
+  { id: 'open-pr', label: 'Open PR' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
+/**
  * D124: kind of a session's "Waiting for you: <session>" item (its turn ended waiting for the
  * developer: its `turn_status` or the text check), with the ask as its detail: **Open session**
  * (a link) and **Dismiss** (also clears the session's "needs you" for that turn: a false positive).
@@ -754,6 +766,33 @@ export class SystemItemService {
         actions: PLAN_STOPPED_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
         sessionId: input.sessionId,
         payload: { dedupe: input.dedupe, planId: input.planId, itemId: input.itemId, route: `/plans/${encodeURIComponent(input.planId)}` },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /**
+   * Plans (D99) hook (D149, `docs/plans.md` → *Merge modes*): "Done without merging: <item> (<plan>)",
+   * an agents-mode item done with its work not merged into the target: **Open session**, **Open PR**
+   * (with a PR: `payload.url`) and **Dismiss**. Once per `dedupe`; information only (the item is done).
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async planUnmergedNotice(input: { readonly sessionId: string; readonly planId: string; readonly itemId: string; readonly title: string; readonly detail: string; readonly url: string | null; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const url = input.url !== null && /^https:\/\//.test(input.url) ? input.url : null;
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: PLAN_DONE_UNMERGED,
+        source: 'plans',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: PLAN_DONE_UNMERGED_ACTIONS.filter((action) => action.id !== 'open-pr' || url !== null).map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: input.dedupe, planId: input.planId, itemId: input.itemId, route: `/plans/${encodeURIComponent(input.planId)}`, ...(url ? { url } : {}) },
       },
       'dedupe',
       input.dedupe,

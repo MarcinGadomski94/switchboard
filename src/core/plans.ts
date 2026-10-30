@@ -822,7 +822,21 @@ export const PLAN_MARKED_DONE_NOTE = 'marked done by the developer';
  */
 export function doneByGitDetection(item: Pick<PlanItemFacts, 'state' | 'note'>): boolean {
   if (item.state !== 'done') return false;
-  return item.note !== PLAN_MARKED_DONE_NOTE && !(item.note ?? '').startsWith('merged by you into ');
+  return item.note !== PLAN_MARKED_DONE_NOTE && !(item.note ?? '').startsWith('merged by you into ') && !planDoneWithoutMerge(item.note);
+}
+
+/** D149: the start of the note of an agent-mode item done with no work of its own to merge. */
+export const PLAN_NOTHING_TO_MERGE = 'done: nothing to merge';
+/** D149: the start of the note of an agent-mode item done with work that is not merged into the target. */
+export const PLAN_DONE_UNMERGED = 'done without merging';
+
+/**
+ * D149: whether a done item's note says it was done without a merge (its todo done and its turn
+ * over in an agents mode, nothing merged): never re-checked by D121's auto-repair, never told to
+ * Jira as merged.
+ */
+export function planDoneWithoutMerge(note: string | null | undefined): boolean {
+  return (note ?? '').startsWith(PLAN_NOTHING_TO_MERGE) || (note ?? '').startsWith(PLAN_DONE_UNMERGED);
 }
 
 /** D121: the start of a reopened item's note and of the dependents' warning (the UI marks them). */

@@ -97,6 +97,8 @@ interface Rig {
   readonly mergeNotices: string[];
   /** D120: the Inbox's "Stopped" items raised (`+ title | detail`) and closed (`- itemId outcome`). */
   readonly stoppedNotices: string[];
+  /** D149: the Inbox's "Done without merging" items raised (`+ title | url | dedupe`). */
+  readonly unmergedNotices: string[];
   /** D145: the run sessions whose item was merged (their worktrees are cleaned up). */
   readonly merged: string[];
   readonly changed: string[];
@@ -156,6 +158,9 @@ function environment(r: Omit<Rig, 'plans'>): PlanEnvironment {
     async closeStoppedNotices(itemId, outcome) {
       r.stoppedNotices.push(`- ${itemId} ${outcome}`);
     },
+    async unmergedNotice(input) {
+      r.unmergedNotices.push(`+ ${input.title} | ${input.url ?? ''} | ${input.dedupe}`);
+    },
   };
 }
 
@@ -167,7 +172,7 @@ async function setup(options: { pollMs?: number; stoppedGraceMs?: number } = {})
   const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const git = new FakeGit();
-  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], merged: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
+  const base = { dir, store, bus, clock, git, merger: new FakeMerger(git), todos, runs: [] as PlanRunInput[], sent: [], notices: [], mergeNotices: [] as string[], stoppedNotices: [] as string[], unmergedNotices: [] as string[], merged: [] as string[], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
   bus.subscribe((message) => {
     if (message.name === 'planChanged') base.changed.push(message.payload.planId);
   });
@@ -972,3 +977,169 @@ describe('D124 · an item whose agent ended its turn waiting for you shows needs
   });
 });
 
+
+describe('D149 · agents mode: a todo done with nothing merged is done after the grace period', () => {
+  async function advance(r: Rig, ms: number): Promise<void> {
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + ms), () => settle(r));
+    await settle(r);
+  }
+
+  /** A diamond in `mode`, A running; answers the plan, the ids and A's run session. */
+  async function running(r: Rig, mode: 'agents' | 'agents-with-holds' = 'agents', hold = false) {
+    const { plan, ids } = await diamond(r);
+    if (hold) await r.plans.updateItem(plan.id, ids.A, { hold: true });
+    await r.plans.startPlan(plan.id, { mergeMode: mode });
+    await settle(r);
+    const a = await item(r, plan.id, ids.A);
+    return { plan, ids, a, sessionId: a.runSessionId as string };
+  }
+
+  /** A's agent marks its todo done and its turn ends with `state` on its branch. */
+  async function finishes(r: Rig, planId: string, itemId: string, state: BranchState): Promise<void> {
+    const current = await item(r, planId, itemId);
+    r.git.branches.set(current.branch as string, state);
+    await r.store.sessions.update(current.runSessionId as string, { lastActivityAt: r.clock.now().toISOString() });
+    await r.todos.update(r.sourceId, current.todoId, { state: 'done' }, 'agent');
+    await status(r, current.runSessionId as string, 'done');
+  }
+
+  it('no commits of its own anywhere: running within the grace period, then done ("done: nothing to merge"), not merged, its dependents start, no Inbox item', async () => {
+    const r = await setup();
+    const { plan, ids } = await running(r);
+    await finishes(r, plan.id, ids.A, { hasWork: false });
+    await advance(r, 60_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    expect(started(r)).toEqual(['PROJ-1']);
+    await advance(r, 61_000);
+    const a = await item(r, plan.id, ids.A);
+    expect(a).toMatchObject({ state: 'done', mergedAt: null, note: 'done: nothing to merge (no commits of its own in acme-front)' });
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    expect(r.unmergedNotices).toEqual([]);
+    // D121's auto-repair leaves it done (it never claimed a merge), also across cycles.
+    r.plans.kick();
+    await advance(r, 120_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(r.errors).toEqual([]);
+  });
+
+  it('work not merged (a green PR its agent did not merge): done after the grace period, the note names it, one "Done without merging" Inbox item with its PR', async () => {
+    const r = await setup();
+    const { plan, ids, a } = await running(r);
+    const pr = `https://example.test/pr/${a.branch as string}`;
+    await finishes(r, plan.id, ids.A, { hasWork: true, merged: false, pr: { state: 'OPEN', checks: { state: 'green', summary: null, sha: 'abc' } } });
+    expect((await item(r, plan.id, ids.A)).state).toBe('running');
+    await advance(r, 121_000);
+    const done = await item(r, plan.id, ids.A);
+    expect(done).toMatchObject({ state: 'done', mergedAt: null, prUrl: pr });
+    expect(done.note).toBe(`done without merging into feature/PROJ-100-acme: acme-front ${a.branch as string} (PR ${pr})`);
+    expect(r.unmergedNotices).toHaveLength(1);
+    expect(r.unmergedNotices[0]).toMatch(new RegExp(`^\\+ Done without merging: PROJ-1 Item A \\(Acme epic\\) \\| ${pr.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')} \\| plan-unmerged:`));
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    expect(r.merged).toEqual([]);
+    r.plans.kick();
+    await advance(r, 120_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(r.unmergedNotices).toHaveLength(1);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('checks pending, red checks or a conflict keep it running (not done)', async () => {
+    for (const branch of [
+      { hasWork: true, pr: { state: 'OPEN', checks: { state: 'pending', summary: null, sha: 'abc' } } },
+      { hasWork: true, pr: { state: 'OPEN', checks: { state: 'red', summary: '1 failing', sha: 'abc' } } },
+      { hasWork: true, conflict: true },
+    ] as BranchState[]) {
+      const r = await setup();
+      const { plan, ids } = await running(r);
+      await finishes(r, plan.id, ids.A, branch);
+      await advance(r, 300_000);
+      const a = await item(r, plan.id, ids.A);
+      expect(a.storedState).toBe('running');
+      expect(started(r)).toEqual(['PROJ-1']);
+      expect(r.unmergedNotices).toEqual([]);
+      await r.plans.close();
+      await r.store.close();
+      await removeTempDir(r.dir);
+      rig = undefined;
+    }
+  });
+
+  it('its agent works again within the grace period (it goes on to merge): not done', async () => {
+    const r = await setup();
+    const { plan, ids, sessionId } = await running(r);
+    await finishes(r, plan.id, ids.A, { hasWork: true });
+    await advance(r, 60_000);
+    await status(r, sessionId, 'run');
+    await advance(r, 300_000);
+    expect((await item(r, plan.id, ids.A)).storedState).toBe('running');
+    expect(started(r)).toEqual(['PROJ-1']);
+  });
+
+  it('a held item (agents-with-holds) still waits for your merge', async () => {
+    const r = await setup();
+    const { plan, ids } = await running(r, 'agents-with-holds', true);
+    await finishes(r, plan.id, ids.A, { hasWork: false });
+    await advance(r, 300_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('ready-to-merge');
+    expect(r.unmergedNotices).toEqual([]);
+  });
+});
+
+describe('D149 · the Timeline follows needs-you and questions back to running', () => {
+  async function advance(r: Rig, ms: number): Promise<void> {
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + ms), () => settle(r));
+    await settle(r);
+  }
+
+  it('needs-you → answered → running closes the waiting-you span and opens a running one', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { maxConcurrency: 1 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const sessionId = (await item(r, plan.id, ids.A)).runSessionId as string;
+    await r.store.sessions.update(sessionId, { lastActivityAt: r.clock.now().toISOString(), turnWait: { status: 'waiting_for_you', ask: 'Which endpoint?', source: 'declared', at: r.clock.now().toISOString() } });
+    await status(r, sessionId, 'done');
+    await advance(r, 30_000);
+    expect((await item(r, plan.id, ids.A)).state).toBe('needs-you');
+    expect((await item(r, plan.id, ids.A)).spans.map((span) => [span.kind, span.endedAt === null])).toEqual([['running', false], ['waiting-you', true]]);
+    // The developer answers: a new turn starts.
+    await r.store.sessions.update(sessionId, { turnWait: null });
+    await status(r, sessionId, 'run');
+    const a = await item(r, plan.id, ids.A);
+    expect(a.state).toBe('running');
+    expect(a.spans.map((span) => [span.kind, span.endedAt === null])).toEqual([['running', false], ['waiting-you', false], ['running', true]]);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('a question (a pending permission) → answered → running closes its span too', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { maxConcurrency: 1 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const sessionId = (await item(r, plan.id, ids.A)).runSessionId as string;
+    await status(r, sessionId, 'need');
+    expect((await item(r, plan.id, ids.A)).spans.at(-1)).toMatchObject({ kind: 'waiting-you', endedAt: null });
+    await status(r, sessionId, 'run');
+    expect((await item(r, plan.id, ids.A)).spans.at(-1)).toMatchObject({ kind: 'running', endedAt: null });
+  });
+
+  it('activation closes an open span that no longer matches the item', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r, { maxConcurrency: 1 });
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    const sessionId = (await item(r, plan.id, ids.A)).runSessionId as string;
+    await status(r, sessionId, 'need');
+    expect((await item(r, plan.id, ids.A)).spans.at(-1)).toMatchObject({ kind: 'waiting-you', endedAt: null });
+    // While the service is down the agent works again (no event reaches Plans).
+    await r.plans.close();
+    await r.store.sessions.update(sessionId, { status: 'run' });
+    r.plans = new PlanService({ dataDir: r.dir, store: r.store, bus: r.bus, todos: r.todos, git: r.git, merger: r.merger, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    await r.plans.start();
+    await settle(r);
+    const a = await item(r, plan.id, ids.A);
+    expect(a.spans.filter((span) => span.endedAt === null).map((span) => span.kind)).toEqual(['running']);
+    expect(a.spans.at(-2)).toMatchObject({ kind: 'waiting-you' });
+    expect(a.spans.at(-2)?.endedAt).not.toBeNull();
+  });
+});

@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_EARLY_START_PREFIX, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_EARLY_START_PREFIX, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle, planDoneWithoutMerge } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -389,6 +389,8 @@ export function waitingText(item: PlanItem, items: readonly PlanItem[]): string 
 /** A done item's line: "Merged into <target> · checks ✔"; "Done" without a merge step. */
 export function doneText(item: Pick<PlanItem, 'checks' | 'note'>, plan: Pick<Plan, 'targetBranch'> & Partial<Pick<Plan, 'mergeMode'>>): string {
   if (plan.targetBranch === null || plan.mergeMode === 'none') return 'Done · its todo is done';
+  // D149: done without a merge (its agent finished with nothing merged): the note says what, never "Merged into".
+  if (planDoneWithoutMerge(item.note)) return `${(item.note as string).charAt(0).toUpperCase()}${(item.note as string).slice(1)}`;
   const checks = item.checks === null || item.checks.state === 'green' || item.checks.state === 'none' ? 'checks ✔' : item.checks.state === 'red' ? 'checks ✖' : 'checks …';
   return `Merged into ${plan.targetBranch} · ${checks}`;
 }

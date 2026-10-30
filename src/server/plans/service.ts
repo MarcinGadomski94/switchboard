@@ -46,6 +46,8 @@ import {
   planRuleChangedMessage,
   planView,
   PLAN_MARKED_DONE_NOTE,
+  PLAN_DONE_UNMERGED,
+  PLAN_NOTHING_TO_MERGE,
   PLAN_REOPENED_PREFIX,
   doneByGitDetection,
   planEarlyStartWarning,
@@ -181,6 +183,12 @@ export interface PlanEnvironment {
   /** D120: closes plan item `itemId`'s open "Stopped" items with `outcome` (it works again, it ended, the plan ended). */
   closeStoppedNotices?(itemId: string, outcome: string): Promise<void>;
   /**
+   * D149: raises the Inbox's "Done without merging: <item> (<plan>)" item (Open session, Open PR
+   * when there is one, Dismiss; once per `dedupe`): an agents-mode item was done with its work not
+   * merged into the target. Absent (tests' fakes): none is raised.
+   */
+  unmergedNotice?(input: PlanUnmergedNotice): Promise<void>;
+  /**
    * D138: the plan's accounts changed (a Start with accounts, an edit): its live sessions (the
    * plan's own and its steps') move to the new accounts, pinned ones excepted. Absent (tests'
    * fakes): nothing moves.
@@ -213,6 +221,11 @@ export interface PlanStoppedNotice {
   readonly title: string;
   readonly detail: string;
   readonly dedupe: string;
+}
+
+/** D149: what the Inbox's "Done without merging" item says (`url`: the PR Open PR opens, `null` = none). */
+export interface PlanUnmergedNotice extends PlanStoppedNotice {
+  readonly url: string | null;
 }
 
 /** D115 follow-ups: what the Inbox's "wait for repositories" item says. */
@@ -486,6 +499,11 @@ export class PlanService {
   readonly #stoppedSwept = new Set<string>();
   /** D120: per item, the timer that looks again once its grace period is over. */
   readonly #stoppedTimers = new Map<string, { readonly at: number; readonly handle: unknown }>();
+  /**
+   * D149: agents-mode items whose todo is done and turn over, looked at for this idle episode
+   * (`since`: when its session went idle), with the timer that looks again once the grace period is over.
+   */
+  readonly #unmerged = new Map<string, { readonly since: string; readonly handle: unknown }>();
 
   constructor(options: PlanServiceOptions) {
     this.#dataDir = options.dataDir;
@@ -727,6 +745,8 @@ export class PlanService {
     this.#askSoon.clear();
     for (const timer of this.#stoppedTimers.values()) this.#clock.clearTimeout(timer.handle);
     this.#stoppedTimers.clear();
+    for (const entry of this.#unmerged.values()) if (entry.handle !== null) this.#clock.clearTimeout(entry.handle);
+    this.#unmerged.clear();
     this.#stopped.clear();
     this.#stoppedSwept.clear();
     // D121: a new activation reads every git-detected done item again.
@@ -741,7 +761,7 @@ export class PlanService {
 
   /** Listeners and timers running (tests: none while off). */
   activeTimers(): number {
-    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size + this.#stoppedTimers.size;
+    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0) + this.#askChecks.size + this.#askSoon.size + this.#stoppedTimers.size + [...this.#unmerged.values()].filter((entry) => entry.handle !== null).length;
   }
 
   /** The plans repository. @throws {PlanError} 503 `plans-unavailable` while `plans.db` is broken (or not open yet). */
@@ -2198,6 +2218,8 @@ export class PlanService {
         changed = true;
       }
     }
+    // D149: a view change nothing above stored (needs-you or a question answered, back to running) still moves the Timeline's spans, and is published.
+    if (!changed && plan.state !== 'done' && (await this.#syncSpans(this.#repo(), plan))) changed = true;
     if (changed) await this.#publish(plan.id);
   }
 
@@ -2312,8 +2334,14 @@ export class PlanService {
     const finished = developer && todo?.state === 'done' && session.status !== 'run' && session.status !== 'need';
     // The rule changed (agents merge now) while it waited for the developer's Merge.
     const ruleChanged = !developer && item.waitingOn === 'merge';
+    // D149: an agents-mode run finished (its todo done, its turn over, not waiting for the developer): looked at once per idle episode.
+    const effective = effectiveSessionStatus(session.status, session.turnWait, session.closedAt !== null);
+    const agentsFinished = !developer && todo?.state === 'done' && effective !== 'run' && effective !== 'need';
+    const finishedSince = agentsFinished ? (session.lastActivityAt ?? item.startedAt ?? this.#nowIso()) : null;
+    if (!agentsFinished) this.#clearUnmerged(item.id);
+    const unmergedLook = finishedSince !== null && this.#unmerged.get(item.id)?.since !== finishedSince;
     // A closed run session is looked at again (closed without work: the item fails).
-    const dirty = this.#dirty.has(item.id) || (finished && item.waitingOn !== 'merge') || ruleChanged || (session.closedAt !== null && item.waitingOn !== 'merge');
+    const dirty = this.#dirty.has(item.id) || (finished && item.waitingOn !== 'merge') || ruleChanged || unmergedLook || (session.closedAt !== null && item.waitingOn !== 'merge');
     const conflicts = this.#dirty.get(item.id) === true;
     this.#dirty.delete(item.id);
     if (!dirty) return this.#setWaiting(plan, item, session.status === 'need' ? 'question' : item.waitingOn === 'question' ? null : item.waitingOn);
@@ -2391,8 +2419,17 @@ export class PlanService {
     } else if (item.waitingOn === 'conflict' && waiting === null && !merged) {
       waiting = 'conflict';
     }
-    if (session.closedAt !== null && worked.length === 0) {
-      // Closed with nothing to merge; closed with work, it may still be merged (the developer's Merge, its PR).
+    if (finishedSince !== null) {
+      // D149: its todo done and its turn over with nothing merged and nothing to wait for (no checks
+      // pending or red, no conflict, no question): done once the grace period is over (a merge
+      // still under way is not cut short), with a note saying what was not merged.
+      const due = Date.parse(finishedSince) + this.#stoppedGraceMs;
+      const now = this.#clock.now().getTime();
+      if (!merged && waiting === null && due <= now) return this.#doneUnmerged(plan, item, repos, prUrl, checks);
+      this.#armUnmerged(item.id, finishedSince, !merged && waiting === null ? due - now : null);
+    }
+    if (session.closedAt !== null && worked.length === 0 && finishedSince === null) {
+      // Closed with nothing to merge (D149: with its todo done it is done after the grace period instead); closed with work, it may still be merged (the developer's Merge, its PR).
       await this.#fail(item, 'was closed without any work to merge');
       return true;
     }
@@ -2495,9 +2532,70 @@ export class PlanService {
     return true;
   }
 
-  async #done(plan: PlanRecord, item: PlanItemRecord, note: string | null, prUrl: string | null = item.prUrl, checks: PlanChecks | null = item.checks): Promise<true> {
+  /**
+   * D149 (`docs/plans.md` → *Merge modes*): an agents-mode item whose todo is done and turn over,
+   * with nothing merged into the target, is done. No work of its own anywhere: "done: nothing to
+   * merge (no commits of its own in …)". Work not merged: "done without merging into <target>:
+   * <repo> <branch> (PR <url>); …" and the Inbox's "Done without merging" item (Open session, Open
+   * PR, Dismiss), so a forgotten merge is seen. Never `mergedAt`; D121 never re-checks it.
+   */
+  async #doneUnmerged(plan: PlanRecord, item: PlanItemRecord, repos: readonly PlanRepoState[], prUrl: string | null, checks: PlanChecks | null): Promise<true> {
+    const open = repos.filter((repo) => repo.hasWork && !repo.merged);
+    if (open.length === 0) {
+      const names = repos.map((repo) => repo.repo);
+      return this.#done(plan, item, names.length > 0 ? `${PLAN_NOTHING_TO_MERGE} (no commits of its own in ${names.join(', ')})` : PLAN_NOTHING_TO_MERGE, prUrl, checks, false);
+    }
+    const target = plan.targetBranch ?? '';
+    const parts = open.map((repo) => `${repo.repo} ${item.branch ?? '(its branch)'}${repo.pr?.url ? ` (PR ${repo.pr.url})` : ''}`);
+    const doneAt = this.#nowIso();
+    await this.#done(plan, item, `${PLAN_DONE_UNMERGED} into ${target}: ${parts.join('; ')}`, prUrl, checks, false);
+    if (item.runSessionId && this.#env.unmergedNotice) {
+      const todo = await this.#store.todos.get(item.todoId);
+      const title = todo?.title ?? item.title;
+      const label = item.key !== null && !title.startsWith(item.key) ? `${item.key} ${title}` : title;
+      await this.#env
+        .unmergedNotice({
+          sessionId: item.runSessionId,
+          planId: plan.id,
+          itemId: item.id,
+          title: `Done without merging: ${label} (${plan.title})`,
+          detail: `Its agent marked its todo done, but its work is not merged into ${target}: ${parts.join('; ')}. Plans counted it as done, and the items after it may start. Merge it yourself if it belongs in ${target}, or reopen the item.`,
+          url: open.find((repo) => repo.pr?.url)?.pr?.url ?? null,
+          dedupe: `plan-unmerged:${item.id}:${doneAt}`,
+        })
+        .catch((error: unknown) => this.#onError(error));
+    }
+    return true;
+  }
+
+  /** D149: records that item `itemId`'s idle episode `since` was looked at; `inMs` (≥ 0) arms the look once its grace period is over. */
+  #armUnmerged(itemId: string, since: string, inMs: number | null): void {
+    const seen = this.#unmerged.get(itemId);
+    if (seen?.since === since && (seen.handle !== null || inMs === null)) return;
+    this.#clearUnmerged(itemId);
+    const handle =
+      inMs === null
+        ? null
+        : this.#clock.setTimeout(() => {
+            const entry = this.#unmerged.get(itemId);
+            if (entry !== undefined && entry.handle === handle) this.#unmerged.set(itemId, { since: entry.since, handle: null });
+            this.#dirty.set(itemId, this.#dirty.get(itemId) === true);
+            this.kick();
+          }, Math.max(0, inMs));
+    this.#unmerged.set(itemId, { since, handle });
+  }
+
+  #clearUnmerged(itemId: string): void {
+    const entry = this.#unmerged.get(itemId);
+    if (entry === undefined) return;
+    if (entry.handle !== null) this.#clock.clearTimeout(entry.handle);
+    this.#unmerged.delete(itemId);
+  }
+
+  async #done(plan: PlanRecord, item: PlanItemRecord, note: string | null, prUrl: string | null = item.prUrl, checks: PlanChecks | null = item.checks, merged = true): Promise<true> {
     const now = this.#nowIso();
-    await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: plan.mergeMode === 'none' ? null : (item.mergedAt ?? now), doneAt: now, reason: null });
+    this.#clearUnmerged(item.id);
+    await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: plan.mergeMode === 'none' || !merged ? null : (item.mergedAt ?? now), doneAt: now, reason: null });
     // D102: its "Ready to merge" Inbox item (if any) is closed.
     if (item.waitingOn === 'merge') await this.#env.closeMergeNotice(item.id, 'merged').catch((error: unknown) => this.#onError(error));
     // The todo is done too.
@@ -2505,7 +2603,7 @@ export class PlanService {
     if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done' }, 'developer').catch((error: unknown) => this.#onError(error));
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
     // D145: the run's worktrees go once merged (the same automatic clean-up as a turn's end).
-    if (plan.mergeMode !== 'none' && item.runSessionId) await this.#env.itemMerged?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
+    if (plan.mergeMode !== 'none' && merged && item.runSessionId) await this.#env.itemMerged?.(item.runSessionId).catch((error: unknown) => this.#onError(error));
     await this.#publish(plan.id);
     this.kick();
     return true;
@@ -2719,17 +2817,26 @@ export class PlanService {
    * a finished or cancelled plan has none open. Every change publishes, so every change lands here;
    * at activation every plan is brought up to date (a restart keeps one open span per item).
    */
-  async #syncSpans(repo: PlanRepository, plan: PlanRecord): Promise<void> {
+  async #syncSpans(repo: PlanRepository, plan: PlanRecord): Promise<boolean> {
     const view = await this.#view(plan, repo);
     const now = this.#nowIso();
     const open = await repo.openSpans(plan.id);
+    let changed = false;
     for (const item of view.items) {
       const want = planItemSpanKind(plan, item);
       const mine = open.filter((span) => span.itemId === item.id);
       const keep = want === null ? undefined : mine.find((span) => span.kind === want);
-      for (const span of mine) if (span !== keep) await repo.closeSpan(span.id, now);
-      if (want !== null && !keep) await repo.openSpan(plan.id, item.id, want, now);
+      for (const span of mine) {
+        if (span === keep) continue;
+        await repo.closeSpan(span.id, now);
+        changed = true;
+      }
+      if (want !== null && !keep) {
+        await repo.openSpan(plan.id, item.id, want, now);
+        changed = true;
+      }
     }
+    return changed;
   }
 
   #nowIso(): string {
