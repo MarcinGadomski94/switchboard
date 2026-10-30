@@ -84,9 +84,11 @@ test('every section renders the seeded numbers; the filters scope them and live 
   // Estimates: 6 todos, median 0.8×.
   await expect(page.getByTestId('accuracy-all').locator('h3')).toHaveText('All · 6 todos · median 0.8×');
   await expect(page.getByTestId('accuracy-all').locator('.sb-ins-hcount')).toHaveText(['1', '2', '2', '1']);
-  // Outcomes: Opus 1 of 3 reopened, 1 revert in 4 turns = 25 per 100.
+  // Outcomes: Opus 1 of 3 reopened, 1 revert in 4 turns = 25 per 100. Plans are always on (D132):
+  // its two columns are there, with no plan items or Merge-step decisions in this world.
   const opus = page.getByTestId('outcomes-table').locator('tr', { hasText: 'claude-opus-5-5' });
-  await expect(opus.locator('td')).toHaveText(['3', '33% (1)', '4', '25.0']);
+  await expect(page.getByTestId('outcomes-table').locator('thead th')).toHaveText(['Model', 'Todos done', 'Reopened', 'Plans merged', 'Sent back', 'Turns', 'Reverts / 100 turns']);
+  await expect(opus.locator('td')).toHaveText(['3', '33% (1)', '— (0 of 0)', '— (0)', '4', '25.0']);
   // Cost: example prices, marked; 3 × $0.344 + 3 × $0.0096 = $1.06.
   await expect(page.getByTestId('cost-prices')).toContainText('Example prices — edit in Settings');
   await expect(page.getByTestId('tile-cost-total').locator('.sb-ins-tile-value')).toHaveText('$1.06');
