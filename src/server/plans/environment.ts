@@ -237,5 +237,10 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     async closeStoppedNotices(itemId, outcome) {
       await systemItems.closePlanStoppedNotices(itemId, outcome);
     },
+
+    // D149: "Done without merging: <item> (<plan>)" (Open session / Open PR are links; Dismiss).
+    async unmergedNotice(input) {
+      await systemItems.planUnmergedNotice(input);
+    },
   };
 }

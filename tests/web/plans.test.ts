@@ -197,6 +197,9 @@ describe('header texts', () => {
   it('writes the detail lines', () => {
     expect(doneText({ checks: { state: 'green', summary: null, sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✔');
     expect(doneText({ checks: { state: 'red', summary: 'failed: ci', sha: null }, note: null }, { targetBranch: 'epic/x' })).toBe('Merged into epic/x · checks ✖');
+    // D149: done without a merge.
+    expect(doneText({ checks: null, note: 'done: nothing to merge (no commits of its own in web)' }, { targetBranch: 'epic/x', mergeMode: 'agents' })).toBe('Done: nothing to merge (no commits of its own in web)');
+    expect(doneText({ checks: null, note: 'done without merging into epic/x: web PROJ-1-a (PR https://example.test/pr/1)' }, { targetBranch: 'epic/x', mergeMode: 'agents' })).toBe('Done without merging into epic/x: web PROJ-1-a (PR https://example.test/pr/1)');
     expect(inlineAction({ state: 'question' })).toBe('answer');
     expect(inlineAction({ state: 'ready-to-merge' })).toBe('merge');
     expect(inlineAction({ state: 'running' })).toBeNull();

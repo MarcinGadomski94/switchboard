@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { isRemoteId } from '../../../core/peers.ts';
-import { type Plan, type PlanItem, itemLabel } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, itemLabel, planDoneWithoutMerge } from '../../../core/plans.ts';
 import {
   planSidebarFolderName,
   DEFAULT_JIRA_DONE_ON_MERGE,
@@ -259,7 +259,8 @@ const MARKED_DONE = 'marked done by the developer';
  * or its merge mode is `none` (no merge step). Gates both the "Merged into" comment and the Done transition.
  */
 function mergedIntoTarget(plan: Plan, item: PlanItem): string | null {
-  if (item.storedState !== 'done' || item.note === MARKED_DONE) return null;
+  // D149: an item done without a merge (its agent finished with nothing merged) was merged nowhere.
+  if (item.storedState !== 'done' || item.note === MARKED_DONE || planDoneWithoutMerge(item.note)) return null;
   if (plan.targetBranch === null || plan.mergeMode === null || plan.mergeMode === 'none') return null;
   return plan.targetBranch;
 }

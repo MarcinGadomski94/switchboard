@@ -261,6 +261,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'plan-pick-repos': 'Pick repositories',
   // D120: a plan item's agent ended its turn without finishing its todo.
   'plan-stopped': 'Stopped',
+  // D149: an agents-mode plan item was done with its work not merged into the target.
+  'plan-done-unmerged': 'Done without merging',
   // D124: a session's turn ended waiting for the developer (its turn_status, or the text check: "· detected").
   'turn-waiting': 'Waiting for you',
   // D121: a plan item marked merged without its branch in the target was reopened.

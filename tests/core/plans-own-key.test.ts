@@ -4,7 +4,7 @@
  * developer's Merge commit message; which done items the auto-repair re-checks.
  */
 import { describe, expect, it } from 'vitest';
-import { doneByGitDetection, otherKeysIn, planItemBrief, planMergeMessage, planOwnKeyRule, withoutOtherKeys } from '../../src/core/plans.ts';
+import { doneByGitDetection, otherKeysIn, planDoneWithoutMerge, planItemBrief, planMergeMessage, planOwnKeyRule, withoutOtherKeys } from '../../src/core/plans.ts';
 
 const base = { planTitle: 'PROJ-10 Acme epic', targetBranch: 'feature/PROJ-10-acme-epic', notes: null, key: 'PROJ-1', branch: 'PROJ-1-cart', developerMerges: false, todo: { id: 't1', title: 'Cart', description: null, plan: null } } as const;
 
@@ -50,5 +50,9 @@ describe('D121 · which done items the auto-repair re-checks', () => {
     expect(doneByGitDetection({ state: 'done', note: 'merged by you into feature/PROJ-10-acme-epic' })).toBe(false);
     expect(doneByGitDetection({ state: 'done', note: 'marked done by the developer' })).toBe(false);
     expect(doneByGitDetection({ state: 'running', note: null })).toBe(false);
+    // D149: done without a merge (nothing merged): never re-checked as a merge.
+    expect(doneByGitDetection({ state: 'done', note: 'done: nothing to merge (no commits of its own in acme-front)' })).toBe(false);
+    expect(doneByGitDetection({ state: 'done', note: 'done without merging into feature/x: acme-front PROJ-1-cart (PR https://example.test/pr/1)' })).toBe(false);
+    expect(planDoneWithoutMerge(null)).toBe(false);
   });
 });

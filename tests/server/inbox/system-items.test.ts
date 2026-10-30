@@ -369,6 +369,25 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
   });
 });
 
+describe('D149 · "Done without merging" (a plan item done with its work not merged)', () => {
+  it('Open session, Open PR (only with a PR) and Dismiss; once per dedupe; Open PR is a link; Dismiss closes it', async () => {
+    const r = await setup();
+    const session = await r.w.store.sessions.create({ name: 'run-1', claudeSessionId: 'c-run-1', status: 'done', cwd: r.w.root, root: r.w.root, rootKind: 'workspace', solutions: [], worktrees: true });
+    const input = { sessionId: session.id, planId: 'p1', itemId: 'i1', title: 'Done without merging: PROJ-1 Item A (Acme epic)', detail: 'Its work is not merged.', url: 'https://example.test/pr/1', dedupe: 'plan-unmerged:i1:t1' };
+    expect(await r.service.planUnmergedNotice(input)).not.toBeNull();
+    expect(await r.service.planUnmergedNotice(input)).toBeNull();
+    await r.service.planUnmergedNotice({ ...input, itemId: 'i2', url: null, dedupe: 'plan-unmerged:i2:t1' });
+    const items = await inbox(r);
+    const withPr = items.find((item) => item.title === input.title && item.url === input.url);
+    expect(withPr).toMatchObject({ label: 'Done without merging', actions: [{ id: 'open-session', label: 'Open session' }, { id: 'open-pr', label: 'Open PR' }, { id: 'dismiss', label: 'Dismiss' }] });
+    expect(items.filter((item) => item.title === input.title).find((item) => item.url === undefined)?.actions?.map((action) => action.id)).toEqual(['open-session', 'dismiss']);
+    const id = withPr?.id as string;
+    expect((await call(r, 'POST', `/api/inbox/${id}/actions/open-pr`)).statusCode).toBe(409);
+    expect((await call(r, 'POST', `/api/inbox/${id}/actions/dismiss`)).statusCode).toBe(204);
+    expect((await inbox(r)).some((item) => item.id === id)).toBe(false);
+  });
+});
+
 describe('M3.3 · item builders', () => {
   const run = (id: string, result: ScheduleRunResult): ScheduleRunRecord => ({
     id,
