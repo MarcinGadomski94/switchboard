@@ -21,8 +21,11 @@ interface Shown {
  * (~500 ms without moving) on an element with a `title` shows it in a bubble
  * above the element; the click that would follow the press is swallowed, the
  * next touch anywhere (or a few seconds) dismisses it. Renders nothing otherwise.
+ *
+ * `skip` (fix after 2.4.12, v2): more places where a long press means something
+ * else (v2's draggable cards, its Project graph steps); added to the classic ones.
  */
-export function TouchTooltip() {
+export function TouchTooltip({ skip }: { readonly skip?: string } = {}) {
   const coarse = useCoarsePointer();
   const [shown, setShown] = useState<Shown | null>(null);
   const bubble = useRef<HTMLDivElement>(null);
@@ -30,6 +33,7 @@ export function TouchTooltip() {
 
   useEffect(() => {
     if (!coarse) return undefined;
+    const noTooltip = skip ? `${NO_TOOLTIP}, ${skip}` : NO_TOOLTIP;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let start: { x: number; y: number } | null = null;
     let swallowUntil = 0;
@@ -42,7 +46,7 @@ export function TouchTooltip() {
       setShown(null);
       clear();
       if (event.pointerType === 'mouse' || !(event.target instanceof Element)) return;
-      if (event.target.closest(NO_TOOLTIP)) return;
+      if (event.target.closest(noTooltip)) return;
       const owner = event.target.closest<HTMLElement>('[title]');
       const text = owner?.getAttribute('title')?.trim();
       if (!owner || !text) return;
@@ -81,7 +85,7 @@ export function TouchTooltip() {
       window.removeEventListener('click', click, true);
       window.removeEventListener('contextmenu', menu, true);
     };
-  }, [coarse]);
+  }, [coarse, skip]);
 
   useEffect(() => {
     if (!shown) return undefined;

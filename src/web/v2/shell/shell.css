@@ -683,3 +683,15 @@
   display: grid;
   gap: 8px;
 }
+
+/* Fix after 2.4.12 · D74 in v2: classic's long-press tooltip (TouchTooltip.tsx, mounted by Shell.tsx) in v2's look, above its menus. */
+.sb2 .sb-touch-tooltip {
+  z-index: 96;
+  border: 1px solid var(--v2-border-strong);
+  border-radius: var(--v2-r-s);
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  font-family: var(--v2-font);
+  font-size: var(--v2-fs-s);
+  box-shadow: var(--v2-shadow-2);
+}
