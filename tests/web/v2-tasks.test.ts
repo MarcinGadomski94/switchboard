@@ -99,6 +99,12 @@ describe('v2 Tasks · estimate vs actual', () => {
     const old = todo('d', { state: 'done', estimateMinutes: 45, actualMs: 100 * 60 * MIN, workingMs: null });
     expect(estimateText(old, NOW)).toBe('est 45m · open 100h');
     expect(overEstimate(old, NOW)).toBe(false);
+    // D147 live: in progress, the working time so far (closed + running ÷ share), the open time beside it; amber on the working time.
+    const live = todo('p', { state: 'in_progress', estimateMinutes: 15, actualMs: 0, startedAt: new Date(NOW - 3 * 60 * MIN).toISOString(), workingMs: 8 * MIN, workingSince: new Date(NOW - 4 * MIN).toISOString(), workingShare: 2 });
+    expect(estimateText(live, NOW)).toBe('est 15m · 10m so far (open 3h)');
+    expect(overEstimate(live, NOW)).toBe(false);
+    expect(overEstimate({ ...live, workingMs: 14 * MIN }, NOW)).toBe(true);
+    expect(estimateText({ ...live, workingSince: null }, NOW)).toBe('est 15m · 8m so far (open 3h)');
     expect(estimateText(todo('d', { state: 'done', estimateMinutes: 30 }), NOW)).toBe('est 30m');
   });
 

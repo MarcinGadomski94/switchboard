@@ -82,6 +82,9 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     actualTokens: record.actualTokens ?? null,
     // D147: its working time (the card's "took"); `null` = open time only.
     workingMs: record.workingMs ?? null,
+    // D147: its running span (the UI adds the time since, divided by the share): live working time.
+    workingSince: record.workingSpanStartedAt ?? null,
+    workingShare: record.workingShare ?? null,
     // D81: a captured item waiting for its agent to fill it in (an open one only), and how it was captured.
     needsEnrichment: record.needsEnrichment === true && record.state === 'open',
     capturedFrom: record.capturedFrom ?? null,
@@ -550,6 +553,16 @@ export class TodoService {
     const list = await this.#publish(sessionId);
     await this.#arm();
     return list;
+  }
+
+  /**
+   * D147: the live working time of session `sessionId`'s items changed (their session started or
+   * stopped working): `todosChanged` only, so the views reload the list (its counts are unchanged:
+   * no `sessionUpdated`).
+   */
+  async publishWorking(sessionId: string): Promise<void> {
+    const list = await this.#listOf(sessionId);
+    this.#bus.publish('todosChanged', { sessionId, openCount: list.openCount, doneCount: list.doneCount });
   }
 
   async #publish(sessionId: string): Promise<SessionTodoList> {

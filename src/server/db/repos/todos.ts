@@ -54,6 +54,8 @@ export interface TodoRecord {
   readonly workingMs?: number | null;
   /** D147 (0052): when its current working span began (in progress and its working session working); `null` otherwise. */
   readonly workingSpanStartedAt?: string | null;
+  /** D147 (0052): how many items share the current span (each gets 1/share of its time); `null` with no span. */
+  readonly workingShare?: number | null;
   /** D81 (0035): a captured item still waits for its agent to fill it in. */
   readonly needsEnrichment: boolean;
   /** D81 (0035): how it was captured; `null` for an item added any other way. */
@@ -91,6 +93,7 @@ const SPEC: TableSpec<TodoRecord> = {
     actualUsage: ['actual_usage', 'json'],
     workingMs: ['working_ms', 'int'],
     workingSpanStartedAt: ['working_span_started_at', 'text'],
+    workingShare: ['working_share', 'int'],
     needsEnrichment: ['needs_enrichment', 'bool'],
     capturedFrom: ['captured_from', 'text'],
     enrichAskedAt: ['enrich_asked_at', 'text'],
@@ -284,11 +287,11 @@ export class TodoRepository {
       const closed = current.state === 'in_progress' ? this.#closeSpan(settled, now) : {};
       let updated: TodoRecord | null;
       if (state === 'in_progress') {
-        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now, startedFirstAt: current.startedFirstAt ?? now, spanStartedAt: now, ...firstClock(current) });
+        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now, startedFirstAt: current.startedFirstAt ?? now, spanStartedAt: now, ...clockFrom(current) });
       } else if (state === 'open') {
-        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null });
+        updated = this.#table.update(id, { ...closed, state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null, workingShare: null, ...clockFrom(current) });
       } else {
-        updated = this.#table.update(id, { ...closed, state, doneAt: now, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null });
+        updated = this.#table.update(id, { ...closed, state, doneAt: now, updatedAt: now, spanStartedAt: null, workingSpanStartedAt: null, workingShare: null });
       }
       this.#settle(sessions, now);
       updated = this.#table.get(id);
@@ -315,7 +318,7 @@ export class TodoRepository {
         updatedAt: now,
         startedFirstAt: current.startedFirstAt ?? now,
         spanStartedAt: current.state === 'in_progress' ? (current.spanStartedAt ?? now) : now,
-        ...(current.state === 'in_progress' ? {} : firstClock(current)),
+        ...(current.state === 'in_progress' ? {} : clockFrom(current)),
       });
       this.#settle(sessions, now);
       const updated = this.#table.get(id);
@@ -339,6 +342,7 @@ export class TodoRepository {
       // D147: its working clock as it was (the failed start's moment is dropped); the work clock re-opens a span for an item in progress.
       ...(record.workingMs !== undefined ? { workingMs: record.workingMs } : {}),
       workingSpanStartedAt: null,
+      workingShare: null,
     })));
   }
 
@@ -407,7 +411,7 @@ export class TodoRepository {
           const start = record.workingSpanStartedAt ?? now;
           const end = last !== null && last > start ? last : start;
           const ms = Math.max(0, Date.parse(end) - Date.parse(start));
-          this.#table.update(record.id, { workingMs: (record.workingMs ?? 0) + (Number.isFinite(ms) ? Math.round(ms / records.length) : 0), workingSpanStartedAt: null });
+          this.#table.update(record.id, { workingMs: (record.workingMs ?? 0) + (Number.isFinite(ms) ? Math.round(ms / records.length) : 0), workingSpanStartedAt: null, workingShare: null });
         }
       }
       return open.length;
@@ -462,8 +466,10 @@ export class TodoRepository {
           if (Number.isFinite(ms)) workingMs += Math.round(ms / open.length);
         }
         const span = working ? now : null;
-        if (workingMs === record.workingMs && span === (record.workingSpanStartedAt ?? null)) continue;
-        this.#table.update(record.id, { workingMs, workingSpanStartedAt: span });
+        // The live share the UI divides the running span by (every item of the session in progress with a clock).
+        const share = working ? items.length : null;
+        if (workingMs === record.workingMs && span === (record.workingSpanStartedAt ?? null) && share === (record.workingShare ?? null)) continue;
+        this.#table.update(record.id, { workingMs, workingSpanStartedAt: span, workingShare: share });
         changed.push(record.id);
       }
     }
@@ -729,7 +735,12 @@ function sampleOf(row: Readonly<Record<string, unknown>>): TodoActualSample {
   };
 }
 
-/** D147: an item going in progress for the first time starts its working clock (one that never had one before D147 too). */
-function firstClock(current: Pick<TodoRecord, 'startedFirstAt' | 'workingMs'>): Partial<TodoRecord> {
-  return current.startedFirstAt === null && (current.workingMs ?? null) === null ? { workingMs: 0, workingSpanStartedAt: null } : {};
+/**
+ * D147: an item without a working clock gets one (from 0) when it goes in progress or is
+ * reopened: a new item's first start, and a done item measured in open time only (finished
+ * before D147) that is reopened: its old open time stays in `actual_ms`, its working time
+ * counts from the reopen.
+ */
+function clockFrom(current: Pick<TodoRecord, 'workingMs'>): Partial<TodoRecord> {
+  return (current.workingMs ?? null) === null ? { workingMs: 0, workingSpanStartedAt: null, workingShare: null } : {};
 }

@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Session } from '../../../src/core/api.ts';
+import type { BackgroundTask, Session, SessionActivity } from '../../../src/core/api.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
-import { todoActualsLabel } from '../../../src/core/todo-actuals.ts';
+import { liveWorkingMs, todoActualsLabel } from '../../../src/core/todo-actuals.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
 import { loadMigrations, migrate } from '../../../src/server/db/migrate.ts';
 import { TodoRepository } from '../../../src/server/db/repos/todos.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
-import { TodoWorkClock } from '../../../src/server/todos/work-clock.ts';
+import { isWorking, TodoWorkClock } from '../../../src/server/todos/work-clock.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -53,8 +53,8 @@ function service(): TodoService {
 }
 
 /** The session's status as the hub publishes it (only what the clock reads). */
-async function status(id: string, value: SessionStatus): Promise<void> {
-  bus.publish('sessionUpdated', { id, status: value, closedAt: null } as unknown as Session);
+async function status(id: string, value: SessionStatus, activity: SessionActivity | null = null): Promise<void> {
+  bus.publish('sessionUpdated', { id, status: value, closedAt: null, activity } as unknown as Session);
   // The clock's write runs at once; let its promise settle.
   await Promise.resolve();
 }
@@ -193,6 +193,85 @@ describe('the working clock (D147)', () => {
   });
 });
 
+function task(kind: BackgroundTask['kind'], waiting = true): BackgroundTask {
+  return { id: `t-${kind}`, toolUseId: `u-${kind}`, kind, summary: kind, startedAt: new Date(clock).toISOString(), github: false, waiting, ...(kind === 'wakeup' ? { wakeAt: new Date(clock + 60 * MIN).toISOString() } : {}) } as BackgroundTask;
+}
+
+/** The main turn is over; these background tasks are pending (D30's `background` activity). */
+function background(...tasks: BackgroundTask[]): SessionActivity {
+  const at = new Date(clock).toISOString();
+  return { turnStartedAt: at, state: 'background', since: at, tool: null, summary: null, thinkingTokens: null, agents: {}, background: tasks } as unknown as SessionActivity;
+}
+
+/** A turn running a tool. */
+function turnRunning(): SessionActivity {
+  const at = new Date(clock).toISOString();
+  return { turnStartedAt: at, state: 'tool', since: at, tool: 'Bash', summary: 'npm test', thinkingTokens: null, agents: {}, background: [] } as unknown as SessionActivity;
+}
+
+describe('wake-ups pause the clock (D147, ruling 2026-10-30)', () => {
+  it('isWorking: run, unless it only waits for its wake-up; subagents next to a wake-up still work', () => {
+    expect(isWorking('run', null)).toBe(true);
+    expect(isWorking('run', turnRunning())).toBe(true);
+    expect(isWorking('run', background(task('wakeup')))).toBe(false);
+    expect(isWorking('run', background(task('wakeup'), task('agent')))).toBe(true);
+    expect(isWorking('run', background(task('wakeup'), task('task')))).toBe(true);
+    expect(isWorking('need', null)).toBe(false);
+    expect(isWorking('run', null, true)).toBe(false);
+  });
+
+  it('a session waiting for its wake-up adds no working time; the turn the wake-up starts does', async () => {
+    const todos = service();
+    const id = await session('a');
+    const item = await startItem(todos, id, 'Wakes up');
+    await status(id, 'run', turnRunning());
+    clock += 5 * MIN;
+    // The turn ended with a ScheduleWakeup: still `run` (D143), but waiting on a timer.
+    bus.publish('activity', { sessionId: id, activity: background(task('wakeup')) });
+    await Promise.resolve();
+    clock += 60 * MIN;
+    // It fired: a new turn.
+    bus.publish('activity', { sessionId: id, activity: turnRunning() });
+    await Promise.resolve();
+    clock += 3 * MIN;
+    // A status update carrying the wake-up wait pauses it too.
+    await status(id, 'run', background(task('wakeup')));
+    clock += 30 * MIN;
+    expect((await todos.update(id, item, { state: 'done' }, 'agent')).todo.workingMs).toBe(8 * MIN);
+  });
+});
+
+describe('live working time (D147, ruling 2026-10-30)', () => {
+  it('an item in progress carries its running span and its share; the UI adds the time since', async () => {
+    const changed: string[] = [];
+    await workClock.stop();
+    workClock = new TodoWorkClock({ store, bus, changed: (sessionId) => changed.push(sessionId) });
+    await workClock.start();
+    const todos = service();
+    const id = await session('a');
+    const first = await startItem(todos, id, 'Live one');
+    clock += 2 * MIN;
+    await status(id, 'run');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The clock started: the list is published so the cards pick up the running span.
+    expect(changed).toContain(id);
+    const started = new Date(clock).toISOString();
+    expect(await todos.get(id, first)).toMatchObject({ workingMs: 0, workingSince: started, workingShare: 1 });
+    clock += 4 * MIN;
+    const second = await startItem(todos, id, 'Live two');
+    const one = await todos.get(id, first);
+    expect(one).toMatchObject({ workingMs: 4 * MIN, workingSince: new Date(clock).toISOString(), workingShare: 2 });
+    clock += 6 * MIN;
+    // Live: 4 closed + 6 shared by two.
+    expect(liveWorkingMs(one, clock)).toBe(7 * MIN);
+    expect(liveWorkingMs(await todos.get(id, second), clock)).toBe(3 * MIN);
+    await status(id, 'need');
+    expect(await todos.get(id, first)).toMatchObject({ workingMs: 7 * MIN, workingSince: null, workingShare: null });
+    clock += 60 * MIN;
+    expect(liveWorkingMs(await todos.get(id, first), clock)).toBe(7 * MIN);
+  });
+});
+
 describe('calibration from working time (D147)', () => {
   it('per band, this session’s when it has enough, else its folder’s', async () => {
     const todos = service();
@@ -246,6 +325,17 @@ describe('migration 0052 (D147)', () => {
     await repo.setWorking('s', false, '2026-10-30T10:06:00.000Z');
     expect(await repo.get('p')).toMatchObject({ workingMs: 6 * MIN, actualMs: 60 * MIN });
     expect(await repo.get('r')).toMatchObject({ workingMs: 0 });
+    // A done item from before the upgrade (open time only), reopened: its clock starts at the reopen.
+    await repo.setWorking('s', true, '2026-10-30T10:06:00.000Z');
+    expect(await repo.setState('d', 'in_progress', 'agent')).toMatchObject({ workingMs: 0 });
+    await repo.setWorking('s', false, '2026-10-30T10:16:00.000Z');
+    const finished = await repo.setState('d', 'done', 'agent');
+    // The repository's clock reads 10:00, so the shared span runs 10:00 → 10:16: 16 working minutes, two items: 8 each.
+    expect(finished?.workingMs).toBe(8 * MIN);
+    const row = db.prepare("SELECT measure, working_ms, actual_ms FROM todo_actuals WHERE todo_id = 'd'").get();
+    // Only the new working time; the old open time stays in the open time (90 min + the new span).
+    expect({ ...row }).toMatchObject({ measure: 'working', working_ms: finished?.workingMs });
+    expect(Number(row?.['actual_ms'])).toBe(90 * MIN);
     db.close();
   });
 });

@@ -86,6 +86,46 @@ export function tookText(workingMs: number | null | undefined, openMs: number): 
   return took === open ? `took ${took}` : `took ${took} (open ${open})`;
 }
 
+/**
+ * The time an item has spent in progress so far (ms, its open time): its ended spans
+ * (`actualMs`) plus, while in progress, the running one since `startedAt`. `null` when it never
+ * started.
+ */
+export function openSoFarMs(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'startedAt'>, now: number): number | null {
+  const ended = typeof todo.actualMs === 'number' ? todo.actualMs : null;
+  if (todo.state !== 'in_progress') return ended;
+  const started = todo.startedAt ? Date.parse(todo.startedAt) : Number.NaN;
+  const running = Number.isFinite(started) ? Math.max(0, now - started) : 0;
+  if (ended === null && !Number.isFinite(started)) return null;
+  return (ended ?? 0) + running;
+}
+
+/**
+ * D147: an item's working time so far (ms): its closed working spans plus, while its clock
+ * runs, the time since `workingSince` divided by `workingShare` (the items sharing the span).
+ * `null` without a working clock (finished before D147, or an older peer's item).
+ */
+export function liveWorkingMs(todo: Pick<SessionTodo, 'state' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): number | null {
+  if (typeof todo.workingMs !== 'number') return null;
+  if (todo.state !== 'in_progress' || !todo.workingSince) return todo.workingMs;
+  const since = Date.parse(todo.workingSince);
+  const share = typeof todo.workingShare === 'number' && todo.workingShare >= 1 ? todo.workingShare : 1;
+  return todo.workingMs + (Number.isFinite(since) ? Math.max(0, now - since) / share : 0);
+}
+
+/**
+ * D147: an item in progress, its time so far: `12m so far (open 2h 5m)` (its live working time,
+ * the open time in brackets when it reads differently); `18m so far` (open time) without a
+ * working clock; `''` when it never started.
+ */
+export function soFarText(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): string {
+  const open = openSoFarMs(todo, now);
+  const working = liveWorkingMs(todo, now);
+  if (working === null) return open === null ? '' : `${formatActual(open)} so far`;
+  const worked = formatActual(working);
+  return open === null || formatActual(open) === worked ? `${worked} so far` : `${worked} so far (open ${formatActual(open)})`;
+}
+
 /** The card's actuals: `took 12m (open 51h 3m) · 41k tokens` (D147; the tokens only when known); `''` when it has none. */
 export function todoActualsLabel(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'actualTokens' | 'workingMs'>): string {
   if (!todoHasActuals(todo)) return '';

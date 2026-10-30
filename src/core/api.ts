@@ -2952,6 +2952,14 @@ export interface SessionTodo {
    * open time. `null` = no working clock (finished before D147: open time only); absent from an older peer.
    */
   readonly workingMs?: number | null;
+  /**
+   * D147 (additive): while its clock runs (in progress, its working session working), when the
+   * current span began; `null` otherwise. Its live working time is {@link workingMs} + (now −
+   * `workingSince`) ÷ {@link workingShare}.
+   */
+  readonly workingSince?: string | null;
+  /** D147 (additive): how many items share the running span (the session's items in progress); `null` with no span. */
+  readonly workingShare?: number | null;
   /** D81 (additive): a captured item still waits for its agent to fill in its description, plan, priority and estimate; absent from an older peer. */
   readonly needsEnrichment?: boolean;
   /** D81 (additive): how it was captured ({@link TodoCaptureSource}); `null` for an item added any other way. */

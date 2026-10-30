@@ -8,7 +8,7 @@
 import type { SessionStatus } from '../../../../core/model.ts';
 import type { SessionTodo, TodoActualsTotal, TodoGroup, TodoPatchInput, TodoPriority } from '../../../../core/api.ts';
 import type { MachineState } from '../../../../core/peers.ts';
-import { formatActual, tookText } from '../../../../core/todo-actuals.ts';
+import { liveWorkingMs, openSoFarMs, soFarText, tookText } from '../../../../core/todo-actuals.ts';
 import { captureTitle } from '../../../../core/todo-capture.ts';
 import { TODO_TITLE_MAX, formatTodoMinutes, todoPriorityRank } from '../../../../core/todos.ts';
 import type { Tone } from '../../glossary.ts';
@@ -109,43 +109,37 @@ export function priorityLook(priority: TodoPriority | string | null | undefined)
   }
 }
 
-/**
- * The time an item has spent in progress so far (ms): its ended spans (`actualMs`) plus,
- * while in progress, the running one since `startedAt`. `null` when it never started.
- */
-export function elapsedMs(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'startedAt'>, now: number): number | null {
-  const ended = typeof todo.actualMs === 'number' ? todo.actualMs : null;
-  if (todo.state !== 'in_progress') return ended;
-  const started = todo.startedAt ? Date.parse(todo.startedAt) : Number.NaN;
-  const running = Number.isFinite(started) ? Math.max(0, now - started) : 0;
-  if (ended === null && !Number.isFinite(started)) return null;
-  return (ended ?? 0) + running;
-}
+/** The time an item has spent in progress so far (its open time; shared: `openSoFarMs`). */
+export const elapsedMs = openSoFarMs;
 
 /**
- * The card's estimate vs actual (the prototype's): `est 20m` (open), `est 15m · 18m so far`
- * (in progress: its open time so far), `est 1h · took 12m (open 2h 5m)` (done, D147: its
- * working time, with its open time; `est 1h · open 2h 5m` for one finished before D147); each
- * part only when known; `''` for none.
+ * The card's estimate vs actual (the prototype's): `est 20m` (open), `est 15m · 12m so far (open
+ * 18m)` (in progress, D147: its live working time, the open time beside it), `est 1h · took 12m
+ * (open 2h 5m)` (done: its working time, with its open time; `est 1h · open 2h 5m` for one
+ * finished before D147); each part only when known; `''` for none.
  */
-export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs'>, now: number): string {
+export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): string {
   const parts: string[] = [];
   if (typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0) parts.push(`est ${formatTodoMinutes(todo.estimateMinutes)}`);
-  if (todo.state !== 'open') {
+  if (todo.state === 'done') {
     const ms = elapsedMs(todo, now);
-    if (ms !== null) parts.push(todo.state === 'done' ? tookText(todo.workingMs, ms) : `${formatActual(ms)} so far`);
+    if (ms !== null) parts.push(tookText(todo.workingMs, ms));
+  } else if (todo.state === 'in_progress') {
+    const text = soFarText(todo, now);
+    if (text) parts.push(text);
   }
   return parts.join(' · ');
 }
 
 /**
- * `true` when an in-progress item has run past its estimate (the line turns amber, with the word
- * "over"). D147: a done item compares its working time (one with open time only never reads over).
+ * `true` when an item has run past its estimate (the line turns amber, with the word "over").
+ * D147: its working time (live while in progress); a done item with open time only never reads
+ * over; an older peer's item in progress (no working clock) compares its open time.
  */
-export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs'>, now: number): boolean {
+export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): boolean {
   if (typeof todo.estimateMinutes !== 'number' || todo.state === 'open') return false;
   if (todo.state === 'done') return typeof todo.workingMs === 'number' && todo.workingMs > todo.estimateMinutes * 60_000;
-  const ms = elapsedMs(todo, now);
+  const ms = liveWorkingMs(todo, now) ?? elapsedMs(todo, now);
   return ms !== null && ms > todo.estimateMinutes * 60_000;
 }
 

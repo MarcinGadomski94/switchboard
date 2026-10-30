@@ -504,7 +504,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await reminder.stop();
   });
   // D147: an item's actual time counts only while its agent's session works (status run); spans a crash left open close at the session's last event.
-  const workClock = new TodoWorkClock({ store: options.store, bus });
+  const workClock = new TodoWorkClock({ store: options.store, bus, changed: (sessionId) => void todos.publishWorking(sessionId).catch((error: unknown) => app.log.error(error, 'todo working time')) });
   app.addHook('onReady', async () => {
     await workClock.start();
   });

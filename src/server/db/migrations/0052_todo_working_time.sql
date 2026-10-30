@@ -8,6 +8,8 @@
 --                            clock: the item was finished before D147 (its time is open time only).
 --   working_span_started_at  when its current working span began (in progress and its session
 --                            working); NULL otherwise.
+--   working_share            how many items share that span (the session's items in progress with
+--                            a working clock, each gets 1/share of its time); NULL with no span.
 -- todo_actuals gains:
 --   working_ms               the completed item's working time; NULL for an open-time-only row.
 --   measure                  working (working_ms is what calibration and Insights' accuracy use) or
@@ -19,6 +21,7 @@
 
 ALTER TABLE session_todos ADD COLUMN working_ms INTEGER CHECK (working_ms IS NULL OR working_ms >= 0);
 ALTER TABLE session_todos ADD COLUMN working_span_started_at TEXT;
+ALTER TABLE session_todos ADD COLUMN working_share INTEGER CHECK (working_share IS NULL OR working_share >= 1);
 
 UPDATE session_todos SET working_ms = 0 WHERE state IN ('open', 'in_progress') AND started_first_at IS NOT NULL;
 

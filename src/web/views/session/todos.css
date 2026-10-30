@@ -263,7 +263,8 @@
   }
 }
 
-.sb-todo-estimate {
+.sb-todo-estimate,
+.sb-todo-working {
   font: 400 var(--fs-mono-meta) var(--font-mono);
   color: var(--muted-1);
 }

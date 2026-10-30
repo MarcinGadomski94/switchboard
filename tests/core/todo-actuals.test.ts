@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bandOf, CALIBRATION_WINDOW, todoActualsLabel, todoActualsTotal, todoActualsTotalLabel, todoCalibration, tookText, type TodoActualSample } from '../../src/core/todo-actuals.ts';
+import { bandOf, CALIBRATION_WINDOW, liveWorkingMs, openSoFarMs, soFarText, todoActualsLabel, todoActualsTotal, todoActualsTotalLabel, todoCalibration, tookText, type TodoActualSample } from '../../src/core/todo-actuals.ts';
 
 /**
  * D147 oracle (`docs/todos.md` → *Actual vs. estimate*): the card's "took" is the working time
@@ -57,5 +57,22 @@ describe('calibration per band (D147)', () => {
     const newest = Array.from({ length: CALIBRATION_WINDOW }, () => sample(10, 20));
     const older = Array.from({ length: 10 }, () => sample(10, 1));
     expect(todoCalibration([...newest, ...older], 'this session')).toBe(`Calibration (last ${CALIBRATION_WINDOW} finished, this session): ≤1 h estimates took 2.0× · 1–4 h: not enough data · >4 h: not enough data`);
+  });
+});
+
+describe('live working time (D147)', () => {
+  const NOW = Date.parse('2026-10-30T12:00:00.000Z');
+  const ago = (minutes: number): string => new Date(NOW - minutes * MIN).toISOString();
+  it('closed spans plus the running span divided by its share; open time beside it', () => {
+    const running = { state: 'in_progress' as const, actualMs: 0, startedAt: ago(120), workingMs: 4 * MIN, workingSince: ago(6), workingShare: 2 };
+    expect(liveWorkingMs(running, NOW)).toBe(7 * MIN);
+    expect(soFarText(running, NOW)).toBe('7m so far (open 2h)');
+    // Paused (waiting for the developer): only the closed spans.
+    expect(liveWorkingMs({ ...running, workingSince: null, workingShare: null }, NOW)).toBe(4 * MIN);
+    expect(soFarText({ ...running, startedAt: ago(4), workingSince: null }, NOW)).toBe('4m so far');
+    // No working clock (an older peer): the open time, as before.
+    expect(liveWorkingMs({ ...running, workingMs: null }, NOW)).toBeNull();
+    expect(soFarText({ ...running, workingMs: null }, NOW)).toBe('2h so far');
+    expect(openSoFarMs({ state: 'open', actualMs: null, startedAt: null }, NOW)).toBeNull();
   });
 });

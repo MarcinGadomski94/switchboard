@@ -1525,8 +1525,8 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'took',
         title: 'Took: the time the agent worked',
-        what: 'A finished task’s “took” now counts only the time its agent was working on it: the clock stops while the agent waits for you (a question, a permission, a turn that ended with a question) or sits idle, and an agent working on several tasks at once splits its time between them. The time from start to finish is still there as “open”: est ~45m · took 12m (open 51h). Tasks finished before this show their open time only and are left out of the agents’ estimate feedback, which now comes per size: small, medium and large estimates.',
-        todo: ['Open Tasks and look at a finished task: took, then open.', 'Below Done, the estimates’ accuracy now uses the working time.'],
+        what: 'A finished task’s “took” now counts only the time its agent was working on it: the clock stops while the agent waits for you (a question, a permission, a turn that ended with a question), waits for a wake-up it scheduled, or sits idle, and an agent working on several tasks at once splits its time between them. The time from start to finish is still there as “open”: est ~45m · took 12m (open 51h). A task in progress shows the time worked so far. Tasks finished before this show their open time only and are left out of the agents’ estimate feedback, which now comes per size: small, medium and large estimates.',
+        todo: ['Open Tasks and look at a task in progress or a finished one: the time worked, then open.', 'Below Done, the estimates’ accuracy now uses the working time.'],
         anchors: ['v2-tasks-accuracy', 'v2-todo-estimate', 'v2-nav-tasks', 'v2-tab-more'],
         v2Route: '/tasks',
         missing: 'Finish a task in Tasks to see how long its agent worked on it. ',
