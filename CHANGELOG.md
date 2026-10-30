@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.12 (2026-10-30)
+
+### Projects
+- **Steps spanning several repos no longer get stuck after a worktree is removed:** removing a merged worktree (by hand or by the automatic clean-up) made the project stop reading that repo, so a step whose only work was there stayed "running" for good. The project now also reads repos whose worktree was removed; an unmerged branch still keeps the step running. A step already stuck this way completes at the next start. See `docs/plans.md` (D148).
+- **A finished step with nothing merged completes on its own:** when agents merge their own work and a step's task is done and its turn is over, it is done after 2 minutes. With no commits of its own the note says "nothing to merge"; with work that was never merged the note names the repo, branch and PR, and Needs you shows "Done without merging" with Open session and Open PR. Pending or red checks, a conflict or a question still hold it. Jira is not moved to Done for these steps. See `docs/plans.md` (D149).
+- **The Timeline's "Waiting on you"** stops counting once you have answered; spans left open are repaired.
+
 ## 2.4.11 (2026-10-30)
 
 ### Tasks
