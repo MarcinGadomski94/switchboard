@@ -2,6 +2,7 @@ import { ADD_ACCOUNT_ACTION, addAccountPath } from '../../../core/account-hint.t
 import type { BatchAnswer, NewSessionPrefill, Question } from '../../../core/api.ts';
 import type { TeamCharter } from '../../../core/team.ts';
 import { ANSWER, type AnsweredWhere, actionLabel } from '../glossary.ts';
+import { plainText } from './card-markdown.ts';
 import type { NeedsItem } from './needs-you-model.ts';
 
 /**
@@ -300,6 +301,45 @@ export function answerWords(question: Pick<Question, 'options'>, answer: BatchAn
   return words;
 }
 
+/**
+ * The tooltip of an answer's chosen options: one line per picked option that has
+ * a description ("Acme US: Virginia"), each description as plain text (its
+ * Markdown stripped, as on the card's options); `undefined` when none has one.
+ */
+function chosenDetail(picks: ReadonlyArray<{ readonly question: Pick<Question, 'options'>; readonly indexes: readonly number[] }>): string | undefined {
+  const lines: string[] = [];
+  for (const { question, indexes } of picks) {
+    for (const index of indexes) {
+      const option = question.options[index];
+      const description = option?.description ? plainText(option.description) : '';
+      if (option && description) lines.push(`${option.label}: ${description}`);
+    }
+  }
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+/**
+ * Fix after 2.4.12 · the answered line keeps the chosen answers' descriptions as
+ * its tooltip (classic's answered card keeps every option's `title`): the
+ * descriptions of the options picked in `action`; `undefined` for other kinds of
+ * answer, or when no picked option has a description.
+ */
+export function detailOf(item: Pick<NeedsItem, 'questions'>, action: AnswerAction): string | undefined {
+  if (action.type !== 'questions') return undefined;
+  return chosenDetail(
+    action.answers.flatMap((answer) => {
+      const question = item.questions?.find((q) => q.id === answer.questionId);
+      return question ? [{ question, indexes: [...(answer.answerIndex !== undefined ? [answer.answerIndex] : []), ...(answer.answerIndexes ?? [])] }] : [];
+    }),
+  );
+}
+
+/** {@link detailOf} for a batch the server records as answered (the chat's answered row): `undefined` while any question is open. */
+export function answeredDetailFromServer(questions: readonly Question[]): string | undefined {
+  if (questions.length === 0 || questions.some((q) => q.state !== 'answered')) return undefined;
+  return chosenDetail(questions.map((q) => ({ question: q, indexes: q.answerIndexes ?? (q.answerIndex !== null ? [q.answerIndex] : []) })));
+}
+
 // ── Summaries (the compact card) ─────────────────────────────────────────
 
 /** What the compact card says after an answer (the prototype's `pill`). */
@@ -346,6 +386,8 @@ export function summaryOf(item: NeedsItem, action: AnswerAction): string {
 export interface AnsweredInfo {
   readonly key: string;
   readonly summary: string;
+  /** The chosen answers' descriptions, the summary's tooltip ({@link detailOf}); absent when there are none. */
+  readonly detail?: string;
   /** When (ISO). */
   readonly at: string;
   readonly where: AnsweredWhere;

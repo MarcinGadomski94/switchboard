@@ -79,13 +79,16 @@ function onCardKey(event: KeyboardEvent<HTMLElement>): void {
 }
 
 /** The compact card of an answered item ("✓ You answered “Q3” · 13:44 · on Home"). */
-export function AnsweredLine({ info, testId = 'v2-answered' }: { readonly info: Pick<AnsweredInfo, 'summary' | 'at' | 'where' | 'kind' | 'title'>; readonly testId?: string }) {
+export function AnsweredLine({ info, testId = 'v2-answered' }: { readonly info: Pick<AnsweredInfo, 'summary' | 'detail' | 'at' | 'where' | 'kind' | 'title'>; readonly testId?: string }) {
   return (
     <div className="v2-answered" data-testid={testId} role="status">
       <span className="v2-answered-ok">
         <Icon name="check" size="s" />
       </span>
-      <b className="v2-grow">{info.summary}</b>
+      {/* Fix after 2.4.12: the chosen answers' descriptions stay a tooltip, as on the card's options. */}
+      <b className="v2-grow" title={info.detail}>
+        {info.summary}
+      </b>
       <span className="v2-muted" style={{ fontSize: 13 }}>
         {clock(info.at)} · {ANSWERED_WHERE[info.where]}
       </span>

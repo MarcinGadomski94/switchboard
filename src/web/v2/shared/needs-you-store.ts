@@ -5,7 +5,7 @@ import type { MachineState } from '../../../core/peers.ts';
 import type { TeamNeedsYouItem } from '../../../core/team.ts';
 import { usageGridLines } from '../../shell/format.ts';
 import type { AnsweredWhere } from '../glossary.ts';
-import { type AnswerAction, type AnsweredInfo, summaryOf } from './answer-model.ts';
+import { type AnswerAction, type AnsweredInfo, detailOf, summaryOf } from './answer-model.ts';
 import { type NeedsItem, type UsageAlert, memoryScopeOf, mergeNeedsYou } from './needs-you-model.ts';
 import { usageWarningAlerts } from './usage-warning-model.ts';
 
@@ -337,7 +337,8 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
       hidden.add(item.key);
       const at = new Date(deps.now()).toISOString();
       answered.delete(item.key);
-      answered.set(item.key, { key: item.key, summary: summaryOf(item, action), at, where, kind: item.kind, title: item.title });
+      const detail = detailOf(item, action);
+      answered.set(item.key, { key: item.key, summary: summaryOf(item, action), ...(detail ? { detail } : {}), at, where, kind: item.kind, title: item.title });
       while (answered.size > 200) answered.delete(answered.keys().next().value as string);
       startLine(item.key, at);
       if (action.type === 'dismiss-local') {

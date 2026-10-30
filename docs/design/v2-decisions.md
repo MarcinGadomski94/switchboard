@@ -533,3 +533,8 @@ Format: `- **ASSUMED** <what>. <why>. (lane, date)`
 - **ASSUMED** draft saves stay as they are (400 ms after the last change, plus blur / hide / unmount): they were one PUT per pause, none per key, and render nothing in the typing tab.
 - **ASSUMED** no What's-new tour: a fix, nothing new to show.
 - Tests: `tests/e2e/typing-perf.spec.ts` (render counts always; timings with `SWITCHBOARD_PERF=1`), `tests/web/typing-lag.test.ts`.
+
+### Answer descriptions after answering (2026-10-30)
+- **FIX** (developer report 2026-10-30, verbatim: "i dont see the tooltips when i hover on answers within v2 theme"). Checked under the pointer (`document.elementFromPoint` at each option's centre) in Needs you, Home, the Board's quick answer, the agent's chat, a crew page and a phone: every open card's options already carried their description as `title`. What had none was the answered state: once a question is answered, the card becomes a line with the chosen labels ("You answered “Acme US”"; the chat's answered row the same), and the descriptions were gone, where classic's answered card keeps each option's tooltip. The line's answer now has the chosen options' descriptions as its tooltip, plain text, one per line ("Acme US: Virginia"), from the answer just given (`detailOf`, kept in the store's `AnsweredInfo.detail`) or from the server's record (`answeredDetailFromServer`); none for own words, closed batches or options without a description.
+- **ASSUMED** no What's-new tour: a fix, nothing new to show.
+- Tests: `tests/web/v2-answer-options.test.ts` (*option descriptions as tooltips*), `tests/e2e/v2-answer-tooltips.spec.ts` (the `title` under the pointer on every open card in every place, and on the answered lines).
