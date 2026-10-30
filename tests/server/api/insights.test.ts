@@ -53,11 +53,22 @@ async function seed(): Promise<void> {
   await store.events.append({ sessionId: s.id, kind: 'ok', label: 'Done', ts, payload: result(3_000, 'claude-opus-5-5') });
   await store.events.append({ sessionId: s.id, kind: 'ok', label: 'Done', ts, payload: result(500, 'claude-haiku-4-5') });
   store.db
-    .prepare("INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, priority, provider, model, profile_id, usage) VALUES ('t1', ?, '/work/acme', 'Docs', 10, 1200000, 1000000, ?, 'low', 'claude', 'claude-opus-5-5', 'default-claude', ?)")
+    .prepare("INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, priority, provider, model, profile_id, usage, working_ms, measure) VALUES ('t1', ?, '/work/acme', 'Docs', 10, 1200000, 1000000, ?, 'low', 'claude', 'claude-opus-5-5', 'default-claude', ?, 1200000, 'working')")
     .run(s.id, ts, JSON.stringify({ input: 0, output: 1_000_000, cacheWrite: 0, cacheRead: 0, unsplit: 0 }));
 }
 
 describe('D108 · GET /api/insights', () => {
+  it('D147: the accuracy uses the working time; a row with open time only is left out and counted', async () => {
+    await seed();
+    const s = (await store.sessions.list())[0];
+    store.db
+      .prepare("INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, priority, provider, model, profile_id) VALUES ('old', ?, '/work/acme', 'Old', 10, 36000000, NULL, ?, 'low', 'claude', 'claude-opus-5-5', 'default-claude')")
+      .run(s?.id ?? '', new Date().toISOString());
+    const body = (await call('GET', '/api/insights?period=7d')).json<InsightsAnswer>();
+    expect(body.estimates).toMatchObject({ count: 1, median: 2, openOnly: 1 });
+    expect(body.estimates.open).toMatchObject({ count: 2 });
+  });
+
   it('answers the whole page in one response, filtered', async () => {
     await seed();
     const response = await call('GET', '/api/insights?period=7d');

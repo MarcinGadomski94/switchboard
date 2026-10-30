@@ -80,6 +80,11 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     startedFirstAt: record.startedFirstAt ?? null,
     actualMs: record.actualMs ?? null,
     actualTokens: record.actualTokens ?? null,
+    // D147: its working time (the card's "took"); `null` = open time only.
+    workingMs: record.workingMs ?? null,
+    // D147: its running span (the UI adds the time since, divided by the share): live working time.
+    workingSince: record.workingSpanStartedAt ?? null,
+    workingShare: record.workingShare ?? null,
     // D81: a captured item waiting for its agent to fill it in (an open one only), and how it was captured.
     needsEnrichment: record.needsEnrichment === true && record.state === 'open',
     capturedFrom: record.capturedFrom ?? null,
@@ -401,6 +406,7 @@ export class TodoService {
   /**
    * D78: the calibration line for session `sessionId`'s agent: its own last estimates' accuracy
    * when it has enough completed estimated items, else its folder's; `null` when neither has.
+   * D147: per estimate band, from items measured in working time only (`todoCalibration`).
    */
   async calibration(sessionId: string): Promise<string | null> {
     const own = await this.#store.todos.recentEstimated({ sessionId }, CALIBRATION_WINDOW);
@@ -547,6 +553,16 @@ export class TodoService {
     const list = await this.#publish(sessionId);
     await this.#arm();
     return list;
+  }
+
+  /**
+   * D147: the live working time of session `sessionId`'s items changed (their session started or
+   * stopped working): `todosChanged` only, so the views reload the list (its counts are unchanged:
+   * no `sessionUpdated`).
+   */
+  async publishWorking(sessionId: string): Promise<void> {
+    const list = await this.#listOf(sessionId);
+    this.#bus.publish('todosChanged', { sessionId, openCount: list.openCount, doneCount: list.doneCount });
   }
 
   async #publish(sessionId: string): Promise<SessionTodoList> {

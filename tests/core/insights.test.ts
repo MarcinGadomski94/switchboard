@@ -11,6 +11,8 @@ import {
   type TodoActualRow,
   type TurnRollupRow,
   accuracyBucket,
+  accuracyRatio,
+  openTimeNote,
   buildInsights,
   insightsQueryString,
   median,
@@ -56,6 +58,8 @@ function todo(partial: Partial<TodoActualRow> & Pick<TodoActualRow, 'todoId' | '
     profileId: 'default-claude',
     completedAt: '2026-10-13T10:00:00.000Z',
     reopens: 0,
+    // D147: measured in working time (the same as its open time unless the test says otherwise).
+    workingMs: partial.actualMs ?? 0,
     ...partial,
   };
 }
@@ -449,5 +453,26 @@ describe('D108 ruling · merged machines', () => {
   it('reads a peer answer defensively', () => {
     expect(readInsightsRows({ nope: true })).toBeNull();
     expect(readInsightsRows({ turns: [], todos: [], plans: null, mergeDecisions: [], readings: [], accounts: [], sessionTitles: { a: 'A', b: 1 } })).toMatchObject({ plans: null, sessionTitles: { a: 'A' } });
+  });
+});
+
+describe('D147 · estimate accuracy uses working time', () => {
+  it('open-time-only rows are left out and counted; the open time is shown apart', () => {
+    const rows = [
+      todo({ todoId: 'w1', model: OPUS, estimateMinutes: 20, actualMs: 600 * MIN, workingMs: 10 * MIN }),
+      todo({ todoId: 'w2', model: OPUS, estimateMinutes: 20, actualMs: 40 * MIN, workingMs: 30 * MIN }),
+      todo({ todoId: 'o1', model: OPUS, estimateMinutes: 20, actualMs: 6000 * MIN, workingMs: null }),
+      // An older peer's row: no workingMs at all.
+      { ...todo({ todoId: 'o2', model: OPUS, estimateMinutes: 10, actualMs: 20 * MIN }), workingMs: undefined },
+    ];
+    expect(rows.map((row) => accuracyRatio(row))).toEqual([0.5, 1.5, null, null]);
+    expect(rows.map((row) => accuracyRatio(row, 'open'))).toEqual([30, 2, 300, 2]);
+    const answer = buildInsights(input({ todos: rows }));
+    expect(answer.estimates).toMatchObject({ count: 2, median: 1, openOnly: 2 });
+    expect(answer.estimates.open).toMatchObject({ count: 4, median: 16 });
+    expect(answer.estimates.byModel).toEqual([expect.objectContaining({ key: OPUS, count: 2 })]);
+    expect(openTimeNote(answer.estimates)).toBe('Working time only · 2 finished before working time was measured (open time only) left out · open time (in progress → done): median 16.0× over 4');
+    expect(openTimeNote({ openOnly: 0, open: { count: 0, median: null, buckets: [] } })).toBe('');
+    expect(answer.cost.top.find((row) => row.todoId === 'o1')?.workingMs).toBeNull();
   });
 });

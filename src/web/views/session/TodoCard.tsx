@@ -1,7 +1,7 @@
 import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTodo, TodoFieldsInput, TodoPriority, TodoState } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
-import { todoActualsLabel } from '../../../core/todo-actuals.ts';
+import { soFarText, todoActualsLabel } from '../../../core/todo-actuals.ts';
 import {
   DEFAULT_TODO_PRIORITY,
   TODO_DESCRIPTION_MAX,
@@ -755,6 +755,12 @@ export function TodoCard({
                 In progress
               </span>
             ) : null}
+            {/* D147: the time its agent has worked on it so far (live), the open time beside it. */}
+            {inProgress && soFarText(todo, Math.max(now, Date.now())) ? (
+              <span className="sb-todo-working" data-testid="todo-working" title="The time its agent has worked on it so far (paused while the agent waits for you or is idle); open: since it went in progress">
+                {soFarText(todo, Math.max(now, Date.now()))}
+              </span>
+            ) : null}
             {estimate ? (
               <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
                 {estimate}
@@ -768,7 +774,7 @@ export function TodoCard({
           {isDone ? (
             <>
               {actualsLine ? (
-                <span className="sb-todo-actuals" data-testid="todo-actuals" title="Estimate, the time it spent in progress, and the tokens of the turns that worked on it (approximate)">
+                <span className="sb-todo-actuals" data-testid="todo-actuals" title="Estimate, the time its agent worked on it (open: from in progress to done), and the tokens of the turns that worked on it (approximate)">
                   {actualsLine}
                   {' · '}
                 </span>

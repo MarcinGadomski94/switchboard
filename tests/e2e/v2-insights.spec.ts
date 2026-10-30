@@ -37,6 +37,8 @@ test.beforeAll(async () => {
     const split = JSON.stringify({ input: 1_000, output: 10_000, cacheWrite: 20_000, cacheRead: 200_000, unsplit: 0 });
     [10, 30, 50].forEach((minutes, i) => todo.run(`o${i}`, acme.id, '/work/acme', `Upload step ${i + 1}`, 20, minutes * MIN, 31_000, at(86_400_000 + i * MIN), 'claude-opus-5-5', split));
     [4, 10, 6].forEach((minutes, i) => todo.run(`h${i}`, docs.id, '/work/docs', `Docs page ${i + 1}`, 10, minutes * MIN, 31_000, at(2 * 86_400_000 + i * MIN), 'claude-haiku-4-5', split));
+    // D147: measured in working time (the same as their open time here).
+    store.db.prepare("UPDATE todo_actuals SET working_ms = actual_ms, measure = 'working'").run();
     store.db.prepare("INSERT INTO todo_reopens (todo_id, session_id, reopened_at) VALUES ('o1', ?, ?)").run(acme.id, at(86_400_000));
     const reset = new Date(now + 2 * 3_600_000).toISOString();
     const weekReset = new Date(now + 3 * 86_400_000).toISOString();

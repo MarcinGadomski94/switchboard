@@ -538,6 +538,8 @@ export class InsightsRepository {
           priority: typeof row['priority'] === 'string' ? (row['priority'] as TodoPriority) : null,
           estimateMinutes: typeof row['estimate_minutes'] === 'number' || typeof row['estimate_minutes'] === 'bigint' ? Number(row['estimate_minutes']) : null,
           actualMs: Number(row['actual_ms']),
+          // D147: an open-time-only row (before D147) has no working time.
+          workingMs: row['measure'] === 'working' && (typeof row['working_ms'] === 'number' || typeof row['working_ms'] === 'bigint') ? Number(row['working_ms']) : null,
           actualTokens: tokens === null || tokens === undefined ? null : Number(tokens),
           usage: usage ?? (tokens === null || tokens === undefined ? EMPTY_USAGE : { ...EMPTY_USAGE, unsplit: Number(tokens) }),
           provider: typeof row['provider'] === 'string' ? row['provider'] : '',

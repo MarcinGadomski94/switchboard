@@ -8,7 +8,7 @@
 import type { SessionStatus } from '../../../../core/model.ts';
 import type { SessionTodo, TodoActualsTotal, TodoGroup, TodoPatchInput, TodoPriority } from '../../../../core/api.ts';
 import type { MachineState } from '../../../../core/peers.ts';
-import { formatActual } from '../../../../core/todo-actuals.ts';
+import { liveWorkingMs, openSoFarMs, soFarText, tookText } from '../../../../core/todo-actuals.ts';
 import { captureTitle } from '../../../../core/todo-capture.ts';
 import { TODO_TITLE_MAX, formatTodoMinutes, todoPriorityRank } from '../../../../core/todos.ts';
 import type { Tone } from '../../glossary.ts';
@@ -109,37 +109,37 @@ export function priorityLook(priority: TodoPriority | string | null | undefined)
   }
 }
 
-/**
- * The time an item has spent in progress so far (ms): its ended spans (`actualMs`) plus,
- * while in progress, the running one since `startedAt`. `null` when it never started.
- */
-export function elapsedMs(todo: Pick<SessionTodo, 'state' | 'actualMs' | 'startedAt'>, now: number): number | null {
-  const ended = typeof todo.actualMs === 'number' ? todo.actualMs : null;
-  if (todo.state !== 'in_progress') return ended;
-  const started = todo.startedAt ? Date.parse(todo.startedAt) : Number.NaN;
-  const running = Number.isFinite(started) ? Math.max(0, now - started) : 0;
-  if (ended === null && !Number.isFinite(started)) return null;
-  return (ended ?? 0) + running;
-}
+/** The time an item has spent in progress so far (its open time; shared: `openSoFarMs`). */
+export const elapsedMs = openSoFarMs;
 
 /**
- * The card's estimate vs actual (the prototype's): `est 20m` (open), `est 15m · 18m so far`
- * (in progress), `est 1h · took 48m` (done); each part only when known; `''` for none.
+ * The card's estimate vs actual (the prototype's): `est 20m` (open), `est 15m · 12m so far (open
+ * 18m)` (in progress, D147: its live working time, the open time beside it), `est 1h · took 12m
+ * (open 2h 5m)` (done: its working time, with its open time; `est 1h · open 2h 5m` for one
+ * finished before D147); each part only when known; `''` for none.
  */
-export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt'>, now: number): string {
+export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): string {
   const parts: string[] = [];
   if (typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0) parts.push(`est ${formatTodoMinutes(todo.estimateMinutes)}`);
-  if (todo.state !== 'open') {
+  if (todo.state === 'done') {
     const ms = elapsedMs(todo, now);
-    if (ms !== null) parts.push(todo.state === 'done' ? `took ${formatActual(ms)}` : `${formatActual(ms)} so far`);
+    if (ms !== null) parts.push(tookText(todo.workingMs, ms));
+  } else if (todo.state === 'in_progress') {
+    const text = soFarText(todo, now);
+    if (text) parts.push(text);
   }
   return parts.join(' · ');
 }
 
-/** `true` when an in-progress item has run past its estimate (the line turns amber, with the word "over"). */
-export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt'>, now: number): boolean {
+/**
+ * `true` when an item has run past its estimate (the line turns amber, with the word "over").
+ * D147: its working time (live while in progress); a done item with open time only never reads
+ * over; an older peer's item in progress (no working clock) compares its open time.
+ */
+export function overEstimate(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): boolean {
   if (typeof todo.estimateMinutes !== 'number' || todo.state === 'open') return false;
-  const ms = elapsedMs(todo, now);
+  if (todo.state === 'done') return typeof todo.workingMs === 'number' && todo.workingMs > todo.estimateMinutes * 60_000;
+  const ms = liveWorkingMs(todo, now) ?? elapsedMs(todo, now);
   return ms !== null && ms > todo.estimateMinutes * 60_000;
 }
 
@@ -179,17 +179,20 @@ export function blockedReason(machine: { readonly name: string; readonly state: 
 /**
  * The estimates' accuracy over every agent's completed, estimated items (D78's
  * `actuals`): 100% minus the relative error of the summed actual time against the summed
- * estimates, never below 0. `null` while nothing estimated has completed.
+ * estimates, never below 0. D147: the actual is the working time, so only items measured in it
+ * count (those finished before D147, and an older peer's totals, have open time only). `null`
+ * while nothing estimated has completed.
  */
 export function estimateAccuracy(totals: ReadonlyArray<TodoActualsTotal | null | undefined>): { readonly percent: number; readonly count: number } | null {
   let estimate = 0;
   let actual = 0;
   let count = 0;
   for (const total of totals) {
-    if (!total || total.estimated <= 0) continue;
-    estimate += total.estimateMinutes * 60_000;
-    actual += total.estimatedActualMs;
-    count += total.estimated;
+    const working = total?.working;
+    if (!working || working.estimated <= 0) continue;
+    estimate += working.estimateMinutes * 60_000;
+    actual += working.estimatedMs;
+    count += working.estimated;
   }
   if (count === 0 || estimate <= 0) return null;
   const percent = Math.round(Math.max(0, 1 - Math.abs(actual - estimate) / estimate) * 100);

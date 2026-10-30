@@ -158,6 +158,9 @@ const V2_4_7 = '2.4.7';
 /** The version D145 (merged worktrees of Switchboard's agents are cleaned up by themselves) ships in. */
 const V2_4_8 = '2.4.8';
 
+/** The version D147 (a task's actual time is its agent's working time; calibration per estimate band) ships in. */
+const V2_4_11 = '2.4.11';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1508,6 +1511,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['setting-auto-clean'],
         v2Route: '/settings/advanced/sessions',
         missing: 'Open Settings › Advanced › Agents & separate copies to see the clean-up switch. ',
+      },
+    ],
+  },
+  // D147: a task's "took" is its agent's working time (docs/todos.md → Actual vs. estimate): a v2 tour on Tasks.
+  {
+    id: 'working-time',
+    decision: 'D147',
+    version: V2_4_11,
+    title: 'How long the agent really worked',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'took',
+        title: 'Took: the time the agent worked',
+        what: 'A finished task’s “took” now counts only the time its agent was working on it: the clock stops while the agent waits for you (a question, a permission, a turn that ended with a question), waits for a wake-up it scheduled, or sits idle, and an agent working on several tasks at once splits its time between them. The time from start to finish is still there as “open”: est ~45m · took 12m (open 51h). A task in progress shows the time worked so far. Tasks finished before this show their open time only and are left out of the agents’ estimate feedback, which now comes per size: small, medium and large estimates.',
+        todo: ['Open Tasks and look at a task in progress or a finished one: the time worked, then open.', 'Below Done, the estimates’ accuracy now uses the working time.'],
+        anchors: ['v2-tasks-accuracy', 'v2-todo-estimate', 'v2-nav-tasks', 'v2-tab-more'],
+        v2Route: '/tasks',
+        missing: 'Finish a task in Tasks to see how long its agent worked on it. ',
       },
     ],
   },

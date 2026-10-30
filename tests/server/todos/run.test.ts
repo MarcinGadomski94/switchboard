@@ -134,19 +134,20 @@ describe('the rules (D76 / D78)', () => {
     expect(resultTurnTokens({ usage: { input_tokens: 0, output_tokens: 0 } })).toBeNull();
     expect(resultTurnTokens({ modelUsage: {} })).toBeNull();
     expect([formatTokens(850), formatTokens(1_250), formatTokens(41_200), formatTokens(1_250_000)]).toEqual(['850', '1.3k', '41k', '1.3M']);
-    expect(todoActualsLabel(item('a', 'done', { actualMs: 32 * MIN, actualTokens: 41_000 }))).toBe('took 32m · 41k tokens');
-    expect(todoActualsLabel(item('a', 'done', { actualMs: 20_000, actualTokens: null }))).toBe('took <1m');
+    // D147: "took" is the working time (the open time beside it); open time only without one.
+    expect(todoActualsLabel(item('a', 'done', { actualMs: 32 * MIN, actualTokens: 41_000, workingMs: 32 * MIN }))).toBe('took 32m · 41k tokens');
+    expect(todoActualsLabel(item('a', 'done', { actualMs: 20_000, actualTokens: null, workingMs: 0 }))).toBe('took <1m');
+    expect(todoActualsLabel(item('a', 'done', { actualMs: 32 * MIN, actualTokens: null, workingMs: null }))).toBe('open 32m');
     expect(todoActualsLabel(item('a', 'in_progress', { actualMs: 32 * MIN }))).toBe('');
     const total = todoActualsTotal([
-      { estimateMinutes: 60, actualMs: 90 * MIN, actualTokens: 100_000 },
-      { estimateMinutes: null, actualMs: 10 * MIN, actualTokens: 5_000 },
+      { estimateMinutes: 60, actualMs: 90 * MIN, actualTokens: 100_000, workingMs: 90 * MIN },
+      { estimateMinutes: null, actualMs: 10 * MIN, actualTokens: 5_000, workingMs: 10 * MIN },
     ]);
-    expect(total).toEqual({ count: 2, estimated: 1, estimateMinutes: 60, estimatedActualMs: 90 * MIN, actualMs: 100 * MIN, tokens: 105_000 });
+    expect(total).toMatchObject({ count: 2, estimated: 1, estimateMinutes: 60, estimatedActualMs: 90 * MIN, actualMs: 100 * MIN, tokens: 105_000 });
     expect(todoActualsTotalLabel(total)).toBe('est ~1h · took 1h 30m · 105k tokens (2 done)');
-    const low = Array.from({ length: 12 }, () => ({ estimateMinutes: 10, actualMs: 14 * MIN, actualTokens: null }));
-    expect(todoCalibration(low, 'this session')).toBe('Calibration: your last 10 estimates (this session) were 1.4× too low on average.');
-    expect(todoCalibration(low.slice(0, 3).map((s) => ({ ...s, actualMs: 5 * MIN })), 'this folder')).toBe('Calibration: your last 3 estimates (this folder) were 2.0× too high on average.');
-    expect(todoCalibration(low.slice(0, 3).map((s) => ({ ...s, actualMs: 10 * MIN })), 'this folder')).toBe('Calibration: your last 3 estimates (this folder) were about right on average.');
+    // D147: per estimate band, working-time items only (tests/core/todo-actuals.test.ts has the bands).
+    const low = Array.from({ length: 12 }, () => ({ estimateMinutes: 10, actualMs: 14 * MIN, actualTokens: null, workingMs: 14 * MIN }));
+    expect(todoCalibration(low, 'this session')).toBe('Calibration (last 12 finished, this session): ≤1 h estimates took 1.4× · 1–4 h: not enough data · >4 h: not enough data');
     expect(todoCalibration(low.slice(0, 2), 'this session')).toBeNull();
   });
 
@@ -215,6 +216,8 @@ describe('actuals (D78)', () => {
   it('time in progress only (open time excluded), the working session’s turn tokens, the history outlives the done hour', async () => {
     const todos = service();
     const id = await session('source', { root: '/repo/one', rootKind: 'repo' });
+    // D147: the session works the whole time here (the working clock has its own tests: working-time.test.ts).
+    await store.todos.setWorking(id, true);
     const { todo } = await todos.add(id, { title: 'Measure', estimateMinutes: 20 }, 'developer');
     await todos.update(id, todo.id, { state: 'in_progress' }, 'agent');
     clock += 10 * MIN;
@@ -240,7 +243,7 @@ describe('actuals (D78)', () => {
     todos.close();
     expect((await todos.list(id)).todos).toEqual([]);
     expect((await todos.groups()).find((g) => g.sessionId === id)).toBeUndefined();
-    expect((await store.todos.actualsFor([id])).get(id)).toEqual([{ estimateMinutes: 20, actualMs: 20 * MIN, actualTokens: 41_000 }]);
+    expect((await store.todos.actualsFor([id])).get(id)).toEqual([{ estimateMinutes: 20, actualMs: 20 * MIN, actualTokens: 41_000, workingMs: 20 * MIN }]);
   });
 
   it('a run item counts the run session’s turns; reopening drops its record; ▶ Start again keeps the span', async () => {
@@ -267,6 +270,7 @@ describe('actuals (D78)', () => {
     const todos = service();
     const a = await session('a', { root: '/repo/one', rootKind: 'repo' });
     const b = await session('b', { root: '/repo/one', rootKind: 'repo' });
+    await store.todos.setWorking(a, true);
     const finish = async (sessionId: string, estimate: number, minutes: number): Promise<void> => {
       const { todo } = await todos.add(sessionId, { title: `t${clock}`, estimateMinutes: estimate }, 'agent');
       await todos.update(sessionId, todo.id, { state: 'in_progress' }, 'agent');
@@ -275,9 +279,9 @@ describe('actuals (D78)', () => {
     };
     expect(await todos.calibration(a)).toBeNull();
     for (let i = 0; i < 3; i++) await finish(a, 10, 20);
-    expect(await todos.calibration(a)).toBe('Calibration: your last 3 estimates (this session) were 2.0× too low on average.');
+    expect(await todos.calibration(a)).toBe('Calibration (last 3 finished, this session): ≤1 h estimates took 2.0× · 1–4 h: not enough data · >4 h: not enough data');
     // b has none of its own: its folder's (a's) count.
-    expect(await todos.calibration(b)).toBe('Calibration: your last 3 estimates (this folder) were 2.0× too low on average.');
+    expect(await todos.calibration(b)).toBe('Calibration (last 3 finished, this folder): ≤1 h estimates took 2.0× · 1–4 h: not enough data · >4 h: not enough data');
   });
 });
 
@@ -339,7 +343,9 @@ describe('the agent routes (D76 / D78)', () => {
   });
 
   it('todo_add / todo_update answers carry the calibration line once there are three completed estimates', async () => {
-    const id = await session('cal', { root: '/repo/cal', rootKind: 'repo' });
+    // D147: a working session (its status run, as the hub publishes it to the work clock).
+    const id = await session('cal', { root: '/repo/cal', rootKind: 'repo', status: 'run' });
+    await store.todos.setWorking(id, true);
     for (let i = 0; i < 3; i++) {
       const added = (await agent(id, 'POST', '/agent/v1/todos', { title: `t${i}`, plan: 'No plan', priority: 'medium', estimateMinutes: 10 })).json() as { todo: SessionTodo; calibration: string | null };
       await agent(id, 'PUT', `/agent/v1/todos/${added.todo.id}`, { state: 'in_progress' });
@@ -347,6 +353,6 @@ describe('the agent routes (D76 / D78)', () => {
       await agent(id, 'PUT', `/agent/v1/todos/${added.todo.id}`, { state: 'done' });
     }
     const added = (await agent(id, 'POST', '/agent/v1/todos', { title: 'next', plan: 'No plan', priority: 'medium', estimateMinutes: 10 })).json() as { calibration: string | null };
-    expect(added.calibration).toBe('Calibration: your last 3 estimates (this session) were 1.5× too low on average.');
+    expect(added.calibration).toBe('Calibration (last 3 finished, this session): ≤1 h estimates took 1.5× · 1–4 h: not enough data · >4 h: not enough data');
   });
 });

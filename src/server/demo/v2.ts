@@ -245,7 +245,9 @@ export async function seedDemoV2Files(store: Store, dataDir: string, data: DemoD
         },
       ]);
       if (task.actual !== undefined) {
-        db.prepare("UPDATE session_todos SET actual_ms = ?, actual_tokens = ? WHERE session_id = ? AND title = ?").run(task.actual * MINUTE, task.actual * 4_200, task.session, task.title);
+        // D147: a done task's working time (about 70% of its open time: the agent waited for the developer the rest).
+        const working = task.state === 'done' ? Math.round(task.actual * 0.7) * MINUTE : null;
+        db.prepare('UPDATE session_todos SET actual_ms = ?, actual_tokens = ?, working_ms = COALESCE(?, working_ms) WHERE session_id = ? AND title = ?').run(task.actual * MINUTE, task.actual * 4_200, working, task.session, task.title);
       }
     }
 

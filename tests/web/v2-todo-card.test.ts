@@ -60,9 +60,11 @@ describe('v2 task card · estimate vs actual', () => {
     expect(todoCardModel(todo('a', { state: 'in_progress', estimateMinutes: 60, startedAt: started }), 'run', NOW).over).toBe(false);
   });
 
-  it('a done item shows est vs took and its tokens (D78)', () => {
-    const model = todoCardModel(todo('a', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN, actualTokens: 41_200 }), null, NOW);
+  it('a done item shows est vs took and its tokens (D78; D147: took = working time, open time beside it)', () => {
+    const model = todoCardModel(todo('a', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN, workingMs: 48 * MIN, actualTokens: 41_200 }), null, NOW);
     expect(model.estimate).toBe('est 1h · took 48m');
+    expect(todoCardModel(todo('a', { state: 'done', estimateMinutes: 45, actualMs: (2 * 24 * 60 + 3 * 60) * MIN, workingMs: 12 * MIN }), null, NOW).estimate).toBe('est 45m · took 12m (open 51h)');
+    expect(todoCardModel(todo('a', { state: 'done', estimateMinutes: 45, actualMs: 90 * MIN, workingMs: null }), null, NOW)).toMatchObject({ estimate: 'est 45m · open 1h 30m', over: false });
     expect(model.tokens).toBe('41k tokens');
     expect(todoCardModel(todo('a', { state: 'done', actualMs: 5 * MIN, actualTokens: null }), null, NOW).tokens).toBeNull();
     expect(todoCardModel(todo('a', { state: 'open', actualTokens: 900 }), null, NOW).tokens).toBeNull();

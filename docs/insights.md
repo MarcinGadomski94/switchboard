@@ -33,9 +33,11 @@ From the daily rollup (below). Sessions only (chats apart).
 
 ## 2 · Estimate accuracy
 
-From `todo_actuals` (D78): completed todos **with an estimate**, completed in the period.
+From `todo_actuals` (D78): completed todos **with an estimate**, completed in the period. D147: **measured in working time** (`measure = working`).
 
-- **Ratio** = actual ÷ estimate = `actual_ms ÷ (estimate_minutes × 60,000)`. D78's actual time is the time the item spent in progress (every span from in progress to done; time back in open does not count).
+- **Ratio** = actual ÷ estimate = `working_ms ÷ (estimate_minutes × 60,000)`. D147's working time is the time the item's session was working while it was in progress, split among that session's items in progress (`docs/todos.md` → *Actual vs. estimate (D78, D147)*); a session waiting for the developer, idle or stopped adds none.
+- **Open time only** (`measure = open`: completed before D147, migration 0052; also a paired machine's row without `workingMs`): left out of the ratios, counted as `estimates.openOnly` and labelled on the page ("N finished before working time was measured (open time only) left out").
+- **Open time apart** (`estimates.open`): the same distribution over **every** estimated todo with `actual_ms` (D78's time in progress, from in progress to done), for planning; the page shows its median and count under the chart (`openTimeNote`). The classic cost table's **Took** shows the working time (`(open)` after an open-time-only row's open time).
 - **Buckets**: `< 0.5×` = [0, 0.5), `0.5–1×` = [0.5, 1), `1–2×` = [1, 2), `> 2×` = [2, ∞). 1× exactly is in `1–2×` ("took as long or longer").
 - **Median**: of the ratios; with an even count the mean of the two middle values.
 - Per model and per folder: the same, per group.

@@ -88,9 +88,23 @@ describe('v2 Tasks · estimate vs actual', () => {
     const running = todo('p', { state: 'in_progress', estimateMinutes: 15, actualMs: 10 * MIN, startedAt: new Date(NOW - 8 * MIN).toISOString() });
     expect(estimateText(running, NOW)).toBe('est 15m · 18m so far');
     expect(overEstimate(running, NOW)).toBe(true);
-    expect(estimateText(todo('d', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN }), NOW)).toBe('est 1h · took 48m');
-    expect(overEstimate(todo('d', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN }), NOW)).toBe(false);
-    expect(estimateText(todo('d', { state: 'done', actualMs: 20_000 }), NOW)).toBe('took <1m');
+    expect(estimateText(todo('d', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN, workingMs: 48 * MIN }), NOW)).toBe('est 1h · took 48m');
+    expect(overEstimate(todo('d', { state: 'done', estimateMinutes: 60, actualMs: 48 * MIN, workingMs: 48 * MIN }), NOW)).toBe(false);
+    expect(estimateText(todo('d', { state: 'done', actualMs: 20_000, workingMs: 20_000 }), NOW)).toBe('took <1m');
+    // D147: the working time is what it took; the open time beside it; an item finished before D147 has open time only (never "over").
+    const waited = todo('d', { state: 'done', estimateMinutes: 45, actualMs: (51 * 60 + 3) * MIN, workingMs: 12 * MIN });
+    expect(estimateText(waited, NOW)).toBe('est 45m · took 12m (open 51h 3m)');
+    expect(overEstimate(waited, NOW)).toBe(false);
+    expect(overEstimate({ ...waited, workingMs: 50 * MIN }, NOW)).toBe(true);
+    const old = todo('d', { state: 'done', estimateMinutes: 45, actualMs: 100 * 60 * MIN, workingMs: null });
+    expect(estimateText(old, NOW)).toBe('est 45m · open 100h');
+    expect(overEstimate(old, NOW)).toBe(false);
+    // D147 live: in progress, the working time so far (closed + running ÷ share), the open time beside it; amber on the working time.
+    const live = todo('p', { state: 'in_progress', estimateMinutes: 15, actualMs: 0, startedAt: new Date(NOW - 3 * 60 * MIN).toISOString(), workingMs: 8 * MIN, workingSince: new Date(NOW - 4 * MIN).toISOString(), workingShare: 2 });
+    expect(estimateText(live, NOW)).toBe('est 15m · 10m so far (open 3h)');
+    expect(overEstimate(live, NOW)).toBe(false);
+    expect(overEstimate({ ...live, workingMs: 14 * MIN }, NOW)).toBe(true);
+    expect(estimateText({ ...live, workingSince: null }, NOW)).toBe('est 15m · 8m so far (open 3h)');
     expect(estimateText(todo('d', { state: 'done', estimateMinutes: 30 }), NOW)).toBe('est 30m');
   });
 
@@ -102,9 +116,12 @@ describe('v2 Tasks · estimate vs actual', () => {
 
   it('sums the estimates’ accuracy over every agent', () => {
     expect(estimateAccuracy([null, undefined])).toBeNull();
-    const total = (estimated: number, estimateMinutes: number, actualMinutes: number) => ({ count: estimated, estimated, estimateMinutes, estimatedActualMs: actualMinutes * MIN, actualMs: actualMinutes * MIN, tokens: 0 });
+    const working = (estimated: number, estimateMinutes: number, minutes: number) => ({ count: estimated, ms: minutes * MIN, openMs: minutes * MIN, estimated, estimateMinutes, estimatedMs: minutes * MIN, estimatedOpenMs: 10 * minutes * MIN });
+    const total = (estimated: number, estimateMinutes: number, actualMinutes: number) => ({ count: estimated, estimated, estimateMinutes, estimatedActualMs: 10 * actualMinutes * MIN, actualMs: 10 * actualMinutes * MIN, tokens: 0, working: working(estimated, estimateMinutes, actualMinutes) });
     expect(estimateAccuracy([total(2, 50, 57), total(0, 0, 0)])).toEqual({ percent: 86, count: 2 });
     expect(estimateAccuracy([total(1, 10, 40)])).toEqual({ percent: 0, count: 1 });
+    // D147: open-time-only totals (before D147, an older peer) do not count.
+    expect(estimateAccuracy([{ count: 3, estimated: 3, estimateMinutes: 30, estimatedActualMs: 30 * MIN, actualMs: 30 * MIN, tokens: 0 }])).toBeNull();
     expect(TASKS_WORDS.accuracy(82, 5)).toBe('Estimates were 82% accurate on 5 completed tasks.');
   });
 });

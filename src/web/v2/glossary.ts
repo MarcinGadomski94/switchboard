@@ -708,7 +708,7 @@ export const INSIGHTS_WORDS = {
   last7: 'Last 7 days',
   costWent: 'Where the cost went',
   estimateVsActual: 'Estimate vs. actual',
-  estimateSub: 'Finished tasks by how long they took against their estimate',
+  estimateSub: 'Finished tasks by how long their agent worked on them against their estimate',
   forecast: 'Forecast',
   noForecast: 'No usage readings yet.',
   everythingElse: 'Everything else',
