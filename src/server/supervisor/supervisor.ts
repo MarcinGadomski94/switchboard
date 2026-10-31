@@ -612,6 +612,8 @@ interface Live {
   readonly instruction: string | null;
   /** D106: the process is a chat's (read-only: every permission request is refused). */
   readonly chat: boolean;
+  /** The lifecycle event this spawn wrote ("Started", "Resumed", …): OpenCode's server pid is set on it once known (`#recordPid`). */
+  startEventId?: number;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -3318,7 +3320,8 @@ export class SessionSupervisor {
     live.finished = proc.exited.then((exit) => this.#enqueue(live, () => this.#onExit(live, exit)));
     await this.#store.sessions.update(session.id, { pid: proc.pid });
     await this.#enqueue(live, async () => {
-      await recorder.recordLifecycle('text', lifecycle?.label ?? LIFECYCLE_LABELS[action], { ...lifecycle?.payload, type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
+      const started = await recorder.recordLifecycle('text', lifecycle?.label ?? LIFECYCLE_LABELS[action], { ...lifecycle?.payload, type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
+      live.startEventId = started.id;
     });
     // D62: Claude Code's own id is the session's (a switch back resumes it); a teleport learns its id at `init`.
     if (provider === 'claude' && start.kind !== 'teleport') await this.#store.providers.rememberNative(session.id, 'claude', start.claudeSessionId);
@@ -3329,10 +3332,14 @@ export class SessionSupervisor {
    * Stores the live process's pid when it became known after the spawn (OpenCode's server), so the
    * session is `live`, crash recovery sees it and the process tracker has it as for the other CLIs.
    * On the session's queue, so it lands before `#onExit` clears it; nothing once the process is gone.
+   * The spawn's lifecycle event ("Started", …), written while the pid was still `null`, gets it too
+   * (also when the server already ended: it is the pid the start had). Issue #4.
    */
   async #recordPid(live: Live): Promise<void> {
     const pid = live.proc.pid;
-    if (pid === null || this.#live.get(live.sessionId) !== live || !live.proc.running) return;
+    if (pid === null) return;
+    if (live.startEventId !== undefined) await live.recorder.setLifecyclePid(live.startEventId, pid);
+    if (this.#live.get(live.sessionId) !== live || !live.proc.running) return;
     await this.#store.sessions.update(live.sessionId, { pid });
     await this.#emitSession(live.sessionId);
   }
