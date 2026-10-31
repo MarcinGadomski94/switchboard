@@ -7,7 +7,7 @@ import { openSessions } from '../../core/session-close.ts';
 import { api } from '../api/client.ts';
 import { useSessionListOf } from '../api/session-list.ts';
 import { plansApi, refusalCode, refusalText } from './api.ts';
-import { planRunFolderDefault } from '../../core/plan-run-folder.ts';
+import { planRunFolderDefault, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../core/plan-run-folder.ts';
 import { SIDEBAR_FOLDER_NAME_MAX } from '../../core/sidebar-layout.ts';
 import { useSidebarLayout } from '../shell/SidebarSessions.tsx';
 import { alwaysOnNote, isProtectedTargetName, mergeModeOptions, shortLabel } from './model.ts';
@@ -97,6 +97,11 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
   const suggestedFolder = useMemo(() => planRunFolderDefault(layout, plan.sourceSessionId, plan.title), [layout, plan.sourceSessionId, plan.title]);
   const [folderName, setFolderName] = useState<string | null>(null);
   const sidebarFolder = folderName ?? suggestedFolder;
+  // D150: the folder the subfolder goes into (this machine's sidebar; hidden for a paired machine's plan). `null` = not picked: the session's folder.
+  const [parentPick, setParentPick] = useState<string | null>(null);
+  const parentPicker = purpose === 'start' && plan.machine === null;
+  const parentValue = parentPick ?? runParentDefault(layout, plan.sourceSessionId);
+  const parentError = parentPicker ? runParentProblem(layout, { sourceSessionId: plan.sourceSessionId, parent: parentValue, name: sidebarFolder }) : null;
   // D138: the plan's account per CLI (Start only).
   const choices = useAccountChoices(purpose === 'start');
   const [accounts, setAccounts] = useState<AccountsDraft>({});
@@ -110,7 +115,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
     try {
       const changed = Object.fromEntries(Object.entries(holds).filter(([id, hold]) => plan.items.find((item) => item.id === id)?.hold !== hold && plan.items.find((item) => item.id === id)?.state !== 'done'));
       if ((mode === 'agents-with-holds' || mode === 'none') && Object.keys(changed).length > 0) await plansApi.setHolds(plan.id, changed);
-      const extra = { ...(needsAck && ack ? { allowProtectedTarget: true } : {}), ...(purpose === 'start' ? { sidebarFolder: sidebarFolder.trim(), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) } : {}) };
+      const extra = { ...(needsAck && ack ? { allowProtectedTarget: true } : {}), ...(purpose === 'start' ? { sidebarFolder: sidebarFolder.trim(), ...(parentPicker ? runParentBody(parentPick) : {}), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) } : {}) };
       const answer = purpose === 'start' ? await plansApi.start(plan.id, mode, extra) : await plansApi.setMode(plan.id, mode, extra);
       onDone(answer);
     } catch (caught) {
@@ -155,6 +160,24 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
           </span>
         </label>
       ) : null}
+      {parentPicker ? (
+        <label className="sb-plan-field" data-testid="plan-start-parent">
+          <span>In sidebar folder</span>
+          <select className="sb-plan-input" data-testid="plan-start-parent-select" value={parentValue} onChange={(event) => setParentPick(event.target.value)}>
+            {runParentOptions(layout, 'Sidebar root').map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="sb-plan-muted">Where the subfolder goes; starts as the plan's session's folder.</span>
+          {parentError ? (
+            <span className="sb-plan-error" data-testid="plan-start-parent-error">
+              {parentError}
+            </span>
+          ) : null}
+        </label>
+      ) : null}
       {purpose === 'start' ? (
         <label className="sb-plan-field" data-testid="plan-start-folder">
           <span>Sidebar subfolder</span>
@@ -167,7 +190,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
             placeholder="None: runs go next to the plan's session"
             onChange={(event) => setFolderName(event.target.value)}
           />
-          <span className="sb-plan-muted">The plan's sessions go into this folder, inside the plan's session's folder (an existing one with this name is reused). Clear it to keep them next to the session.</span>
+          <span className="sb-plan-muted">The plan's sessions go into this folder, inside the folder above (an existing one with this name is reused). Clear it to put them straight into the folder above, or next to the session when that is its folder.</span>
         </label>
       ) : null}
       {purpose === 'start' ? <PlanAccountFields plan={plan} rows={choices.rows} value={accounts} onChange={(cli, id) => setAccounts((current) => ({ ...current, [cli]: id }))} /> : null}
@@ -183,7 +206,7 @@ export function MergeModeDialog({ plan, purpose, onDone, onClose }: { readonly p
         <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-mode-confirm" disabled={busy || mode === null || (needsAck && !ack)} onClick={() => void confirm()}>
+        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-mode-confirm" disabled={busy || mode === null || (needsAck && !ack) || parentError !== null} onClick={() => void confirm()}>
           {purpose === 'start' ? '▶ Start plan' : 'Apply'}
         </button>
       </div>

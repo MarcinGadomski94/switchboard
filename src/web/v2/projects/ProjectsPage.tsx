@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Plan } from '../../../core/plans.ts';
+import { type Plan, planIsOver } from '../../../core/plans.ts';
 import { usePlans } from '../../plans/store.ts';
 import { Button, Card, Chip, ComputerTag, EmptyState, Icon, Segmented, Skeleton, StatusBadge } from '../components/index.ts';
 import { PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
@@ -7,7 +7,7 @@ import { useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
 import { clock } from '../shared/time.ts';
 import { JiraImportDialog } from './JiraImport.tsx';
-import { axisPercent, jiraTag, modeLabel, projectCounts, projectStatus, projectsTimeline, sortProjects, stepKind, stepName, timeLeft } from './project-model.ts';
+import { PROJECTS_DONE_OPEN_KEY, axisPercent, jiraTag, modeLabel, projectCounts, projectSections, projectStatus, projectsTimeline, readDoneOpen, sortProjects, stepKind, stepName, timeLeft } from './project-model.ts';
 import './projects.css';
 
 const LIST_VIEW_KEY = 'switchboard.v2.projectsView';
@@ -42,7 +42,8 @@ function ProjectCard({ plan, onOpen }: { readonly plan: Plan; readonly onOpen: (
             {tag}
           </Chip>
         ) : null}
-        {counts.needsYou > 0 ? <StatusBadge status="needs" label={PROJECT_WORDS.needYou(counts.needsYou)} size="s" /> : <StatusBadge status={status.status} label={status.label} size="s" />}
+        {/* D150: a finished or cancelled project always shows its state ("Cancelled"). */}
+        {counts.needsYou > 0 && !planIsOver(plan) ? <StatusBadge status="needs" label={PROJECT_WORDS.needYou(counts.needsYou)} size="s" /> : <StatusBadge status={status.status} label={status.label} size="s" />}
         {plan.state === 'paused' && counts.needsYou > 0 ? <StatusBadge status="paused" label="On hold" size="s" /> : null}
         {counts.stopped > 0 ? (
           <Chip tone="red" icon="octagon" size="s" className="v2-p-pcard-stopped">
@@ -128,6 +129,62 @@ function ProjectsTimeline({ plans, onOpen }: { readonly plans: readonly Plan[]; 
   );
 }
 
+function readOpen(): boolean {
+  try {
+    return readDoneOpen(window.localStorage.getItem(PROJECTS_DONE_OPEN_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * D150 · the cards: the active projects on top, then **Done (N)** (finished and cancelled, newest
+ * finished first), closed by default; whether it is open is remembered in this browser. No Done
+ * section when nothing is over.
+ */
+function ProjectCards({ plans, onOpen }: { readonly plans: readonly Plan[]; readonly onOpen: (id: string) => void }) {
+  const { active, done } = useMemo(() => projectSections(plans), [plans]);
+  const [open, setOpen] = useState(readOpen);
+  const toggle = (): void => {
+    setOpen((was) => {
+      try {
+        window.localStorage.setItem(PROJECTS_DONE_OPEN_KEY, was ? '0' : '1');
+      } catch {
+        // No storage: the choice lasts until the page closes.
+      }
+      return !was;
+    });
+  };
+  return (
+    <>
+      {active.length > 0 ? (
+        <div className="v2-p-pcards" data-testid="v2-project-cards">
+          {active.map((plan) => (
+            <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
+          ))}
+        </div>
+      ) : null}
+      {done.length > 0 ? (
+        <section className="v2-p-done" data-testid="v2-projects-done" aria-label={PROJECT_WORDS.doneSection(done.length)}>
+          <h2 className="v2-p-done-head">
+            <button type="button" className="v2-p-done-toggle" aria-expanded={open} onClick={toggle} data-testid="v2-projects-done-toggle" data-tour="v2-projects-done">
+              <Icon name="chev" size="s" className="v2-p-done-chev" />
+              {PROJECT_WORDS.doneSection(done.length)}
+            </button>
+          </h2>
+          {open ? (
+            <div className="v2-p-pcards" data-testid="v2-project-done-cards">
+              {done.map((plan) => (
+                <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 /** D131 · Projects (`/projects`), lane P: every project with its progress and what waits; a Timeline of all of them. */
 export function ProjectsPage() {
   const { plans, loaded, on } = usePlans();
@@ -189,11 +246,7 @@ export function ProjectsPage() {
       ) : sorted.length === 0 ? (
         <EmptyState icon="projects" tone="grey" title={PROJECT_WORDS.noProjects} text={PROJECT_WORDS.noProjectsText} testId="v2-projects-empty" />
       ) : view === 'cards' ? (
-        <div className="v2-p-pcards" data-testid="v2-project-cards">
-          {sorted.map((plan) => (
-            <ProjectCard key={plan.id} plan={plan} onOpen={() => open(plan.id)} />
-          ))}
-        </div>
+        <ProjectCards plans={sorted} onOpen={open} />
       ) : (
         <ProjectsTimeline plans={sorted} onOpen={open} />
       )}

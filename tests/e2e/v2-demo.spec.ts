@@ -35,8 +35,10 @@ test('every v2 page has Acme data: folders, projects, crews, notes, tasks, Insig
   await expect(page.getByTestId('v2-tree-folder-name').filter({ hasText: 'Releases' })).toHaveCount(1);
 
   await page.goto(`${server.baseUrl}/projects`);
-  await expect(page.getByTestId('v2-project-card')).toHaveCount(3);
+  // D150: the done project waits in the closed Done section.
+  await expect(page.getByTestId('v2-project-card')).toHaveCount(2);
   await expect(page.getByTestId('v2-project-card').first()).toContainText('PROJ-123 Acme checkout');
+  await expect(page.getByTestId('v2-projects-done-toggle')).toHaveText('Done (1)');
 
   await page.goto(`${server.baseUrl}/crews`);
   await expect(page.getByTestId('v2-crews-list')).toContainText('Acme web');
@@ -61,7 +63,8 @@ test('a phone shows the crews and the projects', async ({ browser }) => {
     await page.goto(`${server.baseUrl}/crews`);
     await expect(page.getByTestId('v2-crew-row')).toHaveCount(2);
     await page.goto(`${server.baseUrl}/projects`);
-    await expect(page.getByTestId('v2-project-card')).toHaveCount(3);
+    await expect(page.getByTestId('v2-project-card')).toHaveCount(2);
+    await expect(page.getByTestId('v2-projects-done-toggle')).toHaveText('Done (1)');
   } finally {
     await context.close();
   }

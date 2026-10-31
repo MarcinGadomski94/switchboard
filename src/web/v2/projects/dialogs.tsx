@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SessionTodo } from '../../../core/api.ts';
-import { planRunFolderDefault } from '../../../core/plan-run-folder.ts';
+import { planRunFolderDefault, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../../core/plan-run-folder.ts';
+import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import type { Plan, PlanItem, PlanMergeMode } from '../../../core/plans.ts';
 import type { JiraRelinkDiff, JiraSyncMode, PlanJiraState } from '../../../core/plans-jira.ts';
 import { api } from '../../api/client.ts';
@@ -42,6 +43,9 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
   const [ack, setAck] = useState(false);
   const [refused, setRefused] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
+  // D150: the folder the subfolder goes into (this machine's sidebar; not for a paired machine's project). `null` = not picked: the agent's folder.
+  const [layout, setLayout] = useState<SidebarLayout | null>(null);
+  const [parent, setParent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // D138: the project's account per engine (Automatic = the overall choice).
@@ -51,7 +55,11 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
     let alive = true;
     api
       .sidebarLayout()
-      .then((layout) => alive && setFolder((current) => current ?? planRunFolderDefault(layout, plan.sourceSessionId, plan.title)))
+      .then((read) => {
+        if (!alive) return;
+        setLayout(read);
+        setFolder((current) => current ?? planRunFolderDefault(read, plan.sourceSessionId, plan.title));
+      })
       .catch(() => alive && setFolder((current) => current ?? plan.title.slice(0, 60)));
     return () => {
       alive = false;
@@ -59,12 +67,15 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
   }, [plan.sourceSessionId, plan.title]);
   const check = canStart(plan, mode, ack, refused);
   const folderError = checkSubfolder(folder ?? '');
+  const picker = layout !== null && plan.machine === null;
+  const parentValue = picker ? (parent ?? runParentDefault(layout, plan.sourceSessionId)) : null;
+  const parentError = picker && parentValue !== null ? runParentProblem(layout, { sourceSessionId: plan.sourceSessionId, parent: parentValue, name: folder ?? '' }) : null;
   const start = async (): Promise<void> => {
-    if (!mode || !check.ok || folderError) return;
+    if (!mode || !check.ok || folderError || parentError) return;
     setBusy(true);
     setError(null);
     try {
-      const started = await plansApi.start(plan.id, mode, { ...(needsProtectedAck(plan, mode, refused) ? { allowProtectedTarget: ack } : {}), sidebarFolder: (folder ?? '').trim(), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) });
+      const started = await plansApi.start(plan.id, mode, { ...(needsProtectedAck(plan, mode, refused) ? { allowProtectedTarget: ack } : {}), sidebarFolder: (folder ?? '').trim(), ...(picker ? runParentBody(parent) : {}), ...(Object.keys(accounts).length > 0 ? { accounts } : {}) });
       onStarted(started);
     } catch (e) {
       if (refusalCode(e) === 'target-forbidden') setRefused(true);
@@ -84,7 +95,7 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
         <>
           <span className="v2-grow v2-muted v2-p-dialog-why">{check.ok ? '' : check.why}</span>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" icon="play" disabled={!check.ok || busy || folder === null || folderError !== null} onClick={() => void start()} data-testid="v2-start-go">
+          <Button variant="primary" icon="play" disabled={!check.ok || busy || folder === null || folderError !== null || parentError !== null} onClick={() => void start()} data-testid="v2-start-go">
             {PROJECT_WORDS.start}
           </Button>
         </>
@@ -93,6 +104,17 @@ export function StartDialog({ plan, initialMode, onClose, onStarted }: { readonl
       <p className="v2-muted v2-p-dialog-p">{PROJECT_WORDS.whoApproves}: you have to choose — there is no default. You can change it while it runs.</p>
       <ModeRadios plan={plan} mode={mode} onChange={setMode} />
       {needsProtectedAck(plan, mode, refused) ? <Checkbox label={protectedAckText(plan)} checked={ack} onChange={(event) => setAck(event.currentTarget.checked)} data-testid="v2-start-ack" /> : null}
+      {picker && parentValue !== null ? (
+        <Select
+          label={PROJECT_WORDS.sidebarParent}
+          value={parentValue}
+          options={runParentOptions(layout, PROJECT_WORDS.sidebarParentTop)}
+          onChange={(event) => setParent(event.currentTarget.value)}
+          hint={PROJECT_WORDS.sidebarParentHint}
+          error={parentError}
+          data-testid="v2-start-parent"
+        />
+      ) : null}
       <Field
         label={PROJECT_WORDS.sidebarSubfolder}
         value={folder ?? ''}

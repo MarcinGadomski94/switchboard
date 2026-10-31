@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { SIDEBAR_FOLDER_NAME_MAX, runSubfolder } from '../../core/sidebar-layout.ts';
+import { SIDEBAR_FOLDER_NAME_MAX, runParentFolder, runSubfolder } from '../../core/sidebar-layout.ts';
 import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { effectiveSessionStatus, turnWaits } from '../../core/derive/turn-status.ts';
 import type { SessionStatus } from '../../core/model.ts';
@@ -417,6 +417,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function invalid(field: string, message: string): PlanError {
   return new PlanError(422, 'invalid', message, field);
+}
+
+/**
+ * D150: `sidebarParent` of a Start: the folder the runs' subfolder goes into (a sidebar folder's
+ * id); `null` or `'root'` = the top level; absent = the source session's folder (D130, as before).
+ */
+function checkSidebarParent(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === 'root') return null;
+  if (typeof value !== 'string' || value === '') throw invalid('sidebarParent', "sidebarParent is the id of a sidebar folder, or null / 'root' for the top level");
+  return value;
 }
 
 /**
@@ -1694,7 +1705,9 @@ export class PlanService {
    * `develop` / `master` / `main` / the default or a protected branch without
    * `allowProtectedTarget: true` (422 `target-forbidden`; D99 follow-up 2026-10-15: the
    * developer's acknowledgement, stored on the plan), a target branch that cannot be found or made
-   * from the base (409 `no-target`).
+   * from the base (409 `no-target`). D130 `sidebarFolder` (the runs' subfolder's name) and D150
+   * `sidebarParent` (the folder it goes into; `null` / `'root'` = the top level; absent = the source's
+   * folder): 422 `invalid` on the field at fault, before anything changes.
    */
   async startPlan(planId: string, body: unknown): Promise<Plan> {
     const plan = await this.#plan(planId);
@@ -1702,15 +1715,17 @@ export class PlanService {
     const mode = checkMergeMode(input['mergeMode'], plan.targetBranch);
     const ack = input['allowProtectedTarget'] === undefined || input['allowProtectedTarget'] === null ? plan.allowProtectedTarget : checkBool(input['allowProtectedTarget'], 'allowProtectedTarget');
     const folderName = checkSidebarFolderName(input['sidebarFolder']);
+    const parent = checkSidebarParent(input['sidebarParent']);
     // D138: the Start dialog's account per CLI (checked before anything changes).
     const accounts = input['accounts'] === undefined || input['accounts'] === null ? null : await this.#mergedAccounts(plan.accounts, input['accounts']);
     if (plan.state !== 'draft') throw new PlanError(409, plan.state === 'paused' ? 'paused' : 'started', plan.state === 'paused' ? 'the plan is paused: resume it' : `the plan is ${plan.state}`);
     const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
-    // D130: refused before anything changes (a folder five levels deep cannot hold the subfolder).
-    if (folderName !== null) {
-      const dry = runSubfolder(await this.#store.sidebar.read(), { sourceId: plan.sourceSessionId, name: folderName, newId: randomUUID() });
-      if (!dry.ok) throw invalid('sidebarFolder', dry.message);
+    // D130: refused before anything changes (a folder five levels deep cannot hold the subfolder; D150: an unknown parent).
+    if (folderName !== null || parent !== undefined) {
+      const layout = await this.#store.sidebar.read();
+      const dry = folderName !== null ? runSubfolder(layout, { sourceId: plan.sourceSessionId, name: folderName, newId: randomUUID(), ...(parent !== undefined ? { parentId: parent } : {}) }) : runParentFolder(layout, { sourceId: plan.sourceSessionId, ...(parent !== undefined ? { parentId: parent } : {}) });
+      if (!dry.ok) throw invalid(dry.field, dry.message);
     }
     if (plan.targetBranch !== null) {
       // D115: a plan whose repos are picked per item checks the ones picked so far (the others when they join).
@@ -1722,7 +1737,7 @@ export class PlanService {
         if (!prepared.ok) throw new PlanError(409, 'no-target', prepared.message);
       }
     }
-    const sidebarFolder = folderName === null ? null : await this.#runsSubfolder(plan.sourceSessionId, folderName);
+    const sidebarFolder = folderName !== null ? await this.#runsSubfolder(plan.sourceSessionId, folderName, parent) : parent !== undefined ? await this.#runsParent(plan.sourceSessionId, parent) : null;
     await this.#repo().update(planId, { mergeMode: mode, allowProtectedTarget: ack, state: 'running', startedAt: plan.startedAt ?? this.#nowIso(), ...(sidebarFolder ? { sidebarFolder } : {}), ...(accounts !== null ? { accounts } : {}) });
     await this.#publish(planId);
     // D138: the plan's own session moves to its account before the first step starts on it.
@@ -1735,26 +1750,38 @@ export class PlanService {
    * D130 (`docs/plans.md` → *The runs' sidebar subfolder*): finds or makes the runs' subfolder `name`
    * inside the source session's sidebar folder ({@link runSubfolder}), one write through the D71
    * layout store, published as `sidebarLayoutChanged` and handed to the shared-layout sync like a
-   * manual move. The source session stays where it is. 422 `sidebarFolder` when it cannot be made.
+   * manual move. The source session stays where it is. 422 `sidebarFolder` when it cannot be made
+   * (D150: `parent` = the chosen folder it goes into, `null` = the top level; 422 `sidebarParent`).
    */
-  async #runsSubfolder(sourceSessionId: string, name: string): Promise<PlanSidebarFolderRef> {
+  async #runsSubfolder(sourceSessionId: string, name: string, parent: string | null | undefined): Promise<PlanSidebarFolderRef> {
     let made: PlanSidebarFolderRef | null = null;
-    let refused: string | null = null;
+    const refusal: { value: { readonly field: string; readonly message: string } | null } = { value: null };
     const write = await this.#store.sidebar.change((layout) => {
-      const sub = runSubfolder(layout, { sourceId: sourceSessionId, name, newId: randomUUID() });
+      const sub = runSubfolder(layout, { sourceId: sourceSessionId, name, newId: randomUUID(), ...(parent !== undefined ? { parentId: parent } : {}) });
       if (!sub.ok) {
-        refused = sub.message;
+        refusal.value = { field: sub.field, message: sub.message };
         return null;
       }
       made = { id: sub.folderId, name: sub.name };
       return sub.layout;
     });
-    if (refused !== null) throw invalid('sidebarFolder', refused);
+    if (refusal.value !== null) throw invalid(refusal.value.field, refusal.value.message);
     if (write) {
       this.#bus.publish('sidebarLayoutChanged', write.layout);
       this.#sidebarSynced(write.changes);
     }
     return made as unknown as PlanSidebarFolderRef;
+  }
+
+  /**
+   * D150 (`docs/plans.md` → *The runs' sidebar subfolder*): a Start without a subfolder name but with
+   * a chosen parent ({@link runParentFolder}): the parent itself is where the runs go (`null` = the
+   * source's own folder: next to the source, as before). Nothing is written. 422 `sidebarParent`.
+   */
+  async #runsParent(sourceSessionId: string, parent: string | null): Promise<PlanSidebarFolderRef | null> {
+    const answer = runParentFolder(await this.#store.sidebar.read(), { sourceId: sourceSessionId, parentId: parent });
+    if (!answer.ok) throw invalid(answer.field, answer.message);
+    return answer.folder;
   }
 
   /** Refuses (422 `target-forbidden`) an agent mode on a protected target: the developer's acknowledgement (`allowProtectedTarget`) is missing. */

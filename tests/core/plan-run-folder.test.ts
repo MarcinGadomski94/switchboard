@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planRunFolderDefault } from '../../src/core/plan-run-folder.ts';
-import { SIDEBAR_FOLDER_NAME_MAX, type SidebarFolder, type SidebarLayout, cutSidebarFolderName, placeRunInFolder, runSubfolder } from '../../src/core/sidebar-layout.ts';
+import { RUN_PARENT_ROOT, planRunFolderDefault, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../src/core/plan-run-folder.ts';
+import { SIDEBAR_FOLDER_NAME_MAX, type SidebarFolder, type SidebarLayout, cutSidebarFolderName, placeRunInFolder, runParentFolder, runSubfolder } from '../../src/core/sidebar-layout.ts';
 import { type FolderRecord, type SidebarRecords, liveFolderFor } from '../../src/core/sidebar-records.ts';
 
 /** D130 · the plan's runs' sidebar subfolder: the Start dialog's prefill, the find-or-make rule, the run's place, the deleted-folder fallback. */
@@ -60,6 +60,88 @@ describe('runSubfolder', () => {
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.message).toContain('5 levels');
     expect(runSubfolder(deep, { sourceId: 's-deep', name: 'Plan · X', newId: 'new' })).toMatchObject({ ok: true, folderId: 'l5' });
+  });
+});
+
+describe('D150 · runSubfolder in a chosen parent', () => {
+  const deep: SidebarLayout = { pinned: [], folders: [folder('l1', 'L1', ['s-top']), folder('l2', 'L2', [], 'l1'), folder('l3', 'L3', [], 'l2'), folder('l4', 'L4', [], 'l3'), folder('l5', 'L5', ['s-deep'], 'l4')], loose: [] };
+
+  it('the top level: a new top-level folder, or the top-level one with that exact name reused', () => {
+    expect(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'Second epic', newId: 'new', parentId: null })).toMatchObject({ ok: true, folderId: 'new', parentId: null });
+    expect(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'Acme', newId: 'new', parentId: null })).toEqual({ ok: true, folderId: 'acme', name: 'Acme', parentId: null, layout: null });
+  });
+
+  it('a nested folder: made inside it (all levels), the name reused only within that parent', () => {
+    const made = runSubfolder(LAYOUT, { sourceId: 's-loose', name: 'Acme epic', newId: 'new', parentId: 'jira' });
+    expect(made).toMatchObject({ ok: true, folderId: 'new', parentId: 'jira' });
+    if (!made.ok || !made.layout) throw new Error('no layout');
+    expect(made.layout.folders.find((f) => f.id === 'new')).toMatchObject({ parentId: 'jira', sessionIds: [] });
+    // "Acme epic" sits in Acme: reused there, not in Plan · …
+    expect(runSubfolder(LAYOUT, { sourceId: 's-loose', name: 'Acme epic', newId: 'new', parentId: 'acme' })).toMatchObject({ ok: true, folderId: 'epic', layout: null });
+  });
+
+  it('the D119 own-name rule only when the parent is the source\'s folder', () => {
+    // Parent = the source's folder (given explicitly): the folder itself.
+    expect(runSubfolder(LAYOUT, { sourceId: 's-owner', name: 'Plan · PROJ-123 Acme checkout', newId: 'new', parentId: 'jira' })).toMatchObject({ ok: true, folderId: 'jira', layout: null });
+    // Another parent: a folder of that name inside it.
+    expect(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'Plan · PROJ-123 Acme checkout', newId: 'new', parentId: 'jira' })).toMatchObject({ ok: true, folderId: 'new', parentId: 'jira' });
+  });
+
+  it('refuses an unknown folder and one five levels deep, on sidebarParent', () => {
+    expect(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'X', newId: 'new', parentId: 'gone' })).toMatchObject({ ok: false, field: 'sidebarParent' });
+    const refused = runSubfolder(deep, { sourceId: 's-top', name: 'X', newId: 'new', parentId: 'l5' });
+    expect(refused).toMatchObject({ ok: false, field: 'sidebarParent' });
+    if (!refused.ok) expect(refused.message).toContain('5 levels');
+    // The default (the source's folder) keeps D130's field.
+    expect(runSubfolder(deep, { sourceId: 's-deep', name: 'X', newId: 'new' })).toMatchObject({ ok: false, field: 'sidebarFolder' });
+  });
+
+  it('absent = the source\'s folder, unchanged', () => {
+    expect(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'Second epic', newId: 'new' })).toEqual(runSubfolder(LAYOUT, { sourceId: 's-src', name: 'Second epic', newId: 'new', parentId: 'acme' }));
+  });
+});
+
+describe('D150 · runParentFolder (no subfolder name)', () => {
+  it('the source\'s folder or absent: none (next to the source); another folder: that folder', () => {
+    expect(runParentFolder(LAYOUT, { sourceId: 's-src' })).toEqual({ ok: true, folder: null });
+    expect(runParentFolder(LAYOUT, { sourceId: 's-src', parentId: 'acme' })).toEqual({ ok: true, folder: null });
+    expect(runParentFolder(LAYOUT, { sourceId: 's-loose', parentId: null })).toEqual({ ok: true, folder: null });
+    expect(runParentFolder(LAYOUT, { sourceId: 's-src', parentId: 'jira' })).toEqual({ ok: true, folder: { id: 'jira', name: 'Plan · PROJ-123 Acme checkout' } });
+  });
+
+  it('refuses the top level for a source in a folder, and an unknown folder', () => {
+    expect(runParentFolder(LAYOUT, { sourceId: 's-src', parentId: null })).toMatchObject({ ok: false, field: 'sidebarParent' });
+    expect(runParentFolder(LAYOUT, { sourceId: 's-src', parentId: 'gone' })).toMatchObject({ ok: false, field: 'sidebarParent' });
+  });
+});
+
+describe('D150 · the Start dialog\'s parent picker', () => {
+  it('lists Top level, then every folder in tree order, indented by level; defaults to the source\'s folder', () => {
+    expect(runParentOptions(LAYOUT).map((o) => [o.value, o.label, o.depth])).toEqual([
+      [RUN_PARENT_ROOT, 'Top level', 0],
+      ['acme', 'Acme', 1],
+      ['epic', '\u00a0\u00a0\u00a0Acme epic', 2],
+      ['jira', '\u00a0\u00a0\u00a0Plan · PROJ-123 Acme checkout', 2],
+    ]);
+    expect(runParentDefault(LAYOUT, 's-owner')).toBe('jira');
+    expect(runParentDefault(LAYOUT, 's-loose')).toBe(RUN_PARENT_ROOT);
+    expect(runParentDefault(LAYOUT, 's-pin')).toBe(RUN_PARENT_ROOT);
+  });
+
+  it('the body: nothing when not picked (older servers unchanged), null for the top level, else the id', () => {
+    expect(runParentBody(null)).toEqual({});
+    expect(runParentBody(RUN_PARENT_ROOT)).toEqual({ sidebarParent: null });
+    expect(runParentBody('epic')).toEqual({ sidebarParent: 'epic' });
+  });
+
+  it('says why Start would refuse, with the server\'s rules', () => {
+    const deep: SidebarLayout = { pinned: [], folders: [folder('l1', 'L1', ['s-top']), folder('l2', 'L2', [], 'l1'), folder('l3', 'L3', [], 'l2'), folder('l4', 'L4', [], 'l3'), folder('l5', 'L5', [], 'l4')], loose: [] };
+    expect(runParentProblem(LAYOUT, { sourceSessionId: 's-src', parent: 'epic', name: 'New' })).toBeNull();
+    expect(runParentProblem(LAYOUT, { sourceSessionId: 's-src', parent: 'epic', name: '' })).toBeNull();
+    expect(runParentProblem(LAYOUT, { sourceSessionId: 's-src', parent: RUN_PARENT_ROOT, name: '' })).toContain('top level');
+    expect(runParentProblem(LAYOUT, { sourceSessionId: 's-src', parent: 'gone', name: 'X' })).toContain('gone');
+    expect(runParentProblem(deep, { sourceSessionId: 's-top', parent: 'l5', name: 'X' })).toContain('5 levels');
+    expect(runParentProblem(deep, { sourceSessionId: 's-top', parent: 'l5', name: '' })).toBeNull();
   });
 });
 

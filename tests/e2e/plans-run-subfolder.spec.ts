@@ -81,3 +81,37 @@ test('360 px: the Sidebar subfolder field fits; cleared, the plan starts without
   expect(((await world.call(page, 'GET', '/api/sidebar')).body as SidebarLayout).folders.some((f) => f.name.startsWith('PROJ-200'))).toBe(false);
   expect((await world.call(page, 'POST', `/api/plans/${planId}/cancel`)).status).toBe(200);
 });
+
+test('D150 (classic): the parent picker puts the subfolder into a nested folder; done plans wait in a closed Done section', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/inbox`);
+  const source = await world.sourceSession(page, 'classic-parent-source');
+  const nested = await folderIn(page, 'Q4', await folderIn(page, 'Clients'));
+  const created = await world.call(page, 'POST', '/api/plans', { sourceSessionId: source, title: 'PROJ-300 Acme classic' });
+  expect(created.status).toBe(201);
+  const planId = created.body.id as string;
+  expect((await world.call(page, 'POST', `/api/plans/${planId}/items`, { key: 'PROJ-301', todo: { title: 'Classic step', estimateMinutes: 20 } })).status).toBe(201);
+  await page.goto(`${world.baseUrl}/plans/${planId}`);
+  await page.getByTestId('plan-start').click();
+  const dialog = page.getByTestId('plan-mode-dialog');
+  const select = dialog.getByTestId('plan-start-parent-select');
+  await expect(select).toHaveValue('root');
+  await select.selectOption(nested);
+  await dialog.getByTestId('plan-mode-confirm').click();
+  await expect(dialog).toHaveCount(0);
+  const sub = ((await world.call(page, 'GET', '/api/sidebar')).body as SidebarLayout).folders.find((f) => f.name === 'PROJ-300 Acme classic');
+  expect(sub?.parentId).toBe(nested);
+  const run = (await world.itemIn(page, planId, 'PROJ-301', 'running')).runSessionId as string;
+  await expect(page.getByTestId('sidebar-sessions').locator(`a.sb-session[data-session-id="${run}"]`)).toHaveAttribute('data-group-folder', sub?.id as string);
+  expect((await world.call(page, 'POST', `/api/plans/${planId}/cancel`)).status).toBe(200);
+
+  await page.goto(`${world.baseUrl}/plans`);
+  const toggle = page.getByTestId('plans-done-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toContainText('Done (');
+  await expect(page.locator(`[data-testid="plan-summary"][data-plan-id="${planId}"]`)).toHaveCount(0);
+  await toggle.click();
+  await expect(page.locator(`[data-testid="plan-summary"][data-plan-id="${planId}"]`).getByTestId('plan-summary-state')).toHaveText('cancelled');
+  await page.reload();
+  await expect(page.getByTestId('plans-done-toggle')).toHaveAttribute('aria-expanded', 'true');
+});

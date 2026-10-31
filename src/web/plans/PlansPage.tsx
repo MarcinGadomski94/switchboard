@@ -4,7 +4,7 @@ import { Link, useRouter } from '../router.tsx';
 import { JiraSourceDialog, NewPlanDialog } from './dialogs.tsx';
 import { ImportJiraDialog } from './jira/index.ts';
 import { PlanRowMenu } from './PlanDelete.tsx';
-import { STOPPED_LABEL, mergeModeChip, planStateText, progressText, stoppedChip, targetChip, timeLeftText } from './model.ts';
+import { PLANS_DONE_OPEN_KEY, STOPPED_LABEL, mergeModeChip, planListSections, planStateText, progressText, readPlansDoneOpen, stoppedChip, targetChip, timeLeftText } from './model.ts';
 import { putPlan, usePlans } from './store.ts';
 import './plans.css';
 
@@ -18,13 +18,59 @@ export function PlansOff() {
   );
 }
 
+function readDoneOpen(): boolean {
+  try {
+    return readPlansDoneOpen(window.localStorage.getItem(PLANS_DONE_OPEN_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/** One plan's row on the list. */
+function PlanRow({ plan }: { readonly plan: Plan }) {
+  return (
+    <div className="sb-plan-summary-item">
+      <Link to={{ view: 'plan', id: plan.id }} className="sb-plan-summary" data-testid="plan-summary" data-plan-id={plan.id} data-state={plan.state}>
+        <span className="sb-plan-summary__head">
+          <span className="sb-plan-summary__title">{plan.title}</span>
+          {plan.external ? <span className="sb-plan-chip">{plan.external.key}</span> : null}
+          <span className="sb-plan-summary__state" data-state={plan.state} data-testid="plan-summary-state">
+            {planStateText(plan)}
+          </span>
+          {plan.machine ? <span className="sb-plan-chip">{plan.machine.name}</span> : null}
+          {/* D120: items whose agents ended their turn without finishing need you. */}
+          {stoppedChip(plan) ? (
+            <span className="sb-plan-chip sb-plan-stopped-chip" data-testid="plan-summary-stopped" title={STOPPED_LABEL}>
+              ■ {stoppedChip(plan)}
+            </span>
+          ) : null}
+        </span>
+        <span className="sb-plan-summary__line">
+          <span className="sb-plan-branch">{targetChip(plan)}</span>
+          <span>{mergeModeChip(plan)}</span>
+        </span>
+        <span className="sb-plan-progress" aria-label={progressText(plan)}>
+          <span className="sb-plan-progress__text">{progressText(plan)}</span>
+          <span className="sb-plan-progress__bar">
+            <span className="sb-plan-progress__fill" style={{ width: `${plan.progress.percent}%` }} />
+          </span>
+          <span className="sb-plan-progress__left">{timeLeftText(plan) ?? ''}</span>
+        </span>
+      </Link>
+      {/* D117 follow-up: the row's ⋯ (Delete…) sits outside the link, like the artifact lists'. */}
+      <PlanRowMenu plan={plan} />
+    </div>
+  );
+}
+
 /**
  * D99 · the Plans list (`/plans`, `docs/plans-ui.md` → *The Plans page*): a card per plan with
  * its state, progress and merge mode, newest first; **＋ New plan** (a session, title, target
  * branch, base, items from its todos) and **Import from Jira…** (the Jira lane's
  * `ImportJiraDialog`: D112, a new session in a folder owns the plan; **Use an existing session
  * instead** picks a session first, as before; the new draft opens). D117 follow-up: each row's
- * ⋯ has **Delete…** (`PlanRowMenu`).
+ * ⋯ has **Delete…** (`PlanRowMenu`). D150: finished and cancelled plans go to a **Done (N)**
+ * section below the others (newest finished first), closed by default and remembered in this browser.
  */
 export function PlansPage() {
   const { on, plans, loaded } = usePlans();
@@ -33,6 +79,7 @@ export function PlansPage() {
   const [jiraSource, setJiraSource] = useState<string | null>(null);
   // D112: Import from Jira starts in a folder (a new session owns the plan); an existing session on request.
   const [jiraWith, setJiraWith] = useState<'folder' | 'session'>('folder');
+  const [doneOpen, setDoneOpen] = useState(readDoneOpen);
   if (!on) return loaded ? <PlansOff /> : <div className="sb-plan-page" />;
   const closeImport = (): void => {
     setOpen(null);
@@ -44,7 +91,17 @@ export function PlansPage() {
     putPlan(plan);
     navigate({ view: 'plan', id: plan.id });
   };
-  const sorted = [...plans].sort((a, b) => (a.machine === null ? 0 : 1) - (b.machine === null ? 0 : 1) || b.createdAt.localeCompare(a.createdAt));
+  const { active, done } = planListSections(plans);
+  const toggleDone = (): void => {
+    setDoneOpen((was) => {
+      try {
+        window.localStorage.setItem(PLANS_DONE_OPEN_KEY, was ? '0' : '1');
+      } catch {
+        // No storage: the choice lasts until the page closes.
+      }
+      return !was;
+    });
+  };
   return (
     <div className="sb-plan-page" data-testid="plans-page">
       <header className="sb-plan-header">
@@ -68,45 +125,29 @@ export function PlansPage() {
         </div>
       </header>
       <div className="sb-plan-list" data-testid="plans-list">
-        {sorted.length === 0 ? (
+        {plans.length === 0 ? (
           <div className="sb-plan-empty" data-testid="plans-empty">
             <div className="sb-plan-off__title">No plans yet</div>
             <div className="sb-plan-muted">A plan runs a session's todos in order and in parallel, each in its own worktree, and merges them into one epic branch.</div>
           </div>
         ) : null}
-        {sorted.map((plan) => (
-          <div key={plan.id} className="sb-plan-summary-item">
-            <Link to={{ view: 'plan', id: plan.id }} className="sb-plan-summary" data-testid="plan-summary" data-plan-id={plan.id} data-state={plan.state}>
-              <span className="sb-plan-summary__head">
-                <span className="sb-plan-summary__title">{plan.title}</span>
-                {plan.external ? <span className="sb-plan-chip">{plan.external.key}</span> : null}
-                <span className="sb-plan-summary__state" data-state={plan.state} data-testid="plan-summary-state">
-                  {planStateText(plan)}
-                </span>
-                {plan.machine ? <span className="sb-plan-chip">{plan.machine.name}</span> : null}
-                {/* D120: items whose agents ended their turn without finishing need you. */}
-                {stoppedChip(plan) ? (
-                  <span className="sb-plan-chip sb-plan-stopped-chip" data-testid="plan-summary-stopped" title={STOPPED_LABEL}>
-                    ■ {stoppedChip(plan)}
-                  </span>
-                ) : null}
-              </span>
-              <span className="sb-plan-summary__line">
-                <span className="sb-plan-branch">{targetChip(plan)}</span>
-                <span>{mergeModeChip(plan)}</span>
-              </span>
-              <span className="sb-plan-progress" aria-label={progressText(plan)}>
-                <span className="sb-plan-progress__text">{progressText(plan)}</span>
-                <span className="sb-plan-progress__bar">
-                  <span className="sb-plan-progress__fill" style={{ width: `${plan.progress.percent}%` }} />
-                </span>
-                <span className="sb-plan-progress__left">{timeLeftText(plan) ?? ''}</span>
-              </span>
-            </Link>
-            {/* D117 follow-up: the row's ⋯ (Delete…) sits outside the link, like the artifact lists'. */}
-            <PlanRowMenu plan={plan} />
-          </div>
+        {active.map((plan) => (
+          <PlanRow key={plan.id} plan={plan} />
         ))}
+        {/* D150: finished and cancelled plans in a Done section below, closed by default (remembered). */}
+        {done.length > 0 ? (
+          <button type="button" className="sb-plan-done-toggle" aria-expanded={doneOpen} onClick={toggleDone} data-testid="plans-done-toggle">
+            <span className="sb-plan-done-chev" aria-hidden="true">
+              ▸
+            </span>
+            Done ({done.length})
+          </button>
+        ) : null}
+        {doneOpen
+          ? done.map((plan) => (
+              <PlanRow key={plan.id} plan={plan} />
+            ))
+          : null}
       </div>
       {open === 'new' ? <NewPlanDialog initialSessionId={null} onCreated={opened} onClose={() => setOpen(null)} /> : null}
       {open === 'import' && jiraWith === 'folder' ? <ImportJiraDialog onImported={opened} onClose={closeImport} onUseSession={() => setJiraWith('session')} /> : null}

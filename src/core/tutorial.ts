@@ -161,6 +161,9 @@ const V2_4_8 = '2.4.8';
 /** The version D147 (a task's actual time is its agent's working time; calibration per estimate band) ships in. */
 const V2_4_11 = '2.4.11';
 
+/** The version D150 (the Projects list's Done section; the Start dialog's parent folder for the steps' subfolder) ships in. */
+const V2_4_14 = '2.4.14';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1530,6 +1533,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-tasks-accuracy', 'v2-todo-estimate', 'v2-nav-tasks', 'v2-tab-more'],
         v2Route: '/tasks',
         missing: 'Finish a task in Tasks to see how long its agent worked on it. ',
+      },
+    ],
+  },
+  // D150: done projects in their own section; the Start dialog picks where the steps' folder goes (docs/plans.md → The Projects list).
+  {
+    id: 'projects-done',
+    decision: 'D150',
+    version: V2_4_14,
+    title: 'Done projects tidied away; pick where the steps go',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'done',
+        title: 'Done projects in their own section',
+        what: 'Finished and cancelled projects now leave the list and wait in Done below the others, newest finished first. It starts closed; open it with a click and this browser remembers it. A cancelled one says Cancelled on its card. When you start a project, In folder now picks the folder in Agents its steps’ folder goes into, any level deep; it starts as the project’s own agent’s folder, as before.',
+        todo: ['Open Projects and click Done to see the finished ones.', 'Start a project and pick In folder.'],
+        anchors: ['v2-projects-done', 'v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'Finish or cancel a project to see the Done section on Projects. ',
       },
     ],
   },

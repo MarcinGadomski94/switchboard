@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { PLAN_PICK_REPOS_REASON, type Plan, type PlanItem } from '../../src/core/plans.ts';
 import { DEFAULT_PLACE, parsePlace, sidebarChoiceKey } from '../../src/web/plans/jira/place.ts';
 import {
+  PLANS_DONE_OPEN_KEY,
+  planListSections,
+  readPlansDoneOpen,
   GRAPH,
   STATE_LOOK,
   STOPPED_LABEL,
@@ -425,5 +428,28 @@ describe('D121 · Reopen and the early-start warning', () => {
     expect(earlyStartWarning({ note: `${warning}; checks failed` })).toBe(warning);
     expect(earlyStartWarning({ note: 'checks failed' })).toBeNull();
     expect(earlyStartWarning({ note: null })).toBeNull();
+  });
+});
+
+describe('D150 · the Plans list\'s Done section', () => {
+  it('active plans first (this machine\'s, then newest), finished and cancelled below, newest finished first', () => {
+    const at = (h: number): string => new Date(Date.parse('2026-10-25T08:00:00.000Z') + h * 3_600_000).toISOString();
+    const peer = { id: 'm', name: 'Laptop', state: 'online' };
+    const plans = [
+      { id: 'peer-run', state: 'running' as const, machine: peer, createdAt: at(9), finishedAt: null },
+      { id: 'draft', state: 'draft' as const, machine: null, createdAt: at(1), finishedAt: null },
+      { id: 'run', state: 'running' as const, machine: null, createdAt: at(2), finishedAt: null },
+      { id: 'done', state: 'done' as const, machine: null, createdAt: at(3), finishedAt: at(4) },
+      { id: 'cancelled', state: 'cancelled' as const, machine: peer, createdAt: at(0), finishedAt: at(8) },
+    ];
+    const sections = planListSections(plans);
+    expect(sections.active.map((p) => p.id)).toEqual(['run', 'draft', 'peer-run']);
+    expect(sections.done.map((p) => p.id)).toEqual(['cancelled', 'done']);
+  });
+
+  it('closed by default; remembered per browser', () => {
+    expect(PLANS_DONE_OPEN_KEY).toBe('switchboard.plans.doneOpen');
+    expect(readPlansDoneOpen(null)).toBe(false);
+    expect(readPlansDoneOpen('1')).toBe(true);
   });
 });

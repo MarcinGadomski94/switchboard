@@ -54,6 +54,25 @@ export const PLAN_STATES = ['draft', 'running', 'paused', 'done', 'cancelled'] a
 /** One of {@link PLAN_STATES}. */
 export type PlanState = (typeof PLAN_STATES)[number];
 
+/** D150: the plan states that are over (the Projects list's **Done** section): finished and cancelled. Drafts are active. */
+export const PLAN_OVER_STATES: readonly PlanState[] = ['done', 'cancelled'];
+
+/** D150: whether a plan is over ({@link PLAN_OVER_STATES}). */
+export function planIsOver(plan: { readonly state: PlanState }): boolean {
+  return PLAN_OVER_STATES.includes(plan.state);
+}
+
+/**
+ * D150 (`docs/plans.md` → *The Projects list*): the list's two sections. `active` = every plan not
+ * over (draft, running, paused), in the order given (the caller's own sort); `done` = finished and
+ * cancelled ones, newest finished first (`finishedAt`, else `createdAt`; ties: newest created).
+ */
+export function splitPlansByDone<T extends { readonly state: PlanState; readonly finishedAt: string | null; readonly createdAt: string }>(plans: readonly T[]): { readonly active: T[]; readonly done: T[] } {
+  const active = plans.filter((plan) => !planIsOver(plan));
+  const done = plans.filter(planIsOver).sort((a, b) => (b.finishedAt ?? b.createdAt).localeCompare(a.finishedAt ?? a.createdAt) || b.createdAt.localeCompare(a.createdAt));
+  return { active, done };
+}
+
 /** An item's stored state: `pending` (not started), `running` (its run session works), `done`, `failed` (discarded, could not start, …). */
 export const PLAN_ITEM_STORED_STATES = ['pending', 'running', 'done', 'failed'] as const;
 /** One of {@link PLAN_ITEM_STORED_STATES}. */
