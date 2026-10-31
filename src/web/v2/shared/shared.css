@@ -747,6 +747,19 @@ button.v2-qi-src:hover {
   opacity: 0.45;
 }
 
+/* Issue #5: on a card that can't be answered the options' descriptions stay reachable (hover, long press):
+   the pointer goes through the disabled control to what carries the `title` (a single-select option's
+   wrapper, a checkbox row's label). The fieldset still disables them: nothing is chosen. */
+.v2-opt-tip {
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
+.v2-qi-body:disabled .v2-opt-tip > .v2-opt,
+.v2-qi-body:disabled .v2-chk input {
+  pointer-events: none;
+}
+
 .v2-qi-open {
   display: inline-flex;
   align-items: center;

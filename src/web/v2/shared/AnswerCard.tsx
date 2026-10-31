@@ -100,7 +100,7 @@ export function AnsweredLine({ info, testId = 'v2-answered' }: { readonly info: 
 }
 
 /** One question's options (single-select: buttons; multi-select: checkboxes), with Other…. */
-function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { readonly question: Question; readonly draft: QuestionDraft | undefined; readonly onDraft: (next: QuestionDraft) => void; readonly keys: boolean; readonly immediate: boolean; readonly onSend: (draft: QuestionDraft) => void }) {
+function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend, disabled }: { readonly question: Question; readonly draft: QuestionDraft | undefined; readonly onDraft: (next: QuestionDraft) => void; readonly keys: boolean; readonly immediate: boolean; readonly onSend: (draft: QuestionDraft) => void; /** Issue #5: the card can't be answered (its fieldset is disabled): the descriptions sit on a wrapper. */ readonly disabled: boolean }) {
   // Fix after 2.0: the header is Markdown; a description stays a plain-text tooltip (classic's `title`).
   const header = question.header ? <CardMarkdown className="v2-qi-hint" text={question.header} testId="v2-answer-header" /> : null;
   const [otherOpen, setOtherOpen] = useState(draft?.other ?? false);
@@ -137,29 +137,42 @@ function QuestionBlock({ question, draft, onDraft, keys, immediate, onSend }: { 
       {question.header && question.header !== question.text ? header : null}
       {immediate ? <p className="v2-qi-hint">{ANSWER.tapToSend}</p> : null}
       <div className="v2-qi-actions" style={{ marginTop: 6 }}>
-        {question.options.map((option, index) => (
-          <button
-            key={option.label}
-            type="button"
-            className="v2-opt"
-            data-option={index}
-            {...(keys ? { 'data-num': index + 1 } : {})}
-            aria-pressed={immediate ? undefined : draft?.index === index}
-            title={option.description ? plainText(option.description) : undefined}
-            onClick={() => {
-              const next = { index, other: false };
-              if (immediate) onSend(next);
-              else onDraft(next);
-            }}
-          >
-            {keys ? (
-              <span className="v2-num" aria-hidden="true">
-                {index + 1}
-              </span>
-            ) : null}
-            {option.label}
-          </button>
-        ))}
+        {question.options.map((option, index) => {
+          const tip = option.description ? plainText(option.description) : undefined;
+          const button = (
+            <button
+              key={option.label}
+              type="button"
+              className="v2-opt"
+              data-option={index}
+              {...(keys ? { 'data-num': index + 1 } : {})}
+              aria-pressed={immediate ? undefined : draft?.index === index}
+              title={disabled ? undefined : tip}
+              onClick={() => {
+                const next = { index, other: false };
+                if (immediate) onSend(next);
+                else onDraft(next);
+              }}
+            >
+              {keys ? (
+                <span className="v2-num" aria-hidden="true">
+                  {index + 1}
+                </span>
+              ) : null}
+              {option.label}
+            </button>
+          );
+          // Issue #5: a disabled control gets no mouse events in some browsers (no hover tooltip, no long press),
+          // so on a card that can't be answered the description sits on a wrapper the pointer reaches instead
+          // (the button lets the pointer through; it stays disabled, so nothing is chosen).
+          return disabled && tip ? (
+            <span key={option.label} className="v2-opt-tip" title={tip}>
+              {button}
+            </span>
+          ) : (
+            button
+          );
+        })}
         <button type="button" className="v2-opt" data-option="other" {...(keys ? { 'data-num': question.options.length + 1 } : {})} aria-expanded={otherOpen} onClick={() => setOtherOpen(true)}>
           {keys ? (
             <span className="v2-num" aria-hidden="true">
@@ -260,6 +273,7 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
               draft={draft[question.id]}
               keys={keys && questions.length === 1}
               immediate={single}
+              disabled={off}
               onDraft={(next) => setDraftFor({ ...draft, [question.id]: next })}
               onSend={(next) => {
                 const one = questionAnswer(question, next);
