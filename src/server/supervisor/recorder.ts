@@ -8,6 +8,7 @@ import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
 import type { EventKind, SessionStatus } from '../../core/model.ts';
 import {
   type EventPayload,
+  type LifecyclePayload,
   type RequestPayload,
   type RequestState,
   type ToolPayload,
@@ -675,6 +676,17 @@ export class StreamRecorder {
   /** Records a process lifecycle step (`kind` `text`, or `error` for a failure). */
   async recordLifecycle(kind: EventKind, label: string, payload: EventPayload): Promise<EventRecord> {
     return this.#append(kind, label, payload);
+  }
+
+  /**
+   * Sets the pid on a lifecycle event recorded before the process had one (OpenCode's server is
+   * spawned after `spawn` returned, so its start line is written with `pid: null`); re-sent on `/hub`.
+   * Nothing when the event is gone or is not a lifecycle event.
+   */
+  async setLifecyclePid(eventId: number, pid: number): Promise<void> {
+    const event = await this.#store.events.get(eventId);
+    if (!event || (event.payload as { readonly type?: unknown }).type !== 'lifecycle') return;
+    await this.#patchPayload<LifecyclePayload>(eventId, (payload) => ({ ...payload, pid }));
   }
 
   /** Marks an open request answered by Switchboard (M3.1 writes the `control_response`). */

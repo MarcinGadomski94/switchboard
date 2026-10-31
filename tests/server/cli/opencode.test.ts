@@ -248,6 +248,24 @@ describe('D62 · OpenCode through the bridge (fake-opencode)', () => {
     expect(paused && (await toSession(w.store, paused)).live).toBe(false);
   });
 
+  it("issue #4: the session's \"Started\" lifecycle event carries the server's pid once it is spawned (not null)", async () => {
+    const { w, session } = await startOpencode('[fake:hold 20]');
+    await until(async () => (await prompts(w.opencodeLog)).length === 1, 'the prompt');
+    const serverPid = (await opencodeLog(w.opencodeLog)).find((line) => line.kind === 'argv')?.pid;
+    expect(serverPid).toBeGreaterThan(1);
+    const startedOf = async () => (await w.store.events.list(session.id)).filter((event) => {
+      const payload = event.payload as { type?: string; action?: string };
+      return payload.type === 'lifecycle' && payload.action === 'started';
+    });
+    const started = await until(async () => {
+      const events = await startedOf();
+      return events.length === 1 && (events[0]?.payload as { pid?: number | null }).pid === serverPid ? events[0] : undefined;
+    }, 'the server\'s pid on the "Started" event');
+    expect(started.label).toBe('Started');
+    // One start line, patched in place: no second lifecycle event for the pid.
+    expect(await startedOf()).toHaveLength(1);
+  });
+
   it('crash recovery (D62): a session whose OpenCode server is still alive is not resumed and the server is not signalled', async () => {
     const { w, session } = await startOpencode('[fake:hold 30]');
     await until(async () => (await prompts(w.opencodeLog)).length === 1, 'the prompt');
