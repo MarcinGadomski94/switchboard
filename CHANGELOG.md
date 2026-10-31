@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.13 (2026-10-31)
+
+### v2 theme
+- **Answer descriptions everywhere:** the line that replaces a question card after you answer shows the chosen options' descriptions on hover (also after a reload or when answered from Needs you), and options on a card that can't be answered (its computer offline) keep their descriptions on hover and long press (#5).
+- **Long-press tooltips on phones and tablets:** a long press on an answer option (or anything with a tooltip) shows its text, as in the classic theme; a tap still answers, and dragging agent cards or opening a step's menu is unchanged.
+
+### Sessions
+- **OpenCode:** the session's "Started" entry records the server's process once it has started (#4).
+
 ## 2.4.12 (2026-10-30)
 
 ### Projects
