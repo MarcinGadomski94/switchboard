@@ -145,11 +145,11 @@ describe('the helper (relaunch.ts)', () => {
     let text = '';
     while (Date.now() < deadline) {
       text = await readFile(log, 'utf8').catch(() => '');
-      if (text.includes('done')) break;
+      if (text.includes('relaunch: done')) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(text).toContain(`waiting for process ${pid} to exit`);
-    expect(text).toContain('done');
+    expect(text).toContain('relaunch: done');
     const calls = (await readFile(ctlLog, 'utf8')).trim().split('\n').map((line) => (JSON.parse(line) as { argv: string[] }).argv);
     expect(calls).toEqual([['bootout', 'gui/501/local.switchboard'], ['bootstrap', 'gui/501', '/x.plist']]);
     expect(Date.now()).toBeGreaterThan(exitAt);
