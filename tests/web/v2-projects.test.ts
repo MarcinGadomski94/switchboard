@@ -26,6 +26,8 @@ import {
   remoteBlock,
   reopenedNotice,
   sortProjects,
+  projectSections,
+  readDoneOpen,
   stepActions,
   stepKind,
   stepLook,
@@ -344,6 +346,25 @@ describe('the list', () => {
     const draft = plan([], { id: 'c', state: 'draft', createdAt: iso(3) });
     const done = plan([], { id: 'd', state: 'done', createdAt: iso(4) });
     expect(sortProjects([done, draft, running, needs]).map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('D150: the Done section holds finished and cancelled projects, newest finished first; the rest stay on top in the list order', () => {
+    const needs = plan([item('1', { state: 'stopped' })], { id: 'a', state: 'running', createdAt: iso(1) });
+    const paused = plan([], { id: 'b', state: 'paused', createdAt: iso(2) });
+    const draft = plan([], { id: 'c', state: 'draft', createdAt: iso(3) });
+    const oldDone = plan([], { id: 'd', state: 'done', createdAt: iso(4), finishedAt: iso(5) });
+    const cancelled = plan([item('1', { state: 'stopped' })], { id: 'e', state: 'cancelled', createdAt: iso(0), finishedAt: iso(9) });
+    const peerDone = plan([], { id: 'f', state: 'done', createdAt: iso(6), finishedAt: iso(7), machine: { id: 'm', name: 'Laptop', state: 'online' } });
+    const sections = projectSections([oldDone, draft, cancelled, paused, peerDone, needs]);
+    expect(sections.active.map((entry) => entry.id)).toEqual(['a', 'c', 'b']);
+    expect(sections.done.map((entry) => entry.id)).toEqual(['e', 'f', 'd']);
+    expect(projectSections([draft]).done).toEqual([]);
+  });
+
+  it('D150: the Done section is closed unless this browser remembers it open', () => {
+    expect(readDoneOpen('1')).toBe(true);
+    expect(readDoneOpen('0')).toBe(false);
+    expect(readDoneOpen(null)).toBe(false);
   });
 
   it('the view is remembered and checked', () => {

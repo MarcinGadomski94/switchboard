@@ -210,6 +210,40 @@
   padding: 20px;
 }
 
+/* D150 · the list's Done section (closed by default). */
+.sb2 .v2-p-done {
+  margin-top: 22px;
+}
+
+.sb2 .v2-p-done-head {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.sb2 .v2-p-done-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  min-height: 32px;
+  font: inherit;
+  color: var(--v2-text-2);
+  cursor: pointer;
+}
+
+.sb2 .v2-p-done-toggle[aria-expanded='true'] .v2-p-done-chev {
+  transform: rotate(90deg);
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .sb2 .v2-p-done-toggle {
+    min-height: var(--v2-touch);
+  }
+}
+
 .sb2 .v2-p-pcard-title {
   margin: 0;
   font-size: 18px;

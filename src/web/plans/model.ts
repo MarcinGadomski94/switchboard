@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_EARLY_START_PREFIX, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle, planDoneWithoutMerge } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, PLAN_EARLY_START_PREFIX, PLAN_FORBIDDEN_TARGETS, PLAN_PICK_REPOS_REASON, findCycle, planDoneWithoutMerge, splitPlansByDone } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -239,6 +239,23 @@ export function planStateText(plan: Pick<Plan, 'state' | 'held' | 'pausedReason'
   if (plan.state === 'paused') return plan.pausedReason ? `paused · ${plan.pausedReason}` : 'paused';
   if (plan.state === 'running' && plan.held) return `running · held: ${plan.held}`;
   return plan.state;
+}
+
+/** D150: where this browser remembers whether the Plans list's Done section is open (`'1'` = open; closed by default). */
+export const PLANS_DONE_OPEN_KEY = 'switchboard.plans.doneOpen';
+
+/** D150: the remembered Done section state: open only when stored so. */
+export function readPlansDoneOpen(stored: string | null): boolean {
+  return stored === '1';
+}
+
+/**
+ * D150: the Plans list's sections: the active plans (this machine's first, then newest first, as
+ * before) and Done (finished and cancelled, newest finished first: `splitPlansByDone`).
+ */
+export function planListSections<T extends Pick<Plan, 'state' | 'machine' | 'createdAt' | 'finishedAt'>>(plans: readonly T[]): { readonly active: T[]; readonly done: T[] } {
+  const sorted = [...plans].sort((a, b) => (a.machine === null ? 0 : 1) - (b.machine === null ? 0 : 1) || b.createdAt.localeCompare(a.createdAt));
+  return splitPlansByDone(sorted);
 }
 
 /** How many plans run now (the nav's badge). */

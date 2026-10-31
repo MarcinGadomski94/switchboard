@@ -16,6 +16,8 @@ The page reads `GET /api/plans/state` (always answered) once, again after the hu
 
 ## The Plans page
 
+D150 (`docs/plans.md` → *The Projects list (D150)*): finished and cancelled plans go to a **Done (N)** section below the others (newest finished first; `plans-done-toggle`), closed by default and remembered in this browser (`localStorage['switchboard.plans.doneOpen']`).
+
 A card per plan (this machine's first, newest first): title, external key chip, state (`paused · <reason>`, `running · held: <why>`), D120 a red **"■ N stopped"** chip (`plan-summary-stopped`) while items are stopped, ⎇ target → base, the merge-mode text, progress ("4/7 done", bar, "~3h left"). **＋ New plan**: the session whose todos the plan runs (open, non-plain-folder sessions of this machine), title, target branch, base (default `dev`), and the session's open todos as checkboxes (`POST /api/plans`, then `POST …/items { todoId }` per ticked todo); it opens the new plan.
 
 ### Import from Jira
@@ -78,6 +80,8 @@ D99 follow-up 2026-10-15 (`docs/plans.md` → *Plans for anything*): a fourth op
 
 
 D130 (`docs/plans.md` → *The runs' sidebar subfolder*): Start (not Apply) has a **Sidebar subfolder** field (`plan-start-folder`, input `plan-start-folder-input`, 60 characters) under the options, prefilled with the plan's title (or the source's D119 "Plan · …" folder's name), with "The plan's sessions go into this folder, inside the plan's session's folder (an existing one with this name is reused). Clear it to keep them next to the session."; empty shows the placeholder "None: runs go next to the plan's session". Start sends it as `sidebarFolder`; a refusal (a folder five levels deep) shows in the dialog's error line. Phones: the same field, full width in the sheet (`tests/e2e/plans-run-subfolder.spec.ts`, 360 px).
+
+D150: above it, **In sidebar folder** (`plan-start-parent`, select `plan-start-parent-select`): "Sidebar root" and every sidebar folder of this machine (all levels, indented), defaulting to the plan's session's folder; sent as `sidebarParent` only when changed; a refused pair (Sidebar root with no name while the session sits in a folder, a folder 5 levels deep with a name) shows its reason (`plan-start-parent-error`) and keeps Start disabled. Hidden for a paired machine's plan.
 ## Responsive
 
 Desktop (≥ 1280): as above. Tablet: the same, padding 16 px, the graph scrolls sideways. Phone (≤ 767): the List only (no tabs, no dependency editing), a tap opens the detail full screen with "‹ <plan>"; dialogs are full-screen sheets; no sideways page overflow.

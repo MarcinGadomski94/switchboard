@@ -47,11 +47,16 @@ describe('the v2 welcome tour', () => {
     expect(welcome?.steps.find((step) => step.id === 'appearance')?.anchors).toEqual(['v2-theme']);
   });
 
-  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation, pinned crews, D142\'s account hint, Model and Effort, D145\'s clean-up and D147\'s working time; the classic What’s new gains the theme switch', () => {
+  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation, pinned crews, D142\'s account hint, Model and Effort, D145\'s clean-up, D147\'s working time and D150\'s Done projects; the classic What’s new gains the theme switch', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done']);
+    // D150 (2.4.14): one step on Projects, the Done section's toggle.
+    const done = WHATS_NEW.find((feature) => feature.id === 'projects-done');
+    expect(done).toMatchObject({ version: '2.4.14', ui: 'v2', decision: 'D150' });
+    expect(done?.steps.map((step) => step.anchors)).toEqual([['v2-projects-done', 'v2-nav-projects', 'v2-tab-more']]);
+    expect(done?.steps[0]?.v2Route).toBe('/projects');
     // D147 (2.4.11): one step on Tasks, the estimates' accuracy and a card's estimate line.
     const working = WHATS_NEW.find((feature) => feature.id === 'working-time');
     expect(working).toMatchObject({ version: '2.4.11', ui: 'v2', decision: 'D147' });

@@ -1,4 +1,4 @@
-import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_ACCOUNT, PLAN_STOPPED_NO_MESSAGE } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_ACCOUNT, PLAN_STOPPED_NO_MESSAGE, splitPlansByDone } from '../../../core/plans.ts';
 import { durationShort, earlyStartWarning, isProtectedTargetName, shortLabel, timeline } from '../../plans/model.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS, type V2Status } from '../glossary.ts';
 import type { BoardColumn } from '../shared/board-model.ts';
@@ -230,6 +230,22 @@ export function sortProjects<T extends Pick<Plan, 'state' | 'items' | 'createdAt
     return 3;
   };
   return [...plans].sort((a, b) => rank(a) - rank(b) || b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * D150 · the list's two sections: the active projects (draft, running, paused) in {@link sortProjects}'
+ * order, and **Done** (finished and cancelled, `splitPlansByDone`: newest finished first).
+ */
+export function projectSections<T extends Pick<Plan, 'state' | 'items' | 'createdAt' | 'finishedAt'>>(plans: readonly T[]): { readonly active: T[]; readonly done: T[] } {
+  return splitPlansByDone(sortProjects(plans));
+}
+
+/** D150: where this browser remembers whether the Done section is open (`'1'` = open; closed by default). */
+export const PROJECTS_DONE_OPEN_KEY = 'switchboard.v2.projects.doneOpen';
+
+/** D150: the remembered Done section state: open only when stored so. */
+export function readDoneOpen(stored: string | null): boolean {
+  return stored === '1';
 }
 
 // ── the views ───────────────────────────────────────────────────────────

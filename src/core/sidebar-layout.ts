@@ -301,30 +301,63 @@ export type RunSubfolder =
       /** The layout with the new folder; `null` = an existing folder was used (nothing to write). */
       readonly layout: SidebarLayout | null;
     }
-  | { readonly ok: false; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly message: string;
+      /**
+       * D150: the Start body's field the refusal is about: `sidebarParent` for a chosen parent
+       * (unknown, or too deep for the subfolder), `sidebarFolder` otherwise (D130's refusals).
+       */
+      readonly field: 'sidebarFolder' | 'sidebarParent';
+    };
 
 /**
  * D130 (`docs/plans.md` → *The runs' sidebar subfolder*): the subfolder named `name` for the runs of
  * session `sourceId`, inside the source's sidebar folder (the top level when the source is loose,
- * unplaced or pinned):
+ * unplaced or pinned), or (D150) inside the chosen `parentId` (a folder id; `null` = the top
+ * level; absent = the source's folder, as before):
  *
- * - the source's own folder already carries that exact name (a D119 "Plan · …" subfolder) → that
- *   folder, as it is (no second one nested in it);
- * - a folder with that exact name already sits at that level → reused (no " (2)": a re-start, or
+ * - the parent is the source's own folder and that folder already carries that exact name (a D119
+ *   "Plan · …" subfolder) → that folder, as it is (no second one nested in it);
+ * - a folder with that exact name already sits in the parent → reused (no " (2)": a re-start, or
  *   a second plan with the same name, collects there);
- * - else a new folder `newId` at the end of that level; refused when the source's folder is
- *   {@link SIDEBAR_FOLDER_DEPTH_MAX} levels deep (D58).
+ * - else a new folder `newId` at the end of the parent; refused when the parent is
+ *   {@link SIDEBAR_FOLDER_DEPTH_MAX} levels deep (D58), or (D150) a chosen parent is no folder.
  */
-export function runSubfolder(layout: SidebarLayout, input: { readonly sourceId: string; readonly name: string; readonly newId: string }): RunSubfolder {
-  const parentId = folderOfSession(layout, input.sourceId);
-  const own = parentId === null ? undefined : layout.folders.find((folder) => folder.id === parentId);
+export function runSubfolder(layout: SidebarLayout, input: { readonly sourceId: string; readonly name: string; readonly newId: string; readonly parentId?: string | null }): RunSubfolder {
+  const sourceFolder = folderOfSession(layout, input.sourceId);
+  const chosen = input.parentId !== undefined && input.parentId !== sourceFolder;
+  const parentId = input.parentId === undefined ? sourceFolder : input.parentId;
+  const field = chosen ? 'sidebarParent' : 'sidebarFolder';
+  if (parentId !== null && !layout.folders.some((folder) => folder.id === parentId)) return { ok: false, message: `no sidebar folder ${parentId}`, field };
+  const own = chosen || parentId === null ? undefined : layout.folders.find((folder) => folder.id === parentId);
   if (own && own.name === input.name) return { ok: true, folderId: own.id, name: own.name, parentId: parentOf(own), layout: null };
   const same = childFolders(layout, parentId).find((folder) => folder.name === input.name);
   if (same) return { ok: true, folderId: same.id, name: same.name, parentId, layout: null };
   const problem = checkFolderParent(layout, null, parentId);
-  if (problem) return { ok: false, message: problem.kind === 'not-found' ? `no sidebar folder ${problem.id}` : `the source session's sidebar folder cannot hold a subfolder: ${problem.message}` };
+  if (problem) return { ok: false, field, message: problem.kind === 'not-found' ? `no sidebar folder ${problem.id}` : `${chosen ? 'that sidebar folder' : "the source session's sidebar folder"} cannot hold a subfolder: ${problem.message}` };
   const added = addFolder(layout, input.newId, input.name, parentId);
-  return added ? { ok: true, folderId: input.newId, name: input.name, parentId, layout: added } : { ok: false, message: 'the subfolder could not be made' };
+  return added ? { ok: true, folderId: input.newId, name: input.name, parentId, layout: added } : { ok: false, message: 'the subfolder could not be made', field };
+}
+
+/** D150: what {@link runParentFolder} answers: the folder the runs go into, `null` = next to the source (D130's "none"). */
+export type RunParentFolder = { readonly ok: true; readonly folder: { readonly id: string; readonly name: string } | null } | { readonly ok: false; readonly message: string; readonly field: 'sidebarParent' };
+
+/**
+ * D150 (`docs/plans.md` → *The runs' sidebar subfolder*): a Start with **no** subfolder name and a
+ * chosen parent `parentId` (absent = the source's folder). The source's own folder (or absent) →
+ * `null`: the runs go next to the source, as before. Another folder → that folder: the runs go
+ * straight into it, at its end (so the plan stores it like a subfolder). The top level while the
+ * source sits in a folder → refused: a run is put loose at the top level only next to its source,
+ * so the developer names a subfolder there or picks a folder. An unknown folder → refused.
+ */
+export function runParentFolder(layout: SidebarLayout, input: { readonly sourceId: string; readonly parentId?: string | null }): RunParentFolder {
+  const sourceFolder = folderOfSession(layout, input.sourceId);
+  if (input.parentId === undefined || input.parentId === sourceFolder) return { ok: true, folder: null };
+  if (input.parentId === null) return { ok: false, field: 'sidebarParent', message: 'without a subfolder the runs go next to the project\'s session or into a folder: name a subfolder for the top level, or pick a folder' };
+  const folder = layout.folders.find((entry) => entry.id === input.parentId);
+  if (!folder) return { ok: false, field: 'sidebarParent', message: `no sidebar folder ${input.parentId}` };
+  return { ok: true, folder: { id: folder.id, name: folder.name } };
 }
 
 /**

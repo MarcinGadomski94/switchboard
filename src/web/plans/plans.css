@@ -361,6 +361,32 @@
   grid-column: 1 / -1;
 }
 
+/* D150 · the Done section's header: a row of its own across the grid. */
+.sb-plan-done-toggle {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-plan-done-chev {
+  display: inline-block;
+}
+
+.sb-plan-done-toggle[aria-expanded='true'] .sb-plan-done-chev {
+  transform: rotate(90deg);
+}
+
 .sb-plan-summary {
   display: flex;
   flex-direction: column;

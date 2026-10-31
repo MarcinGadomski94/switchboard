@@ -301,3 +301,86 @@ describe('D130 · the plan\'s runs\' sidebar subfolder', () => {
     expect((await layout()).folders.map((f) => f.name)).toEqual(['Releases']);
   }, 90_000);
 });
+
+describe('D150 · the runs\' subfolder in a chosen parent folder', () => {
+  it('a nested parent: the subfolder is made inside it, the source stays, the run lands in it; the exact name is reused within that parent', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const nested = await folderId('Q4', await folderId('Clients', null));
+    const created = await makePlan(r);
+    const started = await start(created.id, { sidebarFolder: 'Acme epic', sidebarParent: nested });
+    const sub = (await layout()).folders.find((f) => f.name === 'Acme epic');
+    expect(sub).toMatchObject({ parentId: nested });
+    expect(started.sidebarFolder).toEqual({ id: sub?.id, name: 'Acme epic' });
+    const first = (await settledItem(created.id, 'PROJ-1', 'running')).runSessionId as string;
+    await holds(sub?.id as string, [first]);
+    await holds(releases, [r.source.id]);
+    // A second plan with the same name and parent collects there.
+    const again = await makePlan(r, 'Again');
+    expect((await start(again.id, { sidebarFolder: 'Acme epic', sidebarParent: nested })).sidebarFolder).toEqual({ id: sub?.id, name: 'Acme epic' });
+    expect((await layout()).folders.filter((f) => f.name === 'Acme epic')).toHaveLength(1);
+  }, 60_000);
+
+  it('the top level (null and \'root\'): a top-level subfolder for a source inside a folder', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const one = await makePlan(r, 'One');
+    await start(one.id, { sidebarFolder: 'Acme epic', sidebarParent: null });
+    const sub = (await layout()).folders.find((f) => f.name === 'Acme epic');
+    expect(sub?.parentId ?? null).toBeNull();
+    const two = await makePlan(r, 'Two');
+    expect((await start(two.id, { sidebarFolder: 'Acme epic', sidebarParent: 'root' })).sidebarFolder).toEqual({ id: sub?.id, name: 'Acme epic' });
+    const first = (await settledItem(one.id, 'PROJ-1', 'running')).runSessionId as string;
+    await until(async () => ((await layout()).folders.find((f) => f.id === sub?.id)?.sessionIds.includes(first) ? true : undefined), 'the run in the top-level subfolder');
+  }, 60_000);
+
+  it('no subfolder name with a chosen folder: the runs go straight into it; with the source\'s folder: next to the source', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const other = await folderId('Other', null);
+    const created = await makePlan(r);
+    expect((await start(created.id, { sidebarFolder: '', sidebarParent: other })).sidebarFolder).toEqual({ id: other, name: 'Other' });
+    const first = (await settledItem(created.id, 'PROJ-1', 'running')).runSessionId as string;
+    await holds(other, [first]);
+    const same = await makePlan(r, 'Same');
+    expect((await start(same.id, { sidebarFolder: '', sidebarParent: releases })).sidebarFolder).toBeNull();
+    const second = (await settledItem(same.id, 'PROJ-1', 'running')).runSessionId as string;
+    await holds(releases, [r.source.id, second]);
+    expect((await layout()).folders.map((f) => f.name)).toEqual(['Releases', 'Other']);
+  }, 60_000);
+
+  it('refuses 422 on sidebarParent: an unknown folder, one five levels deep, the top level without a name, a wrong type; nothing changes', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    let parent: string | null = null;
+    for (const name of ['L1', 'L2', 'L3', 'L4', 'L5']) parent = await folderId(name, parent);
+    const created = await makePlan(r);
+    for (const body of [
+      { sidebarFolder: 'Acme epic', sidebarParent: 'no-such-folder' },
+      { sidebarFolder: '', sidebarParent: 'no-such-folder' },
+      { sidebarFolder: 'Acme epic', sidebarParent: parent },
+      { sidebarFolder: '', sidebarParent: null },
+      { sidebarFolder: 'Acme epic', sidebarParent: 42 },
+    ]) {
+      const refused = await call('POST', `/api/plans/${created.id}/start`, { mergeMode: 'none', ...body });
+      expect(refused.statusCode, refused.body).toBe(422);
+      expect(refused.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'sidebarParent' }] });
+    }
+    expect((await plan(created.id)).state).toBe('draft');
+    expect((await layout()).folders).toHaveLength(6);
+  }, 60_000);
+
+  it('omitted: the subfolder inside the source\'s folder, as before', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const created = await makePlan(r);
+    await start(created.id, { sidebarFolder: 'Acme epic' });
+    expect((await layout()).folders.find((f) => f.name === 'Acme epic')).toMatchObject({ parentId: releases });
+  }, 60_000);
+});
+
