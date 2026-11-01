@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.14 (2026-11-01)
+
+### Projects
+- **Done projects get their own section:** finished and cancelled projects move into a "Done (N)" section below the active ones, newest first, collapsed by default and remembered when opened; cancelled cards say so. Both themes. See `docs/plans.md` → *The Projects list* (D150).
+- **Choose the folder when starting a project:** the Start dialog has an "In folder" picker (your sidebar's folders plus Top level), defaulting to the source agent's folder as before. The project's subfolder is made or reused inside the folder you pick; with the name cleared, the runs go straight into it. See `docs/plans.md` → *The runs' sidebar subfolder* (D150).
+
+### Development
+- The relaunch test waits for its own log line.
+
 ## 2.4.13 (2026-10-31)
 
 ### v2 theme
