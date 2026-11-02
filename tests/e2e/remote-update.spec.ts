@@ -72,6 +72,8 @@ function updaterEnv(label: string): Record<string, string> {
     SWITCHBOARD_SERVICE_HOME: path.join(tmp, label, 'home'),
     SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
     FAKE_SERVICECTL_LOG: path.join(tmp, label, 'servicectl.log'),
+    // Linux: the restart request is `systemctl --user restart --no-block`; the fake stops this node like systemd would.
+    FAKE_SERVICECTL_CALLER_IS_SERVICE: '1',
     // A test run from inside a launchd job inherits its label: never let that make a node "the login service".
     XPC_SERVICE_NAME: '',
   };

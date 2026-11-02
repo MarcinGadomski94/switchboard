@@ -64,7 +64,8 @@ async function startWorld(kind: 'release' | 'git'): Promise<World> {
     SWITCHBOARD_SERVICE_HOME: path.join(root, 'home'),
     SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
     FAKE_SERVICECTL_LOG: path.join(root, 'servicectl.log'),
-    ...(kind === 'release' ? { SWITCHBOARD_UPDATE_TEST_UNDER_SERVICE: '1' } : {}),
+    // Linux: the fake systemctl stops the server on the restart request, like systemd would.
+    ...(kind === 'release' ? { SWITCHBOARD_UPDATE_TEST_UNDER_SERVICE: '1', FAKE_SERVICECTL_CALLER_IS_SERVICE: '1' } : {}),
   });
   return { root, github, server };
 }

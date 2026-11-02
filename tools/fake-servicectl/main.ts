@@ -12,6 +12,12 @@
  *   (e.g. `print` makes `launchctl print …` answer "not loaded", `/Create` makes
  *   the task registration fail).
  * - `FAKE_SERVICECTL_LOG=<file>` appends `{"argv":[…]}` per call.
+ * - `FAKE_SERVICECTL_CALLER_IS_SERVICE=1`: the caller plays the unit's main
+ *   process, so `systemctl --user restart …` sends it SIGTERM before exiting 0,
+ *   the way systemd stops the running service (`--no-block` does not wait for
+ *   it). Without it nobody would stop a Switchboard that asked for its restart
+ *   on Linux (`src/server/updates/restart.ts`); launchd and Task Scheduler
+ *   restarts go through the helper, which never calls `restart`.
  */
 import { appendFile } from 'node:fs/promises';
 
@@ -27,6 +33,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve) => process.stderr.write(`fake-servicectl: ${args.join(' ')} failed\n`, () => resolve()));
     process.exit(1);
   }
+  if (process.env['FAKE_SERVICECTL_CALLER_IS_SERVICE'] === '1' && args[0] === '--user' && args[1] === 'restart') process.kill(process.ppid, 'SIGTERM');
   process.exit(0);
 }
 
