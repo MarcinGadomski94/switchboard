@@ -105,6 +105,19 @@ describe('restartIntoService', () => {
     ).rejects.toThrow(RestartError);
   });
 
+  it('Linux in tests: the fake systemctl stops its caller on restart only when the caller plays the service', async () => {
+    // The end-to-end update tests rely on this on Linux: nothing else ends the server after its restart request.
+    const caller = (env: NodeJS.ProcessEnv): Promise<{ code: number | null; signal: NodeJS.Signals | null }> =>
+      new Promise((resolve, reject) => {
+        const script = `require('node:child_process').spawnSync(${JSON.stringify(process.execPath)}, ${JSON.stringify([...fakeServiceCtlCommand().slice(1), '--user', 'restart', '--no-block', 'switchboard.service'])}, { stdio: 'ignore' });`;
+        const child = spawn(process.execPath, ['-e', script], { env, stdio: 'ignore' });
+        child.once('error', reject);
+        child.once('exit', (code, signal) => resolve({ code, signal }));
+      });
+    expect(await caller({ ...process.env, FAKE_SERVICECTL_CALLER_IS_SERVICE: '1' })).toEqual({ code: null, signal: 'SIGTERM' });
+    expect(await caller({ ...process.env, FAKE_SERVICECTL_CALLER_IS_SERVICE: '' })).toEqual({ code: 0, signal: null });
+  });
+
   for (const platform of ['darwin', 'win32'] as const) {
     it(`${platform}: starts the helper with the steps, then exits`, async () => {
       const plans: HelperPlan[] = [];
