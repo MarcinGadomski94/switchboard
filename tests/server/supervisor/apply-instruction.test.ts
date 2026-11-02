@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { ToolPayload } from '../../../src/core/event-payload.ts';
 import { INSTRUCTION_UPDATED_DIVIDER, applySummary, staleInstructionCount } from '../../../src/core/standing-instruction.ts';
 import { applyInstructionToOpenSessions } from '../../../src/server/settings/apply-instruction.ts';
 import { toSession } from '../../../src/server/sessions/wire.ts';
@@ -80,11 +81,16 @@ describe('D91 · apply the standing instruction to open sessions', () => {
     const listed = await Promise.all((await w.store.sessions.list()).map((r) => toSession(w.store, r, null)));
     expect(staleInstructionCount(listed)).toBe(2);
 
-    // The busy one: a held turn runs while the apply happens.
+    // The busy one: its turn runs while the apply happens, held on a permission request that
+    // this test answers only after it has checked the marked state. (A timed `[fake:hold]` let the
+    // turn end, and the deferred restart clear the mark, while the idle checks below still ran
+    // under load: the mark exists only until the turn ends, so the test must decide when that is.)
     const idlePid = await pidOf(w, idle.id);
     const busyPid = await pidOf(w, busy.id);
-    await w.supervisor.sendMessage(busy.id, 'hold on [fake:hold 1.5]');
-    await until(async () => w.supervisor.turnRunning(busy.id) || undefined, 'busy turn');
+    await w.supervisor.sendMessage(busy.id, '[fake:perm-allow] Run it.');
+    const ask = await waitForEvent(w.store, busy.id, (e) => e.kind === 'ask');
+    const request = ask.payload as ToolPayload;
+    expect(w.supervisor.turnRunning(busy.id)).toBe(true);
 
     const result = await applyInstructionToOpenSessions(w.store, w.supervisor);
     expect(result.restarted).toEqual([idle.id]);
@@ -113,6 +119,8 @@ describe('D91 · apply the standing instruction to open sessions', () => {
     const busyNow = await w.store.sessions.get(busy.id);
     expect(busyNow && (await toSession(w.store, busyNow, null)).instructionPending).toBe(true);
     expect(w.supervisor.pid(busy.id)).toBe(busyPid);
+    // The developer allows the call: the turn goes on to its result, and only then the restart.
+    await w.supervisor.respond(busy.id, request.requestId ?? '', { behavior: 'allow', updatedInput: { ...request.input } });
     const busyNewPid = await until(async () => {
       const pid = w.supervisor.pid(busy.id);
       return pid !== null && pid !== busyPid ? pid : undefined;
@@ -120,7 +128,7 @@ describe('D91 · apply the standing instruction to open sessions', () => {
     const busySpawn = await spawnOf(w, busyNewPid);
     expect(busySpawn?.argv).toContain('--resume');
     expect(textAfterFlag(busySpawn?.argv)).toBe(NEW_TEXT);
-    // The held turn was not interrupted: its result came before the restart.
+    // The busy turn was not interrupted: its result came before the restart.
     const busyEvents = await w.store.events.list(busy.id);
     const lastResult = busyEvents.filter((e) => (e.payload as { type?: string } | null)?.type === 'result').at(-1);
     const divider = await waitForEvent(w.store, busy.id, (e) => e.label === INSTRUCTION_UPDATED_DIVIDER);
