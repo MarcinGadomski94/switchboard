@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.15 (2026-11-03)
+
+### Insights
+- **Crew members by name:** in Insights' per-agent table and on the Usage page, a crew member's agent is named after the member (e.g. "Web lead") instead of its session's title. Each computer names its own members.
+
+### Development
+- The server tests pass on Linux CI again: the fake systemd now stops a test server on a service restart, as the real one does, and the instruction-reload test no longer races a timer. Linux users were not affected.
+
 ## 2.4.14 (2026-11-01)
 
 ### Projects
