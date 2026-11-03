@@ -773,6 +773,19 @@
 }
 
 .sb2 .v2-p-jira-tickets,
+.sb2 .v2-p-activity {
+  padding: 14px 18px;
+  margin-top: 20px;
+}
+
+.sb2 .v2-p-activity .v2-p-subhead {
+  margin-top: 0;
+}
+
+.sb2 .v2-p-activity .v2-p-jira-activity {
+  margin-top: 4px;
+}
+
 .sb2 .v2-p-jira-activity {
   list-style: none;
   margin: 12px 0 0;

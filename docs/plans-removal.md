@@ -29,6 +29,7 @@ Plans' code lives in its own folders and files: `src/server/plans/` (service, sc
 | `src/server/insights/service.ts` | D108: imports `plansInsightOutcomes`; Insights reads the plan items' outcomes through it (`plans: null` while unavailable) |
 | `src/server/insights/usage.ts` | D134: imports `plansRunSessionIds`; the Usage breakdown names plan item run sessions "plan step" through it (empty while unavailable) |
 | `src/server/sessions/archive.ts` | D137: imports `plansArchiveHolds`; the archive never deletes the source session of an unfinished plan or a running / paused plan's item sessions (empty without Plans; `null` while `plans.db` is not open: the sweep then deletes nothing) |
+| `src/server/api/sidebar.ts` | D141: imports `plansArchiveHolds` (a folder delete that archives keeps a plan's source and running steps). D151: imports `plansRunFolders` / `plansRunFoldersMoved`; a running plan's runs folder (or a folder holding it) is not moved to another parent (409), and a moved one gets a line in its plan's activity (empty without Plans: nothing is held) |
 | `src/server/accounts/choice.ts` | D138: `ProjectAccountsLookup` and `useProjects` (a Project's accounts in the account choice's precedence and its moves; without Plans no Project has an account). `installPlans` installs it (`context.accountChoice?.useProjects`) |
 | `src/server/team/service.ts` | D100 follow-up 2026-10-16: imports `plansItemsOfTodos`; `#currentItem` names a member's current todo by its plan item's key and title (the sidebar's member rows) |
 | `src/server/todos/run.ts` | `TodoRunOverrides` and the `overrides` parameter of `runTodo` (a plan item's branch, cut, brief and answers; `from: null` = D76's own cut, a plan without a target branch; D130: `sidebarFolder`, copied into the run's `todoLink`; D138: `profileFor`, the Project's account for the run's CLI) |
@@ -37,6 +38,7 @@ Plans' code lives in its own folders and files: `src/server/plans/` (service, sc
 | `src/web/shell/Shell.tsx` | imports `PlansPage` and `PlanPage`; `case 'plans'` and `case 'plan'` of `View` |
 | `src/web/shell/AppBar.tsx` | `case 'plans'` / `case 'plan'` of `pageTitle` |
 | `src/web/shell/Sidebar.tsx` | imports `PlansNavItem`; `<PlansNavItem />` at the end of the nav (D101: the nav grid's last cell; renders nothing while Plans is unavailable) |
+| `src/web/shell/SidebarSessions.tsx` | D151: imports `usePlans` (and `runFolderHolder` from `src/core/plan-run-folder.ts`); a running project's runs folder's **Move to folder ▸** items are disabled with the reason (no plans: nothing is held) |
 | `src/web/views/session/RightPanel.tsx` | imports `SessionPlanTab`; `<SessionPlanTab sessionId={…} />` at the top of the panel (nothing while unavailable) |
 | `src/web/tutorial/TourHost.tsx` | imports `PLANS_TOUR_IDS`, `plansOn`, `withoutPlansTour`; the pending tours without the Plans tours while Plans is unavailable |
 | `src/web/views/settings/TutorialSection.tsx` | imports `usePlans`, `withoutPlansTour`; `whatsNew` without the Plans tour while unavailable |

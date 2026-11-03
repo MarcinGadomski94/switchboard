@@ -1,4 +1,5 @@
 import { SIDEBAR_FOLDER_DEPTH_MAX, type SidebarFolder, type SidebarLayout, checkFolderParent, descendantIds } from '../../../core/sidebar-layout.ts';
+import { type RunFolderOwner, runFolderMoveBlock, runFolderRunningText } from '../../../core/plan-run-folder.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import { type AgentEntry, isPlanFolderName, needy } from './agents-model.ts';
 
@@ -188,23 +189,29 @@ export function pickRows(agent: Pick<AgentEntry, 'id' | 'name' | 'kind'>, layout
 
 // ── Moving a folder ──────────────────────────────────────────────────
 
-/** What moving a folder does: fine, or nothing with the reason. */
-export type FolderMoveCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+/**
+ * What moving a folder does: fine, or nothing with the reason. `unchanged` (D151): the folder is
+ * already there, so a drop or a pick there does nothing at all (no toast, no error).
+ */
+export type FolderMoveCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string; readonly unchanged?: true };
 
 /**
  * Whether folder `folderId` may move into `parentId` (`null` = the top level),
- * with its agents and subfolders. The server's rule decides
+ * with its agents and subfolders. The server's rules decide
  * ({@link checkFolderParent}: no loops, at most {@link SIDEBAR_FOLDER_DEPTH_MAX}
- * levels); this adds the words, and refuses the folder's present parent
- * ("already there") so a drop or a pick that would change nothing says so.
+ * levels; D151 {@link runFolderMoveBlock}: a running project's runs folder, or a
+ * folder holding it, stays where it is); this adds the words. The folder's
+ * present parent is `unchanged` (D151: a drop or a pick there does nothing).
  */
-export function checkFolderMove(layout: SidebarLayout, folderId: string, parentId: string | null): FolderMoveCheck {
+export function checkFolderMove(layout: SidebarLayout, folderId: string, parentId: string | null, runFolders: readonly RunFolderOwner[] = []): FolderMoveCheck {
   const folder = layout.folders.find((f) => f.id === folderId);
   if (!folder) return { ok: false, reason: AGENTS_WORDS.folderGone };
   if (parentId !== null && !layout.folders.some((f) => f.id === parentId)) return { ok: false, reason: AGENTS_WORDS.folderGone };
   if (parentId === folderId) return { ok: false, reason: AGENTS_WORDS.intoItself };
   if (parentId !== null && descendantIds(layout, folderId).includes(parentId)) return { ok: false, reason: AGENTS_WORDS.intoOwnSubfolder };
-  if ((folder.parentId ?? null) === parentId) return { ok: false, reason: AGENTS_WORDS.alreadyThere(folder.name) };
+  if ((folder.parentId ?? null) === parentId) return { ok: false, reason: AGENTS_WORDS.alreadyThere(folder.name), unchanged: true };
+  const running = runFolderMoveBlock(layout, folderId, parentId, runFolders);
+  if (running) return { ok: false, reason: runFolderRunningText(running.title) };
   const problem = checkFolderParent(layout, folderId, parentId);
   if (problem) return { ok: false, reason: problem.kind === 'not-found' ? AGENTS_WORDS.folderGone : AGENTS_WORDS.tooDeep };
   return { ok: true };
@@ -213,14 +220,15 @@ export function checkFolderMove(layout: SidebarLayout, folderId: string, parentI
 /**
  * The Move-to list for folder `folderId`: Top level (value `loose`), then every
  * folder in tree order. The folder's present parent is `current` (picked at
- * first, not disabled: moving there says "already there"); the folder itself,
- * its own subfolders and places too deep are disabled with the reason.
+ * first, not disabled: Move here there does nothing); the folder itself,
+ * its own subfolders, places too deep and (D151) every other place while a
+ * running project's runs folder would move are disabled with the reason.
  */
-export function folderPickRows(layout: SidebarLayout, tree: AgentTree, folderId: string): PickRow[] {
+export function folderPickRows(layout: SidebarLayout, tree: AgentTree, folderId: string, runFolders: readonly RunFolderOwner[] = []): PickRow[] {
   const folder = layout.folders.find((f) => f.id === folderId);
   const parent = folder?.parentId ?? null;
   const reason = (target: string | null): string | null => {
-    const check = checkFolderMove(layout, folderId, target);
+    const check = checkFolderMove(layout, folderId, target, runFolders);
     return check.ok || target === parent ? null : check.reason;
   };
   const rows: PickRow[] = [{ value: 'loose', label: AGENTS_WORDS.topLevel, depth: 0, plan: false, count: tree.folders.length, disabled: reason(null), current: parent === null }];

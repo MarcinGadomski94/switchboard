@@ -4,6 +4,7 @@ import type { Plan } from '../../src/core/plans.ts';
 import type { SidebarLayout } from '../../src/core/sidebar-layout.ts';
 import type { TeamSummary } from '../../src/core/team.ts';
 import { type AgentEntry, GROUP_BYS, askStatusOf, boardLanes, buildAgents, cellOf, chatSections, columnOf, isGroupBy, listSections, matchesQuery, offBoard, openTeammateIds, sortAgents, teammateIds, topFolderOf } from '../../src/web/v2/agents/agents-model.ts';
+import { type RunFolderOwner, runFolderOwners } from '../../src/core/plan-run-folder.ts';
 import { agentsOf, buildTree, canNest, checkFolderMove, checkMove, deleteSummary, drill, findFolder, flatFolders, folderPickRows, pathOf, pickRows } from '../../src/web/v2/agents/tree-model.ts';
 
 /** D131 · lane A · the Agents page's pure model: agents, sorting, the Board's columns and swimlanes, the folder tree and the move rules. */
@@ -195,8 +196,9 @@ describe('moving a folder (2.4.16)', () => {
     expect(checkFolderMove(nested, 'a', 'a')).toEqual({ ok: false, reason: 'A folder can’t go inside itself.' });
     expect(checkFolderMove(nested, 'a', 'b')).toEqual({ ok: false, reason: 'A folder can’t go inside one of its own subfolders.' });
     expect(checkFolderMove(nested, 'a', 'c')).toEqual({ ok: false, reason: 'A folder can’t go inside one of its own subfolders.' });
-    expect(checkFolderMove(nested, 'b', 'a')).toEqual({ ok: false, reason: 'B is already there.' });
-    expect(checkFolderMove(nested, 'h', null)).toEqual({ ok: false, reason: 'H is already there.' });
+    // D151: its present place is `unchanged` (a drop or a pick there does nothing, silently).
+    expect(checkFolderMove(nested, 'b', 'a')).toEqual({ ok: false, reason: 'B is already there.', unchanged: true });
+    expect(checkFolderMove(nested, 'h', null)).toEqual({ ok: false, reason: 'H is already there.', unchanged: true });
     expect(checkFolderMove(nested, 'nope', null)).toEqual({ ok: false, reason: 'That folder no longer exists.' });
     expect(checkFolderMove(nested, 'h', 'nope')).toEqual({ ok: false, reason: 'That folder no longer exists.' });
   });
@@ -233,5 +235,30 @@ describe('moving a folder (2.4.16)', () => {
     expect(by.get('h')?.disabled).toBeNull();
     // A top-level folder: Top level is its present place.
     expect(folderPickRows(nested, nestedTree, 'h')[0]).toMatchObject({ value: 'loose', current: true, disabled: null });
+  });
+
+  describe('D151 · a project\'s runs folder', () => {
+    const running = (folderId: string, state: RunFolderOwner['state'] = 'running'): RunFolderOwner[] => [{ planId: 'p1', title: 'Acme epic', state, folderId }];
+    const why = 'The project “Acme epic” is running: pause it to move its folder.';
+    it('a running project\'s runs folder, and a folder holding it, stay where they are, with the reason', () => {
+      expect(checkFolderMove(nested, 'c', null, running('c'))).toEqual({ ok: false, reason: why });
+      expect(checkFolderMove(nested, 'c', 'h', running('c'))).toEqual({ ok: false, reason: why });
+      // A holds C: moving A moves C.
+      expect(checkFolderMove(nested, 'a', 'h', running('c'))).toEqual({ ok: false, reason: why });
+      // Its present place stays unchanged (no toast), and another folder may go into it.
+      expect(checkFolderMove(nested, 'c', 'b', running('c'))).toEqual({ ok: false, reason: 'C is already there.', unchanged: true });
+      expect(checkFolderMove(nested, 'h', 'c', running('c'))).toEqual({ ok: true });
+    });
+    it('paused, done, cancelled and draft projects do not hold their folder', () => {
+      for (const state of ['paused', 'done', 'cancelled', 'draft'] as const) expect(checkFolderMove(nested, 'c', 'h', running('c', state))).toEqual({ ok: true });
+    });
+    it('the Move-folder list disables every other place with the reason; its present place stays pickable', () => {
+      const by = new Map(folderPickRows(nested, nestedTree, 'c', running('c')).map((r) => [r.value, r]));
+      expect(by.get('b')).toMatchObject({ current: true, disabled: null });
+      for (const value of ['loose', 'a', 'd', 'e', 'h']) expect(by.get(value)?.disabled).toBe(why);
+    });
+    it('reads the owners from the plans (only those with a runs folder)', () => {
+      expect(runFolderOwners([{ id: 'p1', title: 'Acme epic', state: 'running', sidebarFolder: { id: 'c', name: 'C' } }, { id: 'p2', title: 'Other', state: 'draft', sidebarFolder: null }, { id: 'p3', title: 'Old', state: 'done' }])).toEqual(running('c'));
+    });
   });
 });

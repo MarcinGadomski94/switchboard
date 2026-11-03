@@ -1,6 +1,6 @@
 import type { StatementSync } from 'node:sqlite';
 import { type PlanAccounts, readPlanAccounts } from '../../core/plans.ts';
-import type { PlanAnswers, PlanChecks, PlanSidebarFolderRef, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
+import type { PlanActivityKind, PlanActivityLine, PlanAnswers, PlanChecks, PlanSidebarFolderRef, PlanEdge, PlanExternalRef, PlanItemSpan, PlanItemSpanKind, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
 import type { RepoContext } from '../db/context.ts';
 import { transaction } from '../db/database.ts';
 
@@ -440,6 +440,21 @@ export class PlanRepository {
 
   async closeSpan(id: number, at: string): Promise<void> {
     this.#statement('UPDATE plan_item_spans SET ended_at = ? WHERE id = ? AND ended_at IS NULL').run(at, id);
+  }
+
+  // ── activity (D151) ─────────────────────────────────────────────────────
+
+  /** D151: adds a line to plan `planId`'s activity and keeps its newest `cap`. */
+  async addActivity(planId: string, line: { readonly kind: PlanActivityKind; readonly text: string }, cap: number): Promise<void> {
+    transaction(this.#ctx.db, () => {
+      this.#statement('INSERT INTO plan_activity (plan_id, at, kind, text) VALUES (?, ?, ?, ?)').run(planId, this.#ctx.now(), line.kind, line.text);
+      this.#statement('DELETE FROM plan_activity WHERE plan_id = ? AND id NOT IN (SELECT id FROM plan_activity WHERE plan_id = ? ORDER BY id DESC LIMIT ?)').run(planId, planId, cap);
+    });
+  }
+
+  /** D151: plan `planId`'s activity, newest first. */
+  async activity(planId: string): Promise<PlanActivityLine[]> {
+    return (this.#statement('SELECT at, kind, text FROM plan_activity WHERE plan_id = ? ORDER BY id DESC').all(planId) as unknown as Row[]).map((row) => ({ at: String(row['at']), kind: String(row['kind']) as PlanActivityKind, text: String(row['text']) }));
   }
 
   /** Runs `work` in one transaction (a whole external import). */

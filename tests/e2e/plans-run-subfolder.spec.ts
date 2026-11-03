@@ -115,3 +115,49 @@ test('D150 (classic): the parent picker puts the subfolder into a nested folder;
   await page.reload();
   await expect(page.getByTestId('plans-done-toggle')).toHaveAttribute('aria-expanded', 'true');
 });
+
+test('D151 (classic): a running project\'s folder is not offered anywhere (the reason on hover, the server refuses too); paused, it moves and the plan notes it', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/inbox`);
+  const source = await world.sourceSession(page, 'classic-move-source');
+  const acme = await folderIn(page, 'Acme D151');
+  const other = await folderIn(page, 'Other D151');
+  expect((await world.call(page, 'POST', '/api/sidebar/place', { sessionId: source, place: 'folder', folderId: acme })).status).toBe(200);
+  const created = await world.call(page, 'POST', '/api/plans', { sourceSessionId: source, title: 'PROJ-400 Acme move' });
+  expect(created.status).toBe(201);
+  const planId = created.body.id as string;
+  expect((await world.call(page, 'POST', `/api/plans/${planId}/items`, { key: 'PROJ-401', todo: { title: 'Move step', estimateMinutes: 20 } })).status).toBe(201);
+  const started = await world.call(page, 'POST', `/api/plans/${planId}/start`, { mergeMode: 'none', sidebarFolder: 'PROJ-400 Acme move' });
+  expect(started.status).toBe(200);
+  const sub = started.body.sidebarFolder.id as string;
+  await world.itemIn(page, planId, 'PROJ-401', 'running');
+  const why = 'The project “PROJ-400 Acme move” is running: pause it to move its folder.';
+
+  await page.goto(`${world.baseUrl}/plans/${planId}`);
+  const head = page.getByTestId('sidebar-sessions').locator(`[data-testid="sidebar-folder"][data-folder-id="${sub}"]`);
+  const openMove = async (): Promise<void> => {
+    await head.hover();
+    await head.getByTestId('sidebar-folder-menu').click();
+    await page.getByTestId('sidebar-menu').getByTestId('sidebar-menu-move-to-folder').click();
+  };
+  await openMove();
+  const menu = page.getByTestId('sidebar-menu');
+  await expect(menu.getByTestId('sidebar-menu-top-level')).toBeDisabled();
+  await expect(menu.getByTestId('sidebar-menu-top-level')).toHaveAttribute('title', why);
+  await expect(menu.getByTestId(`sidebar-menu-folder-${other}`)).toBeDisabled();
+  await expect(menu.getByTestId(`sidebar-menu-folder-${other}`)).toHaveAttribute('title', why);
+  await page.keyboard.press('Escape');
+  expect((await world.call(page, 'PUT', `/api/sidebar/folders/${sub}/position`, { index: 0, parentId: other })).status).toBe(409);
+
+  expect((await world.call(page, 'POST', `/api/plans/${planId}/pause`)).status).toBe(200);
+  await expect(page.getByTestId('plan-state')).toHaveText('paused');
+  await openMove();
+  await expect(menu.getByTestId(`sidebar-menu-folder-${other}`)).toBeEnabled();
+  await menu.getByTestId(`sidebar-menu-folder-${other}`).click();
+  await expect.poll(async () => ((await world.call(page, 'GET', '/api/sidebar')).body as SidebarLayout).folders.find((f) => f.id === sub)?.parentId).toBe(other);
+  const activity = page.getByTestId('plan-activity');
+  await expect(activity).toBeVisible();
+  await activity.locator('summary').click();
+  await expect(activity).toContainText('Runs folder moved to Other D151 › PROJ-400 Acme move');
+  expect((await world.call(page, 'POST', `/api/plans/${planId}/cancel`)).status).toBe(200);
+});

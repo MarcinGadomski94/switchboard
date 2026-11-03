@@ -1,3 +1,5 @@
+import type { RunFolderMoved, RunFolderOwner } from '../../core/plan-run-folder.ts';
+
 /**
  * D99 · the seams Plans plugs into the rest of Switchboard (`docs/plans-removal.md` lists
  * every call site). Each is a no-op until a {@link PlanService} registers itself for the store
@@ -22,6 +24,10 @@ export interface PlanHooks {
    * (`plan-step`); `null` while `plans.db` is unavailable (the archive then deletes nothing).
    */
   archiveHolds?(): Promise<ReadonlyMap<string, 'plan' | 'plan-step'> | null>;
+  /** D151: every plan whose runs go into a sidebar folder, with its state (the folder-move rule). */
+  runFolders?(): Promise<RunFolderOwner[]>;
+  /** D151: the projects whose runs folder a sidebar move took elsewhere (an activity line each). */
+  runFoldersMoved?(moves: readonly RunFolderMoved[]): Promise<void>;
 }
 
 /** D100 follow-up 2026-10-16: a plan item as Team's sidebar names a member's current item. */
@@ -115,4 +121,20 @@ export async function plansRunSessionIds(store: object): Promise<string[]> {
 export async function plansArchiveHolds(store: object): Promise<ReadonlyMap<string, 'plan' | 'plan-step'> | null> {
   const hooks = registry.get(store);
   return hooks?.archiveHolds ? hooks.archiveHolds() : new Map();
+}
+
+/**
+ * D151 seam (the sidebar's folder move, `src/server/api/sidebar.ts`): the plans whose runs go into a
+ * sidebar folder, with their state; empty without Plans (no hooks registered) or while `plans.db` is
+ * not open (a move is then not held).
+ */
+export async function plansRunFolders(store: object): Promise<RunFolderOwner[]> {
+  const hooks = registry.get(store);
+  return hooks?.runFolders ? hooks.runFolders() : [];
+}
+
+/** D151 seam: tells Plans which projects' runs folders a sidebar move took elsewhere (each gets an activity line). */
+export async function plansRunFoldersMoved(store: object, moves: readonly RunFolderMoved[]): Promise<void> {
+  const hooks = registry.get(store);
+  if (hooks?.runFoldersMoved && moves.length > 0) await hooks.runFoldersMoved(moves);
 }

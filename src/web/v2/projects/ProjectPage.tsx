@@ -12,6 +12,7 @@ import { ACCOUNT_CHOICE_WORDS, MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '.
 import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
+import { timeAgo } from '../shared/time.ts';
 import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
@@ -330,6 +331,20 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
       </div>
 
       {isJira && jiraNow ? <JiraSection plan={plan} state={jiraNow} onRefreshed={setJiraState} /> : null}
+
+      {plan.activity && plan.activity.length > 0 ? (
+        <section className="v2-card v2-p-activity" aria-label={PROJECT_WORDS.activity} data-testid="v2-project-activity">
+          <h4 className="v2-p-subhead">{PROJECT_WORDS.activity}</h4>
+          <ul className="v2-p-jira-activity">
+            {plan.activity.map((line, index) => (
+              <li key={`${line.at}-${index}`} data-testid="v2-project-activity-line">
+                <span className="v2-muted v2-mono">{timeAgo(line.at)}</span>
+                <span>{line.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="v2-card v2-p-know" aria-label={PROJECT_WORDS.whatAgentsKnow} data-testid="v2-project-know">
         <Icon name="book" size="s" />

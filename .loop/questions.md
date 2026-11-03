@@ -2415,3 +2415,11 @@ Sources: the parsers, Claude Code 2.1.296's binary strings (read-only: its SDK s
 - ASSUMED (D150-peer): the picker is hidden for a paired machine's plan: the existing prefill reads this machine's layout, never the owning machine's, so its folder ids would be wrong there.
 - ASSUMED (D150-timeline): the Projects Timeline view is not split into Done; it stays one axis over every project.
 - ASSUMED (D150-mcp): the `plan_start` MCP tool gets no `sidebar_parent` (not asked for).
+## D151 · a project's runs folder moves only while the project is not running; same-parent folder drops do nothing (2026-11-03)
+- DECIDED (D151-draft, the developer's brief "decide and document"): a draft project does not hold anything: it has no runs folder until Start (`plans.sidebar_folder` is written at Start), so the rule cannot apply to it.
+- DECIDED (D151-ancestors): a folder that holds a running project's runs folder (at any depth) is held too, since moving it moves the runs folder with it; the 409 names the project.
+- ASSUMED (D151-reorder): a re-order among the same siblings (no `parentId`, or the present parent: classic Move up / down, a drop before / after a sibling) is not a move and is never held: the folder's place in the tree does not change.
+- ASSUMED (D151-d119): the D119 "Plan · …" import folder is the runs folder only when the plan was started into it (stored as `sidebarFolder`); a plan whose runs go next to its source (`sidebarFolder` `null`) has no runs folder and holds nothing (its runs follow the source).
+- ASSUMED (D151-activity): the project's activity is a new general list (`plans.db` migration 7 `plan_activity`, `Plan.activity`, newest 50), shown on both plan pages; the Jira activity of a Jira plan stays separate. Before D151 only Jira plans had an activity.
+- ASSUMED (D151-peers): the server holds only its own running plans' folders; a move that arrives through the D71 shared-layout sync is applied as before. The UIs hold a paired computer's running plan's folder too when it is in this layout.
+- ASSUMED (D151-dialog): v2 Move to… keeps the folder's present place picked and enabled; Move here on it closes the dialog and does nothing (no toast). The classic menu keeps its "(here)" row disabled.

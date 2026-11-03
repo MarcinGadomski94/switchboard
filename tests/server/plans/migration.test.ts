@@ -28,6 +28,7 @@ describe('D99 follow-up 2026-10-15 · plans.db migration 3', () => {
       [4, 'plans_repos_ask'],
       [5, 'plans_sidebar_folder'],
       [6, 'plans_accounts'],
+      [7, 'plan_activity'],
     ]);
     // Applied migrations are checksummed (even their comments): never edit them, add a new one.
     expect(PLANS_MIGRATIONS[0]?.checksum).toBe('09299d9f83949d7041a0fa60b82d19adc56546746ffb7dc612c1e10ed8c75152');
@@ -38,6 +39,28 @@ describe('D99 follow-up 2026-10-15 · plans.db migration 3', () => {
     expect(PLANS_MIGRATIONS[3]?.checksum).toBe('f73bd0e7fa82262a9ef972c96661793764a9e35a0cb4f15ab99a99c236ddbdc0');
     // D138: migration 5 is released too (2.x).
     expect(PLANS_MIGRATIONS[4]?.checksum).toBe('6a42b48e7d2ee765dce7b98fb62ba00b0e98527513aa92315cf611fb4c755283');
+    // D151: migration 6 is released too (2.x).
+    expect(PLANS_MIGRATIONS[5]?.checksum).toBe('e72ae6cdd53373870108b4555fc5c762bb3176a1af748e98db2460d494423baf');
+  });
+
+  it('D151 · migration 7: a plan from a plans.db at migration 6 has no activity; lines round-trip newest first, capped, and go with their plan', async () => {
+    dir = await makeTempDir('plans-migration-7');
+    const old = await PlansDb.open(dir, () => NOW, PLANS_MIGRATIONS.slice(0, 6));
+    await old.plans.create({ id: 'p-old', title: 'Old epic', sourceSessionId: 's1', targetBranch: null, repos: [], baseBranch: 'dev', maxConcurrency: 3, usageThreshold: 85, answers: null, external: null });
+    old.close();
+    const upgraded = await PlansDb.open(dir, () => NOW);
+    try {
+      expect(await upgraded.plans.activity('p-old')).toEqual([]);
+      for (const n of [1, 2, 3]) await upgraded.plans.addActivity('p-old', { kind: 'runs-folder', text: `Runs folder moved to F${n}` }, 2);
+      expect(await upgraded.plans.activity('p-old')).toEqual([
+        { at: NOW, kind: 'runs-folder', text: 'Runs folder moved to F3' },
+        { at: NOW, kind: 'runs-folder', text: 'Runs folder moved to F2' },
+      ]);
+      await upgraded.plans.delete('p-old');
+      expect(await upgraded.plans.activity('p-old')).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
   });
 
   it("D138 · migration 6: a plan from a plans.db at migration 5 is on Automatic; a Project's accounts round-trip", async () => {

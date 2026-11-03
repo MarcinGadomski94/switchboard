@@ -462,6 +462,19 @@ export function PlanPage({ planId }: { readonly planId: string }) {
         </section>
       ) : null}
 
+      {plan.activity && plan.activity.length > 0 ? (
+        <details className="sb-plan-activity" data-testid="plan-activity">
+          <summary>Activity ({plan.activity.length})</summary>
+          <ul>
+            {plan.activity.map((line, index) => (
+              <li key={`${line.at}-${index}`} data-kind={line.kind}>
+                <span className="sb-plan-activity__at">{new Date(line.at).toLocaleString()}</span> {line.text}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
       {!phone ? (
         <div className="sb-plan-tabs" role="tablist">
           {TABS.map((entry) => (

@@ -1623,6 +1623,8 @@ export const PROJECT_WORDS = {
   deleteProject: 'Delete project…',
   fromJira: 'From Jira',
   jiraActivity: 'Jira activity',
+  /** D151: the project's own activity (its runs folder moved, …). */
+  activity: 'Activity',
   earlyStart: 'Early start',
   reopened: 'Reopened',
   sidebarSubfolder: 'Folder in Agents for its steps',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RUN_PARENT_ROOT, planRunFolderDefault, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../src/core/plan-run-folder.ts';
-import { SIDEBAR_FOLDER_NAME_MAX, type SidebarFolder, type SidebarLayout, cutSidebarFolderName, placeRunInFolder, runParentFolder, runSubfolder } from '../../src/core/sidebar-layout.ts';
+import { RUN_PARENT_ROOT, type RunFolderOwner, folderPathText, movedRunFolders, planRunFolderDefault, runFolderMoveBlock, runFolderMovedText, runFolderRunningText, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../src/core/plan-run-folder.ts';
+import { SIDEBAR_FOLDER_NAME_MAX, type SidebarFolder, type SidebarLayout, cutSidebarFolderName, moveFolder, placeRunInFolder, runParentFolder, runSubfolder } from '../../src/core/sidebar-layout.ts';
 import { type FolderRecord, type SidebarRecords, liveFolderFor } from '../../src/core/sidebar-records.ts';
 
 /** D130 · the plan's runs' sidebar subfolder: the Start dialog's prefill, the find-or-make rule, the run's place, the deleted-folder fallback. */
@@ -163,5 +163,48 @@ describe('liveFolderFor', () => {
     expect(liveFolderFor(records, 'epic')).toEqual({ known: true, folderId: 'acme' });
     expect(liveFolderFor(records, 'top')).toEqual({ known: true, folderId: null });
     expect(liveFolderFor(records, 'peer-only')).toEqual({ known: false });
+  });
+});
+
+describe('D151 · moving a project\'s runs folder', () => {
+  const owner = (state: RunFolderOwner['state'], folderId = 'epic'): RunFolderOwner => ({ planId: 'p1', title: 'Acme epic', state, folderId });
+  const other: SidebarLayout = { ...LAYOUT, folders: [...LAYOUT.folders, folder('other', 'Other', [])] };
+  const moved = (id: string, index: number, parentId?: string | null): SidebarLayout => moveFolder(other, id, index, parentId) as SidebarLayout;
+
+  it('a running project holds its runs folder and every folder holding it; a re-order or the present parent is no move', () => {
+    const running = [owner('running')];
+    expect(runFolderMoveBlock(other, 'epic', 'other', running)).toEqual(owner('running'));
+    expect(runFolderMoveBlock(other, 'epic', null, running)).toEqual(owner('running'));
+    // Acme holds the runs folder: moving it moves the runs folder too.
+    expect(runFolderMoveBlock(other, 'acme', 'other', running)).toEqual(owner('running'));
+    // No place changes.
+    expect(runFolderMoveBlock(other, 'epic', undefined, running)).toBeNull();
+    expect(runFolderMoveBlock(other, 'epic', 'acme', running)).toBeNull();
+    // Another folder (a sibling, or one going into the runs folder) is free.
+    expect(runFolderMoveBlock(other, 'jira', 'other', running)).toBeNull();
+    expect(runFolderMoveBlock(other, 'other', 'epic', running)).toBeNull();
+    expect(runFolderMoveBlock(other, 'missing', 'other', running)).toBeNull();
+  });
+
+  it('paused, done, cancelled and draft projects hold nothing', () => {
+    for (const state of ['paused', 'done', 'cancelled', 'draft'] as const) expect(runFolderMoveBlock(other, 'epic', 'other', [owner(state)])).toBeNull();
+  });
+
+  it('says why, with the project\'s title', () => {
+    expect(runFolderRunningText('Acme epic')).toBe('The project “Acme epic” is running: pause it to move its folder.');
+  });
+
+  it('the path and the projects whose runs folder moved', () => {
+    expect(folderPathText(other, 'epic')).toBe('Acme › Acme epic');
+    expect(folderPathText(other, 'missing')).toBe('');
+    const owners = [owner('paused'), owner('done', 'jira'), owner('cancelled', 'other')];
+    const intoOther = moved('epic', 0, 'other');
+    expect(movedRunFolders(other, intoOther, owners)).toEqual([{ planId: 'p1', path: 'Other › Acme epic' }]);
+    // A folder holding two runs folders: both moved.
+    const acmeIn = moved('acme', 0, 'other');
+    expect(movedRunFolders(other, acmeIn, owners).map((m) => m.path)).toEqual(['Other › Acme › Acme epic', 'Other › Acme › Plan · PROJ-123 Acme checkout']);
+    // A re-order changes no path.
+    expect(movedRunFolders(other, moved('jira', 0), owners)).toEqual([]);
+    expect(runFolderMovedText('Other › Acme epic')).toBe('Runs folder moved to Other › Acme epic');
   });
 });

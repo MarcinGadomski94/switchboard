@@ -183,6 +183,19 @@ export interface PlanSidebarFolderRef {
   readonly name: string;
 }
 
+/** D151: the kinds of a project's activity line (`runs-folder`: its runs folder was moved). */
+export type PlanActivityKind = 'runs-folder';
+
+/** D151 (`docs/plans.md` → *Activity (D151)*): one line of a project's activity. */
+export interface PlanActivityLine {
+  readonly at: string;
+  readonly kind: PlanActivityKind;
+  readonly text: string;
+}
+
+/** D151: a plan's view carries its newest this many activity lines (`plans.db` keeps as many). */
+export const PLAN_ACTIVITY_MAX = 50;
+
 export interface PlanExternalRef {
   readonly system: 'jira';
   readonly key: string;
@@ -356,6 +369,12 @@ export interface Plan {
    * Additive: absent (a paired machine's older Switchboard) = Automatic for every CLI.
    */
   readonly accounts?: PlanAccounts;
+  /**
+   * D151: what happened to the project that is not an item's own history (its runs folder was
+   * moved, …), newest first, at most {@link PLAN_ACTIVITY_MAX}. Additive: absent (a paired
+   * machine's older Switchboard) = none.
+   */
+  readonly activity?: readonly PlanActivityLine[];
   /** Why new starts are held right now (paused, an account above the usage threshold); `null` = not held. */
   readonly held: string | null;
   /** Why Switchboard paused the plan ({@link PLANS_OFF_REASON}); `null` = the developer paused it, or it is not paused. */
