@@ -4,7 +4,7 @@ import type { Plan } from '../../src/core/plans.ts';
 import type { SidebarLayout } from '../../src/core/sidebar-layout.ts';
 import type { TeamSummary } from '../../src/core/team.ts';
 import { type AgentEntry, GROUP_BYS, askStatusOf, boardLanes, buildAgents, cellOf, chatSections, columnOf, isGroupBy, listSections, matchesQuery, offBoard, openTeammateIds, sortAgents, teammateIds, topFolderOf } from '../../src/web/v2/agents/agents-model.ts';
-import { agentsOf, buildTree, canNest, checkMove, deleteSummary, drill, findFolder, flatFolders, pathOf, pickRows } from '../../src/web/v2/agents/tree-model.ts';
+import { agentsOf, buildTree, canNest, checkFolderMove, checkMove, deleteSummary, drill, findFolder, flatFolders, folderPickRows, pathOf, pickRows } from '../../src/web/v2/agents/tree-model.ts';
 
 /** D131 · lane A · the Agents page's pure model: agents, sorting, the Board's columns and swimlanes, the folder tree and the move rules. */
 
@@ -178,5 +178,60 @@ describe('folder tree', () => {
   it('searches closed agents by every word', () => {
     expect(matchesQuery('Fix flaky payment test · Studio-PC', 'payment studio')).toBe(true);
     expect(matchesQuery('Fix flaky payment test', 'coupon')).toBe(false);
+  });
+});
+
+describe('moving a folder (2.4.16)', () => {
+  const folder = (id: string, parentId: string | null): SidebarLayout['folders'][number] => ({ id, name: id.toUpperCase(), collapsed: false, sessionIds: [], parentId });
+  // A > B > C (3 levels), D > E > F > G (4 levels), H at the top.
+  const nested: SidebarLayout = { pinned: [], loose: [], folders: [folder('a', null), folder('b', 'a'), folder('c', 'b'), folder('d', null), folder('e', 'd'), folder('f', 'e'), folder('g', 'f'), folder('h', null)] };
+  const nestedTree = buildTree(nested, []);
+  it('takes another folder or the top level', () => {
+    expect(checkFolderMove(nested, 'h', 'a')).toEqual({ ok: true });
+    expect(checkFolderMove(nested, 'c', null)).toEqual({ ok: true });
+    expect(checkFolderMove(nested, 'b', 'h')).toEqual({ ok: true });
+  });
+  it('refuses itself, its own subfolders and its present place, with the reason', () => {
+    expect(checkFolderMove(nested, 'a', 'a')).toEqual({ ok: false, reason: 'A folder can’t go inside itself.' });
+    expect(checkFolderMove(nested, 'a', 'b')).toEqual({ ok: false, reason: 'A folder can’t go inside one of its own subfolders.' });
+    expect(checkFolderMove(nested, 'a', 'c')).toEqual({ ok: false, reason: 'A folder can’t go inside one of its own subfolders.' });
+    expect(checkFolderMove(nested, 'b', 'a')).toEqual({ ok: false, reason: 'B is already there.' });
+    expect(checkFolderMove(nested, 'h', null)).toEqual({ ok: false, reason: 'H is already there.' });
+    expect(checkFolderMove(nested, 'nope', null)).toEqual({ ok: false, reason: 'That folder no longer exists.' });
+    expect(checkFolderMove(nested, 'h', 'nope')).toEqual({ ok: false, reason: 'That folder no longer exists.' });
+  });
+  it('refuses a place where its deepest subfolder would pass 5 levels (D58)', () => {
+    // A spans 3 levels: under G (level 4) it would reach 7, under F (level 3) 6; under E (level 2) 5 is fine.
+    expect(checkFolderMove(nested, 'a', 'g')).toEqual({ ok: false, reason: 'Folders nest up to 5 levels.' });
+    expect(checkFolderMove(nested, 'a', 'f')).toEqual({ ok: false, reason: 'Folders nest up to 5 levels.' });
+    expect(checkFolderMove(nested, 'a', 'e')).toEqual({ ok: true });
+    expect(checkFolderMove(nested, 'a', 'd')).toEqual({ ok: true });
+    expect(checkFolderMove(nested, 'h', 'g')).toEqual({ ok: true });
+  });
+  it('builds the Move-folder list: Top level and the tree, the bad places disabled with the reason', () => {
+    const rows = folderPickRows(nested, nestedTree, 'b');
+    expect(rows.map((r) => [r.value, r.label, r.depth])).toEqual([
+      ['loose', 'Top level', 0],
+      ['a', 'A', 0],
+      ['b', 'B', 1],
+      ['c', 'C', 2],
+      ['d', 'D', 0],
+      ['e', 'E', 1],
+      ['f', 'F', 2],
+      ['g', 'G', 3],
+      ['h', 'H', 0],
+    ]);
+    const by = new Map(rows.map((r) => [r.value, r]));
+    // Its parent is picked at first and not disabled ("already there" when moved there).
+    expect(by.get('a')).toMatchObject({ current: true, disabled: null });
+    expect(by.get('loose')).toMatchObject({ current: false, disabled: null });
+    expect(by.get('b')?.disabled).toBe('A folder can’t go inside itself.');
+    expect(by.get('c')?.disabled).toBe('A folder can’t go inside one of its own subfolders.');
+    // B spans 2 levels: under F (level 3) it reaches 5, under G (level 4) 6.
+    expect(by.get('f')?.disabled).toBeNull();
+    expect(by.get('g')?.disabled).toBe('Folders nest up to 5 levels.');
+    expect(by.get('h')?.disabled).toBeNull();
+    // A top-level folder: Top level is its present place.
+    expect(folderPickRows(nested, nestedTree, 'h')[0]).toMatchObject({ value: 'loose', current: true, disabled: null });
   });
 });

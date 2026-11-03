@@ -13,7 +13,7 @@ import { modKey, useShortcut } from '../shell/shortcuts.ts';
 import { AGENT_VIEWS, type AgentEntry, type AgentView, type GroupBy, PREF_KEYS, isAgentView, isGroupBy, offline } from './agents-model.ts';
 import { BoardView, ChatsView, ListView } from './AgentViews.tsx';
 import { AgentsPageProvider, type AgentsPageApi, type FolderDialogRequest } from './context.tsx';
-import { FolderDialog, MoveDialog, RenameDialog } from './Dialogs.tsx';
+import { FolderDialog, FolderMoveDialog, MoveDialog, RenameDialog } from './Dialogs.tsx';
 import { ClosedView, DraftsCard } from './DraftsAndClosed.tsx';
 import { FolderTree, setDraggableAgents } from './FolderTree.tsx';
 import { PhoneAgents } from './PhoneAgents.tsx';
@@ -49,6 +49,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
   const [selection, setSelection] = useState<Selection>('all');
   const [moving, setMoving] = useState<AgentEntry | null>(null);
   const [folderRequest, setFolderRequest] = useState<FolderDialogRequest | null>(null);
+  const [movingFolder, setMovingFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<AgentEntry | null>(null);
   const [confirmClose, setConfirmClose] = useState<AgentEntry | null>(null);
   const sharing = useSharing();
@@ -154,7 +155,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
   );
 
   const pageApi: AgentsPageApi = useMemo(
-    () => ({ actions, openAgent, peekAgent, openMove: setMoving, openFolderDialog: setFolderRequest, agentMenu, shareNote, advanced, activityOf }),
+    () => ({ actions, openAgent, peekAgent, openMove: setMoving, openFolderDialog: setFolderRequest, openFolderMove: setMovingFolder, agentMenu, shareNote, advanced, activityOf }),
     [actions, openAgent, peekAgent, agentMenu, shareNote, advanced, activityOf],
   );
 
@@ -211,7 +212,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
           <PhoneAgents agents={data.agents} tree={data.tree} newDraft={newDraft} />
         ) : (
           <div className="v2-ag2" {...(treeHidden ? { 'data-tree-off': '' } : {})}>
-            <FolderTree tree={data.tree} selection={selection} onSelect={setSelection} draftCount={data.agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0)} closedCount={null} shareText={shareText} />
+            <FolderTree layout={data.layout} tree={data.tree} selection={selection} onSelect={setSelection} draftCount={data.agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0)} closedCount={null} shareText={shareText} />
             <div data-testid="v2-agents-pane">
               {selection === 'all' || selection === 'drafts' ? <DraftsCard agents={data.agents} newDraft={newDraft} onRemoveNew={removeNewDraft} onOpen={openAgent} /> : null}
               {selection === 'drafts' ? null : (
@@ -233,6 +234,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
         )}
       </div>
       <MoveDialog agent={moving} layout={data.layout} tree={data.tree} actions={actions} onClose={() => setMoving(null)} />
+      <FolderMoveDialog folderId={movingFolder} layout={data.layout} tree={data.tree} actions={actions} onClose={() => setMovingFolder(null)} />
       <FolderDialog request={folderRequest} tree={data.tree} actions={actions} activityOf={activityOf} onClose={() => setFolderRequest(null)} onCreated={(id) => setSelection(`folder:${id}`)} />
       <RenameDialog agent={renaming} onClose={() => setRenaming(null)} onRename={(agent, title) => void rename(agent, title)} />
       <Dialog

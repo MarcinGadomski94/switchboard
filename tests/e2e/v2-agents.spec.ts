@@ -12,7 +12,9 @@ import { V2_SERVER_ENV } from './v2-world.ts';
  * shared sidebar layout, so the classic sidebar shows the same; M on a focused
  * row opens Move to folder; folders are created, renamed and deleted with Undo;
  * a project's "Plan · …" subfolder takes only its steps; the Board's quick
- * answer; Closed + Reopen; the phone's drill-down.
+ * answer; Closed + Reopen; the phone's drill-down. 2.4.16: folders move into
+ * other folders (drag, ⋯ › Move to…, the phone's folder page) and back to the
+ * top level; the refused places stay refused.
  */
 
 let demo: DemoApp;
@@ -41,7 +43,8 @@ async function resetLayout(page: Page): Promise<void> {
     const layout = (await (await fetch('/api/sidebar')).json()) as SidebarLayout;
     const json = { 'content-type': 'application/json' };
     for (const id of layout.pinned) await fetch('/api/sidebar/place', { method: 'POST', headers: json, body: JSON.stringify({ sessionId: id, place: 'loose' }) });
-    for (const folder of layout.folders.filter((f) => !f.parentId)) await fetch(`/api/sidebar/folders/${encodeURIComponent(folder.id)}`, { method: 'DELETE' });
+    // Deepest first (the folders come in tree order): deleting a folder moves its subfolders up, so a top-level-only pass would leave them behind.
+    for (const folder of [...layout.folders].reverse()) await fetch(`/api/sidebar/folders/${encodeURIComponent(folder.id)}`, { method: 'DELETE' });
   });
 }
 
@@ -61,6 +64,34 @@ async function sessions(page: Page): Promise<Session[]> {
 
 function folderRow(page: Page, name: string): Locator {
   return page.getByTestId('v2-tree-folder').filter({ has: page.getByTestId('v2-tree-folder-name').getByText(name, { exact: true }) });
+}
+
+/** Makes folder `name` (in `parentId`) through the API and answers its id. */
+async function apiFolder(page: Page, name: string, parentId: string | null = null): Promise<string> {
+  const layout = await api<SidebarLayout>(page, 'POST', '/api/sidebar/folders', parentId ? { name, parentId } : { name });
+  const made = layout.folders.find((f) => f.name === name && (f.parentId ?? null) === parentId);
+  if (!made) throw new Error(`no folder ${name}`);
+  return made.id;
+}
+
+async function parentOf(page: Page, id: string): Promise<string | null | undefined> {
+  const layout = await api<SidebarLayout>(page, 'GET', '/api/sidebar');
+  const folder = layout.folders.find((f) => f.id === id);
+  return folder ? (folder.parentId ?? null) : undefined;
+}
+
+/** Drags `from` over `to` with the mouse (Playwright drives Chromium's native drag) and answers whether `to` showed the drop highlight; `drop` false cancels with Escape. */
+async function dragOver(page: Page, from: Locator, to: Locator, drop = true): Promise<boolean> {
+  const a = await from.boundingBox();
+  const b = await to.boundingBox();
+  if (!a || !b) throw new Error('not on screen');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 6, { steps: 3 });
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+  const highlighted = (await to.getAttribute('data-drop-ok')) !== null;
+  await page.mouse.up();
+  return highlighted;
 }
 
 async function newFolder(page: Page, name: string): Promise<void> {
@@ -163,6 +194,94 @@ test('create, rename and delete a folder, each with Undo', async ({ page }) => {
   await page.getByTestId('v2-toast').filter({ hasText: 'Deleted “Alpha”.' }).getByTestId('v2-toast-undo').click();
   await expect(folderRow(page, 'Alpha')).toBeVisible();
   await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '2');
+});
+
+test('2.4.16: folders drag into other folders and back to the top level, kept after a reload; never into their own subfolders', async ({ page }) => {
+  const [first] = await sessions(page);
+  if (!first) throw new Error('no demo session');
+  const alpha = await apiFolder(page, 'Alpha');
+  const beta = await apiFolder(page, 'Beta');
+  await api(page, 'POST', '/api/sidebar/place', { sessionId: first.id, place: 'folder', folderId: beta });
+  const gamma = await apiFolder(page, 'Gamma', beta);
+  await page.reload();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '1');
+
+  // Beta (with its agent and Gamma) onto Alpha: highlighted on the way, then Alpha's subfolder.
+  expect(await dragOver(page, folderRow(page, 'Beta'), folderRow(page, 'Alpha'))).toBe(true);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'Moved folder “Beta” to Alpha.' })).toBeVisible();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '2');
+  await expect(folderRow(page, 'Gamma')).toHaveAttribute('aria-level', '3');
+  expect(await parentOf(page, beta)).toBe(alpha);
+  const moved = await api<SidebarLayout>(page, 'GET', '/api/sidebar');
+  expect(moved.folders.find((f) => f.id === beta)?.sessionIds).toEqual([first.id]);
+  expect(moved.folders.find((f) => f.id === gamma)?.parentId).toBe(beta);
+  await page.reload();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '2');
+  await expect(folderRow(page, 'Alpha').getByTestId('v2-tree-count')).toHaveText('1');
+
+  // Alpha onto its own sub-subfolder Gamma: no highlight, the reason on the drop, nothing moves.
+  expect(await dragOver(page, folderRow(page, 'Alpha'), folderRow(page, 'Gamma'))).toBe(false);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'A folder can’t go inside one of its own subfolders.' })).toBeVisible();
+  expect(await parentOf(page, alpha)).toBeNull();
+  // Onto itself: refused too.
+  expect(await dragOver(page, folderRow(page, 'Alpha'), folderRow(page, 'Alpha'))).toBe(false);
+  expect(await parentOf(page, alpha)).toBeNull();
+
+  // Beta onto the Folders heading: back to the top level (at the end).
+  expect(await dragOver(page, folderRow(page, 'Beta'), page.getByTestId('v2-tree-folders'))).toBe(true);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'Moved folder “Beta” to the top level.' })).toBeVisible();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '1');
+  expect(await parentOf(page, beta)).toBeNull();
+  // A top-level folder on Not in a folder is already there: no highlight.
+  expect(await dragOver(page, folderRow(page, 'Alpha'), page.getByTestId('v2-tree-loose'))).toBe(false);
+
+  // An agent still drags onto a folder as before, and moves no folder.
+  await page.getByTestId('v2-tree-all').click();
+  const row = page.getByTestId('v2-agents-list').locator(`[data-session="${first.id}"]`);
+  await row.dragTo(folderRow(page, 'Alpha'));
+  await expect(page.getByTestId('v2-toast').filter({ hasText: `Moved “${first.name}” to Alpha.` })).toBeVisible();
+  const after = await api<SidebarLayout>(page, 'GET', '/api/sidebar');
+  expect(after.folders.find((f) => f.id === alpha)?.sessionIds).toEqual([first.id]);
+  expect(after.folders.map((f) => [f.name, f.parentId ?? null])).toEqual([
+    ['Alpha', null],
+    ['Beta', null],
+    ['Gamma', beta],
+  ]);
+});
+
+test('2.4.16: a folder\'s ⋯ › Move to… picks the place from the tree (invalid ones disabled with the reason), with Undo', async ({ page }) => {
+  const alpha = await apiFolder(page, 'Alpha');
+  const beta = await apiFolder(page, 'Beta');
+  await apiFolder(page, 'Inner', beta);
+  await page.reload();
+  await folderRow(page, 'Beta').getByTestId('v2-tree-folder-menu').click();
+  await page.getByTestId('v2-folder-menu').getByRole('menuitem', { name: 'Move to…' }).click();
+  const dialog = page.getByTestId('v2-folder-move-dialog');
+  await expect(dialog).toBeVisible();
+  const option = (value: string): Locator => dialog.locator(`[data-testid="v2-folder-move-option"][data-value="${value}"]`);
+  // Top level is where it is now; itself and its own subfolder are disabled with the reason.
+  await expect(option('loose').locator('input')).toBeChecked();
+  await expect(option(beta).locator('input')).toBeDisabled();
+  await expect(option(beta)).toContainText('A folder can’t go inside itself.');
+  await expect(dialog.getByTestId('v2-folder-move-option').filter({ hasText: 'Inner' }).locator('input')).toBeDisabled();
+  await option(alpha).locator('input').check();
+  await dialog.getByTestId('v2-folder-move-go').click();
+  await expect(dialog).toBeHidden();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '2');
+  expect(await parentOf(page, beta)).toBe(alpha);
+  await page.getByTestId('v2-toast').filter({ hasText: 'Moved folder “Beta” to Alpha.' }).getByTestId('v2-toast-undo').click();
+  await expect(folderRow(page, 'Beta')).toHaveAttribute('aria-level', '1');
+  await expect.poll(() => parentOf(page, beta)).toBeNull();
+
+  // The keyboard way: M on the folder row opens the same dialog; Enter moves.
+  await folderRow(page, 'Beta').getByTestId('v2-tree-folder-main').focus();
+  await page.keyboard.press('m');
+  await expect(dialog).toBeVisible();
+  await option(alpha).locator('input').focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => parentOf(page, beta)).toBe(alpha);
 });
 
 test('a project subfolder ("Plan · …") takes only its own steps', async ({ page }) => {
@@ -297,5 +416,27 @@ test.describe('phone', () => {
     // The choice of view is remembered.
     await page.reload();
     await expect(page.getByTestId('v2-phone-folders')).toBeVisible();
+  });
+
+  test('2.4.16: a folder\'s page has Move to…', async ({ page }) => {
+    const checkout = await apiFolder(page, 'Checkout');
+    const payments = await apiFolder(page, 'Payments');
+    await page.reload();
+    await page.getByTestId('v2-phone-view').locator('[data-value="folders"]').click();
+    await page.getByTestId('v2-phone-folder').filter({ hasText: 'Payments' }).click();
+    const move = page.getByTestId('v2-phone-folder-move');
+    expect((await move.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await move.click();
+    const dialog = page.getByTestId('v2-folder-move-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.locator(`[data-testid="v2-folder-move-option"][data-value="${checkout}"]`).click();
+    await dialog.getByTestId('v2-folder-move-go').click();
+    await expect(dialog).toBeHidden();
+    // The page follows the folder to its new place.
+    await expect(page.getByTestId('v2-phone-crumb')).toContainText('Checkout');
+    await expect(page.getByTestId('v2-phone-crumb')).toContainText('Payments');
+    await expect.poll(() => parentOf(page, payments)).toBe(checkout);
+    await page.getByTestId('v2-phone-crumb').getByRole('button', { name: 'Agents' }).click();
+    await expect(page.getByTestId('v2-phone-folder')).toHaveCount(1);
   });
 });

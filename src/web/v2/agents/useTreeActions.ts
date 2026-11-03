@@ -1,18 +1,19 @@
 import { useCallback } from 'react';
-import type { SidebarLayout, SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
+import { type SidebarLayout, type SidebarPlaceInput, childFolders } from '../../../core/sidebar-layout.ts';
 import { folderArchiveResultText } from '../../../core/sidebar-folder-archive.ts';
 import { api } from '../../api/client.ts';
 import { snapshotFolderTree, undoFolderArchive } from '../../shell/folder-archive-undo.ts';
 import { useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
-import { type AgentTree, type MoveTarget, checkMove, findFolder } from './tree-model.ts';
+import { type AgentTree, type MoveTarget, checkFolderMove, checkMove, findFolder } from './tree-model.ts';
 
 /**
  * D131 · lane A · what the folder tree and the rows do to the shared sidebar
  * layout, through the same routes the classic sidebar uses (`/api/sidebar*`), each
  * with Undo: move an agent (drag, Move to folder… / M), pin / unpin, create /
- * rename / delete a folder (D141: optionally archiving its agents), fold a folder. (Teammates are the Crews pages'.)
+ * rename / delete a folder (D141: optionally archiving its agents), move a folder
+ * into another one or to the top level (2.4.16), fold a folder. (Teammates are the Crews pages'.)
  */
 
 /** Where a session sits, as a place input that puts it back exactly there. */
@@ -159,6 +160,38 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
     [layout, apply, toast],
   );
 
+  /**
+   * 2.4.16: folder `id` moves to the end of the subfolders of `parentId` (`null` =
+   * the top level) with its agents and subfolders: `PUT /api/sidebar/folders/{id}/position`,
+   * the classic sidebar's own move, so it syncs like every layout change. Undo puts
+   * it back at its old place among its old siblings.
+   */
+  const moveFolder = useCallback(
+    async (id: string, parentId: string | null): Promise<boolean> => {
+      const check = checkFolderMove(layout, id, parentId);
+      if (!check.ok) {
+        toast({ text: check.reason, tone: 'error' });
+        return false;
+      }
+      const stored = layout.folders.find((f) => f.id === id);
+      if (!stored) return false;
+      const oldParent = stored.parentId ?? null;
+      const oldIndex = childFolders(layout, oldParent).findIndex((f) => f.id === id);
+      try {
+        apply(await api.moveSidebarFolder(id, childFolders(layout, parentId).length, parentId));
+        // Open the new parent so the folder shows where it went.
+        const parent = parentId ? findFolder(tree, parentId) : null;
+        if (parent?.collapsed) void api.updateSidebarFolder(parent.id, { collapsed: false }).then(apply, () => undefined);
+        toast({ text: AGENTS_WORDS.folderMoved(stored.name, parent?.name ?? AGENTS_WORDS.theTopLevel, shareNote), undo: async () => apply(await api.moveSidebarFolder(id, Math.max(0, oldIndex), oldParent)) });
+        return true;
+      } catch (error) {
+        toast({ text: errorText(error), tone: 'error' });
+        return false;
+      }
+    },
+    [layout, tree, apply, toast, shareNote],
+  );
+
   const setCollapsed = useCallback(
     async (id: string, collapsed: boolean) => {
       try {
@@ -170,7 +203,7 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
     [apply, toast],
   );
 
-  return { move, togglePin, createFolder, renameFolder, deleteFolder, setCollapsed };
+  return { move, moveFolder, togglePin, createFolder, renameFolder, deleteFolder, setCollapsed };
 }
 
 /** The tree's actions (see {@link useTreeActions}). */

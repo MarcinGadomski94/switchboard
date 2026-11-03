@@ -164,6 +164,9 @@ const V2_4_11 = '2.4.11';
 /** The version D150 (the Projects list's Done section; the Start dialog's parent folder for the steps' subfolder) ships in. */
 const V2_4_14 = '2.4.14';
 
+/** The version moving folders into other folders in the v2 Agents tree (drag, ⋯ › Move to…) ships in. */
+const V2_4_16 = '2.4.16';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1552,6 +1555,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-projects-done', 'v2-nav-projects', 'v2-tab-more'],
         v2Route: '/projects',
         missing: 'Finish or cancel a project to see the Done section on Projects. ',
+      },
+    ],
+  },
+  // 2.4.16: folders move into other folders in v2's Agents tree (docs/v2.md → Agents › folders; the classic sidebar already could, D58).
+  {
+    id: 'v2-move-folders',
+    decision: 'D131',
+    version: V2_4_16,
+    title: 'Move folders into other folders',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'move-folder',
+        title: 'Folders move, with everything in them',
+        what: 'Drag a folder onto another folder in Agents to make it a subfolder there, or onto Folders to bring it back to the top level. Its agents and subfolders go with it. Without a mouse, a folder’s ⋯ › Move to… (or M) picks the place from the tree; on a phone, open the folder and tap Move to…. A folder can’t go inside itself or its own subfolders, and folders nest up to 5 levels: those places say why. Paired computers that share the layout follow.',
+        todo: ['Drag a folder onto another folder.', 'Or open a folder’s ⋯ › Move to….'],
+        anchors: ['v2-tree-folders', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Open Agents and make a folder with + next to Folders to try it. ',
       },
     ],
   },
