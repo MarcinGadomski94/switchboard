@@ -115,7 +115,8 @@ export class UsageService {
     const chats = new Set(turns.filter((t) => t.kind === 'chat').map((t) => t.sessionId));
     const routines = insights.routineSessions(ids);
     const plans = new Set(await plansRunSessionIds(this.#store).catch(() => []));
-    const mates = new Set(teamMemberList(this.#store).map((member) => member.sessionId));
+    const members = teamMemberList(this.#store);
+    const mates = new Set(members.map((member) => member.sessionId));
     const titles: Record<string, string> = Object.fromEntries(insights.sessionTitles(ids.filter((id) => !isBackgroundSession(id))));
     const folderLabels = new Map((await this.#store.folders.list()).map((folder) => [folder.canonicalPath, folder.label ?? '']));
     for (const id of ids) {
@@ -127,8 +128,12 @@ export class UsageService {
         continue;
       }
       // The v2 order: a teammate, a plan step, a conversation, a routine; else a plain agent (left out).
-      if (mates.has(id)) kinds[id] = 'crew';
-      else if (plans.has(id)) kinds[id] = 'plan';
+      if (mates.has(id)) {
+        kinds[id] = 'crew';
+        // A teammate is named after its crew member, not its session's title.
+        const member = members.find((m) => m.here && m.sessionId === id);
+        if (member) titles[id] = member.name;
+      } else if (plans.has(id)) kinds[id] = 'plan';
       else if (chats.has(id)) kinds[id] = 'conversation';
       else if (routines.has(id)) kinds[id] = 'routine';
     }

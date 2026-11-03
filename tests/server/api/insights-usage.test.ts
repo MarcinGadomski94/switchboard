@@ -7,6 +7,7 @@ import { loadConfig } from '../../../src/server/config.ts';
 import { openStore, storeFile, type Store } from '../../../src/server/db/store.ts';
 import { UsageTurnsBackfill } from '../../../src/server/insights/turns-backfill.ts';
 import { UsageService } from '../../../src/server/insights/usage.ts';
+import { type TeamHooks, registerTeamHooks } from '../../../src/server/team/hooks.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
@@ -103,6 +104,20 @@ describe('D134 · GET /api/insights/usage', () => {
     expect(body.totals).toMatchObject({ tokens: 14_050, turns: 3, sessions: 2, agentTokens: 4_050 });
     expect(body.log.rows.map((r) => r.sessionId)).toEqual([docs, acme, acme]);
     expect(body.machines.scope).toBe('all');
+  });
+
+  it('a crew member’s agent is named after the member, not its session title', async () => {
+    const { acme, docs } = await seed();
+    const unregister = registerTeamHooks(store, { memberList: () => [{ id: 'm1', name: 'Web lead', teamId: 't1', sessionId: acme, machineId: 'self', here: true, paused: false }] } as unknown as TeamHooks);
+    try {
+      const body = (await call('GET', '/api/insights/usage?period=5h')).json<UsageAnswer>();
+      expect(body.rows.map((r) => [r.sessionId, r.label, r.kind])).toEqual([
+        [acme, 'Web lead', 'crew'],
+        [docs, 'Acme docs', 'agent'],
+      ]);
+    } finally {
+      unregister();
+    }
   });
 
   it('one account: its window, shares of its tokens, and the labelled estimate', async () => {

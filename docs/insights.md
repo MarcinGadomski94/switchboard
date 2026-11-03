@@ -28,7 +28,7 @@ From the daily rollup (below). Sessions only (chats apart).
 - **Agent time** = the sum of the turns' `duration_ms` (the CLI's own measure of the turn), not wall time.
 - **Tokens / turn** = tokens ÷ turns of the same rows (`—` with no turns).
 - **Sessions** = distinct sessions with at least one turn.
-- **By folder / by model / by session**: the same sums per group, sorted by tokens (the session table: the top 20).
+- **By folder / by model / by session**: the same sums per group, sorted by tokens (the session table: the top 20). A crew member's agent is named after the member ("Web lead"), not its session's title; the Usage page names it the same way (2026-11-03). Each machine names its own members, so a paired machine's member reads that way once that machine runs this version too.
 - **Tokens per turn, by day**: per UTC day, that day's tokens ÷ its turns; a day without turns has no point (the line breaks). Hover or the arrow keys for a day's numbers; *Table* lists them all.
 
 ## 2 · Estimate accuracy
