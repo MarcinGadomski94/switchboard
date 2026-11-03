@@ -408,9 +408,13 @@ export class WorkflowService implements WorkflowSource {
     if (this.#now() - state.listedAt > due || state.listedAt === 0) await this.#listRuns(state);
     for (const run of state.runs.values()) await this.#readRun(state, run);
     const changed = await this.#derive(state);
+    const first = !state.loaded;
     state.loaded = true;
-    // A load a reader asked for returns its result to that reader; the others are news.
-    if (changed && notify) this.#options.onChange(state.sessionId);
+    // A change is news to every listener, whoever's load found it: a reader's load (`forSession`,
+    // once the list is due) records the new state, so a later poll would see nothing new and the
+    // change would never be published. Only a first load a reader asked for is not news (nothing
+    // was shown before it; publishing it would announce every session on its first read).
+    if (changed && (notify || !first)) this.#options.onChange(state.sessionId);
     this.#schedule(state);
   }
 

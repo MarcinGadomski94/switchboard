@@ -117,7 +117,9 @@ describe('D51 · workflow agents on the real path', () => {
     const doneChat = (await get(`/api/sessions/${session.id}/workflow-agents/${encodeURIComponent(first?.id ?? '')}/chat`)).json() as WorkflowAgentChat;
     expect(doneChat.result).toEqual({ text: expect.stringContaining('"ok": true'), isError: false });
     expect(updates.some((s) => s.id === session.id && (s.workflows ?? []).some((r) => r.status === 'run'))).toBe(true);
-    expect(updates.some((s) => s.id === session.id && (s.workflows ?? []).some((r) => r.status === 'done'))).toBe(true);
+    // sessionUpdated is built asynchronously (`#emitSession` reads the store and the files): the
+    // GET and the store can show `done` before the published Session carrying it arrives.
+    await until(async () => updates.some((s) => s.id === session.id && (s.workflows ?? []).some((r) => r.status === 'done')) || undefined, 'a sessionUpdated with the run done');
     // Unknown agents: 404.
     expect((await get(`/api/sessions/${session.id}/workflow-agents/wf_nope--a1/chat`)).statusCode).toBe(404);
     expect((await get(`/api/sessions/no-such/workflow-agents/x/chat`)).statusCode).toBe(404);
@@ -247,12 +249,19 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
       const old = new Date(Date.now() - 10 * 60_000);
       for (const file of ['journal.jsonl', 'agent-a1.jsonl', 'agent-a1.meta.json']) await utimes(path.join(runDir, file), old, old);
       now += 11_000; // past the list's reuse time
-      const fresh = new WorkflowService({ configDir: () => w.configDir, onChange: () => undefined, now: () => now });
+      const freshSeen: string[] = [];
+      const fresh = new WorkflowService({ configDir: () => w.configDir, onChange: (id) => freshSeen.push(id), now: () => now });
       const stale = await fresh.forSession(record(w.workspace));
       expect(stale.runs[0]?.status).toBe('idle');
       // D51-resume: a stopped run offers the script Switchboard found (under the other cwd's project folder).
       expect(stale.runs[0]?.resume).toEqual({ scriptPath: path.join(other, 'workflows', 'scripts', 'term-audit-wf_1111aaaa-222.js'), args: null });
       expect(stale.agents[0]?.solutionPath).toBe('microfrontends/x-front');
+      // A change a reader's load finds (no poll runs: nothing runs) is still news: it is published.
+      await writeFile(path.join(runDir, 'journal.jsonl'), '{"type":"started","key":"k3","agentId":"a2","label":"audit:two","phase":"Audit"}\n', { flag: 'a' });
+      now += 11_000;
+      const reread = await fresh.forSession(record(w.workspace));
+      expect(reread.agents.map((a) => a.name)).toContain('audit:two');
+      expect(freshSeen).toEqual(['session-1']);
       fresh.close();
       const chat = await service.chat(record(w.workspace), 'wf_1111aaaa-222--a1');
       expect(chat?.events[0]?.payload).toEqual({ type: 'agent-prompt', text: 'Audit one. Transcript dir: /etc/passwd' });
