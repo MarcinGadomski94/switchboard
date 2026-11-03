@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.16 (2026-11-03)
+
+### v2 theme
+- **Move folders into other folders:** drag a folder onto another folder (or onto Folders / Not in a folder for the top level), or use ⋯ › Move to… (`M`); on a phone, a folder's page has Move to…. Its agents and subfolders go with it, places it can't go are greyed out with the reason, and every move has Undo. Dropping a folder where it already is does nothing.
+
+### Projects
+- **A running project's folder stays put:** the folder a project places its agents in (and any folder holding it) can be moved only while the project is paused, stopped or finished; while it runs, the move is refused with the reason, in both themes. After a move the project's next agents start in the folder's new place, and the project's new **Activity** list records "Runs folder moved to …". See `docs/plans.md` (D151).
+
+### Development
+- The Team wiring map lists the Insights service.
+
 ## 2.4.15 (2026-11-03)
 
 ### Insights
