@@ -5,6 +5,7 @@ import { EXAMPLE_PRICES, type InsightsAnswer, utcDay } from '../../../src/core/i
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
+import { type TeamHooks, registerTeamHooks } from '../../../src/server/team/hooks.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
@@ -45,7 +46,7 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
   });
 }
 
-async function seed(): Promise<void> {
+async function seed(): Promise<string> {
   const s = await store.sessions.create({ name: 'acme', claudeSessionId: 'c-acme', root: '/work/acme' } as Parameters<Store['sessions']['create']>[0]);
   const ts = new Date().toISOString();
   const result = (tokens: number, model: string) => ({ type: 'result', isError: false, durationMs: 10_000, tokens, usage: { input: 0, output: tokens, cacheWrite: 0, cacheRead: 0 }, model });
@@ -55,6 +56,7 @@ async function seed(): Promise<void> {
   store.db
     .prepare("INSERT INTO todo_actuals (todo_id, session_id, folder, title, estimate_minutes, actual_ms, actual_tokens, completed_at, priority, provider, model, profile_id, usage, working_ms, measure) VALUES ('t1', ?, '/work/acme', 'Docs', 10, 1200000, 1000000, ?, 'low', 'claude', 'claude-opus-5-5', 'default-claude', ?, 1200000, 'working')")
     .run(s.id, ts, JSON.stringify({ input: 0, output: 1_000_000, cacheWrite: 0, cacheRead: 0, unsplit: 0 }));
+  return s.id;
 }
 
 describe('D108 · GET /api/insights', () => {
@@ -67,6 +69,17 @@ describe('D108 · GET /api/insights', () => {
     const body = (await call('GET', '/api/insights?period=7d')).json<InsightsAnswer>();
     expect(body.estimates).toMatchObject({ count: 1, median: 2, openOnly: 1 });
     expect(body.estimates.open).toMatchObject({ count: 2 });
+  });
+
+  it('a crew member’s agent is named after the member in the per-agent table', async () => {
+    const id = await seed();
+    const unregister = registerTeamHooks(store, { memberList: () => [{ id: 'm1', name: 'Web lead', teamId: 't1', sessionId: id, machineId: 'self', here: true, paused: false }] } as unknown as TeamHooks);
+    try {
+      const body = (await call('GET', '/api/insights?period=7d')).json<InsightsAnswer>();
+      expect(body.time.bySession.map((row) => [row.key, row.label])).toEqual([[id, 'Web lead']]);
+    } finally {
+      unregister();
+    }
   });
 
   it('answers the whole page in one response, filtered', async () => {

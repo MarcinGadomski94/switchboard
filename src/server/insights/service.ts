@@ -20,6 +20,8 @@ import { priceTableOf } from '../settings/settings.ts';
 import type { InsightsBackfill } from './backfill.ts';
 // Plans (D99) hook: the plan items' outcomes while Plans is on (docs/plans-removal.md).
 import { plansInsightOutcomes } from '../plans/hooks.ts';
+// Team (D100) hook: a teammate's session is named after its crew member.
+import { teamMemberList } from '../team/hooks.ts';
 
 /** An answer is reused for this long while nothing was rolled up (ms). */
 export const INSIGHTS_CACHE_MS = 30_000;
@@ -144,7 +146,7 @@ export class InsightsService {
       mergeDecisions,
       readings,
       accounts,
-      sessionTitles: Object.fromEntries(insights.sessionTitles(ids)),
+      sessionTitles: { ...Object.fromEntries(insights.sessionTitles(ids)), ...crewNames(this.#store, ids) },
       accountNames: Object.fromEntries(profiles.map((record) => [record.id, record.name])),
     };
   }
@@ -267,4 +269,10 @@ export class InsightsService {
     if (this.#cache.size > 50) this.#cache.delete(this.#cache.keys().next().value as string);
     return answer;
   }
+}
+
+/** A crew member's session is titled with the member's name (its session title is an implementation detail). */
+function crewNames(store: object, ids: readonly string[]): Record<string, string> {
+  const wanted = new Set(ids);
+  return Object.fromEntries(teamMemberList(store).filter((member) => member.here && wanted.has(member.sessionId)).map((member) => [member.sessionId, member.name]));
 }
