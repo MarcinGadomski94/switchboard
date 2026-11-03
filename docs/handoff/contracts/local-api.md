@@ -2295,6 +2295,23 @@ POST /api/machines/abcd2345efgh/api/updates/install { "version": "2.4.3" }
 → 429 { "error": "rate-limited", "message": "An update was asked for from a phone or another computer less than 10 minutes ago; try again in 6 min." }
 ```
 
+## A running project's runs folder stays put; a project's activity (D151, 2026-11-03, additive; plans.db migration 7)
+Developer rulings 2026-11-03 (`docs/decisions.md` → D151, `docs/plans.md` → *Moving the runs' folder (D151)*). No new route or event name.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| PUT | /api/sidebar/folders/{folderId}/position | `{ index, parentId? }` (D58) | as D58, plus **409** `{ error: "project-running", message, planId }` |
+
+- **409 `project-running`:** `parentId` names a place other than the folder's present parent (a folder id, or `null` = the top level) while a **running** plan of this machine has its runs folder (`Plan.sidebarFolder.id`) in the moved folder or inside it. `message` is "The project “<title>” is running: pause it to move its folder."; `planId` names the plan. Nothing changes, nothing is published. Checked after D58's 404 / 422. Not refused: no `parentId` or the present parent (a re-order), a paused / done / cancelled / draft plan, a folder moved into the runs folder.
+- **After a move** that changed the parent of a plan's runs folder (or of a folder holding it), the plan gets an activity line and a `planChanged`; the answer is the layout as before.
+- **`Plan.activity`** (additive): `PlanActivityLine[]` `{ at, kind, text }`, newest first, at most 50; `kind` `runs-folder` ("Runs folder moved to <path>", the path " › "-separated from the top level). Absent (an older paired machine) = none.
+
+```json
+PUT /api/sidebar/folders/9e10…/position { "index": 0, "parentId": null }
+409 { "error": "project-running", "message": "The project “Acme epic” is running: pause it to move its folder.", "planId": "a1b2c3d4e5" }
+Plan { …, "activity": [{ "at": "2026-11-03T10:00:00.000Z", "kind": "runs-folder", "text": "Runs folder moved to Clients › Acme epic" }] }
+```
+
 ## Delete a folder and archive its agents (D141, 2026-10-28, additive; no migration)
 Developer request D141 (`docs/decisions.md`; details `docs/sidebar.md` → *Delete a folder and archive its agents (D141)*). Types in `src/core/sidebar-folder-archive.ts`. Additive; without the new query nothing changes meaning.
 

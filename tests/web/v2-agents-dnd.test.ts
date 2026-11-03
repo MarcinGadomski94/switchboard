@@ -70,4 +70,13 @@ describe('v2 tree drag payloads', () => {
     // An agent is never refused by the folder rule.
     expect(dropOf('agent', 'self', folderRow)).toEqual({ kind: 'agent', id: 'self' });
   });
+
+  it('D151 · a folder dropped where it already is: no highlight, and the drop does nothing (no move, no reason)', () => {
+    const parentRow: DropRules = { ...folderRow, folderUnchanged: (id) => id === 'child' };
+    expect(hoverOf('folder', parentRow, 'child')).toBe('refused');
+    expect(dropOf('folder', 'child', parentRow)).toEqual({ kind: 'ignore' });
+    expect(dropOf('folder', 'f1', parentRow)).toEqual({ kind: 'folder', id: 'f1' });
+    // Agents are unchanged.
+    expect(dropOf('agent', 'child', parentRow)).toEqual({ kind: 'agent', id: 'child' });
+  });
 });

@@ -1,5 +1,4 @@
 import { type KeyboardEvent, useState } from 'react';
-import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import { Icon, IconButton, Menu, type MenuItem, useToast } from '../components/index.ts';
 import { V2Link } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
@@ -7,7 +6,7 @@ import { AGENTS_WORDS, computerProblem } from '../glossary.ts';
 import { type AgentEntry, offline } from './agents-model.ts';
 import { MiniStatus, useAgentsPage } from './context.tsx';
 import { type FolderDrop, dragSource, dropTarget, folderDragSource, isMoveKey } from './dnd.ts';
-import { type AgentTree, type Selection, type TreeFolder, canNest, checkFolderMove } from './tree-model.ts';
+import { type AgentTree, type FolderMoveCheck, type Selection, type TreeFolder, canNest } from './tree-model.ts';
 
 /**
  * D131 · lane A · the folder tree left of Agents (`.ftree`): All agents, Needs
@@ -19,10 +18,10 @@ import { type AgentTree, type Selection, type TreeFolder, canNest, checkFolderMo
  * its subfolders) or onto Folders / Not in a folder (the top level); ⋯ › Move to…
  * (or `M` on the folder) is the keyboard and phone way. Teammates are not here: the Crews pages own them (fix after 2.0).
  */
-export function FolderTree({ layout, tree, selection, onSelect, draftCount, closedCount, shareText }: { readonly layout: SidebarLayout; readonly tree: AgentTree; readonly selection: Selection; readonly onSelect: (selection: Selection) => void; readonly draftCount: number; readonly closedCount: number | null; readonly shareText: string }) {
+export function FolderTree({ tree, selection, onSelect, draftCount, closedCount, shareText }: { readonly tree: AgentTree; readonly selection: Selection; readonly onSelect: (selection: Selection) => void; readonly draftCount: number; readonly closedCount: number | null; readonly shareText: string }) {
   const page = useAgentsPage();
   const toast = useToast();
-  const toTop = folderDrop(layout, null, (id) => void page.actions.moveFolder(id, null), toast);
+  const toTop = folderDrop(page.actions.folderMoveCheck, null, (id) => void page.actions.moveFolder(id, null), toast);
   return (
     <nav className="v2-ftree" aria-label={AGENTS_WORDS.folders} data-testid="v2-ftree">
       <SmartRow id="all" icon="agents" label={AGENTS_WORDS.allAgents} count={tree.all} selection={selection} onSelect={onSelect} />
@@ -46,7 +45,7 @@ export function FolderTree({ layout, tree, selection, onSelect, draftCount, clos
       </h4>
       <div role="tree" aria-label={AGENTS_WORDS.folders}>
         {tree.folders.map((folder) => (
-          <FolderNode key={folder.id} folder={folder} layout={layout} tree={tree} selection={selection} onSelect={onSelect} />
+          <FolderNode key={folder.id} folder={folder} tree={tree} selection={selection} onSelect={onSelect} />
         ))}
       </div>
       <h4
@@ -96,12 +95,19 @@ export function setDraggableAgents(list: readonly AgentEntry[]): void {
   allAgents = new Map(list.map((agent) => [agent.id, agent]));
 }
 
-/** 2.4.16: a folder dropped on a target that moves it into `parentId` (`null` = the top level), refused by the server's rules with the reason. */
-function folderDrop(layout: SidebarLayout, parentId: string | null, onDrop: (folderId: string) => void, toast: ReturnType<typeof useToast>): FolderDrop {
+/**
+ * 2.4.16: a folder dropped on a target that moves it into `parentId` (`null` = the top level), refused by the server's rules with the reason
+ * (D151: also a running project's runs folder); dropped where it already is, it does nothing.
+ */
+function folderDrop(check: (folderId: string, parentId: string | null) => FolderMoveCheck, parentId: string | null, onDrop: (folderId: string) => void, toast: ReturnType<typeof useToast>): FolderDrop {
   return {
     refusal: (folderId) => {
-      const check = checkFolderMove(layout, folderId, parentId);
-      return check.ok ? null : check.reason;
+      const result = check(folderId, parentId);
+      return result.ok || result.unchanged ? null : result.reason;
+    },
+    unchanged: (folderId) => {
+      const result = check(folderId, parentId);
+      return !result.ok && result.unchanged === true;
     },
     onDrop,
     onRefused: (reason) => toast({ text: reason, tone: 'error' }),
@@ -145,7 +151,7 @@ function folderIcon(folder: Pick<TreeFolder, 'plan'>) {
   return folder.plan ? <Icon name="projects" size="s" className="v2-plan-ic" /> : <Icon name="folder" size="s" />;
 }
 
-function FolderNode({ folder, layout, tree, selection, onSelect }: { readonly folder: TreeFolder; readonly layout: SidebarLayout; readonly tree: AgentTree; readonly selection: Selection; readonly onSelect: (selection: Selection) => void }) {
+function FolderNode({ folder, tree, selection, onSelect }: { readonly folder: TreeFolder; readonly tree: AgentTree; readonly selection: Selection; readonly onSelect: (selection: Selection) => void }) {
   const page = useAgentsPage();
   const toast = useToast();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
@@ -178,7 +184,7 @@ function FolderNode({ folder, layout, tree, selection, onSelect }: { readonly fo
             const agent = allAgents.get(id);
             if (agent) void page.actions.move(agent, { kind: 'folder', folderId: folder.id });
           },
-          folder: folderDrop(layout, folder.id, (id) => void page.actions.moveFolder(id, folder.id), toast),
+          folder: folderDrop(page.actions.folderMoveCheck, folder.id, (id) => void page.actions.moveFolder(id, folder.id), toast),
         })}
         onKeyDown={(event) => {
           // Not from the ⋯ menu (a portal, but a child here in React's tree).
@@ -213,7 +219,7 @@ function FolderNode({ folder, layout, tree, selection, onSelect }: { readonly fo
       {open ? (
         <div role="group">
           {folder.children.map((child) => (
-            <FolderNode key={child.id} folder={child} layout={layout} tree={tree} selection={selection} onSelect={onSelect} />
+            <FolderNode key={child.id} folder={child} tree={tree} selection={selection} onSelect={onSelect} />
           ))}
           {folder.agents.map((agent) => (
             <Leaf key={agent.id} agent={agent} depth={folder.level} />

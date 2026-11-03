@@ -26,7 +26,9 @@ import {
   splitFolderArchive,
 } from '../../core/sidebar-folder-archive.ts';
 import type { SidebarWrite } from '../db/repos/sidebar.ts';
-import { plansArchiveHolds } from '../plans/hooks.ts';
+import { type RunFolderOwner, movedRunFolders, runFolderMoveBlock, runFolderRunningText } from '../../core/plan-run-folder.ts';
+// Plans (D99) hook (docs/plans-removal.md): D141's archive holds; D151: a running plan's runs folder stays put, a moved one is noted on its plan.
+import { plansArchiveHolds, plansRunFolders, plansRunFoldersMoved } from '../plans/hooks.ts';
 import { closeSession } from '../sessions/close.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
 import { teamMemberOf } from '../team/hooks.ts';
@@ -122,7 +124,11 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     const move = parseFolderMove(request.body);
     if (!move.ok) return invalid(reply, move.errors);
     const { folderId } = request.params;
+    // D151: a running project's runs folder (or a folder holding it) stays where it is; a re-order among its siblings is fine.
+    const owners = move.value.parentId === undefined ? [] : await plansRunFolders(store);
     let problem: SidebarTreeProblem | null = null;
+    let running: RunFolderOwner | null = null;
+    let before: SidebarLayout | null = null;
     const layout = await store.sidebar.change((current) => {
       const folder = current.folders.find((f) => f.id === folderId);
       if (!folder) {
@@ -131,9 +137,21 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
       }
       // D58: `parentId` absent = the level it is at (D54's re-order).
       problem = checkFolderParent(current, folderId, move.value.parentId === undefined ? (folder.parentId ?? null) : move.value.parentId);
-      return problem ? null : moveFolder(current, folderId, move.value.index, move.value.parentId);
+      if (problem) return null;
+      running = runFolderMoveBlock(current, folderId, move.value.parentId, owners);
+      if (running) return null;
+      before = current;
+      return moveFolder(current, folderId, move.value.index, move.value.parentId);
     });
-    return layout ? changed(layout) : treeRefusal(reply, problem ?? { kind: 'not-found', id: folderId });
+    const held = running as RunFolderOwner | null;
+    if (held) return reply.code(409).send({ error: 'project-running', message: runFolderRunningText(held.title), planId: held.planId });
+    if (!layout) return treeRefusal(reply, problem ?? { kind: 'not-found', id: folderId });
+    const result = changed(layout);
+    // D151: the projects whose runs folder moved follow it (their runs find it by id) and note it in their activity.
+    const was = before as SidebarLayout | null;
+    const moved = was ? movedRunFolders(was, result, owners) : [];
+    await plansRunFoldersMoved(store, moved).catch((error: unknown) => request.log.error({ err: error }, 'switchboard: a project could not note its moved runs folder'));
+    return result;
   });
 
   app.delete<{ Params: FolderParams; Querystring: { archive?: string } }>('/api/sidebar/folders/:folderId', async (request, reply): Promise<SidebarLayout | SidebarFolderArchiveResult | FastifyReply> => {

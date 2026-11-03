@@ -84,7 +84,7 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
  */
 export function FolderMoveDialog({ folderId, layout, tree, actions, onClose }: { readonly folderId: string | null; readonly layout: SidebarLayout; readonly tree: AgentTree; readonly actions: TreeActions; readonly onClose: () => void }) {
   const folder = folderId ? findFolder(tree, folderId) : null;
-  const rows = folderId && folder ? folderPickRows(layout, tree, folderId) : [];
+  const rows = folderId && folder ? folderPickRows(layout, tree, folderId, actions.runFolders) : [];
   const initial = rows.find((row) => row.current)?.value ?? 'loose';
   const [value, setValue] = useState(initial);
   useEffect(() => {

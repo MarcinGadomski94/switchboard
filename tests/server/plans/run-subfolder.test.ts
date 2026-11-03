@@ -384,3 +384,81 @@ describe('D150 · the runs\' subfolder in a chosen parent folder', () => {
   }, 60_000);
 });
 
+
+describe('D151 · moving a project\'s runs folder', () => {
+  async function moveFolder(id: string, parentId: string | null | undefined, index = 0) {
+    return call('PUT', `/api/sidebar/folders/${id}/position`, parentId === undefined ? { index } : { index, parentId });
+  }
+
+  it('refuses 409 while the project runs (the folder and a folder holding it); a re-order and a folder moved into it are fine', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const other = await folderId('Other', null);
+    const created = await makePlan(r);
+    const sub = (await start(created.id, { sidebarFolder: 'Acme epic' })).sidebarFolder?.id as string;
+    await settledItem(created.id, 'PROJ-1', 'running');
+    const before = await layout();
+    for (const [id, parentId] of [
+      [sub, other],
+      [sub, null],
+      [releases, other],
+    ] as const) {
+      const refused = await moveFolder(id, parentId);
+      expect(refused.statusCode, refused.body).toBe(409);
+      expect(refused.json()).toEqual({ error: 'project-running', message: 'The project “Acme epic” is running: pause it to move its folder.', planId: created.id });
+    }
+    expect((await layout()).folders).toEqual(before.folders);
+    // A re-order among its siblings changes no place; another folder may go into the runs folder.
+    expect((await moveFolder(sub, undefined, 0)).statusCode).toBe(200);
+    expect((await moveFolder(sub, releases, 0)).statusCode).toBe(200);
+    expect((await moveFolder(other, sub, 0)).statusCode).toBe(200);
+    expect((await layout()).folders.find((f) => f.id === other)?.parentId).toBe(sub);
+    expect((await plan(created.id)).activity).toEqual([]);
+  }, 60_000);
+
+  it('paused: the move goes ahead, the project notes it, and after Resume the next run lands in the moved folder', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const archive = await folderId('Archive', await folderId('Clients', null));
+    const created = await makePlan(r);
+    const sub = (await start(created.id, { sidebarFolder: 'Acme epic' })).sidebarFolder?.id as string;
+    const first = (await settledItem(created.id, 'PROJ-1', 'running')).runSessionId as string;
+    await holds(sub, [first]);
+    expect((await call('POST', `/api/plans/${created.id}/pause`)).statusCode).toBe(200);
+    const changed: string[] = [];
+    const off = r.bus.subscribe((message) => {
+      if (message.name === 'planChanged' && message.payload.planId === created.id) changed.push(message.name);
+    });
+    const moved = await moveFolder(sub, archive);
+    off();
+    expect(moved.statusCode, moved.body).toBe(200);
+    expect((moved.json() as SidebarLayout).folders.find((f) => f.id === sub)?.parentId).toBe(archive);
+    expect(changed.length).toBeGreaterThan(0);
+    const paused = await plan(created.id);
+    expect(paused.activity).toEqual([{ at: expect.any(String), kind: 'runs-folder', text: 'Runs folder moved to Clients › Archive › Acme epic' }]);
+    expect(paused.sidebarFolder).toEqual({ id: sub, name: 'Acme epic' });
+    expect((await call('POST', `/api/plans/${created.id}/resume`)).statusCode).toBe(200);
+    await agentFinishes(r, created.id, 'PROJ-1');
+    const second = (await settledItem(created.id, 'PROJ-2', 'running')).runSessionId as string;
+    await holds(sub, [first, second]);
+    expect((await layout()).folders.find((f) => f.id === sub)?.parentId).toBe(archive);
+    await holds(releases, [r.source.id]);
+    expect(r.s.errors).toEqual([]);
+  }, 90_000);
+
+  it('cancelled: the folder moves (and a folder holding it), each move noted', async () => {
+    const r = await setup();
+    const releases = await folderId('Releases', null);
+    await placeSource(r, releases);
+    const other = await folderId('Other', null);
+    const created = await makePlan(r);
+    const sub = (await start(created.id, { sidebarFolder: 'Acme epic' })).sidebarFolder?.id as string;
+    await settledItem(created.id, 'PROJ-1', 'running');
+    expect((await call('POST', `/api/plans/${created.id}/cancel`)).statusCode).toBe(200);
+    expect((await moveFolder(releases, other)).statusCode).toBe(200);
+    expect((await moveFolder(sub, null)).statusCode).toBe(200);
+    expect((await plan(created.id)).activity?.map((line) => line.text)).toEqual(['Runs folder moved to Acme epic', 'Runs folder moved to Other › Releases › Acme epic']);
+  }, 60_000);
+});

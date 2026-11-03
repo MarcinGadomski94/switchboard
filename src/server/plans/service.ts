@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { SIDEBAR_FOLDER_NAME_MAX, runParentFolder, runSubfolder } from '../../core/sidebar-layout.ts';
+import { type RunFolderMoved, type RunFolderOwner, runFolderMovedText, runFolderOwners } from '../../core/plan-run-folder.ts';
 import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { effectiveSessionStatus, turnWaits } from '../../core/derive/turn-status.ts';
 import type { SessionStatus } from '../../core/model.ts';
@@ -24,6 +25,7 @@ import {
   type PlanMergeMode,
   type PlanWaitingOn,
   type PlansState,
+  PLAN_ACTIVITY_MAX,
   PLAN_ITEM_SPANS_MAX,
   PLAN_STOPPED_GRACE_MS,
   planItemSpanKind,
@@ -570,6 +572,9 @@ export class PlanService {
       runSessionIds: async () => (this.#enabled && this.#db !== null ? this.#repo().runSessionIds() : []),
       // D137: the sessions the archive must keep.
       archiveHolds: () => this.archiveHolds(),
+      // D151: the runs folders a folder move must respect, and the projects that follow one.
+      runFolders: () => this.runFolders(),
+      runFoldersMoved: (moves) => this.runFoldersMoved(moves),
     });
     await this.#open();
   }
@@ -590,6 +595,32 @@ export class PlanService {
       for (const item of await repo.items(plan.id)) if (item.runSessionId && !out.has(item.runSessionId)) out.set(item.runSessionId, 'plan-step');
     }
     return out;
+  }
+
+  /**
+   * D151 (`docs/plans.md` → *Moving the runs' folder (D151)*): every plan whose runs go into a
+   * sidebar folder (its stored `sidebarFolder`), with its state, for the sidebar's folder-move rule;
+   * empty until `plans.db` is open (or while it cannot be). Read-only.
+   */
+  async runFolders(): Promise<RunFolderOwner[]> {
+    if (!this.#enabled || this.#db === null) return [];
+    return runFolderOwners(await this.#repo().list());
+  }
+
+  /**
+   * D151: the projects whose runs folder a sidebar move took elsewhere. Their runs already follow
+   * the folder by its id (`RunPlaces`; nothing caches its place or parent, and a move keeps its
+   * name), so the next run goes into it at its new place; each gets an activity line "Runs folder
+   * moved to <path>" and a `planChanged`.
+   */
+  async runFoldersMoved(moves: readonly RunFolderMoved[]): Promise<void> {
+    if (!this.#enabled || this.#db === null) return;
+    const repo = this.#repo();
+    for (const move of moves) {
+      if (!(await repo.get(move.planId))) continue;
+      await repo.addActivity(move.planId, { kind: 'runs-folder', text: runFolderMovedText(move.path) }, PLAN_ACTIVITY_MAX);
+      await this.#publish(move.planId);
+    }
   }
 
   /**
@@ -960,6 +991,7 @@ export class PlanService {
       external: plan.external,
       sidebarFolder: plan.sidebarFolder,
       accounts: plan.accounts,
+      activity: await repo.activity(plan.id),
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
       items: model.items.map((item) => ({ ...item, reason: reasons.get(item.id) ?? item.reason, waitingOn: waitingOn(item.waitingOn), spans: spans.get(item.id) ?? [] })),

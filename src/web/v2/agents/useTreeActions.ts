@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
+import type { RunFolderOwner } from '../../../core/plan-run-folder.ts';
 import { type SidebarLayout, type SidebarPlaceInput, childFolders } from '../../../core/sidebar-layout.ts';
 import { folderArchiveResultText } from '../../../core/sidebar-folder-archive.ts';
-import { api } from '../../api/client.ts';
+import { ApiError, api } from '../../api/client.ts';
 import { snapshotFolderTree, undoFolderArchive } from '../../shell/folder-archive-undo.ts';
 import { useToast } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
-import { type AgentTree, type MoveTarget, checkFolderMove, checkMove, findFolder } from './tree-model.ts';
+import { type AgentTree, type FolderMoveCheck, type MoveTarget, checkFolderMove, checkMove, findFolder } from './tree-model.ts';
 
 /**
  * D131 · lane A · what the folder tree and the rows do to the shared sidebar
@@ -29,10 +30,19 @@ function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : 'It didn’t work. Try again.';
 }
 
+/** D151: a refused folder move's own words (the server's `message`, e.g. a running project's), else {@link errorText}. */
+function refusalText(error: unknown): string {
+  const body = error instanceof ApiError ? (error.body as { message?: unknown } | null) : null;
+  return typeof body?.message === 'string' && body.message ? body.message : errorText(error);
+}
+
+const NO_RUN_FOLDERS: readonly RunFolderOwner[] = [];
+
 /** The tree's actions; each applies the layout the service answers with at once. */
-export function useTreeActions(context: { readonly layout: SidebarLayout; readonly tree: AgentTree; readonly apply: (layout: SidebarLayout) => void; readonly shareNote: string }) {
+export function useTreeActions(context: { readonly layout: SidebarLayout; readonly tree: AgentTree; readonly apply: (layout: SidebarLayout) => void; readonly shareNote: string; readonly runFolders?: readonly RunFolderOwner[] }) {
   const toast = useToast();
   const { layout, tree, apply, shareNote } = context;
+  const runFolders = context.runFolders ?? NO_RUN_FOLDERS;
 
   const place = useCallback(async (input: SidebarPlaceInput) => apply(await api.placeSidebarSession(input)), [apply]);
 
@@ -166,11 +176,15 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
    * the classic sidebar's own move, so it syncs like every layout change. Undo puts
    * it back at its old place among its old siblings.
    */
+  /** Whether folder `id` may move into `parentId` (D151: with the running projects' runs folders). */
+  const folderMoveCheck = useCallback((id: string, parentId: string | null): FolderMoveCheck => checkFolderMove(layout, id, parentId, runFolders), [layout, runFolders]);
+
   const moveFolder = useCallback(
     async (id: string, parentId: string | null): Promise<boolean> => {
-      const check = checkFolderMove(layout, id, parentId);
+      const check = checkFolderMove(layout, id, parentId, runFolders);
       if (!check.ok) {
-        toast({ text: check.reason, tone: 'error' });
+        // D151: where it already is: nothing happens, and nothing is said.
+        if (!check.unchanged) toast({ text: check.reason, tone: 'error' });
         return false;
       }
       const stored = layout.folders.find((f) => f.id === id);
@@ -185,11 +199,11 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
         toast({ text: AGENTS_WORDS.folderMoved(stored.name, parent?.name ?? AGENTS_WORDS.theTopLevel, shareNote), undo: async () => apply(await api.moveSidebarFolder(id, Math.max(0, oldIndex), oldParent)) });
         return true;
       } catch (error) {
-        toast({ text: errorText(error), tone: 'error' });
+        toast({ text: refusalText(error), tone: 'error' });
         return false;
       }
     },
-    [layout, tree, apply, toast, shareNote],
+    [layout, tree, apply, toast, shareNote, runFolders],
   );
 
   const setCollapsed = useCallback(
@@ -203,7 +217,7 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
     [apply, toast],
   );
 
-  return { move, moveFolder, togglePin, createFolder, renameFolder, deleteFolder, setCollapsed };
+  return { move, moveFolder, folderMoveCheck, runFolders, togglePin, createFolder, renameFolder, deleteFolder, setCollapsed };
 }
 
 /** The tree's actions (see {@link useTreeActions}). */

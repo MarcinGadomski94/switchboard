@@ -168,6 +168,23 @@ ALTER TABLE plans ADD COLUMN sidebar_folder TEXT CHECK (sidebar_folder IS NULL O
 ALTER TABLE plans ADD COLUMN accounts TEXT CHECK (accounts IS NULL OR (json_valid(accounts) AND json_type(accounts) = 'object'));
 `,
   ),
+  makeMigration(
+    7,
+    'plan_activity',
+    `-- D151 (docs/plans.md → Activity (D151)): a project's activity, the lines that are not an item's own history
+-- (first: "Runs folder moved to <path>" when the runs' sidebar folder was moved while the project was not running).
+-- plan_activity: one line; the service keeps the newest 50 per plan; they go with their plan.
+--   kind: runs-folder (more kinds may come; the service writes only the ones it knows).
+CREATE TABLE plan_activity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  at TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL
+) STRICT;
+CREATE INDEX plan_activity_plan ON plan_activity (plan_id, id);
+`,
+  ),
 ];
 
 /** The Plans database: one connection and its repository. */
@@ -193,7 +210,9 @@ export class PlansDb {
     try {
       migrate(db, migrations);
       // A quick read of every table: a file that is not a database (or lost a table) fails here, not later.
-      for (const table of ['plans', 'plan_items', 'plan_edges', 'plan_item_spans']) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
+      // D151: `plan_activity` from migration 7 (an older list, in the migration tests, stops before it).
+      const tables = ['plans', 'plan_items', 'plan_edges', 'plan_item_spans', ...(migrations.some((m) => m.version >= 7) ? ['plan_activity'] : [])];
+      for (const table of tables) db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
     } catch (error) {
       db.close();
       throw error;

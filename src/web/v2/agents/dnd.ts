@@ -51,6 +51,8 @@ export function folderDragSource(id: string): SourceProps {
 export interface FolderDrop {
   /** Why the folder cannot go here (`null` = it can): no highlight on hover, and `onRefused` on a drop. */
   readonly refusal: (folderId: string) => string | null;
+  /** D151: the folder is already here: a drop does nothing (no move, no toast). */
+  readonly unchanged?: (folderId: string) => boolean;
   readonly onDrop: (folderId: string) => void;
   readonly onRefused: (reason: string) => void;
 }
@@ -74,7 +76,7 @@ function kindOf(event: DragEvent<HTMLElement>): DragKind | null {
  */
 export function dropTarget(handlers: DropHandlers | ((agentId: string) => void)): { readonly onDragOver: (event: DragEvent<HTMLElement>) => void; readonly onDragLeave: (event: DragEvent<HTMLElement>) => void; readonly onDrop: (event: DragEvent<HTMLElement>) => void } {
   const { onAgent, folder }: DropHandlers = typeof handlers === 'function' ? { onAgent: handlers } : handlers;
-  const rules: DropRules = { agents: onAgent !== undefined, ...(folder ? { folderRefusal: folder.refusal } : {}) };
+  const rules: DropRules = { agents: onAgent !== undefined, ...(folder ? { folderRefusal: folder.refusal, ...(folder.unchanged ? { folderUnchanged: folder.unchanged } : {}) } : {}) };
   return {
     onDragOver: (event) => {
       // Only this page's own drag says which folder it is while over a target (the data is readable on drop only).

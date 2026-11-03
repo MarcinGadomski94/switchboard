@@ -1,6 +1,6 @@
 import { UNDO_LAST_TURN_LABEL } from '../../core/checkpoints.ts';
 import { lastTurnRevert, openRevert, useCheckpoints } from '../views/session/checkpoints.ts';
-import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionActivity, SessionListItem } from '../../core/api.ts';
 import { CLOSE_TOOLTIP, closeAsks } from '../../core/session-close.ts';
@@ -39,6 +39,9 @@ import { formatAge, modeLine, statusColor } from './format.ts';
 import { snapshotFolderTree, undoFolderArchive } from './folder-archive-undo.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
+import { runFolderHolder, runFolderOwners, runFolderRunningText } from '../../core/plan-run-folder.ts';
+// Plans (D99) hook (docs/plans-removal.md): D151, a running project's runs folder is offered nowhere in Move to folder ▸.
+import { usePlans } from '../plans/store.ts';
 import { FRESH_ACTION_LABEL } from '../../core/fresh-session.ts';
 import { RELOAD_INSTRUCTION_LABEL, RELOAD_PENDING_TITLE, offersInstructionReload } from '../../core/standing-instruction.ts';
 import { freshActionState, markFreshAsked, takeFreshAsked } from '../views/session/fresh-offer.ts';
@@ -375,6 +378,9 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   // D106: SESSIONS folds to its header like TOOLS (D101).
   const [collapsed, toggleCollapsed] = useSectionCollapsed('ui.sessionsCollapsed');
   const { layout, run, error } = useSidebarLayout();
+  // D151: the projects' runs folders (a running project's stays where it is).
+  const { plans } = usePlans();
+  const runFolders = useMemo(() => runFolderOwners(plans), [plans]);
   const { navigate } = useRouter();
   const { show: showToast } = useToasts();
   // Project memory (D107) hook: the draft ask is offered only while Project memory is on.
@@ -800,8 +806,11 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const folderMoveTargets = (folder: SidebarFolder): MenuItem[] => {
     const parent = parentOf(folder);
     const inside = new Set([folder.id, ...descendantIds(layout, folder.id)]);
+    // D151: a running project's runs folder (or a folder holding it) moves nowhere until the project is paused.
+    const holder = runFolderHolder(layout, folder.id, runFolders);
+    const held = holder ? { disabled: true, title: runFolderRunningText(holder.title) } : {};
     const items: MenuItem[] = [];
-    if (parent !== null) items.push({ label: 'Top level', testId: 'sidebar-menu-top-level', run: () => void run(() => api.moveSidebarFolder(folder.id, childFolders(layout, null).length, null)) });
+    if (parent !== null) items.push({ label: 'Top level', testId: 'sidebar-menu-top-level', run: () => void run(() => api.moveSidebarFolder(folder.id, childFolders(layout, null).length, null)), ...held });
     for (const { folder: f, level } of tree) {
       if (inside.has(f.id)) continue;
       if (f.id === parent) {
@@ -814,6 +823,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         level,
         disabled: checkFolderParent(layout, folder.id, f.id) !== null,
         run: () => void run(() => api.moveSidebarFolder(folder.id, childFolders(layout, f.id).length, f.id)),
+        ...held,
       });
     }
     if (items.length === 0) items.push({ label: 'No other folders', testId: 'sidebar-menu-no-folders', run: () => undefined, disabled: true });

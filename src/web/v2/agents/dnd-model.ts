@@ -45,6 +45,8 @@ export function droppedIdOf(kind: DragKind, read: (type: string) => string, fall
 export interface DropRules {
   readonly agents: boolean;
   readonly folderRefusal?: (folderId: string) => string | null;
+  /** D151: the folder is already here: no highlight, and a drop does nothing (no toast). */
+  readonly folderUnchanged?: (folderId: string) => boolean;
 }
 
 /**
@@ -54,7 +56,7 @@ export interface DropRules {
  */
 export function hoverOf(kind: DragKind | null, rules: DropRules, folderId: string | null): 'ignore' | 'ok' | 'refused' {
   if (kind === 'agent') return rules.agents ? 'ok' : 'ignore';
-  if (kind === 'folder' && rules.folderRefusal) return folderId !== null && rules.folderRefusal(folderId) !== null ? 'refused' : 'ok';
+  if (kind === 'folder' && rules.folderRefusal) return folderId !== null && (rules.folderUnchanged?.(folderId) || rules.folderRefusal(folderId) !== null) ? 'refused' : 'ok';
   return 'ignore';
 }
 
@@ -65,6 +67,8 @@ export type DropOutcome = { readonly kind: 'ignore' } | { readonly kind: 'agent'
 export function dropOf(kind: DragKind | null, id: string | null, rules: DropRules): DropOutcome {
   if (kind === null || id === null || hoverOf(kind, rules, null) === 'ignore') return { kind: 'ignore' };
   if (kind === 'agent') return { kind: 'agent', id };
+  // D151: dropped where it already is: nothing at all.
+  if (rules.folderUnchanged?.(id)) return { kind: 'ignore' };
   const reason = rules.folderRefusal?.(id) ?? null;
   return reason ? { kind: 'refused', reason } : { kind: 'folder', id };
 }

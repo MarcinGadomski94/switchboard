@@ -18,6 +18,7 @@ import { ClosedView, DraftsCard } from './DraftsAndClosed.tsx';
 import { FolderTree, setDraggableAgents } from './FolderTree.tsx';
 import { PhoneAgents } from './PhoneAgents.tsx';
 import { type Selection, agentsOf, findFolder, pathOf, placeOfAgent, selectionExists } from './tree-model.ts';
+import { runFolderOwners } from '../../../core/plan-run-folder.ts';
 import { readPref, useAgentsData, useNewDraft, usePref, useSharing, writePref } from './useAgentsData.ts';
 import { useTreeActions } from './useTreeActions.ts';
 import './agents.css';
@@ -57,7 +58,9 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
   const activityOf = useLiveActivities(data.sessions);
   const shareNote = AGENTS_WORDS.syncedTo(sharing.shared);
   const shareText = `${sharing.shared.length ? AGENTS_WORDS.shareOn(sharing.shared) : AGENTS_WORDS.shareOff} ${AGENTS_WORDS.sameAsClassic}`;
-  const actions = useTreeActions({ layout: data.layout, tree: data.tree, apply: data.applyLayout, shareNote });
+  // D151: a running project's runs folder stays where it is.
+  const runFolders = useMemo(() => runFolderOwners(data.plans), [data.plans]);
+  const actions = useTreeActions({ layout: data.layout, tree: data.tree, apply: data.applyLayout, shareNote, runFolders });
 
   useEffect(() => setDraggableAgents(data.agents), [data.agents]);
   useEffect(() => {
@@ -212,7 +215,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
           <PhoneAgents agents={data.agents} tree={data.tree} newDraft={newDraft} />
         ) : (
           <div className="v2-ag2" {...(treeHidden ? { 'data-tree-off': '' } : {})}>
-            <FolderTree layout={data.layout} tree={data.tree} selection={selection} onSelect={setSelection} draftCount={data.agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0)} closedCount={null} shareText={shareText} />
+            <FolderTree tree={data.tree} selection={selection} onSelect={setSelection} draftCount={data.agents.filter((agent) => agent.draft !== null).length + (newDraft ? 1 : 0)} closedCount={null} shareText={shareText} />
             <div data-testid="v2-agents-pane">
               {selection === 'all' || selection === 'drafts' ? <DraftsCard agents={data.agents} newDraft={newDraft} onRemoveNew={removeNewDraft} onOpen={openAgent} /> : null}
               {selection === 'drafts' ? null : (
