@@ -7,13 +7,13 @@ import { Button, Checkbox, Dialog, Field, Icon, Select } from '../components/ind
 import { AGENTS_WORDS } from '../glossary.ts';
 import type { AgentEntry } from './agents-model.ts';
 import type { FolderDialogRequest } from './context.tsx';
-import { type AgentTree, agentsUnder, deleteSummary, findFolder, parentOptions, pickRows } from './tree-model.ts';
+import { type AgentTree, agentsUnder, deleteSummary, findFolder, folderPickRows, parentOptions, pickRows } from './tree-model.ts';
 import type { TreeActions } from './useTreeActions.ts';
 
 /**
  * D131 · lane A · the Agents page's dialogs: Move to folder (the keyboard way to
- * drag, ↑ ↓ ↩), New / Rename / Delete folder,
- * Rename agent.
+ * drag, ↑ ↓ ↩), Move folder (2.4.16, the same picker for a folder), New /
+ * Rename / Delete folder, Rename agent.
  */
 
 /** Move to folder. */
@@ -71,6 +71,71 @@ export function MoveDialog({ agent, layout, tree, actions, onClose }: { readonly
                 </span>
               </label>
             ))}
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * 2.4.16 · Move folder: the folder picker for a folder's ⋯ › Move to… (also `M`
+ * on a folder row, and the phone's folder page): Top level and the tree; its
+ * present parent is picked at first; the folder itself, its own subfolders and
+ * places too deep are disabled with the reason.
+ */
+export function FolderMoveDialog({ folderId, layout, tree, actions, onClose }: { readonly folderId: string | null; readonly layout: SidebarLayout; readonly tree: AgentTree; readonly actions: TreeActions; readonly onClose: () => void }) {
+  const folder = folderId ? findFolder(tree, folderId) : null;
+  const rows = folderId && folder ? folderPickRows(layout, tree, folderId) : [];
+  const initial = rows.find((row) => row.current)?.value ?? 'loose';
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    setValue(initial);
+    // Only when another folder's dialog opens.
+  }, [folderId]);
+  if (!folderId || !folder) return null;
+  const go = (): void => {
+    onClose();
+    void actions.moveFolder(folderId, value === 'loose' ? null : value);
+  };
+  const keyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      go();
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      icon="folder-move"
+      title={AGENTS_WORDS.moveFolderTitle}
+      width={520}
+      testId="v2-folder-move-dialog"
+      footer={
+        <>
+          <Button onClick={onClose}>{AGENTS_WORDS.cancel}</Button>
+          <Button variant="primary" icon="folder-move" onClick={go} data-testid="v2-folder-move-go">
+            {AGENTS_WORDS.moveHere}
+          </Button>
+        </>
+      }
+    >
+      <p className="v2-muted" style={{ marginTop: 0, fontSize: 14 }}>
+        <b style={{ color: 'var(--v2-text)' }}>{folder.name}</b>
+      </p>
+      <p className="v2-muted" style={{ marginTop: 0, fontSize: 13.5 }}>
+        {AGENTS_WORDS.moveFolderHint}
+      </p>
+      <div className="v2-fpick" role="radiogroup" aria-label={AGENTS_WORDS.folders} onKeyDown={keyDown} data-testid="v2-folder-move-list">
+        {rows.map((row) => (
+          <label key={row.value} style={{ paddingLeft: 10 + row.depth * 20 }} {...(row.disabled ? { 'data-disabled': '' } : {})} title={row.disabled ?? undefined} data-testid="v2-folder-move-option" data-value={row.value}>
+            <input type="radio" name="v2-folder-move" value={row.value} checked={value === row.value} disabled={row.disabled !== null} onChange={() => setValue(row.value)} {...(row.value === initial ? { 'data-autofocus': '' } : {})} />
+            <Icon name={row.value === 'loose' ? 'agents' : row.plan ? 'projects' : 'folder'} size="s" className={row.plan ? 'v2-plan-ic' : undefined} />
+            <span className="v2-grow">{row.label}</span>
+            <span className="v2-muted" style={{ fontSize: 12 }} data-testid="v2-folder-move-reason">
+              {row.disabled ?? ''}
+            </span>
+          </label>
+        ))}
       </div>
     </Dialog>
   );

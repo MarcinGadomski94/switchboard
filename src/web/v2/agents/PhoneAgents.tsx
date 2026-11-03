@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Icon, Segmented } from '../components/index.ts';
+import { Button, Icon, Segmented } from '../components/index.ts';
 import { AGENTS_WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { AgentRow } from '../shared/agent-row.tsx';
 import { type AgentEntry, BOARD_COLUMNS, type BoardColumn, PHONE_VIEWS, PREF_KEYS, type PhoneView, chatSections, columnOf, isPhoneView, sortAgents } from './agents-model.ts';
 import { kindLabel, useAgentsPage } from './context.tsx';
-import { type AgentTree, type TreeFolder, drill } from './tree-model.ts';
+import { type AgentTree, type TreeFolder, drill, pathOf } from './tree-model.ts';
 import { type NewDraft, usePref } from './useAgentsData.ts';
 
 /**
  * D131 · lane A · Agents on a phone (≤ 767 px; the prototype's phone frame
  * "Agents · chats with folders drill-down"): Chats | Folders | Board. Folders is
- * a drill-down list with a breadcrumb, browse only (rearranging happens on a
- * computer; the phone follows the shared layout).
+ * a drill-down list with a breadcrumb; a folder's page has Move to… (2.4.16, the
+ * same folder picker; nothing else is rearranged here: that happens on a
+ * computer and the phone follows the shared layout).
  */
 export function PhoneAgents({ agents, tree, newDraft }: { readonly agents: readonly AgentEntry[]; readonly tree: AgentTree; readonly newDraft: NewDraft | null }) {
   const [view, setView] = usePref<PhoneView>(PREF_KEYS.phoneView, 'chats', isPhoneView);
@@ -102,7 +103,12 @@ function FolderButton({ folder, onOpen }: { readonly folder: TreeFolder; readonl
 }
 
 function PhoneFolders({ tree }: { readonly tree: AgentTree }) {
-  const [path, setPath] = useState<readonly string[]>([]);
+  const page = useAgentsPage();
+  const [stored, setPath] = useState<readonly string[]>([]);
+  // 2.4.16: a folder that moved (here or elsewhere) is followed to its new place.
+  const last = stored[stored.length - 1];
+  const moved = last ? pathOf(tree, last).map((folder) => folder.id) : [];
+  const path = moved.length ? moved : stored;
   const level = drill(tree, path);
   const top = path.length === 0;
   return (
@@ -184,6 +190,9 @@ function PhoneFolders({ tree }: { readonly tree: AgentTree }) {
                 {level.folder.name}
               </b>
               {level.folder.plan ? <span className="v2-tag">Project</span> : null}
+              <Button variant="ghost" icon="folder-move" onClick={() => level.folder && page.openFolderMove(level.folder.id)} data-testid="v2-phone-folder-move">
+                {AGENTS_WORDS.moveFolderTo}
+              </Button>
             </div>
           ) : null}
           {level.folders.length ? (

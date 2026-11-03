@@ -98,6 +98,13 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   start-to-finish time is still shown as "open", and that tasks finished before it have open time only and
   are left out of the agents' estimate feedback, which now comes per estimate size
   (`docs/todos.md` → *Actual vs. estimate (D78, D147)*). The last of the chain ("(10 of 10)").
+- **"Move folders into other folders"** (`v2-move-folders`, version 2.4.16, `ui: 'v2'`, decision D131):
+  one step on Agents' Folders heading in the folder tree (`v2-tree-folders`, itself the top-level drop
+  target), else Agents in the rail (`v2-nav-agents`) or the phone's Agents tab (`v2-tab-agents`);
+  `v2Route: '/agents'`. It says that a folder dragged onto another folder becomes its subfolder, onto
+  Folders goes to the top level, with its agents and subfolders; that ⋯ › Move to… (or `M`) and, on a
+  phone, the folder page's Move to… do the same; and which places are refused (`docs/v2.md` →
+  *Agents: folders*). The last of the chain ("(12 of 12)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

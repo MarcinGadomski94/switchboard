@@ -16,6 +16,8 @@ export interface AgentsPageApi {
   readonly peekAgent: (agent: AgentEntry) => void;
   readonly openMove: (agent: AgentEntry) => void;
   readonly openFolderDialog: (request: FolderDialogRequest) => void;
+  /** 2.4.16: a folder's Move to… (the folder picker). */
+  readonly openFolderMove: (folderId: string) => void;
   readonly agentMenu: (agent: AgentEntry) => MenuItem[];
   /** "Synced to Studio-PC." (empty when the layout is not shared). */
   readonly shareNote: string;
