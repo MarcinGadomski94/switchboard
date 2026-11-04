@@ -114,7 +114,7 @@ test('the footer grid shows the account\'s 5h and Week bars with their %, the re
   // The tooltip: each window's % and the time until its reset (1h48 / 74h12; a minute less if the page is slow), its pace
   // under it, then the model's weekly limit (Fable; Opus is 0 % and not active, so it is not listed).
   const title = (await line.getAttribute('title')) ?? '';
-  expect(title).toMatch(/^Default\n5h: 62% · resets in 1h4[78]\n {2}On pace: 62% of (64|64\.33|64\.67)% until \d\d:\d\d\nWeek: 18% · resets in 74h1[12]\n {2}On pace: 18% of 55\.8[3-6]% until \d\d:\d\d\nFable week: 93% · resets in 74h1[12]\nSettings → Accounts$/);
+  expect(title).toMatch(/^Default\n5h: 62% · resets in 1h4[78]\n {2}On pace: 62% of (64|64\.33|64\.67)% until (\d{1,2} [a-z]{3} )?\d\d:\d\d\nWeek: 18% · resets in 74h1[12]\n {2}On pace: 18% of 55\.8[3-6]% until (\d{1,2} [a-z]{3} )?\d\d:\d\d\nFable week: 93% · resets in 74h1[12]\nSettings → Accounts$/);
   // Each bar is 4 px, filled to the %.
   for (const [window, pct] of [
     ['session', 62],

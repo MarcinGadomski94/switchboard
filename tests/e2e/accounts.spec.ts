@@ -128,7 +128,7 @@ test('Settings → Accounts: add a profile, sign in through a new tab; a session
   const composer = page.getByTestId('chat-input');
   await composer.fill('second task');
   await composer.press('Enter');
-  await expect(view.getByTestId('chat-divider')).toHaveText(/^Switched account: Default → Private \(session limit, resets \d\d:\d\d\)$/, { timeout: 30_000 });
+  await expect(view.getByTestId('chat-divider')).toHaveText(/^Switched account: Default → Private \(session limit, resets (\d{1,2} [a-z]{3} )?\d\d:\d\d\)$/, { timeout: 30_000 });
   await expect(header.getByTestId('session-account-picker')).toHaveValue(/^(?!default-claude$).+/);
   expect((await sessions(page)).find((s) => s.id === id)?.profileName).toBe('Private');
   // It carries on there: the interrupted turn is picked up and answered (a Switchboard bubble, then a reply after the divider).

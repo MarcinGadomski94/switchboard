@@ -80,7 +80,7 @@ describe('D63 · automatic switching on a usage limit', () => {
     await until(async () => (await w.store.sessions.get(session.id))?.profileId === b.id || undefined, 'the switch to Private');
     // The divider carries the window and the reset; the interrupted turn is picked up on the new account.
     const divider = await until(async () => (await w.store.events.list(session.id)).find((e) => e.label.startsWith('Switched account:')), 'the divider');
-    expect(divider.label).toMatch(/^Switched account: Default → Private \(session limit, resets \d\d:\d\d\)$/);
+    expect(divider.label).toMatch(/^Switched account: Default → Private \(session limit, resets (\d{1,2} [a-z]{3} )?\d\d:\d\d\)$/);
     await until(async () => ((await turnsOf(w, session.id)).length >= 3 ? true : undefined), 'the continued turn');
     const spawns = await claudeSpawns(w);
     expect(spawns.at(-1)?.env?.['CLAUDE_CONFIG_DIR']).toBe(b.dir);
