@@ -1,4 +1,4 @@
-import { mkdir, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TakeoverGit } from '../../../src/server/takeover/git.ts';
@@ -107,16 +107,16 @@ describe('TakeoverGit.removePlannedWorktree: only what the restore made is undon
     const git = new TakeoverGit({ log: () => undefined, env: serviceEnv() });
     const worktree = path.join(tmp, 'code', 'app-wt-made');
     await gitIn(tmp, clone, 'worktree', 'add', '-q', '-b', 'feature/made', worktree);
-    expect(await git.removePlannedWorktree(clone, worktree)).toEqual({ outcome: 'removed' });
+    expect(await git.removePlannedWorktree(clone, worktree, true)).toEqual({ outcome: 'removed' });
     expect(await stat(worktree).catch(() => null)).toBeNull();
   });
 
   it('a worktree that was never made is nothing to undo', async () => {
     const { clone } = await bareWithClone();
     const git = new TakeoverGit({ log: () => undefined, env: serviceEnv() });
-    expect(await git.removePlannedWorktree(clone, path.join(tmp, 'code', 'app-wt-never'))).toEqual({ outcome: 'not-created' });
+    expect(await git.removePlannedWorktree(clone, path.join(tmp, 'code', 'app-wt-never'), false)).toEqual({ outcome: 'not-created' });
     // Its repo was never cloned either: still nothing to undo.
-    expect(await git.removePlannedWorktree(path.join(tmp, 'code', 'not-cloned'), path.join(tmp, 'code', 'not-cloned-wt-x'))).toEqual({ outcome: 'not-created' });
+    expect(await git.removePlannedWorktree(path.join(tmp, 'code', 'not-cloned'), path.join(tmp, 'code', 'not-cloned-wt-x'), false)).toEqual({ outcome: 'not-created' });
   });
 
   it('an empty folder at the planned path is removed; a non-empty folder that is not a worktree is reported, never deleted', async () => {
@@ -124,13 +124,42 @@ describe('TakeoverGit.removePlannedWorktree: only what the restore made is undon
     const git = new TakeoverGit({ log: () => undefined, env: serviceEnv() });
     const empty = path.join(tmp, 'code', 'app-wt-empty');
     await mkdir(empty, { recursive: true });
-    expect(await git.removePlannedWorktree(clone, empty)).toEqual({ outcome: 'removed-empty-folder' });
+    expect(await git.removePlannedWorktree(clone, empty, false)).toEqual({ outcome: 'removed-empty-folder' });
     expect(await stat(empty).catch(() => null)).toBeNull();
     const full = path.join(tmp, 'code', 'app-wt-full');
     await mkdir(full, { recursive: true });
     await writeFile(path.join(full, 'notes.txt'), 'mine\n');
-    const answer = await git.removePlannedWorktree(clone, full);
+    const answer = await git.removePlannedWorktree(clone, full, false);
     expect(answer).toEqual({ outcome: 'left', note: `${full} was left behind: it is not a worktree of ${clone} and is not empty, so it was not deleted` });
     expect(await readdir(full)).toEqual(['notes.txt']);
+  });
+
+  it('never runs `git worktree prune`: another worktree\'s stale entry (an unplugged drive) survives the undo; a stale entry at the path is removed alone', async () => {
+    const { clone } = await bareWithClone();
+    const log: string[] = [];
+    const git = new TakeoverGit({ log: (line) => log.push(line), env: serviceEnv() });
+    const unplugged = path.join(tmp, 'code', 'app-wt-on-a-drive');
+    await gitIn(tmp, clone, 'worktree', 'add', '-q', '-b', 'feature/drive', unplugged);
+    await rm(unplugged, { recursive: true, force: true });
+    const planned = path.join(tmp, 'code', 'app-wt-planned');
+    await gitIn(tmp, clone, 'worktree', 'add', '-q', '-b', 'feature/planned', planned);
+    await rm(planned, { recursive: true, force: true });
+    expect(await git.removePlannedWorktree(clone, planned, true)).toEqual({ outcome: 'removed' });
+    expect(await git.removePlannedWorktree(clone, path.join(tmp, 'code', 'app-wt-never'), false)).toEqual({ outcome: 'not-created' });
+    const list = await gitIn(tmp, clone, 'worktree', 'list', '--porcelain');
+    expect(list).toContain('app-wt-on-a-drive');
+    expect(list).not.toContain('app-wt-planned');
+    expect(log.some((line) => / worktree prune/.test(line))).toBe(false);
+  });
+
+  it('a live worktree at the path that this restore did not make is never forced: its files stay', async () => {
+    const { clone } = await bareWithClone();
+    const git = new TakeoverGit({ log: () => undefined, env: serviceEnv() });
+    const theirs = path.join(tmp, 'code', 'app-wt-theirs');
+    await gitIn(tmp, clone, 'worktree', 'add', '-q', '-b', 'feature/theirs', theirs);
+    await writeFile(path.join(theirs, 'work.txt'), 'uncommitted\n');
+    expect(await git.removePlannedWorktree(clone, theirs, false)).toEqual({ outcome: 'left', note: `${theirs} was left as it is: it is a worktree of ${clone} this move did not make` });
+    expect(await readdir(theirs)).toContain('work.txt');
+    expect(await gitIn(tmp, clone, 'worktree', 'list', '--porcelain')).toContain('app-wt-theirs');
   });
 });

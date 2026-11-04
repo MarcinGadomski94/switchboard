@@ -1174,6 +1174,7 @@ export class TakeoverService {
         key: resolution.key,
         path: resolution.matchedPath ?? (resolution.cloneTo as string),
         worktreePath: resolution.worktreePath,
+        worktreeMade: false,
         branch: repo.branch,
         cloned: false,
         addedFolderId: null,
@@ -1222,6 +1223,7 @@ export class TakeoverService {
           await git.run(main, ['branch', '-f', repo.branch, tip]);
           await git.run(main, ['worktree', 'add', '--quiet', resolution.worktreePath, repo.branch]);
         }
+        applied.worktreeMade = true;
         if (captured.wipSha) await git.run(resolution.worktreePath, ['reset', '--quiet', '--mixed', captured.baseSha]);
         const record = await this.#store.worktrees.create({
           repo: resolution.name,
@@ -1306,8 +1308,8 @@ export class TakeoverService {
       if (applied.privateRef) await git.try(applied.path, ['update-ref', '-d', applied.privateRef]);
       if (applied.remoteName && applied.tempBranch) await git.forgetTrackingRef(applied.path, applied.remoteName, applied.tempBranch);
       if (applied.worktreePath) {
-        // A worktree the restore never made (it failed before `worktree add`) is not a leftover.
-        const removed = await git.removePlannedWorktree(applied.path, applied.worktreePath);
+        // A worktree the restore never made (it failed before `worktree add`) is not a leftover; only one it made is ever forced.
+        const removed = await git.removePlannedWorktree(applied.path, applied.worktreePath, applied.worktreeMade === true);
         if (removed.outcome === 'left') notes.push(removed.note);
       } else if (applied.previousHead !== null) {
         await attempt(`could not restore ${applied.path}`, async () => {

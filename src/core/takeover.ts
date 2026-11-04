@@ -417,6 +417,8 @@ export interface AppliedRepo {
   readonly key: string;
   readonly path: string;
   readonly worktreePath: string | null;
+  /** This restore's `git worktree add` succeeded (the undo may remove it with `--force`: it holds only the restored work). */
+  readonly worktreeMade: boolean;
   readonly branch: string;
   readonly cloned: boolean;
   readonly addedFolderId: string | null;
@@ -773,7 +775,7 @@ export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
  * (`docs/peers.md` → *A worktree folder in the way*):
  * - `free` — nothing there;
  * - `empty-folder` — an empty folder that is not a worktree (the restore removes it, then creates the worktree);
- * - `stale-entry` — git still lists a worktree there whose folder is gone or empty (prunable; the restore runs `git worktree prune` first);
+ * - `stale-entry` — git still lists a worktree there whose folder is gone or empty (prunable; the restore removes that one entry first, never `git worktree prune`);
  * - `worktree` — a live worktree of the repo (`locked`: a locked entry, also when its folder is gone);
  * - `folder` / `file` — something that is not a worktree, never deleted;
  * - `unreadable` — this machine could not look (the error), never guessed free.

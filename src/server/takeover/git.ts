@@ -306,13 +306,6 @@ export class TakeoverGit {
     return sha;
   }
 
-  /** The paths of every worktree of the repo (its main checkout included); `null` when git cannot list them. */
-  async #worktreePaths(repoPath: string): Promise<string[] | null> {
-    const listed = await this.try(repoPath, ['worktree', 'list', '--porcelain']);
-    if (!listed.ok) return null;
-    return listed.out.split('\n').filter((line) => line.startsWith('worktree ')).map((line) => line.slice('worktree '.length).trim());
-  }
-
   /** The repo's worktrees (`git worktree list --porcelain`, the main checkout first); `null` when git cannot list them. */
   async worktreeEntries(repoPath: string): Promise<WorktreeEntry[] | null> {
     const listed = await this.try(repoPath, ['worktree', 'list', '--porcelain']);
@@ -393,28 +386,48 @@ export class TakeoverGit {
 
   /**
    * Undoes a worktree the take-over planned at `worktreePath` (the target's undo,
-   * `docs/peers.md` → *Rollback*): a registered worktree is removed (`git worktree
-   * remove --force`); a path that is **not** a worktree of the repo was never made
-   * (the restore failed before), so there is nothing to undo, except an **empty**
-   * folder a half-made `worktree add` may have left, which is removed. A non-empty
-   * folder that is not a worktree is never deleted: it is reported as a leftover.
+   * `docs/peers.md` → *Rollback*). `made`: this restore's `git worktree add`
+   * succeeded, so the worktree holds only the restored work and is removed with
+   * `git worktree remove --force`. Anything else is never forced: a worktree this
+   * restore did not make is left as it is; a stale entry at the path (its folder
+   * gone) is removed with `git worktree remove <path>`, that entry only and never
+   * `git worktree prune` (developer 2026-10-28: prune would drop other worktrees'
+   * entries too); a path that is not a worktree was never made, so there is nothing
+   * to undo, except an **empty** folder a half-made `worktree add` may have left,
+   * which is removed. A non-empty folder that is not a worktree is never deleted:
+   * it is reported as a leftover. Whether the path is a worktree is read from
+   * `git worktree list`, not from git's possibly translated messages.
    */
-  async removePlannedWorktree(repoPath: string, worktreePath: string): Promise<{ readonly outcome: 'removed' | 'not-created' | 'removed-empty-folder' } | { readonly outcome: 'left'; readonly note: string }> {
-    const removal = await this.try(repoPath, ['worktree', 'remove', '--force', worktreePath]);
-    if (removal.ok) return { outcome: 'removed' };
-    // Git says "… is not a working tree" (in the service's language): decided from the repo's list of worktrees, not the text.
-    await this.try(repoPath, ['worktree', 'prune']);
+  async removePlannedWorktree(repoPath: string, worktreePath: string, made: boolean): Promise<{ readonly outcome: 'removed' | 'not-created' | 'removed-empty-folder' } | { readonly outcome: 'left'; readonly note: string }> {
+    let forced: string | null = null;
+    if (made) {
+      const removal = await this.try(repoPath, ['worktree', 'remove', '--force', worktreePath]);
+      if (removal.ok) return { outcome: 'removed' };
+      forced = removal.error;
+    }
     const wanted = await comparablePath(worktreePath);
     // A repo that is not there (its clone failed) has no worktrees at all.
-    const registered = (await this.#worktreePaths(repoPath)) ?? ((await pathExists(repoPath)) ? null : []);
-    if (registered === null || (await Promise.all(registered.map((entry) => comparablePath(entry)))).includes(wanted)) {
-      return { outcome: 'left', note: `could not remove the worktree ${worktreePath}: git worktree remove --force failed: ${removal.error}` };
+    const entries = (await this.worktreeEntries(repoPath)) ?? ((await pathExists(repoPath)) ? null : []);
+    if (entries === null) return { outcome: 'left', note: `could not remove the worktree ${worktreePath}: git could not list the worktrees of ${repoPath}${forced ? ` (git worktree remove --force failed: ${forced})` : ''}` };
+    let registered: WorktreeEntry | null = null;
+    for (const entry of entries) if ((await comparablePath(entry.path)) === wanted) registered = entry;
+    if (registered !== null) {
+      if (!(await isStaleGone(registered))) {
+        return {
+          outcome: 'left',
+          note: forced !== null ? `could not remove the worktree ${worktreePath}: git worktree remove --force failed: ${forced}` : `${worktreePath} was left as it is: it is a worktree of ${repoPath} this move did not make`,
+        };
+      }
+      // Its folder is gone: only git's entry is left; that one entry goes (no --force, no prune).
+      const stale = await this.try(repoPath, ['worktree', 'remove', registered.path]);
+      if (!stale.ok) return { outcome: 'left', note: `could not remove git's entry of the worktree ${worktreePath}: ${stale.error}` };
+      return made ? { outcome: 'removed' } : { outcome: 'not-created' };
     }
-    // Never made: nothing to undo, except an empty folder a half-made `worktree add` left; anything else is left alone.
-    const entries = await readdir(worktreePath).catch((error: NodeJS.ErrnoException) => (error.code === 'ENOENT' ? null : error));
-    if (entries === null) return { outcome: 'not-created' };
-    if (entries instanceof Error) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and could not be read (${entries.message})` };
-    if (entries.length > 0) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and is not empty, so it was not deleted` };
+    // Not a worktree: nothing to undo, except an empty folder a half-made `worktree add` left; anything else is left alone.
+    const inside = await readdir(worktreePath).catch((error: NodeJS.ErrnoException) => (error.code === 'ENOENT' ? null : error));
+    if (inside === null) return made ? { outcome: 'removed' } : { outcome: 'not-created' };
+    if (inside instanceof Error) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and could not be read (${inside.message})` };
+    if (inside.length > 0) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and is not empty, so it was not deleted` };
     try {
       await rmdir(worktreePath);
       return { outcome: 'removed-empty-folder' };
