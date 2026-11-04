@@ -15,8 +15,10 @@ import {
   TAKEOVER_STEPS,
   TAKEOVER_STEP_LABELS,
   placementKey,
+  placementToRemember,
   rollbackActions,
 } from '../../core/takeover.ts';
+import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem, filesToSend } from '../../core/workspace-move.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
 import { type ChunkAnswer, type OpAnswer, type ResumeBody, TakeoverError, type TakeoverService } from './service.ts';
@@ -42,13 +44,17 @@ export interface TakeoverEndpoint {
   stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>>;
   files(opId: string): Promise<OpAnswer<{ readonly kind: string; readonly files: readonly ConversationFile[] }>>;
   readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer>;
+  /** D152: the workspace files this take-over sends (re-read and checked on the source). */
+  workspaceFiles(opId: string, names: readonly string[]): Promise<OpAnswer<{ readonly files: ReadonlyArray<{ readonly name: string; readonly size: number; readonly sha256: string | null; readonly secret: boolean }> }>>;
+  readWorkspaceChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer>;
+  receiveWorkspaceChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<unknown>;
   finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
   plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
-  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }> }>>;
+  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null }>>;
   abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
   resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>>;
   closeTarget(opId: string): Promise<void>;
@@ -64,6 +70,9 @@ export function localEndpoint(service: TakeoverService): TakeoverEndpoint {
     stopTerminal: (opId) => service.stopTerminal(opId),
     files: (opId) => service.files(opId),
     readChunk: (opId, name, offset) => service.readChunk(opId, name, offset),
+    workspaceFiles: (opId, names) => service.workspaceFiles(opId, names),
+    readWorkspaceChunk: (opId, name, offset) => service.readWorkspaceChunk(opId, name, offset),
+    receiveWorkspaceChunk: (input) => service.receiveWorkspaceChunk(input),
     finish: (opId, move, stillThere) => service.finish(opId, move, stillThere),
     rollbackSource: (opId) => service.rollbackSource(opId),
     plan: (body) => service.plan(body),
@@ -94,6 +103,9 @@ export function peerEndpoint(peers: PeerService, machineId: string): TakeoverEnd
     stopTerminal: (opId) => call('POST', '/source/stop-terminal', { opId }),
     files: (opId) => call('POST', '/source/files', { opId }),
     readChunk: (opId, name, offset) => call('POST', '/source/chunk', { opId, name, offset }),
+    workspaceFiles: (opId, names) => call('POST', '/source/workspace-files', { opId, names }),
+    readWorkspaceChunk: (opId, name, offset) => call('POST', '/source/workspace-chunk', { opId, name, offset }),
+    receiveWorkspaceChunk: (input) => call('POST', '/target/workspace-chunk', input),
     finish: (opId, move, stillThere) => call('POST', '/source/finish', { opId, move, stillThere }),
     rollbackSource: (opId) => call('POST', '/source/rollback', { opId }),
     plan: (body) => call('POST', '/target/plan', body),
@@ -121,6 +133,8 @@ export interface TakeoverRequest {
   readonly savedFolders?: boolean;
   /** The developer confirmed that a hooked terminal's `claude` is stopped. */
   readonly confirmStopTerminal?: boolean;
+  /** D152: the workspace's own files to copy (absent: none, except the root AGENTS.md of a workspace root the move creates). */
+  readonly workspaceFiles?: WorkspaceFileChoice;
 }
 
 /** Both ends of a take-over. */
@@ -152,6 +166,7 @@ interface RunState {
   leftovers: Array<Leftover & { machineId: string | null }>;
   log: string[];
   sessionKey: string;
+  workspaceFiles: WorkspaceFilesResult | null;
 }
 
 /** The initiating machine's take-over runner (`docs/peers.md` → *Taking a session over*). */
@@ -205,6 +220,9 @@ export class TakeoverRunner {
     }
     const target = (await ends.target.plan({ source, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}) })).result;
     const blockers = [...source.blockers, ...target.blockers];
+    // D152: the ticked workspace files (a secret needs the confirmation, the caps hold).
+    const files = fileChoiceProblem(source.workspaceFiles, filesToSend(source.workspaceFiles, request.workspaceFiles, target.workspaceFiles, createsRoot(target)));
+    if (files !== null) blockers.push(files);
     return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered };
   }
 
@@ -233,6 +251,7 @@ export class TakeoverRunner {
       leftovers: [],
       log: [],
       sessionKey: request.sessionId,
+      workspaceFiles: null,
     };
     this.#runs.set(run.id, run);
     while (this.#runs.size > 20) {
@@ -261,6 +280,7 @@ export class TakeoverRunner {
       result: run.result,
       leftovers: run.leftovers.map((entry) => ({ ...entry })),
       log: [...run.log],
+      workspaceFiles: run.workspaceFiles,
     };
   }
 
@@ -294,6 +314,10 @@ export class TakeoverRunner {
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
+      // D152: the workspace files to send (new on the target; the root AGENTS.md of a workspace the move creates).
+      const sending = filesToSend(sourceInfo.workspaceFiles, request.workspaceFiles, plan.workspaceFiles, createsRoot(plan));
+      const filesProblem = fileChoiceProblem(sourceInfo.workspaceFiles, sending);
+      if (filesProblem !== null) throw new TakeoverError(409, 'blocked', filesProblem);
       set('checks', 'done', `${sourceInfo.repos.length} repo${sourceInfo.repos.length === 1 ? '' : 's'}, ${plan.cli.label} on ${plan.account.name}`);
       done.push('checks');
       // 2 · stop the session where it runs (a hooked terminal: after the capture).
@@ -337,14 +361,45 @@ export class TakeoverRunner {
         }
         set('transfer', 'running', `${Math.round(sent / 1024)} of ${Math.round(total / 1024)} KB`);
       }
-      set('transfer', 'done', `${files.length} file${files.length === 1 ? '' : 's'}, ${Math.round(total / 1024)} KB`);
+      // D152: the workspace's own files, over the same paired link (staged and checked on the target).
+      let workspaceCount = 0;
+      if (sending.copy.length > 0) {
+        const listed = (await source.workspaceFiles(opId, sending.copy)).result.files;
+        for (const file of listed) {
+          if (file.secret && sending.confirmSecrets !== true) throw new TakeoverError(409, 'blocked', `${file.name} looks like it holds secrets: confirm copying it first`);
+          let offset = 0;
+          for (;;) {
+            const chunk = await source.readWorkspaceChunk(opId, file.name, offset);
+            await target.receiveWorkspaceChunk({ opId, name: file.name, size: file.size, sha256: file.sha256 ?? '', offset, data: chunk.data, secret: file.secret, confirmed: sending.confirmSecrets === true });
+            offset += chunk.length;
+            if (chunk.eof || chunk.length === 0) break;
+          }
+          workspaceCount++;
+        }
+      }
+      set('transfer', 'done', `${files.length} file${files.length === 1 ? '' : 's'}, ${Math.round(total / 1024)} KB${workspaceCount > 0 ? `; ${workspaceCount} workspace file${workspaceCount === 1 ? '' : 's'}` : ''}`);
       done.push('transfer');
       // 5 · the working tree on the target.
       failedAt = 'apply';
       set('apply', 'running');
       const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), captured });
       logOf(plan.machine.name, applied.log);
-      set('apply', 'done', `${applied.result.applied.length} repo${applied.result.applied.length === 1 ? '' : 's'} restored`);
+      const placed = applied.result.workspaceFiles ?? null;
+      if (placed || (request.workspaceFiles && request.workspaceFiles.copy.length > 0)) {
+        // What was skipped up front (the same file, a conflict on the target) is reported with what the apply did.
+        const skippedSame = (plan.workspaceFiles ?? []).filter((entry) => entry.state === 'same' && request.workspaceFiles?.copy.includes(entry.name)).map((entry) => entry.name);
+        const skippedConflicts = (plan.workspaceFiles ?? []).filter((entry) => entry.state === 'conflict' && request.workspaceFiles?.copy.includes(entry.name)).map((entry) => entry.name);
+        const refusedUpFront = (plan.workspaceFiles ?? []).filter((entry) => entry.state === 'refused' && request.workspaceFiles?.copy.includes(entry.name)).map((entry) => ({ name: entry.name, reason: entry.reason ?? 'refused' }));
+        run.workspaceFiles = {
+          copied: placed?.copied ?? [],
+          same: [...skippedSame, ...(placed?.same ?? [])],
+          conflicts: [...skippedConflicts, ...(placed?.conflicts ?? [])],
+          refused: [...refusedUpFront, ...(placed?.refused ?? [])],
+          secret: placed?.secret ?? 0,
+        };
+      }
+      const filesNote = run.workspaceFiles ? `; ${run.workspaceFiles.copied.length} workspace file${run.workspaceFiles.copied.length === 1 ? '' : 's'} copied${run.workspaceFiles.conflicts.length > 0 ? `, ${run.workspaceFiles.conflicts.length} skipped (a different file is there)` : ''}` : '';
+      set('apply', 'done', `${applied.result.applied.length} repo${applied.result.applied.length === 1 ? '' : 's'} restored${filesNote}`);
       done.push('apply');
       const stillThere = applied.result.applied.filter((repo) => !repo.tempDeleted).map((repo) => repo.key);
       // 6 · resume on the target.
@@ -358,7 +413,8 @@ export class TakeoverRunner {
       run.result = { sessionId: key, machineName: targetMachine.name, machineId: targetMachine.id, local: ends.target.machineId === null };
       set('resume', 'done', resumed.result.note);
       // D110: the folders this move used are offered the next time this folder moves to that machine.
-      if (request.placement) await this.#service.rememberPlacement(await this.#placementKey(ends, sourceInfo), request.placement).catch((error: unknown) => this.#onError(error));
+      // D152: a workspace root it created is remembered as an existing folder, a cloned repo is found there next time.
+      if (request.placement) await this.#service.rememberPlacement(await this.#placementKey(ends, sourceInfo), placementToRemember(request.placement, plan.workspaceRoot?.path ?? null)).catch((error: unknown) => this.#onError(error));
       // 7 · the old session is marked moved; the temp branches are cleaned up. Failures from here keep the take-over.
       set('finish', 'running');
       try {
@@ -430,6 +486,12 @@ export class TakeoverRunner {
     });
     run.rolledBack = clean;
   }
+}
+
+/** D152: the move creates the workspace root (a new folder, or one that is not a workspace yet). */
+function createsRoot(plan: Pick<TargetPlan, 'workspaceRoot'>): boolean {
+  const root = plan.workspaceRoot ?? null;
+  return root !== null && root.ok && !root.workspace;
 }
 
 function appendLog(run: RunState, who: string, lines: readonly string[]): void {

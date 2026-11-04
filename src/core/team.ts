@@ -541,6 +541,65 @@ export interface TeamMoveRun {
   readonly rolledBack?: boolean | null;
 }
 
+/**
+ * D152 (`docs/team.md` → *Moving a whole crew*): one teammate's part of a crew move,
+ * as the check and the run report it.
+ */
+export interface CrewMoveMember {
+  readonly memberId: string;
+  readonly name: string;
+  /** The computer it runs on now. */
+  readonly machineId: string;
+  /**
+   * `skipped` = it runs on the target already (or is archived); the check's `ready` /
+   * `blocked`; the run's `waiting` → `moving` → `moved` / `failed`, and `not-moved`
+   * for the ones after a failure (never started).
+   */
+  readonly state: 'skipped' | 'ready' | 'blocked' | 'waiting' | 'moving' | 'moved' | 'failed' | 'not-moved';
+  /** Everything that stops it (the take-over's checks and Team's, e.g. a running turn). */
+  readonly blockers: readonly string[];
+  /** Why it is skipped, or the failure's reason; `null` otherwise. */
+  readonly note: string | null;
+  /** The check's take-over preview (`TakeoverPreview`; the dialog's per-repo choices and files), `null` when none. */
+  readonly preview?: unknown;
+  /** The member move run while it moves (`GET /api/team/moves/{id}`). */
+  readonly moveRunId?: string | null;
+}
+
+/** D152 `POST /api/team/teams/{teamId}/move/check`: every teammate checked before anything moves. */
+export interface CrewMoveCheck {
+  readonly teamId: string;
+  readonly targetMachineId: string;
+  /** Nothing blocks and at least one teammate moves. */
+  readonly ok: boolean;
+  /** In the crew's order. */
+  readonly members: readonly CrewMoveMember[];
+}
+
+/** D152 `POST /api/team/teams/{teamId}/move` → 202, `GET /api/team/crew-moves/{runId}`: the teammates move one by one; a failure stops the rest (the moved ones stay moved). */
+export interface CrewMoveRun {
+  readonly id: string;
+  readonly teamId: string;
+  readonly targetMachineId: string;
+  readonly state: 'running' | 'done' | 'failed';
+  readonly members: readonly CrewMoveMember[];
+  /** The failure in one line ("Developer could not move: …; 2 moved, 1 not moved"); `null` unless `failed`. */
+  readonly error: string | null;
+}
+
+/** The crew move's one-line outcome: who moved, who did not. */
+export function crewMoveSummary(run: Pick<CrewMoveRun, 'state' | 'members'>, targetName: string): string {
+  const moved = run.members.filter((member) => member.state === 'moved').map((member) => member.name);
+  const failed = run.members.filter((member) => member.state === 'failed').map((member) => member.name);
+  const notMoved = run.members.filter((member) => member.state === 'not-moved').map((member) => member.name);
+  if (run.state === 'running') return `Moving the crew to ${targetName}… ${moved.length} moved so far.`;
+  if (run.state === 'done') return moved.length === 0 ? `Nothing to move: every teammate runs on ${targetName} already.` : `Moved ${moved.join(', ')} to ${targetName}.`;
+  const parts = [failed.length > 0 ? `${failed.join(', ')} could not move` : 'The move stopped'];
+  if (moved.length > 0) parts.push(`moved: ${moved.join(', ')} (they stay on ${targetName})`);
+  if (notMoved.length > 0) parts.push(`not moved: ${notMoved.join(', ')}`);
+  return `${parts.join('; ')}.`;
+}
+
 /** `teamChanged` (`/hub`): something of the team changed; the page reads `GET /api/team` again. */
 export interface TeamChanged {
   readonly teamId: string;

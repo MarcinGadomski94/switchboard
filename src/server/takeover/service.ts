@@ -64,6 +64,9 @@ import { type CheckoutFacts, LocateRefusal, allowedPlaces, checkoutFacts, findCh
 import type { TodoService } from '../todos/service.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
+import { type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
+import { isWorkingTreeTop } from '../solutions/checkout.ts';
+import { type StagedWorkspaceFile, checkWorkspaceChunk, checkWorkspaceRoot, inspectStaged, listWorkspaceFiles, mkdirTracked, placeWorkspaceFiles, sourceWorkspaceFile, undoPlaced, workspaceFileStates, writeStagedChunk } from './workspace.ts';
 
 /** A refusal of a take-over route, sent as `{ error, message }`. */
 export class TakeoverError extends Error {
@@ -108,6 +111,8 @@ export interface TakeoverServiceOptions {
   readonly self: () => Promise<{ readonly id: string; readonly name: string }>;
   readonly env?: NodeJS.ProcessEnv;
   readonly onError?: (error: unknown) => void;
+  /** D152: the audit line of a workspace-file copy (no names, no contents); default: the service log. */
+  readonly onAudit?: (line: string) => void;
 }
 
 /** What the source keeps of a take-over in progress. */
@@ -122,6 +127,8 @@ interface SourceOp {
   readonly startedAt: number;
   /** name → absolute path (real files) or bytes (generated). */
   files: Map<string, { readonly abs: string } | { readonly bytes: Buffer }>;
+  /** D152: the workspace files this take-over sends (name → absolute path on this machine). */
+  workspace: Map<string, string>;
   finished: boolean;
 }
 
@@ -137,6 +144,12 @@ interface TargetOp {
   sessionId: string | null;
   /** D110: the chosen folder this op saved (a workspace root or a checkout that was not saved yet); removed by the undo. */
   addedFolderId: string | null;
+  /** D152: the workspace files staged here (checked, verified), and their bytes. */
+  staged: Map<string, StagedWorkspaceFile>;
+  stagedBytes: number;
+  /** D152: files this op wrote under the workspace root, and folders it created (the new root, a clone's parents); the undo removes them. */
+  placedFiles: string[];
+  createdDirs: string[];
 }
 
 /** One transferred chunk. */
@@ -231,6 +244,7 @@ export class TakeoverService {
   readonly #self: () => Promise<{ readonly id: string; readonly name: string }>;
   readonly #env: NodeJS.ProcessEnv;
   readonly #onError: (error: unknown) => void;
+  readonly #onAudit: (line: string) => void;
   readonly #sources = new Map<string, SourceOp>();
   readonly #activeSessions = new Set<string>();
   readonly #targets = new Map<string, TargetOp>();
@@ -253,6 +267,7 @@ export class TakeoverService {
     this.#self = options.self;
     this.#env = options.env ?? process.env;
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
+    this.#onAudit = options.onAudit ?? ((line) => console.info(`switchboard take-over [audit]: ${line}`));
   }
 
   #git(lines: string[]): TakeoverGit {
@@ -320,7 +335,27 @@ export class TakeoverService {
     } else {
       blockers.push(`${display} has no working folder`);
     }
+    // D152: a workspace session also carries the repos its history shows it works in (the files it edited, its cwd's repo), not only the solutions it named.
+    if (record.rootKind === 'workspace' && folderRef) {
+      const set = await this.#worktrees.repos.of(record).catch(() => null);
+      const covered = new Set<string>();
+      for (const repo of repos) {
+        covered.add(await realpath(repo.path).catch(() => repo.path));
+        if (repo.kind === 'main') covered.add(await realpath(repo.mainPath).catch(() => repo.mainPath));
+      }
+      for (const found of set?.inPlace ?? []) {
+        const top = await realpath(found.top).catch(() => found.top);
+        if (covered.has(top)) continue;
+        covered.add(top);
+        const main = await git.mainCheckout(top);
+        const mainReal = main === null ? null : await realpath(main).catch(() => main);
+        await describe({ name: found.name, kind: mainReal !== null && mainReal !== top ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null });
+      }
+    }
     if (repos.length === 0 && blockers.length === 0) blockers.push(`${display} works in no git repository: there is nothing to carry the files through`);
+    // D152: the workspace's own files (a workspace root that is no git checkout).
+    let workspaceFiles: WorkspaceFilesListing | null = null;
+    if (record.rootKind === 'workspace' && record.root && !(await isWorkingTreeTop(record.root))) workspaceFiles = await listWorkspaceFiles(record.root).catch(() => null);
     // The conversation.
     const conversation = await this.#conversationOf(record, blockers);
     const queued = (await this.#store.pendingMessages.pending(sessionId)).map((message) => message.text);
@@ -375,6 +410,7 @@ export class TakeoverService {
         })),
         // D94: its Switchboard loops travel with it (they fire on the target from then on).
         ...(this.#loops ? { loops: await this.#loops.portable(sessionId) } : {}),
+        workspaceFiles,
         blockers,
       },
       log,
@@ -449,6 +485,7 @@ export class TakeoverService {
       terminalStopped: false,
       startedAt: Date.now(),
       files: new Map(),
+      workspace: new Map(),
       finished: false,
     };
     this.#activeSessions.add(sessionId);
@@ -590,6 +627,46 @@ export class TakeoverService {
     const handle: FileHandle = await open(entry.abs, 'r');
     try {
       const size = (await handle.stat()).size;
+      const buffer = Buffer.alloc(Math.min(TAKEOVER_CHUNK_BYTES, Math.max(0, size - offset)));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+      return { name, size, offset, length: bytesRead, data: buffer.subarray(0, bytesRead).toString('base64'), eof: offset + bytesRead >= size };
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /**
+   * D152 (source): the workspace files this take-over sends, read again now (the
+   * preview may be old): each must still be listed and copyable; its path is kept
+   * for the chunks. Answers each one's size, checksum and secret mark.
+   */
+  async workspaceFiles(opId: string, names: readonly string[]): Promise<OpAnswer<{ readonly files: ReadonlyArray<Pick<WorkspaceFileInfo, 'name' | 'size' | 'sha256'> & { readonly secret: boolean }> }>> {
+    const op = this.#source(opId);
+    const record = await this.#store.sessions.get(op.sessionId);
+    if (!record || record.rootKind !== 'workspace' || !record.root) throw new TakeoverError(409, 'not-workspace', 'this session has no workspace folder');
+    const listing = await listWorkspaceFiles(record.root);
+    const out: Array<Pick<WorkspaceFileInfo, 'name' | 'size' | 'sha256'> & { readonly secret: boolean }> = [];
+    op.workspace.clear();
+    for (const name of new Set(names)) {
+      const file = listing.files.find((entry) => entry.name === name);
+      if (!file) throw new TakeoverError(404, 'unknown-file', `${name} is not one of the workspace's files here`);
+      if (file.refused !== null || file.sha256 === null) throw new TakeoverError(413, 'too-large', `${name} cannot be copied: ${file.refused ?? 'unreadable'}`);
+      op.workspace.set(name, await sourceWorkspaceFile(listing.root, name));
+      out.push({ name, size: file.size, sha256: file.sha256, secret: file.secret !== null });
+    }
+    return { result: { files: out }, log: [] };
+  }
+
+  /** D152 (source): one chunk of a workspace file {@link workspaceFiles} listed. */
+  async readWorkspaceChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
+    const op = this.#source(opId);
+    const abs = op.workspace.get(name);
+    if (!abs) throw new TakeoverError(404, 'unknown-file', `${name} is not part of this take-over`);
+    if (!Number.isInteger(offset) || offset < 0) throw new TakeoverError(422, 'invalid', 'offset must be a whole number of bytes');
+    const handle: FileHandle = await open(abs, 'r');
+    try {
+      const size = (await handle.stat()).size;
+      if (size > WORKSPACE_FILE_MAX_BYTES) throw new TakeoverError(413, 'too-large', `${name} grew over the limit`);
       const buffer = Buffer.alloc(Math.min(TAKEOVER_CHUNK_BYTES, Math.max(0, size - offset)));
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
       return { name, size, offset, length: bytesRead, data: buffer.subarray(0, bytesRead).toString('base64'), eof: offset + bytesRead >= size };
@@ -769,7 +846,7 @@ export class TakeoverService {
    * named like it without that remote is only a hint). One match (or the
    * developer's pick among several) is the candidate the plan uses.
    */
-  async #locate(repos: readonly SourceRepo[], placement: TargetPlacement, sourceFolder: string | null, git: TakeoverGit): Promise<{
+  async #locate(repos: readonly SourceRepo[], placement: TargetPlacement, sourceFolder: string | null, git: TakeoverGit, newRoot: WorkspaceRootCheck | null = null): Promise<{
     readonly roots: string[];
     readonly problems: string[];
     readonly perRepo: Array<{ readonly matches: CheckoutFacts[]; readonly hints: Array<{ path: string; remote: string | null }>; readonly state: RepoCheck['state']; readonly path: string | null }>;
@@ -790,7 +867,9 @@ export class TakeoverService {
         problems.push(error instanceof Error ? error.message : String(error));
       }
     }
-    if (placement.roots.length === 0 && Object.keys(placement.repoPaths ?? {}).length === 0) problems.push('choose at least one folder on this machine');
+    // D152: a workspace root the developer creates is searched too once it exists (an earlier move made it, or it was empty).
+    if (newRoot?.ok && newRoot.exists && !roots.includes(newRoot.path)) roots.unshift(newRoot.path);
+    if (placement.roots.length === 0 && Object.keys(placement.repoPaths ?? {}).length === 0 && !placement.newWorkspace) problems.push('choose at least one folder on this machine');
     // Every checkout under the roots, then the overrides.
     const facts = new Map<string, CheckoutFacts>();
     for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir)) facts.set(dir, await checkoutFacts(dir, git));
@@ -829,7 +908,8 @@ export class TakeoverService {
       const hints = all
         .filter((entry) => !found.includes(entry) && path.basename(entry.path).toLowerCase() === repo.name.toLowerCase())
         .map((entry) => ({ path: entry.path, remote: entry.remotes[0]?.url ?? null }));
-      const judged = checkStateOf(found, chosen !== null && found.includes(overrideFacts as CheckoutFacts) ? chosen : null, repo.branch);
+      // D152: the developer chose to clone this repo: a checkout found here is not used.
+      const judged = placement.repoModes?.[repo.key] === 'clone' ? { state: 'missing' as const, path: null } : checkStateOf(found, chosen !== null && found.includes(overrideFacts as CheckoutFacts) ? chosen : null, repo.branch);
       perRepo.push({ matches: found, hints, state: judged.state, path: judged.path });
       if (judged.path !== null) {
         const folder = folderOf(judged.path);
@@ -842,8 +922,8 @@ export class TakeoverService {
       }
     }
     // Where a workspace session lives: the first root that is a workspace (saved or not).
-    let workspace: { path: string; folderId: string | null } | null = null;
-    for (const root of roots) {
+    let workspace: { path: string; folderId: string | null } | null = newRoot?.ok ? { path: newRoot.path, folderId: records.find((record) => record.canonicalPath === newRoot.path)?.id ?? null } : null;
+    for (const root of workspace ? [] : roots) {
       if ((await this.#folders.check(root)).kind !== 'workspace') continue;
       workspace = { path: root, folderId: records.find((record) => record.canonicalPath === root)?.id ?? null };
       break;
@@ -877,7 +957,10 @@ export class TakeoverService {
     const self = await this.#self();
     const blockers: string[] = [];
     const records = await this.#store.folders.list();
-    const located = placement ? await this.#locate(sourceRepos, placement, source.folder?.path ?? null, git) : null;
+    // D152: the workspace root the developer asked to create here: checked (read-only) before anything else.
+    const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
+    if (workspaceRoot && !workspaceRoot.ok && workspaceRoot.reason) blockers.push(workspaceRoot.reason);
+    const located = placement ? await this.#locate(sourceRepos, placement, source.folder?.path ?? null, git, workspaceRoot) : null;
     const names = [...new Set([...sourceRepos.map((repo) => repo.name), ...source.solutions])];
     const candidates = located ? located.candidates : await this.#candidates(names, git);
     // The default clone folder: next to the default saved folder (D110: the first chosen folder).
@@ -1012,6 +1095,12 @@ export class TakeoverService {
           }),
         }
       : null;
+    // D152: what is at each of the workspace's own files' paths under the workspace root here.
+    let workspaceFiles: WorkspaceFileTarget[] | null = null;
+    if (source.workspaceFiles && source.workspaceFiles.files.length > 0 && workspace) {
+      const root = workspaceRoot && !workspaceRoot.exists ? null : workspace.folderPath;
+      workspaceFiles = await workspaceFileStates(root, source.workspaceFiles.files);
+    }
     return {
       result: {
         machine: self,
@@ -1025,6 +1114,8 @@ export class TakeoverService {
         defaultCloneParent,
         placement,
         verification,
+        workspaceRoot,
+        workspaceFiles,
       },
       log,
     };
@@ -1103,7 +1194,7 @@ export class TakeoverService {
   #target(opId: string): TargetOp {
     let op = this.#targets.get(opId);
     if (!op) {
-      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null };
+      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null, staged: new Map(), stagedBytes: 0, placedFiles: [], createdDirs: [] };
       this.#targets.set(opId, op);
     }
     return op;
@@ -1145,6 +1236,45 @@ export class TakeoverService {
   }
 
   /**
+   * D152 (target): one chunk of a workspace file into the operation's staging
+   * folder (`<op>/workspace/`), checked before a byte is written (a safe relative
+   * name, ≤ 1 MB a file, ≤ 20 MB and 300 files a move). The last chunk checks the
+   * size and sha256, and this machine's own secret check: a file that looks like
+   * it holds a secret (here or on the source) is kept only when the developer
+   * confirmed it; otherwise it is deleted and refused. Contents are never logged.
+   */
+  async receiveWorkspaceChunk(input: { readonly opId: string; readonly name: unknown; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<{ readonly received: number; readonly done: boolean }> {
+    const op = this.#target(input.opId);
+    const bytes = Buffer.from(typeof input.data === 'string' ? input.data : '', 'base64');
+    if (bytes.length > TAKEOVER_CHUNK_BYTES) throw new TakeoverError(413, 'too-large', 'a chunk is over the chunk size');
+    const refused = checkWorkspaceChunk({ name: input.name, size: input.size, offset: input.offset, bytes: bytes.length }, { staged: op.staged, bytes: op.stagedBytes });
+    if (refused) throw new TakeoverError(refused.status, refused.status === 413 ? 'too-large' : 'invalid', refused.message);
+    const name = input.name as string;
+    const file = path.join(op.dir, 'workspace', ...name.split('/'));
+    let received: number;
+    try {
+      received = await writeStagedChunk(file, input.offset, bytes);
+    } catch (error) {
+      throw new TakeoverError(409, 'out-of-order', `${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (received < input.size) return { received, done: false };
+    const staged = await inspectStaged(file, name);
+    const drop = async (status: number, code: string, message: string): Promise<never> => {
+      await rm(file, { force: true });
+      throw new TakeoverError(status, code, message);
+    };
+    if (staged.size !== input.size || staged.sha256 !== input.sha256) return drop(422, 'checksum', `${name} arrived damaged (checksum mismatch): nothing was kept`);
+    const secret = staged.secret !== null || input.secret === true;
+    if (staged.binary && staged.size > WORKSPACE_BINARY_MAX_BYTES) return drop(413, 'too-large', `${name} is a binary file over the limit: nothing was kept`);
+    if (secret && input.confirmed !== true) return drop(422, 'secret-not-confirmed', `${name} looks like it holds secrets and copying it was not confirmed: nothing was kept`);
+    const previous = op.staged.get(name);
+    if (previous) op.stagedBytes -= previous.size;
+    op.staged.set(name, { name, size: staged.size, sha256: staged.sha256, secret });
+    op.stagedBytes += staged.size;
+    return { received, done: true };
+  }
+
+  /**
    * Step 5: restores the repos on this machine, one by one: clone what is missing
    * (and save it as a folder, D14), fetch the temporary branch, check the real
    * branch out (or create the worktree on it, same branch name), bring it to the
@@ -1152,7 +1282,7 @@ export class TakeoverService {
    * uncommitted again; untracked files are untracked again), and delete the
    * temporary remote branch. A failure throws; {@link abort} undoes what was done.
    */
-  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[] }>> {
+  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null }>> {
     const log: string[] = [];
     const git = this.#git(log);
     const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}) })).result;
@@ -1160,6 +1290,11 @@ export class TakeoverService {
     const op = this.#target(body.opId);
     const changes: PathChange[] = [];
     let folderRef: FolderRef | null = null;
+    // D152: the workspace root the developer picked is created first (its folders are undone if the move fails).
+    if (planned.workspaceRoot && !planned.workspaceRoot.exists) {
+      op.createdDirs.push(...(await mkdirTracked(planned.workspaceRoot.path)));
+      log.push(`created the workspace folder ${planned.workspaceRoot.path}`);
+    }
     for (const resolution of planned.repos) {
       const repo = body.source.repos.find((entry) => entry.key === resolution.key) as SourceRepo;
       const captured = body.captured.find((entry) => entry.key === resolution.key);
@@ -1190,6 +1325,8 @@ export class TakeoverService {
       op.applied.push(applied);
       let main = applied.path;
       if (resolution.action === 'clone') {
+        // D152: the clone's missing parent folders are this move's (the undo removes them when empty).
+        op.createdDirs.push(...(await mkdirTracked(path.dirname(resolution.cloneTo as string))));
         await git.clone(resolution.cloneUrl as string, resolution.cloneTo as string);
         applied.cloned = true;
         main = resolution.cloneTo as string;
@@ -1260,6 +1397,21 @@ export class TakeoverService {
         applied.tempDeleteError = error instanceof Error ? error.message : String(error);
       }
     }
+    // D152: the workspace's own files, staged by the transfer, are placed under the workspace root (never over a different file).
+    let workspaceFiles: WorkspaceFilesResult | null = null;
+    if (op.staged.size > 0) {
+      if (planned.folder.kind !== 'workspace') throw new TakeoverError(409, 'not-workspace', 'workspace files arrived for a session that has no workspace folder here');
+      const placed = await placeWorkspaceFiles(planned.folder.path, [...op.staged.values()], (name) => path.join(op.dir, 'workspace', ...name.split('/')));
+      op.placedFiles.push(...placed.placed);
+      op.createdDirs.push(...placed.createdDirs);
+      workspaceFiles = { copied: placed.copied, same: placed.same, conflicts: placed.conflicts, refused: placed.refused, secret: placed.secret };
+      const audit = workspaceCopyAudit(placed.copied.length, placed.secret, planned.machine.name);
+      log.push(audit);
+      this.#onAudit(audit);
+    }
+    if (planned.workspaceRoot && !planned.workspaceRoot.exists && (await this.#folders.check(planned.folder.path)).kind !== 'workspace') {
+      throw new TakeoverError(409, 'no-router', `the new workspace folder ${planned.folder.path} has no AGENTS.md: copy the workspace's AGENTS.md with it`);
+    }
     // D110: a chosen folder that is not saved here yet (a workspace root, a checkout found under a chosen folder) is saved now; the undo removes it.
     if (planned.folder.id === null && planned.folder.kind === 'workspace') {
       const added = await this.#folders.add(planned.folder.path);
@@ -1277,7 +1429,7 @@ export class TakeoverService {
       folderRef = record ? folderRefOf(record) : { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'repo' };
     }
     op.place = { folder: folderRef, cwd: planned.cwd, changes };
-    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied] }, log };
+    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles }, log };
   }
 
   /**
@@ -1327,6 +1479,8 @@ export class TakeoverService {
       if (applied.cloned) await attempt(`could not remove the clone ${applied.path}`, () => rm(applied.path, { recursive: true, force: true }));
     }
     if (op.addedFolderId) await attempt('could not remove the saved folder', () => this.#folders.remove(op.addedFolderId as string));
+    // D152: the workspace files this move wrote, then the folders it created (only when empty).
+    notes.push(...(await undoPlaced(op.placedFiles, op.createdDirs)));
     await rm(op.dir, { recursive: true, force: true }).catch(() => undefined);
     this.#targets.delete(opId);
     return { result: { notes }, log };

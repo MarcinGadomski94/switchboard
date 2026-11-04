@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemorySessionCount } from '../../../core/memory.ts';
 import { memoryCountTooltip } from '../../../core/memory.ts';
+import { type WorksInRepo, worksInSourceLabel, worksInSummary } from '../../../core/workspace-move.ts';
 import { overviewActivityLabel, workingActivityState } from '../../activity/activity.ts';
 import { useTick } from '../../activity/useActivity.ts';
 import { api } from '../../api/client.ts';
@@ -303,5 +304,43 @@ function WorkflowRows({ data, item }: { readonly data: AgentData; readonly item:
         </tr>
       ) : null}
     </>
+  );
+}
+
+/**
+ * D152: **Works in**: the repos this agent works in, from its history (its separate
+ * copies, the solutions picked at start, the repos of the files it edited, its
+ * working folder's), each with its path and branch, so it is clear which repo a
+ * workspace agent works on before moving it. Read when the panel opens and after
+ * each turn.
+ */
+export function WorksInLine({ sessionId, status }: { readonly sessionId: string; readonly status: string | null | undefined }) {
+  const [repos, setRepos] = useState<readonly WorksInRepo[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.sessionWorksIn(sessionId).then(
+      (answer) => live && setRepos(answer.repos),
+      () => live && setRepos(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [sessionId, status]);
+  if (repos === null) return null;
+  return (
+    <div className="v2-ag-xline" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in">
+      <div className="v2-ag-xlink" style={{ cursor: 'default' }}>
+        <Icon name="folder" size="s" />
+        <span className="v2-grow v2-ag-xtext">
+          <b>Works in · {worksInSummary(repos)}</b>
+          {repos.map((repo) => (
+            <small key={repo.path} className="v2-muted" data-testid="v2-agent-works-in-repo" data-name={repo.name} title={repo.remoteUrl ?? undefined} style={{ display: 'block', overflowWrap: 'anywhere' }}>
+              {repo.name}
+              {repo.branch ? ` · ${repo.branch}` : ''} · {repo.path} ({worksInSourceLabel(repo.source)})
+            </small>
+          ))}
+        </span>
+      </div>
+    </div>
   );
 }

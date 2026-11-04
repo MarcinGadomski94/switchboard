@@ -198,6 +198,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D65: taking a session over: each end's operations (the initiating machine's runner drives them) and the leftover temp branches.
   ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback)$/],
   ['POST', /^\/api\/takeover\/target\/(?:plan|chunk|apply|abort|resume|close)$/],
+  // D152: a complete move: the workspace's own files (read on the source, staged and placed on the target, both strictly checked).
+  ['POST', /^\/api\/takeover\/source\/(?:workspace-files|workspace-chunk)$/],
+  ['POST', /^\/api\/takeover\/target\/workspace-chunk$/],
+  // D152: which repos a session works in (the agent view's "Works in" for that machine's session).
+  ['GET', /^\/api\/sessions\/[^/]+\/works-in$/],
   // D110: the target's folder picker and the verification of the chosen folders (read-only; folders only, inside the home / saved folders).
   ['POST', /^\/api\/takeover\/target\/(?:folders|verify)$/],
   ['GET', /^\/api\/takeover\/leftovers$/],

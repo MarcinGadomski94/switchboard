@@ -20,7 +20,7 @@ import { AccessPanel } from './AccessPanel.tsx';
 import { ScrollText } from './ScrollText.tsx';
 import { ArchivedLine, CrewAvatar, crewMenuItems, useCrewOrder } from './CrewsPage.tsx';
 import { type TeammateTab, activityRows, budgetMeter, crewHref, crewLine, crewQuery, crewStats, handoffRows, moveComputerReason, openChatReason, rhythmText, teammateStatus, undoOrder, v2ModelText } from './crew-model.ts';
-import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
+import { BudgetDialog, CharterEditDialog, DeleteCrewDialog, ModelDialog, MoveCrewDialog, MoveToComputerDialog, MoveToCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
 
 type Overlay =
@@ -31,7 +31,8 @@ type Overlay =
   | { readonly kind: 'charter'; readonly member: TeamMember; readonly requestId: string }
   | { readonly kind: 'new-teammate' }
   | { readonly kind: 'rename'; readonly crew: TeamSummary }
-  | { readonly kind: 'delete'; readonly crew: TeamSummary };
+  | { readonly kind: 'delete'; readonly crew: TeamSummary }
+  | { readonly kind: 'move-computer'; readonly crew: TeamSummary };
 
 /** The teammate's job description in one paragraph: what it owns and produces. */
 function jobText(member: Pick<TeamMember, 'charter'>): string {
@@ -433,6 +434,7 @@ export function CrewPage({ id }: { readonly id: string }) {
         <Button icon="plus" onClick={() => setOverlay({ kind: 'new-teammate' })} data-testid="v2-crew-add">
           {CREW_WORDS.addTeammate}
         </Button>
+        <span data-tour="v2-crew-menu" style={{ display: 'inline-flex' }}>
         <MenuButton
           label="Crew actions"
           testId="v2-crew-menu"
@@ -452,8 +454,10 @@ export function CrewPage({ id }: { readonly id: string }) {
             newTeammate: () => setOverlay({ kind: 'new-teammate' }),
             rename: () => setOverlay({ kind: 'rename', crew }),
             remove: () => setOverlay({ kind: 'delete', crew }),
+            moveComputer: () => setOverlay({ kind: 'move-computer', crew }),
           }).filter((item) => item.id !== 'open')}
         />
+        </span>
       </div>
       <p className="v2-page-sub v2-c-crew-sub">
         {crewLine(stats)}
@@ -539,6 +543,15 @@ export function CrewPage({ id }: { readonly id: string }) {
         </Sheet>
       ) : null}
       <CrewOverlays overlay={overlay} setOverlay={setOverlay} crews={ordered} crewId={id} onMove={actions.moveTo} />
+      {overlay?.kind === 'move-computer' ? (
+        <MoveCrewDialog
+          crew={overlay.crew}
+          onClose={() => {
+            setOverlay(null);
+            void reloadTeam();
+          }}
+        />
+      ) : null}
       {overlay?.kind === 'rename' ? (
         <RenameCrewDialog
           crew={overlay.crew}

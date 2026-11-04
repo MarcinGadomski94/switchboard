@@ -86,6 +86,10 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
   app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/move/check', (request, reply) => run(request, reply, () => team.moveCheck(request.params.memberId, fields(request.body))));
   app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/move', (request, reply) => run(request, reply, () => team.move(request.params.memberId, fields(request.body)), 202));
   app.get<{ Params: { runId: string } }>('/api/team/moves/:runId', (request, reply) => run(request, reply, () => team.moveRun(request.params.runId)));
+  // D152: move a whole crew (every teammate checked first, then one by one; a failure stops the rest).
+  app.post<{ Params: { teamId: string } }>('/api/team/teams/:teamId/move/check', (request, reply) => run(request, reply, () => team.crewMoveCheck(request.params.teamId, fields(request.body))));
+  app.post<{ Params: { teamId: string } }>('/api/team/teams/:teamId/move', (request, reply) => run(request, reply, () => team.crewMove(request.params.teamId, fields(request.body)), 202));
+  app.get<{ Params: { runId: string } }>('/api/team/crew-moves/:runId', (request, reply) => run(request, reply, () => team.crewMoveRun(request.params.runId)));
 
   // Hand-offs from the developer, and their state.
   app.post('/api/team/handoffs', (request, reply) =>

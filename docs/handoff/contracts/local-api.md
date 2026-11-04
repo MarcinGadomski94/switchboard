@@ -1105,6 +1105,29 @@ Where the session's repos are, or go, on the target is chosen in the dialog inst
 }
 ```
 
+### A complete move (D152, 2026-11-04, additive)
+
+Moving a workspace session (or a whole crew) to another computer in one dialog (`docs/peers.md` → *A complete move (D152)*, `docs/team.md` → *Moving a whole crew*). Additive: optional fields, new routes, no migration, no `/hub` event. An older target ignores `newWorkspace` / `repoModes` (its plan then blocks as before) and answers 404 / 403 to the new peer routes; an older source sends no `workspaceFiles` (none are listed).
+
+- **`TargetPlacement`** adds `repoModes?: { <repo key>: "use" | "clone" }` (`clone`: a checkout found under the roots is not used; the repo is cloned into its clone path) and `newWorkspace?: { path, useExisting? }`: the workspace root to create on the target, at a path the developer picked there (it may not exist yet; `useExisting: true` confirms using an existing folder that is not empty).
+- **`SourceInspect.workspaceFiles?: WorkspaceFilesListing | null`** `{ root, truncated, files: [{ name, size, sha256, secret, binary, refused }] }`: a workspace session whose root is no git checkout lists the root's regular files outside every repo (`name` relative with `/`; `secret` = why it looks like it holds a secret, never the value; `refused` = over a cap). A workspace session's `repos` now also holds the repos its history shows (the files it edited, its cwd's), not only its solutions.
+- **`TargetPlan.workspaceRoot?: WorkspaceRootCheck | null`** `{ path (final), exists, empty, workspace, needsConfirm, ok, reason }`; **`TargetPlan.workspaceFiles?: [{ name, state: new | same | conflict | refused, reason }] | null`**.
+- **`POST /api/takeover/preview`** and **`POST /api/takeover`** (and Team's `…/move/check`, `…/move`) take **`workspaceFiles?: { copy: string[], confirmSecrets?: boolean }`** (absent: none, except the root `AGENTS.md` of a root the move creates). A ticked file marked secret without `confirmSecrets` is a preview blocker and stops the run at **checks**; a `same` or `conflict` file is skipped and reported.
+- **`TakeoverRun.workspaceFiles?: { copied, same, conflicts, refused: [{ name, reason }], secret } | null`**; the run log has the audit line `copied N workspace files (M marked secret) to <target>` (no names, no contents).
+- **Peer API** (on `PEER_API_ALLOW`): `POST /api/takeover/source/workspace-files` `{ opId, names }` → `{ result: { files: [{ name, size, sha256, secret }] }, log }`; `POST /api/takeover/source/workspace-chunk` `{ opId, name, offset }` → a chunk (as `source/chunk`); `POST /api/takeover/target/workspace-chunk` `{ opId, name, size, sha256, offset, data (base64), secret, confirmed }` → `{ received, done }`, refused 422 (`invalid`: a name that is not relative / leaves the root / has `\`, `:`, a `.git` segment; `checksum`; `secret-not-confirmed`) or 413 (`too-large`: over 1 MB a file, 20 MB or 300 files a move, a binary over 256 KB).
+- **`GET /api/sessions/{id}/works-in`** → `SessionWorksIn` `{ repos: [{ name, path, kind: main | worktree, source: worktree | solution | edited | cwd, branch, remoteUrl }] }` (peer-callable; devices allowed: a read).
+- **Crew move (Team):** `POST /api/team/teams/{teamId}/move/check` `{ targetMachineId, members?: { <memberId>: { placement?, clonePaths?, workspaceFiles? } } }` → `CrewMoveCheck` `{ teamId, targetMachineId, ok, members: CrewMoveMember[] }`; `POST /api/team/teams/{teamId}/move` (same body) → 202 `CrewMoveRun` `{ id, teamId, targetMachineId, state: running | done | failed, members, error }`, or 409 `blocked` with `check`; `GET /api/team/crew-moves/{runId}` → `CrewMoveRun`. **`CrewMoveMember`** `{ memberId, name, machineId, state: skipped | ready | blocked | waiting | moving | moved | failed | not-moved, blockers, note, preview?, moveRunId? }`. Local only (not on the peer API; devices refused).
+
+```json
+{
+  "workspaceRoot": { "path": "D:\\code\\Acme\\workspace", "exists": false, "empty": false, "workspace": false, "needsConfirm": false, "ok": true, "reason": null },
+  "workspaceFiles": [
+    { "name": "AGENTS.md", "state": "new", "reason": null },
+    { "name": "docs/plan.md", "state": "conflict", "reason": "a different file is there: skipped, never overwritten" }
+  ]
+}
+```
+
 ## Session todos (D68, 2026-10-04, additive)
 
 A todo list per session: things that still need doing, kept by the developer and by the session's agent (`docs/todos.md`, `docs/decisions.md` → D68). Additive: migration 0026 (`session_todos`), one `Session` field, one `/hub` event, new routes; nothing existing changes.

@@ -167,6 +167,9 @@ const V2_4_14 = '2.4.14';
 /** The version moving folders into other folders in the v2 Agents tree (drag, ⋯ › Move to…) ships in. */
 const V2_4_16 = '2.4.16';
 
+/** The version D152 (a complete move: the workspace created on the target, files copied, which repos an agent works in, a whole crew moved) ships in. */
+const V2_4_21 = '2.4.21';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1574,6 +1577,43 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-tree-folders', 'v2-nav-agents', 'v2-tab-agents'],
         v2Route: '/agents',
         missing: 'Open Agents and make a folder with + next to Folders to try it. ',
+      },
+    ],
+  },
+  // D152: a complete move from one computer to another (docs/peers.md → A complete move (D152), docs/team.md → Moving a whole crew).
+  {
+    id: 'complete-move',
+    decision: 'D152',
+    version: V2_4_21,
+    title: 'Move everything to another computer in one go',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'works-in',
+        title: 'Which repos an agent works in',
+        what: 'An agent’s Details now say which repos it works in, with their paths and branches: the ones picked when it started, its separate copies, and the repos of the files it edited. A workspace agent’s move carries all of them, not only the ones it was started with.',
+        todo: ['Open an agent and look at Works in at the top of its Details.'],
+        anchors: ['v2-agent-works-in', 'v2-agent-details'],
+        v2Route: '/agents',
+        missing: 'Open an agent in Agents and show its Details (⌘.) to see Works in. ',
+      },
+      {
+        id: 'move',
+        title: 'Move to computer: one dialog for all of it',
+        what: 'When the workspace isn’t on the other computer, Move to computer… creates it where you say: pick a folder there and type the new folder’s name (or paste a full path); the final path shows before you move. Each repo is used from a folder that is there, or cloned. The workspace’s own files (AGENTS.md, docs, .claude settings) are listed to copy over the paired link; files that look like they hold secrets are marked and copied only if you tick them and confirm, and a different file there is never overwritten.',
+        todo: ['Open an agent’s ⋯ › Move to computer….', 'Under Workspace, choose Create a new folder, pick where, then Create it here.', 'Tick the files to copy, then Move.'],
+        anchors: ['v2-agent-details'],
+        v2Route: '/agents',
+        missing: 'Pair another computer (Settings › Computers), then open an agent’s ⋯ › Move to computer…. ',
+      },
+      {
+        id: 'crew',
+        title: 'Move a whole crew',
+        what: 'A crew’s ⋯ › Move crew to computer… checks every teammate first and shows all the blockers together, each with its own plan (workspace, repos, files; a choice for a shared workspace or repo applies to the teammates that share it). Then they move one by one; if one fails, the rest stay and the ones that moved stay moved, and the dialog says who moved and who did not.',
+        todo: ['Open a crew and its ⋯ menu.', 'Choose Move crew to computer… and pick the computer.'],
+        anchors: ['v2-crew-menu', 'v2-nav-crews', 'v2-tab-more'],
+        v2Route: '/crews',
+        missing: 'Make a crew with teammates and pair another computer to move it. ',
       },
     ],
   },

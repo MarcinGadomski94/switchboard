@@ -1,6 +1,7 @@
 import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
+import type { NewWorkspace, WorkspaceFileTarget, WorkspaceFilesListing, WorkspaceFilesResult, WorkspaceRootCheck } from './workspace-move.ts';
 
 /**
  * D65 (`docs/peers.md` → *Taking a session over*): the pure part of taking a
@@ -169,6 +170,13 @@ export interface SourceInspect {
     readonly createdBy: OwnedLoopAuthor;
     readonly createdAt: string;
   }>;
+  /**
+   * Additive (D152): a workspace session whose root is no git checkout: the root's
+   * own files outside every repo (AGENTS.md, docs, `.claude/` settings…), with their
+   * size, checksum and whether they look like they hold a secret (never the value).
+   * Absent from an older Switchboard, `null` for any other session.
+   */
+  readonly workspaceFiles?: WorkspaceFilesListing | null;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
 }
@@ -229,6 +237,10 @@ export interface TargetPlan {
   readonly placement?: TargetPlacement | null;
   /** D110: what the target found under the chosen folders (`null` without a placement). Absent from an older target. */
   readonly verification?: TargetVerification | null;
+  /** D152: the check of the workspace root the developer asked to create (`placement.newWorkspace`); `null` without one. Absent from an older target. */
+  readonly workspaceRoot?: WorkspaceRootCheck | null;
+  /** D152: what is at each of the source's workspace files' paths under the workspace root here; `null` when no workspace root is known. Absent from an older target. */
+  readonly workspaceFiles?: readonly WorkspaceFileTarget[] | null;
 }
 
 /**
@@ -246,6 +258,18 @@ export interface TargetPlacement {
   readonly roots: readonly string[];
   /** Per repo key: the exact checkout to use (a repo outside the roots, or the pick among several). */
   readonly repoPaths?: Readonly<Record<string, string>>;
+  /**
+   * D152: per repo key, the developer's choice: `use` an existing checkout (the
+   * default: found under the roots, or `repoPaths`), or `clone` it (into the clone
+   * path; a checkout found under the roots is then not used).
+   */
+  readonly repoModes?: Readonly<Record<string, 'use' | 'clone'>>;
+  /**
+   * D152: create the workspace root here (a folder the developer picked on the
+   * target; it may not exist yet). The workspace session lives there and missing
+   * repos are cloned into it in the source's layout.
+   */
+  readonly newWorkspace?: NewWorkspace;
 }
 
 /** What the verification found for one repo: ✓ found, ⚠ found on another branch / dirty, ✖ missing, ? several. */
@@ -376,7 +400,43 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
       if (entry.trim() !== '') repoPaths[key] = entry.trim();
     }
   }
-  return { roots, ...(repoPaths && Object.keys(repoPaths).length > 0 ? { repoPaths } : {}) };
+  const modesIn = record['repoModes'];
+  let repoModes: Record<string, 'use' | 'clone'> | undefined;
+  if (modesIn !== undefined && modesIn !== null) {
+    if (typeof modesIn !== 'object' || Array.isArray(modesIn)) return null;
+    repoModes = {};
+    for (const [key, entry] of Object.entries(modesIn as Record<string, unknown>)) {
+      if (entry !== 'use' && entry !== 'clone') return null;
+      repoModes[key] = entry;
+    }
+  }
+  const workspaceIn = record['newWorkspace'];
+  let newWorkspace: NewWorkspace | undefined;
+  if (workspaceIn !== undefined && workspaceIn !== null) {
+    if (typeof workspaceIn !== 'object' || Array.isArray(workspaceIn)) return null;
+    const pathIn = (workspaceIn as Record<string, unknown>)['path'];
+    if (typeof pathIn !== 'string' || pathIn.trim() === '' || pathIn.length > 1000) return null;
+    newWorkspace = { path: pathIn.trim(), ...((workspaceIn as Record<string, unknown>)['useExisting'] === true ? { useExisting: true } : {}) };
+  }
+  return {
+    roots,
+    ...(repoPaths && Object.keys(repoPaths).length > 0 ? { repoPaths } : {}),
+    ...(repoModes && Object.keys(repoModes).length > 0 ? { repoModes } : {}),
+    ...(newWorkspace ? { newWorkspace } : {}),
+  };
+}
+
+/**
+ * D152: the placement to remember after a move succeeded: a workspace root it
+ * created is now an existing folder (one of the roots), and a repo it cloned is
+ * found there next time (its `clone` choice is dropped).
+ */
+export function placementToRemember(placement: TargetPlacement, createdRoot: string | null): TargetPlacement {
+  const roots = [...placement.roots];
+  const root = createdRoot ?? placement.newWorkspace?.path ?? null;
+  if (root !== null && !roots.includes(root)) roots.unshift(root);
+  const modes = Object.fromEntries(Object.entries(placement.repoModes ?? {}).filter(([, mode]) => mode !== 'clone'));
+  return { roots, ...(placement.repoPaths ? { repoPaths: { ...placement.repoPaths } } : {}), ...(Object.keys(modes).length > 0 ? { repoModes: modes } : {}) };
 }
 
 /** The preview the dialog shows: both sides' view before anything changes. */
@@ -471,6 +531,8 @@ export interface TakeoverRun {
   readonly leftovers: ReadonlyArray<Leftover & { readonly machineId: string | null }>;
   /** Every git command both machines ran (never a credential). */
   readonly log: readonly string[];
+  /** D152: what happened to the workspace files the move copied (`null` when none were asked for). Absent from an older run. */
+  readonly workspaceFiles?: WorkspaceFilesResult | null;
 }
 
 // ── paths (no `node:path`: this module is shared with the UI) ────────────

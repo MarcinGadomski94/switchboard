@@ -1,3 +1,4 @@
+import type { SessionWorksIn } from '../../core/workspace-move.ts';
 import { type DiffCount, type DiffScope, type DiffTargets, type FileDiff, type Session, offeredDiffScope } from '../../core/api.ts';
 import { isRemoteId } from '../../core/peers.ts';
 import type { Store } from '../db/store.ts';
@@ -115,6 +116,12 @@ export class DiffCache implements DiffProvider {
   }
 
   /** The working trees (the Diff tab's views): concurrent asks share one computation. */
+  /** D152: which repos the session works in (not cached: the agent view reads it once). */
+  async worksIn(sessionId: string): Promise<SessionWorksIn> {
+    const inner = this.#inner;
+    return inner.worksIn ? inner.worksIn(sessionId) : { repos: [] };
+  }
+
   async targets(sessionId: string): Promise<DiffTargets> {
     const inner = this.#inner;
     if (!inner.targets) return { worktrees: [], inPlace: [] };

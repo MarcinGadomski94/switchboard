@@ -45,6 +45,8 @@ import { type RunOptions, type RunResult, failureText, runCommand, succeeded } f
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { SessionRepos } from './session-repos.ts';
+import type { SessionWorksIn, WorksInRepo } from '../../core/workspace-move.ts';
+import { redactUrl } from '../../core/takeover.ts';
 import { SessionTouchedFiles } from './touched.ts';
 import { toWorktree } from './wire.ts';
 import { mapLimit } from '../map-limit.ts';
@@ -1535,6 +1537,36 @@ export class WorktreeManager implements DiffProvider {
   async #mergeBase(dir: string, ref: string): Promise<string | null> {
     const mergeBase = await this.#runDiffGit(dir, ['merge-base', ref, 'HEAD']);
     return succeeded(mergeBase) && mergeBase.stdout.trim() !== '' ? mergeBase.stdout.trim() : null;
+  }
+
+  /**
+   * D152 `GET /api/sessions/{id}/works-in`: the repos the session works in, from its
+   * history (the one answer of `docs/worktrees.md` → *Which repositories*: its
+   * worktrees, its solutions, the repos of the files it edited, its cwd's), with each
+   * one's path, branch and remote (credentials removed). Unreadable ones are left out.
+   */
+  async worksIn(sessionId: string): Promise<SessionWorksIn> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) return { repos: [] };
+    const set = await this.repos.of(session);
+    const remoteOf = async (dir: string): Promise<string | null> => {
+      const named = await this.#runDiffGit(dir, ['remote']);
+      const first = succeeded(named) ? named.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '') : [];
+      const pick = first.includes('origin') ? 'origin' : first[0];
+      if (!pick) return null;
+      const url = await this.#runDiffGit(dir, ['remote', 'get-url', pick]);
+      return succeeded(url) && url.stdout.trim() !== '' ? redactUrl(url.stdout.trim()) : null;
+    };
+    const rows: WorksInRepo[] = [];
+    for (const worktree of set.worktrees) {
+      if (!(await isDirectory(worktree.path))) continue;
+      rows.push({ name: worktree.repo, path: worktree.path, kind: 'worktree', source: 'worktree', branch: worktree.branch ?? (await this.#currentBranch(worktree.path)), remoteUrl: await remoteOf(worktree.path) });
+    }
+    for (const repo of set.inPlace) {
+      const linked = await lstat(path.join(repo.top, '.git')).then((info) => info.isFile(), () => false);
+      rows.push({ name: repo.name, path: repo.top, kind: linked ? 'worktree' : 'main', source: repo.source, branch: await this.#currentBranch(repo.top), remoteUrl: await remoteOf(repo.top) });
+    }
+    return { repos: rows };
   }
 
   /** The checked-out branch, `null` when detached. */

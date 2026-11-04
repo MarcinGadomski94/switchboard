@@ -41,6 +41,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/diff\/targets$/],
   // D90 ruling: the session tab's "Diff · n" (a read, like the diff).
   ['GET', /^\/api\/sessions\/[^/]+\/diff\/count$/],
+  // D152: which repos a session works in (a read, like the Diff's targets).
+  ['GET', /^\/api\/sessions\/[^/]+\/works-in$/],
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
@@ -259,6 +261,9 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   // D100 follow-up 2026-10-14: renaming another team, as renaming the first one.
   ['PUT', /^\/api\/team\/teams\/(?!order$)[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/move(?:\/check)?$/],
+  // D152: moving a whole crew (desktop only, like a member's move).
+  ['POST', /^\/api\/team\/teams\/[^/]+\/move(?:\/check)?$/],
+  ['GET', /^\/api\/team\/crew-moves\/[^/]+$/],
   ['POST', /^\/api\/team\/sync$/],
   // Team (D100) hook, D100-T2: entering, testing, revoking or timing out an access's values: "set this up on a computer".
   ['POST', /^\/api\/team\/access\/[^/]+\/(?:setup|test|revoke)$/],
