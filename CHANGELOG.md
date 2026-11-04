@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.17 (2026-11-04)
+
+### Crews
+- **Moving a teammate to another computer says what really happened:** the v2 Move to computer… dialog stays open until the move is over. A failed move shows the step and the reason with Try again (nothing changes, the teammate stays where it was), and success is shown only once the teammate really runs on the other computer, whose name the crew page then shows. A computer that is offline, reconnecting or on an older Switchboard is refused up front with the reason. Before, the dialog closed at once with a success-looking toast even when the move rolled back.
+- Moving a teammate's agent with the agent's own Move to computer now also moves the teammate in its crew.
+
+### Sessions
+- **Workflow agents:** a change in a session's workflow agents is shown in every open view, whichever view noticed it first.
+
 ## 2.4.16 (2026-11-03)
 
 ### v2 theme
