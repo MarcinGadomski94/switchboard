@@ -44,6 +44,7 @@ import {
   takenOverLabel,
   takeoverMessage,
   unreachableRemoteText,
+  worktreeSlotBlocker,
 } from '../../core/takeover.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { chatMarkdown, findCodexRollout } from '../cli/handover.ts';
@@ -887,6 +888,12 @@ export class TakeoverService {
     const exists = new Set<string>();
     const checkedOut = new Set<string>();
     const dirtyTargets = new Set<string>();
+    // The worktree paths in the way (a live worktree, a non-empty folder…): blockers before anything is paused.
+    const worktreeBlockers = new Map<string, string>();
+    const checkWorktreePath = async (repoPath: string | null, worktree: string, repoName: string): Promise<void> => {
+      const reason = worktreeSlotBlocker(await git.worktreeSlot(repoPath, worktree), { machine: self.name, path: worktree, repo: repoName });
+      if (reason !== null) worktreeBlockers.set(worktree, reason);
+    };
     const typed = body.clonePaths ?? {};
     const workspaceDefaults: Record<string, string> = located ? { ...located.defaults } : {};
     const matches = located ? located.matches : sourceRepos.map((repo) => matchingCandidates(repo, candidates)[0] ?? null);
@@ -917,7 +924,7 @@ export class TakeoverService {
       const match = matches[index];
       if (match) {
         const worktree = repo.kind === 'worktree' ? worktreePathOf(match.path, source.name) : null;
-        if (worktree && (await pathExists(worktree))) exists.add(worktree);
+        if (worktree) await checkWorktreePath(match.path, worktree, repo.name);
         const branches = await git.checkedOutBranches(match.path);
         const holder = branches.get(repo.branch);
         if (holder !== undefined && (repo.kind === 'worktree' || path.resolve(holder) !== path.resolve(match.path))) checkedOut.add(`${match.path}\n${repo.branch}`);
@@ -926,10 +933,7 @@ export class TakeoverService {
         const to = typed[repo.key]?.trim() || workspaceDefaults[repo.key] || (defaultCloneParent ? path.join(defaultCloneParent, repo.name) : '');
         if (to !== '') {
           if (await pathExists(to)) exists.add(to);
-          if (repo.kind === 'worktree') {
-            const worktree = worktreePathOf(to, source.name);
-            if (await pathExists(worktree)) exists.add(worktree);
-          }
+          if (repo.kind === 'worktree') await checkWorktreePath(null, worktreePathOf(to, source.name), repo.name);
         }
       }
     }
@@ -940,6 +944,7 @@ export class TakeoverService {
       exists,
       checkedOut,
       dirtyTargets,
+      worktreeBlockers,
       worktreePathOf,
     });
     // D110: several checkouts of one repo under the chosen folders and no pick: the developer chooses (never a guess).
@@ -1207,6 +1212,8 @@ export class TakeoverService {
       if (localTip !== null && !(await git.isAncestor(main, localTip, tip))) {
         throw new TakeoverError(409, 'diverged', `${repo.name}: the branch ${repo.branch} on this machine has commits the original does not have; nothing was changed`);
       }
+      // What the plan let through at the worktree path / on the branch: an empty folder is removed, a stale entry an earlier attempt left (its folder gone) is removed (that entry only).
+      await git.clearWorktreeSlot(main, resolution.worktreePath, repo.branch);
       if (resolution.worktreePath) {
         if (localTip === null) {
           applied.createdBranch = true;

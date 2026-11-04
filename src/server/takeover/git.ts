@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, realpath, rm, rmdir, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, realpath, rm, rmdir, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { type CapturedRepo, REMOTE_CHECK_TIMEOUT_MS, type SourceRepo, gitErrorSummary, nonInteractiveGitEnv, normalizeRemoteUrl, redactUrl, tempBranchName } from '../../core/takeover.ts';
+import { type CapturedRepo, REMOTE_CHECK_TIMEOUT_MS, type SourceRepo, type WorktreeEntry, type WorktreeSlot, gitErrorSummary, nonInteractiveGitEnv, normalizeRemoteUrl, parseWorktreeList, redactUrl, tempBranchName } from '../../core/takeover.ts';
 import { failureText, runCommand, succeeded } from '../exec.ts';
 
 /**
@@ -313,16 +313,82 @@ export class TakeoverGit {
     return listed.out.split('\n').filter((line) => line.startsWith('worktree ')).map((line) => line.slice('worktree '.length).trim());
   }
 
-  /** The branches checked out in any worktree of the repo, `<path>\n<branch>` (for the plan). */
+  /** The repo's worktrees (`git worktree list --porcelain`, the main checkout first); `null` when git cannot list them. */
+  async worktreeEntries(repoPath: string): Promise<WorktreeEntry[] | null> {
+    const listed = await this.try(repoPath, ['worktree', 'list', '--porcelain']);
+    return listed.ok ? parseWorktreeList(listed.out) : null;
+  }
+
+  /**
+   * The branches checked out in any worktree of the repo, branch → path (for the
+   * plan). A stale entry whose folder is gone is left out: the restore removes that
+   * entry before it checks the branch out ({@link clearWorktreeSlot}).
+   */
   async checkedOutBranches(repoPath: string): Promise<Map<string, string>> {
-    const out = (await this.try(repoPath, ['worktree', 'list', '--porcelain'])).out;
     const map = new Map<string, string>();
-    let dir: string | null = null;
-    for (const line of out.split('\n')) {
-      if (line.startsWith('worktree ')) dir = line.slice('worktree '.length).trim();
-      else if (line.startsWith('branch ') && dir) map.set(line.slice('branch '.length).trim().replace(/^refs\/heads\//, ''), dir);
+    for (const entry of (await this.worktreeEntries(repoPath)) ?? []) {
+      if (!entry.branch || (await isStaleGone(entry))) continue;
+      map.set(entry.branch, entry.path);
     }
     return map;
+  }
+
+  /**
+   * What is at `worktreePath`, where the restore will create a worktree of the repo
+   * at `repoPath` (`null`: a repo the restore will clone, so it has no worktrees yet).
+   * Read-only. Whether the path is a worktree is read from `git worktree list`
+   * (paths compared by {@link comparablePath}: Windows' `D:/x` and `d:\X`), never
+   * from a folder's name or a `.git` file.
+   */
+  async worktreeSlot(repoPath: string | null, worktreePath: string): Promise<WorktreeSlot> {
+    const entries = repoPath === null ? [] : await this.worktreeEntries(repoPath);
+    const wanted = await comparablePath(worktreePath);
+    let registered: WorktreeEntry | null = null;
+    for (const entry of entries ?? []) if ((await comparablePath(entry.path)) === wanted) registered = entry;
+    if (registered !== null && (registered.locked || !registered.prunable)) return { kind: 'worktree', branch: registered.branch, locked: registered.locked };
+    let facts: Awaited<ReturnType<typeof lstat>>;
+    try {
+      facts = await lstat(worktreePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return registered !== null ? { kind: 'stale-entry' } : { kind: 'free' };
+      return { kind: 'unreadable', error: error instanceof Error ? error.message : String(error) };
+    }
+    if (!facts.isDirectory()) return { kind: 'file' };
+    const inside = await readdir(worktreePath).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+    if (inside instanceof Error) return { kind: 'unreadable', error: inside.message };
+    if (inside.length > 0) return { kind: 'folder' };
+    return registered !== null ? { kind: 'stale-entry' } : { kind: 'empty-folder' };
+  }
+
+  /**
+   * Before the restore creates the worktree at `worktreePath` (`null` for a main
+   * checkout) or checks `branch` out (`docs/peers.md` → *A worktree folder in the
+   * way*): an **empty** folder at the path is removed (`rmdir`, which fails on
+   * anything else), then each stale entry that is in the way (git still lists it
+   * there or on that branch, its folder is gone, it is not locked) is removed with
+   * `git worktree remove <its path>`, that entry only and without `--force`, so git
+   * itself refuses if the folder came back with files. Never `git worktree prune`
+   * (it would drop other worktrees' entries too: `docs/cleanup.md`). Returns what it did.
+   */
+  async clearWorktreeSlot(repoPath: string, worktreePath: string | null, branch: string): Promise<{ readonly removedEntries: readonly string[]; readonly removedEmptyFolder: boolean }> {
+    let removedEmptyFolder = false;
+    if (worktreePath !== null) {
+      const inside = await readdir(worktreePath).catch(() => null);
+      if (inside !== null && inside.length === 0) {
+        await rmdir(worktreePath);
+        this.#log(`removed the empty folder ${worktreePath}`);
+        removedEmptyFolder = true;
+      }
+    }
+    const wanted = worktreePath === null ? null : await comparablePath(worktreePath);
+    const removedEntries: string[] = [];
+    for (const entry of (await this.worktreeEntries(repoPath)) ?? []) {
+      if (!(await isStaleGone(entry))) continue;
+      if (entry.branch !== branch && (wanted === null || (await comparablePath(entry.path)) !== wanted)) continue;
+      await this.run(repoPath, ['worktree', 'remove', entry.path]);
+      removedEntries.push(entry.path);
+    }
+    return { removedEntries, removedEmptyFolder };
   }
 
   /**
@@ -374,7 +440,12 @@ function redactArgs(args: readonly string[]): string[] {
  * case (git lists `D:/code/x`, a plan may say `D:\\Code\\x`).
  */
 export async function comparablePath(target: string, platform: NodeJS.Platform = process.platform): Promise<string> {
-  const resolved = await realpath(target).catch(() => path.resolve(target));
+  // A path that is gone (a stale worktree entry) still gets its parent's links resolved: git lists `/private/var/…`.
+  const resolved = await realpath(target).catch(() =>
+    realpath(path.dirname(path.resolve(target)))
+      .then((parent) => path.join(parent, path.basename(target)))
+      .catch(() => path.resolve(target)),
+  );
   return comparablePathText(resolved, platform);
 }
 
@@ -382,6 +453,15 @@ export async function comparablePath(target: string, platform: NodeJS.Platform =
 export function comparablePathText(target: string, platform: NodeJS.Platform = process.platform): string {
   if (platform !== 'win32') return target.replace(/\/+$/, '') || '/';
   return target.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/** A stale worktree entry the restore may remove: prunable, not locked, and its folder is gone. */
+async function isStaleGone(entry: WorktreeEntry): Promise<boolean> {
+  if (!entry.prunable || entry.locked) return false;
+  return lstat(entry.path).then(
+    () => false,
+    (error: NodeJS.ErrnoException) => error.code === 'ENOENT',
+  );
 }
 
 /** `true` when `target` exists (file or folder). */
