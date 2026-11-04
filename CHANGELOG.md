@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.20 (2026-11-04)
+
+### Paired computers
+- **A folder in the way is caught before a move starts:** for every worktree a move will create on the other computer (also next to a repo it clones), the check looks at the path first. A leftover folder with files, a live or locked worktree, a file, or a path it can't read blocks the move with the path and what to do, before anything is paused; an empty leftover folder or a stale git entry is cleared automatically. Switchboard never deletes a folder with files in it. See `docs/peers.md` → *A worktree folder in the way*.
+- **The undo of a failed move never runs `git worktree prune`:** it removes only the worktree the move itself made, so other worktrees whose folders are temporarily missing (a disconnected drive) keep their git entries.
+
 ## 2.4.19 (2026-11-04)
 
 ### Paired computers
