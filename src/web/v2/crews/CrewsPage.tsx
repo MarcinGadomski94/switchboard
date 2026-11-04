@@ -10,7 +10,7 @@ import { useCrewPins } from '../shared/crew-pins.ts';
 import { useOpenAgent } from '../shared/open-agent.ts';
 import { ARCHIVED_HREF, archivedLine, crewInitials, crewLine, crewStats, dropCrew, moveCrew, moveCrewReason, openChatReason, orderedCrews } from './crew-model.ts';
 import { visibleTeam } from '../../team/model.ts';
-import { DeleteCrewDialog, NewCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
+import { DeleteCrewDialog, MoveCrewDialog, NewCrewDialog, NewTeammateDialog, RenameCrewDialog } from './dialogs.tsx';
 import './crews.css';
 
 /** The square avatar of a crew (its initials). */
@@ -39,13 +39,13 @@ export function ArchivedLine({ archived }: { readonly archived: number }) {
   );
 }
 
-type Overlay = { readonly kind: 'new-crew' } | { readonly kind: 'new-teammate'; readonly crewId: string | null } | { readonly kind: 'rename'; readonly crew: TeamSummary } | { readonly kind: 'delete'; readonly crew: TeamSummary };
+type Overlay = { readonly kind: 'new-crew' } | { readonly kind: 'new-teammate'; readonly crewId: string | null } | { readonly kind: 'rename'; readonly crew: TeamSummary } | { readonly kind: 'delete'; readonly crew: TeamSummary } | { readonly kind: 'move-computer'; readonly crew: TeamSummary };
 
 /** The crew ⋯ menu (Open, Pin to sidebar / Unpin, Move up / down, New teammate here, Rename, Delete). */
 export function crewMenuItems(
   crew: TeamSummary,
   ids: readonly string[],
-  actions: { readonly open: () => void; readonly pinned: boolean; readonly togglePin: () => void; readonly move: (delta: -1 | 1) => void; readonly newTeammate: () => void; readonly rename: () => void; readonly remove: () => void },
+  actions: { readonly open: () => void; readonly pinned: boolean; readonly togglePin: () => void; readonly move: (delta: -1 | 1) => void; readonly newTeammate: () => void; readonly rename: () => void; readonly remove: () => void; readonly moveComputer?: () => void },
 ): MenuItem[] {
   const up = moveCrewReason(ids, crew.id, -1);
   const down = moveCrewReason(ids, crew.id, 1);
@@ -56,6 +56,8 @@ export function crewMenuItems(
     { id: 'down', label: CREW_WORDS.moveDown, icon: 'chev-down', ...(down ? { disabledReason: down } : {}), onSelect: () => actions.move(1) },
     { id: 'new', label: 'New teammate here', icon: 'plus', onSelect: actions.newTeammate },
     { id: 'rename', label: CREW_WORDS.renameCrew, icon: 'edit', onSelect: actions.rename },
+    // D152: the whole crew to another computer (every teammate checked first, then one by one).
+    ...(actions.moveComputer ? [{ id: 'move-computer', label: 'Move crew to computer…', icon: 'desktop', onSelect: actions.moveComputer }] : []),
     { separator: true, id: 'sep' },
     { id: 'delete', label: CREW_WORDS.deleteCrew, icon: 'trash', danger: true, ...(ids.length <= 1 ? { disabledReason: 'Your only crew stays.' } : {}), onSelect: actions.remove },
   ];
@@ -222,6 +224,7 @@ export function CrewsPage() {
                     </div>
                     {stats.needs > 0 ? <StatusBadge status="needs" label={`${stats.needs} need${stats.needs === 1 ? 's' : ''} you`} size="s" /> : null}
                     <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      <span data-tour="v2-crew-menu" style={{ display: 'inline-flex' }}>
                       <MenuButton
                         label={`Crew actions for ${crew.name}`}
                         testId="v2-crew-menu"
@@ -233,8 +236,10 @@ export function CrewsPage() {
                           newTeammate: () => setOverlay({ kind: 'new-teammate', crewId: crew.id }),
                           rename: () => setOverlay({ kind: 'rename', crew }),
                           remove: () => setOverlay({ kind: 'delete', crew }),
+                          moveComputer: () => setOverlay({ kind: 'move-computer', crew }),
                         })}
                       />
+                      </span>
                     </span>
                   </div>
                   <div className="v2-row v2-c-wrap v2-c-crewcard-foot">
@@ -303,6 +308,15 @@ export function CrewsPage() {
             void reloadTeam();
             toast({ text: `${member.name} joined ${ordered.find((crew) => crew.id === member.teamId)?.name ?? 'the crew'}.` });
             open(member.teamId);
+          }}
+        />
+      ) : null}
+      {overlay?.kind === 'move-computer' ? (
+        <MoveCrewDialog
+          crew={overlay.crew}
+          onClose={() => {
+            setOverlay(null);
+            void reloadTeam();
           }}
         />
       ) : null}

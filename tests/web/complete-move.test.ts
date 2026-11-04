@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest';
+import type { TakeoverPreview } from '../../src/core/takeover.ts';
+import { EMPTY_CHOICE, choiceAfterPreview, choiceBody, fileRows, newRootFrom, repoModeOf, shareChoice, tickedSecrets, toggleFile, withNewWorkspace, withRepoMode, workspaceView, worksInLine } from '../../src/web/takeover/complete-move.ts';
+
+/** D152: the move dialog's pure parts (the workspace root, use / clone, the files, a crew's shared choices). */
+
+function preview(over: { folder?: string; machine?: string; repos?: Array<{ key: string; name: string; remoteKey: string; path: string }>; files?: boolean; root?: TakeoverPreview['target']['workspaceRoot'] } = {}): TakeoverPreview {
+  return {
+    source: {
+      machine: { id: over.machine ?? 'mac', name: 'Mac' },
+      folder: { path: over.folder ?? '/Users/dev/Acme', kind: 'workspace' },
+      repos: over.repos ?? [{ key: 'web', name: 'web-front', remoteKey: 'example.com/acme/web', path: '/Users/dev/Acme/microfrontends/web-front' }],
+      workspaceFiles:
+        over.files === false
+          ? null
+          : {
+              root: '/Users/dev/Acme',
+              truncated: false,
+              files: [
+                { name: 'AGENTS.md', size: 2048, sha256: 'a', secret: null, binary: false, refused: null },
+                { name: '.claude/settings.local.json', size: 300, sha256: 'b', secret: 'holds environment values (an "env" block)', binary: false, refused: null },
+                { name: 'docs/plan.md', size: 20, sha256: 'c', secret: null, binary: false, refused: null },
+                { name: 'video.mp4', size: 9_000_000, sha256: null, secret: null, binary: true, refused: 'over 1.0 MB' },
+              ],
+            },
+    },
+    target: {
+      folder: null,
+      repos: [],
+      workspaceRoot: over.root ?? null,
+      workspaceFiles: [
+        { name: 'AGENTS.md', state: 'new', reason: null },
+        { name: '.claude/settings.local.json', state: 'new', reason: null },
+        { name: 'docs/plan.md', state: 'conflict', reason: 'a different file is there: skipped, never overwritten' },
+        { name: 'video.mp4', state: 'new', reason: null },
+      ],
+    },
+    placement: null,
+    remembered: false,
+  } as unknown as TakeoverPreview;
+}
+
+describe('D152 · the move dialog', () => {
+  it('ticks plain new files by default, marks secrets unticked, disables what cannot be copied, and requires AGENTS.md for a new root', () => {
+    const p = preview({ root: { path: 'D:\\code\\Acme\\workspace', exists: false, empty: false, workspace: false, needsConfirm: false, ok: true, reason: null } });
+    const choice = choiceAfterPreview(EMPTY_CHOICE, p);
+    expect(choice.files).toEqual({ copy: ['AGENTS.md'], confirmSecrets: false });
+    const rows = Object.fromEntries(fileRows(p, choice.files, true).map((row) => [row.name, row]));
+    expect(rows['AGENTS.md']).toMatchObject({ ticked: true, required: true });
+    expect(rows['.claude/settings.local.json']).toMatchObject({ ticked: false, disabled: null });
+    expect(rows['.claude/settings.local.json']?.secret).toContain('env');
+    expect(rows['docs/plan.md']).toMatchObject({ ticked: false, target: 'different there: skipped' });
+    expect(rows['video.mp4']).toMatchObject({ ticked: false, disabled: 'over 1.0 MB' });
+    const ticked = toggleFile(choice.files, '.claude/settings.local.json', true);
+    expect(tickedSecrets(p, ticked)).toEqual(['.claude/settings.local.json']);
+    expect(choiceBody({ ...choice, files: ticked })).toEqual({ workspaceFiles: { copy: ['AGENTS.md', '.claude/settings.local.json'] } });
+  });
+
+  it('builds the new root from a parent and a name or a full path, and applies it only when asked', () => {
+    expect(newRootFrom('parent', 'D:\\code\\Acme', 'workspace', '')).toEqual({ path: 'D:\\code\\Acme\\workspace', problem: null });
+    expect(newRootFrom('full', '', '', 'D:\\code\\Acme\\workspace')).toEqual({ path: 'D:\\code\\Acme\\workspace', problem: null });
+    expect(newRootFrom('parent', '', 'workspace', '').problem).toBe('pick the folder to create it in');
+    const created = withNewWorkspace(null, 'D:\\code\\ws');
+    expect(created).toEqual({ roots: [], newWorkspace: { path: 'D:\\code\\ws' } });
+    expect(withNewWorkspace(created, 'D:\\code\\ws', true)).toEqual({ roots: [], newWorkspace: { path: 'D:\\code\\ws', useExisting: true } });
+    expect(withNewWorkspace(created, null)).toBeNull();
+    const view = workspaceView(preview(), created);
+    expect(view).toMatchObject({ show: true, suggestedName: 'Acme', creating: 'D:\\code\\ws', found: false });
+    expect(worksInLine(preview())).toBe('web-front (/Users/dev/Acme/microfrontends/web-front)');
+  });
+
+  it('switches a repo between use and clone', () => {
+    const cloned = withRepoMode(null, 'web', 'clone');
+    expect(cloned).toEqual({ roots: [], repoModes: { web: 'clone' } });
+    expect(repoModeOf(cloned, 'web')).toBe('clone');
+    expect(withRepoMode(cloned, 'web', 'use')).toEqual({ roots: [] });
+  });
+
+  it('a crew: a new root goes to the teammates of the same workspace, a repo choice to the ones with the same repo', () => {
+    const previews = {
+      a: preview({ repos: [{ key: 'web', name: 'web-front', remoteKey: 'example.com/acme/web', path: '/x' }] }),
+      b: preview({ repos: [{ key: 'web-2', name: 'web-front', remoteKey: 'example.com/acme/web', path: '/y' }] }),
+      c: preview({ folder: '/Users/dev/other', repos: [{ key: 'api', name: 'api', remoteKey: 'example.com/acme/api', path: '/z' }] }),
+    };
+    const next = { ...EMPTY_CHOICE, placement: withRepoMode(withNewWorkspace(null, 'D:\\ws'), 'web', 'clone') };
+    const shared = shareChoice({}, previews, 'a', next);
+    expect(shared['b']?.placement).toEqual({ roots: [], newWorkspace: { path: 'D:\\ws' }, repoModes: { 'web-2': 'clone' } });
+    expect(shared['c']?.placement ?? null).toBeNull();
+  });
+});

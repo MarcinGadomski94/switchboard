@@ -1,3 +1,5 @@
+import type { WorkspaceFileChoice } from '../../core/workspace-move.ts';
+import type { CrewMoveCheck, CrewMoveRun } from '../../core/team.ts';
 import type { TeamCharter, TeamHandoff, TeamMember, TeamMoveRun, TeamNeedsYouItem, TeamRequest, TeamState, TeamSuggestion, TeamSummary, TeamView } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
@@ -69,6 +71,8 @@ export interface MoveTarget {
   /** `null` = the target's saved folders (the remembered folders are not used); absent = the remembered ones, if any. */
   readonly placement?: TargetPlacement | null;
   readonly clonePaths?: Readonly<Record<string, string>>;
+  /** D152: the workspace's own files to copy. */
+  readonly workspaceFiles?: WorkspaceFileChoice;
 }
 
 /** `POST /api/team/charters/ask` (D105). */
@@ -103,6 +107,10 @@ export const teamApi = {
   moveCheck: (id: string, targetMachineId: string, choice: MoveTarget = {}) => call<MoveCheck>('POST', `/api/team/members/${enc(id)}/move/check`, { targetMachineId, ...choice }),
   move: (id: string, targetMachineId: string, choice: MoveTarget = {}) => call<TeamMoveRun>('POST', `/api/team/members/${enc(id)}/move`, { targetMachineId, ...choice }),
   moveRun: (runId: string) => call<TeamMoveRun>('GET', `/api/team/moves/${enc(runId)}`),
+  // D152: move a whole crew (every teammate checked first, then one by one).
+  crewMoveCheck: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}) => call<CrewMoveCheck>('POST', `/api/team/teams/${enc(teamId)}/move/check`, { targetMachineId, members }),
+  crewMove: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}) => call<CrewMoveRun>('POST', `/api/team/teams/${enc(teamId)}/move`, { targetMachineId, members }),
+  crewMoveRun: (runId: string) => call<CrewMoveRun>('GET', `/api/team/crew-moves/${enc(runId)}`),
   handoff: (to: string, brief: string, expected: string) => call<TeamHandoff>('POST', '/api/team/handoffs', { to, brief, expected }),
   decide: (requestId: string, decision: 'approve' | 'decline' | 'dismiss', body?: { readonly charter?: TeamCharter }) => call<TeamRequest>('POST', `/api/team/requests/${enc(requestId)}/${decision}`, body),
   // D105: better charters.

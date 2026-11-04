@@ -196,7 +196,7 @@ export function withoutRoot(placement: TargetPlacement | null, root: string): Ta
   if (!placement) return null;
   const roots = placement.roots.filter((entry) => entry !== root);
   const paths = placement.repoPaths ?? {};
-  return roots.length === 0 && Object.keys(paths).length === 0 ? null : { ...placement, roots };
+  return roots.length === 0 && Object.keys(paths).length === 0 && !placement.newWorkspace && !placement.repoModes ? null : { ...placement, roots };
 }
 
 /** `placement` with the checkout of repo `key` set (`null` clears the choice). */
@@ -205,6 +205,8 @@ export function withRepoPath(placement: TargetPlacement | null, key: string, val
   if (value === null || value.trim() === '') delete paths[key];
   else paths[key] = value.trim();
   const roots = placement?.roots ?? [];
-  if (roots.length === 0 && Object.keys(paths).length === 0) return null;
-  return { roots: [...roots], ...(Object.keys(paths).length > 0 ? { repoPaths: paths } : {}) };
+  // D152: the new workspace root and the per-repo use / clone choice are kept.
+  const { repoPaths: _old, ...rest } = placement ?? { roots: [] };
+  if (roots.length === 0 && Object.keys(paths).length === 0 && !rest.newWorkspace && !rest.repoModes) return null;
+  return { ...rest, roots: [...roots], ...(Object.keys(paths).length > 0 ? { repoPaths: paths } : {}) };
 }

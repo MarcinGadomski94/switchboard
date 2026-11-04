@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { HOOKED_STOP_WARNING, type TakeoverPreview, type TakeoverRun, type TargetDirListing, type TargetPlacement } from '../../../core/takeover.ts';
+import { HOOKED_STOP_WARNING, type TakeoverPreview, type TakeoverRun } from '../../../core/takeover.ts';
 import { STOP_AND_CONTINUE_LABEL, STOP_TERMINAL_WARNING } from '../../../core/hooked-continue.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { continueRefusal } from '../../hooked-continue/continue.ts';
 import { type ContinueHookedRequest, closeContinueHooked, useContinueHookedRequest } from '../../hooked-continue/store.ts';
 import { closeTakeover, useTakeoverRequest } from '../../takeover/store.ts';
-import { type RepoRow, type TakeoverRequest, clonePathsOf, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
+import { type TakeoverRequest, clonePathsOf } from '../../takeover/takeover.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody } from '../../takeover/complete-move.ts';
+import { MovePlanPanel } from './MovePlan.tsx';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
-import { Button, Checkbox, Chip, Dialog, Field, Icon, Select, useToast } from '../components/index.ts';
+import { Button, Checkbox, Chip, Dialog, Icon, Select, useToast } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
-import { type MoveTarget, moveBlockedReason, moveHeadline, moveTargets, moveTitle, repoActionWord, repoLook, runTone, stepLook, targetLabel } from './move-model.ts';
+import { type MoveTarget, moveBlockedReason, moveHeadline, moveTargets, moveTitle, runTone, stepLook, targetLabel } from './move-model.ts';
 
 /** The dialog's text of a failure (the classic dialogs' rule: the server's message, else the status). */
 function errorText(error: unknown): string {
@@ -59,8 +61,8 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   const [target, setTarget] = useState<string | null>(request.targetMachine);
   const [preview, setPreview] = useState<TakeoverPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [typed, setTyped] = useState<Record<string, string>>({});
-  const [placement, setPlacement] = useState<TargetPlacement | null>(null);
+  // D110 / D152: the folders, the workspace root, the per-repo choices and the files the developer chose.
+  const [choice, setChoice] = useState<MoveChoice>(EMPTY_CHOICE);
   const [confirmed, setConfirmed] = useState(false);
   const [run, setRun] = useState<TakeoverRun | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -79,30 +81,29 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   const otherName = direction === 'move' ? (picked?.name ?? request.machineName) : request.machineName;
   const other: { readonly name: string; readonly state: MoveTarget['state'] } | null = picked ?? (sourceMachine ? (moveTargets([sourceMachine])[0] ?? null) : null);
 
-  const loadPreview = (paths: Record<string, string> = {}, chosen: TargetPlacement | null | undefined = undefined): void => {
+  /** Asks both computers again for `next` (`undefined` = the first ask: the remembered folders apply). */
+  const loadPreview = (next: MoveChoice | undefined = undefined): void => {
     const n = ++ask.current;
     setPreviewError(null);
     api
-      .takeoverPreview({ sessionId: request.sessionId, targetMachine, ...(Object.keys(paths).length > 0 ? { clonePaths: paths } : {}), ...(chosen !== undefined ? { placement: chosen } : {}) })
-      .then((next) => {
+      .takeoverPreview({ sessionId: request.sessionId, targetMachine, ...(next ? choiceBody(next, true) : {}) })
+      .then((answer) => {
         if (n !== ask.current) return;
-        setPreview(next);
-        setPlacement(next.placement);
-        setTyped((current) => {
-          const out = { ...current };
-          for (const repo of next.target.repos) if (repo.cloneTo && out[repo.key] === undefined) out[repo.key] = repo.cloneTo;
-          return out;
-        });
+        setPreview(answer);
+        setChoice((current) => choiceAfterPreview(next ?? current, answer));
       })
       .catch((error: unknown) => {
         if (n === ask.current) setPreviewError(errorText(error));
       });
   };
+  const change = (next: MoveChoice): void => {
+    setChoice(next);
+    loadPreview(next);
+  };
   // A new target starts over: its own folders, clone paths and confirmation.
   useEffect(() => {
     setPreview(null);
-    setPlacement(null);
-    setTyped({});
+    setChoice(EMPTY_CHOICE);
     setConfirmed(false);
     loadPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,13 +123,13 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     );
   };
 
-  const reason = moveBlockedReason({ preview, previewError, confirmed, clonePaths: typed, other, running });
+  const reason = moveBlockedReason({ preview, previewError, confirmed, clonePaths: choice.clonePaths, other, running });
   const start = (): void => {
     if (!preview || reason !== null) return;
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, typed), ...(placement ? { placement } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);
@@ -240,34 +241,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
                 </span>
               </div>
             </div>
-            <FolderPicker
-              machine={direction === 'move' ? targetMachine : null}
-              machineName={targetName}
-              placement={placement}
-              remembered={preview.remembered}
-              onChange={(next) => {
-                setPlacement(next);
-                loadPreview(clonePathsOf(preview, typed), next);
-              }}
-            />
-            <div className="v2-mv-repos" data-testid="v2-move-repos">
-              {repoRows(preview).map((row) => (
-                <RepoRowView
-                  key={row.key}
-                  row={row}
-                  sourceName={sourceName}
-                  targetName={targetName}
-                  clonePath={typed[row.key]}
-                  onClonePath={(value) => setTyped((current) => ({ ...current, [row.key]: value }))}
-                  onCloneDone={() => loadPreview(clonePathsOf(preview, typed), placement)}
-                  onPick={(value) => {
-                    const next = withRepoPath(placement, row.key, value);
-                    setPlacement(next);
-                    loadPreview(clonePathsOf(preview, typed), next);
-                  }}
-                />
-              ))}
-            </div>
+            <MovePlanPanel preview={preview} machine={direction === 'move' ? targetMachine : null} sourceName={sourceName} targetName={targetName} choice={choice} onChange={change} onEdit={setChoice} />
             {preview.stopsTerminal ? (
               <div className="v2-mv-warn" data-testid="v2-move-hooked-warning">
                 <p>{HOOKED_STOP_WARNING}</p>
@@ -374,220 +348,6 @@ function RunView({
         </pre>
       ) : null}
     </>
-  );
-}
-
-/**
- * D110 in v2: the folders on the target (chips; none = its saved folders) and
- * **Choose folders…**: the target's saved folders and home, a path field, and its
- * folders to browse (through the peer API). Every change re-runs the preview.
- */
-function FolderPicker({
-  machine,
-  machineName,
-  placement,
-  remembered,
-  onChange,
-}: {
-  readonly machine: string | null;
-  readonly machineName: string;
-  readonly placement: TargetPlacement | null;
-  readonly remembered: boolean;
-  readonly onChange: (next: TargetPlacement | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [listing, setListing] = useState<TargetDirListing | null>(null);
-  const [typed, setTyped] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const load = (path: string | null): void => {
-    setError(null);
-    api.takeoverFolders(machine, path).then(
-      (next) => {
-        setListing(next);
-        if (next.path) setTyped(next.path);
-      },
-      (caught: unknown) => setError(errorText(caught)),
-    );
-  };
-  const toggle = (): void => {
-    if (!open && listing === null) load(null);
-    setOpen(!open);
-  };
-  const use = (path: string): void => {
-    if (path.trim() === '') return;
-    onChange(withRoot(placement, path));
-    setOpen(false);
-  };
-  const roots = placement?.roots ?? [];
-  return (
-    <div className="v2-mv-folders" data-testid="v2-move-folders">
-      <div className="v2-row v2-mv-folders-head">
-        <b>Folders on {machineName}</b>
-        {roots.length === 0 ? (
-          <span className="v2-muted" data-testid="v2-move-folders-saved">
-            its saved folders
-          </span>
-        ) : (
-          roots.map((root) => (
-            <span key={root} className="v2-mv-root" data-testid="v2-move-root" title={root}>
-              <Icon name="folder" size="s" />
-              <span className="v2-mv-root-t">{root}</span>
-              <button type="button" className="v2-mv-root-x" aria-label={`Remove ${root}`} onClick={() => onChange(withoutRoot(placement, root))}>
-                <Icon name="x" size="s" />
-              </button>
-            </span>
-          ))
-        )}
-        <span className="v2-grow" />
-        <Button size="sm" icon="folder" aria-expanded={open} data-testid="v2-move-folders-toggle" onClick={toggle}>
-          {open ? AGENT_WORDS.closeDialog : roots.length === 0 ? 'Choose folders…' : 'Add a folder…'}
-        </Button>
-      </div>
-      {remembered && roots.length > 0 ? <p className="v2-muted v2-mv-small">The folders of the last move of this folder to {machineName}.</p> : null}
-      {open ? (
-        <div className="v2-mv-picker" data-testid="v2-move-folder-picker">
-          {listing ? (
-            <div className="v2-row v2-mv-places">
-              {listing.places.map((place) => (
-                <Button key={place.path} size="sm" icon={place.kind === 'home' ? 'home' : 'folder'} title={place.path} data-testid="v2-move-place" onClick={() => load(place.path)}>
-                  {place.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          <div className="v2-row v2-mv-path">
-            <Field
-              className="v2-mono"
-              aria-label={`A folder on ${machineName}`}
-              placeholder={`A folder on ${machineName}`}
-              value={typed}
-              spellCheck={false}
-              data-testid="v2-move-folder-path"
-              onChange={(event) => setTyped(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') load(typed);
-              }}
-            />
-            <Button size="sm" onClick={() => load(typed)}>
-              Open
-            </Button>
-            <Button size="sm" variant="primary" disabled={typed.trim() === ''} data-testid="v2-move-folder-use" onClick={() => use(typed)}>
-              Use this folder
-            </Button>
-          </div>
-          {error ? (
-            <div className="v2-mv-error" role="alert">
-              {error}
-            </div>
-          ) : null}
-          {listing && listing.path ? (
-            <div className="v2-mv-dirs" role="list" aria-label={`Folders in ${listing.path}`}>
-              {listing.parent ? (
-                <button type="button" role="listitem" className="v2-mv-dir" onClick={() => load(listing.parent)}>
-                  <Icon name="back" size="s" />
-                  Up
-                </button>
-              ) : null}
-              {listing.entries.map((entry) => (
-                <button key={entry.path} type="button" role="listitem" className="v2-mv-dir" title={entry.path} onClick={() => load(entry.path)}>
-                  <Icon name="folder" size="s" />
-                  <span className="v2-grow">{entry.name}</span>
-                  {entry.repo ? <Chip size="s">code project</Chip> : entry.workspace ? <Chip size="s">workspace</Chip> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** One code project: ✓ / ⚠ / ✖ as icon + word + colour, both sides, the choices, another checkout, the clone folder. */
-function RepoRowView({
-  row,
-  sourceName,
-  targetName,
-  clonePath,
-  onClonePath,
-  onCloneDone,
-  onPick,
-}: {
-  readonly row: RepoRow;
-  readonly sourceName: string;
-  readonly targetName: string;
-  readonly clonePath: string | undefined;
-  readonly onClonePath: (value: string) => void;
-  readonly onCloneDone: () => void;
-  readonly onPick: (path: string | null) => void;
-}) {
-  const [override, setOverride] = useState<string | null>(null);
-  const look = repoLook(row.mark);
-  return (
-    <div className="v2-mv-repo" data-testid="v2-move-repo" data-key={row.key} data-action={row.action} data-mark={row.mark} data-tone={look.tone}>
-      <div className="v2-row v2-mv-repo-head">
-        <Chip tone={look.tone} icon={look.icon} size="s">
-          {look.word}
-        </Chip>
-        <b className="v2-grow">{row.name}</b>
-        <span className="v2-mono v2-muted" data-testid="v2-move-repo-branch">
-          {row.branch}
-        </span>
-        <span className="v2-mv-word" data-testid="v2-move-repo-action">
-          {repoActionWord(row.action)}
-        </span>
-      </div>
-      <div className="v2-mv-cols">
-        <div>
-          <span className="v2-mv-col-h">{sourceName}</span>
-          {row.remoteUrl ? <span className="v2-muted v2-mono v2-mv-line">{row.remoteUrl}</span> : null}
-          <span className="v2-mv-line">{row.work} · carried through a temporary branch</span>
-        </div>
-        <div>
-          <span className="v2-mv-col-h">{targetName}</span>
-          <span className="v2-mv-line" data-testid="v2-move-repo-summary">
-            {row.target}
-          </span>
-          {row.choices.length > 0 ? (
-            <div className="v2-mv-choices" role="group" aria-label={`Which checkout of ${row.name}`}>
-              {row.choices.map((choice) => (
-                <Button key={choice.path} size="sm" data-testid="v2-move-repo-choice" onClick={() => onPick(choice.path)}>
-                  {choice.path} · {choice.branch ?? 'detached'}
-                  {choice.dirty > 0 ? ` · ${choice.dirty} uncommitted` : ''}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          {override === null ? (
-            <Button size="sm" variant="ghost" data-testid="v2-move-repo-other" onClick={() => setOverride(row.path ?? '')}>
-              Another checkout…
-            </Button>
-          ) : (
-            <Field
-              label="Use this checkout"
-              className="v2-mono"
-              value={override}
-              placeholder={`The checkout of ${row.name} on ${targetName}`}
-              spellCheck={false}
-              data-testid="v2-move-repo-override"
-              onChange={(event) => setOverride(event.target.value)}
-              onBlur={() => onPick(override.trim() === '' ? null : override)}
-            />
-          )}
-          {row.action === 'clone' || (row.action === 'blocked' && row.cloneTo !== null) ? (
-            <Field
-              label="Clone into"
-              className="v2-mono"
-              value={clonePath ?? row.cloneTo ?? ''}
-              spellCheck={false}
-              data-testid="v2-move-clone-path"
-              onChange={(event) => onClonePath(event.target.value)}
-              onBlur={onCloneDone}
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
   );
 }
 

@@ -104,7 +104,15 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   `v2Route: '/agents'`. It says that a folder dragged onto another folder becomes its subfolder, onto
   Folders goes to the top level, with its agents and subfolders; that ⋯ › Move to… (or `M`) and, on a
   phone, the folder page's Move to… do the same; and which places are refused (`docs/v2.md` →
-  *Agents: folders*). The last of the chain ("(12 of 12)").
+  *Agents: folders*).
+- **"Move everything to another computer in one go"** (`complete-move`, version 2.4.21, `ui: 'v2'`, decision D152):
+  three steps. **Works in**: the agent's Details line (`v2-agent-works-in`, else the Details button
+  `v2-agent-details`), `v2Route: '/agents'`: which repos an agent works in, with paths and branches. **The
+  Move dialog** (`v2-agent-details`): the workspace created where the developer says, use or clone per repo,
+  the workspace files with secrets marked and confirmed. **The crew** (`v2-crew-menu`, else Crews in the rail
+  `v2-nav-crews` or the phone's More tab `v2-tab-more`), `v2Route: '/crews'`: Move crew to computer…, every
+  teammate checked first, then one by one (`docs/peers.md` → *A complete move (D152)*, `docs/team.md` →
+  *Moving a whole crew (D152)*). The last of the chain ("(13 of 13)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

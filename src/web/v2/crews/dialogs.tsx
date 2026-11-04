@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionModelOption } from '../../../core/api.ts';
-import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion, TeamSummary } from '../../../core/team.ts';
+import { type CrewMoveCheck, type CrewMoveRun, type TeamCharter, type TeamMember, type TeamMoveRun, type TeamSuggestion, type TeamSummary, crewMoveSummary } from '../../../core/team.ts';
+import type { TakeoverPreview } from '../../../core/takeover.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, shareChoice } from '../../takeover/complete-move.ts';
+import { MovePlanPanel } from '../agent/MovePlan.tsx';
 import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
-import { refusalText, teamApi } from '../../team/api.ts';
+import { type MoveCheck, refusalText, teamApi } from '../../team/api.ts';
 import { draftCharter } from '../../team/charter-draft.ts';
 import { useTeamSwitch } from '../../team/hidden.ts';
 import { EMPTY_FORM, type MemberForm, formBody, formFromSuggestion, formFromTemplate, newMemberSession } from '../../team/model.ts';
-import { Button, Checkbox, Dialog, Field, Select, TextArea, useToast } from '../components/index.ts';
+import { Button, Checkbox, Chip, Dialog, Field, Select, TextArea, useToast } from '../components/index.ts';
 import { CREW_WORDS, WORDS } from '../glossary.ts';
 import { MOVE_POLL_ERRORS, type MoveProgress, checkBudget, computerChoices, moveProgress, moveTargetReason } from './crew-model.ts';
 import { reloadTeam } from '../../team/useTeamData.ts';
@@ -180,6 +183,10 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'checking' | 'moving'>('idle');
   const [progress, setProgress] = useState<MoveProgress | null>(null);
+  // D152: the move's plan on the picked computer (the take-over's preview) and what the developer chose in it.
+  const [plan, setPlan] = useState<MoveCheck | null>(null);
+  const [choice, setChoice] = useState<MoveChoice>(EMPTY_CHOICE);
+  const ask = useRef(0);
   const open = useRef(true);
   const toast = useToast();
   useEffect(() => {
@@ -196,6 +203,26 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
   const choices = self ? computerChoices(member, self, machines) : [];
   const nameOf = (id: string): string => choices.find((choice) => choice.id === id)?.name ?? 'the other computer';
   const targetWhy = pick === null ? null : moveTargetReason(choices, pick);
+  /** Asks the teammate's computer for the move's plan on `target` with `next` (the first ask: the remembered folders). */
+  const loadPlan = (target: string, next: MoveChoice | undefined): void => {
+    const n = ++ask.current;
+    teamApi.moveCheck(member.id, target, next ? choiceBody(next, true) : {}).then(
+      (answer) => {
+        if (n !== ask.current) return;
+        setPlan(answer);
+        setBlockers(answer.blockers);
+        if (answer.preview) setChoice((current) => choiceAfterPreview(next ?? current, answer.preview as TakeoverPreview));
+      },
+      (caught: unknown) => n === ask.current && setError(refusalText(caught)),
+    );
+  };
+  useEffect(() => {
+    setPlan(null);
+    setChoice(EMPTY_CHOICE);
+    setBlockers([]);
+    if (pick !== null && moveTargetReason(choices, pick) === null) loadPlan(pick, undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pick]);
   /** Follows the run until it ends; the outcome goes to the dialog while it is open, else to a toast. */
   const follow = async (runId: string, target: string): Promise<void> => {
     const targetName = nameOf(target);
@@ -251,14 +278,16 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
     setBlockers([]);
     setProgress(null);
     try {
-      const check = await teamApi.moveCheck(member.id, pick);
+      const body = plan?.preview ? choiceBody(choice, true) : {};
+      const check = await teamApi.moveCheck(member.id, pick, body);
+      setPlan(check);
       if (!check.ok) {
         setBlockers(check.blockers);
         setState('idle');
         return;
       }
       setState('moving');
-      const run = await teamApi.move(member.id, pick);
+      const run = await teamApi.move(member.id, pick, body);
       setProgress({ kind: 'moving', text: `Moving ${member.name} to ${nameOf(pick)}…` });
       void follow(run.id, pick);
     } catch (e) {
@@ -301,6 +330,20 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
           {targetWhy}
         </p>
       ) : null}
+      {pick !== null && targetWhy === null && plan?.preview && state === 'idle' && progress?.kind !== 'moving' ? (
+        <MovePlanPanel
+          preview={plan.preview}
+          machine={pick}
+          sourceName={plan.preview.source.machine.name}
+          targetName={nameOf(pick)}
+          choice={choice}
+          onChange={(next) => {
+            setChoice(next);
+            loadPlan(pick, next);
+          }}
+          onEdit={setChoice}
+        />
+      ) : null}
       {blockers.length > 0 ? (
         <ul className="v2-c-blockers" data-testid="v2-move-computer-blockers">
           {blockers.map((blocker) => (
@@ -311,6 +354,206 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
       {progress ? (
         <p className={progress.kind === 'failed' ? 'v2-field-error' : 'v2-muted v2-c-small'} role={progress.kind === 'failed' ? 'alert' : 'status'} data-testid="v2-move-computer-progress" data-state={progress.kind}>
           {progress.text}
+        </p>
+      ) : null}
+      <ErrorLine text={error} />
+    </Dialog>
+  );
+}
+
+/** How often a running crew move is read again. */
+const CREW_POLL_MS = 1_500;
+
+/**
+ * D152 · **Move crew to computer…** (`docs/team.md` → *Moving a whole crew*): one dialog for
+ * the whole crew. Pick the computer; every teammate is checked at once (all blockers shown
+ * together, per teammate), each with the move's plan (the workspace on the target, each repo
+ * used or cloned, the workspace files); a choice for a workspace or a repo that teammates share
+ * applies to all of them. **Move crew** moves them one by one in the crew's order; a failure
+ * stops the rest, and the dialog says who moved and who did not.
+ */
+export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; readonly onClose: () => void }) {
+  const machines = useMachines();
+  const [self, setSelf] = useState<{ id: string; name: string } | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [check, setCheck] = useState<CrewMoveCheck | null>(null);
+  const [choices, setChoices] = useState<Record<string, MoveChoice>>({});
+  const [run, setRun] = useState<CrewMoveRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ask = useRef(0);
+  const timer = useRef<number | undefined>(undefined);
+  const toast = useToast();
+  useEffect(() => {
+    let alive = true;
+    api.machines().then(
+      (view) => alive && setSelf({ id: view.self.id, name: view.self.name }),
+      () => alive && setSelf({ id: 'self', name: 'This computer' }),
+    );
+    return () => {
+      alive = false;
+      window.clearTimeout(timer.current);
+    };
+  }, []);
+  const targets = self ? [{ id: self.id, name: self.name, state: 'online' as const }, ...machines.map((machine) => ({ id: machine.id, name: machine.name, state: machine.state }))] : [];
+  const nameOf = (id: string): string => targets.find((entry) => entry.id === id)?.name ?? 'the other computer';
+  const previews = useMemo(() => Object.fromEntries((check?.members ?? []).map((member) => [member.memberId, (member.preview ?? null) as TakeoverPreview | null])), [check]);
+  const bodies = (next: Readonly<Record<string, MoveChoice>>): Record<string, ReturnType<typeof choiceBody>> => Object.fromEntries(Object.entries(next).map(([id, value]) => [id, choiceBody(value, true)]));
+  const loadCheck = (target: string, next: Readonly<Record<string, MoveChoice>> | null): void => {
+    const n = ++ask.current;
+    setError(null);
+    teamApi.crewMoveCheck(crew.id, target, next ? bodies(next) : {}).then(
+      (answer) => {
+        if (n !== ask.current) return;
+        setCheck(answer);
+        setChoices((current) => {
+          const base = next ?? current;
+          const out: Record<string, MoveChoice> = {};
+          for (const member of answer.members) {
+            const preview = (member.preview ?? null) as TakeoverPreview | null;
+            out[member.memberId] = preview ? choiceAfterPreview(base[member.memberId] ?? EMPTY_CHOICE, preview) : (base[member.memberId] ?? EMPTY_CHOICE);
+          }
+          return out;
+        });
+      },
+      (caught: unknown) => n === ask.current && setError(refusalText(caught)),
+    );
+  };
+  useEffect(() => {
+    setCheck(null);
+    setChoices({});
+    if (pick !== null) loadCheck(pick, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pick]);
+  const follow = (runId: string): void => {
+    teamApi.crewMoveRun(runId).then(
+      (next) => {
+        setRun(next);
+        if (next.state === 'running') timer.current = window.setTimeout(() => follow(runId), CREW_POLL_MS);
+        else {
+          setBusy(false);
+          void reloadTeam();
+          if (next.state === 'done') toast({ text: crewMoveSummary(next, nameOf(next.targetMachineId)) });
+        }
+      },
+      () => {
+        timer.current = window.setTimeout(() => follow(runId), CREW_POLL_MS * 2);
+      },
+    );
+  };
+  const move = async (): Promise<void> => {
+    if (!pick || !check?.ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await teamApi.crewMove(crew.id, pick, bodies(choices));
+      setRun(started);
+      follow(started.id);
+    } catch (caught) {
+      setBusy(false);
+      setError(refusalText(caught));
+      loadCheck(pick, choices);
+    }
+  };
+  const moving = run?.state === 'running';
+  const blocked = (check?.members ?? []).filter((member) => member.state === 'blocked');
+  const why = pick === null ? 'Pick a computer.' : check === null ? 'Checking every teammate…' : blocked.length > 0 ? `${blocked.length} teammate${blocked.length === 1 ? '' : 's'} cannot move yet: see below.` : !check.ok ? 'Every teammate runs there already.' : null;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Move “${crew.name}” to a computer`}
+      icon="desktop"
+      width={760}
+      testId="v2-move-crew-computer"
+      footer={
+        <>
+          {!run && why !== null ? (
+            <span className="v2-muted v2-grow v2-c-small" data-testid="v2-move-crew-why" role="status">
+              {why}
+            </span>
+          ) : (
+            <span className="v2-grow" />
+          )}
+          <Button onClick={onClose}>{moving ? 'Hide' : run ? 'Close' : 'Cancel'}</Button>
+          {run?.state === 'failed' ? (
+            <Button
+              data-testid="v2-move-crew-again"
+              onClick={() => {
+                setRun(null);
+                if (pick) loadCheck(pick, choices);
+              }}
+            >
+              Check the rest again
+            </Button>
+          ) : null}
+          {!run ? (
+            <Button variant="primary" icon="desktop" disabled={why !== null || busy} title={why ?? undefined} onClick={() => void move()} data-testid="v2-move-crew-go">
+              {busy ? 'Moving…' : 'Move crew'}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <p className="v2-muted v2-c-small">Every teammate is checked first; then they move one at a time, in the crew’s order. If one fails, the rest stay where they are and the ones that moved stay moved.</p>
+      {!run ? (
+        <div className="v2-c-pick" role="radiogroup" aria-label="Computers">
+          {targets.map((target) => (
+            <label key={target.id} className="v2-c-pick-row" data-testid="v2-move-crew-option" data-machine={target.id}>
+              <input type="radio" name="v2-move-crew-computer" disabled={target.state !== 'online'} checked={pick === target.id} onChange={() => setPick(target.id)} />
+              <span className="v2-grow">{target.name}</span>
+              {target.state !== 'online' ? <span className="v2-muted v2-c-small">{target.state === 'reconnecting' ? 'Reconnecting…' : 'Offline'}</span> : null}
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <div className="v2-mp-crew" data-testid="v2-move-crew-members">
+        {(run?.members ?? check?.members ?? []).map((member) => {
+          const preview = previews[member.memberId] ?? null;
+          const tone = member.state === 'moved' || member.state === 'ready' ? 'green' : member.state === 'blocked' || member.state === 'failed' ? 'red' : member.state === 'moving' ? 'blue' : 'grey';
+          return (
+            <details key={member.memberId} className="v2-mp-mate" data-testid="v2-move-crew-member" data-member={member.memberId} data-state={member.state} open={member.state === 'blocked' || member.state === 'failed'}>
+              <summary>
+                <Chip tone={tone} size="s">
+                  {member.state === 'ready' ? 'ready' : member.state === 'not-moved' ? 'not moved' : member.state}
+                </Chip>
+                <b className="v2-grow">{member.name}</b>
+                <span className="v2-muted v2-c-small">{member.note ?? (member.blockers.length > 0 ? member.blockers[0] : '')}</span>
+              </summary>
+              {member.blockers.length > 0 ? (
+                <ul className="v2-c-blockers" data-testid="v2-move-crew-blockers">
+                  {member.blockers.map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {!run && preview && pick ? (
+                <MovePlanPanel
+                  preview={preview}
+                  machine={pick}
+                  sourceName={preview.source.machine.name}
+                  targetName={nameOf(pick)}
+                  choice={choices[member.memberId] ?? EMPTY_CHOICE}
+                  testId="v2-move-crew-plan"
+                  onEdit={(next) => setChoices((current) => ({ ...current, [member.memberId]: next }))}
+                  onChange={(next) => {
+                    const shared = shareChoice(choices, previews, member.memberId, next);
+                    setChoices(shared);
+                    loadCheck(pick, shared);
+                  }}
+                />
+              ) : null}
+            </details>
+          );
+        })}
+      </div>
+      {run && run.state !== 'running' ? (
+        <p className={run.state === 'failed' ? 'v2-field-error' : 'v2-muted v2-c-small'} role={run.state === 'failed' ? 'alert' : 'status'} data-testid="v2-move-crew-result" data-state={run.state}>
+          {run.state === 'failed' ? `${run.error ?? ''} ${crewMoveSummary(run, nameOf(run.targetMachineId))}` : crewMoveSummary(run, nameOf(run.targetMachineId))}
+        </p>
+      ) : run ? (
+        <p className="v2-muted v2-c-small" role="status" data-testid="v2-move-crew-result" data-state="running">
+          {crewMoveSummary(run, nameOf(run.targetMachineId))}
         </p>
       ) : null}
       <ErrorLine text={error} />

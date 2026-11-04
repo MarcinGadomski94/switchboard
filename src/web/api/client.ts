@@ -1,3 +1,4 @@
+import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
@@ -389,6 +390,8 @@ export const api = {
   sessionDiff: (id: string, file?: string, scope?: DiffScope) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file, scope })}`),
   /** D90: the working trees the session's diff reads (which views the Diff tab offers). */
   sessionDiffTargets: (id: string) => request<DiffTargets>('GET', `/api/sessions/${enc(id)}/diff/targets`),
+  /** D152: which repos the session works in (its history), with their paths. */
+  sessionWorksIn: (id: string) => request<SessionWorksIn>('GET', `/api/sessions/${enc(id)}/works-in`),
   /** D90 ruling: the file count of the Diff tab's view (the session tab's "Diff · n"). */
   sessionDiffCount: (id: string, scope: DiffScope) => request<DiffCount>('GET', `/api/sessions/${enc(id)}/diff/count${query({ scope })}`),
 
@@ -513,10 +516,10 @@ export const api = {
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),
   /** D65: what a take-over would do (both machines' view), before anything changes. */
-  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null }) =>
+  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice }) =>
     request<TakeoverPreview>('POST', '/api/takeover/preview', body),
   /** D65: starts the take-over (202; poll {@link takeoverRun}). */
-  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean }) =>
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice }) =>
     request<TakeoverRun>('POST', '/api/takeover', body),
   /** D110: the target machine's folder picker (`machine` = `null` for this one): the starting places, or one folder's subfolders. */
   takeoverFolders: (machine: string | null, path?: string | null) => request<TargetDirListing>('POST', '/api/takeover/folders', { ...(machine ? { machine } : {}), ...(path ? { path } : {}) }),

@@ -20,7 +20,7 @@ import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Icon, Select, StatusBadge, useToast } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
-import { NotesLine, OverviewGroup, ProjectLine } from './SideExtras.tsx';
+import { NotesLine, OverviewGroup, ProjectLine, WorksInLine } from './SideExtras.tsx';
 import { EarlierToggle, ShowMoreHelpers, useHelperList, useHelpersFold } from './HelpersFold.tsx';
 import { ModelEffortSelects } from '../shared/ModelEffort.tsx';
 import { modelEffortField, modelName, modelSummary } from '../shared/model-effort.ts';
@@ -139,6 +139,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
       ) : null}
       {/* Lane X · D99 / D107: the project it belongs to, and what agents know for its folder. */}
       {data.conversation ? null : <ProjectLine sessionId={data.sessionId} />}
+      {data.conversation ? null : <WorksInLine sessionId={data.sessionId} status={session.status} />}
       {data.conversation ? null : <NotesLine sessionId={data.sessionId} folderPath={session.folderPath} remote={Boolean(session.machine)} />}
       {data.conversation ? null : (
         <Group id="mem" title={AGENT_WORDS.workingMemory} icon="cpu" summary={pct === null ? AGENT_WORDS.memoryUnknown : AGENT_WORDS.memoryUsed(Math.round(pct))} open={open.mem} onToggle={toggle}>
