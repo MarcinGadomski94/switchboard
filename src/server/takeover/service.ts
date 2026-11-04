@@ -1,6 +1,7 @@
 import { CHAT_TAKEOVER_REFUSAL } from '../../core/chats.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { type FileHandle, chmod, copyFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { CLI_LABELS, type CliProviderId } from '../../core/cli-providers.ts';
 import { slugForCwd } from '../../core/transcript.ts';
@@ -42,6 +43,7 @@ import {
   sessionShortId,
   takenOverLabel,
   takeoverMessage,
+  unreachableRemoteText,
 } from '../../core/takeover.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { chatMarkdown, findCodexRollout } from '../cli/handover.ts';
@@ -949,6 +951,8 @@ export class TakeoverService {
         return { ...resolution, action: 'blocked', matchedPath: null, folderId: null, worktreePath: null, cloneTo: null, cloneUrl: null, reason, summary: reason };
       });
     }
+    // The remotes: this service must be able to read each one it will fetch from or clone (a key the terminal can use may not be usable here).
+    repos = await this.#checkRemotes(repos, sourceRepos, self.name, git);
     blockers.push(...planBlockers(repos));
     // The CLI and the account.
     const refusal = await this.#clis.refusal(source.provider).catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
@@ -1019,6 +1023,48 @@ export class TakeoverService {
       },
       log,
     };
+  }
+
+  /**
+   * The remote check of the plan (`docs/peers.md` → *Reaching the remote*): for every
+   * repo the take-over will fetch into, `git ls-remote` of the checkout's matching
+   * remote, and for every repo it will clone, of the clone URL, all at once, from
+   * this process (the background service, its own keys and credential helpers),
+   * non-interactive and bounded ({@link TakeoverGit.reachable}). A remote it cannot
+   * read blocks that repo with git's reason and a hint, before anything is paused.
+   * Nothing is cached: every preview, check and apply asks again.
+   */
+  async #checkRemotes(repos: RepoResolution[], sourceRepos: readonly SourceRepo[], machine: string, git: TakeoverGit): Promise<RepoResolution[]> {
+    return Promise.all(
+      repos.map(async (resolution): Promise<RepoResolution> => {
+        if (resolution.action === 'blocked') return resolution;
+        const repo = sourceRepos.find((entry) => entry.key === resolution.key);
+        if (!repo) return resolution;
+        let cwd: string;
+        let remote: string;
+        let url: string;
+        let remoteName: string | null = null;
+        if (resolution.action === 'use' && resolution.matchedPath) {
+          const found = await git.remoteByKey(resolution.matchedPath, remoteKeyOf(repo));
+          // No such remote: the apply says so ("has no remote for …"); nothing to ask here.
+          if (found === null) return resolution;
+          cwd = resolution.matchedPath;
+          remote = found.name;
+          url = found.url;
+          remoteName = found.name;
+        } else if (resolution.action === 'clone' && resolution.cloneUrl && isCloneableUrl(resolution.cloneUrl)) {
+          cwd = os.tmpdir();
+          remote = resolution.cloneUrl;
+          url = resolution.cloneUrl;
+        } else {
+          return resolution;
+        }
+        const reach = await git.reachable(cwd, remote);
+        if (reach.ok) return resolution;
+        const reason = unreachableRemoteText({ machine, repo: resolution.name, url, remoteName, reason: reach.reason, timedOut: reach.timedOut });
+        return { ...resolution, action: 'blocked', reason, summary: reason };
+      }),
+    );
   }
 
   /** D110: the remembered target folders of a (source machine, source folder, target machine), on the initiating machine. */
@@ -1155,7 +1201,7 @@ export class TakeoverService {
       const tip = await git.fetchTemp(main, remote.name, captured.tempBranch, privateRef);
       if (tip !== captured.tipSha) throw new TakeoverError(409, 'tip-mismatch', `${repo.name}: the temporary branch arrived at ${tip}, expected ${captured.tipSha}`);
       // The branch itself, for its upstream (it may not exist on the remote).
-      await git.try(main, ['fetch', '--quiet', remote.name, `+refs/heads/${repo.branch}:refs/remotes/${remote.name}/${repo.branch}`]);
+      await git.tryRemote(main, ['fetch', '--quiet', remote.name, `+refs/heads/${repo.branch}:refs/remotes/${remote.name}/${repo.branch}`]);
       const localTip = await git.sha(main, `refs/heads/${repo.branch}`);
       applied.previousTip = localTip;
       if (localTip !== null && !(await git.isAncestor(main, localTip, tip))) {
@@ -1253,7 +1299,9 @@ export class TakeoverService {
       if (applied.privateRef) await git.try(applied.path, ['update-ref', '-d', applied.privateRef]);
       if (applied.remoteName && applied.tempBranch) await git.forgetTrackingRef(applied.path, applied.remoteName, applied.tempBranch);
       if (applied.worktreePath) {
-        await attempt(`could not remove the worktree ${applied.worktreePath}`, () => git.run(applied.path, ['worktree', 'remove', '--force', applied.worktreePath as string]));
+        // A worktree the restore never made (it failed before `worktree add`) is not a leftover.
+        const removed = await git.removePlannedWorktree(applied.path, applied.worktreePath);
+        if (removed.outcome === 'left') notes.push(removed.note);
       } else if (applied.previousHead !== null) {
         await attempt(`could not restore ${applied.path}`, async () => {
           await git.run(applied.path, ['reset', '--quiet', '--hard']);

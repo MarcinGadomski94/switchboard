@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, realpath, rm, rmdir, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { type CapturedRepo, type SourceRepo, normalizeRemoteUrl, redactUrl, tempBranchName } from '../../core/takeover.ts';
+import { type CapturedRepo, REMOTE_CHECK_TIMEOUT_MS, type SourceRepo, gitErrorSummary, nonInteractiveGitEnv, normalizeRemoteUrl, redactUrl, tempBranchName } from '../../core/takeover.ts';
 import { failureText, runCommand, succeeded } from '../exec.ts';
 
 /**
@@ -50,12 +50,52 @@ export class TakeoverGit {
   }
 
   /** Like {@link run}, but the outcome as a value (for probes whose failure is an answer). */
-  async try(cwd: string, args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}): Promise<{ readonly ok: boolean; readonly out: string; readonly error: string; readonly code: number | null }> {
+  async try(cwd: string, args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}, timeoutMs: number = this.#timeoutMs): Promise<{ readonly ok: boolean; readonly out: string; readonly error: string; readonly stderr: string; readonly code: number | null; readonly timedOut: boolean }> {
     const shown = `git -C ${cwd} ${redactArgs(args).join(' ')}`;
-    const result = await runCommand(['git'], args, { cwd, env: { ...this.#env, GIT_TERMINAL_PROMPT: '0', ...extraEnv }, timeoutMs: this.#timeoutMs });
+    const result = await runCommand(['git'], args, { cwd, env: { ...this.#env, GIT_TERMINAL_PROMPT: '0', ...extraEnv }, timeoutMs });
     const ok = succeeded(result);
     this.#log(ok ? shown : `${shown}  → failed: ${failureText(result)}`);
-    return { ok, out: result.stdout.trim(), error: failureText(result), code: result.code };
+    return { ok, out: result.stdout.trim(), error: failureText(result), stderr: result.stderr, code: result.code, timedOut: result.timedOut };
+  }
+
+  // ── talking to a remote (never a prompt) ─────────────────────────────
+
+  /**
+   * The environment of a call that talks to a remote ({@link nonInteractiveGitEnv}):
+   * no terminal, askpass or Credential Manager prompt, and ssh in batch mode, so a
+   * key that needs a passphrase or an unknown host key fails at once instead of
+   * hanging the background service. Read fresh for every call (the repo's
+   * `core.sshCommand` where it runs).
+   */
+  async #remoteEnv(cwd: string): Promise<Record<string, string>> {
+    const configured = await runCommand(['git'], ['config', '--get', 'core.sshCommand'], { cwd, env: { ...this.#env, GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 10_000 });
+    return nonInteractiveGitEnv(this.#env, succeeded(configured) ? configured.stdout.trim() || null : null);
+  }
+
+  /** {@link try} for a call that talks to a remote (fetch, push, clone, ls-remote): never waits for a prompt. */
+  async tryRemote(cwd: string, args: readonly string[], timeoutMs: number = this.#timeoutMs): ReturnType<TakeoverGit['try']> {
+    return this.try(cwd, args, await this.#remoteEnv(cwd), timeoutMs);
+  }
+
+  /** {@link run} for a call that talks to a remote: never waits for a prompt. */
+  async runRemote(cwd: string, args: readonly string[]): Promise<string> {
+    const result = await this.tryRemote(cwd, args);
+    // The reason (e.g. "Permission denied (publickey)"), not git's closing "make sure you have the correct access rights".
+    if (!result.ok) throw new TakeoverGitError(`git ${redactArgs(args).join(' ')} failed in ${cwd}: ${(result.stderr && gitErrorSummary(result.stderr)) || result.error}`);
+    return result.out;
+  }
+
+  /**
+   * Whether this machine (this process: the background service, with its own
+   * environment, keys and credential helpers) can read `remote` (a remote's name in
+   * `cwd`, or a URL): `git ls-remote <remote> HEAD`, read-only, non-interactive,
+   * at most {@link REMOTE_CHECK_TIMEOUT_MS}. The failure carries git's reason
+   * ({@link gitErrorSummary}, credentials removed). Never cached: every check asks again.
+   */
+  async reachable(cwd: string, remote: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string; readonly timedOut: boolean }> {
+    const result = await this.tryRemote(cwd, ['ls-remote', remote, 'HEAD'], REMOTE_CHECK_TIMEOUT_MS);
+    if (result.ok) return { ok: true };
+    return { ok: false, reason: gitErrorSummary(result.stderr || result.error), timedOut: result.timedOut };
   }
 
   /** The raw stdout (not trimmed: `-z` output), or `null` when it failed. */
@@ -216,7 +256,7 @@ export class TakeoverGit {
     const tipSha = wipSha ?? baseSha;
     const tempBranch = tempBranchName(sessionId, repo.branch);
     // `+`: the namespace is ours; a leftover of an earlier attempt is replaced, never a real branch.
-    await this.run(repo.path, ['push', repo.remoteName, `+${tipSha}:refs/heads/${tempBranch}`]);
+    await this.runRemote(repo.path, ['push', repo.remoteName, `+${tipSha}:refs/heads/${tempBranch}`]);
     return {
       key: repo.key,
       branch: repo.branch,
@@ -234,9 +274,9 @@ export class TakeoverGit {
   /** Deletes a temporary remote branch (`git push <remote> --delete`); only ever a name in the take-over namespace. */
   async deleteTempBranch(repoPath: string, remoteName: string, tempBranch: string): Promise<void> {
     if (!tempBranch.startsWith('switchboard/takeover/')) throw new TakeoverGitError(`refusing to delete ${tempBranch}: not a take-over branch`);
-    const exists = await this.try(repoPath, ['ls-remote', '--exit-code', '--heads', remoteName, `refs/heads/${tempBranch}`]);
+    const exists = await this.tryRemote(repoPath, ['ls-remote', '--exit-code', '--heads', remoteName, `refs/heads/${tempBranch}`]);
     // 2 = no such ref: already gone.
-    if (!(!exists.ok && exists.code === 2)) await this.run(repoPath, ['push', remoteName, '--delete', `refs/heads/${tempBranch}`]);
+    if (!(!exists.ok && exists.code === 2)) await this.runRemote(repoPath, ['push', remoteName, '--delete', `refs/heads/${tempBranch}`]);
     await this.forgetTrackingRef(repoPath, remoteName, tempBranch);
   }
 
@@ -255,15 +295,22 @@ export class TakeoverGit {
   /** `git clone <url> <dir>` (the folder must not exist, or be empty). */
   async clone(url: string, dir: string): Promise<void> {
     await mkdir(path.dirname(dir), { recursive: true });
-    await this.run(path.dirname(dir), ['clone', '--quiet', '--', url, dir]);
+    await this.runRemote(path.dirname(dir), ['clone', '--quiet', '--', url, dir]);
   }
 
   /** Fetches the temp branch into a private ref and returns its commit. */
   async fetchTemp(repoPath: string, remoteName: string, tempBranch: string, privateRef: string): Promise<string> {
-    await this.run(repoPath, ['fetch', '--quiet', remoteName, `+refs/heads/${tempBranch}:${privateRef}`]);
+    await this.runRemote(repoPath, ['fetch', '--quiet', remoteName, `+refs/heads/${tempBranch}:${privateRef}`]);
     const sha = await this.sha(repoPath, privateRef);
     if (sha === null) throw new TakeoverGitError(`the temporary branch ${tempBranch} did not arrive from ${remoteName}`);
     return sha;
+  }
+
+  /** The paths of every worktree of the repo (its main checkout included); `null` when git cannot list them. */
+  async #worktreePaths(repoPath: string): Promise<string[] | null> {
+    const listed = await this.try(repoPath, ['worktree', 'list', '--porcelain']);
+    if (!listed.ok) return null;
+    return listed.out.split('\n').filter((line) => line.startsWith('worktree ')).map((line) => line.slice('worktree '.length).trim());
   }
 
   /** The branches checked out in any worktree of the repo, `<path>\n<branch>` (for the plan). */
@@ -278,6 +325,38 @@ export class TakeoverGit {
     return map;
   }
 
+  /**
+   * Undoes a worktree the take-over planned at `worktreePath` (the target's undo,
+   * `docs/peers.md` → *Rollback*): a registered worktree is removed (`git worktree
+   * remove --force`); a path that is **not** a worktree of the repo was never made
+   * (the restore failed before), so there is nothing to undo, except an **empty**
+   * folder a half-made `worktree add` may have left, which is removed. A non-empty
+   * folder that is not a worktree is never deleted: it is reported as a leftover.
+   */
+  async removePlannedWorktree(repoPath: string, worktreePath: string): Promise<{ readonly outcome: 'removed' | 'not-created' | 'removed-empty-folder' } | { readonly outcome: 'left'; readonly note: string }> {
+    const removal = await this.try(repoPath, ['worktree', 'remove', '--force', worktreePath]);
+    if (removal.ok) return { outcome: 'removed' };
+    // Git says "… is not a working tree" (in the service's language): decided from the repo's list of worktrees, not the text.
+    await this.try(repoPath, ['worktree', 'prune']);
+    const wanted = await comparablePath(worktreePath);
+    // A repo that is not there (its clone failed) has no worktrees at all.
+    const registered = (await this.#worktreePaths(repoPath)) ?? ((await pathExists(repoPath)) ? null : []);
+    if (registered === null || (await Promise.all(registered.map((entry) => comparablePath(entry)))).includes(wanted)) {
+      return { outcome: 'left', note: `could not remove the worktree ${worktreePath}: git worktree remove --force failed: ${removal.error}` };
+    }
+    // Never made: nothing to undo, except an empty folder a half-made `worktree add` left; anything else is left alone.
+    const entries = await readdir(worktreePath).catch((error: NodeJS.ErrnoException) => (error.code === 'ENOENT' ? null : error));
+    if (entries === null) return { outcome: 'not-created' };
+    if (entries instanceof Error) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and could not be read (${entries.message})` };
+    if (entries.length > 0) return { outcome: 'left', note: `${worktreePath} was left behind: it is not a worktree of ${repoPath} and is not empty, so it was not deleted` };
+    try {
+      await rmdir(worktreePath);
+      return { outcome: 'removed-empty-folder' };
+    } catch (error) {
+      return { outcome: 'left', note: `${worktreePath} was left behind (an empty folder): ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
+
   /** `true` when `ancestor` is an ancestor of (or equal to) `descendant`. */
   async isAncestor(repoPath: string, ancestor: string, descendant: string): Promise<boolean> {
     return (await this.try(repoPath, ['merge-base', '--is-ancestor', ancestor, descendant])).ok;
@@ -287,6 +366,22 @@ export class TakeoverGit {
 /** Arguments for the log: a URL's credentials never appear. */
 function redactArgs(args: readonly string[]): string[] {
   return args.map((arg) => (/^[a-z][a-z0-9+.-]*:\/\//i.test(arg) ? redactUrl(arg) : arg));
+}
+
+/**
+ * A path in a form two spellings of one folder share: links resolved when it exists
+ * (macOS' `/var` → `/private/var`), absolute; on Windows forward slashes and lower
+ * case (git lists `D:/code/x`, a plan may say `D:\\Code\\x`).
+ */
+export async function comparablePath(target: string, platform: NodeJS.Platform = process.platform): Promise<string> {
+  const resolved = await realpath(target).catch(() => path.resolve(target));
+  return comparablePathText(resolved, platform);
+}
+
+/** {@link comparablePath} without the file system: the text only. */
+export function comparablePathText(target: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return target.replace(/\/+$/, '') || '/';
+  return target.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
 /** `true` when `target` exists (file or folder). */
