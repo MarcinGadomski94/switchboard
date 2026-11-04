@@ -11,6 +11,7 @@ import { CliRegistry } from './cli/registry.ts';
 import { CliStatusService, envCommandFlags } from './cli/status.ts';
 import { cliAdapters, cliModelListers } from './cli/adapters.ts';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { QuietRequestLogs } from './request-log.ts';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
 import { FolderService } from './folders/service.ts';
@@ -222,6 +223,11 @@ export interface AppOptions {
   readonly peerSearchTimeoutMs?: number;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
+  /**
+   * With `logger`: also log every request (`incoming request` / `request completed`,
+   * `SWITCHBOARD_REQUEST_LOGS=on`). Default: only requests that fail ({@link QuietRequestLogs}).
+   */
+  readonly requestLogs?: boolean;
 }
 
 /** D73: a route as registered (method, URL pattern with `:params` / `*`). */
@@ -254,7 +260,7 @@ export function registeredRoutes(app: FastifyInstance): readonly RegisteredRoute
  * through `listenLoopback`.
  */
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
+  const app = Fastify({ logger: options.logger ?? false, trustProxy: false, ...(options.requestLogs ? {} : { logController: new QuietRequestLogs() }) });
   // D73: every route is recorded, so tests can check each `/api` route is classified for devices.
   const routes: RegisteredRoute[] = [];
   REGISTERED_ROUTES.set(app, routes);

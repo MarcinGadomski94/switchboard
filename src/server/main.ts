@@ -38,6 +38,7 @@ import { createFrameHelperOpener } from './tools/frame-helper.ts';
 import { demoFolderChecks } from './demo/folders.ts';
 import { seedDemoV2Api, seedDemoV2Files } from './demo/v2.ts';
 import { DeviceService } from './devices/service.ts';
+import { ServiceLogRotation, serviceLogFile } from './service-log.ts';
 
 /**
  * The built UI served: `<repo>/dist/web` (the Vite build output). Tests set
@@ -170,12 +171,19 @@ async function main(): Promise<void> {
     const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name, remoteInbox: () => peers.remoteInbox() });
     // D109 (docs/ci.md): the shared PR watcher; its timer starts once the port is ours. The demo's worktrees are not real.
     const ci = createPrWatcher(config, store, bus, systemItems, supervisor, hooks, worktrees);
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, ...(usage ? { usage } : {}), logger: true });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, ...(usage ? { usage } : {}), logger: true, ...(config.requestLogs ? { requestLogs: true } : {}) });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
     let recovering: Promise<void> = Promise.resolve();
+    // docs/service.md → The service log: launchd's `service.log` kept under 50 MB (only when this process writes it).
+    const serviceLog = new ServiceLogRotation({
+      file: serviceLogFile(config.dataDir),
+      onRotate: (result) => app.log.info({ before: result.sizeBefore, kept: result.kept }, 'service log rotated (newest part kept in service.log.1)'),
+      onError: (error) => app.log.error(error, 'service log rotation failed'),
+    });
     app.addHook('onClose', async () => {
+      await serviceLog.stop();
       // Recovery may still be spawning; let it finish so shutdown sees every process.
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
@@ -201,6 +209,8 @@ async function main(): Promise<void> {
     // D131 · lane X: the rest of the demo's v2 layer through the app's own API (folders, crews, notes), before the port opens.
     if (config.demoV2) await seedDemoV2Api(app, store, await loadDemoData(), { port: config.port, token, onError: (error) => app.log.error(error, 'demo v2 seed') });
     await listenLoopback(app, { port: config.port });
+    // Once the port is ours (a second instance that cannot bind leaves the first one's log alone): trims an oversized log now.
+    await serviceLog.start();
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.
     if (!config.demo) systemItems.startWatching();

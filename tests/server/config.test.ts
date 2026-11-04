@@ -5,6 +5,15 @@ const HOME = '/Users/dev';
 const CWD = '/tmp/switchboard-cwd';
 
 describe('loadConfig', () => {
+  it('SWITCHBOARD_REQUEST_LOGS: on logs every request, off / unset only failed ones, anything else is refused', () => {
+    const read = (value: string | undefined) => loadConfig({ env: value === undefined ? {} : { SWITCHBOARD_REQUEST_LOGS: value }, platform: 'darwin', home: HOME, cwd: CWD }).requestLogs;
+    expect(read(undefined)).toBeUndefined();
+    expect(read('off')).toBeUndefined();
+    expect(read(' ON ')).toBe(true);
+    expect(read('on')).toBe(true);
+    expect(() => read('yes')).toThrow(ConfigError);
+  });
+
   it('uses the documented defaults (D14: no workspace setting; sessions pick saved folders)', () => {
     const config = loadConfig({ env: {}, platform: 'darwin', home: HOME, cwd: CWD });
     expect(config).toEqual({

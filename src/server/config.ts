@@ -115,6 +115,20 @@ export interface ServerConfig {
    * The E2E servers set `classic` (`tests/helpers/server-process.ts`).
    */
   readonly uiThemeDefault?: 'v2' | 'classic';
+  /**
+   * `SWITCHBOARD_REQUEST_LOGS=on`: the service log gets Fastify's `incoming request` /
+   * `request completed` lines for every request again (`docs/service.md` → *The service log*).
+   * Absent = off: only requests that fail are logged. `off` or unset = off; anything else is a {@link ConfigError}.
+   */
+  readonly requestLogs?: true;
+}
+
+/** `SWITCHBOARD_REQUEST_LOGS` (`on` / `off`), else a {@link ConfigError}; unset or blank = off. */
+function requestLogs(raw: string | undefined): { readonly requestLogs?: true } {
+  const value = raw?.trim().toLowerCase() ?? '';
+  if (value === '' || value === 'off') return {};
+  if (value === 'on') return { requestLogs: true };
+  throw new ConfigError('SWITCHBOARD_REQUEST_LOGS must be "on" or "off"');
 }
 
 /** D131: `SWITCHBOARD_UI_THEME_DEFAULT`, else a {@link ConfigError}; unset or blank = none. */
@@ -289,6 +303,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     ...(env['SWITCHBOARD_POWER_TEST_FILE']?.trim() ? { powerTestFile: path.resolve(cwd, env['SWITCHBOARD_POWER_TEST_FILE'].trim()) } : {}),
     ...powerSampleMs(env['SWITCHBOARD_POWER_SAMPLE_MS']),
     ...uiThemeDefault(env['SWITCHBOARD_UI_THEME_DEFAULT']),
+    ...requestLogs(env['SWITCHBOARD_REQUEST_LOGS']),
     ...(demoV2(env) ? { demoV2: true as const } : {}),
   };
 }
