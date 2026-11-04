@@ -734,6 +734,121 @@ export function planBlockers(resolutions: readonly RepoResolution[]): string[] {
   return out;
 }
 
+// ── reaching the remote without a prompt ─────────────────────────────────
+
+/** How long the target's remote check (`git ls-remote`) may take before it counts as unreachable. */
+export const REMOTE_CHECK_TIMEOUT_MS = 15_000;
+
+/**
+ * The program of a shell-style ssh command (`"C:\Program Files\Git\usr\bin\ssh.exe" -i k`
+ * → `ssh`, `/usr/bin/ssh -F x` → `ssh`, `plink.exe` → `plink`): its first word with
+ * the quotes, the folder (`/` or `\`) and `.exe` removed, lower-cased.
+ */
+export function sshProgramOf(command: string): string {
+  const text = command.trim();
+  const quoted = /^(["'])(.*?)\1/.exec(text);
+  const first = quoted ? (quoted[2] as string) : (text.split(/\s+/)[0] ?? '');
+  const base = first.split(/[\\/]/).pop() ?? '';
+  return base.replace(/\.exe$/i, '').toLowerCase();
+}
+
+/**
+ * The environment that makes git's network calls (ls-remote, fetch, clone, push)
+ * **never wait for a prompt** (`docs/peers.md` → *Reaching the remote*): Switchboard
+ * runs as a background service (launchd, systemd, Task Scheduler) where nobody can
+ * answer a passphrase, password or host-key question, and a prompt would hang the
+ * take-over (or, on Windows, open a window nobody sees).
+ *
+ * - `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` (Git Credential Manager fails
+ *   instead of opening a sign-in window), `SSH_ASKPASS_REQUIRE=never`.
+ * - The ssh command git would run gets `-o BatchMode=yes` (PuTTY's plink: `-batch`):
+ *   `GIT_SSH_COMMAND` if set, else the repo's `core.sshCommand` (`configured`),
+ *   else `GIT_SSH` (a program path), else plain `ssh`. A command it does not know
+ *   (a wrapper script) is left as it is; one that already says `BatchMode` too.
+ *
+ * Pure: `env` is the service's environment, `configured` what
+ * `git config --get core.sshCommand` says where the call runs (`null`: unset).
+ */
+export function nonInteractiveGitEnv(env: Readonly<Record<string, string | undefined>>, configured: string | null): Record<string, string> {
+  const out: Record<string, string> = { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', SSH_ASKPASS_REQUIRE: 'never' };
+  const withBatch = (command: string): string | null => {
+    if (/batchmode|(?:^|\s)-batch(?:\s|$)/i.test(command)) return command;
+    const program = sshProgramOf(command);
+    if (program === 'ssh') return `${command} -o BatchMode=yes`;
+    if (program === 'plink' || program === 'tortoiseplink') return `${command} -batch`;
+    return null;
+  };
+  const fromEnv = env['GIT_SSH_COMMAND']?.trim() || null;
+  const fromConfig = configured?.trim() || null;
+  const sshProgram = env['GIT_SSH']?.trim() || null;
+  if (fromEnv !== null || fromConfig !== null) {
+    const command = withBatch((fromEnv ?? fromConfig) as string);
+    if (command !== null) out['GIT_SSH_COMMAND'] = command;
+  } else if (sshProgram !== null) {
+    // `GIT_SSH` is a program, not a shell command: quoted (forward slashes: git runs the command through sh, also on Windows).
+    const command = withBatch(`"${sshProgram.replace(/\\/g, '/')}"`);
+    if (command !== null) out['GIT_SSH_COMMAND'] = command;
+  } else {
+    out['GIT_SSH_COMMAND'] = 'ssh -o BatchMode=yes';
+  }
+  return out;
+}
+
+/** Lines of git's output that only repeat that it failed (they say nothing about why). */
+const GENERIC_GIT_LINES = [/^fatal: could not read from remote repository\.?$/i, /^please make sure you have the correct access rights$/i, /^and the repository exists\.?$/i];
+
+/**
+ * The reason in a failed network call's output, for a person: the informative
+ * lines (`git@github.com: Permission denied (publickey).` → `Permission denied (publickey)`),
+ * without git's generic "Could not read from remote repository / make sure you have
+ * the correct access rights" lines, credentials removed from any URL, at most 300 characters.
+ */
+export function gitErrorSummary(output: string): string {
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '');
+  const useful = lines.filter((line) => !GENERIC_GIT_LINES.some((pattern) => pattern.test(line)));
+  const picked = (useful.length > 0 ? useful : lines).slice(0, 2).map((line) => line.replace(/^(?:[\w.-]+@[\w.-]+|fatal|error|ERROR|remote):\s+/, '').replace(/\.$/, ''));
+  const text = scrubCredentials(picked.join('; '));
+  return text.length > 300 ? `${text.slice(0, 299)}…` : text;
+}
+
+/** Removes the userinfo of every non-ssh URL in `text` (`https://user:token@host/…` → `https://host/…`). */
+export function scrubCredentials(text: string): string {
+  return text.replace(/\b([a-z][a-z0-9+.-]*):\/\/[^\s/@'"]*@/gi, (whole, scheme: string) => (/^(?:git\+)?ssh$/i.test(scheme) ? whole : `${scheme}://`));
+}
+
+/** The transport a remote URL uses, for the hint of {@link unreachableRemoteText}. */
+export function remoteTransport(url: string): 'ssh' | 'https' | 'other' {
+  const text = url.trim();
+  if (/^(?:ssh|git\+ssh):\/\//i.test(text)) return 'ssh';
+  if (/^https?:\/\//i.test(text)) return 'https';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || /^[A-Za-z]:[\\/]/.test(text)) return 'other';
+  return /^(?:[^@/\s]+@)?[^:/\s]+:(?!\/\/)/.test(text) ? 'ssh' : 'other';
+}
+
+/**
+ * The blocker when the target's service cannot reach a repo's remote (`docs/peers.md`
+ * → *Reaching the remote*): who cannot reach what, git's own reason, and what to do.
+ * `remoteName`: the remote of the target's checkout (`null`: the repo would be cloned).
+ * `timedOut`: no answer within {@link REMOTE_CHECK_TIMEOUT_MS}.
+ */
+export function unreachableRemoteText(input: { readonly machine: string; readonly repo: string; readonly url: string; readonly remoteName: string | null; readonly reason: string; readonly timedOut: boolean }): string {
+  const url = redactUrl(input.url);
+  const reason = input.timedOut ? `no answer within ${REMOTE_CHECK_TIMEOUT_MS / 1000} s` : input.reason || 'git could not read it';
+  const transport = remoteTransport(url);
+  const https = input.remoteName ? `switch this repo's ${input.remoteName} to HTTPS (Git Credential Manager)` : `clone it here over HTTPS (Git Credential Manager) and choose that folder,`;
+  let hint: string;
+  if (transport === 'ssh' && /host key verification failed|no .*host key is known|remote host identification has changed/i.test(reason)) {
+    hint = `The host's key isn't trusted for the account Switchboard's service runs as: connect to it once from a terminal as that account (or add it to that account's known_hosts), then check again.`;
+  } else if (transport === 'ssh' && (input.timedOut || /permission denied|publickey|passphrase|agent|identity|authenticat/i.test(reason))) {
+    hint = `Its SSH key isn't available to the background service — ${https} or make the key usable without a prompt, then check again.`;
+  } else if (transport === 'https' && (input.timedOut || /authenticat|terminal prompts disabled|could not read username|could not read password|credential|\b40[13]\b/i.test(reason))) {
+    hint = `Its credentials aren't available to the background service — sign in once with Git Credential Manager (or another credential helper) so git can fetch without a prompt, then check again.`;
+  } else {
+    hint = `Check that the remote exists and that ${input.machine} can reach it, then check again.`;
+  }
+  return `${input.machine} can't reach ${input.repo}'s remote (${url}) from Switchboard's service: ${reason}. ${hint}`;
+}
+
 // ── rollback ─────────────────────────────────────────────────────────────
 
 /** What had happened when a take-over failed. */
