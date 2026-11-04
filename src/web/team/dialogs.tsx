@@ -519,7 +519,8 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.id, target.id]);
-  const follow = (id: string): void => {
+  // A read of the run that fails (a blip) is tried again; three in a row and the dialog says it lost track (never "Moving…" for ever).
+  const follow = (id: string, misses = 0): void => {
     timer.current = setTimeout(() => {
       teamApi
         .moveRun(id)
@@ -528,7 +529,10 @@ export function MoveDialog({ member, target, onDone, onClose }: { readonly membe
           if (next.state === 'running') follow(id);
           else if (next.state === 'done') onDone();
         })
-        .catch((caught: unknown) => setError(refusalText(caught)));
+        .catch((caught: unknown) => {
+          if (misses + 1 < 3) return follow(id, misses + 1);
+          setRun((current) => (current ? { ...current, state: 'failed', error: `lost track of the move (${refusalText(caught)}): check where ${member.name} runs before trying again` } : current));
+        });
     }, MOVE_POLL_MS);
   };
   const start = async (): Promise<void> => {

@@ -1,4 +1,4 @@
-import { type TeamActivityRecord, type TeamHandoff, type TeamMember, type TeamMemberStatus, type TeamNeedsYouItem, type TeamSummary, archivedMemberText } from '../../../core/team.ts';
+import { type TeamActivityRecord, type TeamHandoff, type TeamMember, type TeamMemberStatus, type TeamMoveRun, type TeamNeedsYouItem, type TeamSummary, archivedMemberText } from '../../../core/team.ts';
 import type { Machine } from '../../../core/peers.ts';
 import { stripActor } from '../../team/activity.ts';
 import { cardStatus, moveInOrder, needsYouCounts, restoredOrder, rhythmLine, visibleTeam } from '../../team/model.ts';
@@ -189,11 +189,69 @@ export function computerChoices(member: Pick<TeamMember, 'machineId' | 'local' |
 }
 
 /** Why Move to computer… is off for this teammate (its computer is offline, or there is nowhere else), `null` = it can. */
-export function moveComputerReason(member: Pick<TeamMember, 'status' | 'machineName'>, machines: readonly Pick<Machine, 'state'>[]): string | null {
+export function moveComputerReason(member: Pick<TeamMember, 'status' | 'machineName'> & Partial<Pick<TeamMember, 'local'>>, machines: readonly Pick<Machine, 'id' | 'state' | 'name'>[]): string | null {
   if (member.status === 'offline') return `${member.machineName} is offline; it can move once it reconnects.`;
   if (machines.length === 0) return 'Pair another computer first (Settings › Computers).';
-  if (member.status === 'working') return 'It is working; it moves once its current reply is done.';
+  // On this computer with every other one away: nowhere to move to now (a teammate on another computer can always come here).
+  if (member.local !== false && !machines.some((machine) => machine.state === 'online')) {
+    return `${machines.map((machine) => machine.name).join(', ')} ${machines.length === 1 ? 'is' : 'are'} not online; it can move once ${machines.length === 1 ? 'it reconnects' : 'one reconnects'}.`;
+  }
+  if (member.status === 'working') return 'It is working; move it once its current reply is done.';
   return null;
+}
+
+/** Why the Move button of the Move to computer… dialog is off for the picked computer (`null` = it can move there). */
+export function moveTargetReason(choices: readonly ComputerChoice[], pick: string | null): string | null {
+  const choice = choices.find((entry) => entry.id === pick);
+  if (!choice) return 'Pick a computer.';
+  if (choice.current) return 'It runs there already.';
+  if (choice.state === 'reconnecting') return `${choice.name} is reconnecting; move it once it is back online.`;
+  if (choice.state === 'offline') return `${choice.name} is offline; move it once it is back online.`;
+  return null;
+}
+
+/** Where a running move stands in the Move to computer… dialog. */
+export type MoveProgress =
+  | { readonly kind: 'moving'; readonly text: string }
+  | { readonly kind: 'done'; readonly text: string }
+  | { readonly kind: 'failed'; readonly text: string };
+
+/** Reads of the run that may fail in a row (a blip) before the dialog gives up following it. */
+export const MOVE_POLL_ERRORS = 3;
+
+/**
+ * The dialog's reading of a move run (`GET /api/team/moves/{runId}`): **done only when the
+ * teammate's record names the target** (`memberMachineId`, read again after the run said
+ * done; `undefined` = not read yet, so still moving); a failed run, a run that cannot be
+ * read {@link MOVE_POLL_ERRORS} times in a row, or one that outlived the wait is a failure
+ * with the reason. Never a success on a guess.
+ */
+export function moveProgress(input: {
+  readonly run: Pick<TeamMoveRun, 'state' | 'error' | 'targetMachineId' | 'machineId'> | null;
+  readonly memberName: string;
+  readonly targetName: string;
+  /** The machine the teammate's record names after a `done` run (`null` = it is gone). */
+  readonly memberMachineId?: string | null;
+  /** The name of the computer it runs on now (for a failure). */
+  readonly currentName?: string;
+  /** The last read failed this many times in a row, with this reason. */
+  readonly pollErrors?: number;
+  readonly pollError?: string | null;
+  /** The wait ran out (the run still `running`). */
+  readonly timedOut?: boolean;
+}): MoveProgress {
+  const { run, memberName, targetName } = input;
+  const still = input.currentName ? ` ${memberName} still runs on ${input.currentName}.` : '';
+  if ((input.pollErrors ?? 0) >= MOVE_POLL_ERRORS) return { kind: 'failed', text: `Lost track of the move: ${input.pollError ?? 'the move could not be read'}. Check where ${memberName} runs before trying again.` };
+  if (run?.state === 'failed') return { kind: 'failed', text: `Couldn’t move ${memberName} to ${targetName}: ${run.error ?? 'the move failed'}` };
+  if (run?.state === 'done') {
+    // Not read yet (or the read failed): still moving, until the wait runs out.
+    if (input.memberMachineId === undefined) return input.timedOut ? { kind: 'failed', text: `The move to ${targetName} ended, but where ${memberName} runs could not be read; check before trying again.` } : { kind: 'moving', text: `Moving ${memberName} to ${targetName}…` };
+    if (input.memberMachineId === run.targetMachineId) return { kind: 'done', text: `${memberName} now runs on ${targetName}.` };
+    return { kind: 'failed', text: `The move said it was done, but ${memberName} does not run on ${targetName}.${still}` };
+  }
+  if (input.timedOut) return { kind: 'failed', text: `The move to ${targetName} is taking too long; check where ${memberName} runs before trying again.` };
+  return { kind: 'moving', text: `Moving ${memberName} to ${targetName}…` };
 }
 
 // ── the lists ───────────────────────────────────────────────────────────

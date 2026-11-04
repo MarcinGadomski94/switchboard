@@ -76,7 +76,7 @@ import { listInbox } from '../inbox/wire.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
 import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
-import { type TargetPlacement, placementOf } from '../../core/takeover.ts';
+import { TAKEOVER_STEP_LABELS, type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -221,6 +221,8 @@ export class TeamService {
   #inboxScan: { again: boolean } | null = null;
   #queue: Promise<unknown> = Promise.resolve();
   readonly #moves = new Map<string, TeamMoveRun>();
+  /** Members whose plain take-over is being followed now ({@link #followPlainMove}). */
+  readonly #plainMoves = new Set<string>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
   readonly #syncedWith = new Set<string>();
   /** D100-T2: access requests (`access/service.ts`). */
@@ -400,6 +402,7 @@ export class TeamService {
    */
   #memberSessionUpdated(session: { readonly id: string; readonly status?: unknown; readonly closedAt?: string | null; readonly movedTo?: unknown }): void {
     if (!this.#roles.has(session.id)) return;
+    if (session.movedTo) void this.#followPlainMove(session.id).catch((error: unknown) => this.#error(error));
     const archived = memberSessionArchived(session);
     const before = this.#archivedRefs.get(session.id) ?? false;
     this.#archivedRefs.set(session.id, archived);
@@ -574,7 +577,8 @@ export class TeamService {
 
   async #machineNames(): Promise<Map<string, { readonly name: string; readonly online: boolean }>> {
     const out = new Map<string, { readonly name: string; readonly online: boolean }>();
-    const self = this.#self ?? (await this.#o.peers.self());
+    // The peers service's own (cached, renamed in place): this machine's name as it is now, not as it was at init.
+    const self = await this.#o.peers.self();
     out.set(self.id, { name: self.name, online: true });
     for (const machine of await this.#o.peers.machines()) out.set(machine.id, { name: machine.name, online: machine.state === 'online' });
     return out;
@@ -1997,6 +2001,9 @@ export class TeamService {
     if (!this.#enabled || !this.#db) return;
     for (const member of this.#liveMembers()) {
       if (member.machineId !== this.#selfId()) continue;
+      // A session moved by the plain take-over while its update was missed: the record follows.
+      await this.#followPlainMove(member.sessionId);
+      if (this.#memberRecord(member.id).machineId !== this.#selfId()) continue;
       // A paused member: loops added meanwhile are paused too ("nothing new starts").
       if (member.paused) {
         const paused = await this.#pauseLoops(member);
@@ -2155,15 +2162,42 @@ export class TeamService {
     const blockers: string[] = [];
     const session = await this.#o.store.sessions.get(member.sessionId);
     if (session?.status === 'run' || this.#o.supervisor.turnRunning(member.sessionId)) blockers.push(`${member.name} is working (a turn is running): move it when the turn has ended`);
+    // A target that is not online is refused here, at once and in plain words (the take-over's
+    // checks would hold the call for the reconnection and then say "unreachable").
+    const away = await this.#targetAway(target, member.name);
+    if (away !== null) return { ok: false, blockers: [...blockers, away], preview: null };
     let preview: unknown = null;
     try {
       const answer = await this.#o.takeover.preview({ sessionId: member.sessionId, targetMachine: target, ...choice });
       preview = answer;
       blockers.push(...answer.blockers);
     } catch (error) {
-      blockers.push(error instanceof Error ? error.message : String(error));
+      blockers.push(await this.#previewRefusal(error, target, member.name));
     }
     return { ok: blockers.length === 0, blockers, preview };
+  }
+
+  /** Why the move's target cannot take the member now (not online), `null` when it is online (or not a paired machine: the take-over says so). */
+  async #targetAway(target: string, memberName: string): Promise<string | null> {
+    const machine = (await this.#o.peers.machines()).find((entry) => entry.id === target);
+    if (!machine || machine.state === 'online') return null;
+    if (machine.state === 'reconnecting') return `${machine.name} is reconnecting: move ${memberName} when it is back online`;
+    if (machine.state === 'auth-failed') return `${machine.name} refused this pairing (revoked there?): pair it again, then move ${memberName}`;
+    if (machine.state === 'no-address') return `${machine.name} has no address this computer can reach (its connection to other computers is off): turn it on there, then move ${memberName}`;
+    return `${machine.name} is offline: move ${memberName} when it is back online`;
+  }
+
+  /** The blocker for a take-over check that could not run: an older target without the take-over's peer routes says so. */
+  async #previewRefusal(error: unknown, target: string, memberName: string): Promise<string> {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = (error as { code?: unknown }).code;
+    const status = (error as { status?: unknown }).status;
+    // `peer-forbidden`: the route is not in its peer API; a bare 404 (Fastify's "Not Found"): no such route there.
+    if (code === 'peer-forbidden' || (status === 404 && code === 'Not Found')) {
+      const name = (await this.#machineNames()).get(target)?.name ?? 'That computer';
+      return `${name} runs an older Switchboard that cannot take ${memberName}: update Switchboard there, then move`;
+    }
+    return message;
   }
 
   /** `POST /api/team/members/{id}/move` `{ targetMachineId, placement?, clonePaths? }` (D110: the chosen target folders) → 202 {@link TeamMoveRun} (poll `GET /api/team/moves/{runId}`). */
@@ -2178,10 +2212,27 @@ export class TeamService {
     if (!check.ok) throw new TeamError(409, 'blocked', check.blockers.join('; '), { blockers: check.blockers });
     const takeover = this.#o.takeover as TakeoverRunner;
     const sourceLoops = await this.#o.loops.list(member.sessionId).catch(() => [] as OwnedLoop[]);
-    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target, ...moveTargetOf(body) });
-    const moveRun: TeamMoveRun = { id: randomUUID(), memberId: id, state: 'running', takeoverRunId: run.id, error: null, targetMachineId: target };
+    // D110: the folders the check used (the remembered ones when the request names none) are the ones the move uses.
+    const checked = (check.preview as { placement?: TargetPlacement | null } | null)?.placement ?? null;
+    const choice = moveTargetOf(body);
+    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target, ...choice, ...(choice.placement === undefined && choice.savedFolders !== true && checked ? { placement: checked } : {}) });
+    const moveRun: TeamMoveRun = { id: randomUUID(), memberId: id, state: 'running', takeoverRunId: run.id, error: null, targetMachineId: target, machineId: member.machineId, rolledBack: null };
     this.#moves.set(moveRun.id, moveRun);
-    void this.#followMove(moveRun, sourceLoops).catch((error: unknown) => this.#error(error));
+    // A run is never left `running`: whatever breaks while it is followed fails it, with the reason.
+    void this.#followMove(moveRun, sourceLoops).catch(async (error: unknown) => {
+      if (this.#closed) return;
+      this.#error(error);
+      const now = this.#moves.get(moveRun.id);
+      if (now?.state !== 'running') return;
+      const reason = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
+      const current = await Promise.resolve()
+        .then(async () => {
+          const record = this.#memberRecord(id);
+          return { machineId: record.machineId, text: `${record.name} runs on ${(await this.#machineNames()).get(record.machineId)?.name ?? 'its computer'}` };
+        })
+        .catch(() => null);
+      this.#moves.set(moveRun.id, { ...now, state: 'failed', machineId: current?.machineId ?? member.machineId, error: `${reason}.${current ? ` ${current.text}.` : ''}` });
+    });
     return moveRun;
   }
 
@@ -2205,55 +2256,103 @@ export class TeamService {
     };
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 200));
+      if (this.#closed) return;
       const state = takeover.get(run.takeoverRunId as string);
-      if (!state) return set({ state: 'failed', error: 'the take-over run is gone' });
-      if (state.state === 'running') continue;
-      if (state.state === 'failed' || !state.result) return set({ state: 'failed', error: state.error?.message ?? 'the take-over failed' });
+      if (state?.state === 'running') continue;
+      if (!state || state.state === 'failed' || !state.result) {
+        // Nothing of the member changed: say why, and where it still runs.
+        const member = this.#memberRecord(run.memberId);
+        const where = (await this.#machineNames()).get(member.machineId)?.name ?? 'this computer';
+        const step = state?.error ? `${TAKEOVER_STEP_LABELS[state.error.step]} failed: ` : '';
+        const reason = (!state ? 'the take-over run is gone' : (state.error?.message ?? 'the take-over failed')).replace(/[.\s]+$/, '');
+        const undo = state && state.rolledBack === false ? ` Undoing it left something behind: ${state.rollbackNotes.join('; ')}.` : '';
+        return set({ state: 'failed', machineId: member.machineId, rolledBack: state?.rolledBack ?? null, error: `${step}${reason}.${undo} ${member.name} still runs on ${where}.` });
+      }
       const result = state.result;
       const moved = parseRemoteId(result.sessionId);
-      const newSessionId = moved ? moved.id : result.sessionId;
-      // The loops moved with the session (D65: re-created there, ended here); their new ids, by prompt and schedule.
-      let targetLoops: OwnedLoop[] = [];
-      try {
-        const answer = await this.#o.peers.forward(result.machineId, 'GET', `/api/sessions/${encodeURIComponent(newSessionId)}/loops`, undefined);
-        if (answer.status === 200 && Array.isArray(answer.body)) targetLoops = answer.body as OwnedLoop[];
-      } catch {
-        // Kept by prompt + schedule until the next read there.
-      }
-      const remap = (loopId: string): string => {
-        const source = sourceLoops.find((loop) => loop.id === loopId);
-        const found = source ? targetLoops.find((loop) => loop.prompt === source.prompt && loop.scheduleText === source.scheduleText) : undefined;
-        return found?.id ?? loopId;
-      };
-      const machines = await this.#machineNames();
-      const before = this.#memberRecord(run.memberId);
-      await this.#serial(async () => {
-        const current = this.#memberRecord(run.memberId);
-        this.#need().putMember({
-          ...current,
-          machineId: result.machineId,
-          sessionId: newSessionId,
-          rhythm: { ...current.rhythm, loops: current.rhythm.loops.map((loop) => ({ ...loop, loopId: remap(loop.loopId) })) },
-          pausedLoops: current.pausedLoops.map(remap),
-          // T2 seam: access is never moved; every entry now needs setup on the target.
-          access: current.access.map((entry) => ({ ...entry, setUpOn: entry.setUpOn.filter((machine) => machine === result.machineId) })),
-          clock: this.#stamp(),
-          updatedAt: this.#iso(),
-        });
-        this.#activity('move', run.memberId, `moved from ${machines.get(this.#selfId())?.name ?? 'this machine'} to ${machines.get(result.machineId)?.name ?? result.machineName}`);
+      await this.#applyMoved(run.memberId, { machineId: result.machineId, machineName: result.machineName, sessionId: moved ? moved.id : result.sessionId }, sourceLoops);
+      // `done` only with the record moved (a concurrent change could have put it elsewhere).
+      const after = this.#memberRecord(run.memberId);
+      if (after.machineId !== result.machineId) return set({ state: 'failed', machineId: after.machineId, error: `the take-over finished but ${after.name}'s record still names another computer: open its menu and try again` });
+      return set({ state: 'done', machineId: result.machineId });
+    }
+  }
+
+  /**
+   * A member's session moved to `to` (its raw session id there): the record follows (machine,
+   * session, rhythm loops by prompt + schedule, paused loops, access trimmed to the target),
+   * the activity says so, the paired machines get it, member-scoped memory follows and the
+   * agent is told which accesses need setting up there. Used by Team's own move and when the
+   * session was moved by the plain take-over (the agent view's Move to computer).
+   */
+  async #applyMoved(memberId: string, to: { readonly machineId: string; readonly machineName: string; readonly sessionId: string }, sourceLoops: readonly OwnedLoop[]): Promise<void> {
+    const newSessionId = to.sessionId;
+    // The loops moved with the session (D65: re-created there, ended here); their new ids, by prompt and schedule.
+    let targetLoops: OwnedLoop[] = [];
+    try {
+      const answer = await this.#o.peers.forward(to.machineId, 'GET', `/api/sessions/${encodeURIComponent(newSessionId)}/loops`, undefined);
+      if (answer.status === 200 && Array.isArray(answer.body)) targetLoops = answer.body as OwnedLoop[];
+    } catch {
+      // Kept by prompt + schedule until the next read there.
+    }
+    const remap = (loopId: string): string => {
+      const source = sourceLoops.find((loop) => loop.id === loopId);
+      const found = source ? targetLoops.find((loop) => loop.prompt === source.prompt && loop.scheduleText === source.scheduleText) : undefined;
+      return found?.id ?? loopId;
+    };
+    const machines = await this.#machineNames();
+    const before = this.#memberRecord(memberId);
+    await this.#serial(async () => {
+      const current = this.#memberRecord(memberId);
+      this.#need().putMember({
+        ...current,
+        machineId: to.machineId,
+        sessionId: newSessionId,
+        rhythm: { ...current.rhythm, loops: current.rhythm.loops.map((loop) => ({ ...loop, loopId: remap(loop.loopId) })) },
+        pausedLoops: current.pausedLoops.map(remap),
+        // T2 seam: access is never moved; every entry now needs setup on the target.
+        access: current.access.map((entry) => ({ ...entry, setUpOn: entry.setUpOn.filter((machine) => machine === to.machineId) })),
+        clock: this.#stamp(),
+        updatedAt: this.#iso(),
       });
-      this.#changed(['members', 'activity']);
-      await this.syncNow();
-      // Project memory (D107) hook: its member-scoped entries move to the machine it now runs on (docs/memory.md → Scopes).
-      await memoryMemberMoved(this.#o.store, { memberId: run.memberId, machineId: result.machineId, sessionId: newSessionId });
-      // The member is told which access needs setting up again (T2 fills the entries; none yet).
-      const missing = before.access.filter((entry) => !entry.setUpOn.includes(result.machineId)).map((entry) => entry.name);
-      if (missing.length > 0) {
-        await this.#o.peers
-          .forward(result.machineId, 'POST', `/api/sessions/${encodeURIComponent(newSessionId)}/messages`, { text: `You moved to ${result.machineName}. These accesses need setting up there before you use them: ${missing.join(', ')}.` })
-          .catch((error: unknown) => this.#error(error));
-      }
-      return set({ state: 'done' });
+      this.#activity('move', memberId, `moved from ${machines.get(this.#selfId())?.name ?? 'this machine'} to ${machines.get(to.machineId)?.name ?? to.machineName}`);
+    });
+    this.#changed(['members', 'activity']);
+    await this.syncNow();
+    // Project memory (D107) hook: its member-scoped entries move to the machine it now runs on (docs/memory.md → Scopes).
+    await memoryMemberMoved(this.#o.store, { memberId, machineId: to.machineId, sessionId: newSessionId });
+    // The member is told which access needs setting up again (T2 fills the entries; none yet).
+    const missing = before.access.filter((entry) => !entry.setUpOn.includes(to.machineId)).map((entry) => entry.name);
+    if (missing.length > 0) {
+      await this.#o.peers
+        .forward(to.machineId, 'POST', `/api/sessions/${encodeURIComponent(newSessionId)}/messages`, { text: `You moved to ${to.machineName}. These accesses need setting up there before you use them: ${missing.join(', ')}.` })
+        .catch((error: unknown) => this.#error(error));
+    }
+  }
+
+  /**
+   * A member of this machine whose session was moved by the plain take-over (not Team's move):
+   * the record follows it, so the crew shows the new computer (it would otherwise keep naming
+   * this one and a closed session). Checked on the session's update and on every tick.
+   */
+  async #followPlainMove(sessionId: string): Promise<void> {
+    if (!this.#db || this.#closed) return;
+    const member = this.#liveMembers().find((entry) => entry.machineId === this.#selfId() && entry.sessionId === sessionId);
+    if (!member) return;
+    // Team's own move applies it (and says done) itself.
+    if ([...this.#moves.values()].some((run) => run.memberId === member.id && run.state === 'running')) return;
+    if (this.#plainMoves.has(member.id)) return;
+    const record = await this.#o.store.sessions.get(sessionId);
+    const to = record?.movedTo;
+    if (!to || to.machineId === this.#selfId()) return;
+    this.#plainMoves.add(member.id);
+    try {
+      const sourceLoops = await this.#o.loops.list(sessionId).catch(() => [] as OwnedLoop[]);
+      const current = this.#memberRecord(member.id);
+      if (current.machineId !== this.#selfId() || current.sessionId !== sessionId) return;
+      await this.#applyMoved(member.id, { machineId: to.machineId, machineName: to.machineName, sessionId: to.sessionId }, sourceLoops);
+    } finally {
+      this.#plainMoves.delete(member.id);
     }
   }
 

@@ -525,8 +525,20 @@ export interface TeamMoveRun {
   readonly state: 'running' | 'done' | 'failed';
   /** The take-over run (D65) behind it. */
   readonly takeoverRunId: string | null;
+  /**
+   * Why it failed, for the developer: the step, the take-over's reason and where the
+   * member runs now ("… Developer still runs on Laptop."); `null` unless `failed`.
+   */
   readonly error: string | null;
   readonly targetMachineId: string;
+  /**
+   * The machine the member's record names now: the source while `running` and after
+   * a failure, the target once `done` (`done` is set only after the record changed).
+   * Absent from an older machine's run.
+   */
+  readonly machineId?: string;
+  /** After a failure: `true` = everything was undone, `false` = the undo left something (see `error`), `null` = nothing had changed yet. */
+  readonly rolledBack?: boolean | null;
 }
 
 /** `teamChanged` (`/hub`): something of the team changed; the page reads `GET /api/team` again. */
