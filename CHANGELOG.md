@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.19 (2026-11-04)
+
+### Paired computers
+- **Moves check the other computer can reach GitHub first:** before an agent or teammate is paused for a move, the other computer's Switchboard service checks that it can reach each repo's remote. When it can't (for example its SSH key isn't available to the background service), the move is refused up front with git's reason and a hint (switch that repo to HTTPS, or make the key usable without a prompt). Git never waits on a password or passphrase prompt during a move, and a failed fetch shows git's real reason. See `docs/peers.md` → *Reaching the remote*.
+- **An undone move no longer reports leftovers it never made:** a worktree that was never created is not "left behind"; its empty folder is removed, and a folder with files in it is reported, never deleted.
+
 ## 2.4.18 (2026-11-04)
 
 ### Service
