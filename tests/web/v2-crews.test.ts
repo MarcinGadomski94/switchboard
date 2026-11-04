@@ -15,8 +15,11 @@ import {
   crewStats,
   dropCrew,
   handoffRows,
+  MOVE_POLL_ERRORS,
   moveComputerReason,
   moveCrew,
+  moveProgress,
+  moveTargetReason,
   moveCrewReason,
   openChatReason,
   orderedCrews,
@@ -217,8 +220,43 @@ describe('moving to a computer', () => {
   it('the menu entry is off while its computer is offline, with nowhere to go, or while it works', () => {
     expect(moveComputerReason(member('a', { status: 'offline', machineName: 'Studio-PC' }), machines)).toBe('Studio-PC is offline; it can move once it reconnects.');
     expect(moveComputerReason(member('a'), [])).toBe('Pair another computer first (Settings › Computers).');
-    expect(moveComputerReason(member('a', { status: 'working' }), machines)).toBe('It is working; it moves once its current reply is done.');
+    expect(moveComputerReason(member('a', { status: 'working' }), machines)).toBe('It is working; move it once its current reply is done.');
     expect(moveComputerReason(member('a'), machines)).toBeNull();
+    // Every other computer away: nowhere to move to (one on another computer can still come here).
+    const away = machines.filter((machine) => machine.state !== 'online');
+    expect(moveComputerReason(member('a'), away)).toBe('Old-PC, Laptop are not online; it can move once one reconnects.');
+    expect(moveComputerReason(member('a'), [{ id: 'old', name: 'Old-PC', state: 'offline' }])).toBe('Old-PC is not online; it can move once it reconnects.');
+    expect(moveComputerReason(member('a', { local: false, machineId: 'old', machineName: 'Old-PC', status: 'idle' }), away)).toBeNull();
+  });
+
+  it('Move says why it is off for the picked computer', () => {
+    const choices = computerChoices(member('a'), self, machines);
+    expect(moveTargetReason(choices, 'pc')).toBeNull();
+    expect(moveTargetReason(choices, 'old')).toBe('Old-PC is offline; move it once it is back online.');
+    expect(moveTargetReason(choices, 'lap')).toBe('Laptop is reconnecting; move it once it is back online.');
+    expect(moveTargetReason(choices, 'mac')).toBe('It runs there already.');
+    expect(moveTargetReason(choices, 'gone')).toBe('Pick a computer.');
+  });
+
+  it('a move run: done only when the record names the target; a failure keeps its reason; lost or slow runs fail', () => {
+    const base = { memberName: 'Developer', targetName: 'Studio-PC' };
+    const run = (state: 'running' | 'done' | 'failed', error: string | null = null) => ({ state, error, targetMachineId: 'pc', machineId: state === 'done' ? 'pc' : 'mac' });
+    expect(moveProgress({ ...base, run: run('running') })).toEqual({ kind: 'moving', text: 'Moving Developer to Studio-PC…' });
+    expect(moveProgress({ ...base, run: null })).toMatchObject({ kind: 'moving' });
+    // Done, the teammate not read yet: still moving; read and on the target: done.
+    expect(moveProgress({ ...base, run: run('done') })).toMatchObject({ kind: 'moving' });
+    expect(moveProgress({ ...base, run: run('done'), memberMachineId: 'pc' })).toEqual({ kind: 'done', text: 'Developer now runs on Studio-PC.' });
+    // Done but the record names another computer (or it is gone): a failure, never a success.
+    expect(moveProgress({ ...base, run: run('done'), memberMachineId: 'mac', currentName: 'Acme-MacBook' })).toEqual({ kind: 'failed', text: 'The move said it was done, but Developer does not run on Studio-PC. Developer still runs on Acme-MacBook.' });
+    expect(moveProgress({ ...base, run: run('done'), memberMachineId: null })).toMatchObject({ kind: 'failed' });
+    expect(moveProgress({ ...base, run: run('done'), timedOut: true })).toMatchObject({ kind: 'failed' });
+    // A failed run: its reason, as the server wrote it.
+    const reason = 'Restoring the working tree here failed: alpha has diverged. Developer still runs on Acme-MacBook.';
+    expect(moveProgress({ ...base, run: run('failed', reason) })).toEqual({ kind: 'failed', text: `Couldn’t move Developer to Studio-PC: ${reason}` });
+    // Reads that fail: a blip keeps moving, three in a row is a failure with the reason; a run that outlives the wait fails.
+    expect(moveProgress({ ...base, run: null, pollErrors: MOVE_POLL_ERRORS - 1, pollError: 'offline' })).toMatchObject({ kind: 'moving' });
+    expect(moveProgress({ ...base, run: null, pollErrors: MOVE_POLL_ERRORS, pollError: 'no move abc' })).toEqual({ kind: 'failed', text: 'Lost track of the move: no move abc. Check where Developer runs before trying again.' });
+    expect(moveProgress({ ...base, run: run('running'), timedOut: true })).toMatchObject({ kind: 'failed' });
   });
 });
 

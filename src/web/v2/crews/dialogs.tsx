@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionModelOption } from '../../../core/api.ts';
-import type { TeamCharter, TeamMember, TeamSuggestion, TeamSummary } from '../../../core/team.ts';
+import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion, TeamSummary } from '../../../core/team.ts';
 import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
@@ -11,7 +11,8 @@ import { useTeamSwitch } from '../../team/hidden.ts';
 import { EMPTY_FORM, type MemberForm, formBody, formFromSuggestion, formFromTemplate, newMemberSession } from '../../team/model.ts';
 import { Button, Checkbox, Dialog, Field, Select, TextArea, useToast } from '../components/index.ts';
 import { CREW_WORDS, WORDS } from '../glossary.ts';
-import { checkBudget, computerChoices } from './crew-model.ts';
+import { MOVE_POLL_ERRORS, type MoveProgress, checkBudget, computerChoices, moveProgress, moveTargetReason } from './crew-model.ts';
+import { reloadTeam } from '../../team/useTeamData.ts';
 
 /**
  * D131 · lane P · the Crews dialogs: New crew, Rename, Delete, Move to crew… (with Undo by the
@@ -160,7 +161,17 @@ export function MoveToCrewDialog({ member, crews, onClose, onMove }: { readonly 
   );
 }
 
-/** Move to computer…: the computers (offline ones disabled), the move's checks, then the move run (D100 / D65). */
+/** How often a running move is read again, and for how long (a take-over with a large conversation takes minutes). */
+const MOVE_POLL_MS = 2_000;
+const MOVE_WAIT_MS = 15 * 60_000;
+
+/**
+ * Move to computer…: the computers (offline / reconnecting ones disabled, and Move says why),
+ * the move's checks, then the move run (D100 / D65). The dialog stays open while it moves and
+ * shows how it ended: a failure with its reason (nothing changed, Try again), success only once
+ * the teammate's record names the new computer (the crew page is read again then). Closed while
+ * moving, it keeps following the run and says the outcome in a toast (a failure stays longer).
+ */
 export function MoveToComputerDialog({ member, onClose }: { readonly member: TeamMember; readonly onClose: () => void }) {
   const machines = useMachines();
   const [self, setSelf] = useState<{ id: string; name: string } | null>(null);
@@ -168,6 +179,8 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
   const [blockers, setBlockers] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'checking' | 'moving'>('idle');
+  const [progress, setProgress] = useState<MoveProgress | null>(null);
+  const open = useRef(true);
   const toast = useToast();
   useEffect(() => {
     let alive = true;
@@ -177,13 +190,66 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
       .catch(() => alive && setSelf({ id: 'self', name: 'This computer' }));
     return () => {
       alive = false;
+      open.current = false;
     };
   }, []);
   const choices = self ? computerChoices(member, self, machines) : [];
+  const nameOf = (id: string): string => choices.find((choice) => choice.id === id)?.name ?? 'the other computer';
+  const targetWhy = pick === null ? null : moveTargetReason(choices, pick);
+  /** Follows the run until it ends; the outcome goes to the dialog while it is open, else to a toast. */
+  const follow = async (runId: string, target: string): Promise<void> => {
+    const targetName = nameOf(target);
+    const until = Date.now() + MOVE_WAIT_MS;
+    let pollErrors = 0;
+    let pollError: string | null = null;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, MOVE_POLL_MS));
+      let run: TeamMoveRun | null = null;
+      try {
+        run = await teamApi.moveRun(runId);
+        pollErrors = 0;
+      } catch (caught) {
+        pollErrors += 1;
+        pollError = refusalText(caught);
+      }
+      let memberMachineId: string | null | undefined;
+      let currentName: string | undefined;
+      if (run?.state === 'done' || run?.state === 'failed' || pollErrors >= MOVE_POLL_ERRORS) {
+        // Read the teammate again: success is what its record says, not what the run says.
+        await reloadTeam();
+        const now = await teamApi
+          .view(member.teamId)
+          .then((view) => view.members.find((entry) => entry.id === member.id) ?? null)
+          .catch(() => undefined);
+        if (now !== undefined) {
+          memberMachineId = now?.machineId ?? null;
+          currentName = now?.machineName;
+        }
+      }
+      const next = moveProgress({ run, memberName: member.name, targetName, memberMachineId, ...(currentName ? { currentName } : {}), pollErrors, pollError, timedOut: Date.now() > until });
+      if (next.kind === 'moving') {
+        if (open.current) setProgress(next);
+        continue;
+      }
+      if (open.current) {
+        setProgress(next);
+        setState('idle');
+        if (next.kind === 'done') {
+          toast({ text: next.text });
+          onClose();
+        }
+      } else {
+        toast(next.kind === 'done' ? { text: next.text } : { text: next.text, tone: 'error', ms: 15_000 });
+      }
+      return;
+    }
+  };
   const move = async (): Promise<void> => {
-    if (!pick) return;
+    if (!pick || targetWhy !== null) return;
     setState('checking');
     setError(null);
+    setBlockers([]);
+    setProgress(null);
     try {
       const check = await teamApi.moveCheck(member.id, pick);
       if (!check.ok) {
@@ -193,22 +259,14 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
       }
       setState('moving');
       const run = await teamApi.move(member.id, pick);
-      const name = choices.find((choice) => choice.id === pick)?.name ?? 'the other computer';
-      toast({ text: `${member.name} moves to ${name} after its current reply.` });
-      onClose();
-      let left = 120;
-      const poll = async (): Promise<void> => {
-        const now = await teamApi.moveRun(run.id).catch(() => null);
-        if (now?.state === 'done') toast({ text: `${member.name} now runs on ${name}.` });
-        else if (now?.state === 'failed') toast({ text: `Couldn’t move ${member.name}: ${now.error ?? 'the move failed'}`, tone: 'error' });
-        else if (left-- > 0) setTimeout(() => void poll(), 2_000);
-      };
-      void poll();
+      setProgress({ kind: 'moving', text: `Moving ${member.name} to ${nameOf(pick)}…` });
+      void follow(run.id, pick);
     } catch (e) {
       setError(refusalText(e));
       setState('idle');
     }
   };
+  const failed = progress?.kind === 'failed';
   return (
     <Dialog
       open
@@ -218,18 +276,18 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
       testId="v2-move-computer"
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!pick || state !== 'idle'} onClick={() => void move()} data-testid="v2-move-computer-go">
-            {state === 'checking' ? 'Checking…' : state === 'moving' ? 'Moving…' : 'Move'}
+          <Button onClick={onClose}>{state === 'moving' ? 'Hide' : 'Cancel'}</Button>
+          <Button variant="primary" disabled={!pick || targetWhy !== null || state !== 'idle'} title={targetWhy ?? undefined} onClick={() => void move()} data-testid="v2-move-computer-go">
+            {state === 'checking' ? 'Checking…' : state === 'moving' ? 'Moving…' : failed ? 'Try again' : 'Move'}
           </Button>
         </>
       }
     >
-      <p className="v2-muted v2-c-small">It finishes its current reply first, then continues on the new computer with its chat, tasks, routines and separate copies.</p>
+      <p className="v2-muted v2-c-small">Move it when it is not working: it continues on the new computer with its chat, tasks, routines and separate copies.</p>
       <div className="v2-c-pick" role="radiogroup" aria-label="Computers">
         {choices.map((choice) => (
-          <label key={choice.id} className="v2-c-pick-row" data-testid="v2-move-computer-option" data-disabled={choice.disabledReason !== null || undefined}>
-            <input type="radio" name="v2-move-computer" disabled={choice.current || choice.disabledReason !== null} checked={pick === choice.id} onChange={() => setPick(choice.id)} />
+          <label key={choice.id} className="v2-c-pick-row" data-testid="v2-move-computer-option" data-machine={choice.id} data-disabled={choice.disabledReason !== null || undefined}>
+            <input type="radio" name="v2-move-computer" disabled={state !== 'idle' || choice.current || choice.disabledReason !== null} checked={pick === choice.id} onChange={() => setPick(choice.id)} />
             <span className="v2-grow">
               {choice.name}
               {choice.current ? <span className="v2-muted v2-c-small"> · now</span> : null}
@@ -238,12 +296,22 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
           </label>
         ))}
       </div>
+      {pick !== null && targetWhy !== null ? (
+        <p className="v2-muted v2-c-small" data-testid="v2-move-computer-why">
+          {targetWhy}
+        </p>
+      ) : null}
       {blockers.length > 0 ? (
         <ul className="v2-c-blockers" data-testid="v2-move-computer-blockers">
           {blockers.map((blocker) => (
             <li key={blocker}>{blocker}</li>
           ))}
         </ul>
+      ) : null}
+      {progress ? (
+        <p className={progress.kind === 'failed' ? 'v2-field-error' : 'v2-muted v2-c-small'} role={progress.kind === 'failed' ? 'alert' : 'status'} data-testid="v2-move-computer-progress" data-state={progress.kind}>
+          {progress.text}
+        </p>
       ) : null}
       <ErrorLine text={error} />
     </Dialog>

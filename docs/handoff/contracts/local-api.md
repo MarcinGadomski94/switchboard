@@ -1820,8 +1820,8 @@ Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `d
 | POST | /api/team/members/{id}/pause · /resume | | 200 `TeamMember` |
 | POST | /api/team/members/{id}/return | | 200 `{ sessionId }` (how this machine addresses it) |
 | POST | /api/team/members/{id}/move/check | `{ targetMachineId, placement?, clonePaths? }` (D110) | 200 `{ ok, blockers, preview }` (`preview`: the take-over's `TakeoverPreview`) · 422 |
-| POST | /api/team/members/{id}/move | `{ targetMachineId, placement?, clonePaths? }` (D110) | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId }` · 409 `blocked` + `blockers` |
-| GET | /api/team/moves/{runId} | | 200 `TeamMoveRun` (`state`: `running` · `done` · `failed`) · 404 |
+| POST | /api/team/members/{id}/move | `{ targetMachineId, placement?, clonePaths? }` (D110) | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId, machineId?, rolledBack? }` · 409 `blocked` + `blockers` (an offline / reconnecting target is refused here at once, 2026-11-04) |
+| GET | /api/team/moves/{runId} | | 200 `TeamMoveRun` (`state`: `running` · `done` (only once the member's record names the target; `machineId` = it) · `failed` (`error`: the step, the reason and where the member still runs; `rolledBack`)) · 404 |
 | POST | /api/team/handoffs | `{ to: <role name, "Role (Team)" or member id>, brief, expected?, links?, from?: <member id>, planRef?, team?: <team name or id>, teamId?: <the team the name is looked up in, when no sender; none = the first team> }` | 201 `TeamHandoff` · 404 (no such member) · 422 |
 | PUT | /api/team/handoffs/{id} | `{ state: open \| accepted \| done \| declined }` | 200 `TeamHandoff` |
 | POST | /api/team/requests/{id}/approve · /decline · /dismiss | (D105, `kind: charter`: approve may carry `{ charter }`, the developer's edit of the proposal) | 200 `TeamRequest` (`note`: the approved action's result) · 409 `decided` · (D105) 409 `no-proposal` (approving an ask the agent has not answered) · 422 (an edited charter that is not one) |
