@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.18 (2026-11-04)
+
+### Service
+- **The service log stays small:** on macOS, `service.log` is kept under about 50 MB (when it passes 25 MB its newest half moves to `service.log.1`); an oversized log is trimmed at the first start, with no reinstall. Routine "incoming request" / "request completed" lines are no longer written (failed requests and everything else still are; `SWITCHBOARD_REQUEST_LOGS=on` brings them back). See `docs/service.md`.
+
 ## 2.4.17 (2026-11-04)
 
 ### Crews
