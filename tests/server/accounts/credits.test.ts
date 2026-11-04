@@ -8,6 +8,7 @@ import { SharedAccounts, type SharedAccountsPeers } from '../../../src/server/ac
 import type { Providers } from '../../../src/server/providers.ts';
 import { withAccountUsage } from '../../../src/server/usage/wire.ts';
 import type { UserPayload } from '../../../src/core/event-payload.ts';
+import { clock } from '../../../src/core/accounts.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, stdinOf, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
@@ -89,8 +90,11 @@ async function workOnCredits(w: SupervisorWorld, used = 37.6): Promise<void> {
   });
 }
 
-async function reading(w: SupervisorWorld, profileId: string, five: number, week: number, resetIn = HOUR): Promise<void> {
-  await w.store.usage.add({ source: 'get_usage', sessionId: null, profileId, fiveHourPct: five, fiveHourResetsAt: soon(resetIn), sevenDayPct: week, sevenDayResetsAt: soon(48 * HOUR), raw: getUsageRaw(five, week, { enabled: false }) });
+/** A `get_usage` reading of an account; returns its 5-hour reset (ISO). */
+async function reading(w: SupervisorWorld, profileId: string, five: number, week: number, resetIn = HOUR): Promise<string> {
+  const fiveHourResetsAt = soon(resetIn);
+  await w.store.usage.add({ source: 'get_usage', sessionId: null, profileId, fiveHourPct: five, fiveHourResetsAt, sevenDayPct: week, sevenDayResetsAt: soon(48 * HOUR), raw: getUsageRaw(five, week, { enabled: false }) });
+  return fiveHourResetsAt;
 }
 
 async function turnsOf(w: SupervisorWorld, sessionId: string) {
@@ -165,7 +169,7 @@ describe('D103 · credits per account', () => {
     const { w } = await make();
     const b = await w.accounts.create({ cli: 'claude', name: 'Private' });
     await workOnCredits(w);
-    await reading(w, b.id, 100, 40);
+    const privateBack = await reading(w, b.id, 100, 40);
     const session = await w.supervisor.start({ ...newSession({ task: 'first task' }), profileId: 'default-claude' }, w.place);
     await waitForStatus(w.store, session.id, ['done']);
     // "use credits" (default): the turn runs on the account on credits.
@@ -179,7 +183,9 @@ describe('D103 · credits per account', () => {
     await w.supervisor.sendMessage(session.id, 'held two');
     const held = await w.supervisor.heldMessages(session.id);
     expect(held.map((e) => (e.payload as UserPayload).text)).toEqual(['held one', 'held two']);
-    expect(held[0]?.payload).toMatchObject({ queued: 'credits', delivered: false, heldNote: expect.stringMatching(/^Waiting for an account with allowance — Private back at \d\d:\d\d$/) });
+    expect(held[0]?.payload).toMatchObject({ queued: 'credits', delivered: false, heldNote: `Waiting for an account with allowance — Private back at ${clock(privateBack)}` });
+    // The reset an hour from now: "HH:MM" today, "5 nov 00:42" when that hour crosses local midnight (D103 note).
+    expect((held[0]?.payload as UserPayload).heldNote).toMatch(/ — Private back at (\d{1,2} [a-z]{3} )?\d\d:\d\d$/);
     const before = await claudeStdinTexts(w);
     expect(before.some((t) => t.includes('held one'))).toBe(false);
     // The 30-second check while still paused: nothing goes out.
