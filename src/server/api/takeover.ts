@@ -5,6 +5,7 @@ import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TakeoverGitError } from '../takeover/git.ts';
 import { TakeoverError } from '../takeover/service.ts';
 import { placementOf } from '../../core/takeover.ts';
+import { workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { isPeerRequest } from './machines.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,9 +72,11 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     const targetMachine = body['targetMachine'] === undefined || body['targetMachine'] === null ? null : text(body['targetMachine']);
     if (body['targetMachine'] !== undefined && body['targetMachine'] !== null && targetMachine === null) return invalid(reply, 'targetMachine', 'targetMachine must be a machine id');
     const placement = placementOf(body['placement']);
-    if (placement === null) return invalid(reply, 'placement', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+    if (placement === null) return invalid(reply, 'placement', 'placement must be { roots: string[], repoPaths?: { <repo key>: path }, repoModes?: { <repo key>: "use" | "clone" }, newWorkspace?: { path, useExisting? } }');
+    const workspaceFiles = workspaceChoiceOf(body['workspaceFiles']);
+    if (workspaceFiles === null) return invalid(reply, 'workspaceFiles', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -160,9 +163,24 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     );
   });
   op('source/rollback', (body) => takeover.rollbackSource(need(body, 'opId')));
+  // D152: the workspace's own files (the source re-reads and checks them; the target stages, checks and places them).
+  op('source/workspace-files', (body) => takeover.workspaceFiles(need(body, 'opId'), Array.isArray(body['names']) ? body['names'].filter((name): name is string => typeof name === 'string').slice(0, 1000) : []));
+  op('source/workspace-chunk', (body) => takeover.readWorkspaceChunk(need(body, 'opId'), need(body, 'name'), typeof body['offset'] === 'number' ? body['offset'] : -1));
+  op('target/workspace-chunk', (body) =>
+    takeover.receiveWorkspaceChunk({
+      opId: need(body, 'opId'),
+      name: body['name'],
+      size: typeof body['size'] === 'number' ? body['size'] : -1,
+      sha256: String(body['sha256'] ?? ''),
+      offset: typeof body['offset'] === 'number' ? body['offset'] : -1,
+      data: typeof body['data'] === 'string' ? body['data'] : '',
+      secret: body['secret'] === true,
+      confirmed: body['confirmed'] === true,
+    }),
+  );
   const placementIn = (body: Record<string, unknown>) => {
     const placement = placementOf(body['placement']);
-    if (placement === null) throw new TakeoverError(422, 'invalid', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+    if (placement === null) throw new TakeoverError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
     return placement ? { placement } : {};
   };
   op('target/plan', (body) => {

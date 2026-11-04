@@ -596,6 +596,14 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     return providers.diff.targets(record.id);
   });
 
+  // D152: which repos the session works in (its history: worktrees, solutions, the repos of the files it edited, its cwd's), with their paths.
+  app.get<{ Params: IdParams }>('/api/sessions/:id/works-in', async (request, reply) => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    if (!providers.diff?.worksIn) return { repos: [] };
+    return providers.diff.worksIn(record.id);
+  });
+
   // D90 ruling: the session tab's "Diff · n": the file count of the view the Diff tab shows (`?scope=`, default `head`), without patches.
   app.get<{ Params: IdParams; Querystring: { scope?: unknown } }>('/api/sessions/:id/diff/count', async (request, reply): Promise<DiffCount | FastifyReply> => {
     const record = await store.sessions.get(request.params.id);

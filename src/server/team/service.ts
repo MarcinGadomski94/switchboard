@@ -8,6 +8,9 @@ import { remoteId, parseRemoteId } from '../../core/peers.ts';
 import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-layout.ts';
 import {
   type TeamMoveRun,
+  type CrewMoveCheck,
+  type CrewMoveMember,
+  type CrewMoveRun,
   ALL_TEAMS,
   CHARTER_ASK_STALE_MS,
   CHARTER_NOTES_MAX,
@@ -76,7 +79,8 @@ import { listInbox } from '../inbox/wire.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
 import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
-import { TAKEOVER_STEP_LABELS, type TargetPlacement, placementOf } from '../../core/takeover.ts';
+import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
+import { type WorkspaceFileChoice, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -221,6 +225,8 @@ export class TeamService {
   #inboxScan: { again: boolean } | null = null;
   #queue: Promise<unknown> = Promise.resolve();
   readonly #moves = new Map<string, TeamMoveRun>();
+  /** D152: the crew moves this machine runs (the newest 20 kept). */
+  readonly #crewMoves = new Map<string, CrewMoveRun>();
   /** Members whose plain take-over is being followed now ({@link #followPlainMove}). */
   readonly #plainMoves = new Set<string>();
   /** Paired machines whose Team answered the exchange (older ones / Team off there are left out). */
@@ -2356,6 +2362,165 @@ export class TeamService {
     }
   }
 
+  // ── D152: move a whole crew ────────────────────────────────────────────
+
+  /** One teammate's body of a crew move: `members[<id>]` (placement, clone paths, workspace files), plus the target. */
+  #crewMemberBody(body: Record<string, unknown>, memberId: string, target: string): Record<string, unknown> {
+    const all = body['members'];
+    const own = all !== null && typeof all === 'object' && !Array.isArray(all) ? (all as Record<string, unknown>)[memberId] : undefined;
+    const fields = own !== null && typeof own === 'object' && !Array.isArray(own) ? (own as Record<string, unknown>) : {};
+    return { ...fields, targetMachineId: target };
+  }
+
+  /**
+   * D152 `POST /api/team/teams/{teamId}/move/check` `{ targetMachineId, members?: { <memberId>: { placement?, clonePaths?, workspaceFiles? } } }`:
+   * every teammate is checked first (the member move's checks: the take-over's on both
+   * computers and a running turn), all blockers together. A teammate on the target
+   * already, or archived, is skipped. Nothing changes.
+   */
+  async crewMoveCheck(teamId: string, body: Record<string, unknown>): Promise<CrewMoveCheck> {
+    const target = typeof body['targetMachineId'] === 'string' ? body['targetMachineId'] : '';
+    if (target === '') throw new TeamError(422, 'invalid', 'targetMachineId is required');
+    const view = await this.view(teamId);
+    const machines = await this.#machineNames();
+    const targetName = machines.get(target)?.name ?? (target === this.#selfId() ? 'this computer' : 'that computer');
+    const members: CrewMoveMember[] = [];
+    for (const member of view.members) {
+      const base = { memberId: member.id, name: member.name, machineId: member.machineId };
+      if (member.archived) {
+        members.push({ ...base, state: 'skipped', blockers: [], note: `${member.name} is archived: restore it to move it` });
+        continue;
+      }
+      if (member.machineId === target) {
+        members.push({ ...base, state: 'skipped', blockers: [], note: `${member.name} runs on ${targetName} already` });
+        continue;
+      }
+      try {
+        const check = await this.moveCheck(member.id, this.#crewMemberBody(body, member.id, target));
+        members.push({ ...base, state: check.ok ? 'ready' : 'blocked', blockers: check.blockers, note: null, preview: check.preview });
+      } catch (error) {
+        members.push({ ...base, state: 'blocked', blockers: [error instanceof Error ? error.message : String(error)], note: null, preview: null });
+      }
+    }
+    return { teamId: view.team.id, targetMachineId: target, ok: members.some((member) => member.state === 'ready') && members.every((member) => member.state !== 'blocked'), members };
+  }
+
+  /**
+   * D152 `POST /api/team/teams/{teamId}/move` (same body) → 202 {@link CrewMoveRun}: checks every
+   * teammate first (409 `blocked` with the check when any is blocked: nothing moves), then
+   * moves them **one by one** in the crew's order, each as a member move; a failure stops
+   * the rest (the ones moved stay moved) and the run says who moved and who did not.
+   */
+  async crewMove(teamId: string, body: Record<string, unknown>): Promise<CrewMoveRun> {
+    const check = await this.crewMoveCheck(teamId, body);
+    if (!check.ok) {
+      const blocked = check.members.filter((member) => member.state === 'blocked');
+      const text = blocked.length > 0 ? blocked.map((member) => `${member.name}: ${member.blockers.join('; ')}`).join(' · ') : 'no teammate needs moving';
+      throw new TeamError(409, 'blocked', text, { check });
+    }
+    const run: CrewMoveRun = {
+      id: randomUUID(),
+      teamId: check.teamId,
+      targetMachineId: check.targetMachineId,
+      state: 'running',
+      members: check.members.map((member) => ({ ...member, preview: undefined, state: member.state === 'ready' ? 'waiting' : member.state, moveRunId: null })),
+      error: null,
+    };
+    this.#crewMoves.set(run.id, run);
+    while (this.#crewMoves.size > 20) {
+      const oldest = [...this.#crewMoves.values()].find((entry) => entry.state !== 'running');
+      if (!oldest) break;
+      this.#crewMoves.delete(oldest.id);
+    }
+    const previews = new Map(check.members.map((member) => [member.memberId, (member.preview ?? null) as TakeoverPreview | null]));
+    void this.#runCrewMove(run.id, body, previews).catch((error: unknown) => {
+      this.#error(error);
+      const now = this.#crewMoves.get(run.id);
+      if (now?.state === 'running') this.#crewMoves.set(run.id, { ...now, state: 'failed', error: error instanceof Error ? error.message : String(error) });
+    });
+    return run;
+  }
+
+  /** `GET /api/team/crew-moves/{runId}`. */
+  async crewMoveRun(runId: string): Promise<CrewMoveRun> {
+    const run = this.#crewMoves.get(runId);
+    if (!run) throw new TeamError(404, 'not-found', `no crew move ${runId}`);
+    return run;
+  }
+
+  async #runCrewMove(runId: string, body: Record<string, unknown>, previews: ReadonlyMap<string, TakeoverPreview | null>): Promise<void> {
+    const update = (memberId: string, patch: Partial<CrewMoveMember>): void => {
+      const now = this.#crewMoves.get(runId) as CrewMoveRun;
+      this.#crewMoves.set(runId, { ...now, members: now.members.map((member) => (member.memberId === memberId ? { ...member, ...patch } : member)) });
+    };
+    const finish = (state: CrewMoveRun['state'], error: string | null): void => {
+      const now = this.#crewMoves.get(runId) as CrewMoveRun;
+      this.#crewMoves.set(runId, { ...now, state, error, members: now.members.map((member) => (state === 'failed' && member.state === 'waiting' ? { ...member, state: 'not-moved' } : member)) });
+    };
+    const target = (this.#crewMoves.get(runId) as CrewMoveRun).targetMachineId;
+    // What earlier teammates made on the target: a workspace root, the repos they cloned (by remote key).
+    const createdRoots: string[] = [];
+    const clonedKeys = new Set<string>();
+    for (const member of (this.#crewMoves.get(runId) as CrewMoveRun).members) {
+      if (member.state !== 'waiting') continue;
+      if (this.#closed) return;
+      update(member.memberId, { state: 'moving' });
+      const own = this.#crewMemberBody(body, member.memberId, target);
+      const preview = previews.get(member.memberId) ?? null;
+      const adjusted = crewAdjusted(own, preview, createdRoots, clonedKeys);
+      let error: string | null = null;
+      try {
+        const started = await this.move(member.memberId, adjusted);
+        update(member.memberId, { moveRunId: started.id });
+        const until = Date.now() + 30 * 60_000;
+        let misses = 0;
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          if (this.#closed) return;
+          let current: TeamMoveRun | null = null;
+          try {
+            current = await this.moveRun(started.id);
+            misses = 0;
+          } catch (caught) {
+            misses++;
+            if (misses >= 3) {
+              error = `lost track of the move: ${caught instanceof Error ? caught.message : String(caught)}`;
+              break;
+            }
+            continue;
+          }
+          if (current.state === 'done') break;
+          if (current.state === 'failed') {
+            error = current.error ?? 'the move failed';
+            break;
+          }
+          if (Date.now() > until) {
+            error = 'the move took longer than 30 minutes';
+            break;
+          }
+        }
+      } catch (caught) {
+        error = caught instanceof Error ? caught.message : String(caught);
+      }
+      if (error !== null) {
+        update(member.memberId, { state: 'failed', note: error });
+        const now = this.#crewMoves.get(runId) as CrewMoveRun;
+        const moved = now.members.filter((entry) => entry.state === 'moved').length;
+        const left = now.members.filter((entry) => entry.state === 'waiting').length;
+        finish('failed', `${member.name} could not move: ${error.replace(/[.\s]+$/, '')}. ${moved} moved, ${left} not moved.`);
+        return;
+      }
+      update(member.memberId, { state: 'moved', machineId: target });
+      if (preview?.target.workspaceRoot && !preview.target.workspaceRoot.exists) createdRoots.push(preview.target.workspaceRoot.path);
+      for (const repo of preview?.target.repos ?? []) {
+        if (repo.action !== 'clone') continue;
+        const key = preview?.source.repos.find((entry) => entry.key === repo.key)?.remoteKey;
+        if (key) clonedKeys.add(key);
+      }
+    }
+    finish('done', null);
+  }
+
   // ── suggestions ───────────────────────────────────────────────────────
 
   /** `GET /api/team/suggestions`: candidate members from the existing sessions, with evidence (T3 drafts the charters). */
@@ -2409,15 +2574,43 @@ function stripRequest(record: TeamRequestRecord): TeamRequest {
  * D110: the target folders (and clone paths) of a member's move, from the request
  * body, in the take-over's shape; a malformed value is refused (422).
  */
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string> } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice } {
   const placement = placementOf(body['placement']);
-  if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?: { <repo key>: path } }');
+  if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string> } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  // D152: the workspace's own files to copy.
+  const files = workspaceChoiceOf(body['workspaceFiles']);
+  if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
+  if (files) out.workspaceFiles = files;
   const paths = body['clonePaths'];
   if (paths !== undefined && paths !== null) {
     if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');
     out.clonePaths = paths as Record<string, string>;
   }
   return out;
+}
+
+/**
+ * D152: a teammate's move body after the teammates before it moved: a workspace root
+ * an earlier one created exists now (its use is confirmed: it is this move's own
+ * folder), and a repo an earlier one cloned is there now (found under the root, not
+ * cloned again). Pure.
+ */
+export function crewAdjusted(body: Record<string, unknown>, preview: TakeoverPreview | null, createdRoots: readonly string[], clonedKeys: ReadonlySet<string>): Record<string, unknown> {
+  const placement = placementOf(body['placement']);
+  if (!placement) return body;
+  let next: TargetPlacement = placement;
+  if (placement.newWorkspace && createdRoots.some((root) => sameTargetPath(root, placement.newWorkspace?.path ?? ''))) {
+    next = { ...next, newWorkspace: { path: placement.newWorkspace.path, useExisting: true } };
+  }
+  const keysOf = new Map((preview?.source.repos ?? []).map((repo) => [repo.key, repo.remoteKey]));
+  const cloned = (key: string): boolean => clonedKeys.has(keysOf.get(key) ?? '');
+  if (next.repoModes) {
+    const modes = Object.fromEntries(Object.entries(next.repoModes).filter(([key, mode]) => !(mode === 'clone' && cloned(key))));
+    next = { ...next, repoModes: modes };
+  }
+  const clonePaths = body['clonePaths'];
+  const keptPaths = clonePaths !== null && typeof clonePaths === 'object' && !Array.isArray(clonePaths) ? Object.fromEntries(Object.entries(clonePaths as Record<string, unknown>).filter(([key]) => !cloned(key))) : clonePaths;
+  return { ...body, placement: next, ...(keptPaths !== undefined ? { clonePaths: keptPaths } : {}) };
 }

@@ -1,3 +1,4 @@
+import type { SessionWorksIn } from '../core/workspace-move.ts';
 import type { CodebaseMemoryStatus, DiffScope, DiffTargets, DiffCount, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
 import type { UpdateStatus, UpdateTrigger } from '../core/updates.ts';
@@ -24,6 +25,8 @@ export interface DiffProvider {
   diff(sessionId: string, file?: string, scope?: DiffScope): Promise<FileDiff[]>;
   /** D90: the working trees the diff reads (the Diff tab's views and header); absent → none known. */
   targets?(sessionId: string): Promise<DiffTargets>;
+  /** D152: the repos the session works in, with their paths (the agent view's "Works in"); absent → none known. */
+  worksIn?(sessionId: string): Promise<SessionWorksIn>;
   /**
    * D90 ruling: how many files `diff(sessionId, undefined, scope)` would list in the
    * view the Diff tab shows for `scope` (see {@link DiffCount}), without reading the
