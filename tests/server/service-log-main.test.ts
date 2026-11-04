@@ -59,7 +59,8 @@ describe('the service log under launchd (stdout + stderr appended to <dataDir>/l
     expect(text).toContain('service log rotated');
     expect(text).not.toContain('old line of a previous run');
     const kept = await readFile(`${log}.1`, 'utf8');
-    expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(SERVICE_LOG_MAX_BYTES / 2);
+    // Half the cap, plus anything the starting server printed while the copy ran.
+    expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(SERVICE_LOG_MAX_BYTES / 2 + 64 * 1024);
     expect(Buffer.byteLength(kept)).toBeGreaterThan(SERVICE_LOG_MAX_BYTES / 2 - old.length);
     expect(kept.startsWith(old)).toBe(true);
     // The newest old lines are kept (followed by whatever this start printed before the check).
