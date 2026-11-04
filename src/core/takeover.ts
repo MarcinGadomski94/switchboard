@@ -417,6 +417,8 @@ export interface AppliedRepo {
   readonly key: string;
   readonly path: string;
   readonly worktreePath: string | null;
+  /** This restore's `git worktree add` succeeded (the undo may remove it with `--force`: it holds only the restored work). */
+  readonly worktreeMade: boolean;
   readonly branch: string;
   readonly cloned: boolean;
   readonly addedFolderId: string | null;
@@ -643,6 +645,13 @@ export interface PlanOptions {
   readonly defaultCloneParent: string | null;
   /** Paths that exist already on the target (a worktree or clone path that collides is blocked). */
   readonly exists?: ReadonlySet<string>;
+  /**
+   * Worktree paths that are in the way on the target, with the blocker's text
+   * ({@link worktreeSlotBlocker}): a live worktree, a non-empty folder, a locked
+   * entry. A free path, an empty folder or a stale (prunable) entry is not listed:
+   * the restore clears those itself (`docs/peers.md` → *A worktree folder in the way*).
+   */
+  readonly worktreeBlockers?: ReadonlyMap<string, string>;
   /** Branches checked out in another worktree of a candidate repo: `<path>\n<branch>`. */
   readonly checkedOut?: ReadonlySet<string>;
   /** Repos whose working tree is not clean on the target (a main-checkout session cannot check a branch out there): their paths. */
@@ -666,6 +675,7 @@ export function matchingCandidates(repo: Pick<SourceRepo, 'name' | 'remoteKey'>,
  */
 export function planRepos(repos: readonly SourceRepo[], candidates: readonly TargetCandidate[], options: PlanOptions): RepoResolution[] {
   const exists = options.exists ?? new Set<string>();
+  const worktreeBlockers = options.worktreeBlockers ?? new Map<string, string>();
   const checkedOut = options.checkedOut ?? new Set<string>();
   const dirty = options.dirtyTargets ?? new Set<string>();
   return repos.map((repo): RepoResolution => {
@@ -689,6 +699,7 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
     if (match) {
       const wantsWorktree = repo.kind === 'worktree';
       const worktreePath = wantsWorktree ? options.worktreePathOf(match.path, options.sessionName) : null;
+      if (worktreePath !== null && worktreeBlockers.has(worktreePath)) return blocked(worktreeBlockers.get(worktreePath) as string, { matchedPath: match.path, folderId: match.folderId });
       if (worktreePath !== null && exists.has(worktreePath)) return blocked(`${worktreePath} exists already on the target`, { matchedPath: match.path, folderId: match.folderId });
       if (checkedOut.has(`${match.path}\n${repo.branch}`)) {
         return blocked(`the branch ${repo.branch} is checked out in another worktree of ${match.path}`, { matchedPath: match.path, folderId: match.folderId });
@@ -713,18 +724,96 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
     if (cloneTo === null) return blocked(`${repo.name} is not on this machine and no folder is known to clone it into: type one`);
     if (!isCloneableUrl(repo.remoteUrl)) return blocked(`${repo.name}: ${JSON.stringify(repo.remoteUrl)} is not a URL this machine will clone`);
     if (exists.has(cloneTo)) return blocked(`${cloneTo} exists already: choose another folder to clone ${repo.name} into`, { cloneTo, cloneUrl: repo.remoteUrl });
+    const cloneWorktree = repo.kind === 'worktree' ? options.worktreePathOf(cloneTo, options.sessionName) : null;
+    if (cloneWorktree !== null && worktreeBlockers.has(cloneWorktree)) return blocked(worktreeBlockers.get(cloneWorktree) as string, { cloneTo, cloneUrl: repo.remoteUrl });
     return {
       ...base,
       action: 'clone',
       matchedPath: null,
       folderId: null,
-      worktreePath: repo.kind === 'worktree' ? options.worktreePathOf(cloneTo, options.sessionName) : null,
+      worktreePath: cloneWorktree,
       cloneTo,
       cloneUrl: repo.remoteUrl,
       reason: null,
       summary: `Not on this machine: clone ${repo.remoteUrl} into ${cloneTo}`,
     };
   });
+}
+
+// ── the worktree path on the target ──────────────────────────────────────
+
+/** One entry of `git worktree list --porcelain`. */
+export interface WorktreeEntry {
+  /** The path as git lists it (forward slashes on Windows: `D:/code/app-wt-x`). */
+  readonly path: string;
+  /** The branch checked out there (without `refs/heads/`), `null` when detached or bare. */
+  readonly branch: string | null;
+  readonly locked: boolean;
+  /** Git would drop it on `git worktree prune` (its folder or its `.git` file is gone; never a locked one). */
+  readonly prunable: boolean;
+}
+
+/** Parses `git worktree list --porcelain` (the main checkout first). Pure. */
+export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
+  const out: WorktreeEntry[] = [];
+  let current: { path: string; branch: string | null; locked: boolean; prunable: boolean } | null = null;
+  for (const raw of porcelain.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (line.startsWith('worktree ')) {
+      if (current) out.push(current);
+      current = { path: line.slice('worktree '.length).trim(), branch: null, locked: false, prunable: false };
+    } else if (current && line.startsWith('branch ')) current.branch = line.slice('branch '.length).trim().replace(/^refs\/heads\//, '');
+    else if (current && (line === 'locked' || line.startsWith('locked '))) current.locked = true;
+    else if (current && (line === 'prunable' || line.startsWith('prunable '))) current.prunable = true;
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+/**
+ * What is at the path where the restore will create a worktree, on the target
+ * (`docs/peers.md` → *A worktree folder in the way*):
+ * - `free` — nothing there;
+ * - `empty-folder` — an empty folder that is not a worktree (the restore removes it, then creates the worktree);
+ * - `stale-entry` — git still lists a worktree there whose folder is gone or empty (prunable; the restore removes that one entry first, never `git worktree prune`);
+ * - `worktree` — a live worktree of the repo (`locked`: a locked entry, also when its folder is gone);
+ * - `folder` / `file` — something that is not a worktree, never deleted;
+ * - `unreadable` — this machine could not look (the error), never guessed free.
+ */
+export type WorktreeSlot =
+  | { readonly kind: 'free' }
+  | { readonly kind: 'empty-folder' }
+  | { readonly kind: 'stale-entry' }
+  | { readonly kind: 'worktree'; readonly branch: string | null; readonly locked: boolean }
+  | { readonly kind: 'folder' }
+  | { readonly kind: 'file' }
+  | { readonly kind: 'unreadable'; readonly error: string };
+
+/** The fix the developer can make, the same for every blocker of the worktree path. */
+const WORKTREE_SLOT_FIX = 'or pick another target folder, then check again.';
+
+/**
+ * The blocker for a worktree path that is in the way, or `null` when the restore
+ * can use it (free, an empty folder, a stale entry it prunes). Never suggests that
+ * Switchboard deletes anything: the developer removes it there. Pure.
+ */
+export function worktreeSlotBlocker(slot: WorktreeSlot, input: { readonly machine: string; readonly path: string; readonly repo: string }): string | null {
+  switch (slot.kind) {
+    case 'free':
+    case 'empty-folder':
+    case 'stale-entry':
+      return null;
+    case 'worktree':
+      return slot.locked
+        ? `${input.machine} has a locked git worktree of ${input.repo} at ${input.path}. Unlock and remove it there if it is not in use (git worktree unlock, then git worktree remove), ${WORKTREE_SLOT_FIX}`
+        : `${input.machine} already has a git worktree of ${input.repo} at ${input.path}${slot.branch ? ` (on ${slot.branch})` : ''}. Remove it there if it is not in use (git worktree remove), ${WORKTREE_SLOT_FIX}`;
+    case 'folder':
+      return `${input.machine} already has a folder at ${input.path} (not a git worktree; likely left over from an earlier move). Remove it there, ${WORKTREE_SLOT_FIX}`;
+    case 'file':
+      return `${input.machine} already has a file at ${input.path} where the worktree of ${input.repo} goes. Remove it there, ${WORKTREE_SLOT_FIX}`;
+    case 'unreadable':
+      return `${input.machine} could not check ${input.path}, where the worktree of ${input.repo} goes (${slot.error}). Make sure it is free there, ${WORKTREE_SLOT_FIX}`;
+  }
 }
 
 /** What the take-over as a whole refuses on the target, given the resolutions. */
