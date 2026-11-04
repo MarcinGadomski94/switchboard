@@ -200,6 +200,12 @@ describe('composer states', () => {
     expect(youWaitNote({ id: 9, queued: 'resume' }, false)).toBe('Queued · sends when the agent starts again');
     expect(resetTimeOf('Waiting for an account with allowance — Private back at 23:30')).toBe('23:30');
     expect(resetTimeOf(null)).toBe(null);
+    // A reset on another day: clock() puts the date first ("5 nov 00:42"), the label keeps it.
+    expect(resetTimeOf('Waiting for an account with allowance — Private back at 5 nov 00:42')).toBe('5 nov 00:42');
+    expect(resetTimeOf('Waiting for an account with allowance — Private back at 1 jan 00:30')).toBe('1 jan 00:30');
+    expect(resetTimeOf('Waiting for an account with allowance — Private back at 31 dec 23:30')).toBe('31 dec 23:30');
+    expect(youWaitNote({ id: 9, queued: 'credits', heldNote: 'Waiting for an account with allowance — Private back at 5 nov 00:42' }, false)).toBe('Paused — waiting for usage (resets 5 nov 00:42)');
+    expect(resetTimeOf('Waiting for an account with allowance')).toBe(null);
   });
   it('sends on Enter and ⌘↩, never while composing', () => {
     const key = { key: 'Enter', shiftKey: false, metaKey: false, ctrlKey: false, isComposing: false };

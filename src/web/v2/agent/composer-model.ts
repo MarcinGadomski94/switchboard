@@ -105,10 +105,14 @@ export function youWaitNote(row: { readonly id: number; readonly queued: QueuedR
   return null;
 }
 
-/** The reset time a held message's note names ("… back at 23:30" → `23:30`), `null` when none. */
+/**
+ * The reset time a held message's note names, as `clock()` (`src/core/accounts.ts`) wrote it: "… back at 23:30" →
+ * `23:30`, and with the date it adds when the reset is not today, "… back at 5 nov 00:42" → `5 nov 00:42`.
+ * `null` when none.
+ */
 export function resetTimeOf(note: string | null | undefined): string | null {
   if (!note) return null;
-  const match = /\b(?:back at|resets(?: at)?|at)\s+(\d{1,2}:\d{2})\b/i.exec(note);
+  const match = /\b(?:back at|resets(?: at)?|at)\s+((?:\d{1,2} [a-z]{3} )?\d{1,2}:\d{2})\b/i.exec(note);
   return match?.[1] ?? null;
 }
 
