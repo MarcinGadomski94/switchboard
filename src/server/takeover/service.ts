@@ -36,6 +36,7 @@ import {
   matchingCandidates,
   normalizeRemoteUrl,
   movedToLabel,
+  noWorkspaceBlocker,
   planBlockers,
   planRepos,
   redactUrl,
@@ -68,6 +69,7 @@ import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
 import { type WorksInEvidence, type WorksInSource, type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
+import { carriedByDefault, isHiddenSolutionName, isOutsideRoot } from '../../core/outside-repos.ts';
 import { type MoveStash, type SkippedWorktree, type TargetChanges, isSafeWorktreeLayout, skippedWarning, stashAudit, stashMessage, worktreeAtTarget, worktreeCarry, worktreeLayout } from '../../core/move-worktrees.ts';
 import { type StagedWorkspaceFile, checkWorkspaceChunk, checkWorkspaceRoot, inspectStaged, listWorkspaceFiles, mkdirTracked, placeWorkspaceFiles, sourceWorkspaceFile, undoPlaced, workspaceFileStates, writeStagedChunk } from './workspace.ts';
 
@@ -520,10 +522,13 @@ export class TakeoverService {
       return key;
     };
     const leftOut: Array<{ readonly name: string; readonly path: string; readonly reason: string }> = [];
+    // D152 follow-up: named solutions that are no repo of the workspace (a repo outside it, a stale name): a blocker only when the history finds no repo of that name.
+    const unresolved: Array<{ readonly solution: string; readonly message: string }> = [];
     // D153: the agent's own worktrees of a workspace session that are not carried (no remote branch, merged).
     const skippedWorktrees: SkippedWorktree[] = [];
     const skippedPaths = new Set<string>();
     const workspaceSession = record.rootKind === 'workspace' && folderRef !== null;
+    const workspaceRootReal = workspaceSession && record.root ? await realpath(record.root).catch(() => record.root) : null;
     const describe = async (input: { name: string; kind: 'main' | 'worktree'; dir: string; baseRef: string | null; parentBranch: string | null }, found?: { source: WorksInSource; evidence: readonly WorksInEvidence[] }, own?: { readonly prState: string | null }): Promise<void> => {
       // D153: one of the agent's own worktrees travels only when its branch has a remote-tracking branch and is not merged.
       let worktreeAt: string | null = null;
@@ -539,9 +544,10 @@ export class TakeoverService {
         worktreeAt = worktreeLayout(main, input.dir);
       }
       const answer = await git.describe({ key: keyOf(input.name), ...input });
-      // A repo it only read in or ran commands in that cannot travel (no remote, a detached HEAD…) is left out with the reason, never a blocker.
+      // A repo it only read in or ran commands in that cannot travel (no remote, a detached HEAD…) is left out with the reason, never a blocker;
+      // D152 follow-up: so is a repo outside the workspace (it is shown under "Outside the workspace" with the reason).
       if ('blocker' in answer) {
-        if (found && (found.source === 'read' || found.source === 'commands')) leftOut.push({ name: input.name, path: input.dir, reason: answer.blocker });
+        if (found && (found.source === 'read' || found.source === 'commands' || (workspaceRootReal !== null && isOutsideRoot(workspaceRootReal, await realpath(input.dir).catch(() => input.dir))))) leftOut.push({ name: input.name, path: input.dir, reason: answer.blocker });
         else blockers.push(answer.blocker);
       } else {
         const repo: SourceRepo = { ...answer.repo, ...(worktreeAt !== null && isSafeWorktreeLayout(worktreeAt) ? { worktreeAt } : {}) };
@@ -554,11 +560,19 @@ export class TakeoverService {
       for (const worktree of live) await describe({ name: worktree.repo, kind: 'worktree', dir: worktree.path, baseRef: worktree.baseRef, parentBranch: worktree.parentBranch }, undefined, workspaceSession && !(await sessionsOwnCopy(record, worktree)) ? { prState: worktree.prState } : undefined);
     } else if (record.rootKind === 'workspace' && folderRef) {
       for (const solution of record.solutions) {
+        // D152 follow-up: a hidden folder (`.claude`) is never a solution: a name like that (derived from a path before the fix) is skipped.
+        if (isHiddenSolutionName(solution)) {
+          log.push(`skipped "${solution}": a hidden folder is not a solution`);
+          continue;
+        }
         try {
           const location = await this.#worktrees.resolveRepo(solution, folderRef);
           await describe({ name: solution, kind: 'main', dir: location.repoPath, baseRef: null, parentBranch: null });
         } catch (error) {
-          blockers.push(`${solution}: ${error instanceof Error ? error.message : String(error)}`);
+          const message = `${solution}: ${error instanceof Error ? error.message : String(error)}`;
+          // A named solution that is no repo of the workspace may be a repo outside it the history finds (decided below).
+          if ((error as { code?: unknown }).code === 'solution-not-found') unresolved.push({ solution, message });
+          else blockers.push(message);
         }
       }
     } else if (record.cwd) {
@@ -574,8 +588,10 @@ export class TakeoverService {
     }
     // D152: a workspace session also carries the repos its history shows it works in (the files it edited, its cwd's repo), not only the solutions it named;
     // D152 follow-up 2026-11-05: and the repos it only read in or ran commands in (ranked; the developer may leave any out in the dialog: `excludeRepos`).
+    let foundAll: Awaited<ReturnType<WorktreeManager['worksInFound']>> = [];
     if (record.rootKind === 'workspace' && folderRef) {
       const found = await this.#worktrees.worksInFound(record).catch(() => []);
+      foundAll = found;
       const covered = new Map<string, number>();
       for (const [at, repo] of repos.entries()) {
         covered.set(await realpath(repo.path).catch(() => repo.path), at);
@@ -600,6 +616,34 @@ export class TakeoverService {
         const linked = mainReal !== null && mainReal !== top;
         // D153: a worktree it found in its history (Claude Code's `.claude/worktrees/<name>`, one it made beside the checkout) is one of the agent's own.
         await describe({ name: linked ? path.basename(mainReal) : entry.name, kind: linked ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null }, { source: entry.source, evidence: entry.evidence }, linked ? { prState: null } : undefined);
+      }
+    }
+    // D152 follow-up: a named solution that the history finds as a repo (outside the workspace, or left out / skipped) is no blocker.
+    for (const entry of unresolved) {
+      const known = (name: string): boolean => name === entry.solution;
+      if (repos.some((repo) => known(repo.name)) || leftOut.some((repo) => known(repo.name)) || skippedWorktrees.some((repo) => known(repo.name)) || foundAll.some((repo) => known(repo.name))) {
+        log.push(`"${entry.solution}" is not a repo of the workspace: it is the repo found in the history`);
+        continue;
+      }
+      blockers.push(entry.message);
+    }
+    // D152 follow-up (`docs/peers.md` → *Repos outside the workspace*): a workspace session's repos outside its root are marked, with their default.
+    if (record.rootKind === 'workspace' && record.root) {
+      const root = await realpath(record.root).catch(() => record.root as string);
+      const extra = new Set<string>();
+      for (const dir of record.extraDirs ?? []) extra.add(await realpath(dir).catch(() => dir));
+      const countsOf = new Map<string, { edited: number; commands: number }>();
+      for (const entry of foundAll) countsOf.set(await realpath(entry.top).catch(() => entry.top), { edited: entry.counts.edited + (entry.source === 'edited' && entry.counts.edited === 0 ? 1 : 0), commands: entry.counts.commands });
+      const mostCommands = Math.max(0, ...[...countsOf.values()].map((counts) => counts.commands));
+      const cwdReal = record.cwd ? await realpath(record.cwd).catch(() => record.cwd as string) : null;
+      for (const [at, repo] of repos.entries()) {
+        const main = await realpath(repo.mainPath).catch(() => repo.mainPath);
+        if (!isOutsideRoot(root, main)) continue;
+        const here = await realpath(repo.path).catch(() => repo.path);
+        const own = countsOf.get(here) ?? countsOf.get(main) ?? { edited: 0, commands: 0 };
+        // Carried by default: it edited there, most of its commands ran there, an earlier move carried it, or the agent runs in it.
+        const carry = carriedByDefault(own, mostCommands) || extra.has(here) || extra.has(main) || (cwdReal !== null && (cwdReal === here || cwdReal.startsWith(`${here}${path.sep}`))) || repo.found === 'worktree';
+        repos[at] = { ...repo, outside: true, carry };
       }
     }
     if (repos.length === 0 && blockers.length === 0) {
@@ -1133,6 +1177,16 @@ export class TakeoverService {
     // Every checkout under the roots, then the overrides.
     const facts = new Map<string, CheckoutFacts>();
     for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir)) facts.set(dir, await checkoutFacts(dir, git));
+    // D152 follow-up: a repo outside the workspace is also looked for in this machine's saved repo folders and beside the workspace root
+    // (only for those repos: an inside repo never matches a checkout outside the chosen folders).
+    const outsideFacts = new Map<string, CheckoutFacts>();
+    if (repos.some((repo) => repo.outside === true)) {
+      const near = newRoot?.ok ? newRoot.path : (roots[0] ?? null);
+      const places: string[] = [];
+      for (const record of records) if (record.kind === 'repo' && (await isMainCheckout(record.canonicalPath))) places.push(record.canonicalPath);
+      if (near !== null && path.dirname(near) !== near) places.push(...(await findCheckouts(path.dirname(near)).catch(() => [])));
+      for (const dir of places) if (!facts.has(dir) && !outsideFacts.has(dir)) outsideFacts.set(dir, await checkoutFacts(dir, git));
+    }
     const overrides: Record<string, string> = {};
     for (const [key, typed] of Object.entries(placement.repoPaths ?? {})) {
       try {
@@ -1154,18 +1208,20 @@ export class TakeoverService {
       return holder ? { id: holder.id, kind: 'workspace', path: holder.canonicalPath } : { id: null, kind: 'repo', path: dir };
     };
     const all = [...facts.values()];
+    const allOutside = [...all, ...outsideFacts.values()];
     const perRepo = [];
     const candidates: TargetCandidate[] = [];
     const matches: Array<TargetCandidate | null> = [];
     for (const repo of repos) {
       const key = repo.remoteKey;
-      const found = key === '' ? [] : all.filter((entry) => entry.remotes.some((remote) => remote.key === key));
+      const pool = repo.outside === true ? allOutside : all;
+      const found = key === '' ? [] : pool.filter((entry) => entry.remotes.some((remote) => remote.key === key));
       const chosen = overrides[repo.key] ?? null;
       const overrideFacts = chosen !== null ? facts.get(chosen) : undefined;
       if (chosen !== null && overrideFacts && !found.includes(overrideFacts)) {
         problems.push(`${chosen} is not a checkout of ${repo.name}: its remote is ${overrideFacts.remotes[0]?.url ?? 'missing'}, the session's is ${repo.remoteUrl}`);
       }
-      const hints = all
+      const hints = pool
         .filter((entry) => !found.includes(entry) && path.basename(entry.path).toLowerCase() === repo.name.toLowerCase())
         .map((entry) => ({ path: entry.path, remote: entry.remotes[0]?.url ?? null }));
       // D152: the developer chose to clone this repo: a checkout found here is not used.
@@ -1192,6 +1248,12 @@ export class TakeoverService {
     const defaults: Record<string, string> = {};
     const first = roots[0];
     for (const repo of repos) {
+      // D152 follow-up: a repo outside the workspace is never cloned into it: beside the workspace root by default (the developer picks another folder).
+      if (repo.outside === true) {
+        const near = workspace?.path ?? first;
+        if (near) defaults[repo.key] = path.join(path.dirname(near), path.basename(repo.mainPath) || repo.name);
+        continue;
+      }
       const layout = workspace && sourceFolder ? layoutInside(sourceFolder, repo.mainPath) : null;
       if (workspace && layout) defaults[repo.key] = path.join(workspace.path, ...layout);
       else if (first) defaults[repo.key] = path.join(workspace?.path ?? first, repo.name);
@@ -1220,7 +1282,9 @@ export class TakeoverService {
     // D152: the workspace root the developer asked to create here: checked (read-only) before anything else.
     const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
     if (workspaceRoot && !workspaceRoot.ok && workspaceRoot.reason) blockers.push(workspaceRoot.reason);
-    const located = placement ? await this.#locate(sourceRepos, placement, source.folder?.path ?? null, git, workspaceRoot) : null;
+    // D152 follow-up: a placement that only says which outside repos are carried chooses no folders (the saved folders apply, as without one).
+    const choosesFolders = placement !== null && !(placement.roots.length === 0 && !placement.repoPaths && !placement.repoModes && !placement.newWorkspace);
+    const located = placement && choosesFolders ? await this.#locate(sourceRepos, placement, source.folder?.path ?? null, git, workspaceRoot) : null;
     const names = [...new Set([...sourceRepos.map((repo) => repo.name), ...source.solutions])];
     const candidates = located ? located.candidates : await this.#candidates(names, git);
     // The default clone folder: next to the default saved folder (D110: the first chosen folder).
@@ -1256,7 +1320,7 @@ export class TakeoverService {
     if (source.folder?.kind === 'workspace' && !source.hooked) {
       if (located) {
         if (located.workspace) workspace = { path: located.workspace.path, folderId: located.workspace.folderId, folderKind: 'workspace', folderPath: located.workspace.path, name: path.basename(located.workspace.path), remoteKey: null, remoteName: null };
-        else blockers.push('none of the chosen folders is a workspace (a folder with the router AGENTS.md): choose the workspace root on this machine');
+        else blockers.push(noWorkspaceBlocker(self.name));
       } else {
         const counts = new Map<string, number>();
         for (const match of matches) if (match && match.folderKind === 'workspace' && match.folderId) counts.set(match.folderId, (counts.get(match.folderId) ?? 0) + 1);
@@ -1267,6 +1331,8 @@ export class TakeoverService {
           blockers.push('no saved workspace folder on this machine holds any of this session\'s repos: add the workspace folder here first (Settings → Folders), or choose the target folders');
         } else {
           for (const repo of sourceRepos) {
+            // D152 follow-up: a repo outside the workspace is not cloned into it.
+            if (repo.outside === true) continue;
             const candidate = solutionCandidates(workspace.folderPath, repo.name)?.[0];
             if (candidate) workspaceDefaults[repo.key] = candidate;
           }
@@ -1890,6 +1956,14 @@ export class TakeoverService {
     }
     let name = source.name;
     for (let n = 2; await this.#store.sessions.getByName(name); n++) name = `${source.name}-${n}`;
+    // D152 follow-up: the repos outside the workspace this move restored are the session's extra folders (Claude Code's `--add-dir`, every spawn).
+    const extraDirs: string[] = [];
+    for (const applied of op.applied) {
+      if (source.repos.find((repo) => repo.key === applied.key)?.outside !== true) continue;
+      const dir = applied.worktreePath ?? applied.path;
+      const real = await realpath(dir).catch(() => dir);
+      if (!extraDirs.includes(real)) extraDirs.push(real);
+    }
     const movedFrom: SessionMove = { machineId: source.machine.id, machineName: source.machine.name, sessionId: source.sessionId, at: new Date().toISOString() };
     const created = await this.#supervisor.takeOver(
       {
@@ -1913,6 +1987,7 @@ export class TakeoverService {
         movedFrom,
         dividerLabel: takenOverLabel(source.machine.name),
         firstMessage: parts.join('\n\n'),
+        ...(extraDirs.length > 0 ? { extraDirs } : {}),
       },
       { folder: place.folder, cwd: place.cwd },
       {

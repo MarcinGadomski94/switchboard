@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type { TakeoverPreview } from '../../src/core/takeover.ts';
-import { EMPTY_CHOICE, carryRows, choiceAfterPreview, choiceBody, fileRows, newRootFrom, repoModeOf, shareChoice, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, workspaceView, worksInLine } from '../../src/web/takeover/complete-move.ts';
+import {
+  EMPTY_CHOICE,
+  carryRows,
+  choiceAfterPreview,
+  choiceBody,
+  fileRows,
+  newRootFrom,
+  outsideClonePath,
+  outsideRows,
+  repoModeOf,
+  shareChoice,
+  splitClonePath,
+  tickedSecrets,
+  toggleFile,
+  withNewWorkspace,
+  withOutsideMode,
+  withRepoCarried,
+  withRepoMode,
+  workspaceView,
+  worksInLine,
+} from '../../src/web/takeover/complete-move.ts';
 
 /** D152: the move dialog's pure parts (the workspace root, use / clone, the files, a crew's shared choices). */
 
@@ -107,5 +127,62 @@ describe('D152 · the move dialog', () => {
     const shared = shareChoice({}, previews, 'a', next);
     expect(shared['b']?.placement).toEqual({ roots: [], newWorkspace: { path: 'D:\\ws' }, repoModes: { 'web-2': 'clone' } });
     expect(shared['c']?.placement ?? null).toBeNull();
+  });
+});
+
+describe('D152 follow-up · Outside the workspace', () => {
+  const outsidePreview = (): TakeoverPreview => {
+    const base = preview({
+      repos: [
+        { key: 'web', name: 'web-front', remoteKey: 'example.com/acme/web', path: '/Users/dev/Acme/microfrontends/web-front' },
+        { key: 'tool-repo', name: 'tool-repo', remoteKey: 'example.com/acme/tool', path: '/Users/dev/Personal/tool-repo' },
+        { key: 'notes', name: 'notes', remoteKey: 'example.com/acme/notes', path: '/Users/dev/Personal/notes' },
+      ],
+    });
+    const repos = base.source.repos.map((repo) =>
+      repo.key === 'tool-repo' ? { ...repo, outside: true, carry: true, evidence: ['edited', 'commands'] } : repo.key === 'notes' ? { ...repo, outside: true, carry: false, evidence: ['commands'] } : repo,
+    );
+    return {
+      ...base,
+      source: { ...base.source, repos },
+      target: {
+        ...base.target,
+        repos: [
+          { key: 'web', name: 'web-front', action: 'use', matchedPath: 'D:\\code\\ws\\microfrontends\\web-front', cloneTo: null, summary: 'Use it' },
+          { key: 'tool-repo', name: 'tool-repo', action: 'clone', matchedPath: null, cloneTo: 'D:\\code\\tool-repo', summary: 'Clone into D:\\code\\tool-repo' },
+        ],
+      },
+    } as unknown as TakeoverPreview;
+  };
+
+  it('lists the outside repos with their default and the target’s plan; the carry list keeps only the workspace’s', () => {
+    const p = outsidePreview();
+    const rows = outsideRows(p, EMPTY_CHOICE);
+    expect(rows.map((row) => [row.key, row.mode, row.defaultCarry, row.action, row.cloneTo])).toEqual([
+      ['tool-repo', 'clone', true, 'clone', 'D:\\code\\tool-repo'],
+      ['notes', 'leave', false, null, null],
+    ]);
+    expect(rows[0]?.why).toBe('edited · commands');
+    expect(rows[1]?.defaultText).toContain('left out by default');
+    expect(carryRows(p, EMPTY_CHOICE).map((row) => row.name)).toEqual(['web-front']);
+  });
+
+  it('use / clone / leave set the placement’s carry choice and the use-or-clone mode; the clone folder is a parent + a name, the target’s way', () => {
+    const left = withOutsideMode(EMPTY_CHOICE, 'tool-repo', 'leave');
+    expect(left.placement).toEqual({ roots: [], outsideCarry: { 'tool-repo': false } });
+    expect(outsideRows(outsidePreview(), left)[0]?.mode).toBe('leave');
+    const carried = withOutsideMode(left, 'notes', 'clone');
+    expect(carried.placement).toEqual({ roots: [], outsideCarry: { 'tool-repo': false, notes: true }, repoModes: { notes: 'clone' } });
+    const used = withOutsideMode(carried, 'notes', 'use');
+    expect(used.placement).toEqual({ roots: [], outsideCarry: { 'tool-repo': false, notes: true } });
+    expect(choiceBody(used)).toEqual({ placement: { roots: [], outsideCarry: { 'tool-repo': false, notes: true } } });
+    expect(outsideClonePath('D:\\code\\tools', 'tool-repo')).toEqual({ path: 'D:\\code\\tools\\tool-repo', problem: null });
+    expect(outsideClonePath('', 'tool-repo').path).toBeNull();
+    expect(outsideClonePath('/Users/me', 'a:b').path).toBeNull();
+    expect(splitClonePath('D:\\code\\tool-repo')).toEqual({ parent: 'D:\\code', name: 'tool-repo' });
+    // Cloning or picking a checkout keeps the workspace the target found as the folder (never "choose a folder").
+    expect(withOutsideMode(EMPTY_CHOICE, 'notes', 'clone', 'D:\\code\\ws').placement).toEqual({ roots: ['D:\\code\\ws'], outsideCarry: { notes: true }, repoModes: { notes: 'clone' } });
+    // A placement that only says which outside repos travel is kept (not dropped as "no folders").
+    expect(withNewWorkspace({ roots: [], outsideCarry: { notes: true } }, null)).toEqual({ roots: [], outsideCarry: { notes: true } });
   });
 });

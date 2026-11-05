@@ -6,6 +6,7 @@ import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
+import { isAgentFolderTop } from '../../core/outside-repos.ts';
 import { isWorkingTreeTop, watchedCheckoutOf } from '../solutions/checkout.ts';
 import type { SessionTouchedFiles } from './touched.ts';
 
@@ -134,6 +135,8 @@ export class SessionRepos {
     const out: WatchedRepo[] = [];
     const add = (repo: WatchedRepo): void => {
       if (worktreeTops.has(repo.top) || out.some((known) => known.top === repo.top)) return;
+      // D152 follow-up: a CLI's own folder (`~/.claude` kept in git, `.claude/worktrees` itself) is never one of its repos.
+      if (isAgentFolderTop(repo.top)) return;
       if (workspaceRoot !== null && readOnlyInside(workspaceRoot, repo.top)) return;
       out.push(repo);
     };

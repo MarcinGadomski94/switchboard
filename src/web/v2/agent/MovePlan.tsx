@@ -2,7 +2,31 @@ import { useEffect, useState } from 'react';
 import type { TakeoverPreview, TargetDirListing, TargetPlacement } from '../../../core/takeover.ts';
 import { suggestWorkspaceParent } from '../../../core/workspace-move.ts';
 import { ApiError, api } from '../../api/client.ts';
-import { type CarryRow, type MoveChoice, carryGroups, fileRows, newRootFrom, repoModeOf, stashRows, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, withStash, workspaceView, worksInLine } from '../../takeover/complete-move.ts';
+import {
+  type CarryRow,
+  type MoveChoice,
+  type OutsideMode,
+  type OutsideRow,
+  carryGroups,
+  fileRows,
+  newRootFrom,
+  outsideClonePath,
+  outsideRows,
+  repoModeOf,
+  splitClonePath,
+  stashRows,
+  targetWorkspaceOf,
+  tickedSecrets,
+  toggleFile,
+  withNewWorkspace,
+  withOutsideMode,
+  withRepoCarried,
+  withRepoMode,
+  withStash,
+  withTargetWorkspace,
+  workspaceView,
+  worksInLine,
+} from '../../takeover/complete-move.ts';
 import { type RepoRow, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
 import { Button, Checkbox, Chip, Field, Icon, Segmented } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
@@ -55,6 +79,9 @@ export function MovePlanPanel({
   const ws = workspaceView(preview, choice.placement);
   const placement = choice.placement;
   const setPlacement = (next: TargetPlacement | null): void => onChange({ ...choice, placement: next });
+  // D152 follow-up: the repos outside the workspace root have their own section (and no row in the list below).
+  const outside = ws.show ? outsideRows(preview, choice) : [];
+  const outsideKeys = new Set(outside.map((row) => row.key));
   return (
     <div className="v2-mp" data-testid={testId}>
       <p className="v2-mp-works" data-testid="v2-move-works-in">
@@ -68,10 +95,13 @@ export function MovePlanPanel({
       ) : (
         <FolderPicker machine={machine} machineName={targetName} placement={placement} remembered={preview.remembered} onChange={setPlacement} />
       )}
-      {ws.show && ((preview.source.repos ?? []).length > 0 || (preview.source.leftOut ?? []).length > 0 || (preview.source.skippedWorktrees ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
+      {ws.show && ((preview.source.repos ?? []).some((repo) => repo.outside !== true) || (preview.source.leftOut ?? []).length > 0 || (preview.source.skippedWorktrees ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
+      {outside.length > 0 ? <OutsideSection rows={outside} targetWorkspace={targetWorkspaceOf(preview)} machine={machine} sourceName={sourceName} targetName={targetName} choice={choice} onChange={onChange} /> : null}
       {stashRows(preview, choice).length > 0 ? <StashSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
       <div className="v2-mv-repos" data-testid="v2-move-repos">
-        {repoRows(preview).map((row) => (
+        {repoRows(preview)
+          .filter((row) => !outsideKeys.has(row.key))
+          .map((row) => (
           <RepoRowView
             key={row.key}
             row={row}
@@ -84,7 +114,7 @@ export function MovePlanPanel({
             onCloneDone={() => onChange(choice)}
             onPick={(value) => setPlacement(withRepoPath(placement, row.key, value))}
           />
-        ))}
+          ))}
       </div>
       {preview.source.workspaceFiles && preview.source.workspaceFiles.files.length > 0 ? <FilesSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
     </div>
@@ -379,6 +409,173 @@ function CarrySection({ preview, choice, onChange }: { readonly preview: Takeove
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * D152 follow-up 2026-11-05 (`docs/peers.md` → *Repos outside the workspace*): the
+ * repos the agent works in outside its workspace root. Each one: **Use a folder
+ * there** (a checkout of the same remote the target found, or another checkout
+ * typed), **Clone it** into a folder picked on the target (a parent and a name,
+ * the path shown before Move), or **Leave it out**. Carried by default when the
+ * agent edited files there or ran most of its commands there; else left out.
+ */
+function OutsideSection({
+  rows,
+  targetWorkspace,
+  machine,
+  sourceName,
+  targetName,
+  choice,
+  onChange,
+}: {
+  readonly rows: readonly OutsideRow[];
+  readonly targetWorkspace: string | null;
+  readonly machine: string | null;
+  readonly sourceName: string;
+  readonly targetName: string;
+  readonly choice: MoveChoice;
+  readonly onChange: (next: MoveChoice) => void;
+}) {
+  const carried = rows.filter((row) => row.mode !== 'leave').length;
+  return (
+    <div className="v2-mp-files" data-testid="v2-move-outside">
+      <div className="v2-row">
+        <b className="v2-grow">Outside the workspace</b>
+        <span className="v2-muted v2-mv-small" data-testid="v2-move-outside-count">
+          {carried} of {rows.length} carried
+        </span>
+      </div>
+      <p className="v2-muted v2-mv-small">Repos the agent works in outside its workspace folder. A carried one keeps working there after the move: the agent gets its folder on {targetName} as an extra folder.</p>
+      <ul className="v2-mp-filelist">
+        {rows.map((row) => (
+          <OutsideRowView key={row.key} row={row} targetWorkspace={targetWorkspace} machine={machine} sourceName={sourceName} targetName={targetName} choice={choice} onChange={onChange} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function OutsideRowView({
+  row,
+  targetWorkspace,
+  machine,
+  sourceName,
+  targetName,
+  choice,
+  onChange,
+}: {
+  readonly row: OutsideRow;
+  readonly targetWorkspace: string | null;
+  readonly machine: string | null;
+  readonly sourceName: string;
+  readonly targetName: string;
+  readonly choice: MoveChoice;
+  readonly onChange: (next: MoveChoice) => void;
+}) {
+  const start = splitClonePath(row.cloneTo);
+  const [parent, setParent] = useState(start.parent);
+  const [name, setName] = useState(start.name !== '' ? start.name : row.name);
+  const [browsing, setBrowsing] = useState(false);
+  const [override, setOverride] = useState<string | null>(null);
+  // The target's suggestion arrives with a later preview: pre-fill the fields once.
+  useEffect(() => {
+    if (parent === '' && start.parent !== '') setParent(start.parent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start.parent]);
+  const asked = outsideClonePath(parent, name);
+  const setMode = (mode: OutsideMode): void => onChange(withOutsideMode(choice, row.key, mode, targetWorkspace));
+  const useClonePath = (value: string): void => onChange({ ...withOutsideMode(choice, row.key, 'clone', targetWorkspace), clonePaths: { ...choice.clonePaths, [row.key]: value } });
+  return (
+    <li className="v2-mv-repo" data-testid="v2-move-outside-repo" data-key={row.key} data-name={row.name} data-mode={row.mode} data-default={row.defaultCarry ? 'carry' : 'leave'} data-action={row.action ?? 'left-out'}>
+      <div className="v2-row v2-mv-repo-head">
+        <b>{row.name}</b>
+        {row.why !== '' ? <span className="v2-muted v2-mp-why">{row.why}</span> : null}
+        <span className="v2-grow v2-muted v2-mono v2-mp-file-target" title={row.path}>
+          {sourceName}: {row.path}
+        </span>
+      </div>
+      <p className="v2-muted v2-mv-small" data-testid="v2-move-outside-default">
+        {row.defaultText}
+      </p>
+      <Segmented
+        label={`${row.name} on ${targetName}`}
+        size="s"
+        value={row.mode}
+        onChange={setMode}
+        testId="v2-move-outside-mode"
+        options={[
+          { value: 'use', label: 'Use a folder there' },
+          { value: 'clone', label: 'Clone it' },
+          { value: 'leave', label: 'Leave it out' },
+        ]}
+      />
+      {row.mode === 'leave' ? (
+        <p className="v2-mv-line" data-testid="v2-move-outside-summary">
+          Not carried: it stays on {sourceName}.
+        </p>
+      ) : (
+        <p className="v2-mv-line" data-testid="v2-move-outside-summary">
+          {row.target ?? `Checking on ${targetName}…`}
+        </p>
+      )}
+      {row.mode === 'use' ? (
+        override === null ? (
+          <Button size="sm" variant="ghost" data-testid="v2-move-outside-other" onClick={() => setOverride(row.usePath ?? '')}>
+            Another checkout…
+          </Button>
+        ) : (
+          <Field
+            label={`Use this checkout on ${targetName}`}
+            className="v2-mono"
+            value={override}
+            placeholder={`The checkout of ${row.name} on ${targetName}`}
+            spellCheck={false}
+            data-testid="v2-move-outside-override"
+            onChange={(event) => setOverride(event.target.value)}
+            onBlur={() => onChange({ ...choice, placement: withRepoPath(withTargetWorkspace(choice.placement, targetWorkspace), row.key, override.trim() === '' ? null : override) })}
+          />
+        )
+      ) : null}
+      {row.mode === 'clone' ? (
+        <div className="v2-mp-new" data-testid="v2-move-outside-clone">
+          <div className="v2-row v2-mv-path">
+            <Field label={`Clone it in (a folder on ${targetName})`} className="v2-mono" value={parent} spellCheck={false} data-testid="v2-move-outside-parent" onChange={(event) => setParent(event.target.value)} />
+            <Button size="sm" icon="folder" aria-expanded={browsing} data-testid="v2-move-outside-browse" onClick={() => setBrowsing(!browsing)}>
+              {browsing ? AGENT_WORDS.closeDialog : 'Browse…'}
+            </Button>
+          </div>
+          {browsing ? (
+            <FolderBrowser
+              machine={machine}
+              start={parent.trim() === '' ? null : parent}
+              onPick={(picked) => {
+                setParent(picked);
+                setBrowsing(false);
+              }}
+            />
+          ) : null}
+          <Field label="Folder name" className="v2-mono" value={name} spellCheck={false} data-testid="v2-move-outside-name" onChange={(event) => setName(event.target.value)} />
+          <div className="v2-row">
+            {asked.path !== null ? (
+              <span className="v2-grow v2-mv-small" data-testid="v2-move-outside-clone-path">
+                Clones into <code>{asked.path}</code>
+              </span>
+            ) : (
+              <span className="v2-grow v2-mv-small v2-muted">{asked.problem}</span>
+            )}
+            <Button size="sm" variant="primary" disabled={asked.path === null || asked.path === choice.clonePaths[row.key]} data-testid="v2-move-outside-clone-use" onClick={() => asked.path && useClonePath(asked.path)}>
+              Clone it here
+            </Button>
+          </div>
+          {choice.clonePaths[row.key] === undefined && row.cloneTo ? (
+            <p className="v2-muted v2-mv-small">
+              Suggested by {targetName}: beside the workspace folder. Pick another folder or keep it.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
   );
 }
 

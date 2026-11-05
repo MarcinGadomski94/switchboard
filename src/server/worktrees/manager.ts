@@ -44,7 +44,8 @@ import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/re
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
-import { SessionRepos, readOnlyInside, realOrNull } from './session-repos.ts';
+import { SessionRepos, readOnlyInside, realOrNull, topOfDir } from './session-repos.ts';
+import { isAgentFolderTop } from '../../core/outside-repos.ts';
 import type { SessionWorksIn, WorksInEvidence as WorksInEvidenceKind, WorksInRepo, WorksInSource } from '../../core/workspace-move.ts';
 import { type EvidenceCounts, evidenceKinds, rankByEvidence } from '../../core/works-in-evidence.ts';
 import { WorksInEvidence } from './works-in.ts';
@@ -1608,7 +1609,13 @@ export class WorktreeManager implements DiffProvider {
     const folder = folderOfSession(session);
     const root = folder ? await realOrNull(folder.root) : session.cwd ? await realOrNull(session.cwd) : null;
     const worktreeTops = await Promise.all(set.worktrees.map(async (worktree) => (await realOrNull(worktree.path)) ?? worktree.path));
-    const evidence = await this.worksInEvidence.of(session, { root, worktrees: worktreeTops }).catch((error: unknown) => {
+    // D152 follow-up: the folders outside its own a move carried here (their reads and commands count, and they are listed).
+    const extraTops: string[] = [];
+    for (const dir of session.extraDirs ?? []) {
+      const top = await topOfDir(dir).catch(() => null);
+      if (top !== null && !extraTops.includes(top) && !isAgentFolderTop(top)) extraTops.push(top);
+    }
+    const evidence = await this.worksInEvidence.of(session, { root, worktrees: worktreeTops, extra: extraTops }).catch((error: unknown) => {
       this.#onError(error);
       return [];
     });
@@ -1626,15 +1633,21 @@ export class WorktreeManager implements DiffProvider {
       entries.push({ name: worktree.repo, top, source: 'worktree', worktree, evidence: evidenceKinds(own), counts: own, declared: true });
     });
     for (const repo of set.inPlace) {
+      if (isAgentFolderTop(repo.top)) continue;
       const own = take(repo.top);
       entries.push({ name: repo.name, top: repo.top, source: repo.source, worktree: null, evidence: evidenceKinds(repo.source === 'edited' && own.edited === 0 ? { ...own, edited: 1 } : own), counts: own, declared: true });
+    }
+    for (const top of extraTops) {
+      if (entries.some((entry) => entry.top === top)) continue;
+      const own = take(top);
+      entries.push({ name: path.basename(top), top, source: 'extra', worktree: null, evidence: evidenceKinds(own), counts: own, declared: true });
     }
     const mainCheckouts = new Set<string>();
     for (const worktree of set.worktrees) mainCheckouts.add((await realOrNull(worktree.repoPath)) ?? worktree.repoPath);
     const workspaceRoot = folder?.kind === 'workspace' ? root : null;
     for (const [top, own] of counts) {
       if (own.read + own.commands === 0) continue;
-      if (mainCheckouts.has(top) || top === workspaceRoot) continue;
+      if (mainCheckouts.has(top) || top === workspaceRoot || isAgentFolderTop(top)) continue;
       if (workspaceRoot !== null && readOnlyInside(workspaceRoot, top)) continue;
       const source: WorksInSource = own.edited > 0 ? 'edited' : own.commands > 0 ? 'commands' : 'read';
       entries.push({ name: path.basename(top), top, source, worktree: null, evidence: evidenceKinds(own), counts: own, declared: false });

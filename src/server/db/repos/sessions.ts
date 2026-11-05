@@ -162,6 +162,13 @@ export interface SessionRecord {
   /** D106 (0044): the folders a chat may read (canonical, absolute; extra read-only directories of its CLI); `[]` for a session. */
   readonly lookAt: string[];
   /**
+   * D152 follow-up (0053): folders outside the session's folder its CLI may work in (canonical,
+   * absolute): the repos outside the workspace root a move carried here (`docs/peers.md` →
+   * *Repos outside the workspace*). Claude Code gets one `--add-dir` per folder on every spawn.
+   * `[]` (or absent in an older literal) = none.
+   */
+  readonly extraDirs?: string[];
+  /**
    * D124 (0047): how its last turn ended when that matters to the developer: the agent's
    * `turn_status` declaration or the text check's detected wait (`src/core/derive/turn-status.ts`);
    * `null` = nothing (cleared when a new turn starts). Read through `effectiveSessionStatus`.
@@ -257,6 +264,7 @@ const SPEC: TableSpec<SessionRecord> = {
     continuedFrom: ['continued_from', 'text'],
     kind: ['kind', 'text'],
     lookAt: ['look_at', 'json'],
+    extraDirs: ['extra_dirs', 'json'],
     turnWait: ['turn_wait', 'json'],
   },
 };

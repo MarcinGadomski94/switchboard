@@ -99,3 +99,45 @@ describe('Works in: repos a session only read in or ran commands in', () => {
     expect(rows.map((row) => row.name)).toEqual(['Bash']);
   });
 });
+
+describe('D152 follow-up (2.4.23 report): repos outside the workspace root, and folders that are never repos', () => {
+  it('never lists a CLI folder (`.claude` kept in git, `.claude/worktrees` itself) or a non-repo folder as a repo', async () => {
+    const w = (world = await makeGitWorld());
+    const m = w.manager();
+    const session = await workspaceSession(w);
+    // A `~/.claude` kept in git (dotfiles) that the agent wrote a memory note into, and the workspace's own `.claude` folder.
+    const dotClaude = await w.makeRepo(path.join(w.root, 'home', '.claude'));
+    await tool(w, session.id, 'Write', { file_path: path.join(dotClaude, 'notes.md') });
+    await mkdir(path.join(w.workspace, '.claude', 'worktrees', 'old', 'src'), { recursive: true });
+    await mkdir(path.join(w.workspace, '.claude', 'worktrees', '.git'), { recursive: true });
+    await tool(w, session.id, 'Read', { file_path: path.join(w.workspace, '.claude', 'settings.local.json') });
+    await tool(w, session.id, 'Read', { file_path: path.join(w.workspace, '.claude', 'worktrees', 'old', 'src', 'a.ts') });
+    await tool(w, session.id, 'Bash', { command: `cd "${path.join(w.workspace, '.claude', 'tmp')}" && ls` });
+    await tool(w, session.id, 'Read', { file_path: path.join(w.web, 'README.md') });
+
+    const found = await m.worksInFound(session);
+    expect(found.map((repo) => repo.name)).toEqual(['web-front']);
+    expect((await m.repos.of(session)).inPlace.map((repo) => repo.name)).toEqual([]);
+    expect(JSON.stringify(await m.worksIn(session.id))).not.toContain('.claude');
+  });
+
+  it('counts a repo outside the root when a command worked in it (cd, git -C), never for a read or a path word there; a moved-in extra folder counts', async () => {
+    const w = (world = await makeGitWorld());
+    const m = w.manager();
+    const tools = await w.makeRepo(path.join(w.root, 'personal', 'tool-repo'));
+    const notes = await w.makeRepo(path.join(w.root, 'personal', 'notes-repo'));
+    const carried = await w.makeRepo(path.join(w.root, 'personal', 'carried-repo'));
+    const session = await w.store.sessions.create({ name: 'acme-outside', claudeSessionId: randomUUID(), solutions: [], worktrees: false, root: w.workspace, rootKind: 'workspace', cwd: w.workspace, extraDirs: [carried] });
+    await tool(w, session.id, 'Bash', { command: `cd "${tools}" && npm test` });
+    await tool(w, session.id, 'Bash', { command: `git -C "${tools}" status --short` });
+    await tool(w, session.id, 'Read', { file_path: path.join(notes, 'README.md') });
+    await tool(w, session.id, 'Bash', { command: `cat ${path.join(notes, 'README.md')}` });
+    await tool(w, session.id, 'Read', { file_path: path.join(carried, 'README.md') });
+
+    const found = await m.worksInFound(session);
+    expect(found.map((repo) => [repo.name, repo.source, repo.evidence, repo.counts.commands])).toEqual([
+      ['carried-repo', 'extra', ['read'], 0],
+      ['tool-repo', 'commands', ['commands'], 2],
+    ]);
+  });
+});

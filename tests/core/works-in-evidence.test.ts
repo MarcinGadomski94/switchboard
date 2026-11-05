@@ -98,8 +98,9 @@ describe('commandPaths', () => {
 describe('evidencePaths', () => {
   it('marks read tools `read` and shell commands `commands`; a Codex command its own cwd', () => {
     expect(evidencePaths({ type: 'tool', name: 'Read', input: { file_path: `${WS}/mobile/a.cs` } }, WS)).toEqual([{ path: `${WS}/mobile/a.cs`, kind: 'read' }]);
-    expect(evidencePaths({ type: 'tool', name: 'Bash', input: { command: 'cd mobile && dotnet build' } }, WS)).toEqual([{ path: `${WS}/mobile`, kind: 'commands' }]);
-    expect(evidencePaths({ type: 'tool', name: 'Bash', input: { command: 'dotnet build', cwd: `${WS}/mobile` } }, WS)).toEqual([{ path: `${WS}/mobile`, kind: 'commands' }]);
+    // D152 follow-up: a folder a command worked in (`cd`, its own cwd) is marked `workedIn`.
+    expect(evidencePaths({ type: 'tool', name: 'Bash', input: { command: 'cd mobile && dotnet build' } }, WS)).toEqual([{ path: `${WS}/mobile`, kind: 'commands', workedIn: true }]);
+    expect(evidencePaths({ type: 'tool', name: 'Bash', input: { command: 'dotnet build', cwd: `${WS}/mobile` } }, WS)).toEqual([{ path: `${WS}/mobile`, kind: 'commands', workedIn: true }]);
     // A failed Grep's result is not read; its input still is.
     expect(evidencePaths({ type: 'tool', name: 'Grep', input: { path: `${WS}/mobile` }, result: '/other/x.cs', isError: true }, WS)).toEqual([{ path: `${WS}/mobile`, kind: 'read' }]);
     expect(evidencePaths({ type: 'tool', name: 'Write', input: { file_path: '/x' } }, WS)).toEqual([]);

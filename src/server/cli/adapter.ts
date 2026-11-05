@@ -64,6 +64,12 @@ export interface SpawnRequest {
    * folders it may read. Absent / `null` = a development session.
    */
   readonly readOnly?: { readonly lookAt: readonly string[] } | null;
+  /**
+   * D152 follow-up: a development session's folders outside its own (`SessionRecord.extraDirs`,
+   * the repos outside the workspace root a move carried). Claude Code: one `--add-dir` each;
+   * Codex and OpenCode ignore them (their sessions keep working through absolute paths).
+   */
+  readonly extraDirs?: readonly string[];
 }
 
 /** One CLI behind the {@link AgentProcess} seam. */

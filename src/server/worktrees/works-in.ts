@@ -2,6 +2,7 @@ import path from 'node:path';
 import { COMMAND_TOOLS, type EvidenceCounts, READ_TOOLS, type WorksInEvidenceKind, evidencePaths } from '../../core/works-in-evidence.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { isAgentFolderTop } from '../../core/outside-repos.ts';
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
 import { EDIT_TOOLS, canonicalPath, insideRelative } from './touched.ts';
 
@@ -46,6 +47,8 @@ export interface EvidenceBounds {
   readonly root: string | null;
   /** The session's registered worktrees. */
   readonly worktrees: readonly string[];
+  /** D152 follow-up: the session's folders outside its own (`SessionRecord.extraDirs`): reads and commands there count too. */
+  readonly extra?: readonly string[];
 }
 
 interface Cached {
@@ -76,7 +79,7 @@ export class WorksInEvidence {
 
   /** The working trees the session's tool calls point into, with how often each was edited, read or worked in by a command, first seen first. */
   async of(session: Pick<SessionRecord, 'id' | 'cwd'>, bounds: EvidenceBounds): Promise<readonly RepoEvidence[]> {
-    const key = JSON.stringify([session.cwd, bounds.root, bounds.worktrees]);
+    const key = JSON.stringify([session.cwd, bounds.root, bounds.worktrees, bounds.extra ?? []]);
     const newestId = await this.#store.events.newestId(session.id);
     const cached = this.#cache.get(session.id);
     if (cached && cached.key === key && cached.newestId === newestId && this.#now() - cached.at < WORKS_IN_TTL_MS) return cached.answer;
@@ -107,7 +110,7 @@ export class WorksInEvidence {
     const calls = await this.#store.events.toolCallsInNewest(session.id, [...EDIT_TOOLS, ...READ_TOOLS, ...COMMAND_TOOLS], WORKS_IN_EVENT_WINDOW, WORKS_IN_RESULT_CHARS);
     const cwd = session.cwd;
     // Newest first, so the path cap keeps the recent ones; counted per call and kind.
-    const perPath = new Map<string, { edited: number; read: number; commands: number; first: number }>();
+    const perPath = new Map<string, { edited: number; read: number; commands: number; workedIn: number; first: number }>();
     for (let at = calls.length - 1; at >= 0; at--) {
       const call = calls[at] as (typeof calls)[number];
       let input: unknown = null;
@@ -116,7 +119,7 @@ export class WorksInEvidence {
       } catch {
         continue;
       }
-      const found: Array<{ path: string; kind: WorksInEvidenceKind }> = [];
+      const found: Array<{ path: string; kind: WorksInEvidenceKind; workedIn?: true }> = [];
       if (EDIT_TOOLS.includes(call.name)) {
         const record = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
         const written = typeof record['file_path'] === 'string' ? record['file_path'] : typeof record['notebook_path'] === 'string' ? record['notebook_path'] : null;
@@ -131,15 +134,16 @@ export class WorksInEvidence {
         let counts = perPath.get(entry.path);
         if (!counts) {
           if (perPath.size >= WORKS_IN_MAX_PATHS) continue;
-          counts = { edited: 0, read: 0, commands: 0, first: call.id };
+          counts = { edited: 0, read: 0, commands: 0, workedIn: 0, first: call.id };
           perPath.set(entry.path, counts);
         }
         counts[entry.kind]++;
+        if (entry.workedIn) counts.workedIn++;
         counts.first = Math.min(counts.first, call.id);
       }
     }
     if (perPath.size === 0) return [];
-    const roots = [bounds.root, ...bounds.worktrees].filter((entry): entry is string => entry !== null);
+    const roots = [bounds.root, ...bounds.worktrees, ...(bounds.extra ?? [])].filter((entry): entry is string => entry !== null);
     const realRoots: string[] = [];
     for (const root of roots) realRoots.push(await canonicalPath(root));
     const tops = new Map<string, string | null>();
@@ -149,15 +153,19 @@ export class WorksInEvidence {
       if (!path.isAbsolute(written)) continue;
       const file = await canonicalPath(written);
       const bound = boundOf(realRoots, file);
-      // Edits count wherever they are (SessionRepos lists their working trees); reads and commands only inside the session's folder or worktrees.
-      if (bound === null && counts.read + counts.commands > 0 && counts.edited === 0) continue;
+      // Edits count wherever they are (SessionRepos lists their working trees); reads and commands only inside the session's folder or worktrees,
+      // except (D152 follow-up: repos outside the workspace) a command that worked in a folder outside it (`cd`, `git -C`, a Codex command's cwd).
+      if (bound === null && counts.edited === 0 && counts.workedIn === 0) continue;
       const top = await topWithin(file, bound, tops);
-      if (top === null) continue;
+      // A CLI's own folder (`~/.claude` kept in git, `.claude/worktrees` itself) is never a repo of the session.
+      if (top === null || isAgentFolderTop(top)) continue;
       const sum = byTop.get(top) ?? { edited: 0, read: 0, commands: 0, first: counts.first };
       sum.edited += counts.edited;
       if (bound !== null) {
         sum.read += counts.read;
         sum.commands += counts.commands;
+      } else {
+        sum.commands += counts.workedIn;
       }
       sum.first = Math.min(sum.first, counts.first);
       byTop.set(top, sum);

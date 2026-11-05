@@ -111,6 +111,22 @@ export interface SourceRepo {
    * Switchboard.
    */
   readonly worktreeAt?: string;
+  /**
+   * Additive (D152 follow-up 2026-11-05, `docs/peers.md` → *Repos outside the
+   * workspace*): a workspace session's repo whose main checkout is outside the
+   * workspace root. The dialog lists it under **Outside the workspace**; the target
+   * never places it inside the workspace (its clone goes where the developer picks)
+   * and the moved session gets its folder as an extra directory. Absent = inside
+   * (and from an older Switchboard).
+   */
+  readonly outside?: boolean;
+  /**
+   * Additive (D152 follow-up 2026-11-05): an outside repo's default. `false` = left
+   * out unless the developer carries it (`includeRepos`): the agent only read files
+   * or ran a few commands there; `true` / absent = carried (it edited files there,
+   * or most of its commands ran there).
+   */
+  readonly carry?: boolean;
 }
 
 /** What the source machine reports about a session it could hand over (`POST /api/takeover/source/inspect`). */
@@ -312,6 +328,13 @@ export interface TargetPlacement {
    * repos are cloned into it in the source's layout.
    */
   readonly newWorkspace?: NewWorkspace;
+  /**
+   * D152 follow-up 2026-11-05 (`docs/peers.md` → *Repos outside the workspace*): per
+   * repo key, whether a repo outside the workspace root is carried (`true`) or left
+   * out (`false`); absent = its default (`SourceRepo.carry`). Remembered with the
+   * other choices for the next move of this folder to that machine.
+   */
+  readonly outsideCarry?: Readonly<Record<string, boolean>>;
 }
 
 /** What the verification found for one repo: ✓ found, ⚠ found on another branch / dirty, ✖ missing, ? several. */
@@ -452,6 +475,16 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
       repoModes[key] = entry;
     }
   }
+  const carryIn = record['outsideCarry'];
+  let outsideCarry: Record<string, boolean> | undefined;
+  if (carryIn !== undefined && carryIn !== null) {
+    if (typeof carryIn !== 'object' || Array.isArray(carryIn)) return null;
+    outsideCarry = {};
+    for (const [key, entry] of Object.entries(carryIn as Record<string, unknown>)) {
+      if (typeof entry !== 'boolean') return null;
+      outsideCarry[key] = entry;
+    }
+  }
   const workspaceIn = record['newWorkspace'];
   let newWorkspace: NewWorkspace | undefined;
   if (workspaceIn !== undefined && workspaceIn !== null) {
@@ -465,6 +498,7 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
     ...(repoPaths && Object.keys(repoPaths).length > 0 ? { repoPaths } : {}),
     ...(repoModes && Object.keys(repoModes).length > 0 ? { repoModes } : {}),
     ...(newWorkspace ? { newWorkspace } : {}),
+    ...(outsideCarry && Object.keys(outsideCarry).length > 0 ? { outsideCarry } : {}),
   };
 }
 
@@ -473,12 +507,19 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
  * created is now an existing folder (one of the roots), and a repo it cloned is
  * found there next time (its `clone` choice is dropped).
  */
-export function placementToRemember(placement: TargetPlacement, createdRoot: string | null): TargetPlacement {
+export function placementToRemember(placement: TargetPlacement, createdRoot: string | null, clonedOutside: Readonly<Record<string, string>> = {}): TargetPlacement {
   const roots = [...placement.roots];
   const root = createdRoot ?? placement.newWorkspace?.path ?? null;
   if (root !== null && !roots.includes(root)) roots.unshift(root);
   const modes = Object.fromEntries(Object.entries(placement.repoModes ?? {}).filter(([, mode]) => mode !== 'clone'));
-  return { roots, ...(placement.repoPaths ? { repoPaths: { ...placement.repoPaths } } : {}), ...(Object.keys(modes).length > 0 ? { repoModes: modes } : {}) };
+  // D152 follow-up: a repo outside the workspace it cloned is used from there next time (no search finds it outside the roots).
+  const paths: Record<string, string> = { ...(placement.repoPaths ?? {}), ...clonedOutside };
+  return {
+    roots,
+    ...(Object.keys(paths).length > 0 ? { repoPaths: paths } : {}),
+    ...(Object.keys(modes).length > 0 ? { repoModes: modes } : {}),
+    ...(placement.outsideCarry && Object.keys(placement.outsideCarry).length > 0 ? { outsideCarry: { ...placement.outsideCarry } } : {}),
+  };
 }
 
 /** The preview the dialog shows: both sides' view before anything changes. */
@@ -500,6 +541,16 @@ export interface TakeoverPreview {
    * target's plan, and are not carried. Absent from an older Switchboard.
    */
   readonly excluded?: readonly string[];
+}
+
+/**
+ * D152 follow-up 2026-11-05: the workspace blocker when no folder on the target is
+ * the workspace. A workspace agent always runs in its workspace root (the router
+ * `AGENTS.md` it follows is there), also when the move carries only repos outside
+ * it, so a root is required: an existing one, or a new one the move creates.
+ */
+export function noWorkspaceBlocker(machine: string): string {
+  return `none of the chosen folders is a workspace (a folder with the router AGENTS.md): in "Workspace on ${machine}" choose "A folder that is there" (the workspace root on ${machine}) or "Create a new folder" (the workspace's AGENTS.md comes along). A workspace agent always runs in its workspace root, also when you carry only repos outside it`;
 }
 
 /** One repo after the source pushed its work in progress. */
