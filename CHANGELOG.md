@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.30 (2026-11-05)
+
+### Paired computers
+- **Conversation only:** a new tick in the agent, teammate and crew move dialogs moves just the chat, the agent's settings, todos, loops and sidebar place. No repo comparison, commits, pushes or branch changes: the agent continues in the matching workspace or checkout on the other computer as it is (for example your up-to-date master branches). Work left uncommitted or unpushed here is listed as staying on this computer. Update both computers. See `docs/peers.md` (D158).
+
 ## 2.4.29 (2026-11-05)
 
 ### Paired computers
