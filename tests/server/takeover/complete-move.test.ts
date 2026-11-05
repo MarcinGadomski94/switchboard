@@ -214,4 +214,38 @@ describe('D152: which repos an agent works in, from its history', () => {
     expect(await world.git(world.paths.a.back, 'status', '--porcelain')).toContain('history.txt');
     await world.git(world.paths.a.back, 'clean', '-fdq');
   });
+
+  it('D152 follow-up 2026-11-05: a session that only read files and ran commands in one repo works in it; the move carries it unless it is left out', async () => {
+    // No solution picked, nothing edited: the developer's real case.
+    const session = await startWorkspaceSession(world.a, world.folders.a.workspace as string, 'ws-reader', []);
+    await settle(world.a, session.id);
+    const front = await realpath(world.paths.a.front);
+    const read = JSON.stringify({ file_path: path.join(front, 'README.md') });
+    const command = JSON.stringify({ command: `cd "${front}" && git status --short` });
+    for (const text of [`Look. [fake:tool Read ${read}]`, `Check. [fake:tool Bash ${command}]`]) {
+      const sent = await world.a.call('POST', `/api/sessions/${session.id}/messages`, { text });
+      expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
+      await settle(world.a, session.id);
+    }
+    const answer = await waitFor('the reads and the command to count', async () => {
+      const now = (await world.a.call('GET', `/api/sessions/${session.id}/works-in`)).body as SessionWorksIn;
+      return now.repos.some((repo) => repo.evidence?.includes('commands')) ? now : null;
+    }, 30_000);
+    expect(answer.repos).toEqual([expect.objectContaining({ name: 'front', path: front, kind: 'main', source: 'commands', branch: 'main', remoteUrl: world.remotes.front, evidence: ['commands', 'read'] })]);
+    // The source's inspect (what the move dialog lists) carries it, marked.
+    const inspected = await world.a.call('POST', '/api/takeover/source/inspect', { sessionId: session.id });
+    const repos = (inspected.body as { result: { repos: Array<{ name: string; path: string; found?: string; evidence?: string[] }>; blockers: string[] } }).result.repos;
+    expect(repos.map((repo) => [repo.name, repo.found, repo.evidence])).toEqual([['front', 'commands', ['commands', 'read']]]);
+    // The move's plan includes it (carried by default) …
+    const planned = await preview({ sessionId: session.id, targetMachine: world.bId, placement: null });
+    expect(planned.target.repos.map((repo) => repo.name)).toEqual(['front']);
+    expect(planned.excluded).toEqual([]);
+    // … and leaving it out takes it out of the plan (and, as it is the only one, blocks the move).
+    const left = await preview({ sessionId: session.id, targetMachine: world.bId, placement: null, excludeRepos: [repos[0]?.path] });
+    expect(left.target.repos).toEqual([]);
+    expect(left.excluded).toEqual([repos[0]?.path]);
+    expect(left.blockers).toContain('every repo is left out: tick at least one to carry');
+    const bad = await world.a.call('POST', '/api/takeover/preview', { sessionId: session.id, targetMachine: world.bId, excludeRepos: 'front' });
+    expect(bad.status).toBe(422);
+  });
 });

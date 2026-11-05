@@ -44,8 +44,10 @@ import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/re
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
-import { SessionRepos } from './session-repos.ts';
-import type { SessionWorksIn, WorksInRepo } from '../../core/workspace-move.ts';
+import { SessionRepos, readOnlyInside, realOrNull } from './session-repos.ts';
+import type { SessionWorksIn, WorksInEvidence as WorksInEvidenceKind, WorksInRepo, WorksInSource } from '../../core/workspace-move.ts';
+import { type EvidenceCounts, evidenceKinds, rankByEvidence } from '../../core/works-in-evidence.ts';
+import { WorksInEvidence } from './works-in.ts';
 import { redactUrl } from '../../core/takeover.ts';
 import { SessionTouchedFiles } from './touched.ts';
 import { toWorktree } from './wire.ts';
@@ -345,6 +347,21 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** D152 follow-up 2026-11-05: one repo of {@link WorktreeManager.worksInFound}. */
+export interface WorksInFound {
+  /** The solution / worktree's repo name, else the working tree's folder name. */
+  readonly name: string;
+  /** The working tree's top folder (real path). */
+  readonly top: string;
+  readonly source: WorksInSource;
+  /** The session's worktree row (`source` `worktree`), else `null`. */
+  readonly worktree: WorktreeRecord | null;
+  /** What the history shows it did there, strongest first. */
+  readonly evidence: readonly WorksInEvidenceKind[];
+  /** The calls counted in the newest events (`WORKS_IN_EVENT_WINDOW`). */
+  readonly counts: EvidenceCounts;
+}
+
 /**
  * The WorktreeManager (M2.2, `docs/worktrees.md`): git worktrees per session and
  * solution (gap #1), their registry (`worktrees` table), pull request state via
@@ -381,6 +398,8 @@ export class WorktreeManager implements DiffProvider {
   readonly touched: SessionTouchedFiles;
   /** The repositories a session works in: the one answer of turn checkpoints and the Diff (`session-repos.ts`). */
   readonly repos: SessionRepos;
+  /** D152 follow-up 2026-11-05: the repos a session read in or ran commands in (on demand only: Works in, a move's inspect). */
+  readonly worksInEvidence: WorksInEvidence;
   /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
   #adopting: Promise<unknown> = Promise.resolve();
   #timer: NodeJS.Timeout | undefined;
@@ -399,6 +418,7 @@ export class WorktreeManager implements DiffProvider {
     this.#onError = options.onError ?? ((error) => console.error('switchboard worktrees:', error));
     this.touched = new SessionTouchedFiles({ store: this.#store, env: this.#env, onError: this.#onError });
     this.repos = new SessionRepos({ store: this.#store, touched: this.touched });
+    this.worksInEvidence = new WorksInEvidence({ store: this.#store });
   }
 
   /** Subscribes to `worktreeRemovable`; returns the unsubscribe function. */
@@ -1548,7 +1568,7 @@ export class WorktreeManager implements DiffProvider {
   async worksIn(sessionId: string): Promise<SessionWorksIn> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return { repos: [] };
-    const set = await this.repos.of(session);
+    const found = await this.worksInFound(session);
     const remoteOf = async (dir: string): Promise<string | null> => {
       const named = await this.#runDiffGit(dir, ['remote']);
       const first = succeeded(named) ? named.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '') : [];
@@ -1558,15 +1578,66 @@ export class WorktreeManager implements DiffProvider {
       return succeeded(url) && url.stdout.trim() !== '' ? redactUrl(url.stdout.trim()) : null;
     };
     const rows: WorksInRepo[] = [];
-    for (const worktree of set.worktrees) {
-      if (!(await isDirectory(worktree.path))) continue;
-      rows.push({ name: worktree.repo, path: worktree.path, kind: 'worktree', source: 'worktree', branch: worktree.branch ?? (await this.#currentBranch(worktree.path)), remoteUrl: await remoteOf(worktree.path) });
-    }
-    for (const repo of set.inPlace) {
+    for (const repo of found) {
+      if (repo.worktree !== null) {
+        const worktree = repo.worktree;
+        if (!(await isDirectory(worktree.path))) continue;
+        rows.push({ name: worktree.repo, path: worktree.path, kind: 'worktree', source: 'worktree', branch: worktree.branch ?? (await this.#currentBranch(worktree.path)), remoteUrl: await remoteOf(worktree.path), evidence: repo.evidence });
+        continue;
+      }
       const linked = await lstat(path.join(repo.top, '.git')).then((info) => info.isFile(), () => false);
-      rows.push({ name: repo.name, path: repo.top, kind: linked ? 'worktree' : 'main', source: repo.source, branch: await this.#currentBranch(repo.top), remoteUrl: await remoteOf(repo.top) });
+      rows.push({ name: repo.name, path: repo.top, kind: linked ? 'worktree' : 'main', source: repo.source, branch: await this.#currentBranch(repo.top), remoteUrl: await remoteOf(repo.top), evidence: repo.evidence });
     }
     return { repos: rows };
+  }
+
+  /**
+   * D152 follow-up 2026-11-05 (`docs/worktrees.md` → *Which repositories* → *Works
+   * in*): every repo the session works in, ranked: {@link SessionRepos.of}'s
+   * (its worktrees, solutions, the repos it edited, its cwd's) plus the repos under
+   * its folder or worktrees that it only **read** in or ran **commands** in
+   * ({@link WorksInEvidence}; read-only layout folders of a workspace and the main
+   * checkouts of its own worktrees left out). Worktrees first, then by evidence
+   * (an edit weighs more than a command, a command more than a read). On demand
+   * only: Works in and a move's inspect; never the Diff or checkpoints.
+   */
+  async worksInFound(session: SessionRecord): Promise<WorksInFound[]> {
+    const set = await this.repos.of(session);
+    const folder = folderOfSession(session);
+    const root = folder ? await realOrNull(folder.root) : session.cwd ? await realOrNull(session.cwd) : null;
+    const worktreeTops = await Promise.all(set.worktrees.map(async (worktree) => (await realOrNull(worktree.path)) ?? worktree.path));
+    const evidence = await this.worksInEvidence.of(session, { root, worktrees: worktreeTops }).catch((error: unknown) => {
+      this.#onError(error);
+      return [];
+    });
+    const counts = new Map(evidence.map((entry) => [entry.top, entry.counts]));
+    const zero: EvidenceCounts = { edited: 0, read: 0, commands: 0 };
+    const take = (top: string): EvidenceCounts => {
+      const value = counts.get(top) ?? zero;
+      counts.delete(top);
+      return value;
+    };
+    const entries: Array<WorksInFound & { readonly declared: boolean }> = [];
+    set.worktrees.forEach((worktree, at) => {
+      const top = worktreeTops[at] as string;
+      const own = take(top);
+      entries.push({ name: worktree.repo, top, source: 'worktree', worktree, evidence: evidenceKinds(own), counts: own, declared: true });
+    });
+    for (const repo of set.inPlace) {
+      const own = take(repo.top);
+      entries.push({ name: repo.name, top: repo.top, source: repo.source, worktree: null, evidence: evidenceKinds(repo.source === 'edited' && own.edited === 0 ? { ...own, edited: 1 } : own), counts: own, declared: true });
+    }
+    const mainCheckouts = new Set<string>();
+    for (const worktree of set.worktrees) mainCheckouts.add((await realOrNull(worktree.repoPath)) ?? worktree.repoPath);
+    const workspaceRoot = folder?.kind === 'workspace' ? root : null;
+    for (const [top, own] of counts) {
+      if (own.read + own.commands === 0) continue;
+      if (mainCheckouts.has(top) || top === workspaceRoot) continue;
+      if (workspaceRoot !== null && readOnlyInside(workspaceRoot, top)) continue;
+      const source: WorksInSource = own.edited > 0 ? 'edited' : own.commands > 0 ? 'commands' : 'read';
+      entries.push({ name: path.basename(top), top, source, worktree: null, evidence: evidenceKinds(own), counts: own, declared: false });
+    }
+    return rankByEvidence(entries.map((entry) => ({ ...entry, isWorktree: entry.source === 'worktree' }))).map(({ declared: _declared, isWorktree: _isWorktree, ...rest }) => rest);
   }
 
   /** The checked-out branch, `null` when detached. */

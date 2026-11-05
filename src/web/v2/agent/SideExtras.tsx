@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemorySessionCount } from '../../../core/memory.ts';
 import { memoryCountTooltip } from '../../../core/memory.ts';
-import { type WorksInRepo, worksInSourceLabel, worksInSummary } from '../../../core/workspace-move.ts';
+import { type WorksInRepo, worksInEvidenceLabel, worksInSourceLabel, worksInSummary } from '../../../core/workspace-move.ts';
 import { overviewActivityLabel, workingActivityState } from '../../activity/activity.ts';
 import { useTick } from '../../activity/useActivity.ts';
 import { api } from '../../api/client.ts';
@@ -310,12 +310,17 @@ function WorkflowRows({ data, item }: { readonly data: AgentData; readonly item:
 /**
  * D152: **Works in**: the repos this agent works in, from its history (its separate
  * copies, the solutions picked at start, the repos of the files it edited, its
- * working folder's), each with its path and branch, so it is clear which repo a
- * workspace agent works on before moving it. Read when the panel opens and after
- * each turn.
+ * working folder's; D152 follow-up 2026-11-05: and the repos it only read files in
+ * or ran shell commands in), ranked by evidence, each with its path, branch and
+ * (subtly) what it did there, so it is clear which repo a workspace agent works on
+ * before moving it. Read when the panel opens and after each turn (`status`: the
+ * caller's refresh key, which changes when a turn ends even if the status went
+ * run → idle between two renders, and stays put while a turn runs); it never holds
+ * the panel up: "…" while the answer is on its way, "No repo found yet" when empty.
  */
 export function WorksInLine({ sessionId, status }: { readonly sessionId: string; readonly status: string | null | undefined }) {
-  const [repos, setRepos] = useState<readonly WorksInRepo[] | null>(null);
+  // `undefined`: being read the first time; `null`: it could not be read (the line is hidden).
+  const [repos, setRepos] = useState<readonly WorksInRepo[] | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
     api.sessionWorksIn(sessionId).then(
@@ -326,19 +331,30 @@ export function WorksInLine({ sessionId, status }: { readonly sessionId: string;
       live = false;
     };
   }, [sessionId, status]);
+  useEffect(() => setRepos(undefined), [sessionId]);
   if (repos === null) return null;
   return (
-    <div className="v2-ag-xline" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in">
+    <div className="v2-ag-xline" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in" data-state={repos === undefined ? 'loading' : repos.length === 0 ? 'empty' : 'found'}>
       <div className="v2-ag-xlink" style={{ cursor: 'default' }}>
         <Icon name="folder" size="s" />
         <span className="v2-grow v2-ag-xtext">
-          <b>Works in · {worksInSummary(repos)}</b>
-          {repos.map((repo) => (
-            <small key={repo.path} className="v2-muted" data-testid="v2-agent-works-in-repo" data-name={repo.name} title={repo.remoteUrl ?? undefined} style={{ display: 'block', overflowWrap: 'anywhere' }}>
-              {repo.name}
-              {repo.branch ? ` · ${repo.branch}` : ''} · {repo.path} ({worksInSourceLabel(repo.source)})
-            </small>
-          ))}
+          <b>Works in · {repos === undefined ? '…' : worksInSummary(repos)}</b>
+          {(repos ?? []).map((repo) => {
+            // The source label already names one kind ("it read files here"): the rest are added subtly.
+            const evidence = worksInEvidenceLabel((repo.evidence ?? []).filter((kind) => kind !== repo.source));
+            return (
+              <small key={repo.path} className="v2-muted" data-testid="v2-agent-works-in-repo" data-name={repo.name} data-source={repo.source} data-evidence={(repo.evidence ?? []).join(' ')} title={repo.remoteUrl ?? undefined} style={{ display: 'block', overflowWrap: 'anywhere' }}>
+                {repo.name}
+                {repo.branch ? ` · ${repo.branch}` : ''} · {repo.path} ({worksInSourceLabel(repo.source)})
+                {evidence !== '' ? (
+                  <span data-testid="v2-agent-works-in-evidence" style={{ opacity: 0.75 }}>
+                    {' '}
+                    · {evidence}
+                  </span>
+                ) : null}
+              </small>
+            );
+          })}
         </span>
       </div>
     </div>

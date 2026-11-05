@@ -80,7 +80,7 @@ import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
 import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
 import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
-import { type WorkspaceFileChoice, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
+import { type WorkspaceFileChoice, excludeReposOf, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -2574,15 +2574,19 @@ function stripRequest(record: TeamRequestRecord): TeamRequest {
  * D110: the target folders (and clone paths) of a member's move, from the request
  * body, in the take-over's shape; a malformed value is refused (422).
  */
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
   // D152: the workspace's own files to copy.
   const files = workspaceChoiceOf(body['workspaceFiles']);
   if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
   if (files) out.workspaceFiles = files;
+  // D152 follow-up 2026-11-05: the repos left out of the move.
+  const excluded = excludeReposOf(body['excludeRepos']);
+  if (excluded === null) throw new TeamError(422, 'invalid', 'excludeRepos must be a list of repo paths');
+  if (excluded && excluded.length > 0) out.excludeRepos = excluded;
   const paths = body['clonePaths'];
   if (paths !== undefined && paths !== null) {
     if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');

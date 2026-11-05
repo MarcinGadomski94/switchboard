@@ -6,6 +6,8 @@ import {
   formatBytes,
   newWorkspacePath,
   targetBaseName,
+  worksInEvidenceLabel,
+  worksInSourceLabel,
 } from '../../core/workspace-move.ts';
 
 /**
@@ -22,18 +24,59 @@ export interface MoveChoice {
   readonly clonePaths: Readonly<Record<string, string>>;
   /** `null` = not decided yet (the defaults apply once the preview lists the files). */
   readonly files: WorkspaceFileChoice | null;
+  /**
+   * D152 follow-up 2026-11-05: the source paths of the repos left out of the move.
+   * Absent / empty (the default) = every repo the agent works in is carried, the
+   * ones it only read or ran commands in too (it will likely need them there).
+   */
+  readonly excludeRepos?: readonly string[];
 }
 
 /** An empty choice (the remembered folders, if any, come with the first preview). */
 export const EMPTY_CHOICE: MoveChoice = { placement: null, clonePaths: {}, files: null };
 
 /** The request fields of a choice (`placement` left out while it is `null` and `keepNull` is off: the remembered folders apply). */
-export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice } {
+export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } {
   return {
     ...(choice.placement !== null ? { placement: choice.placement } : keepNull ? { placement: null } : {}),
     ...(Object.keys(choice.clonePaths).length > 0 ? { clonePaths: { ...choice.clonePaths } } : {}),
     ...(choice.files ? { workspaceFiles: choice.files } : {}),
+    ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: [...choice.excludeRepos] } : {}),
   };
+}
+
+/** D152 follow-up 2026-11-05: the choice with the repo at source `path` carried (`on`) or left out. */
+export function withRepoCarried(choice: MoveChoice, path: string, on: boolean): MoveChoice {
+  const out = new Set(choice.excludeRepos ?? []);
+  if (on) out.delete(path);
+  else out.add(path);
+  const { excludeRepos: _old, ...rest } = choice;
+  return out.size > 0 ? { ...rest, excludeRepos: [...out] } : rest;
+}
+
+/** One repo the agent works in, as the move dialog's carry list shows it. */
+export interface CarryRow {
+  readonly name: string;
+  /** Where it is on the source (what `excludeRepos` names). */
+  readonly path: string;
+  /** Why it is listed: "edited", "read", "commands", "its separate copy", … */
+  readonly why: string;
+  /** Its key in the target's plan (`null` when left out: it is not planned). */
+  readonly key: string | null;
+  readonly carried: boolean;
+}
+
+/** D152 follow-up 2026-11-05: the repos the dialog lets the developer carry or leave out (a workspace session's), in the source's (ranked) order. */
+export function carryRows(preview: TakeoverPreview, choice: MoveChoice): CarryRow[] {
+  // The developer's choice decides (the preview may still be the one asked before the last tick).
+  const excluded = new Set(choice.excludeRepos ?? []);
+  const planned = new Set(preview.target.repos.map((repo) => repo.key));
+  return (preview.source.repos ?? []).map((repo): CarryRow => {
+    const carried = !excluded.has(repo.path);
+    const evidence = worksInEvidenceLabel(repo.evidence);
+    const why = evidence !== '' ? evidence : repo.found ? worksInSourceLabel(repo.found) : '';
+    return { name: repo.name, path: repo.path, why, key: carried && planned.has(repo.key) ? repo.key : null, carried };
+  });
 }
 
 /** The choice once a preview arrived: its placement, and the default ticks when none were made yet. */
@@ -144,7 +187,12 @@ export function tickedSecrets(preview: TakeoverPreview, choice: WorkspaceFileCho
 export function worksInLine(preview: TakeoverPreview): string {
   const repos = preview.source.repos ?? [];
   if (repos.length === 0) return 'No repo found in its history.';
-  return repos.map((repo) => `${repo.name} (${repo.path})`).join(' · ');
+  return repos
+    .map((repo) => {
+      const evidence = worksInEvidenceLabel(repo.evidence);
+      return `${repo.name} (${repo.path}${evidence !== '' ? `; ${evidence}` : ''})`;
+    })
+    .join(' · ');
 }
 
 // ── a crew move: choices shared by teammates ──────────────────────────────

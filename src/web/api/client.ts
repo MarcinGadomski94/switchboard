@@ -516,10 +516,10 @@ export const api = {
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),
   /** D65: what a take-over would do (both machines' view), before anything changes. */
-  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice }) =>
+  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[] }) =>
     request<TakeoverPreview>('POST', '/api/takeover/preview', body),
   /** D65: starts the take-over (202; poll {@link takeoverRun}). */
-  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice }) =>
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[] }) =>
     request<TakeoverRun>('POST', '/api/takeover', body),
   /** D110: the target machine's folder picker (`machine` = `null` for this one): the starting places, or one folder's subfolders. */
   takeoverFolders: (machine: string | null, path?: string | null) => request<TargetDirListing>('POST', '/api/takeover/folders', { ...(machine ? { machine } : {}), ...(path ? { path } : {}) }),

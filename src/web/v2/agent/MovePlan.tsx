@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { TakeoverPreview, TargetDirListing, TargetPlacement } from '../../../core/takeover.ts';
 import { suggestWorkspaceParent } from '../../../core/workspace-move.ts';
 import { ApiError, api } from '../../api/client.ts';
-import { type MoveChoice, fileRows, newRootFrom, repoModeOf, tickedSecrets, toggleFile, withNewWorkspace, withRepoMode, workspaceView, worksInLine } from '../../takeover/complete-move.ts';
+import { type MoveChoice, carryRows, fileRows, newRootFrom, repoModeOf, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, workspaceView, worksInLine } from '../../takeover/complete-move.ts';
 import { type RepoRow, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
 import { Button, Checkbox, Chip, Field, Icon, Segmented } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
@@ -68,6 +68,7 @@ export function MovePlanPanel({
       ) : (
         <FolderPicker machine={machine} machineName={targetName} placement={placement} remembered={preview.remembered} onChange={setPlacement} />
       )}
+      {ws.show && ((preview.source.repos ?? []).length > 0 || (preview.source.leftOut ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
       <div className="v2-mv-repos" data-testid="v2-move-repos">
         {repoRows(preview).map((row) => (
           <RepoRowView
@@ -290,6 +291,53 @@ function FolderBrowser({ machine, start, onPick }: { readonly machine: string | 
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * D152 follow-up 2026-11-05: which of the repos the agent works in the move carries.
+ * Every one is ticked by default, the ones it only read in or ran commands in too
+ * (it will likely need them there); unticking one leaves it out (`excludeRepos`:
+ * not captured, not planned on the target). A read-only one that cannot travel is
+ * listed as left out with the reason.
+ */
+function CarrySection({ preview, choice, onChange }: { readonly preview: TakeoverPreview; readonly choice: MoveChoice; readonly onChange: (next: MoveChoice) => void }) {
+  const rows = carryRows(preview, choice);
+  const leftOut = preview.source.leftOut ?? [];
+  const count = rows.filter((row) => row.carried).length;
+  return (
+    <div className="v2-mp-files" data-testid="v2-move-carry">
+      <div className="v2-row">
+        <b className="v2-grow">Repos to carry</b>
+        <span className="v2-muted v2-mv-small" data-testid="v2-move-carry-count">
+          {count} of {rows.length} carried
+        </span>
+      </div>
+      <p className="v2-muted v2-mv-small">Every repo the agent worked in is carried, the ones it only read or ran commands in too. Untick one to leave it out of the move.</p>
+      <ul className="v2-mp-filelist">
+        {rows.map((row) => (
+          <li key={row.path} data-testid="v2-move-carry-repo" data-name={row.name} data-carried={row.carried ? 'true' : 'false'}>
+            <Checkbox
+              plain
+              label={
+                <span className="v2-mp-file">
+                  <b className="v2-grow">{row.name}</b>
+                  {row.why !== '' ? <span className="v2-muted">{row.why}</span> : null}
+                  <span className="v2-muted v2-mono v2-mp-file-target">{row.path}</span>
+                </span>
+              }
+              checked={row.carried}
+              onChange={(event) => onChange(withRepoCarried(choice, row.path, event.target.checked))}
+            />
+          </li>
+        ))}
+        {leftOut.map((entry) => (
+          <li key={entry.path} className="v2-muted v2-mv-small" data-testid="v2-move-carry-leftout" data-name={entry.name}>
+            {entry.name} ({entry.path}): not carried, {entry.reason}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

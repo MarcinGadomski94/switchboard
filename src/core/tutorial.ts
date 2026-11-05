@@ -1591,7 +1591,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'works-in',
         title: 'Which repos an agent works in',
-        what: 'An agent’s Details now say which repos it works in, with their paths and branches: the ones picked when it started, its separate copies, and the repos of the files it edited. A workspace agent’s move carries all of them, not only the ones it was started with.',
+        what: 'An agent’s Details now say which repos it works in, with their paths and branches: the ones picked when it started, its separate copies, the repos of the files it edited, and the repos it only read files in or ran commands in, the busiest first, each marked with what it did there (edited, commands, read). A workspace agent’s move carries all of them, not only the ones it was started with; untick one in the move dialog to leave it out.',
         todo: ['Open an agent and look at Works in at the top of its Details.'],
         anchors: ['v2-agent-works-in', 'v2-agent-details'],
         v2Route: '/agents',

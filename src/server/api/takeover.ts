@@ -5,7 +5,7 @@ import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TakeoverGitError } from '../takeover/git.ts';
 import { TakeoverError } from '../takeover/service.ts';
 import { placementOf } from '../../core/takeover.ts';
-import { workspaceChoiceOf } from '../../core/workspace-move.ts';
+import { excludeReposOf, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { isPeerRequest } from './machines.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,8 +75,10 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if (placement === null) return invalid(reply, 'placement', 'placement must be { roots: string[], repoPaths?: { <repo key>: path }, repoModes?: { <repo key>: "use" | "clone" }, newWorkspace?: { path, useExisting? } }');
     const workspaceFiles = workspaceChoiceOf(body['workspaceFiles']);
     if (workspaceFiles === null) return invalid(reply, 'workspaceFiles', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
+    const excludeRepos = excludeReposOf(body['excludeRepos']);
+    if (excludeRepos === null) return invalid(reply, 'excludeRepos', 'excludeRepos must be a list of repo paths');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    return { sessionId, targetMachine, ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -149,7 +151,7 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
 
   op('source/inspect', (body) => takeover.inspect(need(body, 'sessionId')));
   op('source/stop', (body) => takeover.stop(need(body, 'opId'), need(body, 'sessionId')));
-  op('source/capture', (body) => takeover.capture(need(body, 'opId')));
+  op('source/capture', (body) => takeover.capture(need(body, 'opId'), excludeReposOf(body['excludeRepos']) ?? []));
   op('source/stop-terminal', (body) => takeover.stopTerminal(need(body, 'opId')));
   op('source/files', (body) => takeover.files(need(body, 'opId')));
   op('source/chunk', (body) => takeover.readChunk(need(body, 'opId'), need(body, 'name'), typeof body['offset'] === 'number' ? body['offset'] : -1));

@@ -4,7 +4,7 @@ import { type Browser, type BrowserContext, type Page, expect, test } from '@pla
 import type { TeamMember, TeamSummary, TeamView } from '../../src/core/team.ts';
 import { makeTempDir } from '../helpers/net.ts';
 import { type PeerNode, waitFor } from '../helpers/peers.ts';
-import { type TakeoverWorld, removeWorld, startRepoSession, startWorkspaceSession, takeoverWorld } from '../helpers/takeover.ts';
+import { type TakeoverWorld, removeWorld, settle, startRepoSession, startWorkspaceSession, takeoverWorld } from '../helpers/takeover.ts';
 import { stubToolProbes } from './probes.ts';
 import { V2_SERVER_ENV, useV2 } from './v2-world.ts';
 
@@ -124,6 +124,45 @@ test('Works in, the new workspace placed where the developer says, use or clone 
   expect(await readFile(path.join(newWs, 'docs', 'plan.md'), 'utf8')).toBe('# Plan\n');
   expect(await readFile(path.join(newWs, '.claude', 'settings.local.json'), 'utf8')).toContain('synthetic-e2e-token');
   expect(await w.git(path.join(newWs, 'back'), 'remote', 'get-url', 'origin')).toBe(w.remotes.back);
+});
+
+test('D152 follow-up 2026-11-05: an agent that only read files and ran commands in one repo shows it under Works in, and the Move dialog carries it', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const w = (world = await takeoverWorld(tmp, { aRepos: { workspace: true }, bRepos: { gamma: true }, env: { ...V2_SERVER_ENV } }));
+  // No solution picked, nothing edited: it read a file in `front` and ran a command there.
+  const session = await startWorkspaceSession(w.a, w.folders.a.workspace as string, 'ws-reader', []);
+  await settle(w.a, session.id);
+  const front = await realpath(w.paths.a.front);
+  const page = await v2Page(browser, w.a, `/agents/${session.id}`);
+  const worksIn = page.getByTestId('v2-agent-works-in');
+  await expect(worksIn).toContainText('Works in · No repo found yet');
+  for (const text of [`Look. [fake:tool Read ${JSON.stringify({ file_path: path.join(front, 'README.md') })}]`, `Check. [fake:tool Bash ${JSON.stringify({ command: `cd "${front}" && git status --short` })}]`]) {
+    const sent = await w.a.call('POST', `/api/sessions/${session.id}/messages`, { text });
+    expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
+    await settle(w.a, session.id);
+  }
+  // Read again after the turns: the repo, its path, and (subtly) what it did there.
+  const repo = worksIn.locator('[data-testid="v2-agent-works-in-repo"][data-name="front"]');
+  await expect(worksIn).toContainText('Works in · front', { timeout: 20_000 });
+  await expect(repo).toHaveAttribute('data-source', 'commands');
+  await expect(repo).toHaveAttribute('data-evidence', 'commands read');
+  await expect(repo).toContainText(front);
+  await expect(repo.getByTestId('v2-agent-works-in-evidence')).toHaveText('· read');
+
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByTestId('v2-agent-menu-list').getByRole('menuitem', { name: 'Move to computer…' }).click();
+  const dialog = page.getByTestId('v2-move-dialog');
+  await expect(dialog.getByTestId('v2-move-works-in')).toContainText(`front (${front}; commands · read)`);
+  // Carried by default; unticking it leaves it out of the plan.
+  const carried = dialog.locator('[data-testid="v2-move-carry-repo"][data-name="front"]');
+  await expect(carried).toHaveAttribute('data-carried', 'true');
+  await expect(dialog.locator('[data-testid="v2-move-repo"]')).toHaveCount(1);
+  await carried.getByRole('checkbox').uncheck();
+  await expect(carried).toHaveAttribute('data-carried', 'false');
+  await expect(dialog.locator('[data-testid="v2-move-repo"]')).toHaveCount(0);
+  await expect(dialog).toContainText('every repo is left out: tick at least one to carry');
+  await carried.getByRole('checkbox').check();
+  await expect(dialog.locator('[data-testid="v2-move-repo"]')).toHaveCount(1);
 });
 
 test('Move crew to computer: every teammate checked first (a blocker shown per teammate), then the crew moves one by one', async ({ browser }) => {
