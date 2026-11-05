@@ -70,10 +70,13 @@ describe('the service log under launchd (stdout + stderr appended to <dataDir>/l
     // The server keeps writing into the trimmed file; a routine request adds no line.
     const host = `127.0.0.1:${port}`;
     expect((await rawRequest({ port, path: '/', headers: { host, 'sec-fetch-site': 'none' } })).status).toBe(200);
-    expect(await stopTrackedServer(child.pid as number)).toBe(0);
+    // Windows has no SIGTERM: kill() ends the server outright (no exit code, no shutdown line).
+    const posix = process.platform !== 'win32';
+    const code = await stopTrackedServer(child.pid as number);
+    if (posix) expect(code).toBe(0);
     pid = undefined;
     const after = await readFile(log, 'utf8');
-    expect(after).toContain('shutting down');
+    if (posix) expect(after).toContain('shutting down');
     expect(after).not.toContain('incoming request');
     expect(after).not.toContain('request completed');
     expect(after).not.toContain('\u0000');

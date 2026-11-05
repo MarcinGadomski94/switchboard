@@ -70,15 +70,15 @@ describe('D152: moving a whole crew', () => {
   });
 
   it('moves the teammates one by one; a failure stops the rest and the run says who moved and who did not', async () => {
-    // The mac's gamma has a commit the pc's does not: the check cannot see it, the restore refuses it (diverged).
-    await writeFile(path.join(world.paths.b.gamma, 'mac-only.txt'), 'only on the mac\n');
-    await world.git(world.paths.b.gamma, 'add', '-A');
-    await world.git(world.paths.b.gamma, 'commit', '-q', '-m', 'mac only');
-
     const check = (await world.a.call('POST', `/api/team/teams/${teamId}/move/check`, { targetMachineId: world.bId })).body as CrewMoveCheck;
     expect(check.ok, JSON.stringify(check.members.map((member) => member.blockers))).toBe(true);
     const started = await world.a.call('POST', `/api/team/teams/${teamId}/move`, { targetMachineId: world.bId });
     expect(started.status, JSON.stringify(started.body)).toBe(202);
+    // Once the crew's check has passed (D157 would block a diverged branch there), the mac's gamma
+    // gets a commit the pc's does not: Dev moves first, Tester's own check then refuses it.
+    await writeFile(path.join(world.paths.b.gamma, 'mac-only.txt'), 'only on the mac\n');
+    await world.git(world.paths.b.gamma, 'add', '-A');
+    await world.git(world.paths.b.gamma, 'commit', '-q', '-m', 'mac only');
     const runId = (started.body as CrewMoveRun).id;
     const run = await waitFor('the crew move to end', async () => {
       const current = (await world.a.call('GET', `/api/team/crew-moves/${runId}`)).body as CrewMoveRun;
@@ -90,7 +90,7 @@ describe('D152: moving a whole crew', () => {
       ['Tester', 'failed'],
       ['Writer', 'not-moved'],
     ]);
-    expect(run.members[1]?.note).toContain('has commits the original does not have');
+    expect(run.members[1]?.note).toContain("isn't on pc-office");
     expect(run.error).toContain('Tester could not move');
     expect(run.error).toContain('1 moved, 1 not moved');
     // The moved one stays moved; the others run where they were.
@@ -109,13 +109,9 @@ describe('D152: moving a whole crew', () => {
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(lines.find((line) => line['msg'] === 'move: crew start' && line['run'] === runId)).toMatchObject({ crew: 'Ops', crewId: teamId, members: ['Dev', 'Tester', 'Writer'] });
     expect(lines.find((line) => line['msg'] === 'move: crew failed' && line['run'] === runId)).toMatchObject({ level: 40, moved: ['Dev'], notMoved: ['Tester', 'Writer'], reason: expect.stringContaining('Tester could not move') });
+    // Tester is refused at its own check (D157), before its take-over starts.
     const starts = lines.filter((line) => line['msg'] === 'move: start' && line['crewRun'] === runId);
-    expect(starts.map((line) => [line['member'], line['crew'], line['initiator']])).toEqual([
-      ['Dev', 'Ops', 'source'],
-      ['Tester', 'Ops', 'source'],
-    ]);
-    const testerRun = starts[1]?.['run'];
-    expect(lines.find((line) => line['run'] === testerRun && line['step'] === 'outcome')).toMatchObject({ msg: 'move: failed at apply, rolled back', failedAt: 'apply' });
+    expect(starts.map((line) => [line['member'], line['crew'], line['initiator']])).toEqual([['Dev', 'Ops', 'source']]);
   });
 });
 

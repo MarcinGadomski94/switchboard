@@ -60,7 +60,7 @@ import type { FolderService } from '../folders/service.ts';
 import type { HookService } from '../hooks/service.ts';
 import type { QuestionPipeline } from '../inbox/pipeline.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
-import { TakeoverGit, TakeoverGitError, pathExists } from './git.ts';
+import { TakeoverGit, TakeoverGitError, comparablePath, pathExists } from './git.ts';
 import { MoveLog, type MoveLogSink, type MoveLogStep } from './move-log.ts';
 import { moveLogReason, moveLogRunId } from '../../core/move-log.ts';
 import { isMainCheckout } from '../solutions/checkout.ts';
@@ -1428,7 +1428,8 @@ export class TakeoverService {
         if (worktree) claimWorktree(worktree, repo);
         const branches = await git.checkedOutBranches(match.path);
         const holder = branches.get(repo.branch);
-        if (holder !== undefined && (repo.kind === 'worktree' || path.resolve(holder) !== path.resolve(match.path))) checkedOut.add(`${match.path}\n${repo.branch}`);
+        // comparablePath: git lists `C:/Users/…`, the match may say `C:\Users\…` (or a short 8.3 name) on Windows.
+        if (holder !== undefined && (repo.kind === 'worktree' || (await comparablePath(holder)) !== (await comparablePath(match.path)))) checkedOut.add(`${match.path}\n${repo.branch}`);
         if (repo.kind === 'main' && !dirtyTargets.has(match.path) && (await git.dirtyCounts(match.path)).total > 0) {
           dirtyTargets.add(match.path);
           targetChanges.set(match.path, await git.targetChanges(match.path));

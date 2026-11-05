@@ -115,12 +115,17 @@ export class TakeoverGit {
     return (await this.try(dir, ['rev-parse', '--is-inside-work-tree'])).out === 'true';
   }
 
-  /** The repo's main checkout (`git rev-parse --git-common-dir`'s work tree) for any checkout or worktree of it. */
+  /**
+   * The repo's main checkout (`git rev-parse --git-common-dir`'s work tree) for any checkout or worktree of it,
+   * as a real native path: git says `C:/Users/…` on Windows, and callers compare it with `realpath`'d folders.
+   */
   async mainCheckout(dir: string): Promise<string | null> {
     const common = await this.try(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
     if (!common.ok || common.out === '') return null;
     // A normal repo: `<repo>/.git`; a bare repo or a worktree's common dir `…/.git` as well.
-    return path.basename(common.out) === '.git' ? path.dirname(common.out) : null;
+    if (path.basename(common.out) !== '.git') return null;
+    const main = path.resolve(path.dirname(common.out));
+    return realpath(main).catch(() => main);
   }
 
   /** The checked-out branch of `dir`; `null` for a detached HEAD or when git cannot tell. */
