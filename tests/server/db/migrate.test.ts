@@ -1104,7 +1104,7 @@ describe('0025 session take-over (D65)', () => {
       const after = dump(store.db);
       // D76 (0032), D83 (0036), D106 (0044) and D124 (0047) add more columns later.
       const strip = (rows: readonly unknown[] | undefined) =>
-        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined, kind: undefined, look_at: undefined, turn_wait: undefined }));
+        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined, continued_to: undefined, continued_from: undefined, kind: undefined, look_at: undefined, turn_wait: undefined, extra_dirs: undefined }));
       expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
       // The two moves round-trip.
       const one = sessions[0]!;
