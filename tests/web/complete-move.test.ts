@@ -9,6 +9,7 @@ import {
   newRootFrom,
   outsideClonePath,
   outsideRows,
+  overwriteRows,
   repoModeOf,
   shareChoice,
   splitClonePath,
@@ -16,6 +17,7 @@ import {
   toggleFile,
   withNewWorkspace,
   withOutsideMode,
+  withOverwrite,
   withRepoCarried,
   withRepoMode,
   workspaceView,
@@ -184,5 +186,29 @@ describe('D152 follow-up · Outside the workspace', () => {
     expect(withOutsideMode(EMPTY_CHOICE, 'notes', 'clone', 'D:\\code\\ws').placement).toEqual({ roots: ['D:\\code\\ws'], outsideCarry: { notes: true }, repoModes: { notes: 'clone' } });
     // A placement that only says which outside repos travel is kept (not dropped as "no folders").
     expect(withNewWorkspace({ roots: [], outsideCarry: { notes: true } }, null)).toEqual({ roots: [], outsideCarry: { notes: true } });
+  });
+});
+
+describe('D157 · a diverged outside repo the agent runs in', () => {
+  it('overwriteRows lists it (Commits only on <PC>) and ticking sends its matchedPath in overwriteTargets', () => {
+    const base = preview({ repos: [{ key: 'tool-repo', name: 'tool-repo', remoteKey: 'example.com/acme/tool', path: '/Users/dev/Personal/tool-repo' }] });
+    const diverged = { branch: 'master', count: 2, commits: [{ sha: 'a1b2c3d', subject: 'pc work' }, { sha: 'e4f5a6b', subject: 'more' }], truncated: false };
+    const p = {
+      ...base,
+      source: { ...base.source, repos: base.source.repos.map((repo) => ({ ...repo, outside: true, carry: true })) },
+      target: {
+        ...base.target,
+        machine: { id: 'pc', name: 'PC' },
+        folder: null,
+        runIn: null,
+        repos: [{ key: 'tool-repo', name: 'tool-repo', branch: 'master', action: 'blocked', matchedPath: 'C:\\code\\tool-repo', cloneTo: null, reason: 'blocked', summary: 'blocked', targetDiverged: diverged }],
+      },
+    } as unknown as TakeoverPreview;
+    const choice = { ...EMPTY_CHOICE, placement: { roots: [], runIn: { repo: '/Users/dev/Personal/tool-repo' }, outsideCarry: { 'tool-repo': true } } };
+    const rows = overwriteRows(p, choice);
+    expect(rows.map((row) => [row.path, row.confirmed, row.branches.length])).toEqual([['C:\\code\\tool-repo', false, 1]]);
+    const ticked = withOverwrite(choice, rows[0]?.path as string, true);
+    expect(choiceBody(ticked).overwriteTargets).toEqual(['C:\\code\\tool-repo']);
+    expect(overwriteRows(p, ticked)[0]?.confirmed).toBe(true);
   });
 });
