@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionModelOption } from '../../../core/api.ts';
 import { type CrewMoveCheck, type CrewMoveRun, type TeamCharter, type TeamMember, type TeamMoveRun, type TeamSuggestion, type TeamSummary, crewMoveSummary } from '../../../core/team.ts';
 import type { TakeoverPreview } from '../../../core/takeover.ts';
-import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, overwriteLines, shareChoice, stashLines } from '../../takeover/complete-move.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, overwriteLines, shareChoice, stashLines, withoutConversationOnly } from '../../takeover/complete-move.ts';
 import { MovePlanPanel } from '../agent/MovePlan.tsx';
 import { CleanupSourceOption, useCleanupSourcePref } from '../agent/SourceCleanup.tsx';
+import { ConversationOnlyOption } from '../agent/ConversationOnly.tsx';
 import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
@@ -344,6 +345,18 @@ export function MoveToComputerDialog({ member, onClose, initial }: { readonly me
         </p>
       ) : null}
       {pick !== null && targetWhy === null && plan?.preview && state === 'idle' && progress?.kind !== 'moving' ? (
+        <ConversationOnlyOption
+          sourceName={plan.preview.source.machine.name}
+          targetName={nameOf(pick)}
+          checked={choice.conversationOnly === true}
+          onChange={(on) => {
+            const next = on ? { ...choice, conversationOnly: true } : withoutConversationOnly(choice);
+            setChoice(next);
+            loadPlan(pick, next);
+          }}
+        />
+      ) : null}
+      {pick !== null && targetWhy === null && plan?.preview && state === 'idle' && progress?.kind !== 'moving' ? (
         <MovePlanPanel
           preview={plan.preview}
           machine={pick}
@@ -394,6 +407,9 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
   const [choices, setChoices] = useState<Record<string, MoveChoice>>({});
   // D156: clean up on the source after each teammate's successful move (remembered on this computer).
   const [cleanupSource, setCleanupSource] = useCleanupSourcePref();
+  // D158: "Conversation only" for every teammate (read by `bodies` through the ref, so a re-check sends the newest).
+  const [conversationOnly, setConversationOnly] = useState(false);
+  const conversationOnlyRef = useRef(false);
   const [run, setRun] = useState<CrewMoveRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -418,7 +434,7 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
   const loadCheck = (target: string, next: Readonly<Record<string, MoveChoice>> | null): void => {
     const n = ++ask.current;
     setError(null);
-    teamApi.crewMoveCheck(crew.id, target, next ? bodies(next) : {}).then(
+    teamApi.crewMoveCheck(crew.id, target, next ? bodies(next) : {}, conversationOnlyRef.current).then(
       (answer) => {
         if (n !== ask.current) return;
         setCheck(answer);
@@ -462,7 +478,7 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
     setBusy(true);
     setError(null);
     try {
-      const started = await teamApi.crewMove(crew.id, pick, Object.fromEntries(Object.entries(bodies(choices)).map(([id, body]) => [id, { ...body, ...(cleanupSource ? { cleanupSource: true } : {}) }])));
+      const started = await teamApi.crewMove(crew.id, pick, Object.fromEntries(Object.entries(bodies(choices)).map(([id, body]) => [id, { ...body, ...(cleanupSource ? { cleanupSource: true } : {}) }])), conversationOnlyRef.current);
       setRun(started);
       follow(started.id);
     } catch (caught) {
@@ -512,6 +528,19 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
       }
     >
       <p className="v2-muted v2-c-small">Every teammate is checked first; then they move one at a time, in the crew’s order. If one fails, the rest stay where they are and the ones that moved stay moved.</p>
+      {!run && pick !== null ? (
+        <ConversationOnlyOption
+          sourceName="the computers they leave"
+          targetName={nameOf(pick)}
+          checked={conversationOnly}
+          disabled={busy}
+          onChange={(on) => {
+            conversationOnlyRef.current = on;
+            setConversationOnly(on);
+            loadCheck(pick, choices);
+          }}
+        />
+      ) : null}
       {!run ? (
         <div className="v2-c-pick" role="radiogroup" aria-label="Computers">
           {targets.map((target) => (
@@ -549,11 +578,12 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
                   machine={pick}
                   sourceName={preview.source.machine.name}
                   targetName={nameOf(pick)}
-                  choice={choices[member.memberId] ?? EMPTY_CHOICE}
+                  choice={{ ...(choices[member.memberId] ?? EMPTY_CHOICE), ...(conversationOnly ? { conversationOnly: true } : {}) }}
                   testId="v2-move-crew-plan"
-                  onEdit={(next) => setChoices((current) => ({ ...current, [member.memberId]: next }))}
+                  onEdit={(next) => setChoices((current) => ({ ...current, [member.memberId]: withoutConversationOnly(next) }))}
                   onChange={(next) => {
-                    const shared = shareChoice(choices, previews, member.memberId, next);
+                    // D158: the crew's tick is sent once for every teammate, never kept per teammate.
+                    const shared = shareChoice(choices, previews, member.memberId, withoutConversationOnly(next));
                     setChoices(shared);
                     loadCheck(pick, shared);
                   }}

@@ -1043,7 +1043,7 @@ Local only (a peer's request gets 403 `peer-forbidden`):
 | Method | Path | Body | Answer |
 |---|---|---|---|
 | POST | /api/takeover/preview | { sessionId, targetMachine?, clonePaths?, placement? } | TakeoverPreview `{ source, target, stopsTerminal, ok, blockers, placement, remembered }` (D110: `placement` absent = the remembered folders of this folder → that machine, if any; `null` = the target's saved folders); `sessionId` is a local id (needs `targetMachine`: a paired machine's id) or a peer's remote id (comes here); 404 unknown machine, 422 |
-| POST | /api/takeover | { sessionId, targetMachine?, clonePaths?, placement?, confirmStopTerminal? } | 202 TakeoverRun; 409 `in-progress` (D110: a run that resumes on the target remembers `placement`) |
+| POST | /api/takeover | { sessionId, targetMachine?, clonePaths?, placement?, confirmStopTerminal? } | 202 TakeoverRun; 409 `in-progress` (D110: a run that resumes on the target remembers `placement`). D158: both also take `conversationOnly: true` (only the conversation moves; the preview then says `conversationOnly: true`, the target's plan `conversationOnly: { leftOut }`) |
 | POST | /api/takeover/folders | { machine?, path? } | D110: TargetDirListing of that machine (absent = this one; a paired machine through the peer API): the starting places without `path`, else that folder's subfolders; 403 `outside`, 422 `invalid`, 404 unknown machine |
 | GET | /api/takeover/runs/{id} | | TakeoverRun `{ id, state: running \| done \| failed, steps[{ id, label, status, detail }], error?, rolledBack, rollbackNotes, result?, leftovers, log }`; the step ids are `checks, stop, capture, transfer, apply, resume, finish` |
 

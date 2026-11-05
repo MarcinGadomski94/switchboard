@@ -519,10 +519,10 @@ export const api = {
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),
   /** D65: what a take-over would do (both machines' view), before anything changes. */
-  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[] }) =>
+  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly conversationOnly?: boolean }) =>
     request<TakeoverPreview>('POST', '/api/takeover/preview', body),
   /** D65: starts the take-over (202; poll {@link takeoverRun}). */
-  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly cleanupSource?: boolean }) =>
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly cleanupSource?: boolean; readonly conversationOnly?: boolean }) =>
     request<TakeoverRun>('POST', '/api/takeover', body),
   /** D156: what Clean up on this computer… would do for a moved agent of this computer (nothing changes). */
   moveCleanupPreview: (sessionId: string) => request<SourceCleanupReport>('GET', `/api/takeover/cleanup/${enc(sessionId)}`),

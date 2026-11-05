@@ -176,6 +176,9 @@ const V2_4_23 = '2.4.23';
 /** The version D156 (cleaning up the source computer after a move) ships in. */
 const V2_4_25 = '2.4.25';
 
+/** The version D158 (a conversation-only move) ships in. */
+const V2_4_30 = '2.4.30';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1703,6 +1706,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-moved-cleanup', 'v2-nav-agents', 'v2-tab-agents'],
         v2Route: '/agents',
         missing: 'This shows on an agent that moved to another computer. ',
+      },
+    ],
+  },
+  // D158: a move that carries only the conversation (docs/peers.md → Conversation only (D158)).
+  {
+    id: 'conversation-only-move',
+    decision: 'D158',
+    version: V2_4_30,
+    title: 'Move only the conversation',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'tick',
+        title: 'Conversation only',
+        what: 'The Move dialog (an agent’s, a teammate’s, a whole crew’s) has “Conversation only (keep the files as they are on (computer))”. Ticked, only the chat, its settings, tasks and routines move: nothing is committed, pushed, checked out or compared, and the agent continues on whatever the other computer has checked out (for example its master). Uncommitted or unpushed work stays on this computer and is listed in the dialog; nothing is deleted.',
+        todo: ['Open an agent’s ⋯ › Move to computer….', 'Tick Conversation only, check where it continues, then Move.'],
+        anchors: ['v2-move-conversation-only', 'v2-agent-menu', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Pair another computer (Settings › Computers), then open an agent’s ⋯ › Move to computer…. ',
       },
     ],
   },

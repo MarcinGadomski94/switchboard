@@ -14,6 +14,8 @@ import {
   type TargetPlan,
   TAKEOVER_STEPS,
   TAKEOVER_STEP_LABELS,
+  conversationOnlyBlockers,
+  conversationOnlyProblem,
   placementKey,
   placementToRemember,
   rollbackActions,
@@ -61,11 +63,11 @@ export interface TakeoverEndpoint {
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
   /** D156: the source's clean-up after a successful move (an older source answers 403 / 404). */
   cleanupSource(opId: string, sessionId: string): Promise<OpAnswer<SourceCleanupReport>>;
-  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly opId?: string }): Promise<OpAnswer<TargetPlan>>;
+  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly opId?: string; readonly conversationOnly?: boolean }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
-  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>>;
+  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly captured: readonly CapturedRepo[]; readonly conversationOnly?: boolean }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>>;
   abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>>;
   resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>>;
   closeTarget(opId: string): Promise<void>;
@@ -166,6 +168,13 @@ export interface TakeoverRequest {
   readonly overwriteTargets?: readonly string[];
   /** D156: clean up on the source after a successful move (archive, carried worktrees, the conversation file); absent = no. */
   readonly cleanupSource?: boolean;
+  /**
+   * D158 (`docs/peers.md` → *Conversation only (D158)*): move only the conversation.
+   * No repo is captured, pushed, checked out, stashed or compared; the agent continues
+   * in the target's workspace / checkout as it is. The clone paths, stash and
+   * overwrite choices, left-out repos and workspace files do not apply.
+   */
+  readonly conversationOnly?: boolean;
   /**
    * The move log's start line (`docs/peers.md` → *The move log*): the Team member a
    * Team move moves, and the crew move it is part of. Set by Team, never by the HTTP route.
@@ -291,6 +300,16 @@ export class TakeoverRunner {
     if (placement === null && request.savedFolders !== true) {
       placement = await this.#service.rememberedPlacement(await this.#placementKey(ends, source));
       remembered = placement !== null;
+    }
+    // D158: only the conversation: the repos are used as they are on the target (the repo blockers, choices and files do not apply).
+    if (request.conversationOnly === true) {
+      const target = (await ends.target.plan({ source, ...(placement ? { placement } : {}), conversationOnly: true })).result;
+      const blockers = [...conversationOnlyBlockers(source), ...target.blockers];
+      const older = conversationOnlyProblem(target);
+      if (older !== null) blockers.push(older);
+      const runIn = runInProblem(placement, target);
+      if (runIn !== null) blockers.push(runIn);
+      return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered, excluded: [], conversationOnly: true };
     }
     // D152 follow-up: a repo outside the workspace is left out by its default or the developer's choice (`placement.outsideCarry`).
     const carried = withoutExcluded(source, effectiveExclusions(source.repos, request.excludeRepos, placement?.outsideCarry));
@@ -420,23 +439,27 @@ export class TakeoverRunner {
       failedAt = 'checks';
       set('checks', 'running');
       const inspected = (await source.inspect(ends.rawSessionId, opId)).result;
+      // D158: only the conversation: nothing is left out, captured, cloned, stashed or overwritten; no workspace file is sent.
+      const asIs = request.conversationOnly === true;
       // D152 follow-up 2026-11-05: the repos the developer left out are neither planned nor captured.
-      const leavingOut = effectiveExclusions(inspected.repos, request.excludeRepos, request.placement?.outsideCarry);
+      const leavingOut = asIs ? [] : effectiveExclusions(inspected.repos, request.excludeRepos, request.placement?.outsideCarry);
       sourceInfo = withoutExcluded(inspected, leavingOut);
       run.meta.title = inspected.title ?? inspected.name;
-      const leftOutProblem = excludedProblem(inspected, sourceInfo);
+      const leftOutProblem = asIs ? [] : excludedProblem(inspected, sourceInfo);
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
-      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), opId })).result;
-      const blockers = [...sourceInfo.blockers, ...plan.blockers];
+      plan = (await target.plan(asIs ? { source: sourceInfo, ...(request.placement ? { placement: request.placement } : {}), opId, conversationOnly: true } : { source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), opId })).result;
+      const blockers = asIs ? [...conversationOnlyBlockers(sourceInfo), ...plan.blockers] : [...sourceInfo.blockers, ...plan.blockers];
+      const olderTarget = asIs ? conversationOnlyProblem(plan) : null;
+      if (olderTarget !== null) blockers.push(olderTarget);
       const runInRefused = runInProblem(request.placement, plan);
       if (runInRefused !== null) blockers.push(runInRefused);
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
       // D152: the workspace files to send (new on the target; the root AGENTS.md of a workspace the move creates).
-      const sending = filesToSend(sourceInfo.workspaceFiles, request.placement?.runIn ? undefined : request.workspaceFiles, plan.workspaceFiles, createsRoot(plan));
-      const filesProblem = fileChoiceProblem(sourceInfo.workspaceFiles, sending);
+      const sending: WorkspaceFileChoice = asIs ? { copy: [] } : filesToSend(sourceInfo.workspaceFiles, request.placement?.runIn ? undefined : request.workspaceFiles, plan.workspaceFiles, createsRoot(plan));
+      const filesProblem = asIs ? null : fileChoiceProblem(sourceInfo.workspaceFiles, sending);
       if (filesProblem !== null) throw new TakeoverError(409, 'blocked', filesProblem);
-      set('checks', 'done', `${sourceInfo.repos.length} repo${sourceInfo.repos.length === 1 ? '' : 's'}, ${plan.cli.label} on ${plan.account.name}`);
+      set('checks', 'done', `${asIs ? 'conversation only' : `${sourceInfo.repos.length} repo${sourceInfo.repos.length === 1 ? '' : 's'}`}, ${plan.cli.label} on ${plan.account.name}`);
       done.push('checks');
       // 2 · stop the session where it runs (a hooked terminal: after the capture).
       failedAt = 'stop';
@@ -448,19 +471,30 @@ export class TakeoverRunner {
       done.push('stop');
       // 3 · the WIP push (and, for a hooked session, the terminal's stop).
       failedAt = 'capture';
-      set('capture', 'running');
-      const capture = await source.capture(opId, leavingOut);
-      logOf(sourceName(), capture.log);
-      captured = capture.result.repos;
-      const changed = captured.reduce((total, repo) => total + repo.uncommitted, 0);
-      set('capture', 'running', `${captured.length} repo${captured.length === 1 ? '' : 's'}, ${changed} uncommitted file${changed === 1 ? '' : 's'} pushed`);
-      if (sourceInfo.hooked) {
-        const killed = await source.stopTerminal(opId);
-        terminalStopped = true;
-        logOf(sourceName(), killed.log);
+      if (asIs) {
+        // D158: nothing is captured or pushed; a hooked terminal's claude is still stopped before the conversation is copied.
+        if (sourceInfo.hooked) {
+          set('capture', 'running', "stopping the terminal's claude");
+          const killed = await source.stopTerminal(opId);
+          terminalStopped = true;
+          logOf(sourceName(), killed.log);
+        }
+        set('capture', 'skipped', `conversation only: the files stay as they are on ${sourceName()}`);
+      } else {
+        set('capture', 'running');
+        const capture = await source.capture(opId, leavingOut);
+        logOf(sourceName(), capture.log);
+        captured = capture.result.repos;
+        const changed = captured.reduce((total, repo) => total + repo.uncommitted, 0);
+        set('capture', 'running', `${captured.length} repo${captured.length === 1 ? '' : 's'}, ${changed} uncommitted file${changed === 1 ? '' : 's'} pushed`);
+        if (sourceInfo.hooked) {
+          const killed = await source.stopTerminal(opId);
+          terminalStopped = true;
+          logOf(sourceName(), killed.log);
+        }
+        set('capture', 'done');
+        done.push('capture');
       }
-      set('capture', 'done');
-      done.push('capture');
       // 4 · the conversation.
       failedAt = 'transfer';
       set('transfer', 'running');
@@ -500,7 +534,7 @@ export class TakeoverRunner {
       // 5 · the working tree on the target.
       failedAt = 'apply';
       set('apply', 'running');
-      const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), captured });
+      const applied = await target.apply(asIs ? { opId, source: sourceInfo, ...(request.placement ? { placement: request.placement } : {}), captured: [], conversationOnly: true } : { opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), captured });
       logOf(plan.machine.name, applied.log);
       run.stashes = [...(applied.result.stashes ?? [])];
       run.overwrites = [...(applied.result.overwrites ?? [])];
@@ -519,7 +553,7 @@ export class TakeoverRunner {
         };
       }
       const filesNote = run.workspaceFiles ? `; ${run.workspaceFiles.copied.length} workspace file${run.workspaceFiles.copied.length === 1 ? '' : 's'} copied${run.workspaceFiles.conflicts.length > 0 ? `, ${run.workspaceFiles.conflicts.length} skipped (a different file is there)` : ''}` : '';
-      set('apply', 'done', `${applied.result.applied.length} repo${applied.result.applied.length === 1 ? '' : 's'} restored${filesNote}`);
+      set('apply', 'done', asIs ? `conversation only: continues in ${applied.result.place.cwd} as it is` : `${applied.result.applied.length} repo${applied.result.applied.length === 1 ? '' : 's'} restored${filesNote}`);
       done.push('apply');
       const stillThere = applied.result.applied.filter((repo) => !repo.tempDeleted).map((repo) => repo.key);
       // 6 · resume on the target.
@@ -626,6 +660,7 @@ export class TakeoverRunner {
         ...(context.member ? { member: context.member.name, memberId: context.member.id } : {}),
         ...(context.crew ? { crew: context.crew.name, crewId: context.crew.id, crewRun: context.crew.run } : {}),
         ...(request.excludeRepos && request.excludeRepos.length > 0 ? { excluded: request.excludeRepos.length } : {}),
+        ...(request.conversationOnly === true ? { conversationOnly: true } : {}),
       },
       `${MOVE_LOG_PREFIX} start`,
     );

@@ -2390,7 +2390,8 @@ export class TeamService {
     const all = body['members'];
     const own = all !== null && typeof all === 'object' && !Array.isArray(all) ? (all as Record<string, unknown>)[memberId] : undefined;
     const fields = own !== null && typeof own === 'object' && !Array.isArray(own) ? (own as Record<string, unknown>) : {};
-    return { ...fields, targetMachineId: target };
+    // D158: the crew's "Conversation only" applies to every teammate.
+    return { ...fields, ...(body['conversationOnly'] === true ? { conversationOnly: true } : {}), targetMachineId: target };
   }
 
   /**
@@ -2624,11 +2625,11 @@ function crewMoveOf(body: Record<string, unknown>): { readonly id: string; reado
   return typeof id === 'string' && typeof name === 'string' && typeof run === 'string' ? { id: id.slice(0, 64), name: name.slice(0, 200), run: run.slice(0, 64) } : null;
 }
 
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean; conversationOnly?: boolean } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean; conversationOnly?: boolean } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
   // D152: the workspace's own files to copy.
   const files = workspaceChoiceOf(body['workspaceFiles']);
   if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
@@ -2647,6 +2648,8 @@ function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacem
   if (overwrite && overwrite.length > 0) out.overwriteTargets = overwrite;
   // D156: clean up on the source after a successful move.
   if (cleanupSourceOf(body['cleanupSource'])) out.cleanupSource = true;
+  // D158: only the conversation moves (the repos are used as they are on the target).
+  if (body['conversationOnly'] === true) out.conversationOnly = true;
   const paths = body['clonePaths'];
   if (paths !== undefined && paths !== null) {
     if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');

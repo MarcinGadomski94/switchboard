@@ -6,7 +6,8 @@ import { continueRefusal } from '../../hooked-continue/continue.ts';
 import { type ContinueHookedRequest, closeContinueHooked, useContinueHookedRequest } from '../../hooked-continue/store.ts';
 import { closeTakeover, useTakeoverRequest } from '../../takeover/store.ts';
 import { type TakeoverRequest, clonePathsOf } from '../../takeover/takeover.ts';
-import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, overwriteLines, stashLines } from '../../takeover/complete-move.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, overwriteLines, stashLines, withoutConversationOnly } from '../../takeover/complete-move.ts';
+import { ConversationOnlyOption } from './ConversationOnly.tsx';
 import { choiceOfRetry } from '../../takeover/retry.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
 import { MoveStatusHost } from './MoveStatus.tsx';
@@ -146,7 +147,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), ...(choice.overwriteTargets && choice.overwriteTargets.length > 0 ? { overwriteTargets: choice.overwriteTargets } : {}), ...(cleanupSource ? { cleanupSource: true } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), ...(choice.overwriteTargets && choice.overwriteTargets.length > 0 ? { overwriteTargets: choice.overwriteTargets } : {}), ...(cleanupSource ? { cleanupSource: true } : {}), ...(choice.conversationOnly === true ? { conversationOnly: true } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);
@@ -234,6 +235,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
             hint={picked && picked.reason ? picked.reason : undefined}
           />
         ) : null}
+        {!run ? <ConversationOnlyOption sourceName={sourceName} targetName={targetName} checked={choice.conversationOnly === true} disabled={running} onChange={(on) => change(on ? { ...choice, conversationOnly: true } : withoutConversationOnly(choice))} /> : null}
         {other && other.state !== 'online' && !run ? (
           <div className="v2-mv-note" data-tone={other.state === 'offline' ? 'red' : 'amber'} role="status" data-testid="v2-move-offline">
             <Icon name={other.state === 'offline' ? 'offline' : 'refresh'} size="s" />

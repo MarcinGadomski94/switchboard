@@ -233,6 +233,13 @@ export interface SourceInspect {
   readonly skippedWorktrees?: readonly SkippedWorktree[];
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
+  /**
+   * Additive (D158): the ones of {@link blockers} that only stop carrying the files
+   * (a repo that cannot travel, a folder that is no git repository). A
+   * **conversation only** move ignores them. Absent from an older Switchboard
+   * (which then cannot be the source of a conversation-only move).
+   */
+  readonly repoBlockers?: readonly string[];
 }
 
 /** A saved folder of the target (and the repos in it) a source repo can be matched against. */
@@ -318,6 +325,14 @@ export interface TargetPlan {
    * without `runIn`. Absent from an older target, which ignores `runIn`.
    */
   readonly runIn?: { readonly key: string; readonly name: string; readonly path: string | null } | null;
+  /**
+   * D158: the plan is a **conversation only** one (echoed so the initiating machine
+   * can tell an older target, which ignores the flag, and refuse): the repos it
+   * found are used as they are (no checkout, no checks); `leftOut` names the source's
+   * repos this machine has no checkout of that are not needed (a workspace
+   * session's, a repo outside the workspace). Absent without the flag.
+   */
+  readonly conversationOnly?: { readonly leftOut: ReadonlyArray<{ readonly key: string; readonly name: string; readonly reason: string }> };
 }
 
 /**
@@ -580,6 +595,8 @@ export interface TakeoverPreview {
    * target's plan, and are not carried. Absent from an older Switchboard.
    */
   readonly excluded?: readonly string[];
+  /** D158: a **conversation only** preview (the repos are used as they are on the target; the source's work stays there). */
+  readonly conversationOnly?: boolean;
 }
 
 /**
@@ -918,6 +935,17 @@ export interface PlanOptions {
    * worktrees keeps its place next to the checkout (`SourceRepo.worktreeAt`).
    */
   readonly worktreePathOf: (repoPath: string, sessionName: string, repo?: SourceRepo) => string;
+  /**
+   * D158: a **conversation only** move: a repo with a checkout here is used as it is
+   * (no worktree, no checkout of its branch, none of the branch / dirty / diverged
+   * checks); one without is blocked ({@link notHereReason}), never cloned.
+   */
+  readonly conversationOnly?: boolean;
+}
+
+/** D158: why a conversation-only move cannot use `repo` on `machine` (it has no checkout of it). */
+export function notHereReason(machine: string, repo: string): string {
+  return `${machine} has no checkout of ${repo}: add it there first`;
 }
 
 /** The candidates that match `repo` by remote, best first (the one named like the repo, then by path). */
@@ -952,6 +980,12 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
       summary: reason,
       ...extra,
     });
+    if (options.conversationOnly === true) {
+      // D158: the checkout here as it is; nothing is checked out, cloned or compared.
+      const found = repo.remoteKey === '' ? undefined : matchingCandidates(repo, candidates)[0];
+      if (!found) return blocked(notHereReason(options.machineName ?? 'the target', repo.name));
+      return { ...base, action: 'use', matchedPath: found.path, folderId: found.folderId, worktreePath: null, cloneTo: null, cloneUrl: null, reason: null, summary: `Use ${found.path} as it is (conversation only: nothing is checked out)` };
+    }
     if (repo.remoteKey === '') return blocked(`${repo.name} has no remote: its work can only travel through a shared remote`);
     if (!isSafeBranchName(repo.branch)) return blocked(`${repo.name}: the branch name ${JSON.stringify(repo.branch)} is not one this machine will pass to git`);
     if (!isSafeRepoKey(repo.key)) return blocked(`${repo.name}: the repo key ${JSON.stringify(repo.key)} is not valid`);
@@ -1281,15 +1315,45 @@ export interface PathChange {
  * session moved from and to, the paths that changed, and that the working tree
  * is as it was.
  */
-export function takeoverMessage(input: { readonly fromMachine: string; readonly toMachine: string; readonly changes: readonly PathChange[]; readonly restored: boolean }): string {
+export function takeoverMessage(input: { readonly fromMachine: string; readonly toMachine: string; readonly changes: readonly PathChange[]; readonly restored: boolean; readonly conversationOnly?: boolean }): string {
   const paths =
     input.changes.length === 0
       ? 'none'
       : input.changes.map((change) => `${change.from} → ${change.to}${input.changes.length > 1 ? ` (${change.name})` : ''}`).join('; ');
-  return [
-    `This session moved from ${input.fromMachine} to ${input.toMachine}. Paths changed: ${paths}.`,
-    input.restored ? 'The working tree was restored as it was.' : 'The working tree was not restored.',
-  ].join(' ');
+  // D158: only the conversation moved; the files are what the target has checked out.
+  const tree = input.conversationOnly
+    ? `Only the conversation moved: the files here are as they were on ${input.toMachine} (its checked-out branches, e.g. master); work left uncommitted or unpushed on ${input.fromMachine} stayed there. Check the branch and state of each repo before you change anything.`
+    : input.restored
+      ? 'The working tree was restored as it was.'
+      : 'The working tree was not restored.';
+  return [`This session moved from ${input.fromMachine} to ${input.toMachine}. Paths changed: ${paths}.`, tree].join(' ');
+}
+
+/**
+ * D158: what a **conversation only** move leaves on the source: each repo with
+ * uncommitted files or commits not on its upstream (they are not carried; nothing
+ * is deleted). For the dialog's "stays on <this computer>" list.
+ */
+export function staysOnSource(source: Pick<SourceInspect, 'repos' | 'skippedWorktrees'>): Array<{ readonly name: string; readonly path: string; readonly uncommitted: number; readonly unpushed: number }> {
+  const out = source.repos.filter((repo) => repo.dirty.total > 0 || (repo.ahead ?? 0) > 0).map((repo) => ({ name: repo.name, path: repo.path, uncommitted: repo.dirty.total, unpushed: repo.ahead ?? 0 }));
+  for (const entry of source.skippedWorktrees ?? []) if (entry.uncommitted > 0 && !out.some((repo) => repo.path === entry.path)) out.push({ name: entry.name, path: entry.path, uncommitted: entry.uncommitted, unpushed: 0 });
+  return out;
+}
+
+/**
+ * D158: the source's blockers for a **conversation only** move: its
+ * {@link SourceInspect.repoBlockers} do not count. An older source (no
+ * `repoBlockers`) cannot tell them apart: refused with a note to update it.
+ */
+export function conversationOnlyBlockers(source: Pick<SourceInspect, 'blockers' | 'repoBlockers' | 'machine'>): string[] {
+  if (source.repoBlockers === undefined) return [`${source.machine.name} runs an older Switchboard that cannot move only the conversation: update Switchboard there`];
+  const repoOnly = new Set(source.repoBlockers);
+  return source.blockers.filter((blocker) => !repoOnly.has(blocker));
+}
+
+/** D158: the blocker when the target's plan did not honour a conversation-only move (an older Switchboard ignores the flag); `null` when fine. */
+export function conversationOnlyProblem(plan: Pick<TargetPlan, 'conversationOnly' | 'machine'>): string | null {
+  return plan.conversationOnly === undefined ? `${plan.machine.name} runs an older Switchboard that cannot move only the conversation: update Switchboard there` : null;
 }
 
 /** The chat divider on the new session. */

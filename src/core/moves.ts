@@ -33,6 +33,8 @@ export interface MoveChoices {
   readonly overwriteTargets?: readonly string[];
   /** D156: clean up on the source after a successful move (absent = no). */
   readonly cleanupSource?: boolean;
+  /** D158: only the conversation moved (absent = the full move). */
+  readonly conversationOnly?: boolean;
 }
 
 /** One machine of a move, and the agent's session there (raw, as that machine knows it). */
@@ -306,7 +308,7 @@ export function moveRetry(move: Pick<MoveRecord, 'kind' | 'source' | 'target' | 
 }
 
 /** The choices of a take-over request (what a record keeps for Try again). */
-export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly cleanupSource?: boolean }): MoveChoices {
+export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly cleanupSource?: boolean; readonly conversationOnly?: boolean }): MoveChoices {
   return {
     placement: request.placement ?? null,
     clonePaths: { ...(request.clonePaths ?? {}) },
@@ -315,5 +317,6 @@ export function choicesOf(request: { readonly placement?: TargetPlacement; reado
     stashTargets: [...(request.stashTargets ?? [])],
     ...(request.overwriteTargets && request.overwriteTargets.length > 0 ? { overwriteTargets: [...request.overwriteTargets] } : {}),
     ...(request.cleanupSource === true ? { cleanupSource: true } : {}),
+    ...(request.conversationOnly === true ? { conversationOnly: true } : {}),
   };
 }

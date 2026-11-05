@@ -53,6 +53,7 @@ function clonePathsOf(value: unknown): Record<string, string> | undefined | null
  * Local only (the UI; a peer never starts a take-over through us):
  * - `POST /api/takeover/preview` `{ sessionId, targetMachine?, clonePaths? }` → `TakeoverPreview`.
  * - `POST /api/takeover` `{ sessionId, targetMachine?, clonePaths?, confirmStopTerminal? }` → 202 `TakeoverRun` (poll it).
+ * - D158: both also take `conversationOnly: true` (only the conversation moves; the repos are used as they are on the target).
  * - `GET /api/takeover/runs/{id}` → `TakeoverRun`.
  * - D110 `POST /api/takeover/folders` `{ machine?, path? }` → `TargetDirListing` (the target's folder picker; `machine` absent = this one).
  * `preview` and the start also take `placement` (`TargetPlacement`: the chosen target folders).
@@ -87,7 +88,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     const overwriteTargets = overwriteTargetsOf(body['overwriteTargets']);
     if (overwriteTargets === null) return invalid(reply, 'overwriteTargets', 'overwriteTargets must be a list of checkout paths on the target');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(cleanupSourceOf(body['cleanupSource']) ? { cleanupSource: true } : {}), ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    // D158: `conversationOnly: true` moves only the conversation (the repos are used as they are on the target).
+    return { sessionId, targetMachine, ...(body['conversationOnly'] === true ? { conversationOnly: true } : {}), ...(cleanupSourceOf(body['cleanupSource']) ? { cleanupSource: true } : {}), ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -221,7 +223,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     // D157: and the checkouts whose diverged branch the developer confirmed overwriting.
     const overwriteTargets = overwriteTargetsOf(body['overwriteTargets']);
     if (overwriteTargets === null) throw new TakeoverError(422, 'invalid', 'overwriteTargets must be a list of checkout paths');
-    return { ...(placement ? { placement } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}) };
+    // D158: a conversation-only move (the plan echoes it; the apply restores nothing).
+    return { ...(placement ? { placement } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}), ...(body['conversationOnly'] === true ? { conversationOnly: true } : {}) };
   };
   op('target/plan', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);

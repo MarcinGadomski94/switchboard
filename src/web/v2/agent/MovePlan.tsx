@@ -34,6 +34,7 @@ import {
   worksInLine,
 } from '../../takeover/complete-move.ts';
 import { type RepoRow, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
+import { conversationOnlyView } from '../../takeover/conversation-only.ts';
 import { Button, Checkbox, Chip, Field, Icon, Segmented, Select } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
 import { repoActionWord, repoLook } from './move-model.ts';
@@ -85,6 +86,8 @@ export function MovePlanPanel({
   const ws = workspaceView(preview, choice.placement);
   const placement = choice.placement;
   const setPlacement = (next: TargetPlacement | null): void => onChange({ ...choice, placement: next });
+  // D158: only the conversation moves: no repo choices, just where it continues and what stays on the source.
+  if (choice.conversationOnly === true) return <ConversationOnlyPlan preview={preview} machine={machine} sourceName={sourceName} targetName={targetName} placement={placement} onPlacement={setPlacement} testId={testId} />;
   // D152 follow-up: the repos outside the workspace root have their own section (and no row in the list below).
   const outside = ws.show ? outsideRows(preview, choice) : [];
   const outsideKeys = new Set(outside.map((row) => row.key));
@@ -127,6 +130,57 @@ export function MovePlanPanel({
           ))}
       </div>
       {runIn === null && preview.source.workspaceFiles && preview.source.workspaceFiles.files.length > 0 ? <FilesSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
+    </div>
+  );
+}
+
+/**
+ * D158: the plan of a **conversation only** move: the folders on the target (D110's
+ * picker, for a workspace or checkout that is not saved there), where the agent
+ * continues, the checkouts it uses as they are, the repos left out there, and the
+ * work that stays on the source (uncommitted / unpushed, never deleted).
+ */
+function ConversationOnlyPlan({ preview, machine, sourceName, targetName, placement, onPlacement, testId }: { readonly preview: TakeoverPreview; readonly machine: string | null; readonly sourceName: string; readonly targetName: string; readonly placement: TargetPlacement | null; readonly onPlacement: (next: TargetPlacement | null) => void; readonly testId: string }) {
+  const view = conversationOnlyView(preview);
+  return (
+    <div className="v2-mp" data-testid={testId} data-mode="conversation-only">
+      <FolderPicker machine={machine} machineName={targetName} placement={placement} remembered={preview.remembered} onChange={onPlacement} />
+      <p className="v2-mp-works" data-testid="v2-move-continues-in">
+        <Icon name="folder" size="s" />
+        <span>
+          <b>Continues in:</b> {view.where ?? `not decided yet (choose the folder on ${targetName})`}
+        </span>
+      </p>
+      {view.used.length > 0 ? (
+        <ul className="v2-mv-cleanup-list" data-testid="v2-move-as-is">
+          {view.used.map((repo) => (
+            <li key={repo.key} data-testid="v2-move-as-is-item">
+              {repo.name}: <code>{repo.path}</code> <span className="v2-muted">as it is</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {view.leftOut.length > 0 ? (
+        <ul className="v2-mv-cleanup-list" data-testid="v2-move-not-there">
+          {view.leftOut.map((repo) => (
+            <li key={repo.key} className="v2-muted" data-testid="v2-move-not-there-item">
+              {repo.reason}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {view.stays.length > 0 ? (
+        <div className="v2-mv-warn" data-testid="v2-move-stays">
+          <p>Stays on {sourceName} (not carried, nothing is deleted):</p>
+          <ul className="v2-mv-cleanup-list">
+            {view.stays.map((entry) => (
+              <li key={entry.path} data-testid="v2-move-stays-item">
+                {entry.line} <span className="v2-muted">({entry.path})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

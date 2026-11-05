@@ -18,5 +18,6 @@ export function choiceOfRetry(choices: MoveChoices): MoveChoice {
     ...(choices.excludeRepos.length > 0 ? { excludeRepos: [...choices.excludeRepos] } : {}),
     ...(choices.stashTargets.length > 0 ? { stashTargets: [...choices.stashTargets] } : {}),
     ...(choices.overwriteTargets && choices.overwriteTargets.length > 0 ? { overwriteTargets: [...choices.overwriteTargets] } : {}),
+    ...(choices.conversationOnly === true ? { conversationOnly: true } : {}),
   };
 }

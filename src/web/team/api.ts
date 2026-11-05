@@ -81,6 +81,8 @@ export interface MoveTarget {
   readonly overwriteTargets?: readonly string[];
   /** D156: clean up on the source after a successful move. */
   readonly cleanupSource?: boolean;
+  /** D158: move only the conversation (the repos are used as they are on the target). */
+  readonly conversationOnly?: boolean;
 }
 
 /** `POST /api/team/charters/ask` (D105). */
@@ -116,8 +118,9 @@ export const teamApi = {
   move: (id: string, targetMachineId: string, choice: MoveTarget = {}) => call<TeamMoveRun>('POST', `/api/team/members/${enc(id)}/move`, { targetMachineId, ...choice }),
   moveRun: (runId: string) => call<TeamMoveRun>('GET', `/api/team/moves/${enc(runId)}`),
   // D152: move a whole crew (every teammate checked first, then one by one).
-  crewMoveCheck: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}) => call<CrewMoveCheck>('POST', `/api/team/teams/${enc(teamId)}/move/check`, { targetMachineId, members }),
-  crewMove: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}) => call<CrewMoveRun>('POST', `/api/team/teams/${enc(teamId)}/move`, { targetMachineId, members }),
+  // D158: `conversationOnly` applies to every teammate.
+  crewMoveCheck: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}, conversationOnly = false) => call<CrewMoveCheck>('POST', `/api/team/teams/${enc(teamId)}/move/check`, { targetMachineId, members, ...(conversationOnly ? { conversationOnly: true } : {}) }),
+  crewMove: (teamId: string, targetMachineId: string, members: Readonly<Record<string, MoveTarget>> = {}, conversationOnly = false) => call<CrewMoveRun>('POST', `/api/team/teams/${enc(teamId)}/move`, { targetMachineId, members, ...(conversationOnly ? { conversationOnly: true } : {}) }),
   crewMoveRun: (runId: string) => call<CrewMoveRun>('GET', `/api/team/crew-moves/${enc(runId)}`),
   handoff: (to: string, brief: string, expected: string) => call<TeamHandoff>('POST', '/api/team/handoffs', { to, brief, expected }),
   decide: (requestId: string, decision: 'approve' | 'decline' | 'dismiss', body?: { readonly charter?: TeamCharter }) => call<TeamRequest>('POST', `/api/team/requests/${enc(requestId)}/${decision}`, body),

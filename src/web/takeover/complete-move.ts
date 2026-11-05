@@ -47,14 +47,20 @@ export interface MoveChoice {
    * empty = none (a diverged branch blocks).
    */
   readonly overwriteTargets?: readonly string[];
+  /**
+   * D158: move only the conversation: the repos are used as they are on the target
+   * (no capture, no checkout, no checks; the source's work stays there). Absent = the full move.
+   */
+  readonly conversationOnly?: boolean;
 }
 
 /** An empty choice (the remembered folders, if any, come with the first preview). */
 export const EMPTY_CHOICE: MoveChoice = { placement: null, clonePaths: {}, files: null };
 
 /** The request fields of a choice (`placement` left out while it is `null` and `keepNull` is off: the remembered folders apply). */
-export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[] } {
+export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; conversationOnly?: boolean } {
   return {
+    ...(choice.conversationOnly === true ? { conversationOnly: true } : {}),
     ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: [...choice.stashTargets] } : {}),
     ...(choice.overwriteTargets && choice.overwriteTargets.length > 0 ? { overwriteTargets: [...choice.overwriteTargets] } : {}),
     ...(choice.placement !== null ? { placement: choice.placement } : keepNull ? { placement: null } : {}),
@@ -62,6 +68,12 @@ export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: 
     ...(choice.files ? { workspaceFiles: choice.files } : {}),
     ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: [...choice.excludeRepos] } : {}),
   };
+}
+
+/** D158: the choice back to a full move (the conversation-only tick cleared). */
+export function withoutConversationOnly(choice: MoveChoice): MoveChoice {
+  const { conversationOnly: _old, ...rest } = choice;
+  return rest;
 }
 
 /** D152 follow-up 2026-11-05: the choice with the repo at source `path` carried (`on`) or left out. */

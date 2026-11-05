@@ -37,6 +37,7 @@ import {
   normalizeRemoteUrl,
   movedToLabel,
   noWorkspaceBlocker,
+  notHereReason,
   runInRepoOf,
   planBlockers,
   planRepos,
@@ -189,6 +190,8 @@ interface TargetOp {
   stashes: MoveStash[];
   /** D157: the branches this op overwrote (their backup branches are kept; the undo moves each branch back). */
   overwrites: MoveOverwrite[];
+  /** D158: a conversation-only apply: the session's extra folders (the repos it uses here as they are, besides its own). */
+  conversationOnly?: { readonly extraDirs: readonly string[] };
 }
 
 /** One transferred chunk. */
@@ -213,6 +216,8 @@ export interface TargetBody {
   readonly stashTargets?: readonly string[];
   /** D157: the target checkouts whose diverged branch the developer confirmed overwriting ("Overwrite them on <PC> (keep a backup branch)"). */
   readonly overwriteTargets?: readonly string[];
+  /** D158: move only the conversation: the repos here are used as they are (no restore, no checks, no workspace files). */
+  readonly conversationOnly?: boolean;
 }
 
 /** The target's resume request. */
@@ -446,8 +451,8 @@ export class TakeoverService {
    * (the run's checks) it is logged as the run's `plan` step; the preview and the
    * apply's own re-check are not.
    */
-  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
-    return this.#moveLog.step(moveLogRunId(body.opId), 'plan', 'target', () => this.#plan(body), { from: body.source.machine.name }, (answer) => ({
+  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets' | 'conversationOnly'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+    return this.#moveLog.step(moveLogRunId(body.opId), 'plan', 'target', () => this.#plan(body), { from: body.source.machine.name, ...(body.conversationOnly === true ? { conversationOnly: true } : {}) }, (answer) => ({
       repos: answer.result.repos.map((repo) => `${repo.name}:${repo.action}`),
       blockers: answer.result.blockers.length,
       ...(answer.result.blockers.length > 0 ? { reason: moveLogReason(answer.result.blockers.join('; ')) } : {}),
@@ -558,6 +563,12 @@ export class TakeoverService {
     if (!record) throw new TakeoverError(404, 'not-found', `no session ${sessionId}`);
     const self = await this.#self();
     const blockers: string[] = [];
+    // D158: the blockers that only stop carrying the files (a conversation-only move ignores them); each is in `blockers` too.
+    const repoBlockers: string[] = [];
+    const repoBlocker = (message: string): void => {
+      blockers.push(message);
+      repoBlockers.push(message);
+    };
     const display = record.title ?? record.name;
     if (record.closedAt !== null) blockers.push(`${display} is closed: reopen it first`);
     // D106: a chat lives in this machine's scratch folder.
@@ -603,7 +614,7 @@ export class TakeoverService {
       // D152 follow-up: so is a repo outside the workspace (it is shown under "Outside the workspace" with the reason).
       if ('blocker' in answer) {
         if (found && (found.source === 'read' || found.source === 'commands' || (workspaceRootReal !== null && isOutsideRoot(workspaceRootReal, await realpath(input.dir).catch(() => input.dir))))) leftOut.push({ name: input.name, path: input.dir, reason: answer.blocker });
-        else blockers.push(answer.blocker);
+        else repoBlocker(answer.blocker);
       } else {
         const repo: SourceRepo = { ...answer.repo, ...(worktreeAt !== null && isSafeWorktreeLayout(worktreeAt) ? { worktreeAt } : {}) };
         repos.push(found ? { ...repo, found: found.source, evidence: found.evidence } : repo);
@@ -627,12 +638,12 @@ export class TakeoverService {
           const message = `${solution}: ${error instanceof Error ? error.message : String(error)}`;
           // A named solution that is no repo of the workspace may be a repo outside it the history finds (decided below).
           if ((error as { code?: unknown }).code === 'solution-not-found') unresolved.push({ solution, message });
-          else blockers.push(message);
+          else repoBlocker(message);
         }
       }
     } else if (record.cwd) {
       const top = (await git.try(record.cwd, ['rev-parse', '--show-toplevel'])).out;
-      if (top === '') blockers.push(`${record.cwd} is not in a git repository: there is nothing to carry the files through`);
+      if (top === '') repoBlocker(`${record.cwd} is not in a git repository: there is nothing to carry the files through`);
       else {
         const dir = await realpath(top).catch(() => top);
         const main = await git.mainCheckout(dir);
@@ -680,7 +691,7 @@ export class TakeoverService {
         log.push(`"${entry.solution}" is not a repo of the workspace: it is the repo found in the history`);
         continue;
       }
-      blockers.push(entry.message);
+      repoBlocker(entry.message);
     }
     // D152 follow-up (`docs/peers.md` → *Repos outside the workspace*): a workspace session's repos outside its root are marked, with their default.
     if (record.rootKind === 'workspace' && record.root) {
@@ -702,7 +713,7 @@ export class TakeoverService {
       }
     }
     if (repos.length === 0 && blockers.length === 0) {
-      blockers.push(
+      repoBlocker(
         skippedWorktrees.length > 0
           ? `${display} works only in worktrees the move does not carry (${skippedWorktrees.map((entry) => `${path.basename(entry.path)}: ${entry.text}`).join('; ')}): there is nothing to carry the files through`
           : `${display} works in no git repository: there is nothing to carry the files through`,
@@ -769,6 +780,7 @@ export class TakeoverService {
         leftOut,
         skippedWorktrees,
         blockers,
+        repoBlockers,
       },
       log,
     };
@@ -1343,10 +1355,12 @@ export class TakeoverService {
    * the verification table the dialog shows; the apply then uses exactly these
    * paths.
    */
-  async #plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async #plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets' | 'conversationOnly'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     const log: string[] = [];
     const git = this.#git(log);
     const source = body.source;
+    // D158: only the conversation moves: the repos here are used as they are (no checks, no clone, no checkout).
+    const conversationOnly = body.conversationOnly === true;
     // D110: matched by this machine's normalisation of the URL (an older source's key may differ in case).
     const sourceRepos: SourceRepo[] = source.repos.map((repo) => ({ ...repo, remoteKey: remoteKeyOf(repo) }));
     const placement = body.placement ?? null;
@@ -1358,7 +1372,9 @@ export class TakeoverService {
     if (placement?.runIn && runInRepo === null) blockers.push(`the repo to run in on ${self.name} (${placement.runIn.repo}) is not one of the repos this move carries: carry it, or choose another place in "Where it runs on ${self.name}"`);
     const runsInRepo = placement?.runIn !== undefined;
     // D152: the workspace root the developer asked to create here: checked (read-only) before anything else.
-    const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace && !runsInRepo ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
+    // D158: a conversation-only move uses the folders that are here already (a new root would hold none of the files).
+    if (conversationOnly && placement?.newWorkspace && !runsInRepo) blockers.push(`a conversation-only move uses a workspace that is on ${self.name} already: in "Workspace on ${self.name}" choose "A folder that is there"`);
+    const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace && !runsInRepo && !conversationOnly ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
     if (workspaceRoot && !workspaceRoot.ok && workspaceRoot.reason) blockers.push(workspaceRoot.reason);
     // D152 follow-up: a placement that only says which outside repos are carried chooses no folders (the saved folders apply, as without one).
     const choosesFolders = placement !== null && !(placement.roots.length === 0 && !placement.repoPaths && !placement.repoModes && !placement.newWorkspace);
@@ -1397,7 +1413,8 @@ export class TakeoverService {
     const matches = located ? located.matches : sourceRepos.map((repo) => matchingCandidates(repo, candidates)[0] ?? null);
     // A workspace session clones into the workspace's own layout.
     let workspace: TargetCandidate | null = null;
-    if (source.folder?.kind === 'workspace' && !source.hooked && !runsInRepo) {
+    // D158: a conversation-only move of a terminal agent (hooked) in a workspace continues in that workspace here too.
+    if (source.folder?.kind === 'workspace' && (!source.hooked || conversationOnly) && !runsInRepo) {
       if (located) {
         if (located.workspace) workspace = { path: located.workspace.path, folderId: located.workspace.folderId, folderKind: 'workspace', folderPath: located.workspace.path, name: path.basename(located.workspace.path), remoteKey: null, remoteName: null };
         else blockers.push(noWorkspaceBlocker(self.name));
@@ -1419,7 +1436,8 @@ export class TakeoverService {
         }
       }
     }
-    for (let index = 0; index < sourceRepos.length; index++) {
+    // D158: a conversation-only move reads none of these facts (nothing is checked out, compared or cloned).
+    for (let index = 0; !conversationOnly && index < sourceRepos.length; index++) {
       const repo = sourceRepos[index] as SourceRepo;
       const match = matches[index];
       if (match) {
@@ -1463,6 +1481,7 @@ export class TakeoverService {
       machineName: self.name,
       worktreeBlockers,
       worktreePathOf: worktreeOf,
+      ...(conversationOnly ? { conversationOnly: true } : {}),
     });
     // D110: several checkouts of one repo under the chosen folders and no pick: the developer chooses (never a guess).
     if (located) {
@@ -1473,8 +1492,22 @@ export class TakeoverService {
         return { ...resolution, action: 'blocked', matchedPath: null, folderId: null, worktreePath: null, cloneTo: null, cloneUrl: null, reason, summary: reason };
       });
     }
+    // D158: a repo this machine has no checkout of is left out when the session does not need it here (a workspace session's
+    // repos, a repo outside the workspace); a repo session's own repo, or the one it runs in, must be here.
+    const notHere: Array<{ readonly key: string; readonly name: string; readonly reason: string }> = [];
+    if (conversationOnly) {
+      const workspaceRun = source.folder?.kind === 'workspace' && !runsInRepo;
+      repos = repos.filter((resolution) => {
+        const repo = sourceRepos.find((entry) => entry.key === resolution.key);
+        const needed = runInRepo ? runInRepo.key === resolution.key : !workspaceRun && repo?.outside !== true;
+        if (resolution.action !== 'blocked' || resolution.matchedPath !== null || needed) return true;
+        notHere.push({ key: resolution.key, name: resolution.name, reason: resolution.reason ?? notHereReason(self.name, resolution.name) });
+        return false;
+      });
+    }
     // The remotes: this service must be able to read each one it will fetch from or clone (a key the terminal can use may not be usable here).
-    repos = await this.#checkRemotes(repos, sourceRepos, self.name, git);
+    // D158: a conversation-only move fetches and clones nothing.
+    if (!conversationOnly) repos = await this.#checkRemotes(repos, sourceRepos, self.name, git);
     blockers.push(...planBlockers(repos));
     // The CLI and the account.
     const refusal = await this.#clis.refusal(source.provider).catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
@@ -1508,7 +1541,8 @@ export class TakeoverService {
         blockers.push('this session works in several repos outside a workspace folder: it cannot be placed on this machine');
       } else if (repos[0] && repos[0].action !== 'blocked') {
         const first = repos[0];
-        const match = matches[0];
+        // By key: a conversation-only plan (D158) may have left repos out of `repos`.
+        const match = matches[sourceRepos.findIndex((entry) => entry.key === first.key)];
         folder = match ? { id: match.folderId, path: match.folderPath, kind: match.folderKind } : { id: null, path: first.cloneTo as string, kind: 'repo' };
         cwd = first.worktreePath ?? first.matchedPath ?? first.cloneTo;
       }
@@ -1517,8 +1551,9 @@ export class TakeoverService {
       ? {
           roots: located.roots,
           problems: located.problems,
-          repos: repos.map((resolution, index): RepoCheck => {
-            const found = located.perRepo[index] as (typeof located.perRepo)[number];
+          repos: repos.map((resolution): RepoCheck => {
+            // By key: a conversation-only plan (D158) may have left repos out of `repos`.
+            const found = located.perRepo[sourceRepos.findIndex((entry) => entry.key === resolution.key)] as (typeof located.perRepo)[number];
             const pick = found.matches.find((entry) => entry.path === found.path) ?? null;
             const differences: string[] = [];
             if (pick && pick.branch !== resolution.branch) differences.push(`on ${pick.branch ?? 'a detached HEAD'}, not ${resolution.branch}`);
@@ -1541,7 +1576,8 @@ export class TakeoverService {
       : null;
     // D152: what is at each of the workspace's own files' paths under the workspace root here.
     let workspaceFiles: WorkspaceFileTarget[] | null = null;
-    if (source.workspaceFiles && source.workspaceFiles.files.length > 0 && workspace) {
+    // D158: a conversation-only move copies none of them.
+    if (source.workspaceFiles && source.workspaceFiles.files.length > 0 && workspace && !conversationOnly) {
       const root = workspaceRoot && !workspaceRoot.exists ? null : workspace.folderPath;
       workspaceFiles = await workspaceFileStates(root, source.workspaceFiles.files);
     }
@@ -1561,6 +1597,7 @@ export class TakeoverService {
         workspaceRoot,
         workspaceFiles,
         runIn: runInRepo ? { key: runInRepo.key, name: runInRepo.name, path: cwd } : null,
+        ...(conversationOnly ? { conversationOnly: { leftOut: notHere } } : {}),
       },
       log,
     };
@@ -1751,11 +1788,14 @@ export class TakeoverService {
   async #apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
     const log: string[] = [];
     const git = this.#git(log);
-    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}), ...(body.overwriteTargets ? { overwriteTargets: body.overwriteTargets } : {}) })).result;
+    const conversationOnly = body.conversationOnly === true;
+    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}), ...(body.overwriteTargets ? { overwriteTargets: body.overwriteTargets } : {}), ...(conversationOnly ? { conversationOnly: true } : {}) })).result;
     if (planned.blockers.length > 0 || planned.folder === null || planned.cwd === null) throw new TakeoverError(409, 'blocked', planned.blockers.join('; ') || 'the session cannot be placed on this machine');
     const op = this.#target(body.opId);
     const changes: PathChange[] = [];
     let folderRef: FolderRef | null = null;
+    // D158: only the conversation moves: nothing in any repo here is touched; the session gets the checkouts as they are.
+    if (conversationOnly) return this.#placeAsIs(body, planned, op, log);
     // D152: the workspace root the developer picked is created first (its folders are undone if the move fails).
     if (planned.workspaceRoot && !planned.workspaceRoot.exists) {
       op.createdDirs.push(...(await mkdirTracked(planned.workspaceRoot.path)));
@@ -1935,6 +1975,57 @@ export class TakeoverService {
   }
 
   /**
+   * D158 (`docs/peers.md` → *Conversation only (D158)*): the apply of a conversation-only
+   * move. No git command runs and no file is written in any repo: the session is placed
+   * in the workspace / checkout the plan found here, as it is. A chosen folder that is
+   * not saved here yet is saved (the undo removes it). The repos it uses besides its own
+   * folder (a repo outside the workspace, the others of a session that runs in one repo)
+   * become its extra folders.
+   */
+  async #placeAsIs(body: TargetBody, planned: TargetPlan, op: TargetOp, log: string[]): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
+    const folder = planned.folder as NonNullable<TargetPlan['folder']>;
+    const cwd = planned.cwd as string;
+    const used = planned.repos.filter((resolution) => resolution.action === 'use' && resolution.matchedPath !== null);
+    const changes: PathChange[] = [];
+    for (const resolution of used) {
+      const repo = body.source.repos.find((entry) => entry.key === resolution.key);
+      if (repo) changes.push({ name: resolution.name, from: repo.path, to: resolution.matchedPath as string });
+    }
+    const runInKey = planned.runIn?.key ?? null;
+    let folderRef: FolderRef;
+    if (folder.kind === 'workspace') {
+      if (folder.id === null) {
+        const added = await this.#folders.add(folder.path);
+        if (added.created) op.addedFolderId = added.folder.id;
+        folderRef = { id: added.folder.id, path: folder.path, root: folder.path, kind: 'workspace' };
+      } else {
+        folderRef = { id: folder.id, path: folder.path, root: folder.path, kind: 'workspace' };
+      }
+    } else {
+      const saved = await this.#store.folders.getByCanonicalPath(folder.path);
+      if (saved) folderRef = folderRefOf(saved);
+      else {
+        const added = await this.#folders.add(folder.path);
+        if (added.created) op.addedFolderId = added.folder.id;
+        folderRef = folderRefOf(added.folder);
+      }
+    }
+    const extraDirs: string[] = [];
+    for (const resolution of used) {
+      const repo = body.source.repos.find((entry) => entry.key === resolution.key);
+      if (runInKey !== null ? resolution.key === runInKey : repo?.outside !== true) continue;
+      const dir = resolution.matchedPath as string;
+      const real = await realpath(dir).catch(() => dir);
+      if (!extraDirs.includes(real)) extraDirs.push(real);
+    }
+    log.push(`conversation only: the session continues in ${cwd} as it is (nothing in any repo was changed)`);
+    op.place = { folder: folderRef, cwd, changes };
+    op.runInKey = runInKey;
+    op.conversationOnly = { extraDirs };
+    return { result: { place: { cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [], workspaceFiles: null, stashes: [], overwrites: [] }, log };
+  }
+
+  /**
    * Undo of {@link apply} (and of an installed conversation) on the target after a
    * failure, newest first: worktrees made are removed (they hold only the restored
    * work), a main checkout is put back on what it had checked out before (its tree
@@ -2076,7 +2167,7 @@ export class TakeoverService {
       }
     }
     // The first message.
-    const parts = [takeoverMessage({ fromMachine: source.machine.name, toMachine: self.name, changes: place.changes, restored: true })];
+    const parts = [takeoverMessage({ fromMachine: source.machine.name, toMachine: self.name, changes: place.changes, restored: op.conversationOnly === undefined, ...(op.conversationOnly ? { conversationOnly: true } : {}) })];
     if (handoverPath) {
       parts.push(
         `${CLI_LABELS[source.provider]}'s own record of the conversation could not be carried over, so Switchboard exported the chat: read ${handoverPath} first, summarize where things stand (the goal, decisions made, files changed, open tasks, the next step), then continue.`,
@@ -2093,7 +2184,8 @@ export class TakeoverService {
     let name = source.name;
     for (let n = 2; await this.#store.sessions.getByName(name); n++) name = `${source.name}-${n}`;
     // D152 follow-up: the repos outside the workspace this move restored are the session's extra folders (Claude Code's `--add-dir`, every spawn).
-    const extraDirs: string[] = [];
+    // D158: a conversation-only apply worked them out from the checkouts it uses as they are.
+    const extraDirs: string[] = [...(op.conversationOnly?.extraDirs ?? [])];
     // D152 follow-up (*Where it runs*): a session running in one carried repo gets every other carried repo as an extra folder.
     const runInKey = op.runInKey ?? null;
     for (const applied of op.applied) {
