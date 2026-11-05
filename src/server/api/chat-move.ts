@@ -60,8 +60,11 @@ export async function registerChatMoveRoutes(app: FastifyInstance, context: ApiC
     takeover: context.takeover,
     todos: context.todos,
     self: () => context.peers.self(),
+    log: app.log,
   });
-  const runner = new ChatMoveRunner({ chats: service, takeover: context.takeover, peers: context.peers, store: context.store });
+  const runner = new ChatMoveRunner({ chats: service, takeover: context.takeover, peers: context.peers, store: context.store, log: app.log });
+  // D154: chat moves are listed with the other moves (badges, Home, a failed move's Needs-you item).
+  context.moves.follow(runner);
 
   const localOnly = (request: FastifyRequest, reply: FastifyReply): FastifyReply | null =>
     isPeerRequest(request) ? reply.code(403).send({ error: 'peer-forbidden', message: 'a chat move is started from the computer whose screen you are on' }) : null;
@@ -143,11 +146,11 @@ export async function registerChatMoveRoutes(app: FastifyInstance, context: ApiC
     return part;
   };
 
-  op('source/inspect', (body) => service.inspect(need(body, 'chatId')));
+  op('source/inspect', (body) => service.inspect(need(body, 'chatId'), text(body['opId']) ?? undefined));
   op('source/data', (body) => service.data(need(body, 'opId'), need(body, 'chatId')));
   op('source/data-chunk', (body) => service.readData(need(body, 'opId'), partOf(body), need(body, 'name'), typeof body['offset'] === 'number' ? body['offset'] : -1));
   op('source/release', async (body) => service.release(need(body, 'opId')));
-  op('target/plan', (body) => service.plan({ source: objectOf(body, 'source') as never, lookAt: lookAtIn(body) }));
+  op('target/plan', (body) => service.plan({ source: objectOf(body, 'source') as never, lookAt: lookAtIn(body), ...(text(body['opId']) ? { opId: text(body['opId']) as string } : {}) }));
   op('target/data-chunk', (body) =>
     service.receiveData({
       opId: need(body, 'opId'),

@@ -17,7 +17,10 @@ import {
   effectiveLookAt,
 } from '../../core/chat-move.ts';
 import { parseRemoteId, remoteId } from '../../core/peers.ts';
-import type { ConversationFile, TakeoverStepState } from '../../core/takeover.ts';
+import type { ConversationFile, TakeoverRun, TakeoverStepState } from '../../core/takeover.ts';
+import { MOVE_LOG_PREFIX, moveLogReason, moveOutcomeMessage } from '../../core/move-log.ts';
+import { type MoveLogSink, SILENT_MOVE_LOG } from '../takeover/move-log.ts';
+import type { TakeoverRunListener, TakeoverRunMeta } from '../takeover/runner.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { PeerService } from '../peers/service.ts';
@@ -38,7 +41,7 @@ import type { ChatMoveService } from './move-service.ts';
 /** One end's operations. */
 interface ChatEndpoint {
   readonly machineId: string | null;
-  inspect(chatId: string): Promise<OpAnswer<ChatMoveInspect>>;
+  inspect(chatId: string, opId?: string): Promise<OpAnswer<ChatMoveInspect>>;
   stop(opId: string, chatId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>>;
   files(opId: string): Promise<OpAnswer<{ readonly kind: string; readonly files: readonly ConversationFile[] }>>;
   readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer>;
@@ -47,7 +50,7 @@ interface ChatEndpoint {
   release(opId: string): Promise<unknown>;
   finish(opId: string, move: SessionMove): Promise<OpAnswer<{ readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
-  plan(body: { readonly source: ChatMoveInspect; readonly lookAt?: ChatLookAtChoice | null }): Promise<OpAnswer<ChatMovePlan>>;
+  plan(body: { readonly source: ChatMoveInspect; readonly lookAt?: ChatLookAtChoice | null; readonly opId?: string }): Promise<OpAnswer<ChatMovePlan>>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
   receiveData(input: { readonly opId: string; readonly part: ChatDataPart; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
   resume(body: { readonly opId: string; readonly source: ChatMoveInspect; readonly files: readonly ConversationFile[]; readonly lookAt?: ChatLookAtChoice | null; readonly from: { readonly id: string; readonly name: string } }): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly lookAt: readonly string[]; readonly note: string | null }>>;
@@ -58,7 +61,7 @@ interface ChatEndpoint {
 function localEndpoint(chats: ChatMoveService, takeover: TakeoverService): ChatEndpoint {
   return {
     machineId: null,
-    inspect: (chatId) => chats.inspect(chatId),
+    inspect: (chatId, opId) => chats.inspect(chatId, opId),
     stop: (opId, chatId) => takeover.stop(opId, chatId),
     files: (opId) => takeover.files(opId),
     readChunk: (opId, name, offset) => takeover.readChunk(opId, name, offset),
@@ -91,7 +94,7 @@ function peerEndpoint(peers: PeerService, machineId: string, machineName: () => 
   };
   return {
     machineId,
-    inspect: (chatId) => call('/chat/source/inspect', { chatId }),
+    inspect: (chatId, opId) => call('/chat/source/inspect', { chatId, ...(opId ? { opId } : {}) }),
     stop: (opId, chatId) => call('/source/stop', { opId, sessionId: chatId }),
     files: (opId) => call('/source/files', { opId }),
     readChunk: (opId, name, offset) => call('/source/chunk', { opId, name, offset }),
@@ -136,6 +139,8 @@ interface RunState {
   result: ChatMoveRun['result'];
   log: string[];
   chatKey: string;
+  /** D154: what the moves list needs (the request, both machines, the chat's title). */
+  meta: TakeoverRunMeta;
 }
 
 /** Options of {@link ChatMoveRunner}. */
@@ -145,12 +150,8 @@ export interface ChatMoveRunnerOptions {
   readonly peers: PeerService;
   readonly store: Store;
   readonly onError?: (error: unknown) => void;
-  /**
-   * D154 hook: told when a chat move starts and every time its run changes, so a
-   * server-side list of move runs can show chat moves next to the others. Unset
-   * until that list exists on this branch (TODO D154: register the chat runs there).
-   */
-  readonly onRun?: (run: ChatMoveRun) => void;
+  /** The move log's start and outcome lines (`docs/peers.md` → *The move log*); default: none. */
+  readonly log?: MoveLogSink;
 }
 
 /** The initiating machine's chat-move runner (`docs/peers.md` → *Moving a chat (D155)*). */
@@ -160,7 +161,8 @@ export class ChatMoveRunner {
   readonly #peers: PeerService;
   readonly #store: Store;
   readonly #onError: (error: unknown) => void;
-  readonly #onRun: ((run: ChatMoveRun) => void) | null;
+  readonly #log: MoveLogSink;
+  readonly #listeners = new Set<TakeoverRunListener>();
   readonly #runs = new Map<string, RunState>();
 
   constructor(options: ChatMoveRunnerOptions) {
@@ -169,7 +171,7 @@ export class ChatMoveRunner {
     this.#peers = options.peers;
     this.#store = options.store;
     this.#onError = options.onError ?? ((error) => console.error('switchboard chat move:', error));
-    this.#onRun = options.onRun ?? null;
+    this.#log = options.log ?? SILENT_MOVE_LOG;
   }
 
   async #machineName(id: string): Promise<string> {
@@ -241,6 +243,7 @@ export class ChatMoveRunner {
   /** Starts a chat move and returns its run at once; the dialog polls {@link get}. */
   async start(request: ChatMoveRequest): Promise<ChatMoveRun> {
     const ends = await this.#ends(request);
+    const selfId = (await this.#peers.self()).id;
     for (const run of this.#runs.values()) {
       if (run.state === 'running' && run.chatKey === request.chatId) throw new TakeoverError(409, 'in-progress', 'this chat is being moved already');
     }
@@ -254,6 +257,15 @@ export class ChatMoveRunner {
       result: null,
       log: [],
       chatKey: request.chatId,
+      meta: {
+        request: { sessionId: request.chatId, targetMachine: request.targetMachine ?? null },
+        sourceMachineId: ends.source.machineId ?? selfId,
+        targetMachineId: ends.target.machineId ?? selfId,
+        rawSessionId: ends.rawChatId,
+        title: null,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      },
     };
     this.#runs.set(run.id, run);
     while (this.#runs.size > 20) {
@@ -289,13 +301,50 @@ export class ChatMoveRunner {
     };
   }
 
+  /** D154: follows every run's changes (the moves list follows chat moves too); returns the unsubscribe. */
+  subscribe(listener: TakeoverRunListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
   #publish(run: RunState): void {
-    if (!this.#onRun) return;
-    try {
-      this.#onRun(this.#view(run));
-    } catch (error) {
-      this.#onError(error);
+    if (this.#listeners.size === 0) return;
+    const view: TakeoverRun = this.#view(run);
+    for (const listener of [...this.#listeners]) {
+      try {
+        listener(view, run.meta);
+      } catch (error) {
+        this.#onError(error);
+      }
     }
+  }
+
+  /** The move log's first line of a run, on this (the initiating) machine. */
+  async #logStart(run: RunState, ends: Ends, self: { readonly id: string; readonly name: string }): Promise<void> {
+    const other = ends.source.machineId ?? ends.target.machineId ?? '';
+    const otherName = await this.#machineName(other).catch(() => other);
+    const sourceLocal = ends.source.machineId === null;
+    const title = sourceLocal ? await this.#takeover.sessionTitle(ends.rawChatId).catch(() => null) : null;
+    this.#log.info({ run: run.id, step: 'start', state: 'started', chat: ends.rawChatId, title, source: sourceLocal ? self.name : otherName, target: sourceLocal ? otherName : self.name, initiator: sourceLocal ? 'source' : 'target', kind: 'chat' }, `${MOVE_LOG_PREFIX} start`);
+  }
+
+  /** The move log's last line of a run: done, or failed at a step (rolled back or not). */
+  #logOutcome(run: RunState, started: number): void {
+    const failedAt = run.error?.step ?? null;
+    const fields = {
+      run: run.id,
+      step: 'outcome',
+      state: failedAt === null ? 'done' : 'failed',
+      kind: 'chat',
+      ms: Date.now() - started,
+      ...(failedAt !== null ? { failedAt, reason: moveLogReason(run.error?.message ?? 'failed'), rolledBack: run.rolledBack } : {}),
+      ...(run.rollbackNotes.length > 0 ? { rollbackNotes: run.rollbackNotes.map(moveLogReason) } : {}),
+      ...(run.result ? { session: run.result.sessionId } : {}),
+      ...(run.steps.some((entry) => entry.id === 'finish' && entry.status === 'failed') ? { finish: 'failed' } : {}),
+    };
+    const message = moveOutcomeMessage({ failedAt, rolledBack: run.rolledBack });
+    if (failedAt === null) this.#log.info(fields, message);
+    else this.#log.warn(fields, message);
   }
 
   async #execute(run: RunState, ends: Ends, request: ChatMoveRequest): Promise<void> {
@@ -315,13 +364,16 @@ export class ChatMoveRunner {
     let sourceName = 'the source';
     let targetName = 'the target';
     let started = false;
+    const startedAt = Date.now();
+    await this.#logStart(run, ends, self).catch((error: unknown) => this.#onError(error));
     try {
       set('checks', 'running');
-      const inspected = (await source.inspect(ends.rawChatId)).result;
+      const inspected = (await source.inspect(ends.rawChatId, opId)).result;
       sourceName = inspected.machine.name;
+      run.meta.title = inspected.title ?? inspected.name;
       if (inspected.blockers.length > 0) throw new TakeoverError(409, 'blocked', inspected.blockers.join('; '));
       const { choice } = await this.#choice(ends, inspected, request.lookAt ?? null);
-      const plan = (await target.plan({ source: inspected, lookAt: choice })).result;
+      const plan = (await target.plan({ source: inspected, lookAt: choice, opId })).result;
       targetName = plan.machine.name;
       if (plan.blockers.length > 0) throw new TakeoverError(409, 'blocked', plan.blockers.join('; '));
       const kept = plan.lookAt.filter((row) => row.target !== null).length;
@@ -380,6 +432,8 @@ export class ChatMoveRunner {
       await source.release(opId).catch((error: unknown) => this.#onError(error));
       await target.close(opId).catch((error: unknown) => this.#onError(error));
       run.state = 'done';
+      run.meta.endedAt = new Date().toISOString();
+      this.#logOutcome(run, startedAt);
       this.#publish(run);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -390,6 +444,8 @@ export class ChatMoveRunner {
         else run.rolledBack = null;
       } finally {
         run.state = 'failed';
+        run.meta.endedAt = new Date().toISOString();
+        this.#logOutcome(run, startedAt);
         this.#publish(run);
       }
     }

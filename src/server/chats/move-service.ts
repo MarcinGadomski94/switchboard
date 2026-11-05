@@ -40,6 +40,8 @@ import type { FolderService } from '../folders/service.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TakeoverGit } from '../takeover/git.ts';
+import { MoveLog, type MoveLogSink } from '../takeover/move-log.ts';
+import { moveLogRunId } from '../../core/move-log.ts';
 import { allowedPlaces, findCheckouts, resolveAllowed } from '../takeover/locate.ts';
 import { type ChunkAnswer, type OpAnswer, TakeoverError, type TakeoverService, safeConversationName } from '../takeover/service.ts';
 import { type StagedWorkspaceFile, checkWorkspaceChunk, inspectStaged, listWorkspaceFiles, placeWorkspaceFiles, sourceWorkspaceFile, writeStagedChunk } from '../takeover/workspace.ts';
@@ -58,6 +60,8 @@ export interface ChatMoveServiceOptions {
   readonly self: () => Promise<{ readonly id: string; readonly name: string }>;
   readonly env?: NodeJS.ProcessEnv;
   readonly onError?: (error: unknown) => void;
+  /** The move log (`docs/peers.md` → *The move log*): this machine's side of each step; default: none. */
+  readonly log?: MoveLogSink;
 }
 
 /** What the source keeps of a chat move in progress (the data files it serves). */
@@ -126,6 +130,7 @@ export class ChatMoveService {
   readonly #onError: (error: unknown) => void;
   readonly #sources = new Map<string, SourceChatOp>();
   readonly #targets = new Map<string, TargetChatOp>();
+  readonly #moveLog: MoveLog;
 
   constructor(options: ChatMoveServiceOptions) {
     this.#store = options.store;
@@ -139,16 +144,54 @@ export class ChatMoveService {
     this.#self = options.self;
     this.#env = options.env ?? process.env;
     this.#onError = options.onError ?? ((error) => console.error('switchboard chat move:', error));
+    this.#moveLog = new MoveLog(options.log);
   }
 
   #git(log: string[]): TakeoverGit {
     return new TakeoverGit({ log: (line) => log.push(line), env: this.#env });
   }
 
+  // ═══ the logged operations (the move log: `move: <step> …` on the machine that runs the step) ═══
+
+  /** What this machine would hand over for chat `chatId` (read-only); `opId` names the run in the move log. */
+  async inspect(chatId: string, opId?: string): Promise<OpAnswer<ChatMoveInspect>> {
+    return this.#moveLog.step(moveLogRunId(opId), 'checks', 'source', () => this.#inspect(chatId), { chat: chatId }, (answer) => ({
+      title: answer.result.title ?? answer.result.name,
+      lookAt: answer.result.lookAt.length,
+      attachments: answer.result.attachments.length,
+      scratchFiles: answer.result.scratchFiles.files.length,
+      artifacts: answer.result.artifacts.length,
+      blockers: answer.result.blockers.length,
+    }));
+  }
+
+  /** The chat's data files this move sends (see {@link #data}). */
+  async data(opId: string, chatId: string): Promise<OpAnswer<{ readonly files: readonly ChatDataFile[] }>> {
+    return this.#moveLog.step(opId, 'chat-data', 'source', () => this.#data(opId, chatId), { chat: chatId }, (answer) => ({ files: answer.result.files.length, bytes: answer.result.files.reduce((total, file) => total + file.size, 0) }));
+  }
+
+  /** The target's judgement (see {@link #plan}); `opId` names the run in the move log. */
+  async plan(body: { readonly source: ChatMoveInspect; readonly lookAt?: ChatLookAtChoice | null; readonly opId?: string }): Promise<OpAnswer<ChatMovePlan>> {
+    return this.#moveLog.step(moveLogRunId(body.opId), 'plan', 'target', () => this.#plan(body), { from: body.source?.machine?.name ?? null }, (answer) => ({
+      lookAt: answer.result.lookAt.map((row) => (row.target === null ? 'left-out' : row.problem !== null ? 'blocked' : (row.match ?? 'picked'))),
+      blockers: answer.result.blockers.length,
+    }));
+  }
+
+  /** Makes the chat here and starts it (see {@link #resume}). */
+  async resume(body: { readonly opId: string; readonly source: ChatMoveInspect; readonly files: readonly ConversationFile[]; readonly lookAt?: ChatLookAtChoice | null; readonly from: { readonly id: string; readonly name: string } }): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly lookAt: readonly string[]; readonly note: string | null }>> {
+    return this.#moveLog.step(body.opId, 'resume', 'target', () => this.#resume(body), {}, (answer) => ({ session: answer.result.sessionId, lookAt: answer.result.lookAt.length }));
+  }
+
+  /** The target's undo (see {@link #abort}). */
+  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
+    return this.#moveLog.step(opId, 'undo', 'target', () => this.#abort(opId), {}, (answer) => ({ notes: answer.result.notes.map((note) => note.slice(0, 200)) }));
+  }
+
   // ═══ source ═══════════════════════════════════════════════════════════
 
   /** What this machine would hand over for chat `chatId` (read-only). */
-  async inspect(chatId: string): Promise<OpAnswer<ChatMoveInspect>> {
+  async #inspect(chatId: string): Promise<OpAnswer<ChatMoveInspect>> {
     const log: string[] = [];
     const record = await this.#store.sessions.get(chatId);
     if (!record) throw new TakeoverError(404, 'not-found', `no chat ${chatId}`);
@@ -300,7 +343,7 @@ export class ChatMoveService {
    * The chat's data files this move sends (attachments, scratch files, artifact
    * versions), read again now and checksummed; their paths are kept for the chunks.
    */
-  async data(opId: string, chatId: string): Promise<OpAnswer<{ readonly files: readonly ChatDataFile[] }>> {
+  async #data(opId: string, chatId: string): Promise<OpAnswer<{ readonly files: readonly ChatDataFile[] }>> {
     const record = await this.#store.sessions.get(chatId);
     if (!record || record.kind !== 'chat') throw new TakeoverError(404, 'not-found', `no chat ${chatId}`);
     const op: SourceChatOp = { chatId, startedAt: Date.now(), files: new Map() };
@@ -387,7 +430,7 @@ export class ChatMoveService {
    * home folder or a saved folder, links resolved; D110's allowed places).
    * `lookAt`: the developer's choice per source path (absent = the suggestion).
    */
-  async plan(body: { readonly source: ChatMoveInspect; readonly lookAt?: ChatLookAtChoice | null }): Promise<OpAnswer<ChatMovePlan>> {
+  async #plan(body: { readonly source: ChatMoveInspect; readonly lookAt?: ChatLookAtChoice | null }): Promise<OpAnswer<ChatMovePlan>> {
     const log: string[] = [];
     const source = body.source;
     if (!isRecord(source) || typeof source.provider !== 'string' || !Array.isArray(source.lookAt)) throw new TakeoverError(422, 'invalid', 'source must be a chat description');
@@ -577,10 +620,10 @@ export class ChatMoveService {
    * stored for it, the look-at folders as the plan (re-checked now) maps them, its
    * todos, then the chat resumed in plan mode with a first service message.
    */
-  async resume(body: { readonly opId: string; readonly source: ChatMoveInspect; readonly files: readonly ConversationFile[]; readonly lookAt?: ChatLookAtChoice | null; readonly from: { readonly id: string; readonly name: string } }): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly lookAt: readonly string[]; readonly note: string | null }>> {
+  async #resume(body: { readonly opId: string; readonly source: ChatMoveInspect; readonly files: readonly ConversationFile[]; readonly lookAt?: ChatLookAtChoice | null; readonly from: { readonly id: string; readonly name: string } }): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly lookAt: readonly string[]; readonly note: string | null }>> {
     const op = this.#target(body.opId);
     const source = body.source;
-    const planned = (await this.plan({ source, lookAt: body.lookAt ?? null })).result;
+    const planned = (await this.#plan({ source, lookAt: body.lookAt ?? null })).result;
     if (planned.blockers.length > 0) throw new TakeoverError(409, 'blocked', planned.blockers.join('; '));
     const self = await this.#self();
     const chatId = randomUUID();
@@ -763,7 +806,7 @@ export class ChatMoveService {
    * artifacts and scratch folder, the conversation files installed for the CLI, the
    * handover export, and both staging folders (this one and the take-over's).
    */
-  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
+  async #abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
     const notes: string[] = [];
     const op = this.#targets.get(opId);
     const attempt = async (what: string, work: () => Promise<unknown>): Promise<void> => {

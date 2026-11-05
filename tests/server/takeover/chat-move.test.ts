@@ -50,6 +50,16 @@ async function runMove(node: PeerNode, body: Record<string, unknown>): Promise<C
   }, 90_000);
 }
 
+/** The node's `move:` lines of run `id` (its stdout, pino JSON). */
+function moveLines(node: PeerNode, id: string): Array<Record<string, unknown>> {
+  return node.server
+    .output()
+    .split('\n')
+    .filter((line) => line.startsWith('{') && line.includes('"msg":"move:'))
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((line) => line['run'] === id);
+}
+
 async function filesUnder(dir: string): Promise<string[]> {
   const out: string[] = [];
   const walk = async (current: string, prefix: string): Promise<void> => {
@@ -157,6 +167,19 @@ describe('D155: a chat moves to a paired computer', () => {
     expect(old.movedTo).toMatchObject({ machineId: w.bId, sessionId: moved.id });
     expect((await w.a.call('POST', `/api/sessions/${chat.id}/reopen`)).status).toBe(409);
 
+    // D154: the move is listed with the other moves (a chat move), on the machine that drove it and on the paired one.
+    const listed = await waitFor('the chat move in the moves list', async () => ((await w.a.call('GET', '/api/moves')).body as Array<Record<string, any>>).find((move) => move.id === finished.id && move.state === 'done'));
+    expect(listed).toMatchObject({ kind: 'chat', title: chat.title, source: { id: w.aId }, target: { id: w.bId, sessionId: moved.id } });
+    await waitFor('the chat move on the paired machine', async () => ((await w.b.call('GET', '/api/moves')).body as Array<Record<string, any>>).find((move) => move.id === remoteId(w.aId, finished.id) && move.kind === 'chat'));
+    // The move log: the start and the outcome on the initiating machine, each side's steps on its own machine.
+    const aLines = moveLines(w.a, finished.id);
+    expect(aLines[0]).toMatchObject({ msg: 'move: start', kind: 'chat', chat: chat.id, initiator: 'source' });
+    expect(aLines.map((line) => `${line['step']} ${line['state']}`)).toEqual(expect.arrayContaining(['checks finished', 'stop finished', 'files finished', 'chat-data finished', 'finish finished']));
+    expect(aLines.at(-1)).toMatchObject({ msg: 'move: done', state: 'done', kind: 'chat' });
+    const bLines = moveLines(w.b, finished.id);
+    expect(bLines.map((line) => `${line['step']} ${line['state']}`)).toEqual(expect.arrayContaining(['plan finished', 'resume finished']));
+    expect(JSON.stringify([...aLines, ...bLines])).not.toContain('The plan');
+
     // The choices are remembered for the next chat that looks at the same folders.
     const second = await startChat(w.a, [w.paths.a.alpha, notes]);
     const again = (await w.a.call('POST', '/api/takeover/chat/preview', { chatId: second.id, targetMachine: w.bId })).body as ChatMovePreview;
@@ -185,6 +208,14 @@ describe('D155: a chat moves to a paired computer', () => {
     expect((await filesUnder(w.b.configDir)).filter((name) => name.includes(chat.claudeSessionId))).toEqual([]);
     const after = await filesUnder(path.join(w.b.dataDir));
     expect(after.filter((name) => !before.includes(name) && !/\.(?:db|db-wal|db-shm|log)$/.test(name) && !name.startsWith('logs/'))).toEqual([]);
+
+    // D154: the failed chat move is listed and waits in Needs you (its Try again opens the chat's move dialog).
+    const failedMove = await waitFor('the failed chat move', async () => ((await w.a.call('GET', '/api/moves')).body as Array<Record<string, any>>).find((move) => move.id === failed.id && move.state === 'failed'));
+    expect(failedMove).toMatchObject({ kind: 'chat', error: { step: 'resume' }, rolledBack: true });
+    const item = await waitFor('the Move failed item', async () => ((await w.a.call('GET', '/api/inbox')).body as Array<Record<string, any>>).find((entry) => entry.label === 'Move failed'));
+    expect(item.move).toMatchObject({ id: failed.id, kind: 'chat' });
+    expect(moveLines(w.a, failed.id).at(-1)).toMatchObject({ msg: 'move: failed at resume, rolled back', kind: 'chat' });
+    expect(moveLines(w.b, failed.id).map((line) => `${line['step']} ${line['state']}`)).toEqual(expect.arrayContaining(['resume failed', 'undo finished']));
 
     // The pc: the chat is open, not moved, and runs again.
     const back = (await w.a.call('GET', `/api/sessions/${chat.id}`)).body as Session;
