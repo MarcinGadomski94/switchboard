@@ -281,6 +281,8 @@ export interface TakeOverInput {
   readonly dividerLabel: string;
   /** The agent's short first message. */
   readonly firstMessage: string;
+  /** D152 follow-up: folders outside the session's folder its CLI may work in (`SessionRecord.extraDirs`); absent = none. */
+  readonly extraDirs?: readonly string[];
 }
 
 /** Options of {@link SessionSupervisor.teleport}. */
@@ -1704,6 +1706,8 @@ export class SessionSupervisor {
         // D106: a chat continues as a chat (its scratch folder, read-only mode and folders).
         kind: old.kind,
         lookAt: [...old.lookAt],
+        // D152 follow-up: the repos outside the workspace it works in stay reachable.
+        extraDirs: [...(old.extraDirs ?? [])],
       });
       const fresh = created;
       await this.#store.agents.create({ sessionId: fresh.id, kind: 'main', name: mainAgentName(fresh.mode, fresh.solutions), status: 'idle' });
@@ -2433,6 +2437,7 @@ export class SessionSupervisor {
       branch: input.branch,
       branching: input.branching,
       movedFrom: input.movedFrom,
+      ...(input.extraDirs && input.extraDirs.length > 0 ? { extraDirs: [...input.extraDirs] } : {}),
     });
     try {
       const main = await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });
@@ -3310,6 +3315,8 @@ export class SessionSupervisor {
       agentMcp,
       // D106: a chat's read-only mode and the folders it may read.
       ...(prepared.kind === 'chat' ? { readOnly: { lookAt: prepared.lookAt } } : {}),
+      // D152 follow-up: a development session's folders outside its own (repos outside the workspace a move carried).
+      ...(prepared.kind !== 'chat' && (prepared.extraDirs ?? []).length > 0 ? { extraDirs: prepared.extraDirs } : {}),
       onLine: (line) => {
         const live = holder.live;
         // D124: when the line arrived (a turn's start is then, not when the queue reaches it).

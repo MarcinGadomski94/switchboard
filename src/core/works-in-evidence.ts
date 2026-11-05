@@ -31,6 +31,13 @@ export const RESULT_PATHS_MAX = 20;
 export interface EvidencePath {
   readonly path: string;
   readonly kind: WorksInEvidenceKind;
+  /**
+   * D152 follow-up (outside repos): a command **worked in** this folder (a `cd` /
+   * `pushd` / `Set-Location` target, a `git -C` folder, a Codex command's own
+   * `cwd`), not just named a path in it. Only these count outside the session's
+   * folder (an absolute path word or a read there does not).
+   */
+  readonly workedIn?: true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -238,6 +245,36 @@ export function commandPaths(command: string, cwd: string | null): string[] {
   return unique(out);
 }
 
+/**
+ * The folders a shell command **worked in** (a subset of {@link commandPaths}): each
+ * `cd` / `pushd` / `Set-Location` target and each `git -C <dir>`, resolved the same
+ * way. Absolute path words are not in it.
+ */
+export function commandWorkPaths(command: string, cwd: string | null): string[] {
+  const out: string[] = [];
+  let here = cwd;
+  for (const words of commandStatements(command)) {
+    const first = words[0] ?? '';
+    if (CD_COMMANDS.has(first)) {
+      const args = words.slice(1).filter((word, at, all) => !word.startsWith('-') || (at > 0 && /^-(?:Path|LiteralPath)$/i.test(all[at - 1] ?? '')));
+      const target = args.find((word) => !/^-/.test(word));
+      const next = target === undefined ? null : joinEvidencePath(here, target);
+      here = next;
+      if (next !== null) out.push(next);
+      continue;
+    }
+    for (let i = 0; i < words.length; i++) {
+      if (words[i] === '-C' && words.slice(0, i).includes('git')) {
+        const dir = words[i + 1];
+        const joined = dir === undefined ? null : joinEvidencePath(here, dir);
+        if (joined !== null) out.push(joined);
+        i++;
+      }
+    }
+  }
+  return unique(out);
+}
+
 /** The paths one tool event names, each with its kind (edits are read elsewhere: `SessionRepos`). */
 export function evidencePaths(payload: unknown, cwd: string | null): EvidencePath[] {
   if (!isRecord(payload) || payload['type'] !== 'tool') return [];
@@ -250,8 +287,12 @@ export function evidencePaths(payload: unknown, cwd: string | null): EvidencePat
   if (COMMAND_TOOLS.includes(name) && typeof input['command'] === 'string') {
     const own = typeof input['cwd'] === 'string' && isAbsolutePath(input['cwd']) ? input['cwd'] : cwd;
     const paths = commandPaths(input['command'], own);
-    if (own !== null && own !== cwd) paths.push(own);
-    return unique(paths).map((path) => ({ path, kind: 'commands' }));
+    const worked = new Set(commandWorkPaths(input['command'], own));
+    if (own !== null && own !== cwd) {
+      paths.push(own);
+      worked.add(own);
+    }
+    return unique(paths).map((path): EvidencePath => (worked.has(path) ? { path, kind: 'commands', workedIn: true } : { path, kind: 'commands' }));
   }
   return [];
 }

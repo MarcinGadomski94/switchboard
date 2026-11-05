@@ -126,3 +126,15 @@ describe('buildClaudeArgs · a chat (D106) keeps the switchboard MCP tools', () 
     for (const name of ['Write', 'Bash', 'ExitPlanMode', 'mcp__other__save', 'mcp__switchboard-x__save', 'mcp__switchboard__', 'mcp__switchboard', 'WebFetch']) expect(isSwitchboardTool(name)).toBe(false);
   });
 });
+
+describe('D152 follow-up: the folders outside a development session’s own', () => {
+  it('one --add-dir per folder before --name, on every spawn; never for a chat (its folders are its read-only look-at)', () => {
+    const args = buildClaudeArgs({ start: { kind: 'resume', claudeSessionId: 'c1' }, name: 'acme-agent', permissionMode: 'auto', addDirs: ['/Users/dev/Personal/tool-repo', 'D:\\code\\notes'] });
+    const at = args.indexOf('--name');
+    expect(args.slice(at - 4, at)).toEqual(['--add-dir', '/Users/dev/Personal/tool-repo', '--add-dir', 'D:\\code\\notes']);
+    expect(buildClaudeArgs({ start: { kind: 'resume', claudeSessionId: 'c1' }, name: 'acme-agent', permissionMode: 'auto' })).not.toContain('--add-dir');
+    const chat = buildClaudeArgs({ start: { kind: 'resume', claudeSessionId: 'c1' }, name: 'acme-chat', permissionMode: 'plan', readOnly: { lookAt: ['/a'] }, addDirs: ['/b'] });
+    expect(chat.filter((arg) => arg === '--add-dir')).toHaveLength(1);
+    expect(chat).not.toContain('/b');
+  });
+});

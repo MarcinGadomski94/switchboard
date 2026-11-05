@@ -20,6 +20,7 @@ import {
 } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem, filesToSend } from '../../core/workspace-move.ts';
 import type { MoveStash } from '../../core/move-worktrees.ts';
+import { effectiveExclusions } from '../../core/outside-repos.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
 import { MOVE_LOG_PREFIX, moveLogReason, moveOutcomeMessage } from '../../core/move-log.ts';
@@ -272,7 +273,8 @@ export class TakeoverRunner {
       placement = await this.#service.rememberedPlacement(await this.#placementKey(ends, source));
       remembered = placement !== null;
     }
-    const carried = withoutExcluded(source, request.excludeRepos);
+    // D152 follow-up: a repo outside the workspace is left out by its default or the developer's choice (`placement.outsideCarry`).
+    const carried = withoutExcluded(source, effectiveExclusions(source.repos, request.excludeRepos, placement?.outsideCarry));
     const target = (await ends.target.plan({ source: carried, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}), ...stashOf(request) })).result;
     const blockers = [...source.blockers, ...target.blockers, ...excludedProblem(source, carried)];
     // D152: the ticked workspace files (a secret needs the confirmation, the caps hold).
@@ -393,7 +395,8 @@ export class TakeoverRunner {
       set('checks', 'running');
       const inspected = (await source.inspect(ends.rawSessionId, opId)).result;
       // D152 follow-up 2026-11-05: the repos the developer left out are neither planned nor captured.
-      sourceInfo = withoutExcluded(inspected, request.excludeRepos);
+      const leavingOut = effectiveExclusions(inspected.repos, request.excludeRepos, request.placement?.outsideCarry);
+      sourceInfo = withoutExcluded(inspected, leavingOut);
       run.meta.title = inspected.title ?? inspected.name;
       const leftOutProblem = excludedProblem(inspected, sourceInfo);
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
@@ -418,7 +421,7 @@ export class TakeoverRunner {
       // 3 · the WIP push (and, for a hooked session, the terminal's stop).
       failedAt = 'capture';
       set('capture', 'running');
-      const capture = await source.capture(opId, request.excludeRepos ?? []);
+      const capture = await source.capture(opId, leavingOut);
       logOf(sourceName(), capture.log);
       captured = capture.result.repos;
       const changed = captured.reduce((total, repo) => total + repo.uncommitted, 0);
@@ -502,7 +505,9 @@ export class TakeoverRunner {
       set('resume', 'done', resumed.result.note);
       // D110: the folders this move used are offered the next time this folder moves to that machine.
       // D152: a workspace root it created is remembered as an existing folder, a cloned repo is found there next time.
-      if (request.placement) await this.#service.rememberPlacement(await this.#placementKey(ends, sourceInfo), placementToRemember(request.placement, plan.workspaceRoot?.path ?? null)).catch((error: unknown) => this.#onError(error));
+      // D152 follow-up: a repo outside the workspace it cloned is used from there next time, and the outside carry choices are kept.
+      const clonedOutside = Object.fromEntries(plan.repos.filter((resolution) => resolution.action === 'clone' && resolution.cloneTo !== null && sourceInfo?.repos.find((repo) => repo.key === resolution.key)?.outside === true).map((resolution) => [resolution.key, resolution.cloneTo as string]));
+      if (request.placement) await this.#service.rememberPlacement(await this.#placementKey(ends, sourceInfo), placementToRemember(request.placement, plan.workspaceRoot?.path ?? null, clonedOutside)).catch((error: unknown) => this.#onError(error));
       // 7 · the old session is marked moved; the temp branches are cleaned up. Failures from here keep the take-over.
       set('finish', 'running');
       try {

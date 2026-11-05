@@ -52,6 +52,12 @@ export interface ClaudeArgsInput {
    * and one `--add-dir` per folder it may look at. Absent = a development session.
    */
   readonly readOnly?: { readonly lookAt: readonly string[] } | null;
+  /**
+   * D152 follow-up: a development session's folders outside its own (the repos outside the
+   * workspace root a move carried, `SessionRecord.extraDirs`): one `--add-dir` each. Ignored
+   * for a chat (its folders are `readOnly.lookAt`).
+   */
+  readonly addDirs?: readonly string[];
 }
 
 /** D106: the tools a chat may use without asking (reading the web is planning). */
@@ -112,6 +118,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     ...(input.standingInstruction ? ['--append-system-prompt', input.standingInstruction] : []),
     ...(input.readOnly ? withChatAllowedTools(input.mcpArgs ?? []) : (input.mcpArgs ?? [])),
     ...(input.readOnly ? chatArgs(input.readOnly) : []),
+    ...(!input.readOnly ? (input.addDirs ?? []).flatMap((dir) => ['--add-dir', dir]) : []),
     '--name',
     input.name,
     '--forward-subagent-text',

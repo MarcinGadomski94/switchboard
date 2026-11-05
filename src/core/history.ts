@@ -177,11 +177,14 @@ export function relativeToRoot(cwd: string, root: string, caseInsensitive: boole
  * `microfrontends/<repo>/…`, `nugets/…`, `microservices/…`, `functions/…`,
  * `other/<repo>/…` → `<repo>`; `deprecated/<type>/<repo>/…` → `<repo>`
  * (`deprecated/mobile/…` → `mobile`); any other top folder (`mobile`,
- * `infrastructure`, …) → itself; the root → `null`.
+ * `infrastructure`, …) → itself; the root, a hidden folder (`.claude`) and a path
+ * outside the root (`..`) → `null`.
  */
 export function solutionOfPath(relative: string): string | null {
   const [first, second, third] = relative.split(/[\\/]+/).filter(Boolean);
-  if (!first) return null;
+  // D152 follow-up: a hidden folder (`.claude/worktrees/…`, `.claude/tmp/…`) or a path leaving the root (`..`) is never a solution.
+  if (!first || first.startsWith('.')) return null;
+  if (GROUP_FOLDERS.has(first) && second?.startsWith('.')) return null;
   if (first === 'deprecated') return second === 'mobile' ? 'mobile' : (third ?? second ?? first);
   if (GROUP_FOLDERS.has(first)) return second ?? first;
   return first;

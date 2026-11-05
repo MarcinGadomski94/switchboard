@@ -209,3 +209,48 @@ test('Move crew to computer: every teammate checked first (a blocker shown per t
     return view.members.every((member) => member.machineId === w.bId) ? view : null;
   }, 30_000);
 });
+
+test('D152 follow-up (2.4.23): a repo outside the workspace root has its own section: use the checkout there, leave it out, or clone it into a folder picked on the other computer', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const w = (world = await takeoverWorld(tmp, { aRepos: { workspace: true, gamma: true }, bRepos: { workspace: true, gamma: true }, env: { ...V2_SERVER_ENV } }));
+  const gamma = await realpath(w.paths.a.gamma);
+  const session = await startWorkspaceSession(w.a, w.folders.a.workspace as string, 'ws-outside', ['front']);
+  // The agent edited a file in gamma, which lives outside its workspace folder.
+  const sent = await w.a.call('POST', `/api/sessions/${session.id}/messages`, { text: `Note. [fake:tool Write ${JSON.stringify({ file_path: path.join(gamma, 'notes.txt'), content: 'x' })}]` });
+  expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
+  await settle(w.a, session.id);
+
+  const page = await v2Page(browser, w.a, `/agents/${session.id}`);
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByTestId('v2-agent-menu-list').getByRole('menuitem', { name: 'Move to computer…' }).click();
+  const dialog = page.getByTestId('v2-move-dialog');
+  const outside = dialog.getByTestId('v2-move-outside');
+  await expect(outside).toContainText('Outside the workspace');
+  const row = outside.locator('[data-testid="v2-move-outside-repo"][data-name="gamma"]');
+  // Carried by default (it edited there), used from the mac's checkout of the same remote; not in the workspace's lists.
+  await expect(row).toHaveAttribute('data-default', 'carry');
+  await expect(row).toHaveAttribute('data-mode', 'use');
+  await expect(row.getByTestId('v2-move-outside-summary')).toContainText(w.paths.b.gamma);
+  await expect(outside.getByTestId('v2-move-outside-count')).toHaveText('1 of 1 carried');
+  await expect(dialog.locator('[data-testid="v2-move-repo"][data-key="gamma"]')).toHaveCount(0);
+  await expect(dialog.locator('[data-testid="v2-move-carry-repo"][data-name="gamma"]')).toHaveCount(0);
+  await expect(dialog.getByTestId('v2-move-start')).toBeEnabled();
+
+  // Leave it out.
+  await row.getByTestId('v2-move-outside-mode').locator('[data-value="leave"]').click();
+  await expect(row).toHaveAttribute('data-mode', 'leave');
+  await expect(row.getByTestId('v2-move-outside-summary')).toContainText('Not carried');
+  await expect(outside.getByTestId('v2-move-outside-count')).toHaveText('0 of 1 carried');
+
+  // Clone it into a folder picked there: the path is shown before Move.
+  await row.getByTestId('v2-move-outside-mode').locator('[data-value="clone"]').click();
+  await expect(row).toHaveAttribute('data-mode', 'clone');
+  const tools = path.join(path.dirname(w.paths.b.gamma), 'tools');
+  await row.getByTestId('v2-move-outside-parent').fill(tools);
+  await row.getByTestId('v2-move-outside-name').fill('gamma-copy');
+  await expect(row.getByTestId('v2-move-outside-clone-path')).toContainText(path.join(tools, 'gamma-copy'));
+  await row.getByTestId('v2-move-outside-clone-use').click();
+  await expect(row).toHaveAttribute('data-action', 'clone');
+  await expect(row.getByTestId('v2-move-outside-summary')).toContainText(path.join(tools, 'gamma-copy'));
+  await expect(dialog.getByTestId('v2-move-start')).toBeEnabled();
+});

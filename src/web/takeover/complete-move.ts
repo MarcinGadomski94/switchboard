@@ -1,12 +1,16 @@
 import { type MoveStash, type SkippedWorktree, type TargetChanges, groupByRepo, stashConfirmed, stashNote, worktreeLabel } from '../../core/move-worktrees.ts';
 import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
+import { outsideCarried, outsideDefaultText } from '../../core/outside-repos.ts';
 import {
   type WorkspaceFileChoice,
   type WorkspaceFileTargetState,
   defaultChoice,
+  folderNameProblem,
   formatBytes,
-  newWorkspacePath,
+  joinTargetPath,
   targetBaseName,
+  targetParent,
+  newWorkspacePath,
   worksInEvidenceLabel,
   worksInSourceLabel,
 } from '../../core/workspace-move.ts';
@@ -117,7 +121,8 @@ export function carryRows(preview: TakeoverPreview, choice: MoveChoice): CarryRo
   // The developer's choice decides (the preview may still be the one asked before the last tick).
   const excluded = new Set(choice.excludeRepos ?? []);
   const planned = new Set(preview.target.repos.map((repo) => repo.key));
-  return (preview.source.repos ?? []).map((repo): CarryRow => {
+  // D152 follow-up: the repos outside the workspace have their own section (`outsideRows`).
+  return (preview.source.repos ?? []).filter((repo) => repo.outside !== true).map((repo): CarryRow => {
     const carried = !excluded.has(repo.path);
     const evidence = worksInEvidenceLabel(repo.evidence);
     const why = evidence !== '' ? evidence : repo.found ? worksInSourceLabel(repo.found) : '';
@@ -141,7 +146,7 @@ export interface CarryGroup {
 /** D153: the carry list grouped by repo: one entry per repo, its worktrees nested, the skipped ones with their reason. */
 export function carryGroups(preview: TakeoverPreview, choice: MoveChoice): CarryGroup[] {
   const rows = carryRows(preview, choice);
-  const repos = preview.source.repos ?? [];
+  const repos = (preview.source.repos ?? []).filter((repo) => repo.outside !== true);
   const keyed = rows.map((row, at) => ({ ...row, kind: repos[at]?.kind ?? 'main', mainPath: repos[at]?.mainPath ?? row.path }));
   return groupByRepo(keyed, preview.source.skippedWorktrees ?? []).map((group) => ({
     mainPath: group.mainPath,
@@ -174,7 +179,7 @@ export function withRepoMode(placement: TargetPlacement | null, key: string, mod
 export function withNewWorkspace(placement: TargetPlacement | null, path: string | null, useExisting = false): TargetPlacement | null {
   const { newWorkspace: _old, ...rest } = placement ?? { roots: [] };
   const next: TargetPlacement = { ...rest, roots: [...(placement?.roots ?? [])], ...(path !== null ? { newWorkspace: { path, ...(useExisting ? { useExisting: true } : {}) } } : {}) };
-  return next.roots.length === 0 && !next.newWorkspace && !next.repoPaths && !next.repoModes ? null : next;
+  return next.roots.length === 0 && !next.newWorkspace && !next.repoPaths && !next.repoModes && !next.outsideCarry ? null : next;
 }
 
 /** The repo's use / clone choice. */
@@ -319,4 +324,100 @@ export function shareChoice(
     out[id] = theirs;
   }
   return out;
+}
+
+// ── repos outside the workspace (D152 follow-up 2026-11-05) ───────────────
+
+/** What the developer chose for one repo outside the workspace: use a folder there, clone it, or leave it out. */
+export type OutsideMode = 'use' | 'clone' | 'leave';
+
+/** One repo outside the workspace root, as the dialog's **Outside the workspace** section shows it. */
+export interface OutsideRow {
+  readonly key: string;
+  readonly name: string;
+  /** Where it is on the source. */
+  readonly path: string;
+  /** What the agent did there ("edited · commands"), else why it is listed. */
+  readonly why: string;
+  /** Its default (`SourceRepo.carry`): carried, or left out. */
+  readonly defaultCarry: boolean;
+  /** The default in words. */
+  readonly defaultText: string;
+  readonly mode: OutsideMode;
+  /** The target's line for it when it is carried (what happens there, or why it cannot), `null` when left out. */
+  readonly target: string | null;
+  /** The target's plan for it: use, clone, blocked; `null` when left out. */
+  readonly action: 'use' | 'clone' | 'blocked' | null;
+  /** The checkout it uses there (use), else `null`. */
+  readonly usePath: string | null;
+  /** Where it is cloned (the developer's path, else the target's suggestion beside the workspace). */
+  readonly cloneTo: string | null;
+}
+
+/** D152 follow-up: the repos outside the workspace root with their choice and the target's plan for each. */
+export function outsideRows(preview: TakeoverPreview, choice: MoveChoice): OutsideRow[] {
+  const placement = choice.placement;
+  const checks = preview.target.verification?.repos ?? [];
+  return (preview.source.repos ?? [])
+    .filter((repo) => repo.outside === true)
+    .map((repo): OutsideRow => {
+      const carried = outsideCarried(repo, placement?.outsideCarry) && !(choice.excludeRepos ?? []).includes(repo.path);
+      const plan = carried ? (preview.target.repos.find((entry) => entry.key === repo.key) ?? null) : null;
+      const check = checks.find((entry) => entry.key === repo.key) ?? null;
+      const evidence = worksInEvidenceLabel(repo.evidence);
+      // Use, unless the developer chose to clone it or no checkout of it is there (the target then plans a clone).
+      const mode: OutsideMode = !carried ? 'leave' : repoModeOf(placement, repo.key) === 'clone' || plan?.action === 'clone' ? 'clone' : 'use';
+      return {
+        key: repo.key,
+        name: repo.name,
+        path: repo.path,
+        why: evidence !== '' ? evidence : repo.found ? worksInSourceLabel(repo.found) : '',
+        defaultCarry: repo.carry !== false,
+        defaultText: outsideDefaultText(repo.carry),
+        mode,
+        target: plan ? (check?.note ?? plan.summary) : null,
+        action: plan?.action ?? null,
+        usePath: plan?.matchedPath ?? null,
+        cloneTo: choice.clonePaths[repo.key] ?? plan?.cloneTo ?? null,
+      };
+    });
+}
+
+/**
+ * D152 follow-up: `placement` with the target's workspace (as the last preview found it)
+ * as its folder when it chooses none yet, so a per-repo choice (clone it, another
+ * checkout) keeps the workspace the target found instead of asking for folders.
+ */
+export function withTargetWorkspace(placement: TargetPlacement | null, targetWorkspace: string | null): TargetPlacement {
+  const base = placement ?? { roots: [] };
+  if (targetWorkspace === null || base.roots.length > 0 || base.newWorkspace) return { ...base, roots: [...base.roots] };
+  return { ...base, roots: [targetWorkspace] };
+}
+
+/** D152 follow-up: the target's workspace folder in a preview (`null` when it found none). */
+export function targetWorkspaceOf(preview: TakeoverPreview): string | null {
+  return preview.target.folder?.kind === 'workspace' ? preview.target.folder.path : null;
+}
+
+/** D152 follow-up: the choice with an outside repo set to be used from a folder there, cloned, or left out (`targetWorkspace`: {@link withTargetWorkspace}). */
+export function withOutsideMode(choice: MoveChoice, key: string, mode: OutsideMode, targetWorkspace: string | null = null): MoveChoice {
+  const base = mode === 'leave' ? (choice.placement ?? { roots: [] }) : withTargetWorkspace(choice.placement, targetWorkspace);
+  const carry: Record<string, boolean> = { ...(base.outsideCarry ?? {}), [key]: mode !== 'leave' };
+  const withCarry: TargetPlacement = { ...base, roots: [...base.roots], outsideCarry: carry };
+  const placement = mode === 'leave' ? withCarry : withRepoMode(withCarry, key, mode);
+  return { ...choice, placement };
+}
+
+/** D152 follow-up: the outside repo's clone folder from a parent folder on the target and a name (shown before Move), or why not yet. */
+export function outsideClonePath(parent: string, name: string): { readonly path: string | null; readonly problem: string | null } {
+  if (parent.trim() === '') return { path: null, problem: 'Pick the folder to clone it in' };
+  const problem = folderNameProblem(name.trim());
+  if (problem !== null) return { path: null, problem };
+  return { path: joinTargetPath(parent.trim(), name.trim()), problem: null };
+}
+
+/** D152 follow-up: the parent and name a clone path splits into (to pre-fill the two fields). */
+export function splitClonePath(value: string | null): { readonly parent: string; readonly name: string } {
+  if (value === null || value.trim() === '') return { parent: '', name: '' };
+  return { parent: targetParent(value), name: targetBaseName(value) };
 }

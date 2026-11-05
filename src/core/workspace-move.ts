@@ -358,8 +358,10 @@ export function suggestWorkspaceParent(places: ReadonlyArray<{ readonly path: st
  * Where a repo of {@link SessionWorksIn} came from (`docs/worktrees.md` → *Which repositories*).
  * D152 follow-up 2026-11-05: `read` (it only read files there) and `commands` (it ran
  * shell commands there) are additive; an older Switchboard sends neither.
+ * D152 follow-up (outside repos): `extra` is a folder outside the session's own that a move
+ * carried here (`SessionRecord.extraDirs`).
  */
-export type WorksInSource = 'worktree' | 'solution' | 'edited' | 'cwd' | 'read' | 'commands';
+export type WorksInSource = 'worktree' | 'solution' | 'edited' | 'cwd' | 'read' | 'commands' | 'extra';
 
 /** What a repo was seen through (D152 follow-up 2026-11-05): edits, reads, shell commands. */
 export type WorksInEvidence = 'edited' | 'read' | 'commands';
@@ -418,6 +420,8 @@ export function worksInSourceLabel(source: WorksInSource): string {
       return 'it read files here';
     case 'commands':
       return 'it ran commands here';
+    case 'extra':
+      return 'carried here by a move';
   }
 }
 

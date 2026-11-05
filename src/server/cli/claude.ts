@@ -27,6 +27,8 @@ export const claudeAdapter: CliAdapter = {
       extraArgs: request.extraArgs,
       // D106: a chat's read-only flags.
       ...(request.readOnly ? { readOnly: request.readOnly } : {}),
+      // D152 follow-up: the repos outside the workspace a move carried here.
+      ...(request.extraDirs && request.extraDirs.length > 0 ? { addDirs: request.extraDirs } : {}),
     });
     return new ClaudeProcess({ command: request.command, args, cwd: request.cwd, env: request.env, onLine: request.onLine });
   },

@@ -7,6 +7,7 @@
  * adoption call them.
  */
 import { type SessionPlace, locateFile, solutionFolder } from './derive/artifacts.ts';
+import { isHiddenSolutionName } from './outside-repos.ts';
 
 /** Top folders whose solutions are never a write target (router: `deprecated/`, `infrastructure/`). */
 const READ_ONLY_TOP = new Set(['deprecated', 'infrastructure']);
@@ -24,7 +25,9 @@ export function writtenSolution(place: SessionPlace, file: string, sessionName: 
   if (folder === null) return null;
   const top = folder.split('/')[0] ?? '';
   if (READ_ONLY_TOP.has(top)) return null;
-  return locateFile(place.root, file, sessionName).solution;
+  const solution = locateFile(place.root, file, sessionName).solution;
+  // D152 follow-up: a hidden folder (`.claude`) is never a solution (the scanner never lists one).
+  return solution === null || isHiddenSolutionName(solution) ? null : solution;
 }
 
 /**
@@ -45,7 +48,7 @@ export function sameSolution(a: string, b: string): boolean {
 export function withSolutions(current: readonly string[], added: readonly string[]): string[] | null {
   const next = [...current];
   for (const solution of added) {
-    if (solution.trim() === '' || next.some((known) => sameSolution(known, solution))) continue;
+    if (solution.trim() === '' || isHiddenSolutionName(solution) || next.some((known) => sameSolution(known, solution))) continue;
     next.push(solution);
   }
   return next.length === current.length ? null : next;
