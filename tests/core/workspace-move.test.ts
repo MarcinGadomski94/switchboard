@@ -23,6 +23,9 @@ import {
   workspaceChoiceOf,
   workspaceCopyAudit,
   worksInSummary,
+  worksInEvidenceLabel,
+  worksInSourceLabel,
+  excludeReposOf,
 } from '../../src/core/workspace-move.ts';
 
 /** D152 (`docs/peers.md` → *A complete move (D152)*): the pure part, Windows targets included. */
@@ -137,7 +140,16 @@ describe('D152: the placement and what is remembered', () => {
   });
 
   it('says which repos an agent works in, and how a crew move ended', () => {
-    expect(worksInSummary([])).toBe('no repo found yet');
+    expect(worksInSummary([])).toBe('No repo found yet');
+    // D152 follow-up 2026-11-05: the repos it only read in or ran commands in, and the subtle evidence words.
+    expect(worksInSourceLabel('read')).toBe('it read files here');
+    expect(worksInSourceLabel('commands')).toBe('it ran commands here');
+    expect(worksInEvidenceLabel(['edited', 'commands', 'read'])).toBe('edited · commands · read');
+    expect(worksInEvidenceLabel(undefined)).toBe('');
+    expect(excludeReposOf(undefined)).toBeUndefined();
+    expect(excludeReposOf(['/a', '/a', 'D:\\b'])).toEqual(['/a', 'D:\\b']);
+    expect(excludeReposOf('front')).toBeNull();
+    expect(excludeReposOf([''])).toBeNull();
     expect(worksInSummary([{ name: 'web' }, { name: 'api' }, { name: 'docs' }, { name: 'web' }])).toBe('web, api +1');
     const member = (name: string, state: 'moved' | 'failed' | 'not-moved') => ({ memberId: name, name, machineId: 'x', state, blockers: [], note: null });
     expect(crewMoveSummary({ state: 'failed', members: [member('Dev', 'moved'), member('Tester', 'failed'), member('Writer', 'not-moved')] }, 'PC')).toBe('Tester could not move; moved: Dev (they stay on PC); not moved: Writer.');

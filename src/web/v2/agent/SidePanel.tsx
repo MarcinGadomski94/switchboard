@@ -139,7 +139,7 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
       ) : null}
       {/* Lane X · D99 / D107: the project it belongs to, and what agents know for its folder. */}
       {data.conversation ? null : <ProjectLine sessionId={data.sessionId} />}
-      {data.conversation ? null : <WorksInLine sessionId={data.sessionId} status={session.status} />}
+      {data.conversation ? null : <WorksInLine sessionId={data.sessionId} status={session.status === 'run' ? 'run' : `${session.status}:${session.lastActivityAt ?? ''}`} />}
       {data.conversation ? null : <NotesLine sessionId={data.sessionId} folderPath={session.folderPath} remote={Boolean(session.machine)} />}
       {data.conversation ? null : (
         <Group id="mem" title={AGENT_WORDS.workingMemory} icon="cpu" summary={pct === null ? AGENT_WORDS.memoryUnknown : AGENT_WORDS.memoryUsed(Math.round(pct))} open={open.mem} onToggle={toggle}>

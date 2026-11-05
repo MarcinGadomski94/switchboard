@@ -129,7 +129,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);

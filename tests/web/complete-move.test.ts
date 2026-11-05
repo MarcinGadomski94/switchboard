@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TakeoverPreview } from '../../src/core/takeover.ts';
-import { EMPTY_CHOICE, choiceAfterPreview, choiceBody, fileRows, newRootFrom, repoModeOf, shareChoice, tickedSecrets, toggleFile, withNewWorkspace, withRepoMode, workspaceView, worksInLine } from '../../src/web/takeover/complete-move.ts';
+import { EMPTY_CHOICE, carryRows, choiceAfterPreview, choiceBody, fileRows, newRootFrom, repoModeOf, shareChoice, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, workspaceView, worksInLine } from '../../src/web/takeover/complete-move.ts';
 
 /** D152: the move dialog's pure parts (the workspace root, use / clone, the files, a crew's shared choices). */
 
@@ -67,6 +67,27 @@ describe('D152 · the move dialog', () => {
     const view = workspaceView(preview(), created);
     expect(view).toMatchObject({ show: true, suggestedName: 'Acme', creating: 'D:\\code\\ws', found: false });
     expect(worksInLine(preview())).toBe('web-front (/Users/dev/Acme/microfrontends/web-front)');
+  });
+
+  it('D152 follow-up 2026-11-05: carries every repo by default, the ones it only read or ran commands in too; any can be left out', () => {
+    const repos = [
+      { key: 'web', name: 'web-front', remoteKey: 'example.com/acme/web', path: '/Users/dev/Acme/microfrontends/web-front', found: 'edited', evidence: ['edited', 'read'] },
+      { key: 'api', name: 'api', remoteKey: 'example.com/acme/api', path: '/Users/dev/Acme/microservices/api', found: 'commands', evidence: ['commands', 'read'] },
+      { key: 'docs', name: 'docs', remoteKey: 'example.com/acme/docs', path: '/Users/dev/Acme/docs-repo', found: 'read', evidence: ['read'] },
+    ];
+    const base = preview({ repos });
+    const p = { ...base, target: { ...base.target, repos: repos.map((repo) => ({ key: repo.key, name: repo.name })) } } as unknown as TakeoverPreview;
+    expect(carryRows(p, EMPTY_CHOICE).map((row) => [row.name, row.why, row.carried, row.key])).toEqual([
+      ['web-front', 'edited · read', true, 'web'],
+      ['api', 'commands · read', true, 'api'],
+      ['docs', 'read', true, 'docs'],
+    ]);
+    expect(choiceBody(EMPTY_CHOICE)).toEqual({});
+    const leftOut = withRepoCarried(EMPTY_CHOICE, '/Users/dev/Acme/docs-repo', false);
+    expect(choiceBody(leftOut)).toEqual({ excludeRepos: ['/Users/dev/Acme/docs-repo'] });
+    expect(carryRows(p, leftOut).find((row) => row.name === 'docs')).toMatchObject({ carried: false, key: null });
+    expect(withRepoCarried(leftOut, '/Users/dev/Acme/docs-repo', true)).toEqual(EMPTY_CHOICE);
+    expect(worksInLine(p)).toBe('web-front (/Users/dev/Acme/microfrontends/web-front; edited · read) · api (/Users/dev/Acme/microservices/api; commands · read) · docs (/Users/dev/Acme/docs-repo; read)');
   });
 
   it('switches a repo between use and clone', () => {

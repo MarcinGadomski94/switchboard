@@ -40,7 +40,8 @@ export interface TakeoverEndpoint {
   readonly machineId: string | null;
   inspect(sessionId: string): Promise<OpAnswer<SourceInspect>>;
   stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>>;
-  capture(opId: string): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>>;
+  /** `exclude`: D152 follow-up 2026-11-05, the source paths of repos the developer left out (not captured). */
+  capture(opId: string, exclude?: readonly string[]): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>>;
   stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>>;
   files(opId: string): Promise<OpAnswer<{ readonly kind: string; readonly files: readonly ConversationFile[] }>>;
   readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer>;
@@ -66,7 +67,7 @@ export function localEndpoint(service: TakeoverService): TakeoverEndpoint {
     machineId: null,
     inspect: (sessionId) => service.inspect(sessionId),
     stop: (opId, sessionId) => service.stop(opId, sessionId),
-    capture: (opId) => service.capture(opId),
+    capture: (opId, exclude) => service.capture(opId, exclude ?? []),
     stopTerminal: (opId) => service.stopTerminal(opId),
     files: (opId) => service.files(opId),
     readChunk: (opId, name, offset) => service.readChunk(opId, name, offset),
@@ -99,7 +100,7 @@ export function peerEndpoint(peers: PeerService, machineId: string): TakeoverEnd
     machineId,
     inspect: (sessionId) => call('POST', '/source/inspect', { sessionId }),
     stop: (opId, sessionId) => call('POST', '/source/stop', { opId, sessionId }),
-    capture: (opId) => call('POST', '/source/capture', { opId }),
+    capture: (opId, exclude) => call('POST', '/source/capture', { opId, ...(exclude && exclude.length > 0 ? { excludeRepos: exclude } : {}) }),
     stopTerminal: (opId) => call('POST', '/source/stop-terminal', { opId }),
     files: (opId) => call('POST', '/source/files', { opId }),
     readChunk: (opId, name, offset) => call('POST', '/source/chunk', { opId, name, offset }),
@@ -135,6 +136,11 @@ export interface TakeoverRequest {
   readonly confirmStopTerminal?: boolean;
   /** D152: the workspace's own files to copy (absent: none, except the root AGENTS.md of a workspace root the move creates). */
   readonly workspaceFiles?: WorkspaceFileChoice;
+  /**
+   * D152 follow-up 2026-11-05: the source paths of repos the developer left out of
+   * the move (absent: every listed repo is carried, the default, read-only ones too).
+   */
+  readonly excludeRepos?: readonly string[];
 }
 
 /** Both ends of a take-over. */
@@ -218,12 +224,14 @@ export class TakeoverRunner {
       placement = await this.#service.rememberedPlacement(await this.#placementKey(ends, source));
       remembered = placement !== null;
     }
-    const target = (await ends.target.plan({ source, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}) })).result;
-    const blockers = [...source.blockers, ...target.blockers];
+    const carried = withoutExcluded(source, request.excludeRepos);
+    const target = (await ends.target.plan({ source: carried, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}) })).result;
+    const blockers = [...source.blockers, ...target.blockers, ...excludedProblem(source, carried)];
     // D152: the ticked workspace files (a secret needs the confirmation, the caps hold).
     const files = fileChoiceProblem(source.workspaceFiles, filesToSend(source.workspaceFiles, request.workspaceFiles, target.workspaceFiles, createsRoot(target)));
     if (files !== null) blockers.push(files);
-    return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered };
+    const excluded = source.repos.filter((repo) => !carried.repos.includes(repo)).map((repo) => repo.path);
+    return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered, excluded };
   }
 
   /** D110: the target machine's folder listing for the dialog's picker (`docs/peers.md` → *Target folders and verification*). */
@@ -309,7 +317,11 @@ export class TakeoverRunner {
       // 1 · checks on both sides.
       failedAt = 'checks';
       set('checks', 'running');
-      sourceInfo = (await source.inspect(ends.rawSessionId)).result;
+      const inspected = (await source.inspect(ends.rawSessionId)).result;
+      // D152 follow-up 2026-11-05: the repos the developer left out are neither planned nor captured.
+      sourceInfo = withoutExcluded(inspected, request.excludeRepos);
+      const leftOutProblem = excludedProblem(inspected, sourceInfo);
+      if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
       plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}) })).result;
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
@@ -331,7 +343,7 @@ export class TakeoverRunner {
       // 3 · the WIP push (and, for a hooked session, the terminal's stop).
       failedAt = 'capture';
       set('capture', 'running');
-      const capture = await source.capture(opId);
+      const capture = await source.capture(opId, request.excludeRepos ?? []);
       logOf(sourceName(), capture.log);
       captured = capture.result.repos;
       const changed = captured.reduce((total, repo) => total + repo.uncommitted, 0);
@@ -496,4 +508,16 @@ function createsRoot(plan: Pick<TargetPlan, 'workspaceRoot'>): boolean {
 
 function appendLog(run: RunState, who: string, lines: readonly string[]): void {
   for (const line of lines) run.log.push(`[${who}] ${line}`);
+}
+
+/** D152 follow-up 2026-11-05: `source` without the repos the developer left out (by their source path). */
+export function withoutExcluded(source: SourceInspect, exclude: readonly string[] | undefined): SourceInspect {
+  if (!exclude || exclude.length === 0) return source;
+  const out = new Set(exclude);
+  return { ...source, repos: source.repos.filter((repo) => !out.has(repo.path)) };
+}
+
+/** D152 follow-up 2026-11-05: the blocker when every repo was left out (there is nothing to carry the work through). */
+function excludedProblem(source: SourceInspect, carried: SourceInspect): string[] {
+  return source.repos.length > 0 && carried.repos.length === 0 ? ['every repo is left out: tick at least one to carry'] : [];
 }

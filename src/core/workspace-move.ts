@@ -354,8 +354,15 @@ export function suggestWorkspaceParent(places: ReadonlyArray<{ readonly path: st
 
 // ── which repos an agent works in ─────────────────────────────────────────
 
-/** Where a repo of {@link SessionWorksIn} came from (`docs/worktrees.md` → *Which repositories*). */
-export type WorksInSource = 'worktree' | 'solution' | 'edited' | 'cwd';
+/**
+ * Where a repo of {@link SessionWorksIn} came from (`docs/worktrees.md` → *Which repositories*).
+ * D152 follow-up 2026-11-05: `read` (it only read files there) and `commands` (it ran
+ * shell commands there) are additive; an older Switchboard sends neither.
+ */
+export type WorksInSource = 'worktree' | 'solution' | 'edited' | 'cwd' | 'read' | 'commands';
+
+/** What a repo was seen through (D152 follow-up 2026-11-05): edits, reads, shell commands. */
+export type WorksInEvidence = 'edited' | 'read' | 'commands';
 
 /** One repo an agent works in. */
 export interface WorksInRepo {
@@ -369,6 +376,13 @@ export interface WorksInRepo {
   readonly branch: string | null;
   /** The remote's URL without credentials; `null` without one. */
   readonly remoteUrl: string | null;
+  /**
+   * Additive (D152 follow-up 2026-11-05): what the agent's history shows it did
+   * there, strongest first (`edited`, `commands`, `read`); empty when it is listed
+   * only for where it was started (its separate copy, a picked solution, its
+   * working folder). Absent from an older Switchboard.
+   */
+  readonly evidence?: readonly WorksInEvidence[];
 }
 
 /** D152 `GET /api/sessions/{id}/works-in`: the repos a session works in, derived from its history. */
@@ -376,9 +390,9 @@ export interface SessionWorksIn {
   readonly repos: readonly WorksInRepo[];
 }
 
-/** The side panel's one-line summary: "web-front" / "web-front, api +2" / "no repo found yet". */
+/** The side panel's one-line summary: "web-front" / "web-front, api +2" / "No repo found yet". */
 export function worksInSummary(repos: readonly Pick<WorksInRepo, 'name'>[]): string {
-  if (repos.length === 0) return 'no repo found yet';
+  if (repos.length === 0) return 'No repo found yet';
   const names = [...new Set(repos.map((repo) => repo.name))];
   return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2}`;
 }
@@ -394,7 +408,30 @@ export function worksInSourceLabel(source: WorksInSource): string {
       return 'it edited files here';
     case 'cwd':
       return 'its working folder';
+    case 'read':
+      return 'it read files here';
+    case 'commands':
+      return 'it ran commands here';
   }
+}
+
+/** The side panel's subtle evidence words: "edited · commands · read" (empty without evidence). */
+export function worksInEvidenceLabel(evidence: readonly WorksInEvidence[] | undefined): string {
+  const words: Record<WorksInEvidence, string> = { edited: 'edited', commands: 'commands', read: 'read' };
+  return (evidence ?? []).map((kind) => words[kind]).join(' · ');
+}
+
+/** At most this many repos may be left out of one move. */
+export const EXCLUDE_REPOS_MAX = 200;
+
+/**
+ * D152 follow-up 2026-11-05: the repos left out of a move (`excludeRepos`: their
+ * source paths) from a request body; `undefined` when absent, `null` when malformed.
+ */
+export function excludeReposOf(value: unknown): string[] | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > EXCLUDE_REPOS_MAX || value.some((entry) => typeof entry !== 'string' || entry === '' || entry.length > 4096)) return null;
+  return [...new Set(value as string[])];
 }
 
 /** A {@link WorkspaceFileChoice} from a request body; `undefined` when absent, `null` when malformed. */

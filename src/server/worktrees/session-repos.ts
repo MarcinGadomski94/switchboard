@@ -219,13 +219,14 @@ export async function topOfDir(dir: string): Promise<string | null> {
 }
 
 /** `true` when `top` lies in a read-only layout folder (`deprecated/`, `infrastructure/`) of the workspace `root`. */
-function readOnlyInside(root: string, top: string): boolean {
+export function readOnlyInside(root: string, top: string): boolean {
   const relative = path.relative(root, top);
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return false;
   return isReadOnlyByLayout(relative);
 }
 
-async function realOrNull(target: string): Promise<string | null> {
+/** `target`'s real path, `null` when it does not resolve. */
+export async function realOrNull(target: string): Promise<string | null> {
   try {
     return await realpath(target);
   } catch {

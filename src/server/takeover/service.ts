@@ -64,7 +64,7 @@ import { type CheckoutFacts, LocateRefusal, allowedPlaces, checkoutFacts, findCh
 import type { TodoService } from '../todos/service.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
-import { type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
+import { type WorksInEvidence, type WorksInSource, type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
 import { type StagedWorkspaceFile, checkWorkspaceChunk, checkWorkspaceRoot, inspectStaged, listWorkspaceFiles, mkdirTracked, placeWorkspaceFiles, sourceWorkspaceFile, undoPlaced, workspaceFileStates, writeStagedChunk } from './workspace.ts';
 
@@ -307,10 +307,14 @@ export class TakeoverService {
       used.add(key);
       return key;
     };
-    const describe = async (input: { name: string; kind: 'main' | 'worktree'; dir: string; baseRef: string | null; parentBranch: string | null }): Promise<void> => {
+    const leftOut: Array<{ readonly name: string; readonly path: string; readonly reason: string }> = [];
+    const describe = async (input: { name: string; kind: 'main' | 'worktree'; dir: string; baseRef: string | null; parentBranch: string | null }, found?: { source: WorksInSource; evidence: readonly WorksInEvidence[] }): Promise<void> => {
       const answer = await git.describe({ key: keyOf(input.name), ...input });
-      if ('blocker' in answer) blockers.push(answer.blocker);
-      else repos.push(answer.repo);
+      // A repo it only read in or ran commands in that cannot travel (no remote, a detached HEAD…) is left out with the reason, never a blocker.
+      if ('blocker' in answer) {
+        if (found && (found.source === 'read' || found.source === 'commands')) leftOut.push({ name: input.name, path: input.dir, reason: answer.blocker });
+        else blockers.push(answer.blocker);
+      } else repos.push(found ? { ...answer.repo, found: found.source, evidence: found.evidence } : answer.repo);
     };
     const live = await this.#store.worktrees.list({ sessionId });
     if (live.length > 0) {
@@ -335,21 +339,31 @@ export class TakeoverService {
     } else {
       blockers.push(`${display} has no working folder`);
     }
-    // D152: a workspace session also carries the repos its history shows it works in (the files it edited, its cwd's repo), not only the solutions it named.
+    // D152: a workspace session also carries the repos its history shows it works in (the files it edited, its cwd's repo), not only the solutions it named;
+    // D152 follow-up 2026-11-05: and the repos it only read in or ran commands in (ranked; the developer may leave any out in the dialog: `excludeRepos`).
     if (record.rootKind === 'workspace' && folderRef) {
-      const set = await this.#worktrees.repos.of(record).catch(() => null);
-      const covered = new Set<string>();
-      for (const repo of repos) {
-        covered.add(await realpath(repo.path).catch(() => repo.path));
-        if (repo.kind === 'main') covered.add(await realpath(repo.mainPath).catch(() => repo.mainPath));
+      const found = await this.#worktrees.worksInFound(record).catch(() => []);
+      const covered = new Map<string, number>();
+      for (const [at, repo] of repos.entries()) {
+        covered.set(await realpath(repo.path).catch(() => repo.path), at);
+        if (repo.kind === 'main') covered.set(await realpath(repo.mainPath).catch(() => repo.mainPath), at);
       }
-      for (const found of set?.inPlace ?? []) {
-        const top = await realpath(found.top).catch(() => found.top);
-        if (covered.has(top)) continue;
-        covered.add(top);
+      for (const entry of found) {
+        if (entry.source === 'worktree') {
+          const at = covered.get(await realpath(entry.top).catch(() => entry.top));
+          if (at !== undefined) repos[at] = { ...(repos[at] as SourceRepo), found: 'worktree', evidence: entry.evidence };
+          continue;
+        }
+        const top = await realpath(entry.top).catch(() => entry.top);
+        const at = covered.get(top);
+        if (at !== undefined) {
+          repos[at] = { ...(repos[at] as SourceRepo), found: (repos[at] as SourceRepo).found ?? entry.source, evidence: entry.evidence };
+          continue;
+        }
+        covered.set(top, repos.length);
         const main = await git.mainCheckout(top);
         const mainReal = main === null ? null : await realpath(main).catch(() => main);
-        await describe({ name: found.name, kind: mainReal !== null && mainReal !== top ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null });
+        await describe({ name: entry.name, kind: mainReal !== null && mainReal !== top ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null }, { source: entry.source, evidence: entry.evidence });
       }
     }
     if (repos.length === 0 && blockers.length === 0) blockers.push(`${display} works in no git repository: there is nothing to carry the files through`);
@@ -411,6 +425,7 @@ export class TakeoverService {
         // D94: its Switchboard loops travel with it (they fire on the target from then on).
         ...(this.#loops ? { loops: await this.#loops.portable(sessionId) } : {}),
         workspaceFiles,
+        leftOut,
         blockers,
       },
       log,
@@ -531,12 +546,15 @@ export class TakeoverService {
    * working tree) and its push to the temporary branch. The temp branches are
    * written to the leftovers list at once, so a crash never loses track of them.
    */
-  async capture(opId: string): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>> {
+  async capture(opId: string, exclude: readonly string[] = []): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>> {
     const op = this.#source(opId);
     const log: string[] = [];
     const git = this.#git(log);
     const inspected = (await this.inspectRepos(op.sessionId, log)).repos;
+    // D152 follow-up 2026-11-05: a repo the developer left out is not captured (no temp branch).
+    const left = new Set(exclude);
     for (const repo of inspected) {
+      if (left.has(repo.path)) continue;
       const captured = await git.capture(repo, op.sessionId);
       const leftover = await this.#addLeftover({ repoPath: repo.path, remoteName: repo.remoteName, remoteUrl: repo.remoteUrl, branch: captured.tempBranch, reason: null });
       op.captured.push({ ...captured, repoPath: repo.path, leftoverId: leftover.id });

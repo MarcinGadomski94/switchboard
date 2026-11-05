@@ -309,6 +309,38 @@ export class EventRepository {
   }
 
   /**
+   * D152 follow-up 2026-11-05 (Works in): the tool calls named `names` among the
+   * session's newest `window` events (any type), oldest first: each one's tool name,
+   * input (JSON text) and the first `resultChars` of its result. Bounded twice: only
+   * the newest `window` events are looked at (the `(session_id, ts, id)` index
+   * walks them newest first), and long results are cut in SQL.
+   */
+  async toolCallsInNewest(sessionId: string, names: readonly string[], window: number, resultChars: number): Promise<Array<{ readonly id: number; readonly name: string; readonly input: string | null; readonly result: string | null; readonly isError: boolean }>> {
+    if (names.length === 0 || window <= 0) return [];
+    const marks = names.map(() => '?').join(', ');
+    return this.#table
+      .statement(
+        `SELECT id, json_extract(payload, '$.name') AS name, json_extract(payload, '$.input') AS input, substr(json_extract(payload, '$.result'), 1, ?) AS result, json_extract(payload, '$.isError') AS isError ` +
+          `FROM (SELECT id, payload FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT ?) ` +
+          `WHERE json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') IN (${marks}) ORDER BY id`,
+      )
+      .all(resultChars, sessionId, window, ...names)
+      .map((row) => ({
+        id: Number(row['id']),
+        name: String(row['name']),
+        input: typeof row['input'] === 'string' ? row['input'] : null,
+        result: typeof row['result'] === 'string' ? row['result'] : null,
+        isError: Number(row['isError']) === 1,
+      }));
+  }
+
+  /** The id of the session's newest event (`0` without one): what a cache of its history is keyed by. */
+  async newestId(sessionId: string): Promise<number> {
+    const row = this.#table.statement('SELECT id FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT 1').get(sessionId) as { id: number } | undefined;
+    return row ? Number(row.id) : 0;
+  }
+
+  /**
    * D90: the distinct file paths the session's file-editing tool calls named
    * (`payload.type` = `tool`, `payload.name` one of `names`; `input.file_path`, or
    * `input.notebook_path` for NotebookEdit), as written (absolute or cwd-relative).

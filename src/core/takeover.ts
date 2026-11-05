@@ -1,7 +1,7 @@
 import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
-import type { NewWorkspace, WorkspaceFileTarget, WorkspaceFilesListing, WorkspaceFilesResult, WorkspaceRootCheck } from './workspace-move.ts';
+import type { NewWorkspace, WorksInEvidence, WorksInSource, WorkspaceFileTarget, WorkspaceFilesListing, WorkspaceFilesResult, WorkspaceRootCheck } from './workspace-move.ts';
 
 /**
  * D65 (`docs/peers.md` → *Taking a session over*): the pure part of taking a
@@ -92,6 +92,15 @@ export interface SourceRepo {
   /** A worktree's base ref / stacked parent (copied onto the worktree record on the target). */
   readonly baseRef: string | null;
   readonly parentBranch: string | null;
+  /**
+   * Additive (D152 follow-up 2026-11-05): why a workspace session's repo is listed
+   * (`docs/peers.md` → *A complete move (D152)*): its worktree, a picked solution,
+   * its cwd, it `edited` files there, or it only `read` files / ran `commands`
+   * there. Absent from an older Switchboard (and for a non-workspace session).
+   */
+  readonly found?: WorksInSource;
+  /** Additive (D152 follow-up 2026-11-05): what its history shows it did there, strongest first. */
+  readonly evidence?: readonly WorksInEvidence[];
 }
 
 /** What the source machine reports about a session it could hand over (`POST /api/takeover/source/inspect`). */
@@ -177,6 +186,13 @@ export interface SourceInspect {
    * Absent from an older Switchboard, `null` for any other session.
    */
   readonly workspaceFiles?: WorkspaceFilesListing | null;
+  /**
+   * Additive (D152 follow-up 2026-11-05): repos a workspace session only read in
+   * or ran commands in that cannot travel (no remote, a detached HEAD, no commit):
+   * left out with the reason instead of blocking the move. Absent from an older
+   * Switchboard.
+   */
+  readonly leftOut?: ReadonlyArray<{ readonly name: string; readonly path: string; readonly reason: string }>;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
 }
@@ -452,6 +468,12 @@ export interface TakeoverPreview {
   readonly placement: TargetPlacement | null;
   /** D110: {@link placement} came from the last move of this folder to that machine. */
   readonly remembered: boolean;
+  /**
+   * Additive (D152 follow-up 2026-11-05): the source paths of the repos the
+   * developer left out (`excludeRepos`); they are in `source.repos` but not in the
+   * target's plan, and are not carried. Absent from an older Switchboard.
+   */
+  readonly excluded?: readonly string[];
 }
 
 /** One repo after the source pushed its work in progress. */

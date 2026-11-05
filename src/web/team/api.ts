@@ -73,6 +73,8 @@ export interface MoveTarget {
   readonly clonePaths?: Readonly<Record<string, string>>;
   /** D152: the workspace's own files to copy. */
   readonly workspaceFiles?: WorkspaceFileChoice;
+  /** D152 follow-up 2026-11-05: the source paths of the repos left out of the move. */
+  readonly excludeRepos?: readonly string[];
 }
 
 /** `POST /api/team/charters/ask` (D105). */
