@@ -1,6 +1,9 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { type SourceRepo, type TargetCandidate, parseWorktreeList, planRepos, worktreeSlotBlocker } from '../../src/core/takeover.ts';
-import { worktreePath } from '../../src/core/worktrees.ts';
+
+/** `worktreePath` for a macOS/Linux target: the fixtures are POSIX paths on every host. */
+const worktreePath = (repoPath: string, sessionName: string): string => `${path.posix.dirname(repoPath)}/${path.posix.basename(repoPath)}-wt-${sessionName}`;
 import { comparablePathText } from '../../src/server/takeover/git.ts';
 
 /**

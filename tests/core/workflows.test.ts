@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   type AgentMeta,
@@ -23,6 +24,9 @@ import {
   workflowAgents,
   workflowLaunch,
 } from '../../src/core/derive/workflows.ts';
+
+/** A path under a native workspace root (`/ws` on macOS/Linux, `<drive>:\ws` on Windows): the code resolves with the host's `path`. */
+const ws = (...parts: string[]): string => path.join(path.resolve('/ws'), ...parts);
 
 /**
  * D51 (`docs/derivations.md` → *Workflow agents*): the Workflow run and its agents
@@ -287,8 +291,8 @@ describe('deriveWorkflowRun', () => {
   });
 
   it('workflowAgents: `Session.agents` entries named by label, described by phase, placed by the cwd', () => {
-    const { agents } = deriveWorkflowRun(base({ progress: snapshot, transcripts: new Map([['a3', { ...NO_TRANSCRIPT, cwd: '/ws/x-front' }]]), writes: new Map([['a2', '/ws/y-front/src/a.ts']]) }));
-    const api = workflowAgents(agents, (file) => (file.startsWith('/ws/x-front/') ? 'x-front/' : file.startsWith('/ws/y-front/') ? 'y-front/' : null));
+    const { agents } = deriveWorkflowRun(base({ progress: snapshot, transcripts: new Map([['a3', { ...NO_TRANSCRIPT, cwd: ws('x-front') }]]), writes: new Map([['a2', ws('y-front', 'src', 'a.ts')]]) }));
+    const api = workflowAgents(agents, (file) => (file.startsWith(ws('x-front') + path.sep) ? 'x-front/' : file.startsWith(ws('y-front') + path.sep) ? 'y-front/' : null));
     expect(api[2]).toEqual({
       id: 'wf_abc123-def--3',
       kind: 'workflow',
@@ -316,15 +320,15 @@ describe('deriveWorkflowRun', () => {
 
 describe('scanWrites (D51-solution)', () => {
   it('the first write whose result is not an error, resolved against the line\'s cwd; a failed one does not count', () => {
-    const use = (id: string, name: string, input: Record<string, unknown>, cwd = '/ws') => ({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', id, name, input }] } });
+    const use = (id: string, name: string, input: Record<string, unknown>, cwd = ws()) => ({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', id, name, input }] } });
     const result = (id: string, isError = false) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'x', ...(isError ? { is_error: true } : {}) }] } });
-    let scan = scanWrites(NO_WRITES, [use('t0', 'Read', { file_path: '/ws/a/r.md' }), result('t0'), use('t1', 'Edit', { file_path: '/ws/a/x.ts' })]);
+    let scan = scanWrites(NO_WRITES, [use('t0', 'Read', { file_path: ws('a', 'r.md') }), result('t0'), use('t1', 'Edit', { file_path: ws('a', 'x.ts') })]);
     expect(scan.first).toBeNull();
-    expect([...scan.pending]).toEqual([['t1', '/ws/a/x.ts']]);
-    scan = scanWrites(scan, [result('t1', true), use('t2', 'Write', { file_path: 'b/y.ts' }, '/ws/micro'), use('t3', 'NotebookEdit', { notebook_path: '/ws/c/n.ipynb' })]);
+    expect([...scan.pending]).toEqual([['t1', ws('a', 'x.ts')]]);
+    scan = scanWrites(scan, [result('t1', true), use('t2', 'Write', { file_path: 'b/y.ts' }, ws('micro')), use('t3', 'NotebookEdit', { notebook_path: ws('c', 'n.ipynb') })]);
     expect(scan.first).toBeNull();
     scan = scanWrites(scan, [result('t3'), result('t2')]);
-    expect(scan.first).toBe('/ws/c/n.ipynb');
+    expect(scan.first).toBe(ws('c', 'n.ipynb'));
     // Once found, nothing changes it.
     expect(scanWrites(scan, [use('t9', 'Write', { file_path: '/z' }), result('t9')])).toBe(scan);
   });

@@ -411,7 +411,8 @@ describe('fake-claude interrupts, signals and EOF (D7)', () => {
     expect(added.some((e) => e['type'] === 'custom-title')).toBe(false);
   });
 
-  it('sigint: SIGINT mid-turn → the interrupted result, then exit 0', async () => {
+  // Windows has no SIGINT for a child process: Node's kill() ends it outright.
+  it.skipIf(process.platform === 'win32')('sigint: SIGINT mid-turn → the interrupted result, then exit 0', async () => {
     const recorded = await raw('sigint');
     const fake = start(BASELINE, { FAKE_CLAUDE_SCENARIO: 'sigint' });
     fake.send(userLine('Run sleep 25.'));
@@ -442,7 +443,7 @@ describe('fake-claude interrupts, signals and EOF (D7)', () => {
     expect((await fake.exited).code).toBe(0);
   });
 
-  it('hang: EOF does not end a hanging turn; SIGINT does (exit 0)', async () => {
+  it.skipIf(process.platform === 'win32')('hang: EOF does not end a hanging turn; SIGINT does (exit 0)', async () => {
     const fake = start(BASELINE, { FAKE_CLAUDE_SCENARIO: 'hang' });
     fake.send(userLine('Take forever.'));
     await fake.waitFor((l) => kind(l) === 'system/init');

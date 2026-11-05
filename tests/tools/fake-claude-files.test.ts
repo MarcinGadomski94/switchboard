@@ -255,7 +255,8 @@ describe('fake-claude transcripts (CLAUDE_CONFIG_DIR)', () => {
 });
 
 describe('fake-claude live-process files, agents --json and FAKE_CLAUDE_LOG', () => {
-  it('sessions/<pid>.json is listed by agents --json while the process lives (busy during a turn) and removed on exit', async () => {
+  // Ends with SIGINT, which Windows cannot send to a child process.
+  it.skipIf(process.platform === 'win32')('sessions/<pid>.json is listed by agents --json while the process lives (busy during a turn) and removed on exit', async () => {
     const fake = start([...BASELINE, '--session-id', SID, '--name', 'sb-live'], { FAKE_CLAUDE_SCENARIO: 'hang' });
     await fake.waitFor((l) => l['subtype'] === 'hook_response');
     await delay(100);
