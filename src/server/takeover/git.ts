@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { type CapturedRepo, REMOTE_CHECK_TIMEOUT_MS, type SourceRepo, type WorktreeEntry, type WorktreeSlot, gitErrorSummary, nonInteractiveGitEnv, normalizeRemoteUrl, parseWorktreeList, redactUrl, tempBranchName } from '../../core/takeover.ts';
 import { TARGET_CHANGES_LISTED, type TargetChanges, type WorktreeCarryFacts } from '../../core/move-worktrees.ts';
+import { DIVERGED_LISTED, type TargetDiverged, backupBranchName, cleanSubject } from '../../core/move-overwrite.ts';
 import { failureText, runCommand, succeeded } from '../exec.ts';
 
 /**
@@ -530,6 +531,45 @@ export class TakeoverGit {
     }
     const total = modified + untracked;
     return { files, modified, untracked, total, truncated: total > files.length };
+  }
+
+  // ── D157: a target branch with commits the source does not have ──────
+
+  /**
+   * The commits of `localTip` that `base` does not contain (newest first, at most
+   * {@link DIVERGED_LISTED} listed, all counted); `null` when there are none or git
+   * cannot tell. Read-only.
+   */
+  async divergedCommits(dir: string, branch: string, localTip: string, base: string): Promise<TargetDiverged | null> {
+    const counted = await this.try(dir, ['rev-list', '--count', localTip, `^${base}`]);
+    const count = counted.ok ? Number.parseInt(counted.out, 10) : Number.NaN;
+    if (!Number.isFinite(count) || count <= 0) return null;
+    const listed = await this.try(dir, ['-c', 'core.quotePath=false', 'log', '--no-color', `--max-count=${DIVERGED_LISTED}`, '--format=%h%x1f%s', localTip, `^${base}`]);
+    const commits = (listed.ok ? listed.out.split('\n') : [])
+      .filter((line) => line.includes('\x1f'))
+      .map((line) => {
+        const [sha = '', subject = ''] = line.split('\x1f');
+        return { sha: sha.trim(), subject: cleanSubject(subject) };
+      });
+    return { branch, count, commits, truncated: count > commits.length };
+  }
+
+  /**
+   * D157: a new branch at `tip` that keeps the commits an overwrite replaces:
+   * `switchboard/backup/<branch>-<YYYYMMDD-HHMM>` (`-2`, `-3`… when taken). Made with
+   * `git update-ref <ref> <tip> ""`, which refuses a ref that exists, so it never
+   * overwrites anything. Never pushed. Returns the branch name.
+   */
+  async createBackupBranch(dir: string, branch: string, tip: string, at: Date): Promise<string> {
+    let last = '';
+    for (let attempt = 1; attempt <= 20; attempt++) {
+      const name = backupBranchName(branch, at, attempt);
+      if ((await this.sha(dir, `refs/heads/${name}`)) !== null) continue;
+      const made = await this.try(dir, ['update-ref', '-m', 'switchboard: backup before a move overwrote the branch', `refs/heads/${name}`, tip, '']);
+      if (made.ok) return name;
+      last = made.error;
+    }
+    throw new TakeoverGitError(`could not create a backup branch for ${branch} in ${dir}${last ? `: ${last}` : ''}`);
   }
 
   /**

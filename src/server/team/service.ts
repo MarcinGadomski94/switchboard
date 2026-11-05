@@ -82,6 +82,7 @@ import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../su
 import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, excludeReposOf, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { stashTargetsOf } from '../../core/move-worktrees.ts';
+import { overwriteTargetsOf } from '../../core/move-overwrite.ts';
 import { cleanupSourceOf } from '../../core/source-cleanup.ts';
 import type { MoveContext, TakeoverRunner } from '../takeover/runner.ts';
 import { type MoveLogSink, SILENT_MOVE_LOG } from '../takeover/move-log.ts';
@@ -2292,7 +2293,7 @@ export class TeamService {
         const step = state?.error ? `${TAKEOVER_STEP_LABELS[state.error.step]} failed: ` : '';
         const reason = (!state ? 'the take-over run is gone' : (state.error?.message ?? 'the take-over failed')).replace(/[.\s]+$/, '');
         const undo = state && state.rolledBack === false ? ` Undoing it left something behind: ${state.rollbackNotes.join('; ')}.` : '';
-        return set({ state: 'failed', machineId: member.machineId, rolledBack: state?.rolledBack ?? null, error: `${step}${reason}.${undo} ${member.name} still runs on ${where}.`, ...(state?.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}) });
+        return set({ state: 'failed', machineId: member.machineId, rolledBack: state?.rolledBack ?? null, error: `${step}${reason}.${undo} ${member.name} still runs on ${where}.`, ...(state?.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}), ...(state?.overwrites && state.overwrites.length > 0 ? { overwrites: state.overwrites } : {}) });
       }
       const result = state.result;
       const moved = parseRemoteId(result.sessionId);
@@ -2300,7 +2301,7 @@ export class TeamService {
       // `done` only with the record moved (a concurrent change could have put it elsewhere).
       const after = this.#memberRecord(run.memberId);
       if (after.machineId !== result.machineId) return set({ state: 'failed', machineId: after.machineId, error: `the take-over finished but ${after.name}'s record still names another computer: open its menu and try again` });
-      return set({ state: 'done', machineId: result.machineId, ...(state.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}) });
+      return set({ state: 'done', machineId: result.machineId, ...(state.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}), ...(state.overwrites && state.overwrites.length > 0 ? { overwrites: state.overwrites } : {}) });
     }
   }
 
@@ -2623,11 +2624,11 @@ function crewMoveOf(body: Record<string, unknown>): { readonly id: string; reado
   return typeof id === 'string' && typeof name === 'string' && typeof run === 'string' ? { id: id.slice(0, 64), name: name.slice(0, 200), run: run.slice(0, 64) } : null;
 }
 
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; cleanupSource?: boolean } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; cleanupSource?: boolean } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[]; cleanupSource?: boolean } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
   // D152: the workspace's own files to copy.
   const files = workspaceChoiceOf(body['workspaceFiles']);
   if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
@@ -2640,6 +2641,10 @@ function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacem
   const stash = stashTargetsOf(body['stashTargets']);
   if (stash === null) throw new TeamError(422, 'invalid', 'stashTargets must be a list of checkout paths');
   if (stash && stash.length > 0) out.stashTargets = stash;
+  // D157: the target checkouts whose diverged branch the developer confirmed overwriting.
+  const overwrite = overwriteTargetsOf(body['overwriteTargets']);
+  if (overwrite === null) throw new TeamError(422, 'invalid', 'overwriteTargets must be a list of checkout paths');
+  if (overwrite && overwrite.length > 0) out.overwriteTargets = overwrite;
   // D156: clean up on the source after a successful move.
   if (cleanupSourceOf(body['cleanupSource'])) out.cleanupSource = true;
   const paths = body['clonePaths'];

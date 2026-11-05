@@ -1,5 +1,6 @@
 import { remoteId } from './peers.ts';
 import { type MoveStash, stashNote } from './move-worktrees.ts';
+import { type MoveOverwrite, overwriteNote } from './move-overwrite.ts';
 import { type Leftover, type TakeoverRun, type TakeoverStepId, type TakeoverStepState, type TargetPlacement, TAKEOVER_STEP_LABELS } from './takeover.ts';
 import type { WorkspaceFileChoice } from './workspace-move.ts';
 import type { SourceCleanupReport } from './source-cleanup.ts';
@@ -28,6 +29,8 @@ export interface MoveChoices {
   readonly workspaceFiles: WorkspaceFileChoice | null;
   readonly excludeRepos: readonly string[];
   readonly stashTargets: readonly string[];
+  /** D157: the target checkouts whose diverged branch the developer confirmed overwriting (absent = none). */
+  readonly overwriteTargets?: readonly string[];
   /** D156: clean up on the source after a successful move (absent = no). */
   readonly cleanupSource?: boolean;
 }
@@ -75,6 +78,8 @@ export interface MoveRecord {
   readonly interrupted: boolean;
   readonly leftovers: ReadonlyArray<Leftover & { readonly machineId: string | null }>;
   readonly stashes: readonly MoveStash[];
+  /** D157: branches the move overwrote on the target, each kept on its backup branch (absent from an older record). */
+  readonly overwrites?: readonly MoveOverwrite[];
   readonly choices: MoveChoices;
   /** D156: the clean-up on the source after the move (what was removed, what is left to remove by hand); absent when not asked for. */
   readonly sourceCleanup?: SourceCleanupReport | null;
@@ -137,7 +142,7 @@ export function moveFromPeer(machine: { readonly id: string; readonly name: stri
     return { ...leftover, machineId: owner === viewerId ? null : owner };
   });
   const { machine: _theirs, ...rest } = record;
-  return viewMove({ ...rest, id: remoteId(machine.id, record.id), machine: { id: machine.id, name: machine.name, state: machine.state }, leftovers, steps: Array.isArray(record.steps) ? record.steps : [], stashes: Array.isArray(record.stashes) ? record.stashes : [], rollbackNotes: Array.isArray(record.rollbackNotes) ? record.rollbackNotes : [] }, viewerId);
+  return viewMove({ ...rest, id: remoteId(machine.id, record.id), machine: { id: machine.id, name: machine.name, state: machine.state }, leftovers, steps: Array.isArray(record.steps) ? record.steps : [], stashes: Array.isArray(record.stashes) ? record.stashes : [], overwrites: Array.isArray(record.overwrites) ? record.overwrites : [], rollbackNotes: Array.isArray(record.rollbackNotes) ? record.rollbackNotes : [] }, viewerId);
 }
 
 /** The moves still listed at `now`: running ones, and finished ones younger than {@link MOVE_RETENTION_MS}; at most {@link MOVE_KEEP_MAX} (newest first). */
@@ -176,22 +181,29 @@ export function moveStashText(stashes: readonly MoveStash[]): string {
   return stashes.map(stashNote).join(' ');
 }
 
+/** D157: the overwrite note of a move (the replaced commits are kept on a backup branch), or `''`. */
+export function moveOverwriteText(overwrites: readonly MoveOverwrite[] | undefined): string {
+  return (overwrites ?? []).map((entry) => `${overwriteNote(entry)}.`).join(' ');
+}
+
 /** The Needs-you item of a failed move: its title. */
 export function moveFailedTitle(move: Pick<MoveRecord, 'member' | 'title' | 'target'>): string {
   return `Couldn’t move ${moveAgentName(move)} to ${move.target.name}`;
 }
 
 /** The Needs-you item of a failed move: the reason, the step, what was undone or left, the stash note. */
-export function moveFailedDetail(move: Pick<MoveRecord, 'state' | 'step' | 'target' | 'source' | 'error' | 'rolledBack' | 'rollbackNotes' | 'interrupted' | 'member' | 'title' | 'leftovers' | 'stashes'>): string {
+export function moveFailedDetail(move: Pick<MoveRecord, 'state' | 'step' | 'target' | 'source' | 'error' | 'rolledBack' | 'rollbackNotes' | 'interrupted' | 'member' | 'title' | 'leftovers' | 'stashes'> & Pick<Partial<MoveRecord>, 'overwrites'>): string {
   const parts = [moveOutcomeText(move)];
   if (move.leftovers.length > 0) parts.push(`${move.leftovers.length} temporary branch${move.leftovers.length === 1 ? ' is' : 'es are'} still on the remote: open the move to delete ${move.leftovers.length === 1 ? 'it' : 'them'}.`);
   const stash = moveStashText(move.stashes);
   if (stash) parts.push(stash);
+  const overwritten = moveOverwriteText(move.overwrites);
+  if (overwritten) parts.push(overwritten);
   return parts.join(' ');
 }
 
 /** What a run says now, as a record's fields (the server's {@link MoveRecord} without the identity). */
-export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' | 'steps' | 'error' | 'rolledBack' | 'rollbackNotes' | 'leftovers' | 'stashes' | 'sourceCleanup'> {
+export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' | 'steps' | 'error' | 'rolledBack' | 'rollbackNotes' | 'leftovers' | 'stashes' | 'overwrites' | 'sourceCleanup'> {
   const running = run.steps.find((step) => step.status === 'running') ?? null;
   const failed = run.error ? (run.steps.find((step) => step.id === run.error?.step) ?? null) : null;
   const current = run.state === 'running' ? (running ?? failed) : failed;
@@ -204,6 +216,7 @@ export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' |
     rollbackNotes: [...run.rollbackNotes],
     leftovers: run.leftovers.map((leftover) => ({ ...leftover })),
     stashes: (run.stashes ?? []).map((stash) => ({ ...stash })),
+    overwrites: (run.overwrites ?? []).map((entry) => ({ ...entry })),
     ...(run.sourceCleanup ? { sourceCleanup: run.sourceCleanup } : {}),
   };
 }
@@ -221,6 +234,7 @@ export function moveAsRun(move: MoveRecord, log: readonly string[] = []): Takeov
     leftovers: move.leftovers,
     log,
     stashes: move.stashes,
+    overwrites: move.overwrites ?? [],
     ...(move.sourceCleanup ? { sourceCleanup: move.sourceCleanup } : {}),
   };
 }
@@ -292,13 +306,14 @@ export function moveRetry(move: Pick<MoveRecord, 'kind' | 'source' | 'target' | 
 }
 
 /** The choices of a take-over request (what a record keeps for Try again). */
-export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly cleanupSource?: boolean }): MoveChoices {
+export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly cleanupSource?: boolean }): MoveChoices {
   return {
     placement: request.placement ?? null,
     clonePaths: { ...(request.clonePaths ?? {}) },
     workspaceFiles: request.workspaceFiles ?? null,
     excludeRepos: [...(request.excludeRepos ?? [])],
     stashTargets: [...(request.stashTargets ?? [])],
+    ...(request.overwriteTargets && request.overwriteTargets.length > 0 ? { overwriteTargets: [...request.overwriteTargets] } : {}),
     ...(request.cleanupSource === true ? { cleanupSource: true } : {}),
   };
 }

@@ -21,6 +21,7 @@ import {
 } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem, filesToSend } from '../../core/workspace-move.ts';
 import type { MoveStash } from '../../core/move-worktrees.ts';
+import { type MoveOverwrite, overwriteNote } from '../../core/move-overwrite.ts';
 import { effectiveExclusions } from '../../core/outside-repos.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
@@ -60,12 +61,12 @@ export interface TakeoverEndpoint {
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
   /** D156: the source's clean-up after a successful move (an older source answers 403 / 404). */
   cleanupSource(opId: string, sessionId: string): Promise<OpAnswer<SourceCleanupReport>>;
-  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly opId?: string }): Promise<OpAnswer<TargetPlan>>;
+  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly opId?: string }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
-  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>>;
-  abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>>;
+  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly overwriteTargets?: readonly string[]; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>>;
+  abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>>;
   resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>>;
   closeTarget(opId: string): Promise<void>;
 }
@@ -157,6 +158,12 @@ export interface TakeoverRequest {
    * stashing ("Stash them on <PC>"); absent = none (a dirty checkout blocks).
    */
   readonly stashTargets?: readonly string[];
+  /**
+   * D157: the target checkouts whose diverged branch the developer confirmed
+   * overwriting ("Overwrite them on <PC> (keep a backup branch)"); absent = none
+   * (a diverged branch blocks).
+   */
+  readonly overwriteTargets?: readonly string[];
   /** D156: clean up on the source after a successful move (archive, carried worktrees, the conversation file); absent = no. */
   readonly cleanupSource?: boolean;
   /**
@@ -206,6 +213,8 @@ interface RunState {
   workspaceFiles: WorkspaceFilesResult | null;
   /** D153: stashes the move made on the target (kept, also after an undo). */
   stashes: MoveStash[];
+  /** D157: branches the move overwrote on the target (their backup branches are kept, also after an undo). */
+  overwrites: MoveOverwrite[];
   /** D156: the source's clean-up after the move (`null`: not asked for, or not yet). */
   sourceCleanup: SourceCleanupReport | null;
   /** D154: who started it and between which machines (the moves list). */
@@ -325,6 +334,7 @@ export class TakeoverRunner {
       sessionKey: request.sessionId,
       workspaceFiles: null,
       stashes: [],
+      overwrites: [],
       sourceCleanup: null,
       meta: { request, sourceMachineId: ends.source.machineId ?? selfId, targetMachineId: ends.target.machineId ?? selfId, rawSessionId: ends.rawSessionId, title: null, startedAt: new Date().toISOString(), endedAt: null },
     };
@@ -376,6 +386,7 @@ export class TakeoverRunner {
       log: [...run.log],
       workspaceFiles: run.workspaceFiles,
       stashes: run.stashes.map((stash) => ({ ...stash })),
+      overwrites: run.overwrites.map((entry) => ({ ...entry })),
       ...(run.sourceCleanup ? { sourceCleanup: run.sourceCleanup } : {}),
     };
   }
@@ -492,6 +503,7 @@ export class TakeoverRunner {
       const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), captured });
       logOf(plan.machine.name, applied.log);
       run.stashes = [...(applied.result.stashes ?? [])];
+      run.overwrites = [...(applied.result.overwrites ?? [])];
       const placed = applied.result.workspaceFiles ?? null;
       if (placed || (request.workspaceFiles && request.workspaceFiles.copy.length > 0)) {
         // What was skipped up front (the same file, a conflict on the target) is reported with what the apply did.
@@ -631,6 +643,7 @@ export class TakeoverRunner {
       ...(run.rollbackNotes.length > 0 ? { rollbackNotes: run.rollbackNotes.map(moveLogReason) } : {}),
       leftovers: run.leftovers.map((entry) => `${entry.repoPath} ${entry.branch}`),
       ...(run.stashes.length > 0 ? { stashes: run.stashes.map((stash) => stash.path) } : {}),
+      ...(run.overwrites.length > 0 ? { overwrites: run.overwrites.map((entry) => moveLogReason(overwriteNote(entry))) } : {}),
       ...(run.result ? { session: run.result.sessionId } : {}),
       ...(run.steps.some((entry) => entry.id === 'finish' && entry.status === 'failed') ? { finish: 'failed' } : {}),
       ...(run.sourceCleanup ? { cleanup: cleanupSummary(run.sourceCleanup) } : {}),
@@ -661,6 +674,8 @@ export class TakeoverRunner {
         run.rollbackNotes.push(...undone.result.notes);
         // D153: a stash the move made is kept by the undo: the run says where and how to restore it.
         if (undone.result.stashes && undone.result.stashes.length > 0) run.stashes = [...undone.result.stashes];
+        // D157: the undo moved an overwritten branch back; its backup branch stays and the run says so.
+        if (undone.result.overwrites && undone.result.overwrites.length > 0) run.overwrites = [...undone.result.overwrites];
         if (undone.result.notes.length > 0) clean = false;
       });
     }
@@ -686,8 +701,12 @@ function createsRoot(plan: Pick<TargetPlan, 'workspaceRoot'>): boolean {
 }
 
 /** D153: the request's confirmed stash checkouts, for the target's plan and apply. */
-function stashOf(request: TakeoverRequest): { stashTargets?: readonly string[] } {
-  return request.stashTargets && request.stashTargets.length > 0 ? { stashTargets: request.stashTargets } : {};
+function stashOf(request: TakeoverRequest): { stashTargets?: readonly string[]; overwriteTargets?: readonly string[] } {
+  // D157: the confirmed overwrites travel with them.
+  return {
+    ...(request.stashTargets && request.stashTargets.length > 0 ? { stashTargets: request.stashTargets } : {}),
+    ...(request.overwriteTargets && request.overwriteTargets.length > 0 ? { overwriteTargets: request.overwriteTargets } : {}),
+  };
 }
 
 function appendLog(run: RunState, who: string, lines: readonly string[]): void {

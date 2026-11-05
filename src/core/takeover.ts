@@ -3,6 +3,7 @@ import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, Todo
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 import { type MoveStash, type SkippedWorktree, type TargetChanges, dirtyTargetBlocker, stashConfirmed, stashSummary } from './move-worktrees.ts';
+import { type MoveOverwrite, type TargetDiverged, divergedBlocker, overwriteConfirmed, overwriteSummary } from './move-overwrite.ts';
 import type { NewWorkspace, WorksInEvidence, WorksInSource, WorkspaceFileTarget, WorkspaceFilesListing, WorkspaceFilesResult, WorkspaceRootCheck } from './workspace-move.ts';
 
 /**
@@ -274,6 +275,14 @@ export interface RepoResolution {
   readonly targetChanges?: TargetChanges | null;
   /** Additive (D153): the target checkout's changes are stashed (confirmed) before the restore checks the branch out. */
   readonly stash?: boolean;
+  /**
+   * Additive (D157): the target's branch has commits the source's does not (read on
+   * the target). With them the repo is blocked until the developer confirms
+   * overwriting them (`overwriteTargets`), then {@link overwrite} is `true`.
+   */
+  readonly targetDiverged?: TargetDiverged | null;
+  /** Additive (D157): the target's branch is kept on a backup branch and moved to the restored commit (confirmed). */
+  readonly overwrite?: boolean;
 }
 
 /** What the target machine says about a take-over (`POST /api/takeover/target/plan`). */
@@ -642,6 +651,8 @@ export interface AppliedRepo {
   readonly tempBranch: string | null;
   /** D153: the stash this restore made in the checkout (kept: the undo never touches it). Absent / `null` = none. */
   readonly stashed?: MoveStash | null;
+  /** D157: the branch this restore overwrote, with its backup branch (kept: the undo moves the branch back, never deletes the backup). */
+  readonly overwritten?: MoveOverwrite | null;
 }
 
 /** A temporary remote branch that is still on the remote (the one-click delete). */
@@ -694,6 +705,13 @@ export interface TakeoverRun {
    * `null` / absent when it was not asked for (or the move failed).
    */
   readonly sourceCleanup?: SourceCleanupReport | null;
+  /**
+   * D157: the branches the move overwrote on the target (after the developer
+   * confirmed), each with the backup branch that keeps the replaced commits. After
+   * an undo the branch is back on its old tip and the backup is still there.
+   * Absent from an older run.
+   */
+  readonly overwrites?: readonly MoveOverwrite[];
 }
 
 // ── paths (no `node:path`: this module is shared with the UI) ────────────
@@ -885,6 +903,12 @@ export interface PlanOptions {
   readonly stashTargets?: readonly string[];
   /** D153: the target machine's name (the blocker says where to stash). */
   readonly machineName?: string;
+  /** D157: target branches with commits the source's does not have: `<checkout path>\n<branch>`. */
+  readonly diverged?: ReadonlyMap<string, TargetDiverged>;
+  /** D157: the target checkouts the developer confirmed overwriting a diverged branch in. */
+  readonly overwriteTargets?: readonly string[];
+  /** D157: the source machine's name (the blocker says what the commits are not on). */
+  readonly sourceName?: string;
   /**
    * The path of a worktree (`worktreePath` of `src/core/worktrees.ts`; passed so this
    * module stays free of it). D153: given the repo too, so one of the agent's own
@@ -940,22 +964,28 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
       // D153: the target checkout's changes are stashed only after the developer confirmed it; without that, a blocker with the files.
       const changes = options.targetChanges?.get(match.path) ?? null;
       const stash = !wantsWorktree && dirty.has(match.path);
-      if (stash && !stashConfirmed(options.stashTargets, match.path)) {
-        return blocked(dirtyTargetBlocker(match.path, options.machineName ?? 'the target', changes), { matchedPath: match.path, folderId: match.folderId, ...(changes ? { targetChanges: changes } : {}) });
-      }
-      if (stash) {
+      // D157: a target branch with commits the source's does not have is overwritten (a backup branch kept) only after the developer confirmed it.
+      const diverged = options.diverged?.get(`${match.path}\n${repo.branch}`) ?? null;
+      const machine = options.machineName ?? 'the target';
+      const reasons: string[] = [];
+      if (stash && !stashConfirmed(options.stashTargets, match.path)) reasons.push(dirtyTargetBlocker(match.path, machine, changes));
+      if (diverged && !overwriteConfirmed(options.overwriteTargets, match.path)) reasons.push(divergedBlocker(machine, match.path, options.sourceName ?? 'the source', diverged));
+      const facts: Partial<RepoResolution> = { ...(stash && changes ? { targetChanges: changes } : {}), ...(diverged ? { targetDiverged: diverged } : {}) };
+      if (reasons.length > 0) return blocked(reasons.join('; '), { matchedPath: match.path, folderId: match.folderId, ...facts });
+      if (stash || diverged) {
+        const lines = [stash ? stashSummary(match.path, machine, changes, repo.branch) : null, diverged ? overwriteSummary(machine, match.path, diverged) : null].filter((line): line is string => line !== null);
         return {
           ...base,
           action: 'use',
           matchedPath: match.path,
           folderId: match.folderId,
-          worktreePath: null,
+          worktreePath,
           cloneTo: null,
           cloneUrl: null,
           reason: null,
-          summary: stashSummary(match.path, options.machineName ?? 'the target', changes, repo.branch),
-          targetChanges: changes,
-          stash: true,
+          summary: worktreePath && !stash ? `${lines.join('; ')}; new worktree ${worktreePath} on ${repo.branch}` : lines.join('; '),
+          ...(stash ? { targetChanges: changes, stash: true } : {}),
+          ...(diverged ? { targetDiverged: diverged, overwrite: true } : {}),
         };
       }
       return {

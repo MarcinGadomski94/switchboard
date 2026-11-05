@@ -99,9 +99,15 @@ describe('D153: a target checkout with uncommitted changes', () => {
 
   it('a move that fails after stashing is undone and keeps the stash', async () => {
     // back on the mac has a commit of its own on main: the restore refuses it (diverged), after front was stashed.
+    // D157: the plan would offer overwriting it up front; it cannot tell here (the pc's tip is not on the mac and the mac
+    // has no remote-tracking main), so the apply's own check is what refuses it.
     await writeFile(path.join(world.paths.b.back, 'mac-only.txt'), 'only on the mac\n');
     await world.git(world.paths.b.back, 'add', 'mac-only.txt');
     await world.git(world.paths.b.back, 'commit', '-q', '-m', 'mac only');
+    await world.git(world.paths.b.back, 'update-ref', '-d', 'refs/remotes/origin/main');
+    await writeFile(path.join(world.paths.a.back, 'pc-only.txt'), 'only on the pc\n');
+    await world.git(world.paths.a.back, 'add', 'pc-only.txt');
+    await world.git(world.paths.a.back, 'commit', '-q', '-m', 'pc only');
     const session = await startWorkspaceSession(world.a, world.folders.a.workspace as string, 'ws-fails', ['front', 'back']);
     const base = { sessionId: session.id, targetMachine: world.bId };
     const blocked = await preview(base);
@@ -125,6 +131,7 @@ describe('D153: a target checkout with uncommitted changes', () => {
     await world.git(onMac, 'stash', 'pop', '-q');
     expect((await world.git(onMac, 'status', '--porcelain')).split('\n').map((line) => line.trim()).sort()).toEqual(['?? scratch.txt', 'M tracked.txt']);
     await world.git(world.paths.b.back, 'reset', '-q', '--hard', 'origin/main');
+    await world.git(world.paths.a.back, 'reset', '-q', '--hard', 'origin/main');
     await waitFor('the session to be live again', async () => ((await world.a.call('GET', `/api/sessions/${session.id}`)).body as Session).status !== 'run', 20_000);
   });
 

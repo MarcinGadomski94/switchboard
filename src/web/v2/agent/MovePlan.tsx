@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { TakeoverPreview, TargetDirListing, TargetPlacement } from '../../../core/takeover.ts';
 import { suggestWorkspaceParent } from '../../../core/workspace-move.ts';
+import { overwriteLabel } from '../../../core/move-overwrite.ts';
 import { ApiError, api } from '../../api/client.ts';
 import {
   type CarryRow,
@@ -12,6 +13,7 @@ import {
   newRootFrom,
   outsideClonePath,
   outsideRows,
+  overwriteRows,
   repoModeOf,
   runInOf,
   runInOptions,
@@ -22,6 +24,7 @@ import {
   toggleFile,
   withNewWorkspace,
   withOutsideMode,
+  withOverwrite,
   withRepoCarried,
   withRepoMode,
   withRunIn,
@@ -104,6 +107,7 @@ export function MovePlanPanel({
       {ws.show && ((preview.source.repos ?? []).some((repo) => repo.outside !== true) || (preview.source.leftOut ?? []).length > 0 || (preview.source.skippedWorktrees ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
       {outside.length > 0 ? <OutsideSection rows={outside} targetWorkspace={targetWorkspaceOf(preview)} machine={machine} sourceName={sourceName} targetName={targetName} choice={choice} onChange={onChange} /> : null}
       {stashRows(preview, choice).length > 0 ? <StashSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
+      {overwriteRows(preview, choice).length > 0 ? <OverwriteSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
       <div className="v2-mv-repos" data-testid="v2-move-repos">
         {repoRows(preview)
           .filter((row) => !outsideKeys.has(row.key))
@@ -646,6 +650,40 @@ function StashSection({ preview, choice, targetName, onChange }: { readonly prev
             onChange={(event) => onChange(withStash(choice, row.path, event.target.checked))}
           />
           <p className="v2-muted v2-mv-small">Switchboard runs git stash push --include-untracked there right before restoring, and keeps the stash: it is never dropped or popped, also when the move is undone. Restore it later with git stash list and git stash apply.</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * D157: a target checkout whose branch has commits the source's does not. The
+ * dialog lists them and offers **Overwrite them on <PC> (keep a backup branch)**:
+ * only once ticked does the target keep its old tip on a `switchboard/backup/…`
+ * branch and move the branch to the restored commit (never pushed).
+ */
+function OverwriteSection({ preview, choice, targetName, onChange }: { readonly preview: TakeoverPreview; readonly choice: MoveChoice; readonly targetName: string; readonly onChange: (next: MoveChoice) => void }) {
+  const rows = overwriteRows(preview, choice);
+  return (
+    <div className="v2-mp-files" data-testid="v2-move-overwrite">
+      <b>Commits only on {targetName}</b>
+      {rows.map((row) => (
+        <div key={row.path} className="v2-mv-warn" data-testid="v2-move-overwrite-row" data-path={row.path} data-confirmed={row.confirmed ? 'true' : 'false'}>
+          {row.branches.map((entry) => (
+            <div key={entry.diverged.branch}>
+              <p>{entry.headline}:</p>
+              <ul className="v2-mp-filelist" data-testid="v2-move-overwrite-commits">
+                {entry.diverged.commits.map((commit) => (
+                  <li key={commit.sha} className="v2-mono v2-mv-small">
+                    {commit.sha} {commit.subject}
+                  </li>
+                ))}
+                {entry.diverged.truncated ? <li className="v2-muted v2-mv-small">and {entry.diverged.count - entry.diverged.commits.length} more</li> : null}
+              </ul>
+            </div>
+          ))}
+          <Checkbox label={overwriteLabel(targetName)} checked={row.confirmed} data-testid="v2-move-overwrite-confirm" onChange={(event) => onChange(withOverwrite(choice, row.path, event.target.checked))} />
+          <p className="v2-muted v2-mv-small">Switchboard keeps them on a new switchboard/backup/… branch there, then moves the branch to what you are moving. Nothing is pushed and the backup is never deleted. Otherwise use another folder there, or clone it fresh.</p>
         </div>
       ))}
     </div>

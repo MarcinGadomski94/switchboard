@@ -8,6 +8,7 @@ import { SourceCleanupError } from '../takeover/source-cleanup.ts';
 import { placementOf } from '../../core/takeover.ts';
 import { excludeReposOf, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { stashTargetsOf } from '../../core/move-worktrees.ts';
+import { overwriteTargetsOf } from '../../core/move-overwrite.ts';
 import { cleanupSourceOf } from '../../core/source-cleanup.ts';
 import { isPeerRequest } from './machines.ts';
 
@@ -83,8 +84,10 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if (excludeRepos === null) return invalid(reply, 'excludeRepos', 'excludeRepos must be a list of repo paths');
     const stashTargets = stashTargetsOf(body['stashTargets']);
     if (stashTargets === null) return invalid(reply, 'stashTargets', 'stashTargets must be a list of checkout paths on the target');
+    const overwriteTargets = overwriteTargetsOf(body['overwriteTargets']);
+    if (overwriteTargets === null) return invalid(reply, 'overwriteTargets', 'overwriteTargets must be a list of checkout paths on the target');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(cleanupSourceOf(body['cleanupSource']) ? { cleanupSource: true } : {}), ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    return { sessionId, targetMachine, ...(cleanupSourceOf(body['cleanupSource']) ? { cleanupSource: true } : {}), ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -215,7 +218,10 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     // D153: the checkouts whose changes the developer confirmed stashing travel with the placement.
     const stashTargets = stashTargetsOf(body['stashTargets']);
     if (stashTargets === null) throw new TakeoverError(422, 'invalid', 'stashTargets must be a list of checkout paths');
-    return { ...(placement ? { placement } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}) };
+    // D157: and the checkouts whose diverged branch the developer confirmed overwriting.
+    const overwriteTargets = overwriteTargetsOf(body['overwriteTargets']);
+    if (overwriteTargets === null) throw new TakeoverError(422, 'invalid', 'overwriteTargets must be a list of checkout paths');
+    return { ...(placement ? { placement } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(overwriteTargets && overwriteTargets.length > 0 ? { overwriteTargets } : {}) };
   };
   op('target/plan', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);

@@ -6,7 +6,7 @@ import { continueRefusal } from '../../hooked-continue/continue.ts';
 import { type ContinueHookedRequest, closeContinueHooked, useContinueHookedRequest } from '../../hooked-continue/store.ts';
 import { closeTakeover, useTakeoverRequest } from '../../takeover/store.ts';
 import { type TakeoverRequest, clonePathsOf } from '../../takeover/takeover.ts';
-import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, stashLines } from '../../takeover/complete-move.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, overwriteLines, stashLines } from '../../takeover/complete-move.ts';
 import { choiceOfRetry } from '../../takeover/retry.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
 import { MoveStatusHost } from './MoveStatus.tsx';
@@ -146,7 +146,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), ...(cleanupSource ? { cleanupSource: true } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), ...(choice.overwriteTargets && choice.overwriteTargets.length > 0 ? { overwriteTargets: choice.overwriteTargets } : {}), ...(cleanupSource ? { cleanupSource: true } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);
@@ -349,6 +349,15 @@ export function RunView({
         <div className="v2-mv-warn" data-testid="v2-move-stashes">
           {stashLines(run.stashes).map((line) => (
             <p key={line} data-testid="v2-move-stash-note">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {overwriteLines(run.overwrites).length > 0 ? (
+        <div className="v2-mv-warn" data-testid="v2-move-overwrites">
+          {overwriteLines(run.overwrites).map((line) => (
+            <p key={line} data-testid="v2-move-overwrite-note">
               {line}
             </p>
           ))}
