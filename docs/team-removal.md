@@ -44,5 +44,6 @@ Team's code lives in its own folders and files: `src/server/team/` (service, `te
 | `src/server/sessions/archive.ts` | D137: imports `teamMemberOf`; the archive keeps a member's archived session (`keptReason: crew`) |
 | `src/server/insights/service.ts` | D108 Insights: imports `teamMemberList`; a member's session is named after its member in the per-session table (2026-11-03) |
 | `src/server/insights/usage.ts` | D134 Usage breakdown: imports `teamMemberList`; a member's session is of the kind "teammate" (crew) and named after its member |
+| `src/server/takeover/moves.ts` | D154 the moves list: `MoveLog.useMembers` (set by `installTeam` with `TeamService.memberAt`) names a moved session's crew member and its crew; without Team a move is an agent's |
 
 Removing Team now would be a new decision; the step-by-step removal procedure of 1.x is in this file's history (before D132).

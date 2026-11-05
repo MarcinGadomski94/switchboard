@@ -22,6 +22,8 @@ import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem,
 import type { MoveStash } from '../../core/move-worktrees.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
+import { MOVE_LOG_PREFIX, moveLogReason, moveOutcomeMessage } from '../../core/move-log.ts';
+import { type MoveLogSink, SILENT_MOVE_LOG } from './move-log.ts';
 import { type ChunkAnswer, type OpAnswer, type ResumeBody, TakeoverError, type TakeoverService } from './service.ts';
 
 /**
@@ -39,7 +41,8 @@ import { type ChunkAnswer, type OpAnswer, type ResumeBody, TakeoverError, type T
 export interface TakeoverEndpoint {
   /** `null` for this machine. */
   readonly machineId: string | null;
-  inspect(sessionId: string): Promise<OpAnswer<SourceInspect>>;
+  /** `opId`: the run the check belongs to (the move log); absent for the preview. */
+  inspect(sessionId: string, opId?: string): Promise<OpAnswer<SourceInspect>>;
   stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>>;
   /** `exclude`: D152 follow-up 2026-11-05, the source paths of repos the developer left out (not captured). */
   capture(opId: string, exclude?: readonly string[]): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>>;
@@ -52,7 +55,7 @@ export interface TakeoverEndpoint {
   receiveWorkspaceChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<unknown>;
   finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
-  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[] }): Promise<OpAnswer<TargetPlan>>;
+  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly opId?: string }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
@@ -66,7 +69,7 @@ export interface TakeoverEndpoint {
 export function localEndpoint(service: TakeoverService): TakeoverEndpoint {
   return {
     machineId: null,
-    inspect: (sessionId) => service.inspect(sessionId),
+    inspect: (sessionId, opId) => service.inspect(sessionId, opId),
     stop: (opId, sessionId) => service.stop(opId, sessionId),
     capture: (opId, exclude) => service.capture(opId, exclude ?? []),
     stopTerminal: (opId) => service.stopTerminal(opId),
@@ -99,7 +102,7 @@ export function peerEndpoint(peers: PeerService, machineId: string): TakeoverEnd
   };
   return {
     machineId,
-    inspect: (sessionId) => call('POST', '/source/inspect', { sessionId }),
+    inspect: (sessionId, opId) => call('POST', '/source/inspect', opId ? { sessionId, opId } : { sessionId }),
     stop: (opId, sessionId) => call('POST', '/source/stop', { opId, sessionId }),
     capture: (opId, exclude) => call('POST', '/source/capture', { opId, ...(exclude && exclude.length > 0 ? { excludeRepos: exclude } : {}) }),
     stopTerminal: (opId) => call('POST', '/source/stop-terminal', { opId }),
@@ -147,6 +150,17 @@ export interface TakeoverRequest {
    * stashing ("Stash them on <PC>"); absent = none (a dirty checkout blocks).
    */
   readonly stashTargets?: readonly string[];
+  /**
+   * The move log's start line (`docs/peers.md` → *The move log*): the Team member a
+   * Team move moves, and the crew move it is part of. Set by Team, never by the HTTP route.
+   */
+  readonly context?: MoveContext;
+}
+
+/** What a take-over moves on behalf of, for the move log. */
+export interface MoveContext {
+  readonly member?: { readonly id: string; readonly name: string };
+  readonly crew?: { readonly id: string; readonly name: string; readonly run: string };
 }
 
 /** Both ends of a take-over. */
@@ -164,6 +178,8 @@ export interface TakeoverRunnerOptions {
   readonly service: TakeoverService;
   readonly peers: PeerService;
   readonly onError?: (error: unknown) => void;
+  /** The move log's run lines (start, outcome) on this, the initiating, machine; the steps are the services'. Absent: none. */
+  readonly log?: MoveLogSink;
 }
 
 /** Marks every run's state for the dialog's poll. */
@@ -181,19 +197,43 @@ interface RunState {
   workspaceFiles: WorkspaceFilesResult | null;
   /** D153: stashes the move made on the target (kept, also after an undo). */
   stashes: MoveStash[];
+  /** D154: who started it and between which machines (the moves list). */
+  meta: TakeoverRunMeta;
 }
+
+/**
+ * D154 (`docs/peers.md` → *Following a move (D154)*): what the moves list needs of a run
+ * besides its state: the request (Try again's choices), both machines and the agent.
+ */
+export interface TakeoverRunMeta {
+  readonly request: TakeoverRequest;
+  readonly sourceMachineId: string;
+  readonly targetMachineId: string;
+  /** The session on the source (raw). */
+  readonly rawSessionId: string;
+  /** The agent's title once the source described it (`null` before the checks read it). */
+  title: string | null;
+  readonly startedAt: string;
+  endedAt: string | null;
+}
+
+/** D154: a run changed (a step, its detail, its end). */
+export type TakeoverRunListener = (run: TakeoverRun, meta: TakeoverRunMeta) => void;
 
 /** The initiating machine's take-over runner (`docs/peers.md` → *Taking a session over*). */
 export class TakeoverRunner {
   readonly #service: TakeoverService;
   readonly #peers: PeerService;
   readonly #onError: (error: unknown) => void;
+  readonly #log: MoveLogSink;
   readonly #runs = new Map<string, RunState>();
+  readonly #listeners = new Set<TakeoverRunListener>();
 
   constructor(options: TakeoverRunnerOptions) {
     this.#service = options.service;
     this.#peers = options.peers;
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
+    this.#log = options.log ?? SILENT_MOVE_LOG;
   }
 
   async #ends(request: TakeoverRequest): Promise<Ends> {
@@ -253,6 +293,7 @@ export class TakeoverRunner {
   /** Starts a take-over and returns its run at once; the dialog polls {@link get}. */
   async start(request: TakeoverRequest): Promise<TakeoverRun> {
     const ends = await this.#ends(request);
+    const selfId = (await this.#peers.self()).id;
     for (const run of this.#runs.values()) {
       if (run.state === 'running' && run.sessionKey === request.sessionId) throw new TakeoverError(409, 'in-progress', 'this session is being taken over already');
     }
@@ -269,8 +310,10 @@ export class TakeoverRunner {
       sessionKey: request.sessionId,
       workspaceFiles: null,
       stashes: [],
+      meta: { request, sourceMachineId: ends.source.machineId ?? selfId, targetMachineId: ends.target.machineId ?? selfId, rawSessionId: ends.rawSessionId, title: null, startedAt: new Date().toISOString(), endedAt: null },
     };
     this.#runs.set(run.id, run);
+    this.#notify(run);
     while (this.#runs.size > 20) {
       const oldest = [...this.#runs.values()].find((entry) => entry.state !== 'running');
       if (!oldest) break;
@@ -278,6 +321,24 @@ export class TakeoverRunner {
     }
     void this.#execute(run, ends, request).catch((error: unknown) => this.#onError(error));
     return this.#view(run);
+  }
+
+  /** D154: follows every run's changes (the moves list); returns the unsubscribe. */
+  subscribe(listener: TakeoverRunListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #notify(run: RunState): void {
+    if (this.#listeners.size === 0) return;
+    const view = this.#view(run);
+    for (const listener of [...this.#listeners]) {
+      try {
+        listener(view, run.meta);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
   }
 
   /** A run as the dialog polls it. */
@@ -321,18 +382,22 @@ export class TakeoverRunner {
     const set = (id: TakeoverStepId, status: TakeoverStepState['status'], detail: string | null = null): void => {
       const current = step(id);
       run.steps[run.steps.indexOf(current)] = { ...current, status, detail: detail ?? current.detail };
+      this.#notify(run);
     };
     let failedAt: TakeoverStepId = 'checks';
+    const started = Date.now();
+    await this.#logStart(run, ends, request, self).catch((error: unknown) => this.#onError(error));
     try {
       // 1 · checks on both sides.
       failedAt = 'checks';
       set('checks', 'running');
-      const inspected = (await source.inspect(ends.rawSessionId)).result;
+      const inspected = (await source.inspect(ends.rawSessionId, opId)).result;
       // D152 follow-up 2026-11-05: the repos the developer left out are neither planned nor captured.
       sourceInfo = withoutExcluded(inspected, request.excludeRepos);
+      run.meta.title = inspected.title ?? inspected.name;
       const leftOutProblem = excludedProblem(inspected, sourceInfo);
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
-      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request) })).result;
+      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), opId })).result;
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
@@ -461,6 +526,9 @@ export class TakeoverRunner {
       }
       await target.closeTarget(opId).catch((error: unknown) => this.#onError(error));
       run.state = 'done';
+      this.#logOutcome(run, started);
+      run.meta.endedAt = new Date().toISOString();
+      this.#notify(run);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       run.error = { step: failedAt, message };
@@ -475,8 +543,55 @@ export class TakeoverRunner {
         }
       } finally {
         run.state = 'failed';
+        this.#logOutcome(run, started);
+        run.meta.endedAt = new Date().toISOString();
+        this.#notify(run);
       }
     }
+  }
+
+  /** The move log's first line of a run, on this (the initiating) machine. */
+  async #logStart(run: RunState, ends: Ends, request: TakeoverRequest, self: { readonly id: string; readonly name: string }): Promise<void> {
+    const peerName = (await this.#peers.machines()).find((machine) => machine.id === ends.peerId)?.name ?? ends.peerId;
+    const sourceLocal = ends.source.machineId === null;
+    const title = sourceLocal ? await this.#service.sessionTitle(ends.rawSessionId) : (this.#peers.remoteSessions().find((session) => session.id === request.sessionId)?.name ?? null);
+    const context = request.context ?? {};
+    this.#log.info(
+      {
+        run: run.id,
+        step: 'start',
+        state: 'started',
+        session: ends.rawSessionId,
+        title,
+        source: sourceLocal ? self.name : peerName,
+        target: sourceLocal ? peerName : self.name,
+        initiator: sourceLocal ? 'source' : 'target',
+        ...(context.member ? { member: context.member.name, memberId: context.member.id } : {}),
+        ...(context.crew ? { crew: context.crew.name, crewId: context.crew.id, crewRun: context.crew.run } : {}),
+        ...(request.excludeRepos && request.excludeRepos.length > 0 ? { excluded: request.excludeRepos.length } : {}),
+      },
+      `${MOVE_LOG_PREFIX} start`,
+    );
+  }
+
+  /** The move log's last line of a run: done, or failed at a step (rolled back or not) with what was left behind. */
+  #logOutcome(run: RunState, started: number): void {
+    const failedAt = run.error?.step ?? null;
+    const fields = {
+      run: run.id,
+      step: 'outcome',
+      state: failedAt === null ? 'done' : 'failed',
+      ms: Date.now() - started,
+      ...(failedAt !== null ? { failedAt, reason: moveLogReason(run.error?.message ?? 'failed'), rolledBack: run.rolledBack } : {}),
+      ...(run.rollbackNotes.length > 0 ? { rollbackNotes: run.rollbackNotes.map(moveLogReason) } : {}),
+      leftovers: run.leftovers.map((entry) => `${entry.repoPath} ${entry.branch}`),
+      ...(run.stashes.length > 0 ? { stashes: run.stashes.map((stash) => stash.path) } : {}),
+      ...(run.result ? { session: run.result.sessionId } : {}),
+      ...(run.steps.some((entry) => entry.id === 'finish' && entry.status === 'failed') ? { finish: 'failed' } : {}),
+    };
+    const message = moveOutcomeMessage({ failedAt, rolledBack: run.rolledBack });
+    if (failedAt === null) this.#log.info(fields, message);
+    else this.#log.warn(fields, message);
   }
 
   async #rollback(run: RunState, ends: Ends, state: { done: readonly TakeoverStepId[]; stoppedLive: boolean; hooked: boolean; terminalStopped: boolean }, targetName: string, sourceName: string): Promise<void> {

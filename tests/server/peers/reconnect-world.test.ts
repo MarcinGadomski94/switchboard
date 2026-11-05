@@ -188,6 +188,17 @@ describe('fix · peer reconnects: a long outage and Reconnect now', () => {
       expect(log).toContain(`switchboard peers: ${name} (${aId}): Reconnect now`);
       expect(log).toMatch(new RegExp(`switchboard peers: ${name} \\(${aId}\\): offline → online after \\d+ failed attempts?`));
       expect(log).not.toMatch(/Bearer|outboundToken|token=/);
+      // Each line is a pino line (docs/peers.md → Connection states): a time, a level (warn for a failed attempt or a drop, info when back), the machine as fields.
+      const peerLines = log
+        .split('\n')
+        .filter((line) => line.startsWith('{') && line.includes('"msg":"switchboard peers: '))
+        .map((line) => JSON.parse(line) as { level: number; time: number; msg: string; machine?: string; machineName?: string; state?: string; attempt?: number; nextTryS?: number; reason?: string });
+      const attempt = peerLines.find((line) => /: attempt \d+ failed /.test(line.msg));
+      expect(attempt).toMatchObject({ level: 40, machine: aId, machineName: name, state: expect.stringMatching(/reconnecting|offline/), attempt: expect.any(Number), reason: expect.any(String) });
+      expect(typeof attempt?.time).toBe('number');
+      expect(peerLines.find((line) => line.msg.includes('online → reconnecting'))).toMatchObject({ level: 40, machine: aId, state: 'reconnecting', from: 'online' });
+      expect(peerLines.find((line) => line.msg.includes('offline → online'))).toMatchObject({ level: 30, machine: aId, state: 'online', from: 'offline' });
+      expect(peerLines.every((line) => typeof line.time === 'number')).toBe(true);
     } finally {
       hub.stop();
     }

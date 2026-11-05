@@ -29,6 +29,7 @@ import { registerSidebarRoutes } from './api/sidebar.ts';
 import { registerSolutionRoutes } from './api/solutions.ts';
 import { registerSystemRoutes } from './api/system.ts';
 import { registerTakeoverRoutes } from './api/takeover.ts';
+import { registerMoveRoutes } from './api/moves.ts';
 import { registerChatMoveRoutes } from './api/chat-move.ts';
 import { registerToolRoutes } from './api/tools.ts';
 import { registerUpdateRoutes } from './api/updates.ts';
@@ -47,6 +48,7 @@ import type { Scheduler } from './schedules/scheduler.ts';
 import type { SetupService } from './setup/service.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { TakeoverRunner } from './takeover/runner.ts';
+import type { MoveLog } from './takeover/moves.ts';
 import type { TakeoverService } from './takeover/service.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
 import type { TodoService } from './todos/service.ts';
@@ -129,6 +131,8 @@ export interface ApiContext {
   readonly takeover: TakeoverService;
   /** D65: the initiating machine's runner (preview, start, progress). */
   readonly takeoverRunner: TakeoverRunner;
+  /** D154: the moves list (running and recent take-overs, merged with the paired machines'; docs/peers.md). */
+  readonly moves: MoveLog;
   /** D68: the sessions' todo lists (the UI's routes and the agent's, docs/todos.md). */
   readonly todos: TodoService;
   /** D73: paired devices, the device listener and web push (docs/devices.md). */
@@ -186,6 +190,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerBranchingRoutes(app, context);
   await registerMachineRoutes(app, context);
   await registerTakeoverRoutes(app, context);
+  await registerMoveRoutes(app, context);
   await registerChatMoveRoutes(app, context);
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);

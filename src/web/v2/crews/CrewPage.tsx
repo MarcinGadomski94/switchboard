@@ -8,6 +8,9 @@ import { modelLine, visibleMembers } from '../../team/model.ts';
 import { reloadTeam, showTeam, useTeamData } from '../../team/useTeamData.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, ComputerTag, EmptyState, Icon, IconButton, MenuButton, type MenuItem, Sheet, Skeleton, StatusBadge, Tabs, useToast } from '../components/index.ts';
+import { MoveBadge, MoveBadgeOf } from '../shared/MoveBadge.tsx';
+import { useMoves } from '../shared/moves.ts';
+import { activeMove } from '../../../core/moves.ts';
 import { CREW_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { AnswerCard } from '../shared/AnswerCard.tsx';
@@ -193,6 +196,7 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails, onOpe
   const meter = budgetMeter(member);
   const offline = member.status === 'offline';
   const chatWhy = openChatReason(member);
+  const moving = activeMove(useMoves().moves, { memberId: member.id });
   return (
     <article className="v2-card v2-c-mate" data-testid="v2-teammate" data-member={member.id} data-status={status} data-needs={needs.length > 0 || undefined} data-offline={offline || undefined} aria-label={`${member.name} · ${STATUS[status].label}`}>
       <div className="v2-row">
@@ -211,6 +215,12 @@ function TeammateCard({ member, status, needs, menu, onOverlay, onDetails, onOpe
         <StatusBadge status={status} size="s" />
         <MenuButton items={menu} label={`Actions for ${member.name}`} testId="v2-teammate-menu" />
       </div>
+      {/* D154: while it moves to another computer: "Moving to <PC>… (<step>)", opens the move. */}
+      {moving ? (
+        <div className="v2-row">
+          <MoveBadgeOf move={moving} size="s" />
+        </div>
+      ) : null}
       <ScrollText label={CREW_WORDS.jdRegion(member.name)} testId="v2-teammate-jd">
         <p className="v2-c-jd">{jobText(member)}</p>
       </ScrollText>
@@ -384,6 +394,7 @@ export function CrewPage({ id }: { readonly id: string }) {
           <MenuButton items={actions.menu(selected, () => openDetails(selected, 'access'))} label={`Actions for ${selected.name}`} testId="v2-teammate-menu" />
         </div>
         <StatusBadge status={status} />
+        <MoveBadge of={{ memberId: selected.id }} />
         <ScrollText label={CREW_WORDS.jdRegion(selected.name)} testId="v2-teammate-jd" className="v2-c-scroll-phone">
           <p className="v2-c-jd">{jobText(selected)}</p>
         </ScrollText>
@@ -422,6 +433,8 @@ export function CrewPage({ id }: { readonly id: string }) {
       <div className="v2-row v2-c-wrap v2-c-crew-head">
         <h1 className="v2-c-crew-title">Crew · {crew.name}</h1>
         {stats.needs > 0 ? <StatusBadge status="needs" label={`${stats.needs} need${stats.needs === 1 ? 's' : ''} you`} size="s" /> : null}
+        {/* D154: a teammate of this crew moving to another computer: opens the move. */}
+        <MoveBadge of={{ teamId: id }} size="s" />
         <span className="v2-grow" />
         <div className="v2-c-switch" role="tablist" aria-label="Switch crew" data-testid="v2-crew-switcher">
           {ordered.map((entry, index) => (

@@ -37,6 +37,7 @@ import type { TeamChanged } from './team.ts';
 // Project memory (D107) hook: the `memoryChanged` payload (docs/memory-removal.md).
 import type { MemoryChanged } from './memory.ts';
 import type { CiChanged } from './ci.ts';
+import type { MoveRecord, MovesChanged } from './moves.ts';
 export type { CiChanged, ImportableIssue, IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi, SessionPr } from './ci.ts';
 import type {
   AgentKind,
@@ -1618,6 +1619,13 @@ export interface InboxItem {
    * Add form of `cli` prefilled with `name`). Absent on every other item.
    */
   readonly addAccount?: { readonly cli: CliProviderId; readonly name: string };
+  /**
+   * Additive (D154): a `move-failed` item's move (`docs/peers.md` → *Following a move (D154)*):
+   * the agent, both machines (their raw session ids) and the last choices, so **Try again**
+   * (action `move-try-again`, a link) reopens the move dialog pre-filled. A paired machine's
+   * item names the move by its remote id. Absent on every other item.
+   */
+  readonly move?: Pick<MoveRecord, 'id' | 'kind' | 'title' | 'member' | 'source' | 'target' | 'choices'>;
 }
 
 /**
@@ -2631,6 +2639,13 @@ export interface HubEvents {
    * again). This machine's only: never forwarded between peers.
    */
   readonly accountChoiceChanged: AccountChoiceChanged;
+  /**
+   * Additive (D154, `docs/peers.md` → *Following a move (D154)*): a move (a take-over this
+   * machine's runner drives) started, changed step, ended, or was dismissed / dropped after
+   * the retention (`removed`). Forwarded between peers: the receiving machine reads the
+   * peer's moves again and republishes it with the move's remote id.
+   */
+  readonly movesChanged: MovesChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2678,6 +2693,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'machineUpdate',
   // D138.
   'accountChoiceChanged',
+  // D154.
+  'movesChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

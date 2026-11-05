@@ -80,7 +80,7 @@ test('a paired computer\'s archived agents: v2 Archived (desktop and phone) and 
   const row = (id: string) => page.locator(`[data-testid="v2-closed-row"][data-session="${remoteId(aId, id)}"]`);
   await expect(row(checkout).getByTestId('v2-closed-countdown')).toHaveText(' · Deletes in 7 days');
   await expect(row(pinned).getByTestId('v2-closed-countdown')).toHaveText(' · Kept: pinned');
-  await expect(row(checkout).getByTestId('v2-computer-tag')).toContainText(aName.split(/[\s.-]/)[0] as string);
+  await expect(row(checkout).getByTestId('v2-computer-tag')).toContainText(aName.split('.')[0] as string);
   await shot(page, 'archive-peers-v2');
   await row(checkout).getByTestId('v2-closed-reopen').click();
   await expect(page.getByTestId('v2-toast').filter({ hasText: 'Restored “Checkout flow”.' })).toBeVisible();

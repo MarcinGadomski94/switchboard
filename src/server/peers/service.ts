@@ -6,6 +6,7 @@ import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Se
 import { ARCHIVE_PEER_LIMIT } from '../../core/session-archive.ts';
 import { withoutAgents } from '../../core/session-list.ts';
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+import { type MoveRecord, moveFromPeer } from '../../core/moves.ts';
 // Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
 import { type PowerStatus, readPowerStatus } from '../../core/power.ts';
@@ -100,7 +101,8 @@ export const PEER_LIST_STALE_MS = 10_000;
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
 /** Plans (D99) hook: its plans (`GET /api/plans`). */
 /** D137 follow-up 2026-10-26: its archived sessions (the newest `ARCHIVE_PEER_LIMIT`, without agents), for this computer's Archived list. */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans', archived: '/api/sessions?closed=only' } as const;
+/** D154: its moves (`GET /api/moves`: the take-overs its runner drives, running and recently finished). */
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans', archived: '/api/sessions?closed=only', moves: '/api/moves' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -224,6 +226,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/takeover\/leftovers\/[^/]+\/delete$/],
+  // D154: the moves list (its own moves only to a peer), one move with its git commands, and a finished move's dismiss.
+  ['GET', /^\/api\/moves$/],
+  ['GET', /^\/api\/moves\/[^/]+$/],
+  ['POST', /^\/api\/moves\/[^/]+\/dismiss$/],
   // D89: that machine's saved artifacts (the Artifacts page's list; a session's list, one artifact, a version's bytes, Save as artifact, Delete).
   ['GET', /^\/api\/artifacts$/],
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
@@ -355,8 +361,13 @@ export interface PeerServiceOptions {
    * tests shorten them). Absent fields keep the defaults.
    */
   readonly timings?: PeerTimings;
-  /** Connection state changes and failed attempts (default: `console.info` / `console.warn`). Never a token. */
-  readonly log?: (level: 'info' | 'warn', message: string) => void;
+  /**
+   * Connection state changes and failed attempts (`docs/peers.md` → *Connection states*),
+   * each with its structured `fields` (machine id and name, state, attempt, next try).
+   * `main.ts` routes them to the service's pino logger (`time`, `level`, the text in
+   * `msg`); default: `console.info` / `console.warn`. Never a token.
+   */
+  readonly log?: (level: 'info' | 'warn', message: string, fields?: PeerLogFields) => void;
   /**
    * D125 (`docs/power.md`): this machine's power sampler. A peer's stream gets
    * the last reading when it opens and asks for a fresh one at each keepalive
@@ -370,6 +381,21 @@ export interface PeerServiceOptions {
    * `machineUpdate` (the updater publishes them). Absent = no updater here.
    */
   readonly update?: { current(): MachineUpdate | null };
+}
+
+/** The structured fields of a peer connection log line (see {@link PeerServiceOptions.log}). */
+export interface PeerLogFields {
+  readonly machine: string;
+  readonly machineName: string;
+  /** The machine's connection state now. */
+  readonly state: MachineState;
+  /** The state before a change. */
+  readonly from?: MachineState | 'start';
+  /** Failed attempts so far (a failed attempt's number). */
+  readonly attempt?: number;
+  /** Seconds until the next try. */
+  readonly nextTryS?: number;
+  readonly reason?: string;
 }
 
 /** Fix · peer reconnects: tunable timings of the peer connections. */
@@ -410,7 +436,7 @@ export class PeerService implements PeerHandlers {
   readonly #onError: (error: unknown) => void;
   readonly #version: string;
   readonly #timings: PeerTimings;
-  readonly #log: (level: 'info' | 'warn', message: string) => void;
+  readonly #log: (level: 'info' | 'warn', message: string, fields?: PeerLogFields) => void;
   /** Per machine: the state last logged and the failed attempt last logged (so the log tells each change once). */
   readonly #logged = new Map<string, { state: MachineState | null; attempt: number; failures: number }>();
   /** Tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): the end of a simulated outage of the listener. */
@@ -521,6 +547,7 @@ export class PeerService implements PeerHandlers {
     await this.#flushSaves().catch((error: unknown) => this.#onError(error));
     clearTimeout(this.#outage);
     this.testHoldLists(false);
+    this.testHoldTakeover(null);
     await this.#listenerChange.catch(() => undefined);
     for (const stream of [...this.#inbound]) stream.close();
     await Promise.all([...this.#connections.values()].map((connection) => connection.close()));
@@ -726,7 +753,7 @@ export class PeerService implements PeerHandlers {
     const record = this.#records.get(id);
     const connection = this.#connections.get(id);
     if (!record || !connection) throw new PeerError(404, 'not-found', `no machine ${id}`);
-    if (connection.state !== 'online') this.#log('info', `${this.#label(record)}: Reconnect now`);
+    if (connection.state !== 'online') this.#log('info', `${this.#label(record)}: Reconnect now`, { machine: record.id, machineName: record.name, state: connection.state });
     const outcome = await connection.reconnectNow();
     const current = this.#records.get(id) ?? record;
     return { outcome, machine: this.#machine(current) };
@@ -751,11 +778,12 @@ export class PeerService implements PeerHandlers {
     const seen = this.#logged.get(id) ?? { state: null, attempt: 0, failures: 0 };
     const label = this.#label(record);
     const reason = status.lastFailure?.message ?? status.lastError ?? 'unknown';
+    const base = { machine: record.id, machineName: record.name, state: status.state };
     if (seen.state !== status.state) {
       const from = seen.state ?? 'start';
-      if (status.state === 'online') this.#log('info', `${label}: ${from} → online${seen.failures > 0 ? ` after ${seen.failures} failed attempt${seen.failures === 1 ? '' : 's'}` : ''}`);
-      else if (status.state === 'reconnecting') this.#log(seen.state === 'online' ? 'warn' : 'info', seen.state === null ? `${label}: connecting` : `${label}: ${from} → reconnecting (${reason})`);
-      else this.#log('warn', `${label}: ${from} → ${status.state} (${reason}; ${status.attempt} failed attempt${status.attempt === 1 ? '' : 's'})`);
+      if (status.state === 'online') this.#log('info', `${label}: ${from} → online${seen.failures > 0 ? ` after ${seen.failures} failed attempt${seen.failures === 1 ? '' : 's'}` : ''}`, { ...base, from, attempt: seen.failures });
+      else if (status.state === 'reconnecting') this.#log(seen.state === 'online' ? 'warn' : 'info', seen.state === null ? `${label}: connecting` : `${label}: ${from} → reconnecting (${reason})`, { ...base, from, ...(seen.state === null ? {} : { reason }) });
+      else this.#log('warn', `${label}: ${from} → ${status.state} (${reason}; ${status.attempt} failed attempt${status.attempt === 1 ? '' : 's'})`, { ...base, from, attempt: status.attempt, reason });
       seen.state = status.state;
     }
     if (status.state === 'online') {
@@ -766,8 +794,9 @@ export class PeerService implements PeerHandlers {
       seen.failures = status.attempt;
       // Every failed attempt while reconnecting, then the first five and every 20th (a long outage stays readable).
       if (status.state === 'reconnecting' || status.attempt <= 5 || status.attempt % 20 === 0) {
-        const next = status.nextAttemptAt === null ? '' : `; next try in ${Math.max(0, Math.round((status.nextAttemptAt - Date.now()) / 1000))} s`;
-        this.#log('info', `${label}: attempt ${status.attempt} failed (${reason})${next}`);
+        const nextTryS = status.nextAttemptAt === null ? null : Math.max(0, Math.round((status.nextAttemptAt - Date.now()) / 1000));
+        const next = nextTryS === null ? '' : `; next try in ${nextTryS} s`;
+        this.#log('warn', `${label}: attempt ${status.attempt} failed (${reason})${next}`, { ...base, attempt: status.attempt, reason, ...(nextTryS === null ? {} : { nextTryS }) });
       }
     }
     this.#logged.set(id, seen);
@@ -800,6 +829,24 @@ export class PeerService implements PeerHandlers {
    * machines' reads of this machine's artifacts and Inbox (`GET /api/artifacts`,
    * `GET /api/inbox` through the peer API) wait; off answers the held ones.
    */
+  /**
+   * D154, tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): the paired machines' take-over calls to
+   * `POST /api/takeover/<route>` here (e.g. `target/apply`) wait while held (a move stays at that
+   * step); `null` answers the held ones.
+   */
+  testHoldTakeover(route: string | null): void {
+    this.#takeoverHold?.release();
+    this.#takeoverHold = null;
+    if (route === null) return;
+    let release = (): void => undefined;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#takeoverHold = { route, promise, release };
+  }
+
+  #takeoverHold: { readonly route: string; readonly promise: Promise<void>; readonly release: () => void } | null = null;
+
   testHoldLists(on: boolean): void {
     if (on && !this.#listHold) {
       let release = (): void => undefined;
@@ -1086,6 +1133,16 @@ export class PeerService implements PeerHandlers {
       });
       return;
     }
+    if (name === 'movesChanged') {
+      // D154: the peer's moves are fetched again first (a reload of the list sees the change), then the move is published mapped.
+      void this.refreshList(id, 'moves').then(async () => {
+        const current = this.#ref(id);
+        const changed = payload as HubEvents['movesChanged'];
+        const move = current ? moveFromPeer(current, (await this.self()).id, changed.move) : null;
+        if (move) this.#publishFromPeer('movesChanged', { move, ...(changed.removed ? { removed: true } : {}) });
+      });
+      return;
+    }
     if (name === 'scheduleRun' || name === 'schedulesChanged') {
       // D52: the peer's schedules are fetched again first, so a page that reloads on the event sees the run.
       void this.refreshList(id, 'schedules').then(() => {
@@ -1195,6 +1252,11 @@ export class PeerService implements PeerHandlers {
   /** D89: the paired machines' saved artifacts (`GET /api/artifacts` there) as last known, namespaced and tagged; see {@link remoteSchedules}. */
   remoteArtifacts(): ArtifactListItem[] {
     return this.#remoteList('artifacts', (ref, item) => (isSavedArtifact(item) ? peerArtifactItem(ref, item as ArtifactListItem) : null)).filter((item): item is ArtifactListItem => item !== null);
+  }
+
+  /** D154: the paired machines' moves (`GET /api/moves` there) as last known, as machine `viewerId` (this one) lists them; see {@link remoteSchedules}. */
+  remoteMoves(viewerId: string): MoveRecord[] {
+    return this.#remoteList('moves', (ref, item) => moveFromPeer(ref, viewerId, item)).filter((move): move is MoveRecord => move !== null);
   }
 
   /** D52: the paired machines' terminal loops (`GET /api/terminal-loops` there) as last known; see {@link remoteSchedules}. */
@@ -1554,6 +1616,8 @@ export class PeerService implements PeerHandlers {
     }
     // D113, tests only: a held list read (testHoldLists).
     if (this.#listHold && method.toUpperCase() === 'GET' && /^\/api\/(?:artifacts|inbox)(?:\?|$)/.test(url)) await this.#listHold.promise;
+    // D154, tests only: a held take-over step (testHoldTakeover).
+    if (this.#takeoverHold && method.toUpperCase() === 'POST' && url.split('?')[0] === `/api/takeover/${this.#takeoverHold.route}`) await this.#takeoverHold.promise;
     const app = this.#app;
     if (!app) return { status: 503, body: JSON.stringify({ error: 'closing' }), contentType: 'application/json; charset=utf-8' };
     const response = await app.inject({

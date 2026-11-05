@@ -83,6 +83,19 @@ export const TURN_WAITING_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/**
+ * D154 (`docs/peers.md` → *Following a move (D154)*): kind of "Couldn’t move <agent> to <PC>"
+ * (a move of an agent to another computer failed), its **Try again** (a link: the move dialog
+ * opens pre-filled with the last choices; the item stays) and **Dismiss**. It closes by itself
+ * (`moved`) when a later move of the same agent succeeds.
+ */
+export const MOVE_FAILED = 'move-failed';
+export const MOVE_TRY_AGAIN = 'move-try-again';
+export const MOVE_FAILED_ACTIONS: readonly InboxAction[] = [
+  { id: MOVE_TRY_AGAIN, label: 'Try again' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -817,6 +830,53 @@ export class SystemItemService {
     return closed;
   }
 
+  /**
+   * D154: "Couldn’t move <agent> to <PC>", a failed move (the reason, the step, what was undone or
+   * left, the stash note as the detail): **Try again** (a link) and **Dismiss**. Once per move
+   * (`move-failed:<run id>`, open or closed); {@link closeMoveFailedNotices} closes it when a
+   * later move of the same agent succeeds.
+   * @returns the new item, or `null` when this move already raised one.
+   */
+  async moveFailedNotice(input: { readonly moveId: string; readonly title: string; readonly source: string; readonly detail: string; readonly sessionId: string | null; readonly keys: readonly string[]; readonly at: string; readonly move: Readonly<Record<string, unknown>> }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: MOVE_FAILED,
+        source: input.source,
+        status: 'fail',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: MOVE_FAILED_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload: { dedupe: `move-failed:${input.moveId}`, moveId: input.moveId, keys: [...input.keys], at: input.at, move: input.move },
+      },
+      'dedupe',
+      `move-failed:${input.moveId}`,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D154: closes the open "Move failed" items of the same agent (any of `keys`) that failed before `before`, with `outcome`; answers how many. */
+  async closeMoveFailedNotices(keys: readonly string[], before: string, outcome: string): Promise<number> {
+    const wanted = new Set(keys);
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== MOVE_FAILED || !isPayload(item.payload)) continue;
+      const own = Array.isArray(item.payload['keys']) ? item.payload['keys'] : [];
+      const at = typeof item.payload['at'] === 'string' ? item.payload['at'] : item.createdAt;
+      if (!own.some((key) => typeof key === 'string' && wanted.has(key)) || at > before) continue;
+      try {
+        await this.#store.systemItems.close(item.id, outcome);
+        closed += 1;
+      } catch (error) {
+        if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
+      }
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
   /** D124: what a Dismiss of a "Waiting for you" item clears (the session's turn wait for that episode). */
   useNotWaiting(clear: ((sessionId: string, at: string | null) => Promise<unknown>) | null): void {
     this.#notWaiting = clear;
@@ -1127,6 +1187,8 @@ export class SystemItemService {
       return;
     }
     if (action === OPEN_PLAN) throw new SystemItemError('refused', 'Open plan is a link: open the plan page');
+    // D154: Try again of a failed move is a link (the move dialog opens pre-filled); the item stays open.
+    if (action === MOVE_TRY_AGAIN) throw new SystemItemError('refused', 'Try again is a link: open the move dialog');
     // D142: Add it there is a link (Settings › Accounts on the item's machine, the Add form prefilled); the item stays open.
     if (action === ADD_ACCOUNT_ACTION) throw new SystemItemError('refused', 'Add it there is a link: open Settings › Accounts');
     // Project memory (D107) hook (follow-up 2026-10-16): copy a moved member's memory again, or keep it on this PC.

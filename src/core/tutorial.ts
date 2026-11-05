@@ -170,7 +170,7 @@ const V2_4_16 = '2.4.16';
 /** The version D152 (a complete move: the workspace created on the target, files copied, which repos an agent works in, a whole crew moved) ships in. */
 const V2_4_21 = '2.4.21';
 
-/** The version D155 (a chat moves to a paired computer) ships in. */
+/** The version D154 (a move's status after its dialog closed) and D155 (a chat moves to a paired computer) ship in. */
 const V2_4_23 = '2.4.23';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -1617,6 +1617,42 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-crew-menu', 'v2-nav-crews', 'v2-tab-more'],
         v2Route: '/crews',
         missing: 'Make a crew with teammates and pair another computer to move it. ',
+      },
+    ],
+  },
+  // D154: a move's status after its dialog closed (docs/peers.md → Following a move (D154), docs/v2.md → Moves).
+  {
+    id: 'move-status',
+    decision: 'D154',
+    version: V2_4_23,
+    title: 'Follow a move after closing its window',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'home-moves',
+        title: 'Moves on Home',
+        what: 'Home has a Moves card while agents move between your computers: the running moves with the step they are at, and the ones that finished in the last day, done or failed with what happened. Click one to open its move window again (from any tab, after a reload, on your phone); × dismisses a finished one.',
+        todo: ['Start a move, then Hide its window.', 'Find it under Moves on Home and click it.'],
+        anchors: ['v2-home-moves', 'v2-nav-home'],
+        v2Route: '/',
+        missing: 'The Moves card shows on Home while a move runs or after one finished. Move an agent to another computer (its ⋯ › Move to computer…) to see it. ',
+      },
+      {
+        id: 'badge',
+        title: 'Moving to… on the agent and the crew',
+        what: 'While an agent moves, its page, its row in Agents, its teammate card and its crew show “Moving to (computer)… (step)”. Click it to open the move window with its steps; a failed move has Try again there, with the choices you made last time.',
+        todo: ['Click a “Moving to…” badge.'],
+        anchors: ['v2-move-badge'],
+        missing: 'The badge shows while an agent moves to another computer. ',
+      },
+      {
+        id: 'needs-you',
+        title: 'A failed move waits in Needs you',
+        what: 'When a move fails, Needs you says why, at which step, what was undone or left behind and where a stash was kept, with Try again (the move window, pre-filled) and Dismiss. It goes by itself once a later move of the same agent succeeds.',
+        todo: ['Open Needs you after a failed move.', 'Try again, or Dismiss.'],
+        anchors: ['v2-home-needs', 'v2-needs'],
+        v2Route: '/',
+        missing: null,
       },
     ],
   },

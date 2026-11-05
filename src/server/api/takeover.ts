@@ -152,7 +152,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     return value;
   };
 
-  op('source/inspect', (body) => takeover.inspect(need(body, 'sessionId')));
+  // `opId` (optional): the run this check belongs to, for the move log (`docs/peers.md` → *The move log*).
+  op('source/inspect', (body) => takeover.inspect(need(body, 'sessionId'), text(body['opId']) ?? undefined));
   op('source/stop', (body) => takeover.stop(need(body, 'opId'), need(body, 'sessionId')));
   op('source/capture', (body) => takeover.capture(need(body, 'opId'), excludeReposOf(body['excludeRepos']) ?? []));
   op('source/stop-terminal', (body) => takeover.stopTerminal(need(body, 'opId')));
@@ -194,7 +195,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
   op('target/plan', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);
     if (clonePaths === null) throw new TakeoverError(422, 'invalid', 'clonePaths must map repo keys to paths');
-    return takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}), ...placementIn(body) });
+    const opId = text(body['opId']);
+    return takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}), ...placementIn(body), ...(opId ? { opId } : {}) });
   });
   // D110 (read-only): the folder picker's listing of this machine, and the verification of the chosen folders.
   op('target/folders', (body) => takeover.listTargetFolders(text(body['path'])));

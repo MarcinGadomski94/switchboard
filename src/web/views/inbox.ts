@@ -92,6 +92,9 @@ export const OPEN_PLAN = 'open-plan';
 /** Project memory (D107) hook: a folder's "N memory proposals" item's Review goes to the Memory page at it (docs/memory-removal.md). */
 export const OPEN_MEMORY = 'open-memory';
 
+/** D154: a failed move's Try again: the take-over dialog of the same agent and computer opens (a link: the item stays). */
+export const MOVE_TRY_AGAIN = 'move-try-again';
+
 /** D109: the PR watcher's items' links: Open session (the item's session) and Open PR (the PR on GitHub). */
 export const OPEN_SESSION_ACTION = 'open-session';
 export const OPEN_PR_ACTION = 'open-pr';

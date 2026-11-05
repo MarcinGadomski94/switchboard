@@ -50,6 +50,7 @@ import { type ApiContext, registerApiRoutes } from './routes.ts';
 import { CleanupService } from './cleanup/service.ts';
 import { ArchiveService } from './sessions/archive.ts';
 import { TurnWaitingInbox } from './inbox/turn-waiting.ts';
+import { MoveLog } from './takeover/moves.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { installTeam } from './team/install.ts';
 import { withTeamAccessServers } from './team/hooks.ts';
@@ -634,9 +635,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   const loopService = ownedLoops;
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
-  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, loops: loopService, self: () => peers.self() });
+  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, loops: loopService, self: () => peers.self(), log: app.log });
   loopService.useTakeover((sessionId) => takeover.isTakingOver(sessionId));
-  const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
+  // The move log (docs/peers.md → The move log): each step on the machine that runs it, the run's start and outcome on the initiating one.
+  const takeoverRunner = new TakeoverRunner({ service: takeover, peers, log: app.log });
+  // D154: the moves list (this machine's take-overs, live on /hub, kept across a restart; a failure raises a Needs-you item).
+  const moves = new MoveLog({ runner: takeoverRunner, store: options.store, bus, peers, systemItems });
+  app.addHook('onReady', async () => {
+    await moves.start();
+  });
+  app.addHook('preClose', async () => {
+    await moves.close();
+  });
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
   // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
@@ -714,7 +724,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await autoClean.stop();
     await agentMade.close();
   });
-  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);
