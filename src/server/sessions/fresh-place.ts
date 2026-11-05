@@ -1,4 +1,5 @@
 import type { Session } from '../../core/api.ts';
+import { remoteId } from '../../core/peers.ts';
 import { inheritPlace } from '../../core/sidebar-layout.ts';
 import type { RecordChanges } from '../../core/sidebar-records.ts';
 import type { SidebarLayoutRepository } from '../db/repos/sidebar.ts';
@@ -10,6 +11,8 @@ export interface FreshPlacesOptions {
   readonly sidebar: SidebarLayoutRepository;
   /** D71: the records a write changed go to the paired machines the layout is shared with. */
   readonly synced: (changes: RecordChanges) => void;
+  /** This machine's id: a moved session's `movedFrom` names the raw id on its machine (D65), `r~<machine>~<id>` here unless that is us. */
+  readonly selfId?: () => Promise<string>;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -61,9 +64,16 @@ export class FreshPlaces {
   #onMessage(message: HubMessage): void {
     if (message.name !== 'sessionUpdated') return;
     const session: Session = message.payload;
-    const from = session.continuedFrom?.sessionId;
-    if (!from || this.#done.has(session.id) || (session.closedAt ?? null) !== null) return;
+    const continued = session.continuedFrom?.sessionId;
+    // 2026-11-05: a session moved to another computer (D65 / D155) keeps its place too, on both computers.
+    const moved = this.#options.selfId ? session.movedFrom : null;
+    if ((!continued && !moved) || this.#done.has(session.id) || (session.closedAt ?? null) !== null) return;
     this.#done.add(session.id);
-    this.#queue = this.#queue.then(() => this.adopt(from, session.id).then(() => undefined)).catch((error: unknown) => this.#onError(error));
+    const from = async (): Promise<string> => {
+      if (continued) return continued;
+      const origin = moved as NonNullable<Session['movedFrom']>;
+      return origin.machineId === (await (this.#options.selfId as () => Promise<string>)()) ? origin.sessionId : remoteId(origin.machineId, origin.sessionId);
+    };
+    this.#queue = this.#queue.then(async () => void (await this.adopt(await from(), session.id))).catch((error: unknown) => this.#onError(error));
   }
 }

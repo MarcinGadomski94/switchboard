@@ -589,8 +589,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       );
     });
   }
-  // D83: a fresh session takes the sidebar place of the session it continues (this machine's and a paired machine's).
-  const freshPlaces = new FreshPlaces({ bus, sidebar: options.store.sidebar, synced: (changes) => peers.sidebarChanged(changes) });
+  // D83: a fresh session takes the sidebar place of the session it continues (this machine's and a paired machine's); a moved one (D65 / D155) too.
+  const freshPlaces = new FreshPlaces({ bus, sidebar: options.store.sidebar, synced: (changes) => peers.sidebarChanged(changes), selfId: async () => (await peers.self()).id });
   app.addHook('onReady', async () => {
     freshPlaces.start();
   });
