@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.21 (2026-11-05)
+
+### Paired computers
+- **A complete move in one dialog:** moving an agent or a teammate to another computer now lists every repo it works in, and for each one you choose: use an existing folder there, or clone it into a folder you pick; any repo can be left out. When the agent's workspace doesn't exist on the other computer, you choose where it's created (a parent folder and a name, or a full path), see the final path before moving, and the repos go in at their usual places. The workspace's own files (AGENTS.md, docs, `.claude/` settings…) can come along: files that look like they hold secrets are unticked and copied only after you confirm; an existing different file is never overwritten. Your choices are remembered. See `docs/peers.md` → *A complete move* (D152).
+- **Move a whole crew:** the crew's ⋯ menu has Move crew to computer…: every teammate is checked first, then they move one by one; a failure stops the rest and says who moved.
+- **Works in:** an agent's side panel shows the repos it works in — where it edited files, read files or ran commands — with why each is listed.
+
+### v2 theme
+- A paused message waiting for an account that resets tomorrow shows the reset time with its date.
+
+### Development
+- Tests no longer fail late in the evening when a reset time falls on the next day.
+
 ## 2.4.20 (2026-11-04)
 
 ### Paired computers
