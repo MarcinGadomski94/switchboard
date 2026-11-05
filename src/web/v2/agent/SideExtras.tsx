@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemorySessionCount } from '../../../core/memory.ts';
 import { memoryCountTooltip } from '../../../core/memory.ts';
+import { groupByRepo, worktreeLabel } from '../../../core/move-worktrees.ts';
 import { type WorksInRepo, worksInEvidenceLabel, worksInSourceLabel, worksInSummary } from '../../../core/workspace-move.ts';
 import { overviewActivityLabel, workingActivityState } from '../../activity/activity.ts';
 import { useTick } from '../../activity/useActivity.ts';
@@ -339,20 +340,44 @@ export function WorksInLine({ sessionId, status }: { readonly sessionId: string;
         <Icon name="folder" size="s" />
         <span className="v2-grow v2-ag-xtext">
           <b>Works in · {repos === undefined ? '…' : worksInSummary(repos)}</b>
-          {(repos ?? []).map((repo) => {
-            // The source label already names one kind ("it read files here"): the rest are added subtly.
-            const evidence = worksInEvidenceLabel((repo.evidence ?? []).filter((kind) => kind !== repo.source));
+          {groupByRepo(repos ?? []).map((group) => {
+            // D153: one entry per repo, its worktrees nested under it (never N entries with one name).
+            const row = (repo: WorksInRepo, nested: boolean) => {
+              // The source label already names one kind ("it read files here"): the rest are added subtly.
+              const evidence = worksInEvidenceLabel((repo.evidence ?? []).filter((kind) => kind !== repo.source));
+              return (
+                <small
+                  key={repo.path}
+                  className="v2-muted"
+                  data-testid={nested ? 'v2-agent-works-in-worktree' : 'v2-agent-works-in-repo'}
+                  data-name={nested ? worktreeLabel(repo) : repo.name}
+                  data-source={repo.source}
+                  data-evidence={(repo.evidence ?? []).join(' ')}
+                  title={repo.remoteUrl ?? undefined}
+                  style={{ display: 'block', overflowWrap: 'anywhere', ...(nested ? { paddingLeft: '1em' } : {}) }}
+                >
+                  {nested ? `↳ worktree ${worktreeLabel(repo)}` : repo.name}
+                  {repo.branch ? ` · ${repo.branch}` : ''} · {repo.path} ({worksInSourceLabel(repo.source)})
+                  {evidence !== '' ? (
+                    <span data-testid="v2-agent-works-in-evidence" style={{ opacity: 0.75 }}>
+                      {' '}
+                      · {evidence}
+                    </span>
+                  ) : null}
+                </small>
+              );
+            };
             return (
-              <small key={repo.path} className="v2-muted" data-testid="v2-agent-works-in-repo" data-name={repo.name} data-source={repo.source} data-evidence={(repo.evidence ?? []).join(' ')} title={repo.remoteUrl ?? undefined} style={{ display: 'block', overflowWrap: 'anywhere' }}>
-                {repo.name}
-                {repo.branch ? ` · ${repo.branch}` : ''} · {repo.path} ({worksInSourceLabel(repo.source)})
-                {evidence !== '' ? (
-                  <span data-testid="v2-agent-works-in-evidence" style={{ opacity: 0.75 }}>
-                    {' '}
-                    · {evidence}
-                  </span>
-                ) : null}
-              </small>
+              <span key={group.mainPath} data-testid="v2-agent-works-in-group" data-name={group.name} data-worktrees={group.worktrees.length} style={{ display: 'block' }}>
+                {group.main ? (
+                  row(group.main, false)
+                ) : (
+                  <small className="v2-muted" data-testid="v2-agent-works-in-repo" data-name={group.name} style={{ display: 'block', overflowWrap: 'anywhere' }}>
+                    {group.name} · {group.mainPath}
+                  </small>
+                )}
+                {group.worktrees.map((worktree) => row(worktree, true))}
+              </span>
             );
           })}
         </span>

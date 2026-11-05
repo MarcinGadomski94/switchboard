@@ -66,7 +66,25 @@ import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
 import { type WorksInEvidence, type WorksInSource, type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
+import { type MoveStash, type SkippedWorktree, type TargetChanges, isSafeWorktreeLayout, skippedWarning, stashAudit, stashMessage, worktreeAtTarget, worktreeCarry, worktreeLayout } from '../../core/move-worktrees.ts';
 import { type StagedWorkspaceFile, checkWorkspaceChunk, checkWorkspaceRoot, inspectStaged, listWorkspaceFiles, mkdirTracked, placeWorkspaceFiles, sourceWorkspaceFile, undoPlaced, workspaceFileStates, writeStagedChunk } from './workspace.ts';
+
+/**
+ * D153: the worktree that is the session's own working copy (a worktree session's
+ * `../<repo>-wt-<name>`, or the worktree its cwd is in): carried as before. Every
+ * other worktree of a workspace session is one of the agent's own (adopted D145
+ * rows, `.claude/worktrees/<name>`): carried only when pushed and not merged.
+ */
+async function sessionsOwnCopy(record: SessionRecord, worktree: WorktreeRecord): Promise<boolean> {
+  const real = async (value: string): Promise<string> => realpath(value).catch(() => path.resolve(value));
+  const at = await real(worktree.path);
+  if (at === (await real(worktreePathOf(worktree.repoPath, record.name)))) return true;
+  if (record.cwd) {
+    const cwd = await real(record.cwd);
+    if (cwd === at || cwd.startsWith(`${at}${path.sep}`)) return true;
+  }
+  return false;
+}
 
 /** A refusal of a take-over route, sent as `{ error, message }`. */
 export class TakeoverError extends Error {
@@ -150,6 +168,8 @@ interface TargetOp {
   /** D152: files this op wrote under the workspace root, and folders it created (the new root, a clone's parents); the undo removes them. */
   placedFiles: string[];
   createdDirs: string[];
+  /** D153: the stashes this op made in target checkouts (kept: the undo never touches them, it only reports them). */
+  stashes: MoveStash[];
 }
 
 /** One transferred chunk. */
@@ -170,6 +190,8 @@ export interface TargetBody {
   readonly clonePaths?: Readonly<Record<string, string>>;
   /** D110: the target folders the developer chose (absent: the saved folders, as before D110). */
   readonly placement?: TargetPlacement;
+  /** D153: the target checkouts whose uncommitted changes the developer confirmed stashing ("Stash them on <PC>"). */
+  readonly stashTargets?: readonly string[];
 }
 
 /** The target's resume request. */
@@ -308,17 +330,38 @@ export class TakeoverService {
       return key;
     };
     const leftOut: Array<{ readonly name: string; readonly path: string; readonly reason: string }> = [];
-    const describe = async (input: { name: string; kind: 'main' | 'worktree'; dir: string; baseRef: string | null; parentBranch: string | null }, found?: { source: WorksInSource; evidence: readonly WorksInEvidence[] }): Promise<void> => {
+    // D153: the agent's own worktrees of a workspace session that are not carried (no remote branch, merged).
+    const skippedWorktrees: SkippedWorktree[] = [];
+    const skippedPaths = new Set<string>();
+    const workspaceSession = record.rootKind === 'workspace' && folderRef !== null;
+    const describe = async (input: { name: string; kind: 'main' | 'worktree'; dir: string; baseRef: string | null; parentBranch: string | null }, found?: { source: WorksInSource; evidence: readonly WorksInEvidence[] }, own?: { readonly prState: string | null }): Promise<void> => {
+      // D153: one of the agent's own worktrees travels only when its branch has a remote-tracking branch and is not merged.
+      let worktreeAt: string | null = null;
+      if (own && input.kind === 'worktree') {
+        const facts = await git.worktreeCarryFacts(input.dir, { baseRef: input.baseRef, prState: own.prState });
+        const decision = worktreeCarry(facts);
+        const main = (await git.mainCheckout(input.dir)) ?? input.dir;
+        if (!decision.carry) {
+          skippedPaths.add(await realpath(input.dir).catch(() => input.dir));
+          skippedWorktrees.push({ name: path.basename(main), path: input.dir, mainPath: main, branch: facts.branch, reason: decision.reason, text: decision.text, uncommitted: facts.uncommitted, warning: skippedWarning(facts.uncommitted, self.name) });
+          return;
+        }
+        worktreeAt = worktreeLayout(main, input.dir);
+      }
       const answer = await git.describe({ key: keyOf(input.name), ...input });
       // A repo it only read in or ran commands in that cannot travel (no remote, a detached HEAD…) is left out with the reason, never a blocker.
       if ('blocker' in answer) {
         if (found && (found.source === 'read' || found.source === 'commands')) leftOut.push({ name: input.name, path: input.dir, reason: answer.blocker });
         else blockers.push(answer.blocker);
-      } else repos.push(found ? { ...answer.repo, found: found.source, evidence: found.evidence } : answer.repo);
+      } else {
+        const repo: SourceRepo = { ...answer.repo, ...(worktreeAt !== null && isSafeWorktreeLayout(worktreeAt) ? { worktreeAt } : {}) };
+        repos.push(found ? { ...repo, found: found.source, evidence: found.evidence } : repo);
+      }
     };
     const live = await this.#store.worktrees.list({ sessionId });
     if (live.length > 0) {
-      for (const worktree of live) await describe({ name: worktree.repo, kind: 'worktree', dir: worktree.path, baseRef: worktree.baseRef, parentBranch: worktree.parentBranch });
+      // D153: in a workspace session every worktree but the session's own copy (`../<repo>-wt-<name>`, or the one its cwd is in) is one of the agent's own.
+      for (const worktree of live) await describe({ name: worktree.repo, kind: 'worktree', dir: worktree.path, baseRef: worktree.baseRef, parentBranch: worktree.parentBranch }, undefined, workspaceSession && !(await sessionsOwnCopy(record, worktree)) ? { prState: worktree.prState } : undefined);
     } else if (record.rootKind === 'workspace' && folderRef) {
       for (const solution of record.solutions) {
         try {
@@ -349,6 +392,7 @@ export class TakeoverService {
         if (repo.kind === 'main') covered.set(await realpath(repo.mainPath).catch(() => repo.mainPath), at);
       }
       for (const entry of found) {
+        if (skippedPaths.has(await realpath(entry.top).catch(() => entry.top))) continue;
         if (entry.source === 'worktree') {
           const at = covered.get(await realpath(entry.top).catch(() => entry.top));
           if (at !== undefined) repos[at] = { ...(repos[at] as SourceRepo), found: 'worktree', evidence: entry.evidence };
@@ -363,10 +407,18 @@ export class TakeoverService {
         covered.set(top, repos.length);
         const main = await git.mainCheckout(top);
         const mainReal = main === null ? null : await realpath(main).catch(() => main);
-        await describe({ name: entry.name, kind: mainReal !== null && mainReal !== top ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null }, { source: entry.source, evidence: entry.evidence });
+        const linked = mainReal !== null && mainReal !== top;
+        // D153: a worktree it found in its history (Claude Code's `.claude/worktrees/<name>`, one it made beside the checkout) is one of the agent's own.
+        await describe({ name: linked ? path.basename(mainReal) : entry.name, kind: linked ? 'worktree' : 'main', dir: top, baseRef: null, parentBranch: null }, { source: entry.source, evidence: entry.evidence }, linked ? { prState: null } : undefined);
       }
     }
-    if (repos.length === 0 && blockers.length === 0) blockers.push(`${display} works in no git repository: there is nothing to carry the files through`);
+    if (repos.length === 0 && blockers.length === 0) {
+      blockers.push(
+        skippedWorktrees.length > 0
+          ? `${display} works only in worktrees the move does not carry (${skippedWorktrees.map((entry) => `${path.basename(entry.path)}: ${entry.text}`).join('; ')}): there is nothing to carry the files through`
+          : `${display} works in no git repository: there is nothing to carry the files through`,
+      );
+    }
     // D152: the workspace's own files (a workspace root that is no git checkout).
     let workspaceFiles: WorkspaceFilesListing | null = null;
     if (record.rootKind === 'workspace' && record.root && !(await isWorkingTreeTop(record.root))) workspaceFiles = await listWorkspaceFiles(record.root).catch(() => null);
@@ -426,6 +478,7 @@ export class TakeoverService {
         ...(this.#loops ? { loops: await this.#loops.portable(sessionId) } : {}),
         workspaceFiles,
         leftOut,
+        skippedWorktrees,
         blockers,
       },
       log,
@@ -965,7 +1018,7 @@ export class TakeoverService {
    * the verification table the dialog shows; the apply then uses exactly these
    * paths.
    */
-  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     const log: string[] = [];
     const git = this.#git(log);
     const source = body.source;
@@ -989,11 +1042,22 @@ export class TakeoverService {
     const exists = new Set<string>();
     const checkedOut = new Set<string>();
     const dirtyTargets = new Set<string>();
+    // D153: what changed in each dirty checkout (shown with the blocker / the stash choice).
+    const targetChanges = new Map<string, TargetChanges>();
+    // D153: one of the agent's own worktrees keeps its place next to the checkout; two worktrees never share a path.
+    const worktreeOf = (repoPath: string, sessionName: string, repo?: SourceRepo): string => (repo?.worktreeAt && isSafeWorktreeLayout(repo.worktreeAt) ? path.resolve(worktreeAtTarget(repoPath, repo.worktreeAt)) : worktreePathOf(repoPath, sessionName));
+    const worktreeUsers = new Map<string, string>();
     // The worktree paths in the way (a live worktree, a non-empty folder…): blockers before anything is paused.
     const worktreeBlockers = new Map<string, string>();
     const checkWorktreePath = async (repoPath: string | null, worktree: string, repoName: string): Promise<void> => {
       const reason = worktreeSlotBlocker(await git.worktreeSlot(repoPath, worktree), { machine: self.name, path: worktree, repo: repoName });
       if (reason !== null) worktreeBlockers.set(worktree, reason);
+    };
+    // D153: a second worktree planned at the same path is refused (never a quiet `…-2`).
+    const claimWorktree = (worktree: string, repo: SourceRepo): void => {
+      const first = worktreeUsers.get(worktree);
+      if (first === undefined) worktreeUsers.set(worktree, repo.path);
+      else if (first !== repo.path && !worktreeBlockers.has(worktree)) worktreeBlockers.set(worktree, `two worktrees would go to ${worktree} on ${self.name} (${first} and ${repo.path}): leave one of them out`);
     };
     const typed = body.clonePaths ?? {};
     const workspaceDefaults: Record<string, string> = located ? { ...located.defaults } : {};
@@ -1024,17 +1088,25 @@ export class TakeoverService {
       const repo = sourceRepos[index] as SourceRepo;
       const match = matches[index];
       if (match) {
-        const worktree = repo.kind === 'worktree' ? worktreePathOf(match.path, source.name) : null;
+        const worktree = repo.kind === 'worktree' ? worktreeOf(match.path, source.name, repo) : null;
         if (worktree) await checkWorktreePath(match.path, worktree, repo.name);
+        if (worktree) claimWorktree(worktree, repo);
         const branches = await git.checkedOutBranches(match.path);
         const holder = branches.get(repo.branch);
         if (holder !== undefined && (repo.kind === 'worktree' || path.resolve(holder) !== path.resolve(match.path))) checkedOut.add(`${match.path}\n${repo.branch}`);
-        if (repo.kind === 'main' && (await git.dirtyCounts(match.path)).total > 0) dirtyTargets.add(match.path);
+        if (repo.kind === 'main' && !dirtyTargets.has(match.path) && (await git.dirtyCounts(match.path)).total > 0) {
+          dirtyTargets.add(match.path);
+          targetChanges.set(match.path, await git.targetChanges(match.path));
+        }
       } else {
         const to = typed[repo.key]?.trim() || workspaceDefaults[repo.key] || (defaultCloneParent ? path.join(defaultCloneParent, repo.name) : '');
         if (to !== '') {
           if (await pathExists(to)) exists.add(to);
-          if (repo.kind === 'worktree') await checkWorktreePath(null, worktreePathOf(to, source.name), repo.name);
+          if (repo.kind === 'worktree') {
+            const worktree = worktreeOf(to, source.name, repo);
+            await checkWorktreePath(null, worktree, repo.name);
+            claimWorktree(worktree, repo);
+          }
         }
       }
     }
@@ -1045,8 +1117,11 @@ export class TakeoverService {
       exists,
       checkedOut,
       dirtyTargets,
+      targetChanges,
+      ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}),
+      machineName: self.name,
       worktreeBlockers,
-      worktreePathOf,
+      worktreePathOf: worktreeOf,
     });
     // D110: several checkouts of one repo under the chosen folders and no pick: the developer chooses (never a guess).
     if (located) {
@@ -1072,11 +1147,13 @@ export class TakeoverService {
     let folder: TargetPlan['folder'] = null;
     let cwd: string | null = null;
     const usable = repos.filter((repo) => repo.action !== 'blocked');
-    if (blockers.length === 0 || usable.length === repos.length) {
-      if (workspace) {
-        folder = { id: workspace.folderId, path: workspace.folderPath, kind: 'workspace' };
-        cwd = workspace.folderPath;
-      } else if (source.folder?.kind === 'workspace' && !source.hooked) {
+    // D153: the workspace found here is the session's folder even while a repo is blocked (e.g. a dirty checkout waiting for "Stash them"),
+    // so the dialog shows that folder instead of offering to create one; the blockers still stop the move.
+    if (workspace) {
+      folder = { id: workspace.folderId, path: workspace.folderPath, kind: 'workspace' };
+      cwd = workspace.folderPath;
+    } else if (blockers.length === 0 || usable.length === repos.length) {
+      if (source.folder?.kind === 'workspace' && !source.hooked) {
         folder = null;
       } else if (repos.length > 1) {
         blockers.push('this session works in several repos outside a workspace folder: it cannot be placed on this machine');
@@ -1212,7 +1289,7 @@ export class TakeoverService {
   #target(opId: string): TargetOp {
     let op = this.#targets.get(opId);
     if (!op) {
-      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null, staged: new Map(), stagedBytes: 0, placedFiles: [], createdDirs: [] };
+      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null, staged: new Map(), stagedBytes: 0, placedFiles: [], createdDirs: [], stashes: [] };
       this.#targets.set(opId, op);
     }
     return op;
@@ -1300,10 +1377,10 @@ export class TakeoverService {
    * uncommitted again; untracked files are untracked again), and delete the
    * temporary remote branch. A failure throws; {@link abort} undoes what was done.
    */
-  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null }>> {
+  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
     const log: string[] = [];
     const git = this.#git(log);
-    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}) })).result;
+    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}) })).result;
     if (planned.blockers.length > 0 || planned.folder === null || planned.cwd === null) throw new TakeoverError(409, 'blocked', planned.blockers.join('; ') || 'the session cannot be placed on this machine');
     const op = this.#target(body.opId);
     const changes: PathChange[] = [];
@@ -1392,6 +1469,20 @@ export class TakeoverService {
         op.worktreeRecords.push(record);
         changes.push({ name: repo.name, from: repo.path, to: resolution.worktreePath });
       } else {
+        // D153: the developer confirmed stashing this checkout's changes ("Stash them on <PC>"): stashed right before the checkout, never dropped or popped.
+        if (resolution.stash === true) {
+          const counts = await git.dirtyCounts(main);
+          if (counts.total > 0) {
+            const message = stashMessage(body.source.title ?? body.source.name, body.source.machine.name, new Date());
+            const commit = await git.stashPush(main, message);
+            const stash: MoveStash = { path: main, machine: planned.machine.name, message, files: counts.total, commit };
+            applied.stashed = stash;
+            op.stashes.push(stash);
+            const audit = stashAudit(stash);
+            log.push(audit);
+            this.#onAudit(audit);
+          }
+        }
         applied.previousHead = await git.headRef(main);
         if (localTip === null) {
           applied.createdBranch = true;
@@ -1447,7 +1538,7 @@ export class TakeoverService {
       folderRef = record ? folderRefOf(record) : { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'repo' };
     }
     op.place = { folder: folderRef, cwd: planned.cwd, changes };
-    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles }, log };
+    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles, stashes: [...op.stashes] }, log };
   }
 
   /**
@@ -1458,7 +1549,7 @@ export class TakeoverService {
    * restore), a branch the take-over created is deleted and one it moved is put
    * back, a clone is removed with its saved folder.
    */
-  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
+  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
     const op = this.#targets.get(opId);
     if (!op) return { result: { notes: [] }, log: [] };
     const log: string[] = [];
@@ -1491,7 +1582,15 @@ export class TakeoverService {
       }
       if (!applied.cloned) {
         if (applied.createdBranch) await attempt(`could not delete the branch ${applied.branch}`, () => git.run(applied.path, ['branch', '-D', applied.branch]));
-        else if (applied.previousTip) await attempt(`could not move ${applied.branch} back`, () => git.run(applied.path, ['branch', '-f', applied.branch, applied.previousTip as string]));
+        else if (applied.previousTip) {
+          await attempt(`could not move ${applied.branch} back`, async () => {
+            // Nothing to do when it never moved (the restore failed before, e.g. diverged).
+            if ((await git.sha(applied.path, `refs/heads/${applied.branch}`)) === applied.previousTip) return;
+            // Checked out in that very checkout (a main checkout on its own branch: `branch -f` refuses): its tree was clean before the restore, so a hard reset only undoes it.
+            if (applied.worktreePath === null && (await git.currentBranch(applied.path)) === applied.branch) await git.run(applied.path, ['reset', '--quiet', '--hard', applied.previousTip as string]);
+            else await git.run(applied.path, ['branch', '-f', applied.branch, applied.previousTip as string]);
+          });
+        }
       }
       if (applied.addedFolderId) await attempt('could not remove the saved folder', () => this.#folders.remove(applied.addedFolderId as string));
       if (applied.cloned) await attempt(`could not remove the clone ${applied.path}`, () => rm(applied.path, { recursive: true, force: true }));
@@ -1501,7 +1600,9 @@ export class TakeoverService {
     notes.push(...(await undoPlaced(op.placedFiles, op.createdDirs)));
     await rm(op.dir, { recursive: true, force: true }).catch(() => undefined);
     this.#targets.delete(opId);
-    return { result: { notes }, log };
+    // D153: a stash this move made stays (the developer's changes); the undo only reports it.
+    for (const stash of op.stashes) log.push(`kept the stash in ${stash.path}: "${stash.message}"`);
+    return { result: { notes, stashes: [...op.stashes] }, log };
   }
 
   /**

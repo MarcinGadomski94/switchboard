@@ -44,7 +44,7 @@ describe('Works in: repos a session only read in or ran commands in', () => {
     await tool(w, session.id, 'Bash', { command: 'git -C microfrontends/web-front log --oneline -3' });
 
     const answer = await m.worksIn(session.id);
-    expect(answer.repos).toEqual([{ name: 'web-front', path: w.web, kind: 'main', source: 'commands', branch: 'main', remoteUrl: expect.any(String), evidence: ['commands', 'read'] }]);
+    expect(answer.repos).toEqual([{ name: 'web-front', path: w.web, kind: 'main', source: 'commands', branch: 'main', remoteUrl: expect.any(String), evidence: ['commands', 'read'], mainPath: w.web }]);
     // The Diff and checkpoints' set is unchanged: reads never put a repo in the diff.
     expect((await m.repos.of(session)).inPlace).toEqual([]);
   });

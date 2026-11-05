@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionModelOption } from '../../../core/api.ts';
 import { type CrewMoveCheck, type CrewMoveRun, type TeamCharter, type TeamMember, type TeamMoveRun, type TeamSuggestion, type TeamSummary, crewMoveSummary } from '../../../core/team.ts';
 import type { TakeoverPreview } from '../../../core/takeover.ts';
-import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, shareChoice } from '../../takeover/complete-move.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, shareChoice, stashLines } from '../../takeover/complete-move.ts';
 import { MovePlanPanel } from '../agent/MovePlan.tsx';
 import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { api } from '../../api/client.ts';
@@ -253,7 +253,10 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
           currentName = now?.machineName;
         }
       }
-      const next = moveProgress({ run, memberName: member.name, targetName, memberMachineId, ...(currentName ? { currentName } : {}), pollErrors, pollError, timedOut: Date.now() > until });
+      const progress = moveProgress({ run, memberName: member.name, targetName, memberMachineId, ...(currentName ? { currentName } : {}), pollErrors, pollError, timedOut: Date.now() > until });
+      // D153: a stash the move made on the target is kept: say where and how to restore it.
+      const stashed = stashLines(run?.stashes).join(' ');
+      const next = progress.kind !== 'moving' && stashed !== '' ? { ...progress, text: `${progress.text} ${stashed}` } : progress;
       if (next.kind === 'moving') {
         if (open.current) setProgress(next);
         continue;

@@ -75,6 +75,8 @@ export interface MoveTarget {
   readonly workspaceFiles?: WorkspaceFileChoice;
   /** D152 follow-up 2026-11-05: the source paths of the repos left out of the move. */
   readonly excludeRepos?: readonly string[];
+  /** D153: the target checkouts whose uncommitted changes the developer confirmed stashing. */
+  readonly stashTargets?: readonly string[];
 }
 
 /** `POST /api/team/charters/ask` (D105). */

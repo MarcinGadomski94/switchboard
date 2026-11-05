@@ -1,6 +1,7 @@
 import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
+import { type MoveStash, type SkippedWorktree, type TargetChanges, dirtyTargetBlocker, stashConfirmed, stashSummary } from './move-worktrees.ts';
 import type { NewWorkspace, WorksInEvidence, WorksInSource, WorkspaceFileTarget, WorkspaceFilesListing, WorkspaceFilesResult, WorkspaceRootCheck } from './workspace-move.ts';
 
 /**
@@ -101,6 +102,15 @@ export interface SourceRepo {
   readonly found?: WorksInSource;
   /** Additive (D152 follow-up 2026-11-05): what its history shows it did there, strongest first. */
   readonly evidence?: readonly WorksInEvidence[];
+  /**
+   * Additive (D153): one of the agent's own worktrees (`.claude/worktrees/<name>`, a
+   * worktree it made beside the checkout): where it sits relative to its main
+   * checkout, `/`-separated (`.claude/worktrees/fix`, `../app-wt-fix`), so the
+   * target puts it at the same place next to its checkout there. Absent for the
+   * session's own worktree (the target's `../<repo>-wt-<session>`) and from an older
+   * Switchboard.
+   */
+  readonly worktreeAt?: string;
 }
 
 /** What the source machine reports about a session it could hand over (`POST /api/takeover/source/inspect`). */
@@ -193,6 +203,13 @@ export interface SourceInspect {
    * Switchboard.
    */
   readonly leftOut?: ReadonlyArray<{ readonly name: string; readonly path: string; readonly reason: string }>;
+  /**
+   * Additive (D153): the agent's own worktrees of a workspace session the move does
+   * not carry (no remote branch, or merged), with the reason and a warning when
+   * they hold uncommitted changes (those stay on the source). Absent from an older
+   * Switchboard.
+   */
+  readonly skippedWorktrees?: readonly SkippedWorktree[];
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
 }
@@ -231,6 +248,15 @@ export interface RepoResolution {
   readonly summary: string;
   readonly uncommitted: number;
   readonly ahead: number | null;
+  /**
+   * Additive (D153): the uncommitted changes of the target checkout the restore
+   * checks a branch out in (names and counts, read on the target); absent when it
+   * is clean. With them the repo is blocked until the developer confirms stashing
+   * them (`stashTargets`), then {@link stash} is `true`.
+   */
+  readonly targetChanges?: TargetChanges | null;
+  /** Additive (D153): the target checkout's changes are stashed (confirmed) before the restore checks the branch out. */
+  readonly stash?: boolean;
 }
 
 /** What the target machine says about a take-over (`POST /api/takeover/target/plan`). */
@@ -515,6 +541,8 @@ export interface AppliedRepo {
   readonly privateRef: string | null;
   readonly remoteName: string | null;
   readonly tempBranch: string | null;
+  /** D153: the stash this restore made in the checkout (kept: the undo never touches it). Absent / `null` = none. */
+  readonly stashed?: MoveStash | null;
 }
 
 /** A temporary remote branch that is still on the remote (the one-click delete). */
@@ -555,6 +583,12 @@ export interface TakeoverRun {
   readonly log: readonly string[];
   /** D152: what happened to the workspace files the move copied (`null` when none were asked for). Absent from an older run. */
   readonly workspaceFiles?: WorkspaceFilesResult | null;
+  /**
+   * D153: the stashes the move made in target checkouts (after the developer
+   * confirmed), also when the move failed and was undone: they are never dropped or
+   * popped by Switchboard. Absent from an older run.
+   */
+  readonly stashes?: readonly MoveStash[];
 }
 
 // ── paths (no `node:path`: this module is shared with the UI) ────────────
@@ -740,8 +774,18 @@ export interface PlanOptions {
   readonly checkedOut?: ReadonlySet<string>;
   /** Repos whose working tree is not clean on the target (a main-checkout session cannot check a branch out there): their paths. */
   readonly dirtyTargets?: ReadonlySet<string>;
-  /** The path of a worktree (`worktreePath` of `src/core/worktrees.ts`; passed so this module stays free of it). */
-  readonly worktreePathOf: (repoPath: string, sessionName: string) => string;
+  /** D153: what changed in each dirty target checkout (names and counts), by its path. */
+  readonly targetChanges?: ReadonlyMap<string, TargetChanges>;
+  /** D153: the target checkouts the developer confirmed stashing in ("Stash them on <PC>"). */
+  readonly stashTargets?: readonly string[];
+  /** D153: the target machine's name (the blocker says where to stash). */
+  readonly machineName?: string;
+  /**
+   * The path of a worktree (`worktreePath` of `src/core/worktrees.ts`; passed so this
+   * module stays free of it). D153: given the repo too, so one of the agent's own
+   * worktrees keeps its place next to the checkout (`SourceRepo.worktreeAt`).
+   */
+  readonly worktreePathOf: (repoPath: string, sessionName: string, repo?: SourceRepo) => string;
 }
 
 /** The candidates that match `repo` by remote, best first (the one named like the repo, then by path). */
@@ -782,14 +826,32 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
     const match = matchingCandidates(repo, candidates)[0];
     if (match) {
       const wantsWorktree = repo.kind === 'worktree';
-      const worktreePath = wantsWorktree ? options.worktreePathOf(match.path, options.sessionName) : null;
+      const worktreePath = wantsWorktree ? options.worktreePathOf(match.path, options.sessionName, repo) : null;
       if (worktreePath !== null && worktreeBlockers.has(worktreePath)) return blocked(worktreeBlockers.get(worktreePath) as string, { matchedPath: match.path, folderId: match.folderId });
       if (worktreePath !== null && exists.has(worktreePath)) return blocked(`${worktreePath} exists already on the target`, { matchedPath: match.path, folderId: match.folderId });
       if (checkedOut.has(`${match.path}\n${repo.branch}`)) {
         return blocked(`the branch ${repo.branch} is checked out in another worktree of ${match.path}`, { matchedPath: match.path, folderId: match.folderId });
       }
-      if (!wantsWorktree && dirty.has(match.path)) {
-        return blocked(`${match.path} has uncommitted changes on the target: commit or stash them first`, { matchedPath: match.path, folderId: match.folderId });
+      // D153: the target checkout's changes are stashed only after the developer confirmed it; without that, a blocker with the files.
+      const changes = options.targetChanges?.get(match.path) ?? null;
+      const stash = !wantsWorktree && dirty.has(match.path);
+      if (stash && !stashConfirmed(options.stashTargets, match.path)) {
+        return blocked(dirtyTargetBlocker(match.path, options.machineName ?? 'the target', changes), { matchedPath: match.path, folderId: match.folderId, ...(changes ? { targetChanges: changes } : {}) });
+      }
+      if (stash) {
+        return {
+          ...base,
+          action: 'use',
+          matchedPath: match.path,
+          folderId: match.folderId,
+          worktreePath: null,
+          cloneTo: null,
+          cloneUrl: null,
+          reason: null,
+          summary: stashSummary(match.path, options.machineName ?? 'the target', changes, repo.branch),
+          targetChanges: changes,
+          stash: true,
+        };
       }
       return {
         ...base,
@@ -808,7 +870,7 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
     if (cloneTo === null) return blocked(`${repo.name} is not on this machine and no folder is known to clone it into: type one`);
     if (!isCloneableUrl(repo.remoteUrl)) return blocked(`${repo.name}: ${JSON.stringify(repo.remoteUrl)} is not a URL this machine will clone`);
     if (exists.has(cloneTo)) return blocked(`${cloneTo} exists already: choose another folder to clone ${repo.name} into`, { cloneTo, cloneUrl: repo.remoteUrl });
-    const cloneWorktree = repo.kind === 'worktree' ? options.worktreePathOf(cloneTo, options.sessionName) : null;
+    const cloneWorktree = repo.kind === 'worktree' ? options.worktreePathOf(cloneTo, options.sessionName, repo) : null;
     if (cloneWorktree !== null && worktreeBlockers.has(cloneWorktree)) return blocked(worktreeBlockers.get(cloneWorktree) as string, { cloneTo, cloneUrl: repo.remoteUrl });
     return {
       ...base,
@@ -903,7 +965,8 @@ export function worktreeSlotBlocker(slot: WorktreeSlot, input: { readonly machin
 /** What the take-over as a whole refuses on the target, given the resolutions. */
 export function planBlockers(resolutions: readonly RepoResolution[]): string[] {
   const out: string[] = [];
-  for (const resolution of resolutions) if (resolution.action === 'blocked' && resolution.reason) out.push(resolution.reason);
+  // D153: one line per reason (several repos or worktrees on one target checkout say it once).
+  for (const resolution of resolutions) if (resolution.action === 'blocked' && resolution.reason && !out.includes(resolution.reason)) out.push(resolution.reason);
   return out;
 }
 

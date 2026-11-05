@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { TakeoverPreview, TargetDirListing, TargetPlacement } from '../../../core/takeover.ts';
 import { suggestWorkspaceParent } from '../../../core/workspace-move.ts';
 import { ApiError, api } from '../../api/client.ts';
-import { type MoveChoice, carryRows, fileRows, newRootFrom, repoModeOf, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, workspaceView, worksInLine } from '../../takeover/complete-move.ts';
+import { type CarryRow, type MoveChoice, carryGroups, fileRows, newRootFrom, repoModeOf, stashRows, tickedSecrets, toggleFile, withNewWorkspace, withRepoCarried, withRepoMode, withStash, workspaceView, worksInLine } from '../../takeover/complete-move.ts';
 import { type RepoRow, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
 import { Button, Checkbox, Chip, Field, Icon, Segmented } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
@@ -68,7 +68,8 @@ export function MovePlanPanel({
       ) : (
         <FolderPicker machine={machine} machineName={targetName} placement={placement} remembered={preview.remembered} onChange={setPlacement} />
       )}
-      {ws.show && ((preview.source.repos ?? []).length > 0 || (preview.source.leftOut ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
+      {ws.show && ((preview.source.repos ?? []).length > 0 || (preview.source.leftOut ?? []).length > 0 || (preview.source.skippedWorktrees ?? []).length > 0) ? <CarrySection preview={preview} choice={choice} onChange={onChange} /> : null}
+      {stashRows(preview, choice).length > 0 ? <StashSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
       <div className="v2-mv-repos" data-testid="v2-move-repos">
         {repoRows(preview).map((row) => (
           <RepoRowView
@@ -300,36 +301,75 @@ function FolderBrowser({ machine, start, onPick }: { readonly machine: string | 
  * Every one is ticked by default, the ones it only read in or ran commands in too
  * (it will likely need them there); unticking one leaves it out (`excludeRepos`:
  * not captured, not planned on the target). A read-only one that cannot travel is
- * listed as left out with the reason.
+ * listed as left out with the reason. D153: one entry per repo, its worktrees
+ * nested under it; the agent's own worktrees the move skips (no remote branch,
+ * merged) are listed with the reason, and a warning when their uncommitted
+ * changes stay on the source.
  */
 function CarrySection({ preview, choice, onChange }: { readonly preview: TakeoverPreview; readonly choice: MoveChoice; readonly onChange: (next: MoveChoice) => void }) {
-  const rows = carryRows(preview, choice);
+  const groups = carryGroups(preview, choice);
   const leftOut = preview.source.leftOut ?? [];
-  const count = rows.filter((row) => row.carried).length;
+  const all = groups.flatMap((group) => [...(group.main ? [group.main] : []), ...group.worktrees]);
+  const count = all.filter((row) => row.carried).length;
+  const tick = (row: CarryRow, label: string, why: string) => (
+    <Checkbox
+      plain
+      label={
+        <span className="v2-mp-file v2-mp-carry" title={row.path}>
+          <b>{label}</b>
+          {why !== '' ? <span className="v2-muted v2-mp-why">{why}</span> : null}
+          <span className="v2-grow v2-muted v2-mono v2-mp-file-target">{row.path}</span>
+        </span>
+      }
+      checked={row.carried}
+      onChange={(event) => onChange(withRepoCarried(choice, row.path, event.target.checked))}
+    />
+  );
   return (
     <div className="v2-mp-files" data-testid="v2-move-carry">
       <div className="v2-row">
         <b className="v2-grow">Repos to carry</b>
         <span className="v2-muted v2-mv-small" data-testid="v2-move-carry-count">
-          {count} of {rows.length} carried
+          {count} of {all.length} carried
         </span>
       </div>
-      <p className="v2-muted v2-mv-small">Every repo the agent worked in is carried, the ones it only read or ran commands in too. Untick one to leave it out of the move.</p>
+      <p className="v2-muted v2-mv-small">Every repo the agent worked in is carried, the ones it only read or ran commands in too. Its own worktrees travel only when their branch is on the remote and not merged. Untick one to leave it out of the move.</p>
       <ul className="v2-mp-filelist">
-        {rows.map((row) => (
-          <li key={row.path} data-testid="v2-move-carry-repo" data-name={row.name} data-carried={row.carried ? 'true' : 'false'}>
-            <Checkbox
-              plain
-              label={
-                <span className="v2-mp-file">
-                  <b className="v2-grow">{row.name}</b>
-                  {row.why !== '' ? <span className="v2-muted">{row.why}</span> : null}
-                  <span className="v2-muted v2-mono v2-mp-file-target">{row.path}</span>
-                </span>
-              }
-              checked={row.carried}
-              onChange={(event) => onChange(withRepoCarried(choice, row.path, event.target.checked))}
-            />
+        {groups.map((group) => (
+          <li key={group.mainPath} data-testid="v2-move-carry-group" data-name={group.name} data-worktrees={group.worktrees.length} data-skipped={group.skipped.length}>
+            {group.main ? (
+              <div data-testid="v2-move-carry-repo" data-name={group.main.name} data-carried={group.main.carried ? 'true' : 'false'}>
+                {tick(group.main, group.name, group.main.why)}
+              </div>
+            ) : (
+              <div className="v2-mp-file v2-mp-carry" title={group.mainPath}>
+                <b>{group.name}</b>
+                <span className="v2-muted v2-mp-why">not carried itself</span>
+                <span className="v2-grow v2-muted v2-mono v2-mp-file-target">{group.mainPath}</span>
+              </div>
+            )}
+            {group.worktrees.length > 0 || group.skipped.length > 0 ? (
+              <ul className="v2-mp-filelist v2-mp-nested" aria-label={`Worktrees of ${group.name}`}>
+                {group.worktrees.map((row) => (
+                  <li key={row.path} data-testid="v2-move-carry-worktree" data-name={row.label} data-carried={row.carried ? 'true' : 'false'}>
+                    {tick(row, row.label, row.why !== '' ? `worktree · ${row.why}` : 'worktree')}
+                  </li>
+                ))}
+                {group.skipped.map((entry) => (
+                  <li key={entry.path} className="v2-muted v2-mv-small" data-testid="v2-move-carry-skipped" data-name={entry.label} data-reason={entry.reason}>
+                    <span>
+                      worktree {entry.label}
+                      {entry.branch ? ` (${entry.branch})` : ''}: not carried, {entry.text}
+                    </span>
+                    {entry.warning ? (
+                      <span className="v2-mp-skipped-warn" data-testid="v2-move-carry-skipped-warning">
+                        <Icon name="alert" size="s" /> {entry.warning}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </li>
         ))}
         {leftOut.map((entry) => (
@@ -338,6 +378,46 @@ function CarrySection({ preview, choice, onChange }: { readonly preview: Takeove
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * D153: a checkout on the target the restore checks a branch out in has uncommitted
+ * changes. The dialog shows them (names and counts, read on the target) and offers
+ * **Stash them on <PC>**: only once ticked does the target run `git stash push
+ * --include-untracked` there before restoring; the stash is kept (never dropped or
+ * popped) and the result says how to restore it.
+ */
+function StashSection({ preview, choice, targetName, onChange }: { readonly preview: TakeoverPreview; readonly choice: MoveChoice; readonly targetName: string; readonly onChange: (next: MoveChoice) => void }) {
+  const rows = stashRows(preview, choice);
+  return (
+    <div className="v2-mp-files" data-testid="v2-move-stash">
+      <b>Uncommitted changes on {targetName}</b>
+      {rows.map((row) => (
+        <div key={row.path} className="v2-mv-warn" data-testid="v2-move-stash-row" data-path={row.path} data-confirmed={row.confirmed ? 'true' : 'false'}>
+          <p>
+            <code>{row.path}</code> ({row.names.join(', ')}) has {row.changes ? `${row.changes.total} uncommitted file${row.changes.total === 1 ? '' : 's'}` : 'uncommitted files'} on {targetName}. The move checks a branch out there, so they must be put aside first.
+          </p>
+          {row.changes && row.changes.files.length > 0 ? (
+            <ul className="v2-mp-filelist" data-testid="v2-move-stash-files">
+              {row.changes.files.map((file) => (
+                <li key={file} className="v2-mono v2-mv-small">
+                  {file}
+                </li>
+              ))}
+              {row.changes.truncated ? <li className="v2-muted v2-mv-small">and {row.changes.total - row.changes.files.length} more</li> : null}
+            </ul>
+          ) : null}
+          <Checkbox
+            label={`Stash them on ${targetName}`}
+            checked={row.confirmed}
+            data-testid="v2-move-stash-confirm"
+            onChange={(event) => onChange(withStash(choice, row.path, event.target.checked))}
+          />
+          <p className="v2-muted v2-mv-small">Switchboard runs git stash push --include-untracked there right before restoring, and keeps the stash: it is never dropped or popped, also when the move is undone. Restore it later with git stash list and git stash apply.</p>
+        </div>
+      ))}
     </div>
   );
 }

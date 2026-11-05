@@ -1,3 +1,4 @@
+import { type MoveStash, type SkippedWorktree, type TargetChanges, groupByRepo, stashConfirmed, stashNote, worktreeLabel } from '../../core/move-worktrees.ts';
 import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
 import {
   type WorkspaceFileChoice,
@@ -30,14 +31,20 @@ export interface MoveChoice {
    * ones it only read or ran commands in too (it will likely need them there).
    */
   readonly excludeRepos?: readonly string[];
+  /**
+   * D153: the target checkouts whose uncommitted changes the developer confirmed
+   * stashing there ("Stash them on <PC>"). Absent / empty = none (a dirty checkout blocks).
+   */
+  readonly stashTargets?: readonly string[];
 }
 
 /** An empty choice (the remembered folders, if any, come with the first preview). */
 export const EMPTY_CHOICE: MoveChoice = { placement: null, clonePaths: {}, files: null };
 
 /** The request fields of a choice (`placement` left out while it is `null` and `keepNull` is off: the remembered folders apply). */
-export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } {
+export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } {
   return {
+    ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: [...choice.stashTargets] } : {}),
     ...(choice.placement !== null ? { placement: choice.placement } : keepNull ? { placement: null } : {}),
     ...(Object.keys(choice.clonePaths).length > 0 ? { clonePaths: { ...choice.clonePaths } } : {}),
     ...(choice.files ? { workspaceFiles: choice.files } : {}),
@@ -52,6 +59,45 @@ export function withRepoCarried(choice: MoveChoice, path: string, on: boolean): 
   else out.add(path);
   const { excludeRepos: _old, ...rest } = choice;
   return out.size > 0 ? { ...rest, excludeRepos: [...out] } : rest;
+}
+
+/** D153: the choice with stashing the changes of the target checkout at `path` confirmed (`on`) or not. */
+export function withStash(choice: MoveChoice, path: string, on: boolean): MoveChoice {
+  const out = (choice.stashTargets ?? []).filter((entry) => entry !== path);
+  if (on) out.push(path);
+  const { stashTargets: _old, ...rest } = choice;
+  return out.length > 0 ? { ...rest, stashTargets: out } : rest;
+}
+
+/** D153: one target checkout with uncommitted changes the restore needs (the stash choice). */
+export interface StashRow {
+  /** The checkout on the target. */
+  readonly path: string;
+  /** The repo's name(s) that need it. */
+  readonly names: readonly string[];
+  readonly changes: TargetChanges | null;
+  /** The developer confirmed stashing them. */
+  readonly confirmed: boolean;
+}
+
+/** D153: the target checkouts with uncommitted changes in the preview, once each (several repos may need one checkout). */
+export function stashRows(preview: TakeoverPreview, choice: MoveChoice): StashRow[] {
+  const out: Array<{ path: string; names: string[]; changes: TargetChanges | null; confirmed: boolean }> = [];
+  for (const repo of preview.target.repos) {
+    if (!repo.targetChanges || repo.matchedPath === null) continue;
+    const known = out.find((entry) => entry.path === repo.matchedPath);
+    if (known) {
+      if (!known.names.includes(repo.name)) known.names.push(repo.name);
+      continue;
+    }
+    out.push({ path: repo.matchedPath, names: [repo.name], changes: repo.targetChanges, confirmed: stashConfirmed(choice.stashTargets, repo.matchedPath) });
+  }
+  return out;
+}
+
+/** D153: what a run says about the stashes it made (kept on the target). */
+export function stashLines(stashes: readonly MoveStash[] | undefined): string[] {
+  return (stashes ?? []).map(stashNote);
 }
 
 /** One repo the agent works in, as the move dialog's carry list shows it. */
@@ -77,6 +123,37 @@ export function carryRows(preview: TakeoverPreview, choice: MoveChoice): CarryRo
     const why = evidence !== '' ? evidence : repo.found ? worksInSourceLabel(repo.found) : '';
     return { name: repo.name, path: repo.path, why, key: carried && planned.has(repo.key) ? repo.key : null, carried };
   });
+}
+
+/** D153: one repo of the carry list with its worktrees nested (and the ones the move skips, with the reason). */
+export interface CarryGroup {
+  /** The repo's main checkout on the source. */
+  readonly mainPath: string;
+  readonly name: string;
+  /** The main checkout's own row, when the agent works in it. */
+  readonly main: CarryRow | null;
+  /** Its worktrees that travel (each can be left out). */
+  readonly worktrees: ReadonlyArray<CarryRow & { readonly label: string }>;
+  /** Its worktrees the move does not carry: no remote branch, or merged (a warning when they hold uncommitted changes). */
+  readonly skipped: ReadonlyArray<SkippedWorktree & { readonly label: string }>;
+}
+
+/** D153: the carry list grouped by repo: one entry per repo, its worktrees nested, the skipped ones with their reason. */
+export function carryGroups(preview: TakeoverPreview, choice: MoveChoice): CarryGroup[] {
+  const rows = carryRows(preview, choice);
+  const repos = preview.source.repos ?? [];
+  const keyed = rows.map((row, at) => ({ ...row, kind: repos[at]?.kind ?? 'main', mainPath: repos[at]?.mainPath ?? row.path }));
+  return groupByRepo(keyed, preview.source.skippedWorktrees ?? []).map((group) => ({
+    mainPath: group.mainPath,
+    name: group.name,
+    main: group.main ? strip(group.main) : null,
+    worktrees: group.worktrees.map((row) => ({ ...strip(row), label: worktreeLabel(row) })),
+    skipped: group.skipped.map((entry) => ({ ...entry, label: worktreeLabel(entry) })),
+  }));
+}
+
+function strip<T extends CarryRow>(row: T & { readonly kind?: unknown; readonly mainPath?: unknown }): CarryRow {
+  return { name: row.name, path: row.path, why: row.why, key: row.key, carried: row.carried };
 }
 
 /** The choice once a preview arrived: its placement, and the default ticks when none were made yet. */
@@ -186,11 +263,20 @@ export function tickedSecrets(preview: TakeoverPreview, choice: WorkspaceFileCho
 /** The "Works in" line of the dialog: the repos the agent works in, from what the source read. */
 export function worksInLine(preview: TakeoverPreview): string {
   const repos = preview.source.repos ?? [];
-  if (repos.length === 0) return 'No repo found in its history.';
-  return repos
-    .map((repo) => {
-      const evidence = worksInEvidenceLabel(repo.evidence);
-      return `${repo.name} (${repo.path}${evidence !== '' ? `; ${evidence}` : ''})`;
+  const skipped = preview.source.skippedWorktrees ?? [];
+  if (repos.length === 0 && skipped.length === 0) return 'No repo found in its history.';
+  // D153: one entry per repo, its worktrees counted under it (never N entries with one name).
+  return groupByRepo(repos, skipped)
+    .map((group) => {
+      const members = [...(group.main ? [group.main] : []), ...group.worktrees];
+      const evidence = [...new Set(members.flatMap((repo) => repo.evidence ?? []))];
+      const order = ['edited', 'commands', 'read'] as const;
+      const words = worksInEvidenceLabel(order.filter((kind) => evidence.includes(kind)));
+      const parts = [group.mainPath];
+      if (words !== '') parts.push(words);
+      if (group.worktrees.length > 0) parts.push(`${group.worktrees.length} worktree${group.worktrees.length === 1 ? '' : 's'} carried`);
+      if (group.skipped.length > 0) parts.push(`${group.skipped.length} skipped`);
+      return `${group.name} (${parts.join('; ')})`;
     })
     .join(' · ');
 }
