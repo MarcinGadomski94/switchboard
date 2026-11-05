@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.24 (2026-11-05)
+
+### Paired computers
+- **Repos outside the workspace move too:** when an agent also works in a repo outside its workspace, the move dialog's new "Outside the workspace" section lets you use a folder on the other computer, clone it into a folder you pick, or leave it out (carried by default when the agent edited files there). On the other computer the agent can work in it, also after a pause or resume. See `docs/peers.md` → *Repos outside the workspace*.
+- Hidden folders such as `.claude` are never treated as repos, so they no longer block a move; the "not a workspace" message points at the Workspace section and its two options.
+
+### v2 theme
+- **Where an agent runs, next to its title:** the agent page shows the computer it runs on beside its name, this computer's included.
+
 ## 2.4.23 (2026-11-05)
 
 ### Paired computers
