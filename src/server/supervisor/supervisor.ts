@@ -2462,6 +2462,72 @@ export class SessionSupervisor {
     return this.#get(session.id);
   }
 
+  /**
+   * D155 (`docs/chats.md` → *Moving a chat to another computer*): stores a chat moved
+   * here from another machine and resumes it, like {@link takeOver} but as a **chat**:
+   * `kind: 'chat'`, its new scratch folder as cwd (the caller created it), no folder,
+   * plan mode, the folders it looks at here (`lookAt`, checked by the caller), bound
+   * to the same conversation; the divider and the agent's first message (a service
+   * message, D44 `resuming`) as for a take-over. On any failure the row is deleted
+   * again and the error thrown.
+   */
+  async takeOverChat(input: Omit<TakeOverInput, 'solutions' | 'worktrees' | 'branch' | 'branching' | 'ultracode' | 'origin'> & { readonly id: string; readonly cwd: string; readonly lookAt: readonly string[] }, options: { readonly beforeSpawn?: (session: SessionRecord) => Promise<void> } = {}): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    if (!this.#providers.hasAdapter(input.provider)) throw new SupervisorError('cli-unavailable', `${CLI_LABELS[input.provider]} is not supported by this Switchboard`);
+    const cwd = await canonicalFolder(input.cwd);
+    const session = await this.#store.sessions.create({
+      id: input.id,
+      name: input.name,
+      title: input.title,
+      task: input.task,
+      claudeSessionId: input.claudeSessionId,
+      status: 'idle',
+      solutions: [],
+      worktrees: false,
+      ultracode: false,
+      attached: true,
+      cwd,
+      folderId: null,
+      root: null,
+      rootKind: null,
+      requestedPermissionMode: CHAT_PERMISSION_MODE,
+      provider: input.provider,
+      profileId: input.profileId,
+      model: input.model,
+      effort: input.effort,
+      movedFrom: input.movedFrom,
+      kind: 'chat',
+      lookAt: [...input.lookAt],
+    });
+    try {
+      const main = await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, []), status: 'idle' });
+      if (input.provider === 'claude') {
+        if (input.transcript !== null) await this.#importTranscript(session, input.transcript);
+      } else {
+        if (input.nativeId) await this.#store.providers.rememberNative(session.id, input.provider, input.nativeId);
+        for (const message of input.messages) {
+          const payload = message.role === 'user' ? { type: 'user', text: message.text, origin: 'switchboard', delivered: true } : { type: 'assistant', text: message.text };
+          const event = await this.#store.events.append({ sessionId: session.id, agentId: main.id, kind: 'text', label: textLabel(message.text), payload, ...(message.ts ? { ts: message.ts } : {}) });
+          await this.#store.sessions.update(session.id, { lastActivityAt: event.ts });
+        }
+      }
+      if (options.beforeSpawn) await options.beforeSpawn(await this.#get(session.id));
+      this.#assertOpen();
+      const live = await this.#spawn(await this.#get(session.id), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'taken-over', undefined, {
+        label: input.dividerLabel,
+        payload: { machine: input.movedFrom.machineName, machineId: input.movedFrom.machineId, remoteSessionId: input.movedFrom.sessionId },
+      });
+      await this.#send(live, input.firstMessage, 'service', { resuming: true });
+    } catch (error) {
+      await this.#stopLive(session.id);
+      await this.#store.sessions.delete(session.id).catch(() => undefined);
+      throw error;
+    }
+    await this.#emitSession(session.id);
+    return this.#get(session.id);
+  }
+
   /** Stops the session's live process, if any, without recording anything (a failed take-over's cleanup). */
   async #stopLive(sessionId: string): Promise<void> {
     const live = this.#live.get(sessionId);

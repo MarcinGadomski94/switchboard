@@ -7,6 +7,7 @@ import type { InsightsAnswer } from '../../core/insights.ts';
 import type { UsageAnswer } from '../../core/usage-breakdown.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun, TargetDirListing, TargetPlacement } from '../../core/takeover.ts';
+import type { ChatMovePreview, ChatMoveRun } from '../../core/chat-move.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type { IssueImportInput, IssueImportPreview, IssueImportQuery, IssueImportSources, SessionCi } from '../../core/ci.ts';
@@ -524,6 +525,11 @@ export const api = {
   /** D110: the target machine's folder picker (`machine` = `null` for this one): the starting places, or one folder's subfolders. */
   takeoverFolders: (machine: string | null, path?: string | null) => request<TargetDirListing>('POST', '/api/takeover/folders', { ...(machine ? { machine } : {}), ...(path ? { path } : {}) }),
   takeoverRun: (id: string) => request<TakeoverRun>('GET', `/api/takeover/runs/${enc(id)}`),
+  /** D155: what moving a chat would do (both computers' view; `lookAt` maps each looked-at folder to a folder there or `null`). */
+  chatMovePreview: (body: { readonly chatId: string; readonly targetMachine: string | null; readonly lookAt?: Readonly<Record<string, string | null>> }) => request<ChatMovePreview>('POST', '/api/takeover/chat/preview', body),
+  /** D155: starts moving a chat (202; poll {@link chatMoveRun}). */
+  chatMoveStart: (body: { readonly chatId: string; readonly targetMachine: string | null; readonly lookAt?: Readonly<Record<string, string | null>> }) => request<ChatMoveRun>('POST', '/api/takeover/chat', body),
+  chatMoveRun: (id: string) => request<ChatMoveRun>('GET', `/api/takeover/chat/runs/${enc(id)}`),
   /** D65: the one-click delete of a temporary branch left on a remote; `machineId` = the machine that pushed it (`null` = this one). */
   takeoverDeleteLeftover: (machineId: string | null, leftoverId: string) =>
     request<{ readonly deleted: boolean }>('POST', machineId ? `/api/machines/${enc(machineId)}/api/takeover/leftovers/${enc(leftoverId)}/delete` : `/api/takeover/leftovers/${enc(leftoverId)}/delete`),

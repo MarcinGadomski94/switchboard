@@ -1793,6 +1793,14 @@ export class TakeoverService {
     return { result: { deleted: true }, log };
   }
 
+  /**
+   * D155: how a chat's conversation travels and its files (read-only, the same rules
+   * as a session's), for the chat move's inspect (`src/server/chats/move-service.ts`).
+   */
+  async conversationOfRecord(record: SessionRecord, blockers: string[]): Promise<SourceInspect['conversation']> {
+    return this.#conversationOf(record, blockers);
+  }
+
   /** The take-over staging folder, for tests. */
   stagingRoot(): string {
     return path.join(this.#config.dataDir, 'takeover');

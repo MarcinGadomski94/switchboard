@@ -201,6 +201,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D152: a complete move: the workspace's own files (read on the source, staged and placed on the target, both strictly checked).
   ['POST', /^\/api\/takeover\/source\/(?:workspace-files|workspace-chunk)$/],
   ['POST', /^\/api\/takeover\/target\/workspace-chunk$/],
+  // D155: moving a chat: each end's chat operations (its record, look-at folders, attachments, scratch files, artifacts; the receiver checks names, caps and checksums).
+  ['POST', /^\/api\/takeover\/chat\/source\/(?:inspect|data|data-chunk|release)$/],
+  ['POST', /^\/api\/takeover\/chat\/target\/(?:plan|data-chunk|resume|abort|close)$/],
   // D152: which repos a session works in (the agent view's "Works in" for that machine's session).
   ['GET', /^\/api\/sessions\/[^/]+\/works-in$/],
   // D110: the target's folder picker and the verification of the chosen folders (read-only; folders only, inside the home / saved folders).

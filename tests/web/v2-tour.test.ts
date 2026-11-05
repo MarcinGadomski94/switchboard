@@ -51,7 +51,7 @@ describe('the v2 welcome tour', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move', 'chat-move']);
     // D152 (2.4.21): Works in in the Details, the Move dialog, a crew's Move crew to computer….
     const complete = WHATS_NEW.find((feature) => feature.id === 'complete-move');
     expect(complete).toMatchObject({ version: '2.4.21', ui: 'v2', decision: 'D152' });

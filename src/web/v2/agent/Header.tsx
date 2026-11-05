@@ -10,6 +10,8 @@ import { teamApi } from '../../team/api.ts';
 import { offersHookedContinue } from '../../../core/hooked-continue.ts';
 import { openContinueHooked } from '../../hooked-continue/store.ts';
 import { openTakeover } from '../../takeover/store.ts';
+import { openChatMove } from '../../takeover/chat-move-store.ts';
+import { offersChatMove } from './chat-move-model.ts';
 import { offersTakeover } from '../../takeover/takeover.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { needsYouOf } from '../../views/session/needs-you.ts';
@@ -470,6 +472,7 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
             remote,
             background,
             movable: offersTakeover(session),
+            chatMovable: offersChatMove(session),
             hookedContinue: offersHookedContinue(session),
             computers: online.length,
             teammate: memberId !== null,
@@ -519,6 +522,12 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         if (!session) return;
         if (session.machine) openTakeover({ sessionId, targetMachine: null, machineName: session.machine.name, title: name });
         else if (online[0]) openTakeover({ sessionId, targetMachine: online[0].id, machineName: online[0].name, title: name });
+        return;
+      case 'move-chat':
+        // D155: the chat's own move dialog (ChatMoveDialog.tsx); a local chat's target is picked in it.
+        if (!session) return;
+        if (session.machine) openChatMove({ chatId: sessionId, targetMachine: null, machineName: session.machine.name, title: name });
+        else if (online[0]) openChatMove({ chatId: sessionId, targetMachine: online[0].id, machineName: online[0].name, title: name });
         return;
       case 'clean-slate':
         // The agent view opens the fresh agent once it exists (`useFollowFresh`); a refusal is a toast.
@@ -613,7 +622,7 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   ];
   return (
     <>
-      <IconButton ref={setAnchor} icon="more" label={AGENT_WORDS.more} aria-haspopup="menu" aria-expanded={open} data-testid="v2-agent-menu" disabled={!session} onClick={() => setOpen((v) => !v)} />
+      <IconButton ref={setAnchor} icon="more" label={AGENT_WORDS.more} aria-haspopup="menu" aria-expanded={open} data-testid="v2-agent-menu" data-tour="v2-agent-menu" disabled={!session} onClick={() => setOpen((v) => !v)} />
       <Menu items={items} anchor={anchor} open={open} onClose={() => setOpen(false)} label={AGENT_WORDS.more} testId="v2-agent-menu-list" />
       {session ? (
         <>

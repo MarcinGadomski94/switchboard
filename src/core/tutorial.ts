@@ -170,6 +170,9 @@ const V2_4_16 = '2.4.16';
 /** The version D152 (a complete move: the workspace created on the target, files copied, which repos an agent works in, a whole crew moved) ships in. */
 const V2_4_21 = '2.4.21';
 
+/** The version D155 (a chat moves to a paired computer) ships in. */
+const V2_4_23 = '2.4.23';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1614,6 +1617,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-crew-menu', 'v2-nav-crews', 'v2-tab-more'],
         v2Route: '/crews',
         missing: 'Make a crew with teammates and pair another computer to move it. ',
+      },
+    ],
+  },
+  // D155: a chat moves to a paired computer (docs/chats.md → Moving a chat to another computer, docs/peers.md → Moving a chat (D155)).
+  {
+    id: 'chat-move',
+    decision: 'D155',
+    version: V2_4_23,
+    title: 'Move a chat to another computer',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'move-chat',
+        title: 'Chats move too',
+        what: 'A chat’s ⋯ › Move to computer… carries it to a paired computer: the conversation continues there, still a chat in plan mode, with its attachments, its scratch files, its saved artifacts and its tasks. For each folder it looks at you choose a folder on that computer (a matching one is suggested, by the code project’s remote or the same name) or leave it out; the choices are remembered for next time. The chat here ends as moved to that computer.',
+        todo: ['Open a chat and its ⋯ menu.', 'Choose Move to computer…, check the folders it looks at, then Move.'],
+        anchors: ['v2-agent-menu', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Pair another computer (Settings › Computers), then open a chat’s ⋯ › Move to computer…. ',
       },
     ],
   },

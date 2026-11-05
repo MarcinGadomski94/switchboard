@@ -46,6 +46,7 @@ export type AgentMenuId =
   | 'resume'
   | 'stop-background'
   | 'move'
+  | 'move-chat'
   | 'clean-slate'
   | 'terminal'
   | 'attach'
@@ -100,6 +101,11 @@ export interface AgentMenuInput {
    * string = why not (or the step while it runs). Absent = no entry (a closed or moved agent).
    */
   readonly cleanSlate?: string | null;
+  /**
+   * D155: a conversation (chat) can move to / from another computer (`offersChatMove`).
+   * Optional: absent = `false` (no entry is offered as enabled).
+   */
+  readonly chatMovable?: boolean;
 }
 
 /** The agent ⋯ menu (the prototype's `agentMenu`, today's actions): every action listed, disabled with the reason where it cannot run. */
@@ -136,6 +142,19 @@ export function agentMenu(input: AgentMenuInput): AgentMenuSpec[] {
   if (!input.conversation) items.push({ id: 'routine', label: AGENT_WORDS.addRoutine, icon: 'routine', ...(off ? { disabledReason: off } : {}) });
   items.push({ id: 'notes', label: AGENT_WORDS.draftNotes, icon: 'book', ...(off ? { disabledReason: off } : input.conversation ? { disabledReason: 'Conversations have no notes of their own.' } : {}) });
   if (input.conversation) items.push({ id: 'continue-agent', label: AGENT_WORDS.continueAsAgent, icon: 'sparkle', ...(off ? { disabledReason: off } : {}) });
+  if (input.conversation) {
+    // D155: a chat moves to another computer with its own dialog (the folders it looks at, no repos).
+    const reason = off
+      ? AGENT_WORDS.offlineReason(input.machineName ?? 'Its computer')
+      : input.closed
+        ? 'Archived conversations stay where they are.'
+        : input.chatMovable !== true
+          ? 'It moved already.'
+          : input.machineName === null && input.computers === 0
+            ? 'No other computer is paired and online.'
+            : undefined;
+    items.push({ id: 'move-chat', label: AGENT_WORDS.moveToComputer, icon: 'desktop', ...(reason ? { disabledReason: reason } : {}) });
+  }
   else if (input.teammate) items.push({ id: 'return', label: AGENT_WORDS.returnToAgents, icon: 'agents', ...(off ? { disabledReason: off } : {}) });
   else items.push({ id: 'teammate', label: AGENT_WORDS.makeTeammate, icon: 'crew', ...(off ? { disabledReason: off } : input.closed ? { disabledReason: 'Restore it first.' } : input.crews === 0 ? { disabledReason: 'Make a crew first (+ New › Crew).' } : {}) });
   items.push({ sep: 'c' });
