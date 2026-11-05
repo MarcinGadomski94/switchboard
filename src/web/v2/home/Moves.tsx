@@ -46,9 +46,11 @@ export function HomeMoves({ phone }: { readonly phone: boolean }) {
           <Icon name="desktop" />
         </span>
         <h2 id="v2-home-moves-h">{MOVES_WORDS.title}</h2>
-        <span className="v2-home-count" data-testid="v2-home-moves-count">
-          {running.length}
-        </span>
+        {running.length > 0 ? (
+          <span className="v2-home-count" data-testid="v2-home-moves-count">
+            {running.length}
+          </span>
+        ) : null}
         <span className="v2-home-hint">{MOVES_WORDS.hint}</span>
       </div>
       {rows}
@@ -69,9 +71,11 @@ function MoveRow({ move, now }: { readonly move: MoveRecord; readonly now: numbe
         </Chip>
         <span className="v2-home-move-body">
           <b>{name}</b>
-          <span className="v2-muted">
-            {' '}
-            · {move.source.name} → {move.target.name}
+          <span className="v2-muted v2-home-move-route">
+            <span className="v2-home-move-dot" aria-hidden="true">
+              {' · '}
+            </span>
+            {move.source.name} → {move.target.name}
             {move.member ? ` · ${move.member.teamName}` : ''}
           </span>
           <span className="v2-home-move-line" data-testid="v2-home-move-line">

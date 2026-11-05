@@ -531,3 +531,13 @@
 .sb2 .v2-home-moves[data-phone] .v2-home-move-when {
   display: none;
 }
+
+/* A phone: the route on its own line, without the separator. */
+.sb2 .v2-home-moves[data-phone] .v2-home-move-route {
+  flex-basis: 100%;
+  font-size: 13px;
+}
+
+.sb2 .v2-home-moves[data-phone] .v2-home-move-dot {
+  display: none;
+}
