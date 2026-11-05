@@ -80,7 +80,7 @@ export const CHAT_TERMINAL_REFUSAL = 'a chat stays in Switchboard: continue it a
 export const CHAT_REMOTE_REFUSAL = 'a chat has no Remote Control: claude.ai could take it out of plan mode';
 
 /** Why a chat is not taken over to another machine. */
-export const CHAT_TAKEOVER_REFUSAL = 'a chat is not taken over to another machine: start a chat there';
+export const CHAT_TAKEOVER_REFUSAL = 'a chat moves with its own Move to computer… (the chat ⋯ menu, D155), not as a session';
 
 /** The chat's divider when its process restarted to read a changed list of folders. */
 export const LOOK_AT_UPDATED_DIVIDER = 'Folders to look at updated';

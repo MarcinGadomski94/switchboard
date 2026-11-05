@@ -22,7 +22,18 @@ Every CLI Switchboard runs has a read-only mode, so chats are offered for all th
 
 **No permission-mode picker.** Switchboard has none for sessions either (D6: every session runs in `auto`, falling back to `acceptEdits`). Where one would be, a chat's header shows a locked **🔒 Plan mode** chip whose tooltip / accessible name is the hint *Chats can plan but not edit. Continue as session to code.* (`CHAT_LOCKED_HINT`). The New-chat form shows the same hint under its title.
 
-**Refused for chats** (409 `chat`): Continue in terminal (`POST …/detach`: a terminal's CLI could leave plan mode), Remote Control (`PUT …/remote` `{enabled: true}`: claude.ai could switch the mode), and a take-over to another machine (a blocker in its preview). Adopting a chat as a Team member (409 `chat`) and naming it a plan's source (409 `chat`) are refused too.
+**Refused for chats** (409 `chat`): Continue in terminal (`POST …/detach`: a terminal's CLI could leave plan mode) and Remote Control (`PUT …/remote` `{enabled: true}`: claude.ai could switch the mode). D155: a chat **moves to another computer** with its own **Move to computer…** (below, *Moving a chat to another computer*); the session take-over (`/api/takeover`) still refuses one (a blocker pointing at that entry). Adopting a chat as a Team member (409 `chat`) and naming it a plan's source (409 `chat`) are refused too.
+
+## Moving a chat to another computer (D155)
+
+Developer request (2026-11-05): "i also should be able to move over the chats". `docs/decisions.md` → D155; the flow and the wire: `docs/peers.md` → *Moving a chat (D155)*.
+
+- **Where:** the v2 chat's ⋯ → **Move to computer…** (`move-chat`; disabled with the reason when the chat is archived, moved already, its computer is offline, or no other computer is online). A paired computer's chat offers the same entry and moves **here**. The classic theme has no entry (v2 only, D155).
+- **The dialog** (`src/web/v2/agent/ChatMoveDialog.tsx`, model `chat-move-model.ts`): the computer to move to; the CLI and account there ("still a chat (plan mode)"); what is copied ("The conversation is copied (N files) and continues there · 1 attachment · 2 scratch files · 1 artifact") and what stays (a scratch file that looks like a secret, a file over a cap, an attachment whose file is gone); **Folders it looks at, on <PC>**: one row per folder with what it becomes there (*Uses <path> on <PC>* or *Left out: the chat cannot read it on <PC>*) and a choice: *Use <suggestion> (the same code project (by its remote) / the same path / a saved folder with the same name)*, *Another folder there…* (a path field, the other computer's places and folders to browse, **Use this folder**) or *Leave it out*. Every change asks both computers again. **Move** says why it is disabled (the other computer offline, a blocker, a folder being typed). Then the steps (*Checking both computers*, *Stopping the chat where it runs*, *Copying the conversation, attachments, scratch files and artifacts*, *Continuing the chat there*, *Closing the old chat*) and the outcome; it cannot be closed while the chat moves and stays open with the result (**Open the chat**).
+- **Defaults:** a folder with a suggestion uses it, one without is left out; the choices of the last move of that folder to that computer come first (`takeover.chatLookAt`, "The choices of the last move of these folders to <PC>.").
+- **On the other computer** the chat is a chat (kind `chat`, plan mode, its instruction) in a **new scratch folder** `<dataDir>/chats/<new id>/` with the copied files, looking at the mapped folders only (`--add-dir` per folder), bound to the same conversation (`--resume`). Its first lines: the divider **Moved here from <PC>** and a service message naming the folders it looks at now (`<old> → <new>`), the ones left out, and where its scratch folder and attachments are now. Its attachments keep their ids; its artifacts are copies (the old chat keeps its own); its todos travel.
+- **Here** the chat ends **Moved to <PC>** (closed, read-only; Reopen refused), like a moved session (D65).
+- **Refused:** a closed or moved chat, one **answering** (wait for its turn or stop it: a chat move never pauses a running turn), one switching CLI or account, one being moved, a target whose Switchboard is older ("update Switchboard there"), a target that has this conversation already, a chosen folder outside the target's allowed places.
 
 ## The chat's instruction
 
@@ -66,8 +77,8 @@ The **CHATS** section sits above SESSIONS (after the Team entry) and **always sh
 ## The chat's header
 
 - The title (a click renames it, see *Rename*), then a **chat** badge.
-- Actions: the account and model pickers, the locked **🔒 Plan mode** chip, Close / Reopen, Pause / Resume, and a **⋯** with **Rename…**, **Continue as session…**, **Look at folders…** (disabled while closed) and **Delete chat…** (asks first).
-- Not shown for a chat: the CLI switcher, Remote, take-over, Undo last turn, Continue in terminal, the Diff tab (the tabs are Chat · Timeline · Artifacts), the right panel's Terminal handoff card and Plans tab.
+- Actions: the account and model pickers, the locked **🔒 Plan mode** chip, Close / Reopen, Pause / Resume, and a **⋯** with **Rename…**, **Continue as session…**, **Look at folders…** (disabled while closed) and **Delete chat…** (asks first). The v2 chat's ⋯ also has **Move to computer…** (D155).
+- Not shown for a chat: the CLI switcher, Remote, the session take-over (D155: a chat has its own Move to computer…), Undo last turn, Continue in terminal, the Diff tab (the tabs are Chat · Timeline · Artifacts), the right panel's Terminal handoff card and Plans tab.
 - The root line reads `<scratch folder> · chat scratch folder`.
 
 ## Rename
@@ -116,6 +127,7 @@ A one-step mini-tour **Chats** (`chats`, D106) under version **1.19.0** (`V1_19`
 - `tests/tools/fake-claude.test.ts` → *plan mode asks for MCP tools*.
 - `tests/e2e/v2-chat-artifacts.spec.ts`: a chat's saved artifact in its v2 Results tab and on the Results page.
 - `tests/server/peers/proxy.test.ts`: a paired machine's chat renamed from the other machine.
+- D155: `tests/core/chat-move.test.ts`, `tests/server/chats/move-receive.test.ts` (the receiver's names, caps, checksums, secrets), `tests/server/takeover/chat-move.test.ts` (two processes: the move with an attachment, scratch files, an artifact, a todo and two looked-at folders, one mapped and one left out; a failure half-way undone; an older target refused), `tests/web/chat-move.test.ts`, `tests/e2e/v2-chat-move.spec.ts`.
 - `tests/server/db/migrate.test.ts` (0044), `tests/server/db/repos.test.ts` (the defaults).
 - `tests/e2e/chats.spec.ts`: New chat from the sidebar and from ⌘K, the CHATS section (also with no chats), the badge and the locked hint, no Diff tab, Continue as session, folding SESSIONS and CHATS (kept across a reload; ⌘K → Chats unfolds), rename from the row ⋯ (keyboard), a double-click and the header (click and ⋯), Esc, an emptied field, after a reload, and at 360 px on a touch screen (`CHATS_SHOTS=<dir>` writes screenshots).
 - `tests/web/nav-grid.test.ts`: the three section states' store (`ui.sessionsCollapsed`, `ui.chatsCollapsed`).

@@ -279,7 +279,7 @@ describe('header', () => {
     expect(reason('move')).toBe('No other computer is paired and online.');
     const offline = agentMenu({ ...input, machineName: 'Studio-PC', offline: 'Studio-PC is offline' });
     expect(offline.filter((i) => !('sep' in i) && i.disabledReason).length).toBeGreaterThan(6);
-    expect(ids(agentMenu({ ...input, conversation: true }))).toEqual(['rename', '-', '-', 'notes', 'continue-agent', '-', 'close', 'delete']);
+    expect(ids(agentMenu({ ...input, conversation: true }))).toEqual(['rename', '-', '-', 'notes', 'continue-agent', 'move-chat', '-', 'close', 'delete']);
     expect(ids(agentMenu({ ...input, teammate: true, closed: true, running: false }))).toContain('return');
     // Fixes after 2.0 · D83: Continue with a clean slate after Move, with its reason when it cannot start.
     expect(ids(agentMenu({ ...input, cleanSlate: null }))).toEqual(['rename', 'pause', 'stop-background', 'move', 'clean-slate', '-', 'terminal', 'remote', 'claude-app', '-', 'routine', 'notes', 'teammate', '-', 'close']);

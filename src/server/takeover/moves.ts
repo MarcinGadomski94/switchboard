@@ -72,6 +72,8 @@ export class MoveLog {
   readonly #publishTimers = new Map<string, NodeJS.Timeout>();
   #members: MoveMemberLookup | null = null;
   #unsubscribe: Array<() => void> = [];
+  /** D155: other runners whose runs are moves too (the chat move runner), followed like {@link MoveLogOptions.runner}. */
+  readonly #others: Array<Pick<TakeoverRunner, 'subscribe' | 'get'>> = [];
   #pruneTimer: NodeJS.Timeout | undefined;
   #saveTimer: NodeJS.Timeout | undefined;
   #saving: Promise<void> = Promise.resolve();
@@ -126,6 +128,7 @@ export class MoveLog {
     if (interrupted.length > 0) await this.#save();
     for (const record of interrupted) await this.#raiseFailed(record).catch((error: unknown) => this.#onError(error));
     this.#unsubscribe.push(this.#o.runner.subscribe((run, meta) => this.#onRun(run, meta)));
+    for (const other of this.#others) this.#unsubscribe.push(other.subscribe((run, meta) => this.#onRun(run, meta)));
     this.#unsubscribe.push(
       this.#o.bus.subscribe((message) => {
         // A paired machine's move of the same agent succeeded: this machine's failure items for it close.
@@ -136,6 +139,15 @@ export class MoveLog {
     );
     this.#pruneTimer = setInterval(() => this.#prune(true), PRUNE_MS);
     this.#pruneTimer.unref();
+  }
+
+  /**
+   * D155: follows another runner's runs as moves (the chat move runner: its runs are
+   * take-over runs with `kind: 'chat'`), from now on or once {@link start} runs.
+   */
+  follow(runner: Pick<TakeoverRunner, 'subscribe' | 'get'>): void {
+    this.#others.push(runner);
+    if (this.#started && !this.#closed) this.#unsubscribe.push(runner.subscribe((run, meta) => this.#onRun(run, meta)));
   }
 
   /** Stops following; writes what is still waiting. */
@@ -190,7 +202,8 @@ export class MoveLog {
     }
     const record = this.#records.get(id);
     if (!record) throw new MovesError(404, 'not-found', `no move ${id}`);
-    return { ...viewMove(record, await this.#self()), log: this.#o.runner.get(id)?.log ?? [] };
+    const log = this.#o.runner.get(id)?.log ?? this.#others.map((other) => other.get(id)?.log).find((lines) => lines !== undefined) ?? [];
+    return { ...viewMove(record, await this.#self()), log };
   }
 
   /** `POST /api/moves/{id}/dismiss`: a finished move leaves the list (a running one is refused: 409). */
@@ -224,7 +237,7 @@ export class MoveLog {
     const now = new Date(this.#now()).toISOString();
     const record: MoveRecord = {
       id: run.id,
-      kind: member ? 'teammate' : 'agent',
+      kind: (run as { readonly kind?: string }).kind === 'chat' ? 'chat' : member ? 'teammate' : 'agent',
       title,
       member,
       source: { id: meta.sourceMachineId, name: names.get(meta.sourceMachineId) ?? 'the other computer', sessionId: meta.rawSessionId },

@@ -10,6 +10,8 @@ import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, stashLin
 import { choiceOfRetry } from '../../takeover/retry.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
 import { MoveStatusHost } from './MoveStatus.tsx';
+import { ChatMoveDialog } from './ChatMoveDialog.tsx';
+import { useChatMoveRequest } from '../../takeover/chat-move-store.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { Button, Checkbox, Chip, Dialog, Icon, Select, useToast } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
@@ -36,8 +38,11 @@ function errorText(error: unknown): string {
 export function MoveDialogsHost() {
   const takeover = useTakeoverRequest();
   const hooked = useContinueHookedRequest();
+  // D155: a chat's Move to computer… (its own dialog: no repos, the folders it looks at).
+  const chatMove = useChatMoveRequest();
   return (
     <>
+      {chatMove ? <ChatMoveDialog key={`${chatMove.chatId}:${chatMove.targetMachine ?? ''}`} request={chatMove} /> : null}
       {takeover ? <MoveDialog key={`${takeover.sessionId}:${takeover.targetMachine ?? ''}`} request={takeover} /> : null}
       {hooked ? <ContinueHookedDialog key={hooked.sessionId} request={hooked} /> : null}
       <MoveStatusHost />

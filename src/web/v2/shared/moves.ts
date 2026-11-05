@@ -4,6 +4,7 @@ import { api } from '../../api/client.ts';
 import { onHubEvent, onHubStatus } from '../../api/useHub.ts';
 import { openStore } from './open-store.ts';
 import { openTakeover } from '../../takeover/store.ts';
+import { openChatMove } from '../../takeover/chat-move-store.ts';
 import { retryRequest } from '../../takeover/retry-model.ts';
 
 /**
@@ -85,6 +86,8 @@ export const moveRetryDialog = openStore<MoveRetry>();
 /** A failed move's **Try again**: the agent's Move dialog, or a teammate's Move to computer…, with the last choices. */
 export function startRetry(retry: MoveRetry): void {
   if (retry.kind === 'teammate' && retry.member) moveRetryDialog.open(retry);
+  // D155: a chat's move opens the chat's own move dialog (its folders choices are remembered there).
+  else if (retry.kind === 'chat') openChatMove({ chatId: retry.sessionId, targetMachine: retry.targetMachine, machineName: retry.machineName, title: retry.title });
   else openTakeover(retryRequest(retry));
 }
 

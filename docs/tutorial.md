@@ -120,7 +120,13 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   card and its crew; a click opens the move. **Needs you** (`v2-home-needs`, else the Needs-you button
   `v2-needs`), `v2Route: '/'`: a failed move's item with Try again and Dismiss, closed by a later success
   (`docs/peers.md` → *Following a move (D154)*). The card and the badge show only while there is a move, so
-  their steps have a `missing` text. The last of the chain ("(14 of 14)").
+  their steps have a `missing` text. "(14 of 15)".
+- **"Move a chat to another computer"** (`chat-move`, version 2.4.23, `ui: 'v2'`, decision D155): one step
+  on the agent view's ⋯ (`v2-agent-menu`), else Agents in the rail (`v2-nav-agents`) or the phone's Agents
+  tab (`v2-tab-agents`); `v2Route: '/agents'`. It says that a chat's ⋯ › Move to computer… carries it to a
+  paired computer (the conversation, still a chat in plan mode, its attachments, scratch files, artifacts and
+  tasks) and that each folder it looks at is mapped to a folder there or left out, remembered for next time
+  (`docs/chats.md` → *Moving a chat to another computer (D155)*). The last of the chain ("(15 of 15)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)

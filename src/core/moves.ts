@@ -43,8 +43,8 @@ export interface MoveRecord {
   readonly id: string;
   /** The paired machine whose runner drives it; absent = this machine. */
   readonly machine?: { readonly id: string; readonly name: string; readonly state: string };
-  /** `teammate` when the agent is a crew member (its move, or its crew's). */
-  readonly kind: 'agent' | 'teammate';
+  /** `teammate` when the agent is a crew member (its move, or its crew's); D155: `chat` for a chat's move. */
+  readonly kind: 'agent' | 'teammate' | 'chat';
   /** The agent's title (as the source names it). */
   readonly title: string;
   readonly member: { readonly id: string; readonly name: string; readonly teamId: string; readonly teamName: string } | null;
@@ -254,8 +254,8 @@ export function homeMoves(moves: readonly MoveRecord[], now: number): { readonly
 
 /** What a failed move's **Try again** reopens: the dialog for the same agent and computer, with the last choices. */
 export interface MoveRetry {
-  /** A teammate's move opens its Move to computer dialog; any other agent the agent's Move dialog. */
-  readonly kind: 'agent' | 'teammate';
+  /** A teammate's move opens its Move to computer dialog; D155: a chat's its chat move dialog; any other agent the agent's Move dialog. */
+  readonly kind: 'agent' | 'teammate' | 'chat';
   /** The agent's session as `viewerId` names it (it stayed on the source). */
   readonly sessionId: string;
   /** The target as the take-over request names it: `null` = this machine (a peer's agent comes here). */

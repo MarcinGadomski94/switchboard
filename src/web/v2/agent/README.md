@@ -15,6 +15,7 @@
 | `Routines.tsx`, `routines-indicator.ts` | Fix after 2.0: the agent's loops and schedules (Switchboard's and the CLI's own): the status row's "⏰ Next: … · n routines", its popover and the side panel's Routines group, one pure model (`tests/web/v2-agent-routines.test.ts`) |
 | `SideExtras.tsx` | Lane X: `ProjectLine` (D99), `NotesLine` (D107, links `/notes?scope=<folder>`), `OverviewGroup` |
 | `MoveDialog.tsx` | Lane X: `MoveDialogsHost` (mounted by `PeekHost`): the v2 Move to computer (D65 / D110) and Continue in Switchboard (D72) dialogs over the classic stores (`openTakeover`, `openContinueHooked`) and API |
+| `ChatMoveDialog.tsx`, `chat-move-model.ts` | D155: a chat's Move to computer… (opened by the chat ⋯ through `openChatMove`, hosted by `MoveDialogsHost`): the folders it looks at mapped or left out, the steps and the outcome |
 | `tabs.tsx` | Changes, Results (opens lane R's `results/ResultDrawer.tsx`, `openAgent={false}`, Delete with Undo), Timeline (lanes, playback scrubber, event log), Helpers |
 | `HelperChat.tsx` | A helper's own chat (`/agents/:id/helpers/:helperId`) |
 | `Peek.tsx` | `openPeek`, `closePeek`, `PeekHost`, `PeekSheet` |

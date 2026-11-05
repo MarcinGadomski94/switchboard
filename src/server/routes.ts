@@ -30,6 +30,7 @@ import { registerSolutionRoutes } from './api/solutions.ts';
 import { registerSystemRoutes } from './api/system.ts';
 import { registerTakeoverRoutes } from './api/takeover.ts';
 import { registerMoveRoutes } from './api/moves.ts';
+import { registerChatMoveRoutes } from './api/chat-move.ts';
 import { registerToolRoutes } from './api/tools.ts';
 import { registerUpdateRoutes } from './api/updates.ts';
 import type { ServerConfig } from './config.ts';
@@ -190,6 +191,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerMachineRoutes(app, context);
   await registerTakeoverRoutes(app, context);
   await registerMoveRoutes(app, context);
+  await registerChatMoveRoutes(app, context);
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerTodoRoutes(app, context);
