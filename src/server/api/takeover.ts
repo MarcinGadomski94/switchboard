@@ -4,9 +4,11 @@ import type { ApiContext } from '../routes.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TakeoverGitError } from '../takeover/git.ts';
 import { TakeoverError } from '../takeover/service.ts';
+import { SourceCleanupError } from '../takeover/source-cleanup.ts';
 import { placementOf } from '../../core/takeover.ts';
 import { excludeReposOf, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { stashTargetsOf } from '../../core/move-worktrees.ts';
+import { cleanupSourceOf } from '../../core/source-cleanup.ts';
 import { isPeerRequest } from './machines.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -23,6 +25,7 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof HookError) return reply.code(error.status).send({ error: error.code, message: error.message });
   if (error instanceof SupervisorError) return reply.code(409).send({ error: error.code, message: error.message });
   if (error instanceof TakeoverGitError) return reply.code(502).send({ error: 'git-failed', message: error.message });
+  if (error instanceof SourceCleanupError) return reply.code(error.status).send({ error: error.code, message: error.message });
   throw error;
 }
 
@@ -81,7 +84,7 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     const stashTargets = stashTargetsOf(body['stashTargets']);
     if (stashTargets === null) return invalid(reply, 'stashTargets', 'stashTargets must be a list of checkout paths on the target');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    return { sessionId, targetMachine, ...(cleanupSourceOf(body['cleanupSource']) ? { cleanupSource: true } : {}), ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -118,6 +121,26 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     const path = text(request.body['path']);
     try {
       return await takeoverRunner.listTargetFolders(machine, path);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D156: Clean up on this computer… for a moved agent of this computer: the preview, then the run (local only, desktop only).
+  app.get<{ Params: { sessionId: string } }>('/api/takeover/cleanup/:sessionId', async (request, reply) => {
+    const refused = localOnly(request, reply);
+    if (refused) return refused;
+    try {
+      return (await takeover.cleanupPreview(request.params.sessionId)).result;
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+  app.post<{ Params: { sessionId: string } }>('/api/takeover/cleanup/:sessionId', async (request, reply) => {
+    const refused = localOnly(request, reply);
+    if (refused) return refused;
+    try {
+      return (await takeover.cleanupNow(request.params.sessionId)).result;
     } catch (error) {
       return sendError(reply, error);
     }
@@ -169,6 +192,8 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     );
   });
   op('source/rollback', (body) => takeover.rollbackSource(need(body, 'opId')));
+  // D156: the clean-up on this (the source) computer after a successful move.
+  op('source/cleanup', (body) => takeover.cleanupAfterMove(need(body, 'opId'), need(body, 'sessionId')));
   // D152: the workspace's own files (the source re-reads and checks them; the target stages, checks and places them).
   op('source/workspace-files', (body) => takeover.workspaceFiles(need(body, 'opId'), Array.isArray(body['names']) ? body['names'].filter((name): name is string => typeof name === 'string').slice(0, 1000) : []));
   op('source/workspace-chunk', (body) => takeover.readWorkspaceChunk(need(body, 'opId'), need(body, 'name'), typeof body['offset'] === 'number' ? body['offset'] : -1));

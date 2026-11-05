@@ -912,6 +912,8 @@ export interface SessionMoveInfo {
   readonly machineName: string;
   readonly sessionId: string;
   readonly at: string;
+  /** Additive (D156, `movedTo` only): when the source was last cleaned up after the move (Clean up on this computer…); `null` / absent = never. */
+  readonly cleanedAt?: string | null;
 }
 
 /** Additive (D62 P5): a running switch of a session to another CLI. */

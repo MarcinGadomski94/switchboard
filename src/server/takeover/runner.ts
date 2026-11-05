@@ -26,6 +26,7 @@ import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
 import { MOVE_LOG_PREFIX, moveLogReason, moveOutcomeMessage } from '../../core/move-log.ts';
 import { type MoveLogSink, SILENT_MOVE_LOG } from './move-log.ts';
+import { type SourceCleanupReport, cleanupSummary, readCleanupReport } from '../../core/source-cleanup.ts';
 import { type ChunkAnswer, type OpAnswer, type ResumeBody, TakeoverError, type TakeoverService } from './service.ts';
 
 /**
@@ -57,6 +58,8 @@ export interface TakeoverEndpoint {
   receiveWorkspaceChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<unknown>;
   finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
+  /** D156: the source's clean-up after a successful move (an older source answers 403 / 404). */
+  cleanupSource(opId: string, sessionId: string): Promise<OpAnswer<SourceCleanupReport>>;
   plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly opId?: string }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
@@ -82,6 +85,7 @@ export function localEndpoint(service: TakeoverService): TakeoverEndpoint {
     receiveWorkspaceChunk: (input) => service.receiveWorkspaceChunk(input),
     finish: (opId, move, stillThere) => service.finish(opId, move, stillThere),
     rollbackSource: (opId) => service.rollbackSource(opId),
+    cleanupSource: (opId, sessionId) => service.cleanupAfterMove(opId, sessionId),
     plan: (body) => service.plan(body),
     listFolders: (path) => service.listTargetFolders(path),
     receiveChunk: (input) => service.receiveChunk(input),
@@ -115,6 +119,7 @@ export function peerEndpoint(peers: PeerService, machineId: string): TakeoverEnd
     receiveWorkspaceChunk: (input) => call('POST', '/target/workspace-chunk', input),
     finish: (opId, move, stillThere) => call('POST', '/source/finish', { opId, move, stillThere }),
     rollbackSource: (opId) => call('POST', '/source/rollback', { opId }),
+    cleanupSource: (opId, sessionId) => call('POST', '/source/cleanup', { opId, sessionId }),
     plan: (body) => call('POST', '/target/plan', body),
     listFolders: (path) => call('POST', '/target/folders', path === null ? {} : { path }),
     receiveChunk: (input) => call('POST', '/target/chunk', input),
@@ -152,6 +157,8 @@ export interface TakeoverRequest {
    * stashing ("Stash them on <PC>"); absent = none (a dirty checkout blocks).
    */
   readonly stashTargets?: readonly string[];
+  /** D156: clean up on the source after a successful move (archive, carried worktrees, the conversation file); absent = no. */
+  readonly cleanupSource?: boolean;
   /**
    * The move log's start line (`docs/peers.md` → *The move log*): the Team member a
    * Team move moves, and the crew move it is part of. Set by Team, never by the HTTP route.
@@ -199,6 +206,8 @@ interface RunState {
   workspaceFiles: WorkspaceFilesResult | null;
   /** D153: stashes the move made on the target (kept, also after an undo). */
   stashes: MoveStash[];
+  /** D156: the source's clean-up after the move (`null`: not asked for, or not yet). */
+  sourceCleanup: SourceCleanupReport | null;
   /** D154: who started it and between which machines (the moves list). */
   meta: TakeoverRunMeta;
 }
@@ -316,6 +325,7 @@ export class TakeoverRunner {
       sessionKey: request.sessionId,
       workspaceFiles: null,
       stashes: [],
+      sourceCleanup: null,
       meta: { request, sourceMachineId: ends.source.machineId ?? selfId, targetMachineId: ends.target.machineId ?? selfId, rawSessionId: ends.rawSessionId, title: null, startedAt: new Date().toISOString(), endedAt: null },
     };
     this.#runs.set(run.id, run);
@@ -366,6 +376,7 @@ export class TakeoverRunner {
       log: [...run.log],
       workspaceFiles: run.workspaceFiles,
       stashes: run.stashes.map((stash) => ({ ...stash })),
+      ...(run.sourceCleanup ? { sourceCleanup: run.sourceCleanup } : {}),
     };
   }
 
@@ -523,8 +534,17 @@ export class TakeoverRunner {
         const notes: string[] = [];
         if (finished.result.closeError) notes.push(`the old session could not be closed: ${finished.result.closeError}`);
         if (finished.result.leftovers.length > 0) notes.push(`${finished.result.leftovers.length} temporary branch${finished.result.leftovers.length === 1 ? '' : 'es'} could not be deleted`);
-        set('finish', notes.length > 0 ? 'failed' : 'done', notes.join('; ') || null);
+        // D156: the clean-up on the source, only after a successful move whose old session was closed.
+        if (request.cleanupSource === true) {
+          if (finished.result.closeError) run.sourceCleanup = skippedCleanup(ends.rawSessionId, sourceName(), targetMachine.name, 'the old session could not be closed, so nothing was cleaned up');
+          else {
+            set('finish', 'running', 'cleaning up');
+            run.sourceCleanup = await this.#cleanupSource(source, opId, ends.rawSessionId, sourceName(), targetMachine.name, (lines) => logOf(sourceName(), lines));
+          }
+        }
+        set('finish', notes.length > 0 ? 'failed' : 'done', notes.join('; ') || (run.sourceCleanup ? cleanupSummary(run.sourceCleanup) : null));
       } catch (error) {
+        if (request.cleanupSource === true) run.sourceCleanup = skippedCleanup(ends.rawSessionId, sourceName(), targetMachine.name, `${sourceName()} could not finish the move, so nothing was cleaned up`);
         set('finish', 'failed', error instanceof Error ? error.message : String(error));
         // The other machine could not be reached to clean up: whatever the target could not delete is reported from what it said.
         for (const key of stillThere) {
@@ -558,6 +578,20 @@ export class TakeoverRunner {
         run.meta.endedAt = new Date().toISOString();
         this.#notify(run);
       }
+    }
+  }
+
+  /** D156: the source's clean-up; a failure (an older source, the source unreachable) is reported, never fails the move. */
+  async #cleanupSource(source: TakeoverEndpoint, opId: string, sessionId: string, sourceName: string, targetName: string, log: (lines: readonly string[]) => void): Promise<SourceCleanupReport> {
+    try {
+      const answer = await source.cleanupSource(opId, sessionId);
+      log(answer.log);
+      return readCleanupReport(answer.result) ?? skippedCleanup(sessionId, sourceName, targetName, 'its answer could not be read');
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      const code = (error as { code?: unknown }).code;
+      const older = code === 'peer-forbidden' || status === 404 || status === 403;
+      return skippedCleanup(sessionId, sourceName, targetName, older ? `Switchboard on ${sourceName} is older and cannot clean up after a move: update it, then use Clean up on this computer… on the moved agent there` : error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -599,6 +633,7 @@ export class TakeoverRunner {
       ...(run.stashes.length > 0 ? { stashes: run.stashes.map((stash) => stash.path) } : {}),
       ...(run.result ? { session: run.result.sessionId } : {}),
       ...(run.steps.some((entry) => entry.id === 'finish' && entry.status === 'failed') ? { finish: 'failed' } : {}),
+      ...(run.sourceCleanup ? { cleanup: cleanupSummary(run.sourceCleanup) } : {}),
     };
     const message = moveOutcomeMessage({ failedAt, rolledBack: run.rolledBack });
     if (failedAt === null) this.#log.info(fields, message);
@@ -637,6 +672,11 @@ export class TakeoverRunner {
     });
     run.rolledBack = clean;
   }
+}
+
+/** D156: a clean-up that did not run, with why (the move itself succeeded). */
+function skippedCleanup(sessionId: string, machine: string, movedTo: string, error: string): SourceCleanupReport {
+  return { sessionId, title: '', machine, movedTo, at: new Date().toISOString(), ran: false, derived: false, removed: [], manual: [], error };
 }
 
 /** D152: the move creates the workspace root (a new folder, or one that is not a workspace yet). */

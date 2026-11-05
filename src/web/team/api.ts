@@ -77,6 +77,8 @@ export interface MoveTarget {
   readonly excludeRepos?: readonly string[];
   /** D153: the target checkouts whose uncommitted changes the developer confirmed stashing. */
   readonly stashTargets?: readonly string[];
+  /** D156: clean up on the source after a successful move. */
+  readonly cleanupSource?: boolean;
 }
 
 /** `POST /api/team/charters/ask` (D105). */

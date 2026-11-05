@@ -2437,3 +2437,10 @@ GET /api/sessions/0b7c…/diff/count?scope=head
 GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
 → 200 { "scope": "head", "files": 4 }
 ```
+
+## Cleaning up the source after a move (D156, additive; no migration)
+
+- `POST /api/takeover` (and the Team member move, each crew member's body): `cleanupSource?: true` — after a successful move the source cleans up (`docs/peers.md` → *Cleaning up the source after a move (D156)*). `TakeoverRun.sourceCleanup?` / `MoveRecord.sourceCleanup?`: `SourceCleanupReport` `{ sessionId, title, machine, movedTo, at, ran, derived, removed: [{ kind, path, text }], manual: [{ kind, path, text }], error }` (`kind`: `session | worktree | branch | conversation | main-checkout | repo | workspace-file | folder`). `MoveChoices.cleanupSource?`.
+- `GET /api/takeover/cleanup/{sessionId}` → `SourceCleanupReport` (`ran: false`, nothing changes); `POST /api/takeover/cleanup/{sessionId}` → `SourceCleanupReport` (`ran: true`). 404 `not-found`, 409 `not-moved` / `running`. Local only (a peer: 403), devices refused.
+- Peer API: `POST /api/takeover/source/cleanup` `{ opId, sessionId }` → `{ result: SourceCleanupReport, log }`.
+- `Session.movedTo.cleanedAt?`: when the source was last cleaned up. Lifecycle `moved-cleaned` (the chat's divider).

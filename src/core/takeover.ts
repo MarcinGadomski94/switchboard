@@ -1,3 +1,4 @@
+import type { SourceCleanupReport } from './source-cleanup.ts';
 import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
@@ -687,6 +688,12 @@ export interface TakeoverRun {
    * popped by Switchboard. Absent from an older run.
    */
   readonly stashes?: readonly MoveStash[];
+  /**
+   * D156: the clean-up on the source after a successful move ("Clean up on <source>
+   * after a successful move"): what was removed and what is left to remove by hand;
+   * `null` / absent when it was not asked for (or the move failed).
+   */
+  readonly sourceCleanup?: SourceCleanupReport | null;
 }
 
 // ── paths (no `node:path`: this module is shared with the UI) ────────────

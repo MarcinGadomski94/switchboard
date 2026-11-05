@@ -198,7 +198,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/mcp\/cli\/[^/]+\/servers$/],
   ['DELETE', /^\/api\/mcp\/cli\/[^/]+\/servers\/[^/]+$/],
   // D65: taking a session over: each end's operations (the initiating machine's runner drives them) and the leftover temp branches.
-  ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback)$/],
+  ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback|cleanup)$/],
   ['POST', /^\/api\/takeover\/target\/(?:plan|chunk|apply|abort|resume|close)$/],
   // D152: a complete move: the workspace's own files (read on the source, staged and placed on the target, both strictly checked).
   ['POST', /^\/api\/takeover\/source\/(?:workspace-files|workspace-chunk)$/],

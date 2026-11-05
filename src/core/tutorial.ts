@@ -173,6 +173,9 @@ const V2_4_21 = '2.4.21';
 /** The version D154 (a move's status after its dialog closed) and D155 (a chat moves to a paired computer) ship in. */
 const V2_4_23 = '2.4.23';
 
+/** The version D156 (cleaning up the source computer after a move) ships in. */
+const V2_4_25 = '2.4.25';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1672,6 +1675,34 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-agent-menu', 'v2-nav-agents', 'v2-tab-agents'],
         v2Route: '/agents',
         missing: 'Pair another computer (Settings › Computers), then open a chat’s ⋯ › Move to computer…. ',
+      },
+    ],
+  },
+  // D156: cleaning up the computer an agent left (docs/peers.md → Cleaning up the source after a move (D156)).
+  {
+    id: 'move-cleanup',
+    decision: 'D156',
+    version: V2_4_25,
+    title: 'Clean up the computer an agent left',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'checkbox',
+        title: 'Clean up after a successful move',
+        what: 'The Move dialog (an agent’s, a teammate’s, a whole crew’s) has “Clean up on (computer) after a successful move”, off by default and remembered on this computer. Only after the move succeeded, it archives the old agent (still in Archived with its history), removes the worktrees that moved and are unchanged since (their branch only when the remote has it) and the old copy of the conversation. Main checkouts, repos and workspace files are never touched. The result lists what was removed and what is left for you to remove by hand, with the paths and why.',
+        todo: ['Open an agent’s ⋯ › Move to computer….', 'Tick Clean up on (this computer) after a successful move, then Move.'],
+        anchors: ['v2-agent-menu', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Pair another computer (Settings › Computers), then open an agent’s ⋯ › Move to computer…. ',
+      },
+      {
+        id: 'already-moved',
+        title: 'Agents moved before',
+        what: 'An agent that already moved away has Clean up on this computer… on its page and in Archived: it shows what it would remove and the list of what stays, and cleans up only after you confirm.',
+        todo: ['Open Agents › Archived.', 'Press Clean up on this computer… on a moved agent.'],
+        anchors: ['v2-moved-cleanup', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'This shows on an agent that moved to another computer. ',
       },
     ],
   },

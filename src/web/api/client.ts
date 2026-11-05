@@ -7,6 +7,7 @@ import type { InsightsAnswer } from '../../core/insights.ts';
 import type { UsageAnswer } from '../../core/usage-breakdown.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun, TargetDirListing, TargetPlacement } from '../../core/takeover.ts';
+import type { SourceCleanupReport } from '../../core/source-cleanup.ts';
 import type { MoveDetail, MoveRecord } from '../../core/moves.ts';
 import type { ChatMovePreview, ChatMoveRun } from '../../core/chat-move.ts';
 import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
@@ -521,8 +522,12 @@ export const api = {
   takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement | null; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[] }) =>
     request<TakeoverPreview>('POST', '/api/takeover/preview', body),
   /** D65: starts the take-over (202; poll {@link takeoverRun}). */
-  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[] }) =>
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly confirmStopTerminal?: boolean; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly cleanupSource?: boolean }) =>
     request<TakeoverRun>('POST', '/api/takeover', body),
+  /** D156: what Clean up on this computer… would do for a moved agent of this computer (nothing changes). */
+  moveCleanupPreview: (sessionId: string) => request<SourceCleanupReport>('GET', `/api/takeover/cleanup/${enc(sessionId)}`),
+  /** D156: runs it (the agent archived, its carried worktrees and conversation file removed when safe); answers what was removed and what is left. */
+  moveCleanupRun: (sessionId: string) => request<SourceCleanupReport>('POST', `/api/takeover/cleanup/${enc(sessionId)}`),
   /** D110: the target machine's folder picker (`machine` = `null` for this one): the starting places, or one folder's subfolders. */
   takeoverFolders: (machine: string | null, path?: string | null) => request<TargetDirListing>('POST', '/api/takeover/folders', { ...(machine ? { machine } : {}), ...(path ? { path } : {}) }),
   takeoverRun: (id: string) => request<TakeoverRun>('GET', `/api/takeover/runs/${enc(id)}`),

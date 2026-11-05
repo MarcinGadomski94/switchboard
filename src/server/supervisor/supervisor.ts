@@ -3848,4 +3848,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'processes-stopped': 'Stopped processes the session left running',
   'account-needs-you': 'Stopped: the account needs you',
   'worktree-cleaned': 'Cleaned up a merged worktree',
+  'moved-cleaned': 'Cleaned up after the move',
 };

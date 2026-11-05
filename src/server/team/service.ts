@@ -82,6 +82,7 @@ import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../su
 import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, excludeReposOf, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { stashTargetsOf } from '../../core/move-worktrees.ts';
+import { cleanupSourceOf } from '../../core/source-cleanup.ts';
 import type { MoveContext, TakeoverRunner } from '../takeover/runner.ts';
 import { type MoveLogSink, SILENT_MOVE_LOG } from '../takeover/move-log.ts';
 import { MOVE_LOG_PREFIX, moveLogReason } from '../../core/move-log.ts';
@@ -2622,11 +2623,11 @@ function crewMoveOf(body: Record<string, unknown>): { readonly id: string; reado
   return typeof id === 'string' && typeof name === 'string' && typeof run === 'string' ? { id: id.slice(0, 64), name: name.slice(0, 200), run: run.slice(0, 64) } : null;
 }
 
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; cleanupSource?: boolean } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; cleanupSource?: boolean } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
   // D152: the workspace's own files to copy.
   const files = workspaceChoiceOf(body['workspaceFiles']);
   if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
@@ -2639,6 +2640,8 @@ function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacem
   const stash = stashTargetsOf(body['stashTargets']);
   if (stash === null) throw new TeamError(422, 'invalid', 'stashTargets must be a list of checkout paths');
   if (stash && stash.length > 0) out.stashTargets = stash;
+  // D156: clean up on the source after a successful move.
+  if (cleanupSourceOf(body['cleanupSource'])) out.cleanupSource = true;
   const paths = body['clonePaths'];
   if (paths !== undefined && paths !== null) {
     if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');
