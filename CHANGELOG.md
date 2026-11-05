@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.26 (2026-11-05)
+
+### Paired computers
+- **Overwrite a diverged branch after asking:** when a folder on the other computer has commits on its branch that the moving agent's computer doesn't, the move dialog lists them up front and offers "Overwrite them on <computer> (keep a backup branch)". With the tick, the other computer saves its current tip on `switchboard/backup/<branch>-<date>` and then takes the moving agent's version; nothing is pushed, the backup is never deleted, and a later failure puts the branch back. Without the tick the move stops before anything is paused. See `docs/peers.md` (D157).
+
 ## 2.4.25 (2026-11-05)
 
 ### Paired computers
