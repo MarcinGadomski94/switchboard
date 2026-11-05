@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.27 (2026-11-05)
+
+### Paired computers
+- **Moving an agent from a Windows computer:** a repo's main checkout is no longer mistaken for a worktree there, so a move from Windows is no longer refused with "the branch main is checked out in another worktree".
+
+### Development
+- The unit tests pass on Windows: the repo keeps LF line endings in every checkout (`.gitattributes`), path tests use native paths, and the tests that send SIGINT run on macOS/Linux only.
+
 ## 2.4.26 (2026-11-05)
 
 ### Paired computers
