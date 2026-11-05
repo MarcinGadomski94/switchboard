@@ -82,7 +82,8 @@ export interface ServerConfig {
    * `POST /api/test/peers/drop` (cut the peers' open streams) and
    * `POST|DELETE /api/test/peers/outage` (stop the peer listener for a while);
    * D113: `POST|DELETE /api/test/peers/hold-lists` (hold the peers' reads of the
-   * artifacts and the Inbox).
+   * artifacts and the Inbox); D154: `POST|DELETE /api/test/peers/hold-takeover`
+   * (`{ route: "target/apply" }`: hold the peers' take-over calls of that step here).
    */
   readonly peerTestHooks: boolean;
   /**

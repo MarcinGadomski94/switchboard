@@ -295,6 +295,28 @@ export const NEEDS_FILTER_OF: Readonly<Record<NeedsKind, Exclude<NeedsFilter, 'a
 // without touching each other's lines).
 
 /** Lane H · Home (`/`): the greeting, the start box, Working now, Done today. */
+/** D154 · the moves list: badges, Home's Moves card, the move dialog attached to a run. */
+export const MOVES_WORDS = {
+  title: 'Moves',
+  hint: 'Agents moving between your computers',
+  running: 'Moving',
+  done: 'Moved',
+  failed: 'Failed',
+  dismiss: 'Dismiss',
+  dismissLabel: (name: string): string => `Dismiss the move of ${name}`,
+  tryAgain: 'Try again',
+  openAgent: 'Open the agent',
+  close: 'Close',
+  hide: 'Hide',
+  movingTitle: (name: string, computer: string): string => `Moving “${name}” to ${computer}`,
+  doneTitle: (name: string, computer: string): string => `Moved “${name}” to ${computer}`,
+  failedTitle: (name: string, computer: string): string => `Couldn’t move “${name}” to ${computer}`,
+  gone: 'This move is no longer listed (dismissed, or more than a day old).',
+  loading: 'Reading the move…',
+  drivenBy: (computer: string): string => `run by ${computer}`,
+  offline: (computer: string): string => `${computer} is offline: this is what it last said.`,
+};
+
 export const HOME_WORDS = {
   morning: 'Good morning',
   afternoon: 'Good afternoon',
@@ -472,6 +494,8 @@ export const SERVER_ACTION_LABELS: Readonly<Record<string, string>> = {
   'open-session': 'Open chat',
   'open-pr': 'Open change request',
   'try-again': 'Try again',
+  // D154: a failed move's Try again (opens the move dialog pre-filled).
+  'move-try-again': 'Try again',
   'retry-run': 'Try again',
   'open-fix-session': 'Fix it in a new agent',
   'remove-worktree': 'Remove the separate copy',
@@ -499,6 +523,8 @@ export const SYSTEM_LABELS: Readonly<Record<string, string>> = {
   Reopened: 'Reopened',
   Memory: 'Notes',
   'CI keeps failing': 'Automatic tests keep failing',
+  // D154: a move to another computer failed.
+  'Move failed': 'Move failed',
   // D142: a computer that can't switch accounts (informational).
   Accounts: 'Accounts',
 };
@@ -1988,6 +2014,10 @@ export const AGENT_WORDS = {
   moveTo: 'Move to',
   closeDialog: 'Close',
   openMovedAgent: 'Open the agent',
+  // D154: Hide while it moves; the badge and Home's Moves card reopen it.
+  hide: 'Hide',
+  moveHideHint: 'Close this window; the move goes on. Its badge and Home’s Moves card open it again.',
+  moveHidden: 'It keeps moving. Home’s Moves card and the agent’s badge show how it goes.',
   continueHooked: 'Continue in Switchboard',
   continueHookedHint: 'Switchboard runs it from now on; its terminal’s claude is stopped first (it asks).',
   continuedHere: (title: string): string => `“${title}” now runs in Switchboard.`,

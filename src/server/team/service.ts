@@ -1636,6 +1636,16 @@ export class TeamService {
 
   // ── the agent's side (MCP tools) ──────────────────────────────────────
 
+  /**
+   * D154: the member whose session is `sessionId` on machine `machineId` (the moves list names it),
+   * with its crew; `null` when it is no member (or Team is not open).
+   */
+  memberAt(machineId: string, sessionId: string): { readonly id: string; readonly name: string; readonly teamId: string; readonly teamName: string } | null {
+    if (!this.#db) return null;
+    const member = this.#liveMembers().find((entry) => entry.machineId === machineId && entry.sessionId === sessionId);
+    return member ? { id: member.id, name: member.name, teamId: member.teamId, teamName: this.#teamName(member.teamId) } : null;
+  }
+
   /** The member a session of this machine is (Team on), else `null`. */
   memberOfSession(sessionId: string): TeamMemberRecord | null {
     if (!this.#enabled || !this.#db) return null;

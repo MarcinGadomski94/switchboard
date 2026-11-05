@@ -209,6 +209,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
   // D115: Ask again (the plan's agent picks its items' repositories).
   ['POST', /^\/api\/plans\/[^/]+\/solutions\/ask$/],
+  // D154: the moves list (read, one move, a finished one's dismiss): a phone follows a move it did not start (starting one stays desktop-only).
+  ['GET', /^\/api\/moves$/],
+  ['GET', /^\/api\/moves\/[^/]+$/],
+  ['POST', /^\/api\/moves\/[^/]+\/dismiss$/],
 ];
 
 /**

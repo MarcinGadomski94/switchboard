@@ -197,7 +197,28 @@ interface RunState {
   workspaceFiles: WorkspaceFilesResult | null;
   /** D153: stashes the move made on the target (kept, also after an undo). */
   stashes: MoveStash[];
+  /** D154: who started it and between which machines (the moves list). */
+  meta: TakeoverRunMeta;
 }
+
+/**
+ * D154 (`docs/peers.md` → *Following a move (D154)*): what the moves list needs of a run
+ * besides its state: the request (Try again's choices), both machines and the agent.
+ */
+export interface TakeoverRunMeta {
+  readonly request: TakeoverRequest;
+  readonly sourceMachineId: string;
+  readonly targetMachineId: string;
+  /** The session on the source (raw). */
+  readonly rawSessionId: string;
+  /** The agent's title once the source described it (`null` before the checks read it). */
+  title: string | null;
+  readonly startedAt: string;
+  endedAt: string | null;
+}
+
+/** D154: a run changed (a step, its detail, its end). */
+export type TakeoverRunListener = (run: TakeoverRun, meta: TakeoverRunMeta) => void;
 
 /** The initiating machine's take-over runner (`docs/peers.md` → *Taking a session over*). */
 export class TakeoverRunner {
@@ -206,6 +227,7 @@ export class TakeoverRunner {
   readonly #onError: (error: unknown) => void;
   readonly #log: MoveLogSink;
   readonly #runs = new Map<string, RunState>();
+  readonly #listeners = new Set<TakeoverRunListener>();
 
   constructor(options: TakeoverRunnerOptions) {
     this.#service = options.service;
@@ -271,6 +293,7 @@ export class TakeoverRunner {
   /** Starts a take-over and returns its run at once; the dialog polls {@link get}. */
   async start(request: TakeoverRequest): Promise<TakeoverRun> {
     const ends = await this.#ends(request);
+    const selfId = (await this.#peers.self()).id;
     for (const run of this.#runs.values()) {
       if (run.state === 'running' && run.sessionKey === request.sessionId) throw new TakeoverError(409, 'in-progress', 'this session is being taken over already');
     }
@@ -287,8 +310,10 @@ export class TakeoverRunner {
       sessionKey: request.sessionId,
       workspaceFiles: null,
       stashes: [],
+      meta: { request, sourceMachineId: ends.source.machineId ?? selfId, targetMachineId: ends.target.machineId ?? selfId, rawSessionId: ends.rawSessionId, title: null, startedAt: new Date().toISOString(), endedAt: null },
     };
     this.#runs.set(run.id, run);
+    this.#notify(run);
     while (this.#runs.size > 20) {
       const oldest = [...this.#runs.values()].find((entry) => entry.state !== 'running');
       if (!oldest) break;
@@ -296,6 +321,24 @@ export class TakeoverRunner {
     }
     void this.#execute(run, ends, request).catch((error: unknown) => this.#onError(error));
     return this.#view(run);
+  }
+
+  /** D154: follows every run's changes (the moves list); returns the unsubscribe. */
+  subscribe(listener: TakeoverRunListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #notify(run: RunState): void {
+    if (this.#listeners.size === 0) return;
+    const view = this.#view(run);
+    for (const listener of [...this.#listeners]) {
+      try {
+        listener(view, run.meta);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
   }
 
   /** A run as the dialog polls it. */
@@ -339,6 +382,7 @@ export class TakeoverRunner {
     const set = (id: TakeoverStepId, status: TakeoverStepState['status'], detail: string | null = null): void => {
       const current = step(id);
       run.steps[run.steps.indexOf(current)] = { ...current, status, detail: detail ?? current.detail };
+      this.#notify(run);
     };
     let failedAt: TakeoverStepId = 'checks';
     const started = Date.now();
@@ -350,6 +394,7 @@ export class TakeoverRunner {
       const inspected = (await source.inspect(ends.rawSessionId, opId)).result;
       // D152 follow-up 2026-11-05: the repos the developer left out are neither planned nor captured.
       sourceInfo = withoutExcluded(inspected, request.excludeRepos);
+      run.meta.title = inspected.title ?? inspected.name;
       const leftOutProblem = excludedProblem(inspected, sourceInfo);
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
       plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), opId })).result;
@@ -482,6 +527,8 @@ export class TakeoverRunner {
       await target.closeTarget(opId).catch((error: unknown) => this.#onError(error));
       run.state = 'done';
       this.#logOutcome(run, started);
+      run.meta.endedAt = new Date().toISOString();
+      this.#notify(run);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       run.error = { step: failedAt, message };
@@ -497,6 +544,8 @@ export class TakeoverRunner {
       } finally {
         run.state = 'failed';
         this.#logOutcome(run, started);
+        run.meta.endedAt = new Date().toISOString();
+        this.#notify(run);
       }
     }
   }

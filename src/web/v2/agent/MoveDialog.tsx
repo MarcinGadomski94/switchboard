@@ -7,7 +7,9 @@ import { type ContinueHookedRequest, closeContinueHooked, useContinueHookedReque
 import { closeTakeover, useTakeoverRequest } from '../../takeover/store.ts';
 import { type TakeoverRequest, clonePathsOf } from '../../takeover/takeover.ts';
 import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, stashLines } from '../../takeover/complete-move.ts';
+import { choiceOfRetry } from '../../takeover/retry.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
+import { MoveStatusHost } from './MoveStatus.tsx';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { Button, Checkbox, Chip, Dialog, Icon, Select, useToast } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
@@ -38,6 +40,7 @@ export function MoveDialogsHost() {
     <>
       {takeover ? <MoveDialog key={`${takeover.sessionId}:${takeover.targetMachine ?? ''}`} request={takeover} /> : null}
       {hooked ? <ContinueHookedDialog key={hooked.sessionId} request={hooked} /> : null}
+      <MoveStatusHost />
     </>
   );
 }
@@ -72,6 +75,9 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   const timer = useRef<number | undefined>(undefined);
   // Only the newest preview counts (the target or the folders changed since).
   const ask = useRef(0);
+  // D154: a failed move's Try again opens with the last choices (for its first target only).
+  const retried = useRef<MoveChoice | undefined>(request.retry ? choiceOfRetry(request.retry) : undefined);
+  const toast = useToast();
   const running = starting || (run !== null && run.state === 'running');
   const finished = run !== null && run.state !== 'running';
 
@@ -100,12 +106,14 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setChoice(next);
     loadPreview(next);
   };
-  // A new target starts over: its own folders, clone paths and confirmation.
+  // A new target starts over: its own folders, clone paths and confirmation (D154: Try again's first one, the last choices).
   useEffect(() => {
+    const first = targetMachine === request.targetMachine ? retried.current : undefined;
+    retried.current = undefined;
     setPreview(null);
-    setChoice(EMPTY_CHOICE);
+    setChoice(first ?? EMPTY_CHOICE);
     setConfirmed(false);
-    loadPreview();
+    loadPreview(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetMachine]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -140,6 +148,13 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   const close = (): void => {
     if (!running) closeTakeover();
   };
+  // D154: while it moves, Hide closes the dialog; the move goes on (the agent's badge and Home's Moves card show it and reopen it).
+  const hide = (): void => {
+    if (!running) return;
+    window.clearTimeout(timer.current);
+    closeTakeover();
+    toast({ text: AGENT_WORDS.moveHidden });
+  };
   const openResult = (): void => {
     if (run?.result) navigate(`/agents/${encodeURIComponent(run.result.sessionId)}`);
     closeTakeover();
@@ -173,9 +188,15 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
           ) : (
             <span className="v2-grow" />
           )}
-          <Button data-testid="v2-move-close" disabled={running} title={running ? 'It is moving now: wait until it finishes.' : undefined} onClick={close}>
-            {finished ? AGENT_WORDS.closeDialog : AGENT_WORDS.cancel}
-          </Button>
+          {run !== null && run.state === 'running' ? (
+            <Button data-testid="v2-move-hide" title={AGENT_WORDS.moveHideHint} onClick={hide}>
+              {AGENT_WORDS.hide}
+            </Button>
+          ) : (
+            <Button data-testid="v2-move-close" disabled={running} title={running ? 'It is moving now: wait until it finishes.' : undefined} onClick={close}>
+              {finished ? AGENT_WORDS.closeDialog : AGENT_WORDS.cancel}
+            </Button>
+          )}
           {finished && run?.state === 'done' && run.result ? (
             <Button variant="primary" icon="arrow-r" data-testid="v2-move-open" onClick={openResult}>
               {AGENT_WORDS.openMovedAgent}
@@ -268,8 +289,8 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   );
 }
 
-/** The steps as they run, the headline, the error and what was undone, leftover branches, the git commands. */
-function RunView({
+/** The steps as they run, the headline, the error and what was undone, leftover branches, the git commands (D154: also the move dialog attached to a listed run). */
+export function RunView({
   run,
   machineName,
   deleted,

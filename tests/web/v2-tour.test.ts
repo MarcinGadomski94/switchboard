@@ -47,11 +47,16 @@ describe('the v2 welcome tour', () => {
     expect(welcome?.steps.find((step) => step.id === 'appearance')?.anchors).toEqual(['v2-theme']);
   });
 
-  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation, pinned crews, D142\'s account hint, Model and Effort, D145\'s clean-up, D147\'s working time, D150\'s Done projects, moving folders (2.4.16) and D152\'s complete move (2.4.21); the classic What’s new gains the theme switch', () => {
+  it('the v2 tours are the welcome, the redrawn Project graph, its full screen, D140\'s remote update, Bring in a terminal conversation, pinned crews, D142\'s account hint, Model and Effort, D145\'s clean-up, D147\'s working time, D150\'s Done projects, moving folders (2.4.16), D152\'s complete move (2.4.21) and D154\'s move status (2.4.23); the classic What’s new gains the theme switch', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move', 'move-status']);
+    // D154 (2.4.23): Home's Moves card, the Moving to… badge, a failed move in Needs you.
+    const status = WHATS_NEW.find((feature) => feature.id === 'move-status');
+    expect(status).toMatchObject({ version: '2.4.23', ui: 'v2', decision: 'D154' });
+    expect(status?.steps.map((step) => step.anchors)).toEqual([['v2-home-moves', 'v2-nav-home'], ['v2-move-badge'], ['v2-home-needs', 'v2-needs']]);
+    expect(status?.steps[0]?.v2Route).toBe('/');
     // D152 (2.4.21): Works in in the Details, the Move dialog, a crew's Move crew to computer….
     const complete = WHATS_NEW.find((feature) => feature.id === 'complete-move');
     expect(complete).toMatchObject({ version: '2.4.21', ui: 'v2', decision: 'D152' });

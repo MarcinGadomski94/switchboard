@@ -1003,3 +1003,49 @@ button.v2-qi-src:hover {
     flex-basis: 100%;
   }
 }
+
+/* ── D154 · a running move's badge ("Moving to Desk… (copying the chat)"): opens the move ── */
+.sb2 .v2-move-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--v2-r-pill);
+  background: var(--v2-blue-bg);
+  color: var(--v2-blue);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb2 .v2-move-badge[data-size='s'] {
+  min-height: 22px;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.sb2 .v2-move-badge:hover {
+  filter: brightness(0.96);
+}
+
+.sb2 .v2-move-badge:focus-visible {
+  outline: 2px solid var(--v2-blue);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-move-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (pointer: coarse) {
+  .sb2 .v2-move-badge {
+    min-height: 44px;
+  }
+}

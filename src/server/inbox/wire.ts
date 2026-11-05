@@ -278,6 +278,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'account-needs-you': 'Account needs you',
   // D142: this machine has a single usable account of a CLI, a paired machine one more.
   'account-hint': 'Accounts',
+  // D154: a move (take-over) of an agent to another computer failed.
+  'move-failed': 'Move failed',
 };
 
 /**
@@ -306,6 +308,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
   const command = record.kind === 'account-needs-you' && isRecord(record.payload) && typeof record.payload['command'] === 'string' ? record.payload['command'] : null;
   // D142: what "Add it there" prefills (Settings › Accounts on the item's machine).
   const addAccount = record.kind === 'account-hint' ? addAccountOf(record.payload) : null;
+  // D154: a failed move's item carries the move (Try again reopens the dialog pre-filled).
+  const move = record.kind === 'move-failed' && isRecord(record.payload) && isRecord(record.payload['move']) ? (record.payload['move'] as unknown as NonNullable<InboxItem['move']>) : null;
   return {
     id: record.id,
     kind: 'system',
@@ -325,6 +329,7 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     ...(route ? { route } : {}),
     ...(url ? { url } : {}),
     ...(addAccount ? { addAccount } : {}),
+    ...(move ? { move } : {}),
   };
 }
 
