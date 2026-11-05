@@ -1,6 +1,7 @@
 import { STATUS, type V2Status } from '../glossary.ts';
 import { colorFor, initials } from './avatar-model.ts';
 import { Icon, type IconName } from './Icon.tsx';
+import { computerShortName } from './computer-name.ts';
 
 export { colorFor, initials } from './avatar-model.ts';
 
@@ -49,7 +50,7 @@ export function ComputerTag({ name, state = 'online', kind = 'desktop', short = 
   return (
     <span className="v2-ctag" data-state={state} title={title} data-testid={testId}>
       <Icon name={icon} />
-      {short ? name.split(/[\s.-]/)[0] : name}
+      <span className="v2-ctag-name">{short ? computerShortName(name) : name}</span>
       {word}
     </span>
   );
