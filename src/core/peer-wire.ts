@@ -110,6 +110,8 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
     ...(item.questions ? { questions: item.questions.map((question) => peerQuestion(machine, question)) } : {}),
     // Plans (D99) hook (D102): a plan's "Ready to merge" item opens that machine's plan (its remote id).
     ...(item.route ? { route: peerRoute(machine, item.route) } : {}),
+    // D154: a failed move's item names the move by its remote id (its runner is on that machine).
+    ...(item.move ? { move: { ...item.move, id: ns(machine, item.move.id) } } : {}),
     machine: { id: machine.id, name: machine.name, state: machine.state },
   };
 }
@@ -228,6 +230,8 @@ export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(
   'machinePower',
   // D140: the machine's update state in short; the receiver keeps it as `Machine.update` and never republishes it (peerHubEvent answers null).
   'machineUpdate',
+  // D154: a move there changed; the receiver reads that machine's moves again and republishes it with the move mapped (PeerService).
+  'movesChanged',
 ]);
 
 /**

@@ -99,6 +99,17 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
       peers.testHoldLists(false);
       return reply.code(204).send();
     });
+    // D154: the paired machines' take-over calls to POST /api/takeover/<route> here wait (POST { route }) / go on (DELETE).
+    app.post('/api/test/peers/hold-takeover', async (request, reply) => {
+      const route = (request.body as { route?: unknown } | null)?.route;
+      if (typeof route !== 'string' || !/^(?:source|target)\/[a-z-]+$/.test(route)) return reply.code(422).send({ error: 'invalid', message: 'route must be like target/apply' });
+      peers.testHoldTakeover(route);
+      return reply.code(204).send();
+    });
+    app.delete('/api/test/peers/hold-takeover', async (_request, reply) => {
+      peers.testHoldTakeover(null);
+      return reply.code(204).send();
+    });
   }
 
   app.delete<{ Params: { id: string } }>('/api/machines/:id', async (request, reply) => {
