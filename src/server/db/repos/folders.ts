@@ -135,11 +135,13 @@ export class FolderRepository {
    * Links the sessions that have no saved folder but ran in this one (their
    * `root` is the folder's canonical path, or the path as given) to it, e.g. after
    * the folder was removed and added again. Returns how many were linked.
+   * A session that has no kind yet (a terminal session followed from its cwd) takes
+   * the folder's (2026-11-05, migration 0054: else a workspace reads as plain, D59).
    */
-  async linkSessions(folder: Pick<FolderRecord, 'id' | 'path' | 'canonicalPath'>): Promise<number> {
+  async linkSessions(folder: Pick<FolderRecord, 'id' | 'path' | 'canonicalPath' | 'kind'>): Promise<number> {
     const result = this.#table
-      .statement('UPDATE sessions SET folder_id = ? WHERE folder_id IS NULL AND root IS NOT NULL AND root IN (?, ?)')
-      .run(folder.id, folder.canonicalPath, folder.path);
+      .statement('UPDATE sessions SET folder_id = ?, root_kind = COALESCE(root_kind, ?) WHERE folder_id IS NULL AND root IS NOT NULL AND root IN (?, ?)')
+      .run(folder.id, folder.kind === 'plain' ? null : folder.kind, folder.canonicalPath, folder.path);
     return Number(result.changes);
   }
 

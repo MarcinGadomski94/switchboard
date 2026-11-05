@@ -1062,7 +1062,7 @@ On the peer allow-list (each end's operations; the initiating machine's runner c
 | POST | /api/takeover/target/plan | { source, clonePaths?, placement? } | TargetPlan (a resolution per repo: `use` / `clone` / `blocked`; D110: with `placement`, `placement` and `verification`) |
 | POST | /api/takeover/target/folders | { path? } | D110, read-only: TargetDirListing (not wrapped in `{ result, log }`); 403 `outside` |
 | POST | /api/takeover/target/verify | { source, placement, clonePaths? } | D110, read-only: `{ verification: TargetVerification, blockers }` |
-| POST | /api/takeover/target/chunk | { opId, name, size, sha256, offset, data } | `{ received, done }` (no log); 422 `checksum` / `invalid`, 409 `out-of-order`, 413 over 200 MB |
+| POST | /api/takeover/target/chunk | { opId, name, size, sha256, offset, data } | `{ received, done }` (no log); 422 `checksum` / `invalid`, 409 `out-of-order`, 413 over 2 GB |
 | POST | /api/takeover/target/apply | { opId, source, captured, clonePaths?, placement? } | { place, changes, applied } (409 `diverged` and the like; D110: the paths of the plan with that `placement`) |
 | POST | /api/takeover/target/abort | { opId } | { notes } |
 | POST | /api/takeover/target/resume | { opId, source, files, from } | { sessionId, name, note } |

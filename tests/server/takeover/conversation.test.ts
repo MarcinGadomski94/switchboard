@@ -234,8 +234,8 @@ describe('D65: the conversation transfer', () => {
     expect(first.body).toMatchObject({ received: 4, done: false });
     const second = await w.b.call('POST', '/api/takeover/target/chunk', { opId: op, name: 'two.bin', size: 10, sha256: bigSha, offset: 4, data: big.subarray(4).toString('base64') });
     expect(second.body).toMatchObject({ received: 10, done: true });
-    // The size cap (200 MB) is announced up front.
-    expect((await w.b.call('POST', '/api/takeover/target/chunk', { opId: op, name: 'huge.bin', size: 201 * 1024 * 1024, sha256: sha, offset: 0, data: '' })).status).toBe(413);
+    // The size cap (2 GB) is announced up front.
+    expect((await w.b.call('POST', '/api/takeover/target/chunk', { opId: op, name: 'huge.bin', size: 2 * 1024 * 1024 * 1024 + 1, sha256: sha, offset: 0, data: '' })).status).toBe(413);
     // The staging folder goes with the operation.
     expect((await w.b.call('POST', '/api/takeover/target/abort', { opId: op })).status).toBe(200);
     expect(await readdir(path.join(w.b.dataDir, 'takeover')).catch(() => [])).toEqual([]);

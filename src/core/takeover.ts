@@ -18,8 +18,11 @@ import type { NewWorkspace, WorksInEvidence, WorksInSource, WorkspaceFileTarget,
 /** The namespace of the temporary remote branches (`switchboard/takeover/<session short id>/<branch>`). */
 export const TAKEOVER_BRANCH_PREFIX = 'switchboard/takeover/';
 
-/** Largest conversation file the transfer accepts (200 MB; the cap is checked on both sides). */
-export const TAKEOVER_FILE_MAX_BYTES = 200 * 1024 * 1024;
+/**
+ * Largest conversation file the transfer accepts (2 GB; the cap is checked on both sides). Both ends
+ * stream it in chunks to and from disk, so the size costs time, not memory (200 MB before 2026-11-05).
+ */
+export const TAKEOVER_FILE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
 /** Raw bytes per transfer chunk (base64 in JSON stays under the peer API's 1 MiB body limit). */
 export const TAKEOVER_CHUNK_BYTES = 512 * 1024;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { open, readFile, readdir, stat } from 'node:fs/promises';
+import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { HookStatus, HooksStatus, Session, SessionActivity, SessionEvent, TerminalSession } from '../../core/api.ts';
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
@@ -441,7 +441,10 @@ export class HookService {
       let name = base;
       for (let n = 2; await this.#store.sessions.getByName(name); n++) name = `${base}-${n}`;
       const terminal = this.#terminals.get(claudeSessionId);
+      // 2026-11-05: a terminal in a saved folder's root belongs to it with its kind (a workspace moves as one; else plain, D59).
+      const saved = row.cwd ? await this.#store.folders.getByCanonicalPath(await realpath(row.cwd).catch(() => row.cwd as string)) : null;
       record = await this.#store.sessions.create({
+        ...(saved ? { folderId: saved.id, rootKind: saved.kind } : {}),
         name,
         title: row.name ?? `Terminal · ${path.basename(row.cwd ?? '') || 'session'}`,
         task: '',
