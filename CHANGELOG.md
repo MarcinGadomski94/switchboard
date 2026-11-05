@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.23 (2026-11-05)
+
+### Paired computers
+- **A move stays visible after you close its dialog:** while a move runs, the agent and its crew show "Moving to <computer>… (<step>)"; a click reopens the live dialog, also after a reload, in another tab or on the phone. Home has a Moves card with running moves and the ones that finished in the last 24 hours, and a failed move raises a Needs-you item with the reason and Try again. See `docs/peers.md` → *Following a move* (D154).
+- **Move a chat to another computer:** a chat's ⋯ menu has Move to computer…. The conversation carries on there in plan mode, with its attachments, scratch files and results; for each folder it looks at you pick a folder there or leave it out. See `docs/chats.md` (D155).
+- **The move log:** every move writes one line per step to the service log on each computer, with times and, for a failure, the reason (secrets scrubbed). Connection messages about a paired computer carry a time too. See `docs/service.md` → *Following a move*.
+
+### v2 theme
+- Computer badges show the full name (Marcins-PC, not Marcins); a long one ends in "…".
+
 ## 2.4.22 (2026-11-05)
 
 ### Paired computers
