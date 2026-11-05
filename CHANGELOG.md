@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.22 (2026-11-05)
+
+### Paired computers
+- **Uncommitted changes on the other computer:** when a folder the move would use there has uncommitted changes, the move dialog lists them once and offers "Stash them on <computer>". Only after you tick it are they stashed there, with a recognisable name, right before the move; the stash is kept (never applied back or dropped, even when a failed move is undone) and the result says how to restore it. See `docs/peers.md` (D153).
+- **The agent's own worktrees:** a worktree of a repo the agent uses (for example Claude Code's `.claude/worktrees/*`) is carried only when its branch is on the remote and not merged; the others are listed as skipped with the reason, with a warning when they hold uncommitted files that stay behind. Works in and the move dialog show each repo once, with its worktrees under it.
+- The dialog shows an existing workspace as the existing folder even while a checkout with uncommitted changes blocks the move.
+- Undoing a failed move no longer fails on a branch that was checked out in the main folder.
+
 ## 2.4.21 (2026-11-05)
 
 ### Paired computers
