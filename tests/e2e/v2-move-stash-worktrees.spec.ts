@@ -100,6 +100,9 @@ test('one repo with its worktrees nested and skipped ones explained; the target 
   await expect(done).toContainText('not carried, merged into origin/main');
   await expect(done.getByTestId('v2-move-carry-skipped-warning')).toHaveCount(0);
 
+  // The workspace exists on the mac: the section shows that folder (not "Create a new folder"), although a checkout there blocks for now.
+  await expect(dialog.getByTestId('v2-move-workspace')).toHaveAttribute('data-mode', 'existing');
+  await expect(dialog.getByTestId('v2-move-new-root')).toHaveCount(0);
   // The mac's front has uncommitted changes: listed, and the move waits for the stash to be confirmed.
   const move = dialog.getByTestId('v2-move-start');
   const stash = dialog.locator('[data-testid="v2-move-stash-row"]');

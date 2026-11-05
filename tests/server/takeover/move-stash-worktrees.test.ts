@@ -87,6 +87,8 @@ describe('D153: a target checkout with uncommitted changes', () => {
     expect(dirty).toHaveLength(1);
     expect(dirty[0]).toContain(onMac);
     expect(dirty[0]).toContain('Stash them on mac-laptop');
+    // The mac's workspace is still the session's folder there while the checkout waits for the stash (the dialog shows it, not "Create a new folder").
+    expect(answer.target.folder).toMatchObject({ kind: 'workspace', path: world.paths.b.workspace });
     const blocked = answer.target.repos.filter((repo) => repo.targetChanges);
     expect(blocked.length).toBe(2);
     expect(blocked[0]?.targetChanges).toMatchObject({ modified: 1, untracked: 1, total: 2, truncated: false });

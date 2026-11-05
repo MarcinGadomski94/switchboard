@@ -1147,11 +1147,13 @@ export class TakeoverService {
     let folder: TargetPlan['folder'] = null;
     let cwd: string | null = null;
     const usable = repos.filter((repo) => repo.action !== 'blocked');
-    if (blockers.length === 0 || usable.length === repos.length) {
-      if (workspace) {
-        folder = { id: workspace.folderId, path: workspace.folderPath, kind: 'workspace' };
-        cwd = workspace.folderPath;
-      } else if (source.folder?.kind === 'workspace' && !source.hooked) {
+    // D153: the workspace found here is the session's folder even while a repo is blocked (e.g. a dirty checkout waiting for "Stash them"),
+    // so the dialog shows that folder instead of offering to create one; the blockers still stop the move.
+    if (workspace) {
+      folder = { id: workspace.folderId, path: workspace.folderPath, kind: 'workspace' };
+      cwd = workspace.folderPath;
+    } else if (blockers.length === 0 || usable.length === repos.length) {
+      if (source.folder?.kind === 'workspace' && !source.hooked) {
         folder = null;
       } else if (repos.length > 1) {
         blockers.push('this session works in several repos outside a workspace folder: it cannot be placed on this machine');
