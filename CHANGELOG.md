@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.28 (2026-11-05)
+
+### Paired computers
+- **A moved agent keeps its sidebar folder:** after a move, the agent shows where it was before (pinned, in its folder, or at its place in the list) on both computers, chats too. Agents moved earlier get their place back at their next update.
+
 ## 2.4.27 (2026-11-05)
 
 ### Paired computers
