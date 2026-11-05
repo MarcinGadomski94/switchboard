@@ -22,7 +22,7 @@ import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, S
 import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
-import { AgentComputerTag, CrewTag } from '../shared/agent-row.tsx';
+import { AgentComputerTag, AgentHomeTag, CrewTag } from '../shared/agent-row.tsx';
 import { MoveBadge } from '../shared/MoveBadge.tsx';
 import { agentName, agentStatusOf, statusWithApps } from '../shared/agent-line.ts';
 import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, teammateOf, useCrewsList, useTeamMembers } from '../shared/teammates.ts';
@@ -179,6 +179,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
         <div className="v2-ag-titlebox" ref={titleRef}>
           {session ? <InlineTitle sessionId={sessionId} name={name} mate={mate} disabled={blocked !== null} onRenamed={data.reload} /> : <span className="v2-skel" style={{ width: 200, height: 22 }} />}
           {mate ? <CrewTag crew={mate.crewName} /> : null}
+          {session ? <AgentHomeTag machine={session.machine} /> : null}
         </div>
         {status ? <StatusBadge status={status} size={phone ? 's' : undefined} {...(statusLabel ? { label: statusLabel } : {})} /> : null}
         {/* D154: while it moves to another computer (from any tab, after a reload, on a phone): opens the move. */}

@@ -62,6 +62,10 @@ test('the chat: replies as text, collapsed tool rows expand, the live line ticks
   const view = page.getByTestId('v2-agent-view');
   await expect(view).toBeVisible();
   await expect(page.getByTestId('v2-agent-title')).toHaveText('v2-chat');
+  // 2026-11-05: the computer it runs on sits next to its title (this computer's name for a local agent).
+  const home = page.getByTestId('v2-agent-computer');
+  await expect(home).toHaveAttribute('data-where', 'here');
+  await expect(home.getByTestId('v2-computer-tag')).toHaveText(/\S/);
   // The task as the developer's pill, the reply as document text with its "Agent · reply 1" line.
   await expect(page.getByTestId('v2-agent-you').first()).toContainText('Create out.txt');
   const reply = page.getByTestId('v2-agent-reply').last();

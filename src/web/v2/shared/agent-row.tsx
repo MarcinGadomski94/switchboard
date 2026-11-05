@@ -1,6 +1,7 @@
-import type { HTMLAttributes, ReactNode } from 'react';
+import { type HTMLAttributes, type ReactNode, useEffect, useState } from 'react';
 import type { SessionActivity, SessionListItem } from '../../../core/api.ts';
 import type { SessionMachine } from '../../../core/peers.ts';
+import { api } from '../../api/client.ts';
 import { useLiveMachine } from '../../api/useMachines.ts';
 import { Avatar, Card, ComputerTag, Icon, StatusBadge } from '../components/index.ts';
 import { STATUS, TERMS, computerStateToV2 } from '../glossary.ts';
@@ -46,6 +47,39 @@ export function AgentComputerTag({ machine, short = false }: { readonly machine:
   const live = useLiveMachine(machine ?? null);
   if (!live) return null;
   return <ComputerTag name={live.name} state={computerStateToV2(live.state)} short={short} />;
+}
+
+let selfName: Promise<string | null> | null = null;
+
+/** This computer's name, read once per page (`GET /api/machines` → `self.name`); `null` until known or when it can't be read. */
+export function useSelfMachineName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    selfName ??= api.machines().then((view) => view.self.name, () => null);
+    void selfName.then((value) => {
+      if (live) setName(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return name;
+}
+
+/**
+ * 2026-11-05 · where an agent runs, always shown next to its title: a paired computer's agent
+ * shows that computer (live state), this computer's agent shows this computer's name.
+ */
+export function AgentHomeTag({ machine }: { readonly machine: SessionMachine | null | undefined }) {
+  const self = useSelfMachineName();
+  if (machine) return <span className="v2-ag-home" data-testid="v2-agent-computer" data-where="peer"><AgentComputerTag machine={machine} /></span>;
+  if (!self) return null;
+  return (
+    <span className="v2-ag-home" data-testid="v2-agent-computer" data-where="here">
+      <ComputerTag name={self} state="online" />
+    </span>
+  );
 }
 
 /** D131 · the unread dot (an accent dot with a word for screen readers). */
