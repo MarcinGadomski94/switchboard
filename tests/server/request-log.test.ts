@@ -17,6 +17,11 @@ async function appWith(controller: QuietRequestLogs | undefined): Promise<{ app:
   app.get('/boom', async () => {
     throw new Error('kaboom');
   });
+  // A peer API call that runs a take-over step: its move-log line goes to the app's logger.
+  app.post('/api/takeover/source/stop', async () => {
+    app.log.info({ run: 'run-1', step: 'stop', state: 'finished', side: 'source', ms: 6 }, 'move: stop finished');
+    return { ok: true };
+  });
   await app.ready();
   return { app, lines };
 }
@@ -47,5 +52,18 @@ describe('QuietRequestLogs (docs/service.md → The service log)', () => {
     const messages = lines.map((line) => line.msg);
     expect(messages).toContain('incoming request');
     expect(messages).toContain('request completed');
+  });
+
+  it('keeps the move log: `move:` lines are not request lines and stay in production (2.4.18 filter on)', async () => {
+    const { app, lines } = await appWith(new QuietRequestLogs());
+    try {
+      expect((await app.inject({ method: 'POST', url: '/api/takeover/source/stop' })).statusCode).toBe(200);
+      app.log.warn({ run: 'run-1', step: 'outcome', state: 'failed', failedAt: 'apply' }, 'move: failed at apply, rolled back');
+    } finally {
+      await app.close();
+    }
+    const messages = lines.map((line) => line.msg);
+    expect(messages).toEqual(['move: stop finished', 'move: failed at apply, rolled back']);
+    expect(lines.every((line) => typeof (line as { time?: unknown }).time === 'number')).toBe(true);
   });
 });

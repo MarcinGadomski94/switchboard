@@ -59,6 +59,8 @@ import type { HookService } from '../hooks/service.ts';
 import type { QuestionPipeline } from '../inbox/pipeline.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import { TakeoverGit, TakeoverGitError, pathExists } from './git.ts';
+import { MoveLog, type MoveLogSink, type MoveLogStep } from './move-log.ts';
+import { moveLogReason, moveLogRunId } from '../../core/move-log.ts';
 import { isMainCheckout } from '../solutions/checkout.ts';
 import { type CheckoutFacts, LocateRefusal, allowedPlaces, checkoutFacts, findCheckouts, listFolders, resolveAllowed } from './locate.ts';
 import type { TodoService } from '../todos/service.ts';
@@ -131,6 +133,11 @@ export interface TakeoverServiceOptions {
   readonly onError?: (error: unknown) => void;
   /** D152: the audit line of a workspace-file copy (no names, no contents); default: the service log. */
   readonly onAudit?: (line: string) => void;
+  /**
+   * The move log (`docs/peers.md` → *The move log*): one service-log line per step this
+   * machine runs for a take-over run (the service's pino logger). Absent: nothing is logged.
+   */
+  readonly log?: MoveLogSink;
 }
 
 /** What the source keeps of a take-over in progress. */
@@ -270,6 +277,9 @@ export class TakeoverService {
   readonly #sources = new Map<string, SourceOp>();
   readonly #activeSessions = new Set<string>();
   readonly #targets = new Map<string, TargetOp>();
+  readonly #moveLog: MoveLog;
+  /** The move log's open file transfers (`<run> <side> <file>`): started at the first chunk, finished at the last. */
+  readonly #chunkSteps = new Map<string, MoveLogStep>();
 
   readonly #todos: TodoService | null;
   readonly #loops: LoopService | null;
@@ -290,21 +300,201 @@ export class TakeoverService {
     this.#env = options.env ?? process.env;
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
     this.#onAudit = options.onAudit ?? ((line) => console.info(`switchboard take-over [audit]: ${line}`));
+    this.#moveLog = new MoveLog(options.log);
   }
 
   #git(lines: string[]): TakeoverGit {
     return new TakeoverGit({ log: (line) => lines.push(line), env: this.#env });
   }
 
+  // ═══ the operations, each a step of the move log ═════════════════════
+  //
+  // `docs/peers.md` → *The move log*: every operation below logs `move: <step> started` /
+  // `finished` / `failed` on this machine, with the run id (the op id), so each machine's
+  // service log tells its own side of a take-over. The work is in the private methods.
+
+  /**
+   * What this machine would hand over for `sessionId` (read-only). `opId`: the
+   * run this check belongs to (logged as its `checks` step); the dialog's preview has none.
+   */
+  async inspect(sessionId: string, opId?: string): Promise<OpAnswer<SourceInspect>> {
+    return this.#moveLog.step(moveLogRunId(opId), 'checks', 'source', () => this.#inspect(sessionId), { session: sessionId }, (answer) => ({
+      title: answer.result.title ?? answer.result.name,
+      repos: answer.result.repos.map((repo) => repo.name),
+      blockers: answer.result.blockers.length,
+    }));
+  }
+
+  /** Step 2 (source): stops the session where it runs ({@link #stop}). */
+  async stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>> {
+    return this.#moveLog.step(opId, 'stop', 'source', () => this.#stop(opId, sessionId), { session: sessionId }, (answer) => ({ wasLive: answer.result.wasLive, wasBusy: answer.result.wasBusy }));
+  }
+
+  /** Step 3 (source): the WIP commit and push of every carried repo ({@link #capture}). */
+  async capture(opId: string, exclude: readonly string[] = []): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>> {
+    return this.#moveLog.step(opId, 'capture', 'source', () => this.#capture(opId, exclude), exclude.length > 0 ? { excluded: exclude.length } : {}, (answer) => ({
+      repos: answer.result.repos.length,
+      uncommitted: answer.result.repos.reduce((total, repo) => total + repo.uncommitted, 0),
+    }));
+  }
+
+  /** Stops a hooked session's terminal `claude` (after the capture). */
+  async stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>> {
+    return this.#moveLog.step(opId, 'stop-terminal', 'source', () => this.#stopTerminal(opId));
+  }
+
+  /** Step 4 (source): the conversation's files ({@link #files}). */
+  async files(opId: string): Promise<OpAnswer<{ readonly kind: ConversationKind; readonly files: readonly ConversationFile[] }>> {
+    return this.#moveLog.step(opId, 'files', 'source', () => this.#files(opId), {}, (answer) => ({ kind: answer.result.kind, files: answer.result.files.length, bytes: answer.result.files.reduce((total, file) => total + file.size, 0) }));
+  }
+
+  /** One chunk of a listed file; the move log has one `transfer` step per file (first chunk to last). */
+  async readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
+    return this.#chunk(opId, 'transfer', 'source', name, offset, async () => {
+      const chunk = await this.#readChunk(opId, name, offset);
+      return { value: chunk, done: chunk.eof || chunk.length === 0, size: chunk.size };
+    });
+  }
+
+  /** D152 (source): the workspace files this take-over sends ({@link #workspaceFiles}). */
+  async workspaceFiles(opId: string, names: readonly string[]): Promise<OpAnswer<{ readonly files: ReadonlyArray<Pick<WorkspaceFileInfo, 'name' | 'size' | 'sha256'> & { readonly secret: boolean }> }>> {
+    return this.#moveLog.step(opId, 'workspace-files', 'source', () => this.#workspaceFiles(opId, names), { files: names.length }, (answer) => ({ secret: answer.result.files.filter((file) => file.secret).length }));
+  }
+
+  /** D152 (source): one chunk of a workspace file; one `files-copy` step per file. */
+  async readWorkspaceChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
+    return this.#chunk(opId, 'files-copy', 'source', name, offset, async () => {
+      const chunk = await this.#readWorkspaceChunk(opId, name, offset);
+      return { value: chunk, done: chunk.eof || chunk.length === 0, size: chunk.size };
+    });
+  }
+
+  /** Step 7 (source): the session is marked moved and closed ({@link #finish}). */
+  async finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>> {
+    this.#endChunks(opId);
+    return this.#moveLog.step(opId, 'finish', 'source', () => this.#finish(opId, move, stillThere), { to: move.machineName }, (answer) => ({
+      leftovers: answer.result.leftovers.length,
+      ...(answer.result.closeError ? { closeError: moveLogReason(answer.result.closeError) } : {}),
+    }));
+  }
+
+  /** The source's undo after a failure ({@link #rollbackSource}); nothing is logged when this machine holds nothing of the run. */
+  async rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
+    this.#endChunks(opId);
+    if (!this.#sources.has(opId)) return this.#rollbackSource(opId);
+    return this.#moveLog.step(opId, 'rollback', 'source', () => this.#rollbackSource(opId), {}, (answer) => ({ notes: answer.result.notes.map(moveLogReason) }));
+  }
+
+  /**
+   * The target's plan for a take-over (read-only, {@link #plan}). With an `opId`
+   * (the run's checks) it is logged as the run's `plan` step; the preview and the
+   * apply's own re-check are not.
+   */
+  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+    return this.#moveLog.step(moveLogRunId(body.opId), 'plan', 'target', () => this.#plan(body), { from: body.source.machine.name }, (answer) => ({
+      repos: answer.result.repos.map((repo) => `${repo.name}:${repo.action}`),
+      blockers: answer.result.blockers.length,
+      ...(answer.result.blockers.length > 0 ? { reason: moveLogReason(answer.result.blockers.join('; ')) } : {}),
+    }));
+  }
+
+  /** Step 4 (target): one chunk of a conversation file; one `transfer` step per file. */
+  async receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<{ readonly received: number; readonly done: boolean }> {
+    return this.#chunk(input.opId, 'transfer', 'target', input.name, input.offset, async () => {
+      const received = await this.#receiveChunk(input);
+      return { value: received, done: received.done, size: input.size };
+    });
+  }
+
+  /** D152 (target): one chunk of a workspace file; one `files-copy` step per file. */
+  async receiveWorkspaceChunk(input: { readonly opId: string; readonly name: unknown; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<{ readonly received: number; readonly done: boolean }> {
+    return this.#chunk(input.opId, 'files-copy', 'target', typeof input.name === 'string' ? input.name : '?', input.offset, async () => {
+      const received = await this.#receiveWorkspaceChunk(input);
+      return { value: received, done: received.done, size: input.size };
+    });
+  }
+
+  /** Step 5 (target): restores the working tree ({@link #apply}); clone, stash, restore and files-copy are its sub-steps. */
+  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
+    return this.#moveLog.step(body.opId, 'apply', 'target', () => this.#apply(body), { repos: body.captured.length }, (answer) => ({
+      cwd: answer.result.place.cwd,
+      restored: answer.result.applied.length,
+      stashes: answer.result.stashes?.length ?? 0,
+    }));
+  }
+
+  /** The target's undo after a failure ({@link #abort}); nothing is logged when this machine holds nothing of the run. */
+  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
+    this.#endChunks(opId);
+    if (!this.#targets.has(opId)) return this.#abort(opId);
+    return this.#moveLog.step(opId, 'undo', 'target', () => this.#abort(opId), {}, (answer) => ({ notes: answer.result.notes.map(moveLogReason), stashesKept: answer.result.stashes?.length ?? 0 }));
+  }
+
+  /** Step 6 (target): installs the conversation and starts the session ({@link #resume}). */
+  async resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>> {
+    return this.#moveLog.step(body.opId, 'resume', 'target', () => this.#resume(body), { from: body.from.name }, (answer) => ({ session: answer.result.sessionId }));
+  }
+
+  /** Forgets a finished operation's target state (the working tree is kept). */
+  async closeTarget(opId: string): Promise<void> {
+    this.#endChunks(opId);
+    if (!this.#targets.has(opId)) return this.#closeTarget(opId);
+    return this.#moveLog.step(opId, 'close', 'target', () => this.#closeTarget(opId));
+  }
+
+  /** A file of run `opId` still in transit when the run moves on (a failure between chunks) is logged as failed and forgotten. */
+  #endChunks(opId: string): void {
+    const prefix = `${opId}\u0000`;
+    for (const [key, handle] of this.#chunkSteps) {
+      if (!key.startsWith(prefix)) continue;
+      this.#chunkSteps.delete(key);
+      handle.fail('the run ended before the file was complete');
+    }
+  }
+
+  /**
+   * One chunk of a file in transit, as the move log tells it: the first chunk
+   * (offset 0) starts `<step>` for that file, the last one finishes it (with its
+   * size), a failure fails it. Contents are never logged.
+   */
+  async #chunk<T>(opId: string, step: string, side: 'source' | 'target', name: string, offset: number, work: () => Promise<{ readonly value: T; readonly done: boolean; readonly size: number }>): Promise<T> {
+    const run = moveLogRunId(opId);
+    if (run === null) return (await work()).value;
+    const key = `${run}\u0000${side}\u0000${step}\u0000${name}`;
+    let handle = this.#chunkSteps.get(key);
+    if (!handle || offset === 0) {
+      handle?.fail('started again');
+      handle = this.#moveLog.begin(run, step, side, { file: name });
+      this.#chunkSteps.set(key, handle);
+    }
+    try {
+      const answer = await work();
+      if (answer.done) {
+        this.#chunkSteps.delete(key);
+        handle.done({ bytes: answer.size });
+      }
+      return answer.value;
+    } catch (error) {
+      this.#chunkSteps.delete(key);
+      handle.fail(error);
+      throw error;
+    }
+  }
+
   // ═══ source ═══════════════════════════════════════════════════════════
 
-  /** What this machine would hand over for `sessionId` (read-only; nothing is touched). */
+  /** The move log's start line: a session's title (else its name) on this machine, `null` when it is unknown. */
+  async sessionTitle(sessionId: string): Promise<string | null> {
+    const record = await this.#store.sessions.get(sessionId).catch(() => null);
+    return record ? (record.title ?? record.name) : null;
+  }
+
   /** D94: `true` while this machine's session is being taken over (its loops skip their due times meanwhile). */
   isTakingOver(sessionId: string): boolean {
     return this.#activeSessions.has(sessionId);
   }
 
-  async inspect(sessionId: string): Promise<OpAnswer<SourceInspect>> {
+  async #inspect(sessionId: string): Promise<OpAnswer<SourceInspect>> {
     const log: string[] = [];
     const git = this.#git(log);
     const record = await this.#store.sessions.get(sessionId);
@@ -538,7 +728,7 @@ export class TakeoverService {
    * after the capture, {@link stopTerminal}). Registers the take-over: a second one
    * for the same session is refused until this one ends.
    */
-  async stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>> {
+  async #stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>> {
     const record = await this.#store.sessions.get(sessionId);
     if (!record) throw new TakeoverError(404, 'not-found', `no session ${sessionId}`);
     await this.#expireStale(sessionId);
@@ -599,7 +789,7 @@ export class TakeoverService {
    * working tree) and its push to the temporary branch. The temp branches are
    * written to the leftovers list at once, so a crash never loses track of them.
    */
-  async capture(opId: string, exclude: readonly string[] = []): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>> {
+  async #capture(opId: string, exclude: readonly string[] = []): Promise<OpAnswer<{ readonly repos: readonly CapturedRepo[] }>> {
     const op = this.#source(opId);
     const log: string[] = [];
     const git = this.#git(log);
@@ -608,7 +798,7 @@ export class TakeoverService {
     const left = new Set(exclude);
     for (const repo of inspected) {
       if (left.has(repo.path)) continue;
-      const captured = await git.capture(repo, op.sessionId);
+      const captured = await this.#moveLog.step(opId, 'push', 'source', () => git.capture(repo, op.sessionId), { repo: repo.name, path: repo.path }, (result) => ({ uncommitted: result.uncommitted, wip: result.wipSha !== null }));
       const leftover = await this.#addLeftover({ repoPath: repo.path, remoteName: repo.remoteName, remoteUrl: repo.remoteUrl, branch: captured.tempBranch, reason: null });
       op.captured.push({ ...captured, repoPath: repo.path, leftoverId: leftover.id });
     }
@@ -624,8 +814,7 @@ export class TakeoverService {
     return { repos: answer.result.repos };
   }
 
-  /** Stops a hooked session's terminal `claude` (after the capture). */
-  async stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>> {
+  async #stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>> {
     const op = this.#source(opId);
     if (!op.hooked) throw new TakeoverError(409, 'not-hooked', 'this session is not a hooked terminal session');
     const stopped = await this.#hooks.stopTerminal(op.sessionId);
@@ -638,7 +827,7 @@ export class TakeoverService {
    * what each name stands for. Generated files (`@chat.md`, `@messages.json`) are
    * built here: the D62 handover export and the chat as messages.
    */
-  async files(opId: string): Promise<OpAnswer<{ readonly kind: ConversationKind; readonly files: readonly ConversationFile[] }>> {
+  async #files(opId: string): Promise<OpAnswer<{ readonly kind: ConversationKind; readonly files: readonly ConversationFile[] }>> {
     const op = this.#source(opId);
     const record = await this.#store.sessions.get(op.sessionId);
     if (!record) throw new TakeoverError(404, 'not-found', `no session ${op.sessionId}`);
@@ -686,7 +875,7 @@ export class TakeoverService {
   }
 
   /** One chunk of a listed file (at most {@link TAKEOVER_CHUNK_BYTES} raw bytes). */
-  async readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
+  async #readChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
     const op = this.#source(opId);
     const entry = op.files.get(name);
     if (!entry) throw new TakeoverError(404, 'unknown-file', `${name} is not part of this take-over`);
@@ -711,7 +900,7 @@ export class TakeoverService {
    * preview may be old): each must still be listed and copyable; its path is kept
    * for the chunks. Answers each one's size, checksum and secret mark.
    */
-  async workspaceFiles(opId: string, names: readonly string[]): Promise<OpAnswer<{ readonly files: ReadonlyArray<Pick<WorkspaceFileInfo, 'name' | 'size' | 'sha256'> & { readonly secret: boolean }> }>> {
+  async #workspaceFiles(opId: string, names: readonly string[]): Promise<OpAnswer<{ readonly files: ReadonlyArray<Pick<WorkspaceFileInfo, 'name' | 'size' | 'sha256'> & { readonly secret: boolean }> }>> {
     const op = this.#source(opId);
     const record = await this.#store.sessions.get(op.sessionId);
     if (!record || record.rootKind !== 'workspace' || !record.root) throw new TakeoverError(409, 'not-workspace', 'this session has no workspace folder');
@@ -729,7 +918,7 @@ export class TakeoverService {
   }
 
   /** D152 (source): one chunk of a workspace file {@link workspaceFiles} listed. */
-  async readWorkspaceChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
+  async #readWorkspaceChunk(opId: string, name: string, offset: number): Promise<ChunkAnswer> {
     const op = this.#source(opId);
     const abs = op.workspace.get(name);
     if (!abs) throw new TakeoverError(404, 'unknown-file', `${name} is not part of this take-over`);
@@ -752,7 +941,7 @@ export class TakeoverService {
    * is closed (read-only, `reopen` refuses it). The temporary branches the target
    * could not delete are deleted here; what still fails is reported.
    */
-  async finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>> {
+  async #finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>> {
     const op = this.#source(opId);
     const log: string[] = [];
     const git = this.#git(log);
@@ -808,7 +997,7 @@ export class TakeoverService {
    * gets "Continue."). A hooked terminal's stopped process cannot be started again
    * from here: the note says how.
    */
-  async rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
+  async #rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>> {
     const op = this.#sources.get(opId);
     if (!op) return { result: { notes: [] }, log: [] };
     const log: string[] = [];
@@ -1018,7 +1207,7 @@ export class TakeoverService {
    * the verification table the dialog shows; the apply then uses exactly these
    * paths.
    */
-  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async #plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     const log: string[] = [];
     const git = this.#git(log);
     const source = body.source;
@@ -1300,7 +1489,7 @@ export class TakeoverService {
    * folder. Chunks arrive in order; the last one checks the size and the sha256
    * (a mismatch deletes the file and refuses).
    */
-  async receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<{ readonly received: number; readonly done: boolean }> {
+  async #receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<{ readonly received: number; readonly done: boolean }> {
     const name = safeConversationName(input.name);
     if (name === null) throw new TakeoverError(422, 'invalid', `${String(input.name)} is not a valid file name`);
     if (!Number.isInteger(input.size) || input.size < 0 || input.size > TAKEOVER_FILE_MAX_BYTES) throw new TakeoverError(413, 'too-large', `${name} is over the ${TAKEOVER_FILE_MAX_BYTES / 1024 / 1024} MB limit`);
@@ -1338,7 +1527,7 @@ export class TakeoverService {
    * it holds a secret (here or on the source) is kept only when the developer
    * confirmed it; otherwise it is deleted and refused. Contents are never logged.
    */
-  async receiveWorkspaceChunk(input: { readonly opId: string; readonly name: unknown; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<{ readonly received: number; readonly done: boolean }> {
+  async #receiveWorkspaceChunk(input: { readonly opId: string; readonly name: unknown; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<{ readonly received: number; readonly done: boolean }> {
     const op = this.#target(input.opId);
     const bytes = Buffer.from(typeof input.data === 'string' ? input.data : '', 'base64');
     if (bytes.length > TAKEOVER_CHUNK_BYTES) throw new TakeoverError(413, 'too-large', 'a chunk is over the chunk size');
@@ -1377,7 +1566,7 @@ export class TakeoverService {
    * uncommitted again; untracked files are untracked again), and delete the
    * temporary remote branch. A failure throws; {@link abort} undoes what was done.
    */
-  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
+  async #apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
     const log: string[] = [];
     const git = this.#git(log);
     const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}) })).result;
@@ -1418,11 +1607,13 @@ export class TakeoverService {
         tempBranch: captured.tempBranch,
       };
       op.applied.push(applied);
+      // The move log: one `restore` step per repo (a failure inside fails it with the apply).
+      const restoring = this.#moveLog.begin(body.opId, 'restore', 'target', { repo: resolution.name, action: resolution.action });
       let main = applied.path;
       if (resolution.action === 'clone') {
         // D152: the clone's missing parent folders are this move's (the undo removes them when empty).
         op.createdDirs.push(...(await mkdirTracked(path.dirname(resolution.cloneTo as string))));
-        await git.clone(resolution.cloneUrl as string, resolution.cloneTo as string);
+        await this.#moveLog.step(body.opId, 'clone', 'target', () => git.clone(resolution.cloneUrl as string, resolution.cloneTo as string), { repo: resolution.name, path: resolution.cloneTo });
         applied.cloned = true;
         main = resolution.cloneTo as string;
         applied.path = main;
@@ -1474,7 +1665,7 @@ export class TakeoverService {
           const counts = await git.dirtyCounts(main);
           if (counts.total > 0) {
             const message = stashMessage(body.source.title ?? body.source.name, body.source.machine.name, new Date());
-            const commit = await git.stashPush(main, message);
+            const commit = await this.#moveLog.step(body.opId, 'stash', 'target', () => git.stashPush(main, message), { repo: resolution.name, path: main, files: counts.total });
             const stash: MoveStash = { path: main, machine: planned.machine.name, message, files: counts.total, commit };
             applied.stashed = stash;
             op.stashes.push(stash);
@@ -1505,12 +1696,14 @@ export class TakeoverService {
       } catch (error) {
         applied.tempDeleteError = error instanceof Error ? error.message : String(error);
       }
+      restoring.done({ path: applied.worktreePath ?? main, tempDeleted: applied.tempDeleted });
     }
     // D152: the workspace's own files, staged by the transfer, are placed under the workspace root (never over a different file).
     let workspaceFiles: WorkspaceFilesResult | null = null;
     if (op.staged.size > 0) {
       if (planned.folder.kind !== 'workspace') throw new TakeoverError(409, 'not-workspace', 'workspace files arrived for a session that has no workspace folder here');
-      const placed = await placeWorkspaceFiles(planned.folder.path, [...op.staged.values()], (name) => path.join(op.dir, 'workspace', ...name.split('/')));
+      const root = planned.folder.path;
+      const placed = await this.#moveLog.step(body.opId, 'files-place', 'target', () => placeWorkspaceFiles(root, [...op.staged.values()], (name) => path.join(op.dir, 'workspace', ...name.split('/'))), { files: op.staged.size }, (result) => ({ copied: result.copied.length, conflicts: result.conflicts.length, refused: result.refused.length }));
       op.placedFiles.push(...placed.placed);
       op.createdDirs.push(...placed.createdDirs);
       workspaceFiles = { copied: placed.copied, same: placed.same, conflicts: placed.conflicts, refused: placed.refused, secret: placed.secret };
@@ -1549,7 +1742,7 @@ export class TakeoverService {
    * restore), a branch the take-over created is deleted and one it moved is put
    * back, a clone is removed with its saved folder.
    */
-  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
+  async #abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
     const op = this.#targets.get(opId);
     if (!op) return { result: { notes: [] }, log: [] };
     const log: string[] = [];
@@ -1612,7 +1805,7 @@ export class TakeoverService {
    * `thread/resume`, else the D62 handover; OpenCode: the handover. The agent's
    * first message says where the session came from and which paths changed.
    */
-  async resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>> {
+  async #resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>> {
     const op = this.#targets.get(body.opId);
     if (!op || !op.place) throw new TakeoverError(409, 'not-applied', 'the working tree was not restored here yet');
     const source = body.source;
@@ -1739,8 +1932,7 @@ export class TakeoverService {
     return { result: { sessionId: created.id, name: created.name, note }, log: [] };
   }
 
-  /** Forgets a finished operation's target state (the working tree is kept). */
-  async closeTarget(opId: string): Promise<void> {
+  async #closeTarget(opId: string): Promise<void> {
     const op = this.#targets.get(opId);
     this.#targets.delete(opId);
     if (op) await rm(op.dir, { recursive: true, force: true }).catch(() => undefined);

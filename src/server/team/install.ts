@@ -31,6 +31,7 @@ export async function installTeam(app: FastifyInstance, context: TeamAppContext)
     todos: context.todos,
     peers: context.peers,
     takeover: context.takeoverRunner,
+    log: app.log,
     isHooked: (sessionId) => context.hooks.isHooked(sessionId),
     startSession: async (body, beforeSpawn) => {
       const outcome = await startNewSession(context, body, { beforeSpawn: (session) => beforeSpawn(session.id) });

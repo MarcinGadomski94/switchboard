@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { usageWindowLabel } from '../core/usage.ts';
 import { appProcesses, buildApp, createCliStatus, createPrWatcher, createSessionServices, createWorktreeManager } from './app.ts';
 import { ciTiming } from './ci/watcher.ts';
@@ -39,6 +39,7 @@ import { demoFolderChecks } from './demo/folders.ts';
 import { seedDemoV2Api, seedDemoV2Files } from './demo/v2.ts';
 import { DeviceService } from './devices/service.ts';
 import { ServiceLogRotation, serviceLogFile } from './service-log.ts';
+import { timestampConsole } from './console-time.ts';
 
 /**
  * The built UI served: `<repo>/dist/web` (the Vite build output). Tests set
@@ -50,6 +51,8 @@ const WEB_ROOT = process.env['SWITCHBOARD_WEB_ROOT']?.trim()
   : path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
 
 async function main(): Promise<void> {
+  // docs/service.md → The service log: the plain `console` lines of the subsystems carry a time too.
+  timestampConsole();
   const config = loadConfig();
   // M9.1 test redirects of the per-user service (docs/service.md); refused unless set together.
   const serviceRedirect = loadServiceRedirect();
@@ -61,6 +64,8 @@ async function main(): Promise<void> {
   // D95: WAL checkpoint + optimize while the database is idle (docs/performance.md).
   const maintenance = new DatabaseMaintenance(store);
   let app: FastifyInstance;
+  // The app's pino logger once it exists (the peer service is created before the app).
+  let appLog: FastifyBaseLogger | null = null;
   try {
     // D14 (docs/folders.md): no workspace root. The saved folders (reconciled with the disk
     // here) say where each session, scan and schedule works; the wizard only offers to add one.
@@ -163,7 +168,14 @@ async function main(): Promise<void> {
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
     // D48 (docs/peers.md): paired machines and the optional peer listener; started once the UI port is ours. The demo has none.
     // D140: the update state in short goes to the paired computers (their Settings → Computers update this one).
-    const peers = new PeerService({ config, store, bus, token, ...(power ? { power } : {}), ...(updates ? { update: { current: () => machineUpdateOf(updates.status()) } } : {}) });
+    // Its connection lines go to the service's pino logger (time, level, the machine as fields; docs/peers.md → Connection states).
+    const peerLog = (level: 'info' | 'warn', message: string, fields: object = {}): void => {
+      const text = `switchboard peers: ${message}`;
+      if (appLog) appLog[level](fields, text);
+      else if (level === 'warn') console.warn(text);
+      else console.info(text);
+    };
+    const peers = new PeerService({ config, store, bus, token, log: peerLog, ...(power ? { power } : {}), ...(updates ? { update: { current: () => machineUpdateOf(updates.status()) } } : {}) });
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
@@ -172,6 +184,7 @@ async function main(): Promise<void> {
     // D109 (docs/ci.md): the shared PR watcher; its timer starts once the port is ours. The demo's worktrees are not real.
     const ci = createPrWatcher(config, store, bus, systemItems, supervisor, hooks, worktrees);
     app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, ...(usage ? { usage } : {}), logger: true, ...(config.requestLogs ? { requestLogs: true } : {}) });
+    appLog = app.log;
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();

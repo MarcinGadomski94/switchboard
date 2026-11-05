@@ -352,8 +352,13 @@ export interface PeerServiceOptions {
    * tests shorten them). Absent fields keep the defaults.
    */
   readonly timings?: PeerTimings;
-  /** Connection state changes and failed attempts (default: `console.info` / `console.warn`). Never a token. */
-  readonly log?: (level: 'info' | 'warn', message: string) => void;
+  /**
+   * Connection state changes and failed attempts (`docs/peers.md` → *Connection states*),
+   * each with its structured `fields` (machine id and name, state, attempt, next try).
+   * `main.ts` routes them to the service's pino logger (`time`, `level`, the text in
+   * `msg`); default: `console.info` / `console.warn`. Never a token.
+   */
+  readonly log?: (level: 'info' | 'warn', message: string, fields?: PeerLogFields) => void;
   /**
    * D125 (`docs/power.md`): this machine's power sampler. A peer's stream gets
    * the last reading when it opens and asks for a fresh one at each keepalive
@@ -367,6 +372,21 @@ export interface PeerServiceOptions {
    * `machineUpdate` (the updater publishes them). Absent = no updater here.
    */
   readonly update?: { current(): MachineUpdate | null };
+}
+
+/** The structured fields of a peer connection log line (see {@link PeerServiceOptions.log}). */
+export interface PeerLogFields {
+  readonly machine: string;
+  readonly machineName: string;
+  /** The machine's connection state now. */
+  readonly state: MachineState;
+  /** The state before a change. */
+  readonly from?: MachineState | 'start';
+  /** Failed attempts so far (a failed attempt's number). */
+  readonly attempt?: number;
+  /** Seconds until the next try. */
+  readonly nextTryS?: number;
+  readonly reason?: string;
 }
 
 /** Fix · peer reconnects: tunable timings of the peer connections. */
@@ -407,7 +427,7 @@ export class PeerService implements PeerHandlers {
   readonly #onError: (error: unknown) => void;
   readonly #version: string;
   readonly #timings: PeerTimings;
-  readonly #log: (level: 'info' | 'warn', message: string) => void;
+  readonly #log: (level: 'info' | 'warn', message: string, fields?: PeerLogFields) => void;
   /** Per machine: the state last logged and the failed attempt last logged (so the log tells each change once). */
   readonly #logged = new Map<string, { state: MachineState | null; attempt: number; failures: number }>();
   /** Tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): the end of a simulated outage of the listener. */
@@ -723,7 +743,7 @@ export class PeerService implements PeerHandlers {
     const record = this.#records.get(id);
     const connection = this.#connections.get(id);
     if (!record || !connection) throw new PeerError(404, 'not-found', `no machine ${id}`);
-    if (connection.state !== 'online') this.#log('info', `${this.#label(record)}: Reconnect now`);
+    if (connection.state !== 'online') this.#log('info', `${this.#label(record)}: Reconnect now`, { machine: record.id, machineName: record.name, state: connection.state });
     const outcome = await connection.reconnectNow();
     const current = this.#records.get(id) ?? record;
     return { outcome, machine: this.#machine(current) };
@@ -748,11 +768,12 @@ export class PeerService implements PeerHandlers {
     const seen = this.#logged.get(id) ?? { state: null, attempt: 0, failures: 0 };
     const label = this.#label(record);
     const reason = status.lastFailure?.message ?? status.lastError ?? 'unknown';
+    const base = { machine: record.id, machineName: record.name, state: status.state };
     if (seen.state !== status.state) {
       const from = seen.state ?? 'start';
-      if (status.state === 'online') this.#log('info', `${label}: ${from} → online${seen.failures > 0 ? ` after ${seen.failures} failed attempt${seen.failures === 1 ? '' : 's'}` : ''}`);
-      else if (status.state === 'reconnecting') this.#log(seen.state === 'online' ? 'warn' : 'info', seen.state === null ? `${label}: connecting` : `${label}: ${from} → reconnecting (${reason})`);
-      else this.#log('warn', `${label}: ${from} → ${status.state} (${reason}; ${status.attempt} failed attempt${status.attempt === 1 ? '' : 's'})`);
+      if (status.state === 'online') this.#log('info', `${label}: ${from} → online${seen.failures > 0 ? ` after ${seen.failures} failed attempt${seen.failures === 1 ? '' : 's'}` : ''}`, { ...base, from, attempt: seen.failures });
+      else if (status.state === 'reconnecting') this.#log(seen.state === 'online' ? 'warn' : 'info', seen.state === null ? `${label}: connecting` : `${label}: ${from} → reconnecting (${reason})`, { ...base, from, ...(seen.state === null ? {} : { reason }) });
+      else this.#log('warn', `${label}: ${from} → ${status.state} (${reason}; ${status.attempt} failed attempt${status.attempt === 1 ? '' : 's'})`, { ...base, from, attempt: status.attempt, reason });
       seen.state = status.state;
     }
     if (status.state === 'online') {
@@ -763,8 +784,9 @@ export class PeerService implements PeerHandlers {
       seen.failures = status.attempt;
       // Every failed attempt while reconnecting, then the first five and every 20th (a long outage stays readable).
       if (status.state === 'reconnecting' || status.attempt <= 5 || status.attempt % 20 === 0) {
-        const next = status.nextAttemptAt === null ? '' : `; next try in ${Math.max(0, Math.round((status.nextAttemptAt - Date.now()) / 1000))} s`;
-        this.#log('info', `${label}: attempt ${status.attempt} failed (${reason})${next}`);
+        const nextTryS = status.nextAttemptAt === null ? null : Math.max(0, Math.round((status.nextAttemptAt - Date.now()) / 1000));
+        const next = nextTryS === null ? '' : `; next try in ${nextTryS} s`;
+        this.#log('warn', `${label}: attempt ${status.attempt} failed (${reason})${next}`, { ...base, attempt: status.attempt, reason, ...(nextTryS === null ? {} : { nextTryS }) });
       }
     }
     this.#logged.set(id, seen);
