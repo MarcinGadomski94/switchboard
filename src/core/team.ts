@@ -11,6 +11,7 @@
  */
 
 import type { MoveStash } from './move-worktrees.ts';
+import type { MoveOverwrite } from './move-overwrite.ts';
 import type { TeamAccessEntryView } from './team-access.ts';
 
 /**
@@ -542,6 +543,8 @@ export interface TeamMoveRun {
   readonly rolledBack?: boolean | null;
   /** D153: stashes the move made in target checkouts (kept, also after an undo; never dropped or popped). Absent from an older machine's run. */
   readonly stashes?: readonly MoveStash[];
+  /** D157: branches the move overwrote on the target, each kept on its backup branch. Absent from an older machine's run. */
+  readonly overwrites?: readonly MoveOverwrite[];
 }
 
 /**

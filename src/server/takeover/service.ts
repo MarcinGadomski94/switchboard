@@ -71,6 +71,7 @@ import type { WorktreeManager } from '../worktrees/manager.ts';
 import { type WorksInEvidence, type WorksInSource, type WorkspaceFileInfo, type WorkspaceFileTarget, type WorkspaceFilesListing, type WorkspaceFilesResult, type WorkspaceRootCheck, WORKSPACE_BINARY_MAX_BYTES, WORKSPACE_FILE_MAX_BYTES, workspaceCopyAudit } from '../../core/workspace-move.ts';
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
 import { carriedByDefault, isHiddenSolutionName, isOutsideRoot } from '../../core/outside-repos.ts';
+import { type MoveOverwrite, type TargetDiverged, overwriteConfirmed, overwriteNote } from '../../core/move-overwrite.ts';
 import { type MoveStash, type SkippedWorktree, type TargetChanges, isSafeWorktreeLayout, skippedWarning, stashAudit, stashMessage, worktreeAtTarget, worktreeCarry, worktreeLayout } from '../../core/move-worktrees.ts';
 import type { MoveCarried, SourceCleanupReport } from '../../core/source-cleanup.ts';
 import { SourceCleanup } from './source-cleanup.ts';
@@ -186,6 +187,8 @@ interface TargetOp {
   createdDirs: string[];
   /** D153: the stashes this op made in target checkouts (kept: the undo never touches them, it only reports them). */
   stashes: MoveStash[];
+  /** D157: the branches this op overwrote (their backup branches are kept; the undo moves each branch back). */
+  overwrites: MoveOverwrite[];
 }
 
 /** One transferred chunk. */
@@ -208,6 +211,8 @@ export interface TargetBody {
   readonly placement?: TargetPlacement;
   /** D153: the target checkouts whose uncommitted changes the developer confirmed stashing ("Stash them on <PC>"). */
   readonly stashTargets?: readonly string[];
+  /** D157: the target checkouts whose diverged branch the developer confirmed overwriting ("Overwrite them on <PC> (keep a backup branch)"). */
+  readonly overwriteTargets?: readonly string[];
 }
 
 /** The target's resume request. */
@@ -441,7 +446,7 @@ export class TakeoverService {
    * (the run's checks) it is logged as the run's `plan` step; the preview and the
    * apply's own re-check are not.
    */
-  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     return this.#moveLog.step(moveLogRunId(body.opId), 'plan', 'target', () => this.#plan(body), { from: body.source.machine.name }, (answer) => ({
       repos: answer.result.repos.map((repo) => `${repo.name}:${repo.action}`),
       blockers: answer.result.blockers.length,
@@ -466,19 +471,20 @@ export class TakeoverService {
   }
 
   /** Step 5 (target): restores the working tree ({@link #apply}); clone, stash, restore and files-copy are its sub-steps. */
-  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
+  async apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
     return this.#moveLog.step(body.opId, 'apply', 'target', () => this.#apply(body), { repos: body.captured.length }, (answer) => ({
       cwd: answer.result.place.cwd,
       restored: answer.result.applied.length,
       stashes: answer.result.stashes?.length ?? 0,
+      overwrites: answer.result.overwrites?.length ?? 0,
     }));
   }
 
   /** The target's undo after a failure ({@link #abort}); nothing is logged when this machine holds nothing of the run. */
-  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
+  async abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
     this.#endChunks(opId);
     if (!this.#targets.has(opId)) return this.#abort(opId);
-    return this.#moveLog.step(opId, 'undo', 'target', () => this.#abort(opId), {}, (answer) => ({ notes: answer.result.notes.map(moveLogReason), stashesKept: answer.result.stashes?.length ?? 0 }));
+    return this.#moveLog.step(opId, 'undo', 'target', () => this.#abort(opId), {}, (answer) => ({ notes: answer.result.notes.map(moveLogReason), stashesKept: answer.result.stashes?.length ?? 0, backupsKept: answer.result.overwrites?.length ?? 0 }));
   }
 
   /** Step 6 (target): installs the conversation and starts the session ({@link #resume}). */
@@ -1337,7 +1343,7 @@ export class TakeoverService {
    * the verification table the dialog shows; the apply then uses exactly these
    * paths.
    */
-  async #plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
+  async #plan(body: Pick<TargetBody, 'source' | 'clonePaths' | 'placement' | 'stashTargets' | 'overwriteTargets'> & { readonly opId?: string }): Promise<OpAnswer<TargetPlan>> {
     const log: string[] = [];
     const git = this.#git(log);
     const source = body.source;
@@ -1369,6 +1375,8 @@ export class TakeoverService {
     const dirtyTargets = new Set<string>();
     // D153: what changed in each dirty checkout (shown with the blocker / the stash choice).
     const targetChanges = new Map<string, TargetChanges>();
+    // D157: target branches with commits the source's does not have (`<checkout>\n<branch>`).
+    const diverged = new Map<string, TargetDiverged>();
     // D153: one of the agent's own worktrees keeps its place next to the checkout; two worktrees never share a path.
     const worktreeOf = (repoPath: string, sessionName: string, repo?: SourceRepo): string => (repo?.worktreeAt && isSafeWorktreeLayout(repo.worktreeAt) ? path.resolve(worktreeAtTarget(repoPath, repo.worktreeAt)) : worktreePathOf(repoPath, sessionName));
     const worktreeUsers = new Map<string, string>();
@@ -1425,6 +1433,8 @@ export class TakeoverService {
           dirtyTargets.add(match.path);
           targetChanges.set(match.path, await git.targetChanges(match.path));
         }
+        const ahead = await this.#divergedOf(git, match.path, repo);
+        if (ahead) diverged.set(`${match.path}\n${repo.branch}`, ahead);
       } else {
         const to = typed[repo.key]?.trim() || workspaceDefaults[repo.key] || (defaultCloneParent ? path.join(defaultCloneParent, repo.name) : '');
         if (to !== '') {
@@ -1446,6 +1456,9 @@ export class TakeoverService {
       dirtyTargets,
       targetChanges,
       ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}),
+      diverged,
+      ...(body.overwriteTargets ? { overwriteTargets: body.overwriteTargets } : {}),
+      sourceName: source.machine.name,
       machineName: self.name,
       worktreeBlockers,
       worktreePathOf: worktreeOf,
@@ -1553,6 +1566,27 @@ export class TakeoverService {
   }
 
   /**
+   * D157: what the target's `repo.branch` in `checkout` has that the source's does
+   * not (read-only, no network). Exact when the source's tip (`headSha`) is here
+   * already (always so after an attempt that fetched it); else measured against
+   * the branch's remote-tracking copy here (commits never pushed from this machine).
+   * `null` when the branch is not here, is merely behind, or git cannot tell (the
+   * apply's own check then still refuses a diverged branch without the confirmation).
+   */
+  async #divergedOf(git: TakeoverGit, checkout: string, repo: SourceRepo): Promise<TargetDiverged | null> {
+    if (!isSafeBranchName(repo.branch)) return null;
+    const localTip = await git.sha(checkout, `refs/heads/${repo.branch}`);
+    if (localTip === null) return null;
+    let base: string | null = isCommitId(repo.headSha) ? await git.sha(checkout, repo.headSha) : null;
+    if (base === null) {
+      const remote = await git.remoteByKey(checkout, remoteKeyOf(repo));
+      base = remote ? await git.sha(checkout, `refs/remotes/${remote.name}/${repo.branch}`) : null;
+    }
+    if (base === null || (await git.isAncestor(checkout, localTip, base))) return null;
+    return git.divergedCommits(checkout, repo.branch, localTip, base);
+  }
+
+  /**
    * The remote check of the plan (`docs/peers.md` → *Reaching the remote*): for every
    * repo the take-over will fetch into, `git ls-remote` of the checkout's matching
    * remote, and for every repo it will clone, of the clone URL, all at once, from
@@ -1625,7 +1659,7 @@ export class TakeoverService {
   #target(opId: string): TargetOp {
     let op = this.#targets.get(opId);
     if (!op) {
-      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null, staged: new Map(), stagedBytes: 0, placedFiles: [], createdDirs: [], stashes: [] };
+      op = { dir: this.#stage(opId), applied: [], worktreeRecords: [], installed: [], place: null, sessionId: null, addedFolderId: null, staged: new Map(), stagedBytes: 0, placedFiles: [], createdDirs: [], stashes: [], overwrites: [] };
       this.#targets.set(opId, op);
     }
     return op;
@@ -1713,10 +1747,10 @@ export class TakeoverService {
    * uncommitted again; untracked files are untracked again), and delete the
    * temporary remote branch. A failure throws; {@link abort} undoes what was done.
    */
-  async #apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>> {
+  async #apply(body: TargetBody & { readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string; readonly folder: { readonly id: string | null; readonly path: string; readonly kind: string } }; readonly changes: readonly PathChange[]; readonly applied: readonly AppliedRepo[]; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
     const log: string[] = [];
     const git = this.#git(log);
-    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}) })).result;
+    const planned = (await this.plan({ source: body.source, ...(body.clonePaths ? { clonePaths: body.clonePaths } : {}), ...(body.placement ? { placement: body.placement } : {}), ...(body.stashTargets ? { stashTargets: body.stashTargets } : {}), ...(body.overwriteTargets ? { overwriteTargets: body.overwriteTargets } : {}) })).result;
     if (planned.blockers.length > 0 || planned.folder === null || planned.cwd === null) throw new TakeoverError(409, 'blocked', planned.blockers.join('; ') || 'the session cannot be placed on this machine');
     const op = this.#target(body.opId);
     const changes: PathChange[] = [];
@@ -1780,8 +1814,21 @@ export class TakeoverService {
       await git.tryRemote(main, ['fetch', '--quiet', remote.name, `+refs/heads/${repo.branch}:refs/remotes/${remote.name}/${repo.branch}`]);
       const localTip = await git.sha(main, `refs/heads/${repo.branch}`);
       applied.previousTip = localTip;
-      if (localTip !== null && !(await git.isAncestor(main, localTip, tip))) {
-        throw new TakeoverError(409, 'diverged', `${repo.name}: the branch ${repo.branch} on this machine has commits the original does not have; nothing was changed`);
+      // D157: diverged: overwritten (its old tip kept on a backup branch) only when the developer confirmed it for this checkout.
+      const divergedHere = localTip !== null && !(await git.isAncestor(main, localTip, tip));
+      const overwrite = divergedHere && (resolution.overwrite === true || overwriteConfirmed(body.overwriteTargets, resolution.matchedPath ?? main));
+      if (divergedHere && !overwrite) {
+        throw new TakeoverError(409, 'diverged', `${repo.name}: the branch ${repo.branch} on this machine has commits the original does not have; nothing was changed. Try again and tick "Overwrite them on ${planned.machine.name} (keep a backup branch)", or use another folder there, or clone it fresh`);
+      }
+      if (overwrite && localTip !== null) {
+        const replaced = (await git.divergedCommits(main, repo.branch, localTip, tip))?.count ?? 0;
+        const backup = await this.#moveLog.step(body.opId, 'backup', 'target', () => git.createBackupBranch(main, repo.branch, localTip, new Date()), { repo: resolution.name, path: main, branch: moveLogReason(repo.branch), commits: replaced }, (name) => ({ backup: moveLogReason(name) }));
+        const record: MoveOverwrite = { path: main, machine: planned.machine.name, branch: repo.branch, backup, oldTip: localTip, newTip: tip, count: replaced };
+        applied.overwritten = record;
+        op.overwrites.push(record);
+        const audit = overwriteNote(record);
+        log.push(audit);
+        this.#onAudit(moveLogReason(audit));
       }
       // What the plan let through at the worktree path / on the branch: an empty folder is removed, a stale entry an earlier attempt left (its folder gone) is removed (that entry only).
       await git.clearWorktreeSlot(main, resolution.worktreePath, repo.branch);
@@ -1825,6 +1872,9 @@ export class TakeoverService {
         if (localTip === null) {
           applied.createdBranch = true;
           await git.run(main, ['checkout', '--quiet', '-b', repo.branch, tip]);
+        } else if (applied.overwritten) {
+          // D157: confirmed: the branch is moved to the restored commit (its tree was clean, or stashed; the old tip is on the backup branch).
+          await git.run(main, ['checkout', '--quiet', '-B', repo.branch, tip]);
         } else {
           await git.run(main, ['checkout', '--quiet', repo.branch]);
           await git.run(main, ['merge', '--quiet', '--ff-only', tip]);
@@ -1880,7 +1930,7 @@ export class TakeoverService {
     }
     op.place = { folder: folderRef, cwd: planned.cwd, changes };
     op.runInKey = planned.runIn?.key ?? null;
-    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles, stashes: [...op.stashes] }, log };
+    return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles, stashes: [...op.stashes], overwrites: [...op.overwrites] }, log };
   }
 
   /**
@@ -1891,7 +1941,7 @@ export class TakeoverService {
    * restore), a branch the take-over created is deleted and one it moved is put
    * back, a clone is removed with its saved folder.
    */
-  async #abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>> {
+  async #abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[]; readonly overwrites?: readonly MoveOverwrite[] }>> {
     const op = this.#targets.get(opId);
     if (!op) return { result: { notes: [] }, log: [] };
     const log: string[] = [];
@@ -1944,7 +1994,9 @@ export class TakeoverService {
     this.#targets.delete(opId);
     // D153: a stash this move made stays (the developer's changes); the undo only reports it.
     for (const stash of op.stashes) log.push(`kept the stash in ${stash.path}: "${stash.message}"`);
-    return { result: { notes, stashes: [...op.stashes] }, log };
+    // D157: a backup branch stays (the undo moved the branch back to its old tip above).
+    for (const overwrite of op.overwrites) log.push(`kept the backup branch ${overwrite.backup} in ${overwrite.path} (the ${overwrite.count} replaced commit${overwrite.count === 1 ? '' : 's'} of ${overwrite.branch})`);
+    return { result: { notes, stashes: [...op.stashes], overwrites: [...op.overwrites] }, log };
   }
 
   /**

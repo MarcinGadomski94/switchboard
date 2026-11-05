@@ -394,6 +394,7 @@ function readRecord(value: unknown): MoveRecord | null {
     rollbackNotes: Array.isArray(record.rollbackNotes) ? record.rollbackNotes : [],
     leftovers: Array.isArray(record.leftovers) ? record.leftovers : [],
     stashes: Array.isArray(record.stashes) ? record.stashes : [],
+    overwrites: Array.isArray(record.overwrites) ? record.overwrites : [],
     interrupted: record.interrupted === true,
     choices: record.choices ?? { placement: null, clonePaths: {}, workspaceFiles: null, excludeRepos: [], stashTargets: [] },
   };

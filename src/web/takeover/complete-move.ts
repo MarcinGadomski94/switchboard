@@ -1,5 +1,6 @@
 import { type MoveStash, type SkippedWorktree, type TargetChanges, groupByRepo, stashConfirmed, stashNote, worktreeLabel } from '../../core/move-worktrees.ts';
 import type { TakeoverPreview, TargetPlacement } from '../../core/takeover.ts';
+import { type MoveOverwrite, type TargetDiverged, divergedHeadline, overwriteConfirmed, overwriteNote } from '../../core/move-overwrite.ts';
 import { outsideCarried, outsideDefaultText } from '../../core/outside-repos.ts';
 import {
   type WorkspaceFileChoice,
@@ -40,15 +41,22 @@ export interface MoveChoice {
    * stashing there ("Stash them on <PC>"). Absent / empty = none (a dirty checkout blocks).
    */
   readonly stashTargets?: readonly string[];
+  /**
+   * D157: the target checkouts whose diverged branch the developer confirmed
+   * overwriting there ("Overwrite them on <PC> (keep a backup branch)"). Absent /
+   * empty = none (a diverged branch blocks).
+   */
+  readonly overwriteTargets?: readonly string[];
 }
 
 /** An empty choice (the remembered folders, if any, come with the first preview). */
 export const EMPTY_CHOICE: MoveChoice = { placement: null, clonePaths: {}, files: null };
 
 /** The request fields of a choice (`placement` left out while it is `null` and `keepNull` is off: the remembered folders apply). */
-export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } {
+export function choiceBody(choice: MoveChoice, keepNull = false): { placement?: TargetPlacement | null; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[]; overwriteTargets?: string[] } {
   return {
     ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: [...choice.stashTargets] } : {}),
+    ...(choice.overwriteTargets && choice.overwriteTargets.length > 0 ? { overwriteTargets: [...choice.overwriteTargets] } : {}),
     ...(choice.placement !== null ? { placement: choice.placement } : keepNull ? { placement: null } : {}),
     ...(Object.keys(choice.clonePaths).length > 0 ? { clonePaths: { ...choice.clonePaths } } : {}),
     ...(choice.files ? { workspaceFiles: choice.files } : {}),
@@ -97,6 +105,47 @@ export function stashRows(preview: TakeoverPreview, choice: MoveChoice): StashRo
     out.push({ path: repo.matchedPath, names: [repo.name], changes: repo.targetChanges, confirmed: stashConfirmed(choice.stashTargets, repo.matchedPath) });
   }
   return out;
+}
+
+/** D157: the choice with overwriting the diverged branch(es) of the target checkout at `path` confirmed (`on`) or not. */
+export function withOverwrite(choice: MoveChoice, path: string, on: boolean): MoveChoice {
+  const out = (choice.overwriteTargets ?? []).filter((entry) => entry !== path);
+  if (on) out.push(path);
+  const { overwriteTargets: _old, ...rest } = choice;
+  return out.length > 0 ? { ...rest, overwriteTargets: out } : rest;
+}
+
+/** D157: one target checkout whose branch has commits the source's does not (the overwrite choice). */
+export interface OverwriteRow {
+  /** The checkout on the target. */
+  readonly path: string;
+  /** Each diverged branch there with its headline ("<PC>'s <branch> in <path> has N commits that aren't on <source>"). */
+  readonly branches: ReadonlyArray<{ readonly diverged: TargetDiverged; readonly headline: string }>;
+  /** The developer confirmed overwriting them (a backup branch kept). */
+  readonly confirmed: boolean;
+}
+
+/** D157: the target checkouts with a diverged branch in the preview, once each. */
+export function overwriteRows(preview: TakeoverPreview, choice: MoveChoice): OverwriteRow[] {
+  const target = preview.target.machine.name;
+  const source = preview.source.machine.name;
+  const out: Array<{ path: string; branches: Array<{ diverged: TargetDiverged; headline: string }>; confirmed: boolean }> = [];
+  for (const repo of preview.target.repos) {
+    if (!repo.targetDiverged || repo.matchedPath === null) continue;
+    const diverged = repo.targetDiverged;
+    let row = out.find((entry) => entry.path === repo.matchedPath);
+    if (!row) {
+      row = { path: repo.matchedPath, branches: [], confirmed: overwriteConfirmed(choice.overwriteTargets, repo.matchedPath) };
+      out.push(row);
+    }
+    if (!row.branches.some((entry) => entry.diverged.branch === diverged.branch)) row.branches.push({ diverged, headline: divergedHeadline(target, repo.matchedPath, source, diverged) });
+  }
+  return out;
+}
+
+/** D157: what a run says about the branches it overwrote (the replaced commits are kept on a backup branch). */
+export function overwriteLines(overwrites: readonly MoveOverwrite[] | undefined): string[] {
+  return (overwrites ?? []).map((entry) => `${overwriteNote(entry)}.`);
 }
 
 /** D153: what a run says about the stashes it made (kept on the target). */
