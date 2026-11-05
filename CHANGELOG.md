@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.25 (2026-11-05)
+
+### Paired computers
+- **Choose where a moved agent runs:** the move dialog's "Where it runs on <computer>" offers the workspace root or one of the repos it carries. Pick a repo and the agent continues there as a plain repo agent, with no workspace needed on the other computer.
+- **Clean up after a move:** tick "Clean up on <computer> after a successful move" and, once the move has succeeded, Switchboard deletes the agent's leftover conversation file and its carried worktrees there (only when unchanged since they were copied; a branch only when it is on the remote; never a main checkout or anything that did not travel). Every move also lists what you can still remove by hand, with paths and reasons, and **Copy the list**. Agents moved earlier get "Clean up on this computer…" on their page and in Archived. See `docs/peers.md` → *Cleaning up the source after a move* (D156).
+
 ## 2.4.24 (2026-11-05)
 
 ### Paired computers
