@@ -162,6 +162,8 @@ Built on the **D65 take-over**; no new transfer mechanism.
 
 Tests: `tests/server/team/crew-move.test.ts` (two machines: a blocker on one teammate stops the move before anything moves; a failure mid-way stops the rest and reports moved / failed / not moved; the adjustment after the teammates that moved), `tests/core/workspace-move.test.ts` (`crewMoveSummary`), `tests/web/complete-move.test.ts` (`shareChoice`), `tests/e2e/v2-complete-move.spec.ts` (the crew dialog: a blocker per teammate, then the crew moved).
 
+**The move log:** each member move (and each teammate of a crew move) is logged step by step in the service log of the machines it runs on, its start line naming the member (and the crew move); a crew move adds `move: crew start` and `move: crew done` / `move: crew failed` (who moved, who did not). `grep '"msg":"move:' service.log`; details: `docs/peers.md` → *The move log*, `docs/service.md` → *Following a move*.
+
 ## Devices (D73)
 
 Phones may read the team (state, members, templates, suggestions, activity, Needs you, move runs), answer (approve / decline / dismiss requests; Inbox answers as before), pause / resume, give tasks (hand-offs and their state), reorder the members (`PUT /api/team/order`, D100 follow-up 2026-10-14), list / create / reorder / delete teams and move a member to another team (multiple teams, same day; renaming a team stays on the desktop like renaming the first one), adopt / create, return and remove a member (the session is never lost by any of them). Refused (`DEVICE_REFUSED`): renaming the team and editing a member's charter / rhythm / budget / gates (configuration), moving a member (a take-over, desktop only like D65) and the machines' sync exchange.

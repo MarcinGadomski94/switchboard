@@ -82,7 +82,9 @@ import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../su
 import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, excludeReposOf, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
 import { stashTargetsOf } from '../../core/move-worktrees.ts';
-import type { TakeoverRunner } from '../takeover/runner.ts';
+import type { MoveContext, TakeoverRunner } from '../takeover/runner.ts';
+import { type MoveLogSink, SILENT_MOVE_LOG } from '../takeover/move-log.ts';
+import { MOVE_LOG_PREFIX, moveLogReason } from '../../core/move-log.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
 import { type SecretStore, defaultSecretStore } from './access/secret-store.ts';
@@ -137,6 +139,8 @@ export interface TeamServiceOptions {
   /** A local change is synced after this (default 300 ms). */
   readonly pushDelayMs?: number;
   readonly onError?: (error: unknown) => void;
+  /** The move log (`docs/peers.md` → *The move log*): a crew move's start and outcome; the member moves log through the take-over. Absent: none. */
+  readonly log?: MoveLogSink;
 }
 
 /** The member fields a body sets (adopt, create, update). */
@@ -198,6 +202,7 @@ export type { TeamMoveRun } from '../../core/team.ts';
  */
 export class TeamService {
   readonly #o: TeamServiceOptions;
+  readonly #moveLog: MoveLogSink;
   /** D132: `team.db` was opened (or tried) at start. */
   #enabled = false;
   #db: TeamDb | null = null;
@@ -237,6 +242,7 @@ export class TeamService {
 
   constructor(options: TeamServiceOptions) {
     this.#o = options;
+    this.#moveLog = options.log ?? SILENT_MOVE_LOG;
     this.access = new TeamAccess({
       store: options.store,
       supervisor: options.supervisor,
@@ -2222,7 +2228,9 @@ export class TeamService {
     // D110: the folders the check used (the remembered ones when the request names none) are the ones the move uses.
     const checked = (check.preview as { placement?: TargetPlacement | null } | null)?.placement ?? null;
     const choice = moveTargetOf(body);
-    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target, ...choice, ...(choice.placement === undefined && choice.savedFolders !== true && checked ? { placement: checked } : {}) });
+    const crew = crewMoveOf(body);
+    const context: MoveContext = { member: { id: member.id, name: member.name }, ...(crew ? { crew } : {}) };
+    const run = await takeover.start({ sessionId: member.sessionId, targetMachine: target, ...choice, ...(choice.placement === undefined && choice.savedFolders !== true && checked ? { placement: checked } : {}), context });
     const moveRun: TeamMoveRun = { id: randomUUID(), memberId: id, state: 'running', takeoverRunId: run.id, error: null, targetMachineId: target, machineId: member.machineId, rolledBack: null };
     this.#moves.set(moveRun.id, moveRun);
     // A run is never left `running`: whatever breaks while it is followed fails it, with the reason.
@@ -2434,7 +2442,13 @@ export class TeamService {
       this.#crewMoves.delete(oldest.id);
     }
     const previews = new Map(check.members.map((member) => [member.memberId, (member.preview ?? null) as TakeoverPreview | null]));
-    void this.#runCrewMove(run.id, body, previews).catch((error: unknown) => {
+    const teamName = this.#team(check.teamId).name;
+    const targetName = (await this.#machineNames()).get(check.targetMachineId)?.name ?? check.targetMachineId;
+    this.#moveLog.info(
+      { run: run.id, step: 'crew', state: 'started', crew: teamName, crewId: check.teamId, target: targetName, members: run.members.filter((member) => member.state === 'waiting').map((member) => member.name) },
+      `${MOVE_LOG_PREFIX} crew start`,
+    );
+    void this.#runCrewMove(run.id, body, previews, teamName).catch((error: unknown) => {
       this.#error(error);
       const now = this.#crewMoves.get(run.id);
       if (now?.state === 'running') this.#crewMoves.set(run.id, { ...now, state: 'failed', error: error instanceof Error ? error.message : String(error) });
@@ -2449,14 +2463,28 @@ export class TeamService {
     return run;
   }
 
-  async #runCrewMove(runId: string, body: Record<string, unknown>, previews: ReadonlyMap<string, TakeoverPreview | null>): Promise<void> {
+  async #runCrewMove(runId: string, body: Record<string, unknown>, previews: ReadonlyMap<string, TakeoverPreview | null>, teamName: string): Promise<void> {
+    const started = Date.now();
     const update = (memberId: string, patch: Partial<CrewMoveMember>): void => {
       const now = this.#crewMoves.get(runId) as CrewMoveRun;
       this.#crewMoves.set(runId, { ...now, members: now.members.map((member) => (member.memberId === memberId ? { ...member, ...patch } : member)) });
     };
     const finish = (state: CrewMoveRun['state'], error: string | null): void => {
       const now = this.#crewMoves.get(runId) as CrewMoveRun;
-      this.#crewMoves.set(runId, { ...now, state, error, members: now.members.map((member) => (state === 'failed' && member.state === 'waiting' ? { ...member, state: 'not-moved' } : member)) });
+      const ended: CrewMoveRun = { ...now, state, error, members: now.members.map((member) => (state === 'failed' && member.state === 'waiting' ? { ...member, state: 'not-moved' } : member)) };
+      this.#crewMoves.set(runId, ended);
+      const fields = {
+        run: runId,
+        step: 'crew',
+        state: state === 'done' ? 'done' : 'failed',
+        ms: Date.now() - started,
+        crew: teamName,
+        moved: ended.members.filter((member) => member.state === 'moved').map((member) => member.name),
+        notMoved: ended.members.filter((member) => member.state === 'not-moved' || member.state === 'failed').map((member) => member.name),
+        ...(error ? { reason: moveLogReason(error) } : {}),
+      };
+      if (state === 'done') this.#moveLog.info(fields, `${MOVE_LOG_PREFIX} crew done`);
+      else this.#moveLog.warn(fields, `${MOVE_LOG_PREFIX} crew failed`);
     };
     const target = (this.#crewMoves.get(runId) as CrewMoveRun).targetMachineId;
     // What earlier teammates made on the target: a workspace root, the repos they cloned (by remote key).
@@ -2468,7 +2496,8 @@ export class TeamService {
       update(member.memberId, { state: 'moving' });
       const own = this.#crewMemberBody(body, member.memberId, target);
       const preview = previews.get(member.memberId) ?? null;
-      const adjusted = crewAdjusted(own, preview, createdRoots, clonedKeys);
+      // The move log: each teammate's take-over names the crew move it is part of.
+      const adjusted = { ...crewAdjusted(own, preview, createdRoots, clonedKeys), crewMove: { id: (this.#crewMoves.get(runId) as CrewMoveRun).teamId, name: teamName, run: runId } };
       let error: string | null = null;
       try {
         const started = await this.move(member.memberId, adjusted);
@@ -2575,6 +2604,14 @@ function stripRequest(record: TeamRequestRecord): TeamRequest {
  * D110: the target folders (and clone paths) of a member's move, from the request
  * body, in the take-over's shape; a malformed value is refused (422).
  */
+/** The crew move a member move is part of (`crewMove` in its body, set by the crew move), for the move log; `null` for none or a malformed one. */
+function crewMoveOf(body: Record<string, unknown>): { readonly id: string; readonly name: string; readonly run: string } | null {
+  const value = body['crewMove'];
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { id, name, run } = value as Record<string, unknown>;
+  return typeof id === 'string' && typeof name === 'string' && typeof run === 'string' ? { id: id.slice(0, 64), name: name.slice(0, 200), run: run.slice(0, 64) } : null;
+}
+
 function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');

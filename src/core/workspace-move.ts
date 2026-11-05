@@ -106,8 +106,8 @@ const SECRET_NAME_PATTERNS: ReadonlyArray<RegExp> = [
 const SECRET_KEY = String.raw`[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|credential|auth)[\w.-]*`;
 /** `KEY = value`, `"key": "value"`, `key: value` with a value that looks like a credential (12+ token characters). */
 const SECRET_ASSIGNMENT = new RegExp(String.raw`(?:^|[\s{,"'])${SECRET_KEY}["']?\s*[:=]\s*["']?[A-Za-z0-9_\-+/=.~]{12,}`, 'im');
-/** A private key block, and tokens with well-known shapes. */
-const SECRET_SHAPES: ReadonlyArray<RegExp> = [
+/** A private key block, and tokens with well-known shapes (also the move log's scrubber, `src/core/move-log.ts`). */
+export const SECRET_SHAPES: ReadonlyArray<RegExp> = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}/,

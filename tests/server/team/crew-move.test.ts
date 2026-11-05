@@ -100,6 +100,22 @@ describe('D152: moving a whole crew', () => {
     }, 30_000);
     expect(await machinesOf()).toEqual({ Dev: world.bId, Tester: world.aId, Writer: world.aId });
     expect((await world.a.call('GET', '/api/team/crew-moves/nope')).status).toBe(404);
+
+    // The move log (docs/peers.md → The move log): the crew move's start and outcome, and each teammate's take-over names the member and the crew move.
+    const lines = world.a.server
+      .output()
+      .split('\n')
+      .filter((line) => line.startsWith('{') && line.includes('"msg":"move:'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines.find((line) => line['msg'] === 'move: crew start' && line['run'] === runId)).toMatchObject({ crew: 'Ops', crewId: teamId, members: ['Dev', 'Tester', 'Writer'] });
+    expect(lines.find((line) => line['msg'] === 'move: crew failed' && line['run'] === runId)).toMatchObject({ level: 40, moved: ['Dev'], notMoved: ['Tester', 'Writer'], reason: expect.stringContaining('Tester could not move') });
+    const starts = lines.filter((line) => line['msg'] === 'move: start' && line['crewRun'] === runId);
+    expect(starts.map((line) => [line['member'], line['crew'], line['initiator']])).toEqual([
+      ['Dev', 'Ops', 'source'],
+      ['Tester', 'Ops', 'source'],
+    ]);
+    const testerRun = starts[1]?.['run'];
+    expect(lines.find((line) => line['run'] === testerRun && line['step'] === 'outcome')).toMatchObject({ msg: 'move: failed at apply, rolled back', failedAt: 'apply' });
   });
 });
 

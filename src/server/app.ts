@@ -634,9 +634,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   const loopService = ownedLoops;
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
-  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, loops: loopService, self: () => peers.self() });
+  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, loops: loopService, self: () => peers.self(), log: app.log });
   loopService.useTakeover((sessionId) => takeover.isTakingOver(sessionId));
-  const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
+  // The move log (docs/peers.md → The move log): each step on the machine that runs it, the run's start and outcome on the initiating one.
+  const takeoverRunner = new TakeoverRunner({ service: takeover, peers, log: app.log });
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
   // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
