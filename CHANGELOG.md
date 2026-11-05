@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.29 (2026-11-05)
+
+### Paired computers
+- **A terminal agent in a saved workspace moves as a workspace agent:** an agent followed from a terminal whose folder was saved later kept a plain-folder kind, so its move stopped with "… is not in a git repository". It now takes the saved folder's kind (existing agents are repaired by a database migration).
+- **Longer conversations move:** the conversation file may now be up to 2 GB (was 200 MB). Update both computers.
+
 ## 2.4.28 (2026-11-05)
 
 ### Paired computers
