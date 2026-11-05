@@ -1129,6 +1129,36 @@ Moving a workspace session (or a whole crew) to another computer in one dialog (
 }
 ```
 
+### Moves (D154, 2026-11-05, additive)
+
+The moves list: every take-over a machine's runner drives, running and recently finished, so a move's status can be read again after its dialog closed (`docs/peers.md` → *Following a move (D154)*, `docs/decisions.md` → D154). Additive: new routes, one `/hub` event, one `InboxItem` field, one system item kind; no migration (the records are kept in the setting `takeover.moves`). Peer-callable (a peer gets this machine's own moves only) and allowed to phones.
+
+- **`GET /api/moves`** → `MoveRecord[]`: running ones first (oldest started first), then the finished ones of the last 24 hours (newest first; at most 50 per machine), this machine's and the paired machines' as last known (a paired machine's with its remote id `r~<machine>~<id>` and `machine { id, name, state }`).
+- **`GET /api/moves/{id}`** → `MoveDetail` (`MoveRecord` + `log: string[]`, the git commands both machines ran, while the runner still has them); a paired machine's id is asked there. 404 `not-found`.
+- **`POST /api/moves/{id}/dismiss`** → 204: a finished move leaves the list (and `movesChanged` with `removed: true` goes out). 404 `not-found`, 409 `running`.
+- **`MoveRecord`** `{ id, machine?, kind: agent | teammate, title, member: { id, name, teamId, teamName } | null, source: { id, name, sessionId }, target: { id, name, sessionId | null }, agentSessionId, state: running | done | failed, step: { id, label, detail } | null, steps: TakeoverStepState[], startedAt, updatedAt, endedAt | null, error: { step, message } | null, rolledBack: boolean | null, rollbackNotes: string[], interrupted: boolean, leftovers: (Leftover & { machineId })[], stashes: MoveStash[], choices: { placement | null, clonePaths, workspaceFiles | null, excludeRepos, stashTargets } }`. `source.sessionId` / `target.sessionId` are raw (as that machine knows the session); `agentSessionId` is the agent as the answering machine names it (the source session; the new one after a success). `step` is the running step, or the failed one. `interrupted`: the machine that drove it restarted while it ran (it reads `failed` at that step).
+- **`/hub` `movesChanged`** `{ move: MoveRecord, removed?: true }`: a move started, changed step (a detail-only change at most every 500 ms), ended, or was dismissed / dropped after the retention. Forwarded between peers (the receiver reads the peer's moves again and republishes it mapped).
+- **`InboxItem.move?`** `{ id, kind, title, member, source, target, choices }` on a `move-failed` system item (label `Move failed`, status `fail`, actions `move-try-again` "Try again" (a link: `POST /api/inbox/{id}/actions/move-try-again` answers 409 `refused`) and `dismiss`): what Try again reopens. A paired machine's item names the move by its remote id. It closes by itself (`moved`) when a later move of the same agent succeeds.
+- **Test hook** (`SWITCHBOARD_PEER_TEST_HOOKS=1`): `POST /api/test/peers/hold-takeover` `{ route: "target/apply" }` → 204 holds the paired machines' `POST /api/takeover/<route>` calls here; `DELETE` → 204 lets them go.
+
+```json
+{
+  "id": "6f1c…",
+  "kind": "teammate",
+  "title": "checkout-fix",
+  "member": { "id": "m-1", "name": "Developer", "teamId": "team", "teamName": "Core" },
+  "source": { "id": "pcpcpcpcpcpc", "name": "pc-office", "sessionId": "s-1" },
+  "target": { "id": "macmacmacmac", "name": "mac-laptop", "sessionId": null },
+  "agentSessionId": "s-1",
+  "state": "running",
+  "step": { "id": "transfer", "label": "Copying the conversation", "detail": "120 of 480 KB" },
+  "startedAt": "2026-11-05T10:00:00.000Z",
+  "endedAt": null,
+  "error": null,
+  "interrupted": false
+}
+```
+
 ## Session todos (D68, 2026-10-04, additive)
 
 A todo list per session: things that still need doing, kept by the developer and by the session's agent (`docs/todos.md`, `docs/decisions.md` → D68). Additive: migration 0026 (`session_todos`), one `Session` field, one `/hub` event, new routes; nothing existing changes.
@@ -1662,6 +1692,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox (D102: `review` removed), title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
 | ciChanged | { sessionId } (additive, D109: a session's pull-request status changed; the session header's PR chip reads `GET /api/sessions/{id}/ci` again; forwarded between peers with the remote session id) |
 | accountChoiceChanged | { cli, profileId, planId, moving } (additive, D138: the overall account choice of `cli` changed (`planId: null`), or a Project's accounts (`cli: null`); `moving` sessions are being moved; the account pickers read `GET /api/accounts` again; this machine's only, never forwarded between peers) |
+| movesChanged | { move: MoveRecord, removed? } (additive, D154: a move (a take-over this machine's runner drives) started, changed step, ended, or was dismissed / dropped after 24 hours (`removed`); the badges, Home's Moves card and the move dialog follow it; forwarded between peers, where the receiver reads the peer's moves again and republishes it with the move's remote id) |
 
 ## Paged events (D95, 2026-10-10, additive)
 `docs/performance.md` → *Paged events*. `GET /api/sessions/{id}/events` takes three more queries, each optional and combinable with `since`; without them the answer is every event, as before.

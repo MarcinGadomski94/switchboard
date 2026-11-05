@@ -112,7 +112,15 @@ replays only its own tours; the other UI's stay as they are stored (`pending` st
   the workspace files with secrets marked and confirmed. **The crew** (`v2-crew-menu`, else Crews in the rail
   `v2-nav-crews` or the phone's More tab `v2-tab-more`), `v2Route: '/crews'`: Move crew to computer…, every
   teammate checked first, then one by one (`docs/peers.md` → *A complete move (D152)*, `docs/team.md` →
-  *Moving a whole crew (D152)*). The last of the chain ("(13 of 13)").
+  *Moving a whole crew (D152)*). "(13 of 14)".
+- **"Follow a move after closing its window"** (`move-status`, version 2.4.23, `ui: 'v2'`, decision D154):
+  three steps. **Moves on Home** (`v2-home-moves`, Home's Moves card, else Home in the rail `v2-nav-home`),
+  `v2Route: '/'`: running moves with their step and the ones finished in the last day; a click opens the move
+  again. **The badge** (`v2-move-badge`): "Moving to (computer)… (step)" on the agent, its row, its teammate
+  card and its crew; a click opens the move. **Needs you** (`v2-home-needs`, else the Needs-you button
+  `v2-needs`), `v2Route: '/'`: a failed move's item with Try again and Dismiss, closed by a later success
+  (`docs/peers.md` → *Following a move (D154)*). The card and the badge show only while there is a move, so
+  their steps have a `missing` text. The last of the chain ("(14 of 14)").
 - **The classic What's-new** gains `two-themes` (D131): one step on classic Settings →
   Appearance's Theme row (`theme-switch`). Existing installs that stay on Classic see it.
 - **Replay:** v2 Settings › Advanced › What's new tours (`src/web/v2/tour/ToursSection.tsx`)
