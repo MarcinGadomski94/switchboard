@@ -6,7 +6,7 @@ import { continueRefusal } from '../../hooked-continue/continue.ts';
 import { type ContinueHookedRequest, closeContinueHooked, useContinueHookedRequest } from '../../hooked-continue/store.ts';
 import { closeTakeover, useTakeoverRequest } from '../../takeover/store.ts';
 import { type TakeoverRequest, clonePathsOf } from '../../takeover/takeover.ts';
-import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody } from '../../takeover/complete-move.ts';
+import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, stashLines } from '../../takeover/complete-move.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { Button, Checkbox, Chip, Dialog, Icon, Select, useToast } from '../components/index.ts';
@@ -129,7 +129,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);
@@ -311,6 +311,15 @@ function RunView({
           {run.error.message}
           {run.rollbackNotes.map((note) => (
             <div key={note}>{note}</div>
+          ))}
+        </div>
+      ) : null}
+      {stashLines(run.stashes).length > 0 ? (
+        <div className="v2-mv-warn" data-testid="v2-move-stashes">
+          {stashLines(run.stashes).map((line) => (
+            <p key={line} data-testid="v2-move-stash-note">
+              {line}
+            </p>
           ))}
         </div>
       ) : null}

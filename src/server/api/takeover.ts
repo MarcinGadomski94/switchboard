@@ -6,6 +6,7 @@ import { TakeoverGitError } from '../takeover/git.ts';
 import { TakeoverError } from '../takeover/service.ts';
 import { placementOf } from '../../core/takeover.ts';
 import { excludeReposOf, workspaceChoiceOf } from '../../core/workspace-move.ts';
+import { stashTargetsOf } from '../../core/move-worktrees.ts';
 import { isPeerRequest } from './machines.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,8 +78,10 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     if (workspaceFiles === null) return invalid(reply, 'workspaceFiles', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
     const excludeRepos = excludeReposOf(body['excludeRepos']);
     if (excludeRepos === null) return invalid(reply, 'excludeRepos', 'excludeRepos must be a list of repo paths');
+    const stashTargets = stashTargetsOf(body['stashTargets']);
+    if (stashTargets === null) return invalid(reply, 'stashTargets', 'stashTargets must be a list of checkout paths on the target');
     // D110: `placement: null` = the target's saved folders (the remembered folders are not used).
-    return { sessionId, targetMachine, ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
+    return { sessionId, targetMachine, ...(excludeRepos && excludeRepos.length > 0 ? { excludeRepos } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}), ...(clonePaths ? { clonePaths } : {}), ...(placement ? { placement } : {}), ...(body['placement'] === null ? { savedFolders: true } : {}), ...(workspaceFiles ? { workspaceFiles } : {}), confirmStopTerminal: body['confirmStopTerminal'] === true };
   };
 
   app.post('/api/takeover/preview', async (request, reply) => {
@@ -183,7 +186,10 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
   const placementIn = (body: Record<string, unknown>) => {
     const placement = placementOf(body['placement']);
     if (placement === null) throw new TakeoverError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
-    return placement ? { placement } : {};
+    // D153: the checkouts whose changes the developer confirmed stashing travel with the placement.
+    const stashTargets = stashTargetsOf(body['stashTargets']);
+    if (stashTargets === null) throw new TakeoverError(422, 'invalid', 'stashTargets must be a list of checkout paths');
+    return { ...(placement ? { placement } : {}), ...(stashTargets && stashTargets.length > 0 ? { stashTargets } : {}) };
   };
   op('target/plan', (body) => {
     const clonePaths = clonePathsOf(body['clonePaths']);
@@ -196,7 +202,7 @@ export async function registerTakeoverRoutes(app: FastifyInstance, context: ApiC
     const clonePaths = clonePathsOf(body['clonePaths']);
     if (clonePaths === null) throw new TakeoverError(422, 'invalid', 'clonePaths must map repo keys to paths');
     const placement = placementIn(body);
-    if (!('placement' in placement)) throw new TakeoverError(422, 'invalid', 'placement is required');
+    if (placement.placement === undefined) throw new TakeoverError(422, 'invalid', 'placement is required');
     const planned = await takeover.plan({ source: objectOf(body, 'source') as never, ...(clonePaths ? { clonePaths } : {}), ...placement });
     return { result: { verification: planned.result.verification ?? null, blockers: planned.result.blockers }, log: planned.log };
   });

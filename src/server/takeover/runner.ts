@@ -19,6 +19,7 @@ import {
   rollbackActions,
 } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem, filesToSend } from '../../core/workspace-move.ts';
+import type { MoveStash } from '../../core/move-worktrees.ts';
 import type { SessionMove } from '../db/repos/sessions.ts';
 import type { PeerService } from '../peers/service.ts';
 import { type ChunkAnswer, type OpAnswer, type ResumeBody, TakeoverError, type TakeoverService } from './service.ts';
@@ -51,12 +52,12 @@ export interface TakeoverEndpoint {
   receiveWorkspaceChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string; readonly secret: boolean; readonly confirmed: boolean }): Promise<unknown>;
   finish(opId: string, move: SessionMove, stillThere: readonly string[]): Promise<OpAnswer<{ readonly leftovers: readonly Leftover[]; readonly closeError: string | null }>>;
   rollbackSource(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
-  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement }): Promise<OpAnswer<TargetPlan>>;
+  plan(body: { readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[] }): Promise<OpAnswer<TargetPlan>>;
   /** D110: the target's folder picker listing (`null` = the starting places). */
   listFolders(path: string | null): Promise<TargetDirListing>;
   receiveChunk(input: { readonly opId: string; readonly name: string; readonly size: number; readonly sha256: string; readonly offset: number; readonly data: string }): Promise<unknown>;
-  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null }>>;
-  abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[] }>>;
+  apply(body: { readonly opId: string; readonly source: SourceInspect; readonly clonePaths?: Readonly<Record<string, string>>; readonly placement?: TargetPlacement; readonly stashTargets?: readonly string[]; readonly captured: readonly CapturedRepo[] }): Promise<OpAnswer<{ readonly place: { readonly cwd: string }; readonly changes: readonly unknown[]; readonly applied: ReadonlyArray<{ readonly key: string; readonly tempDeleted: boolean; readonly tempDeleteError: string | null }>; readonly workspaceFiles?: WorkspaceFilesResult | null; readonly stashes?: readonly MoveStash[] }>>;
+  abort(opId: string): Promise<OpAnswer<{ readonly notes: readonly string[]; readonly stashes?: readonly MoveStash[] }>>;
   resume(body: ResumeBody): Promise<OpAnswer<{ readonly sessionId: string; readonly name: string; readonly note: string | null }>>;
   closeTarget(opId: string): Promise<void>;
 }
@@ -141,6 +142,11 @@ export interface TakeoverRequest {
    * the move (absent: every listed repo is carried, the default, read-only ones too).
    */
   readonly excludeRepos?: readonly string[];
+  /**
+   * D153: the target checkouts whose uncommitted changes the developer confirmed
+   * stashing ("Stash them on <PC>"); absent = none (a dirty checkout blocks).
+   */
+  readonly stashTargets?: readonly string[];
 }
 
 /** Both ends of a take-over. */
@@ -173,6 +179,8 @@ interface RunState {
   log: string[];
   sessionKey: string;
   workspaceFiles: WorkspaceFilesResult | null;
+  /** D153: stashes the move made on the target (kept, also after an undo). */
+  stashes: MoveStash[];
 }
 
 /** The initiating machine's take-over runner (`docs/peers.md` → *Taking a session over*). */
@@ -225,7 +233,7 @@ export class TakeoverRunner {
       remembered = placement !== null;
     }
     const carried = withoutExcluded(source, request.excludeRepos);
-    const target = (await ends.target.plan({ source: carried, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}) })).result;
+    const target = (await ends.target.plan({ source: carried, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}), ...stashOf(request) })).result;
     const blockers = [...source.blockers, ...target.blockers, ...excludedProblem(source, carried)];
     // D152: the ticked workspace files (a secret needs the confirmation, the caps hold).
     const files = fileChoiceProblem(source.workspaceFiles, filesToSend(source.workspaceFiles, request.workspaceFiles, target.workspaceFiles, createsRoot(target)));
@@ -260,6 +268,7 @@ export class TakeoverRunner {
       log: [],
       sessionKey: request.sessionId,
       workspaceFiles: null,
+      stashes: [],
     };
     this.#runs.set(run.id, run);
     while (this.#runs.size > 20) {
@@ -289,6 +298,7 @@ export class TakeoverRunner {
       leftovers: run.leftovers.map((entry) => ({ ...entry })),
       log: [...run.log],
       workspaceFiles: run.workspaceFiles,
+      stashes: run.stashes.map((stash) => ({ ...stash })),
     };
   }
 
@@ -322,7 +332,7 @@ export class TakeoverRunner {
       sourceInfo = withoutExcluded(inspected, request.excludeRepos);
       const leftOutProblem = excludedProblem(inspected, sourceInfo);
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
-      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}) })).result;
+      plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request) })).result;
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
@@ -394,8 +404,9 @@ export class TakeoverRunner {
       // 5 · the working tree on the target.
       failedAt = 'apply';
       set('apply', 'running');
-      const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), captured });
+      const applied = await target.apply({ opId, source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), captured });
       logOf(plan.machine.name, applied.log);
+      run.stashes = [...(applied.result.stashes ?? [])];
       const placed = applied.result.workspaceFiles ?? null;
       if (placed || (request.workspaceFiles && request.workspaceFiles.copy.length > 0)) {
         // What was skipped up front (the same file, a conflict on the target) is reported with what the apply did.
@@ -487,6 +498,8 @@ export class TakeoverRunner {
         const undone = await ends.target.abort(opId);
         appendLog(run, targetName, undone.log);
         run.rollbackNotes.push(...undone.result.notes);
+        // D153: a stash the move made is kept by the undo: the run says where and how to restore it.
+        if (undone.result.stashes && undone.result.stashes.length > 0) run.stashes = [...undone.result.stashes];
         if (undone.result.notes.length > 0) clean = false;
       });
     }
@@ -504,6 +517,11 @@ export class TakeoverRunner {
 function createsRoot(plan: Pick<TargetPlan, 'workspaceRoot'>): boolean {
   const root = plan.workspaceRoot ?? null;
   return root !== null && root.ok && !root.workspace;
+}
+
+/** D153: the request's confirmed stash checkouts, for the target's plan and apply. */
+function stashOf(request: TakeoverRequest): { stashTargets?: readonly string[] } {
+  return request.stashTargets && request.stashTargets.length > 0 ? { stashTargets: request.stashTargets } : {};
 }
 
 function appendLog(run: RunState, who: string, lines: readonly string[]): void {

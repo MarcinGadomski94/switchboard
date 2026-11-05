@@ -10,6 +10,7 @@
  * `src/web/team/`; `docs/team-removal.md` lists the hooks into the rest.
  */
 
+import type { MoveStash } from './move-worktrees.ts';
 import type { TeamAccessEntryView } from './team-access.ts';
 
 /**
@@ -539,6 +540,8 @@ export interface TeamMoveRun {
   readonly machineId?: string;
   /** After a failure: `true` = everything was undone, `false` = the undo left something (see `error`), `null` = nothing had changed yet. */
   readonly rolledBack?: boolean | null;
+  /** D153: stashes the move made in target checkouts (kept, also after an undo; never dropped or popped). Absent from an older machine's run. */
+  readonly stashes?: readonly MoveStash[];
 }
 
 /**

@@ -1582,11 +1582,13 @@ export class WorktreeManager implements DiffProvider {
       if (repo.worktree !== null) {
         const worktree = repo.worktree;
         if (!(await isDirectory(worktree.path))) continue;
-        rows.push({ name: worktree.repo, path: worktree.path, kind: 'worktree', source: 'worktree', branch: worktree.branch ?? (await this.#currentBranch(worktree.path)), remoteUrl: await remoteOf(worktree.path), evidence: repo.evidence });
+        rows.push({ name: worktree.repo, path: worktree.path, kind: 'worktree', source: 'worktree', branch: worktree.branch ?? (await this.#currentBranch(worktree.path)), remoteUrl: await remoteOf(worktree.path), evidence: repo.evidence, mainPath: (await realOrNull(worktree.repoPath)) ?? worktree.repoPath });
         continue;
       }
       const linked = await lstat(path.join(repo.top, '.git')).then((info) => info.isFile(), () => false);
-      rows.push({ name: repo.name, path: repo.top, kind: linked ? 'worktree' : 'main', source: repo.source, branch: await this.#currentBranch(repo.top), remoteUrl: await remoteOf(repo.top), evidence: repo.evidence });
+      // D153: a linked worktree (Claude Code's `.claude/worktrees/<name>`) is named and grouped after its repo's main checkout.
+      const main = linked ? await this.#mainCheckoutOf(repo.top) : null;
+      rows.push({ name: main !== null ? path.basename(main) : repo.name, path: repo.top, kind: linked ? 'worktree' : 'main', source: repo.source, branch: await this.#currentBranch(repo.top), remoteUrl: await remoteOf(repo.top), evidence: repo.evidence, mainPath: main ?? repo.top });
     }
     return { repos: rows };
   }
@@ -1638,6 +1640,14 @@ export class WorktreeManager implements DiffProvider {
       entries.push({ name: path.basename(top), top, source, worktree: null, evidence: evidenceKinds(own), counts: own, declared: false });
     }
     return rankByEvidence(entries.map((entry) => ({ ...entry, isWorktree: entry.source === 'worktree' }))).map(({ declared: _declared, isWorktree: _isWorktree, ...rest }) => rest);
+  }
+
+  /** D153: the main checkout of a linked worktree (git's common folder's parent), `null` when git cannot tell. */
+  async #mainCheckoutOf(dir: string): Promise<string | null> {
+    const common = await this.#runDiffGit(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const out = succeeded(common) ? common.stdout.trim() : '';
+    if (out === '' || path.basename(out) !== '.git') return null;
+    return (await realOrNull(path.dirname(out))) ?? path.dirname(out);
   }
 
   /** The checked-out branch, `null` when detached. */

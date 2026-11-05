@@ -3,6 +3,7 @@ import { lstat, mkdir, readdir, realpath, rm, rmdir, stat } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import { type CapturedRepo, REMOTE_CHECK_TIMEOUT_MS, type SourceRepo, type WorktreeEntry, type WorktreeSlot, gitErrorSummary, nonInteractiveGitEnv, normalizeRemoteUrl, parseWorktreeList, redactUrl, tempBranchName } from '../../core/takeover.ts';
+import { TARGET_CHANGES_LISTED, type TargetChanges, type WorktreeCarryFacts } from '../../core/move-worktrees.ts';
 import { failureText, runCommand, succeeded } from '../exec.ts';
 
 /**
@@ -440,7 +441,98 @@ export class TakeoverGit {
   async isAncestor(repoPath: string, ancestor: string, descendant: string): Promise<boolean> {
     return (await this.try(repoPath, ['merge-base', '--is-ancestor', ancestor, descendant])).ok;
   }
+
+  // ── D153: the agent's own worktrees (source) ─────────────────────────
+
+  /**
+   * What decides whether one of the agent's own worktrees is carried (read-only, no
+   * network: what this machine last fetched): its branch, its upstream when one is
+   * configured **and** that remote-tracking branch exists, and what it is merged
+   * into. "Merged" follows D145's auto-clean: the branch's tip is contained in a
+   * base, here the upstream remote's default branch (`<remote>/HEAD`, else
+   * `<remote>/main` / `master`) and the worktree's recorded base with its
+   * remote-tracking copy; or its pull request was seen merged (`prState`). The
+   * upstream itself is never a base (a pushed branch is always in its own upstream).
+   */
+  async worktreeCarryFacts(dir: string, input: { readonly baseRef: string | null; readonly prState: string | null }): Promise<WorktreeCarryFacts & { readonly uncommitted: number }> {
+    const branch = await this.currentBranch(dir);
+    const uncommitted = (await this.dirtyCounts(dir)).total;
+    if (branch === null) return { branch, upstream: null, mergedInto: null, uncommitted };
+    const full = await this.try(dir, ['rev-parse', '--symbolic-full-name', `${branch}@{upstream}`]);
+    const upstreamRef = full.ok && full.out.startsWith('refs/remotes/') ? full.out : null;
+    const upstream = upstreamRef !== null && (await this.sha(dir, upstreamRef)) !== null ? upstreamRef.slice('refs/remotes/'.length) : null;
+    if (upstream === null) return { branch, upstream: null, mergedInto: null, uncommitted };
+    if (input.prState === 'MERGED') return { branch, upstream, mergedInto: 'its pull request (merged)', uncommitted };
+    const head = await this.sha(dir, 'HEAD');
+    const remote = (await this.try(dir, ['config', '--get', `branch.${branch}.remote`])).out || (upstream.split('/')[0] as string);
+    const bases: string[] = [];
+    const add = (ref: string): void => {
+      if (ref !== '' && ref !== upstream && !bases.includes(ref)) bases.push(ref);
+    };
+    const remoteHead = await this.try(dir, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`]);
+    if (remoteHead.ok && remoteHead.out !== '') add(remoteHead.out);
+    else for (const name of ['main', 'master']) if ((await this.sha(dir, `refs/remotes/${remote}/${name}`)) !== null) add(`${remote}/${name}`);
+    if (input.baseRef) {
+      add(input.baseRef);
+      if (!input.baseRef.includes('/')) add(`${remote}/${input.baseRef}`);
+    }
+    let mergedInto: string | null = null;
+    if (head !== null) {
+      for (const base of bases) {
+        const tip = await this.sha(dir, base);
+        if (tip !== null && (await this.isAncestor(dir, head, tip))) {
+          mergedInto = base;
+          break;
+        }
+      }
+    }
+    return { branch, upstream, mergedInto, uncommitted };
+  }
+
+  // ── D153: a target checkout with uncommitted changes ─────────────────
+
+  /** The checkout's uncommitted changes: names (at most {@link TARGET_CHANGES_LISTED}) and counts (untracked included, ignored not). */
+  async targetChanges(dir: string): Promise<TargetChanges> {
+    const out = await this.raw(dir, ['-c', 'core.quotePath=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    const files: string[] = [];
+    let modified = 0;
+    let untracked = 0;
+    const entries = (out ?? '').split('\0');
+    for (let at = 0; at < entries.length; at++) {
+      const entry = entries[at] as string;
+      if (entry === '') continue;
+      if (!/^[ MADRCU?!]{2} /.test(entry)) continue;
+      const status = entry.slice(0, 2);
+      if (status === '??') untracked += 1;
+      else modified += 1;
+      // A rename / copy carries the old name in the next field.
+      if (status[0] === 'R' || status[0] === 'C') at++;
+      if (files.length < TARGET_CHANGES_LISTED) files.push(entry.slice(3));
+    }
+    const total = modified + untracked;
+    return { files, modified, untracked, total, truncated: total > files.length };
+  }
+
+  /**
+   * D153: `git stash push --include-untracked -m <message>` in a target checkout,
+   * after the developer confirmed it (never otherwise). Non-interactive (the
+   * take-over's env), with Switchboard's identity only when the checkout has none
+   * (a stash is a commit). Afterwards the tree must be clean; the stash is never
+   * dropped or popped here. Returns the stash commit.
+   */
+  async stashPush(dir: string, message: string): Promise<string | null> {
+    const email = await this.try(dir, ['config', '--get', 'user.email']);
+    const name = await this.try(dir, ['config', '--get', 'user.name']);
+    const identity = email.ok && email.out !== '' && name.ok && name.out !== '' ? {} : WIP_IDENTITY;
+    const env = { ...(await this.#remoteEnv(dir)), ...identity, GIT_EDITOR: 'true' };
+    const result = await this.try(dir, ['stash', 'push', '--include-untracked', '-m', message], env);
+    if (!result.ok) throw new TakeoverGitError(`git stash push failed in ${dir}: ${(result.stderr && gitErrorSummary(result.stderr)) || result.error}`);
+    const left = await this.dirtyCounts(dir);
+    if (left.total > 0) throw new TakeoverGitError(`git stash push left ${left.total} uncommitted file${left.total === 1 ? '' : 's'} in ${dir}`);
+    return this.sha(dir, 'refs/stash');
+  }
 }
+
 
 /** Arguments for the log: a URL's credentials never appear. */
 function redactArgs(args: readonly string[]): string[] {

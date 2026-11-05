@@ -57,6 +57,26 @@
   font-size: 12px;
   text-align: right;
 }
+/* D153: Repos to carry, one entry per repo with its worktrees nested. */
+.sb2 .v2-mp-carry > b,
+.sb2 .v2-mp-carry > .v2-mp-why {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.sb2 .v2-mp-carry > .v2-mp-file-target {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sb2 .v2-mp-nested {
+  margin: 2px 0 6px 28px;
+}
+.sb2 .v2-mp-skipped-warn {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+  color: var(--v2-amber);
+}
 .sb2 .v2-mp-crew {
   display: flex;
   flex-direction: column;

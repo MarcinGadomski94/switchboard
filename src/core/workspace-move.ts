@@ -383,6 +383,12 @@ export interface WorksInRepo {
    * working folder). Absent from an older Switchboard.
    */
   readonly evidence?: readonly WorksInEvidence[];
+  /**
+   * Additive (D153): the repo's main checkout (equal to `path` for the checkout
+   * itself), so a repo's worktrees are shown nested under it. Absent from an older
+   * Switchboard (then each row is its own repo).
+   */
+  readonly mainPath?: string;
 }
 
 /** D152 `GET /api/sessions/{id}/works-in`: the repos a session works in, derived from its history. */

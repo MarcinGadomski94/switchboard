@@ -81,6 +81,7 @@ import type { PeerService } from '../peers/service.ts';
 import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
 import { TAKEOVER_STEP_LABELS, type TakeoverPreview, type TargetPlacement, placementOf } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, excludeReposOf, sameTargetPath, workspaceChoiceOf } from '../../core/workspace-move.ts';
+import { stashTargetsOf } from '../../core/move-worktrees.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -2272,7 +2273,7 @@ export class TeamService {
         const step = state?.error ? `${TAKEOVER_STEP_LABELS[state.error.step]} failed: ` : '';
         const reason = (!state ? 'the take-over run is gone' : (state.error?.message ?? 'the take-over failed')).replace(/[.\s]+$/, '');
         const undo = state && state.rolledBack === false ? ` Undoing it left something behind: ${state.rollbackNotes.join('; ')}.` : '';
-        return set({ state: 'failed', machineId: member.machineId, rolledBack: state?.rolledBack ?? null, error: `${step}${reason}.${undo} ${member.name} still runs on ${where}.` });
+        return set({ state: 'failed', machineId: member.machineId, rolledBack: state?.rolledBack ?? null, error: `${step}${reason}.${undo} ${member.name} still runs on ${where}.`, ...(state?.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}) });
       }
       const result = state.result;
       const moved = parseRemoteId(result.sessionId);
@@ -2280,7 +2281,7 @@ export class TeamService {
       // `done` only with the record moved (a concurrent change could have put it elsewhere).
       const after = this.#memberRecord(run.memberId);
       if (after.machineId !== result.machineId) return set({ state: 'failed', machineId: after.machineId, error: `the take-over finished but ${after.name}'s record still names another computer: open its menu and try again` });
-      return set({ state: 'done', machineId: result.machineId });
+      return set({ state: 'done', machineId: result.machineId, ...(state.stashes && state.stashes.length > 0 ? { stashes: state.stashes } : {}) });
     }
   }
 
@@ -2574,11 +2575,11 @@ function stripRequest(record: TeamRequestRecord): TeamRequest {
  * D110: the target folders (and clone paths) of a member's move, from the request
  * body, in the take-over's shape; a malformed value is refused (422).
  */
-function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } {
+function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } {
   const placement = placementOf(body['placement']);
   if (placement === null) throw new TeamError(422, 'invalid', 'placement must be { roots: string[], repoPaths?, repoModes?, newWorkspace? }');
   // `placement: null` = the target's saved folders (not the remembered ones).
-  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[] } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
+  const out: { placement?: TargetPlacement; savedFolders?: boolean; clonePaths?: Record<string, string>; workspaceFiles?: WorkspaceFileChoice; excludeRepos?: string[]; stashTargets?: string[] } = placement ? { placement } : body['placement'] === null ? { savedFolders: true } : {};
   // D152: the workspace's own files to copy.
   const files = workspaceChoiceOf(body['workspaceFiles']);
   if (files === null) throw new TeamError(422, 'invalid', 'workspaceFiles must be { copy: string[], confirmSecrets?: boolean }');
@@ -2587,6 +2588,10 @@ function moveTargetOf(body: Record<string, unknown>): { placement?: TargetPlacem
   const excluded = excludeReposOf(body['excludeRepos']);
   if (excluded === null) throw new TeamError(422, 'invalid', 'excludeRepos must be a list of repo paths');
   if (excluded && excluded.length > 0) out.excludeRepos = excluded;
+  // D153: the target checkouts whose uncommitted changes the developer confirmed stashing.
+  const stash = stashTargetsOf(body['stashTargets']);
+  if (stash === null) throw new TeamError(422, 'invalid', 'stashTargets must be a list of checkout paths');
+  if (stash && stash.length > 0) out.stashTargets = stash;
   const paths = body['clonePaths'];
   if (paths !== undefined && paths !== null) {
     if (typeof paths !== 'object' || Array.isArray(paths) || Object.values(paths).some((entry) => typeof entry !== 'string')) throw new TeamError(422, 'invalid', 'clonePaths must map repo keys to paths');
