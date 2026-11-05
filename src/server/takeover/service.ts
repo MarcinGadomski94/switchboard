@@ -37,6 +37,7 @@ import {
   normalizeRemoteUrl,
   movedToLabel,
   noWorkspaceBlocker,
+  runInRepoOf,
   planBlockers,
   planRepos,
   redactUrl,
@@ -169,6 +170,8 @@ interface TargetOp {
   place: { readonly folder: FolderRef; readonly cwd: string; readonly changes: readonly PathChange[] } | null;
   /** The session was created by this op (the id). */
   sessionId: string | null;
+  /** D152 follow-up (*Where it runs*): the key of the carried repo the session runs in here; `null` = its folder as before. */
+  runInKey?: string | null;
   /** D110: the chosen folder this op saved (a workspace root or a checkout that was not saved yet); removed by the undo. */
   addedFolderId: string | null;
   /** D152: the workspace files staged here (checked, verified), and their bytes. */
@@ -1279,8 +1282,12 @@ export class TakeoverService {
     const self = await this.#self();
     const blockers: string[] = [];
     const records = await this.#store.folders.list();
+    // D152 follow-up (*Where it runs*): the session runs in one of its carried repos here, as a repo session (no workspace root needed or made).
+    const runInRepo = placement?.runIn ? runInRepoOf(sourceRepos, placement.runIn) : null;
+    if (placement?.runIn && runInRepo === null) blockers.push(`the repo to run in on ${self.name} (${placement.runIn.repo}) is not one of the repos this move carries: carry it, or choose another place in "Where it runs on ${self.name}"`);
+    const runsInRepo = placement?.runIn !== undefined;
     // D152: the workspace root the developer asked to create here: checked (read-only) before anything else.
-    const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
+    const workspaceRoot: WorkspaceRootCheck | null = placement?.newWorkspace && !runsInRepo ? await checkWorkspaceRoot(this.#folders.expand(placement.newWorkspace.path), placement.newWorkspace.useExisting === true, await this.#places()) : null;
     if (workspaceRoot && !workspaceRoot.ok && workspaceRoot.reason) blockers.push(workspaceRoot.reason);
     // D152 follow-up: a placement that only says which outside repos are carried chooses no folders (the saved folders apply, as without one).
     const choosesFolders = placement !== null && !(placement.roots.length === 0 && !placement.repoPaths && !placement.repoModes && !placement.newWorkspace);
@@ -1317,7 +1324,7 @@ export class TakeoverService {
     const matches = located ? located.matches : sourceRepos.map((repo) => matchingCandidates(repo, candidates)[0] ?? null);
     // A workspace session clones into the workspace's own layout.
     let workspace: TargetCandidate | null = null;
-    if (source.folder?.kind === 'workspace' && !source.hooked) {
+    if (source.folder?.kind === 'workspace' && !source.hooked && !runsInRepo) {
       if (located) {
         if (located.workspace) workspace = { path: located.workspace.path, folderId: located.workspace.folderId, folderKind: 'workspace', folderPath: located.workspace.path, name: path.basename(located.workspace.path), remoteKey: null, remoteName: null };
         else blockers.push(noWorkspaceBlocker(self.name));
@@ -1404,7 +1411,15 @@ export class TakeoverService {
     const usable = repos.filter((repo) => repo.action !== 'blocked');
     // D153: the workspace found here is the session's folder even while a repo is blocked (e.g. a dirty checkout waiting for "Stash them"),
     // so the dialog shows that folder instead of offering to create one; the blockers still stop the move.
-    if (workspace) {
+    const runInResolution = runInRepo ? (repos.find((resolution) => resolution.key === runInRepo.key) ?? null) : null;
+    if (runsInRepo) {
+      // D152 follow-up (*Where it runs*): a repo session rooted at that repo's checkout here (its worktree when it works in one).
+      const main = runInResolution && runInResolution.action !== 'blocked' ? (runInResolution.matchedPath ?? runInResolution.cloneTo) : null;
+      if (runInResolution && main) {
+        folder = { id: records.find((record) => record.canonicalPath === main)?.id ?? null, path: main, kind: 'repo' };
+        cwd = runInResolution.worktreePath ?? main;
+      }
+    } else if (workspace) {
       folder = { id: workspace.folderId, path: workspace.folderPath, kind: 'workspace' };
       cwd = workspace.folderPath;
     } else if (blockers.length === 0 || usable.length === repos.length) {
@@ -1466,6 +1481,7 @@ export class TakeoverService {
         verification,
         workspaceRoot,
         workspaceFiles,
+        runIn: runInRepo ? { key: runInRepo.key, name: runInRepo.name, path: cwd } : null,
       },
       log,
     };
@@ -1683,7 +1699,7 @@ export class TakeoverService {
         applied.cloned = true;
         main = resolution.cloneTo as string;
         applied.path = main;
-        if (planned.folder.kind !== 'workspace') {
+        if (planned.folder.kind !== 'workspace' && (!planned.runIn || planned.runIn.key === resolution.key)) {
           const added = await this.#folders.add(main);
           if (added.created) applied.addedFolderId = added.folder.id;
         }
@@ -1788,7 +1804,8 @@ export class TakeoverService {
     } else if (planned.folder.kind === 'workspace') {
       folderRef = { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'workspace' };
     } else {
-      const first = op.applied[0] as AppliedRepo;
+      // D152 follow-up (*Where it runs*): the repo the session runs in, else its one repo.
+      const first = ((planned.runIn ? op.applied.find((entry) => entry.key === planned.runIn?.key) : undefined) ?? op.applied[0]) as AppliedRepo;
       if (planned.folder.id === null && !first.cloned && !(await this.#store.folders.getByCanonicalPath(first.path))) {
         const added = await this.#folders.add(first.path);
         if (added.created) op.addedFolderId = added.folder.id;
@@ -1797,6 +1814,7 @@ export class TakeoverService {
       folderRef = record ? folderRefOf(record) : { id: planned.folder.id, path: planned.folder.path, root: planned.folder.path, kind: 'repo' };
     }
     op.place = { folder: folderRef, cwd: planned.cwd, changes };
+    op.runInKey = planned.runIn?.key ?? null;
     return { result: { place: { cwd: planned.cwd, folder: { id: folderRef.id, path: folderRef.path, kind: folderRef.kind } }, changes, applied: [...op.applied], workspaceFiles, stashes: [...op.stashes] }, log };
   }
 
@@ -1958,8 +1976,10 @@ export class TakeoverService {
     for (let n = 2; await this.#store.sessions.getByName(name); n++) name = `${source.name}-${n}`;
     // D152 follow-up: the repos outside the workspace this move restored are the session's extra folders (Claude Code's `--add-dir`, every spawn).
     const extraDirs: string[] = [];
+    // D152 follow-up (*Where it runs*): a session running in one carried repo gets every other carried repo as an extra folder.
+    const runInKey = op.runInKey ?? null;
     for (const applied of op.applied) {
-      if (source.repos.find((repo) => repo.key === applied.key)?.outside !== true) continue;
+      if (runInKey !== null ? applied.key === runInKey : source.repos.find((repo) => repo.key === applied.key)?.outside !== true) continue;
       const dir = applied.worktreePath ?? applied.path;
       const real = await realpath(dir).catch(() => dir);
       if (!extraDirs.includes(real)) extraDirs.push(real);
@@ -1973,7 +1993,8 @@ export class TakeoverService {
         provider: source.provider,
         claudeSessionId,
         nativeId,
-        solutions: source.solutions,
+        // A repo session has one solution, its repo (D152 follow-up, *Where it runs*).
+        solutions: runInKey !== null ? [source.repos.find((repo) => repo.key === runInKey)?.name ?? path.basename(place.folder.path)] : source.solutions,
         worktrees: source.worktrees,
         branch: source.branch,
         branching: null,

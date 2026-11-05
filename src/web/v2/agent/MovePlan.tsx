@@ -13,6 +13,8 @@ import {
   outsideClonePath,
   outsideRows,
   repoModeOf,
+  runInOf,
+  runInOptions,
   splitClonePath,
   stashRows,
   targetWorkspaceOf,
@@ -22,13 +24,14 @@ import {
   withOutsideMode,
   withRepoCarried,
   withRepoMode,
+  withRunIn,
   withStash,
   withTargetWorkspace,
   workspaceView,
   worksInLine,
 } from '../../takeover/complete-move.ts';
 import { type RepoRow, repoRows, withRepoPath, withRoot, withoutRoot } from '../../takeover/takeover.ts';
-import { Button, Checkbox, Chip, Field, Icon, Segmented } from '../components/index.ts';
+import { Button, Checkbox, Chip, Field, Icon, Segmented, Select } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
 import { repoActionWord, repoLook } from './move-model.ts';
 import './agent.css';
@@ -82,6 +85,8 @@ export function MovePlanPanel({
   // D152 follow-up: the repos outside the workspace root have their own section (and no row in the list below).
   const outside = ws.show ? outsideRows(preview, choice) : [];
   const outsideKeys = new Set(outside.map((row) => row.key));
+  // D152 follow-up (*Where it runs*): a workspace agent running in one of its repos there needs no workspace root and takes no workspace files.
+  const runIn = ws.show ? runInOf(choice) : null;
   return (
     <div className="v2-mp" data-testid={testId}>
       <p className="v2-mp-works" data-testid="v2-move-works-in">
@@ -90,7 +95,8 @@ export function MovePlanPanel({
           <b>Works in:</b> {worksInLine(preview)}
         </span>
       </p>
-      {ws.show ? (
+      {ws.show ? <RunInSection preview={preview} targetName={targetName} choice={choice} onChange={onChange} /> : null}
+      {ws.show && runIn === null ? (
         <WorkspaceRootSection preview={preview} machine={machine} targetName={targetName} placement={placement} onChange={setPlacement} />
       ) : (
         <FolderPicker machine={machine} machineName={targetName} placement={placement} remembered={preview.remembered} onChange={setPlacement} />
@@ -116,7 +122,34 @@ export function MovePlanPanel({
           />
           ))}
       </div>
-      {preview.source.workspaceFiles && preview.source.workspaceFiles.files.length > 0 ? <FilesSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
+      {runIn === null && preview.source.workspaceFiles && preview.source.workspaceFiles.files.length > 0 ? <FilesSection preview={preview} choice={choice} targetName={targetName} onChange={onChange} /> : null}
+    </div>
+  );
+}
+
+/**
+ * D152 follow-up (*Where it runs*): where a workspace agent runs on the target: its
+ * workspace root (the default), or one of the repos it carries, as a repo agent of
+ * that repo (no workspace there; the other carried repos are its extra folders).
+ */
+function RunInSection({ preview, targetName, choice, onChange }: { readonly preview: TakeoverPreview; readonly targetName: string; readonly choice: MoveChoice; readonly onChange: (next: MoveChoice) => void }) {
+  const options = runInOptions(preview, choice);
+  const current = runInOf(choice);
+  const picked = options.find((option) => option.value === current) ?? null;
+  return (
+    <div className="v2-mp-ws" data-testid="v2-move-run-in" data-mode={current === null ? 'workspace' : 'repo'}>
+      <Select
+        label={`Where it runs on ${targetName}`}
+        data-testid="v2-move-run-in-select"
+        value={current ?? ''}
+        options={options.map((option) => ({ value: option.value, label: option.label }))}
+        onChange={(event) => onChange(withRunIn(choice, preview, event.target.value === '' ? null : event.target.value))}
+      />
+      <p className="v2-muted v2-mv-small">
+        {current === null
+          ? `It runs in its workspace root on ${targetName}, as here.`
+          : `It continues as an agent of ${picked?.label ?? current} on ${targetName}: no workspace is needed or created there, and the other repos it carries are its extra folders.`}
+      </p>
     </div>
   );
 }

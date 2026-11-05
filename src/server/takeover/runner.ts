@@ -17,6 +17,7 @@ import {
   placementKey,
   placementToRemember,
   rollbackActions,
+  runInProblem,
 } from '../../core/takeover.ts';
 import { type WorkspaceFileChoice, type WorkspaceFilesResult, fileChoiceProblem, filesToSend } from '../../core/workspace-move.ts';
 import type { MoveStash } from '../../core/move-worktrees.ts';
@@ -277,8 +278,11 @@ export class TakeoverRunner {
     const carried = withoutExcluded(source, effectiveExclusions(source.repos, request.excludeRepos, placement?.outsideCarry));
     const target = (await ends.target.plan({ source: carried, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(placement ? { placement } : {}), ...stashOf(request) })).result;
     const blockers = [...source.blockers, ...target.blockers, ...excludedProblem(source, carried)];
-    // D152: the ticked workspace files (a secret needs the confirmation, the caps hold).
-    const files = fileChoiceProblem(source.workspaceFiles, filesToSend(source.workspaceFiles, request.workspaceFiles, target.workspaceFiles, createsRoot(target)));
+    // D152 follow-up (*Where it runs*): a target that did not honour the repo to run in (an older Switchboard) is refused up front.
+    const runIn = runInProblem(placement, target);
+    if (runIn !== null) blockers.push(runIn);
+    // D152: the ticked workspace files (a secret needs the confirmation, the caps hold); none when the agent runs in a repo there.
+    const files = fileChoiceProblem(source.workspaceFiles, filesToSend(source.workspaceFiles, placement?.runIn ? undefined : request.workspaceFiles, target.workspaceFiles, createsRoot(target)));
     if (files !== null) blockers.push(files);
     const excluded = source.repos.filter((repo) => !carried.repos.includes(repo)).map((repo) => repo.path);
     return { source, target, stopsTerminal: source.hooked, ok: blockers.length === 0, blockers, placement, remembered, excluded };
@@ -402,10 +406,12 @@ export class TakeoverRunner {
       if (leftOutProblem.length > 0) throw new TakeoverError(409, 'blocked', leftOutProblem.join('; '));
       plan = (await target.plan({ source: sourceInfo, ...(request.clonePaths ? { clonePaths: request.clonePaths } : {}), ...(request.placement ? { placement: request.placement } : {}), ...stashOf(request), opId })).result;
       const blockers = [...sourceInfo.blockers, ...plan.blockers];
+      const runInRefused = runInProblem(request.placement, plan);
+      if (runInRefused !== null) blockers.push(runInRefused);
       if (blockers.length > 0) throw new TakeoverError(409, 'blocked', blockers.join('; '));
       if (sourceInfo.hooked && request.confirmStopTerminal !== true) throw new TakeoverError(409, 'confirm-needed', "confirm that the terminal's claude on the other machine will be stopped");
       // D152: the workspace files to send (new on the target; the root AGENTS.md of a workspace the move creates).
-      const sending = filesToSend(sourceInfo.workspaceFiles, request.workspaceFiles, plan.workspaceFiles, createsRoot(plan));
+      const sending = filesToSend(sourceInfo.workspaceFiles, request.placement?.runIn ? undefined : request.workspaceFiles, plan.workspaceFiles, createsRoot(plan));
       const filesProblem = fileChoiceProblem(sourceInfo.workspaceFiles, sending);
       if (filesProblem !== null) throw new TakeoverError(409, 'blocked', filesProblem);
       set('checks', 'done', `${sourceInfo.repos.length} repo${sourceInfo.repos.length === 1 ? '' : 's'}, ${plan.cli.label} on ${plan.account.name}`);
