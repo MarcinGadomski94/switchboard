@@ -296,7 +296,9 @@ export type LifecycleAction =
   /** D139: the session stopped because its account needs the developer (the chat's divider "Stopped: the account Work needs you — …"; `message` = the CLI's words, `command`, `fromProfile`). */
   | 'account-needs-you'
   /** D145: a merged worktree of the session was cleaned up by itself (the chat's divider "Cleaned up worktree x: merged into dev; removed the folder, the local branch and origin/x"; `message` = that text). */
-  | 'worktree-cleaned';
+  | 'worktree-cleaned'
+  /** D156: a moved agent's source computer was cleaned up (the chat's divider "Cleaned up on <PC> after the move: …"; `message` = that text). */
+  | 'moved-cleaned';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

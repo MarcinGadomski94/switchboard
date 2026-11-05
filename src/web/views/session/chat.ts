@@ -385,7 +385,7 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // 2026-10-16: a process restarted so its CLI lists a Switchboard tool an ask needs: "Switchboard tools updated".
       // D127: "Stopped 6 build servers (1.9 GB) after 10 min idle" (processes the session left running).
       // D145: "Cleaned up worktree x: merged into dev; removed the folder, the local branch and origin/x".
-      if ((lifecycle.action === 'continued' || lifecycle.action === 'instruction-updated' || lifecycle.action === 'look-at-updated' || lifecycle.action === 'tools-updated' || lifecycle.action === 'processes-stopped' || lifecycle.action === 'worktree-cleaned') && event.kind === 'text') {
+      if ((lifecycle.action === 'continued' || lifecycle.action === 'instruction-updated' || lifecycle.action === 'look-at-updated' || lifecycle.action === 'tools-updated' || lifecycle.action === 'processes-stopped' || lifecycle.action === 'worktree-cleaned' || lifecycle.action === 'moved-cleaned') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
       }
       // D80: "Reverted to before turn N" (the newest one carries Redo) and "Undid the revert to before turn N".

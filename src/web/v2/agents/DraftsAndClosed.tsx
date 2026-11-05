@@ -1,3 +1,4 @@
+import { MovedCleanupButton } from '../agent/SourceCleanup.tsx';
 import { useMemo, useState } from 'react';
 import { draftField } from '../../../core/drafts.ts';
 import { readKnownSettings } from '../../../core/settings.ts';
@@ -196,6 +197,8 @@ export function ClosedView() {
                   </div>
                 </div>
                 <AgentComputerTag machine={session.machine} short />
+                {/* D156: a moved agent of this computer: what the move left here. */}
+                <MovedCleanupButton session={session} title={name} />
                 <Button size="sm" icon="refresh" disabled={busy === session.id || offline} title={offline && session.machine ? AGENTS_WORDS.offlineWhy(session.machine.name) : undefined} onClick={() => void reopen(session.id, name)} data-testid="v2-closed-reopen">
                   {AGENTS_WORDS.reopen}
                 </Button>

@@ -2,6 +2,7 @@ import { remoteId } from './peers.ts';
 import { type MoveStash, stashNote } from './move-worktrees.ts';
 import { type Leftover, type TakeoverRun, type TakeoverStepId, type TakeoverStepState, type TargetPlacement, TAKEOVER_STEP_LABELS } from './takeover.ts';
 import type { WorkspaceFileChoice } from './workspace-move.ts';
+import type { SourceCleanupReport } from './source-cleanup.ts';
 
 /**
  * D154 (`docs/peers.md` → *Following a move (D154)*): the moves list. Every take-over
@@ -27,6 +28,8 @@ export interface MoveChoices {
   readonly workspaceFiles: WorkspaceFileChoice | null;
   readonly excludeRepos: readonly string[];
   readonly stashTargets: readonly string[];
+  /** D156: clean up on the source after a successful move (absent = no). */
+  readonly cleanupSource?: boolean;
 }
 
 /** One machine of a move, and the agent's session there (raw, as that machine knows it). */
@@ -73,6 +76,8 @@ export interface MoveRecord {
   readonly leftovers: ReadonlyArray<Leftover & { readonly machineId: string | null }>;
   readonly stashes: readonly MoveStash[];
   readonly choices: MoveChoices;
+  /** D156: the clean-up on the source after the move (what was removed, what is left to remove by hand); absent when not asked for. */
+  readonly sourceCleanup?: SourceCleanupReport | null;
 }
 
 /** `GET /api/moves/{id}`: a move with the git commands both machines ran (while the runner still has them). */
@@ -186,7 +191,7 @@ export function moveFailedDetail(move: Pick<MoveRecord, 'state' | 'step' | 'targ
 }
 
 /** What a run says now, as a record's fields (the server's {@link MoveRecord} without the identity). */
-export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' | 'steps' | 'error' | 'rolledBack' | 'rollbackNotes' | 'leftovers' | 'stashes'> {
+export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' | 'steps' | 'error' | 'rolledBack' | 'rollbackNotes' | 'leftovers' | 'stashes' | 'sourceCleanup'> {
   const running = run.steps.find((step) => step.status === 'running') ?? null;
   const failed = run.error ? (run.steps.find((step) => step.id === run.error?.step) ?? null) : null;
   const current = run.state === 'running' ? (running ?? failed) : failed;
@@ -199,6 +204,7 @@ export function runFields(run: TakeoverRun): Pick<MoveRecord, 'state' | 'step' |
     rollbackNotes: [...run.rollbackNotes],
     leftovers: run.leftovers.map((leftover) => ({ ...leftover })),
     stashes: (run.stashes ?? []).map((stash) => ({ ...stash })),
+    ...(run.sourceCleanup ? { sourceCleanup: run.sourceCleanup } : {}),
   };
 }
 
@@ -215,6 +221,7 @@ export function moveAsRun(move: MoveRecord, log: readonly string[] = []): Takeov
     leftovers: move.leftovers,
     log,
     stashes: move.stashes,
+    ...(move.sourceCleanup ? { sourceCleanup: move.sourceCleanup } : {}),
   };
 }
 
@@ -285,12 +292,13 @@ export function moveRetry(move: Pick<MoveRecord, 'kind' | 'source' | 'target' | 
 }
 
 /** The choices of a take-over request (what a record keeps for Try again). */
-export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[] }): MoveChoices {
+export function choicesOf(request: { readonly placement?: TargetPlacement; readonly clonePaths?: Readonly<Record<string, string>>; readonly workspaceFiles?: WorkspaceFileChoice; readonly excludeRepos?: readonly string[]; readonly stashTargets?: readonly string[]; readonly cleanupSource?: boolean }): MoveChoices {
   return {
     placement: request.placement ?? null,
     clonePaths: { ...(request.clonePaths ?? {}) },
     workspaceFiles: request.workspaceFiles ?? null,
     excludeRepos: [...(request.excludeRepos ?? [])],
     stashTargets: [...(request.stashTargets ?? [])],
+    ...(request.cleanupSource === true ? { cleanupSource: true } : {}),
   };
 }

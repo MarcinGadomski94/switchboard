@@ -10,6 +10,7 @@ import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, stashLin
 import { choiceOfRetry } from '../../takeover/retry.ts';
 import { MovePlanPanel } from './MovePlan.tsx';
 import { MoveStatusHost } from './MoveStatus.tsx';
+import { CleanupReportView, CleanupSourceOption, MovedCleanupHost, useCleanupSourcePref } from './SourceCleanup.tsx';
 import { ChatMoveDialog } from './ChatMoveDialog.tsx';
 import { useChatMoveRequest } from '../../takeover/chat-move-store.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
@@ -46,6 +47,7 @@ export function MoveDialogsHost() {
       {takeover ? <MoveDialog key={`${takeover.sessionId}:${takeover.targetMachine ?? ''}`} request={takeover} /> : null}
       {hooked ? <ContinueHookedDialog key={hooked.sessionId} request={hooked} /> : null}
       <MoveStatusHost />
+      <MovedCleanupHost />
     </>
   );
 }
@@ -72,6 +74,8 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
   // D110 / D152: the folders, the workspace root, the per-repo choices and the files the developer chose.
   const [choice, setChoice] = useState<MoveChoice>(EMPTY_CHOICE);
   const [confirmed, setConfirmed] = useState(false);
+  // D156: clean up on the source after a successful move (remembered on this computer).
+  const [cleanupSource, setCleanupSource] = useCleanupSourcePref();
   const [run, setRun] = useState<TakeoverRun | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -142,7 +146,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
     setStarting(true);
     setStartError(null);
     api
-      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), confirmStopTerminal: confirmed })
+      .takeoverStart({ sessionId: request.sessionId, targetMachine, clonePaths: clonePathsOf(preview, choice.clonePaths), ...(choice.placement ? { placement: choice.placement } : {}), ...(choice.files ? { workspaceFiles: choice.files } : {}), ...(choice.excludeRepos && choice.excludeRepos.length > 0 ? { excludeRepos: choice.excludeRepos } : {}), ...(choice.stashTargets && choice.stashTargets.length > 0 ? { stashTargets: choice.stashTargets } : {}), ...(cleanupSource ? { cleanupSource: true } : {}), confirmStopTerminal: confirmed })
       .then((next) => {
         setRun(next);
         poll(next.id);
@@ -268,6 +272,7 @@ export function MoveDialog({ request }: { readonly request: TakeoverRequest }) {
               </div>
             </div>
             <MovePlanPanel preview={preview} machine={direction === 'move' ? targetMachine : null} sourceName={sourceName} targetName={targetName} choice={choice} onChange={change} onEdit={setChoice} />
+            <CleanupSourceOption source={sourceName} checked={cleanupSource} onChange={setCleanupSource} />
             {preview.stopsTerminal ? (
               <div className="v2-mv-warn" data-testid="v2-move-hooked-warning">
                 <p>{HOOKED_STOP_WARNING}</p>
@@ -349,6 +354,7 @@ export function RunView({
           ))}
         </div>
       ) : null}
+      {run.sourceCleanup ? <CleanupReportView report={run.sourceCleanup} /> : null}
       {run.leftovers.length > 0 ? (
         <div className="v2-mv-leftovers" data-testid="v2-move-leftovers">
           {run.leftovers.map((leftover) => (

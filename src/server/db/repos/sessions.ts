@@ -1,3 +1,4 @@
+import type { MoveCarried, SourceCleanupRecord } from '../../../core/source-cleanup.ts';
 import { randomUUID } from 'node:crypto';
 import type { SessionModelOption, TodoLink } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
@@ -185,6 +186,10 @@ export interface SessionMove {
   readonly sessionId: string;
   /** ISO time of the take-over. */
   readonly at: string;
+  /** D156: on the source, what the move carried (absent: an older move); never sent to the UI. */
+  readonly carried?: MoveCarried;
+  /** D156: on the source, the last clean-up after the move (Clean up on this computer…). */
+  readonly cleanup?: SourceCleanupRecord;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */

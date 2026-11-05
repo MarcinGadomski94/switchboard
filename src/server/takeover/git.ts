@@ -246,6 +246,25 @@ export class TakeoverGit {
   }
 
   /**
+   * D156: the tree of `dir`'s current state (HEAD plus every uncommitted change,
+   * untracked files included, ignored ones not), made the way {@link makeWipCommit}
+   * makes the WIP commit's tree, with a throw-away index (nothing in the repo
+   * changes). `null` when git cannot tell.
+   */
+  async workingTree(dir: string): Promise<string | null> {
+    const index = path.join(os.tmpdir(), `switchboard-cleanup-${randomUUID()}.index`);
+    const env = { GIT_INDEX_FILE: index };
+    try {
+      if (!(await this.try(dir, ['read-tree', 'HEAD'], env)).ok) return null;
+      if (!(await this.try(dir, ['add', '-A'], env)).ok) return null;
+      const tree = await this.try(dir, ['write-tree'], env);
+      return tree.ok && tree.out !== '' ? tree.out : null;
+    } finally {
+      await rm(index, { force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
    * Captures `repo` for a take-over: the WIP commit (when something is
    * uncommitted) and the push of its tip (else of the branch's tip) to the temporary
    * remote branch `switchboard/takeover/<session short id>/<branch>`. The push is

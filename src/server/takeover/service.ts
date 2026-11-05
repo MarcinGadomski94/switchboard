@@ -72,6 +72,8 @@ import { type WorksInEvidence, type WorksInSource, type WorkspaceFileInfo, type 
 import { isWorkingTreeTop } from '../solutions/checkout.ts';
 import { carriedByDefault, isHiddenSolutionName, isOutsideRoot } from '../../core/outside-repos.ts';
 import { type MoveStash, type SkippedWorktree, type TargetChanges, isSafeWorktreeLayout, skippedWarning, stashAudit, stashMessage, worktreeAtTarget, worktreeCarry, worktreeLayout } from '../../core/move-worktrees.ts';
+import type { MoveCarried, SourceCleanupReport } from '../../core/source-cleanup.ts';
+import { SourceCleanup } from './source-cleanup.ts';
 import { type StagedWorkspaceFile, checkWorkspaceChunk, checkWorkspaceRoot, inspectStaged, listWorkspaceFiles, mkdirTracked, placeWorkspaceFiles, sourceWorkspaceFile, undoPlaced, workspaceFileStates, writeStagedChunk } from './workspace.ts';
 
 /**
@@ -150,7 +152,9 @@ interface SourceOp {
   readonly hooked: boolean;
   wasLive: boolean;
   wasBusy: boolean;
-  captured: Array<CapturedRepo & { readonly repoPath: string; leftoverId: string | null }>;
+  captured: Array<CapturedRepo & { readonly repoPath: string; leftoverId: string | null; readonly name: string; readonly kind: 'main' | 'worktree'; readonly mainPath: string; readonly wipTree: string | null }>;
+  /** D156: what the agent works in that this move does not carry (skipped worktrees, repos left out), recorded at finish. */
+  notCarried: Array<{ readonly name: string; readonly kind: 'main' | 'worktree'; readonly path: string; readonly reason: string }>;
   terminalStopped: boolean;
   readonly startedAt: number;
   /** name → absolute path (real files) or bytes (generated). */
@@ -288,6 +292,8 @@ export class TakeoverService {
 
   readonly #todos: TodoService | null;
   readonly #loops: LoopService | null;
+  /** D156: the clean-up of a moved agent on this (its source) computer. */
+  readonly #cleanup: SourceCleanup;
 
   constructor(options: TakeoverServiceOptions) {
     this.#store = options.store;
@@ -306,6 +312,46 @@ export class TakeoverService {
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
     this.#onAudit = options.onAudit ?? ((line) => console.info(`switchboard take-over [audit]: ${line}`));
     this.#moveLog = new MoveLog(options.log);
+    this.#cleanup = new SourceCleanup({
+      store: this.#store,
+      supervisor: this.#supervisor,
+      worktrees: this.#worktrees,
+      dataDir: this.#config.dataDir,
+      env: this.#env,
+      self: this.#self,
+      moveLog: this.#moveLog,
+      conversationFiles: async (record) => {
+        if (record.provider === 'claude') {
+          const transcript = await this.#claudeTranscript(record);
+          return { files: transcript ? (await this.#claudeFiles(transcript, record.claudeSessionId)).map((file) => file.abs) : [], ids: [record.claudeSessionId] };
+        }
+        const rollout = record.provider === 'codex' ? await this.#codexRollout(record) : null;
+        const native = record.provider === 'codex' ? await this.#store.providers.nativeId(record.id, 'codex') : null;
+        return { files: rollout ? [rollout.abs] : [], ids: native ? [native] : [] };
+      },
+    });
+  }
+
+  /**
+   * D156 (source): the clean-up after a successful move (the move's "Clean up on <source>"
+   * checkbox), run by the move's initiating machine right after `finish`; logged as the
+   * run's `cleanup` step.
+   */
+  async cleanupAfterMove(opId: string, sessionId: string): Promise<OpAnswer<SourceCleanupReport>> {
+    const answer = await this.#cleanup.run(sessionId, opId, 'move');
+    return { result: answer.report, log: answer.log };
+  }
+
+  /** D156: what **Clean up on this computer…** would do for a moved agent (nothing changes). */
+  async cleanupPreview(sessionId: string): Promise<OpAnswer<SourceCleanupReport>> {
+    const answer = await this.#cleanup.preview(sessionId);
+    return { result: answer.report, log: answer.log };
+  }
+
+  /** D156: **Clean up on this computer…** confirmed (a run of its own in the move log). */
+  async cleanupNow(sessionId: string): Promise<OpAnswer<SourceCleanupReport>> {
+    const answer = await this.#cleanup.run(sessionId, randomUUID(), 'manual');
+    return { result: answer.report, log: answer.log };
   }
 
   #git(lines: string[]): TakeoverGit {
@@ -787,6 +833,7 @@ export class TakeoverService {
       wasLive: false,
       wasBusy: record.status === 'run' || record.status === 'need',
       captured: [],
+      notCarried: [],
       terminalStopped: false,
       startedAt: Date.now(),
       files: new Map(),
@@ -840,25 +887,34 @@ export class TakeoverService {
     const op = this.#source(opId);
     const log: string[] = [];
     const git = this.#git(log);
-    const inspected = (await this.inspectRepos(op.sessionId, log)).repos;
+    const described = await this.inspectRepos(op.sessionId, log);
+    const inspected = described.repos;
     // D152 follow-up 2026-11-05: a repo the developer left out is not captured (no temp branch).
     const left = new Set(exclude);
+    // D156: what does not travel is recorded for the source's clean-up list.
+    op.notCarried = [
+      ...described.skippedWorktrees.map((entry) => ({ name: entry.name, kind: 'worktree' as const, path: entry.path, reason: `not carried: ${entry.text}` })),
+      ...described.leftOut.map((entry) => ({ name: entry.name, kind: 'main' as const, path: entry.path, reason: `not carried: ${entry.reason}` })),
+      ...inspected.filter((repo) => left.has(repo.path)).map((repo) => ({ name: repo.name, kind: repo.kind, path: repo.path, reason: 'not carried: left out of the move' })),
+    ];
     for (const repo of inspected) {
       if (left.has(repo.path)) continue;
       const captured = await this.#moveLog.step(opId, 'push', 'source', () => git.capture(repo, op.sessionId), { repo: repo.name, path: repo.path }, (result) => ({ uncommitted: result.uncommitted, wip: result.wipSha !== null }));
       const leftover = await this.#addLeftover({ repoPath: repo.path, remoteName: repo.remoteName, remoteUrl: repo.remoteUrl, branch: captured.tempBranch, reason: null });
-      op.captured.push({ ...captured, repoPath: repo.path, leftoverId: leftover.id });
+      // D156: the WIP commit's tree, so a clean-up can tell "exactly what was carried" from later changes.
+      const wipTree = captured.wipSha === null ? null : (await git.try(repo.path, ['rev-parse', `${captured.wipSha}^{tree}`])).out || null;
+      op.captured.push({ ...captured, repoPath: repo.path, leftoverId: leftover.id, name: repo.name, kind: repo.kind, mainPath: repo.mainPath, wipTree });
     }
-    return { result: { repos: op.captured.map(({ repoPath: _repoPath, leftoverId: _leftoverId, ...rest }) => rest) }, log };
+    return { result: { repos: op.captured.map(({ repoPath: _repoPath, leftoverId: _leftoverId, name: _name, kind: _kind, mainPath: _mainPath, wipTree: _wipTree, ...rest }) => rest) }, log };
   }
 
   /** The repos as they are now (the capture re-reads them: the preview may be old). */
-  async inspectRepos(sessionId: string, log: string[] = []): Promise<{ readonly repos: readonly SourceRepo[] }> {
+  async inspectRepos(sessionId: string, log: string[] = []): Promise<{ readonly repos: readonly SourceRepo[]; readonly skippedWorktrees: readonly SkippedWorktree[]; readonly leftOut: NonNullable<SourceInspect['leftOut']> }> {
     const answer = await this.inspect(sessionId);
     log.push(...answer.log);
     const real = answer.result.blockers.filter((blocker) => !blocker.includes('is being taken over already'));
     if (real.length > 0) throw new TakeoverError(409, 'blocked', real.join('; '));
-    return { repos: answer.result.repos };
+    return { repos: answer.result.repos, skippedWorktrees: answer.result.skippedWorktrees ?? [], leftOut: answer.result.leftOut ?? [] };
   }
 
   async #stopTerminal(opId: string): Promise<OpAnswer<{ readonly pid: number | null; readonly how: string }>> {
@@ -997,7 +1053,16 @@ export class TakeoverService {
     if (record) {
       try {
         for (const message of await this.#store.pendingMessages.pending(op.sessionId)) await this.#store.pendingMessages.markDelivered(message.id);
-        await this.#store.sessions.update(op.sessionId, { movedTo: move });
+        // D156: what travelled is kept on the source session, so a clean-up later knows what it may remove.
+        const carried: MoveCarried = {
+          version: 1,
+          repos: op.captured.map((entry) => ({ name: entry.name, kind: entry.kind, path: entry.repoPath, mainPath: entry.mainPath, branch: entry.branch, remoteName: entry.remoteName, headSha: entry.baseSha, wipTree: entry.wipTree, uncommitted: entry.uncommitted })),
+          notCarried: op.notCarried,
+          conversation: [...op.files.values()].flatMap((entry) => ('abs' in entry ? [entry.abs] : [])),
+          workspaceRoot: record.rootKind === 'workspace' ? record.root : null,
+          workspaceFiles: [...op.workspace.keys()],
+        };
+        await this.#store.sessions.update(op.sessionId, { movedTo: { machineId: move.machineId, machineName: move.machineName, sessionId: move.sessionId, at: move.at, carried } });
         await this.#supervisor.recordServiceEvent(op.sessionId, 'text', movedToLabel(move.machineName), {
           type: 'lifecycle',
           action: 'moved-away',

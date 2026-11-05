@@ -4,6 +4,7 @@ import { type CrewMoveCheck, type CrewMoveRun, type TeamCharter, type TeamMember
 import type { TakeoverPreview } from '../../../core/takeover.ts';
 import { EMPTY_CHOICE, type MoveChoice, choiceAfterPreview, choiceBody, shareChoice, stashLines } from '../../takeover/complete-move.ts';
 import { MovePlanPanel } from '../agent/MovePlan.tsx';
+import { CleanupSourceOption, useCleanupSourcePref } from '../agent/SourceCleanup.tsx';
 import type { TeamTemplate } from '../../../core/team-templates.ts';
 import { api } from '../../api/client.ts';
 import { useMachines } from '../../api/useMachines.ts';
@@ -188,6 +189,8 @@ export function MoveToComputerDialog({ member, onClose, initial }: { readonly me
   // D152: the move's plan on the picked computer (the take-over's preview) and what the developer chose in it.
   const [plan, setPlan] = useState<MoveCheck | null>(null);
   const [choice, setChoice] = useState<MoveChoice>(EMPTY_CHOICE);
+  // D156: clean up on the source after a successful move (remembered on this computer).
+  const [cleanupSource, setCleanupSource] = useCleanupSourcePref();
   const ask = useRef(0);
   const open = useRef(true);
   const toast = useToast();
@@ -296,7 +299,7 @@ export function MoveToComputerDialog({ member, onClose, initial }: { readonly me
         return;
       }
       setState('moving');
-      const run = await teamApi.move(member.id, pick, body);
+      const run = await teamApi.move(member.id, pick, { ...body, ...(cleanupSource ? { cleanupSource: true } : {}) });
       setProgress({ kind: 'moving', text: `Moving ${member.name} to ${nameOf(pick)}…` });
       void follow(run.id, pick);
     } catch (e) {
@@ -353,6 +356,7 @@ export function MoveToComputerDialog({ member, onClose, initial }: { readonly me
           onEdit={setChoice}
         />
       ) : null}
+      {pick !== null && targetWhy === null && plan?.preview && state === 'idle' && progress?.kind !== 'moving' ? <CleanupSourceOption source={plan.preview.source.machine.name} checked={cleanupSource} onChange={setCleanupSource} /> : null}
       {blockers.length > 0 ? (
         <ul className="v2-c-blockers" data-testid="v2-move-computer-blockers">
           {blockers.map((blocker) => (
@@ -387,6 +391,8 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
   const [pick, setPick] = useState<string | null>(null);
   const [check, setCheck] = useState<CrewMoveCheck | null>(null);
   const [choices, setChoices] = useState<Record<string, MoveChoice>>({});
+  // D156: clean up on the source after each teammate's successful move (remembered on this computer).
+  const [cleanupSource, setCleanupSource] = useCleanupSourcePref();
   const [run, setRun] = useState<CrewMoveRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -455,7 +461,7 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
     setBusy(true);
     setError(null);
     try {
-      const started = await teamApi.crewMove(crew.id, pick, bodies(choices));
+      const started = await teamApi.crewMove(crew.id, pick, Object.fromEntries(Object.entries(bodies(choices)).map(([id, body]) => [id, { ...body, ...(cleanupSource ? { cleanupSource: true } : {}) }])));
       setRun(started);
       follow(started.id);
     } catch (caught) {
@@ -556,6 +562,7 @@ export function MoveCrewDialog({ crew, onClose }: { readonly crew: TeamSummary; 
           );
         })}
       </div>
+      {!run && pick !== null && check !== null ? <CleanupSourceOption source="the computers they leave" checked={cleanupSource} onChange={setCleanupSource} /> : null}
       {run && run.state !== 'running' ? (
         <p className={run.state === 'failed' ? 'v2-field-error' : 'v2-muted v2-c-small'} role={run.state === 'failed' ? 'alert' : 'status'} data-testid="v2-move-crew-result" data-state={run.state}>
           {run.state === 'failed' ? `${run.error ?? ''} ${crewMoveSummary(run, nameOf(run.targetMachineId))}` : crewMoveSummary(run, nameOf(run.targetMachineId))}

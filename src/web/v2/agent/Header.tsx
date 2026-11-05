@@ -1,3 +1,4 @@
+import { MovedCleanupButton } from './SourceCleanup.tsx';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { AttachWarning, Session } from '../../../core/api.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
@@ -322,7 +323,12 @@ function Notes({ session, sessionId, onAct }: { readonly session: Session; reado
       {session.movedTo ? (
         <div className="v2-ag-note" data-testid="v2-agent-moved">
           <Icon name="desktop" size="s" />
-          Moved to {session.movedTo.machineName}. It continues there.
+          <span className="v2-grow">
+            Moved to {session.movedTo.machineName}. It continues there.
+            {session.movedTo.cleanedAt ? ' Cleaned up on this computer.' : ''}
+          </span>
+          {/* D156: what the move left here: archive, carried worktrees, the conversation file, and the list to remove by hand. */}
+          <MovedCleanupButton session={session} title={session.title ?? session.name} />
         </div>
       ) : null}
       {session.continuedTo ? (
