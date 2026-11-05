@@ -421,3 +421,53 @@ export function splitClonePath(value: string | null): { readonly parent: string;
   if (value === null || value.trim() === '') return { parent: '', name: '' };
   return { parent: targetParent(value), name: targetBaseName(value) };
 }
+
+/** D152 follow-up (*Where it runs*): one place the moved agent can run on the target: its workspace root, or one of the repos it carries. */
+export interface RunInOption {
+  /** `''` = the workspace root; else the repo's path on the source (`placement.runIn.repo`). */
+  readonly value: string;
+  readonly label: string;
+  /** A repo outside the workspace root. */
+  readonly outside: boolean;
+}
+
+/**
+ * D152 follow-up (*Where it runs*): where a workspace agent can run on the target:
+ * its workspace root (first, the default), then each repo the move carries (outside
+ * ones first: the case this is for). The chosen repo stays listed even while the
+ * preview has not caught up.
+ */
+export function runInOptions(preview: TakeoverPreview, choice: MoveChoice): RunInOption[] {
+  const excluded = new Set(choice.excludeRepos ?? []);
+  const chosen = choice.placement?.runIn?.repo ?? null;
+  const repos = (preview.source.repos ?? []).filter((repo) => repo.path === chosen || (!excluded.has(repo.path) && (repo.outside !== true || outsideCarried(repo, choice.placement?.outsideCarry))));
+  const sorted = [...repos.filter((repo) => repo.outside === true), ...repos.filter((repo) => repo.outside !== true)];
+  return [
+    { value: '', label: 'The workspace root', outside: false },
+    ...sorted.map((repo) => ({ value: repo.path, label: `${repo.name}${repo.outside === true ? ' (outside the workspace)' : ''}`, outside: repo.outside === true })),
+  ];
+}
+
+/** D152 follow-up (*Where it runs*): the source path of the repo the agent runs in on the target, `null` = its workspace root. */
+export function runInOf(choice: MoveChoice): string | null {
+  return choice.placement?.runIn?.repo ?? null;
+}
+
+/**
+ * D152 follow-up (*Where it runs*): the choice with the agent running in the repo at
+ * source `repoPath` on the target (`null`: its workspace root). Choosing a repo
+ * carries it (an outside one is carried, a left-out one put back) and drops a new
+ * workspace root the developer had asked for: no workspace is needed there.
+ */
+export function withRunIn(choice: MoveChoice, preview: TakeoverPreview, repoPath: string | null): MoveChoice {
+  const base: TargetPlacement = choice.placement ?? { roots: [] };
+  if (repoPath === null) {
+    const { runIn: _old, ...rest } = base;
+    return { ...choice, placement: { ...rest, roots: [...rest.roots] } };
+  }
+  const repo = (preview.source.repos ?? []).find((entry) => entry.path === repoPath) ?? null;
+  const { newWorkspace: _dropped, ...rest } = base;
+  const outsideCarry = repo?.outside === true ? { ...(rest.outsideCarry ?? {}), [repo.key]: true } : rest.outsideCarry;
+  const placement: TargetPlacement = { ...rest, roots: [...rest.roots], ...(outsideCarry ? { outsideCarry } : {}), runIn: { repo: repoPath } };
+  return withRepoCarried({ ...choice, placement }, repoPath, true);
+}

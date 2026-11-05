@@ -299,6 +299,12 @@ export interface TargetPlan {
   readonly workspaceRoot?: WorkspaceRootCheck | null;
   /** D152: what is at each of the source's workspace files' paths under the workspace root here; `null` when no workspace root is known. Absent from an older target. */
   readonly workspaceFiles?: readonly WorkspaceFileTarget[] | null;
+  /**
+   * D152 follow-up (*Where it runs*): the carried repo the session runs in here
+   * (`placement.runIn` honoured: its key, name and folder on this machine); `null`
+   * without `runIn`. Absent from an older target, which ignores `runIn`.
+   */
+  readonly runIn?: { readonly key: string; readonly name: string; readonly path: string | null } | null;
 }
 
 /**
@@ -335,6 +341,16 @@ export interface TargetPlacement {
    * other choices for the next move of this folder to that machine.
    */
   readonly outsideCarry?: Readonly<Record<string, boolean>>;
+  /**
+   * D152 follow-up 2026-11-05 (*Where it runs*, `docs/peers.md` → *Running in a
+   * carried repo*): a workspace agent continues on the target as a **repo** session
+   * of one of the repos it carries (`repo`: that repo's path on the source, where the
+   * session works in it, or its main checkout). No workspace root is needed or made
+   * there; the other carried repos become its extra folders. Absent = the workspace
+   * root (as before). An older target ignores it: the initiating machine refuses
+   * when the plan does not echo {@link TargetPlan.runIn}.
+   */
+  readonly runIn?: { readonly repo: string };
 }
 
 /** What the verification found for one repo: ✓ found, ⚠ found on another branch / dirty, ✖ missing, ? several. */
@@ -485,6 +501,14 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
       outsideCarry[key] = entry;
     }
   }
+  const runInIn = record['runIn'];
+  let runIn: { repo: string } | undefined;
+  if (runInIn !== undefined && runInIn !== null) {
+    if (typeof runInIn !== 'object' || Array.isArray(runInIn)) return null;
+    const repoIn = (runInIn as Record<string, unknown>)['repo'];
+    if (typeof repoIn !== 'string' || repoIn.trim() === '' || repoIn.length > 1000) return null;
+    runIn = { repo: repoIn.trim() };
+  }
   const workspaceIn = record['newWorkspace'];
   let newWorkspace: NewWorkspace | undefined;
   if (workspaceIn !== undefined && workspaceIn !== null) {
@@ -499,6 +523,7 @@ export function placementOf(value: unknown): TargetPlacement | undefined | null 
     ...(repoModes && Object.keys(repoModes).length > 0 ? { repoModes } : {}),
     ...(newWorkspace ? { newWorkspace } : {}),
     ...(outsideCarry && Object.keys(outsideCarry).length > 0 ? { outsideCarry } : {}),
+    ...(runIn ? { runIn } : {}),
   };
 }
 
@@ -519,6 +544,7 @@ export function placementToRemember(placement: TargetPlacement, createdRoot: str
     ...(Object.keys(paths).length > 0 ? { repoPaths: paths } : {}),
     ...(Object.keys(modes).length > 0 ? { repoModes: modes } : {}),
     ...(placement.outsideCarry && Object.keys(placement.outsideCarry).length > 0 ? { outsideCarry: { ...placement.outsideCarry } } : {}),
+    ...(placement.runIn ? { runIn: { ...placement.runIn } } : {}),
   };
 }
 
@@ -551,6 +577,27 @@ export interface TakeoverPreview {
  */
 export function noWorkspaceBlocker(machine: string): string {
   return `none of the chosen folders is a workspace (a folder with the router AGENTS.md): in "Workspace on ${machine}" choose "A folder that is there" (the workspace root on ${machine}) or "Create a new folder" (the workspace's AGENTS.md comes along). A workspace agent always runs in its workspace root, also when you carry only repos outside it`;
+}
+
+/**
+ * D152 follow-up (*Where it runs*): the carried repo `runIn` names (by the path the
+ * session works in on the source, or its main checkout); `null` when none of
+ * `repos` is it (not carried, or left out).
+ */
+export function runInRepoOf<T extends Pick<SourceRepo, 'path' | 'mainPath'>>(repos: readonly T[], runIn: { readonly repo: string }): T | null {
+  const want = runIn.repo.replace(/[\\/]+$/, '');
+  return repos.find((repo) => repo.path.replace(/[\\/]+$/, '') === want) ?? repos.find((repo) => repo.mainPath.replace(/[\\/]+$/, '') === want) ?? null;
+}
+
+/**
+ * D152 follow-up (*Where it runs*): the blocker when the developer chose a repo to
+ * run in and the target's plan did not honour it (an older Switchboard ignores
+ * `runIn`, so its plan has no {@link TargetPlan.runIn}); `null` when fine.
+ */
+export function runInProblem(placement: TargetPlacement | null | undefined, plan: Pick<TargetPlan, 'runIn' | 'machine'>): string | null {
+  if (!placement?.runIn) return null;
+  if (plan.runIn === undefined || plan.runIn === null) return `${plan.machine.name} cannot run the agent in one of its repos (it runs an older Switchboard): update Switchboard there, or choose "The workspace root" in "Where it runs on ${plan.machine.name}"`;
+  return null;
 }
 
 /** One repo after the source pushed its work in progress. */
