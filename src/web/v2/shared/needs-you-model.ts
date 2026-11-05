@@ -133,6 +133,8 @@ export function systemKindOf(item: Pick<InboxItem, 'kind' | 'systemKind' | 'labe
   if (item.kind !== 'system') return null;
   const ids = new Set((item.actions ?? []).map((action) => action.id));
   if (item.systemKind === 'turn-waiting' || item.label.startsWith('Waiting for you')) return 'ask';
+  // D154: a failed move (Try again reopens the move dialog): a stop that waits for the developer.
+  if (ids.has('move-try-again')) return 'stopped';
   if ([...ids].some((id) => READY_ACTIONS.has(id)) || item.label === 'Confirm done') return 'ready';
   if (ids.has('plan-ask-repos') || item.label === 'Pick repositories') return 'pick';
   if (ids.has('retry-run') || item.label === 'Scheduled run failed') return 'routine';

@@ -175,10 +175,12 @@ const MOVE_WAIT_MS = 15 * 60_000;
  * the teammate's record names the new computer (the crew page is read again then). Closed while
  * moving, it keeps following the run and says the outcome in a toast (a failure stays longer).
  */
-export function MoveToComputerDialog({ member, onClose }: { readonly member: TeamMember; readonly onClose: () => void }) {
+export function MoveToComputerDialog({ member, onClose, initial }: { readonly member: TeamMember; readonly onClose: () => void; readonly initial?: { readonly pick: string; readonly choice: MoveChoice } }) {
   const machines = useMachines();
   const [self, setSelf] = useState<{ id: string; name: string } | null>(null);
-  const [pick, setPick] = useState<string | null>(null);
+  // D154: a failed move's Try again opens with the same computer picked and the last choices.
+  const [pick, setPick] = useState<string | null>(initial?.pick ?? null);
+  const retried = useRef<MoveChoice | undefined>(initial?.choice);
   const [blockers, setBlockers] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'checking' | 'moving'>('idle');
@@ -216,13 +218,17 @@ export function MoveToComputerDialog({ member, onClose }: { readonly member: Tea
       (caught: unknown) => n === ask.current && setError(refusalText(caught)),
     );
   };
+  // A computer that can be moved to (D154: Try again's is known once this computer's and the paired ones are read).
+  const pickReady = pick !== null && targetWhy === null;
   useEffect(() => {
+    const first = pickReady && pick === initial?.pick ? retried.current : undefined;
+    if (pickReady) retried.current = undefined;
     setPlan(null);
-    setChoice(EMPTY_CHOICE);
+    setChoice(first ?? EMPTY_CHOICE);
     setBlockers([]);
-    if (pick !== null && moveTargetReason(choices, pick) === null) loadPlan(pick, undefined);
+    if (pickReady && pick !== null) loadPlan(pick, first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pick]);
+  }, [pick, pickReady]);
   /** Follows the run until it ends; the outcome goes to the dialog while it is open, else to a toast. */
   const follow = async (runId: string, target: string): Promise<void> => {
     const targetName = nameOf(target);

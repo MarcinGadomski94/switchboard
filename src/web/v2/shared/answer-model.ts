@@ -1,5 +1,5 @@
 import { ADD_ACCOUNT_ACTION, addAccountPath } from '../../../core/account-hint.ts';
-import type { BatchAnswer, NewSessionPrefill, Question } from '../../../core/api.ts';
+import type { BatchAnswer, InboxItem, NewSessionPrefill, Question } from '../../../core/api.ts';
 import type { TeamCharter } from '../../../core/team.ts';
 import { ANSWER, type AnsweredWhere, actionLabel } from '../glossary.ts';
 import { plainText } from './card-markdown.ts';
@@ -40,7 +40,9 @@ export type AnswerAction =
 export type OpenTarget =
   | { readonly type: 'agent'; readonly sessionId: string; readonly tab?: 'changes' }
   | { readonly type: 'path'; readonly path: string }
-  | { readonly type: 'url'; readonly url: string };
+  | { readonly type: 'url'; readonly url: string }
+  /** D154: a failed move's Try again (the move dialog of the same agent and computer, pre-filled). */
+  | { readonly type: 'move'; readonly move: NonNullable<InboxItem['move']> };
 
 /** What a button does. */
 export type ButtonIntent =
@@ -59,7 +61,7 @@ export interface CardButton {
 }
 
 /** The server action ids that only open something (the item stays open). */
-const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION]);
+const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION, 'move-try-again']);
 
 /** `true` for an action id that only opens something. */
 export function isLinkAction(id: string): boolean {
@@ -73,6 +75,8 @@ export function openTargetOf(item: NeedsItem, actionId: string): OpenTarget | nu
   if (actionId === 'open-plan' || actionId === 'open-memory') return item.route ? { type: 'path', path: item.route } : null;
   // D142: "Add it there": Advanced › Accounts: every option, with the item's computer picked and the Add form prefilled.
   if (actionId === ADD_ACCOUNT_ACTION) return item.inbox?.addAccount ? { type: 'path', path: addAccountPath('v2', item.computer?.id ?? null, item.inbox.addAccount) } : null;
+  // D154: a failed move's Try again opens the move dialog (the item stays until a later move succeeds, or Dismiss).
+  if (actionId === 'move-try-again') return item.inbox?.move ? { type: 'move', move: item.inbox.move } : null;
   return null;
 }
 
@@ -85,7 +89,8 @@ function serverButtons(item: NeedsItem, skip: ReadonlySet<string> = new Set()): 
     if (isLinkAction(action.id)) {
       const target = openTargetOf(item, action.id);
       // D142: "Add it there" is the item's first and main action, so it is primary; other links stay quiet.
-      if (target) out.push({ id: action.id, label, variant: index === 0 && action.id === ADD_ACCOUNT_ACTION ? 'primary' : 'ghost', intent: { type: 'open', target } });
+      // D154: a failed move's Try again is its main action too.
+      if (target) out.push({ id: action.id, label, variant: index === 0 && (action.id === ADD_ACCOUNT_ACTION || action.id === 'move-try-again') ? 'primary' : 'ghost', ...(action.id === 'move-try-again' ? { icon: 'refresh' } : {}), intent: { type: 'open', target } });
       return;
     }
     const icon = action.id === 'plan-merge' || action.id === 'merge-pr' ? 'merge' : action.id === 'retry-run' ? 'play' : action.id === 'try-again' ? 'refresh' : undefined;
@@ -139,7 +144,7 @@ export function cardButtons(item: NeedsItem): CardButton[] {
     case 'stopped': {
       const own = new Set(item.actions.map((action) => action.id));
       const buttons: CardButton[] = [];
-      if (!own.has('try-again') && sessionId && item.source === 'inbox') buttons.push({ id: 'retry', label: ANSWER.tryAgain, variant: 'primary', icon: 'refresh', intent: { type: 'answer', action: { type: 'retry', text: RETRY_TEXT } } });
+      if (!own.has('try-again') && !own.has('move-try-again') && sessionId && item.source === 'inbox') buttons.push({ id: 'retry', label: ANSWER.tryAgain, variant: 'primary', icon: 'refresh', intent: { type: 'answer', action: { type: 'retry', text: RETRY_TEXT } } });
       for (const button of serverButtons(item)) buttons.push(buttons.length === 0 || button.variant !== 'primary' ? button : { ...button, variant: 'default' });
       return buttons;
     }

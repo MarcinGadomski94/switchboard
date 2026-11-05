@@ -21,6 +21,7 @@ import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
 import { AgentComputerTag, CrewTag } from '../shared/agent-row.tsx';
+import { MoveBadge } from '../shared/MoveBadge.tsx';
 import { agentName, agentStatusOf, statusWithApps } from '../shared/agent-line.ts';
 import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, teammateOf, useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { continueAsAgent } from './agent-bits.ts';
@@ -178,6 +179,8 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
           {mate ? <CrewTag crew={mate.crewName} /> : null}
         </div>
         {status ? <StatusBadge status={status} size={phone ? 's' : undefined} {...(statusLabel ? { label: statusLabel } : {})} /> : null}
+        {/* D154: while it moves to another computer (from any tab, after a reload, on a phone): opens the move. */}
+        <MoveBadge of={{ sessionId }} {...(phone ? { size: 's' as const } : {})} />
         {/* D138: where its account comes from, when it is not the automatic rules' ("Account: B (from project)"). */}
         {session && !phone && session.accountChoice && session.accountChoice.source !== 'automatic' ? (
           <span data-testid="v2-agent-account-chip" data-source={session.accountChoice.source}>

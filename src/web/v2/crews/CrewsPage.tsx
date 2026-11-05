@@ -4,6 +4,7 @@ import { refusalText, teamApi } from '../../team/api.ts';
 import { reloadTeam, useTeamData } from '../../team/useTeamData.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { Avatar, Button, Card, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Skeleton, StatusBadge, useToast } from '../components/index.ts';
+import { MoveBadge } from '../shared/MoveBadge.tsx';
 import { CREW_WORDS, teammateStatusToV2 } from '../glossary.ts';
 import { V2Link, useV2Router } from '../nav.tsx';
 import { useCrewPins } from '../shared/crew-pins.ts';
@@ -223,6 +224,8 @@ export function CrewsPage() {
                       </span>
                     </div>
                     {stats.needs > 0 ? <StatusBadge status="needs" label={`${stats.needs} need${stats.needs === 1 ? 's' : ''} you`} size="s" /> : null}
+                    {/* D154: a teammate of this crew moving to another computer (its own move or the crew's): opens the move. */}
+                    <MoveBadge of={{ teamId: crew.id }} size="s" />
                     <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <span data-tour="v2-crew-menu" style={{ display: 'inline-flex' }}>
                       <MenuButton

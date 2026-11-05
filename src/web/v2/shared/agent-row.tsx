@@ -10,6 +10,7 @@ import { timeAgo } from './time.ts';
 
 export { type AgentLine, type AgentRowExtras, agentLine, agentName, agentStatusOf } from './agent-line.ts';
 import './shared.css';
+import { MoveBadge } from './MoveBadge.tsx';
 
 /**
  * D131 · the agent row and card building blocks (`docs/v2.md` → *Shared modules*):
@@ -109,6 +110,8 @@ export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now
           </span>
         </button>
         <AgentComputerTag machine={session.machine} />
+        {/* D154: a running move of this agent: "Moving to <PC>… (<step>)", opens the move. */}
+        <MoveBadge of={{ sessionId: session.id }} size="s" />
         <StatusBadge status={status} />
         {trailing}
       </div>
@@ -137,6 +140,7 @@ export function AgentRow({ session, activity, extras = {}, onOpen, trailing, now
           </span>
         </span>
       </button>
+      <MoveBadge of={{ sessionId: session.id }} size="s" />
       {trailing}
     </div>
   );

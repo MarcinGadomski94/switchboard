@@ -1,5 +1,6 @@
 import type { Session } from '../../core/api.ts';
 import { offlineReason } from '../../core/peers.ts';
+import type { MoveChoices } from '../../core/moves.ts';
 import {
   type FoundCheckout,
   type RepoCheckState,
@@ -30,6 +31,8 @@ export interface TakeoverRequest {
   /** The name of the other machine (for the title). */
   readonly machineName: string;
   readonly title: string;
+  /** D154: a failed move's **Try again**: the dialog opens with these choices (the v2 dialog; classic keeps its own defaults). */
+  readonly retry?: MoveChoices;
 }
 
 /** The header's / the row menu's label for a peer's session. */

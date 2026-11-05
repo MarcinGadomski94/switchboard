@@ -13,6 +13,7 @@ import '../needs-you/needs.css';
 import { AnswerCard } from '../shared/AnswerCard.tsx';
 import { useNeedsYou } from '../shared/needs-you.ts';
 import { DoneToday } from './DoneToday.tsx';
+import { HomeMoves } from './Moves.tsx';
 import { type StartEvents, StartBox } from './StartBox.tsx';
 import { type PendingStart, WorkingNow } from './WorkingNow.tsx';
 import { HOME_NEEDS_LIMIT, dateLine, doneToday, greeting, needsSummary, topNeeds, workSummary, workingNow } from './home-model.ts';
@@ -129,6 +130,7 @@ export function HomePage() {
           {HOME_WORDS.workingNow}
         </h2>
         <WorkingNow working={working} loaded={loaded} pending={pending} items={needs.items} phone />
+        <HomeMoves phone />
         <h2 className="v2-home-psec">
           <Icon name="check-circle" size="s" />
           {HOME_WORDS.doneTodayTitle}
@@ -185,6 +187,9 @@ export function HomePage() {
         />
         <WorkingNow working={working} loaded={loaded} pending={pending} items={needs.items} phone={false} />
       </section>
+
+      {/* D154: moves between computers, running and recently finished (only while there are some). */}
+      <HomeMoves phone={false} />
 
       <section className="v2-home-sec" aria-labelledby="v2-home-done">
         <SectionHead

@@ -17,6 +17,7 @@ import {
   ALL_CLEAR,
   INBOX_ZERO,
   INBOX_ZERO_HINT,
+  MOVE_TRY_AGAIN,
   OPEN_SESSION,
   detailBody,
   formatToolInput,
@@ -30,6 +31,8 @@ import {
   visibleItems,
   waitingLine,
 } from './inbox.ts';
+import { openTakeover } from '../takeover/store.ts';
+import { retryOf, retryRequest } from '../takeover/retry.ts';
 import './session/session-loading.css';
 import './inbox.css';
 
@@ -345,6 +348,14 @@ export function InboxView() {
               const link = openRoute(current, action.id);
               if (link) {
                 navigate(link);
+                return;
+              }
+              // D154: a failed move's Try again opens the take-over dialog of the same agent and computer; the item stays open.
+              if (action.id === MOVE_TRY_AGAIN && current.kind === 'system' && current.move) {
+                void retryOf(current.move).then(
+                  (retry) => openTakeover(retryRequest(retry)),
+                  (error: unknown) => setErrors((all) => ({ ...all, [current.id]: `Not sent: ${error instanceof Error ? error.message : String(error)}` })),
+                );
                 return;
               }
               // D109: Open PR opens the PR on GitHub in a new tab; the item stays open.
