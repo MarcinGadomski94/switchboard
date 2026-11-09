@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.32 (2026-11-09)
+
+### Projects
+- **Waiting on a background command is not Stopped:** a project step whose agent ended its turn while a background command it started still runs (a build, a device run; not a dev server or watcher) stays running with "Waiting on a background task: <command>" instead of "Stopped", for up to 2 hours. When the command ends the usual 2-minute grace applies. See `docs/plans.md` (D160).
+
 ## 2.4.31 (2026-11-09)
 
 ### Projects
