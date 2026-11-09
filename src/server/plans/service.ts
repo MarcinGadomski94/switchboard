@@ -63,6 +63,9 @@ import {
   readyItems,
   stoppedExcerpt,
   stoppedSince,
+  backgroundHold,
+  PLAN_BACKGROUND_HOLD_MS,
+  type PlanBackgroundWait,
   type PlanAccounts,
   readPlanAccounts,
 } from '../../core/plans.ts';
@@ -153,6 +156,11 @@ export interface PlanEnvironment {
    * "the account Work needs you — accept Anthropic's updated terms"), `null` = it can. Absent (tests' fakes): never.
    */
   accountBlockOf?(sessionId: string): Promise<string | null>;
+  /**
+   * D160: the background command run session `sessionId` waits on now ({@link planBackgroundWait}
+   * of its live activity), `null` = none. Absent (tests' fakes): never.
+   */
+  backgroundWaitOf?(sessionId: string): PlanBackgroundWait | null;
   /** D139: starts a failed run session again, the same session (`SessionSupervisor.restartStopped`). Absent: a stopped item restarts as a fresh run. */
   restartSession?(sessionId: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }>;
   /** Raises an Inbox system item (once per `dedupe`). */
@@ -410,6 +418,9 @@ export interface ExternalPlanInput {
 
 const DEFAULT_POLL_MS = 60_000;
 
+/** D160: how often an item held by a background command is looked at again (the command's end changes no session status). */
+const PLAN_BACKGROUND_RECHECK_MS = 30_000;
+
 function newId(): string {
   return randomBytes(5).toString('hex');
 }
@@ -513,6 +524,10 @@ export class PlanService {
   readonly #stoppedSwept = new Set<string>();
   /** D120: per item, the timer that looks again once its grace period is over. */
   readonly #stoppedTimers = new Map<string, { readonly at: number; readonly handle: unknown }>();
+  /** D160: items held off `stopped` by a background command their agent waits on (as last seen). */
+  readonly #backgroundHeld = new Set<string>();
+  /** D160: per item, when its last background hold was seen ended (the D120 grace counts from it). */
+  readonly #backgroundEnded = new Map<string, string>();
   /**
    * D149: agents-mode items whose todo is done and turn over, looked at for this idle episode
    * (`since`: when its session went idle), with the timer that looks again once the grace period is over.
@@ -1023,6 +1038,8 @@ export class PlanService {
         idleSince: sessionless ? null : session ? session.lastActivityAt : null,
         // D139: a failed run session whose account needs the developer: "Stopped (account needs you)".
         accountStop: session && session.status === 'fail' && session.closedAt === null && this.#env.accountBlockOf ? await this.#env.accountBlockOf(session.id) : null,
+        // D160: a background command its agent waits on holds it off `stopped`.
+        ...this.#backgroundFacts(item.id, !sessionless && session && session.closedAt === null ? session.id : null, this.#clock.now().getTime()),
       });
     }
     const perItem = reposPerItem(plan);
@@ -2842,7 +2859,24 @@ export class PlanService {
     for (const item of await this.#repo().items(plan.id)) {
       const session = item.state === 'running' && item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
       const todo = session ? await this.#store.todos.get(item.todoId) : null;
-      const since = session ? stoppedSince({ ...item, sessionStatus: session.status, todoDone: todo ? todo.state === 'done' : undefined, idleSince: session.lastActivityAt }, plan.mergeMode) : null;
+      const background = this.#backgroundFacts(item.id, session && session.closedAt === null ? session.id : null, now);
+      const since = session ? stoppedSince({ ...item, sessionStatus: session.status, todoDone: todo ? todo.state === 'done' : undefined, idleSince: session.lastActivityAt, ...background }, plan.mergeMode, now) : null;
+      // D160: while a background command holds it, look again shortly (its end changes no session status) and at the hold's limit.
+      const held = since === null ? backgroundHold(background, now) : null;
+      if (held !== null) {
+        const at = Math.min(now + PLAN_BACKGROUND_RECHECK_MS, Date.parse(held.since) + PLAN_BACKGROUND_HOLD_MS);
+        const armed = this.#stoppedTimers.get(item.id);
+        if (armed === undefined || armed.at > at || armed.at <= now) {
+          this.#clearStoppedTimer(item.id);
+          const handle = this.#clock.setTimeout(() => {
+            this.#stoppedTimers.delete(item.id);
+            this.kick();
+          }, Math.max(0, at - now));
+          this.#stoppedTimers.set(item.id, { at, handle });
+        }
+        if (this.#stopped.has(item.id)) changed = true;
+        continue;
+      }
       const due = since === null ? null : Date.parse(since) + this.#stoppedGraceMs;
       if (due === null || due <= now) this.#clearStoppedTimer(item.id);
       if (since === null || due === null) {
@@ -2865,6 +2899,18 @@ export class PlanService {
       this.#stoppedTimers.set(item.id, { at: due, handle });
     }
     return changed;
+  }
+
+  /**
+   * D160: the background facts of item `itemId` (its run session `sessionId`, `null` = none or
+   * closed): the command its agent waits on, and when its last hold was seen ended (remembered here,
+   * in memory: after a restart a hold that ended meanwhile counts from the session's idle time).
+   */
+  #backgroundFacts(itemId: string, sessionId: string | null, now: number): { readonly backgroundWait: PlanBackgroundWait | null; readonly backgroundEndedAt: string | null } {
+    const wait = sessionId !== null && this.#env.backgroundWaitOf ? this.#env.backgroundWaitOf(sessionId) : null;
+    if (backgroundHold({ backgroundWait: wait }, now) !== null) this.#backgroundHeld.add(itemId);
+    else if (this.#backgroundHeld.delete(itemId)) this.#backgroundEnded.set(itemId, new Date(now).toISOString());
+    return { backgroundWait: wait, backgroundEndedAt: this.#backgroundEnded.get(itemId) ?? null };
   }
 
   #clearStoppedTimer(itemId: string): void {

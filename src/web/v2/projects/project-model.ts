@@ -1,4 +1,4 @@
-import { type Plan, type PlanItem, type PlanMergeMode, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_ACCOUNT, PLAN_STOPPED_NO_MESSAGE, splitPlansByDone } from '../../../core/plans.ts';
+import { type Plan, type PlanItem, type PlanMergeMode, PLAN_BACKGROUND_REASON, PLAN_PICK_REPOS_REASON, PLAN_REOPENED_PREFIX, PLAN_STOPPED_ACCOUNT, PLAN_STOPPED_NO_MESSAGE, splitPlansByDone } from '../../../core/plans.ts';
 import { durationShort, earlyStartWarning, isProtectedTargetName, shortLabel, timeline } from '../../plans/model.ts';
 import { MODE_LABELS, PROJECT_WORDS, STEP_LABELS, type V2Status } from '../glossary.ts';
 import type { BoardColumn } from '../shared/board-model.ts';
@@ -88,7 +88,8 @@ export function stepLook(item: PlanItem, items: readonly PlanItem[]): StepLook {
     case 'ready':
       return { kind, status, label: STEP_LABELS.ready, detail: null };
     case 'running':
-      return { kind, status, label: item.waitingOn === 'checks' ? STEP_LABELS.runningTests : STEP_LABELS.running, detail: null };
+      // D160: its agent waits on a background command it started ("Waiting on a background task: …").
+      return { kind, status, label: item.waitingOn === 'checks' ? STEP_LABELS.runningTests : STEP_LABELS.running, detail: item.reason?.startsWith(PLAN_BACKGROUND_REASON) ? item.reason : null };
     case 'question':
       return { kind, status, label: STEP_LABELS.question, detail: null };
     case 'needs':

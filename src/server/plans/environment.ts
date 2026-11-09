@@ -1,5 +1,6 @@
 import { accountActionWhat, accountWaitReason, sessionProfileId } from '../../core/accounts.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
+import { planBackgroundWait } from '../../core/plans.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
@@ -184,6 +185,11 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
       if (block === null) return null;
       const name = (await store.profiles.get(profileId))?.name ?? profileId;
       return `${accountWaitReason(name)} — ${accountActionWhat(block.kind, session.provider)}`;
+    },
+
+    // D160: the background command a run session's agent waits on (a build, a device run), from its live activity.
+    backgroundWaitOf(sessionId: string) {
+      return planBackgroundWait(context.supervisor.activity(sessionId)?.background ?? []);
     },
 
     // D139: Restart: the same run session starts again (its lost messages go out again).

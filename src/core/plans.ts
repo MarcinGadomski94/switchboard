@@ -10,6 +10,8 @@
 import type { Coordination, Phase, SessionMode, SessionStatus, WorkType } from './model.ts';
 import type { PrChecks, PrChecksState } from './ci.ts';
 import { todoFinishLine, todoHasPlan, type TodoToolDefinition } from './todos.ts';
+import type { BackgroundTask } from './api.ts';
+import { isLongRunningCommand, isShellTask } from './derive/background.ts';
 
 // ── enumerations ──────────────────────────────────────────────────────────
 
@@ -89,7 +91,10 @@ export type PlanItemStoredState = (typeof PLAN_ITEM_STORED_STATES)[number];
  *   and nothing else covers it (a question, the developer's merge or confirmation, a second
  *   conflict) for at least {@link PLAN_STOPPED_GRACE_MS}: the agent ended its turn without
  *   finishing ("Stopped — needs you"). It keeps its slot and its dependents wait; it goes back to
- *   `running` once its session works again;
+ *   `running` once its session works again. D160: not while its agent waits on a background
+ *   command it started (a build, a device run; not a dev server or watcher), for at most
+ *   {@link PLAN_BACKGROUND_HOLD_MS}: it stays `running` with "Waiting on a background task: …",
+ *   and the grace counts from when that wait ended;
  * - `needs-you` (D124): its session's turn is over and not working, and the turn waits for the
  *   developer (its agent's `turn_status` `waiting_for_you` / `blocked`, or the text check of its
  *   last message): amber "Needs you" with the ask as its reason, in place of D120's `stopped`
@@ -558,6 +563,13 @@ export interface PlanItemFacts {
    * absent / `null` = not that (a failed session is then an ordinary error).
    */
   readonly accountStop?: string | null;
+  /**
+   * D160: the background command its run session's main agent waits on (the oldest pending
+   * background shell / monitor that is no dev server or watcher); absent / `null` = none.
+   */
+  readonly backgroundWait?: PlanBackgroundWait | null;
+  /** D160: when its last background hold ended (observed by the service); the D120 grace counts from it. Absent / `null` = none. */
+  readonly backgroundEndedAt?: string | null;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -588,13 +600,80 @@ function minutesBetween(from: string, to: number): number {
  * time its session went idle, else `null`. The grace period ({@link PLAN_STOPPED_GRACE_MS}) is the
  * caller's: {@link planView} shows `stopped` only once it has passed.
  */
-export function stoppedSince(item: Pick<PlanItemFacts, 'state' | 'sessionStatus' | 'todoDone' | 'idleSince' | 'waitingOn' | 'conflicts' | 'hold' | 'startedAt'>, mode: PlanMergeMode | null): string | null {
+export function stoppedSince(
+  item: Pick<PlanItemFacts, 'state' | 'sessionStatus' | 'todoDone' | 'idleSince' | 'waitingOn' | 'conflicts' | 'hold' | 'startedAt' | 'backgroundWait' | 'backgroundEndedAt'>,
+  mode: PlanMergeMode | null,
+  now: number = Date.now(),
+): string | null {
   if (item.state !== 'running' || item.todoDone !== false) return null;
   if (item.sessionStatus !== 'done' && item.sessionStatus !== 'idle' && item.sessionStatus !== 'paused') return null;
   if (item.waitingOn === 'conflict' && item.conflicts >= 2) return null;
   if (developerMerges(mode, item) && item.waitingOn === 'merge') return null;
   if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return null;
-  return item.idleSince ?? item.startedAt ?? null;
+  // D160: its agent waits on a background command it started (a build, a device run): not stopped while it runs.
+  if (backgroundHold(item, now) !== null) return null;
+  // D160: the grace counts from when the last hold ended (the task's end, or the hold's limit), never from before it.
+  return latestTime([item.idleSince ?? item.startedAt ?? null, item.backgroundEndedAt ?? null, expiredHoldEnd(item, now)]);
+}
+
+/**
+ * D160 (`docs/plans.md` → *Waiting on a background task*): the longest a pending background
+ * command (a background `Bash` or a `Monitor`: a build, a device run, a deploy) holds a running
+ * item off `stopped`. A command still pending after this long no longer holds it (it may hang).
+ */
+export const PLAN_BACKGROUND_HOLD_MS = 2 * 3600_000;
+
+/** D160: the start of the reason a held item shows ("Waiting on a background task: <summary>"). */
+export const PLAN_BACKGROUND_REASON = 'Waiting on a background task';
+
+/**
+ * D160: a background command an item's run session waits on: the oldest pending background
+ * shell / monitor of its main agent that is not a dev server or watcher.
+ */
+export interface PlanBackgroundWait {
+  /** The command's short text (`BackgroundTask.summary`). */
+  readonly summary: string;
+  /** When it started (ISO). */
+  readonly since: string;
+}
+
+/**
+ * D160: the background command a run session waits on, from its main agent's pending background
+ * tasks (`SessionActivity.background`): the oldest background shell or monitor that is not a dev
+ * server or watcher ({@link isLongRunningCommand}). Subagents, workflows and wake-ups are left out:
+ * they keep the session `run` already. `null` when there is none.
+ */
+export function planBackgroundWait(tasks: readonly Pick<BackgroundTask, 'kind' | 'summary' | 'startedAt'>[]): PlanBackgroundWait | null {
+  let oldest: PlanBackgroundWait | null = null;
+  for (const task of tasks) {
+    if (!isShellTask(task.kind) || isLongRunningCommand(task.summary)) continue;
+    if (oldest === null || Date.parse(task.startedAt) < Date.parse(oldest.since)) oldest = { summary: task.summary, since: task.startedAt };
+  }
+  return oldest;
+}
+
+/** D160: the item's background wait while it still holds the item (younger than {@link PLAN_BACKGROUND_HOLD_MS}), else `null`. */
+export function backgroundHold(item: Pick<PlanItemFacts, 'backgroundWait'>, now: number): PlanBackgroundWait | null {
+  const wait = item.backgroundWait ?? null;
+  if (wait === null) return null;
+  const started = Date.parse(wait.since);
+  return Number.isFinite(started) && now - started < PLAN_BACKGROUND_HOLD_MS ? wait : null;
+}
+
+/** D160: when an expired hold ended (its start + {@link PLAN_BACKGROUND_HOLD_MS}), `null` without one. */
+function expiredHoldEnd(item: Pick<PlanItemFacts, 'backgroundWait'>, now: number): string | null {
+  const wait = item.backgroundWait ?? null;
+  if (wait === null) return null;
+  const started = Date.parse(wait.since);
+  if (!Number.isFinite(started) || now - started < PLAN_BACKGROUND_HOLD_MS) return null;
+  return new Date(started + PLAN_BACKGROUND_HOLD_MS).toISOString();
+}
+
+/** The latest of some ISO times (`null`s skipped), `null` when there is none. */
+function latestTime(times: ReadonlyArray<string | null>): string | null {
+  let best: string | null = null;
+  for (const time of times) if (time !== null && (best === null || Date.parse(time) > Date.parse(best))) best = time;
+  return best;
 }
 
 /** D139: the reason of an item whose run session failed (Restart starts it again). */
@@ -628,8 +707,13 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
       if (developerConfirms(mode, item) && (item.waitingOn === 'confirm' || item.waitingOn === 'merge')) return { state: 'to-confirm', reason: 'its todo is done: waiting for you to confirm it' };
       {
         // D120: its agent ended its turn without finishing, longer ago than the grace period.
-        const since = stoppedSince(item, mode);
+        const since = stoppedSince(item, mode, now);
         if (since !== null && now - Date.parse(since) >= graceMs) return { state: 'stopped', reason: PLAN_STOPPED_NO_MESSAGE, stoppedSince: since };
+      }
+      {
+        // D160: its turn is over but its agent waits on a background command it started: running, saying so.
+        const wait = item.todoDone === false && (item.sessionStatus === 'done' || item.sessionStatus === 'idle' || item.sessionStatus === 'paused') ? backgroundHold(item, now) : null;
+        if (wait !== null) return { state: 'running', reason: `${PLAN_BACKGROUND_REASON}: ${wait.summary}` };
       }
       return { state: 'running', reason: null };
     case 'pending':
