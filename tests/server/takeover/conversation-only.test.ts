@@ -93,8 +93,11 @@ describe('D158: a move that carries only the conversation', () => {
       return list.find((entry) => entry.movedFrom?.sessionId === session.id && !entry.machine) ?? null;
     }, 20_000);
     expect(moved.cwd).toBe(world.paths.b.workspace);
-    const spawns = await sessionSpawns(world.logs.b);
-    expect(spawns.some((entry) => (entry['argv'] as string[]).join(' ').includes(`--resume ${session.claudeSessionId}`))).toBe(true);
+    // The resume spawn may land just after the session is listed: wait for it.
+    await waitFor('the resume spawn on the mac', async () => {
+      const spawns = await sessionSpawns(world.logs.b);
+      return spawns.some((entry) => (entry['argv'] as string[]).join(' ').includes(`--resume ${session.claudeSessionId}`)) ? true : null;
+    }, 20_000);
     // The pc's session ends as moved; the move log's start line says conversation only.
     const old = (await world.a.call('GET', `/api/sessions/${session.id}`)).body as Session;
     expect(old.movedTo?.machineId).toBe(world.bId);

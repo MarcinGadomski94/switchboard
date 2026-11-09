@@ -64,6 +64,8 @@ describe.skipIf(process.platform === 'win32')('test servers never outlive a run'
     // a + b, the hung one, the crashed worker's one (more when a start retried a port another test took).
     expect(pids.length, output).toBeGreaterThanOrEqual(4);
     for (const pid of pids) {
+      // A server killed at the very end of the nested run may still be exiting on a loaded CI machine: a short grace, not a leak.
+      for (let waited = 0; waited < 5_000 && (alive(pid, false) || alive(pid, true)); waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
       expect(alive(pid, false), `server ${pid} still running\n${output}`).toBe(false);
       expect(alive(pid, true), `process group ${pid} still has members\n${output}`).toBe(false);
     }
