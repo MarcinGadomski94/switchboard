@@ -38,8 +38,11 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * - `POST /api/plans/{id}/start` `{ mergeMode }` (required), `…/pause`, `…/resume`, `…/cancel`;
  *   `PUT /api/plans/{id}/mode` `{ mergeMode }`, `PUT /api/plans/{id}/holds` `{ holds }`.
  *
- * The agent's (the `plan_*` MCP tools), only with the session's agent token, over the plans
- * whose source is that session: `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
+ * The agent's (the `plan_*` MCP tools), only with the session's agent token. D159: over any plan
+ * of this machine (before D159, only the plans whose source is that session; `POST` still makes a
+ * plan from the agent's own session, and `GET /agent/v1/plans` without `?all=1` still lists only
+ * its own); a change by an agent that is not the source adds an `agent-edit` activity line:
+ * `GET /agent/v1/plans[?all=1]` (`all`: `AgentPlanSummary[]`, `plan_list`), `POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
  * `POST /agent/v1/plans/{planId}/items | edges | start`; D115: `POST /agent/v1/plans/{planId}/solutions`
  * `{ items: [{ item, solutions }] }` → `{ plan, set }`. D129: `PUT|DELETE /agent/v1/plans/{planId}/items/{item}`
  * (`item` an id or a key), `DELETE /agent/v1/plans/{planId}/edges/{from}/{to}`, `PUT /agent/v1/plans/{planId}/mode`:
@@ -205,8 +208,10 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
 
   // ── the agent's routes (the `switchboard` MCP helper) ──────────────────
 
-  app.get('/agent/v1/plans', async (request, reply) => {
+  // The helper's probe and `plan_status` without an id: this session's plans. D159: `?all=1` (`plan_list`): every plan of this machine.
+  app.get<{ Querystring: { all?: string } }>('/agent/v1/plans', async (request, reply) => {
     try {
+      if (request.query.all === '1') return await plans.agentList(agentSession(request));
       return await plans.listOf(agentSession(request));
     } catch (error) {
       return sendPlanError(reply, error);
@@ -234,10 +239,12 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
 
   app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/items', async (request, reply) => {
     try {
-      await plans.agentPlan(agentSession(request), request.params.planId);
+      const plan = await plans.agentPlan(agentSession(request), request.params.planId);
+      await plans.agentItemCheck(agentSession(request), plan, request.body);
       const added = await plans.addItem(request.params.planId, request.body, 'agent');
       // D115 follow-ups: an item added without repositories in such a plan: the answer names the solutions to pick from.
       const item = added.plan.items.find((candidate) => candidate.id === added.itemId);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `added ${item?.key ?? `"${item?.title ?? added.itemId}"`}`);
       const waits = added.plan.reposPerItem === true && item !== undefined && item.solutions.length === 0;
       return reply.code(201).send(waits ? { ...added, solutionChoices: await plans.solutionChoices(request.params.planId) } : added);
     } catch (error) {
@@ -248,7 +255,10 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/edges', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.addEdge(request.params.planId, request.body);
+      const plan = await plans.addEdge(request.params.planId, request.body);
+      const edge = body(request);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `made ${String(edge['to'])} run after ${String(edge['from'])}`);
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -258,7 +268,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/solutions', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.setSolutions(request.params.planId, request.body);
+      const answer = await plans.setSolutions(request.params.planId, request.body);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, 'set the repositories of its items');
+      return answer;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -267,7 +279,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.post<{ Params: { planId: string } }>('/agent/v1/plans/:planId/start', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.startPlan(request.params.planId, request.body);
+      const plan = await plans.startPlan(request.params.planId, request.body);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, 'started the plan');
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -278,7 +292,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
       const itemId = await plans.resolveItem(request.params.planId, request.params.item);
-      return await plans.updateItem(request.params.planId, itemId, request.body, 'agent');
+      const plan = await plans.updateItem(request.params.planId, itemId, request.body, 'agent');
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `changed ${request.params.item} (${Object.keys(body(request)).join(', ')})`);
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -287,7 +303,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.delete<{ Params: { planId: string; item: string } }>('/agent/v1/plans/:planId/items/:item', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.removeItem(request.params.planId, await plans.resolveItem(request.params.planId, request.params.item));
+      const plan = await plans.removeItem(request.params.planId, await plans.resolveItem(request.params.planId, request.params.item));
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `removed ${request.params.item}`);
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -296,7 +314,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.delete<{ Params: { planId: string; from: string; to: string } }>('/agent/v1/plans/:planId/edges/:from/:to', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.removeEdge(request.params.planId, request.params.from, request.params.to);
+      const plan = await plans.removeEdge(request.params.planId, request.params.from, request.params.to);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `${request.params.to} no longer waits for ${request.params.from}`);
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }
@@ -305,7 +325,9 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
   app.put<{ Params: { planId: string } }>('/agent/v1/plans/:planId/mode', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);
-      return await plans.setMode(request.params.planId, request.body);
+      const plan = await plans.setMode(request.params.planId, request.body);
+      await plans.noteAgentEdit(agentSession(request), request.params.planId, `changed the merge mode to ${plan.mergeMode ?? 'none'}`);
+      return plan;
     } catch (error) {
       return sendPlanError(reply, error);
     }

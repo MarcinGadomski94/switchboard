@@ -183,8 +183,38 @@ export interface PlanSidebarFolderRef {
   readonly name: string;
 }
 
-/** D151: the kinds of a project's activity line (`runs-folder`: its runs folder was moved). */
-export type PlanActivityKind = 'runs-folder';
+/**
+ * D151: the kinds of a project's activity line (`runs-folder`: its runs folder was moved; D159
+ * `agent-edit`: an agent that is not the plan's source changed it).
+ */
+export type PlanActivityKind = 'runs-folder' | 'agent-edit';
+
+/** D159 · one plan of this machine as the agent's `plan_list` shows it. */
+export interface AgentPlanSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly state: PlanState;
+  readonly mergeMode: PlanMergeMode | null;
+  readonly targetBranch: string | null;
+  readonly done: number;
+  readonly total: number;
+  /** The plan's source session's title (its name without one); `null` when that session is gone. */
+  readonly source: string | null;
+  /** Whether the asking agent's session is the plan's source. */
+  readonly own: boolean;
+  readonly updatedAt: string;
+}
+
+/** D159 · `plan_list`'s answer: one line per plan, newest change first. */
+export function planListText(plans: readonly AgentPlanSummary[]): string {
+  if (plans.length === 0) return 'There are no plans on this computer. Create one with plan_create.';
+  const lines = plans.map((plan) => {
+    const target = plan.targetBranch === null ? 'no target branch' : `→ ${plan.targetBranch}`;
+    const from = plan.own ? 'from this session' : `from "${plan.source ?? 'a session that is gone'}"`;
+    return `- [${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ''} · ${target} · ${plan.done}/${plan.total} done · ${from} · changed ${plan.updatedAt}`;
+  });
+  return [`Plans on this computer (newest change first). Edit the one the developer means with the plan tools and its id; ask the developer when unsure which one.`, ...lines].join('\n');
+}
 
 /** D151 (`docs/plans.md` → *Activity (D151)*): one line of a project's activity. */
 export interface PlanActivityLine {
@@ -1029,14 +1059,14 @@ export function planRuleChangedMessage(input: { readonly targetBranch: string; r
 
 // ── MCP tools (the `switchboard` server) ──────────────────────────────────
 
-const PLAN_ID = { type: 'string', description: 'The plan id, as plan_create or plan_status shows it in brackets.' } as const;
+const PLAN_ID = { type: 'string', description: 'The plan id, as plan_list, plan_create or plan_status shows it in brackets. Any plan of this computer, not only the ones made from this session.' } as const;
 
 /** D99: the plan tools of the `switchboard` MCP server (`src/hook/sb-mcp.ts`). */
 export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_create',
     description:
-      "Create a plan (a draft): todo items of this session grouped into a dependency graph that Switchboard runs by itself, each item in its own session (and worktree, in a git repository), with up to max_concurrency running at once. Plans are for anything: the tasks of an epic merged into a feature branch, work merged straight into dev or main, or work with no merge at all (research, docs elsewhere, ops tasks, agents that push on their own). Give a title and, optionally, the target branch: the branch every item's work is merged into (e.g. the epic's feature branch feature/PROJ-100-acme-epic; dev, main, master or the default branch are allowed too, but agents merging into one needs the developer's acknowledgement at plan_start). Leave target_branch out (or give \"none\") for a plan without a merge step: an item is done when its agent marks its todo done. Then add items with plan_add_item, order them with plan_add_dependency, check with plan_status, and start it with plan_start after asking the developer for the merge mode. Returns the plan id.",
+      "Create a plan (a draft): todo items of this session grouped into a dependency graph that Switchboard runs by itself, each item in its own session (and worktree, in a git repository), with up to max_concurrency running at once. Plans are for anything: the tasks of an epic merged into a feature branch, work merged straight into dev or main, or work with no merge at all (research, docs elsewhere, ops tasks, agents that push on their own). Give a title and, optionally, the target branch: the branch every item's work is merged into (e.g. the epic's feature branch feature/PROJ-100-acme-epic; dev, main, master or the default branch are allowed too, but agents merging into one needs the developer's acknowledgement at plan_start). Leave target_branch out (or give \"none\") for a plan without a merge step: an item is done when its agent marks its todo done. Then add items with plan_add_item, order them with plan_add_dependency, check with plan_status, and start it with plan_start after asking the developer for the merge mode. Returns the plan id. When the developer asks to change a plan that exists already, never create a new one: find it with plan_list and change it with the plan tools.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -1059,12 +1089,12 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_add_item',
     description:
-      "Add an item to a plan: an existing todo of this session (todo_id) or a new one (title, description, plan with the acceptance criteria, priority, estimate_minutes; it is added to this session's todo list). Optionally a ticket key (names the item's branch), hold (in the agents-with-holds mode the developer merges this one), its solutions (a subset of the plan's repos) and after (ids or keys of items it runs after). Returns the item id. Only for a todo that is not in the plan yet: to change an item that is already in the plan (its hold, title, description or estimate) use plan_update_item; never add it again.",
+      "Add an item to a plan (any plan of this computer: plan_list finds it): an existing todo of the plan's own session (todo_id; only for a plan made from this session) or a new one (title, description, plan with the acceptance criteria, priority, estimate_minutes; it is added to the todo list of the plan's own session). Optionally a ticket key (names the item's branch), hold (in the agents-with-holds mode the developer merges this one), its solutions (a subset of the plan's repos) and after (ids or keys of items it runs after). Returns the item id. Only for a todo that is not in the plan yet: to change an item that is already in the plan (its hold, title, description or estimate) use plan_update_item; never add it again.",
     inputSchema: {
       type: 'object',
       properties: {
         plan_id: PLAN_ID,
-        todo_id: { type: 'string', description: 'An existing todo item of this session, as todo_list shows it in brackets.' },
+        todo_id: { type: 'string', description: 'An existing todo item of this session, as todo_list shows it in brackets. Only for a plan made from this session; for another plan give title instead.' },
         title: { type: 'string', description: 'A new todo: one short line naming the work.' },
         description: { type: 'string', description: 'A new todo: for the developer, a plain and brief explanation.' },
         plan: { type: 'string', description: 'A new todo: the handover for the agent who runs it: context, files, steps and acceptance criteria.' },
@@ -1098,9 +1128,16 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_status',
     description:
-      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, stopped (its agent ended its turn without finishing: its last message is the reason), needs-you (its agent ended its turn waiting for the developer: its ask is the reason), ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: this session's plans.",
+      "Show a plan: its state, merge mode, progress, the time left, and each item's state (waiting, ready, running, question, stopped (its agent ended its turn without finishing: its last message is the reason), needs-you (its agent ended its turn waiting for the developer: its ask is the reason), ready-to-merge, done or blocked with the reason), branch and dependencies. Without plan_id: the plans made from this session (plan_list lists every plan of this computer).",
     inputSchema: { type: 'object', properties: { plan_id: PLAN_ID }, additionalProperties: false },
     annotations: { title: 'Plan status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'plan_list',
+    description:
+      "List every plan of this computer (not only the ones made from this session), newest change first: id, title, state, merge mode, target branch, progress and the session it was made from. Use it to find the plan the developer means when they ask for a change (ask them when you are unsure which one), then change that plan with plan_add_item, plan_update_item, plan_remove_item, plan_add_dependency, plan_remove_dependency, plan_set_solutions, plan_set_mode or plan_start and its id: never create a new plan to change an existing one. A paired computer's plans are not listed.",
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { title: 'List plans', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'plan_start',
@@ -1122,7 +1159,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_set_solutions',
     description:
-      "Set the repositories (workspace solutions) items of a plan of this session work in. Use it when Switchboard asks you to pick the repositories of a plan's items, e.g. after a Jira import into a workspace: read each item (todo_get for the details) and give every item the solutions its work touches, from the list of the workspace's solutions in the ask (read-only ones are refused). Your choice is applied at once (it is not a proposal): an item can start only once it has solutions, and the plan's repos become the union of its items' solutions. Give every item in one call when you can. An item that already started keeps its solutions. Unknown or read-only names refuse the whole call with the reason; nothing changes then.",
+      "Set the repositories (workspace solutions) items of a plan of this computer work in. Use it when Switchboard asks you to pick the repositories of a plan's items, e.g. after a Jira import into a workspace: read each item (todo_get for the details) and give every item the solutions its work touches, from the list of the workspace's solutions in the ask (read-only ones are refused). Your choice is applied at once (it is not a proposal): an item can start only once it has solutions, and the plan's repos become the union of its items' solutions. Give every item in one call when you can. An item that already started keeps its solutions. Unknown or read-only names refuse the whole call with the reason; nothing changes then.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -1152,7 +1189,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_update_item',
     description:
-      "Change an item that is already in a plan of this session (use this, not plan_add_item, for an item in the plan). hold: in the agents-with-holds mode the developer merges a held item from the Plans page (in a plan without a merge step, the developer confirms it); it can change while the plan is a draft, runs or is paused, until the item is merged or done, and a running item's session is told its new merge rule. Clearing a hold lets the item's agent merge it on its own: do that only when the developer asked. title, description and estimate_minutes change the item's todo, only before the item starts. To change its dependencies use plan_add_dependency and plan_remove_dependency. Switchboard refuses what it would refuse the developer, with the reason; nothing changes then.",
+      "Change an item that is already in a plan of this computer (use this, not plan_add_item, for an item in the plan; plan_list finds the plan). hold: in the agents-with-holds mode the developer merges a held item from the Plans page (in a plan without a merge step, the developer confirms it); it can change while the plan is a draft, runs or is paused, until the item is merged or done, and a running item's session is told its new merge rule. Clearing a hold lets the item's agent merge it on its own: do that only when the developer asked. title, description and estimate_minutes change the item's todo, only before the item starts. To change its dependencies use plan_add_dependency and plan_remove_dependency. Switchboard refuses what it would refuse the developer, with the reason; nothing changes then.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -1171,7 +1208,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_remove_item',
     description:
-      "Remove an item that has not started from a plan of this session; its dependencies go with it. Its todo stays in this session's todo list (todo_remove deletes it if it should go too). An item that runs or is done is refused.",
+      "Remove an item that has not started from a plan of this computer; its dependencies go with it. Its todo stays in the todo list of the plan's own session (todo_remove deletes it if it should go too). An item that runs or is done is refused.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -1185,7 +1222,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   },
   {
     name: 'plan_remove_dependency',
-    description: 'Remove a dependency of a plan of this session: item to no longer waits for item from (the reverse of plan_add_dependency, where to is item and from is after). A dependency that does not exist is refused.',
+    description: 'Remove a dependency of a plan of this computer: item to no longer waits for item from (the reverse of plan_add_dependency, where to is item and from is after). A dependency that does not exist is refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1201,7 +1238,7 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'plan_set_mode',
     description:
-      "Change the merge mode of a plan of this session that is a draft, runs or is paused. It applies to the items not merged yet, and running items whose merge rule changed are told their new rule. merge_mode is the developer's decision: ASK the developer before calling this, and never change it on your own. The options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but held items wait for the developer's Merge), developer (the developer merges every item) and none (no merge step). A started plan keeps whether it has a merge step (none to a merging mode or back is refused). If the target is dev, develop, main, master, the default or a protected branch and the new mode is agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own. For an item's hold use plan_update_item.",
+      "Change the merge mode of a plan of this computer that is a draft, runs or is paused. It applies to the items not merged yet, and running items whose merge rule changed are told their new rule. merge_mode is the developer's decision: ASK the developer before calling this, and never change it on your own. The options: agents (each item's agent merges its PR into the target branch once the checks are green), agents-with-holds (the same, but held items wait for the developer's Merge), developer (the developer merges every item) and none (no merge step). A started plan keeps whether it has a merge step (none to a merging mode or back is refused). If the target is dev, develop, main, master, the default or a protected branch and the new mode is agents or agents-with-holds, agents merge straight into it: ASK the developer to confirm that too, and only then pass allow_protected_target: true; never set it on your own. For an item's hold use plan_update_item.",
     inputSchema: {
       type: 'object',
       properties: {

@@ -165,8 +165,11 @@ describe('D99 · plan graph rules', () => {
     expect(pickReposMessage({ planId: 'p1', planTitle: 'T', solutions: [], items: [], also: true })).toMatch(/^Also pick the repositories/);
   });
 
-  it('the MCP tools: ten plan tools, plan_start requires the merge mode and tells the agent to ask', () => {
-    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_start', 'plan_set_solutions', 'plan_update_item', 'plan_remove_item', 'plan_remove_dependency', 'plan_set_mode']);
+  it('the MCP tools: eleven plan tools (D159 plan_list), plan_start requires the merge mode and tells the agent to ask', () => {
+    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_list', 'plan_start', 'plan_set_solutions', 'plan_update_item', 'plan_remove_item', 'plan_remove_dependency', 'plan_set_mode']);
+    // D159: any plan of this computer; plan_create says to change an existing plan instead of making a new one.
+    expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_list')?.annotations.readOnlyHint).toBe(true);
+    expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_create')?.description).toContain('never create a new one: find it with plan_list');
     const setSolutions = PLAN_TOOLS.find((tool) => tool.name === 'plan_set_solutions');
     expect(setSolutions?.inputSchema['required']).toEqual(['plan_id', 'items']);
     expect(setSolutions?.description).toContain('applied at once (it is not a proposal)');
@@ -183,7 +186,7 @@ describe('D99 · plan graph rules', () => {
     const create = PLAN_TOOLS.find((tool) => tool.name === 'plan_create');
     expect(create?.inputSchema['required']).toEqual(['title']);
     expect(create?.description).toContain('Plans are for anything');
-    expect(PLAN_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['plan_status']);
+    expect(PLAN_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['plan_status', 'plan_list']);
     // D129: items already in the plan; plan_add_item points there, plan_set_mode asks like plan_start.
     expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_add_item')?.description).toContain('use plan_update_item; never add it again');
     const update = PLAN_TOOLS.find((tool) => tool.name === 'plan_update_item');

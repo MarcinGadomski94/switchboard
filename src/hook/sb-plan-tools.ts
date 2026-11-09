@@ -1,6 +1,7 @@
 /**
  * D99 · the plan tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`, D68's
- * helper and agent token): `plan_create`, `plan_add_item`, `plan_add_dependency`,
+ * helper and agent token): `plan_create`, D159's `plan_list` (every plan of this computer; the
+ * other tools take any of their ids, not only the agent's own plans), `plan_add_item`, `plan_add_dependency`,
  * `plan_status`, `plan_start`, `plan_set_solutions` (D115: the agent picks its items'
  * repositories, applied at once), D129's `plan_update_item`, `plan_remove_item`,
  * `plan_remove_dependency` and `plan_set_mode` (items already in the plan, the merge mode), and the Jira lane's `plan_propose_dependencies` (proposals the
@@ -14,7 +15,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { PLAN_CONCURRENCY_MAX, PLAN_ITEMS_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planStatusText } from '../core/plans.ts';
+import { type AgentPlanSummary, PLAN_CONCURRENCY_MAX, PLAN_ITEMS_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planListText, planStatusText } from '../core/plans.ts';
 import { EDGE_PROPOSALS_MAX, PLAN_PROPOSE_TOOL } from '../core/plans-jira.ts';
 import { JIRA_CONTEXT_PARTS, PLAN_JIRA_CONTEXT_TOOL } from '../core/plans-jira-context.ts';
 import { TODO_ESTIMATE_MAX, TODO_PRIORITIES, type TodoToolDefinition } from '../core/todos.ts';
@@ -159,6 +160,11 @@ export async function planStatus(api: AgentApi, input: ToolInput): Promise<CallT
   return request(api, 'GET', planRoute(id), undefined, (answer) => (isPlan(answer) ? textResult(planStatusText(answer)) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
+/** D159 · `plan_list`: every plan of this computer, newest change first. */
+export async function planList(api: AgentApi): Promise<CallToolResult> {
+  return request(api, 'GET', '/agent/v1/plans?all=1', undefined, (answer) => textResult(planListText(Array.isArray(answer) ? (answer as AgentPlanSummary[]) : [])));
+}
+
 /**
  * D99 · `plan_start`: the developer's merge mode (required with a target branch: the server
  * answers 422 `merge-mode-required`; a plan without a target is `none`); D99 follow-up
@@ -218,7 +224,7 @@ export async function planRemoveItem(api: AgentApi, input: ToolInput): Promise<C
   const item = textOf(input, 'item');
   if (item === '') return textResult('Give item: the id or key of the item, as plan_status shows it.', true);
   return request(api, 'DELETE', planRoute(id, `/items/${itemSegment(item)}`), undefined, (answer) =>
-    isPlan(answer) ? textResult(`Removed ${item} from plan [${answer.id}]; its todo stays in this session's list.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true),
+    isPlan(answer) ? textResult(`Removed ${item} from plan [${answer.id}]; its todo stays in the todo list of the plan's own session.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true),
   );
 }
 
@@ -397,6 +403,13 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
     'plan_status',
     { title: planStatusTool.annotations.title, description: planStatusTool.description, inputSchema: inputSchema('plan_status', { plan_id: field.text('plan_status', 'plan_id') }), annotations: { title: planStatusTool.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     (input) => serial(() => planStatus(api, input)),
+  );
+  // D159: every plan of this computer (the edit tools take any of their ids).
+  const planListTool = tool('plan_list');
+  server.registerTool(
+    'plan_list',
+    { title: planListTool.annotations.title, description: planListTool.description, inputSchema: inputSchema('plan_list', {}), annotations: { title: planListTool.annotations.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+    () => serial(() => planList(api)),
   );
   const planStartTool = tool('plan_start');
   server.registerTool(

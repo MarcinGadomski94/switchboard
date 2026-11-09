@@ -15,6 +15,7 @@ import {
   PLAN_MERGE_MODES,
   PLAN_NOTES_MAX,
   PLAN_TITLE_MAX,
+  type AgentPlanSummary,
   type Plan,
   type PlanAnswers,
   type PlanChecks,
@@ -924,11 +925,74 @@ export class PlanService {
     return out;
   }
 
-  /** The plan `planId` if session `sessionId` is its source (the agent's routes), else 404. */
-  async agentPlan(sessionId: string, planId: string): Promise<PlanRecord> {
+  /**
+   * D159 · the agent's `plan_list`: every plan of this machine (a paired machine's are not listed),
+   * newest change first, with its source session's title and whether `sessionId` is its source.
+   */
+  async agentList(sessionId: string): Promise<AgentPlanSummary[]> {
+    const out: AgentPlanSummary[] = [];
+    const records = [...(await this.#repo().list())].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    for (const record of records) {
+      const plan = await this.#view(record);
+      const source = await this.#store.sessions.get(record.sourceSessionId);
+      out.push({
+        id: plan.id,
+        title: plan.title,
+        state: plan.state,
+        mergeMode: plan.mergeMode,
+        targetBranch: plan.targetBranch,
+        done: plan.progress.done,
+        total: plan.progress.total,
+        source: source ? (source.title ?? source.name) : null,
+        own: record.sourceSessionId === sessionId,
+        updatedAt: record.updatedAt,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * The plan `planId` for the agent's routes. D159: any plan of this machine, not only the ones
+   * whose source is `sessionId` (every service check still applies), else 404.
+   */
+  async agentPlan(_sessionId: string, planId: string): Promise<PlanRecord> {
+    const plan = await this.#repo().get(planId);
+    if (!plan) throw new PlanError(404, 'not-found', `no plan ${planId} on this computer (plan_list shows them)`);
+    return plan;
+  }
+
+  /**
+   * The plan `planId` only if session `sessionId` is its source, else 404 (the rule before D159;
+   * still the Jira lane's: D118's context and the dependency proposals stay the plan's own agent's).
+   */
+  async ownAgentPlan(sessionId: string, planId: string): Promise<PlanRecord> {
     const plan = await this.#repo().get(planId);
     if (!plan || plan.sourceSessionId !== sessionId) throw new PlanError(404, 'not-found', `no plan ${planId} in this session`);
     return plan;
+  }
+
+  /**
+   * D159: `plan_add_item` from an agent that is not the plan's source names a todo of its own list:
+   * refused with the way out (an item's todo lives in the plan's own session's list).
+   */
+  async agentItemCheck(sessionId: string, plan: PlanRecord, body: unknown): Promise<void> {
+    if (plan.sourceSessionId === sessionId || !isRecord(body) || typeof body['todoId'] !== 'string' || body['todoId'] === '') return;
+    const todo = await this.#store.todos.get(body['todoId']);
+    if (todo && todo.sessionId === sessionId) throw invalid('todoId', "that todo is in your own list: give title (and description, plan, priority, estimate_minutes) instead; the item's todo goes to the plan's own session");
+  }
+
+  /**
+   * D159: an agent that is not the plan's source changed it: one activity line naming that
+   * agent's session ("<title> (another agent) <what>"), published with the plan. The source's own
+   * changes add nothing (as before).
+   */
+  async noteAgentEdit(sessionId: string, planId: string, what: string): Promise<void> {
+    const plan = await this.#repo().get(planId);
+    if (!plan || plan.sourceSessionId === sessionId) return;
+    const session = await this.#store.sessions.get(sessionId);
+    const who = session ? (session.title ?? session.name) : 'another session';
+    await this.#repo().addActivity(planId, { kind: 'agent-edit', text: `${who} (another agent) ${what}` }, PLAN_ACTIVITY_MAX);
+    await this.#publish(planId);
   }
 
   async #plan(planId: string): Promise<PlanRecord> {

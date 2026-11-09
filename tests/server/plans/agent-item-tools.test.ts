@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { type Plan, type PlanItem } from '../../../src/core/plans.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
-import { planAddDependency, planRemoveDependency, planRemoveItem, planSetMode, planUpdateItem, registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
+import { planAddDependency, planAddItem, planList, planRemoveDependency, planRemoveItem, planSetMode, planUpdateItem, registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
@@ -250,7 +250,7 @@ describe('D129 · plan_remove_item and plan_remove_dependency', () => {
     const todoId = (await itemOf(r, plan.id, second)).todoId;
     const removed = await planRemoveItem(api, { plan_id: plan.id, item: 'PROJ-2' });
     expect(removed.isError, text(removed)).toBeFalsy();
-    expect(text(removed)).toContain("its todo stays in this session's list");
+    expect(text(removed)).toContain("its todo stays in the todo list of the plan's own session");
     const after = await r.plans.get(plan.id);
     expect(after.items.map((item) => item.key)).toEqual(['PROJ-1']);
     expect(after.edges).toEqual([]);
@@ -305,24 +305,68 @@ describe('D129 · plan_set_mode', () => {
   });
 });
 
-describe('D129 · scope', () => {
-  it("another session's agent is refused (not its plan); nothing changes", async () => {
+describe('D159 · any agent edits any plan of this computer', () => {
+  it('another session lists the plans and changes this one: an item, a dependency, a new item (its todo in the source list); each change is in the activity', async () => {
     const r = await setup();
-    const { plan, first } = await twoItems(r);
+    const { plan, first, second } = await twoItems(r);
+    await r.store.sessions.update(r.otherId, { title: 'On-call helper' });
     const api = helperApi(r, r.otherId);
-    const notFound = `no plan ${plan.id} in this session`;
-    for (const result of [
-      await planUpdateItem(api, { plan_id: plan.id, item: 'PROJ-1', hold: true }),
-      await planRemoveItem(api, { plan_id: plan.id, item: 'PROJ-1' }),
-      await planRemoveDependency(api, { plan_id: plan.id, from: 'PROJ-1', to: 'PROJ-2' }),
-      await planSetMode(api, { plan_id: plan.id, merge_mode: 'developer' }),
-    ]) {
-      expect([result.isError, text(result)]).toEqual([true, notFound]);
-    }
+
+    const listed = text(await planList(api));
+    expect(listed).toContain(`[${plan.id}] Acme epic: draft`);
+    expect(listed).toContain('0/2 done · from "source"');
+    // The helper's probe / plan_status without an id still answers only the session's own plans.
+    expect((await api('GET', '/agent/v1/plans')).body).toEqual([]);
+
+    const held = await planUpdateItem(api, { plan_id: plan.id, item: 'PROJ-1', hold: true });
+    expect(held.isError, text(held)).toBeFalsy();
+    expect((await itemOf(r, plan.id, first)).hold).toBe(true);
+    const unlinked = await planRemoveDependency(api, { plan_id: plan.id, from: 'PROJ-1', to: 'PROJ-2' });
+    expect(unlinked.isError, text(unlinked)).toBeFalsy();
+    const added = await planAddItem(api, { plan_id: plan.id, key: 'PROJ-3', title: 'Item three', plan: 'Do three.', estimate_minutes: 20 });
+    expect(added.isError, text(added)).toBeFalsy();
+    const linked = await planAddDependency(api, { plan_id: plan.id, item: 'PROJ-3', after: 'PROJ-2' });
+    expect(linked.isError, text(linked)).toBeFalsy();
+
     const after = await r.plans.get(plan.id);
-    expect([after.items.length, after.edges.length, after.mergeMode, (await itemOf(r, plan.id, first)).hold]).toEqual([2, 1, null, false]);
+    const third = after.items.find((item) => item.key === 'PROJ-3');
+    expect(third).toBeDefined();
+    expect(after.edges).toEqual([{ from: second, to: third?.id }]);
+    // The new item's todo is in the plan's own (source) session's list, not the caller's.
+    const todo = await r.store.todos.get(third?.todoId as string);
+    expect(todo?.sessionId).toBe(r.sourceId);
+    expect(await r.store.todos.list(r.otherId)).toEqual([]);
+    expect((after.activity ?? []).map((line) => line.text)).toEqual([
+      'On-call helper (another agent) made PROJ-3 run after PROJ-2',
+      'On-call helper (another agent) added PROJ-3',
+      'On-call helper (another agent) PROJ-2 no longer waits for PROJ-1',
+      'On-call helper (another agent) changed PROJ-1 (hold)',
+    ]);
   });
 
+  it('keeps every check: a started item, a todo of the caller\'s own list, a plan that does not exist; the source\'s own changes add no activity', async () => {
+    const r = await setup();
+    const { plan } = await twoItems(r);
+    const api = helperApi(r, r.otherId);
+    const own = await r.todos.add(r.otherId, { title: 'Mine' }, 'agent');
+    const refusedTodo = await planAddItem(api, { plan_id: plan.id, todo_id: own.todo.id });
+    expect([refusedTodo.isError, text(refusedTodo)]).toEqual([true, "that todo is in your own list: give title (and description, plan, priority, estimate_minutes) instead; the item's todo goes to the plan's own session"]);
+    const missing = await planUpdateItem(api, { plan_id: 'nope', item: 'PROJ-1', hold: true });
+    expect([missing.isError, text(missing)]).toEqual([true, 'no plan nope on this computer (plan_list shows them)']);
+    // The same refusal the plan's own agent gets: a mode the developer did not acknowledge on a protected target.
+    const protectedPlan = await twoItems(r, 'main');
+    const mode = await planSetMode(api, { plan_id: protectedPlan.plan.id, merge_mode: 'agents' });
+    const sourceMode = await planSetMode(helperApi(r, r.sourceId), { plan_id: protectedPlan.plan.id, merge_mode: 'agents' });
+    expect([mode.isError, text(mode)]).toEqual([sourceMode.isError, text(sourceMode)]);
+    expect(mode.isError).toBe(true);
+    // The source's own change: no activity line.
+    await planUpdateItem(helperApi(r, r.sourceId), { plan_id: plan.id, item: 'PROJ-2', hold: true });
+    expect((await r.plans.get(plan.id)).activity ?? []).toEqual([]);
+  });
+
+});
+
+describe('D129 · scope', () => {
   it('D132: always on: a stored 1.x Plans switch set to off changes nothing, the routes answer and the tools register', async () => {
     const r = await setup();
     const { plan } = await twoItems(r);

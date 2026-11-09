@@ -946,7 +946,7 @@ export class PlanJiraService {
       id = run.planId;
     }
     const ownRun = run !== null && run.planId === id;
-    if (!ownRun) await this.#options.plans.agentPlan(sessionId, id);
+    if (!ownRun) await this.#options.plans.ownAgentPlan(sessionId, id);
     const record = await this.#record(id);
     const rows = await (await this.#jdb()).items(id);
     const plan = await this.#plan(id);
@@ -1151,7 +1151,7 @@ export class PlanJiraService {
    */
   async propose(sessionId: string, planId: string, body: unknown): Promise<{ readonly added: PlanEdgeProposal[]; readonly skipped: ReadonlyArray<{ readonly from: string; readonly to: string; readonly why: string }> }> {
     await this.#gate();
-    await this.#options.plans.agentPlan(sessionId, planId);
+    await this.#options.plans.ownAgentPlan(sessionId, planId);
     const plan = await this.#plan(planId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanJiraError(409, 'finished', `the plan is ${plan.state}`);
     const list = isRecord(body) && Array.isArray(body['proposals']) ? (body['proposals'] as unknown[]) : null;
