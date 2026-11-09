@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.31 (2026-11-09)
+
+### Projects
+- **Any agent can change a project:** a new `plan_list` tool finds every project on this computer, and the project tools (items, dependencies, mode, repos, start) take any project's id, not only the one the agent made, so a change no longer means a new project. Items another agent adds keep their todo in the project's own session, and the project's activity names who changed it. See `docs/plans.md` (D159).
+
+### Development
+- CI fixes for 2.4.30's tests (the D158 tour listed, the resumed agent awaited, a short grace in the test-server leak check).
+
 ## 2.4.30 (2026-11-05)
 
 ### Paired computers
