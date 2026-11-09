@@ -89,6 +89,30 @@ test('idle: the bubble shows within a second of Enter, then the real event takes
   await expect(bubbles(page, 'Right away, idle.')).toHaveCount(1);
 });
 
+test('a code block with a long line stays inside your bubble: the bubble keeps to its column and the code scrolls in its box', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-send-wide-code', 'Say hi.');
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  await expect(input(page)).toBeEnabled();
+  const marker = 'wide-code-marker';
+  await input(page).fill(`${marker}\n\n\`\`\`\nconst line = "${'x'.repeat(600)}";\n\`\`\``);
+  await input(page).press('Enter');
+  const bubble = bubbles(page, marker);
+  await expect(bubble).toHaveCount(1, { timeout: 5_000 });
+  const view = await page.getByTestId('v2-agent-view').boundingBox();
+  const pill = await bubble.locator('.v2-ag-pill').boundingBox();
+  const code = await bubble.locator('pre code').boundingBox();
+  if (!view || !pill || !code) throw new Error('no layout');
+  // 2026-11-09: the pill grew to the line's width and ran out of view to the left (empty code panels, only Copy showing).
+  expect(pill.x).toBeGreaterThanOrEqual(view.x);
+  expect(pill.x + pill.width).toBeLessThanOrEqual(view.x + view.width + 1);
+  // The code's first character is in view (its box scrolls sideways instead).
+  expect(code.x).toBeGreaterThanOrEqual(pill.x);
+  await expect(bubble.locator('pre')).toBeVisible();
+  await settled(page, id);
+});
+
 test('working: the bubble shows at once with its Queued note, stays one, and leaving and coming back keeps it', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-send-working', '[fake:hold 10] Think it through.');

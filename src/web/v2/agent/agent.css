@@ -494,6 +494,19 @@
   font-size: 15px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+  /*
+   * 2026-11-09: never wider than its column. A fenced block's code is `width: max-content`, so a long
+   * line made the pill as wide as that line: it overflowed to the left, out of view, leaving empty
+   * code panels with only Copy showing. Capped, the block scrolls sideways inside its <pre>.
+   */
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.sb2 .v2-ag-pill .sb-md {
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Fix after 2.0: a message the agent has not taken up yet: Queued / Paused under its bubble. */
