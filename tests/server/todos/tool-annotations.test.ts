@@ -55,6 +55,8 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_add_item: [false, false, false, false],
   plan_add_dependency: [false, false, true, false],
   plan_status: [true, false, true, false],
+  // D159: every plan of this computer (read-only).
+  plan_list: [true, false, true, false],
   plan_start: [false, false, true, true],
   plan_set_solutions: [false, true, true, false],
   // D129: items already in the plan, and the merge mode.

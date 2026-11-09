@@ -58,7 +58,8 @@ function world(options: { stored?: unknown; now?: () => number } = {}) {
         return 0;
       },
     } as never,
-    ...(options.now ? { now: options.now } : {}),
+    // A fixed clock next to the fixtures' 2026-11-05 times: the list prunes old moves by age, so the real clock made these records vanish days later.
+    now: options.now ?? (() => Date.parse('2026-11-05T12:30:00.000Z')),
   });
   const emit = (run: TakeoverRun, meta: TakeoverRunMeta): void => {
     for (const listener of listeners) listener(run, meta);
