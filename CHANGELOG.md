@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.33 (2026-11-09)
+
+### v2 theme
+- **Code blocks in your messages:** a code block with a long line no longer pushes your message out of view (empty code panels with only Copy showing). The message keeps to its column and the block scrolls sideways.
+
 ## 2.4.32 (2026-11-09)
 
 ### Projects
