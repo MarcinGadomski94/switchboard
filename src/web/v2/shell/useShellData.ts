@@ -10,7 +10,8 @@ import { useSessionListOf } from '../../api/session-list.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { unfinishedCount } from '../agents/tasks/tasks-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
-import { type PinnedEntry, needsByAgent, pinnedEntries } from '../shared/pinned-model.ts';
+import { usePlans } from '../../plans/store.ts';
+import { type PinnedEntry, anyProjectWorking, needsByAgent, pinnedEntries } from '../shared/pinned-model.ts';
 import { useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { useWarnAt } from '../shared/warn-at.ts';
 import { type RailCounts, type StatusPill, railCounts, statusPill } from './status-model.ts';
@@ -60,10 +61,18 @@ export function usePinned(): readonly PinnedEntry[] {
   const sessions = useSessionListOf();
   const crews = useCrewsList();
   const { items } = useNeedsYou();
+  // D161: pinned projects, live through the Projects store (`planChanged`).
+  const { plans } = usePlans();
   return useMemo(() => {
     const pinned = (layout.data as SidebarLayout | null)?.pinned ?? [];
-    return pinnedEntries(pinned, sessions.data ?? [], crews, needsByAgent(items));
-  }, [layout.data, sessions.data, crews, items]);
+    return pinnedEntries(pinned, sessions.data ?? [], crews, needsByAgent(items), plans);
+  }, [layout.data, sessions.data, crews, items, plans]);
+}
+
+/** D161 · whether the Projects nav item pulses: a project is working right now ({@link anyProjectWorking}). */
+export function useProjectsWorking(): boolean {
+  const { plans } = usePlans();
+  return useMemo(() => anyProjectWorking(plans), [plans]);
 }
 
 /** The rail's counts, live. */

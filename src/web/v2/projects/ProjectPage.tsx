@@ -12,6 +12,7 @@ import { ACCOUNT_CHOICE_WORDS, MODE_LABELS, PROJECT_WORDS, STEP_LABELS } from '.
 import { V2Link, useV2Router } from '../nav.tsx';
 import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialog, ModeAckDialog, ProjectAccountDialog, RereadDialog, SendBackDialog, StartDialog, StepDetailSheet } from './dialogs.tsx';
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
+import { useProjectPins } from '../shared/project-pins.ts';
 import { timeAgo } from '../shared/time.ts';
 import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
 import { useProject } from './useProject.ts';
@@ -108,6 +109,7 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
   const waitingRepos = itemsWaitingForRepos(plan);
   const sessions = useSessionListOf();
   const notesHref = projectNotesHref(plan, sessions.data ?? []);
+  const pins = useProjectPins();
 
   const setView = (next: ProjectView): void => {
     if (phone) setPhoneChoice(next);
@@ -163,6 +165,9 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
 
   const isJira = plan.external?.system === 'jira';
   const projectMenu: MenuItem[] = [
+    // D161: pin the project to the rail's Pinned list (with its status there).
+    { id: 'pin', label: pins.isPinned(plan.id) ? PROJECT_WORDS.unpinFromSidebar : PROJECT_WORDS.pinToSidebar, icon: 'pin', onSelect: () => void pins.toggle(plan) },
+    { separator: true, id: 'sep-pin' },
     { id: 'reread', label: PROJECT_WORDS.rereadDeps, icon: 'jira', ...(isJira ? (started ? { disabledReason: 'Only before the project starts.' } : {}) : { disabledReason: 'This project isn’t from Jira.' }), onSelect: () => setOverlay({ kind: 'reread' }) },
     { id: 'sync', label: PROJECT_WORDS.jiraSync, icon: 'sliders', ...(isJira && jiraNow ? {} : { disabledReason: 'This project isn’t from Jira.' }), onSelect: () => setOverlay({ kind: 'sync' }) },
     {
@@ -276,7 +281,9 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
               {PROJECT_WORDS.restartStopped(restartable.length)}
             </Button>
           ) : null}
-          <MenuButton items={projectMenu} label="Project actions" testId="v2-project-menu" />
+          <span data-tour="v2-project-pin" style={{ display: 'inline-flex' }}>
+            <MenuButton items={projectMenu} label="Project actions" testId="v2-project-menu" />
+          </span>
         </div>
         {ackShown ? (
           <div className="v2-row v2-p-wrap v2-p-ack-row">

@@ -1,6 +1,9 @@
 import type { SessionListItem } from '../../../core/api.ts';
 import { crewOfPin, crewPinId } from '../../../core/crew-pins.ts';
+import { planOfPin, planPinId } from '../../../core/plan-pins.ts';
+import type { Plan } from '../../../core/plans.ts';
 import type { SidebarPlaceInput } from '../../../core/sidebar-layout.ts';
+import { projectCounts, projectStatus } from '../projects/project-model.ts';
 import { type TeamRosterEntry, type TeamSummary, memberNeedsYou } from '../../../core/team.ts';
 import { visibleTeam } from '../../team/model.ts';
 import { type V2Status, sessionStatusToV2, teammateStatusToV2 } from '../glossary.ts';
@@ -38,8 +41,67 @@ export interface PinnedCrew {
   readonly archived: number;
 }
 
+/**
+ * D161 · a pinned project as the rail shows it: its title and status. `status` is the row's
+ * badge (working pulses), `line` its short text ("3/7", "Paused", "Draft"), `needs` the steps
+ * waiting on the developer (the amber count, as an agent's Needs-you badge).
+ */
+export interface PinnedProject {
+  readonly planId: string;
+  readonly title: string;
+  readonly status: V2Status;
+  readonly label: string;
+  readonly line: string;
+  readonly needs: number;
+}
+
 /** One row of the Pinned list, in the layout's order. */
-export type PinnedEntry = { readonly kind: 'agent'; readonly id: string; readonly session: SessionListItem } | { readonly kind: 'crew'; readonly id: string; readonly crew: PinnedCrew };
+export type PinnedEntry =
+  | { readonly kind: 'agent'; readonly id: string; readonly session: SessionListItem }
+  | { readonly kind: 'crew'; readonly id: string; readonly crew: PinnedCrew }
+  | { readonly kind: 'project'; readonly id: string; readonly project: PinnedProject };
+
+/**
+ * D161 · a project as its pinned row shows it, from the Projects list's own rules
+ * (`projects/project-model.ts`: {@link projectStatus}, {@link projectCounts}): a step that
+ * needs the developer (a question, needs you, stopped, ready for approval / to confirm) in a
+ * running or paused project → amber "needs" with the count; else running → working (the
+ * pulse) or waiting, with done/total; paused → "Paused"; draft → "Draft"; done → the check;
+ * cancelled → "Cancelled".
+ */
+export function pinnedProjectOf(plan: Pick<Plan, 'id' | 'title' | 'state' | 'items' | 'progress'>): PinnedProject {
+  const counts = projectCounts(plan);
+  const own = projectStatus(plan);
+  const progress = `${counts.done}/${counts.total}`;
+  const line = plan.state === 'running' ? progress : plan.state === 'paused' ? 'Paused' : plan.state === 'draft' ? 'Draft' : plan.state === 'cancelled' ? 'Cancelled' : '';
+  const needs = (plan.state === 'running' || plan.state === 'paused') && counts.needsYou > 0 ? counts.needsYou : 0;
+  return { planId: plan.id, title: plan.title, status: needs > 0 ? 'needs' : own.status, label: needs > 0 ? `${needs} need${needs === 1 ? 's' : ''} you` : own.label, line, needs };
+}
+
+/** D161 · the project row's accessible name: "Checkout redesign, project, Working, 3/7". */
+export function pinnedProjectLabel(project: Pick<PinnedProject, 'title' | 'label' | 'line'>): string {
+  return [project.title, 'project', project.label, project.line].filter((part) => part !== '').join(', ');
+}
+
+/**
+ * D161 · whether the Projects nav item pulses: any project (this computer's and the paired
+ * ones' the Projects page lists) is working right now, the Projects list's "Working"
+ * ({@link projectStatus}: running with a step running).
+ */
+export function anyProjectWorking(plans: readonly Pick<Plan, 'state' | 'items'>[]): boolean {
+  return plans.some((plan) => projectStatus(plan).status === 'working');
+}
+
+/** D161 · `true` while the project is pinned in the layout. */
+export function isProjectPinned(pinned: readonly string[], planId: string): boolean {
+  return pinned.includes(planPinId(planId));
+}
+
+/** D161 · what Pin to sidebar / Unpin sends for a project (as {@link crewPinInput}). */
+export function projectPinInput(planId: string, pin: boolean, index?: number): SidebarPlaceInput {
+  if (!pin) return { sessionId: planPinId(planId), place: 'loose' };
+  return index === undefined || index < 0 ? { sessionId: planPinId(planId), place: 'pinned' } : { sessionId: planPinId(planId), place: 'pinned', index };
+}
 
 /** The Needs-you items per agent (`agent.sessionId`; a crew's own items carry the teammate's session too). */
 export function needsByAgent(items: readonly { readonly agent: { readonly sessionId: string | null } | null }[]): ReadonlyMap<string, number> {
@@ -88,11 +150,19 @@ export function pinnedCrewOf(crew: TeamSummary, needs: ReadonlyMap<string, numbe
  * computer knows. A closed agent, an unknown id and a deleted (or not yet synced) crew
  * are left out, as before.
  */
-export function pinnedEntries(pinned: readonly string[], sessions: readonly SessionListItem[], crews: readonly TeamSummary[], needs: ReadonlyMap<string, number>): PinnedEntry[] {
+export function pinnedEntries(pinned: readonly string[], sessions: readonly SessionListItem[], crews: readonly TeamSummary[], needs: ReadonlyMap<string, number>, plans: readonly Pick<Plan, 'id' | 'title' | 'state' | 'items' | 'progress'>[] = []): PinnedEntry[] {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const crewById = new Map(crews.map((crew) => [crew.id, crew]));
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const entries: PinnedEntry[] = [];
   for (const id of pinned) {
+    // D161: a pinned project; a deleted one (or one not listed yet) is left out, as a crew.
+    const planId = planOfPin(id);
+    if (planId !== null) {
+      const plan = planById.get(planId);
+      if (plan) entries.push({ kind: 'project', id, project: pinnedProjectOf(plan) });
+      continue;
+    }
     const teamId = crewOfPin(id);
     if (teamId !== null) {
       const crew = crewById.get(teamId);

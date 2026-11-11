@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { type Plan, planIsOver } from '../../../core/plans.ts';
 import { usePlans } from '../../plans/store.ts';
-import { Button, Card, Chip, ComputerTag, EmptyState, Icon, Segmented, Skeleton, StatusBadge } from '../components/index.ts';
+import { Button, Card, Chip, ComputerTag, EmptyState, Icon, MenuButton, type MenuItem, Segmented, Skeleton, StatusBadge } from '../components/index.ts';
 import { PROJECT_WORDS, STATUS, type V2Status } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
 import { openNew } from '../new/index.tsx';
+import { useProjectPins } from '../shared/project-pins.ts';
 import { clock } from '../shared/time.ts';
 import { JiraImportDialog } from './JiraImport.tsx';
 import { PROJECTS_DONE_OPEN_KEY, axisPercent, jiraTag, modeLabel, projectCounts, projectSections, projectStatus, projectsTimeline, readDoneOpen, sortProjects, stepKind, stepName, timeLeft } from './project-model.ts';
@@ -26,8 +27,12 @@ export function ProgressBar({ plan }: { readonly plan: Plan }) {
   );
 }
 
-/** One project's card on the list. */
-function ProjectCard({ plan, onOpen }: { readonly plan: Plan; readonly onOpen: () => void }) {
+/** One project's card on the list. D161: its ⋯ menu pins it to the sidebar. */
+function ProjectCard({ plan, onOpen, pinned, onTogglePin }: { readonly plan: Plan; readonly onOpen: () => void; readonly pinned: boolean; readonly onTogglePin: () => void }) {
+  const menu: MenuItem[] = [
+    { id: 'open', label: PROJECT_WORDS.openProject, icon: 'projects', onSelect: onOpen },
+    { id: 'pin', label: pinned ? PROJECT_WORDS.unpinFromSidebar : PROJECT_WORDS.pinToSidebar, icon: 'pin', onSelect: onTogglePin },
+  ];
   const counts = projectCounts(plan);
   const status = projectStatus(plan);
   const left = timeLeft(plan);
@@ -53,6 +58,9 @@ function ProjectCard({ plan, onOpen }: { readonly plan: Plan; readonly onOpen: (
         {plan.machine ? <ComputerTag name={plan.machine.name} short state={plan.machine.state === 'online' ? 'online' : plan.machine.state === 'reconnecting' ? 'reconnecting' : 'offline'} /> : null}
         <span className="v2-grow" />
         {left ? <span className="v2-muted">{left}</span> : null}
+        <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} style={{ display: 'inline-flex' }} data-tour="v2-project-card-menu">
+          <MenuButton items={menu} label={`Project actions for ${plan.title}`} testId="v2-project-card-menu" />
+        </span>
       </div>
       <ProgressBar plan={plan} />
       <div className="v2-p-kv">
@@ -144,6 +152,7 @@ function readOpen(): boolean {
  */
 function ProjectCards({ plans, onOpen }: { readonly plans: readonly Plan[]; readonly onOpen: (id: string) => void }) {
   const { active, done } = useMemo(() => projectSections(plans), [plans]);
+  const pins = useProjectPins();
   const [open, setOpen] = useState(readOpen);
   const toggle = (): void => {
     setOpen((was) => {
@@ -160,7 +169,7 @@ function ProjectCards({ plans, onOpen }: { readonly plans: readonly Plan[]; read
       {active.length > 0 ? (
         <div className="v2-p-pcards" data-testid="v2-project-cards">
           {active.map((plan) => (
-            <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
+            <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} pinned={pins.isPinned(plan.id)} onTogglePin={() => void pins.toggle(plan)} />
           ))}
         </div>
       ) : null}
@@ -175,7 +184,7 @@ function ProjectCards({ plans, onOpen }: { readonly plans: readonly Plan[]; read
           {open ? (
             <div className="v2-p-pcards" data-testid="v2-project-done-cards">
               {done.map((plan) => (
-                <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
+                <ProjectCard key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} pinned={pins.isPinned(plan.id)} onTogglePin={() => void pins.toggle(plan)} />
               ))}
             </div>
           ) : null}

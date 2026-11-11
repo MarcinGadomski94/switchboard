@@ -179,6 +179,9 @@ const V2_4_25 = '2.4.25';
 /** The version D158 (a conversation-only move) ships in. */
 const V2_4_30 = '2.4.30';
 
+/** The version D161 (pinned projects and the Projects pulse) ships in. */
+const V2_4_34 = '2.4.34';
+
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
 
@@ -1725,6 +1728,34 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-move-conversation-only', 'v2-agent-menu', 'v2-nav-agents', 'v2-tab-agents'],
         v2Route: '/agents',
         missing: 'Pair another computer (Settings › Computers), then open an agent’s ⋯ › Move to computer…. ',
+      },
+    ],
+  },
+  // D161: a project pinned to the sidebar with its status, and the Projects item's pulse (docs/sidebar.md → Pinned projects (D161)).
+  {
+    id: 'pinned-projects',
+    decision: 'D161',
+    version: V2_4_34,
+    title: 'Pin a project to the sidebar',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'pin',
+        title: 'Pin to sidebar',
+        what: 'A project’s ⋯ menu (on its card in Projects, or on its page) has Pin to sidebar. The pinned project sits in the sidebar’s Pinned list with its status: working with its steps done (3/7), the steps that need you in amber, Paused or Draft. Unpin from the same menu.',
+        todo: ['Open Projects, then a project’s ⋯ › Pin to sidebar.'],
+        anchors: ['v2-project-card-menu', 'v2-project-pin', 'v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'Make a project first (Projects › New project), then pin it from its ⋯ menu.',
+      },
+      {
+        id: 'row',
+        title: 'Its status in the sidebar',
+        what: 'The pinned project’s row opens it. While any project works, the Projects item in the sidebar shows a live dot.',
+        todo: ['Look at the Pinned list and the Projects item.'],
+        anchors: ['v2-pin-project', 'v2-rail-pins', 'v2-nav-projects'],
+        v2Route: '/projects',
+        missing: 'Pin a project first: its row then shows here.',
       },
     ],
   },

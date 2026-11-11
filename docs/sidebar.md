@@ -143,6 +143,15 @@ v2 Fixes after 2.0 (`docs/v2.md` → *Shell*): a crew (a team, D100) can be pinn
 - **Sync (D71):** a team's id is the same on every paired machine (D100's team sync), so a crew pin's wire key is the pin id itself (`sessionKey` / `sessionIdOf` in `src/core/sidebar-sync.ts`), never `<machine>:<id>`: pinned on A, the same crew is pinned on B, in the same order. A machine from before 2.4.4 reads the key as malformed and drops it (counted, nothing else changes); it just shows no pinned crew.
 - **Where it shows:** only the v2 rail (`shell/PinnedCrew.tsx`). Every other reader of `pinned` looks ids up as sessions, so the classic sidebar, v2 Agents' tree, D83, D99 and D137 never see it (an unknown id is hidden, as D71 already does for a third machine's session). A deleted crew's pin stays hidden.
 
+## Pinned projects (D161)
+
+A project (a plan) is pinned the same way (`docs/decisions.md` → D161): the id `plan~<plan id>` (`src/core/plan-pins.ts`) in the layout's `pinned` list, no migration. The plan id is the one this machine knows it by: its own plan's id, or a paired machine's `r~<machine>~<id>` (the Projects page lists those too).
+
+- **Pin / Unpin:** ⋯ › Pin to sidebar / Unpin from sidebar on a project's card (Projects) and on its page, with Undo (`shared/project-pins.ts`, as `crew-pins.ts`). `POST /api/sidebar/place` takes a well-formed project pin like a crew pin: `pinned`, or `loose` without `index`; anything else is 422 ("a project is only pinned or unpinned"). The plan need not exist here (not listed yet): an unknown one is not shown.
+- **Sync (D71):** a plan lives on one machine, so unlike a crew its wire key carries the origin: `plan~<origin machine>:<id>`; each machine reads it back as its own plan id or `r~<origin>~<id>` (`planPinKey` / `planPinOfKey`). A machine from before D161 reads the key as malformed and drops it.
+- **The row** (`shell/Rail.tsx` → `PinnedProject`, model `pinnedProjectOf` in `shared/pinned-model.ts`): the status badge, the title, a short line and the steps that need you, by the Projects list's own rules (`projectStatus`, `projectCounts`): running → Working (the pulse) or Waiting, with done/total ("3/7"); a step that needs you (a question, needs you, stopped, ready for approval or to confirm) in a running or paused project → amber with the count; paused → "Paused"; draft → "Draft"; done → the check; cancelled → "Cancelled". It opens the project; it follows `planChanged` through the Projects store. A deleted project's pin stays hidden, as a crew's.
+- **The Projects item's pulse:** the rail's Projects item shows the live dot while any listed project (this computer's and the paired ones') is working: running with a step running (`anyProjectWorking`, the list's "Working"). Its needs-you count stays as it was.
+
 ## API (additive; `contracts/local-api.md` → *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*)
 | Method | Path | Body | Returns |
 |---|---|---|---|

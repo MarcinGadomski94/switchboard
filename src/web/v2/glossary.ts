@@ -1611,6 +1611,15 @@ export const PROJECT_VIEW_WORDS = {
 
 /** The Projects pages' words. */
 export const PROJECT_WORDS = {
+  /** D161: pin a project to the rail's Pinned list (the shared sidebar layout, D71), worded as a crew's. */
+  pinToSidebar: 'Pin to sidebar',
+  unpinFromSidebar: 'Unpin from sidebar',
+  pinnedToast: (name: string): string => `Pinned “${name}” to the sidebar.`,
+  unpinnedToast: (name: string): string => `Unpinned “${name}”.`,
+  /** D161: a project card's ⋯ menu. */
+  openProject: 'Open project',
+  /** D161: the Projects nav item's pulse (a project is working). */
+  someWorking: 'a project is working',
   pageSub: 'Multi-step work. Steps start on their own when the steps before them are done.',
   newProject: 'New project',
   importJira: 'Import from Jira',

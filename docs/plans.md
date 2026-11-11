@@ -272,6 +272,10 @@ Developer request (2026-11-09): "make agents able to modify the plan instead of 
 
 Team hand-offs are todos (D68) and keep working with Plans off; Team never calls Plans. D102: a plan's "Ready to merge" Inbox item of a member's session shows in Team's Needs you (it is an Inbox item of that session). `TeamHandoff.planRef` is stored text only. Any future Team → Plans use must check both switches (Plans' calls already refuse with 404 `plans-off` while Plans is off).
 
+## Pinned to the sidebar (D161)
+
+A project can be pinned to the v2 rail (⋯ › Pin to sidebar on its card or page): its row shows its status there, and the rail's Projects item pulses while any project works. `docs/sidebar.md` → *Pinned projects (D161)*.
+
 ## Phones and paired machines
 
 Devices (D73) may use every plan route (a start is ▸ Run in new session many times; the safeguards hold on any device), including `GET /api/plans/state`. Paired machines (D48) read and act on each other's plans through the peer API (a plan id `r~<machine>~<id>`); a machine with Plans off answers 404 and its plans are simply not listed. `planChanged` is forwarded between peers.

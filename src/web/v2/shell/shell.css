@@ -182,6 +182,35 @@
   color: var(--v2-blue);
 }
 
+/* D161: a pinned project's short line (done/total, Paused, Draft) and its Needs-you count. */
+.sb2 .v2-pin-project-line {
+  flex: none;
+  font-size: 12px;
+  color: var(--v2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb2 .v2-pin-project[data-status='working'] .v2-pin-project-line {
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-pin-project .v2-nav-badge {
+  margin-left: 0;
+  padding: 1px 6px;
+}
+
+/* D161: the Projects nav item's live dot while a project works (before its Needs-you count). */
+.sb2 .v2-nav-item .v2-nav-pulse {
+  margin-left: auto;
+  flex: none;
+  /* The live dot draws in currentColor: the running blue, not the item's text colour. */
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-nav-item .v2-nav-pulse + .v2-nav-badge {
+  margin-left: 0;
+}
+
 .sb2 .v2-pin-crew-link .v2-nav-badge {
   margin-left: 0;
   padding: 1px 6px;
@@ -602,6 +631,14 @@
     position: absolute;
     top: 4px;
     right: 8px;
+    margin: 0;
+  }
+
+  /* D161: the narrow rail's Projects pulse sits in the icon's top-left corner (the count keeps the right). */
+  .sb2 .v2-nav-item .v2-nav-pulse {
+    position: absolute;
+    top: 6px;
+    left: 8px;
     margin: 0;
   }
 
