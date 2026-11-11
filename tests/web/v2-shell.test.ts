@@ -135,6 +135,10 @@ describe('D131 · the shell: status pill, rail counts, shortcuts', () => {
     ]);
     expect(pill.computerRows[0]?.detail).toBe('CPU 34% · RAM 18.2/32 GB · 3 background apps · 1.9 GB');
     expect(pill.computerRows[1]?.power).toContain('210 W');
+    // D162: a paired computer's own CPU and memory; an older one (no stats) reads just Online.
+    expect(pill.computerRows[1]?.detail).toBe('Online');
+    const withStats = statusPill(system, [machine('studio', 'Studio-PC', 'online', { stats: { cpu: 23.4, ramUsed: 18.2 * 1024 ** 3, ramTotal: 32 * 1024 ** 3, at: '2026-10-25T12:00:00.000Z' } })], 'Acme-MacBook');
+    expect(withStats.computerRows[1]?.detail).toBe('Online · CPU 23% · RAM 18.2/32 GB');
     expect(pill.away).toEqual([]);
     const offline = statusPill(system, [machine('studio', 'Studio-PC', 'offline')], 'Acme-MacBook');
     expect(offline.computers).toMatchObject({ text: '1 offline', icon: 'offline' });

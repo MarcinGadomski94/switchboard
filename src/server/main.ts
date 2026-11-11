@@ -175,7 +175,8 @@ async function main(): Promise<void> {
       else if (level === 'warn') console.warn(text);
       else console.info(text);
     };
-    const peers = new PeerService({ config, store, bus, token, log: peerLog, ...(power ? { power } : {}), ...(updates ? { update: { current: () => machineUpdateOf(updates.status()) } } : {}) });
+    // D162: this machine's CPU and memory go to the paired machines (the demo reports none).
+    const peers = new PeerService({ config, store, bus, token, log: peerLog, ...(power ? { power } : {}), ...(config.demo ? {} : { stats: { current: () => system.stats() } }), ...(updates ? { update: { current: () => machineUpdateOf(updates.status()) } } : {}) });
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });

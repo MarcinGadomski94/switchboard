@@ -230,6 +230,8 @@ export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(
   'machinePower',
   // D140: the machine's update state in short; the receiver keeps it as `Machine.update` and never republishes it (peerHubEvent answers null).
   'machineUpdate',
+  // D162: the machine's CPU and memory (written on the stream, never on the bus); the receiver keeps it as `Machine.stats` and never republishes it (peerHubEvent answers null).
+  'machineStats',
   // D154: a move there changed; the receiver reads that machine's moves again and republishes it with the move mapped (PeerService).
   'movesChanged',
 ]);

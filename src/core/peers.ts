@@ -9,6 +9,7 @@
 
 import type { PowerStatus } from './power.ts';
 import type { MachineUpdate } from './updates.ts';
+import type { MachineStats } from './machine-stats.ts';
 
 /** How the local service sees a paired machine right now. */
 export type MachineState =
@@ -63,6 +64,12 @@ export interface Machine {
    * D140 and from machines whose updater is off.
    */
   readonly update?: MachineUpdate;
+  /**
+   * Additive (D162, `docs/peers.md` → *A paired computer's CPU and RAM*): the machine's
+   * own CPU and memory, as it last reported them over its event stream (every ~10 s);
+   * only while it is online or reconnecting. Absent from machines before D162.
+   */
+  readonly stats?: MachineStats;
 }
 
 /** D113: a paired machine's list that a local page merges in (the Artifacts page, the Inbox). */

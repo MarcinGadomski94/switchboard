@@ -1759,6 +1759,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D162: every paired computer's CPU and memory in the status pill's popover (docs/peers.md → A paired computer's CPU and RAM).
+  {
+    id: 'peer-computer-stats',
+    decision: 'D162',
+    version: V2_4_34,
+    title: 'CPU and memory of every computer',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'stats',
+        title: 'Every computer’s CPU and memory',
+        what: 'The status pill’s Computers list now shows each paired computer’s CPU and memory too (“Online · CPU 23% · RAM 18.2/32 GB”), updated about every 10 seconds while it is online. A computer on an older Switchboard shows only Online until it is updated.',
+        todo: ['Click the status pill and look at Computers.'],
+        anchors: ['v2-pill-peer', 'v2-status-pill', 'v2-tab-more'],
+        v2Route: '/',
+        missing: 'Pair a computer first (Settings › Computers): its row then shows here.',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

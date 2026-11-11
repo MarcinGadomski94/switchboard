@@ -24,7 +24,7 @@ function Meter({ label, pct, tone }: { readonly label: string; readonly pct: num
 function ComputerRow({ row }: { readonly row: PillComputer }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="v2-prow" data-state={row.state} data-testid="v2-pill-computer">
+    <div className="v2-prow" data-state={row.state} data-testid="v2-pill-computer" data-tour={row.self ? undefined : 'v2-pill-peer'}>
       <Icon name={row.state === 'offline' ? 'offline' : row.state === 'reconnecting' ? 'refresh' : row.self ? 'laptop' : 'desktop'} />
       <div className="v2-grow">
         <b>{row.name}</b>
@@ -79,7 +79,7 @@ export function StatusPill({ pill, compact = false }: { readonly pill: Pill; rea
   const chooser = useChooseAccount(choices.reload);
   return (
     <>
-      <button ref={setAnchor} type="button" className="v2-pill" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="v2-status-pill" aria-label={`Usage and computers: ${[usage?.label, pill.power?.text, pill.computers.text].filter(Boolean).join(', ')}`}>
+      <button ref={setAnchor} type="button" className="v2-pill" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="v2-status-pill" data-tour="v2-status-pill" aria-label={`Usage and computers: ${[usage?.label, pill.power?.text, pill.computers.text].filter(Boolean).join(', ')}`}>
         {usage ? (
           <>
             <span className="v2-pill-ic" data-tone={usage.tone}>

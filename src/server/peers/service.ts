@@ -11,6 +11,7 @@ import { type MoveRecord, moveFromPeer } from '../../core/moves.ts';
 import type { Plan } from '../../core/plans.ts';
 import { type PowerStatus, readPowerStatus } from '../../core/power.ts';
 import { type MachineUpdate, readMachineUpdate } from '../../core/updates.ts';
+import { type MachineStats, readMachineStats } from '../../core/machine-stats.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -381,6 +382,12 @@ export interface PeerServiceOptions {
    * `machineUpdate` (the updater publishes them). Absent = no updater here.
    */
   readonly update?: { current(): MachineUpdate | null };
+  /**
+   * D162 (`docs/peers.md` → *A paired computer's CPU and RAM*): this machine's CPU and
+   * memory (the system probe's `stats()`). A peer's stream gets a reading when it opens
+   * and at every keepalive (~10 s), as `machineStats`. Absent = this machine reports none.
+   */
+  readonly stats?: { current(): MachineStats | null };
 }
 
 /** The structured fields of a peer connection log line (see {@link PeerServiceOptions.log}). */
@@ -471,6 +478,10 @@ export class PeerService implements PeerHandlers {
   readonly #update: { current(): MachineUpdate | null } | null;
   /** D140: each paired machine's update state as it last reported it (`machineUpdate` on its stream). */
   readonly #peerUpdate = new Map<string, MachineUpdate>();
+  /** D162: this machine's CPU and memory (`null`: reports none). */
+  readonly #stats: { current(): MachineStats | null } | null;
+  /** D162: each paired machine's CPU and memory as it last reported them (`machineStats` on its stream). */
+  readonly #peerStats = new Map<string, MachineStats>();
   /** D113: per `<machine> <list>` (artifacts, inbox): a fetch is running, and when the last one arrived (ms). */
   readonly #listSync = new Map<string, { syncing: boolean; syncedAt: number | null }>();
   /** D113: machines whose Inbox has not arrived since they came online (its count is published when it does). */
@@ -489,6 +500,7 @@ export class PeerService implements PeerHandlers {
     this.#version = options.version ?? '0.1.0';
     this.#power = options.power ?? null;
     this.#update = options.update ?? null;
+    this.#stats = options.stats ?? null;
     this.#timings = options.timings ?? options.config.peerTimings ?? {};
     this.#log =
       options.log ??
@@ -699,7 +711,14 @@ export class PeerService implements PeerHandlers {
       listSync: this.#listSyncView(record.id),
       ...this.#powerView(record.id, connection?.state),
       ...this.#updateView(record.id, connection?.state),
+      ...this.#statsView(record.id, connection?.state),
     };
+  }
+
+  /** D162: a machine's CPU and memory while it is online or reconnecting (a stale reading of an unreachable machine is not shown). */
+  #statsView(id: string, state: MachineState | undefined): { stats?: MachineStats } {
+    const stats = this.#peerStats.get(id);
+    return stats && (state === 'online' || state === 'reconnecting') ? { stats } : {};
   }
 
   /**
@@ -959,6 +978,7 @@ export class PeerService implements PeerHandlers {
     for (const list of PEER_SYNCED_LISTS) this.#listSync.delete(`${id} ${list}`);
     this.#peerPower.delete(id);
     this.#peerUpdate.delete(id);
+    this.#peerStats.delete(id);
     this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
     this.#saveTimers.delete(id);
@@ -1093,6 +1113,15 @@ export class PeerService implements PeerHandlers {
       const power = readPowerStatus(payload);
       if (power) {
         this.#peerPower.set(id, power);
+        this.#publishMachine(id);
+      }
+      return;
+    }
+    if (name === 'machineStats') {
+      // D162: the machine's CPU and memory (every ~10 s): kept as its Machine.stats (machineState), never republished.
+      const stats = readMachineStats(payload);
+      if (stats) {
+        this.#peerStats.set(id, stats);
         this.#publishMachine(id);
       }
       return;
@@ -1587,9 +1616,16 @@ export class PeerService implements PeerHandlers {
     // D140: this machine's update state (version, newest release, progress); changes follow as machineUpdate.
     const update = this.#update?.current() ?? null;
     if (update) write(formatEvent('machineUpdate', update));
+    // D162: this machine's CPU and memory now and at every keepalive (written here only, never on the bus).
+    const writeStats = (): void => {
+      const stats = this.#stats?.current() ?? null;
+      if (stats) write(formatEvent('machineStats', stats));
+    };
+    writeStats();
     const keepalive = setInterval(() => {
       write(KEEPALIVE_FRAME);
       this.#power?.current();
+      writeStats();
     }, 10_000);
     keepalive.unref();
     let closed = false;

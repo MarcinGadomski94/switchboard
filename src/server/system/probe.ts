@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { SystemInfo } from '../../core/api.ts';
 import type { PowerStatus } from '../../core/power.ts';
+import { MACHINE_STATS_REUSE_MS, type MachineStats } from '../../core/machine-stats.ts';
 import { type RunResult, runCommand, succeeded } from '../exec.ts';
 import type { SystemProvider } from '../providers.ts';
 import { childEnv } from '../supervisor/argv.ts';
@@ -152,6 +153,11 @@ export class SystemProbe implements SystemProvider {
   #inflight: Promise<CliStatus> | null = null;
   #lastCpu: CpuSample;
   #cpuPct = 0;
+  /** D162: the peer streams' own CPU baseline and their last reading. */
+  #lastStatsCpu: CpuSample;
+  #statsCpuPct = 0;
+  #stats: MachineStats | null = null;
+  #statsAt = Number.NEGATIVE_INFINITY;
 
   constructor(options: SystemProbeOptions) {
     this.#options = options;
@@ -160,6 +166,7 @@ export class SystemProbe implements SystemProvider {
     this.#memory = options.memory ?? (() => ({ total: os.totalmem(), free: os.freemem() }));
     this.#memoryInUse = options.memoryInUse ?? createMemoryInUseReader({ cwd: options.cwd });
     this.#lastCpu = cpuSample(this.#cpus());
+    this.#lastStatsCpu = this.#lastCpu;
     void this.refreshMemory();
   }
 
@@ -243,6 +250,30 @@ export class SystemProbe implements SystemProvider {
     if (command.length !== 1) return command.join(' ');
     const only = command[0] as string;
     return (await resolveExecutable(only, env, this.#options.cwd)) ?? only;
+  }
+
+  /**
+   * D162: this machine's CPU and memory for the peer streams (`machineStats`). The CPU %
+   * has its own baseline (since the previous `stats()` call), so the footer's reading
+   * (`system()`) is not cut short; one reading is reused for {@link MACHINE_STATS_REUSE_MS}
+   * (every paired machine's keepalive shares it). Memory is the same reading as `system()`.
+   */
+  stats(): MachineStats {
+    const now = this.#now();
+    if (this.#stats && now - this.#statsAt < MACHINE_STATS_REUSE_MS) return this.#stats;
+    const sample = cpuSample(this.#cpus());
+    const total = sample.total - this.#lastStatsCpu.total;
+    const idle = sample.idle - this.#lastStatsCpu.idle;
+    if (total > 0) {
+      this.#statsCpuPct = Math.min(100, Math.max(0, Math.round((1 - idle / total) * 100)));
+      this.#lastStatsCpu = sample;
+    }
+    const memory = this.#memory();
+    if (now - this.#ramReadAt >= MEMORY_READ_INTERVAL_MS) void this.refreshMemory();
+    const used = this.#ramInUse ?? memory.total - memory.free;
+    this.#stats = { cpu: this.#statsCpuPct, ramUsed: Math.min(memory.total, Math.max(0, used)), ramTotal: memory.total, at: new Date(now).toISOString() };
+    this.#statsAt = now;
+    return this.#stats;
   }
 
   #power(): { power?: PowerStatus } {

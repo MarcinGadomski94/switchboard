@@ -53,7 +53,7 @@ Served only on the peer listener (`src/server/peers/listener.ts`), never on the 
 | `POST /peer/v1/pair` | the one-time code | the exchange above; 403 `{ error: "pairing-refused", reason: no-code \| expired \| wrong-code \| too-many-tries }` |
 | `POST /peer/v1/hello` | bearer | `{ id, name, version }`; the caller's `{ address }` is remembered |
 | `DELETE /peer/v1/pair` | bearer | the caller removed us: forget it too (204) |
-| `GET /peer/v1/events` | bearer | Server-Sent Events: this machine's `sessionUpdated`, `event`, `questionBatch`, `activity` and `inboxChanged` (its own count), never a peer's; `: keepalive` every 10 s |
+| `GET /peer/v1/events` | bearer | Server-Sent Events: this machine's `sessionUpdated`, `event`, `questionBatch`, `activity` and `inboxChanged` (its own count), never a peer's; `: keepalive` every 10 s; D125 `machinePower`, D140 `machineUpdate`, D162 `machineStats` (its CPU and memory, at open and each keepalive) |
 | `GET/POST/PUT/DELETE /peer/v1/api/*` | bearer | the allow-listed local API (below), answered as the local UI would get it |
 | `POST /peer/v1/sidebar` | bearer | D71: the shared sidebar layout's exchange (*Shared sidebar layout (D71)* below); merged only while this machine's switch for the caller is on; body limit 8 MiB |
 
@@ -204,6 +204,10 @@ Developer request D113 (`docs/decisions.md` → *Loading and syncing the merged 
 ## Machine power (D125)
 
 Each machine's own power (a laptop's battery, or a desktop's estimated total; `docs/power.md`) travels on its peer event stream as the `/hub` event `machinePower` (on `PEER_HUB_EVENTS`): the last reading when the stream opens, then each new one (at most every 30 s; the stream's 10 s keepalive asks the sampler, so a machine with no page open still samples while a peer listens). The receiving machine keeps it as **`Machine.power`** (additive; `GET /api/machines`, published with `machineState`), shown only while the machine is online or reconnecting, and never republishes `machinePower`. An older Switchboard sends none and shows nothing; a paired phone reports nothing. Code: `PeerService.events` / `#onPeerEvent` (`src/server/peers/service.ts`). Test: `tests/server/peers/power.test.ts` (two processes, `SWITCHBOARD_POWER_TEST_FILE` per node).
+
+## A paired computer's CPU and RAM (D162)
+
+Each machine's own CPU % and memory travel on its peer event stream as the `/hub` event `machineStats` `{ cpu, ramUsed, ramTotal, at }` (on `PEER_HUB_EVENTS`): written straight onto the stream when it opens and at each 10 s keepalive, never published on the local bus. The reading comes from the system probe (`SystemProbe.stats()`): the CPU % has its own baseline (since the previous peer reading, so the local footer's reading is untouched) and one reading is reused for 5 s across all paired machines; memory is the footer's own reading (D17). The receiving machine checks it (`readMachineStats`, `src/core/machine-stats.ts`: finite numbers, `cpu` 0–100, memory not negative, `ramUsed` at most 5 % over `ramTotal`), keeps it as **`Machine.stats`** (additive; `GET /api/machines`, published with `machineState` at each reading), shown only while the machine is online or reconnecting, and never republishes it. The v2 status pill's popover shows it on the computer's row ("Online · CPU 23% · RAM 18.2/32 GB"). An older Switchboard sends none: its row stays "Online". No new route or listener; numbers only. Test: `tests/server/peers/stats.test.ts` (two processes).
 
 ## Updating a paired machine (D140)
 

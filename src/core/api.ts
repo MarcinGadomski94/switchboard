@@ -29,6 +29,7 @@ import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
 import type { PowerStatus } from './power.ts';
+import type { MachineStats } from './machine-stats.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
@@ -2636,6 +2637,13 @@ export interface HubEvents {
    */
   readonly machineUpdate: MachineUpdate;
   /**
+   * Additive (D162, `docs/peers.md` → *A paired computer's CPU and RAM*): this machine's
+   * CPU and memory, written on each peer stream when it opens and at every keepalive
+   * (~10 s); never published on the local bus. The receiving machine keeps it as that
+   * machine's `Machine.stats` (published with `machineState`) and never republishes it.
+   */
+  readonly machineStats: MachineStats;
+  /**
    * Additive (D138, `docs/accounts.md` → *Choosing the account*): the overall account choice
    * or a Project's accounts changed (the pill's picker, Settings and the Projects page read
    * again). This machine's only: never forwarded between peers.
@@ -2693,6 +2701,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'machinePower',
   // D140.
   'machineUpdate',
+  // D162.
+  'machineStats',
   // D138.
   'accountChoiceChanged',
   // D154.

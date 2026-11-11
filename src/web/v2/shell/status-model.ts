@@ -122,7 +122,8 @@ export function statusPill(system: SystemInfo | null, machines: readonly Machine
       name: machine.name,
       self: false,
       state,
-      detail: state === 'online' ? 'Online' : state === 'reconnecting' ? 'Reconnecting…' : `Offline${since} · ${computerProblem(machine.state) ?? 'Reconnects automatically.'}`,
+      // D162: a paired computer's own CPU and memory, as it last reported them (older ones send none: "Online").
+      detail: state === 'online' ? ['Online', ...(machine.stats ? [`CPU ${Math.round(machine.stats.cpu)}%`, `RAM ${gb(machine.stats.ramUsed)}/${gb(machine.stats.ramTotal)} GB`] : [])].join(' · ') : state === 'reconnecting' ? 'Reconnecting…' : `Offline${since} · ${computerProblem(machine.state) ?? 'Reconnects automatically.'}`,
       power: state === 'online' ? (peerPower?.text ?? null) : null,
       powerKind: peerPower ? (machine.power?.kind === 'estimated' ? 'plug' : 'battery') : null,
     });
