@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.34 (2026-11-11)
+
+### Sidebar
+- **Pin projects:** ⋯ › Pin to sidebar on a project's card or page puts it in the sidebar's Pinned list with its status (Working with done/total, Waiting, an amber count of steps that need you, Paused, Draft, done). The Projects item pulses while a project has a step running. See `docs/sidebar.md` (D161).
+- **Pin from the agent page:** the agent's ⋯ menu has Pin to sidebar / Unpin from sidebar, with Undo.
+
+### Paired computers
+- **Their CPU and memory:** the status pill lists every paired computer with its CPU and memory ("Online · CPU 23% · RAM 18.2/32 GB"), refreshed about every 10 seconds. Update both computers. See `docs/peers.md` (D162).
+
+### MCP
+- **Sign in where it happens:** when an agent's MCP server needs you to sign in again, the agent shows a notice with Sign in (claude.ai connectors: a link to claude.ai's connector settings) and Needs you lists it once per server. After a sign-in, here or on the Connections page, the running agents that needed it reconnect without a restart. See `docs/mcp.md` (D163).
+
 ## 2.4.33 (2026-11-09)
 
 ### v2 theme
