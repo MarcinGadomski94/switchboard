@@ -113,6 +113,24 @@ test('a code block with a long line stays inside your bubble: the bubble keeps t
   await settled(page, id);
 });
 
+test('the agent page ⋯ menu pins the agent to the sidebar and unpins it (with Undo)', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-menu-pin', 'Say hi.');
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  const pinnedIds = (): Promise<string[]> => page.evaluate(async () => ((await (await fetch('/api/sidebar')).json()) as { pinned: string[] }).pinned);
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await expect.poll(pinnedIds).toContain(id);
+  await expect(page.getByTestId('v2-toast').filter({ hasText: 'It’s in the sidebar.' })).toBeVisible();
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
+  await expect.poll(pinnedIds).not.toContain(id);
+  // Undo puts the pin back.
+  await page.getByTestId('v2-toast').filter({ hasText: 'Unpinned' }).getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(pinnedIds).toContain(id);
+});
+
 test('working: the bubble shows at once with its Queued note, stays one, and leaving and coming back keeps it', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-send-working', '[fake:hold 10] Think it through.');

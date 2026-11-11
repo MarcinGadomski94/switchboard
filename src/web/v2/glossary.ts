@@ -1221,6 +1221,7 @@ export const AGENTS_WORDS = {
   pin: 'Pin',
   unpin: 'Unpin',
   pinToSidebar: 'Pin to sidebar',
+  unpinFromSidebar: 'Unpin from sidebar',
   moveToFolder: 'Move to folder…',
   /** A folder's ⋯ › Move to… (another folder or the top level). */
   moveFolderTo: 'Move to…',

@@ -28,6 +28,7 @@ import { MoveBadge } from '../shared/MoveBadge.tsx';
 import { agentName, agentStatusOf, statusWithApps } from '../shared/agent-line.ts';
 import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, teammateOf, useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { continueAsAgent } from './agent-bits.ts';
+import { restoreInput } from '../agents/useTreeActions.ts';
 import { ConfirmDialog, RemoteDialog, RenameDialog, TerminalDialog } from './dialogs.tsx';
 import { type AgentMenuId, type AgentMenuSpec, agentMenu, ciView, folderTrail } from './header-model.ts';
 import { cleanSlateView } from './side-model.ts';
@@ -461,6 +462,7 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   const [error, setError] = useState<string | null>(null);
   const [attachWarning, setAttachWarning] = useState<AttachWarning | null>(null);
   const { machines } = usePairedMachines(open);
+  const layout = useSidebarLayout();
   const { crews, memberId } = useCrews(sessionId);
   const online = machines.filter((machine) => machine.state === 'online');
   const remote = session ? remoteToggle(session) : null;
@@ -626,8 +628,29 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         return;
     }
   };
+  // 2026-11-11: Pin / Unpin in the agent's own ⋯ menu (the Agents list's rule: pinned ↔ not in a folder; Undo puts it back where it was).
+  const pinItems: MenuItem[] =
+    session && layout && !data.conversation
+      ? [
+          {
+            id: 'pin',
+            label: layout.pinned.includes(sessionId) ? AGENTS_WORDS.unpinFromSidebar : AGENTS_WORDS.pinToSidebar,
+            icon: 'pin',
+            onSelect: () => {
+              const back = restoreInput(layout, sessionId);
+              const pinned = back.place === 'pinned';
+              api.placeSidebarSession(pinned ? { sessionId, place: 'loose' } : { sessionId, place: 'pinned' }).then(
+                () => toast({ text: pinned ? AGENTS_WORDS.unpinnedToast(name) : AGENTS_WORDS.pinnedToast(name), undo: () => api.placeSidebarSession(back) }),
+                (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
+              );
+            },
+          },
+          { separator: true, id: 'sep-pin' },
+        ]
+      : [];
   const items: MenuItem[] = [
     ...extra,
+    ...pinItems,
     ...specs.map((spec): MenuItem => ('sep' in spec ? { separator: true, id: `sep-${spec.sep}` } : { id: spec.id, label: spec.label, icon: spec.icon, ...(spec.disabledReason ? { disabledReason: spec.disabledReason } : {}), ...(spec.danger ? { danger: true } : {}), onSelect: () => select(spec.id) })),
   ];
   return (
