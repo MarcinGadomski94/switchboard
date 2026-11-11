@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.35 (2026-11-11)
+
+### Phones
+- A paired phone can no longer start an agent's MCP sign-in or reconnect (D163's new routes). Like the Connections page's sign-in, they work only on the computer itself, where the sign-in's callback lands.
+
 ## 2.4.34 (2026-11-11)
 
 ### Sidebar
