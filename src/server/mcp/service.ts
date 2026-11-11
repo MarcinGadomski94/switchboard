@@ -114,6 +114,8 @@ export class McpService {
   readonly #cache = new Map<string, FolderCache>();
   readonly #auth = new Map<string, AuthFlow>();
   readonly #helpers = new Set<McpHelper>();
+  /** D163: told when a sign-in finished (`done`): the running agents that need it reconnect. */
+  readonly #signedIn = new Set<(name: string, folder: McpFolder) => void>();
   #closed = false;
 
   constructor(options: McpServiceOptions) {
@@ -498,7 +500,9 @@ export class McpService {
       const status = await helper.request('mcp_status');
       if (status.ok) this.#store(folder, parseStatusResponse(status.response).filter((r) => r.name === name), false);
       await this.#closeHelper(helper);
-      return this.#remember({ ...base, state: 'done' }, folder);
+      const done = this.#remember({ ...base, state: 'done' }, folder);
+      this.#announceSignedIn(name, folder);
+      return done;
     }
     const flow = this.#remember({ ...base, state: 'waiting', authUrl, callbackExpected: response['callbackExpected'] !== false }, folder, helper);
     void this.#watch(id, name);
@@ -523,6 +527,23 @@ export class McpService {
     const helper = flow.helper;
     flow.helper = null;
     if (helper) await this.#closeHelper(helper);
+    if (flow.state.state === 'done') this.#announceSignedIn(flow.state.server, flow.folder);
+  }
+
+  /** D163: calls `listener(name, folder)` after every sign-in that finished (from this page or an agent's notice); answers the unsubscribe. */
+  onSignedIn(listener: (name: string, folder: McpFolder) => void): () => void {
+    this.#signedIn.add(listener);
+    return () => this.#signedIn.delete(listener);
+  }
+
+  #announceSignedIn(name: string, folder: McpFolder): void {
+    for (const listener of this.#signedIn) {
+      try {
+        listener(name, folder);
+      } catch {
+        // A listener's failure is its own (it reports it); the sign-in stays done.
+      }
+    }
   }
 
   async #watch(id: string, name: string): Promise<void> {

@@ -1778,6 +1778,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'mcp-sign-in',
+    decision: 'D163',
+    version: V2_4_34,
+    title: 'Sign in to MCP servers where it happens',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'notice',
+        title: 'An MCP server needs you to sign in',
+        what: 'When an agent’s MCP server needs a new sign-in, the agent shows it above the composer, with a Sign in item in Needs you. Sign in opens the sign-in in your browser; when it is done, every running agent that needs the server reconnects it by itself, without a restart. A claude.ai connector is signed in on claude.ai: open it from the notice, then Reconnect.',
+        todo: ['Open an agent whose MCP server needs a sign-in, and use Sign in.'],
+        anchors: ['v2-mcp-signin', 'v2-agent-menu', 'v2-tab-more'],
+        v2Route: '/agents',
+        missing: 'No agent needs an MCP sign-in right now: the notice shows in the agent when one does.',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

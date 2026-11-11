@@ -58,6 +58,19 @@ VERIFIED in the CLI's code: `mcp_authenticate` runs the OAuth flow **without ope
 
 A claude.ai connector's `mcp_authenticate` answers `callbackExpected: false` (the sign-in completes on claude.ai); the page then waits for the status like any other. Stdio servers have no OAuth: the service refuses before starting anything.
 
+## Sign-in where it happens (D163)
+
+The Connections page is where a server is signed in on purpose; D163 brings the sign-in to the agent that needs it (`docs/decisions.md` → D163).
+
+- **Detect.** Every turn's `system/init` carries the CLI's `mcp_servers` (`{name, status, source}`, `src/core/mcp-sign-in.ts` → `parseInitMcpServers`). A server with status `needs-auth` is one the agent needs a sign-in to. The supervisor keeps the list per live session in memory (`McpSignInNeeds`, `src/server/mcp/sign-in-needs.ts`): replaced at each turn start, dropped when the process ends; `toSession` adds it as `Session.mcpSignIn` (absent when empty), and a change publishes `sessionUpdated`.
+- **The agent view** (v2, `McpSignInNotice` in the dock above the composer): "<server> needs you to sign in again" with **Sign in** and **Dismiss** (dismissed for this view until it is reloaded). Sign in opens a browser tab at the click, starts `POST /api/sessions/{id}/mcp-sign-in/{server}` (D61's `McpService.startAuth` in the agent's folder: its cwd, else its root), points the tab at the `authUrl` and polls `GET /api/mcp/auth/{id}` until done or failed (the CLI's words and the terminal fallback).
+- **Needs you.** One system item per server and episode (kind `mcp-sign-in`, "Sign in to <server>", **Open agent** = the first agent, **Dismiss**), naming the agents that wait. It is brought up to date as agents join or leave, and closed (`resolved`) when no running agent needs the server any more. An episode ends when nobody needs the server; a dismissed item is not raised again in the same episode (`McpSignInService`, `src/server/mcp/sign-in.ts`).
+- **Reconnect running agents.** After every finished sign-in of a server (`McpService.onSignedIn`: from an agent's notice or from the Connections page), each running agent that needs it gets `{subtype:"mcp_reconnect", serverName}` on its stdin (`SessionSupervisor.mcpReconnect`, 30 s limit) and leaves the list when its CLI answers success; its next turn's `init` lists it again if it still cannot connect. `POST /api/sessions/{id}/mcp-sign-in/{server}/reconnect` does the same on demand (`{ server, reconnected, failed }`).
+- **claude.ai connectors** (`source: "claudeai"`, e.g. "claude.ai Google Drive") are signed in on claude.ai: the notice offers **Open claude.ai connectors** (https://claude.ai/settings/connectors) and **Reconnect**; the local sign-in answers 409 `claude-ai`.
+- **Paired computers.** A peer's agent carries its `mcpSignIn` like every session field, but its CLI listens for the sign-in's redirect on that computer: the notice says "Sign in on <computer>" without a button (the routes are not on `PEER_API_ALLOW`).
+- **Not covered:** a hooked terminal session (no process Switchboard owns: /mcp in its terminal) and Codex / OpenCode sessions (their CLIs report no such list).
+- Refusals: 404 `not-found` (no session), 404 `not-needed` (the agent does not need that server now), 409 `claude-ai`, 409 `no-folder`; D61's own errors otherwise.
+
 ## Add, edit, remove
 
 | Action | Command (cwd = the folder) |

@@ -96,6 +96,18 @@ export const MOVE_FAILED_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/**
+ * D163 (`docs/mcp.md` → *Sign-in where it happens*): kind of "Sign in to <server>" (an MCP server
+ * running agents need a sign-in to), **Open agent** (a link to the first agent, whose notice has
+ * Sign in) and **Dismiss**. One per server and episode (`payload.dedupe`); it closes by itself
+ * when no running agent needs the server any more (signed in, reconnected, or the agents ended).
+ */
+export const MCP_SIGN_IN = 'mcp-sign-in';
+export const MCP_SIGN_IN_ACTIONS: readonly InboxAction[] = [
+  { id: 'open-session', label: 'Open agent' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
+
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -421,6 +433,53 @@ export class SystemItemService {
     let closed = 0;
     for (const item of await this.#store.systemItems.list(['open'])) {
       if (item.kind !== ACCOUNT_HINT || !isPayload(item.payload) || item.payload['cli'] !== cli) continue;
+      if (await this.#closeQuietly(item.id, outcome)) closed += 1;
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
+  /**
+   * D163: the "Sign in to <server>" item of one episode (`dedupe`): raised once (open or closed,
+   * so a dismissed one is not raised again in the same episode); an open one is brought up to
+   * date in place (the agents that wait). Answers the new item, `null` when none was raised.
+   */
+  async mcpSignInNotice(input: { readonly server: string; readonly dedupe: string; readonly sessionId: string | null; readonly title: string; readonly detail: string; readonly claudeAi: boolean }): Promise<SystemItemRecord | null> {
+    const payload = { dedupe: input.dedupe, server: input.server, claudeAi: input.claudeAi };
+    const open = (await this.#store.systemItems.list(['open'])).find((item) => item.kind === MCP_SIGN_IN && isPayload(item.payload) && item.payload['dedupe'] === input.dedupe);
+    if (open) {
+      if (open.title !== input.title || open.detail !== input.detail) {
+        await this.#store.systemItems.update(open.id, { title: input.title, detail: input.detail, payload });
+        await this.#publishInbox();
+      }
+      return null;
+    }
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: MCP_SIGN_IN,
+        source: 'mcp',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: MCP_SIGN_IN_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload,
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D163: closes the open "Sign in to <server>" items (`server` = one server, `null` = all) with `outcome`, except those whose `dedupe` is in `keep`; answers how many. */
+  async closeMcpSignInNotices(server: string | null, outcome: string, keep: ReadonlySet<string> = new Set()): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== MCP_SIGN_IN || !isPayload(item.payload)) continue;
+      if (server !== null && item.payload['server'] !== server) continue;
+      if (typeof item.payload['dedupe'] === 'string' && keep.has(item.payload['dedupe'])) continue;
       if (await this.#closeQuietly(item.id, outcome)) closed += 1;
     }
     if (closed > 0) await this.#publishInbox();

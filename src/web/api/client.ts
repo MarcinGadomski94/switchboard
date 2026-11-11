@@ -241,6 +241,12 @@ export const api = {
   interruptSession: (id: string) => request<InterruptResult>('POST', `/api/sessions/${enc(id)}/interrupt`),
   /** D50 ruling: stop the session's background tasks (`stop_task` each); `taskIds` absent = every stoppable one. */
   stopBackground: (id: string, body: StopBackgroundRequest = {}) => request<StopBackgroundResult>('POST', `/api/sessions/${enc(id)}/background/stop`, body),
+  /** D163: Sign in to an MCP server the agent's CLI needs (the D61 sign-in in its folder; poll with {@link api.mcpAuthState}). */
+  mcpSignIn: (id: string, server: string) => request<McpAuthState>('POST', `/api/sessions/${enc(id)}/mcp-sign-in/${enc(server)}`),
+  /** D163: tell the running agents that need `server` to reconnect it (after signing in, e.g. a claude.ai connector on claude.ai). */
+  mcpSignInReconnect: (id: string, server: string) => request<{ readonly server: string; readonly reconnected: readonly string[]; readonly failed: readonly string[] }>('POST', `/api/sessions/${enc(id)}/mcp-sign-in/${enc(server)}/reconnect`),
+  /** D61 / D163: a sign-in's state. */
+  mcpAuthState: (authId: string) => request<McpAuthState>('GET', `/api/mcp/auth/${enc(authId)}`),
   /** D83: continue the session in a fresh one (202 once the handover turn started; a peer's session id is forwarded). */
   freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
   /** D91: give the session's process the current standing instruction (idle → restarted, busy → after its turn). */

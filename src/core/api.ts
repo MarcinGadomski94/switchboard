@@ -22,6 +22,7 @@ import type { AccountHintView } from './account-hint.ts';
 import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { TurnWait } from './derive/turn-status.ts';
+import type { McpSignInNeed } from './mcp-sign-in.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { MachineUpdate, UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
@@ -885,6 +886,12 @@ export interface Session {
    * and `ask` is its status line.
    */
   readonly turnWait?: TurnWait | null;
+  /**
+   * Additive (D163, `docs/mcp.md` → *Sign-in where it happens*): the MCP servers its running
+   * CLI reported as needing a sign-in at its latest turn start (`system/init` → `needs-auth`);
+   * absent when none (and for a session with no running process).
+   */
+  readonly mcpSignIn?: readonly McpSignInNeed[];
 }
 
 /** Additive (D83): the other session of a continuation. */

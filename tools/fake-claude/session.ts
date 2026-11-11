@@ -62,6 +62,22 @@ import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts
 import { FakeWorkflow, type WorkflowGrid } from './workflow.ts';
 import { FakeMcp } from './mcp.ts';
 
+/**
+ * D163: `FAKE_CLAUDE_INIT_MCP_SERVERS` = a JSON array of `{name, status, source}`, the
+ * `mcp_servers` every `init` reports (e.g. `[{"name":"docs","status":"needs-auth","source":"user"}]`);
+ * `null` when unset or not an array (the recorded list stays).
+ */
+function initMcpServers(env: NodeJS.ProcessEnv): JsonObject[] | null {
+  const raw = env['FAKE_CLAUDE_INIT_MCP_SERVERS'];
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is JsonObject => isObject(entry)) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** D96: a main-agent assistant line whose only block is an empty `thinking` block. */
 /** Fix after 2.0 `[fake:questions]`: an AskUserQuestion `tool_use` block's or `can_use_tool` request's input asks `questions`. */
 function patchQuestions(line: JsonObject, questions: readonly JsonObject[]): void {
@@ -361,6 +377,8 @@ export class Runner {
   private live: LiveFile | null = null;
   /** D61: the MCP control requests (created on the first one). */
   private mcp: FakeMcp | null = null;
+  /** D163: servers of `FAKE_CLAUDE_INIT_MCP_SERVERS` reconnected by `mcp_reconnect` (later inits report them connected). */
+  private readonly reconnectedMcp = new Set<string>();
   private scenario: string;
   private turnIndex = 0;
   private resultIndex = 0;
@@ -632,6 +650,20 @@ export class Runner {
         return this.writeControlReply(requestId, { ok: true, response: this.modelState.settings(this.models, this.recordedModel) });
       case 'remote_control':
         return this.onRemoteControl(requestId, request ?? {});
+      case 'mcp_reconnect': {
+        // D163: a server of `FAKE_CLAUDE_INIT_MCP_SERVERS` reconnects (later inits report it connected); `FAKE_CLAUDE_MCP_RECONNECT=fail` refuses.
+        const name = asString(request?.['serverName']) ?? '';
+        if (initMcpServers(this.o.env)?.some((server) => server['name'] === name)) {
+          if (this.o.env['FAKE_CLAUDE_MCP_RECONNECT'] === 'fail') {
+            this.writeJson({ type: 'control_response', response: { subtype: 'error', request_id: requestId, error: `MCP server ${name} requires authentication` } });
+            return;
+          }
+          this.reconnectedMcp.add(name);
+          this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: {} } });
+          return;
+        }
+        return this.mcpReply(requestId, subtype, request ?? {});
+      }
       case 'set_permission_mode': {
         const mode = asString(request?.['mode']) ?? '';
         if (mode === 'auto' && !autoModeSupported()) return this.replyFrom(requestId, ['ctl-init', 'set_permission_mode', 0]);
@@ -639,23 +671,26 @@ export class Runner {
         this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: { mode } } });
         return;
       }
-      default: {
-        // D61: the MCP control requests (`mcp.ts`).
-        this.mcp ??= new FakeMcp(this.o.env, this.o.cwd);
-        const reply = await this.mcp.handle(subtype, request ?? {});
-        if (reply) {
-          this.writeJson({
-            type: 'control_response',
-            response: reply.ok ? { subtype: 'success', request_id: requestId, response: reply.response as unknown as JsonObject } : { subtype: 'error', request_id: requestId, error: reply.error },
-          });
-          return;
-        }
-        this.writeJson({
-          type: 'control_response',
-          response: { subtype: 'error', request_id: requestId, error: `Unsupported control request subtype: ${subtype}` },
-        });
-      }
+      default:
+        return this.mcpReply(requestId, subtype, request ?? {});
     }
+  }
+
+  /** D61: the MCP control requests (`mcp.ts`), else "unsupported". */
+  private async mcpReply(requestId: string, subtype: string, request: JsonObject): Promise<void> {
+    this.mcp ??= new FakeMcp(this.o.env, this.o.cwd);
+    const reply = await this.mcp.handle(subtype, request);
+    if (reply) {
+      this.writeJson({
+        type: 'control_response',
+        response: reply.ok ? { subtype: 'success', request_id: requestId, response: reply.response as unknown as JsonObject } : { subtype: 'error', request_id: requestId, error: reply.error },
+      });
+      return;
+    }
+    this.writeJson({
+      type: 'control_response',
+      response: { subtype: 'error', request_id: requestId, error: `Unsupported control request subtype: ${subtype}` },
+    });
   }
 
   /**
@@ -1594,6 +1629,11 @@ export class Runner {
     const tools = asArray(line['tools']).filter((t) => t !== 'AskUserQuestion');
     if (this.stdio) tools.push('AskUserQuestion');
     line['tools'] = tools;
+    // D163: `FAKE_CLAUDE_INIT_MCP_SERVERS` (a JSON array of `{name, status, source}`) is the init's `mcp_servers`; one reconnected since reads connected.
+    // Without it, a recorded `needs-auth` (the recording machine's own sign-in state, e.g. a claude.ai connector) reads connected: no fake session needs a sign-in unless a test says so.
+    const servers = initMcpServers(this.o.env);
+    if (servers) line['mcp_servers'] = servers.map((server) => (this.reconnectedMcp.has(String(server['name'])) ? { ...server, status: 'connected' } : server));
+    else if (Array.isArray(line['mcp_servers'])) line['mcp_servers'] = line['mcp_servers'].map((server) => (isObject(server) && server['status'] === 'needs-auth' ? { ...server, status: 'connected' } : server));
   }
 
   private patchWrite(line: JsonObject, write: WriteSpec): void {

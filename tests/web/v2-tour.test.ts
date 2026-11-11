@@ -51,7 +51,7 @@ describe('the v2 welcome tour', () => {
     expect(isV2Tour(V2_WELCOME_ID)).toBe(true);
     expect(isV2Tour('graduated')).toBe(false);
     expect(isV2Tour(MAIN_TOUR_ID)).toBe(false);
-    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move', 'move-status', 'chat-move', 'move-cleanup', 'conversation-only-move', 'pinned-projects', 'peer-computer-stats']);
+    expect(v2Features().map((feature) => feature.id)).toEqual([V2_WELCOME_ID, 'project-graph', 'project-graph-fullscreen', 'remote-update', 'bring-in-terminal', 'crews-pin', 'account-hint', 'v2-model-effort', 'auto-clean-worktrees', 'working-time', 'projects-done', 'v2-move-folders', 'complete-move', 'move-status', 'chat-move', 'move-cleanup', 'conversation-only-move', 'pinned-projects', 'peer-computer-stats', 'mcp-sign-in']);
     // D154 (2.4.23): Home's Moves card, the Moving to… badge, a failed move in Needs you.
     const status = WHATS_NEW.find((feature) => feature.id === 'move-status');
     expect(status).toMatchObject({ version: '2.4.23', ui: 'v2', decision: 'D154' });

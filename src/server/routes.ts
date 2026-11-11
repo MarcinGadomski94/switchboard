@@ -41,6 +41,7 @@ import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
 import type { HookService } from './hooks/service.ts';
+import type { McpSignInService } from './mcp/sign-in.ts';
 import type { McpService } from './mcp/service.ts';
 import type { PeerService } from './peers/service.ts';
 import type { Providers } from './providers.ts';
@@ -127,6 +128,8 @@ export interface ApiContext {
   readonly artifacts: ArtifactService;
   /** D61: the MCP servers page: list, check, reconnect, sign in, enable / disable, add / edit / remove (docs/mcp.md). */
   readonly mcp: McpService;
+  /** D163: MCP sign-in where it happens (an agent's notice, the Needs-you item, reconnect after a sign-in; docs/mcp.md). */
+  readonly mcpSignIn?: McpSignInService;
   /** D65: this machine's side of taking a session over to / from a paired machine (docs/peers.md). */
   readonly takeover: TakeoverService;
   /** D65: the initiating machine's runner (preview, start, progress). */

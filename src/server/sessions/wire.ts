@@ -4,6 +4,7 @@ import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionA
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { effectiveSessionStatus } from '../../core/derive/turn-status.ts';
+import type { McpSignInNeed } from '../../core/mcp-sign-in.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -46,6 +47,14 @@ export interface HookSource {
   activity(sessionId: string): SessionActivity | null;
   /** The session's delivery state (`null` for a closed one). */
   status(record: SessionRecord): Promise<HookStatus | null>;
+}
+
+/** D163: the MCP servers a live session needs a sign-in to (the supervisor's `McpSignInNeeds`), keyed by the store like {@link registerWorkflowSource}. */
+const mcpSignInSources = new WeakMap<Store, { of(sessionId: string): readonly McpSignInNeed[] }>();
+
+/** D163: registers what `toSession` adds as `Session.mcpSignIn`. */
+export function registerMcpSignInSource(store: Store, source: { of(sessionId: string): readonly McpSignInNeed[] }): void {
+  mcpSignInSources.set(store, source);
 }
 
 const hookSources = new WeakMap<Store, HookSource>();
@@ -301,7 +310,15 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     turnWait: record.closedAt === null ? record.turnWait : null,
     // D137: an archived session's countdown or why it is kept.
     ...(await archiveFieldsOf(store, record)),
+    // D163: the MCP servers its running CLI needs a sign-in to (absent when none).
+    ...mcpSignInOf(store, record),
   };
+}
+
+function mcpSignInOf(store: Store, record: SessionRecord): { mcpSignIn?: readonly McpSignInNeed[] } {
+  if (record.closedAt !== null) return {};
+  const needs = mcpSignInSources.get(store)?.of(record.id) ?? [];
+  return needs.length > 0 ? { mcpSignIn: needs } : {};
 }
 
 /** D91: `Session.instructionOutdated` / `instructionPending` (both `false` without a running process). */

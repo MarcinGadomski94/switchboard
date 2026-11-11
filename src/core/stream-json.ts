@@ -10,6 +10,8 @@
  * a field this view does not lift out.
  */
 
+import { type InitMcpServer, parseInitMcpServers } from './mcp-sign-in.ts';
+
 /** A parsed JSON object. */
 export type JsonRecord = Record<string, unknown>;
 
@@ -58,6 +60,8 @@ export interface InitMessage extends Base {
   readonly permissionMode: string | null;
   readonly tools: readonly string[];
   readonly version: string | null;
+  /** D163: its `mcp_servers` (`{name, status, source}`), e.g. one that `needs-auth`. */
+  readonly mcpServers: readonly InitMcpServer[];
 }
 
 /** `system/hook_started` / `system/hook_response`. */
@@ -409,6 +413,7 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         permissionMode: str(obj['permissionMode']),
         tools: Array.isArray(obj['tools']) ? obj['tools'].filter((t): t is string => typeof t === 'string') : [],
         version: str(obj['claude_code_version']),
+        mcpServers: parseInitMcpServers(obj['mcp_servers']),
       };
     case 'hook_started':
     case 'hook_response':

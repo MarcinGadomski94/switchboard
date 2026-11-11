@@ -31,6 +31,7 @@ import { HookService } from './hooks/service.ts';
 import { TakeoverRunner } from './takeover/runner.ts';
 import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
+import { McpSignInService } from './mcp/sign-in.ts';
 import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { HELPER_NODE_ARGS, helperScript } from './mcp/helper-bundle.ts';
@@ -467,6 +468,21 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     mcp = own;
   }
+  // D163: MCP servers running agents need a sign-in to: the Needs-you item, Sign in from the agent, reconnect after every sign-in.
+  const mcpSignIn = new McpSignInService({
+    store: options.store,
+    needs: supervisor.mcpSignIn,
+    mcp,
+    reconnect: (sessionId, name) => supervisor.mcpReconnect(sessionId, name),
+    announce: (sessionId) => supervisor.announce(sessionId),
+    items: systemItems,
+  });
+  app.addHook('onReady', async () => {
+    mcpSignIn.start();
+  });
+  app.addHook('preClose', async () => {
+    await mcpSignIn.stop();
+  });
   // D68: the sessions' todo lists: the sweep of done items starts with the app; the supervisor's spawns get the agent's tools.
   let todos = options.todos;
   if (!todos) {
@@ -724,7 +740,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await autoClean.stop();
     await agentMade.close();
   });
-  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

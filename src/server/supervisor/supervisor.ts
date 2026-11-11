@@ -35,7 +35,7 @@ import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { FolderRef } from '../folders/ref.ts';
-import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
+import { registerMcpSignInSource, registerSwitchSource, registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { sessionInstruction } from '../sessions/instruction.ts';
@@ -68,6 +68,7 @@ import { withSolutions } from '../../core/session-solutions.ts';
 import { TOOLS_UPDATED_DIVIDER } from '../../core/todos.ts';
 import { AGENT_BUILD_ENV, SESSION_MARKER_ENV } from '../../core/processes.ts';
 import { AgentToolsRegistry } from '../todos/agent-tools.ts';
+import { McpSignInNeeds } from '../mcp/sign-in-needs.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -706,6 +707,8 @@ export class SessionSupervisor {
    * makes it re-probe its feature tools (`src/server/todos/agent-tools.ts`).
    */
   readonly agentTools = new AgentToolsRegistry();
+  /** D163: the MCP servers each live session's CLI reported as needing a sign-in (`Session.mcpSignIn`). */
+  readonly mcpSignIn = new McpSignInNeeds();
   /**
    * D124: the sessions' turn waits (the agent's `turn_status`, the text check at a turn's end,
    * Not waiting; `docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*).
@@ -747,6 +750,7 @@ export class SessionSupervisor {
       onError: (error) => this.#onError(error),
     });
     registerWorkflowSource(this.#store, this.#workflows);
+    registerMcpSignInSource(this.#store, this.mcpSignIn);
     this.turnStatus = new TurnStatusService({ store: this.#store, publish: (sessionId) => this.#emitSession(sessionId), onError: (error) => this.#onError(error) });
     // D62 P5: `Session.providerSwitch`.
     registerSwitchSource(this.#store, {
@@ -2843,6 +2847,20 @@ export class SessionSupervisor {
     return live ? this.#controlOn(live, line, timeoutMs) : null;
   }
 
+  /**
+   * D163: tells session `sessionId`'s running CLI to reconnect MCP server `name`
+   * (`{subtype:"mcp_reconnect", serverName}`, the control request Claude Code's own
+   * `/mcp` uses) after the developer signed in, so it uses the new sign-in without a
+   * restart. `true` when the CLI answered success; `false` with no live process (a
+   * hooked terminal session has none), another CLI, or an error / no answer in time.
+   */
+  async mcpReconnect(sessionId: string, name: string, timeoutMs = 30_000): Promise<boolean> {
+    const live = this.#live.get(sessionId);
+    if (!live || live.provider !== 'claude') return false;
+    const response = await this.#controlOn(live, { type: 'control_request', request_id: `sb-mcp-${randomUUID()}`, request: { subtype: 'mcp_reconnect', serverName: name } }, timeoutMs);
+    return response !== null && response.subtype === 'success';
+  }
+
   /** {@link controlRequest} on one live process; the line is written synchronously (D24: `initialize` before any user message). */
   #controlOn(live: Live, line: ControlRequestLine, timeoutMs: number): Promise<ControlResponseMessage | null> {
     if (live.stopping || !live.proc.write(line)) return Promise.resolve(null);
@@ -3502,6 +3520,8 @@ export class SessionSupervisor {
       if (message.kind === 'init') await this.#teleportInit(live, teleport, message);
     }
     await live.recorder.handle(message);
+    // D163: the MCP servers this turn's CLI needs a sign-in to (`Session.mcpSignIn`, the Needs-you item).
+    if (message.kind === 'init' && this.mcpSignIn.report(live.sessionId, message.mcpServers)) await this.#emitSession(live.sessionId);
     if (teleport && message.kind === 'init' && teleport.initSeen) teleport.resolveInit(message);
     if (teleport?.importPending && teleport.initSeen && teleport.initError === null && message.kind === 'result' && !message.taskNotification) {
       await this.#importRemoteHistory(live, teleport);
@@ -3664,6 +3684,8 @@ export class SessionSupervisor {
       this.#instructionPending.delete(live.sessionId);
       // 2026-10-16: its helper's report goes with it; asks that waited for its turn go to the next process (which probes its tools at start).
       this.agentTools.forget(live.sessionId);
+      // D163: no process, no MCP servers to sign in to.
+      this.mcpSignIn.forget(live.sessionId);
       if (this.#toolAsks.has(live.sessionId) && !this.#instructionReloads.has(live.sessionId)) setImmediate(() => void this.#toolAsksPending(live.sessionId));
     }
     await this.#emitSession(live.sessionId);

@@ -768,6 +768,10 @@ The `/mcp` page (`docs/mcp.md`). Every route takes `?folder=` (a saved folder's 
 | GET | /api/mcp/auth/{id} | | McpAuthState |
 | POST | /api/mcp/auth/{id}/callback | { callbackUrl } | McpAuthState (`mcp_oauth_callback_url`) |
 | DELETE | /api/mcp/auth/{id} | | McpAuthState (cancelled; the helper is stopped) |
+| POST | /api/sessions/{id}/mcp-sign-in/{server} | | D163: McpAuthState (D61's sign-in of `server` in the agent's folder); 404 `not-found` / `not-needed`, 409 `claude-ai` / `no-folder` |
+| POST | /api/sessions/{id}/mcp-sign-in/{server}/reconnect | | D163: `{ server, reconnected: sessionId[], failed: sessionId[] }` (`mcp_reconnect` to every running agent that needs `server`); 404 `not-found` |
+
+**D163 (additive):** `Session.mcpSignIn?: { name, claudeAi }[]`, the MCP servers its running CLI reported as `needs-auth` at its latest turn start (absent when none). System item kind `mcp-sign-in` (label `Sign in`, status `need`, title "Sign in to <server>", actions `open-session` "Open agent" (a link) and `dismiss`, `payload { dedupe, server, claudeAi }`), closed `resolved` when no running agent needs the server. `docs/mcp.md` → *Sign-in where it happens (D163)*.
 
 Errors: `422 { error: "invalid", message, errors: [{ field, message }] }` (the CLI's rules: name, scope, transport, command / URL, env / header names; a kept value the server does not have), `422 read-only` (a plugin / claude.ai / managed server's edit or remove), `404 not-found`, `409 { error: "cli-failed", message, commands }` (the CLI's words, secrets masked).
 

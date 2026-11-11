@@ -135,7 +135,9 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D137 (only on a closed session: the archive's countdown or kept reason)
   'deletesAt',
   'keptReason',
-]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt' && key !== 'deletesAt' && key !== 'keptReason');
+  // additive, D163 (only while its running CLI needs an MCP sign-in)
+  'mcpSignIn',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt' && key !== 'deletesAt' && key !== 'keptReason' && key !== 'mcpSignIn');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',

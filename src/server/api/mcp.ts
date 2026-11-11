@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { CliMcpError, CliMcpService, parseCliMcpInput } from '../mcp/cli-mcp.ts';
 import { parseServerInput } from '../../core/mcp.ts';
 import { McpError, type McpFolder, type McpService } from '../mcp/service.ts';
+import { McpSignInError } from '../mcp/sign-in.ts';
 import type { ApiContext } from '../routes.ts';
 import { sendFolderError } from './folders.ts';
 
@@ -133,6 +134,26 @@ export async function registerMcpRoutes(app: FastifyInstance, context: ApiContex
       return sendMcpError(reply, error);
     }
   });
+
+  // D163: Sign in / Reconnect from a running agent's notice (docs/mcp.md → Sign-in where it happens).
+  const signIn = context.mcpSignIn;
+  if (signIn) {
+    const sendSignInError = (reply: FastifyReply, error: unknown): FastifyReply => {
+      if (error instanceof McpSignInError) return reply.code(error.status).send({ error: error.code, message: error.message });
+      return sendMcpError(reply, error);
+    };
+    app.post<{ Params: { id: string; name: string } }>('/api/sessions/:id/mcp-sign-in/:name', async (request, reply) => {
+      try {
+        return await signIn.signIn(request.params.id, request.params.name);
+      } catch (error) {
+        return sendSignInError(reply, error);
+      }
+    });
+    app.post<{ Params: { id: string; name: string } }>('/api/sessions/:id/mcp-sign-in/:name/reconnect', async (request, reply) => {
+      if (!(await store.sessions.get(request.params.id))) return reply.code(404).send({ error: 'not-found', message: `No session ${request.params.id}` });
+      return signIn.reconnect(request.params.name);
+    });
+  }
 
   // D62 P7: Codex CLI's and OpenCode's MCP servers, through their own CLIs (docs/providers.md → MCP).
   const cliMcp = new CliMcpService({ registry: context.supervisor.cliRegistry, clis: context.clis, env: context.supervisor.environment });

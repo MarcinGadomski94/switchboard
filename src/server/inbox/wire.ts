@@ -280,6 +280,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'account-hint': 'Accounts',
   // D154: a move (take-over) of an agent to another computer failed.
   'move-failed': 'Move failed',
+  // D163: an MCP server a running agent needs a sign-in to.
+  'mcp-sign-in': 'Sign in',
 };
 
 /**
