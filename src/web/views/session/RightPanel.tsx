@@ -218,7 +218,7 @@ function AgentCardView({
   readonly background: readonly BackgroundTask[];
 }) {
   // D30: an agent waiting on background work reads as working (the running color).
-  // D143: background shells alone (a dev server) do not: only a wait (subagents, a wake-up).
+  // D143 / D164: a dev server or watcher alone does not: only a wait (subagents, a wake-up, a background build).
   const color = statusColor(activity?.state === 'background' && workingActivityState({ state: 'background', background }) === 'background' ? 'run' : card.status);
   return (
     <CardBox sessionId={sessionId} card={card} opensChat={opensChat}>

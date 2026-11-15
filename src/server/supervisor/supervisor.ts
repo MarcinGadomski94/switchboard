@@ -4,7 +4,7 @@ import path from 'node:path';
 import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext, resolveContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, SessionFreshContinue, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
-import { BACKGROUND_WAIT_MS } from '../../core/derive/background.ts';
+import { BACKGROUND_SHELL_WAIT_MS, BACKGROUND_WAIT_MS, isShellTask } from '../../core/derive/background.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
@@ -331,9 +331,11 @@ export interface SupervisorOptions {
   /**
    * 2026-10-16 (*Waiting on background work*): how long a CLI-reported background task that
    * is no shell keeps the session `run` without a sign of life (default `BACKGROUND_WAIT_MS`,
-   * 30 min; D143: a shell never does). A wake-up uses {@link subagentQuietMs} as its stale guard.
+   * 30 min; a shell has its own limit, D164's `BACKGROUND_SHELL_WAIT_MS`). A wake-up uses {@link subagentQuietMs} as its stale guard.
    */
   readonly backgroundWaitMs?: number;
+  /** D164: how long a background shell keeps the session `run` after its start (default `BACKGROUND_SHELL_WAIT_MS`, 2 h). */
+  readonly backgroundShellWaitMs?: number;
   /** Where the guard's notes go (a subagent taken as stopped, subagents cut off by a process end); default `console.warn`. */
   readonly onWarn?: (message: string) => void;
   /** D19: the minimum gap between two `activity` notifications of one session (default {@link ACTIVITY_INTERVAL_MS}). */
@@ -654,6 +656,7 @@ export class SessionSupervisor {
   readonly #activityIntervalMs: number;
   readonly #subagentQuietMs: number;
   readonly #backgroundWaitMs: number;
+  readonly #backgroundShellWaitMs: number;
   readonly #onWarn: (message: string) => void;
   /** The stale-subagent sweep's timer, running only while a live process exists. */
   #subagentSweep: NodeJS.Timeout | null = null;
@@ -736,6 +739,7 @@ export class SessionSupervisor {
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
     this.#subagentQuietMs = options.subagentQuietMs ?? SUBAGENT_QUIET_MS;
     this.#backgroundWaitMs = options.backgroundWaitMs ?? BACKGROUND_WAIT_MS;
+    this.#backgroundShellWaitMs = options.backgroundShellWaitMs ?? BACKGROUND_SHELL_WAIT_MS;
     this.#onWarn = options.onWarn ?? ((message) => console.warn(`switchboard supervisor: ${message}`));
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
     this.#attachments = options.attachments ?? null;
@@ -3154,7 +3158,7 @@ export class SessionSupervisor {
   /** Starts the stale-subagent sweep (once; it stops by itself when no process is live). */
   #armSubagentSweep(): void {
     if (this.#subagentSweep || this.#closing) return;
-    const every = Math.max(10, Math.min(SUBAGENT_SWEEP_MS, Math.floor(this.#subagentQuietMs / 2), Math.floor(this.#backgroundWaitMs / 2)));
+    const every = Math.max(10, Math.min(SUBAGENT_SWEEP_MS, Math.floor(this.#subagentQuietMs / 2), Math.floor(this.#backgroundWaitMs / 2), Math.floor(this.#backgroundShellWaitMs / 2)));
     this.#subagentSweep = setInterval(() => this.#sweepSubagents(), every);
     this.#subagentSweep.unref();
   }
@@ -3185,7 +3189,13 @@ export class SessionSupervisor {
         const stopped = live.recorder.expireBackgroundWaits();
         for (const task of stopped) {
           const what = task.kind === 'wakeup' ? 'wake-up' : task.github ? 'GitHub Actions wait' : 'background task';
-          const limit = task.kind === 'wakeup' || task.github ? `gave no sign of life for ${Math.round(this.#subagentQuietMs / 60_000)} min` : `ran past its ${Math.round(this.#backgroundWaitMs / 60_000)} min wait window`;
+          // D164: a background shell / monitor (a GitHub wait included) counts for 2 h after its start.
+          const limit =
+            task.kind === 'wakeup'
+              ? `gave no sign of life for ${Math.round(this.#subagentQuietMs / 60_000)} min`
+              : isShellTask(task.kind)
+                ? `ran past its ${Math.round(this.#backgroundShellWaitMs / 60_000)} min limit`
+                : `ran past its ${Math.round(this.#backgroundWaitMs / 60_000)} min wait window`;
           this.#onWarn(`session ${live.sessionId}: ${what} ${task.id} ${limit}; no longer counted as working`);
         }
         if (ended.length > 0) live.activity.push(live.recorder.activity());
@@ -3282,6 +3292,7 @@ export class SessionSupervisor {
       onWorkflow: (signal) => this.#workflows.signal(prepared, signal),
       // 2026-10-16: the background waits' window and stale guard (*Waiting on background work*).
       backgroundWaitMs: this.#backgroundWaitMs,
+      backgroundShellWaitMs: this.#backgroundShellWaitMs,
       backgroundQuietMs: this.#subagentQuietMs,
       // D124: a new turn clears the last turn's wait for the developer (one declared before it started: a
       // `turn_status` that reached Switchboard while the turn's `init` still waited in the queue is this turn's); a turn's end decides it.

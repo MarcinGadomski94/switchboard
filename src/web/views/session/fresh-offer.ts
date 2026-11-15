@@ -72,7 +72,7 @@ export function freshEligible(session: Pick<Session, 'hooked' | 'closedAt' | 'at
  * v2 clean slate). The route refuses on the same terms (`continueFresh`).
  */
 export function freshBusy(session: Pick<Session, 'status' | 'turnWait'> | null, activity: { readonly state: ActivityState; readonly background?: readonly BackgroundTask[] } | null | undefined): boolean {
-  // D143: one rule with the running dot: only background work the agent does not wait on (shells) is no turn.
+  // D143 / D164: one rule with the running dot: only background work the agent does not wait on (dev servers, watchers) is no turn.
   return session !== null && (turnBusy(session) || workingActivityState(activity) !== undefined);
 }
 

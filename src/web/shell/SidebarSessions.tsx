@@ -905,7 +905,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         onPointerDown={touchStart({ kind: 'session', id: session.id }, displayTitle(session))}
         {...target(at)}
       >
-        {/* D30: waiting on background work reads as working: the running color, pulsing; D143: not a background shell alone. */}
+        {/* D30: waiting on background work reads as working: the running color, pulsing; D143 / D164: not a dev server or watcher alone. */}
         <span className="sb-session-dot" data-activity={workingActivityState(activity)} style={{ background: statusColor(workingActivityState(activity) === 'background' ? 'run' : session.status) }} />
         <div className="sb-session-body">
           <div className="sb-session-head">

@@ -11,7 +11,7 @@ import type { Coordination, Phase, SessionMode, SessionStatus, WorkType } from '
 import type { PrChecks, PrChecksState } from './ci.ts';
 import { todoFinishLine, todoHasPlan, type TodoToolDefinition } from './todos.ts';
 import type { BackgroundTask } from './api.ts';
-import { isLongRunningCommand, isShellTask } from './derive/background.ts';
+import { BACKGROUND_SHELL_WAIT_MS, isLongRunningCommand, isShellTask } from './derive/background.ts';
 
 // ── enumerations ──────────────────────────────────────────────────────────
 
@@ -620,8 +620,10 @@ export function stoppedSince(
  * D160 (`docs/plans.md` → *Waiting on a background task*): the longest a pending background
  * command (a background `Bash` or a `Monitor`: a build, a device run, a deploy) holds a running
  * item off `stopped`. A command still pending after this long no longer holds it (it may hang).
+ * D164: the same limit as the session status's ({@link BACKGROUND_SHELL_WAIT_MS}), so a plan item
+ * and its agent never disagree; while the command runs its session stays `run` anyway.
  */
-export const PLAN_BACKGROUND_HOLD_MS = 2 * 3600_000;
+export const PLAN_BACKGROUND_HOLD_MS = BACKGROUND_SHELL_WAIT_MS;
 
 /** D160: the start of the reason a held item shows ("Waiting on a background task: <summary>"). */
 export const PLAN_BACKGROUND_REASON = 'Waiting on a background task';
@@ -643,10 +645,11 @@ export interface PlanBackgroundWait {
  * server or watcher ({@link isLongRunningCommand}). Subagents, workflows and wake-ups are left out:
  * they keep the session `run` already. `null` when there is none.
  */
-export function planBackgroundWait(tasks: readonly Pick<BackgroundTask, 'kind' | 'summary' | 'startedAt'>[]): PlanBackgroundWait | null {
+export function planBackgroundWait(tasks: readonly Pick<BackgroundTask, 'kind' | 'summary' | 'startedAt' | 'waiting'>[]): PlanBackgroundWait | null {
   let oldest: PlanBackgroundWait | null = null;
   for (const task of tasks) {
-    if (!isShellTask(task.kind) || isLongRunningCommand(task.summary)) continue;
+    // D164: the tracker's own verdict when it gave one (it reads the full command), else the summary.
+    if (!isShellTask(task.kind) || task.waiting === false || (task.waiting === undefined && isLongRunningCommand(task.summary))) continue;
     if (oldest === null || Date.parse(task.startedAt) < Date.parse(oldest.since)) oldest = { summary: task.summary, since: task.startedAt };
   }
   return oldest;
@@ -712,7 +715,8 @@ function ownState(item: PlanItemFacts, mode: PlanMergeMode | null, targetBranch:
       }
       {
         // D160: its turn is over but its agent waits on a background command it started: running, saying so.
-        const wait = item.todoDone === false && (item.sessionStatus === 'done' || item.sessionStatus === 'idle' || item.sessionStatus === 'paused') ? backgroundHold(item, now) : null;
+        // D164: its session now stays `run` while it waits (the fact is set only once the turn is over).
+        const wait = item.todoDone === false && (item.sessionStatus === 'run' || item.sessionStatus === 'done' || item.sessionStatus === 'idle' || item.sessionStatus === 'paused') ? backgroundHold(item, now) : null;
         if (wait !== null) return { state: 'running', reason: `${PLAN_BACKGROUND_REASON}: ${wait.summary}` };
       }
       return { state: 'running', reason: null };

@@ -67,6 +67,9 @@ describe('D160 · a plan item waits on its agent\'s background command', () => {
     ).toEqual(BUILD);
     expect(planBackgroundWait([{ kind: 'bash', summary: 'vite', startedAt: BUILD.since }, { kind: 'bash', summary: 'dotnet watch run', startedAt: BUILD.since }])).toBeNull();
     expect(planBackgroundWait([])).toBeNull();
+    // D164: the tracker's own verdict wins (it reads the full command): a shell it no longer waits on (a long server command, past its 2 h) holds nothing.
+    expect(planBackgroundWait([{ kind: 'bash', summary: 'npm run build', startedAt: BUILD.since, waiting: false }])).toBeNull();
+    expect(planBackgroundWait([{ kind: 'bash', summary: 'npm run build', startedAt: BUILD.since, waiting: true }])).toEqual({ summary: 'npm run build', since: BUILD.since });
   });
 
   it('held during a build: running with the reason, never stopped, the step says so', () => {
@@ -101,7 +104,9 @@ describe('D160 · a plan item waits on its agent\'s background command', () => {
   });
 
   it('a working session, a question or a done todo are unchanged by a background command', () => {
-    expect(view(idle({ sessionStatus: 'run', backgroundWait: BUILD }))).toMatchObject({ state: 'running', reason: null });
+    // D164: the session now stays `run` while its agent waits on the build (the fact is set only once the turn is over): the reason says so.
+    expect(view(idle({ sessionStatus: 'run', backgroundWait: BUILD }))).toMatchObject({ state: 'running', reason: `${PLAN_BACKGROUND_REASON}: ${BUILD.summary}` });
+    expect(view(idle({ sessionStatus: 'run', backgroundWait: null }))).toMatchObject({ state: 'running', reason: null });
     expect(view(idle({ sessionStatus: 'need', backgroundWait: BUILD }))?.state).toBe('question');
     expect(view(idle({ todoDone: true, backgroundWait: BUILD }))).toMatchObject({ state: 'running', reason: null });
   });

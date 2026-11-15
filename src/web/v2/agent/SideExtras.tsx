@@ -228,7 +228,7 @@ function AgentRow({ data, item, href }: { readonly data: AgentData; readonly ite
   const entry = agent ? agentActivity(data.activity, agent) : null;
   const live = entry ? overviewActivityLabel(entry, item.main && data.activity ? data.activity.turnStartedAt : null, now, data.activity?.background ?? []) : null;
   // D30: an agent waiting on background work reads as working.
-  // D143: not for background shells alone (a dev server): only a wait (subagents, a wake-up).
+  // D143 / D164: not for a dev server or watcher alone: only a wait (subagents, a wake-up, a background build).
   const status = entry?.state === 'background' && workingActivityState(data.activity) === 'background' ? 'working' : item.status;
   const text = live ? `${live.text}${live.time ? ` ${live.time}` : ''}` : item.statusText;
   return (

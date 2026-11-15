@@ -144,10 +144,11 @@ export function toolText(tool: string | null, summary: string | null): string {
 export type ActivityGlyph = 'spinner' | '●' | '⏸' | '⏳';
 
 /**
- * D143: the activity state that reads as working (the running colour, the pulsing dot):
+ * D143 / D164: the activity state that reads as working (the running colour, the pulsing dot):
  * a running turn's state, or `background` only while the agent waits on that work (its
- * subagents, a wake-up: `backgroundWait`). Background shells alone (a dev server, a GitHub
- * wait) give `undefined`: the agent is not working, its line still names what runs.
+ * subagents, a wake-up, D164: a background build or other command for up to 2 h:
+ * `backgroundWait`). Dev servers and watchers alone give `undefined`: the agent is not
+ * working, its line still names what runs.
  */
 export function workingActivityState(activity: { readonly state: ActivityState; readonly background?: readonly BackgroundTask[] } | null | undefined): ActivityState | undefined {
   if (!activity) return undefined;

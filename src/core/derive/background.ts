@@ -37,9 +37,20 @@ import { AGENT_TOOLS } from './event-kind.ts';
  * a CLI-reported task that is no shell, no wake-up and no subagent (`mcp_task`, a type
  * Switchboard does not know) keeps the session `run` for at most this long without a sign
  * of life (its start, a `task_progress` / `task_updated`); then it reads as left running,
- * not waited on. D143: a shell never keeps `run` ({@link isShellTask}).
+ * not waited on. A shell has its own rule ({@link BACKGROUND_SHELL_WAIT_MS}, D164).
  */
 export const BACKGROUND_WAIT_MS = 30 * 60_000;
+
+/**
+ * D164 (`docs/derivations.md` → *Session status* → *Waiting on background work*): a pending
+ * background shell or watcher ({@link isShellTask}: a background `Bash` such as a build or a
+ * device run, a `Monitor`, a `local_bash` / `monitor_mcp` task) keeps the session `run` (its
+ * agent works: "⏳ Waiting on a background task") for at most this long after it started,
+ * unless it is a dev server or watcher ({@link isLongRunningCommand}), which is left running
+ * and never keeps `run`. Past it, a command that still runs reads as left running (it may
+ * hang). D160's plan rule uses the same limit (`PLAN_BACKGROUND_HOLD_MS`).
+ */
+export const BACKGROUND_SHELL_WAIT_MS = 2 * 3600_000;
 
 /**
  * 2026-10-16: the stale guard of a wake-up (D143: GitHub waits, shells, no longer count):
@@ -72,8 +83,8 @@ const LONG_RUNNING = new RegExp(
 
 /**
  * `true` when a shell command is a dev server or a watcher the agent leaves running (2026-10-16),
- * never a GitHub wait. D127 classifies processes with it (`dev-server`); D143: no background
- * shell keeps `run` any more, this one or another.
+ * never a GitHub wait. D127 classifies processes with it (`dev-server`); D164: such a command
+ * never keeps `run`, any other background shell does for {@link BACKGROUND_SHELL_WAIT_MS}.
  */
 export function isLongRunningCommand(command: string): boolean {
   return !GITHUB_WAIT.test(command) && LONG_RUNNING.test(command);
@@ -186,8 +197,10 @@ const SHELL_TASK_TYPE = /bash|shell|monitor/i;
  * D143 (`docs/derivations.md` → *Session status* → *Waiting on background work*): a
  * background shell or watcher: a background `Bash` (a dev server, a build, a GitHub wait,
  * `sleep 300; …`), a `Monitor`, or a CLI-reported task of a shell type (`local_bash`,
- * `monitor_mcp`). Such a task never keeps the session working once its turn is over: the
- * agent is idle (or needs you / done) with a background app left running.
+ * `monitor_mcp`). D164: it keeps the session working while it runs, for at most
+ * {@link BACKGROUND_SHELL_WAIT_MS}, unless it is a dev server or watcher
+ * ({@link isLongRunningCommand}): then the agent is idle (or needs you / done) with a
+ * background app left running.
  */
 export function isShellTask(kind: BackgroundTaskKind, taskType: string | null = null): boolean {
   return kind === 'bash' || kind === 'monitor' || (taskType !== null && SHELL_TASK_TYPE.test(taskType));
@@ -429,14 +442,20 @@ export interface BackgroundTrackerOptions {
   readonly waitWindowMs?: number;
   /** 2026-10-16: the stale guard of a wake-up (default {@link BACKGROUND_QUIET_MS}). */
   readonly quietMs?: number;
+  /** D164: how long a background shell keeps the session `run` after its start (default {@link BACKGROUND_SHELL_WAIT_MS}). */
+  readonly shellWaitMs?: number;
 }
 
 /** 2026-10-16: what the tracker knows of a pending task beyond its wire shape. */
 interface Life {
   /** Its last sign of life (epoch ms); a wake-up: its `wakeAt`. */
   seen: number;
-  /** D143: a shell or watcher ({@link isShellTask}): never waited on. */
+  /** D143: a shell or watcher ({@link isShellTask}). */
   readonly shell: boolean;
+  /** D164: a dev server or watcher ({@link isLongRunningCommand} of its full command): left running, never waited on. */
+  readonly leftRunning: boolean;
+  /** D164: when it started (epoch ms): a shell is waited on for {@link BACKGROUND_SHELL_WAIT_MS} from then. */
+  readonly started: number;
 }
 
 interface Call {
@@ -501,11 +520,13 @@ export class BackgroundTracker {
   readonly #life = new Map<string, Life>();
   readonly #waitWindowMs: number;
   readonly #quietMs: number;
+  readonly #shellWaitMs: number;
 
   constructor(options: BackgroundTrackerOptions = {}) {
     this.#now = options.now ?? (() => new Date());
     this.#waitWindowMs = options.waitWindowMs ?? BACKGROUND_WAIT_MS;
     this.#quietMs = options.quietMs ?? BACKGROUND_QUIET_MS;
+    this.#shellWaitMs = options.shellWaitMs ?? BACKGROUND_SHELL_WAIT_MS;
   }
 
   /** A main-agent `tool_use`: remembered when its tool can start background work. */
@@ -548,7 +569,7 @@ export class BackgroundTracker {
       ...(call.kind === 'wakeup' && typeof delay === 'number' ? { wakeAt: new Date(call.startedAt.getTime() + delay * 1000).toISOString() } : {}),
       github,
     };
-    this.#add(task, isShellTask(call.kind));
+    this.#add(task, isShellTask(call.kind), isShellTask(call.kind) && command !== null && isLongRunningCommand(command));
     return true;
   }
 
@@ -654,10 +675,10 @@ export class BackgroundTracker {
   /**
    * The pending tasks, oldest first, each with `waiting` (2026-10-16, *Session status*
    * → *Waiting on background work*): an async agent or a workflow always (the
-   * stale-subagent guard is the recorder's); D143: a shell or watcher never (a background
-   * `Bash` of any command, a GitHub wait included, a `Monitor`, a `local_bash` /
-   * `monitor_mcp` task); a wake-up until `quietMs` past its time; any other CLI-reported
-   * task while quiet for less than `waitWindowMs`.
+   * stale-subagent guard is the recorder's); D164: a shell or watcher (a background `Bash`,
+   * a GitHub wait included, a `Monitor`, a `local_bash` / `monitor_mcp` task) for
+   * `shellWaitMs` after its start, never a dev server or watcher; a wake-up until `quietMs`
+   * past its time; any other CLI-reported task while quiet for less than `waitWindowMs`.
    */
   list(): BackgroundTask[] {
     const now = this.#now().getTime();
@@ -673,8 +694,12 @@ export class BackgroundTracker {
 
   #waits(task: BackgroundTask, life: Life | undefined, now: number): boolean {
     if (isSubagentTask(task)) return true;
-    // D143: a background shell / watcher (a dev server, a build, a GitHub wait) is left running, never waited on.
-    if (life?.shell ?? isShellTask(task.kind)) return false;
+    // D164: a background shell (a build, a device run, a GitHub wait) is waited on for a while; a dev server or watcher is left running.
+    if (life?.shell ?? isShellTask(task.kind)) {
+      if (life?.leftRunning ?? isLongRunningCommand(task.summary)) return false;
+      const started = life?.started ?? Date.parse(task.startedAt);
+      return Number.isFinite(started) && now - started < this.#shellWaitMs;
+    }
     const quiet = life ? now - life.seen : 0;
     if (task.kind === 'wakeup') return quiet < this.#quietMs;
     return quiet < this.#waitWindowMs;
@@ -700,7 +725,8 @@ export class BackgroundTracker {
       return false;
     }
     const task = taskFromStart(entry);
-    this.#add(task, isShellTask(task.kind, entry.taskType));
+    const shell = isShellTask(task.kind, entry.taskType);
+    this.#add(task, shell, shell && isLongRunningCommand(entry.description ?? task.summary));
     return true;
   }
 
@@ -708,11 +734,12 @@ export class BackgroundTracker {
    * Adds a pending task; one pending under the same task id or `tool_use` id is replaced
    * (D43: no double entry). 2026-10-16: its life starts now (a wake-up's at its `wakeAt`).
    */
-  #add(task: BackgroundTask, shell = false): void {
+  #add(task: BackgroundTask, shell = false, leftRunning = false): void {
     for (const [key, pending] of this.#tasks) if (pending.id === task.id || pending.toolUseId === task.toolUseId) this.#delete(key);
     this.#tasks.set(task.toolUseId, task);
     const wakeAt = task.wakeAt ? Date.parse(task.wakeAt) : Number.NaN;
-    this.#life.set(task.toolUseId, { seen: Number.isFinite(wakeAt) ? wakeAt : this.#now().getTime(), shell });
+    const started = Date.parse(task.startedAt);
+    this.#life.set(task.toolUseId, { seen: Number.isFinite(wakeAt) ? wakeAt : this.#now().getTime(), shell, leftRunning, started: Number.isFinite(started) ? started : this.#now().getTime() });
   }
 }
 
@@ -758,7 +785,7 @@ export function waitingOnSubagents(activity: Pick<SessionActivity, 'state' | 'ba
 /**
  * 2026-10-16: `true` when the agent waits on this pending task (it keeps the session
  * `run`): the task's `waiting`, else (an older machine's payload, without the field) by
- * kind: a subagent or a wake-up (D143: a GitHub wait is a shell, no longer waited on).
+ * kind: a subagent or a wake-up (an older machine's payload, from before D164's shell waits).
  */
 export function isWaitTask(task: Pick<BackgroundTask, 'kind' | 'github' | 'waiting'>): boolean {
   if (task.waiting !== undefined) return task.waiting;

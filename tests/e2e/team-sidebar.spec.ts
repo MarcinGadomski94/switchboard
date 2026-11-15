@@ -218,7 +218,7 @@ test('2026-10-16: a member whose main turn ended while a subagent works reads wo
   await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
 });
 
-test('D143: a member whose main turn ended with a background `gh pr checks --watch` running is idle (a shell is no wait), and stays idle once it is done', async ({ page }) => {
+test('D164: a member whose main turn ended with a background `gh pr checks --watch` running reads working, then idle once it is done', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
   for (const member of (await call(page, 'GET', '/api/team')).body.members as Array<{ id: string }>) await call(page, 'DELETE', `/api/team/members/${member.id}`);
   const watcher = await start(page, 'ci-watcher');
@@ -227,16 +227,14 @@ test('D143: a member whose main turn ended with a background `gh pr checks --wat
   // The 2026-10-16 case: a background PR-checks watch outlives the main turn by ~8 s.
   expect((await call(page, 'POST', `/api/sessions/${watcher}/messages`, { text: '[fake:background 8 gh pr checks 42 --watch --interval 60 > /tmp/prstop.txt 2>&1] Watch the PR checks.' })).status).toBeLessThan(300);
   await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${watcher}`)).body.activity?.state, { timeout: 10_000 }).toBe('background');
-  // The main turn is over: the session reads done, not run (D143), with the shell still listed.
+  // The main turn is over: the session reads run (D164: its agent waits on the checks), the shell listed as waited on.
   const read = (await call(page, 'GET', `/api/sessions/${watcher}`)).body;
-  expect(read.status).toBe('done');
-  expect(read.activity.background).toMatchObject([{ kind: 'bash', github: true, waiting: false }]);
+  expect(read.status).toBe('run');
+  expect(read.activity.background).toMatchObject([{ kind: 'bash', github: true, waiting: true }]);
   await page.goto(`${server.baseUrl}/team`);
   const row = memberRow(page, memberId);
-  await expect(row).toHaveAttribute('data-status', 'idle');
-  await expect(row).not.toHaveAttribute('data-waiting-on', /.+/);
-  await expect(row.getByTestId('sidebar-team-member-line')).toHaveText(/^idle · \d+m$/);
-  await expect(page.getByTestId('team-counts')).not.toContainText('1 working');
+  await expect(row).toHaveAttribute('data-status', 'working');
+  await expect(page.getByTestId('team-counts')).toContainText('1 working');
   // The checks finish (the CLI's own turn for the notification), then idle again.
   await expect.poll(async () => (await call(page, 'GET', `/api/sessions/${watcher}`)).body.activity, { timeout: 25_000 }).toBeNull();
   await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 25_000 });

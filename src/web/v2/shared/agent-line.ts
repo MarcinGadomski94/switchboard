@@ -32,7 +32,8 @@ export function agentStatusOf(session: Pick<SessionListItem, 'status' | 'turnWai
 
 /**
  * D143: the background apps an agent that is not working left running (`1 background app`,
- * D127's words): its pending background shells (a dev server, a watcher, a GitHub wait);
+ * D127's words): its pending background shells it does not wait on (a dev server, a watcher,
+ * D164: a command past its 2 h);
  * `null` while it works (a turn, its helper agents) or has none.
  */
 export function backgroundAppsOf(status: V2Status, activity: Pick<SessionActivity, 'background'> | null): string | null {

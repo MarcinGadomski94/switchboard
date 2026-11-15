@@ -188,8 +188,10 @@ export function planEnvironment(deps: PlanEnvironmentDeps): PlanEnvironment {
     },
 
     // D160: the background command a run session's agent waits on (a build, a device run), from its live activity.
+    // D164: only once its turn is over (`background`): mid-turn, the item is plainly running.
     backgroundWaitOf(sessionId: string) {
-      return planBackgroundWait(context.supervisor.activity(sessionId)?.background ?? []);
+      const activity = context.supervisor.activity(sessionId);
+      return activity?.state === 'background' ? planBackgroundWait(activity.background ?? []) : null;
     },
 
     // D139: Restart: the same run session starts again (its lost messages go out again).

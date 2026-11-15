@@ -39,7 +39,7 @@ export interface AutoCleanServiceOptions {
   readonly gitCommand?: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
   readonly now?: () => Date;
-  /** `true` while the session's agent works: a turn, or its helper agents (D143). */
+  /** `true` while the session's agent works: a turn, its helper agents, or a background command it waits on (D143 / D164). */
   readonly isBusy: (sessionId: string) => boolean;
   /** `true` while the session has a live process. */
   readonly isLive: (sessionId: string) => boolean;

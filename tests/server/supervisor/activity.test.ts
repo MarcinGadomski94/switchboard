@@ -246,7 +246,8 @@ describe('background work · the recorder (D30)', () => {
     ]);
     // The pending task: the CLI's task id, the call's time, not a GitHub wait; the list rides along while the turn still ran.
     const callAt = lines.findIndex((l) => l.includes('"run_in_background":true')) + 1;
-    const task = { id: 'b6kg3qgya', toolUseId: 'toolu_015CF9hU9QYxEENHZV9RFzmY', kind: 'bash', summary: 'sleep 5; echo done', startedAt: w.at(callAt), github: false, waiting: false };
+    // D164: a background shell the agent waits on (no dev server, younger than 2 h).
+    const task = { id: 'b6kg3qgya', toolUseId: 'toolu_015CF9hU9QYxEENHZV9RFzmY', kind: 'bash', summary: 'sleep 5; echo done', startedAt: w.at(callAt), github: false, waiting: true };
     expect(w.emitted[4]?.background).toEqual([task]);
     const waiting = w.emitted[6] as SessionActivity;
     expect(waiting).toMatchObject({ turnStartedAt: w.at(callAt), since: w.at(callAt), background: [task] });
@@ -357,7 +358,7 @@ describe('every background task counts · real path (D43)', () => {
   });
 });
 
-describe('waiting on background work · real path (2026-10-16; D143: only subagents and wake-ups)', () => {
+describe('waiting on background work · real path (2026-10-16; D164: subagents, wake-ups and background commands, never dev servers)', () => {
   const until = async (check: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> => {
     const deadline = Date.now() + ms;
     while (!(await check()) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
@@ -365,42 +366,39 @@ describe('waiting on background work · real path (2026-10-16; D143: only subage
   /** The real case: a Team member's background PR-checks watch (no `]` allowed in the token). */
   const PR_WATCH = 'gh pr checks 42 --watch --interval 60 > /tmp/prstop.txt 2>&1';
 
-  it('D143 · the reported bug: a background shell that never ends (an unrecognised server) does not keep the session working: done at once, 1 background app', async () => {
+  it('D164: a background command keeps the session working until its 2 h limit (shortened here); then done, 1 background app, a note logged', async () => {
     const warnings: string[] = [];
-    world = await makeSupervisorWorld({ onWarn: (message) => warnings.push(message) });
+    world = await makeSupervisorWorld({ onWarn: (message) => warnings.push(message), backgroundShellWaitMs: 2_000 });
     const w = world;
-    const statuses: string[] = [];
     let id = '';
-    w.supervisor.on('sessionUpdated', (payload) => {
-      if (payload.id === id) statuses.push(payload.status);
-    });
-    // 3600 s: it never ends within the test (the fake's longest), like a dev server.
+    // 3600 s: it never ends within the test (the fake's longest): an unrecognised server, or a hung build.
     const session = await w.supervisor.start(newSession({ task: 'Start the app. [fake:background 3600 PORT=4000 node server.js]' }), w.place);
     id = session.id;
-    await waitForStatus(w.store, id, ['done']);
     await until(() => w.supervisor.activity(id)?.state === 'background');
     const activity = w.supervisor.activity(id);
-    expect(activity?.background).toMatchObject([{ kind: 'bash', github: false, waiting: false, summary: 'PORT=4000 node server.js' }]);
-    expect(backgroundWait(activity)).toBeNull();
-    expect(backgroundAppCount(activity)).toBe(1);
-    // The read status (REST / every view) is the turn's: done, never `run` after the result.
-    expect((await w.store.sessions.get(id))?.status).toBe('done');
-    const firstDone = statuses.indexOf('done');
-    expect(statuses.slice(firstDone)).not.toContain('run');
-    expect(warnings.some((message) => message.includes(id))).toBe(false);
+    expect(activity?.background).toMatchObject([{ kind: 'bash', github: false, waiting: true, summary: 'PORT=4000 node server.js' }]);
+    expect(backgroundWait(activity)).toMatchObject({ kind: 'background' });
+    expect(backgroundAppCount(activity)).toBe(0);
+    // Working while it waits: the read status (REST / every view) is `run`.
+    expect((await w.store.sessions.get(id))?.status).toBe('run');
+    // Past the limit: no longer counted (it may hang), done, listed as a background app, the note logged.
+    await waitForStatus(w.store, id, ['done'], 15_000);
+    await until(() => w.supervisor.activity(id)?.background[0]?.waiting === false);
+    expect(backgroundAppCount(w.supervisor.activity(id))).toBe(1);
+    expect(warnings.some((message) => message.includes(id) && message.includes('limit'))).toBe(true);
     expect(w.errors).toEqual([]);
     await w.supervisor.pause(id);
   });
 
-  it('D143: a background GitHub wait (`gh pr checks --watch`) is a shell: done at once; its end comes as the CLI\'s own turn (run while it runs), then done again', async () => {
+  it('D164: a background GitHub wait (`gh pr checks --watch`) keeps the session working; its end comes as the CLI\'s own turn, then done', async () => {
     world = await makeSupervisorWorld();
     const w = world;
     const session = await w.supervisor.start(newSession({ task: `Watch the PR checks. [fake:background 3 ${PR_WATCH}]` }), w.place);
     const id = session.id;
-    await waitForStatus(w.store, id, ['done']);
     await until(() => w.supervisor.activity(id)?.state === 'background');
-    expect(w.supervisor.activity(id)?.background).toMatchObject([{ kind: 'bash', github: true, waiting: false }]);
-    expect(backgroundWait(w.supervisor.activity(id))).toBeNull();
+    expect(w.supervisor.activity(id)?.background).toMatchObject([{ kind: 'bash', github: true, waiting: true }]);
+    expect(backgroundWait(w.supervisor.activity(id))).toMatchObject({ kind: 'github' });
+    expect((await w.store.sessions.get(id))?.status).toBe('run');
     // The notification, then the CLI's own turn: the task is gone, the session done again.
     await waitForEvent(w.store, id, (e) => (e.payload as { taskNotification?: boolean }).taskNotification === true, 15_000);
     await until(() => w.supervisor.activity(id) === null, 15_000);

@@ -71,10 +71,12 @@ export interface RecorderOptions {
   readonly answeredOn?: () => AnsweredOn | null;
   /** Clock of the live activity's timestamps (tests pass a fake one). */
   readonly now?: () => Date;
-  /** 2026-10-16: the wait window of a CLI-reported background task that is no shell (default `BACKGROUND_WAIT_MS`, 30 min; D143: shells are never waited on). */
+  /** 2026-10-16: the wait window of a CLI-reported background task that is no shell (default `BACKGROUND_WAIT_MS`, 30 min; D164: a shell is waited on for `BACKGROUND_SHELL_WAIT_MS` after its start). */
   readonly backgroundWaitMs?: number;
   /** 2026-10-16: the stale guard of a wake-up (default `BACKGROUND_QUIET_MS`, 2 h). */
   readonly backgroundQuietMs?: number;
+  /** D164: how long a background shell keeps the session `run` after its start (default `BACKGROUND_SHELL_WAIT_MS`, 2 h). */
+  readonly backgroundShellWaitMs?: number;
   /**
    * D25: the process may report `system/init` at startup, before it takes any
    * message (a `--teleport` spawn, `docs/supervisor.md` → *Teleport*). The first
@@ -313,6 +315,7 @@ export class StreamRecorder {
       ...(options.now ? { now: options.now } : {}),
       ...(options.backgroundWaitMs !== undefined ? { waitWindowMs: options.backgroundWaitMs } : {}),
       ...(options.backgroundQuietMs !== undefined ? { quietMs: options.backgroundQuietMs } : {}),
+      ...(options.backgroundShellWaitMs !== undefined ? { shellWaitMs: options.backgroundShellWaitMs } : {}),
     });
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
@@ -340,7 +343,7 @@ export class StreamRecorder {
       turnRunning: this.#pendingTurns > 0 || this.#turnOpen,
       // 2026-10-16: a pending async agent or background workflow is a running subagent too (it keeps `run`).
       runningAgents: this.#runningSubagentIds().size,
-      // 2026-10-16: a wake-up or another background task the agent waits on keeps `run` too; D143: never a background shell (a dev server, a GitHub wait).
+      // 2026-10-16: a wake-up or another background task the agent waits on keeps `run` too; D164: a background shell (a build, a GitHub wait) for up to 2 h, never a dev server or watcher.
       backgroundWaits: this.#background.waitCount(),
       lastOutcome: this.#lastOutcome,
     };

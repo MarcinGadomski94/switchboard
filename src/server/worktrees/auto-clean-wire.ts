@@ -41,7 +41,7 @@ export interface AutoCleanWiring {
 
 /**
  * D145: `true` while the session's agent works: a turn runs, or the agent waits on its helper
- * agents (D143: a background shell is no work).
+ * agents or a background command it waits on (D164; a dev server or watcher is no work, D143).
  */
 export function agentWorking(sessions: Pick<AutoCleanSessions, 'turnRunning' | 'activity'>, sessionId: string): boolean {
   if (sessions.turnRunning(sessionId)) return true;
