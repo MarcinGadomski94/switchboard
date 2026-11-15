@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlanItem } from '../../src/core/plans.ts';
-import { anyProjectWorking, isProjectPinned, pinnedEntries, pinnedProjectLabel, pinnedProjectOf, projectPinInput } from '../../src/web/v2/shared/pinned-model.ts';
+import { anyProjectWorking, isProjectPinned, pinnedEntries, pinnedProjectLabel, pinnedProjectOf, projectPinInput, projectsNeedYou } from '../../src/web/v2/shared/pinned-model.ts';
 
 /**
  * D161 (`docs/sidebar.md` → *Pinned projects (D161)*): a pinned project in the rail with its
@@ -13,6 +13,21 @@ function plan(state: Plan['state'], items: Array<PlanItem['state']>, overrides: 
   const list = items.map((itemState) => ({ state: itemState, reason: null }) as unknown as PlanItem);
   return { id: 'p1', title: 'Checkout redesign', state, items: list, progress: { done: items.filter((s) => s === 'done').length, total: items.length } as Plan['progress'], ...overrides };
 }
+
+describe('the Projects nav badge (2026-11-15)', () => {
+  it('sums the steps that need you across running and paused projects; done, draft and cancelled ones add nothing', () => {
+    expect(projectsNeedYou([])).toBe(0);
+    expect(
+      projectsNeedYou([
+        plan('running', ['question', 'stopped', 'running'], { id: 'a' }),
+        plan('paused', ['needs-you'], { id: 'b' }),
+        plan('running', ['running', 'done'], { id: 'c' }),
+        plan('done', ['stopped'], { id: 'd' }),
+        plan('draft', ['waiting'], { id: 'e' }),
+      ]),
+    ).toBe(3);
+  });
+});
 
 describe('D161 pinned project rows', () => {
   it('running: working with done/total; waiting when no step runs', () => {

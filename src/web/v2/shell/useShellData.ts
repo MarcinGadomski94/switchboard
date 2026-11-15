@@ -11,7 +11,7 @@ import { useThrottled } from '../../api/useThrottled.ts';
 import { unfinishedCount } from '../agents/tasks/tasks-model.ts';
 import { useNeedsYou } from '../shared/needs-you.ts';
 import { usePlans } from '../../plans/store.ts';
-import { type PinnedEntry, anyProjectWorking, needsByAgent, pinnedEntries } from '../shared/pinned-model.ts';
+import { type PinnedEntry, anyProjectWorking, needsByAgent, pinnedEntries, projectsNeedYou } from '../shared/pinned-model.ts';
 import { useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { useWarnAt } from '../shared/warn-at.ts';
 import { type RailCounts, type StatusPill, railCounts, statusPill } from './status-model.ts';
@@ -79,7 +79,12 @@ export function useProjectsWorking(): boolean {
 export function useRailCounts(): RailCounts {
   const { items } = useNeedsYou();
   const members = useTeamMembers();
-  return useMemo(() => railCounts(items, new Set(members.keys())), [items, members]);
+  const { plans } = usePlans();
+  return useMemo(() => {
+    const counts = railCounts(items, new Set(members.keys()));
+    // 2026-11-15: Projects shows its steps that need you (their items are counted under Agents too); the larger count, so a plan-routed item is never counted twice.
+    return { ...counts, projects: Math.max(counts.projects, projectsNeedYou(plans)) };
+  }, [items, members, plans]);
 }
 
 /**

@@ -69,6 +69,16 @@ export type PinnedEntry =
  * pulse) or waiting, with done/total; paused → "Paused"; draft → "Draft"; done → the check;
  * cancelled → "Cancelled".
  */
+/**
+ * 2026-11-15 · the Projects nav item's Needs-you count: every running or paused project's steps
+ * that need the developer (the pinned row's amber count, {@link pinnedProjectOf}), summed. Most
+ * of them reach Needs you as their agent's item (a question, Stopped), counted under Agents, so
+ * the plan-routed items alone left Projects at 0 while a project waited.
+ */
+export function projectsNeedYou(plans: readonly Pick<Plan, 'id' | 'title' | 'state' | 'items' | 'progress'>[]): number {
+  return plans.reduce((sum, plan) => sum + pinnedProjectOf(plan).needs, 0);
+}
+
 export function pinnedProjectOf(plan: Pick<Plan, 'id' | 'title' | 'state' | 'items' | 'progress'>): PinnedProject {
   const counts = projectCounts(plan);
   const own = projectStatus(plan);
