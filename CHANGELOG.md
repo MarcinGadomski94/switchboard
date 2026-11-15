@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.36 (2026-11-15)
+
+### Agents
+- **Background jobs keep an agent Working:** an agent whose turn ended while a background command or monitor it started still runs (a build, tests, a device run, a GitHub wait) shows Working ("Running in the background") instead of Done, for up to 2 hours. Dev servers and watchers (`npm run dev`, `vite`, `--watch`) still don't count: those show "Idle · 1 background app". Plans follow the same rule. See `docs/derivations.md` (D164).
+
 ## 2.4.35 (2026-11-11)
 
 ### Phones
