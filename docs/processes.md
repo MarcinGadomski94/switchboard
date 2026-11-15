@@ -101,6 +101,13 @@ The rules:
 - **Under a CLI that still runs,** only build servers, test hosts and dev servers stop by themselves. An `other` process there may be one of the CLI's own, for example an MCP server started through a shell wrapper. It is listed, but only the developer's Stop ends it. Detached processes (ppid 1, or a parent that is gone) and everything left once the CLI has exited stop whatever their kind.
 - **Keep** protects the process, its ancestors among the session's processes and everything under it. Stopping `npm run dev` would end the kept `vite`.
 
+### A session's own background commands (2026-11-15)
+
+A command the agent started in the background and waits on (Claude Code's Bash `run_in_background`, a `Monitor`: a test run, a build, a device run) is work, not a leftover: its session reads as working while it runs (D164, `docs/derivations.md` → *Waiting on background work*), so the idle countdown does not run and nothing of the session is stopped, the command's process tree included. When its task ends, the agent is woken; if it then ends its turn, the countdown starts from that moment, and whatever the session left running is stopped after the delay as before.
+
+- **Still stopped after the delay:** a dev server or watcher the agent left running in the background (`npm run dev`, `vite`, `--watch`, …: never a wait), and a background command still pending past D164's 2-hour limit (treated as hung).
+- **Why:** on 2026-11-05 a release test run an agent started in the background was SIGTERMed after ~11 min while the agent waited on it (D143 then counted no background shell as work); `process_keep` was the workaround. `tests/core/idle-stop-background.test.ts` replays that chain from the CLI's own texts (it fails on the pre-D164 tracker), and `tests/server/processes/service.test.ts` does it with real processes.
+
 How a process is stopped:
 
 - Right before the signals, the processes are listed again. Only pids that are still that session's, with the same start, are signalled.
@@ -168,7 +175,8 @@ A dev server or watcher an agent started in the background (`run_in_background`:
 | Test | Covers |
 |---|---|
 | `tests/core/processes.test.ts` | the classification table (anonymised real command lines); the `ps -E` and `Win32_Process` parsers; the tree with its pid-reuse guard; the leftovers rule; the auto-stop decision; the labels; the tool's definition |
-| `tests/server/processes/service.test.ts` | real dummy processes: found after the parent exits; the idle stop; Keep; working; close; delay 0; SIGKILL escalation; never an unmarked or another session's process; `process_keep` |
+| `tests/core/idle-stop-background.test.ts` | a background test run / build keeps the session working (no idle stop at 11 or 20 min); a dev server does not; past 2 h it does not |
+| `tests/server/processes/service.test.ts` | real dummy processes: found after the parent exits; the idle stop; Keep; working; close; delay 0; SIGKILL escalation; never an unmarked or another session's process; `process_keep`; a running background command and its child survive the idle stop and are stopped after it ended; a left-behind dev server still stops |
 | `tests/server/processes/api.test.ts` | fake-claude's `[fake:leave-process]` (`docs/fake-claude.md`) through the real spawn: the routes, the agent's Keep, Stop with its timeline note, the close |
 | `tests/server/supervisor/supervisor.test.ts` | the spawned CLI's environment |
 | `tests/e2e/processes.spec.ts` | the panel, Settings → Processes and the footer, desktop and phone |

@@ -66,10 +66,10 @@ describe.skipIf(!POSIX)('D127 · the process tracker (real dummy processes)', ()
   let service: ProcessService;
   let notes: Array<{ sessionId: string; label: string; payload: LifecyclePayload }>;
 
-  function make(options: { readonly idleDelayMs?: number; readonly graceMs?: number } = {}): ProcessService {
+  function make(options: { readonly idleDelayMs?: number; readonly graceMs?: number; readonly activity?: ProcessSessions['activity'] } = {}): ProcessService {
     const sessions: ProcessSessions = {
       livePid: () => null,
-      activity: () => null,
+      activity: options.activity ?? (() => null),
       liveSessionIds: () => [],
       record: async (sessionId, label, payload) => {
         notes.push({ sessionId, label, payload });
@@ -162,6 +162,40 @@ describe.skipIf(!POSIX)('D127 · the process tracker (real dummy processes)', ()
     await until(() => !processAlive(a.pid as number), 'the closed session’s process to stop');
     expect(notes[0]?.payload).toMatchObject({ reason: 'closed' });
     expect(notes[0]?.label).toMatch(/when the session was closed$/);
+  });
+
+  it('todo c63771cf14c1: an idle session’s own running background command (and its children) survives the idle stop; once it ends, the delay applies again', async () => {
+    const id = await session();
+    // The session's live activity, as the supervisor derives it (D143 / D164): a background build it waits on.
+    let background: Array<Record<string, unknown>> = [{ id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'npx vitest run tests/server', startedAt: new Date().toISOString(), github: false, waiting: true }];
+    make({ idleDelayMs: 200, activity: (sessionId) => (sessionId === id && background.length > 0 ? ({ state: 'background', since: new Date().toISOString(), background, agents: [] } as never) : null) });
+    const run = await sleeper(markerEnv(id));
+    const child = await orphan(markerEnv(id));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await service.sample();
+    await service.sample();
+    // Idle for longer than the delay, but working: nothing stops.
+    expect(processAlive(run.pid as number)).toBe(true);
+    expect(processAlive(child)).toBe(true);
+    expect((await service.forSession(id)).stopsAt).toBeNull();
+    // The build ended (its task notification): the countdown starts from its last sign of work.
+    background = [];
+    await service.sample();
+    expect(processAlive(run.pid as number)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await service.sample();
+    await until(() => !processAlive(run.pid as number) && !processAlive(child), 'the processes left behind after the build to stop');
+    expect(notes[0]?.payload).toMatchObject({ reason: 'idle' });
+  });
+
+  it('todo c63771cf14c1: a dev server the session left running in the background is still stopped after the delay', async () => {
+    const id = await session();
+    const background = [{ id: 'b2', toolUseId: 't2', kind: 'bash', summary: 'npm run dev', startedAt: new Date().toISOString(), github: false, waiting: false }];
+    make({ idleDelayMs: 200, activity: (sessionId) => (sessionId === id ? ({ state: 'background', since: new Date().toISOString(), background, agents: [] } as never) : null) });
+    const server = await sleeper(markerEnv(id));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await service.sample();
+    await until(() => !processAlive(server.pid as number), 'the left-behind dev server to stop');
   });
 
   it('a close stops them even with the idle stop off (delay 0)', async () => {
