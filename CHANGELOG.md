@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.37 (2026-11-15)
+
+### Sidebar
+- **Projects shows when a project needs you:** the Projects item's badge counts the steps that need you across running and paused projects (a question, a Stopped step, a merge or a confirmation), the same count as a pinned project's amber number. Before, those only counted under Agents.
+
 ## 2.4.36 (2026-11-15)
 
 ### Agents
