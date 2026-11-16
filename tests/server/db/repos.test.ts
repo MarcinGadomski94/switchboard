@@ -108,6 +108,8 @@ describe('sessions', () => {
       turnWait: null,
       extraDirs: [],
       userProfileId: 'default',
+      // D166 (0056): nothing to review yet.
+      review: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });
