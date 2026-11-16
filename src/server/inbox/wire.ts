@@ -381,6 +381,29 @@ export async function inboxCount(store: Store): Promise<number> {
   return batches + permissions + system;
 }
 
+/**
+ * D165: the `inboxChanged` payload: the whole count and, per user profile, what that profile's
+ * browsers count (its agents' items, plus the items of no agent). The hub gives each client its
+ * profile's count and never the map.
+ */
+export async function inboxChangedPayload(store: Store): Promise<{ readonly count: number; readonly byProfile: Readonly<Record<string, number>> }> {
+  const sessions: Array<string | null> = [
+    ...(await store.questions.listBatches({ states: ['open', 'stale'] })).filter(isBatchWaiting).map((batch) => batch.sessionId),
+    ...(await store.permissions.list({ states: ['open'] })).map((request) => request.sessionId),
+    ...(await store.systemItems.list(['open'])).map((item) => item.sessionId),
+  ];
+  const profileOf = store.userProfiles.sessionProfiles();
+  const shared = sessions.filter((id) => id === null).length;
+  const byProfile: Record<string, number> = {};
+  for (const profile of await store.userProfiles.list()) byProfile[profile.id] = shared;
+  for (const id of sessions) {
+    if (id === null) continue;
+    const profile = profileOf.get(id) ?? 'default';
+    byProfile[profile] = (byProfile[profile] ?? shared) + 1;
+  }
+  return { count: sessions.length, byProfile };
+}
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

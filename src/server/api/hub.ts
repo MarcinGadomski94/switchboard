@@ -1,5 +1,4 @@
 import { hubTransform } from '../user-profiles/scope.ts';
-import type { Store } from '../db/store.ts';
 import type { FastifyInstance } from 'fastify';
 import { wantsDeltas } from '../../core/agent-delta.ts';
 import type { ApiContext } from '../routes.ts';
@@ -23,13 +22,8 @@ export async function registerHubRoutes(app: FastifyInstance, context: ApiContex
     // D95 follow-up: `?delta=1` = sessionUpdated carries only the agents that changed (`core/agent-delta.ts`).
     // D165: each client gets only its profile's events (docs/profiles.md → Scope).
     const profiles = context.userProfiles;
-    const transform = profiles && request.userProfileScope !== '*' ? hubTransform(profiles, request.userProfileScope, (folderId) => folderProfileOf(context.store, folderId)) : undefined;
+    const transform = profiles && request.userProfileScope !== '*' ? hubTransform(profiles, request.userProfileScope) : undefined;
     context.hub.attach(reply.raw, { agentDeltas: wantsDeltas(request.query), ...(transform ? { transform } : {}) });
   });
 }
 
-/** D165: a sidebar folder's profile (`null`: no such folder). */
-function folderProfileOf(store: Store, folderId: string): string | null {
-  const row = store.db.prepare('SELECT user_profile_id FROM sidebar_folders WHERE id = ?').get(folderId);
-  return row ? String(row['user_profile_id']) : null;
-}

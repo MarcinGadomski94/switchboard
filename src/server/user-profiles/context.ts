@@ -26,3 +26,22 @@ export function currentProfileForCreate(): string | null {
   const scope = currentProfileScope();
   return typeof scope === 'string' && scope !== '*' ? scope : null;
 }
+
+/**
+ * D165: the sessions the current scope may count (Insights, the usage breakdown): `null` = every
+ * session (outside a request, the peer API's own work, `'*'`); else a test of a session id against
+ * `profileOf` (an unknown id, e.g. a folder's memory check, belongs to no profile: not counted).
+ */
+export function scopedSessionTest(profileOf: () => ReadonlyMap<string, string>): ((sessionId: string) => boolean) | null {
+  const scope = currentProfileScope();
+  if (scope === undefined || scope === '*') return null;
+  if (scope === null) return () => false;
+  const profiles = profileOf();
+  return (sessionId) => profiles.get(sessionId) === scope;
+}
+
+/** D165: a cache key part for the current scope (answers differ per profile). */
+export function scopeKey(): string {
+  const scope = currentProfileScope();
+  return scope === undefined ? '*' : scope === null ? '-' : scope;
+}

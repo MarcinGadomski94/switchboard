@@ -12,7 +12,7 @@ import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
-import { inboxCount, sessionBranches } from './wire.ts';
+import { inboxCount, inboxChangedPayload, sessionBranches } from './wire.ts';
 // Plans (D99) hook (D102): the "Ready to merge" item's Merge.
 import { plansInboxAskRepos, plansInboxMerge } from '../plans/hooks.ts';
 // Project memory (D107) hook: a moved member's memory copy, Retry / Keep on this PC (docs/memory-removal.md).
@@ -1290,7 +1290,7 @@ export class SystemItemService {
 
   async #publishInbox(): Promise<void> {
     if (!this.#bus) return;
-    this.#bus.publish('inboxChanged', { count: await inboxCount(this.#store) });
+    this.#bus.publish('inboxChanged', await inboxChangedPayload(this.#store));
   }
 }
 

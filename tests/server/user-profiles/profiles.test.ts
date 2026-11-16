@@ -158,7 +158,7 @@ describe('D165 · many profiles, strictly only mine', () => {
 describe('D165 · the hub filter and the peers’ merge', () => {
   it('a hub client in one profile gets only its agents’ events', async () => {
     const service = new UserProfileService({ store, bus: new HubBus(), secret: 'test-secret' });
-    const seen = (scope: string, message: HubMessage): boolean => hubTransform(service, scope, () => null)(message) !== null;
+    const seen = (scope: string, message: HubMessage): boolean => hubTransform(service, scope)(message) !== null;
     const updated = (id: string): HubMessage => ({ name: 'sessionUpdated', payload: { id } as Session }) as HubMessage;
     expect(seen(ann.id, updated(ids.a))).toBe(true);
     expect(seen(ann.id, updated(ids.b))).toBe(false);

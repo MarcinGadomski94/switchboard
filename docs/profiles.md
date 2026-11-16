@@ -47,14 +47,25 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 - A move between computers keeps the agent's profile: the move runs in the initiating request's profile, which is the agent's (strict scope).
 - Sidebar folders carry their profile in the D71 records (`userProfileId`; an older computer's arrive as Default's).
 
-## Not scoped yet
+## Also scoped (closed before the first release of D165)
 
-`GET /api/history` (the CLI conversations on disk), Insights, `GET /api/team/needs-you`, `/api/team/state`, `/api/team/suggestions`, `GET /api/plans/state`, `GET /api/terminal-sessions` / `terminal-loops`, the `inboxChanged` count and plan / crew event ids on the hub (the pages read the scoped lists), and the classic (pre-v2) UI, which has no switcher (it works in the cookie's profile, else Default). A loose-row move counts its index in the whole list.
+- **History** (`GET /api/history`): a conversation that is a Switchboard session shows only in its profile; `POST /api/history/{claudeSessionId}/continue` answers 404 for one another profile holds.
+- **Insights and the usage breakdown** (every `/api/insights*` route): the rows count only the profile's sessions' turns, todos and plan steps (merge decisions follow those steps), so every total, trend and breakdown is the profile's. A paired computer's rows come through the peer API in the asking profile (the request names it), and the answer and peer copies are cached per profile. The accounts' usage windows (5-hour, week) stay whole: the accounts are shared by every profile.
+- **Crews:** `GET /api/team/needs-you` (and `?teamId=` of another profile's crew: 404), `/api/team/state` (the hidden member sessions and their roles) and `/api/team/suggestions`: the profile's own.
+- **The hub:** the `inboxChanged` count is the client's profile's (published with a per-profile map that never leaves the server); `planChanged` and `teamChanged` go only to the clients of the profile that owns the plan / crew.
+- **A sidebar position** counted in one profile's rows (Pinned, a folder, the loose order) lands before the same row in the whole list.
 
+## The machine's, by design
+
+- **Terminal conversations not in Switchboard yet** (`GET /api/terminal-sessions`, `/api/terminal-loops`) and History's conversations that are no session: they belong to no profile (they are the machine's), so every profile lists them. Once one is followed (hooked) or continued it is a session of the profile that did it, and only that profile sees it; hooking or continuing one another profile already holds answers 404.
+- `GET /api/plans/state` carries no plan (only whether Plans is on).
+- A folder's memory checks (Project memory) are no profile's session: no profile's Insights count them.
+- **The classic (pre-v2) UI** shows the browser's active profile (the same cookie, scoped by the server) and has no switcher: switch in v2.
 ## Tests
 
 | Test | Covers |
 |---|---|
 | `tests/server/user-profiles/profiles.test.ts` | three profiles (Default, Ann with a password, Bo): the lists, the password switch (wrong, 429, a forged cookie, a new password), 404 for another profile's agent, folders per profile, move, delete (archive), a locked Default, a new agent's profile, the hub transform, the peers' merge |
 | `tests/server/peers/user-profiles.test.ts` | two real Switchboards: a profile and its password sync, a rename comes back, a delete goes everywhere |
+| `tests/server/user-profiles/scope-holes.test.ts` | three profiles: History and its continue, Insights / usage rows and the per-profile answer, crews' needs-you / state / suggestions, Plans' state, terminal sessions and hooking, the hub's Inbox count, plan and crew events, a sidebar position |
 | `tests/e2e/v2-profiles.spec.ts` | the rail switcher with three profiles and a password |

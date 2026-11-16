@@ -1,3 +1,4 @@
+import { scopeKey, scopedSessionTest } from '../user-profiles/context.ts';
 import { CLI_SHORT_LABELS, type CliProviderId } from '../../core/cli-providers.ts';
 import type { InsightsMachines } from '../../core/insights.ts';
 import {
@@ -91,7 +92,9 @@ export class UsageService {
    */
   async rows(fromIso: string, toIso: string): Promise<UsageRows> {
     const insights = this.#store.insights;
-    const turns = insights.usageTurns(fromIso, toIso);
+    // D165: a profile counts only its own sessions' turns (the accounts and their windows are shared).
+    const counted = scopedSessionTest(() => this.#store.userProfiles.sessionProfiles());
+    const turns = counted ? insights.usageTurns(fromIso, toIso).filter((turn) => counted(turn.sessionId)) : insights.usageTurns(fromIso, toIso);
     const profiles = await this.#store.profiles.list();
     const accounts: UsageAccountRow[] = [];
     for (const record of profiles) {
@@ -194,7 +197,7 @@ export class UsageService {
           return;
         }
         // One copy per machine and period (today: per start of the day); it covers the period's read range.
-        const key = `${machine.id}|${query.period}|${query.period === 'today' ? (query.from ?? '') : ''}`;
+        const key = `${scopeKey()}|${machine.id}|${query.period}|${query.period === 'today' ? (query.from ?? '') : ''}`;
         let copy = this.#peerCopies.get(key) ?? null;
         const fresh = copy !== null && Date.now() - copy.at < this.#peerTtl;
         if (!fresh) {
@@ -222,7 +225,7 @@ export class UsageService {
     const range = usageReadRange(query, now);
     const prices = await priceTableOf(this.#store.settings);
     const peers = scope === 'all' ? await this.#peerRows(query, range.from, range.to, options.peers ?? 'cached') : null;
-    const key = `${scope}|${usageQueryString(query)}`;
+    const key = `${scopeKey()}|${scope}|${usageQueryString(query)}`;
     const progress = this.#backfill.progress();
     const stamp = `${this.#store.insights.revision}|${progress.percent}|${JSON.stringify(prices)}|${peers?.stamp ?? ''}`;
     const cached = this.#cache.get(key);

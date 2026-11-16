@@ -85,6 +85,13 @@ export class UserProfileService {
     this.#hlc = new HybridClock(randomUUID().slice(0, 8), this.#now);
   }
 
+  /** D165: synchronous lookups the hub's per-profile filter needs (set by the app once Plans and Team exist). */
+  hubLookups: { readonly planSession: (planId: string) => string | null; readonly teamProfile: (teamId: string) => string | null; readonly folderProfile: (folderId: string) => string | null } = {
+    planSession: () => null,
+    teamProfile: () => null,
+    folderProfile: () => null,
+  };
+
   // ── index ───────────────────────────────────────────────────────────────
 
   #index(): Map<string, string> {

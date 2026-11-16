@@ -237,7 +237,28 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     if (!(await known(value.sessionId))) return reply.code(404).send({ error: 'not-found', message: `no session ${value.sessionId}` });
     // D71: a loose drop at a position counts in the whole loose list as shown (the unplaced sessions first).
     const order = value.place === 'loose' && value.index !== undefined ? await listed() : [];
-    const layout = await store.sidebar.change((current) => placeSession(current, value, order));
+    // D165: a browser in one profile counts its index in its own rows: mapped onto the whole list (before the same row).
+    const scope = request.userProfileScope;
+    const profiles = context.userProfiles;
+    const sees = profiles && typeof scope === 'string' && scope !== '*' ? (id: string): boolean => id.startsWith('crew~') || id.startsWith('plan~') || profiles.sees(scope, id) : null;
+    const layout = await store.sidebar.change((current) => {
+      if (!sees || value.index === undefined) return placeSession(current, value, order);
+      const full = value.place === 'pinned' ? current.pinned : value.place === 'folder' ? (current.folders.find((f) => f.id === value.folderId)?.sessionIds ?? []) : order;
+      return placeSession(current, { ...value, index: wholeIndex(full, value.sessionId, value.index, sees) }, order);
+    });
     return layout ? changed(layout) : noFolder(reply, value.folderId ?? '');
   });
+}
+
+/**
+ * D165: a position counted in the rows one profile sees, as a position in the whole list: before
+ * the same row it lands before there, or right after the last row it sees (the whole list's end
+ * when it sees none). The row being placed is left out of both (its final position).
+ */
+export function wholeIndex(full: readonly string[], movingId: string, index: number, sees: (id: string) => boolean): number {
+  const whole = full.filter((id) => id !== movingId);
+  const shown = whole.filter(sees);
+  if (index < shown.length) return Math.max(0, whole.indexOf(shown[Math.max(0, index)] as string));
+  const last = shown.at(-1);
+  return last === undefined ? whole.length : whole.indexOf(last) + 1;
 }

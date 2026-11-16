@@ -189,7 +189,7 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
     expect(event?.questions).toHaveLength(2);
     for (const q of event?.questions ?? []) expect(Object.keys(q).sort()).toEqual(QUESTION_KEYS);
     expect(event?.questions.map((q: Question) => [q.id, q.state, q.text])).toEqual(questions.map((q) => [q.id, 'open', q.text]));
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 1 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 1 });
     expect((await call(r, 'GET', `/api/sessions/${session.id}`)).json()).toMatchObject({ status: 'need', openQuestionCount: 2 });
 
     // The Inbox item of the batch (prototype copy).
@@ -237,7 +237,7 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
     const after = await r.w.store.questions.getBatchWithQuestions(batch.id);
     expect(after?.batch).toMatchObject({ state: 'answered', deliveredVia: 'control_response' });
     expect(after?.questions.map((q) => q.answerLabel)).toEqual(['Green', 'Small']);
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 0 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 0 });
     expect(hub(r, 'sessionUpdated').at(-1)).toMatchObject({ id: session.id, openQuestionCount: 0 });
 
     // A second answer is refused.
@@ -432,7 +432,7 @@ describe('D39 · own answers ("Other…": the typed text is the answer string)',
       ['answered', 2, null],
       ['answered', null, typed],
     ]);
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 0 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 0 });
   });
 
   it('ask-multiselect: an own answer is the one pick of a multi-select question and goes out as its answer string', async () => {
@@ -485,7 +485,7 @@ describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
     });
     expect(await r.w.store.questions.listBatches({ sessionId: session.id })).toEqual([]);
     expect(hub(r, 'questionBatch')).toEqual([]);
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 1 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 1 });
     expect(await permissionItem(r.w.store, item!)).toMatchObject({
       id: item!.id,
       kind: 'permission',
@@ -509,7 +509,7 @@ describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
     expect(sent[0]).not.toContain('updatedPermissions');
     await waitForStatus(r.w.store, session.id, ['done']);
     expect(await r.w.store.permissions.get(item!.id)).toMatchObject({ state: 'decided', decision: 'allow-once' });
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 0 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 0 });
     const again = await call(r, 'POST', `/api/inbox/${item!.id}/actions/deny`);
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toBe('not-open');
@@ -565,7 +565,7 @@ describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
     expect(await r.w.store.permissions.get(item!.id)).toMatchObject({ state: 'stale', decision: null });
     const response = await call(r, 'POST', `/api/inbox/${item!.id}/actions/allow-once`);
     expect(response.statusCode).toBe(409);
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 0 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 0 });
 
     r.w.env['FAKE_CLAUDE_SCENARIO'] = 'ask-2q';
     const asking = await startSession(r, 'Ask me two questions.', 'ask-session');
@@ -574,7 +574,7 @@ describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
     process.kill(await pidOf(r, asking.id), 'SIGKILL');
     await waitForStatus(r.w.store, asking.id, ['fail']);
     expect(await r.w.store.questions.getBatch(batch.id)).toMatchObject({ state: 'stale', answeredAt: null });
-    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 1 });
+    expect(hub(r, 'inboxChanged').at(-1)).toMatchObject({ count: 1 });
     const answers = { answers: questions.map((question) => ({ questionId: question.id, answerIndex: 0 })) };
     expect((await call(r, 'POST', `/api/questions/batch/${batch.id}/answers`, answers)).statusCode).toBe(204);
     // No live process: queued for the next run, never spawned by the answer itself.

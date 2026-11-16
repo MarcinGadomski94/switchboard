@@ -16,7 +16,7 @@ import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { toSession } from '../sessions/wire.ts';
 import { type CanUseToolContext, type ControlRequestHandler, SupervisorError } from '../supervisor/supervisor.ts';
-import { inboxCount, isBatchWaiting, toQuestion } from './wire.ts';
+import { inboxCount, inboxChangedPayload, isBatchWaiting, toQuestion } from './wire.ts';
 
 /** The tool whose `can_use_tool` request is a question batch (M0.2). */
 export const ASK_TOOL = 'AskUserQuestion';
@@ -409,7 +409,7 @@ export class QuestionPipeline implements ControlRequestHandler {
 
   async #publishInbox(): Promise<void> {
     if (!this.#bus) return;
-    this.#bus.publish('inboxChanged', { count: await inboxCount(this.#store) });
+    this.#bus.publish('inboxChanged', await inboxChangedPayload(this.#store));
   }
 
   async #publishSession(sessionId: string): Promise<void> {

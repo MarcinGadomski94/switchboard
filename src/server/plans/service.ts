@@ -828,6 +828,11 @@ export class PlanService {
     return this.#db.plans;
   }
 
+  /** D165: a plan's source session, synchronously (`null`: no such plan, or Plans unavailable). */
+  sourceSessionOf(planId: string): string | null {
+    return this.#db ? this.#db.plans.sourceSessionOf(planId) : null;
+  }
+
   /** Resolves once the queued cycles have run (tests). */
   async idle(): Promise<void> {
     let seen: Promise<void>;

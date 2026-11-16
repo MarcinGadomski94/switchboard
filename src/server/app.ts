@@ -321,6 +321,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const row = options.store.db.prepare('SELECT user_profile_id FROM sidebar_folders WHERE id = ?').get(folderId);
     return row ? String(row['user_profile_id']) : null;
   };
+  userProfiles.hubLookups = {
+    planSession: (planId) => (planId.startsWith('r~') ? (peersRef?.remotePlans().find((plan) => plan.id === planId)?.sourceSessionId ?? null) : (planServiceOf(app)?.sourceSessionOf(planId) ?? null)),
+    teamProfile: (teamId) => teamServiceOf(app)?.teamProfile(teamId) ?? null,
+    folderProfile,
+  };
   registerProfileScope(app, userProfiles, (): ProfileScopeResolvers => ({
     planSession: async (planId) => {
       if (planId.startsWith('r~')) return peersRef?.remotePlans().find((plan) => plan.id === planId)?.sourceSessionId ?? null;
@@ -351,6 +356,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         return null;
       }
     },
+    sessionByClaudeId: async (claudeSessionId) => (await options.store.sessions.getByClaudeSessionId(claudeSessionId))?.id ?? null,
     folderProfile,
   }));
   let supervisor = options.supervisor;

@@ -65,6 +65,8 @@ export interface ProfileScopeResolvers {
   readonly scheduleProfile?: (scheduleId: string) => string | null;
   /** A move's agent session. */
   readonly moveSession?: (moveId: string) => Promise<string | null> | string | null;
+  /** The Switchboard session that holds a CLI conversation (`null`: none, it is not in Switchboard yet). */
+  readonly sessionByClaudeId?: (claudeSessionId: string) => Promise<string | null>;
   /** A sidebar folder's profile. */
   readonly folderProfile?: (folderId: string) => string | null;
 }
@@ -122,7 +124,13 @@ export function registerProfileScope(app: FastifyInstance, profiles: UserProfile
       if (typeof value === 'string' && !profiles.sees(scope, value)) return reply.code(404).header('cache-control', 'no-store').send({ error: 'not-found', message: `no session ${value}` });
     }
     // A crew's page and activity name the crew in the query (none = the first crew).
-    if ((url === '/api/team' || url === '/api/team/activity') && request.method === 'GET') {
+    // Bringing a terminal conversation in, or continuing one from History: one another profile already holds is not found.
+    if ((url === '/api/terminal-sessions/:id/hook' || url === '/api/history/:claudeSessionId/continue') && request.method === 'POST') {
+      const claudeId = params['id'] ?? params['claudeSessionId'];
+      const held = claudeId ? await resolvers().sessionByClaudeId?.(claudeId) : null;
+      if (held && !profiles.sees(scope, held)) return reply.code(404).header('cache-control', 'no-store').send({ error: 'not-found', message: 'no such conversation in this profile' });
+    }
+    if ((url === '/api/team' || url === '/api/team/activity' || url === '/api/team/needs-you') && request.method === 'GET') {
       const asked = (request.query as { teamId?: unknown } | null)?.teamId;
       const teamId = resolvers().teamIdFor?.(typeof asked === 'string' && asked !== '' ? asked : null) ?? null;
       const profile = teamId ? await resolvers().teamProfile?.(teamId) : null;
@@ -234,8 +242,8 @@ function str(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** The scoped `GET` lists, by route URL. */
-const LIST_FILTERS: Readonly<Record<string, ListFilter>> = {
+/** The scoped `GET` lists, by route URL (exported for the tests). */
+export const LIST_FILTERS: Readonly<Record<string, ListFilter>> = {
   '/api/sessions': (body, sees) => arr(body)?.filter((session) => sees(str(session['id']))) ?? body,
   '/api/inbox': (body, sees) => arr(body)?.filter((item) => sees(str(item['sessionId']))) ?? body,
   '/api/todos': (body, sees) => arr(body)?.filter((group) => sees(str(group['sessionId']))) ?? body,
@@ -253,6 +261,20 @@ const LIST_FILTERS: Readonly<Record<string, ListFilter>> = {
       if (session == null || sees(session)) out.push(plan);
     }
     return out;
+  },
+  // History: the profile's own sessions; a conversation not in Switchboard yet is the machine's (every profile).
+  '/api/history': (body, sees) => arr(body)?.filter((item) => sees(str(item['sessionId']))) ?? body,
+  // Terminal conversations: one not followed yet is the machine's (every profile); a followed one is a session (its profile).
+  '/api/terminal-sessions': (body, sees) => arr(body)?.filter((terminal) => sees(str(terminal['sessionId']))) ?? body,
+  // Crews' Needs you, the members' sessions the sidebar hides, the adoption suggestions: the profile's own.
+  '/api/team/needs-you': (body, sees) => arr(body)?.filter((item) => sees(str(item['sessionRef']))) ?? body,
+  '/api/team/suggestions': (body, sees) => arr(body)?.filter((suggestion) => sees(str(suggestion['sessionId']))) ?? body,
+  '/api/team/state': (body, sees) => {
+    if (typeof body !== 'object' || body === null) return body;
+    const state = body as { hiddenSessionIds?: unknown; roles?: unknown };
+    const hidden = Array.isArray(state.hiddenSessionIds) ? (state.hiddenSessionIds as string[]).filter((id) => sees(id)) : state.hiddenSessionIds;
+    const roles = state.roles && typeof state.roles === 'object' ? Object.fromEntries(Object.entries(state.roles as Record<string, string>).filter(([id]) => sees(id))) : state.roles;
+    return { ...state, hiddenSessionIds: hidden, roles };
   },
   // Crews: the profile's own.
   '/api/team/teams': (body, _sees, { scope, resolvers }) => arr(body)?.filter((team) => {
@@ -311,14 +333,15 @@ export function filterLayout(layout: SidebarLayout, sees: Sees, folderSeen: (fol
  * dropped; the sidebar layout is cut to the profile's. Events about no session (the system tick,
  * machines, updates) pass. Plan and crew events pass as ids only: the pages read the scoped lists.
  */
-export function hubTransform(profiles: UserProfileService, scope: ProfileScope, folderProfile: (folderId: string) => string | null): (message: HubMessage) => HubMessage | null {
+export function hubTransform(profiles: UserProfileService, scope: ProfileScope): (message: HubMessage) => HubMessage | null {
   if (scope === '*') return (message) => message;
+  const lookups = profiles.hubLookups;
   const sees = (sessionId: string | null): boolean => sessionId === null || profiles.sees(scope, sessionId);
   return (message) => {
     const payload = message.payload as unknown as Record<string, unknown> | null;
     if (message.name === 'sessionUpdated') return sees(str(payload?.['id'])) ? message : null;
     if (message.name === 'sidebarLayoutChanged') {
-      return { ...message, payload: filterLayout(message.payload as SidebarLayout, sees, (folderId) => scopeSees(scope, folderProfile(folderId) ?? 'default')) } as HubMessage;
+      return { ...message, payload: filterLayout(message.payload as SidebarLayout, sees, (folderId) => scopeSees(scope, lookups.folderProfile(folderId) ?? 'default')) } as HubMessage;
     }
     if (message.name === 'movesChanged') {
       const move = payload?.['move'] as Record<string, unknown> | undefined;
@@ -327,6 +350,21 @@ export function hubTransform(profiles: UserProfileService, scope: ProfileScope, 
     if (message.name === 'notice') {
       const match = /^\/(?:sessions|agents)\/([^/?#]+)/.exec(str(payload?.['url']) ?? '');
       return match && !sees(decodeURIComponent(match[1] as string)) ? null : message;
+    }
+    // The Inbox count of this client's profile (the map never leaves the server).
+    if (message.name === 'inboxChanged') {
+      const byProfile = payload?.['byProfile'] as Record<string, number> | undefined;
+      const count = scope === null ? 0 : (byProfile?.[scope] ?? (typeof payload?.['count'] === 'number' ? payload['count'] : 0));
+      return { ...message, payload: { count } } as HubMessage;
+    }
+    // A plan's events go to its owner's profile only (a plan that is gone: to everyone, it only drops out of lists).
+    if (message.name === 'planChanged') {
+      const source = lookups.planSession(str(payload?.['planId']) ?? '');
+      return source === null || sees(source) ? message : null;
+    }
+    if (message.name === 'teamChanged') {
+      const profile = lookups.teamProfile(str(payload?.['teamId']) ?? '');
+      return profile === null || scopeSees(scope, profile) ? message : null;
     }
     if (payload && typeof payload === 'object' && typeof payload['sessionId'] === 'string') return sees(payload['sessionId']) ? message : null;
     return message;

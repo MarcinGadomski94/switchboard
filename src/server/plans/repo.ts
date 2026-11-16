@@ -255,6 +255,12 @@ export class PlanRepository {
     return row ? planOf(row) : null;
   }
 
+  /** D165: a plan's source session, synchronously (the hub's per-profile filter); `null` when there is no such plan. */
+  sourceSessionOf(id: string): string | null {
+    const row = this.#statement('SELECT source_session_id FROM plans WHERE id = ?').get(id) as { source_session_id?: unknown } | undefined;
+    return typeof row?.source_session_id === 'string' ? row.source_session_id : null;
+  }
+
   /** D99 seam for the Jira lane: the plans made from an external list. */
   async findByExternal(system: string, key: string): Promise<PlanRecord[]> {
     const rows = this.#statement("SELECT * FROM plans WHERE json_extract(external, '$.system') = ? AND json_extract(external, '$.key') = ? ORDER BY created_at, rowid").all(system, key) as unknown as Row[];

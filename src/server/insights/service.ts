@@ -1,3 +1,4 @@
+import { scopeKey, scopedSessionTest } from '../user-profiles/context.ts';
 import {
   type InsightAccount,
   type InsightsAnswer,
@@ -116,13 +117,20 @@ export class InsightsService {
     const insights = this.#store.insights;
     const fromIso = `${from}T00:00:00.000Z`;
     const toIso = `${addDays(to, 1)}T00:00:00.000Z`;
-    const turns = insights.rollup(from, to);
-    const todos = insights.todoActuals(fromIso, toIso);
-    const mergeDecisions = insights.mergeDecisions(fromIso, toIso);
+    // D165: a profile counts only its own sessions' turns, todos and plan steps (the accounts and their readings are shared).
+    const counted = scopedSessionTest(() => this.#store.userProfiles.sessionProfiles());
+    const turns = counted ? insights.rollup(from, to).filter((row) => counted(row.sessionId)) : insights.rollup(from, to);
+    const todos = counted ? insights.todoActuals(fromIso, toIso).filter((row) => counted(row.sessionId)) : insights.todoActuals(fromIso, toIso);
+    let mergeDecisions = insights.mergeDecisions(fromIso, toIso);
     const readings = insights.readings(new Date(now.getTime() - READINGS_LOOKBACK_MS).toISOString());
 
     // Plans (D99) hook: its items, with their run sessions' dimensions; null while Plans is off.
-    const outcomes = await plansInsightOutcomes(this.#store).catch(() => null);
+    const every = await plansInsightOutcomes(this.#store).catch(() => null);
+    const outcomes = every && counted ? every.filter((o) => o.runSessionId !== null && counted(o.runSessionId)) : every;
+    if (counted) {
+      const items = new Set((outcomes ?? []).map((o) => o.itemId));
+      mergeDecisions = mergeDecisions.filter((row) => items.has(row.itemId));
+    }
     let plans: PlanOutcomeRow[] | null = null;
     if (outcomes) {
       const dims = insights.sessionDims(outcomes.map((o) => o.runSessionId).filter((id): id is string => id !== null));
@@ -163,7 +171,7 @@ export class InsightsService {
 
   /** A paired machine's rows (fetched now; one fetch per machine and period at a time). */
   #fetchPeer(machineId: string, from: string, to: string): Promise<PeerCopy> {
-    const key = `${machineId}|${from}|${to}`;
+    const key = `${scopeKey()}|${machineId}|${from}|${to}`;
     const running = this.#peerFetches.get(key);
     if (running) return running;
     const peers = this.#peers;
@@ -200,7 +208,7 @@ export class InsightsService {
     const machines = await this.#peers.machines();
     await Promise.all(
       machines.map(async (machine) => {
-        const key = `${machine.id}|${from}|${to}`;
+        const key = `${scopeKey()}|${machine.id}|${from}|${to}`;
         const now = Date.now();
         let copy = this.#peerCopies.get(key) ?? null;
         const usable = copy?.rows ? now - copy.at < PEER_ROWS_STALE_MS : false;
@@ -238,8 +246,8 @@ export class InsightsService {
     const mode = options.peers ?? 'cached';
     const prices = await priceTableOf(this.#store.settings);
     const peers = scope === 'all' ? await this.#peerRows(query.from, query.to, mode) : null;
-    const peerStamp = peers ? JSON.stringify([peers.parts.map((p) => [p.machine.id, this.#peerCopies.get(`${p.machine.id}|${query.from}|${query.to}`)?.at ?? 0]), peers.pending, peers.missing]) : '';
-    const key = `${scope}|${insightsQueryString(query)}`;
+    const peerStamp = peers ? JSON.stringify([peers.parts.map((p) => [p.machine.id, this.#peerCopies.get(`${scopeKey()}|${p.machine.id}|${query.from}|${query.to}`)?.at ?? 0]), peers.pending, peers.missing]) : '';
+    const key = `${scopeKey()}|${scope}|${insightsQueryString(query)}`;
     const stamp = `${this.#stamp()}|${JSON.stringify(prices)}|${peerStamp}`;
     const cached = this.#cache.get(key);
     if (cached && cached.stamp === stamp && now.getTime() - cached.at < this.#cacheMs && cached.answer.query.to === query.to) return cached.answer;

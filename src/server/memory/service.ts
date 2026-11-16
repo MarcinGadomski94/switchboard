@@ -47,7 +47,7 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
-import { inboxCount } from '../inbox/wire.ts';
+import { inboxCount, inboxChangedPayload } from '../inbox/wire.ts';
 import { type MemoryCheckOptions, MemoryChecks } from './check.ts';
 import { MemoryDb, type MemoryPendingCopy } from './db.ts';
 import { MEMORY_COPY_ITEM, MEMORY_COPY_KEEP, MEMORY_COPY_RETRY, type MemoryMemberMove, type MemorySessionRef, registerMemoryHooks } from './hooks.ts';
@@ -1020,7 +1020,7 @@ export class MemoryService {
     if (copy.itemId) {
       try {
         await this.#o.store.systemItems.close(copy.itemId, 'resolved');
-        this.#o.bus.publish('inboxChanged', { count: await inboxCount(this.#o.store) });
+        this.#o.bus.publish('inboxChanged', await inboxChangedPayload(this.#o.store));
       } catch (error) {
         if (!(error instanceof StoreError && error.code === 'conflict')) throw error;
       }
@@ -1056,7 +1056,7 @@ export class MemoryService {
     });
     const raised = { ...copy, itemId: item.id };
     this.#need().putPendingCopy(raised);
-    this.#o.bus.publish('inboxChanged', { count: await inboxCount(this.#o.store) });
+    this.#o.bus.publish('inboxChanged', await inboxChangedPayload(this.#o.store));
     return raised;
   }
 
@@ -1357,7 +1357,7 @@ export class MemoryService {
       }
       for (const extra of rest) await this.#o.store.systemItems.close(extra.id, 'resolved').catch(() => undefined);
     }
-    if (changed) this.#o.bus.publish('inboxChanged', { count: await inboxCount(this.#o.store) });
+    if (changed) this.#o.bus.publish('inboxChanged', await inboxChangedPayload(this.#o.store));
   }
 }
 

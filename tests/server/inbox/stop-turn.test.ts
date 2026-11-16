@@ -95,7 +95,7 @@ describe('POST /api/sessions/{id}/interrupt (D50)', () => {
     const [batch] = await r.w.store.questions.listBatches({ sessionId: session.id });
     expect(batch).toMatchObject({ state: 'stale', closedReason: TURN_STOPPED_REASON, answeredAt: null });
     expect(await inboxCount(r.w.store)).toBe(0);
-    expect(r.published.filter((m) => m.name === 'inboxChanged').at(-1)?.payload).toEqual({ count: 0 });
+    expect(r.published.filter((m) => m.name === 'inboxChanged').at(-1)?.payload).toMatchObject({ count: 0 });
     // The closed batch can no longer be answered.
     const { questions } = (await call(r, 'GET', `/api/sessions/${session.id}`)).json() as SessionDetail;
     expect(questions.every((q) => q.closedReason === TURN_STOPPED_REASON)).toBe(true);
