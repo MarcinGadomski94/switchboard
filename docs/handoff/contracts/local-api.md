@@ -2453,3 +2453,19 @@ GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
 - `GET /api/takeover/cleanup/{sessionId}` → `SourceCleanupReport` (`ran: false`, nothing changes); `POST /api/takeover/cleanup/{sessionId}` → `SourceCleanupReport` (`ran: true`). 404 `not-found`, 409 `not-moved` / `running`. Local only (a peer: 403), devices refused.
 - Peer API: `POST /api/takeover/source/cleanup` `{ opId, sessionId }` → `{ result: SourceCleanupReport, log }`.
 - `Session.movedTo.cleanedAt?`: when the source was last cleaned up. Lifecycle `moved-cleaned` (the chat's divider).
+
+## Profiles (D165, 2026-11-16, additive; migration 0055)
+
+`docs/profiles.md`. Many user profiles; each agent belongs to one (`Session.userProfileId`, absent from an older computer = `default`).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/user-profiles | — | `{ profiles: UserProfile[], activeId: string \| null }` (`UserProfile`: `id, name, color, hasPassword, isDefault, defaultAccounts`; never a hash) |
+| POST | /api/user-profiles | `{ name, color?, password? }` | 201 `UserProfile` · 422 `invalid` · 409 `name-taken` |
+| PUT | /api/user-profiles/{id} | `{ name?, color?, password? (null removes), currentPassword?, defaultAccounts?: { <cli>: <account id> \| null } }` | `UserProfile` · 401 `wrong-password` · 429 `too-many-tries` |
+| DELETE | /api/user-profiles/{id} | `{ password? }` | `{ archived, failed }` (its open agents archived first) · 409 `default` / `archive-failed` |
+| POST | /api/user-profiles/switch | `{ id, password? }` | `UserProfile` + `Set-Cookie: sb_profile=…; HttpOnly; SameSite=Strict` · 401 · 429 |
+| PUT | /api/sessions/{id}/user-profile | `{ userProfileId, password? }` | `{ sessionId, userProfileId }` |
+| PUT | /api/devices/{id} | `{ userProfileId }` (with or without `name`) | `Device` (`userProfileId` added) |
+
+Scope: the lists answer only the request's profile; a route keyed by another profile's agent, plan, crew, member, Inbox item, batch, artifact, schedule, move or folder answers 404. Hub: `userProfilesChanged { profiles }`; each client gets only its profile's events. Peer API: `POST /peer/v1/user-profiles { v: 1, full, profiles: [{ id, name, color, passwordHash, clock, createdAt, deletedAt }] }` → `{ v: 1, profiles }` (every record on a full exchange). Paired phones: only `GET /api/user-profiles`.
