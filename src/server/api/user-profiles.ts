@@ -7,7 +7,9 @@ import { UserProfileError, type UserProfileService } from '../user-profiles/serv
 /**
  * D165 · the profiles' routes (`docs/profiles.md`, contract → *Profiles*):
  *
- * - `GET /api/user-profiles` → `{ profiles, activeId }` (`activeId`: this browser's profile, `null` = none chosen yet).
+ * - `GET /api/user-profiles` → `{ profiles, activeId, startId }` (`activeId`: this browser's profile, `null` = none chosen yet;
+ *   `startId`: the profile a browser opens in before it chose one).
+ * - `PUT /api/user-profiles/start` `{ id }` → `{ startId }` (2026-11-16, Settings → Profiles → *Open in*).
  * - `POST /api/user-profiles` `{ name, color?, password? }` → 201 the profile.
  * - `PUT /api/user-profiles/{id}` `{ name?, color?, password?, currentPassword?, defaultAccounts? }`; editing a
  *   profile that is not this browser's and has a password needs `currentPassword`.
@@ -30,7 +32,16 @@ export async function registerUserProfileRoutes(app: FastifyInstance, context: A
 
   app.get('/api/user-profiles', async (request): Promise<UserProfilesView> => {
     const scope = request.userProfileScope;
-    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null };
+    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null, startId: await service.startProfileId() };
+  });
+
+  // 2026-11-16: the profile a browser opens in before it chose one (before `/:profileId`: a static path wins anyway).
+  app.put('/api/user-profiles/start', async (request, reply) => {
+    try {
+      return { startId: await service.setStartProfile(request.body) };
+    } catch (error) {
+      return send(reply, error);
+    }
   });
 
   app.post('/api/user-profiles', async (request, reply) => {

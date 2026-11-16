@@ -2460,11 +2460,12 @@ GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
-| GET | /api/user-profiles | — | `{ profiles: UserProfile[], activeId: string \| null }` (`UserProfile`: `id, name, color, hasPassword, isDefault, defaultAccounts`; never a hash) |
+| GET | /api/user-profiles | — | `{ profiles: UserProfile[], activeId: string \| null, startId: string }` (`UserProfile`: `id, name, color, hasPassword, isDefault, defaultAccounts`; never a hash) |
 | POST | /api/user-profiles | `{ name, color?, password? }` | 201 `UserProfile` · 422 `invalid` · 409 `name-taken` |
 | PUT | /api/user-profiles/{id} | `{ name?, color?, password? (null removes), currentPassword?, defaultAccounts?: { <cli>: <account id> \| null } }` | `UserProfile` · 401 `wrong-password` · 429 `too-many-tries` |
 | DELETE | /api/user-profiles/{id} | `{ password? }` | `{ archived, failed }` (its open agents archived first) · 409 `default` / `archive-failed` |
-| POST | /api/user-profiles/switch | `{ id, password? }` | `UserProfile` + `Set-Cookie: sb_profile=…; HttpOnly; SameSite=Strict` · 401 · 429 |
+| POST | /api/user-profiles/switch | `{ id, password? }` | `UserProfile` + `Set-Cookie: sb_profile=…; Max-Age=34560000; HttpOnly; SameSite=Strict` (400 days) · 401 · 429 |
+| PUT | /api/user-profiles/start | `{ id }` | `{ startId }`: the profile a browser opens in before it chose one (2026-11-16) · 404 |
 | PUT | /api/sessions/{id}/user-profile | `{ userProfileId, password? }` | `{ sessionId, userProfileId }` |
 | PUT | /api/devices/{id} | `{ userProfileId }` (with or without `name`) | `Device` (`userProfileId` added) |
 

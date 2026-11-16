@@ -327,6 +327,7 @@ export const api = {
   updateUserProfile: (id: string, patch: { readonly name?: string; readonly color?: string; readonly password?: string | null; readonly currentPassword?: string; readonly defaultAccounts?: Readonly<Record<string, string | null>> }) =>
     request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}`, patch),
   deleteUserProfile: (id: string, password?: string) => request<{ readonly archived: number }>('DELETE', `/api/user-profiles/${encodeURIComponent(id)}`, password ? { password } : {}),
+  setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>
     request<{ readonly sessionId: string; readonly userProfileId: string }>('PUT', `/api/sessions/${encodeURIComponent(sessionId)}/user-profile`, { userProfileId, ...(password ? { password } : {}) }),

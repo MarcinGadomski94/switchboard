@@ -13,9 +13,10 @@ Named **user profiles** in code (`user_profiles`, `userProfileId`, `/api/user-pr
 
 ## Switching
 
-- A browser works in one profile at a time: the **signed profile cookie** `sb_profile=<id>.<password tag>.<hmac>` (HMAC-SHA256 with the install token; HttpOnly, SameSite=Strict, no Max-Age). The password tag changes with the password, so a new password signs every browser out of that profile.
+- A browser works in one profile at a time: the **signed profile cookie** `sb_profile=<id>.<password tag>.<hmac>` (HMAC-SHA256 with the install token; HttpOnly, SameSite=Strict, `Max-Age` 400 days). The password tag changes with the password, so a new password signs every browser out of that profile.
+- **Staying signed in (2026-11-16):** the cookie outlives a restart of Switchboard and of the browser (400 days, the longest a browser keeps one; the install token that signs it does not change), so a browser that switched into a profile, password or not, opens in it again without the password. It ends with the new password above, a deleted profile, the browser's own cookie clearing, or a new install token.
 - `POST /api/user-profiles/switch { id, password? }` checks the password (scrypt, constant time; 5 wrong tries per profile per minute, then 429) and sets the cookie. The page reloads in the new profile.
-- **Without a valid cookie** a browser works in Default while Default has no password; when Default has one, it works in **no profile** (it sees no agent) until it switches.
+- **Without a valid cookie** a browser works in the **Open in** profile (Settings → Profiles; `PUT /api/user-profiles/start { id }`, stored as `userProfiles.startProfileId`, this computer's own; Default when unset or deleted) while it has no password; when it has one, the browser works in **no profile** (it sees no agent) until it switches: it asks once, then stays (above).
 - A **paired phone** works in the profile Settings → Devices gives it (`PUT /api/devices/{id} { userProfileId }`); it cannot switch itself.
 
 ## Scope (strictly only mine)

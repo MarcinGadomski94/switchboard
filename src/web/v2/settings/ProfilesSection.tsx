@@ -30,9 +30,38 @@ export function ProfilesSection() {
       <Button icon="plus" onClick={() => setAdding(true)} data-testid="v2-profile-add">
         {W.add}
       </Button>
+      {view?.startId !== undefined ? <StartProfileSelect profiles={view.profiles} startId={view.startId} onChanged={reload} /> : null}
       {adding ? <AddProfileDialog onClose={() => setAdding(false)} onAdded={reload} /> : null}
       {dialog}
     </section>
+  );
+}
+
+/**
+ * 2026-11-16 · *Open in*: the profile a browser opens in before it chose one (with a password, the
+ * browser asks once; afterwards it stays signed in to its profile across restarts).
+ */
+function StartProfileSelect({ profiles, startId, onChanged }: { readonly profiles: readonly UserProfile[]; readonly startId: string; readonly onChanged: () => void }) {
+  const toast = useToast();
+  return (
+    <Select
+      label={W.openIn}
+      hint={W.openInHint}
+      value={startId}
+      options={profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+      onChange={(event) => {
+        const id = event.currentTarget.value;
+        api.setStartUserProfile(id).then(
+          () => {
+            onChanged();
+            toast({ text: W.openInSaved(profiles.find((profile) => profile.id === id)?.name ?? '') });
+          },
+          (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
+        );
+      }}
+      data-testid="v2-profile-open-in"
+      data-tour="v2-profile-open-in"
+    />
   );
 }
 

@@ -5,6 +5,8 @@ import {
   DEFAULT_USER_PROFILE_ID,
   type ProfileScope,
   USER_PROFILE_ACCOUNTS_SETTING,
+  USER_PROFILE_COOKIE_MAX_AGE_S,
+  USER_PROFILE_START_SETTING,
   USER_PROFILE_SWITCH_ATTEMPTS,
   USER_PROFILE_SWITCH_WINDOW_MS,
   type UserProfile,
@@ -299,9 +301,29 @@ export class UserProfileService {
     return `${body}.${createHmac('sha256', this.#o.secret).update(body).digest('base64url')}`;
   }
 
-  /** `Set-Cookie` for the cookie: session cookie, HttpOnly, SameSite=Strict. */
+  /**
+   * `Set-Cookie` for the cookie: HttpOnly, SameSite=Strict, kept 400 days (2026-11-16: a restart of
+   * Switchboard or the browser keeps the browser in its profile, password or not; the cookie is bound
+   * to the profile's password, so a new password still signs every browser out of it).
+   */
   serializeCookie(value: string): string {
-    return `${USER_PROFILE_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict`;
+    return `${USER_PROFILE_COOKIE}=${value}; Path=/; Max-Age=${USER_PROFILE_COOKIE_MAX_AGE_S}; HttpOnly; SameSite=Strict`;
+  }
+
+  /** 2026-11-16 · the profile a browser opens in before it chose one: the stored live profile, else Default. */
+  async startProfileId(): Promise<string> {
+    const stored = await this.#o.store.settings.get(USER_PROFILE_START_SETTING);
+    if (typeof stored === 'string' && (await this.get(stored))) return stored;
+    return DEFAULT_USER_PROFILE_ID;
+  }
+
+  /** 2026-11-16 · `PUT /api/user-profiles/start` `{ id }`: sets {@link startProfileId} (a live profile). */
+  async setStartProfile(body: unknown): Promise<string> {
+    const id = isRecord(body) && typeof body['id'] === 'string' ? body['id'] : '';
+    if (!(await this.get(id))) throw new UserProfileError(404, 'not-found', 'No such profile.');
+    await this.#o.store.settings.set(USER_PROFILE_START_SETTING, id);
+    this.#o.bus.publish('userProfilesChanged', { profiles: await this.list() });
+    return id;
   }
 
   /**
@@ -321,8 +343,10 @@ export class UserProfileService {
       const record = records.get(id);
       if (record && record.deletedAt === null && tagOf(record.passwordHash) === tag) return id;
     }
-    const fallback = records.get(DEFAULT_USER_PROFILE_ID);
-    return fallback && fallback.passwordHash === null ? DEFAULT_USER_PROFILE_ID : null;
+    // 2026-11-16: no valid cookie: the start profile (Settings → Profiles → Open in), while it has no password.
+    const start = await this.startProfileId();
+    const fallback = records.get(start);
+    return fallback && fallback.passwordHash === null ? start : null;
   }
 
   // ── moving agents ───────────────────────────────────────────────────────

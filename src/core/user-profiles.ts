@@ -14,6 +14,19 @@ export const DEFAULT_USER_PROFILE_ID = 'default';
 /** The settings key of each profile's default account per CLI on this computer (`{ <profile>: { <cli>: <cli profile id> } }`). */
 export const USER_PROFILE_ACCOUNTS_SETTING = 'userProfiles.defaultAccounts';
 
+/**
+ * 2026-11-16 · the profile a browser opens in before it ever chose one (Settings → Profiles →
+ * *Open in*): a live profile's id; absent or gone = Default. This computer's own (not synced).
+ */
+export const USER_PROFILE_START_SETTING = 'userProfiles.startProfileId';
+
+/**
+ * 2026-11-16 · how long a browser keeps its profile (the cookie's `Max-Age`): 400 days, the longest a
+ * browser keeps a cookie. A restart of Switchboard or of the browser keeps the browser in it, password
+ * or not; a new password still signs every browser out of that profile.
+ */
+export const USER_PROFILE_COOKIE_MAX_AGE_S = 400 * 24 * 3600;
+
 /** The colours a profile can carry (the rail switcher's dot). */
 export const USER_PROFILE_COLORS = ['blue', 'green', 'amber', 'red', 'purple', 'teal', 'pink', 'grey'] as const;
 /** One of {@link USER_PROFILE_COLORS}. */
@@ -46,6 +59,8 @@ export interface UserProfile {
 export interface UserProfilesView {
   readonly profiles: readonly UserProfile[];
   readonly activeId: string | null;
+  /** 2026-11-16: the profile a browser opens in before it chose one ({@link USER_PROFILE_START_SETTING}); absent from an older server. */
+  readonly startId?: string;
 }
 
 /** A trimmed, valid name, else `null`. */
