@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.40 (2026-11-16)
+
+### Agents
+- **To review:** a finished turn that changed files makes its agent **To review** (green) instead of Done, and Needs you gets a green card ("Review: <agent> · N files changed") with Open changes and Mark reviewed. Mark reviewed, or replying to the agent, clears it; more file-changing turns before that keep one card. Phones are notified (Settings → Devices → "To review" to switch it off). Project steps are left out (their merge or confirmation is the review). Database migration. See `docs/inbox.md` (D166).
+
+### Estimates
+- **Estimates that correct themselves:** Switchboard learns how the agents' estimates turn out from the work they finish (per estimate size and folder, then per CLI and model) and corrects them: a project's time left is the likely time, with the agents' estimate and your expected reviews beside it; a task card reads "likely ~12m (est 1h 30m)"; Insights shows the corrected accuracy next to the raw; agents get the learned times too. The more you work, the closer it gets. Each computer learns from its own history. See `docs/todos.md` (D167).
+
 ## 2.4.39 (2026-11-16)
 
 ### Profiles
