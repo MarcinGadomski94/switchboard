@@ -2,6 +2,7 @@ import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEf
 import type { SessionTodo, TodoFieldsInput, TodoPriority, TodoState } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
 import { soFarText, todoActualsLabel } from '../../../core/todo-actuals.ts';
+import { isCorrected, likelyText } from '../../../core/estimate-learning.ts';
 import {
   DEFAULT_TODO_PRIORITY,
   TODO_DESCRIPTION_MAX,
@@ -762,8 +763,13 @@ export function TodoCard({
               </span>
             ) : null}
             {estimate ? (
-              <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
-                {estimate}
+              <span
+                className="sb-todo-estimate"
+                data-testid="todo-estimate"
+                title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent${!isDone && isCorrected(todo.likely) ? ` · likely ${todo.likely?.minutes} minutes, learned from ${todo.likely?.sampleSize} finished tasks` : ''}`}
+              >
+                {/* D167: while not done, the learned likely time (`likely ~12m (est 1h 30m)`). */}
+                {!isDone && isCorrected(todo.likely) ? likelyText(todo.estimateMinutes ?? 0, todo.likely) : estimate}
               </span>
             ) : null}
             {/* D81: a captured item until its agent fills it in. */}

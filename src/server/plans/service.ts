@@ -74,12 +74,19 @@ import { type PlanItemOutcome, type PlanItemRef, registerPlanHooks } from './hoo
 import { registerCiMergeOwner } from '../ci/hooks.ts';
 import type { PlanItemPatch, PlanItemRecord, PlanRecord, PlanRepository } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
+import { type ReviewWaitSample, type ReviewWaits, learnReviewWaits, reviewWaitKind } from '../../core/estimate-learning.ts';
+import { liveWorkingMs } from '../../core/todo-actuals.ts';
+import { estimateLearnerFor } from '../todos/estimate-learning.ts';
+
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../schedules/scheduler.ts';
 import { TodoError, type TodoService } from '../todos/service.ts';
 import type { PlanGitPort, PlanRepoState } from './git.ts';
 import { BranchMergeError, BranchMergeGit, type BranchMergeInput, type BranchMergePlan } from '../worktrees/branch-merge.ts';
+
+/** D167: how long the developer's learned waits are kept before plans.db is read again. */
+const REVIEW_WAITS_TTL_MS = 5 * 60_000;
 
 /** Why the service refused a call: maps to the HTTP answer of the route. */
 export class PlanError extends Error {
@@ -518,6 +525,8 @@ export class PlanService {
   /** D118: the external list's context (the Jira lane), `null` = none. */
   #contextSource: PlanContextSource | null = null;
   readonly #stoppedGraceMs: number;
+  /** D167: the developer's waits read from plans.db (re-read at most every {@link REVIEW_WAITS_TTL_MS}). */
+  #waitSamples: { readonly at: number; readonly samples: readonly ReviewWaitSample[] } | null = null;
   /** D120: items shown `stopped` whose Inbox item was raised → the episode (since when its session is idle). */
   readonly #stopped = new Map<string, string>();
   /** D120: items whose stale "Stopped" Inbox items were closed since Plans activated (a restart forgets {@link #stopped}). */
@@ -1021,20 +1030,51 @@ export class PlanService {
     return plan;
   }
 
+  /**
+   * D167: the developer's typical waits, learned from every plan's closed "waiting on you" spans
+   * (re-read at most every {@link REVIEW_WAITS_TTL_MS}), for plan `folder`.
+   */
+  async #reviewWaits(repo: PlanRepository, folder: string | null): Promise<ReviewWaits> {
+    const now = this.#clock.now().getTime();
+    if (!this.#waitSamples || now - this.#waitSamples.at > REVIEW_WAITS_TTL_MS) {
+      const folders = new Map<string, string | null>();
+      const samples: ReviewWaitSample[] = [];
+      for (const span of repo.reviewWaitSpans(500)) {
+        if (!folders.has(span.sourceSessionId)) folders.set(span.sourceSessionId, (await this.#store.sessions.get(span.sourceSessionId))?.root ?? null);
+        const minutes = Math.max(0, (Date.parse(span.endedAt) - Date.parse(span.startedAt)) / 60_000);
+        if (!Number.isFinite(minutes)) continue;
+        samples.push({ minutes, kind: reviewWaitKind(span, span), folder: folders.get(span.sourceSessionId) ?? null, endedAt: span.endedAt });
+      }
+      this.#waitSamples = { at: now, samples };
+    }
+    return learnReviewWaits(this.#waitSamples.samples, folder);
+  }
+
   async #view(plan: PlanRecord, repo: PlanRepository = this.#repo()): Promise<Plan> {
     const items = await repo.items(plan.id);
     const edges = await repo.edges(plan.id);
     const spans = await repo.spans(plan.id, PLAN_ITEM_SPANS_MAX);
+    // D167: the plan's folder and CLI / model, for the learned likely durations.
+    const source = await this.#store.sessions.get(plan.sourceSessionId);
+    const learner = estimateLearnerFor(this.#store);
+    const folder = source?.root ?? null;
+    const now = this.#clock.now().getTime();
     const facts: PlanItemFacts[] = [];
     for (const item of items) {
       const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
       const todo = await this.#store.todos.get(item.todoId);
       // D121: a reopened item whose run session is closed or gone shows D120's `stopped` (its turn is over for good).
       const sessionless = reopenedWithoutSession(item) && (!session || session.closedAt !== null);
+      const estimateMinutes = todo ? todo.estimateMinutes : item.estimateMinutes;
+      const worker = session ?? source;
+      const likely = typeof estimateMinutes === 'number' && estimateMinutes > 0 ? learner.likely(estimateMinutes, { folder, provider: worker?.provider ?? null, model: worker?.model ?? null }) : null;
+      const worked = todo ? liveWorkingMs({ state: todo.state, workingMs: todo.workingMs ?? null, workingSince: todo.workingSpanStartedAt ?? null, workingShare: todo.workingShare ?? null }, now) : null;
       facts.push({
         ...item,
         title: todo?.title ?? item.title,
-        estimateMinutes: todo ? todo.estimateMinutes : item.estimateMinutes,
+        estimateMinutes,
+        likelyMinutes: likely && likely.basis !== 'none' ? likely.minutes : null,
+        workedMinutes: worked === null ? null : worked / 60_000,
         // D124: a turn over and not working that waits for the developer reads `need`, with its ask (`needs-you`, not D120's `stopped`).
         sessionStatus: sessionless ? 'done' : session ? effectiveSessionStatus(session.status, session.turnWait, session.closedAt !== null) : null,
         sessionAsk: !sessionless && session && session.closedAt === null && turnWaits(session.turnWait) ? (session.turnWait.ask ?? null) : null,
@@ -1048,7 +1088,11 @@ export class PlanService {
       });
     }
     const perItem = reposPerItem(plan);
-    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now: this.#clock.now().getTime(), reposPerItem: perItem, stoppedGraceMs: this.#stoppedGraceMs });
+    // D167: what the likely durations were learned from (a probe of a typical estimate in the plan's folder), and the developer's waits.
+    const probe = learner.likely(90, { folder, provider: source?.provider ?? null, model: source?.model ?? null });
+    const waits = await this.#reviewWaits(repo, folder);
+    const learning = { basis: probe.basis, sampleSize: probe.sampleSize, reviewWaitMinutes: waits.reviewMinutes, answerWaitMinutes: waits.answerMinutes };
+    const model = planView({ mode: plan.mergeMode, targetBranch: plan.targetBranch, maxConcurrency: plan.maxConcurrency, items: facts, edges, now, reposPerItem: perItem, stoppedGraceMs: this.#stoppedGraceMs, learning });
     // D120: a stopped item's reason is its agent's last message (cut).
     const reasons = new Map<string, string>();
     for (const item of model.items) {
@@ -1085,6 +1129,7 @@ export class PlanService {
       criticalPath: model.criticalPath,
       progress: model.progress,
       estimatedMinutesLeft: plan.state === 'done' || plan.state === 'cancelled' ? null : model.estimatedMinutesLeft,
+      ...(model.estimate && plan.state !== 'done' && plan.state !== 'cancelled' ? { estimate: model.estimate } : {}),
       createdAt: plan.createdAt,
       updatedAt: plan.updatedAt,
       startedAt: plan.startedAt,

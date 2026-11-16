@@ -125,6 +125,20 @@ export function estimateAccuracy(estimates: Pick<AccuracyDistribution, 'count' |
   return within / estimates.count;
 }
 
+/**
+ * D167: the estimates tile and the chart's learning line. The tile's value is the **corrected**
+ * estimates' accuracy (what Switchboard shows now) when the answer carries it, with the raw one
+ * beside it; `learning` reads e.g. "Corrected by what Switchboard learned: 78% within ½–2× (raw 13%) · weekly 20% → 64% → 81%".
+ */
+export function estimatesTile(estimates: Pick<AccuracyDistribution, 'count' | 'buckets'> & { readonly correctedAccuracy?: (Pick<AccuracyDistribution, 'count' | 'buckets'> & { readonly corrected: number; readonly trend: ReadonlyArray<{ readonly correctedPct: number }> }) | undefined }): { readonly value: number | null; readonly raw: number | null; readonly learning: string | null } {
+  const raw = estimateAccuracy(estimates);
+  const corrected = estimates.correctedAccuracy;
+  if (!corrected || corrected.count === 0 || corrected.corrected === 0) return { value: raw, raw, learning: null };
+  const value = estimateAccuracy(corrected);
+  const weeks = corrected.trend.length > 1 ? ` · weekly ${corrected.trend.slice(-4).map((week) => `${week.correctedPct}%`).join(' → ')}` : '';
+  return { value, raw, learning: `Corrected by what Switchboard learned: ${pct(value)} within ½–2× (raw ${pct(raw)})${weeks}` };
+}
+
 /** Rework: tasks reopened and changes sent back, over the period (`rate` = reopened ÷ done; `null` with none done). */
 export function rework(rows: readonly OutcomeRow[]): { readonly rate: number | null; readonly reopened: number; readonly done: number; readonly sentBack: number } {
   let done = 0;

@@ -384,7 +384,9 @@ export function todoLine(todo: SessionTodo): string {
   const title = todo.title ?? todo.text;
   const has = [todo.description ? 'description' : null, todoHasPlan(todo.plan) ? 'plan' : null].filter((part) => part !== null);
   const priority = (isTodoPriority(todo.priority) ? todo.priority : DEFAULT_TODO_PRIORITY).toUpperCase();
-  const estimate = todoEstimateLabel(todo.estimateMinutes) || '~?';
+  // D167: the learned likely time next to the estimate (`~1h 30m → likely ~12m`) when one is learned.
+  const likely = todo.likely && todo.likely.basis !== 'none' && todo.state !== 'done' ? ` → likely ~${formatTodoMinutes(todo.likely.minutes)}` : '';
+  const estimate = `${todoEstimateLabel(todo.estimateMinutes) || '~?'}${likely}`;
   return `[${todo.id}] ${stateMark(todo.state)} ${priority} ${estimate} ${title}${todo.addedBy === 'developer' ? ' (added by the developer)' : ''}${has.length ? ` · has ${has.join(', ')}` : ''}`;
 }
 

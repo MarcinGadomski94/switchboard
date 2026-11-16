@@ -178,9 +178,11 @@ export function progressText(plan: Pick<Plan, 'progress'>): string {
   return `${plan.progress.done}/${plan.progress.total} done`;
 }
 
-/** "~3h left", `null` when the core gives no estimate (an item blocked, nothing left). */
-export function timeLeftText(plan: Pick<Plan, 'estimatedMinutesLeft'>): string | null {
-  return plan.estimatedMinutesLeft === null ? null : `~${durationShort(plan.estimatedMinutesLeft)} left`;
+/** "~3h left", `null` when the core gives no estimate (an item blocked, nothing left). D167: corrected, with the agents' figure when it differs ("~1h 10m left (agents: 9h)"). */
+export function timeLeftText(plan: Pick<Plan, 'estimatedMinutesLeft'> & Partial<Pick<Plan, 'estimate'>>): string | null {
+  if (plan.estimatedMinutesLeft === null) return null;
+  const raw = plan.estimate && plan.estimate.basis !== 'none' && plan.estimate.rawMinutesLeft !== null && plan.estimate.rawMinutesLeft !== plan.estimatedMinutesLeft ? ` (agents: ${durationShort(plan.estimate.rawMinutesLeft)})` : '';
+  return `~${durationShort(plan.estimatedMinutesLeft)} left${raw}`;
 }
 
 /** The merge-mode chip: "Merge: agents · hold ⚑ 3165", "Merge: I merge each one", "No merge step", "Merge mode: not chosen yet". */

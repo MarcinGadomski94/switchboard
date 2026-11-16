@@ -18,7 +18,7 @@ import {
   barsLabel,
   costBars,
   durationShort,
-  estimateAccuracy,
+  estimatesTile,
   insightsAddress,
   insightsApiQuery,
   isEmpty,
@@ -247,7 +247,9 @@ function Body({ answer, trend, range }: { readonly answer: InsightsAnswer; reado
   const word = rangeWord(range);
   const totals = answer.time.totals;
   const currency = answer.cost.currency;
-  const accuracy = estimateAccuracy(answer.estimates);
+  // D167: the corrected estimates' accuracy when learned, the raw one beside it.
+  const estimatesView = estimatesTile(answer.estimates);
+  const accuracy = estimatesView.value;
   const redo = rework(answer.outcomes.byModel);
   const today = answer.query.to;
   const bars = trend ? tokenBars(trend.time.trend, today) : [];
@@ -290,7 +292,12 @@ function Body({ answer, trend, range }: { readonly answer: InsightsAnswer; reado
           v={money(answer.cost.period.total, currency)}
           s={answer.cost.period.lowerBound ? 'at least: older replies have no split' : answer.cost.period.chats > 0 ? `${money(answer.cost.period.chats, currency)} more in conversations` : 'every agent'}
         />
-        <Tile id="estimates" k={INSIGHTS_WORDS.tiles.estimates} v={pct(accuracy)} s={answer.estimates.count === 0 ? 'no finished tasks with an estimate' : `accurate ${word} · ${answer.estimates.count} ${answer.estimates.count === 1 ? 'task' : 'tasks'}`} />
+        <Tile
+          id="estimates"
+          k={INSIGHTS_WORDS.tiles.estimates}
+          v={pct(accuracy)}
+          s={answer.estimates.count === 0 ? 'no finished tasks with an estimate' : `${estimatesView.learning ? `corrected · raw ${pct(estimatesView.raw)}` : 'accurate'} ${word} · ${answer.estimates.count} ${answer.estimates.count === 1 ? 'task' : 'tasks'}`}
+        />
         <Tile id="rework" k={INSIGHTS_WORDS.tiles.rework} v={pct(redo.rate)} s={`${redo.reopened} of ${redo.done} tasks reopened · ${redo.sentBack} change ${redo.sentBack === 1 ? 'request' : 'requests'} sent back`} />
         <Tile
           id="prices"
@@ -333,6 +340,11 @@ function Body({ answer, trend, range }: { readonly answer: InsightsAnswer; reado
           {answer.estimates.median === null ? '' : ` · median ${answer.estimates.median.toFixed(1)}×`}
         </div>
         <HBars bars={accuracyRows} label={`${INSIGHTS_WORDS.estimateVsActual}: ${accuracyRows.map((b) => `${b.label}: ${b.valueText}`).join(', ')}`} testId="v2-insights-accuracy-bars" />
+        {estimatesView.learning ? (
+          <div className="v2-ins-chart-sub" data-testid="v2-insights-learning">
+            {estimatesView.learning}
+          </div>
+        ) : null}
         {/* D147: the accuracy is working time; the open-time-only tasks and the open time apart. */}
         {openTimeNote(answer.estimates) ? (
           <div className="v2-ins-chart-sub" data-testid="v2-insights-open-time">

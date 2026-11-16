@@ -8,7 +8,7 @@ import { openNew } from '../new/index.tsx';
 import { useProjectPins } from '../shared/project-pins.ts';
 import { clock } from '../shared/time.ts';
 import { JiraImportDialog } from './JiraImport.tsx';
-import { PROJECTS_DONE_OPEN_KEY, axisPercent, jiraTag, modeLabel, projectCounts, projectSections, projectStatus, projectsTimeline, readDoneOpen, sortProjects, stepKind, stepName, timeLeft } from './project-model.ts';
+import { PROJECTS_DONE_OPEN_KEY, axisPercent, jiraTag, modeLabel, projectCounts, projectSections, projectStatus, projectsTimeline, readDoneOpen, sortProjects, stepKind, stepName, timeLeft, timeLeftDetail, timeLeftTitle } from './project-model.ts';
 import './projects.css';
 
 const LIST_VIEW_KEY = 'switchboard.v2.projectsView';
@@ -57,7 +57,12 @@ function ProjectCard({ plan, onOpen, pinned, onTogglePin }: { readonly plan: Pla
         ) : null}
         {plan.machine ? <ComputerTag name={plan.machine.name} short state={plan.machine.state === 'online' ? 'online' : plan.machine.state === 'reconnecting' ? 'reconnecting' : 'offline'} /> : null}
         <span className="v2-grow" />
-        {left ? <span className="v2-muted">{left}</span> : null}
+        {left ? (
+          <span className="v2-muted" title={timeLeftTitle(plan)} data-testid="v2-project-time-left" data-tour="v2-project-time-left">
+            {left}
+            {timeLeftDetail(plan) ? <span className="v2-p-time-detail"> · {timeLeftDetail(plan)}</span> : null}
+          </span>
+        ) : null}
         <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} style={{ display: 'inline-flex' }} data-tour="v2-project-card-menu">
           <MenuButton items={menu} label={`Project actions for ${plan.title}`} testId="v2-project-card-menu" />
         </span>

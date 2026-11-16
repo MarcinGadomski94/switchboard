@@ -270,6 +270,8 @@ export interface PlanItem {
   /** D99 follow-up 2026-10-15: whether the developer confirms this item is done (a hold in a plan without a merge step). */
   readonly developerConfirms: boolean;
   readonly estimateMinutes: number | null;
+  /** D167 (additive): its estimate as the learned history corrects it (minutes); absent / `null` = none learned (or an older machine). */
+  readonly likelyMinutes?: number | null;
   /** Minutes from start to done (done items), or so far (running ones); `null` before it starts. */
   readonly actualMinutes: number | null;
   readonly onCriticalPath: boolean;
@@ -418,8 +420,13 @@ export interface Plan {
   readonly edges: readonly PlanEdge[];
   readonly criticalPath: { readonly itemIds: readonly string[]; readonly minutes: number };
   readonly progress: { readonly done: number; readonly total: number; readonly percent: number };
-  /** Estimated minutes until every item is done; `null` when an item is blocked or nothing is left. */
+  /**
+   * Estimated minutes until every item is done; `null` when an item is blocked or nothing is left.
+   * D167: the agents' work as the learned history corrects their estimates (see {@link estimate}).
+   */
   readonly estimatedMinutesLeft: number | null;
+  /** D167 (additive): the time left in parts: corrected, raw, and the developer's reviews apart. Absent from older machines. */
+  readonly estimate?: PlanEstimate;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly startedAt: string | null;
@@ -570,6 +577,43 @@ export interface PlanItemFacts {
   readonly backgroundWait?: PlanBackgroundWait | null;
   /** D160: when its last background hold ended (observed by the service); the D120 grace counts from it. Absent / `null` = none. */
   readonly backgroundEndedAt?: string | null;
+  /**
+   * D167: its estimate as the learned history corrects it (minutes), the forecast's duration for it;
+   * absent / `null` = the raw estimate (or {@link DEFAULT_ITEM_MINUTES}).
+   */
+  readonly likelyMinutes?: number | null;
+  /** D167: the working time its todo has had so far (minutes, D147); a running item's elapsed time when known, else its wall-clock time. */
+  readonly workedMinutes?: number | null;
+}
+
+/** D167: what the forecast learned from (the plan's folder), carried into {@link Plan.estimate}. */
+export interface PlanLearning {
+  readonly basis: 'folder' | 'global' | 'model' | 'none';
+  readonly sampleSize: number;
+  /** The typical wait for the developer's merge / confirmation of an item (minutes), `null` = not enough data. */
+  readonly reviewWaitMinutes: number | null;
+  /** The typical wait for the developer's answer to a question or a stopped step (minutes), `null` = not enough data. */
+  readonly answerWaitMinutes: number | null;
+}
+
+/**
+ * D167 (`docs/plans.md` → *Self-correcting time left*): the plan's time left in parts. The agents'
+ * work is corrected by what Switchboard learned; the developer's reviews are apart (they are not
+ * agent work, and the developer decides how fast they go). Additive: absent from older machines.
+ */
+export interface PlanEstimate {
+  /** The corrected agents' work left (minutes) = {@link Plan.estimatedMinutesLeft}. */
+  readonly likelyMinutesLeft: number | null;
+  /** The same from the agents' raw estimates (minutes): what the plan showed before D167. */
+  readonly rawMinutesLeft: number | null;
+  /** How many items left will wait for the developer's merge or confirmation. */
+  readonly reviewsLeft: number;
+  /** The typical wait for one of those (minutes), `null` = not enough data. */
+  readonly reviewWaitMinutes: number | null;
+  /** The typical wait for an answer (minutes), `null` = not enough data. */
+  readonly answerWaitMinutes: number | null;
+  readonly basis: 'folder' | 'global' | 'model' | 'none';
+  readonly sampleSize: number;
 }
 
 /** A short label of an item in reasons: its key, else its title in quotes. */
@@ -738,6 +782,8 @@ export interface PlanViewInput {
   readonly reposPerItem?: boolean;
   /** D120: the grace period before an idle item with its todo open shows `stopped` (default {@link PLAN_STOPPED_GRACE_MS}). */
   readonly stoppedGraceMs?: number;
+  /** D167: what the items' likely durations were learned from (absent = no learning: raw estimates, no {@link PlanViewModel.estimate}). */
+  readonly learning?: PlanLearning;
 }
 
 /** The computed part of a {@link Plan}: the items' view states, the critical path, progress and the time left. */
@@ -746,6 +792,8 @@ export interface PlanViewModel {
   readonly criticalPath: Plan['criticalPath'];
   readonly progress: Plan['progress'];
   readonly estimatedMinutesLeft: number | null;
+  /** D167: the time left in parts (with {@link PlanViewInput.learning}). */
+  readonly estimate?: PlanEstimate;
 }
 
 /**
@@ -786,24 +834,32 @@ export function planView(input: PlanViewInput): PlanViewModel {
     views.set(id, open.length === 0 ? { state: 'ready', reason: null } : { state: 'waiting', reason: `waiting on ${open.map((dep) => itemLabel(byId.get(dep) as PlanItemFacts)).join(', ')}` });
   }
 
-  // Durations (minutes) for the critical path, and what is left of each.
-  const total = new Map<string, number>();
-  const left = new Map<string, number>();
-  for (const id of ids) {
-    const item = byId.get(id) as PlanItemFacts;
-    const estimate = item.estimateMinutes ?? DEFAULT_ITEM_MINUTES;
-    if (item.state === 'done') {
-      total.set(id, item.startedAt && item.doneAt ? minutesBetween(item.startedAt, Date.parse(item.doneAt)) : estimate);
-      left.set(id, 0);
-    } else if (item.state === 'running' && item.startedAt) {
-      const elapsed = minutesBetween(item.startedAt, input.now);
-      total.set(id, Math.max(estimate, elapsed));
-      left.set(id, Math.max(estimate - elapsed, 1));
-    } else {
-      total.set(id, estimate);
-      left.set(id, estimate);
+  // Durations (minutes) for the critical path, and what is left of each. D167: with learning, each
+  // item's likely duration (its estimate as the history corrects it) and a running item's working
+  // time so far (not the wall clock, which counts the nights it waited); without, the raw estimates.
+  const durations = (corrected: boolean): { total: Map<string, number>; left: Map<string, number> } => {
+    const total = new Map<string, number>();
+    const left = new Map<string, number>();
+    for (const id of ids) {
+      const item = byId.get(id) as PlanItemFacts;
+      const raw = item.estimateMinutes ?? DEFAULT_ITEM_MINUTES;
+      const estimate = corrected && typeof item.likelyMinutes === 'number' && item.likelyMinutes > 0 ? item.likelyMinutes : raw;
+      if (item.state === 'done') {
+        total.set(id, item.startedAt && item.doneAt ? minutesBetween(item.startedAt, Date.parse(item.doneAt)) : estimate);
+        left.set(id, 0);
+      } else if (item.state === 'running' && item.startedAt) {
+        const elapsed = corrected && typeof item.workedMinutes === 'number' ? Math.round(item.workedMinutes) : minutesBetween(item.startedAt, input.now);
+        total.set(id, Math.max(estimate, elapsed));
+        left.set(id, Math.max(estimate - elapsed, 1));
+      } else {
+        total.set(id, estimate);
+        left.set(id, estimate);
+      }
     }
-  }
+    return { total, left };
+  };
+  const learned = input.learning !== undefined;
+  const { total, left } = durations(learned);
   const longest = (weights: Map<string, number>): { path: string[]; minutes: number } => {
     const best = new Map<string, { minutes: number; via: string | null }>();
     for (const id of order) {
@@ -835,8 +891,23 @@ export function planView(input: PlanViewInput): PlanViewModel {
   const onPath = new Set(critical.path);
   const done = input.items.filter((item) => item.state === 'done').length;
   const anyBlocked = [...views.values()].some((view) => view.state === 'blocked');
-  const remaining = [...left.values()].reduce((sum, value) => sum + value, 0);
-  const estimatedMinutesLeft = anyBlocked || remaining === 0 ? null : Math.max(longest(left).minutes, Math.ceil(remaining / Math.max(1, input.maxConcurrency)));
+  const timeLeft = (weights: Map<string, number>): number | null => {
+    const remaining = [...weights.values()].reduce((sum, value) => sum + value, 0);
+    return anyBlocked || remaining === 0 ? null : Math.max(longest(weights).minutes, Math.ceil(remaining / Math.max(1, input.maxConcurrency)));
+  };
+  const estimatedMinutesLeft = timeLeft(left);
+  // D167: the time left in parts: the corrected agents' work, the raw estimates', and the developer's reviews apart.
+  const estimate: PlanEstimate | undefined = input.learning
+    ? {
+        likelyMinutesLeft: estimatedMinutesLeft,
+        rawMinutesLeft: timeLeft(durations(false).left),
+        reviewsLeft: input.items.filter((item) => item.state !== 'done' && item.state !== 'failed' && (developerMerges(input.mode, item) || developerConfirms(input.mode, item))).length,
+        reviewWaitMinutes: input.learning.reviewWaitMinutes,
+        answerWaitMinutes: input.learning.answerWaitMinutes,
+        basis: input.learning.basis,
+        sampleSize: input.learning.sampleSize,
+      }
+    : undefined;
 
   const items: PlanItem[] = ids.map((id) => {
     const item = byId.get(id) as PlanItemFacts;
@@ -862,6 +933,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
       developerMerges: developerMerges(input.mode, item),
       developerConfirms: developerConfirms(input.mode, item),
       estimateMinutes: item.estimateMinutes,
+      ...(typeof item.likelyMinutes === 'number' ? { likelyMinutes: item.likelyMinutes } : {}),
       actualMinutes,
       onCriticalPath: onPath.has(id),
       position: item.position,
@@ -879,6 +951,7 @@ export function planView(input: PlanViewInput): PlanViewModel {
     criticalPath: { itemIds: critical.path, minutes: critical.minutes },
     progress: { done, total: ids.length, percent: ids.length === 0 ? 0 : Math.round((done / ids.length) * 100) },
     estimatedMinutesLeft,
+    ...(estimate ? { estimate } : {}),
   };
 }
 
@@ -1372,17 +1445,34 @@ export function pickReposMessage(input: {
   ].join('\n\n');
 }
 
+/**
+ * D167: what follows "about N min left" for an agent: the raw estimates' figure when the learned
+ * one differs, and the developer's reviews apart (`(agents estimated 540 min; learned from 30
+ * finished in this folder; + 2 reviews by the developer, ~20 min each)`); `''` without learning.
+ */
+export function planEstimateNote(estimate: PlanEstimate | undefined): string {
+  if (!estimate) return '';
+  const parts: string[] = [];
+  if (estimate.basis !== 'none' && estimate.rawMinutesLeft !== null && estimate.rawMinutesLeft !== estimate.likelyMinutesLeft) {
+    parts.push(`agents estimated ${estimate.rawMinutesLeft} min; learned from ${estimate.sampleSize} finished in ${estimate.basis === 'folder' ? 'this folder' : estimate.basis === 'model' ? 'this model' : 'all folders'}`);
+  }
+  if (estimate.reviewsLeft > 0) parts.push(`+ ${estimate.reviewsLeft} review${estimate.reviewsLeft === 1 ? '' : 's'} by the developer${estimate.reviewWaitMinutes !== null ? `, ~${estimate.reviewWaitMinutes} min each` : ''}`);
+  return parts.length > 0 ? ` (${parts.join('; ')})` : '';
+}
+
 /** One line per item for `plan_status`. */
 export function planStatusText(plan: Plan): string {
   const target = plan.targetBranch === null ? 'no target branch (no merge step)' : plan.mergeMode === 'none' ? `${plan.targetBranch} (no merge step)` : `${plan.targetBranch} → ${plan.baseBranch}${plan.allowProtectedTarget ? ' (agents merge: acknowledged)' : ''}`;
   const repos = plan.reposPerItem === true ? ` · repos picked per item${plan.repos.length > 0 ? ` (${plan.repos.join(', ')})` : ''}` : '';
-  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${target}${repos} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
+  const head = `[${plan.id}] ${plan.title}: ${plan.state}${plan.mergeMode ? ` · ${plan.mergeMode}` : ' · merge mode not chosen'} · ${target}${repos} · ${plan.progress.done}/${plan.progress.total} done${plan.estimatedMinutesLeft !== null ? ` · about ${plan.estimatedMinutesLeft} min left${planEstimateNote(plan.estimate)}` : ''}${plan.held ? ` · held: ${plan.held}` : ''}`;
   const keyOf = new Map(plan.items.map((item) => [item.id, item.key ?? item.id]));
   const lines = plan.items.map((item) => {
     const after = item.dependsOn.length > 0 ? ` after ${item.dependsOn.map((id) => keyOf.get(id) ?? id).join(', ')}` : '';
     const extra = [item.reason, item.note].filter(Boolean).join('; ');
     const solutions = item.solutions.length > 0 ? ` · repos ${item.solutions.join(', ')}` : '';
-    return `- [${item.id}]${item.key ? ` ${item.key}` : ''} ${item.title}: ${item.state}${item.hold ? ' (hold)' : ''}${after}${solutions}${item.branch ? ` · ${item.branch}` : ''}${extra ? ` · ${extra}` : ''}`;
+    // D167: a not-done item's estimate and, when learned, its likely time.
+    const sizing = item.state !== 'done' && typeof item.estimateMinutes === 'number' && item.estimateMinutes > 0 ? ` · est ${item.estimateMinutes}m${typeof item.likelyMinutes === 'number' && item.likelyMinutes !== item.estimateMinutes ? ` → likely ${item.likelyMinutes}m` : ''}` : '';
+    return `- [${item.id}]${item.key ? ` ${item.key}` : ''} ${item.title}: ${item.state}${item.hold ? ' (hold)' : ''}${after}${solutions}${sizing}${item.branch ? ` · ${item.branch}` : ''}${extra ? ` · ${extra}` : ''}`;
   });
   return [head, ...lines].join('\n');
 }

@@ -195,10 +195,31 @@ export function projectCounts(plan: Pick<Plan, 'items' | 'progress'>): ProjectCo
   };
 }
 
-/** "about 3h left", `null` without an estimate. */
+/** "about 3h left", `null` without an estimate. D167: the agents' work as the learned history corrects it. */
 export function timeLeft(plan: Pick<Plan, 'estimatedMinutesLeft' | 'state'>): string | null {
   if (plan.state === 'done' || plan.state === 'cancelled' || plan.estimatedMinutesLeft === null) return null;
   return PROJECT_WORDS.timeLeft(durationShort(plan.estimatedMinutesLeft));
+}
+
+/**
+ * D167: the line under the time left: the agents' raw estimates when the learned time differs
+ * ("agents estimated 9h"), and the developer's reviews apart ("+ your 2 reviews (~20m each)");
+ * `null` when there is nothing to add (no learning yet, nothing to review, an older machine).
+ */
+export function timeLeftDetail(plan: Pick<Plan, 'estimatedMinutesLeft' | 'state' | 'estimate'>): string | null {
+  const estimate = plan.estimate;
+  if (!estimate || plan.state === 'done' || plan.state === 'cancelled' || plan.estimatedMinutesLeft === null) return null;
+  const parts: string[] = [];
+  if (estimate.basis !== 'none' && estimate.rawMinutesLeft !== null && estimate.rawMinutesLeft !== estimate.likelyMinutesLeft) parts.push(PROJECT_WORDS.agentsEstimated(durationShort(estimate.rawMinutesLeft)));
+  if (estimate.reviewsLeft > 0) parts.push(PROJECT_WORDS.yourReviews(estimate.reviewsLeft, estimate.reviewWaitMinutes === null ? null : durationShort(estimate.reviewWaitMinutes)));
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** D167: the time-left line's tooltip: where the correction was learned. */
+export function timeLeftTitle(plan: Pick<Plan, 'estimate'>): string | undefined {
+  const estimate = plan.estimate;
+  if (!estimate || estimate.basis === 'none') return undefined;
+  return PROJECT_WORDS.learnedFrom(estimate.sampleSize, estimate.basis === 'folder' ? 'this folder' : estimate.basis === 'model' ? 'this model' : 'all folders');
 }
 
 /** The project's own state as a v2 status (its card chip when nothing needs you). */

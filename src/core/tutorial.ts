@@ -182,6 +182,7 @@ const V2_4_30 = '2.4.30';
 /** The version D161 (pinned projects and the Projects pulse) ships in. */
 const V2_4_34 = '2.4.34';
 const V2_4_38 = '2.4.38';
+/** The version D167 (self-correcting estimates) ships in (the next release after 2.4.39; adjust if it ships later). */
 const V2_4_40 = '2.4.40';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -1831,6 +1832,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-agent-review'],
         v2Route: '/agents',
         missing: 'An agent that finished a turn with changed files shows a green "To review" strip above its message box.',
+      },
+    ],
+  },
+  {
+    id: 'self-correcting-estimates',
+    decision: 'D167',
+    version: V2_4_40,
+    title: 'Estimates that correct themselves',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'time-left',
+        title: 'The likely time left',
+        what: 'Switchboard learns how the agents’ estimates turn out from the work they finish, and corrects them by itself: a project’s time left is the likely time, with the agents’ own estimate and your reviews beside it, and a task card shows “likely ~12m (est 1h 30m)”. The more you work, the closer it gets; Insights shows how accurate the corrected estimates were.',
+        todo: ['Look at a project’s time left on the Projects page.'],
+        anchors: ['v2-project-time-left', 'v2-nav-projects', 'v2-tab-more'],
+        v2Route: '/projects',
+        missing: 'No project has time left right now: the likely time shows on a running project.',
       },
     ],
   },

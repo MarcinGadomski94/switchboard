@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import type { TodoAuthor, TodoCaptureSource, TodoPriority, TodoRunState, TodoStartSource, TodoState } from '../../../core/api.ts';
 import type { TodoActualSample } from '../../../core/todo-actuals.ts';
+import type { LearningSample } from '../../../core/estimate-learning.ts';
 import { type TokenUsage, addUsage, EMPTY_USAGE, modelKey, readTokenUsage } from '../../../core/insights.ts';
 import type { RepoContext } from '../context.ts';
 import { placeholders } from '../context.ts';
@@ -601,6 +602,30 @@ export class TodoRepository {
       .prepare(`SELECT estimate_minutes, actual_ms, actual_tokens, working_ms, measure FROM todo_actuals WHERE ${column} = ? AND estimate_minutes IS NOT NULL AND measure = 'working' ORDER BY completed_at DESC, rowid DESC LIMIT ?`)
       .all(value, limit);
     return rows.map(sampleOf);
+  }
+
+  /**
+   * D167: the completed items learning uses (measured in working time, with an estimate), newest
+   * first, at most `limit`: estimate, working minutes, folder, CLI, model, completion time.
+   */
+  learningSamples(limit: number): LearningSample[] {
+    const rows = this.#ctx.db
+      .prepare(`SELECT estimate_minutes, working_ms, folder, provider, model, completed_at FROM todo_actuals WHERE measure = 'working' AND estimate_minutes > 0 AND working_ms IS NOT NULL ORDER BY completed_at DESC, rowid DESC LIMIT ?`)
+      .all(limit);
+    return rows.map((row) => ({
+      estimateMinutes: Number(row['estimate_minutes']),
+      workingMinutes: Number(row['working_ms']) / 60_000,
+      folder: typeof row['folder'] === 'string' ? row['folder'] : null,
+      provider: typeof row['provider'] === 'string' && row['provider'] !== '' ? row['provider'] : null,
+      model: typeof row['model'] === 'string' && row['model'] !== '' ? row['model'] : null,
+      completedAt: String(row['completed_at']),
+    }));
+  }
+
+  /** D167: a cheap fingerprint of what learning reads (changes whenever an item completes, is reopened or re-measured). */
+  learningFingerprint(): string {
+    const row = this.#ctx.db.prepare(`SELECT COUNT(*) AS n, MAX(completed_at) AS m, TOTAL(working_ms) AS w, TOTAL(estimate_minutes) AS e FROM todo_actuals WHERE measure = 'working'`).get();
+    return `${String(row?.['n'])}|${String(row?.['m'])}|${String(row?.['w'])}|${String(row?.['e'])}`;
   }
 
   /** D75: records the finish reminder of the item's current start (`updated_at` unchanged: it is not an edit). */

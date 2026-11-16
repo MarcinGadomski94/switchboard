@@ -1728,6 +1728,10 @@ export const PROJECT_WORDS = {
   noProjectsText: 'A project runs several steps in order, each in its own agent. Start one from your tasks, or import a Jira epic.',
   stepsDone: (done: number, total: number): string => `${done} of ${total} steps done`,
   timeLeft: (text: string): string => `about ${text} left`,
+  // D167: the time left's sub line and tooltip.
+  agentsEstimated: (text: string): string => `agents estimated ${text}`,
+  yourReviews: (count: number, each: string | null): string => `+ your ${count === 1 ? 'review' : `${count} reviews`}${each ? ` (~${each} each)` : ''}`,
+  learnedFrom: (count: number, where: string): string => `Corrected by what Switchboard learned from ${count} finished tasks in ${where}`,
   needYou: (n: number): string => `${n} need${n === 1 ? 's' : ''} you`,
   stoppedCount: (n: number): string => `${n} stopped`,
   earlierDone: (n: number): string => `${n} earlier step${n === 1 ? '' : 's'} done`,

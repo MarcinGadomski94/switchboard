@@ -9,6 +9,7 @@ import type { SessionStatus } from '../../../../core/model.ts';
 import type { SessionTodo, TodoActualsTotal, TodoGroup, TodoPatchInput, TodoPriority } from '../../../../core/api.ts';
 import type { MachineState } from '../../../../core/peers.ts';
 import { liveWorkingMs, openSoFarMs, soFarText, tookText } from '../../../../core/todo-actuals.ts';
+import { isCorrected, likelyText } from '../../../../core/estimate-learning.ts';
 import { captureTitle } from '../../../../core/todo-capture.ts';
 import { TODO_TITLE_MAX, formatTodoMinutes, todoPriorityRank } from '../../../../core/todos.ts';
 import type { Tone } from '../../glossary.ts';
@@ -118,9 +119,12 @@ export const elapsedMs = openSoFarMs;
  * (open 2h 5m)` (done: its working time, with its open time; `est 1h · open 2h 5m` for one
  * finished before D147); each part only when known; `''` for none.
  */
-export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare'>, now: number): string {
+export function estimateText(todo: Pick<SessionTodo, 'state' | 'estimateMinutes' | 'actualMs' | 'startedAt' | 'workingMs' | 'workingSince' | 'workingShare' | 'likely'>, now: number): string {
   const parts: string[] = [];
-  if (typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0) parts.push(`est ${formatTodoMinutes(todo.estimateMinutes)}`);
+  if (typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0) {
+    // D167: while not done, the learned likely time first (`likely ~12m (est 1h 30m)`); done cards compare took vs est.
+    parts.push(todo.state !== 'done' && isCorrected(todo.likely) ? likelyText(todo.estimateMinutes, todo.likely) : `est ${formatTodoMinutes(todo.estimateMinutes)}`);
+  }
   if (todo.state === 'done') {
     const ms = elapsedMs(todo, now);
     if (ms !== null) parts.push(tookText(todo.workingMs, ms));

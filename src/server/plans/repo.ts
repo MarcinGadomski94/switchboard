@@ -435,6 +435,19 @@ export class PlanRepository {
     return out;
   }
 
+  /**
+   * D167: the newest closed "waiting on you" spans of every plan (at most `limit`), with their
+   * item's merge / done times and the plan's source session: what the developer's typical waits
+   * are learned from.
+   */
+  reviewWaitSpans(limit: number): Array<{ readonly startedAt: string; readonly endedAt: string; readonly mergedAt: string | null; readonly doneAt: string | null; readonly sourceSessionId: string }> {
+    const rows = this.#statement(
+      `SELECT s.started_at, s.ended_at, i.merged_at, i.done_at, p.source_session_id FROM plan_item_spans s JOIN plan_items i ON i.id = s.item_id JOIN plans p ON p.id = s.plan_id
+       WHERE s.kind = 'waiting-you' AND s.ended_at IS NOT NULL ORDER BY s.ended_at DESC LIMIT ?`,
+    ).all(limit) as unknown as Row[];
+    return rows.map((row) => ({ startedAt: String(row['started_at']), endedAt: String(row['ended_at']), mergedAt: text(row['merged_at'] ?? null), doneAt: text(row['done_at'] ?? null), sourceSessionId: String(row['source_session_id']) }));
+  }
+
   /** The open spans of a plan (id, item, kind). */
   async openSpans(planId: string): Promise<Array<{ readonly id: number; readonly itemId: string; readonly kind: PlanItemSpanKind }>> {
     return (this.#statement('SELECT id, item_id, kind FROM plan_item_spans WHERE plan_id = ? AND ended_at IS NULL ORDER BY id').all(planId) as unknown as Row[]).map((row) => ({ id: Number(row['id']), itemId: String(row['item_id']), kind: String(row['kind']) as PlanItemSpanKind }));

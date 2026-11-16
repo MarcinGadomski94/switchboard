@@ -14,7 +14,7 @@ import { CancelProjectDialog, DeleteProjectDialog, EditStepDialog, JiraSyncDialo
 import { JiraSection, ProposalsBlock } from './JiraSection.tsx';
 import { useProjectPins } from '../shared/project-pins.ts';
 import { timeAgo } from '../shared/time.ts';
-import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft } from './project-model.ts';
+import { PHONE_PROJECT_VIEWS, PROJECT_VIEWS, type ProjectView, agentsCombine, jiraTag, modeOptions, needsProtectedAck, projectCounts, projectNotesHref, protectedAckText, readPhoneProjectView, readProjectView, remoteBlock, restartableSteps, timeLeft, timeLeftDetail, timeLeftTitle } from './project-model.ts';
 import { useProject } from './useProject.ts';
 import { useStepActions } from './useStepActions.ts';
 import { GraphView } from './GraphView.tsx';
@@ -243,7 +243,12 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
             {PROJECT_WORDS.stepsDone(counts.done, counts.total)}
             {counts.approval > 0 ? ` · ${counts.approval} waiting for your approval` : ''}
           </b>
-          {left ? <span className="v2-muted">· {left}</span> : null}
+          {left ? (
+            <span className="v2-muted" title={timeLeftTitle(plan)} data-testid="v2-project-page-time-left">
+              · {left}
+              {timeLeftDetail(plan) ? <span className="v2-p-time-detail"> · {timeLeftDetail(plan)}</span> : null}
+            </span>
+          ) : null}
           {counts.stopped > 0 ? (
             <Chip tone="red" icon="octagon" size="s">
               {PROJECT_WORDS.stoppedCount(counts.stopped)}

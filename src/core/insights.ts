@@ -12,6 +12,7 @@
 import type { CliProviderId } from './cli-providers.ts';
 import type { EstimateMatch, ModelRule } from './model-routing.ts';
 import type { TodoPriority } from './api.ts';
+import { type LearningSample, correctedAtTheTime, isCorrected } from './estimate-learning.ts';
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
@@ -439,6 +440,24 @@ export interface InsightsInput {
   readonly folderLabels?: ReadonlyMap<string, string>;
   /** Which machines the rows come from (merged view); absent = this machine only. */
   readonly machines?: InsightsMachines;
+  /**
+   * D167: every completed item measured in working time with an estimate (any period, newest
+   * first is fine), the history the corrected estimates are learned from; absent = no corrected
+   * accuracy (an older caller, a peer's rows).
+   */
+  readonly learningHistory?: readonly LearningSample[];
+}
+
+/**
+ * D167: the accuracy of the **corrected** estimates next to the raw ones: each item's estimate as
+ * Switchboard would have corrected it when it was made (learned only from items finished before it).
+ * `trend`: per week of the period, how many items landed within half to twice the raw and the
+ * corrected estimate (percent), so the learning shows.
+ */
+export interface CorrectedAccuracy extends AccuracyDistribution {
+  /** Items that had a correction at their time (the rest kept their raw estimate: too little history then). */
+  readonly corrected: number;
+  readonly trend: ReadonlyArray<{ readonly week: string; readonly count: number; readonly rawPct: number; readonly correctedPct: number }>;
 }
 
 /** D108 ruling (merged machines): which machines an answer covers. */
@@ -686,7 +705,7 @@ export interface InsightsAnswer {
    * because they have open time only (finished before D147); `open` = every estimated item's open
    * time ÷ estimate, apart (for planning).
    */
-  readonly estimates: AccuracyDistribution & { readonly byModel: readonly AccuracyGroup[]; readonly byFolder: readonly AccuracyGroup[]; readonly openOnly?: number; readonly open?: AccuracyDistribution };
+  readonly estimates: AccuracyDistribution & { readonly byModel: readonly AccuracyGroup[]; readonly byFolder: readonly AccuracyGroup[]; readonly openOnly?: number; readonly open?: AccuracyDistribution; readonly correctedAccuracy?: CorrectedAccuracy };
   readonly outcomes: { readonly plansOn: boolean; readonly byModel: readonly OutcomeRow[] };
   readonly cost: CostSection;
   readonly forecast: readonly AccountForecast[];
@@ -761,6 +780,52 @@ export function accuracyRatio(todo: Pick<TodoActualRow, 'estimateMinutes' | 'act
   if (typeof todo.estimateMinutes !== 'number' || todo.estimateMinutes <= 0) return null;
   const actual = measure === 'open' ? todo.actualMs : todo.workingMs;
   return typeof actual === 'number' ? actual / (todo.estimateMinutes * 60_000) : null;
+}
+
+/** The share (percent) of ratios within half to twice the estimate (`0.5–1×` and `1–2×`). */
+function withinPct(ratios: readonly number[]): number {
+  if (ratios.length === 0) return 0;
+  return Math.round((ratios.filter((value) => value >= 0.5 && value < 2).length / ratios.length) * 100);
+}
+
+/** The Monday (`YYYY-MM-DD`, UTC) of an ISO time's week. */
+function weekOf(at: string): string {
+  const day = new Date(`${at.slice(0, 10)}T00:00:00.000Z`);
+  const back = (day.getUTCDay() + 6) % 7;
+  day.setUTCDate(day.getUTCDate() - back);
+  return day.toISOString().slice(0, 10);
+}
+
+/**
+ * D167: the corrected estimates' accuracy over `todos` (each with a working time and an estimate),
+ * each corrected as it would have been when it was made ({@link correctedAtTheTime}); `null` when
+ * none qualifies.
+ */
+export function correctedAccuracy(todos: readonly Pick<TodoActualRow, 'estimateMinutes' | 'workingMs' | 'actualMs' | 'folder' | 'provider' | 'model' | 'completedAt'>[], history: readonly LearningSample[]): CorrectedAccuracy | null {
+  const judged = todos.filter((todo) => typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0 && typeof todo.workingMs === 'number');
+  if (judged.length === 0) return null;
+  const ratios: number[] = [];
+  const weeks = new Map<string, { raw: number[]; corrected: number[] }>();
+  let corrected = 0;
+  for (const todo of judged) {
+    const estimate = todo.estimateMinutes as number;
+    const working = (todo.workingMs as number) / 60_000;
+    const likely = correctedAtTheTime({ estimateMinutes: estimate, folder: todo.folder || null, provider: todo.provider || null, model: todo.model || null, completedAt: todo.completedAt }, history);
+    if (isCorrected(likely)) corrected += 1;
+    const ratio = working / likely.minutes;
+    ratios.push(ratio);
+    const week = weeks.get(weekOf(todo.completedAt)) ?? { raw: [], corrected: [] };
+    week.raw.push(working / estimate);
+    week.corrected.push(ratio);
+    weeks.set(weekOf(todo.completedAt), week);
+  }
+  return {
+    count: ratios.length,
+    median: median(ratios),
+    buckets: ACCURACY_BUCKETS.map((bucket) => ({ key: bucket.key, label: bucket.label, count: ratios.filter((value) => accuracyBucket(value) === bucket.key).length })),
+    corrected,
+    trend: [...weeks.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, lists]) => ({ week, count: lists.raw.length, rawPct: withinPct(lists.raw), correctedPct: withinPct(lists.corrected) })),
+  };
 }
 
 /** The distribution of `actual ÷ estimate` over the todos with an estimate (D147: and the measure). */
@@ -1007,7 +1072,9 @@ export function buildInsights(input: InsightsInput): InsightsAnswer {
   // 2 · Estimates.
   // D147: working time; the open-time-only rows (before D147) are counted apart, and every row's open time is shown apart.
   const openOnly = todos.filter((t) => accuracyRatio(t, 'open') !== null && accuracyRatio(t) === null).length;
-  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, labelFolder), openOnly, open: accuracyDistribution(todos, 'open') };
+  // D167: the corrected estimates' accuracy next to the raw, learned from the whole history (no look-ahead).
+  const corrected = input.learningHistory ? correctedAccuracy(todos, input.learningHistory) : null;
+  const estimates = { ...accuracyDistribution(todos), byModel: accuracyGroups(todos, (t) => t.model, modelLabel), byFolder: accuracyGroups(todos, (t) => t.folder, labelFolder), openOnly, open: accuracyDistribution(todos, 'open'), ...(corrected ? { correctedAccuracy: corrected } : {}) };
 
   // 3 · Outcomes and rework, per model.
   const plans = periodPlans?.filter((row) => matchesFilters(row, query)) ?? null;

@@ -16,6 +16,7 @@ import {
 import { creditsInUse, creditsMoneyText } from '../../core/credits.ts';
 import type { AccountService } from '../accounts/service.ts';
 import type { Store } from '../db/store.ts';
+import { estimateLearnerFor } from '../todos/estimate-learning.ts';
 import type { PeerService } from '../peers/service.ts';
 import { priceTableOf } from '../settings/settings.ts';
 import type { InsightsBackfill } from './backfill.ts';
@@ -272,6 +273,8 @@ export class InsightsService {
       backfill: this.#backfill.progress(),
       folderLabels: merged.folderLabels,
       machines,
+      // D167: this computer's learned history (across profiles: the estimates are the agents'), for the corrected accuracy.
+      learningHistory: estimateLearnerFor(this.#store).samples(),
     });
     this.#cache.set(key, { at: now.getTime(), stamp, answer });
     if (this.#cache.size > 50) this.#cache.delete(this.#cache.keys().next().value as string);

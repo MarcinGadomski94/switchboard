@@ -1,5 +1,7 @@
 import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoStartSource, TodoState } from '../../core/api.ts';
 import { CALIBRATION_WINDOW, todoActualsTotal, todoCalibration } from '../../core/todo-actuals.ts';
+import type { LearningContext } from '../../core/estimate-learning.ts';
+import { estimateLearnerFor } from './estimate-learning.ts';
 import { isTodoCaptureSource } from '../../core/todo-capture.ts';
 import {
   DEFAULT_TODO_PRIORITY,
@@ -185,8 +187,25 @@ export class TodoService {
     return this.#listOf(sessionId);
   }
 
+  /**
+   * D167: where session `sessionId`'s estimates are made, for learning: its folder and the CLI /
+   * model of the session that works on its items (its own; a run's items are corrected in the
+   * run's list too, where the run session is the context).
+   */
+  async learningContext(sessionId: string): Promise<LearningContext> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record) return {};
+    return { folder: record.root ?? null, provider: record.provider ?? null, model: record.model ?? null };
+  }
+
+  /** D167: the items with their learned likely time (not-done items with an estimate). */
+  #withLikely(todos: readonly SessionTodo[], context: LearningContext): SessionTodo[] {
+    const learner = estimateLearnerFor(this.#store);
+    return todos.map((todo) => (todo.state !== 'done' && typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0 ? { ...todo, likely: learner.likely(todo.estimateMinutes, context) } : todo));
+  }
+
   async #listOf(sessionId: string): Promise<SessionTodoList> {
-    const todos = (await this.#store.todos.list(sessionId)).map((record) => toTodo(record, this.#ttl));
+    const todos = this.#withLikely((await this.#store.todos.list(sessionId)).map((record) => toTodo(record, this.#ttl)), await this.learningContext(sessionId));
     // D75: open = not done (open and in progress: the sidebar's count); inProgressCount says how many of them are started.
     return {
       sessionId,
@@ -409,6 +428,9 @@ export class TodoService {
    * D147: per estimate band, from items measured in working time only (`todoCalibration`).
    */
   async calibration(sessionId: string): Promise<string | null> {
+    // D167: what Switchboard learned (it corrects the estimates itself); D147's band line only while nothing is learned yet.
+    const learned = estimateLearnerFor(this.#store).line(await this.learningContext(sessionId));
+    if (learned) return learned;
     const own = await this.#store.todos.recentEstimated({ sessionId }, CALIBRATION_WINDOW);
     const mine = todoCalibration(own, 'this session');
     if (mine) return mine;
@@ -462,7 +484,10 @@ export class TodoService {
         folderPath: record.root,
         machine: null,
         lastActivityAt: record.lastActivityAt ?? record.createdAt,
-        todos: items.map((item) => toTodo(item, this.#ttl)),
+        todos: this.#withLikely(
+          items.map((item) => toTodo(item, this.#ttl)),
+          { folder: record.root ?? null, provider: record.provider ?? null, model: record.model ?? null },
+        ),
         actuals: actuals.has(record.id) ? todoActualsTotal(actuals.get(record.id) ?? []) : null,
       });
     }

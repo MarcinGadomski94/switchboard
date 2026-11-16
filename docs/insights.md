@@ -41,6 +41,7 @@ From `todo_actuals` (D78): completed todos **with an estimate**, completed in th
 - **Buckets**: `< 0.5×` = [0, 0.5), `0.5–1×` = [0.5, 1), `1–2×` = [1, 2), `> 2×` = [2, ∞). 1× exactly is in `1–2×` ("took as long or longer").
 - **Median**: of the ratios; with an even count the mean of the two middle values.
 - Per model and per folder: the same, per group.
+- **Corrected (D167, `estimates.correctedAccuracy`):** the same buckets over the **corrected** estimates: each item's estimate as Switchboard would have corrected it when it was made, learned only from the items finished **before** it (no look-ahead; `correctedAtTheTime`), from this computer's `todo_actuals` (a paired machine's rows are judged with this computer's history). `corrected` = the items that had a correction at their time; `trend` = per week (Monday, UTC) the share within ½–2× raw and corrected (percent). The v2 tile shows the corrected accuracy with the raw one beside it, and the chart a line "Corrected by what Switchboard learned: 78% within ½–2× (raw 13%) · weekly 40% → 64% → 81%" (`estimatesTile`), so the learning shows.
 
 ## 3 · Outcomes and rework
 

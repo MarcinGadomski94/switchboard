@@ -273,7 +273,7 @@ describe('live working time (D147, ruling 2026-10-30)', () => {
 });
 
 describe('calibration from working time (D147)', () => {
-  it('per band, this session’s when it has enough, else its folder’s', async () => {
+  it('per band, this session’s when it has enough, else its folder’s (D167: until the learned line takes over)', async () => {
     const todos = service();
     const a = await session('a', { root: '/repo/one', rootKind: 'repo' });
     const b = await session('b', { root: '/repo/one', rootKind: 'repo' });
@@ -284,10 +284,16 @@ describe('calibration from working time (D147)', () => {
       await todos.update(a, item, { state: 'done' }, 'agent');
     };
     expect(await todos.calibration(a)).toBeNull();
-    for (let i = 0; i < 3; i++) await finish(30, 15);
-    for (let i = 0; i < 3; i++) await finish(120, 240);
-    expect(await todos.calibration(a)).toBe('Calibration (last 6 finished, this session): ≤1 h estimates took 0.5× · 1–4 h took 2.0× · >4 h: not enough data');
-    expect(await todos.calibration(b)).toBe('Calibration (last 6 finished, this folder): ≤1 h estimates took 0.5× · 1–4 h took 2.0× · >4 h: not enough data');
+    // D147's band line while fewer than D167's 5 items are learned.
+    for (let i = 0; i < 2; i++) await finish(30, 15);
+    for (let i = 0; i < 2; i++) await finish(120, 240);
+    expect(await todos.calibration(a)).toBeNull();
+    await finish(30, 15);
+    await finish(120, 240);
+    // Six measured items: D167 learns (≥ 5) and its line takes over; its bands have 3 each (< 5), so the folder's whole history answers.
+    // The recency-weighted median of 0.5×, 2.0×, … (newest 2.0×) is 2.0×.
+    expect(await todos.calibration(a)).toBe('Learned from 6 finished in this folder: estimates take 2.00×, so est 90m → likely 180m. Keep estimating as you do; Switchboard shows the corrected time.');
+    expect(await todos.calibration(b)).toBe(await todos.calibration(a));
   });
 });
 

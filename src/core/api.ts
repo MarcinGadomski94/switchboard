@@ -3022,6 +3022,12 @@ export interface SessionTodo {
   readonly needsEnrichment?: boolean;
   /** D81 (additive): how it was captured ({@link TodoCaptureSource}); `null` for an item added any other way. */
   readonly capturedFrom?: TodoCaptureSource | null;
+  /**
+   * D167 (additive, `docs/todos.md` → *Self-correcting estimates*): the item's estimate as this
+   * computer's learned history corrects it (a not-done item with an estimate); `null` / absent =
+   * none (no estimate, done, or an older peer). `basis: 'none'` = not enough history yet: the estimate stands.
+   */
+  readonly likely?: { readonly minutes: number; readonly factor: number; readonly basis: 'folder' | 'global' | 'model' | 'none'; readonly sampleSize: number } | null;
 }
 
 /** D76: an item's run ({@link SessionTodo.runState}). */

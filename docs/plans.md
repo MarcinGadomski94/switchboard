@@ -29,6 +29,14 @@ Tables: `plans` (title, source session, target / base branch, repos, merge mode,
 - **External** `{ system: 'jira', key }`: stored and shown only (the Jira lane fills it).
 - States: `draft` → `running` ⇄ `paused` → `done` | `cancelled`. Delete is refused while running. D117 follow-up: `DELETE /api/plans/{id}?stop=1` (the UI's Delete) cancels a running or paused plan first (as Cancel), then stops each item run session whose turn is running through the session's own Stop (D50, the supervisor's interrupt; a hooked terminal session cannot be stopped from here and is reported `hooked`), then deletes the plan; it answers `{ cancelled, stopped: [{ itemId, sessionId, outcome }] }`. The sessions and their worktrees stay. Cancel itself still stops nothing; plain `DELETE` is unchanged (204). A paired machine's plan is deleted on its machine, which stops its own sessions.
 
+## Self-correcting time left (D167)
+
+The plan's time left (`estimatedMinutesLeft`) is the agents' work as Switchboard's learned history corrects it (`docs/todos.md` → *Self-correcting estimates*): each not-done item's duration is its **likely** time (`PlanItem.likelyMinutes`: its estimate × the factor learned in the plan's folder, for the CLI / model of its run session, else the plan's), and a running item counts its **working time so far** (D147, its todo's live working time), not the wall clock (which counted the nights it waited). The critical path and the spread over `maxConcurrency` are computed as before from those durations. `Plan.estimate` keeps the parts:
+
+- `rawMinutesLeft`: the same from the agents' raw estimates (what the plan showed before D167); `basis` / `sampleSize`: what the correction was learned from (`none` = not enough history yet: the raw estimates stand).
+- `reviewsLeft`: items left that wait for the developer's merge or confirmation; `reviewWaitMinutes` / `answerWaitMinutes`: the developer's **typical waits**, learned apart from every plan's closed `waiting-you` spans (`plan_item_spans`): a span that ended within 2 minutes of its item's merge or done is a review, any other an answer; the median of the newest 30 per kind, the plan's folder's when it has 5, else every folder's; `null` with fewer (re-read every 5 minutes). Your reviews are never folded into the agents' time: they go as fast as you do.
+- **Shown:** v2 "about 1.2h left · agents estimated 9h · + your 2 reviews (~20m each)" (card and header, the tooltip names what it learned from); classic "~1.2h left (agents: 9h)"; `plan_status` "about 70 min left (agents estimated 540 min; learned from 30 finished in this folder; + 2 reviews by the developer, ~20 min each)" and per item "est 108m → likely 14m".
+
 ## Items and dependencies
 
 - An item is an existing todo of the source session (`todoId`), or a new todo added to its list (`todo: { title, description, plan, priority, estimateMinutes }`). A done todo cannot be planned. At most 100 items.
