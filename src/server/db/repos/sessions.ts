@@ -5,6 +5,7 @@ import type { SessionBranching } from '../../../core/branching.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
 import type { ContextState } from '../../../core/context-meter.ts';
 import type { TurnWait } from '../../../core/derive/turn-status.ts';
+import type { SessionReview } from '../../../core/review.ts';
 import type { SessionKind } from '../../../core/chats.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
@@ -183,6 +184,11 @@ export interface SessionRecord {
    * Not D63's {@link profileId} (the CLI account).
    */
   readonly userProfileId?: string;
+  /**
+   * D166 (0056): the turns since the last review that changed files, and the event the next turn's
+   * edits are read after (`docs/inbox.md` → *To review*); `null` / absent = nothing yet.
+   */
+  readonly review?: SessionReview | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -280,6 +286,7 @@ const SPEC: TableSpec<SessionRecord> = {
     extraDirs: ['extra_dirs', 'json'],
     turnWait: ['turn_wait', 'json'],
     userProfileId: ['user_profile_id', 'text'],
+    review: ['review', 'json'],
   },
 };
 

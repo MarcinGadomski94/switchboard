@@ -298,6 +298,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       // D48 P4: a hooked terminal session's message waits in its mailbox for its next idle waiter.
       if (hooked) await context.hooks.sendMessage(request.params.id, text, prepared);
       else await supervisor.sendMessage(request.params.id, text.trim() === '' ? '' : text, 'user', prepared);
+      // D166: the developer's message counts as having reviewed the agent's last turns.
+      if (context.review) await context.review.clear(request.params.id, 'replied');
       return reply.code(202).send();
     } catch (error) {
       if (error instanceof AttachmentError) return reply.code(error.status).send(error.body());

@@ -92,6 +92,14 @@ export function inboxNotice(item: InboxItem): PushNotice {
       payload: { kind: 'questions', title: shortText(`${item.machine ? `${item.source} · ${item.machine.name}` : item.source} needs you`, 80), body: shortText(item.detail || item.title), url, tag: `inbox-${item.id}` },
     };
   }
+  // D166: an agent's finished turns that changed files: its own toggle, the agent's Changes.
+  if (item.kind === 'system' && item.systemKind === 'review') {
+    return {
+      kind: 'toReview',
+      urgency: 'normal',
+      payload: { kind: 'toReview', title: shortText(`${who} · to review`, 80), body: shortText(item.title || item.detail), url, tag: `inbox-${item.id}` },
+    };
+  }
   return {
     kind: 'inbox',
     urgency: 'normal',

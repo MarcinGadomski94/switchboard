@@ -334,6 +334,12 @@ export class EventRepository {
       }));
   }
 
+  /** D166: the id of the session's newest user message (`payload.type` `user`; `0` without one): where a turn's edits start. */
+  async latestUserMessageId(sessionId: string): Promise<number> {
+    const row = this.#table.statement("SELECT id FROM events WHERE session_id = ? AND json_extract(payload, '$.type') = 'user' ORDER BY id DESC LIMIT 1").get(sessionId) as { id: number } | undefined;
+    return row ? Number(row.id) : 0;
+  }
+
   /** The id of the session's newest event (`0` without one): what a cache of its history is keyed by. */
   async newestId(sessionId: string): Promise<number> {
     const row = this.#table.statement('SELECT id FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT 1').get(sessionId) as { id: number } | undefined;

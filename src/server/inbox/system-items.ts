@@ -108,6 +108,21 @@ export const MCP_SIGN_IN_ACTIONS: readonly InboxAction[] = [
   { id: 'dismiss', label: 'Dismiss' },
 ];
 
+/**
+ * D166 (`docs/inbox.md` → *To review*): kind of "Review: <agent> · N files changed" (an agent's
+ * finished turns that changed files, unread until reviewed): **Open changes** (a link to the
+ * agent's Changes tab) and **Mark reviewed** (clears the agent's pending review; the item closes).
+ * One per agent and episode (`payload.dedupe`); brought up to date in place while further turns
+ * add files; closed by itself (`replied`) when the developer messages the agent.
+ */
+export const REVIEW = 'review';
+export const REVIEW_OPEN_CHANGES = 'open-changes';
+export const REVIEW_MARK = 'mark-reviewed';
+export const REVIEW_ACTIONS: readonly InboxAction[] = [
+  { id: REVIEW_OPEN_CHANGES, label: 'Open changes' },
+  { id: REVIEW_MARK, label: 'Mark reviewed' },
+];
+
 function isPayload(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -298,6 +313,8 @@ export class SystemItemService {
   #accountRetry: ((profileId: string) => Promise<unknown>) | null = null;
   /** D124: clears a session's turn wait (`at` = that episode) when its "Waiting for you" item is dismissed. */
   #notWaiting: ((sessionId: string, at: string | null) => Promise<unknown>) | null = null;
+  /** D166: Mark reviewed (`ReviewService.clear`). */
+  #reviewed: ((sessionId: string) => Promise<unknown>) | null = null;
   #unsubscribe: (() => void) | null = null;
   #unsubscribeParent: (() => void) | null = null;
   #unsubscribeClosed: (() => void) | null = null;
@@ -937,6 +954,56 @@ export class SystemItemService {
   }
 
   /** D124: what a Dismiss of a "Waiting for you" item clears (the session's turn wait for that episode). */
+  /** D166: plugs in what Mark reviewed does (`ReviewService.clear`). */
+  useReviewed(clear: ((sessionId: string) => Promise<unknown>) | null): void {
+    this.#reviewed = clear;
+  }
+
+  /**
+   * D166: the "Review: <agent>" item of one episode (`dedupe`): raised once (open or closed, so a
+   * Mark reviewed one is not raised again for the same episode); an open one is brought up to date
+   * in place (more files). Answers the new item, `null` when none was raised.
+   */
+  async reviewNotice(input: { readonly sessionId: string; readonly dedupe: string; readonly source: string; readonly title: string; readonly detail: string }): Promise<SystemItemRecord | null> {
+    const payload = { dedupe: input.dedupe };
+    const open = (await this.#store.systemItems.list(['open'])).find((item) => item.kind === REVIEW && isPayload(item.payload) && item.payload['dedupe'] === input.dedupe);
+    if (open) {
+      if (open.title !== input.title || open.detail !== input.detail) {
+        await this.#store.systemItems.update(open.id, { title: input.title, detail: input.detail, payload });
+        await this.#publishInbox();
+      }
+      return null;
+    }
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: REVIEW,
+        source: input.source,
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: REVIEW_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: input.sessionId,
+        payload,
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /** D166: closes session `sessionId`'s open "Review" items with `outcome`; answers how many. */
+  async closeReviewNotices(sessionId: string, outcome: string): Promise<number> {
+    let closed = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== REVIEW || item.sessionId !== sessionId) continue;
+      if (await this.#closeQuietly(item.id, outcome)) closed += 1;
+    }
+    if (closed > 0) await this.#publishInbox();
+    return closed;
+  }
+
   useNotWaiting(clear: ((sessionId: string, at: string | null) => Promise<unknown>) | null): void {
     this.#notWaiting = clear;
   }
@@ -1215,6 +1282,12 @@ export class SystemItemService {
   }
 
   async #perform(item: SystemItemRecord, action: string): Promise<void> {
+    // D166: Open changes is a link (the agent's Changes tab); Mark reviewed clears the agent's pending review.
+    if (item.kind === REVIEW && action === REVIEW_OPEN_CHANGES) throw new SystemItemError('refused', 'Open changes is a link: open the agent’s Changes');
+    if (item.kind === REVIEW && action === REVIEW_MARK) {
+      if (item.sessionId && this.#reviewed) await this.#reviewed(item.sessionId);
+      return;
+    }
     // D124: dismissing "Waiting for you" says the session is not waiting (a false positive): its turn wait goes.
     if (item.kind === TURN_WAITING && action === 'dismiss') {
       if (item.sessionId && this.#notWaiting) await this.#notWaiting(item.sessionId, isPayload(item.payload) && typeof item.payload['at'] === 'string' ? item.payload['at'] : null);

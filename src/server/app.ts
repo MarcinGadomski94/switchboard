@@ -51,6 +51,7 @@ import { type ApiContext, registerApiRoutes } from './routes.ts';
 import { CleanupService } from './cleanup/service.ts';
 import { ArchiveService } from './sessions/archive.ts';
 import { TurnWaitingInbox } from './inbox/turn-waiting.ts';
+import { ReviewService } from './review/service.ts';
 import { MoveLog } from './takeover/moves.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { installTeam } from './team/install.ts';
@@ -572,6 +573,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('preClose', async () => {
     await turnWaiting.stop();
   });
+  // D166: a finished turn that changed files is "To review" (one Needs-you item per agent) until Mark reviewed or the developer's next message.
+  const review = new ReviewService({ store: options.store, bus, systemItems, announce: (sessionId) => supervisor.announce(sessionId) });
+  systemItems.useReviewed((sessionId) => review.clear(sessionId, 'reviewed'));
+  app.addHook('onReady', async () => {
+    review.start();
+  });
+  app.addHook('preClose', async () => {
+    await review.stop();
+  });
   // D75: one reminder to the agent to finish a started todo when a turn ends with it still in progress (Settings → Sessions).
   const reminder = new TodoReminder({
     bus,
@@ -808,7 +818,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await autoClean.stop();
     await agentMade.close();
   });
-  const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, review, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   apiContextRef = apiContext;
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.

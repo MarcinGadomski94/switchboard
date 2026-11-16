@@ -282,6 +282,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'move-failed': 'Move failed',
   // D163: an MCP server a running agent needs a sign-in to.
   'mcp-sign-in': 'Sign in',
+  // D166: an agent's finished turns that changed files, unread until reviewed.
+  review: 'To review',
 };
 
 /**
@@ -321,7 +323,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     title: record.title,
     label: `${SYSTEM_ITEM_LABELS[record.kind] ?? record.kind}${record.kind === 'turn-waiting' && isRecord(record.payload) && record.payload['detected'] === true ? ' · detected' : ''}`,
     // D124: a "Waiting for you" item says its kind (the push and Team read it).
-    ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' || record.kind === 'account-hint' ? { systemKind: record.kind } : {}),
+    // D166: a "To review" item says its kind too (the UI's green card, the push).
+    ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' || record.kind === 'account-hint' || record.kind === 'review' ? { systemKind: record.kind } : {}),
     ...(command !== null ? { command } : {}),
     detail: record.detail,
     createdAt: record.createdAt,

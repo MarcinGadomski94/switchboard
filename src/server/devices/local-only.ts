@@ -53,6 +53,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/reload-instruction$/],
   // D124: a session's Not waiting (clears a false "needs you" for its turn; normal use).
   ['POST', /^\/api\/sessions\/[^/]+\/not-waiting$/],
+  // D166: Mark reviewed (an agent's pending review; stored on that agent's computer).
+  ['POST', /^\/api\/sessions\/[^/]+\/reviewed$/],
   // D127: the processes sessions left running (read, Stop, Keep; normal use, also on a phone).
   ['GET', /^\/api\/processes$/],
   ['GET', /^\/api\/sessions\/[^/]+\/processes$/],

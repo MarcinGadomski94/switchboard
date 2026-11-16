@@ -44,6 +44,7 @@ import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
 import type { HookService } from './hooks/service.ts';
 import type { McpSignInService } from './mcp/sign-in.ts';
+import type { ReviewService } from './review/service.ts';
 import type { McpService } from './mcp/service.ts';
 import type { PeerService } from './peers/service.ts';
 import type { Providers } from './providers.ts';
@@ -78,6 +79,7 @@ import type { UsageService } from './insights/usage.ts';
 import type { PrWatcher } from './ci/watcher.ts';
 import { registerCiRoutes } from './api/ci.ts';
 import { registerTurnStatusRoutes } from './api/turn-status.ts';
+import { registerReviewRoutes } from './api/review.ts';
 import { registerProcessRoutes } from './api/processes.ts';
 import type { ProcessService } from './processes/service.ts';
 
@@ -132,6 +134,8 @@ export interface ApiContext {
   readonly mcp: McpService;
   /** D163: MCP sign-in where it happens (an agent's notice, the Needs-you item, reconnect after a sign-in; docs/mcp.md). */
   readonly mcpSignIn?: McpSignInService;
+  /** D166: the agents' pending reviews (To review). */
+  readonly review?: ReviewService;
   /** D65: this machine's side of taking a session over to / from a paired machine (docs/peers.md). */
   readonly takeover: TakeoverService;
   /** D65: the initiating machine's runner (preview, start, progress). */
@@ -215,6 +219,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerLoopRoutes(app, context);
   // D124: the agent's turn_status and a session's Not waiting.
   await registerTurnStatusRoutes(app, context);
+  await registerReviewRoutes(app, context);
   // D127: the processes sessions leave running (and the agent's process_keep).
   await registerProcessRoutes(app, context);
   await registerSearchRoutes(app, context);

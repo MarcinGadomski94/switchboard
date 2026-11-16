@@ -24,6 +24,7 @@ import type { AccountCredits } from './credits.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { TurnWait } from './derive/turn-status.ts';
 import type { McpSignInNeed } from './mcp-sign-in.ts';
+import type { ReviewPending } from './review.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { MachineUpdate, UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
@@ -894,6 +895,12 @@ export interface Session {
    */
   readonly turnWait?: TurnWait | null;
   /**
+   * Additive (D166, `docs/inbox.md` → *To review*): the file-changing turns since the developer
+   * last reviewed this agent (Mark reviewed, or their next message); `null` / absent = nothing to
+   * review. With the turn over (idle / done) the agent reads **To review**, not Done.
+   */
+  readonly review?: ReviewPending | null;
+  /**
    * Additive (D163, `docs/mcp.md` → *Sign-in where it happens*): the MCP servers its running
    * CLI reported as needing a sign-in at its latest turn start (`system/init` → `needs-auth`);
    * absent when none (and for a session with no running process).
@@ -1626,7 +1633,7 @@ export interface InboxItem {
   readonly url?: string;
   /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
   readonly teamRole?: string;
-  /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item (D139: `account-needs-you` on an account's); absent on every other item. */
+  /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item (D139: `account-needs-you` on an account's; D166: `review` on an agent's "To review"); absent on every other item. */
   readonly systemKind?: string;
   /** Additive (D139): the terminal command an account's "needs you" item shows, copyable (`CLAUDE_CONFIG_DIR="<dir>" claude`). */
   readonly command?: string;

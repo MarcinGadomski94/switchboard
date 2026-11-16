@@ -138,6 +138,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
   // D124: Not waiting on that machine's session (its turn wait is stored there).
   ['POST', /^\/api\/sessions\/[^/]+\/not-waiting$/],
+  // D166: Mark reviewed (an agent's pending review; stored on that agent's computer).
+  ['POST', /^\/api\/sessions\/[^/]+\/reviewed$/],
   // D83: continue that machine's session in a fresh one (the handover and the new session run there).
   ['POST', /^\/api\/sessions\/[^/]+\/fresh$/],
   // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.

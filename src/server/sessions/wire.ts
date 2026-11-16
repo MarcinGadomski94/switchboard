@@ -5,6 +5,7 @@ import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { effectiveSessionStatus } from '../../core/derive/turn-status.ts';
 import type { McpSignInNeed } from '../../core/mcp-sign-in.ts';
+import { readSessionReview } from '../../core/review.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -314,6 +315,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     ...(await archiveFieldsOf(store, record)),
     // D163: the MCP servers its running CLI needs a sign-in to (absent when none).
     ...mcpSignInOf(store, record),
+    // D166: its file-changing turns not reviewed yet (absent when none; an archived agent's are not shown).
+    ...(record.closedAt === null && readSessionReview(record.review).pending ? { review: readSessionReview(record.review).pending } : {}),
   };
 }
 
