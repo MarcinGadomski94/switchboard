@@ -3,6 +3,7 @@ import type { Plan } from '../../../core/plans.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import type { TeamSummary } from '../../../core/team.ts';
 import { type NeedsKind, type V2Status, sessionStatusToV2 } from '../glossary.ts';
+import { agentStatusOf } from '../shared/agent-line.ts';
 import type { BoardColumn } from '../shared/board-model.ts';
 
 /**
@@ -144,7 +145,8 @@ export function buildAgents(sources: AgentSources): AgentEntry[] {
         session,
         name: nameOf(session),
         kind,
-        status: askStatusOf(asks) ?? sessionStatusToV2(session.status),
+        // D166: agentStatusOf reads To review (a finished, file-changing turn not reviewed yet).
+        status: askStatusOf(asks) ?? agentStatusOf(session),
         asks,
         plan,
         computer,
@@ -169,6 +171,7 @@ export const STATUS_RANK: Readonly<Record<V2Status, number>> = {
   needs: 0,
   stopped: 0,
   ready: 1,
+  review: 1,
   working: 2,
   waiting: 2,
   userstop: 2,

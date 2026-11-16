@@ -2238,6 +2238,18 @@ POST /api/sessions/5d1e…/todos/import
 → 201 { "sessionId": "5d1e…", "todos": [{ "title": "#21 Checkout button overlaps the footer", "description": "On 360 px the button sits on the footer.\n\nGitHub: https://github.com/acme/web-front/issues/21", "…": "…" }], "…": "…" }
 ```
 
+## To review (D166, 2026-11-16, additive)
+Developer request D166 (`docs/decisions.md`; details `docs/inbox.md` → *To review*): an agent's finished turn that changed files is unread until reviewed. Types in `src/core/review.ts`: `ReviewPending`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/reviewed | — | 200 Session (Mark reviewed; nothing pending is fine; `sessionUpdated` is published when it changed) · 404 `not-found` |
+
+- **`Session.review`** (additive): `ReviewPending` `{ since, turns, fileCount, files[] }` (at most 50 paths) while the agent has file-changing turns not reviewed yet; absent otherwise (and on an archived agent). Cleared by Mark reviewed (this route, or the Inbox action `mark-reviewed`) and by the developer's message (`POST /api/sessions/{id}/messages`).
+- **Inbox** (system, source the agent's title): kind `review`, label "To review", status `need`, title "Review: <agent> · N files changed", actions `open-changes` (a link to the agent's Changes: the API answers 409 `refused`) and `mark-reviewed`. **`InboxItem.systemKind`**: `review` on such an item.
+- **Push (D73):** a device toggle `toReview` (`PushEvents.toReview`, default on); the notice is `kind: toReview`.
+- **Peers (D48):** `POST /api/sessions/{id}/reviewed` is on `PEER_API_ALLOW`. **Devices (D73):** on `DEVICE_ALLOWED`.
+- No new `/hub` event: a change publishes `sessionUpdated` (and `inboxChanged` for the item).
 ## Turn status: waiting for you at a turn's end (D124, 2026-10-21, additive)
 Developer request D124 (`docs/decisions.md`; details `docs/derivations.md` → *Session status* → *Waiting for you at a turn's end*): a session whose turn is over and not working, and whose last turn waits for the developer (the agent's `turn_status`, else the text check of its last message), reads `need` with an ask. Types in `src/core/api.ts`: `TurnWait`, `TurnStatus`.
 

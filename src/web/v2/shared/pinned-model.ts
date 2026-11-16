@@ -7,6 +7,7 @@ import { projectCounts, projectStatus } from '../projects/project-model.ts';
 import { type TeamRosterEntry, type TeamSummary, memberNeedsYou } from '../../../core/team.ts';
 import { visibleTeam } from '../../team/model.ts';
 import { type V2Status, sessionStatusToV2, teammateStatusToV2 } from '../glossary.ts';
+import { agentStatusOf } from './agent-line.ts';
 
 /**
  * Fix after 2.0 (2.4.4) · the rail's Pinned list with pinned crews (`docs/v2.md` → *Shell*,
@@ -132,7 +133,7 @@ export function needsByAgent(items: readonly { readonly agent: { readonly sessio
 export function mateStatus(entry: Pick<TeamRosterEntry, 'status'>, needs: number, session: Pick<SessionListItem, 'status'> | undefined): V2Status {
   if (entry.status === 'offline' || entry.status === 'paused') return teammateStatusToV2(entry.status);
   if (needs > 0) return 'needs';
-  return session ? sessionStatusToV2(session.status) : teammateStatusToV2(entry.status);
+  return session ? agentStatusOf(session) : teammateStatusToV2(entry.status);
 }
 
 /**

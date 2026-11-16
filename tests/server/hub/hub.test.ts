@@ -361,7 +361,8 @@ describe('/hub · events (contract, field by field)', () => {
     const updates = stream.payloads<Session>('sessionUpdated').filter((s) => s.id === session.id);
     expect(updates.map((s) => s.status)).toContain('run');
     for (const update of updates) {
-      expect(keysOf(update)).toEqual(SESSION_KEYS);
+      // D166: a turn that changed files adds the additive `review` (its pending review) to the later updates.
+      expect(keysOf(update).filter((key) => key !== 'review')).toEqual(SESSION_KEYS);
       for (const agent of update.agents) expect(keysOf(agent)).toEqual(AGENT_KEYS);
     }
     const listed = (await requestJson(port, 'GET', '/api/sessions?include=agents', cookie)).body as Session[];

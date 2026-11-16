@@ -182,6 +182,7 @@ const V2_4_30 = '2.4.30';
 /** The version D161 (pinned projects and the Projects pulse) ships in. */
 const V2_4_34 = '2.4.34';
 const V2_4_38 = '2.4.38';
+const V2_4_40 = '2.4.40';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1812,6 +1813,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-profile-switcher'],
         v2Route: '/agents',
         missing: 'The profile menu is at the top of the sidebar.',
+      },
+    ],
+  },
+  {
+    id: 'to-review',
+    decision: 'D166',
+    version: V2_4_40,
+    title: 'To review: finished is unread until you look',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'strip',
+        title: 'Changed files wait for your review',
+        what: 'When an agent finishes a turn that changed files, it reads To review (green), not Done, and Needs you gets a green card. Open changes shows the diff; Mark reviewed, or simply replying to the agent, marks it read.',
+        todo: ['Open an agent that changed files, or a green "To review" card in Needs you.'],
+        anchors: ['v2-agent-review'],
+        v2Route: '/agents',
+        missing: 'An agent that finished a turn with changed files shows a green "To review" strip above its message box.',
       },
     ],
   },

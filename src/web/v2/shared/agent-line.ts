@@ -24,10 +24,13 @@ export interface AgentRowExtras {
 }
 
 /** The v2 status of an agent: its open item's (needs / stopped / ready) first, else its session's. */
-export function agentStatusOf(session: Pick<SessionListItem, 'status' | 'turnWait'>, extras: Pick<AgentRowExtras, 'ask' | 'askStatus'> = {}): V2Status {
+export function agentStatusOf(session: Pick<SessionListItem, 'status' | 'turnWait'> & { readonly review?: SessionListItem['review'] }, extras: Pick<AgentRowExtras, 'ask' | 'askStatus'> = {}): V2Status {
   if (extras.askStatus) return extras.askStatus;
   if (extras.ask) return 'needs';
-  return sessionStatusToV2(session.status);
+  const status = sessionStatusToV2(session.status);
+  // D166: a finished turn that changed files is unread until reviewed: To review (green), not Done.
+  if (session.review && (status === 'done' || status === 'idle')) return 'review';
+  return status;
 }
 
 /**
@@ -71,6 +74,9 @@ export function agentLine(session: Pick<SessionListItem, 'status' | 'lastActivit
   switch (status) {
     case 'done':
       return { text: `Done${ago ? ` ${ago}` : ''}${tail}`, time: '', tone: 'green' };
+    // D166: unread until reviewed.
+    case 'review':
+      return { text: `To review${ago ? ` · finished ${ago}` : ''}${tail}`, time: '', tone: 'green' };
     case 'stopped':
       return { text: `Stopped${tail}`, time: ago, tone: 'red' };
     case 'paused':

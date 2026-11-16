@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Icon, StatusBadge } from '../components/index.ts';
 import { PROJECT_WORDS, RAIL_LABELS, STATUS, WORDS, railTasksLabel, sessionStatusToV2 } from '../glossary.ts';
+import { agentStatusOf } from '../shared/agent-line.ts';
 import { V2Link } from '../nav.tsx';
 import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
 import { type PinnedProject as PinnedProjectData, pinnedProjectLabel } from '../shared/pinned-model.ts';
@@ -113,7 +114,7 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
           if (entry.kind === 'crew') return <PinnedCrew key={entry.id} crew={entry.crew} route={route} />;
           if (entry.kind === 'project') return <PinnedProject key={entry.id} project={entry.project} route={route} />;
           const session = entry.session;
-          const status = sessionStatusToV2(session.status);
+          const status = agentStatusOf(session);
           const name = agentDisplayName(session, members);
           return (
             <V2Link key={session.id} to={{ area: 'agent', id: session.id, tab: 'chat' }} className="v2-pin-item" title={`${name} · ${STATUS[status].label}`} aria-current={route.area === 'agent' && route.id === session.id ? 'page' : undefined}>

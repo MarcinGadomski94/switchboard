@@ -95,6 +95,12 @@ describe('D166 · To review (supervised session)', () => {
     const started = await w.supervisor.start(newSession({ task: '[fake:tool-use] Write the file.' }), w.place);
     await waitForStatus(w.store, started.id, ['done']);
     await reviewed(started.id);
+    // A routine's (or a crew hand-off's) message is not the developer's: the review stays.
+    await w.supervisor.sendMessage(started.id, 'Routine check-in.', 'service');
+    await waitForStatus(w.store, started.id, ['done']);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await reviewItems(started.id)).toHaveLength(1);
+    expect((await session(started.id)).review).toMatchObject({ turns: 1 });
     expect((await call('POST', `/api/sessions/${started.id}/messages`, { text: 'Looks good, now the tests.' })).statusCode).toBe(202);
     await until(async () => ((await closedOutcomes(w.store, started.id)).includes('replied') ? true : undefined), 'the item closed by the reply');
     await waitForStatus(w.store, started.id, ['done']);

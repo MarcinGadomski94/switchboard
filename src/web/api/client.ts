@@ -261,6 +261,8 @@ export const api = {
   /** D127: every session's processes, this machine's and each paired machine's (Settings → Processes). */
   processes: (fresh = false) => request<ProcessesOverview>('GET', `/api/processes${fresh ? '?fresh=1' : ''}`),
   /** D124: the session's needs-you line → Not waiting (clears a false "needs you" for that turn: `at` = its episode). */
+  /** D166: Mark reviewed (the agent's file-changing turns are read; its To review item closes). */
+  markReviewed: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reviewed`),
   notWaiting: (id: string, at: string | null) => request<Session>('POST', `/api/sessions/${enc(id)}/not-waiting`, at ? { at } : {}),
   /** D91: Settings → Apply to open sessions (this machine's). */
   applyInstruction: () => request<InstructionApplyResult>('POST', '/api/settings/standing-instruction/apply', {}),

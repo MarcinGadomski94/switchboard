@@ -52,6 +52,11 @@
   --qc: var(--v2-blue);
 }
 
+/* D166: an agent's finished turns that changed files: the Needs-you card, green. */
+.v2-qi[data-kind='review'] {
+  --qc: var(--v2-green);
+}
+
 .v2-qi:focus {
   outline: none;
 }
@@ -460,6 +465,16 @@ button.v2-qi-src:hover {
 .v2-acard[data-kind='routine'] .v2-acard-h {
   background: var(--v2-red-bg);
   color: var(--v2-red);
+}
+
+/* D166: To review: the same card, green. */
+.v2-acard[data-kind='review'] {
+  border-color: var(--v2-green);
+}
+
+.v2-acard[data-kind='review'] .v2-acard-h {
+  background: var(--v2-green-bg);
+  color: var(--v2-green);
 }
 
 .v2-acard-h .v2-acard-tm {

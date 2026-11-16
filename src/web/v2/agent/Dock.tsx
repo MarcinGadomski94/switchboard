@@ -29,6 +29,7 @@ import { markRecent } from '../shared/recent.ts';
 import { useAgentTaskCards } from '../shared/session-tasks.ts';
 import { TodoCard } from '../shared/TodoCard.tsx';
 import { McpSignInNotice } from './McpSignInNotice.tsx';
+import { ReviewStrip } from './ReviewStrip.tsx';
 import { readStripOpen, stripOrder, writeStripOpen } from '../shared/todo-card-model.ts';
 import { clock } from '../shared/time.ts';
 import { type ComposerMeasure, type DockMessage, type DockStatus, composerKey, composerMaxHeight, composerMayShrink, composerPlaceholder, dockStatus, joinWithdrawn, lineBreaks, liveLine, resetTimeOf } from './composer-model.ts';
@@ -371,6 +372,8 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
       {stripOpen && !conversation && (todos.list?.todos.length ?? 0) > 0 ? <TaskStrip sessionId={sessionId} todos={todos} blocked={blocked} working={working} /> : null}
       {/* D163: MCP servers its running CLI needs a sign-in to. */}
       {!conversation && variant !== 'peek' ? <McpSignInNotice sessionId={sessionId} session={session} /> : null}
+      {/* D166: finished turns that changed files, unread until reviewed. */}
+      {!conversation && variant !== 'peek' ? <ReviewStrip sessionId={sessionId} session={session} /> : null}
       {stopTimedOut ? (
         <div className="v2-ag-dock-note" role="alert" data-testid="v2-agent-stop-timeout">
           {AGENT_WORDS.stopTimeout}{' '}

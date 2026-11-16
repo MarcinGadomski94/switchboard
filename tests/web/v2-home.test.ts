@@ -180,7 +180,7 @@ describe('Needs you · filters', () => {
   ];
 
   it('groups every kind under one chip and counts them', () => {
-    expect(kindCounts(items)).toEqual({ all: 12, question: 2, approval: 1, ready: 1, setup: 4, ask: 1, stopped: 3 });
+    expect(kindCounts(items)).toEqual({ all: 12, question: 2, approval: 1, ready: 1, review: 0, setup: 4, ask: 1, stopped: 3 });
     expect(applyFilter(items, 'question').map((i) => i.key)).toEqual(['q', 'm']);
     expect(applyFilter(items, 'setup').map((i) => i.key)).toEqual(['n', 'j', 'p', 'ac']);
     expect(applyFilter(items, 'stopped').map((i) => i.key)).toEqual(['s', 'al', 'ro']);

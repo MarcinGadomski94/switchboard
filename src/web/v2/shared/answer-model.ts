@@ -61,7 +61,7 @@ export interface CardButton {
 }
 
 /** The server action ids that only open something (the item stays open). */
-const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION, 'move-try-again']);
+const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION, 'move-try-again', 'open-changes']);
 
 /** `true` for an action id that only opens something. */
 export function isLinkAction(id: string): boolean {
@@ -71,6 +71,8 @@ export function isLinkAction(id: string): boolean {
 /** The v2 path an "open" server action goes to (`null` when it cannot be followed here). */
 export function openTargetOf(item: NeedsItem, actionId: string): OpenTarget | null {
   if (actionId === 'open-session') return item.agent?.sessionId ? { type: 'agent', sessionId: item.agent.sessionId } : null;
+  // D166: a To review card's Open changes: the agent's Changes tab (the item stays until Mark reviewed).
+  if (actionId === 'open-changes') return item.agent?.sessionId ? { type: 'agent', sessionId: item.agent.sessionId, tab: 'changes' } : null;
   if (actionId === 'open-pr') return item.url && /^https:\/\//.test(item.url) ? { type: 'url', url: item.url } : null;
   if (actionId === 'open-plan' || actionId === 'open-memory') return item.route ? { type: 'path', path: item.route } : null;
   // D142: "Add it there": Advanced › Accounts: every option, with the item's computer picked and the Add form prefilled.
@@ -136,6 +138,9 @@ export function cardButtons(item: NeedsItem): CardButton[] {
       }
       return buttons;
     }
+    // D166: Mark reviewed is the main action; Open changes opens the agent's Changes (the card stays).
+    case 'review':
+      return serverButtons(item).map((button) => (button.id === 'mark-reviewed' ? { ...button, variant: 'primary' as const, icon: 'check' } : button.id === 'open-changes' ? { ...button, variant: 'default' as const, icon: 'eye' } : button)).sort((a, b) => (a.id === 'mark-reviewed' ? -1 : b.id === 'mark-reviewed' ? 1 : 0));
     case 'ask':
       // Fix after 2.0: what classic offers for an agent's ask (D124): the reply box (the card's own) and
       // Not waiting (the session header's; the Inbox's Dismiss). No made-up "Go ahead": the agent's own

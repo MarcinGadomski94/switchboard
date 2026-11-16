@@ -120,7 +120,7 @@ export const WORDS = {
  * The statuses a v2 badge shows (always icon + word + colour, never colour alone).
  * `working` pulses; the others use the icon named in {@link STATUS}.
  */
-export const V2_STATUSES = ['working', 'waiting', 'queued', 'needs', 'stopped', 'ready', 'done', 'idle', 'paused', 'userstop', 'offline', 'reconnecting', 'online'] as const;
+export const V2_STATUSES = ['working', 'waiting', 'queued', 'needs', 'stopped', 'ready', 'review', 'done', 'idle', 'paused', 'userstop', 'offline', 'reconnecting', 'online'] as const;
 /** A v2 status. */
 export type V2Status = (typeof V2_STATUSES)[number];
 
@@ -142,6 +142,8 @@ export const STATUS: Readonly<Record<V2Status, StatusLook>> = {
   needs: { label: 'Needs you', icon: 'hand', tone: 'amber' },
   stopped: { label: 'Stopped', icon: 'octagon', tone: 'red' },
   ready: { label: 'Ready for approval', icon: 'half', tone: 'violet' },
+  // D166: a finished turn that changed files, unread until reviewed (green: done, but not read yet).
+  review: { label: 'To review', icon: 'eye', tone: 'green' },
   done: { label: 'Done', icon: 'check', tone: 'green' },
   idle: { label: 'Idle', icon: 'moon', tone: 'grey' },
   paused: { label: 'Paused', icon: 'pause', tone: 'grey' },
@@ -233,7 +235,7 @@ export function computerProblem(state: MachineState | null | undefined): string 
  * The kinds of a "needs you" item (the prototype's `KIND`): what the card asks.
  * `alert` covers usage / paid-extra alerts and anything only to acknowledge.
  */
-export const NEEDS_KINDS = ['question', 'multi', 'approval', 'ready', 'pick', 'note', 'note-edit', 'note-removal', 'access', 'jd', 'routine', 'ask', 'stopped', 'alert'] as const;
+export const NEEDS_KINDS = ['question', 'multi', 'approval', 'ready', 'review', 'pick', 'note', 'note-edit', 'note-removal', 'access', 'jd', 'routine', 'ask', 'stopped', 'alert'] as const;
 /** A needs-you kind. */
 export type NeedsKind = (typeof NEEDS_KINDS)[number];
 
@@ -243,6 +245,8 @@ export const NEEDS_KIND_LOOK: Readonly<Record<NeedsKind, { readonly label: strin
   multi: { label: 'Question · choose any', icon: 'question', status: 'needs' },
   approval: { label: 'Approval', icon: 'shield', status: 'ready' },
   ready: { label: 'Ready for approval', icon: 'half', status: 'ready' },
+  // D166: an agent's finished turns that changed files (the green card).
+  review: { label: 'To review', icon: 'eye', status: 'review' },
   pick: { label: 'Pick code projects', icon: 'folder', status: 'needs' },
   note: { label: 'Note to approve', icon: 'book', status: 'ready' },
   // D135: an agent proposes to change or remove an approved note.
@@ -257,7 +261,7 @@ export const NEEDS_KIND_LOOK: Readonly<Record<NeedsKind, { readonly label: strin
 };
 
 /** The Needs-you page's filter groups (the prototype's `FGROUP`). */
-export const NEEDS_FILTERS = ['all', 'question', 'approval', 'ready', 'setup', 'ask', 'stopped'] as const;
+export const NEEDS_FILTERS = ['all', 'question', 'approval', 'ready', 'review', 'setup', 'ask', 'stopped'] as const;
 /** A filter group. */
 export type NeedsFilter = (typeof NEEDS_FILTERS)[number];
 
@@ -267,6 +271,7 @@ export const NEEDS_FILTER_LABELS: Readonly<Record<NeedsFilter, string>> = {
   question: 'Questions',
   approval: 'Approvals',
   ready: 'Ready for approval',
+  review: 'To review',
   setup: 'Notes & setup',
   ask: 'Asks',
   stopped: 'Stopped & alerts',
@@ -278,6 +283,7 @@ export const NEEDS_FILTER_OF: Readonly<Record<NeedsKind, Exclude<NeedsFilter, 'a
   multi: 'question',
   approval: 'approval',
   ready: 'ready',
+  review: 'review',
   ask: 'ask',
   stopped: 'stopped',
   alert: 'stopped',
