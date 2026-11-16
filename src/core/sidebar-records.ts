@@ -39,6 +39,8 @@ export interface FolderRecord {
   readonly deletedClock: string | null;
   /** This machine's own (not shared). */
   readonly collapsed: boolean;
+  /** D165 (`docs/profiles.md`): the user profile whose folder tree it is (absent: Default's, or a new folder: the writer's profile). */
+  readonly userProfileId?: string;
 }
 
 /** Where a stored session sits. */

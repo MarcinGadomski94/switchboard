@@ -33,6 +33,8 @@ const WRITE = 'POST|PUT|DELETE|PATCH';
 
 /** The routes a paired device may call. */
 export const DEVICE_ALLOWED: readonly DeviceRule[] = [
+  // D165: the profiles list (a phone works in the profile Settings → Devices gives it).
+  ['GET', /^\/api\/user-profiles$/],
   // Sessions.
   ['GET|POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
@@ -221,6 +223,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
  * the flows that act on this computer itself.
  */
 export const DEVICE_REFUSED: readonly DeviceRule[] = [
+  // D165: profiles are managed and switched on the computer; moving an agent between profiles too.
+  [WRITE, /^\/api\/user-profiles(?:\/.*)?$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/user-profile$/],
   // Devices: pairing others, revoking, the access switch.
   ['*', /^\/api\/devices(?:\/.*)?$/],
   // Paired machines: pairing, adding, removing, renaming, listener, shared layout.

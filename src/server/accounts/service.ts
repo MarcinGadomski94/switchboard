@@ -1,3 +1,5 @@
+import { USER_PROFILE_ACCOUNTS_SETTING } from '../../core/user-profiles.ts';
+import { currentProfileForCreate } from '../user-profiles/context.ts';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -578,9 +580,19 @@ export class AccountService {
    * D138: `preferred` is the chosen account (a Project's); absent = the overall choice; it is a
    * preference: out of allowance, the automatic pick takes over.
    */
+  /** D165: the active user profile's default account for `cli` (`undefined`: none set, or outside a request). */
+  async #profileDefault(cli: CliProviderId): Promise<string | undefined> {
+    const profile = currentProfileForCreate();
+    if (!profile) return undefined;
+    const all = (await this.#store.settings.get(USER_PROFILE_ACCOUNTS_SETTING)) as Record<string, Record<string, unknown>> | undefined;
+    const id = all?.[profile]?.[cli];
+    return typeof id === 'string' && (await this.#store.profiles.get(id))?.enabled ? id : undefined;
+  }
+
   async pick(cli: CliProviderId, options: { readonly check?: boolean; readonly preferred?: string | null } = {}): Promise<string | null> {
     const records = await this.#store.profiles.list(cli);
-    const preferred = options.preferred === undefined ? undefined : options.preferred;
+    // D165: without a chosen account, the default account of the profile the request works in (when it set one for this CLI).
+    const preferred = options.preferred === undefined ? await this.#profileDefault(cli) : options.preferred;
     // One account (the Default only): nothing to choose between, and no status command to run.
     if (records.filter((r) => r.enabled).length < 2) return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli), this.#now(), preferred);
     return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli, options.check === false ? {} : { check: true }), this.#now(), preferred);

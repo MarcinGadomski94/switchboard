@@ -66,6 +66,11 @@ import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
+import { UserProfileService } from './user-profiles/service.ts';
+import { type ProfileScopeResolvers, registerProfileScope } from './user-profiles/scope.ts';
+import { closeSession } from './sessions/close.ts';
+import { listInbox } from './inbox/wire.ts';
+import { teamServiceOf } from './team/install.ts';
 import { claudeAgentsLister } from './supervisor/recovery.ts';
 import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
@@ -292,6 +297,62 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     agentTokenValid: (sessionId, candidate) => agentTokenMatches(options.token, sessionId, candidate),
     deviceGuard: (request, reply) => deviceService.guard(request, reply),
   });
+  // D165 (docs/profiles.md): the user profiles and each request's profile scope (right after the guard).
+  let apiContextRef: ApiContext | null = null;
+  const userProfiles = new UserProfileService({
+    store: options.store,
+    bus,
+    secret: options.token,
+    remoteSessions: () => (peersRef ? [...peersRef.remoteSessions(), ...peersRef.remoteArchived()] : []),
+    archiveSession: async (sessionId) => {
+      if (!apiContextRef) throw new Error('Switchboard is still starting');
+      await closeSession(apiContextRef, sessionId, true);
+    },
+    synced: (records) => peersRef?.userProfilesChanged(records),
+  });
+  deviceService.useNoticeScope?.((profileId, sessionId) => userProfiles.sees(profileId, sessionId));
+  const offProfileIndex = bus.subscribe((message) => {
+    if (message.name === 'sessionUpdated') userProfiles.noteSession(message.payload.id, message.payload.userProfileId);
+  });
+  app.addHook('onClose', async () => {
+    offProfileIndex();
+  });
+  const folderProfile = (folderId: string): string | null => {
+    const row = options.store.db.prepare('SELECT user_profile_id FROM sidebar_folders WHERE id = ?').get(folderId);
+    return row ? String(row['user_profile_id']) : null;
+  };
+  registerProfileScope(app, userProfiles, (): ProfileScopeResolvers => ({
+    planSession: async (planId) => {
+      if (planId.startsWith('r~')) return peersRef?.remotePlans().find((plan) => plan.id === planId)?.sourceSessionId ?? null;
+      try {
+        return (await planServiceOf(app)?.get(planId))?.sourceSessionId ?? null;
+      } catch {
+        return null;
+      }
+    },
+    memberSession: (memberId) => teamServiceOf(app)?.memberSession(memberId) ?? null,
+    teamProfile: (teamId) => teamServiceOf(app)?.teamProfile(teamId) ?? null,
+    teamIdFor: (teamId) => teamServiceOf(app)?.teamIdFor(teamId) ?? null,
+    inboxSession: async (itemId) => {
+      const item = [...(await listInbox(options.store)), ...(peersRef?.remoteInbox() ?? [])].find((candidate) => candidate.id === itemId);
+      return item === undefined ? undefined : item.sessionId;
+    },
+    batchSession: async (batchId) => (batchId.startsWith('r~') ? null : ((await options.store.questions.getBatch(batchId))?.sessionId ?? null)),
+    artifactSession: async (artifactId) => (artifactId.startsWith('r~') ? null : ((await options.store.artifacts.get(artifactId))?.sessionId ?? null)),
+    scheduleProfile: (scheduleId) => {
+      if (scheduleId.startsWith('r~')) return null;
+      const row = options.store.db.prepare('SELECT user_profile_id FROM schedules WHERE id = ?').get(scheduleId);
+      return row ? String(row['user_profile_id']) : null;
+    },
+    moveSession: async (moveId) => {
+      try {
+        return (await apiContextRef?.moves.get(moveId))?.agentSessionId ?? null;
+      } catch {
+        return null;
+      }
+    },
+    folderProfile,
+  }));
   let supervisor = options.supervisor;
   let questions = options.questions;
   if (!supervisor) {
@@ -420,6 +481,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   peers.useApp(app);
   peersRef = peers;
+  peers.useUserProfiles(userProfiles);
   // D98 (docs/accounts.md → Shared across paired machines): the paired machines' accounts, merged by identity with these.
   const sharedAccounts = config.demo ? null : new SharedAccounts({ accounts, store: options.store, peers, bus });
   if (sharedAccounts) {
@@ -740,7 +802,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await autoClean.stop();
     await agentMade.close();
   });
-  const apiContext: ApiContext = { ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  apiContextRef = apiContext;
   await registerApiRoutes(app, apiContext);
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);

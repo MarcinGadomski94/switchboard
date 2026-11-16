@@ -92,7 +92,8 @@ export function sessionIdOf(key: string, selfId: string): string | null {
 /** Records → what is sent (keys for session ids; `collapsed` left out). */
 export function toWire(changes: RecordChanges, selfId: string): { readonly folders: SidebarSyncFolder[]; readonly places: SidebarSyncPlace[] } {
   return {
-    folders: changes.folders.map((f) => ({ id: f.id, name: f.name, nameClock: f.nameClock, parentId: f.parentId, order: f.order, placeClock: f.placeClock, deletedClock: f.deletedClock })),
+    // D165: a folder's profile travels with it (an older machine ignores the field and its folders arrive as Default's).
+    folders: changes.folders.map((f) => ({ id: f.id, name: f.name, nameClock: f.nameClock, parentId: f.parentId, order: f.order, placeClock: f.placeClock, deletedClock: f.deletedClock, ...(f.userProfileId ? { userProfileId: f.userProfileId } : {}) })),
     places: changes.places.map((p) => ({ key: sessionKey(p.sessionId, selfId), group: p.group, folderId: p.folderId, order: p.order, clock: p.clock })),
   };
 }
@@ -115,7 +116,8 @@ function readFolder(value: unknown): FolderRecord | null {
   if (!isClock(nameClock) || !isClock(placeClock) || !isOrderKey(order)) return null;
   if (!(parentId === null || (isId(parentId) && parentId !== id))) return null;
   if (!(deletedClock === null || (isClock(deletedClock) && deletedClock !== ''))) return null;
-  return { id, name, nameClock, parentId, order, placeClock, deletedClock, collapsed: false };
+  const profile = (value as { userProfileId?: unknown }).userProfileId;
+  return { id, name, nameClock, parentId, order, placeClock, deletedClock, collapsed: false, ...(typeof profile === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(profile) ? { userProfileId: profile } : {}) };
 }
 
 /** One place as received (its key turned into this machine's session id), or `null` when malformed. */

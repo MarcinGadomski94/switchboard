@@ -66,6 +66,8 @@ interface Client {
   readonly detach: () => void;
   /** D95 follow-up: the client asked for agent deltas (`/hub?delta=1`); what it was sent. */
   readonly deltas: AgentDeltaEncoder | null;
+  /** D165: what this client may see of a message (`null` = nothing; `docs/profiles.md` → *Scope*). */
+  readonly transform: ((message: HubMessage) => HubMessage | null) | null;
 }
 
 /** Fans the bus out to the connected SSE clients. */
@@ -107,7 +109,7 @@ export class SseHub {
    * writes the stream headers and keeps the response open until the client goes
    * away or the hub closes.
    */
-  attach(res: ServerResponse, options: { readonly agentDeltas?: boolean } = {}): void {
+  attach(res: ServerResponse, options: { readonly agentDeltas?: boolean; readonly transform?: (message: HubMessage) => HubMessage | null } = {}): void {
     if (this.#closed) {
       res.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ error: 'closing' }));
@@ -124,6 +126,7 @@ export class SseHub {
     const client: Client = {
       res,
       deltas: options.agentDeltas ? new AgentDeltaEncoder() : null,
+      transform: options.transform ?? null,
       detach: () => {
         res.off('close', onGone);
         res.off('error', onError);
@@ -177,6 +180,26 @@ export class SseHub {
   }
 
   #broadcast(message: HubMessage): void {
+    // D165: a client in one profile gets only that profile's events (its own frame when its view differs).
+    if ([...this.#clients].some((client) => client.transform)) {
+      const shared = new Map<HubMessage, string>();
+      for (const client of [...this.#clients]) {
+        try {
+          const seen = client.transform ? client.transform(message) : message;
+          if (seen === null) continue;
+          let frame: string;
+          if (seen.name === 'sessionUpdated' && client.deltas) frame = formatEvent('sessionUpdated', client.deltas.encode(seen.payload));
+          else {
+            frame = shared.get(seen) ?? formatEvent(seen.name, seen.payload);
+            shared.set(seen, frame);
+          }
+          this.#write(client, frame);
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
+      return;
+    }
     if (message.name === 'sessionUpdated' && [...this.#clients].some((client) => client.deltas)) {
       // D95 follow-up: a delta client gets its own frame (only the agents that changed for it).
       let whole: string | null = null;

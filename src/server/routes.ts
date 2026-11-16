@@ -1,3 +1,4 @@
+import { registerUserProfileRoutes } from './api/user-profiles.ts';
 import type { CliStatusService } from './cli/status.ts';
 import { registerCliRoutes } from './api/clis.ts';
 import { registerAccountRoutes } from './api/accounts.ts';
@@ -6,6 +7,7 @@ import type { AccountHint } from './accounts/hint.ts';
 import type { AccountChoice } from './accounts/choice.ts';
 import type { AccountService } from './accounts/service.ts';
 import type { SignInManager } from './accounts/signin.ts';
+import type { UserProfileService } from './user-profiles/service.ts';
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
 import { registerAttachmentRoutes } from './api/attachments.ts';
@@ -140,6 +142,8 @@ export interface ApiContext {
   readonly todos: TodoService;
   /** D73: paired devices, the device listener and web push (docs/devices.md). */
   readonly devices: DeviceService;
+  /** D165: the user profiles (`docs/profiles.md`); absent in some test contexts (then nothing is scoped by the routes that read it). */
+  readonly userProfiles?: UserProfileService;
   /** D80: checkpoints before each turn, revert and Redo (docs/undo.md). */
   readonly checkpoints: CheckpointService;
   /** D85: the tutorial's state on this machine (docs/tutorial.md). */
@@ -175,6 +179,8 @@ export interface ApiContext {
  */
 export async function registerApiRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   await registerSessionRoutes(app, context);
+  // D165: the profiles (docs/profiles.md).
+  await registerUserProfileRoutes(app, context);
   await registerAttachmentRoutes(app, context);
   await registerInboxRoutes(app, context);
   await registerSolutionRoutes(app, context);

@@ -48,9 +48,11 @@ export interface PeerHandlers {
   /** `GET /peer/v1/events`: take over the raw response as an event stream (D95 follow-up: `?delta=1` = agent deltas). */
   events(machine: MachineRecord, res: ServerResponse, options?: { readonly agentDeltas?: boolean }): void;
   /** `/peer/v1/api/*`: the allow-listed local API, answered as the local UI would get it. */
-  api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer>;
+  api(machine: MachineRecord, method: string, url: string, body: unknown, userProfileId?: string | null): Promise<PeerApiAnswer>;
   /** D71 · `POST /peer/v1/sidebar`: the caller's sidebar layout records (the shared layout, when switched on here for it). */
   sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** D165 · `POST /peer/v1/user-profiles`: the caller's profile records (merged; a full exchange answers every record). */
+  userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
 }
 
 /** D71: body limit of the sidebar exchange (a whole layout's records). */
@@ -127,13 +129,20 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
     const answer = await handlers.sidebar(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
+  // D165: the profiles exchange (pairing auth like every route here).
+  app.post('/peer/v1/user-profiles', async (request, reply) => {
+    const answer = await handlers.userProfiles(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
   app.get<{ Querystring: { delta?: string } }>('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();
     handlers.events(request.peerMachine as MachineRecord, reply.raw, { agentDeltas: wantsDeltas(request.query) });
   });
   const api = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     const url = request.url.slice('/peer/v1'.length);
-    const answer = await handlers.api(request.peerMachine as MachineRecord, request.method, url, request.body);
+    // D165: the profile the calling computer's request works in (absent: an older computer, or its own work).
+    const profile = request.headers['x-switchboard-user-profile'];
+    const answer = await handlers.api(request.peerMachine as MachineRecord, request.method, url, request.body, typeof profile === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(profile) ? profile : null);
     reply.code(answer.status).header('cache-control', 'no-store');
     if (answer.contentType) reply.header('content-type', answer.contentType);
     for (const [name, value] of Object.entries(answer.headers ?? {})) reply.header(name, value);

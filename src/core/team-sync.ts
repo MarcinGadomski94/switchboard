@@ -89,7 +89,9 @@ export function readTeamRecord(value: unknown): TeamRecord | null {
   if (!b) return null;
   const name = str(b.raw['name'], 100);
   if (!name) return null;
-  return { id: b.id, name, clock: b.clock, deleted: b.deleted, order: readOrder(b.raw['order']), createdAt: str(b.raw['createdAt'], 40) ?? '', updatedAt: str(b.raw['updatedAt'], 40) ?? '' };
+  // D165: the crew's user profile (absent: an older computer's crew, Default's).
+  const userProfileId = str(b.raw['userProfileId'], 64);
+  return { id: b.id, name, clock: b.clock, deleted: b.deleted, order: readOrder(b.raw['order']), createdAt: str(b.raw['createdAt'], 40) ?? '', updatedAt: str(b.raw['updatedAt'], 40) ?? '', ...(userProfileId ? { userProfileId } : {}) };
 }
 
 /** A member from a peer (`null` when malformed; unknown fields dropped, missing ones defaulted). */

@@ -53,8 +53,13 @@ export async function registerDeviceRoutes(app: FastifyInstance, context: ApiCon
   app.put('/api/devices/access', async (request, reply) => run(reply, () => devices.setAccess(request.body)));
   app.post('/api/devices/pairing', async (_request, reply) => run(reply, () => devices.createPairingCode()));
   app.delete('/api/devices/pairing', async (_request, reply) => run(reply, () => devices.cancelPairingCode(), 204));
+  // D165: `userProfileId` moves the device to a profile; `name` renames it (either or both).
   app.put<{ Params: { id: string } }>('/api/devices/:id', async (request, reply) =>
-    run(reply, () => devices.rename(request.params.id, (request.body as { name?: unknown } | null)?.name)),
+    run(reply, async () => {
+      const body = request.body as { name?: unknown; userProfileId?: unknown } | null;
+      const moved = body?.userProfileId !== undefined ? await devices.setUserProfile(request.params.id, body.userProfileId) : null;
+      return body?.name !== undefined || !moved ? devices.rename(request.params.id, body?.name) : moved;
+    }),
   );
   app.delete<{ Params: { id: string } }>('/api/devices/:id', async (request, reply) => run(reply, () => devices.revoke(request.params.id), 204));
 

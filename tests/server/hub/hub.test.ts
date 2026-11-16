@@ -112,6 +112,7 @@ const SESSION_KEYS = keys<Session>()([
   'accountChoice',
   'movedTo',
   'movedFrom',
+  'userProfileId',
   // additive, D68 (the session's open todos)
   'openTodoCount',
   // additive, D76 (a todo's run session)

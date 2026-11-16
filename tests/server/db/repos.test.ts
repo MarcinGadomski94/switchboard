@@ -107,6 +107,7 @@ describe('sessions', () => {
       // D124 (0047): no turn waits for the developer.
       turnWait: null,
       extraDirs: [],
+      userProfileId: 'default',
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

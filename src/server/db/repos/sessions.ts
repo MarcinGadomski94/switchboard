@@ -9,6 +9,8 @@ import type { SessionKind } from '../../../core/chats.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
+import { DEFAULT_USER_PROFILE_ID } from '../../../core/user-profiles.ts';
+import { currentProfileForCreate } from '../../user-profiles/context.ts';
 
 /** A stored session (ARCHITECTURE data model + the M0 stored fields). */
 export interface SessionRecord {
@@ -175,6 +177,12 @@ export interface SessionRecord {
    * `null` = nothing (cleared when a new turn starts). Read through `effectiveSessionStatus`.
    */
   readonly turnWait: TurnWait | null;
+  /**
+   * D165 (0055): the user profile the agent belongs to (`docs/profiles.md`). Always set on a record
+   * read from the store (`'default'` for every session before 0055); optional only for literals.
+   * Not D63's {@link profileId} (the CLI account).
+   */
+  readonly userProfileId?: string;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -271,6 +279,7 @@ const SPEC: TableSpec<SessionRecord> = {
     lookAt: ['look_at', 'json'],
     extraDirs: ['extra_dirs', 'json'],
     turnWait: ['turn_wait', 'json'],
+    userProfileId: ['user_profile_id', 'text'],
   },
 };
 
@@ -303,10 +312,27 @@ export class SessionRepository {
     this.#table = new Table(ctx.db, SPEC);
   }
 
-  /** Stores a new session. The name and the claude session id must be unique. */
+  /**
+   * Stores a new session. The name and the claude session id must be unique.
+   * D165: without an explicit `userProfileId` it takes its source's (the session it continues,
+   * the session whose todo or plan item it runs), else the current request's profile, else Default.
+   */
   async create(input: SessionCreate): Promise<SessionRecord> {
     const ts = this.#ctx.now();
-    return fromStored(this.#table.insert(toStored({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts })));
+    const userProfileId = input.userProfileId ?? this.#sourceProfile(input) ?? currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID;
+    // Default is the column's own default: not written (a database before 0055, in the migration tests, has no column).
+    const profile = userProfileId === DEFAULT_USER_PROFILE_ID ? {} : { userProfileId };
+    return fromStored(this.#table.insert(toStored({ ...defined(input), ...profile, id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts })));
+  }
+
+  /** D165: the profile of the session a new one comes from (`continuedFrom`, a todo's / plan item's source), when stored here. */
+  #sourceProfile(input: SessionCreate): string | null {
+    for (const sourceId of [input.continuedFrom ?? null, input.todoLink?.sourceSessionId ?? null]) {
+      if (!sourceId) continue;
+      const source = this.#table.get(sourceId);
+      if (source?.userProfileId) return source.userProfileId;
+    }
+    return null;
   }
 
   async get(id: string): Promise<SessionRecord | null> {

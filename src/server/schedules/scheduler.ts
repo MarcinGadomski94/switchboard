@@ -1,3 +1,5 @@
+import { DEFAULT_USER_PROFILE_ID } from '../../core/user-profiles.ts';
+import { currentProfileForCreate, runInProfileScope } from '../user-profiles/context.ts';
 import type { Schedule, ScheduleChange, Session } from '../../core/api.ts';
 import { nextRun, parseCron } from '../../core/cron.ts';
 import { runSessionName } from '../../core/schedules.ts';
@@ -365,7 +367,12 @@ export class Scheduler {
 
   async #persist(input: ValidScheduleInput): Promise<ScheduleRecord> {
     const fields = { name: input.name, description: input.description, cron: input.cron, template: input.template, folderId: input.template.folder };
-    if (input.id === null) return this.#store.schedules.create({ ...fields, paused: false });
+    if (input.id === null) {
+      const created = await this.#store.schedules.create({ ...fields, paused: false });
+      // D165: a new schedule belongs to the profile the request works in (Default outside one).
+      this.#store.db.prepare('UPDATE schedules SET user_profile_id = ? WHERE id = ?').run(currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID, created.id);
+      return created;
+    }
     await this.#record(input.id);
     const updated = await this.#store.schedules.update(input.id, fields);
     return updated ?? this.#record(input.id);
@@ -455,7 +462,10 @@ export class Scheduler {
         // D22: the run's title is the schedule's name (its short name stays `<schedule>-<MMDD>-<HHMM>`).
         // D62: the run's CLI is the template's (Claude Code for a template saved before D62).
         const body = { ...template, folder, name: await this.#freeName(schedule.name, now), title: schedule.name, provider: templateProvider(template) };
-        const outcome = await startNewSession(this.#sessions, body, {
+        // D165: the run starts in the schedule's profile (the timer runs outside any request).
+        const profileRow = this.#store.db.prepare('SELECT user_profile_id FROM schedules WHERE id = ?').get(schedule.id);
+        const profile = profileRow ? String(profileRow['user_profile_id']) : DEFAULT_USER_PROFILE_ID;
+        const outcome = await runInProfileScope(profile, () => startNewSession(this.#sessions, body, {
           // D32 *Unchanged*: a scheduled run's worktrees keep `session/{name}` (each run has its own name).
           worktreeBranch: 'session',
           beforeSpawn: async (session) => {
@@ -463,7 +473,7 @@ export class Scheduler {
             await this.#store.schedules.updateRun(run.id, { sessionId: session.id });
             this.#runBySession.set(session.id, run.id);
           },
-        });
+        }));
         if (!outcome.ok) return await this.#finish(run.id, 'fail', refusalText(outcome.body));
         // The session may already have moved on while it started.
         const session = await this.#store.sessions.get(outcome.record.id);

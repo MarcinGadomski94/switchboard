@@ -53,6 +53,8 @@ import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens
 import { labelInboxItems } from '../team/hooks.ts';
 // Project memory (D107) hook (follow-up 2026-10-16): a paired machine's memoryChanged retries a pending member-memory copy (docs/memory-removal.md).
 import { memoryPeerChanged } from '../memory/hooks.ts';
+import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
+import { INTERNAL_SCOPE_HEADER, INTERNAL_SECRET, USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
 
 /**
  * D48 "Switchboard peers" (`docs/peers.md`): this machine's identity, its optional
@@ -74,6 +76,9 @@ import { memoryPeerChanged } from '../memory/hooks.ts';
 
 /** Header of a request the peer API injects into the local app (D48): answer local data only, never forward. */
 export const PEER_REQUEST_HEADER = 'x-switchboard-peer';
+
+/** D165: the profiles exchange (`docs/profiles.md` → *Paired computers*). */
+export const USER_PROFILES_SYNC_PATH = '/peer/v1/user-profiles';
 
 /** Settings key of this install's identity. */
 export const SELF_SETTING = 'peers.self';
@@ -116,6 +121,8 @@ export type PeerListKind = keyof typeof PEER_LISTS;
  */
 export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegExp]> = [
   ['GET', /^\/api\/sessions$/],
+  // D165: move that computer's agent to another profile (the profiles are synced, so the password check works there).
+  ['PUT', /^\/api\/sessions\/[^/]+\/user-profile$/],
   ['POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff)$/],
@@ -1084,7 +1091,11 @@ export class PeerService implements PeerHandlers {
     // D52: (re)connected: its schedules and terminal loops are fetched again.
     if (state === 'online') for (const kind of Object.keys(PEER_LISTS) as PeerListKind[]) void this.refreshList(id, kind);
     // D71: (re)connected: the shared sidebar layout catches up both ways; away: it says so.
-    if (state === 'online') this.#sidebar.connected(id);
+    if (state === 'online') {
+      this.#sidebar.connected(id);
+      // D165: the profiles, both ways, every time the connection comes (back).
+      void this.#exchangeProfiles(id, true);
+    }
     else if (state === 'offline' || state === 'auth-failed') this.#sidebar.disconnected(id);
   }
 
@@ -1518,6 +1529,45 @@ export class PeerService implements PeerHandlers {
     return this.#machine(this.#records.get(id) ?? record);
   }
 
+  // ── D165 · the user profiles, synced with every paired computer (docs/profiles.md → Paired computers) ──
+
+  #userProfiles: UserProfileService | null = null;
+
+  /** D165: the profiles service (set by the app); without one the exchange answers 404 (an older machine's answer). */
+  useUserProfiles(service: UserProfileService | null): void {
+    this.#userProfiles = service;
+  }
+
+  /** D165: profiles changed here: each online paired computer gets the records written. */
+  userProfilesChanged(records: readonly UserProfileWire[]): void {
+    if (records.length === 0) return;
+    for (const id of this.#records.keys()) void this.#exchangeProfiles(id, false, records);
+  }
+
+  async #exchangeProfiles(machineId: string, full: boolean, records?: readonly UserProfileWire[]): Promise<void> {
+    const service = this.#userProfiles;
+    const connection = this.#connections.get(machineId);
+    if (!service || !connection || connection.state !== 'online') return;
+    try {
+      const answer = await connection.request('POST', USER_PROFILES_SYNC_PATH, { v: 1, full, profiles: records ?? (await service.wire()) }, { timeoutMs: 30_000 });
+      const body = answer.body as { profiles?: unknown } | null;
+      if (answer.status === 200 && body && Array.isArray(body.profiles)) await service.merge(body.profiles);
+    } catch (error) {
+      this.#log('warn', `profiles sync with ${machineId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** D165 · `POST /peer/v1/user-profiles`: a paired computer's profile records (merged; a full exchange answers every record here). */
+  async userProfiles(_machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    const service = this.#userProfiles;
+    if (!service) return { status: 404, body: { error: 'not-found' } };
+    const input = typeof body === 'object' && body !== null ? (body as { v?: unknown; full?: unknown; profiles?: unknown }) : {};
+    if (input.v !== 1 || !Array.isArray(input.profiles) || input.profiles.length > 200) return { status: 422, body: { error: 'invalid' } };
+    await service.merge(input.profiles);
+    return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire() : [] } };
+  }
+
   /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */
   async sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
     if (this.#closed) return { status: 503, body: { error: 'closing' } };
@@ -1646,7 +1696,7 @@ export class PeerService implements PeerHandlers {
     res.on('error', stream.close);
   }
 
-  async api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer> {
+  async api(machine: MachineRecord, method: string, url: string, body: unknown, userProfileId: string | null = null): Promise<PeerApiAnswer> {
     if (!peerApiAllowed(method, url)) {
       return { status: 403, body: JSON.stringify({ error: 'peer-forbidden', message: `${method} ${url.split('?')[0]} is not part of the peer API` }), contentType: 'application/json; charset=utf-8' };
     }
@@ -1663,6 +1713,9 @@ export class PeerService implements PeerHandlers {
         host: `127.0.0.1:${this.#config.port}`,
         cookie: `${TOKEN_COOKIE}=${this.#token}`,
         [PEER_REQUEST_HEADER]: machine.id,
+        // D165: the peer API answers every profile's data (the asking computer filters by profile).
+        [INTERNAL_SCOPE_HEADER]: INTERNAL_SECRET,
+        ...(userProfileId ? { [USER_PROFILE_HEADER]: userProfileId } : {}),
         ...(body === undefined || body === null ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined || body === null ? {} : { payload: JSON.stringify(body) }),

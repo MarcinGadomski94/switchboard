@@ -1,3 +1,4 @@
+import type { UserProfile } from './user-profiles.ts';
 /**
  * Wire types of the local API (`docs/handoff/contracts/local-api.md`), shared by
  * the server (route modules, providers) and the UI (`src/web/api/client.ts`).
@@ -843,6 +844,11 @@ export interface Session {
   readonly movedTo?: SessionMoveInfo | null;
   /** Additive (D65): set on a session taken over from another machine ("Taken over from <machine>"). */
   readonly movedFrom?: SessionMoveInfo | null;
+  /**
+   * Additive (D165, `docs/profiles.md`): the user profile the agent belongs to (not D63's CLI account,
+   * {@link Session.profileId}). Absent (an older paired computer) = Default's.
+   */
+  readonly userProfileId?: string;
   /**
    * Additive (D68, migration 0026, `docs/todos.md`): how many of the session's
    * todos are open (the sidebar row's badge, the Todos nav count). Absent (an
@@ -2664,6 +2670,12 @@ export interface HubEvents {
    * peer's moves again and republishes it with the move's remote id.
    */
   readonly movesChanged: MovesChanged;
+  /**
+   * Additive (D165, `docs/profiles.md`): the profiles changed (added, renamed, recoloured, a password set or
+   * removed, deleted; here or by a paired computer's sync). The switcher and Settings → Profiles read again.
+   * Never a hash. This machine's only: never forwarded between peers.
+   */
+  readonly userProfilesChanged: { readonly profiles: readonly UserProfile[] };
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2715,6 +2727,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'accountChoiceChanged',
   // D154.
   'movesChanged',
+  // D165.
+  'userProfilesChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

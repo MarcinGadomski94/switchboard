@@ -64,6 +64,8 @@ export interface Device {
   readonly lastSeenAt: string | null;
   /** Notifications are switched on for it (a push subscription is stored). */
   readonly push: boolean;
+  /** Additive (D165, `docs/profiles.md`): the profile the device works in (its lists, its notifications). */
+  readonly userProfileId?: string;
 }
 
 /** Why device access over HTTPS is not available, or `ok`. */

@@ -18,6 +18,8 @@ export interface DeviceRecord {
   readonly tailscaleLogin: string | null;
   readonly pairedAt: string;
   readonly lastSeenAt: string | null;
+  /** D165 (0055): the user profile the phone works in (its lists, its pushes); `'default'` for phones paired before. */
+  readonly userProfileId?: string;
 }
 
 /** A one-time pairing code (hash only). */
@@ -53,6 +55,7 @@ const DEVICES: TableSpec<DeviceRecord> = {
     tailscaleLogin: ['tailscale_login', 'text'],
     pairedAt: ['paired_at', 'text'],
     lastSeenAt: ['last_seen_at', 'text'],
+    userProfileId: ['user_profile_id', 'text'],
   },
 };
 
@@ -115,6 +118,16 @@ export class DeviceRepository {
 
   async rename(id: string, name: string): Promise<DeviceRecord | null> {
     return this.#devices.update(id, { name });
+  }
+
+  /** D165: the phone's profile. */
+  async setUserProfile(id: string, userProfileId: string): Promise<DeviceRecord | null> {
+    return this.#devices.update(id, { userProfileId });
+  }
+
+  /** D165: moves every phone of a deleted profile to Default. */
+  async resetUserProfile(userProfileId: string, to: string): Promise<void> {
+    this.#ctx.db.prepare('UPDATE devices SET user_profile_id = ? WHERE user_profile_id = ?').run(to, userProfileId);
   }
 
   /** Records that the device was seen now. */

@@ -224,6 +224,8 @@ export interface TeamRecord extends TeamSynced {
   readonly order: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** D165 (`docs/profiles.md`): the user profile the crew belongs to; absent = Default's. */
+  readonly userProfileId?: string;
 }
 
 /** A hand-off's state. */

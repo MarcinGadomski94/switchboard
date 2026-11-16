@@ -542,7 +542,17 @@ export class DeviceService {
       pairedAt: record.pairedAt,
       lastSeenAt: record.lastSeenAt,
       push: (await this.#store.devices.push(record.id)) !== null,
+      userProfileId: record.userProfileId ?? 'default',
     };
+  }
+
+  /** D165: the profile a device works in (`PUT /api/devices/{id}` `{ userProfileId }`, Settings → Devices). */
+  async setUserProfile(id: string, userProfileId: unknown): Promise<Device> {
+    const profile = typeof userProfileId === 'string' ? await this.#store.userProfiles.get(userProfileId) : null;
+    if (!profile || profile.deletedAt !== null) throw new DeviceError(422, 'invalid', 'no such profile');
+    const record = await this.#store.devices.setUserProfile(id, profile.id);
+    if (!record) throw new DeviceError(404, 'not-found', 'no such device');
+    return this.#toDevice(record);
   }
 
   /** `GET /api/devices`. */
@@ -745,6 +755,13 @@ export class DeviceService {
     return this.#presence.connect(device.id, client);
   }
 
+  #noticeScope: ((profileId: string, sessionId: string) => boolean) | null = null;
+
+  /** D165: who sees a session (`profile sees session`); set by the app once the profiles exist. */
+  useNoticeScope(scope: ((profileId: string, sessionId: string) => boolean) | null): void {
+    this.#noticeScope = scope;
+  }
+
   /** `true` while the device has Switchboard open in front (D87). */
   inFront(deviceId: string): boolean {
     return this.#presence.inFront(deviceId);
@@ -759,9 +776,13 @@ export class DeviceService {
   async deliver(notice: PushNotice): Promise<void> {
     if (!(await this.#accessSetting()).enabled) return;
     const subscriptions = await this.#store.devices.pushList();
+    // D165: a phone gets only its profile's notices (the session the notice opens).
+    const profileOf = new Map((await this.#store.devices.list()).map((device) => [device.id, device.userProfileId ?? 'default']));
+    const sessionId = sessionOfNoticeUrl(notice.payload.url);
+    const seen = (deviceId: string): boolean => sessionId === null || !this.#noticeScope || this.#noticeScope(profileOf.get(deviceId) ?? 'default', sessionId);
     await Promise.all(
       subscriptions
-        .filter((record) => readPushEvents(record.events)[notice.kind] && !this.#presence.inFront(record.deviceId))
+        .filter((record) => readPushEvents(record.events)[notice.kind] && !this.#presence.inFront(record.deviceId) && seen(record.deviceId))
         .map((record) => this.#deliverTo(record.deviceId, notice.payload, notice.urgency)),
     );
   }
@@ -816,3 +837,9 @@ export async function loadOrCreateVapidKeys(dataDir: string): Promise<VapidKeys>
 
 /** `true` when the request arrived on the device listener (re-exported for the routes). */
 export { isDeviceRequest };
+
+/** D165: the session a notice opens (`/sessions/<id>` or `/agents/<id>`), else `null`. */
+export function sessionOfNoticeUrl(url: string): string | null {
+  const match = /^\/(?:sessions|agents)\/([^/?#]+)/.exec(url);
+  return match ? decodeURIComponent(match[1] as string) : null;
+}

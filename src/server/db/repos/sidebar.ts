@@ -1,3 +1,5 @@
+import { DEFAULT_USER_PROFILE_ID } from '../../../core/user-profiles.ts';
+import { currentProfileForCreate } from '../../user-profiles/context.ts';
 import { HybridClock } from '../../../core/hlc.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import {
@@ -21,6 +23,7 @@ interface FolderRow {
   readonly name: string;
   readonly name_clock: string;
   readonly parent_id: string | null;
+  readonly user_profile_id: string;
   readonly sort_key: string;
   readonly place_clock: string;
   readonly deleted_clock: string | null;
@@ -111,7 +114,7 @@ export class SidebarLayoutRepository {
 
   #records(): SidebarRecords {
     const db = this.#ctx.db;
-    const folders = (db.prepare('SELECT id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed FROM sidebar_folders').all() as unknown as FolderRow[]).map(
+    const folders = (db.prepare('SELECT id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed, user_profile_id FROM sidebar_folders').all() as unknown as FolderRow[]).map(
       (row): FolderRecord => ({
         id: row.id,
         name: row.name,
@@ -121,6 +124,7 @@ export class SidebarLayoutRepository {
         placeClock: row.place_clock,
         deletedClock: row.deleted_clock,
         collapsed: row.collapsed === 1,
+        userProfileId: row.user_profile_id,
       }),
     );
     const places = (db.prepare('SELECT session_id, grp, folder_id, sort_key, clock FROM sidebar_places').all() as unknown as PlaceRow[]).map(
@@ -134,11 +138,14 @@ export class SidebarLayoutRepository {
     const db = this.#ctx.db;
     const now = this.#ctx.now();
     const folder = db.prepare(
-      'INSERT INTO sidebar_folders (id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+      'INSERT INTO sidebar_folders (id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed, created_at, user_profile_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
         'ON CONFLICT (id) DO UPDATE SET name = excluded.name, name_clock = excluded.name_clock, parent_id = excluded.parent_id, sort_key = excluded.sort_key, ' +
-        'place_clock = excluded.place_clock, deleted_clock = excluded.deleted_clock, collapsed = excluded.collapsed',
+        'place_clock = excluded.place_clock, deleted_clock = excluded.deleted_clock, collapsed = excluded.collapsed, user_profile_id = excluded.user_profile_id',
     );
-    for (const f of changes.folders) folder.run(f.id, f.name, f.nameClock, f.parentId, f.order, f.placeClock, f.deletedClock, f.collapsed ? 1 : 0, now);
+    // D165: a folder keeps its profile; a new one without one takes the profile the request works in (Default outside a request).
+    const fallback = currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID;
+    const own = new Map((db.prepare('SELECT id, user_profile_id FROM sidebar_folders').all() as Array<{ id: string; user_profile_id: string }>).map((row) => [row.id, row.user_profile_id]));
+    for (const f of changes.folders) folder.run(f.id, f.name, f.nameClock, f.parentId, f.order, f.placeClock, f.deletedClock, f.collapsed ? 1 : 0, now, f.userProfileId ?? own.get(f.id) ?? fallback);
     const place = db.prepare(
       'INSERT INTO sidebar_places (session_id, grp, folder_id, sort_key, clock) VALUES (?, ?, ?, ?, ?) ' +
         'ON CONFLICT (session_id) DO UPDATE SET grp = excluded.grp, folder_id = excluded.folder_id, sort_key = excluded.sort_key, clock = excluded.clock',

@@ -8,6 +8,7 @@ import { AgentRepository } from './repos/agents.ts';
 import { AttachmentRepository } from './repos/attachments.ts';
 import { ArtifactRepository } from './repos/artifacts.ts';
 import { DeviceRepository } from './repos/devices.ts';
+import { UserProfileRepository } from './repos/user-profiles.ts';
 import { EventRepository } from './repos/events.ts';
 import { FolderRepository } from './repos/folders.ts';
 import { HistoryCacheRepository } from './repos/history-cache.ts';
@@ -94,6 +95,8 @@ export interface Store {
   readonly prWatch: PrWatchRepository;
   /** D109 (0046): the issues imported into the sessions' todo lists. */
   readonly todoImports: TodoImportRepository;
+  /** D165 (0055): the user profiles (`docs/profiles.md`); not {@link profiles} (D63's CLI accounts). */
+  readonly userProfiles: UserProfileRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -168,6 +171,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     insights,
     prWatch: new PrWatchRepository(ctx),
     todoImports: new TodoImportRepository(ctx),
+    userProfiles: new UserProfileRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

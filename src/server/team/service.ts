@@ -99,6 +99,8 @@ import { memoryMemberMoved } from '../memory/hooks.ts';
 import { peerCall } from './peer-call.ts';
 import { computeSuggestions, type TeamSuggestion } from './suggestions.ts';
 import type { UsageReadingRecord } from '../db/repos/usage.ts';
+import { DEFAULT_USER_PROFILE_ID } from '../../core/user-profiles.ts';
+import { currentProfileForCreate } from '../user-profiles/context.ts';
 
 /** A refusal of a Team operation (`{ error: code, message }` with `status`). */
 export class TeamError extends Error {
@@ -803,6 +805,30 @@ export class TeamService {
     return { collapsed: next };
   }
 
+  /** D165: the crew a route means (`null` = the first one, as the routes read it); `null` when none. */
+  teamIdFor(teamId: string | null): string | null {
+    if (!this.#db) return null;
+    try {
+      return this.#team(teamId).id;
+    } catch {
+      return null;
+    }
+  }
+
+  /** D165: a crew's user profile (`null`: no such crew, or Team is off). */
+  teamProfile(teamId: string): string | null {
+    if (!this.#db) return null;
+    const team = this.#teams().find((candidate) => candidate.id === teamId);
+    return team ? (team.userProfileId ?? DEFAULT_USER_PROFILE_ID) : null;
+  }
+
+  /** D165: the session of a crew member as this computer names it (`null`: no such member, or Team is off). */
+  memberSession(memberId: string): string | null {
+    if (!this.#db) return null;
+    const member = this.#liveMembers().find((candidate) => candidate.id === memberId);
+    return member ? this.#sessionRef(member) : null;
+  }
+
   /** `GET /api/team/members/{id}`. @throws {TeamError} 404. */
   async member(id: string): Promise<TeamMember> {
     const record = this.#memberRecord(id);
@@ -852,7 +878,8 @@ export class TeamService {
       if (teams.length >= TEAMS_MAX) throw new TeamError(409, 'too-many', `at most ${TEAMS_MAX} teams`);
       if (teams.some((t) => t.name.toLowerCase() === name.toLowerCase())) throw new TeamError(409, 'name-taken', `a team is called ${name} already`);
       const now = this.#iso();
-      const record: TeamRecord = { id: randomUUID(), name, clock: this.#stamp(), deleted: false, order: nextOrder(teams), createdAt: now, updatedAt: now };
+      // D165: a new crew belongs to the profile the request works in (Default outside a request).
+      const record: TeamRecord = { id: randomUUID(), name, clock: this.#stamp(), deleted: false, order: nextOrder(teams), createdAt: now, updatedAt: now, userProfileId: currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID };
       this.#need().putTeam(record);
       this.#activity('team', null, `team ${name} created`, record.id);
       return record;

@@ -1,3 +1,5 @@
+import { currentProfileForCreate } from '../user-profiles/context.ts';
+import { USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
 import type { HubEventName, HubEvents, InboxItem, Session } from '../../core/api.ts';
 import { HUB_EVENT_NAMES } from '../../core/api.ts';
 import { AGENT_DELTA_QUERY, AGENT_DELTA_VALUE, AgentDeltaDecoder } from '../../core/agent-delta.ts';
@@ -690,6 +692,8 @@ export class PeerConnection {
           authorization: `Bearer ${target.token}`,
           accept: 'application/json',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          // D165: the profile this computer's request works in: the paired computer creates and scopes in it too.
+          ...profileHeader(),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.any(signals),
@@ -717,4 +721,10 @@ function describe(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+/** D165: the header naming the profile the current request works in (none outside a request, or for `'*'`). */
+function profileHeader(): Record<string, string> {
+  const profile = currentProfileForCreate();
+  return profile ? { [USER_PROFILE_HEADER]: profile } : {};
 }

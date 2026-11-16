@@ -294,6 +294,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     // D156: what the move carried stays on the server; the UI gets the last clean-up's time.
     movedTo: record.movedTo ? { machineId: record.movedTo.machineId, machineName: record.movedTo.machineName, sessionId: record.movedTo.sessionId, at: record.movedTo.at, ...(record.movedTo.cleanup ? { cleanedAt: record.movedTo.cleanup.at } : {}) } : null,
     movedFrom: record.movedFrom ? { machineId: record.movedFrom.machineId, machineName: record.movedFrom.machineName, sessionId: record.movedFrom.sessionId, at: record.movedFrom.at } : null,
+    // D165: the agent's user profile (a paired computer filters its list by it).
+    userProfileId: record.userProfileId ?? 'default',
     // D76: a todo's run session: the item it works on.
     todoLink: record.todoLink,
     // D68: the open items of its todo list (the sidebar badge, the Todos nav count).
