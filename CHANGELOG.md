@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.38 (2026-11-16)
+
+### Profiles
+- **Several people on one Switchboard:** any number of profiles (Settings → Profiles: add, rename, colour, an optional password, a default account per CLI). The switcher at the top of the sidebar changes the browser's profile; a profile with a password asks for it. Each profile sees and acts on only its own agents, and what follows them: Needs you and notifications, projects, crews, tasks, results, history, Insights, search and the sidebar's pins and folders. New agents join the active profile; an agent's ⋯ › Move to profile… moves it. Deleting a profile archives its agents. A phone belongs to one profile (Settings → Devices). Profiles sync between paired computers; update both. The CLI accounts stay shared. Not protection against someone with a shell on the machine. Every existing agent is in **Default** after the update (database migration). See `docs/profiles.md` (D165).
+
 ## 2.4.37 (2026-11-15)
 
 ### Sidebar
