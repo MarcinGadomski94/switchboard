@@ -33,7 +33,7 @@ export const AGENT_TABS = ['chat', 'changes', 'results', 'timeline', 'helpers'] 
 export type AgentTab = (typeof AGENT_TABS)[number];
 
 /** The v2 Settings sections (`/settings/<section>`), in the order the Settings list shows them (fix after 2.0: the everyday ones first). `advanced` holds the classic sections (`/settings/advanced/<key>`). */
-export const V2_SETTINGS_SECTIONS = ['usage', 'rules', 'appearance', 'computers', 'phones', 'advanced'] as const;
+export const V2_SETTINGS_SECTIONS = ['usage', 'rules', 'appearance', 'profiles', 'computers', 'phones', 'advanced'] as const;
 /** A v2 Settings section. */
 export type V2SettingsSection = (typeof V2_SETTINGS_SECTIONS)[number];
 

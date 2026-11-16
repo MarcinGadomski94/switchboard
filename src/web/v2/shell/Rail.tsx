@@ -8,6 +8,7 @@ import { RecentList } from '../shared/RecentList.tsx';
 import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
 import type { StatusPill } from './status-model.ts';
 import { PinnedCrew } from './PinnedCrew.tsx';
+import { ProfileSwitcher } from '../profiles/Profiles.tsx';
 import { type RailCounts, usePhones, usePinned, useProjectsWorking, useUnfinishedTaskCount } from './useShellData.ts';
 
 /**
@@ -86,6 +87,8 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
         </div>
         <span>Switchboard</span>
       </div>
+      {/* D165: the profile this browser works in (many profiles: a menu). */}
+      <ProfileSwitcher />
       {RAIL_AREAS.map((area) => {
         const count = badge(area);
         return (

@@ -20,7 +20,8 @@ import { actionErrorText, attachWarningText, pauseButton, remoteToggle, rootLine
 import { stoppableBackground } from '../../views/session/stop.ts';
 import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, Select, StatusBadge, Tabs, TextArea, useToast } from '../components/index.ts';
-import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, WORDS } from '../glossary.ts';
+import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, PROFILE_WORDS, WORDS } from '../glossary.ts';
+import { MoveToProfileDialog } from '../profiles/Profiles.tsx';
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
 import { AgentComputerTag, AgentHomeTag, CrewTag } from '../shared/agent-row.tsx';
@@ -459,6 +460,7 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   const [dialog, setDialog] = useState<'rename' | 'remote' | 'routine' | 'teammate' | 'close' | 'delete' | 'attach' | null>(null);
   const [terminal, setTerminal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [movingProfile, setMovingProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachWarning, setAttachWarning] = useState<AttachWarning | null>(null);
   const { machines } = usePairedMachines(open);
@@ -648,15 +650,19 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
           { separator: true, id: 'sep-pin' },
         ]
       : [];
+  // D165: Move to profile… (an agent of this computer or a paired one; the target's password when it has one).
+  const profileItems: MenuItem[] = session && !data.conversation ? [{ id: 'user-profile', label: PROFILE_WORDS.moveMenu, icon: 'agents', onSelect: () => setMovingProfile(true) }] : [];
   const items: MenuItem[] = [
     ...extra,
     ...pinItems,
+    ...profileItems,
     ...specs.map((spec): MenuItem => ('sep' in spec ? { separator: true, id: `sep-${spec.sep}` } : { id: spec.id, label: spec.label, icon: spec.icon, ...(spec.disabledReason ? { disabledReason: spec.disabledReason } : {}), ...(spec.danger ? { danger: true } : {}), onSelect: () => select(spec.id) })),
   ];
   return (
     <>
       <IconButton ref={setAnchor} icon="more" label={AGENT_WORDS.more} aria-haspopup="menu" aria-expanded={open} data-testid="v2-agent-menu" data-tour="v2-agent-menu" disabled={!session} onClick={() => setOpen((v) => !v)} />
       <Menu items={items} anchor={anchor} open={open} onClose={() => setOpen(false)} label={AGENT_WORDS.more} testId="v2-agent-menu-list" />
+      {movingProfile && session ? <MoveToProfileDialog sessionId={sessionId} title={name} currentId={session.userProfileId ?? 'default'} onClose={() => setMovingProfile(false)} /> : null}
       {session ? (
         <>
           <RenameDialog

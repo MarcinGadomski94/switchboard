@@ -732,3 +732,62 @@
   font-size: var(--v2-fs-s);
   box-shadow: var(--v2-shadow-2);
 }
+
+/* D165 · the rail's profile switcher (many profiles: a menu) and the profiles' colour dots. */
+.sb2 .v2-profile-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 2px 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-r);
+  background: transparent;
+  color: var(--v2-text);
+  font: inherit;
+  font-size: var(--v2-fs-s, 13px);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.sb2 .v2-profile-switcher:hover,
+.sb2 .v2-profile-switcher[aria-expanded='true'] {
+  background: var(--v2-hover, rgba(127, 127, 127, 0.08));
+}
+
+.sb2 .v2-profile-switcher:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 1px;
+}
+
+.sb2 .v2-profile-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.sb2 .v2-profile-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3b82f6;
+}
+
+.sb2 .v2-profile-dot[data-color='green'] { background: #22a06b; }
+.sb2 .v2-profile-dot[data-color='amber'] { background: #d97706; }
+.sb2 .v2-profile-dot[data-color='red'] { background: #dc2626; }
+.sb2 .v2-profile-dot[data-color='purple'] { background: #8b5cf6; }
+.sb2 .v2-profile-dot[data-color='teal'] { background: #0d9488; }
+.sb2 .v2-profile-dot[data-color='pink'] { background: #db2777; }
+.sb2 .v2-profile-dot[data-color='grey'] { background: #8b8f98; }
+
+/* The menu of profiles scrolls past a screenful (any number of profiles). */
+.sb2 [data-testid='v2-profile-menu'] {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}

@@ -181,6 +181,7 @@ const V2_4_30 = '2.4.30';
 
 /** The version D161 (pinned projects and the Projects pulse) ships in. */
 const V2_4_34 = '2.4.34';
+const V2_4_38 = '2.4.38';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1793,6 +1794,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-mcp-signin', 'v2-agent-menu', 'v2-tab-more'],
         v2Route: '/agents',
         missing: 'No agent needs an MCP sign-in right now: the notice shows in the agent when one does.',
+      },
+    ],
+  },
+  {
+    id: 'user-profiles',
+    decision: 'D165',
+    version: V2_4_38,
+    title: 'Profiles: one Switchboard, many people',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'switcher',
+        title: 'Switch profile',
+        what: 'Each agent belongs to a profile. This browser works in one profile at a time and sees only its agents, projects, crews, tasks, folders and notifications. Pick another profile here (a profile with a password asks for it); Manage profiles adds, renames and deletes them.',
+        todo: ['Open the profile menu at the top of the sidebar.'],
+        anchors: ['v2-profile-switcher'],
+        v2Route: '/agents',
+        missing: 'The profile menu is at the top of the sidebar.',
       },
     ],
   },

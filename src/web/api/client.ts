@@ -1,5 +1,6 @@
 import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
+import type { UserProfile, UserProfilesView } from '../../core/user-profiles.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
 import type { SidebarFolderArchiveResult } from '../../core/sidebar-folder-archive.ts';
@@ -320,6 +321,16 @@ export const api = {
   importIssues: (id: string, input: IssueImportInput) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/import`, input),
   /** D54, additive: the sidebar's pins and folders (this machine's; `docs/sidebar.md`). Every write answers the new layout. */
   sidebarLayout: () => request<SidebarLayout>('GET', '/api/sidebar'),
+  // D165: the profiles (docs/profiles.md).
+  userProfiles: () => request<UserProfilesView>('GET', '/api/user-profiles'),
+  createUserProfile: (input: { readonly name: string; readonly color?: string; readonly password?: string }) => request<UserProfile>('POST', '/api/user-profiles', input),
+  updateUserProfile: (id: string, patch: { readonly name?: string; readonly color?: string; readonly password?: string | null; readonly currentPassword?: string; readonly defaultAccounts?: Readonly<Record<string, string | null>> }) =>
+    request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}`, patch),
+  deleteUserProfile: (id: string, password?: string) => request<{ readonly archived: number }>('DELETE', `/api/user-profiles/${encodeURIComponent(id)}`, password ? { password } : {}),
+  switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
+  moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>
+    request<{ readonly sessionId: string; readonly userProfileId: string }>('PUT', `/api/sessions/${encodeURIComponent(sessionId)}/user-profile`, { userProfileId, ...(password ? { password } : {}) }),
+  setDeviceUserProfile: (deviceId: string, userProfileId: string) => request<Device>('PUT', `/api/devices/${encodeURIComponent(deviceId)}`, { userProfileId }),
   /** D54: a new folder, at the end of the folders (201); D58: `parentId` = at the end of that folder's subfolders. */
   createSidebarFolder: (name: string, parentId: string | null = null) => request<SidebarLayout>('POST', '/api/sidebar/folders', parentId === null ? { name } : { name, parentId }),
   /** D54: rename and / or collapse / expand a folder. */

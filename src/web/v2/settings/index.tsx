@@ -9,6 +9,7 @@ import { AdvancedSection } from './AdvancedSection.tsx';
 import { ClassicFrame } from './ClassicFrame.tsx';
 import { ComputersSection } from './ComputersSection.tsx';
 import { PhonesSection } from './PhonesSection.tsx';
+import { ProfilesSection } from './ProfilesSection.tsx';
 import { AppearanceSection, RulesSection } from './sections.tsx';
 import { shownSection } from './settings-map.ts';
 import { SettingsSearch, settingsQuery, useSettingFlash } from './SettingsSearch.tsx';
@@ -22,6 +23,7 @@ const SECTION_ICONS: Readonly<Record<V2SettingsSection, string>> = {
   usage: 'wallet',
   computers: 'desktop',
   phones: 'phone',
+  profiles: 'agents',
   rules: 'rules',
   appearance: 'sun',
   advanced: 'sliders',
@@ -35,6 +37,8 @@ function Section({ section, sub }: { readonly section: V2SettingsSection; readon
       return <ComputersSection />;
     case 'phones':
       return <PhonesSection />;
+    case 'profiles':
+      return <ProfilesSection />;
     case 'rules':
       return <RulesSection />;
     case 'appearance':

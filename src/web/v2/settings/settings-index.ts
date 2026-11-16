@@ -78,6 +78,9 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('computers.background-apps', at('computers'), W.backgroundApps, 'What agents left running on each computer (dev servers, build servers, test hosts): keep or stop them.', 'processes running stop dev server build leftover', tid('v2-background-apps')),
   entry('computers.shared-layout', at('computers'), W.sharedLayout, W.sharedLayoutSub, 'sync folders pins layout share', tid('v2-shared-layout')),
   entry('computers.shared-accounts', at('computers'), W.sharedAccounts, W.sharedAccountsSub, 'sync accounts share peer', tid('v2-shared-accounts')),
+  // ── Profiles (v2, D165) ──
+  entry('profiles.list', at('profiles'), 'Profiles', 'Many people on one Switchboard: each agent belongs to a profile; a password to switch', 'profile profiles user users people person password switch lock account default', tid('v2-profile-list')),
+  entry('profiles.add', at('profiles'), 'Add a profile', 'A name, a colour and an optional password', 'add new profile person user', tid('v2-profile-add')),
   // ── Phones (v2) ──
   entry('phones.access', at('phones'), 'Phone access', W.phonesSub, 'phone mobile device tablet tailscale remote https', tid('v2-phone-access')),
   entry('phones.pair', at('phones'), W.pairPhone, W.pairNote, 'qr code pair phone device mobile', tid('v2-pair-phone')),
