@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.39 (2026-11-16)
+
+### Profiles
+- **Stay signed in:** a browser that switched into a profile stays in it after Switchboard or the browser restarts, password or not (for up to 400 days). A new password still signs every browser out of that profile.
+- **Open in:** Settings → Profiles picks the profile a browser opens in before it chose one; with a password it asks once, then stays. See `docs/profiles.md` → *Switching*.
+
 ## 2.4.38 (2026-11-16)
 
 ### Profiles
