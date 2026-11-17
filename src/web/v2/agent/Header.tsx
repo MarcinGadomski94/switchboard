@@ -651,7 +651,8 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
         ]
       : [];
   // D165: Move to profile… (an agent of this computer or a paired one; the target's password when it has one).
-  const profileItems: MenuItem[] = session && !data.conversation ? [{ id: 'user-profile', label: PROFILE_WORDS.moveMenu, icon: 'agents', onSelect: () => setMovingProfile(true) }] : [];
+  // 2026-11-17: a conversation (D106 chat) too: it belongs to a profile like any agent, and the server moves it the same way.
+  const profileItems: MenuItem[] = session ? [{ id: 'user-profile', label: PROFILE_WORDS.moveMenu, icon: 'agents', onSelect: () => setMovingProfile(true) }] : [];
   const items: MenuItem[] = [
     ...extra,
     ...pinItems,

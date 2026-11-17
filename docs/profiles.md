@@ -35,7 +35,7 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 
 ## Moving an agent to another profile
 
-`PUT /api/sessions/{id}/user-profile { userProfileId, password? }` (the agent's ⋯ → Move to profile…): the target's password when it has one. Everything that follows the agent goes with it; its sidebar place is cleared (it shows unplaced in the new profile). Its crew and plan keep theirs. A paired computer's agent moves on its computer (the call goes through the peer API).
+`PUT /api/sessions/{id}/user-profile { userProfileId, password? }` (the agent's ⋯ → Move to profile…): the target's password when it has one. Everything that follows the agent goes with it; its sidebar place is cleared (it shows unplaced in the new profile). Its crew and plan keep theirs. A paired computer's agent moves on its computer (the call goes through the peer API). A **conversation** (D106 chat) moves the same way, from its own ⋯ menu (2026-11-17: the menu left it out before).
 
 ## Deleting a profile
 

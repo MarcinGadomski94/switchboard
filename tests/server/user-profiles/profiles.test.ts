@@ -129,6 +129,14 @@ describe('D165 · many profiles, strictly only mine', () => {
     expect(await listed(await cookieOf(ann.id, 'ann-secret'))).toEqual([ids.a, ids.d].sort());
   });
 
+  it('moves a conversation (D106 chat) to another profile the same way (2026-11-17)', async () => {
+    const chat = (await store.sessions.create({ name: 'chat-x', claudeSessionId: randomUUID(), kind: 'chat' })).id;
+    expect(await listed()).toEqual([ids.d, chat].sort());
+    expect((await call('PUT', `/api/sessions/${chat}/user-profile`, { userProfileId: bo.id })).json()).toEqual({ sessionId: chat, userProfileId: bo.id });
+    expect(await listed()).toEqual([ids.d]);
+    expect(await listed(await cookieOf(bo.id))).toEqual([ids.b, chat].sort());
+  });
+
   it('deleting a profile archives its agents and leaves Default; Default can’t go', async () => {
     expect((await call('DELETE', '/api/user-profiles/default')).statusCode).toBe(409);
     const answer = await call('DELETE', `/api/user-profiles/${bo.id}`);
