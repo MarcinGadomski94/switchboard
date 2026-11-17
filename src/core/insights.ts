@@ -238,8 +238,10 @@ export interface PriceTable {
 }
 
 /**
- * Example prices (USD per 1M tokens, the Anthropic API's list prices as of October 2026;
- * cache writes at 1.25× input, the 5-minute rate). **Examples only**: prices change and a
+ * Example prices (USD per 1M tokens, the Anthropic API's list prices, checked 2026-11-17:
+ * Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5; cache writes at 1.25× input, the
+ * 5-minute rate; Haiku 5.5's rate is for prompts up to 100K tokens, $0.50 / $2.50 beyond,
+ * which one row per model can't express). **Examples only**: prices change and a
  * subscription is not billed per token; the page says "example prices — edit in Settings".
  */
 export const EXAMPLE_PRICES: PriceTable = {

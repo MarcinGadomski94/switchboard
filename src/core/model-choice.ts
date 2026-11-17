@@ -153,11 +153,14 @@ export function modelStepLabel(choice: ModelChoice, available: readonly SessionM
 
 /**
  * D42: what the New-session form offers while no claude process has reported
- * its models: the CLI's model aliases (`claude --help`: "an alias for the latest
- * model (e.g. 'sonnet' or 'opus')"), none with effort levels.
+ * its models: the CLI's model aliases (`claude --help`, CLI 2.1.319: "an alias for
+ * the latest model (e.g. 'fable', 'opus', or 'sonnet')"), none with effort levels.
+ * 2026-11-17: `fable` (Claude Fable 5.1) added; once a claude process reports its
+ * models, the CLI's own list replaces this one.
  */
 export const CLI_MODEL_ALIASES: readonly SessionModelOption[] = [
   { value: DEFAULT_MODEL_VALUE, label: 'Default', description: "claude's default model" },
+  { value: 'fable', label: 'Fable', description: '--model fable' },
   { value: 'opus', label: 'Opus', description: '--model opus' },
   { value: 'sonnet', label: 'Sonnet', description: '--model sonnet' },
   { value: 'haiku', label: 'Haiku', description: '--model haiku' },

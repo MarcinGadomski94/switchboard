@@ -34,7 +34,7 @@ describe('D82 · the Model by task editor', () => {
   it('offers the CLI’s models (else the fallback), the model’s efforts and the CLI’s enabled accounts', () => {
     const models = { options: [{ value: 'sonnet', label: 'Sonnet', efforts: ['low', 'high'] }], last: null };
     expect(ruleModelOptions('claude', models).map((o) => o.value)).toEqual(['sonnet']);
-    expect(ruleModelOptions('claude', null).map((o) => o.value)).toEqual(['default', 'opus', 'sonnet', 'haiku']);
+    expect(ruleModelOptions('claude', null).map((o) => o.value)).toEqual(['default', 'fable', 'opus', 'sonnet', 'haiku']);
     expect(ruleEfforts({ id: 'a', priority: 'any', estimate: { kind: 'any' }, provider: 'claude', model: 'sonnet' }, models)).toEqual(['low', 'high']);
     expect(ruleEfforts({ id: 'a', priority: 'any', estimate: { kind: 'any' } }, models)).toEqual([]);
     const profiles = [profile('b', 'claude', true, 1), profile('a', 'claude', true, 0), profile('c', 'claude', false, 2), profile('d', 'codex', true, 0)];

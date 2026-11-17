@@ -72,7 +72,7 @@ describe('fixes after 2.0 · Model and Effort (model-effort.ts)', () => {
     expect(startField(null, { options: claude, last: { model: 'sonnet', effort: 'max' } }, true, 'claude')).toMatchObject({ model: 'sonnet', effort: 'max' });
     expect(startField({ model: 'opus', effort: 'low' }, { options: claude, last: { model: 'sonnet', effort: 'max' } }, true, 'claude')).toMatchObject({ model: 'opus', effort: 'low' });
     const aliases = startField(null, { options: null, last: null }, true, 'claude');
-    expect(aliases.models.map((m) => m.value)).toEqual(['default', 'opus', 'sonnet', 'haiku']);
+    expect(aliases.models.map((m) => m.value)).toEqual(['default', 'fable', 'opus', 'sonnet', 'haiku']);
     expect(aliases.efforts).toBeNull();
     const codex = startField(null, { options: CODEX, last: { model: 'gpt-5.5-codex', effort: 'xhigh' } }, true, 'codex');
     expect(codex).toMatchObject({ model: 'gpt-5.5-codex', effort: 'xhigh' });

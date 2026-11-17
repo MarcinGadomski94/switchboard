@@ -46,7 +46,7 @@ describe('the Model row: options and default (D42)', () => {
     expect(formModelOptions(reported())).toEqual(LIST);
     expect(formModelOptions(NO_MODEL_SETTINGS)).toBe(CLI_MODEL_ALIASES);
     expect(formModelOptions(null)).toBe(CLI_MODEL_ALIASES);
-    expect(CLI_MODEL_ALIASES.map((o) => o.value)).toEqual(['default', 'opus', 'sonnet', 'haiku']);
+    expect(CLI_MODEL_ALIASES.map((o) => o.value)).toEqual(['default', 'fable', 'opus', 'sonnet', 'haiku']);
     expect(CLI_MODEL_ALIASES.every((o) => o.efforts === undefined)).toBe(true);
   });
 
@@ -79,6 +79,7 @@ describe('the Model row: options and default (D42)', () => {
     const aliases = formModelPicker(form(), NO_MODEL_SETTINGS);
     expect(aliases.models.map((m) => [m.value, m.selected])).toEqual([
       ['default', true],
+      ['fable', false],
       ['opus', false],
       ['sonnet', false],
       ['haiku', false],

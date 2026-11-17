@@ -57,7 +57,7 @@ describe('D62 CLI pickers (web)', () => {
     expect(toSimpleBody({ form: { ...DEFAULT_FORM, task: 'hi', provider: 'opencode' }, folder: null, branch: null, takenNames: [] }).provider).toBe('opencode');
     expect(formFromPrefill({ provider: 'opencode' }).provider).toBe('opencode');
     expect(formFromPrefill({ provider: 'gpt' as never }).provider).toBeNull();
-    expect(formModelOptions(null, 'claude').map((m) => m.value)).toEqual(['default', 'opus', 'sonnet', 'haiku']);
+    expect(formModelOptions(null, 'claude').map((m) => m.value)).toEqual(['default', 'fable', 'opus', 'sonnet', 'haiku']);
     expect(formModelOptions(null, 'codex')).toEqual(cliFallbackModels('codex'));
     expect(cliFallbackModels('codex')).toEqual([{ value: 'default', label: 'Default', description: "Codex CLI's default model" }]);
     expect(modelSummaryLine({ model: null, effort: null }, cliFallbackModels('codex'), 'codex').text).toBe('model     Codex CLI · Default');
