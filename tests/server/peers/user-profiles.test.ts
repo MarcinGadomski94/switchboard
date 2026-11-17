@@ -88,5 +88,10 @@ describe('D165 · profiles on paired computers', () => {
     expect((await own(a)).name).toBe('Claudiu');
     // B now sees A's agent in its Default (one profile).
     await waitFor('A’s agent in B’s merged Default', async () => ((await listed(b)).includes('marcin-agent') ? true : null), 30_000);
+    // 2026-11-17: the merged profile is edited like any other: a password set on B is the one A asks for too.
+    expect((await b.call('PUT', '/api/user-profiles/default', { password: 'merged-secret' })).status).toBe(200);
+    await waitFor('the password on A', async () => ((await own(a)).hasPassword ? true : null), 30_000);
+    expect(await switchOn(a, 'default', 'wrong')).toBe(401);
+    expect(await switchOn(a, 'default', 'merged-secret')).toBe(200);
   }, 150_000);
 });

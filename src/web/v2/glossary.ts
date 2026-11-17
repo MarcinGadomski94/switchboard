@@ -723,7 +723,8 @@ export const PROFILE_WORDS = {
   removePassword: 'Remove password',
   currentPassword: 'Current password',
   save: 'Save',
-  rename: 'Rename',
+  // 2026-11-17: it edits the name, colour, password and default accounts (it read "Rename"); a merged profile's changes reach every computer.
+  rename: 'Edit…',
   delete: 'Delete…',
   // D172: merging two profiles on purpose (one per computer, or two of this one).
   merge: 'Merge…',
