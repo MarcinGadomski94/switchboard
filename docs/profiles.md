@@ -39,7 +39,7 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 
 ## Deleting a profile
 
-`DELETE /api/user-profiles/{id} { password? }`: its open agents are **archived** first (the developer's ruling; Archived keeps them), its phones and folders move to Default, and a tombstone stays so the paired computers learn it. If an agent cannot be archived the profile stays (409 `archive-failed`).
+`DELETE /api/user-profiles/{id} { password? }`: its open agents are **archived** first (the developer's ruling; Archived keeps them), its phones and sidebar folders move to Default, the saved folders bound to it are shared again (D169), and a tombstone stays so the paired computers learn it. If an agent cannot be archived the profile stays (409 `archive-failed`).
 
 ## Paired computers
 
@@ -56,6 +56,19 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 - **The hub:** the `inboxChanged` count is the client's profile's (published with a per-profile map that never leaves the server); `planChanged` and `teamChanged` go only to the clients of the profile that owns the plan / crew.
 - **A sidebar position** counted in one profile's rows (Pinned, a folder, the loose order) lands before the same row in the whole list.
 
+## A folder bound to a profile (D169)
+
+A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`, migration 0057; `NULL` = shared, as before). Per computer: each computer's folders are bound on their own (no matching or syncing between computers).
+
+- **Hidden from the other profiles.** `FolderRepository`'s reads follow the request's profile scope (`folderVisible`): `list`, `get`, `getByCanonicalPath` and `getDefault` leave a folder bound to another profile out, so every caller follows the binding: `GET /api/folders` and its pickers, every folder route (404, as if it did not exist), a new agent there (the start's 422 "no saved folder"), scans (`/api/solutions`, Codebase Memory, by id or path), the take-over target listing and placement (D110: not among the places, a path in it is 403 outside, a checkout under it is not a candidate), History and Project memory, a chat's folders to look at (422 "not available in this profile"), saving the same folder again (422). A profile that cannot see the default folder gets its first visible one as its default. Internal work (startup, schedulers, the `'*'` scope) uses the unscoped `…Any` reads.
+- **Paired computers.** A paired computer's requests carry their profile (D165), so its browser in another profile cannot see or use the folder here either; its own folders are bound there.
+- **Binding** (Settings → Advanced → Folders → *Bind to profile…*, `PUT /api/folders/{id}/user-profile { userProfileId, password? }`): the target profile's password when it has one; re-binding a bound folder also needs its present owner's (`currentPassword`). First the other profiles' **agents** working there (their saved folder is this one, or their folder / working folder is inside it; open and archived) and their **schedules** starting there move to the owner (`GET …/user-profile/preview?to=` lists them; an agent's tasks and loops follow it, its sidebar place is cleared; a crew member stays in its crew, a plan follows its source session, as D165's move).
+- **Unbinding** (`{ userProfileId: null, password? }`): the owner's password when it has one; the folder is shared again.
+- **A terminal** in (or under) a bound folder, followed from any profile, joins the owner's profile (the innermost bound folder that holds its working folder).
+- **A deleted profile's** bound folders are shared again (ASSUMED: not hidden from everyone for good).
+- **Backup / restore (D168):** the binding is a column of `folders` and the profiles travel with their ids, so a restore keeps it, also "start as a new computer".
+- **Phones** cannot bind or unbind (local only); a phone's folder list follows its profile.
+
 ## The machine's, by design
 
 - **Terminal conversations not in Switchboard yet** (`GET /api/terminal-sessions`, `/api/terminal-loops`) and History's conversations that are no session: they belong to no profile (they are the machine's), so every profile lists them. Once one is followed (hooked) or continued it is a session of the profile that did it, and only that profile sees it; hooking or continuing one another profile already holds answers 404.
@@ -70,3 +83,5 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 | `tests/server/peers/user-profiles.test.ts` | two real Switchboards: a profile and its password sync, a rename comes back, a delete goes everywhere |
 | `tests/server/user-profiles/scope-holes.test.ts` | three profiles: History and its continue, Insights / usage rows and the per-profile answer, crews' needs-you / state / suggestions, Plans' state, terminal sessions and hooking, the hub's Inbox count, plan and crew events, a sidebar position |
 | `tests/e2e/v2-profiles.spec.ts` | the rail switcher with three profiles and a password |
+| `tests/server/user-profiles/folder-binding.test.ts` | D169: bind with the owner's password, the other profile's agent moves; hidden from Bo and Default on every folder route, a new agent, scans, the take-over target listing, a chat's folders, saving it again; a paired computer's request in Bo's profile; unbind; a deleted owner; phones refused |
+| `tests/server/backup/roundtrip.test.ts` | D169: a bound folder stays bound after a restore ("start as a new computer") |

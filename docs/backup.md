@@ -8,7 +8,7 @@ Code: `src/core/backup.ts` (format, preview, version rule, entry names, path map
 
 | In the archive | From | Notes |
 |---|---|---|
-| `db/switchboard.db`, `db/plans.db`, `db/team.db`, `db/memory.db` | the data folder | Consistent snapshots (`VACUUM INTO`), never the live file next to its WAL, so a running Switchboard can be backed up. |
+| `db/switchboard.db`, `db/plans.db`, `db/team.db`, `db/memory.db` | the data folder | Consistent snapshots (`VACUUM INTO`), never the live file next to its WAL, so a running Switchboard can be backed up. The profiles (D165) and a saved folder's binding to one (D169, `folders.user_profile_id`) are rows of it: a restore keeps both, also "start as a new computer". |
 | `data/attachments/`, `data/artifacts/`, `data/chats/`, `data/handovers/` | the data folder | Attachments' and artifacts' files are stored relative to the data folder, so they need no rewriting. |
 | `data/profiles/` | the data folder | D63's account folders (each CLI account's own config folder): their conversations and their own logins. Symbolic links in them (an account's settings shared with the Default, `docs/accounts.md`) are not followed and are left out; Settings → Accounts links them again. |
 | `data/sb_token`, `data/hook-token`, `data/vapid.json` | the data folder | The UI token, the terminal hooks' token, the push keys: restored only with *take over the old computer's identity*. |

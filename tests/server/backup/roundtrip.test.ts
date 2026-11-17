@@ -60,6 +60,9 @@ async function oldComputer(): Promise<{ secrets: MemorySecretStore; ids: { main:
     const app = path.join(a.ws, 'app');
     await mkdir(app, { recursive: true });
     const folder = await store.folders.create({ path: a.ws, canonicalPath: a.ws, kind: 'workspace', isDefault: true });
+    // D169: the folder is bound to a profile; the binding travels with the backup.
+    await store.userProfiles.create({ id: 'ann', name: 'Ann', color: 'green', passwordHash: null, clock: '' });
+    await store.folders.setUserProfile(folder.id, 'ann');
     const profileDir = path.join(a.data, 'profiles', 'claude', 'p1');
     await store.profiles.create({ id: 'p1', cli: 'claude', name: 'Work', dir: profileDir, shareSettings: false });
     const claudeMain = randomUUID();
@@ -134,6 +137,9 @@ describe('D168 · backup on one computer, restore into a fresh install on anothe
     try {
       const folders = await store.folders.list();
       expect(folders.map((folder) => folder.path)).toEqual([b.ws]);
+      // D169: still bound to the same profile on the new computer ("start as a new computer" keeps it).
+      expect(folders[0]?.userProfileId).toBe('ann');
+      expect((await store.userProfiles.get('ann'))?.name).toBe('Ann');
       const main = await store.sessions.get(old.ids.main);
       expect(main).toMatchObject({ cwd: newApp, root: b.ws, extraDirs: [path.join(b.ws, 'other')], transcriptPath: path.join(b.claude, 'projects', slug, `${old.ids.claudeMain}.jsonl`) });
       expect((await store.profiles.get('p1'))?.dir).toBe(path.join(b.data, 'profiles', 'claude', 'p1'));

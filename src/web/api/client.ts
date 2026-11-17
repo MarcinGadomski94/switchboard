@@ -47,6 +47,7 @@ import type {
   ContinueConversation,
   FileDiff,
   Folder,
+  FolderBindPreview,
   FolderCheck,
   FolderListing,
   FrameHelperInfo,
@@ -544,6 +545,11 @@ export const api = {
   /** The list left; 409 `folder-in-use` (`FolderInUse`) while schedules start their runs there. */
   removeFolder: (id: string) => request<Folder[]>('DELETE', `/api/folders/${enc(id)}`),
   setDefaultFolder: (id: string) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/default`),
+  /** D169: what binding folder `id` to profile `to` moves there. */
+  folderBindPreview: (id: string, to: string) => request<FolderBindPreview>('GET', `/api/folders/${enc(id)}/user-profile/preview?to=${enc(to)}`),
+  /** D169: binds folder `id` to a profile (`null` shares it again); the password of the profile it goes to (or of its owner to unbind). */
+  bindFolder: (id: string, userProfileId: string | null, password?: string) =>
+    request<{ readonly folderId: string; readonly userProfileId: string | null; readonly moved: readonly string[]; readonly schedules: number }>('PUT', `/api/folders/${enc(id)}/user-profile`, { userProfileId, ...(password ? { password } : {}) }),
 
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),

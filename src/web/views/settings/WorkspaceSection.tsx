@@ -1,5 +1,7 @@
 import { type KeyboardEvent, useState } from 'react';
 import type { Folder, SolutionGroup } from '../../../core/api.ts';
+import type { UserProfile } from '../../../core/user-profiles.ts';
+import { FolderBinding } from './FolderBinding.tsx';
 import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { AddFolderPanel } from '../../folders/AddFolderPanel.tsx';
@@ -90,6 +92,7 @@ function FolderRow({
   folder,
   selected,
   busy,
+  profiles,
   onSelect,
   onDefault,
   onRemove,
@@ -97,12 +100,16 @@ function FolderRow({
   readonly folder: Folder;
   readonly selected: boolean;
   readonly busy: boolean;
+  /** D169: the profiles (an older server: none, no binding offered). */
+  readonly profiles: readonly UserProfile[];
   readonly onSelect: () => void;
   readonly onDefault: () => void;
   readonly onRemove: () => void;
 }) {
   const line = folderCheckLine(folder.check);
   const [renaming, setRenaming] = useState(false);
+  const [binding, setBinding] = useState(false);
+  const owner = folder.userProfileId ? (profiles.find((profile) => profile.id === folder.userProfileId) ?? null) : null;
   // D18: the path stays on the line under the name (so two folders are never confused), then the check line.
   const details = (
     <>
@@ -171,13 +178,24 @@ function FolderRow({
               default
             </span>
           ) : null}
+          {owner ? (
+            <span className="sb-set-folder-default" data-testid="settings-folder-bound" title="Only this profile sees this folder">
+              🔒 Bound to {owner.name}
+            </span>
+          ) : null}
         </div>
         {details}
+        {binding ? <FolderBinding folder={folder} profiles={profiles} onDone={() => setBinding(false)} /> : null}
       </div>
       <div className="sb-set-folder-actions">
         <button type="button" className="sb-set-action" data-testid="settings-folder-rename" disabled={busy} onClick={() => setRenaming(true)}>
           Rename
         </button>
+        {profiles.length > 0 && !binding ? (
+          <button type="button" className="sb-set-action" data-testid="settings-folder-bind" data-tour="v2-folder-bind" disabled={busy} onClick={() => setBinding(true)}>
+            {owner ? 'Unbind…' : 'Bind to profile…'}
+          </button>
+        ) : null}
         {folder.isDefault ? null : (
           <button type="button" className="sb-set-action" data-testid="settings-folder-make-default" disabled={busy} onClick={onDefault}>
             Make default
@@ -204,6 +222,8 @@ function FolderRow({
  */
 export function WorkspaceSection() {
   const folders = useSavedFolders();
+  // D169: the profiles a folder can be bound to (none from an older server: no binding offered).
+  const profiles = useApi((): Promise<readonly UserProfile[]> => api.userProfiles().then((view) => view.profiles, () => []), []);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -242,6 +262,7 @@ export function WorkspaceSection() {
             folder={folder}
             selected={shown?.id === folder.id}
             busy={busy}
+            profiles={profiles.data ?? []}
             onSelect={() => setSelectedId(folder.id)}
             onDefault={() => void change('Not changed', () => api.setDefaultFolder(folder.id))}
             onRemove={() => remove(folder)}

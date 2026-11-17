@@ -1873,6 +1873,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'folder-bound-profile',
+    decision: 'D169',
+    version: V2_4_43,
+    title: 'A folder only one profile uses',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'bind',
+        title: 'Bind a folder to a profile',
+        what: 'In Settings → Advanced → Folders, Bind to profile… keeps a folder for one profile: the other profiles don’t see it and can’t start agents in it, on this computer and from your paired one. Agents of other profiles already working there move to it first (the dialog lists them). With a password, binding and unbinding ask for it.',
+        todo: ['Open Settings → Advanced → Folders and bind a folder to a profile.'],
+        anchors: ['v2-folder-bind', 'v2-nav-settings'],
+        v2Route: '/settings/advanced/workspace',
+        missing: 'Settings → Advanced → Folders: each saved folder has Bind to profile….',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

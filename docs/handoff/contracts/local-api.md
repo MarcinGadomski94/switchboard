@@ -47,6 +47,8 @@ Developer ruling D14 (`docs/decisions.md`): there is no single configured worksp
 | POST | /api/folders | { path } | 201 Folder (added) · 200 Folder (already saved) · 422 `{ error: "invalid", message, check }` when it is not a workspace or a git repo |
 | DELETE | /api/folders/{id} | — | 200 Folder[] (the list left) · 404 · 409 `{ error: "folder-in-use", message, schedules }` |
 | PUT | /api/folders/{id}/default | — | 200 Folder[] · 404 |
+| GET | /api/folders/{id}/user-profile/preview?to=&lt;profile&gt; | — | D169: `FolderBindPreview` `{ folderId, to, agents: [{ sessionId, title, userProfileId, closed }], schedules: [{ id, name, userProfileId }] }` (what moves to `to` when the folder is bound) · 404 · 422 |
+| PUT | /api/folders/{id}/user-profile | { userProfileId: string \| null, password?, currentPassword? } | D169: binds the folder to a profile (the target's password; a re-bind also the present owner's) after moving the other profiles' agents and schedules there, or shares it again (`null`: the owner's password) → `{ folderId, userProfileId, moved: string[], schedules: number }` · 401 · 429 · 404 · 422. A folder bound to another profile is 404 on every folder route and left out of `GET /api/folders` (`Folder.userProfileId`, additive: `null` = shared). Phones refused. |
 | GET | /api/solutions | ?folder= | one folder's SolutionGroup[]: `folder` = a saved folder's id (or the path of a saved folder or of a session's folder); the default folder when omitted; a repo folder is one group with its one solution; 409 `no-folder` when nothing is saved, 404 `not-found`, 409 `folder-missing` |
 | GET / POST | /api/codebase-memory, /api/codebase-memory/reindex | ?folder= | as above; a repo folder's list is empty |
 
