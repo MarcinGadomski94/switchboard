@@ -188,6 +188,8 @@ const V2_4_40 = '2.4.40';
 const V2_4_43 = '2.4.43';
 /** The version D170 (terminals) ships in (the next release after 2.4.43; adjust if it ships later). */
 const V2_4_44 = '2.4.44';
+/** The version D173 (admins and computer access) ships in (the next release after 2.4.45; adjust if it ships later). */
+const V2_4_46 = '2.4.46';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1945,6 +1947,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-profile-merge', 'v2-nav-settings', 'v2-tab-more'],
         v2Route: '/settings/profiles',
         missing: 'Settings → Profiles: Merge… is on each profile once there are two.',
+      },
+    ],
+  },
+  {
+    id: 'profile-access',
+    decision: 'D173',
+    version: V2_4_46,
+    title: 'Admins decide which computers each profile uses',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'access',
+        title: 'Which computers a profile may use',
+        what: 'Mark admin profiles in Settings → Profiles (the first: a profile with a password makes itself admin). An admin picks, per profile, Computers…: all of them or only some. On a computer it may not use, a profile can’t be switched to and its agents there stay hidden from it (they keep running). It organises; it is not a lock on the computer.',
+        todo: ['Open Settings → Profiles.', 'Each profile shows the computers it may use; an admin changes them with Computers….'],
+        anchors: ['v2-profile-access', 'v2-nav-settings', 'v2-tab-more'],
+        v2Route: '/settings/profiles',
+        missing: 'Settings → Profiles: each profile lists the computers it may use.',
       },
     ],
   },

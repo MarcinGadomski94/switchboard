@@ -746,6 +746,21 @@ export const PROFILE_WORDS = {
   defaultAccountHint: 'New agents of this profile use it (on this computer).',
   automatic: 'Automatic (the overall choice)',
   phoneProfile: 'Profile',
+  // D173: admin profiles decide which computers each profile may use.
+  admin: 'Admin',
+  access: 'Computers…',
+  accessTitle: (name: string): string => `${name}: admin and computers`,
+  accessText: 'An admin decides which computers each profile may use. On a computer it may not use, a profile can’t be switched to, and its agents there stay hidden from it (they keep running).',
+  bootstrapText: 'There is no admin yet. Make this profile the first admin (it needs its password); afterwards only admins change admins and computers.',
+  makeAdmin: 'Admin (changes admins and computers)',
+  computers: 'Computers',
+  allComputers: 'All computers',
+  onlyThese: 'Only these computers',
+  thisComputer: 'this computer',
+  computersSummary: (names: readonly string[] | null): string => (names === null ? 'All computers' : names.length === 0 ? 'No computer' : `Only ${names.join(', ')}`),
+  adminPassword: (name: string): string => `${name}'s password (the admin's)`,
+  accessSaved: (name: string): string => `${name} saved.`,
+  notHere: 'Not on this computer',
 } as const;
 
 /** The theme switch's words (both UIs show them). */

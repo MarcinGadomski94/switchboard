@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { MachinesView } from '../../../core/peers.ts';
 import { USER_PROFILE_COLORS, type UserProfile } from '../../../core/user-profiles.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
@@ -10,10 +11,14 @@ import { ProfileDot, useSwitchProfile, useUserProfiles } from '../profiles/Profi
  * D165 · Settings → Profiles (`docs/profiles.md`): every profile (any number) with its colour,
  * whether it has a password and whether this browser works in it; add one; per profile rename,
  * colour, set / change / remove its password, its default account per CLI on this computer,
- * switch to it, delete it (its open agents are archived; Default stays).
+ * switch to it, delete it (its open agents are archived; Default stays). D173: its Admin chip and the
+ * computers it may use; an admin (or the first admin, the bootstrap) changes them with *Computers…*.
  */
 export function ProfilesSection() {
   const { view, reload } = useUserProfiles();
+  const machines = useApi(api.machines);
+  const actor = view?.profiles.find((profile) => profile.id === view.activeId) ?? null;
+  const anyAdmin = (view?.profiles ?? []).some((profile) => profile.admin === true);
   const { ask, dialog } = useSwitchProfile();
   const [adding, setAdding] = useState(false);
   return (
@@ -23,7 +28,7 @@ export function ProfilesSection() {
       <Card>
         <ul className="v2-profile-list" data-testid="v2-profile-list">
           {(view?.profiles ?? []).map((profile) => (
-            <ProfileRow key={profile.id} profile={profile} all={view?.profiles ?? []} active={profile.id === view?.activeId} onSwitch={() => ask(profile)} onChanged={reload} />
+            <ProfileRow key={profile.id} profile={profile} all={view?.profiles ?? []} active={profile.id === view?.activeId} actor={actor} anyAdmin={anyAdmin} machines={machines.data} onSwitch={() => ask(profile)} onChanged={reload} />
           ))}
         </ul>
       </Card>
@@ -74,11 +79,33 @@ function colorOptions() {
   return USER_PROFILE_COLORS.map((color) => ({ value: color, label: color[0]!.toUpperCase() + color.slice(1) }));
 }
 
-function ProfileRow({ profile, all, active, onSwitch, onChanged }: { readonly profile: UserProfile; readonly all: readonly UserProfile[]; readonly active: boolean; readonly onSwitch: () => void; readonly onChanged: () => void }) {
+/** D173: the computers' names for an access list (`null`: every computer); an unknown id shows as itself. */
+function computerNames(computers: readonly string[] | null | undefined, machines: MachinesView | null): readonly string[] | null {
+  if (computers === null || computers === undefined) return null;
+  return computers.map((id) => (id === machines?.self.id ? `${machines.self.name} (${W.thisComputer})` : (machines?.machines.find((machine) => machine.id === id)?.name ?? id)));
+}
+
+interface RowProps {
+  readonly profile: UserProfile;
+  readonly all: readonly UserProfile[];
+  readonly active: boolean;
+  /** D173: this browser's profile (`null`: none chosen). */
+  readonly actor: UserProfile | null;
+  readonly anyAdmin: boolean;
+  readonly machines: MachinesView | null;
+  readonly onSwitch: () => void;
+  readonly onChanged: () => void;
+}
+
+function ProfileRow({ profile, all, active, actor, anyAdmin, machines, onSwitch, onChanged }: RowProps) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [access, setAccess] = useState(false);
   const others = all.filter((other) => other.id !== profile.id);
+  // D173: an admin manages every profile; while there is no admin, a profile with a password may make itself the first.
+  const bootstrap = !anyAdmin && active && profile.hasPassword;
+  const manages = actor?.admin === true || bootstrap;
   return (
     <li className="v2-profile-row" data-testid="v2-profile-row" data-profile={profile.id} data-active={active ? 'true' : undefined}>
       <ProfileDot color={profile.color} />
@@ -86,8 +113,25 @@ function ProfileRow({ profile, all, active, onSwitch, onChanged }: { readonly pr
         <b>{profile.name}</b>
         {active ? <span className="v2-chip-mini">{W.active}</span> : null}
         {profile.hasPassword ? <span className="v2-chip-mini">{W.locked}</span> : null}
+        {profile.admin ? (
+          <span className="v2-chip-mini" data-testid="v2-profile-admin-chip">
+            {W.admin}
+          </span>
+        ) : null}
+        {profile.allowedHere === false ? <span className="v2-chip-mini">{W.notHere}</span> : null}
+        {profile.computers !== undefined ? (
+          <span className="v2-muted v2-profile-computers" data-testid="v2-profile-computers" data-tour="v2-profile-access">
+            {' '}
+            · {W.computersSummary(computerNames(profile.computers, machines))}
+          </span>
+        ) : null}
       </span>
-      {!active ? (
+      {manages ? (
+        <Button size="sm" onClick={() => setAccess(true)} data-testid="v2-profile-access">
+          {W.access}
+        </Button>
+      ) : null}
+      {!active && profile.allowedHere !== false ? (
         <Button size="sm" onClick={onSwitch} data-testid="v2-profile-switch">
           {W.switchAction}
         </Button>
@@ -108,7 +152,98 @@ function ProfileRow({ profile, all, active, onSwitch, onChanged }: { readonly pr
       {merging ? <MergeProfileDialog profile={profile} others={others} onClose={() => setMerging(false)} onChanged={onChanged} /> : null}
       {editing ? <EditProfileDialog profile={profile} active={active} onClose={() => setEditing(false)} onChanged={onChanged} /> : null}
       {deleting ? <DeleteProfileDialog profile={profile} onClose={() => setDeleting(false)} onChanged={onChanged} /> : null}
+      {access && actor ? <AccessDialog profile={profile} actor={actor} bootstrap={bootstrap && actor.admin !== true} machines={machines} onClose={() => setAccess(false)} onChanged={onChanged} /> : null}
     </li>
+  );
+}
+
+/**
+ * D173 · *Computers…*: whether the profile is an admin and which computers it may use (all, or a
+ * checklist of this computer and the paired ones). The admin's (this browser's profile's) password
+ * confirms. The bootstrap (no admin yet): only *Admin*, for this browser's own profile.
+ */
+function AccessDialog({ profile, actor, bootstrap, machines, onClose, onChanged }: { readonly profile: UserProfile; readonly actor: UserProfile; readonly bootstrap: boolean; readonly machines: MachinesView | null; readonly onClose: () => void; readonly onChanged: () => void }) {
+  const toast = useToast();
+  const [admin, setAdmin] = useState(profile.admin === true || bootstrap);
+  const [all, setAll] = useState(profile.computers === null || profile.computers === undefined);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set(profile.computers ?? []));
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const choices = machines ? [{ id: machines.self.id, name: `${machines.self.name} (${W.thisComputer})` }, ...machines.machines.map((machine) => ({ id: machine.id, name: machine.name }))] : [];
+  const sameAccess = all ? profile.computers === null || profile.computers === undefined : profile.computers !== null && profile.computers !== undefined && profile.computers.length === picked.size && profile.computers.every((id) => picked.has(id));
+  const save = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (admin !== (profile.admin === true)) await api.setUserProfileAdmin(profile.id, admin, password);
+      if (!bootstrap && !sameAccess) await api.setUserProfileAccess(profile.id, all ? 'all' : [...picked], password);
+      toast({ text: W.accessSaved(profile.name) });
+      onChanged();
+      onClose();
+    } catch (caught) {
+      setError(errorText(caught));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={W.accessTitle(profile.name)}
+      icon="agents"
+      testId="v2-profile-access-dialog"
+      footer={
+        <>
+          <Button onClick={onClose}>{W.cancel}</Button>
+          <Button variant="primary" disabled={busy || password === ''} onClick={() => void save()} data-testid="v2-profile-access-go">
+            {W.save}
+          </Button>
+        </>
+      }
+    >
+      <p>{bootstrap ? W.bootstrapText : W.accessText}</p>
+      <label className="v2-check">
+        <input type="checkbox" checked={admin} onChange={(event) => setAdmin(event.currentTarget.checked)} data-testid="v2-profile-admin" /> {W.makeAdmin}
+      </label>
+      {!bootstrap ? (
+        <fieldset className="v2-profile-computers-choice" data-testid="v2-profile-computers-choice">
+          <legend>{W.computers}</legend>
+          <label className="v2-check">
+            <input type="radio" name="v2-profile-computers" checked={all} onChange={() => setAll(true)} data-testid="v2-profile-computers-all" /> {W.allComputers}
+          </label>
+          <label className="v2-check">
+            <input type="radio" name="v2-profile-computers" checked={!all} onChange={() => setAll(false)} data-testid="v2-profile-computers-some" /> {W.onlyThese}
+          </label>
+          {!all
+            ? choices.map((choice) => (
+                <label key={choice.id} className="v2-check v2-profile-computer" data-machine={choice.id}>
+                  <input
+                    type="checkbox"
+                    checked={picked.has(choice.id)}
+                    onChange={(event) => {
+                      const on = event.currentTarget.checked;
+                      setPicked((now) => {
+                        const next = new Set(now);
+                        if (on) next.add(choice.id);
+                        else next.delete(choice.id);
+                        return next;
+                      });
+                    }}
+                  />{' '}
+                  {choice.name}
+                </label>
+              ))
+            : null}
+        </fieldset>
+      ) : null}
+      <Field label={W.adminPassword(actor.name)} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} data-testid="v2-profile-admin-password" />
+      {error ? (
+        <p className="v2-field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Dialog>
   );
 }
 

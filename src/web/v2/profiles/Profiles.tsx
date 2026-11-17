@@ -94,7 +94,8 @@ export function PasswordDialog({ title, action, onClose, onSubmit }: { readonly 
 /**
  * The rail's switcher: the active profile (its dot and name; "Choose a profile" when none is
  * chosen yet, a locked Default), and a menu of every profile (it scrolls past a screenful, the
- * keyboard moves through it, the active one is checked), then Manage profiles….
+ * keyboard moves through it, the active one is checked), then Manage profiles…. D173: only the
+ * profiles allowed on this computer.
  */
 export function ProfileSwitcher() {
   const { view } = useUserProfiles();
@@ -105,7 +106,8 @@ export function ProfileSwitcher() {
   const active = view?.profiles.find((profile) => profile.id === view.activeId) ?? null;
   const items: MenuItem[] = useMemo(
     () => [
-      ...(view?.profiles ?? []).map(
+      // D173: a profile an admin did not allow on this computer can't be switched to here.
+      ...(view?.profiles ?? []).filter((profile) => profile.allowedHere !== false).map(
         (profile): MenuItem => ({
           id: `profile-${profile.id}`,
           label: `${profile.name}${profile.hasPassword ? ' 🔒' : ''}`,

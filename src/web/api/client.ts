@@ -342,6 +342,10 @@ export const api = {
   cancelRestore: () => request<void>('DELETE', '/api/backup/restore'),
   mergeUserProfiles: (input: { readonly a: string; readonly b: string; readonly passwordA?: string; readonly passwordB?: string; readonly keep: { readonly name: 'a' | 'b'; readonly color: 'a' | 'b'; readonly password: 'a' | 'b' } }) =>
     request<{ readonly survivor: UserProfile; readonly mergedAway: string }>('POST', '/api/user-profiles/merge', input),
+  // D173: admins and the computers a profile may use (an admin's password; the bootstrap: a profile making itself the first admin).
+  setUserProfileAdmin: (id: string, admin: boolean, adminPassword: string) => request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/admin`, { admin, adminPassword }),
+  setUserProfileAccess: (id: string, computers: 'all' | readonly string[], adminPassword: string) =>
+    request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/access`, { computers, adminPassword }),
   setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>
