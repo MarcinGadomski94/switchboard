@@ -368,10 +368,11 @@ export class EventRepository {
    * {@link editedFilePaths} incrementally (D79/D80/D90 follow-up 2026-10-13): the
    * paths of the edit tool calls stored after event `afterId` (rowid order, so the
    * scan starts there), and the newest such event's id (`afterId` when there is
-   * none). A caller that remembers `lastId` reads each edit once.
+   * none). A caller that remembers `lastId` reads each edit once. `firstId` (D174): the
+   * oldest such event's id, `null` when there is none.
    */
-  async editedFilePathsAfter(sessionId: string, names: readonly string[], afterId: number): Promise<{ readonly paths: string[]; readonly lastId: number }> {
-    if (names.length === 0) return { paths: [], lastId: afterId };
+  async editedFilePathsAfter(sessionId: string, names: readonly string[], afterId: number): Promise<{ readonly paths: string[]; readonly lastId: number; readonly firstId: number | null }> {
+    if (names.length === 0) return { paths: [], lastId: afterId, firstId: null };
     const marks = names.map(() => '?').join(', ');
     const rows = this.#table
       .statement(
@@ -380,14 +381,24 @@ export class EventRepository {
       )
       .all(afterId, sessionId, ...names);
     let lastId = afterId;
+    let firstId: number | null = null;
     const paths = new Set<string>();
     for (const row of rows) {
       const id = Number(row['id']);
       if (id > lastId) lastId = id;
+      if (firstId === null || id < firstId) firstId = id;
       const value = row['p'];
       if (typeof value === 'string' && value !== '') paths.add(value);
     }
-    return { paths: [...paths], lastId };
+    return { paths: [...paths], lastId, firstId };
+  }
+
+  /** D174: the session's newest user message at or before event `uptoId` (its id and time), `null` when there is none. */
+  async userMessageAtOrBefore(sessionId: string, uptoId: number): Promise<{ readonly id: number; readonly ts: string } | null> {
+    const row = this.#table
+      .statement("SELECT id, ts FROM events WHERE session_id = ? AND id <= ? AND json_extract(payload, '$.type') = 'user' ORDER BY id DESC LIMIT 1")
+      .get(sessionId, uptoId) as { id: number; ts: string } | undefined;
+    return row ? { id: Number(row.id), ts: String(row.ts) } : null;
   }
 
   /** D96-q1: the session's tool call event (`payload.type` = `tool`) of a `tool_use` id, not its permission request or denial. */

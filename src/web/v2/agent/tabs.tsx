@@ -4,8 +4,10 @@ import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { deleteErrorText } from '../../views/session/ArtifactDelete.tsx';
-import { deltaText, diffModel, fileKey, scopeOptions, shownScope } from '../../views/session/diff.ts';
-import { useDiffScope } from '../../views/session/useDiffScope.ts';
+import { deltaText, diffModel, emptyHeadFallback, fileKey, scopeOptions, shownScope } from '../../views/session/diff.ts';
+import { type DiffLayout, type SideCell, SPLIT_MIN_QUERY, loadDiffLayout, saveDiffLayout, sideBySide } from '../../views/session/side-by-side.ts';
+import { browserStorage, useDiffScope } from '../../views/session/useDiffScope.ts';
+import { useMedia } from '../../shell/useLayout.ts';
 import { useSessionRefresh } from '../../views/session/useSessionRefresh.ts';
 import { hasSubagentChat } from '../../views/session/chat.ts';
 import { PLAY_MAX, PLAY_TICK_MS, TIMELINE_EVENTS_PAGE, type TimelineBlock, formatClock, playStep, timelineModel } from '../../views/session/timeline.ts';
@@ -21,24 +23,45 @@ import type { AgentData } from './useAgent.ts';
 import { EarlierToggle, ShowMoreHelpers, useFoldClock, useHelperList, useHelpersFold } from './HelpersFold.tsx';
 import { foldLanes, withPendingHelpers } from './helpers-model.ts';
 
-/** The v2 names of the classic diff views (D90). */
-const SCOPE_WORDS: Readonly<Record<DiffScope, string>> = { head: AGENT_WORDS.sinceSavePoint, branch: AGENT_WORDS.wholeCopy, repo: AGENT_WORDS.allUnsaved };
+/** The v2 names of the classic diff views (D90; D174's For review). */
+const SCOPE_WORDS: Readonly<Record<DiffScope, string>> = { review: AGENT_WORDS.forReview, head: AGENT_WORDS.sinceSavePoint, branch: AGENT_WORDS.wholeCopy, repo: AGENT_WORDS.allUnsaved };
 const SCOPE_NOTES: Readonly<Record<DiffScope, string>> = {
+  review: AGENT_WORDS.forReviewNote,
   head: 'What changed since the last save point (commit).',
   branch: 'Everything on the separate copy, compared with where it started. Nothing reaches your main code until you Combine.',
   repo: 'Every unsaved change in the code project, other agents’ and people’s too.',
 };
+const SCOPE_ORDER: readonly DiffScope[] = ['review', 'head', 'branch', 'repo'];
+
+/** D174: the diff layout picked in this browser (Unified / Side by side), shared by every Changes tab. */
+function useDiffLayout(): readonly [DiffLayout, (layout: DiffLayout) => void] {
+  const [layout, setLayout] = useState<DiffLayout>(() => loadDiffLayout(browserStorage()));
+  const pick = useCallback((next: DiffLayout) => {
+    saveDiffLayout(browserStorage(), next);
+    setLayout(next);
+  }, []);
+  return [layout, pick] as const;
+}
 
 /**
  * D131 · lane S · the Changes tab (the classic Diff tab's data, D90): Since last save
  * point / Whole separate copy / All unsaved, the files with their +/−, and the
  * picked file's diff.
+ *
+ * D174: while the agent waits for review (`reviewSince`, or the targets' `review`), For review
+ * comes first and is shown (everything the review's turns changed, committed or not); a
+ * Since last save point that comes back empty with nothing picked, on a worktree with commits,
+ * shows the whole separate copy instead. The diff reads Unified or Side by side (remembered in
+ * this browser; one column below 720 px).
  */
-export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
-  const [remembered, pick] = useDiffScope(sessionId);
+export function ChangesTab({ sessionId, reviewSince = null }: { readonly sessionId: string; readonly reviewSince?: string | null }) {
   const targets = useApi(() => api.sessionDiffTargets(sessionId), [sessionId]);
   const known = targets.data ?? (targets.error ? { worktrees: [], inPlace: [] } : null);
-  const scope = shownScope(remembered, known);
+  const since = known ? (known.review?.since ?? null) : reviewSince;
+  const [remembered, pick] = useDiffScope(sessionId, since);
+  const [auto, setAuto] = useState<{ readonly sessionId: string; readonly scope: DiffScope } | null>(null);
+  const picked = shownScope(remembered, known);
+  const scope = auto !== null && auto.sessionId === sessionId && remembered === null && picked === 'head' ? auto.scope : picked;
   const diff = useApi(async () => ({ scope, files: await api.sessionDiff(sessionId, undefined, scope) }), [sessionId, scope]);
   const reloadDiff = diff.reload;
   const reloadTargets = targets.reload;
@@ -49,9 +72,18 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
   useSessionRefresh(sessionId, reload);
   const [selected, setSelected] = useState<string | null>(null);
   const files = diff.data !== null && diff.data.scope === scope ? diff.data.files : null;
+  const fallback = emptyHeadFallback(scope, remembered, files, known);
+  useEffect(() => {
+    if (fallback !== null) setAuto({ sessionId, scope: fallback });
+  }, [fallback, sessionId]);
   const model = useMemo(() => diffModel(files ?? [], selected), [files, selected]);
   const options = scopeOptions(known);
   const list = files ?? [];
+  const [layout, pickLayout] = useDiffLayout();
+  const narrow = useMedia(SPLIT_MIN_QUERY);
+  const split = layout === 'split' && !narrow;
+  const rows = useMemo(() => (split ? sideBySide(model.pane.lines.map((line) => line.text)) : []), [split, model.pane.lines]);
+  const autoShown = auto !== null && scope === auto.scope && remembered === null && picked === 'head';
   return (
     <div className="v2-ag-tab" data-testid="v2-agent-changes" data-scope={scope}>
       <div className="v2-row v2-ag-tab-head">
@@ -60,12 +92,27 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
           value={scope}
           size="s"
           testId="v2-agent-changes-scope"
-          options={(['head', 'branch', 'repo'] as const).filter((value) => options.includes(value)).map((value) => ({ value, label: SCOPE_WORDS[value] }))}
+          options={SCOPE_ORDER.filter((value) => options.includes(value)).map((value) => ({ value, label: SCOPE_WORDS[value] }))}
           onChange={(value) => {
             if (options.includes(value)) pick(value);
           }}
         />
-        <span className="v2-muted v2-ag-small">{SCOPE_NOTES[scope]}</span>
+        <span className="v2-muted v2-ag-small">{autoShown ? AGENT_WORDS.autoWholeCopy : SCOPE_NOTES[scope]}</span>
+        {!narrow ? (
+          <span className="v2-ag-diff-layout" data-tour="v2-agent-diff-layout">
+            <Segmented<DiffLayout>
+              label={AGENT_WORDS.diffLayout}
+              value={layout}
+              size="s"
+              testId="v2-agent-diff-layout"
+              options={[
+                { value: 'unified', label: AGENT_WORDS.unified },
+                { value: 'split', label: AGENT_WORDS.sideBySide },
+              ]}
+              onChange={pickLayout}
+            />
+          </span>
+        ) : null}
       </div>
       {files === null ? (
         diff.error ? (
@@ -74,7 +121,11 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
           <Skeleton lines={4} height={14} />
         )
       ) : model.empty ? (
-        <EmptyState icon="copy" tone="grey" title={AGENT_WORDS.noChanges} text={AGENT_WORDS.noChangesText} testId="v2-agent-changes-empty" />
+        scope === 'review' ? (
+          <EmptyState icon="copy" tone="grey" title={AGENT_WORDS.noReviewChanges} text={AGENT_WORDS.noReviewChangesText} testId="v2-agent-changes-empty" />
+        ) : (
+          <EmptyState icon="copy" tone="grey" title={AGENT_WORDS.noChanges} text={AGENT_WORDS.noChangesText} testId="v2-agent-changes-empty" />
+        )
       ) : (
         <>
           <p className="v2-muted v2-ag-small" style={{ marginTop: 0 }}>
@@ -95,14 +146,37 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
             })}
           </Card>
           {model.pane.key !== null ? (
-            <div className="v2-ag-diff" data-testid="v2-agent-diff">
-              <div className="v2-ag-diff-h">{model.pane.name}</div>
-              {model.pane.lines.map((line, index) => (
-                <div key={index} data-tone={line.tone}>
-                  {line.text}
+            split ? (
+              <div className="v2-ag-diff v2-ag-split" data-testid="v2-agent-diff" data-layout="split">
+                <div className="v2-ag-diff-h">{model.pane.name}</div>
+                <div className="v2-ag-split-grid" role="table" aria-label={model.pane.name}>
+                  <div className="v2-ag-split-colh" role="columnheader">
+                    {AGENT_WORDS.before}
+                  </div>
+                  <div className="v2-ag-split-colh" role="columnheader">
+                    {AGENT_WORDS.after}
+                  </div>
+                  {rows.map((row, index) =>
+                    row.kind === 'hunk' ? (
+                      <div key={index} className="v2-ag-split-hunk" data-tone="hunk">
+                        {row.text}
+                      </div>
+                    ) : (
+                      <SplitPair key={index} left={row.left} right={row.right} />
+                    ),
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="v2-ag-diff" data-testid="v2-agent-diff" data-layout="unified">
+                <div className="v2-ag-diff-h">{model.pane.name}</div>
+                {model.pane.lines.map((line, index) => (
+                  <div key={index} data-tone={line.tone}>
+                    {line.text}
+                  </div>
+                ))}
+              </div>
+            )
           ) : null}
         </>
       )}
@@ -110,6 +184,21 @@ export function ChangesTab({ sessionId }: { readonly sessionId: string }) {
   );
 }
 
+/** D174: one row of the side-by-side diff: the left and right cells, each with its line number. */
+function SplitPair({ left, right }: { readonly left: SideCell; readonly right: SideCell }) {
+  return (
+    <>
+      <div className="v2-ag-split-cell" data-tone={left.tone} data-testid="v2-agent-split-left">
+        <span className="v2-ag-split-no">{left.no ?? ''}</span>
+        <span className="v2-ag-split-text">{left.text}</span>
+      </div>
+      <div className="v2-ag-split-cell v2-ag-split-r" data-tone={right.tone} data-testid="v2-agent-split-right">
+        <span className="v2-ag-split-no">{right.no ?? ''}</span>
+        <span className="v2-ag-split-text">{right.text}</span>
+      </div>
+    </>
+  );
+}
 /**
  * D89 · this agent's results (artifacts), newest first; a click opens lane R's
  * result drawer (versions, Compare, Source / Rendered, Copy, Download, Full

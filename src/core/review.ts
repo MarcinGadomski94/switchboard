@@ -23,6 +23,20 @@ export interface ReviewPending {
   readonly fileCount: number;
   /** The paths (as the tool calls wrote them), at most {@link REVIEW_FILES_MAX}. */
   readonly files: readonly string[];
+  /**
+   * Additive (D174): the session's turn (its user message's place, 1 = the first) the review
+   * started at: the first file-changing turn. The "For review" diff starts at that turn's D80
+   * checkpoint (`docs/worktrees.md` → *For review (D174)*). Absent on a review stored before D174.
+   */
+  readonly turn?: number;
+  /** Additive (D174): when that turn's user message was sent (ISO): the git fallback's moment when the turn has no checkpoint. */
+  readonly startedAt?: string;
+}
+
+/** D174: where a new review starts (the first file-changing turn's number and start), when known. */
+export interface ReviewStart {
+  readonly turn: number | null;
+  readonly startedAt: string | null;
 }
 
 /** What a session stores (`sessions.review`, 0056). */
@@ -38,16 +52,23 @@ export const REVIEW_FILES_MAX = 50;
 /** The tool calls that edit files (as `src/server/worktrees/touched.ts`'s `EDIT_TOOLS`). */
 export const REVIEW_EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 
-/** A pending review with one more file-changing turn (its `paths`), ended at `at` (ISO). */
-export function addReviewTurn(pending: ReviewPending | null, paths: readonly string[], at: string): ReviewPending {
+/**
+ * A pending review with one more file-changing turn (its `paths`), ended at `at` (ISO). A new
+ * review (`pending` null) records where it started (`start`, D174); a growing one keeps its start.
+ */
+export function addReviewTurn(pending: ReviewPending | null, paths: readonly string[], at: string, start: ReviewStart | null = null): ReviewPending {
   const seen = new Set(pending?.files ?? []);
   const fresh = paths.filter((path) => !seen.has(path));
   const files = [...(pending?.files ?? []), ...fresh].slice(0, REVIEW_FILES_MAX);
+  const turn = pending ? pending.turn : (start?.turn ?? undefined);
+  const startedAt = pending ? pending.startedAt : (start?.startedAt ?? undefined);
   return {
     since: pending?.since ?? at,
     turns: (pending?.turns ?? 0) + 1,
     fileCount: (pending?.fileCount ?? 0) + fresh.length,
     files,
+    ...(turn !== undefined ? { turn } : {}),
+    ...(startedAt !== undefined ? { startedAt } : {}),
   };
 }
 
@@ -88,5 +109,10 @@ export function readSessionReview(value: unknown): SessionReview {
   if (typeof raw !== 'object' || raw === null) return { pending: null, cursor };
   const p = raw as Record<string, unknown>;
   if (typeof p['since'] !== 'string' || typeof p['turns'] !== 'number' || typeof p['fileCount'] !== 'number' || !Array.isArray(p['files'])) return { pending: null, cursor };
-  return { pending: { since: p['since'], turns: p['turns'], fileCount: p['fileCount'], files: p['files'].filter((f): f is string => typeof f === 'string') }, cursor };
+  const turn = typeof p['turn'] === 'number' && Number.isInteger(p['turn']) && p['turn'] >= 1 ? p['turn'] : undefined;
+  const startedAt = typeof p['startedAt'] === 'string' ? p['startedAt'] : undefined;
+  return {
+    pending: { since: p['since'], turns: p['turns'], fileCount: p['fileCount'], files: p['files'].filter((f): f is string => typeof f === 'string'), ...(turn !== undefined ? { turn } : {}), ...(startedAt !== undefined ? { startedAt } : {}) },
+    cursor,
+  };
 }

@@ -128,7 +128,7 @@ describe('Diff tab views (D90)', () => {
   const BOTH: DiffTargets = { worktrees: [{ ...WT.worktrees[0]!, commits: 0 }], inPlace: IN_PLACE.inPlace };
 
   it('copy', () => {
-    expect(SCOPE_LABELS).toEqual({ head: 'Since last commit', branch: 'Whole branch', repo: 'All uncommitted changes in this repo' });
+    expect(SCOPE_LABELS).toEqual({ head: 'Since last commit', branch: 'Whole branch', repo: 'All uncommitted changes in this repo', review: 'For review' });
     expect(EMPTY_HEAD).toBe('No uncommitted changes since the last commit.');
     expect(EMPTY_REPO).toBe('No uncommitted changes in this repo.');
     expect(REPO_NOTE).toBe("Includes other people's and other sessions' edits in this repo.");

@@ -98,7 +98,7 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
   const name = session ? agentDisplayName(session, members) : '';
   const mate = teammateOf(sessionId, members);
   // The same counts as the full view's tabs (`AgentView.tsx`).
-  const changes = useDiffCount(sessionId, session ? session.files.length : null);
+  const changes = useDiffCount(sessionId, session ? session.files.length : null, session?.review?.since ?? null);
   // 2026-10-27 · the helpers fold: the count is the active helpers'.
   const helpers = activeHelperCount(withPendingHelpers(session?.agents ?? [], data.activity?.background), session?.workflows ?? []);
   const tabs = [
@@ -158,7 +158,7 @@ export function PeekSheet({ sessionId, onClose }: { readonly sessionId: string; 
           ) : (
             <div className="v2-ag-scroll">
               <div className="v2-ag-col v2-ag-col-wide">
-                {tab === 'changes' ? <ChangesTab sessionId={sessionId} /> : null}
+                {tab === 'changes' ? <ChangesTab sessionId={sessionId} reviewSince={session?.review?.since ?? null} /> : null}
                 {tab === 'results' ? <ResultsTab data={data} resultId={resultId} onOpen={setResultId} /> : null}
                 {tab === 'helpers' ? <HelpersTab data={data} helperHref={helperHref} /> : null}
               </div>

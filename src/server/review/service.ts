@@ -1,6 +1,6 @@
 import type { Session } from '../../core/api.ts';
 import { isRemoteId } from '../../core/peers.ts';
-import { type SessionReview, REVIEW_EDIT_TOOLS, addReviewTurn, readSessionReview, reviewItemDetail, reviewItemTitle, reviewsSession } from '../../core/review.ts';
+import { type ReviewStart, type SessionReview, REVIEW_EDIT_TOOLS, addReviewTurn, readSessionReview, reviewItemDetail, reviewItemTitle, reviewsSession } from '../../core/review.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
@@ -88,16 +88,28 @@ export class ReviewService {
     const review = readSessionReview(record.review);
     // Not read yet: the turn's edits are the ones after its prompt.
     const after = review.cursor ?? (await this.#o.store.events.latestUserMessageId(sessionId));
-    const { paths, lastId } = await this.#o.store.events.editedFilePathsAfter(sessionId, REVIEW_EDIT_TOOLS, after);
+    const { paths, lastId, firstId } = await this.#o.store.events.editedFilePathsAfter(sessionId, REVIEW_EDIT_TOOLS, after);
     const cursor = Math.max(lastId, await this.#o.store.events.newestId(sessionId));
     if (paths.length === 0) {
       if (cursor !== review.cursor) await this.#save(sessionId, { pending: review.pending, cursor });
       return;
     }
-    const pending = addReviewTurn(review.pending, paths, new Date((this.#o.now ?? Date.now)()).toISOString());
+    const start = review.pending === null && firstId !== null ? await this.#startOf(sessionId, firstId) : null;
+    const pending = addReviewTurn(review.pending, paths, new Date((this.#o.now ?? Date.now)()).toISOString(), start);
     await this.#save(sessionId, { pending, cursor });
     await this.#o.systemItems?.reviewNotice({ sessionId, dedupe: `review:${sessionId}:${pending.since}`, source: agentName(record), title: reviewItemTitle(agentName(record), pending), detail: reviewItemDetail(pending) });
     await this.#o.announce(sessionId);
+  }
+
+  /**
+   * D174: where a new review starts: the turn of its first edit (the user messages up to the
+   * one before it; the D80 checkpoint of that turn is the For review diff's base) and when that
+   * message was sent. Without a user message before the edit: unknown.
+   */
+  async #startOf(sessionId: string, firstEditId: number): Promise<ReviewStart | null> {
+    const message = await this.#o.store.events.userMessageAtOrBefore(sessionId, firstEditId);
+    if (message === null) return null;
+    return { turn: await this.#o.store.events.countUserMessages(sessionId, message.id), startedAt: message.ts };
   }
 
   /**

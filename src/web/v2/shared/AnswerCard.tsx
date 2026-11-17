@@ -20,6 +20,7 @@ import { startRetry } from './moves.ts';
 import { retryOf } from '../../takeover/retry.ts';
 import { displayNameById, useTeamMembers } from './teammates.ts';
 import { clock, timeAgo } from './time.ts';
+import { showReviewScope } from '../../views/session/useDiffScope.ts';
 import './shared.css';
 
 /**
@@ -246,7 +247,11 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
   };
   const open = (target: OpenTarget): void => {
     if (target.type === 'url') window.open(target.url, '_blank', 'noopener');
-    else if (target.type === 'agent') navigate(`/agents/${encodeURIComponent(target.sessionId)}${target.tab ? `/${target.tab}` : ''}`);
+    else if (target.type === 'agent') {
+      // D174: Open changes lands on For review.
+      if (target.tab === 'changes') showReviewScope(target.sessionId);
+      navigate(`/agents/${encodeURIComponent(target.sessionId)}${target.tab ? `/${target.tab}` : ''}`);
+    }
     // D154: a failed move's Try again: the move dialog of the same agent and computer, with the last choices.
     else if (target.type === 'move') void retryOf(target.move).then(startRetry, (error: unknown) => toast({ text: `Couldn’t open the move: ${error instanceof Error ? error.message : String(error)}`, tone: 'error' }));
     else navigate(toV2Path(target.path));

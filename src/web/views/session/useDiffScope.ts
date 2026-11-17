@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DiffScope } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { SingleFlight } from '../../api/single-flight.ts';
-import { type DiffCountLabel, type ScopeStorage, diffCountShown, diffTabCount, loadScope, saveScope } from './diff.ts';
+import { type DiffCountLabel, type ScopeStorage, diffCountShown, diffTabCount, loadScope, pickedScope, saveScope } from './diff.ts';
 import { useSessionRefresh } from './useSessionRefresh.ts';
 
 /** `window.localStorage`, or `null` where reading it throws (blocked site data). */
@@ -17,17 +17,38 @@ export function browserStorage(): ScopeStorage | null {
 /** The pages' components showing a session's view (the Diff tab and the tab count) hear each pick. */
 const listeners = new Set<(sessionId: string, scope: DiffScope) => void>();
 
+/** D174: the view picked during a session's pending review (this page's life; a new review opens on For review again). */
+const reviewPicks = new Map<string, { readonly since: string; readonly scope: DiffScope }>();
+
+/**
+ * D174: the To review strip's and card's **Open changes**: the session's Changes tab opens on For
+ * review, even if another view was picked during this review. (Without a pending review the
+ * tab does not offer it and shows its usual view.)
+ */
+export function showReviewScope(sessionId: string): void {
+  reviewPicks.delete(sessionId);
+  for (const listener of [...listeners]) listener(sessionId, 'review');
+}
+
 /**
  * D90: the Diff tab's view remembered for the session in this browser (`null` = none
  * picked: Since last commit), and the pick. The Diff tab and the session tab's
  * "Diff · n" count read the same choice, so a pick updates both.
+ *
+ * D174: while the session has a pending review (`reviewSince`, its `since`), the view is
+ * For review until another is picked during that review ({@link pickedScope}); For review
+ * itself is never stored in the browser.
  */
-export function useDiffScope(sessionId: string): readonly [DiffScope | null, (scope: DiffScope) => void] {
+export function useDiffScope(sessionId: string, reviewSince: string | null = null): readonly [DiffScope | null, (scope: DiffScope) => void] {
   const [remembered, setRemembered] = useState<{ readonly sessionId: string; readonly scope: DiffScope | null }>(() => ({ sessionId, scope: loadScope(browserStorage(), sessionId) }));
-  const current = remembered.sessionId === sessionId ? remembered.scope : loadScope(browserStorage(), sessionId);
+  const [, setTick] = useState(0);
+  const stored = remembered.sessionId === sessionId ? remembered.scope : loadScope(browserStorage(), sessionId);
+  const current = pickedScope(stored, reviewSince, reviewPicks.get(sessionId) ?? null);
   useEffect(() => {
     const listener = (id: string, scope: DiffScope): void => {
-      if (id === sessionId) setRemembered({ sessionId, scope });
+      if (id !== sessionId) return;
+      if (scope === 'review') setTick((n) => n + 1);
+      else setRemembered({ sessionId, scope });
     };
     listeners.add(listener);
     return () => {
@@ -36,10 +57,11 @@ export function useDiffScope(sessionId: string): readonly [DiffScope | null, (sc
   }, [sessionId]);
   const pick = useCallback(
     (scope: DiffScope) => {
-      saveScope(browserStorage(), sessionId, scope);
+      if (reviewSince !== null) reviewPicks.set(sessionId, { since: reviewSince, scope });
+      if (scope !== 'review') saveScope(browserStorage(), sessionId, scope);
       for (const listener of [...listeners]) listener(sessionId, scope);
     },
-    [sessionId],
+    [sessionId, reviewSince],
   );
   return [current, pick] as const;
 }
@@ -77,8 +99,8 @@ function initialCount(key: string): CountState {
  * doubling) and "…" alone until the first answer. Returns the tab's count label
  * ({@link diffCountShown}).
  */
-export function useDiffCount(sessionId: string, detailFiles: number | null): DiffCountLabel {
-  const [scope] = useDiffScope(sessionId);
+export function useDiffCount(sessionId: string, detailFiles: number | null, reviewSince: string | null = null): DiffCountLabel {
+  const [scope] = useDiffScope(sessionId, reviewSince);
   const asked: DiffScope = scope ?? 'head';
   const key = `${sessionId}\u0000${asked}`;
   const [state, setState] = useState<CountState>(() => initialCount(key));
@@ -111,7 +133,8 @@ export function useDiffCount(sessionId: string, detailFiles: number | null): Dif
         (caught: unknown) => {
           if (!live) return;
           // A paired machine before the ruling refuses the route (403 `peer-forbidden`; 404 / 501 elsewhere); anything else keeps what is known.
-          const unsupported = caught instanceof ApiError && (caught.status === 403 || caught.status === 404 || caught.status === 501);
+          // D174: a paired computer before D174 refuses `scope=review` (422): its whole-branch count shows.
+          const unsupported = caught instanceof ApiError && (caught.status === 403 || caught.status === 404 || caught.status === 501 || (asked === 'review' && caught.status === 422));
           if (unsupported) setState({ key, files: null, refreshing: false, unsupported: true });
           else setState((current) => (current.key === key ? { ...current, refreshing: false } : current));
         },

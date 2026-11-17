@@ -1,4 +1,6 @@
-import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { copyFile, lstat, open, readlink, realpath, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { type BranchingPreflightRow, type DiffCount, type DiffScope, type DiffTargets, type FileDiff, type RepoBranches, type Worktree, offeredDiffScope } from '../../core/api.ts';
 import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
@@ -50,7 +52,9 @@ import type { SessionWorksIn, WorksInEvidence as WorksInEvidenceKind, WorksInRep
 import { type EvidenceCounts, evidenceKinds, rankByEvidence } from '../../core/works-in-evidence.ts';
 import { WorksInEvidence } from './works-in.ts';
 import { redactUrl } from '../../core/takeover.ts';
-import { SessionTouchedFiles } from './touched.ts';
+import { SessionTouchedFiles, canonicalPath } from './touched.ts';
+import { CheckpointGit } from '../checkpoints/git.ts';
+import { type ReviewPending, readSessionReview } from '../../core/review.ts';
 import { toWorktree } from './wire.ts';
 import { mapLimit } from '../map-limit.ts';
 import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
@@ -281,6 +285,11 @@ export const DIFF_TARGET_CONCURRENCY = 4;
 export const TOUCHED_PATHSPEC_LIMIT = 200;
 
 /** D144: the touched files as literal pathspecs, so git reads only them; none (the whole tree) without a set or for a large one. */
+/** D174: the session's pending D166 review (the For review view), `null` without one or once archived (as `Session.review`). */
+function reviewOf(session: SessionRecord): ReviewPending | null {
+  return session.closedAt === null ? readSessionReview(session.review).pending : null;
+}
+
 export function touchedPathspec(touched: ReadonlySet<string> | null): string[] {
   if (touched === null || touched.size === 0 || touched.size > TOUCHED_PATHSPEC_LIMIT) return [];
   return [...touched].sort().map((relative) => `:(literal)${relative}`);
@@ -1451,10 +1460,14 @@ export class WorktreeManager implements DiffProvider {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
     // D144: a few working trees at a time (a session can use dozens), answers in the targets' order.
+    // D174: For review without a pending review is Since last commit (as the count's `offeredDiffScope`).
+    const review = scope === 'review' ? reviewOf(session) : null;
+    const shown: DiffScope = scope === 'review' && review === null ? 'head' : scope;
     const per = await mapLimit(await this.#diffTargets(session), DIFF_TARGET_CONCURRENCY, async (target) => {
       try {
-        const touched = scope === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
-        return await this.#diffTarget(target, file, scope === 'branch' && target.worktree, touched);
+        const touched = (shown === 'head' || shown === 'review') && !target.worktree ? await this.touched.paths(session, target.dir) : null;
+        if (review !== null) return await this.#reviewTarget(session, target, file, touched, review);
+        return await this.#diffTarget(target, file, shown === 'branch' && target.worktree, touched);
       } catch (error) {
         this.#onError(error);
         return [];
@@ -1494,7 +1507,8 @@ export class WorktreeManager implements DiffProvider {
       if ('worktree' in row) worktrees.push(row.worktree);
       else inPlace.push(row.inPlace);
     }
-    return { worktrees, inPlace };
+    const review = reviewOf(session);
+    return { worktrees, inPlace, ...(review !== null ? { review: { since: review.since } } : {}) };
   }
 
   /**
@@ -1511,10 +1525,13 @@ export class WorktreeManager implements DiffProvider {
     const all = await this.#diffTargets(session);
     const exists = await mapLimit(all, DIFF_TARGET_CONCURRENCY, (target) => isDirectory(target.dir));
     const targets = all.filter((_, index) => exists[index] === true);
-    const shown = offeredDiffScope(scope, { worktrees: targets.filter((t) => t.worktree), inPlace: targets.filter((t) => !t.worktree) });
+    const review = reviewOf(session);
+    const shown = offeredDiffScope(scope, { worktrees: targets.filter((t) => t.worktree), inPlace: targets.filter((t) => !t.worktree), review });
     const counts = await mapLimit(targets, DIFF_TARGET_CONCURRENCY, async (target) => {
       try {
-        const touched = shown === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
+        const touched = (shown === 'head' || shown === 'review') && !target.worktree ? await this.touched.paths(session, target.dir) : null;
+        // D174: For review is counted from its diff (its base and the files now need the patch's tree diff anyway).
+        if (shown === 'review' && review !== null) return (await this.#reviewTarget(session, target, undefined, touched, review)).length;
         return await this.#countTarget(target, shown === 'branch' && target.worktree, touched);
       } catch (error) {
         this.#onError(error);
@@ -1709,6 +1726,104 @@ export class WorktreeManager implements DiffProvider {
     // Against HEAD every listed change is uncommitted; against a merge-base, only the files that still differ from HEAD (or are untracked).
     const dirty = base === headSha ? null : await this.#changedSinceHead(target.dir, pathspec);
     return parsed.map((entry) => toFileDiff(target.solution, branch, entry, dirty === null || dirty.has(entry.path) || untrackedPaths.has(entry.path)));
+  }
+
+  /**
+   * D174 (`docs/worktrees.md` → *For review (D174)*): one working tree's files for the
+   * "For review" view: from the review's base ({@link #reviewBase}) to the files now (a
+   * tree of the working tree written into a throw-away index: committed, staged, unstaged
+   * and untracked changes alike, `.gitignore` respected), in place only the session's own
+   * files (`touched`). A file still differing from HEAD (or untracked) is `uncommitted`.
+   */
+  async #reviewTarget(session: SessionRecord, target: DiffTarget, file: string | undefined, touched: ReadonlySet<string> | null, review: ReviewPending): Promise<FileDiff[]> {
+    if (!(await isDirectory(target.dir))) return [];
+    if (touched !== null && touched.size === 0) return [];
+    const git = this.#checkpointGit();
+    const base = await this.#reviewBase(session, target, review, git);
+    const pathspec = file === undefined ? ['--', ...touchedPathspec(touched)] : ['--', `:(literal)${file}`];
+    const now = await this.#treeNow(target.dir, pathspec.slice(1), git);
+    if (base === now) return [];
+    const patch = await this.#runDiffGit(target.dir, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', base, now, ...pathspec]);
+    if (!succeeded(patch)) throw new WorktreeError('git-failed', `git diff failed in ${target.dir}: ${failureText(patch)}`);
+    const keep = (relative: string): boolean => touched === null || touched.has(relative);
+    const parsed = parsePatch(patch.stdout).filter((entry) => keep(entry.path));
+    if (parsed.length === 0) return [];
+    parsed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    const hasHead = succeeded(await this.#runDiffGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']));
+    const dirty = hasHead ? await this.#changedSinceHead(target.dir, pathspec) : null;
+    const untracked = await this.#runDiffGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', ...pathspec]);
+    const untrackedPaths = new Set(succeeded(untracked) ? splitNulList(untracked.stdout) : []);
+    const branch = target.branch ?? (await this.#currentBranch(target.dir));
+    return parsed.map((entry) => toFileDiff(target.solution, branch, entry, dirty === null || dirty.has(entry.path) || untrackedPaths.has(entry.path)));
+  }
+
+  /**
+   * D174: where the review's diff of one working tree starts, in this order:
+   * 1. the D80 checkpoint taken before the review's first turn in this working tree (exact:
+   *    tracked and untracked files as they were; a review stored before D174 has no turn: the
+   *    newest checkpoint taken before the review's first turn ended);
+   * 2. without one (checkpoints off, the repo joined the session later, pruned): the newest
+   *    commit on HEAD's first-parent line from before that turn started (`git rev-list -1
+   *    --first-parent --before=`): its commits and everything uncommitted since;
+   * 3. no commit that old (the repo's history all came later, or no commit yet): the empty
+   *    tree (every file is new).
+   */
+  async #reviewBase(session: SessionRecord, target: DiffTarget, review: ReviewPending, git: CheckpointGit): Promise<string> {
+    const top = await canonicalPath(target.dir);
+    const inThisTree = async (row: { readonly repoPath: string }): Promise<boolean> => row.repoPath === target.dir || row.repoPath === top || (await canonicalPath(row.repoPath)) === top;
+    let rows = review.turn !== undefined ? await this.#store.checkpoints.turn(session.id, review.turn) : (await this.#store.checkpoints.listOf(session.id, 'turn')).filter((row) => row.createdAt <= review.since).reverse();
+    rows = (await Promise.all(rows.map(async (row) => ((await inThisTree(row)) ? row : null)))).filter((row) => row !== null);
+    for (const row of rows) if (await git.hasCommit(target.dir, row.commitSha)) return row.commitSha;
+    // Commit times are whole seconds: a commit in the turn's first second is the turn's (`@<seconds>`: git's raw time).
+    const moment = Date.parse(review.startedAt ?? review.since);
+    if (Number.isFinite(moment)) {
+      const before = await this.#runDiffGit(target.dir, ['rev-list', '-1', '--first-parent', `--before=@${Math.floor(moment / 1000) - 1}`, 'HEAD']);
+      if (succeeded(before) && before.stdout.trim() !== '') return before.stdout.trim();
+    }
+    return git.emptyTree(target.dir);
+  }
+
+  /**
+   * D174: the working tree now as a tree id, written through a copy of the index (the
+   * developer's index and files are never touched; only objects are added). `paths` (a
+   * pathspec) limits what is read to those files (the others keep their index state, and the
+   * diff reads only `paths`); a path neither on disk nor in the index is left out (git
+   * refuses a pathspec that matches nothing).
+   */
+  async #treeNow(top: string, paths: readonly string[], git: CheckpointGit): Promise<string> {
+    const realIndex = (await git.run(top, ['rev-parse', '--path-format=absolute', '--git-path', 'index'])).trim();
+    const temp = path.join(os.tmpdir(), `switchboard-review-${randomUUID()}.index`);
+    const env = { GIT_INDEX_FILE: temp };
+    try {
+      const copied = await copyFile(realIndex, temp).then(
+        () => true,
+        () => false,
+      );
+      if (!copied && (await git.head(top)) !== null) await git.run(top, ['read-tree', 'HEAD'], env);
+      let add: readonly string[] = paths;
+      if (paths.length > 0) {
+        const indexed = await git.try(top, ['ls-files', '-z', '--', ...paths], env);
+        const known = new Set(indexed.ok ? splitNulList(indexed.raw) : []);
+        const present = await Promise.all(paths.map(async (spec) => {
+          const relative = spec.startsWith(':(literal)') ? spec.slice(':(literal)'.length) : spec;
+          return known.has(relative) || (await lstat(path.join(top, relative)).then(() => true, () => false)) ? spec : null;
+        }));
+        add = present.filter((spec) => spec !== null);
+        if (add.length === 0) return await git.run(top, ['write-tree'], env);
+      }
+      await git.run(top, ['add', '-A', '--', ...add], env);
+      return await git.run(top, ['write-tree'], env);
+    } finally {
+      await rm(temp, { force: true }).catch(() => undefined);
+      await rm(`${temp}.lock`, { force: true }).catch(() => undefined);
+    }
+  }
+
+  #checkpointGitInstance: CheckpointGit | null = null;
+
+  #checkpointGit(): CheckpointGit {
+    this.#checkpointGitInstance ??= new CheckpointGit({ env: this.#env, timeoutMs: this.#diffTimeout });
+    return this.#checkpointGitInstance;
   }
 
   /** Tracked files whose working tree or index differs from HEAD (`FileDiff.uncommitted`). */

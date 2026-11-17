@@ -1232,11 +1232,16 @@ export interface FileDiff {
  *   and sessions' edits too);
  * - `branch`: the whole branch (a worktree against the merge-base of its base
  *   branch; in place against HEAD, every file): the behavior before D90.
+ * - `review` (D174, offered while the session has a pending D166 review:
+ *   `DiffTargets.review`): everything the review's turns changed, committed or not:
+ *   each working tree from where the review's first turn started (its D80
+ *   checkpoint; else the last commit before that turn) to the files now; in place
+ *   only the files this session touched. Without a pending review it is `head`.
  */
-export type DiffScope = 'head' | 'branch' | 'repo';
+export type DiffScope = 'head' | 'branch' | 'repo' | 'review';
 
 /** The {@link DiffScope} values. */
-export const DIFF_SCOPES: readonly DiffScope[] = ['head', 'branch', 'repo'];
+export const DIFF_SCOPES: readonly DiffScope[] = ['head', 'branch', 'repo', 'review'];
 
 /** D90: one worktree of a session as the Diff tab names it (`DiffTargets.worktrees`). */
 export interface DiffWorktreeTarget {
@@ -1263,6 +1268,12 @@ export interface DiffInPlaceTarget {
 export interface DiffTargets {
   readonly worktrees: readonly DiffWorktreeTarget[];
   readonly inPlace: readonly DiffInPlaceTarget[];
+  /**
+   * Additive (D174): the session has a pending D166 review (the "For review" view is offered
+   * and shown first): when its first file-changing turn ended (`ReviewPending.since`).
+   * Absent without one (or from a computer before D174).
+   */
+  readonly review?: { readonly since: string };
 }
 
 /**
@@ -1286,9 +1297,10 @@ export interface DiffCount {
 }
 
 /** D90: the view the Diff tab shows for a remembered `scope` once the targets are known (the server's and the tab's rule). */
-export function offeredDiffScope(scope: DiffScope, targets: { readonly worktrees: readonly unknown[]; readonly inPlace: readonly unknown[] }): DiffScope {
+export function offeredDiffScope(scope: DiffScope, targets: { readonly worktrees: readonly unknown[]; readonly inPlace: readonly unknown[]; readonly review?: unknown }): DiffScope {
   if (scope === 'branch') return targets.worktrees.length > 0 ? 'branch' : 'head';
   if (scope === 'repo') return targets.inPlace.length > 0 ? 'repo' : 'head';
+  if (scope === 'review') return targets.review ? 'review' : 'head';
   return 'head';
 }
 

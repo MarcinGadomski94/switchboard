@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Session } from '../../../core/api.ts';
 import { reviewStripText } from '../../../core/review.ts';
 import { api } from '../../api/client.ts';
+import { showReviewScope } from '../../views/session/useDiffScope.ts';
 import { Button, Icon, useToast } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
 
@@ -12,7 +13,7 @@ function errorText(error: unknown): string {
 /**
  * D166 (`docs/inbox.md` → *To review*): above the composer, a green strip while the agent has
  * finished turns that changed files not reviewed yet: "Changed 3 files" with **Open changes** (the
- * Changes tab) and **Mark reviewed**. Replying to the agent reviews them too (the strip goes).
+ * Changes tab, on its For review view: D174) and **Mark reviewed**. Replying to the agent reviews them too (the strip goes).
  */
 export function ReviewStrip({ sessionId, session }: { readonly sessionId: string; readonly session: Pick<Session, 'review' | 'closedAt'> | null }) {
   const toast = useToast();
@@ -36,7 +37,10 @@ export function ReviewStrip({ sessionId, session }: { readonly sessionId: string
       <span className="v2-grow">
         <b>To review</b> · {reviewStripText(pending)}
       </span>
-      <Button size="sm" icon="eye" onClick={() => navigate({ area: 'agent', id: sessionId, tab: 'changes' })} data-testid="v2-agent-review-changes">
+      <Button size="sm" icon="eye" onClick={() => {
+          showReviewScope(sessionId);
+          navigate({ area: 'agent', id: sessionId, tab: 'changes' });
+        }} data-testid="v2-agent-review-changes">
         Open changes
       </Button>
       <Button size="sm" variant="primary" icon="check" disabled={busy} onClick={mark} data-testid="v2-agent-review-mark">

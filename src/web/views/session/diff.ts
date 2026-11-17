@@ -144,6 +144,7 @@ export const SCOPE_LABELS: Readonly<Record<DiffScope, string>> = {
   head: 'Since last commit',
   branch: 'Whole branch',
   repo: 'All uncommitted changes in this repo',
+  review: 'For review',
 };
 
 /** The toggles' tooltips. */
@@ -151,6 +152,7 @@ export const SCOPE_TITLES: Readonly<Record<DiffScope, string>> = {
   head: "Uncommitted changes against the last commit; in a repo the session works in place, only the files this session touched",
   branch: 'Everything the branch contains: its commits and the uncommitted changes, against where it left its base branch',
   repo: "Every uncommitted change in the repo, including other people's and other sessions' edits",
+  review: 'Everything the turns waiting for your review changed, committed or not (D174)',
 };
 
 /** The note under the header while `repo` is shown. */
@@ -159,6 +161,8 @@ export const REPO_NOTE = "Includes other people's and other sessions' edits in t
 /** Empty states per view. */
 export const EMPTY_HEAD = 'No uncommitted changes since the last commit.';
 export const EMPTY_REPO = 'No uncommitted changes in this repo.';
+/** D174: the For review view without files (the agent's changes were undone, or are outside the repos read). */
+export const EMPTY_REVIEW = 'Nothing differs any more from where the turns waiting for review started.';
 /** Under {@link EMPTY_HEAD} when a worktree's branch has commits. */
 export const HINT_WHOLE_BRANCH = 'The branch has commits: switch to Whole branch to see them.';
 
@@ -168,7 +172,8 @@ export const HINT_WHOLE_BRANCH = 'The branch has commits: switch to Whole branch
  * targets (still loading, a machine before D90) only the default.
  */
 export function scopeOptions(targets: DiffTargets | null): DiffScope[] {
-  const options: DiffScope[] = ['head'];
+  // D174: For review first while the session has a pending review.
+  const options: DiffScope[] = targets?.review ? ['review', 'head'] : ['head'];
   if (targets && targets.worktrees.length > 0) options.push('branch');
   if (targets && targets.inPlace.length > 0) options.push('repo');
   return options;
@@ -176,18 +181,41 @@ export function scopeOptions(targets: DiffTargets | null): DiffScope[] {
 
 /**
  * The view to show: the remembered one while the targets load (no second fetch),
- * then the remembered one only when it is offered, else Since last commit.
+ * then the remembered one only when it is offered, else For review while a review is
+ * pending (D174), else Since last commit.
  */
 export function shownScope(remembered: DiffScope | null, targets: DiffTargets | null): DiffScope {
-  if (remembered === null) return 'head';
+  const fallback: DiffScope = targets?.review ? 'review' : 'head';
+  if (remembered === null) return fallback;
   if (targets === null) return remembered;
-  return scopeOptions(targets).includes(remembered) ? remembered : 'head';
+  return scopeOptions(targets).includes(remembered) ? remembered : fallback;
+}
+
+/**
+ * D174: the view picked for a session while a review is pending: the tab opens on For review
+ * (the To review card's Open changes lands there) unless another view was picked during
+ * this review; without a review, the view remembered in this browser (`remembered`).
+ */
+export function pickedScope(remembered: DiffScope | null, reviewSince: string | null, reviewPick: { readonly since: string; readonly scope: DiffScope } | null): DiffScope | null {
+  if (reviewSince === null) return remembered;
+  return reviewPick !== null && reviewPick.since === reviewSince ? reviewPick.scope : 'review';
+}
+
+/**
+ * D174: Since last commit came back empty while nothing was picked and the worktree's branch has
+ * commits (the agent committed its work): the tab shows Whole branch instead (not remembered).
+ * `null` = keep the view.
+ */
+export function emptyHeadFallback(scope: DiffScope, remembered: DiffScope | null, files: readonly unknown[] | null, targets: DiffTargets | null): DiffScope | null {
+  if (scope !== 'head' || remembered !== null || files === null || files.length > 0 || targets === null) return null;
+  return targets.worktrees.some((worktree) => worktree.commits > 0) ? 'branch' : null;
 }
 
 /** `Whole branch vs origin/dev` (the worktrees' distinct bases), `Whole branch` without one. */
 export function scopeTitle(scope: DiffScope, targets: DiffTargets | null): string {
   if (scope === 'head') return SCOPE_LABELS.head;
   if (scope === 'repo') return 'All uncommitted changes';
+  if (scope === 'review') return SCOPE_LABELS.review;
   const bases = [...new Set((targets?.worktrees ?? []).map((w) => w.base).filter((base): base is string => base !== null).map(shortBase))];
   return bases.length > 0 ? `Whole branch vs ${bases.join(', ')}` : 'Whole branch';
 }
@@ -212,6 +240,7 @@ export function headerLine(scope: DiffScope, files: readonly FileDiff[], targets
 export function emptyState(scope: DiffScope, targets: DiffTargets | null): { readonly text: string; readonly hint: string | null } {
   if (scope === 'branch') return { text: NO_CHANGES, hint: null };
   if (scope === 'repo') return { text: EMPTY_REPO, hint: null };
+  if (scope === 'review') return { text: EMPTY_REVIEW, hint: null };
   const commits = (targets?.worktrees ?? []).some((w) => w.commits > 0);
   return { text: EMPTY_HEAD, hint: commits ? HINT_WHOLE_BRANCH : null };
 }

@@ -1434,6 +1434,75 @@
   padding: 6px 14px !important;
 }
 
+/* D174: the layout toggle sits at the end of the tab's head row. */
+.sb2 .v2-ag-diff-layout {
+  margin-left: auto;
+}
+
+/* D174: side by side: before | after, each with its line numbers; long lines wrap. */
+.sb2 .v2-ag-split > div.v2-ag-split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 0;
+  white-space: normal;
+}
+
+.sb2 .v2-ag-split-colh {
+  padding: 4px 14px;
+  font-family: var(--v2-font, inherit);
+  font-size: 12px;
+  color: var(--v2-muted);
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-split-colh + .v2-ag-split-colh,
+.sb2 .v2-ag-split-r {
+  border-left: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-split-hunk {
+  grid-column: 1 / -1;
+  padding: 1px 14px;
+  white-space: pre-wrap;
+  background: var(--v2-sunken);
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-ag-split-cell {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 1px 14px 1px 0;
+}
+
+.sb2 .v2-ag-split-no {
+  flex: none;
+  width: 44px;
+  text-align: right;
+  color: var(--v2-muted);
+  user-select: none;
+}
+
+.sb2 .v2-ag-split-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-ag-split-cell[data-tone='add'] {
+  background: var(--v2-green-bg);
+  color: var(--v2-green);
+}
+
+.sb2 .v2-ag-split-cell[data-tone='del'] {
+  background: var(--v2-red-bg);
+  color: var(--v2-red);
+}
+
+.sb2 .v2-ag-split-cell[data-tone='empty'] {
+  background: var(--v2-sunken);
+}
+
 .sb2 .v2-ag-rgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

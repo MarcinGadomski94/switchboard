@@ -78,7 +78,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   useEffect(() => {
     stick.current = true;
   }, [sessionId]);
-  const changes = useDiffCount(sessionId, data.session ? data.session.files.length : null);
+  const changes = useDiffCount(sessionId, data.session ? data.session.files.length : null, data.session?.review?.since ?? null);
   const counts = { changes, results: data.session?.artifacts.length ?? 0, helpers: activeHelperCount(withPendingHelpers(data.session?.agents ?? [], data.activity?.background), data.session?.workflows ?? []) };
   const base = `/agents/${encodeURIComponent(sessionId)}`;
   const helperHref = useCallback((agentId: string) => `${base}/helpers/${encodeURIComponent(agentId)}`, [base]);
@@ -130,7 +130,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
               ) : (
                 <div className="v2-ag-scroll">
                   <div className="v2-ag-col v2-ag-col-wide">
-                    {tab === 'changes' ? <ChangesTab sessionId={sessionId} /> : null}
+                    {tab === 'changes' ? <ChangesTab sessionId={sessionId} reviewSince={data.session?.review?.since ?? null} /> : null}
                     {tab === 'results' ? <ResultsTab data={data} resultId={route.resultId ?? null} /> : null}
                     {tab === 'timeline' ? <TimelineTab data={data} /> : null}
                     {tab === 'helpers' ? <HelpersTab data={data} helperHref={helperHref} /> : null}

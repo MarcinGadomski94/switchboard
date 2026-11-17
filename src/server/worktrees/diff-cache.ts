@@ -1,6 +1,7 @@
 import type { SessionWorksIn } from '../../core/workspace-move.ts';
 import { type DiffCount, type DiffScope, type DiffTargets, type FileDiff, type Session, offeredDiffScope } from '../../core/api.ts';
 import { isRemoteId } from '../../core/peers.ts';
+import { readSessionReview } from '../../core/review.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
 import type { DiffProvider } from '../providers.ts';
@@ -308,5 +309,7 @@ export async function diffFingerprint(store: Store, sessionId: string): Promise<
     record?.root ?? null,
     record?.cwd ?? null,
     worktrees.map((worktree) => `${worktree.id}:${worktree.path}:${worktree.baseRef ?? ''}`),
+    // D174: the For review view follows the pending review (Mark reviewed ends it without an event).
+    record?.closedAt === null ? (readSessionReview(record.review).pending?.since ?? null) : null,
   ]);
 }
