@@ -161,7 +161,8 @@ describe.skipIf(process.platform === 'win32')('the moves list across paired mach
     const running = await waitFor('A lists the move at the restore', async () => (await moves(w.a)).find((move) => move.state === 'running' && move.step?.id === 'apply') ?? null, 60_000);
     expect(running).toMatchObject({ kind: 'teammate', title: 'dev-run', member: { id: member.id, name: 'Developer', teamName: expect.any(String) }, source: { id: w.aId }, target: { id: w.bId, name: 'mac-laptop' }, endedAt: null, error: null });
     expect(running.member?.teamId).toBe(member.teamId);
-    const onB = await waitFor('B lists it running', async () => (await moves(w.b)).find((move) => move.id === remoteId(w.aId, running.id) && move.state === 'running') ?? null, 20_000);
+    const onB = await waitFor('B lists it running', async () => (await moves(w.b)).find((move) => move.id === remoteId(w.aId, running.id) && move.state === 'running' && move.step?.id === 'apply') ?? null, 20_000);
+    // B's copy can trail A's by a step (it came from the exchange before A reached the restore): wait for the step too.
     expect(onB).toMatchObject({ step: { id: 'apply' }, member: { id: member.id }, agentSessionId: remoteId(w.aId, session.id) });
     // A running move cannot be dismissed.
     expect((await w.a.call('POST', `/api/moves/${running.id}/dismiss`)).status).toBe(409);

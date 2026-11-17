@@ -39,8 +39,8 @@ function slowInner() {
   };
 }
 
-function cache(inner: DiffProvider, fingerprint: { value: string }, waits = { refresh: 20, first: 40, detail: 10 }) {
-  return new DiffCache({ inner, fingerprint: async () => fingerprint.value, waits, onError: (error) => { throw error; } });
+function cache(inner: DiffProvider, fingerprint: { value: string }, waits = { refresh: 20, first: 40, detail: 10 }, now?: () => number) {
+  return new DiffCache({ inner, fingerprint: async () => fingerprint.value, waits, onError: (error) => { throw error; }, ...(now ? { now } : {}) });
 }
 
 describe('DiffCache (D144)', () => {
@@ -62,7 +62,9 @@ describe('DiffCache (D144)', () => {
   it('a changed fingerprint refreshes; a slow refresh answers the last number as stale (with when it was counted), then fresh', async () => {
     const fake = slowInner();
     const fp = { value: 'r1' };
-    const c = cache(fake.inner, fp);
+    // A fixed clock: on a slow runner the first count took a few ms, and the cache rightly does not start a
+    // slow count again within twice its duration (the 2.4.47 CI flake): this test is about the fingerprint.
+    const c = cache(fake.inner, fp, undefined, () => 1_000_000);
     expect(await c.count('s1', 'head')).toEqual({ scope: 'head', files: 3 });
     fp.value = 'r2';
     fake.setFiles(5);
