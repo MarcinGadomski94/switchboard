@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.47 (2026-11-17)
+
+### Agents
+- **For review shows what the agent changed, even work it committed:** while an agent waits for your review, its Changes tab opens on **For review**: everything its turns changed since you last reviewed, committed or not (before, an agent that committed its work before its turn ended could leave the tab empty). Open changes on the To review card and strip lands there. Without a review, an empty "Since save point" on a separate copy with commits shows the whole copy instead. See `docs/worktrees.md` (D174).
+- **Side by side diff:** the Changes tab has a **Unified / Side by side** switch: before and after in two columns with line numbers, remembered in this browser; narrow screens show one column.
+
+### Sidebar
+- **Pin a conversation:** a conversation's ⋯ menu has **Pin to sidebar / Unpin from sidebar**, like an agent's. It shows in Pinned with a chat mark. See `docs/sidebar.md` (D175).
 ## 2.4.46 (2026-11-17)
 
 ### Profiles
