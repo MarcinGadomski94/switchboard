@@ -32,6 +32,8 @@ export interface SidebarSyncOptions {
   readonly bus: HubBus;
   /** This machine's id (the keys' namespace). */
   readonly selfId: () => Promise<string>;
+  /** D172: a paired machine's profile id on its folders → this machine's (its `default` is its Default). */
+  readonly mapProfile?: (machineId: string, id: string) => string;
   /** The machine's connection (`undefined` when not paired). */
   readonly connection: (machineId: string) => SyncConnection | undefined;
   /** The paired machines' ids. */
@@ -218,11 +220,18 @@ export class SidebarSync {
       const selfId = await this.#options.selfId();
       const incoming = fromWire(body, selfId);
       if (incoming.dropped > 0) this.#options.log('warn', `sidebar sync with ${machineId}: ${incoming.dropped} malformed item(s) left out`);
-      this.#applied(await this.#options.store.sidebar.merge(incoming.changes), machineId);
+      this.#applied(await this.#options.store.sidebar.merge(this.#mapped(machineId, incoming.changes)), machineId);
       await this.#firstMerge(machineId);
     } catch (error) {
       this.#failed(machineId, error);
     }
+  }
+
+  /** D172: a paired machine's folder records with their profile as this machine names it. */
+  #mapped<T extends { readonly folders: readonly { readonly userProfileId?: string }[] }>(machineId: string, changes: T): T {
+    const map = this.#options.mapProfile;
+    if (!map) return changes;
+    return { ...changes, folders: changes.folders.map((folder) => (folder.userProfileId === undefined ? folder : { ...folder, userProfileId: map(machineId, folder.userProfileId) })) };
   }
 
   /** Reads an answer: the state it means, and its body when it carries records. */
@@ -287,7 +296,7 @@ export class SidebarSync {
     const selfId = await this.#options.selfId();
     const incoming = fromWire(message, selfId);
     if (incoming.dropped > 0) this.#options.log('warn', `sidebar sync from ${machineId}: ${incoming.dropped} malformed item(s) left out`);
-    this.#applied(await this.#options.store.sidebar.merge(incoming.changes), machineId);
+    this.#applied(await this.#options.store.sidebar.merge(this.#mapped(machineId, incoming.changes)), machineId);
     this.#setStatus(machineId, 'synced', null, true);
     if (!message.full) return { status: 200, body: { v: SIDEBAR_SYNC_VERSION, enabled: true } };
     await this.#firstMerge(machineId);

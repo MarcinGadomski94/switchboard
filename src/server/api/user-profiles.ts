@@ -15,6 +15,8 @@ import { UserProfileError, type UserProfileService } from '../user-profiles/serv
  *   profile that is not this browser's and has a password needs `currentPassword`.
  * - `DELETE /api/user-profiles/{id}` `{ password? }` → `{ archived }`: its open agents are archived first; Default stays.
  * - `POST /api/user-profiles/switch` `{ id, password? }` → the profile, and the signed cookie for this browser.
+ * - `POST /api/user-profiles/merge` `{ a, b, passwordA?, passwordB?, keep: { name, color, password } }` (D172) →
+ *   `{ survivor, mergedAway }`: two profiles become one on purpose; `keep.*` is `'a'` or `'b'`.
  * - `PUT /api/sessions/{id}/user-profile` `{ userProfileId, password? }` → moves the agent (a paired computer's
  *   agent: on its computer, through the peer API).
  *
@@ -64,6 +66,15 @@ export async function registerUserProfileRoutes(app: FastifyInstance, context: A
   app.delete<{ Params: { profileId: string } }>('/api/user-profiles/:profileId', async (request, reply) => {
     try {
       return await service.remove(request.params.profileId, request.body);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  // D172: two profiles become one, on purpose (both passwords; the name, colour and password picked).
+  app.post('/api/user-profiles/merge', async (request, reply) => {
+    try {
+      return await service.mergeProfiles(request.body);
     } catch (error) {
       return send(reply, error);
     }

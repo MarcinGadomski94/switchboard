@@ -815,6 +815,23 @@ export class TeamService {
     }
   }
 
+  /**
+   * D172: the crews of profile `from` now belong to `to` (a merge), synced with the paired computers
+   * like any crew change. `fromMachine` + `mapProfile` translate a paired computer's crew ids on receive.
+   */
+  async rekeyProfile(from: string, to: string): Promise<void> {
+    if (!this.#db) return;
+    await this.#serial(async () => {
+      const db = this.#need();
+      for (const team of db.teams()) {
+        if ((team.userProfileId ?? DEFAULT_USER_PROFILE_ID) === from) db.putTeam({ ...team, userProfileId: to, clock: this.#stamp(), updatedAt: this.#iso() });
+      }
+    });
+  }
+
+  /** D172: translates a paired computer's profile id on the crews it sends (set by the app). */
+  mapProfile: ((machineId: string, id: string | undefined) => string) | null = null;
+
   /** D165: a crew's user profile (`null`: no such crew, or Team is off). */
   teamProfile(teamId: string): string | null {
     if (!this.#db) return null;
@@ -2109,7 +2126,11 @@ export class TeamService {
       const clock = this.#clock as HybridClock;
       const s = message.snapshot;
       for (const record of [...s.teams, ...s.members, ...s.handoffs, ...s.requests, ...s.access]) clock.observe(record.clock);
-      const teams = keepOrder(db.teams(), newerRecords(db.teams(), s.teams));
+      // D172: a crew's profile as the sending computer names it (its `default` is its Default, not this one's).
+      const sender = (message.machine as { id?: unknown } | null)?.id;
+      const map = this.mapProfile;
+      const theirs = map && typeof sender === 'string' ? s.teams.map((team) => (team.userProfileId === undefined ? team : { ...team, userProfileId: map(sender, team.userProfileId) })) : s.teams;
+      const teams = keepOrder(db.teams(), newerRecords(db.teams(), theirs));
       // An older peer's records carry no order: the local one is kept (D100 follow-up 2026-10-14).
       const members = keepOrder(db.members(), newerRecords(db.members(), s.members));
       // The model / effort chosen on the other machine for a member that runs here (applied below).

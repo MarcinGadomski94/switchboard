@@ -319,6 +319,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   // D165 (docs/profiles.md): the user profiles and each request's profile scope (right after the guard).
   let apiContextRef: ApiContext | null = null;
+  // D172: the open terminals (set once they exist) re-keyed on a profile merge.
+  let terminalsRef: { rekeyProfile(from: string, to: string): void } | null = null;
   const userProfiles = new UserProfileService({
     store: options.store,
     bus,
@@ -329,6 +331,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       await closeSession(apiContextRef, sessionId, true);
     },
     synced: (records) => peersRef?.userProfilesChanged(records),
+    // D172: this computer's machine id (its Default's own id on the peer link); unknown until Peers exists.
+    selfId: async () => (peersRef ? (await peersRef.self()).id : null),
+    rekeyOutside: async (from, to) => {
+      await teamServiceOf(app)?.rekeyProfile(from, to);
+      terminalsRef?.rekeyProfile(from, to);
+    },
   });
   deviceService.useNoticeScope?.((profileId, sessionId) => userProfiles.sees(profileId, sessionId));
   const offProfileIndex = bus.subscribe((message) => {
@@ -508,6 +516,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   peers.useApp(app);
   peersRef = peers;
   peers.useUserProfiles(userProfiles);
+  // D172: the identity caches (this computer's id is known now).
+  await userProfiles.ready();
   // D98 (docs/accounts.md → Shared across paired machines): the paired machines' accounts, merged by identity with these.
   const sharedAccounts = config.demo ? null : new SharedAccounts({ accounts, store: options.store, peers, bus });
   if (sharedAccounts) {
@@ -847,6 +857,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       idleMs: async () => terminalIdleHours(await options.store.settings.get('terminals.idleHours')) * 3600_000,
       onError: (error) => app.log.warn({ err: error }, 'switchboard terminals'),
     });
+  terminalsRef = terminals;
   peers.useTerminals((scope, terminalId, socket) => serveTerminalSocket(terminals, scope, terminalId, socket));
   await registerTerminalRoutes(app, { terminals, folders, peers });
   // D171 (docs/terminals.md → CLI mode): an agent's CLI tab, its conversation as the interactive claude in one of these terminals.
@@ -895,7 +906,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);
   // ── Team (D100) hook: the Team service and its routes (docs/team-removal.md). ──
-  await installTeam(app, apiContext);
+  const teamService = await installTeam(app, apiContext);
+  // D172: a paired computer's crews name its profiles with its own ids (its `default` is its Default).
+  teamService.mapProfile = (machineId, id) => userProfiles.fromRemote(machineId, id);
   // ── Plans (D99) hook: the Plans service and its routes (docs/plans-removal.md). ──
   await installPlans(app, apiContext, options.plans);
   // ── Project memory (D107) hook: the Project memory service and its routes (docs/memory-removal.md). ──

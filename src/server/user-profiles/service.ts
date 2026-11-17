@@ -43,6 +43,7 @@ export class UserProfileError extends Error {
 
 /** A profile record as a paired computer receives it (the hash travels only peer-to-peer). */
 export interface UserProfileWire {
+  /** D172: the peer-link id (a computer's own Default travels as its own id, never `default`). */
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -50,6 +51,20 @@ export interface UserProfileWire {
   readonly clock: string;
   readonly createdAt: string;
   readonly deletedAt: string | null;
+  /** D172: this record is the Default of that computer (its machine id). */
+  readonly homeOf?: string;
+  /** D172: on a tombstone, the profile (peer-link id) it was merged into. */
+  readonly mergedInto?: string | null;
+}
+
+/** D172: the settings key of this computer's own Default's peer-link id (absent: `default-<machine id>`). */
+export const USER_PROFILE_SELF_WIRE_SETTING = 'userProfiles.defaultWireId';
+/** D172: the settings key of the paired computers' Defaults' peer-link ids (`{ <machine id>: <id> }`). */
+export const USER_PROFILE_PEER_DEFAULTS_SETTING = 'userProfiles.peerDefaults';
+
+/** D172: the peer-link id a computer's Default has before any merge. */
+export function homeDefaultId(machineId: string): string {
+  return `default-${machineId}`.slice(0, 64);
 }
 
 /** Options of {@link UserProfileService}. */
@@ -64,6 +79,10 @@ export interface UserProfileServiceOptions {
   readonly archiveSession?: (sessionId: string) => Promise<void>;
   /** The profiles changed: the paired computers it syncs with get the records written. */
   readonly synced?: (records: readonly UserProfileWire[]) => void;
+  /** D172: this computer's machine id (its Default's peer-link id is derived from it); `null` while unknown. */
+  readonly selfId?: () => Promise<string | null>;
+  /** D172: re-keys what lives outside the main db (crews in team.db, open terminals) from one profile to another. */
+  readonly rekeyOutside?: (from: string, to: string) => Promise<void> | void;
   readonly now?: () => number;
 }
 
@@ -104,12 +123,96 @@ export class UserProfileService {
   }
 
   async #records(): Promise<Map<string, UserProfileRecord>> {
-    if (!this.#profiles) this.#profiles = new Map((await this.#o.store.userProfiles.list({ includeDeleted: true })).map((record) => [record.id, record]));
+    if (!this.#profiles) {
+      this.#profiles = new Map((await this.#o.store.userProfiles.list({ includeDeleted: true })).map((record) => [record.id, record]));
+      this.#merged = new Map([...this.#profiles.values()].filter((record) => record.mergedInto).map((record) => [record.id, record.mergedInto as string]));
+    }
     return this.#profiles;
   }
 
   #invalidate(): void {
     this.#profiles = null;
+  }
+
+  // ── D172 · identity across paired computers ─────────────────────────────
+
+  /** This computer's machine id (cached once known). */
+  #self: string | null = null;
+  /** This computer's Default's peer-link id (cached; {@link USER_PROFILE_SELF_WIRE_SETTING}). */
+  #selfWire: string | null = null;
+  /** The paired computers' Defaults' peer-link ids (cached; {@link USER_PROFILE_PEER_DEFAULTS_SETTING}). */
+  #peerDefaults: Record<string, string> = {};
+  /** Merged-away profile → the profile it was merged into (peer-link ids), from the tombstones. */
+  #merged = new Map<string, string>();
+
+  /** Loads the identity caches (the app calls it at start; every sync path calls it too). */
+  async ready(): Promise<void> {
+    if (this.#self === null && this.#o.selfId) this.#self = await this.#o.selfId();
+    const stored = await this.#o.store.settings.get(USER_PROFILE_SELF_WIRE_SETTING);
+    this.#selfWire = typeof stored === 'string' && stored !== '' ? stored : this.#self ? homeDefaultId(this.#self) : null;
+    const peers = await this.#o.store.settings.get(USER_PROFILE_PEER_DEFAULTS_SETTING);
+    this.#peerDefaults = peers && typeof peers === 'object' && !Array.isArray(peers) ? { ...(peers as Record<string, string>) } : {};
+    await this.#records();
+  }
+
+  /** This computer's Default as the peer link names it. */
+  selfWireId(): string {
+    return this.#selfWire ?? homeDefaultId(this.#self ?? 'local');
+  }
+
+  /** The merged-into chain's end (peer-link ids; a cycle stops). */
+  #canonical(id: string): string {
+    let at = id;
+    for (let i = 0; i < 8; i += 1) {
+      const next = this.#merged.get(at === DEFAULT_USER_PROFILE_ID ? this.selfWireId() : at);
+      if (!next || next === at) break;
+      at = next;
+    }
+    return at;
+  }
+
+  /**
+   * D172: a profile id as paired computer `machineId` sent it (its sessions, its requests, its synced
+   * records) → this computer's id for that profile. A computer sends its own Default as `default`
+   * (every version does); it is that computer's Default here (its peer-link id), never this computer's.
+   * This computer's own Default (its peer-link id) is `default` here. A merged-away id is its survivor.
+   */
+  fromRemote(machineId: string, raw: string | null | undefined): string {
+    const id = typeof raw === 'string' && raw !== '' ? raw : DEFAULT_USER_PROFILE_ID;
+    const wire = id === DEFAULT_USER_PROFILE_ID ? (this.#peerDefaults[machineId] ?? homeDefaultId(machineId)) : id;
+    return this.#localOf(wire);
+  }
+
+  /** D172: a peer-link id → this computer's id (the merged-into chain followed; this computer's Default → `default`). */
+  #localOf(linkId: string): string {
+    if (linkId === DEFAULT_USER_PROFILE_ID) return DEFAULT_USER_PROFILE_ID;
+    const canonical = this.#canonical(linkId);
+    // Its own home id stays this computer's Default even after it adopted a merged id.
+    if (canonical === this.selfWireId() || (this.#self !== null && canonical === homeDefaultId(this.#self))) return DEFAULT_USER_PROFILE_ID;
+    return canonical;
+  }
+
+  /** D172: this computer's id for a profile → its peer-link id. */
+  #toLink(id: string): string {
+    return id === DEFAULT_USER_PROFILE_ID ? this.selfWireId() : id;
+  }
+
+  /** D172: the machine whose Default `linkId` is (this computer for its own), else `null`. */
+  #homeOf(linkId: string): string | null {
+    if (linkId === this.selfWireId()) return this.#self;
+    for (const [machine, id] of Object.entries(this.#peerDefaults)) if (id === linkId) return machine;
+    const match = /^default-(.+)$/.exec(linkId);
+    return match ? (match[1] as string) : null;
+  }
+
+  /** D172: whether `id` (this computer's id) is some computer's Default (never deleted, only merged). */
+  isAnyDefault(id: string): boolean {
+    if (id === DEFAULT_USER_PROFILE_ID) return true;
+    return Object.values(this.#peerDefaults).includes(id) || /^default-/.test(id);
+  }
+
+  async #savePeerDefaults(): Promise<void> {
+    await this.#o.store.settings.set(USER_PROFILE_PEER_DEFAULTS_SETTING, this.#peerDefaults);
   }
 
   /** A session's profile became known or changed (a new session, a move, a peer's update). */
@@ -124,7 +227,9 @@ export class UserProfileService {
   profileOfSession(sessionId: string): string {
     if (sessionId.startsWith('r~')) {
       const remote = this.#o.remoteSessions?.().find((session) => session.id === sessionId);
-      return profileOf(remote);
+      // D172: its computer's own id for the profile (its `default` is that computer's Default, not this one's).
+      const machine = sessionId.split('~')[1] ?? '';
+      return this.fromRemote(machine, profileOf(remote));
     }
     const own = this.#index().get(sessionId);
     if (own) return own;
@@ -161,8 +266,9 @@ export class UserProfileService {
 
   async #changed(records: readonly UserProfileRecord[]): Promise<void> {
     this.#invalidate();
+    await this.ready();
     this.#o.bus.publish('userProfilesChanged', { profiles: await this.list() });
-    this.#o.synced?.(records.map(toWire));
+    this.#o.synced?.(records.map((record) => this.#wireOf(record)));
   }
 
   /** `POST /api/user-profiles`: a new profile. */
@@ -244,6 +350,8 @@ export class UserProfileService {
    */
   async remove(id: string, body: unknown): Promise<{ readonly archived: number; readonly failed: readonly string[] }> {
     if (id === DEFAULT_USER_PROFILE_ID) throw new UserProfileError(409, 'default', 'Default can’t be deleted.');
+    // D172: another computer's Default can't be deleted either (that computer keeps it): merge it instead.
+    if (this.isAnyDefault(id)) throw new UserProfileError(409, 'default', 'A paired computer’s Default can’t be deleted. Merge it with one of your profiles instead.');
     const record = await this.get(id);
     if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
     if (record.passwordHash !== null) await this.#check(record, isRecord(body) ? body['password'] : undefined);
@@ -453,34 +561,174 @@ export class UserProfileService {
 
   // ── peers ───────────────────────────────────────────────────────────────
 
-  /** Every record, tombstones included, for a full exchange with a paired computer. */
-  async wire(): Promise<UserProfileWire[]> {
-    return [...(await this.#records()).values()].map(toWire);
+  /** D172: a record as the peer link names it (this computer's Default as its own id, with `homeOf`). */
+  #wireOf(record: UserProfileRecord): UserProfileWire {
+    const id = this.#toLink(record.id);
+    const home = this.#homeOf(id);
+    return { ...toWire(record), id, ...(home ? { homeOf: home } : {}), mergedInto: record.mergedInto };
   }
 
   /**
-   * Merges a paired computer's records: the later clock wins per profile (equal clocks: by value,
-   * the same on both ends). Answers the records that changed here.
+   * Every record, tombstones included, for a full exchange with a paired computer. D172: `forMachine`'s
+   * own Default is left out (it is that computer's own; an older computer would add it twice).
    */
-  async merge(incoming: readonly unknown[]): Promise<UserProfileRecord[]> {
-    const records = await this.#records();
+  async wire(forMachine: string | null = null): Promise<UserProfileWire[]> {
+    await this.ready();
+    const skip = forMachine ? (this.#peerDefaults[forMachine] ?? homeDefaultId(forMachine)) : null;
+    return [...(await this.#records()).values()].map((record) => this.#wireOf(record)).filter((wire) => wire.id !== skip);
+  }
+
+  /** D172: the wire form of records just written here (what `synced` sends to the paired computers). */
+  wireOfRecords(records: readonly UserProfileRecord[]): UserProfileWire[] {
+    return records.map((record) => this.#wireOf(record));
+  }
+
+  /**
+   * Merges paired computer `fromMachine`'s records: the later clock wins per profile (equal clocks: by
+   * value, the same on both ends). D172: every id is translated first ({@link fromRemote}): the sender's
+   * own `default` (an older computer) and its Default's id are that computer's Default here, never this
+   * computer's; this computer's own Default's id is the local Default. A Default is never deleted: when a
+   * paired computer merged this computer's Default into another profile, this computer adopts that
+   * profile's id for its Default. A merged-away profile's data here moves to its survivor. Answers the
+   * records that changed here.
+   */
+  async merge(incoming: readonly unknown[], fromMachine: string | null = null): Promise<UserProfileRecord[]> {
+    await this.ready();
     const written: UserProfileRecord[] = [];
-    for (const raw of incoming) {
-      const wire = readWire(raw);
-      if (!wire) continue;
-      const own = records.get(wire.id);
-      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify(wire)))) continue;
-      // Default stays: a paired computer can rename or recolour it, never delete it.
-      const deletedAt = wire.id === DEFAULT_USER_PROFILE_ID ? null : wire.deletedAt;
-      const next: UserProfileRecord = { id: wire.id, name: wire.name, color: userProfileColor(wire.color) ?? 'blue', passwordHash: wire.passwordHash, clock: wire.clock, createdAt: own?.createdAt ?? (wire.createdAt || new Date(this.#now()).toISOString()), updatedAt: new Date(this.#now()).toISOString(), deletedAt };
+    let learned = false;
+    // Defaults first (their homes), so the ids below translate right.
+    const wires = incoming.map((raw) => readWire(raw)).filter((wire): wire is UserProfileWire & { homeOf?: string; mergedInto?: string | null } => wire !== null);
+    for (const wire of wires) {
+      const home = wire.id === DEFAULT_USER_PROFILE_ID ? fromMachine : (wire.homeOf ?? null);
+      if (!home || home === this.#self) continue;
+      const id = wire.id === DEFAULT_USER_PROFILE_ID ? (this.#peerDefaults[home] ?? homeDefaultId(home)) : wire.id;
+      if (this.#peerDefaults[home] !== id && !wire.deletedAt) {
+        this.#peerDefaults[home] = id;
+        learned = true;
+      }
+    }
+    if (learned) await this.#savePeerDefaults();
+    for (const wire of wires) {
+      const records = await this.#records();
+      // An older computer's own Default comes as `default`: it is that computer's, under its own id here.
+      const linkId = wire.id === DEFAULT_USER_PROFILE_ID && fromMachine ? (this.#peerDefaults[fromMachine] ?? homeDefaultId(fromMachine)) : wire.id;
+      const localId = linkId === this.selfWireId() || (this.#self !== null && linkId === homeDefaultId(this.#self)) ? DEFAULT_USER_PROFILE_ID : linkId;
+      const own = records.get(localId);
+      if (localId === DEFAULT_USER_PROFILE_ID && wire.deletedAt) {
+        // This computer's Default was merged into another profile on a paired computer: adopt its id.
+        if (wire.mergedInto && this.#localOf(wire.mergedInto) !== DEFAULT_USER_PROFILE_ID) written.push(...(await this.#adoptDefault(wire.mergedInto)));
+        continue;
+      }
+      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt })))) continue;
+      const deletedAt = localId === DEFAULT_USER_PROFILE_ID ? null : wire.deletedAt;
+      const next: UserProfileRecord = {
+        id: localId,
+        name: wire.name,
+        color: userProfileColor(wire.color) ?? 'blue',
+        passwordHash: wire.passwordHash,
+        clock: wire.clock,
+        createdAt: own?.createdAt ?? (wire.createdAt || new Date(this.#now()).toISOString()),
+        updatedAt: new Date(this.#now()).toISOString(),
+        deletedAt,
+        mergedInto: deletedAt ? (wire.mergedInto ?? null) : null,
+      };
       await this.#o.store.userProfiles.put(next);
+      this.#invalidate();
       written.push(next);
+      // A profile merged into another one: its data here moves to the survivor.
+      if (deletedAt && wire.mergedInto) {
+        const target = this.#localOf(wire.mergedInto);
+        if (target !== localId) await this.#rekeyAll(localId, target);
+      }
     }
     if (written.length > 0) {
       this.#invalidate();
       this.#o.bus.publish('userProfilesChanged', { profiles: await this.list() });
     }
     return written;
+  }
+
+  /**
+   * D172: a paired computer merged this computer's Default into profile `linkId`: this computer's
+   * Default takes that id on the peer link from now on; the local copy of that profile (if any)
+   * folds into the Default (its data re-keyed, its row gone, never synced as a delete).
+   */
+  async #adoptDefault(linkId: string): Promise<UserProfileRecord[]> {
+    if (linkId === this.selfWireId()) return [];
+    const records = await this.#records();
+    const copy = records.get(linkId) ?? null;
+    await this.#o.store.settings.set(USER_PROFILE_SELF_WIRE_SETTING, linkId);
+    this.#selfWire = linkId;
+    const written: UserProfileRecord[] = [];
+    if (copy) {
+      await this.#rekeyAll(linkId, DEFAULT_USER_PROFILE_ID);
+      const mine = records.get(DEFAULT_USER_PROFILE_ID);
+      if (mine && copy.clock > mine.clock) {
+        const updated = await this.#o.store.userProfiles.update(DEFAULT_USER_PROFILE_ID, { name: copy.name, color: copy.color, passwordHash: copy.passwordHash, clock: copy.clock });
+        if (updated) written.push(updated);
+      }
+      this.#o.store.userProfiles.remove(linkId);
+    }
+    this.#invalidate();
+    return written;
+  }
+
+  /** D172: every reference to profile `from` here (main db, crews, terminals, settings, the index) now names `to`. */
+  async #rekeyAll(from: string, to: string): Promise<void> {
+    if (from === to) return;
+    this.#o.store.userProfiles.rekey(from, to);
+    await this.#o.rekeyOutside?.(from, to);
+    const accounts = await this.#defaultAccounts();
+    if (accounts[from]) {
+      const { [from]: gone, ...rest } = accounts;
+      await this.#o.store.settings.set(USER_PROFILE_ACCOUNTS_SETTING, { ...rest, [to]: { ...(gone ?? {}), ...(rest[to] ?? {}) } });
+    }
+    if ((await this.#o.store.settings.get(USER_PROFILE_START_SETTING)) === from) await this.#o.store.settings.set(USER_PROFILE_START_SETTING, to);
+    for (const [machine, id] of Object.entries(this.#peerDefaults)) if (id === from) this.#peerDefaults[machine] = this.#toLink(to);
+    await this.#savePeerDefaults();
+    this.#sessions = null;
+  }
+
+  /**
+   * D172 · `POST /api/user-profiles/merge { a, b, passwordA?, passwordB?, keep: { name, color, password } }`:
+   * two profiles (this computer's or a paired computer's) become one, on purpose (never automatically).
+   * Both passwords are checked (where set). `keep.*` is `'a'` or `'b'`: whose name, colour and password the
+   * merged profile keeps. The survivor's id: this computer's Default when it is one of the two, else the
+   * older profile. Every agent, folder binding, pin, phone, schedule, crew and terminal of the other one
+   * moves to it here; the other one becomes a tombstone that names the survivor, so each paired
+   * computer moves its own data too (a merged-away Default adopts the survivor's id there).
+   */
+  async mergeProfiles(body: unknown): Promise<{ readonly survivor: UserProfile; readonly mergedAway: string }> {
+    await this.ready();
+    const input = isRecord(body) ? body : {};
+    const aId = typeof input['a'] === 'string' ? input['a'] : '';
+    const bId = typeof input['b'] === 'string' ? input['b'] : '';
+    if (aId === '' || bId === '' || aId === bId) throw new UserProfileError(422, 'invalid', 'Pick two different profiles to merge.');
+    const a = await this.get(aId);
+    const b = await this.get(bId);
+    if (!a || !b) throw new UserProfileError(404, 'not-found', `no profile ${!a ? aId : bId}`);
+    const keep = isRecord(input['keep']) ? input['keep'] : {};
+    const pick = (field: string): 'a' | 'b' => (keep[field] === 'b' ? 'b' : 'a');
+    await this.#check(a, input['passwordA']);
+    await this.#check(b, input['passwordB']);
+    const keepName = pick('name') === 'a' ? a : b;
+    const keepColor = pick('color') === 'a' ? a : b;
+    const keepPassword = pick('password') === 'a' ? a : b;
+    // The survivor: this computer's Default when it is one; else the older one (the same choice everywhere).
+    const [survivor, gone] = a.id === DEFAULT_USER_PROFILE_ID ? [a, b] : b.id === DEFAULT_USER_PROFILE_ID ? [b, a] : a.createdAt < b.createdAt || (a.createdAt === b.createdAt && a.id < b.id) ? [a, b] : [b, a];
+    for (const record of (await this.#records()).values()) {
+      if (record.deletedAt === null && record.id !== a.id && record.id !== b.id && record.name.toLowerCase() === keepName.name.toLowerCase()) throw new UserProfileError(409, 'name-taken', `A profile is already called “${record.name}”.`);
+    }
+    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, clock: this.#clock() })) ?? survivor;
+    const tomb = (await this.#o.store.userProfiles.update(gone.id, { deletedAt: new Date(this.#now()).toISOString(), passwordHash: null, mergedInto: this.#toLink(survivor.id), clock: this.#clock() })) ?? gone;
+    this.#invalidate();
+    await this.#records();
+    await this.#rekeyAll(gone.id, survivor.id);
+    // A merged-away Default of a paired computer: that computer's sessions and requests now mean the survivor here.
+    for (const [machine, id] of Object.entries(this.#peerDefaults)) if (id === gone.id) this.#peerDefaults[machine] = this.#toLink(survivor.id);
+    await this.#savePeerDefaults();
+    await this.#changed([updated, tomb]);
+    return { survivor: this.#view(updated, await this.#defaultAccounts()), mergedAway: gone.id };
   }
 }
 
@@ -512,7 +760,10 @@ function readWire(value: unknown): UserProfileWire | null {
   const clock = typeof value['clock'] === 'string' ? value['clock'] : '';
   const createdAt = typeof value['createdAt'] === 'string' ? value['createdAt'] : '';
   const deletedAt = typeof value['deletedAt'] === 'string' ? value['deletedAt'] : null;
-  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt };
+  // D172: whose Default it is, and on a tombstone what it was merged into (an older computer sends neither).
+  const homeOf = typeof value['homeOf'] === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(value['homeOf']) ? value['homeOf'] : undefined;
+  const mergedInto = typeof value['mergedInto'] === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(value['mergedInto']) ? value['mergedInto'] : null;
+  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

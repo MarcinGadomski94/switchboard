@@ -62,7 +62,8 @@ export interface TerminalProgram {
 
 interface Terminal {
   readonly id: string;
-  readonly owner: string | null;
+  /** Its profile (D172: re-keyed when that profile is merged into another). */
+  owner: string | null;
   readonly program: TerminalProgram;
   readonly cwd: string;
   readonly createdAt: number;
@@ -202,6 +203,11 @@ export class TerminalService {
     for (const terminal of [...this.#terminals.values()]) {
       if (terminal.unattendedSince !== null && now - terminal.unattendedSince >= limit) this.#end(terminal, 'idle');
     }
+  }
+
+  /** D172: the open terminals of profile `from` now belong to `to` (a merge). */
+  rekeyProfile(from: string, to: string): void {
+    for (const terminal of this.#terminals.values()) if (terminal.owner === from) terminal.owner = to;
   }
 
   /** Whether scope `scope` sees terminal `terminal` (`'*'`: everything; else its own profile's). */

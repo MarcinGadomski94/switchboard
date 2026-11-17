@@ -528,6 +528,8 @@ export class PeerService implements PeerHandlers {
       store: this.#store,
       bus: this.#bus,
       selfId: async () => (await this.self()).id,
+      // D172: a paired machine's folder profiles, as this machine names them.
+      mapProfile: (machineId, id) => this.#userProfiles?.fromRemote(machineId, id) ?? id,
       connection: (id) => this.#connections.get(id),
       machines: () => [...this.#records.keys()],
       onStatus: (id) => this.#publishMachine(id),
@@ -1550,12 +1552,14 @@ export class PeerService implements PeerHandlers {
   }
 
   /** D170 · `GET /peer/v1/terminals/{id}/socket`: the caller's browser attaches to one of this computer's terminals, in its profile. */
-  terminalSocket(_machine: MachineRecord, terminalId: string, profile: string | null, socket: import('ws').WebSocket): void {
+  terminalSocket(machine: MachineRecord, terminalId: string, profile: string | null, socket: import('ws').WebSocket): void {
     if (!this.#terminalHost) {
       socket.close(4404, 'not found');
       return;
     }
-    this.#terminalHost(profile ?? '*', terminalId, socket);
+    // D172: the calling computer's profile id, as this computer names it.
+    const local = profile && this.#userProfiles ? this.#userProfiles.fromRemote(machine.id, profile) : profile;
+    this.#terminalHost(local ?? '*', terminalId, socket);
   }
 
   /**
@@ -1589,23 +1593,25 @@ export class PeerService implements PeerHandlers {
     const connection = this.#connections.get(machineId);
     if (!service || !connection || connection.state !== 'online') return;
     try {
-      const answer = await connection.request('POST', USER_PROFILES_SYNC_PATH, { v: 1, full, profiles: records ?? (await service.wire()) }, { timeoutMs: 30_000 });
+      const answer = await connection.request('POST', USER_PROFILES_SYNC_PATH, { v: 1, full, profiles: records ?? (await service.wire(machineId)) }, { timeoutMs: 30_000 });
       const body = answer.body as { profiles?: unknown } | null;
-      if (answer.status === 200 && body && Array.isArray(body.profiles)) await service.merge(body.profiles);
+      // D172: the ids are the other computer's: translated per profile (its Default stays its own).
+      if (answer.status === 200 && body && Array.isArray(body.profiles)) await service.merge(body.profiles, machineId);
     } catch (error) {
       this.#log('warn', `profiles sync with ${machineId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /** D165 · `POST /peer/v1/user-profiles`: a paired computer's profile records (merged; a full exchange answers every record here). */
-  async userProfiles(_machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+  async userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
     if (this.#closed) return { status: 503, body: { error: 'closing' } };
     const service = this.#userProfiles;
     if (!service) return { status: 404, body: { error: 'not-found' } };
     const input = typeof body === 'object' && body !== null ? (body as { v?: unknown; full?: unknown; profiles?: unknown }) : {};
     if (input.v !== 1 || !Array.isArray(input.profiles) || input.profiles.length > 200) return { status: 422, body: { error: 'invalid' } };
-    await service.merge(input.profiles);
-    return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire() : [] } };
+    // D172: the caller's ids are translated per profile (its Default stays its own, never this computer's).
+    await service.merge(input.profiles, machine.id);
+    return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire(machine.id) : [] } };
   }
 
   /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */
@@ -1746,6 +1752,8 @@ export class PeerService implements PeerHandlers {
     if (this.#takeoverHold && method.toUpperCase() === 'POST' && url.split('?')[0] === `/api/takeover/${this.#takeoverHold.route}`) await this.#takeoverHold.promise;
     const app = this.#app;
     if (!app) return { status: 503, body: JSON.stringify({ error: 'closing' }), contentType: 'application/json; charset=utf-8' };
+    // D172: the calling computer names its profile with its own id (`default` = its Default, not this one's).
+    if (userProfileId && this.#userProfiles) userProfileId = this.#userProfiles.fromRemote(machine.id, userProfileId);
     const response = await app.inject({
       method: method as 'GET' | 'POST' | 'PUT' | 'DELETE',
       url,

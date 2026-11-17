@@ -19,6 +19,8 @@ export interface UserProfileRecord {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly deletedAt: string | null;
+  /** D172 (0059): on a tombstone, the profile (its peer-link id) this one was merged into; `null` otherwise. */
+  readonly mergedInto: string | null;
 }
 
 const SPEC: TableSpec<UserProfileRecord> = {
@@ -33,8 +35,21 @@ const SPEC: TableSpec<UserProfileRecord> = {
     createdAt: ['created_at', 'text'],
     updatedAt: ['updated_at', 'text'],
     deletedAt: ['deleted_at', 'text'],
+    mergedInto: ['merged_into', 'text'],
   },
 };
+
+/**
+ * D172: the tables (main db) that name a profile by id, re-keyed when one profile is merged into
+ * another: `[table, column]`. Crews (team.db) and the settings keys are re-keyed by their owners.
+ */
+const PROFILE_COLUMNS: ReadonlyArray<readonly [string, string]> = [
+  ['sessions', 'user_profile_id'],
+  ['devices', 'user_profile_id'],
+  ['schedules', 'user_profile_id'],
+  ['sidebar_folders', 'user_profile_id'],
+  ['folders', 'user_profile_id'],
+];
 
 /** The `user_profiles` table. */
 export class UserProfileRepository {
@@ -58,17 +73,37 @@ export class UserProfileRepository {
 
   async create(input: Pick<UserProfileRecord, 'id' | 'name' | 'color' | 'passwordHash' | 'clock'>): Promise<UserProfileRecord> {
     const ts = this.#ctx.now();
-    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null });
+    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null, mergedInto: null });
   }
 
-  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt'>>): Promise<UserProfileRecord | null> {
+  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt' | 'mergedInto'>>): Promise<UserProfileRecord | null> {
     return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
   }
 
   /** Writes a paired computer's record as it is (the sync's merge decided it wins). */
   async put(record: UserProfileRecord): Promise<void> {
-    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, updatedAt: this.#ctx.now() });
+    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, mergedInto: record.mergedInto, updatedAt: this.#ctx.now() });
     else this.#table.insert({ ...record });
+  }
+
+  /** D172: removes a row outright (a local copy of a profile that became this computer's own Default). Never synced. */
+  remove(id: string): void {
+    this.#ctx.db.prepare('DELETE FROM user_profiles WHERE id = ?').run(id);
+  }
+
+  /** D172: every main-db reference to profile `from` now names `to` (a merge). Answers the rows changed. */
+  rekey(from: string, to: string): number {
+    if (from === to) return 0;
+    let changed = 0;
+    this.#ctx.db.exec('BEGIN');
+    try {
+      for (const [table, column] of PROFILE_COLUMNS) changed += Number(this.#ctx.db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(to, from).changes);
+      this.#ctx.db.exec('COMMIT');
+    } catch (error) {
+      this.#ctx.db.exec('ROLLBACK');
+      throw error;
+    }
+    return changed;
   }
 
   /** The profile of every session (`id → user_profile_id`): the scope's in-memory index at start. */
