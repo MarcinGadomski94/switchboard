@@ -507,6 +507,14 @@
 .sb2 .v2-ag-pill .sb-md {
   min-width: 0;
   max-width: 100%;
+  /*
+   * 2026-11-17 (developer: "respect the same text formatting as I'm sending it"): still Markdown, but
+   * every Enter is a line break, as typed (Markdown alone joins a paragraph's lines); extra spaces still
+   * collapse. Blank lines stay paragraphs; code blocks keep their own `white-space: pre`. The whitespace
+   * between blocks is dropped by `rehypeChatText`, as in the classic bubble (`pre-wrap` there). Here,
+   * not on the pill: `.sb2 .v2-ag .sb-md` sets `white-space: normal` for the agent's replies.
+   */
+  white-space: pre-line;
 }
 
 /* Fix after 2.0: a message the agent has not taken up yet: Queued / Paused under its bubble. */

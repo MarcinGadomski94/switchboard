@@ -113,6 +113,24 @@ test('a code block with a long line stays inside your bubble: the bubble keeps t
   await settled(page, id);
 });
 
+test('your bubble keeps your line breaks (still Markdown): Enter is a new line, a blank line a new paragraph, a list stays a list', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'v2-send-breaks', 'Say hi.');
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  await expect(input(page)).toBeEnabled();
+  await input(page).fill('breaks-marker first line\nsecond line\n\n**bold** paragraph\n\n- one\n- two');
+  await input(page).press('Enter');
+  const text = bubbles(page, 'breaks-marker').getByTestId('v2-agent-you-text');
+  await expect(text).toHaveCount(1, { timeout: 5_000 });
+  // 2026-11-17: Markdown alone joined "first line" and "second line" into one line.
+  const shown = await text.evaluate((node) => (node as HTMLElement).innerText);
+  expect(shown).toMatch(/breaks-marker first line\nsecond line/);
+  await expect(text.locator('strong')).toHaveText('bold');
+  await expect(text.locator('li')).toHaveCount(2);
+  await settled(page, id);
+});
+
 test('the agent page ⋯ menu pins the agent to the sidebar and unpins it (with Undo)', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-menu-pin', 'Say hi.');
