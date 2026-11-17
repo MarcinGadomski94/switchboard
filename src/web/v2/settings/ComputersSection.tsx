@@ -9,7 +9,8 @@ import { codeTimeLeft, refusalText } from '../../views/settings/machines.ts';
 import { Button, Card, Chip, Dialog, EmptyState, Field, Icon, Skeleton, StatusBadge, Switch, useToast } from '../components/index.ts';
 import { COMPUTER_UPDATE_WORDS as U, SETTINGS_WORDS as W, computerProblem, computerStateToV2 } from '../glossary.ts';
 import { useV2Router } from '../nav.tsx';
-import { machineUpdateView } from '../../updates/machine-update.ts';
+import type { UpdateStatus } from '../../../core/updates.ts';
+import { type MachineUpdateView, localUpdateView, machineUpdateView } from '../../updates/machine-update.ts';
 import { useMachineUpdate } from '../../updates/useMachineUpdate.ts';
 import { useStatusPill } from '../shell/useShellData.ts';
 import { formatBytes } from '../shell/status-model.ts';
@@ -91,6 +92,8 @@ export function ComputersSection() {
             </Chip>
           </div>
           {self?.detail ? <div className="v2-muted v2-set-small">{self.detail}</div> : null}
+          {/* 2026-11-17: this computer updates from its own card too (as the paired ones do); `?update=self` opens its confirm. */}
+          <SelfUpdate name={data.self.name} ask={askUpdate === 'self'} onAsked={() => router.navigate('/settings/computers', { replace: true })} />
         </div>
         <div className="v2-comp-side">
           <StatusBadge status="online" />
@@ -232,7 +235,7 @@ function ComputerCard({
         ) : null}
         {machine.connection?.lastFailure && state !== 'online' ? <div className="v2-muted v2-set-small">{`Last error: ${machine.connection.lastFailure.message}`}</div> : null}
         {state === 'online' && machine.address ? <div className="v2-muted v2-set-small">{machine.address}</div> : null}
-        <ComputerUpdate machine={machine} ask={askUpdate} onAsked={onAsked} />
+        <ComputerUpdate name={machine.name} machineId={machine.id} view={machineUpdateView(machine)} ask={askUpdate} onAsked={onAsked} />
       </div>
       <div className="v2-comp-side">
         <StatusBadge status={state} />
@@ -258,9 +261,17 @@ function ComputerCard({
  * itself, and a refused call's message. Nothing for a computer that reports no
  * update state.
  */
-function ComputerUpdate({ machine, ask, onAsked }: { readonly machine: Machine; readonly ask: boolean; readonly onAsked: () => void }) {
-  const view = machineUpdateView(machine);
-  const actions = useMachineUpdate(machine.id);
+/** 2026-11-17 · this computer's own version and updates on its card, live from `updateChanged`. */
+function SelfUpdate({ name, ask, onAsked }: { readonly name: string; readonly ask: boolean; readonly onAsked: () => void }) {
+  const status = useApi(api.updates);
+  const [live, setLive] = useState<UpdateStatus | null>(null);
+  useHubEvent('updateChanged', (next) => setLive(next));
+  return <ComputerUpdate name={name} machineId={null} view={localUpdateView(live ?? status.data ?? null)} ask={ask} onAsked={onAsked} />;
+}
+
+function ComputerUpdate({ name, machineId, view, ask, onAsked }: { readonly name: string; readonly machineId: string | null; readonly view: MachineUpdateView; readonly ask: boolean; readonly onAsked: () => void }) {
+  const machine = { name };
+  const actions = useMachineUpdate(machineId);
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {

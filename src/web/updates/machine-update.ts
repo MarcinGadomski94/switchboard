@@ -1,5 +1,5 @@
 import type { Machine } from '../../core/peers.ts';
-import { type MachineUpdate, type UpdateStatus, phaseText, updateRunning } from '../../core/updates.ts';
+import { type MachineUpdate, type UpdateStatus, machineUpdateOf, phaseText, remoteUpdateAbility, updateRunning } from '../../core/updates.ts';
 
 /**
  * D140 "Update Switchboard remotely" (`docs/updates.md` → *Remote updates*): what
@@ -76,6 +76,18 @@ export function machineUpdateView(machine: Pick<Machine, 'state' | 'update'>): M
   if (update.checking) return { ...NONE, ...base, stage: 'checking', latest };
   if (update.lastCheck && !update.lastCheck.ok) return { ...NONE, ...base, stage: 'check-failed', canCheck, detail: update.lastCheck.error };
   return { ...NONE, ...base, stage: 'up-to-date', latest, canCheck };
+}
+
+/**
+ * 2026-11-17 · this computer's own card (Settings › Computers): the same view from its own
+ * `UpdateStatus`. Its own UI may update a release install that is not the login service too (D55:
+ * it then says to restart by hand), so only a git checkout is blocked here, not the remote rules.
+ */
+export function localUpdateView(status: UpdateStatus | null): MachineUpdateView {
+  if (!status) return NONE;
+  const update = machineUpdateOf(status);
+  const remote = status.install.kind === 'git' ? remoteUpdateAbility('git', status.restart) : { allowed: true, reason: null, message: null };
+  return machineUpdateView({ state: 'online', update: { ...update, remote } });
 }
 
 /**

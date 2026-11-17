@@ -22,7 +22,7 @@ function errorText(caught: unknown, fallback: string): string {
  * paired computer `machineId` (through `/api/machines/{id}/api/updates/*`). The
  * progress itself arrives as the machine's `Machine.update` (`machineState`).
  */
-export function useMachineUpdate(machineId: string): MachineUpdateActions {
+export function useMachineUpdate(machineId: string | null): MachineUpdateActions {
   const [busy, setBusy] = useState<'check' | 'install' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const run = async (kind: 'check' | 'install', call: () => Promise<unknown>, fallback: string): Promise<boolean> => {

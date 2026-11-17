@@ -47,6 +47,7 @@ Developer request, 2026-10-27: "add the possibility to trigger the update of Swi
 
 **UI**
 - v2 Settings › Computers, each paired computer's card (also on a phone): "Switchboard 2.4.2", "Update available: 2.4.3" with **Update** (the confirm dialog) and **Check for updates**, the progress line, "Restarting… reconnects when it's back", the reason where it cannot update itself, the last check's or update's error and a refused call's message ("try again in 6 min"). `/settings/computers?update=<id>` opens that computer's confirm (the v2 Needs-you item's **Update**). Words: `COMPUTER_UPDATE_WORDS` in `src/web/v2/glossary.ts`.
+- **This computer's own card (2026-11-17):** v2 Settings › Computers shows the same block on this computer's card (`localUpdateView`: from its own `UpdateStatus`; only a git checkout is blocked, since its own screen may update a release install started by hand, D55), and this computer's own "is available" item in Needs you has **Update** too (`/settings/computers?update=self` opens the card's confirm).
 - Classic Settings → Machines rows: the same line, **Update to 2.4.3…** with an inline confirm, **Check for updates**.
 - A phone's Settings → Updates (classic, and v2 Settings › Advanced › Updates, the same section): works as on the computer; the confirm names the computer ("Update Marcins-PC to 2.4.3? …"); where it cannot restart itself, the reason instead of the button.
 - What's new: `remote-update` (v2, 2.4.3).

@@ -211,6 +211,11 @@ export function cardButtons(item: NeedsItem): CardButton[] {
         const update: CardButton = { id: 'update-computer', label: ANSWER.updateComputer, variant: 'primary', icon: 'download', intent: { type: 'open', target: { type: 'path', path: `/settings/computers?update=${encodeURIComponent(item.computer.id)}` } } };
         return [update, ...serverButtons(item).map((button) => (button.variant === 'primary' ? { ...button, variant: 'default' as const } : button))];
       }
+      // 2026-11-17: this computer's own "Switchboard 2.4.x is available" gets Update too (its card in Settings › Computers asks first).
+      if (!item.computer && item.inbox?.kind === 'system' && item.actions.some((action) => action.id === 'whats-new')) {
+        const update: CardButton = { id: 'update-computer', label: ANSWER.updateComputer, variant: 'primary', icon: 'download', intent: { type: 'open', target: { type: 'path', path: '/settings/computers?update=self' } } };
+        return [update, ...serverButtons(item).map((button) => (button.variant === 'primary' ? { ...button, variant: 'default' as const } : button))];
+      }
       return serverButtons(item);
     default:
       // `pick` and anything else the server offers actions for.

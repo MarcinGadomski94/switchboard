@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { InboxItem } from '../../src/core/api.ts';
 import type { Machine } from '../../src/core/peers.ts';
 import { type MachineUpdate, type UpdateStatus, remoteUpdateAbility } from '../../src/core/updates.ts';
-import { machineUpdateView, refusalMessage, remoteBlockOf } from '../../src/web/updates/machine-update.ts';
+import { localUpdateView, machineUpdateView, refusalMessage, remoteBlockOf } from '../../src/web/updates/machine-update.ts';
 import { cardButtons } from '../../src/web/v2/shared/answer-model.ts';
 import { fromInbox } from '../../src/web/v2/shared/needs-you-model.ts';
 
@@ -76,11 +76,23 @@ describe('D140 · a paired computer\'s updates', () => {
     expect(refusalMessage(null, 'x')).toBe('x');
   });
 
-  it('a paired computer\'s "is available" item offers Update (to its Computers card\'s confirm); this computer\'s does not', () => {
+  it('this computer\'s own card (2026-11-17): Update from its own screen also when it is not the login service; a git checkout is blocked', () => {
+    const status = (over: Partial<UpdateStatus>): UpdateStatus =>
+      ({ current: '2.4.2', install: { kind: 'release', dir: '/x' }, restart: 'manual', checking: false, latest: { version: '2.4.3', tag: 'v2.4.3', name: null, notes: '', publishedAt: AT, url: null }, available: true, lastCheck: { at: AT, ok: true, via: 'api', error: null }, progress: { phase: 'idle', version: null, message: '', error: null, at: null, dir: null }, liveSessions: 1, ...over }) as unknown as UpdateStatus;
+    expect(localUpdateView(null).stage).toBe('unknown');
+    // Started by hand: a paired computer may not update it, its own screen may (it then says to restart by hand).
+    expect(localUpdateView(status({}))).toMatchObject({ stage: 'available', latest: '2.4.3', canUpdate: true, canCheck: true });
+    expect(localUpdateView(status({ install: { kind: 'git', dir: '/x' } } as Partial<UpdateStatus>))).toMatchObject({ stage: 'blocked', canUpdate: false });
+    expect(localUpdateView(status({ available: false, current: '2.4.3' }))).toMatchObject({ stage: 'up-to-date' });
+  });
+
+  it('a paired computer\'s "is available" item offers Update (to its Computers card\'s confirm); this computer\'s too (2026-11-17)', () => {
     const raw = (machineRef: InboxItem['machine']): InboxItem => ({ id: 'r~studio~u1', kind: 'system', sessionId: null, source: 'switchboard', status: 'idle', title: 'Switchboard 2.4.3 is available', label: 'Update available', detail: '', createdAt: AT, branches: [], actions: [{ id: 'whats-new', label: "What's new" }, { id: 'dismiss', label: 'Dismiss' }], ...(machineRef ? { machine: machineRef } : {}) });
     const peer = cardButtons(fromInbox(raw({ id: 'studio', name: 'Studio-PC', state: 'online' })));
     expect(peer.map((button) => `${button.id}:${button.variant}`)).toEqual(['update-computer:primary', 'whats-new:default', 'dismiss:ghost']);
     expect(peer[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/settings/computers?update=studio' } });
-    expect(cardButtons(fromInbox(raw(null))).map((button) => button.id)).toEqual(['whats-new', 'dismiss']);
+    const own = cardButtons(fromInbox(raw(null)));
+    expect(own.map((button) => button.id)).toEqual(['update-computer', 'whats-new', 'dismiss']);
+    expect(own[0]?.intent).toEqual({ type: 'open', target: { type: 'path', path: '/settings/computers?update=self' } });
   });
 });
