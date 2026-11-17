@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.46 (2026-11-17)
+
+### Profiles
+- **Admins decide which computers each profile may use:** in Settings → Profiles an admin (marked there; while there is none, a profile with a password can make itself admin) picks per profile "All computers" or a checklist, with the admin's password. On a computer it may not use, a profile can't be switched to, its phones get nothing from there, nothing starts or moves there in it, and its agents there are hidden everywhere but keep running. Synced to every paired computer. Database migration. See `docs/profiles.md` (D173).
+
+### Updates
+- **Update this computer from its own card:** Settings → Computers now shows this computer's version with **Update** and **Check for updates**, like the paired computers; its "Switchboard … is available" item in Needs you has **Update** too.
+
+### Models
+- **Fable in the model list:** the new-agent form's fallback list (used until an agent has reported the CLI's models) includes Fable, next to Opus, Sonnet and Haiku.
+
 ## 2.4.45 (2026-11-17)
 
 ### Profiles
