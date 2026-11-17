@@ -2,7 +2,7 @@
 
 A real terminal (PowerShell, cmd, bash, zsh…) on this computer or on a paired one, in the browser: on this computer's own page, from a paired computer's Switchboard, and on a paired phone. No extra password per terminal: whoever can use this Switchboard (and its profile) can open one. That makes it **the most powerful thing Switchboard exposes**; see *Security* below and `docs/security.md` → *Terminals (D170)*.
 
-Phase 1 (this) is terminals only. Phase 2 (an agent's CLI tab: the session's own interactive `claude --resume <id>` with a switch back to the chat) is designed for but not built: the service runs any **program** (argv, folder, environment, owner), not only a shell.
+Phase 1 is the terminals themselves. Phase 2 (D171) is an agent's **CLI tab**: the agent's own conversation as the interactive `claude` in one of these terminals, with a switch back to the chat; see *CLI mode (D171)* below. The service runs any **program** (argv, folder, environment, owner), not only a shell.
 
 ## Using it
 
@@ -43,7 +43,7 @@ A terminal belongs to the profile that opened it and only that profile sees, att
 
 ## Processes (D127 idle stop)
 
-The process tracker (`docs/processes.md`) never touches a terminal's processes: they carry no `SWITCHBOARD_SESSION` marker (it is scrubbed even if Switchboard itself inherited one) and they are not in any session CLI's tree (their parent is Switchboard's pseudo-terminal host). So a long build or a dev server in a terminal is never idle-stopped and never shows under an agent's processes. A `claude` you start yourself in a terminal is a hooked session like one in any other terminal (`docs/processes.md` → *Hooked sessions*). Phase 2 must decide whether an agent's CLI tab carries its session's marker.
+The process tracker (`docs/processes.md`) never touches a terminal's processes: they carry no `SWITCHBOARD_SESSION` marker (it is scrubbed even if Switchboard itself inherited one) and they are not in any session CLI's tree (their parent is Switchboard's pseudo-terminal host). So a long build or a dev server in a terminal is never idle-stopped and never shows under an agent's processes. A `claude` you start yourself in a terminal is a hooked session like one in any other terminal (`docs/processes.md` → *Hooked sessions*). An agent's **CLI mode** terminal (D171) is the exception: it carries its agent's `SWITCHBOARD_SESSION` marker, so what that `claude` starts is the agent's, as in chat mode.
 
 **Close** kills the pseudo-terminal: on Windows the console closes and every process attached to it ends; on macOS / Linux the shell's session gets SIGHUP. A program that detached itself on purpose (`nohup`, `setsid`, `Start-Process`) keeps running, as after closing any terminal window.
 
@@ -64,6 +64,21 @@ The process tracker (`docs/processes.md`) never touches a terminal's processes: 
 - **Close codes:** 1000 the terminal was closed; 4404 no such terminal (or another profile's); 4502 the paired computer could not be reached.
 
 Malformed frames are ignored. A refused upgrade (no token, a foreign Origin, a phone without a credential) is answered with its HTTP status and the connection is dropped.
+
+## CLI mode (D171)
+
+A Claude Code agent's page has a **CLI** tab next to Chat. Opening it switches the agent to **CLI mode**: the same conversation runs as the interactive `claude` (its own terminal screen, the native TUI) in a terminal of the agent's computer, and the tab shows that terminal. **Back to chat mode** returns it to Switchboard.
+
+- **Entering** (`POST /api/sessions/{id}/cli-mode { cols?, rows?, stopTurn? }`): an idle agent switches when the tab opens. While a turn runs the tab offers **Wait** (it switches when the turn ends) or **Stop the turn and switch** (D7's interrupt, then the switch); the route answers 409 `turn-running` without `stopTurn`. Switchboard ends its own headless process (the chat records it, as a detach) and starts `claude --resume <claudeSessionId>` in a pseudo-terminal in the agent's folder.
+- **The same launch** as the headless process: the account's config folder and environment (D60), the team member's access (D100), the model and effort, the permission mode (the one the CLI last reported; `default` or none → Switchboard's default), the extra folders (`--add-dir`), the `switchboard` MCP server, the standing instruction (`--append-system-prompt`) and the session's name. Not `-p`, not stream-json and no permission-prompt tool: the TUI asks in the terminal itself. `buildInteractiveClaudeArgs` in `src/server/supervisor/argv.ts`.
+- **Followed through its hooks.** The D48 hook plan (`docs/peers.md` → *Hooked terminal sessions*) is injected into **this process only**, through `--settings` (nothing is written to the developer's `~/.claude`), and the agent is marked hooked while in CLI mode. So the Chat tab keeps following the conversation (the transcript), its questions and permission requests still reach **Needs you**, and the composer still works: a message goes to the hook mailbox and the waiter hook delivers it when the CLI stops (D48).
+- **Going back** (`DELETE /api/sessions/{id}/cli-mode`, the CLI tab's and the chat's **Back to chat mode**): Switchboard sends Ctrl+C twice to the TUI (its own clean exit), waits up to 5 s, then closes the terminal, and continues the conversation through **D72's continue** (`docs/peers.md` → *Continuing a hooked session in Switchboard (D72)*): the same record becomes a Switchboard-run session again with `--resume`, its mailbox and held waiters handled as D72 does. If the CLI ends by itself (`/exit`, a crash, Close on the Terminals page, the idle limit), the agent goes back to chat mode the same way.
+- **Restart:** the terminals end when Switchboard stops (above), so an agent in CLI mode is back in **chat mode** after a restart, with the chat line *Back in chat mode: its CLI terminal ended with the Switchboard restart*.
+- **Where:** the routes are on `PEER_API_ALLOW` (an agent of a paired computer, through `/api/machines/{id}/api/sessions/{sid}/cli-mode`) and `DEVICE_ALLOWED` (a paired phone); the terminal's socket is D170's (*Where it runs*). The terminal belongs to the agent's profile and is listed on the Terminals page as *claude · <title>*; it counts toward the 16.
+- **Who gets the tab:** Claude Code agents, team members and plan runs. Not Codex or OpenCode agents (*not available yet*), not chats (D106), not hooked terminal sessions started outside Switchboard (they already are a CLI), not archived or moved agents, not a paired computer that is offline. Another profile's agent is 404.
+- **ASSUMED (the developer may change them):** back in chat mode after a restart; Codex / OpenCode not yet; chats excluded; the composer's message waits for the CLI's next stop (the D48 mailbox); an idle-closed or closed CLI terminal returns the agent to chat mode; the switch records the "Continued in a terminal" line (the detach stop is reused) and going back D72's divider.
+
+Engineering: `src/server/cli-mode/service.ts` (`CliModeService`: enter, back, the terminal's end, restart recovery), `src/server/api/cli-mode.ts`, `Supervisor.cliModeRefusal` / `cliModeLaunch` / `enterCliMode` / `restoreChatMode`, `HookService.adopted`, `TerminalService`'s `onEnd` / `write` / `closeAny`, migration `0058_session_cli_mode.sql` (`sessions.cli_terminal_id`; `Session.cliMode`). UI: `src/web/v2/agent/CliTab.tsx`, `cli-tab-model.ts`, the header's *In CLI mode* note. Tests: `tests/server/cli-mode/cli-mode.test.ts` (a fake pseudo-terminal: the argv and hooks, the hook calls and mailbox, back, a running turn, the CLI exiting by itself, a restart, the refusals, the allow-lists), `tests/web/v2-cli-tab.test.ts`.
 
 ## Engineering
 

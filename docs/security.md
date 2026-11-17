@@ -265,6 +265,7 @@ Ruling 2026-10-14 (q4) asked for a confirmation an agent cannot give: an agent r
 - **No shell string.** The shell is started by its argv in a pseudo-terminal (`@lydell/node-pty`); what the developer types goes to that shell, as in any terminal.
 - **Environment:** Switchboard's own variables (`SWITCHBOARD_*`, `npm_*`, `VITEST*`) are removed; the developer's own environment stays (the terminal is theirs).
 - **Limits:** 16 open per computer, 64 KB per input frame, 1 MB per socket message, 256 KB of scrollback in memory (never written to disk), an idle limit (12 h with nobody watching by default), and everything ends when Switchboard stops.
+- **An agent's CLI mode (D171)** runs the agent's `claude` in one of these terminals with the agent's own launch (account, MCP server, permission mode: the same rights as in chat mode) and its own `SWITCHBOARD_SESSION` marker; the D48 hooks (and the hook token file's path) go to **that process only** through `--settings`, nothing is written to `~/.claude`. Its routes have the same guards as `/api/sessions/{id}` (profile-scoped, on the peer and phone allow-lists).
 - **Revoking:** a lost phone is revoked in Settings → Phones and a paired computer removed in Settings → Computers: no new request or upgrade passes after that. **Open:** a terminal socket that was already open when its phone was revoked is not cut at once; it lasts until it closes (the phone leaves the page, the connection drops, the terminal is closed, or Switchboard stops). Closing the terminal from this computer ends it.
 
 ## Tests

@@ -2519,3 +2519,14 @@ Scope: the lists answer only the request's profile; a route keyed by another pro
 Frames (JSON text). Client → server: `{ t: 'in', d }` (at most 64 KB), `{ t: 'resize', cols, rows }` (2–1000); anything else is ignored. Server → client: `{ t: 'hello', info, scrollback }` first (the last 256 KB of output), `{ t: 'out', d }`, `{ t: 'exit', code, signal }`, `{ t: 'closed', reason: 'closed' \| 'idle' \| 'stopping' }`. Close codes: 1000 closed, 4404 not found (or another profile's), 4502 the paired computer could not be reached. An upgrade the guard refuses is answered with its HTTP status (401 / 403) and the connection dropped.
 
 Setting: `terminals.idleHours` (`PUT /api/settings`; default 12, 0 = never, at most 168): a terminal no socket has been attached to for that long is closed.
+
+## An agent's CLI mode (D171, 2026-11-17, additive; migration 0058)
+
+`docs/terminals.md` → *CLI mode (D171)*. Profile-guarded like `/api/sessions/{id}` (another profile's agent is 404). On `PEER_API_ALLOW` (through `/api/machines/{id}/api/sessions/{sid}/cli-mode`, long timeout) and `DEVICE_ALLOWED`.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | /api/sessions/{id}/cli-mode | `{ cols?, rows?, stopTurn? }` | 200 `Session` (with `cliMode`) · 404 · 409 `turn-running` (without `stopTurn`) / `cli-mode` (already) / `chat` / `hooked` / `closed` / `moved` / `folder-missing` / `not-available` (not Claude Code) · D170's terminal errors (409 `too-many`, 422 `no-shell`, 503 `unavailable` / `stopping`) · 503 `closing` |
+| DELETE | /api/sessions/{id}/cli-mode | — | 200 `Session` (back in chat mode, D72's continue) · 404 · 409 `not-cli-mode` · D72's refusals |
+
+`Session.cliMode?: { terminalId } | null`: the D170 terminal (on the session's computer) the agent runs in while in CLI mode; the session is `hooked` meanwhile. Migration `0058_session_cli_mode.sql`: `sessions.cli_terminal_id TEXT`.
