@@ -20,6 +20,10 @@ import { UserProfileError, type UserProfileService } from '../user-profiles/serv
  * - `PUT /api/sessions/{id}/user-profile` `{ userProfileId, password? }` → moves the agent (a paired computer's
  *   agent: on its computer, through the peer API).
  *
+ * - D173: `PUT /api/user-profiles/{id}/admin { admin, adminPassword }` and `PUT /api/user-profiles/{id}/access
+ *   { computers: 'all' | [machine ids], adminPassword }` → the profile (403 `not-admin`, 409 `last-admin` /
+ *   `needs-password`); the switch answers 403 `not-allowed-here` for a profile not allowed on this computer.
+ *
  * Refusals: 404 `not-found`, 422 `invalid`, 409 `name-taken` / `default` / `archive-failed`, 401 `wrong-password`,
  * 429 `too-many-tries`. A paired phone is refused all but the list (`devices/local-only.ts`).
  */
@@ -58,6 +62,23 @@ export async function registerUserProfileRoutes(app: FastifyInstance, context: A
     try {
       await guardOther(service, request.userProfileScope, request.params.profileId, request.body);
       return await service.update(request.params.profileId, request.body);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  // D173: admins and computer access (only an admin profile, its password; the bootstrap: a profile with a password makes itself the first admin).
+  app.put<{ Params: { profileId: string } }>('/api/user-profiles/:profileId/admin', async (request, reply) => {
+    try {
+      return await service.setAdmin(request.params.profileId, request.body, request.userProfileScope);
+    } catch (error) {
+      return send(reply, error);
+    }
+  });
+
+  app.put<{ Params: { profileId: string } }>('/api/user-profiles/:profileId/access', async (request, reply) => {
+    try {
+      return await service.setAccess(request.params.profileId, request.body, request.userProfileScope);
     } catch (error) {
       return send(reply, error);
     }

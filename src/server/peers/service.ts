@@ -1559,6 +1559,11 @@ export class PeerService implements PeerHandlers {
     }
     // D172: the calling computer's profile id, as this computer names it.
     const local = profile && this.#userProfiles ? this.#userProfiles.fromRemote(machine.id, profile) : profile;
+    // D173: a profile an admin did not allow on this computer gets no terminal here.
+    if (local && this.#userProfiles && !this.#userProfiles.allowedHere(local)) {
+      socket.close(4403, 'not allowed on this computer');
+      return;
+    }
     this.#terminalHost(local ?? '*', terminalId, socket);
   }
 

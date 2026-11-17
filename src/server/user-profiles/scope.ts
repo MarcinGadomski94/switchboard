@@ -79,6 +79,16 @@ const BODY_KEYED: ReadonlyArray<readonly [string, string, string]> = [
 
 type Kind = 'session' | 'plan' | 'member' | 'team' | 'inbox' | 'batch' | 'artifact' | 'schedule' | 'move' | 'folder';
 
+/** D173: the routes that move an agent or a crew to another computer (`targetMachine` / `targetMachineId` in the body). */
+const MOVE_ROUTES: ReadonlySet<string> = new Set([
+  '/api/takeover',
+  '/api/takeover/preview',
+  '/api/team/members/:memberId/move',
+  '/api/team/members/:memberId/move/check',
+  '/api/team/teams/:teamId/move',
+  '/api/team/teams/:teamId/move/check',
+]);
+
 /** The id-keyed routes: a route prefix, the param that names the thing, and what it is. */
 const KEYED: ReadonlyArray<readonly [string, string, Kind]> = [
   ['/api/sessions/:id', 'id', 'session'],
@@ -102,7 +112,13 @@ const KEYED: ReadonlyArray<readonly [string, string, Kind]> = [
 export function registerProfileScope(app: FastifyInstance, profiles: UserProfileService, resolvers: () => ProfileScopeResolvers): void {
   if (!app.hasRequestDecorator('userProfileScope')) app.decorateRequest('userProfileScope', null);
 
-  app.addHook('onRequest', (request, _reply, done) => {
+  app.addHook('onRequest', (request, reply, done) => {
+    // D173: a paired computer's request in a profile an admin did not allow on this computer is refused.
+    const named = internal(request) ? request.headers[USER_PROFILE_HEADER] : undefined;
+    if (typeof named === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(named) && !profiles.allowedHere(named)) {
+      void reply.code(403).header('cache-control', 'no-store').send({ error: 'not-allowed-here', message: 'This profile can’t use this computer: an admin limited it to other computers.' });
+      return;
+    }
     scopeOf(request, profiles).then(
       (scope) => {
         request.userProfileScope = scope;
@@ -117,6 +133,12 @@ export function registerProfileScope(app: FastifyInstance, profiles: UserProfile
     if (scope === '*') return undefined;
     const url = request.routeOptions.url ?? '';
     const params = (request.params ?? {}) as Record<string, string>;
+    // D173: moving an agent or a crew to a computer the request's profile may not use is refused (strict scope: the request's profile is the agent's).
+    if (request.method === 'POST' && MOVE_ROUTES.has(url) && typeof scope === 'string') {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const target = typeof body['targetMachine'] === 'string' ? body['targetMachine'] : typeof body['targetMachineId'] === 'string' ? body['targetMachineId'] : null;
+      if (target !== null && !profiles.allowedOn(scope, target)) return reply.code(403).header('cache-control', 'no-store').send({ error: 'not-allowed-there', message: 'This profile can’t use that computer: an admin limited it to other computers.' });
+    }
     // Writes that name a session in their body: placing an agent in the sidebar, adding it to a crew.
     const bodyKey = BODY_KEYED.find(([route, method]) => route === url && method === request.method);
     if (bodyKey) {
@@ -211,7 +233,11 @@ async function seesKey(profiles: UserProfileService, r: ProfileScopeResolvers, s
 
 /** The request's scope (see the module comment). */
 async function scopeOf(request: FastifyRequest, profiles: UserProfileService): Promise<ProfileScope> {
-  if (request.device) return request.device.userProfileId ?? 'default';
+  // D173: a phone whose profile may not use this computer gets nothing from here.
+  if (request.device) {
+    const profile = request.device.userProfileId ?? 'default';
+    return profiles.allowedHere(profile) ? profile : null;
+  }
   if (isHookPath(request.url)) return '*';
   if (isAgentPath(request.url)) {
     const sessionId = request.headers['x-switchboard-session'];
@@ -301,6 +327,13 @@ export const LIST_FILTERS: Readonly<Record<string, ListFilter>> = {
     };
   },
   '/api/sidebar': (body, sees, { scope, resolvers }) => filterLayout(body as SidebarLayout, sees, (folderId) => scopeSees(scope, resolvers.folderProfile?.(folderId) ?? 'default')),
+  // D173: the paired computers a profile may use (the status pill, Settings › Computers, the move dialog's targets).
+  '/api/machines': (body, _sees, { scope, profiles }) => {
+    if (typeof scope !== 'string' || scope === '*' || typeof body !== 'object' || body === null) return body;
+    const view = body as { machines?: Array<Record<string, unknown>> };
+    if (!Array.isArray(view.machines)) return body;
+    return { ...view, machines: view.machines.filter((machine) => profiles.allowedOn(scope, str(machine['id']))) };
+  },
 };
 
 /** Any sidebar answer: a layout, or `{ layout, … }` (D141's delete with archiving). */
@@ -340,6 +373,8 @@ export function hubTransform(profiles: UserProfileService, scope: ProfileScope):
   return (message) => {
     const payload = message.payload as unknown as Record<string, unknown> | null;
     if (message.name === 'sessionUpdated') return sees(str(payload?.['id'])) ? message : null;
+    // D173: a paired computer the client's profile may not use is not shown to it.
+    if (message.name === 'machineState') return typeof scope === 'string' && !profiles.allowedOn(scope, str(payload?.['id'])) ? null : message;
     if (message.name === 'sidebarLayoutChanged') {
       return { ...message, payload: filterLayout(message.payload as SidebarLayout, sees, (folderId) => scopeSees(scope, lookups.folderProfile(folderId) ?? 'default')) } as HubMessage;
     }

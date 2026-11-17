@@ -55,6 +55,12 @@ export interface UserProfile {
   readonly computerDefault?: boolean;
   /** Its default account per CLI on this computer (`{ claude: <cli profile id> }`); absent = the CLI's own default. */
   readonly defaultAccounts: Readonly<Record<string, string>>;
+  /** D173: an admin profile (only admins change admins and computer access). Absent from an older server. */
+  readonly admin?: boolean;
+  /** D173: the computers (machine ids) it may use; `null` = every computer. Absent from an older server. */
+  readonly computers?: readonly string[] | null;
+  /** D173: whether it may be used on this computer ({@link profileAllowedOn}); the switcher lists only these. */
+  readonly allowedHere?: boolean;
 }
 
 /** `GET /api/user-profiles`: the profiles and this browser's active one (`null`: none chosen yet / locked). */
@@ -106,4 +112,53 @@ export type ProfileScope = string | '*' | null;
 /** Whether scope `scope` sees something of profile `profileId`. */
 export function scopeSees(scope: ProfileScope, profileId: string): boolean {
   return scope === '*' || (scope !== null && scope === profileId);
+}
+
+/**
+ * D173 (`docs/profiles.md` → *Admins and computer access*): whether a profile whose access list is
+ * `computers` may be used on computer `machineId`. `null` (or absent) = every computer, the default;
+ * an unknown machine id (`null`) is allowed (nothing to check against yet).
+ */
+export function profileAllowedOn(computers: readonly string[] | null | undefined, machineId: string | null): boolean {
+  if (computers === null || computers === undefined || machineId === null) return true;
+  return computers.includes(machineId);
+}
+
+/** D173: an access list as given (`'all'`, `null` or machine ids), cleaned: `null` = every computer; else unique ids. */
+export function readComputerAccess(value: unknown): readonly string[] | null | undefined {
+  if (value === 'all' || value === null) return null;
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(id));
+  return ids.length === value.length ? [...new Set(ids)] : undefined;
+}
+
+/** D173: a profile as the admin rules read it. */
+export interface AdminFacts {
+  readonly id: string;
+  readonly admin: boolean;
+  readonly hasPassword: boolean;
+}
+
+/**
+ * D173: whether the request's profile `actor` may change admins and computer access. An admin may;
+ * while no live profile is an admin yet (the bootstrap), a profile with a password may make **itself**
+ * the first admin (`target` = itself, `makingAdmin`). `actor` `null` (no profile): never.
+ */
+export function mayManageAccess(profiles: readonly AdminFacts[], actor: string | null, change: { readonly target: string; readonly makingAdmin: boolean }): 'admin' | 'bootstrap' | null {
+  if (actor === null) return null;
+  const me = profiles.find((profile) => profile.id === actor);
+  if (!me) return null;
+  if (me.admin) return 'admin';
+  const anyAdmin = profiles.some((profile) => profile.admin);
+  if (!anyAdmin && me.hasPassword && change.makingAdmin && change.target === actor) return 'bootstrap';
+  return null;
+}
+
+/** D173: why an admin change would break the rules (the last admin, an admin without a password), else `null`. */
+export function adminChangeProblem(profiles: readonly AdminFacts[], target: string, admin: boolean): string | null {
+  const profile = profiles.find((candidate) => candidate.id === target);
+  if (!profile) return null;
+  if (admin && !profile.hasPassword) return 'An admin needs a password: set one for this profile first.';
+  if (!admin && profile.admin && profiles.filter((candidate) => candidate.admin).length <= 1) return 'This is the last admin: make another profile an admin first.';
+  return null;
 }

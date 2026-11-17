@@ -10,6 +10,10 @@ import {
   USER_PROFILE_START_SETTING,
   USER_PROFILE_SWITCH_ATTEMPTS,
   USER_PROFILE_SWITCH_WINDOW_MS,
+  adminChangeProblem,
+  mayManageAccess,
+  profileAllowedOn,
+  readComputerAccess,
   type UserProfile,
   type UserProfileColor,
   profileOf,
@@ -55,6 +59,10 @@ export interface UserProfileWire {
   readonly homeOf?: string;
   /** D172: on a tombstone, the profile (peer-link id) it was merged into. */
   readonly mergedInto?: string | null;
+  /** D173: an admin profile (absent from an older computer: not one). */
+  readonly admin?: boolean;
+  /** D173: the computers it may use (machine ids); `null` / absent = every computer. */
+  readonly computers?: readonly string[] | null;
 }
 
 /** D172: the settings key of this computer's own Default's peer-link id (absent: `default-<machine id>`). */
@@ -238,9 +246,91 @@ export class UserProfileService {
     return DEFAULT_USER_PROFILE_ID;
   }
 
-  /** Whether scope `scope` sees session `sessionId`. */
+  /**
+   * Whether scope `scope` sees session `sessionId`. D173: also only when the profile may use the
+   * computer the session runs on (this one, or the paired one of an `r~<machine>~…` id): a profile
+   * not allowed there does not see its agents there (they keep running, hidden).
+   */
   sees(scope: ProfileScope, sessionId: string): boolean {
-    return scopeSees(scope, this.profileOfSession(sessionId));
+    if (!scopeSees(scope, this.profileOfSession(sessionId))) return false;
+    if (scope === '*' || scope === null) return scope === '*';
+    const machine = sessionId.startsWith('r~') ? (sessionId.split('~')[1] ?? null) : this.#self;
+    return this.allowedOn(scope, machine);
+  }
+
+  // ── D173 · admins and computer access ───────────────────────────────────
+
+  /** D173: whether profile `profileId` may be used on computer `machineId` (sync: the cached records; unknown = allowed). */
+  allowedOn(profileId: string, machineId: string | null): boolean {
+    const record = this.#profiles?.get(profileId);
+    return !record || profileAllowedOn(record.computers, machineId);
+  }
+
+  /** D173: whether profile `profileId` may be used on this computer. */
+  allowedHere(profileId: string): boolean {
+    return this.allowedOn(profileId, this.#self);
+  }
+
+  /** D173: this computer's machine id (`null` while unknown). */
+  selfMachineId(): string | null {
+    return this.#self;
+  }
+
+  /** The admin facts of every live profile. */
+  async #adminFacts(): Promise<Array<{ id: string; admin: boolean; hasPassword: boolean }>> {
+    return [...(await this.#records()).values()].filter((record) => record.deletedAt === null).map((record) => ({ id: record.id, admin: record.admin, hasPassword: record.passwordHash !== null }));
+  }
+
+  /**
+   * D173: checks that the request's profile `actor` may make this change, with `adminPassword` (the
+   * actor's own password: it is an admin, or, while no admin exists, it makes itself the first one).
+   */
+  async #checkManager(actor: ProfileScope, change: { readonly target: string; readonly makingAdmin: boolean }, adminPassword: unknown): Promise<void> {
+    const facts = await this.#adminFacts();
+    const actorId = typeof actor === 'string' && actor !== '*' ? actor : null;
+    const role = mayManageAccess(facts, actorId, change);
+    if (!role || actorId === null) throw new UserProfileError(403, 'not-admin', facts.some((profile) => profile.admin) ? 'Only an admin profile can change admins and computer access. Switch to an admin profile first.' : 'No admin yet: switch to a profile with a password and make it the first admin.');
+    const me = await this.get(actorId);
+    if (!me) throw new UserProfileError(403, 'not-admin', 'Switch to an admin profile first.');
+    // An admin always has a password (the rules keep it so): its own password confirms the change.
+    if (me.passwordHash === null) throw new UserProfileError(403, 'not-admin', 'An admin needs a password: set one for this profile first.');
+    await this.#check(me, adminPassword);
+  }
+
+  /**
+   * D173 · `PUT /api/user-profiles/{id}/admin { admin, adminPassword }`: makes a profile an admin or not.
+   * Only an admin (its password), or the bootstrap (a profile with a password making itself the first
+   * admin). The last admin stays; an admin needs a password.
+   */
+  async setAdmin(id: string, body: unknown, actor: ProfileScope): Promise<UserProfile> {
+    const record = await this.get(id);
+    if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
+    const input = isRecord(body) ? body : {};
+    if (typeof input['admin'] !== 'boolean') throw new UserProfileError(422, 'invalid', 'Give admin: true or false.');
+    const admin = input['admin'];
+    await this.#checkManager(actor, { target: id, makingAdmin: admin }, input['adminPassword']);
+    const problem = adminChangeProblem(await this.#adminFacts(), id, admin);
+    if (problem) throw new UserProfileError(409, admin ? 'needs-password' : 'last-admin', problem);
+    if (record.admin === admin) return this.#view(record, await this.#defaultAccounts());
+    const updated = (await this.#o.store.userProfiles.update(id, { admin, clock: this.#clock() })) ?? record;
+    await this.#changed([updated]);
+    return this.#view(updated, await this.#defaultAccounts());
+  }
+
+  /**
+   * D173 · `PUT /api/user-profiles/{id}/access { computers: 'all' | [machine ids], adminPassword }`: the
+   * computers a profile may use (only an admin, its password). `'all'` / `null` = every computer.
+   */
+  async setAccess(id: string, body: unknown, actor: ProfileScope): Promise<UserProfile> {
+    const record = await this.get(id);
+    if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
+    const input = isRecord(body) ? body : {};
+    const computers = readComputerAccess(input['computers']);
+    if (computers === undefined) throw new UserProfileError(422, 'invalid', "Give computers: 'all' or a list of computer ids.");
+    await this.#checkManager(actor, { target: id, makingAdmin: false }, input['adminPassword']);
+    const updated = (await this.#o.store.userProfiles.update(id, { computers, clock: this.#clock() })) ?? record;
+    await this.#changed([updated]);
+    return this.#view(updated, await this.#defaultAccounts());
   }
 
   // ── profiles ────────────────────────────────────────────────────────────
@@ -251,7 +341,19 @@ export class UserProfileService {
   }
 
   #view(record: UserProfileRecord, accounts: Record<string, Record<string, string>>): UserProfile {
-    return { id: record.id, name: record.name, color: userProfileColor(record.color) ?? 'blue', hasPassword: record.passwordHash !== null, isDefault: record.id === DEFAULT_USER_PROFILE_ID, computerDefault: this.isAnyDefault(record.id), defaultAccounts: { ...(accounts[record.id] ?? {}) } };
+    return {
+      id: record.id,
+      name: record.name,
+      color: userProfileColor(record.color) ?? 'blue',
+      hasPassword: record.passwordHash !== null,
+      isDefault: record.id === DEFAULT_USER_PROFILE_ID,
+      computerDefault: this.isAnyDefault(record.id),
+      defaultAccounts: { ...(accounts[record.id] ?? {}) },
+      // D173
+      admin: record.admin,
+      computers: record.computers,
+      allowedHere: profileAllowedOn(record.computers, this.#self),
+    };
   }
 
   /** The live profiles, Default first. */
@@ -321,6 +423,8 @@ export class UserProfileService {
     if (input['password'] !== undefined) {
       // Changing or removing a password needs the current one (when it has one).
       if (record.passwordHash !== null) await this.#check(record, input['currentPassword']);
+      // D173: an admin keeps a password (remove its admin role first).
+      if ((input['password'] === null || input['password'] === '') && record.admin) throw new UserProfileError(409, 'admin-needs-password', 'An admin needs a password. Remove its admin role first.');
       if (input['password'] === null || input['password'] === '') patch.passwordHash = null;
       else {
         const password = userProfilePassword(input['password']);
@@ -405,6 +509,8 @@ export class UserProfileService {
     const id = typeof input['id'] === 'string' ? input['id'] : '';
     const record = await this.get(id);
     if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
+    // D173: a profile an admin did not allow on this computer can't be used here.
+    if (!profileAllowedOn(record.computers, this.#self)) throw new UserProfileError(403, 'not-allowed-here', `“${record.name}” can’t be used on this computer: an admin limited it to other computers.`);
     await this.#check(record, input['password']);
     return { profile: this.#view(record, await this.#defaultAccounts()), cookie: this.cookieFor(record) };
   }
@@ -455,12 +561,13 @@ export class UserProfileService {
       const given = Buffer.from(mac, 'base64url');
       if (given.length !== expected.length || !timingSafeEqual(given, expected)) continue;
       const record = records.get(id);
-      if (record && record.deletedAt === null && tagOf(record.passwordHash) === tag) return id;
+      // D173: a cookie for a profile not allowed on this computer counts as none (the fallback below).
+      if (record && record.deletedAt === null && tagOf(record.passwordHash) === tag && profileAllowedOn(record.computers, this.#self)) return id;
     }
-    // 2026-11-16: no valid cookie: the start profile (Settings → Profiles → Open in), while it has no password.
+    // 2026-11-16: no valid cookie: the start profile (Settings → Profiles → Open in), while it has no password (D173: and is allowed here).
     const start = await this.startProfileId();
     const fallback = records.get(start);
-    return fallback && fallback.passwordHash === null ? start : null;
+    return fallback && fallback.passwordHash === null && profileAllowedOn(fallback.computers, this.#self) ? start : null;
   }
 
   // ── moving agents ───────────────────────────────────────────────────────
@@ -621,7 +728,7 @@ export class UserProfileService {
         if (wire.mergedInto && this.#localOf(wire.mergedInto) !== DEFAULT_USER_PROFILE_ID) written.push(...(await this.#adoptDefault(wire.mergedInto)));
         continue;
       }
-      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt })))) continue;
+      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt, admin: wire.admin ?? false, computers: wire.computers ?? null })))) continue;
       const deletedAt = localId === DEFAULT_USER_PROFILE_ID ? null : wire.deletedAt;
       const next: UserProfileRecord = {
         id: localId,
@@ -633,6 +740,9 @@ export class UserProfileService {
         updatedAt: new Date(this.#now()).toISOString(),
         deletedAt,
         mergedInto: deletedAt ? (wire.mergedInto ?? null) : null,
+        // D173: profile attributes, last write wins with the record (an older computer: not an admin, every computer).
+        admin: wire.admin ?? false,
+        computers: wire.computers ?? null,
       };
       await this.#o.store.userProfiles.put(next);
       this.#invalidate();
@@ -721,7 +831,11 @@ export class UserProfileService {
     for (const record of (await this.#records()).values()) {
       if (record.deletedAt === null && record.id !== a.id && record.id !== b.id && record.name.toLowerCase() === keepName.name.toLowerCase()) throw new UserProfileError(409, 'name-taken', `A profile is already called “${record.name}”.`);
     }
-    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, clock: this.#clock() })) ?? survivor;
+    // D173 (ASSUMED): the merged profile is an admin when either was; it may use every computer either could (all when either could).
+    const admin = a.admin || b.admin;
+    const computers = a.computers === null || b.computers === null ? null : [...new Set([...a.computers, ...b.computers])];
+    if (admin && keepPassword.passwordHash === null) throw new UserProfileError(409, 'needs-password', 'The merged profile is an admin, so it needs a password: keep the password of the one that has one.');
+    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, clock: this.#clock() })) ?? survivor;
     const tomb = (await this.#o.store.userProfiles.update(gone.id, { deletedAt: new Date(this.#now()).toISOString(), passwordHash: null, mergedInto: this.#toLink(survivor.id), clock: this.#clock() })) ?? gone;
     this.#invalidate();
     await this.#records();
@@ -749,7 +863,7 @@ function tagOf(passwordHash: string | null): string {
 }
 
 function toWire(record: UserProfileRecord): UserProfileWire {
-  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt };
+  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt, admin: record.admin, computers: record.computers };
 }
 
 function readWire(value: unknown): UserProfileWire | null {
@@ -765,7 +879,10 @@ function readWire(value: unknown): UserProfileWire | null {
   // D172: whose Default it is, and on a tombstone what it was merged into (an older computer sends neither).
   const homeOf = typeof value['homeOf'] === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(value['homeOf']) ? value['homeOf'] : undefined;
   const mergedInto = typeof value['mergedInto'] === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(value['mergedInto']) ? value['mergedInto'] : null;
-  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto };
+  // D173: an older computer sends neither: not an admin, every computer. A malformed list counts as every computer.
+  const admin = value['admin'] === true;
+  const computers = readComputerAccess(value['computers'] ?? null) ?? null;
+  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto, admin, computers };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
