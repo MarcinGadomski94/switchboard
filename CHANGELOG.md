@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.45 (2026-11-17)
+
+### Profiles
+- **Edit a profile, merged ones too:** the profile row's button reads **Edit…** (it read Rename, but it edits the name, colour, password and default accounts). A password set on a merged profile is asked on every paired computer.
+
 ## 2.4.44 (2026-11-17)
 
 ### Terminals
