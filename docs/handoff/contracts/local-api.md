@@ -2500,3 +2500,22 @@ Scope: the lists answer only the request's profile; a route keyed by another pro
 | DELETE | /api/backup/restore | — | 204: a prepared restore not applied yet is dropped |
 
 `RestoreReport` `{ at, ok, error, fromVersion, fromMachine, agents, folders, remapped, missingFolders, conversations, conversationsMissing, secrets, secretsFailed, identity, previousData, todo }` (also `<dataDir>/restore-report.json`).
+
+## Terminals (D170, 2026-11-17, additive; no migration)
+
+`docs/terminals.md`. Types in `src/core/terminals.ts`. Errors: `{ error, message }`, `cache-control: no-store`. Scoped to the request's profile (D165): another profile's terminal is 404. On `DEVICE_ALLOWED` (a paired phone) and `PEER_API_ALLOW` (a paired computer, through `/api/machines/{id}/api/terminals…`).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/terminals | — | `TerminalsView` `{ terminals: TerminalInfo[] (newest first), shells: [{ id, label }] (the default first), home, max }` |
+| POST | /api/terminals | `{ shell?: 'default' \| 'pwsh' \| 'powershell' \| 'cmd' \| 'bash' \| 'zsh' \| 'sh', folderId?, cwd? (absolute, inside home or a saved folder), cols?, rows? }` | 201 `TerminalInfo` · 403 `choose-profile` / `outside` · 404 `not-found` (folder / cwd) · 409 `too-many` · 422 `no-shell` / `invalid` · 503 `unavailable` / `stopping` |
+| GET | /api/terminals/{id} | — | `TerminalInfo` · 404 |
+| DELETE | /api/terminals/{id} | — | 204 (its program and every attached socket end) · 404 |
+| GET (WebSocket) | /api/terminals/{id}/socket | — | the terminal (frames below) |
+| GET (WebSocket) | /api/machines/{machineId}/api/terminals/{id}/socket | — | a paired computer's terminal, piped through `/peer/v1/terminals/{id}/socket` (bearer, the requester's profile) |
+
+`TerminalInfo` `{ id, title, shell, cwd, cols, rows, createdAt, lastActiveAt, clients, exited: { code, signal } \| null }`.
+
+Frames (JSON text). Client → server: `{ t: 'in', d }` (at most 64 KB), `{ t: 'resize', cols, rows }` (2–1000); anything else is ignored. Server → client: `{ t: 'hello', info, scrollback }` first (the last 256 KB of output), `{ t: 'out', d }`, `{ t: 'exit', code, signal }`, `{ t: 'closed', reason: 'closed' \| 'idle' \| 'stopping' }`. Close codes: 1000 closed, 4404 not found (or another profile's), 4502 the paired computer could not be reached. An upgrade the guard refuses is answered with its HTTP status (401 / 403) and the connection dropped.
+
+Setting: `terminals.idleHours` (`PUT /api/settings`; default 12, 0 = never, at most 168): a terminal no socket has been attached to for that long is closed.

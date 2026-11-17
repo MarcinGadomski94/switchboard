@@ -64,6 +64,8 @@ A session's processes are those that carry its marker or sit in its tree. The tr
 
 Markers of sessions that are not in this Switchboard's own database belong to another Switchboard, for example a test instance, and are ignored.
 
+**Terminals (D170)** are never tracked: Switchboard's terminals (`docs/terminals.md`) carry no marker (their environment has every `SWITCHBOARD_*` removed) and are not in any session CLI's tree, so nothing in them is idle-stopped or listed under an agent. A `claude` the developer starts in one is a hooked session like in any other terminal (below).
+
 **Hooked sessions** have no marker. They are followed by tree on every OS, from the pid their hooks reported (`HookService.terminalRoots`), until the session ends. That pid is not checked against the CLI's registry, because that would run a CLI every 30 s. A root is taken only when its command line names `claude`. If the terminal's pid is unknown (an older hook), the session's processes are not tracked.
 
 **Sampling cost,** measured on the developer's Mac (817 processes): about 70 ms of wall time per sample, mostly the `ps` process itself, and about 10 ms of Switchboard's CPU. Every 30 s that is under 0.3 % of one core. On Windows the PowerShell call takes a few hundred ms.
