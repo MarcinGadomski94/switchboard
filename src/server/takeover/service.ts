@@ -19,6 +19,7 @@ import {
   type SourceRepo,
   type RepoCheck,
   type TargetCandidate,
+  type TargetDirEntry,
   type TargetDirListing,
   type TargetPlacement,
   type TargetPlan,
@@ -1223,9 +1224,13 @@ export class TakeoverService {
       if (error instanceof LocateRefusal) throw new TakeoverError(error.status, error.status === 403 ? 'outside' : 'invalid', error.message);
       throw error;
     }
+    // D169: a folder bound to another profile (or one inside it) is outside this profile's places.
+    if (await this.#folders.isHiddenPath(dir)) throw new TakeoverError(403, 'outside', `${input.trim()} is not available in this profile`);
     const up = path.dirname(dir);
     const parent = up !== dir && (await resolveAllowed(up, places).then(() => true, () => false)) ? up : null;
-    return { machine: self, platform: process.platform, path: dir, parent, entries: await listFolders(dir), places: starting };
+    const entries: TargetDirEntry[] = [];
+    for (const entry of await listFolders(dir)) if (!(await this.#folders.isHiddenPath(entry.path))) entries.push(entry);
+    return { machine: self, platform: process.platform, path: dir, parent, entries, places: starting };
   }
 
   /**
@@ -1252,6 +1257,11 @@ export class TakeoverService {
     for (const root of placement.roots) {
       try {
         const real = await resolveAllowed(this.#folders.expand(root), places);
+        // D169: a folder bound to another profile is not this profile's place.
+        if (await this.#folders.isHiddenPath(real)) {
+          problems.push(`${root} is not available in this profile`);
+          continue;
+        }
         if (!roots.includes(real)) roots.push(real);
       } catch (error) {
         problems.push(error instanceof Error ? error.message : String(error));
@@ -1262,7 +1272,7 @@ export class TakeoverService {
     if (placement.roots.length === 0 && Object.keys(placement.repoPaths ?? {}).length === 0 && !placement.newWorkspace) problems.push('choose at least one folder on this machine');
     // Every checkout under the roots, then the overrides.
     const facts = new Map<string, CheckoutFacts>();
-    for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir)) facts.set(dir, await checkoutFacts(dir, git));
+    for (const root of roots) for (const dir of await findCheckouts(root)) if (!facts.has(dir) && !(await this.#folders.isHiddenPath(dir))) facts.set(dir, await checkoutFacts(dir, git));
     // D152 follow-up: a repo outside the workspace is also looked for in this machine's saved repo folders and beside the workspace root
     // (only for those repos: an inside repo never matches a checkout outside the chosen folders).
     const outsideFacts = new Map<string, CheckoutFacts>();

@@ -256,6 +256,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   [WRITE, /^\/api\/frame-helper\/.+$/],
   // Saved folders, the setup wizard (Browse… lists the file system).
   [WRITE, /^\/api\/folders(?:\/.*)?$/],
+  // D169: binding a folder to a profile is this computer's (the preview too; the bind is a WRITE above).
+  ['GET', /^\/api\/folders\/[^/]+\/user-profile\/preview$/],
   ['*', /^\/api\/setup\/.+$/],
   // Take-over between machines (D65).
   ['*', /^\/api\/takeover(?:\/.*)?$/],

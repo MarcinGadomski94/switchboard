@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import type { Session } from '../../core/api.ts';
+import path from 'node:path';
+import type { FolderBindPreview, Session } from '../../core/api.ts';
 import { HybridClock } from '../../core/hlc.ts';
 import {
   DEFAULT_USER_PROFILE_ID,
@@ -17,6 +18,7 @@ import {
   userProfileName,
   userProfilePassword,
 } from '../../core/user-profiles.ts';
+import { type FolderRecord, folderContains } from '../db/repos/folders.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
@@ -259,6 +261,8 @@ export class UserProfileService {
     if (failed.length > 0) throw new UserProfileError(409, 'archive-failed', `Some agents could not be archived, so the profile stays: ${failed.join('; ')}`);
     await this.#o.store.devices.resetUserProfile(id, DEFAULT_USER_PROFILE_ID);
     this.#o.store.db.prepare('UPDATE sidebar_folders SET user_profile_id = ? WHERE user_profile_id = ?').run(DEFAULT_USER_PROFILE_ID, id);
+    // D169: its bound saved folders are shared again (ASSUMED: not hidden from everyone for good).
+    await this.#o.store.folders.unbindProfile(id);
     const all = await this.#defaultAccounts();
     if (all[id]) {
       const { [id]: _gone, ...rest } = all;
@@ -356,6 +360,82 @@ export class UserProfileService {
    * password when it has one): its todos, loops, artifacts and the rest follow it (they carry no
    * profile of their own). Its sidebar place is cleared (the new profile shows it unplaced).
    */
+  // ── folders bound to a profile (D169) ──────────────────────────────────
+
+  /**
+   * D169: what binding saved folder `folderId` to profile `to` moves there: the sessions of other
+   * profiles (open and archived) whose saved folder is this one or whose folder / working folder is
+   * inside it, and the schedules of other profiles that start their runs in it. Per computer: this
+   * computer's sessions and schedules only.
+   */
+  async folderBindPreview(folderId: string, to: string): Promise<FolderBindPreview> {
+    const folder = await this.#visibleFolder(folderId);
+    if (!(await this.get(to))) throw new UserProfileError(404, 'not-found', `no profile ${to}`);
+    const inside = (dir: string | null): boolean => dir !== null && path.isAbsolute(dir) && folderContains(folder, dir);
+    const agents = (await this.#o.store.sessions.list())
+      .filter((session) => (session.userProfileId ?? DEFAULT_USER_PROFILE_ID) !== to && (session.folderId === folder.id || inside(session.root) || inside(session.cwd)))
+      .map((session) => ({ sessionId: session.id, title: session.title ?? session.name, userProfileId: session.userProfileId ?? DEFAULT_USER_PROFILE_ID, closed: session.closedAt !== null }));
+    const schedules = (this.#o.store.db.prepare('SELECT id, name, user_profile_id FROM schedules WHERE folder_id = ? AND user_profile_id <> ? ORDER BY name').all(folder.id, to) as Array<{ id: string; name: string; user_profile_id: string }>).map((row) => ({
+      id: row.id,
+      name: row.name,
+      userProfileId: row.user_profile_id,
+    }));
+    return { folderId: folder.id, to, agents, schedules };
+  }
+
+  /**
+   * D169 · `PUT /api/folders/{id}/user-profile { userProfileId | null, password? }`: binds the folder
+   * to a profile (the target's password when it has one; the request must see the folder) and moves
+   * the other profiles' agents and schedules there first ({@link folderBindPreview}); `null` unbinds
+   * it (the owner's password when it has one). Answers the folder's new owner and the moved agents.
+   */
+  async bindFolder(folderId: string, body: unknown): Promise<{ readonly folderId: string; readonly userProfileId: string | null; readonly moved: readonly string[]; readonly schedules: number }> {
+    const input = isRecord(body) ? body : {};
+    const folder = await this.#visibleFolder(folderId);
+    const wanted = input['userProfileId'];
+    if (wanted === null) {
+      if (folder.userProfileId) {
+        const owner = await this.get(folder.userProfileId);
+        if (owner) await this.#check(owner, input['password']);
+      }
+      await this.#o.store.folders.setUserProfile(folder.id, null);
+      return { folderId: folder.id, userProfileId: null, moved: [], schedules: 0 };
+    }
+    if (typeof wanted !== 'string' || wanted === '') throw new UserProfileError(422, 'invalid', 'Give userProfileId (a profile id) to bind the folder, or null to share it again.');
+    const target = await this.get(wanted);
+    if (!target) throw new UserProfileError(404, 'not-found', `no profile ${wanted}`);
+    // Re-binding a folder that is bound already: its present owner's password too (it is theirs).
+    if (folder.userProfileId && folder.userProfileId !== wanted) {
+      const owner = await this.get(folder.userProfileId);
+      if (owner) await this.#check(owner, input['currentPassword'] ?? input['password']);
+    }
+    await this.#check(target, input['password']);
+    const preview = await this.folderBindPreview(folder.id, wanted);
+    const moved = preview.agents.map((agent) => agent.sessionId);
+    this.#moveSessions(moved, wanted);
+    for (const schedule of preview.schedules) this.#o.store.db.prepare('UPDATE schedules SET user_profile_id = ? WHERE id = ?').run(wanted, schedule.id);
+    await this.#o.store.folders.setUserProfile(folder.id, wanted);
+    return { folderId: folder.id, userProfileId: wanted, moved, schedules: preview.schedules.length };
+  }
+
+  /** A saved folder the current request may see, else 404 (as if it did not exist). */
+  async #visibleFolder(folderId: string): Promise<FolderRecord> {
+    const folder = await this.#o.store.folders.get(folderId);
+    if (!folder) throw new UserProfileError(404, 'not-found', `no saved folder ${folderId}`);
+    return folder;
+  }
+
+  /** Moves sessions to profile `to` without a password check (the caller checked): {@link moveSession}'s effect. */
+  #moveSessions(sessionIds: readonly string[], to: string): void {
+    if (sessionIds.length === 0) return;
+    this.#o.store.userProfiles.setSessionProfile(sessionIds, to);
+    const unplace = this.#o.store.db.prepare('DELETE FROM sidebar_places WHERE session_id = ?');
+    for (const id of sessionIds) {
+      this.noteSession(id, to);
+      unplace.run(id);
+    }
+  }
+
   async moveSession(sessionId: string, body: unknown): Promise<string> {
     const input = isRecord(body) ? body : {};
     const to = typeof input['userProfileId'] === 'string' ? input['userProfileId'] : '';

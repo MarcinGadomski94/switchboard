@@ -16,6 +16,7 @@ import type { ToolDecision } from '../../core/stdin.ts';
 import type { ServerConfig } from '../config.ts';
 import { AttachmentService, NO_ATTACHMENTS, type PreparedAttachments } from '../attachments/service.ts';
 import type { EventRecord } from '../db/repos/events.ts';
+import { boundOwnerOf } from '../db/repos/folders.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { runCommand, succeeded } from '../exec.ts';
@@ -442,9 +443,13 @@ export class HookService {
       for (let n = 2; await this.#store.sessions.getByName(name); n++) name = `${base}-${n}`;
       const terminal = this.#terminals.get(claudeSessionId);
       // 2026-11-05: a terminal in a saved folder's root belongs to it with its kind (a workspace moves as one; else plain, D59).
-      const saved = row.cwd ? await this.#store.folders.getByCanonicalPath(await realpath(row.cwd).catch(() => row.cwd as string)) : null;
+      const real = row.cwd ? await realpath(row.cwd).catch(() => row.cwd as string) : null;
+      const saved = real ? await this.#store.folders.getByCanonicalPathAny(real) : null;
+      // D169: a terminal in (or under) a folder bound to a profile joins that profile, whoever brings it in.
+      const owner = real ? boundOwnerOf(await this.#store.folders.listAll(), real) : null;
       record = await this.#store.sessions.create({
         ...(saved ? { folderId: saved.id, rootKind: saved.kind } : {}),
+        ...(owner ? { userProfileId: owner } : {}),
         name,
         title: row.name ?? `Terminal · ${path.basename(row.cwd ?? '') || 'session'}`,
         task: '',

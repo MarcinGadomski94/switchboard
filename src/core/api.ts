@@ -2506,6 +2506,23 @@ export interface Folder {
   readonly lastUsedAt: string | null;
   /** The live check of {@link path}. */
   readonly check: FolderCheck;
+  /**
+   * Additive (D169): the profile (D165) the folder is bound to, `null` = shared. Only its own
+   * profile ever gets a bound folder (the others do not see it); absent from an older server.
+   */
+  readonly userProfileId?: string | null;
+}
+
+/**
+ * D169 · `GET /api/folders/{id}/user-profile/preview?to=<profile>`: the agents of other profiles
+ * that work in the folder and move to `to` when it is bound (open and archived).
+ */
+export interface FolderBindPreview {
+  readonly folderId: string;
+  readonly to: string;
+  readonly agents: ReadonlyArray<{ readonly sessionId: string; readonly title: string; readonly userProfileId: string; readonly closed: boolean }>;
+  /** Schedules of other profiles that start their runs in the folder (they move to `to` too). */
+  readonly schedules: ReadonlyArray<{ readonly id: string; readonly name: string; readonly userProfileId: string }>;
 }
 
 /** Additive (D14): `POST /api/folders` body. `path` is absolute, or `~/…`. */

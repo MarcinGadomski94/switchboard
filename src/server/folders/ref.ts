@@ -22,7 +22,7 @@ export interface FolderRef {
 }
 
 /** A stored folder as a {@link FolderRef} (no file-system access: `root` is the stored canonical path). */
-export function folderRefOf(record: FolderRecord): FolderRef {
+export function folderRefOf(record: Pick<FolderRecord, 'id' | 'path' | 'canonicalPath' | 'kind'>): FolderRef {
   return { id: record.id, path: record.path, root: record.canonicalPath, kind: record.kind };
 }
 

@@ -2,7 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Folder, FolderCheck } from '../../core/api.ts';
-import type { FolderRecord } from '../db/repos/folders.ts';
+import { type FolderRecord, folderContains, folderVisible } from '../db/repos/folders.ts';
 import type { Store } from '../db/store.ts';
 import { expandHome, inspectFolder } from './inspect.ts';
 import { type FolderRef, folderRefOf } from './ref.ts';
@@ -121,11 +121,11 @@ export class FolderService {
    * Missing folders are left as they are (the list shows the problem).
    */
   async reconcile(): Promise<void> {
-    const folders = await this.#store.folders.list();
+    const folders = await this.#store.folders.listAll();
     for (const folder of folders) {
       try {
         const real = await realpath(folder.path);
-        if (real !== folder.canonicalPath && !(await this.#store.folders.getByCanonicalPath(real))) {
+        if (real !== folder.canonicalPath && !(await this.#store.folders.getByCanonicalPathAny(real))) {
           await this.#store.folders.update(folder.id, { canonicalPath: real });
         }
         await this.#store.folders.linkSessions({ ...folder, canonicalPath: real });
@@ -179,7 +179,9 @@ export class FolderService {
     const check = await this.check(input);
     if (check.kind === null || check.canonicalPath === null) throw new FolderError('invalid', check.message || 'not a folder', { check });
     const wanted = normalizeFolderLabel(label);
-    const existing = await this.#store.folders.getByCanonicalPath(check.canonicalPath);
+    const existing = await this.#store.folders.getByCanonicalPathAny(check.canonicalPath);
+    // D169: saved already, but bound to another profile: not this profile's to save or name.
+    if (existing && !folderVisible(existing)) throw new FolderError('invalid', 'this folder is not available in this profile', { check });
     if (existing) {
       const named = wanted !== null && wanted !== existing.label ? await this.#setLabel(existing, wanted) : existing;
       return { folder: await this.#toFolder(named, check), created: false };
@@ -265,6 +267,8 @@ export class FolderService {
     if (byId) return folderRefOf(byId);
     if (path.isAbsolute(wanted)) {
       const resolved = path.resolve(wanted);
+      // D169: a path in a folder bound to another profile is not found here (whose ever session ran there).
+      if (await this.isHiddenPath(resolved)) throw new FolderError('not-found', `no saved folder or session folder ${wanted}`);
       for (const record of await this.#store.folders.list()) {
         if (record.path === resolved || record.canonicalPath === resolved) return folderRefOf(record);
       }
@@ -291,10 +295,18 @@ export class FolderService {
     } catch {
       throw new FolderError('folder-missing', `the folder ${record.path} does not exist any more`);
     }
-    if (root !== record.canonicalPath && !(await this.#store.folders.getByCanonicalPath(root))) {
+    if (root !== record.canonicalPath && !(await this.#store.folders.getByCanonicalPathAny(root))) {
       await this.#store.folders.update(record.id, { canonicalPath: root });
     }
     return { id: record.id, path: record.path, root, kind: record.kind };
+  }
+
+  /**
+   * D169: whether `target` (an absolute path) is, or is inside, a saved folder bound to a profile the
+   * current request may not see. Paths are compared as `path.resolve` gives them (case as stored).
+   */
+  async isHiddenPath(target: string): Promise<boolean> {
+    return (await this.#store.folders.listAll()).some((record) => !folderVisible(record) && folderContains(record, target));
   }
 
   /** Browse…'s starting folder: the default folder, else the home folder. */
@@ -337,8 +349,8 @@ export class FolderService {
 
   /** Keeps exactly one default while folders are saved: the most recently used (else the first added). */
   async #ensureDefault(): Promise<void> {
-    if (await this.#store.folders.getDefault()) return;
-    const first = (await this.#store.folders.list())[0];
+    if (await this.#store.folders.getDefaultAny()) return;
+    const first = (await this.#store.folders.listAll())[0];
     if (first) await this.#store.folders.setDefault(first.id);
   }
 
@@ -356,6 +368,7 @@ export class FolderService {
       addedAt: record.addedAt,
       lastUsedAt: record.lastUsedAt,
       check: known ?? (await this.check(record.path)),
+      userProfileId: record.userProfileId ?? null,
     };
   }
 }

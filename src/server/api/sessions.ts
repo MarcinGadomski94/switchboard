@@ -642,7 +642,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
     const body = request.body;
-    const lookAt = await resolveLookAt(typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>)['lookAt'] ?? [] : undefined);
+    const lookAt = await resolveLookAt(typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>)['lookAt'] ?? [] : undefined, 'lookAt', (dir) => context.folders.isHiddenPath(dir));
     if (!lookAt.ok) return reply.code(lookAt.status).send(lookAt.body);
     try {
       const updated = await supervisor.setLookAt(record.id, lookAt.paths);

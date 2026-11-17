@@ -56,7 +56,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * else a list of at most {@link LOOK_AT_MAX} absolute paths of existing folders,
  * canonicalized (realpath) and deduplicated in order. 422 on field `lookAt` otherwise.
  */
-export async function resolveLookAt(raw: unknown, field = 'lookAt'): Promise<{ readonly ok: true; readonly paths: string[] } | Refusal> {
+export async function resolveLookAt(raw: unknown, field = 'lookAt', hidden?: (dir: string) => Promise<boolean>): Promise<{ readonly ok: true; readonly paths: string[] } | Refusal> {
   if (raw === undefined || raw === null) return { ok: true, paths: [] };
   if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== 'string' || entry.trim() === '')) return invalid(field, 'lookAt must be a list of folder paths');
   if (raw.length > LOOK_AT_MAX) return invalid(field, `a chat looks at ${LOOK_AT_MAX} folders at most`);
@@ -71,6 +71,8 @@ export async function resolveLookAt(raw: unknown, field = 'lookAt'): Promise<{ r
     } catch {
       return invalid(field, `${given} does not exist`);
     }
+    // D169: a folder bound to another profile (or a folder inside one) is not this profile's to read.
+    if (hidden && ((await hidden(canonical)) || (await hidden(given)))) return invalid(field, `${given} is not available in this profile`);
     if (!paths.includes(canonical)) paths.push(canonical);
   }
   return { ok: true, paths };
@@ -99,7 +101,7 @@ export async function startChat(context: ChatContext, body: unknown): Promise<St
   const errors: Array<{ field: string; message: string }> = [];
   const choice = modelOf(body, { modelOptions: await readModelOptionsSetting(context.store.settings, cli.provider) }, (field, text) => errors.push({ field, message: text }));
   if (errors.length > 0) return { ok: false, status: 422, body: { error: 'invalid', errors } };
-  const lookAt = await resolveLookAt(body['lookAt']);
+  const lookAt = await resolveLookAt(body['lookAt'], 'lookAt', (dir) => context.folders.isHiddenPath(dir));
   if (!lookAt.ok) return lookAt;
   const attachmentIds = parseAttachmentIds(body['attachments']);
   if (attachmentIds === null) return invalid('attachments', 'attachments must be a list of distinct attachment ids');

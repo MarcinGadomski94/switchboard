@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { Folder, FolderCheck, FolderInUse } from '../../core/api.ts';
+import type { Folder, FolderBindPreview, FolderCheck, FolderInUse } from '../../core/api.ts';
+import type { ProfileScope } from '../../core/user-profiles.ts';
 import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
+import { toSession } from '../sessions/wire.ts';
+import { UserProfileError } from '../user-profiles/service.ts';
 
 interface IdParams {
   readonly id: string;
@@ -38,6 +41,13 @@ export function sendFolderError(reply: FastifyReply, error: unknown): FastifyRep
  * folder (`null` or empty = its own name again) → `200 Folder[]`; 404; `409
  * label-taken` (another saved folder has that name, ignoring case); `422
  * invalid-label` (over 40 characters, or not a string / `null`).
+ *
+ * D169 (additive): a folder bound to a profile is invisible to the others (every route above answers
+ * 404 for it, as if it did not exist; `GET` lists leave it out). `GET /api/folders/{id}/user-profile/preview?to=`
+ * → `FolderBindPreview` (the agents and schedules that move); `PUT /api/folders/{id}/user-profile`
+ * `{ userProfileId | null, password?, currentPassword? }` binds it (the target's password; a re-bind also
+ * the present owner's) or shares it again (`null`: the owner's password) → `{ folderId, userProfileId,
+ * moved, schedules }`; 401 / 429 / 404 / 422. Refused to paired phones (`devices/local-only.ts`).
  */
 export async function registerFolderRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { folders } = context;
@@ -91,6 +101,40 @@ export async function registerFolderRoutes(app: FastifyInstance, context: ApiCon
       return await folders.setDefault(request.params.id);
     } catch (error) {
       return sendFolderError(reply, error);
+    }
+  });
+
+  // D169: a folder bound to a profile (docs/profiles.md → *A folder bound to a profile*). Local only (not a phone's).
+  const profiles = context.userProfiles;
+  if (!profiles) return;
+  const refuse = (reply: FastifyReply, error: unknown): FastifyReply => {
+    if (error instanceof UserProfileError) return reply.code(error.status).header('cache-control', 'no-store').send({ error: error.code, message: error.message });
+    throw error;
+  };
+  const chosen = (scope: ProfileScope): boolean => scope !== null;
+
+  app.get<{ Params: IdParams; Querystring: { to?: string } }>('/api/folders/:id/user-profile/preview', async (request, reply): Promise<FolderBindPreview | FastifyReply> => {
+    if (!chosen(request.userProfileScope)) return reply.code(404).send({ error: 'not-found', message: `no saved folder ${request.params.id}` });
+    const to = request.query.to;
+    if (typeof to !== 'string' || to === '') return reply.code(422).send({ error: 'invalid', message: 'to must be a profile id' });
+    try {
+      return await profiles.folderBindPreview(request.params.id, to);
+    } catch (error) {
+      return refuse(reply, error);
+    }
+  });
+
+  app.put<{ Params: IdParams }>('/api/folders/:id/user-profile', async (request, reply) => {
+    if (!chosen(request.userProfileScope)) return reply.code(404).send({ error: 'not-found', message: `no saved folder ${request.params.id}` });
+    try {
+      const result = await profiles.bindFolder(request.params.id, request.body);
+      for (const sessionId of result.moved) {
+        const record = await context.store.sessions.get(sessionId);
+        if (record) context.bus.publish('sessionUpdated', await toSession(context.store, record, context.supervisor.activity(record.id)));
+      }
+      return result;
+    } catch (error) {
+      return refuse(reply, error);
     }
   });
 }
