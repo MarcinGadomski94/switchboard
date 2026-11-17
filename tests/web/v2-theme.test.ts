@@ -124,7 +124,7 @@ describe('D131 · v2 routes and the classic ⇄ v2 address map', () => {
     expect(parseV2Route('/nowhere/at/all')).toEqual({ area: 'home' });
     expect(parseV2Route('/agents/a%20b')).toEqual({ area: 'agent', id: 'a b', tab: 'chat' });
     expect(v2Path({ area: 'agent', id: 'a b', tab: 'chat' })).toBe('/agents/a%20b');
-    expect(AGENT_TABS).toEqual(['chat', 'changes', 'results', 'timeline', 'helpers']);
+    expect(AGENT_TABS).toEqual(['chat', 'cli', 'changes', 'results', 'timeline', 'helpers']);
   });
 
   it('the rail and the phone tabs light the right item', () => {

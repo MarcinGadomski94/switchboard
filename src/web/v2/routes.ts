@@ -29,7 +29,7 @@
  */
 
 /** The agent view's tabs (`/agents/:id/<tab>`; `chat` has no segment). */
-export const AGENT_TABS = ['chat', 'changes', 'results', 'timeline', 'helpers'] as const;
+export const AGENT_TABS = ['chat', 'cli', 'changes', 'results', 'timeline', 'helpers'] as const;
 /** An agent view tab. */
 export type AgentTab = (typeof AGENT_TABS)[number];
 
@@ -174,7 +174,7 @@ export function railAreaOf(route: V2Route): RailArea | null {
 /** Classic session tabs → v2 agent tabs. */
 const TAB_TO_V2: Readonly<Record<string, AgentTab>> = { chat: 'chat', timeline: 'timeline', diff: 'changes', artifacts: 'results' };
 /** v2 agent tabs → classic session tabs (`helpers` has no classic tab: the chat). */
-const TAB_TO_CLASSIC: Readonly<Record<AgentTab, string>> = { chat: 'chat', timeline: 'timeline', changes: 'diff', results: 'artifacts', helpers: 'chat' };
+const TAB_TO_CLASSIC: Readonly<Record<AgentTab, string>> = { chat: 'chat', cli: 'chat', timeline: 'timeline', changes: 'diff', results: 'artifacts', helpers: 'chat' };
 
 /** Classic Settings sections with a v2 page of their own; every other one is under Advanced. */
 const SETTINGS_TO_V2: Readonly<Record<string, string>> = { accounts: 'usage', machines: 'computers', devices: 'phones', appearance: 'appearance' };

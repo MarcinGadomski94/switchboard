@@ -9,6 +9,7 @@ import type { AgentTab, V2Route } from '../routes.ts';
 import { markRecent } from '../shared/recent.ts';
 import { useShortcut } from '../shell/shortcuts.ts';
 import { ChatPane } from './ChatPane.tsx';
+import { CliTab } from './CliTab.tsx';
 import { splitDock } from './composer-model.ts';
 import { openSaveResult } from './dialogs.tsx';
 import { Dock } from './Dock.tsx';
@@ -123,6 +124,9 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
                     variant={phone ? 'phone' : 'full'}
                   />
                 </>
+              ) : tab === 'cli' ? (
+                // D171: the agent's conversation as the interactive claude (the native CLI) in a terminal.
+                <CliTab data={data} phone={phone} />
               ) : (
                 <div className="v2-ag-scroll">
                   <div className="v2-ag-col v2-ag-col-wide">

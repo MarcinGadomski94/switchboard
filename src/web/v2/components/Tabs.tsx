@@ -10,6 +10,8 @@ export interface TabItem<T extends string> {
   readonly count?: number | string;
   /** A tooltip (e.g. the label of a tab drawn as its icon only). */
   readonly title?: string;
+  /** A What's-new tour anchor (`data-tour`) on this tab. */
+  readonly tour?: string;
 }
 
 /** Moves along a row of buttons with ←/→ (Home / End), as WAI-ARIA tabs and toolbars do. */
@@ -43,6 +45,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label, panelId, 
           aria-controls={panelId}
           tabIndex={tab.id === value ? 0 : -1}
           data-tab={tab.id}
+          data-tour={tab.tour}
           title={tab.title}
           onClick={() => onChange(tab.id)}
           onKeyDown={(event) => {

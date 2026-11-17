@@ -20,7 +20,7 @@ import { actionErrorText, attachWarningText, pauseButton, remoteToggle, rootLine
 import { stoppableBackground } from '../../views/session/stop.ts';
 import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, Select, StatusBadge, Tabs, TextArea, useToast } from '../components/index.ts';
-import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, PROFILE_WORDS, WORDS } from '../glossary.ts';
+import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, CLI_MODE_WORDS, PROFILE_WORDS, WORDS } from '../glossary.ts';
 import { MoveToProfileDialog } from '../profiles/Profiles.tsx';
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
@@ -133,13 +133,15 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
       },
     );
   };
-  const tabs: Array<{ id: AgentTab; label: string; icon: string; count?: number | string }> = data.conversation
+  const tabs: Array<{ id: AgentTab; label: string; icon: string; count?: number | string; tour?: string }> = data.conversation
     ? [
         { id: 'chat', label: AGENT_TAB_LABELS.chat, icon: 'chat' },
         { id: 'results', label: AGENT_TAB_LABELS.results, icon: 'results', ...(counts.results ? { count: counts.results } : {}) },
       ]
     : [
         { id: 'chat', label: AGENT_TAB_LABELS.chat, icon: 'chat' },
+        // D171: the agent's CLI (its conversation as the interactive claude); the dot while in CLI mode.
+        { id: 'cli', label: AGENT_TAB_LABELS.cli, icon: 'cmd', tour: 'v2-agent-cli-tab', ...(session?.cliMode ? { count: '●' } : {}) },
         { id: 'changes', label: AGENT_TAB_LABELS.changes, icon: 'copy', ...(counts.changes ? { count: counts.changes } : {}) },
         { id: 'results', label: AGENT_TAB_LABELS.results, icon: 'results', ...(counts.results ? { count: counts.results } : {}) },
         { id: 'timeline', label: AGENT_TAB_LABELS.timeline, icon: 'clock' },
@@ -318,6 +320,43 @@ function useTabTitle(name: string): void {
   }, [name]);
 }
 
+/** D171: the agent is in CLI mode: the CLI tab, and Back to chat mode. */
+function CliModeNote({ session, sessionId, onAct }: { readonly session: Session; readonly sessionId: string; readonly onAct?: () => void }) {
+  const { navigate } = useV2Router();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const base = `/agents/${encodeURIComponent(sessionId)}`;
+  return (
+    <div className="v2-ag-note" data-testid="v2-agent-cli-mode">
+      <Icon name="cmd" size="s" />
+      <span className="v2-grow">{CLI_MODE_WORDS.inCli}</span>
+      <Button size="sm" data-testid="v2-agent-cli-open" onClick={() => { onAct?.(); navigate(`${base}/cli`); }}>
+        {CLI_MODE_WORDS.openCli}
+      </Button>
+      <Button
+        size="sm"
+        icon="chat"
+        disabled={busy || session.machine?.state === 'offline'}
+        title={CLI_MODE_WORDS.backHint}
+        data-testid="v2-agent-cli-back"
+        onClick={() => {
+          onAct?.();
+          setBusy(true);
+          api.leaveCliMode(sessionId).then(
+            () => setBusy(false),
+            (caught: unknown) => {
+              setBusy(false);
+              toast({ text: errorText(caught) || CLI_MODE_WORDS.failed, tone: 'error' });
+            },
+          );
+        }}
+      >
+        {busy ? CLI_MODE_WORDS.backing : CLI_MODE_WORDS.back}
+      </Button>
+    </div>
+  );
+}
+
 /** Lines under the title: moved to another computer, continued in a fresh agent, started in a terminal. */
 function Notes({ session, sessionId, onAct }: { readonly session: Session; readonly sessionId: string; readonly onAct?: () => void }) {
   return (
@@ -345,7 +384,9 @@ function Notes({ session, sessionId, onAct }: { readonly session: Session; reado
           )}
         </div>
       ) : null}
-      {session.hooked ? (
+      {session.cliMode ? (
+        <CliModeNote session={session} sessionId={sessionId} {...(onAct ? { onAct } : {})} />
+      ) : session.hooked ? (
         <div className="v2-ag-note" data-testid="v2-agent-hooked">
           <Icon name="cmd" size="s" />
           <span className="v2-grow">Started in a terminal: Switchboard follows along. Pause, Stop and model changes stay in that terminal.</span>

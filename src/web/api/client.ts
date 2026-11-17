@@ -379,6 +379,10 @@ export const api = {
   /** D72: Continue in Switchboard of a hooked terminal session; 409 `terminal-running` until called with the stop confirmed. */
   continueHookedSession: (id: string, confirmStopTerminal = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/continue-in-switchboard`, confirmStopTerminal ? { confirmStopTerminal: true } : {}),
+  /** D171: the agent switches to CLI mode (its conversation as the interactive claude in a terminal); `stopTurn` stops a running turn first. */
+  enterCliMode: (id: string, body: { readonly stopTurn?: boolean; readonly cols?: number; readonly rows?: number } = {}) => request<Session>('POST', `/api/sessions/${enc(id)}/cli-mode`, body),
+  /** D171: Back to chat mode (the CLI ends; D72's continue resumes it headless). */
+  leaveCliMode: (id: string) => request<Session>('DELETE', `/api/sessions/${enc(id)}/cli-mode`),
   /** D72: Resend of a message marked not sent (its terminal ended before taking it up). */
   resendMessage: (id: string, eventId: number) => request<void>('POST', `/api/sessions/${enc(id)}/events/${eventId}/resend`, {}),
   /** D103: Edit / Remove of a message held for an account with allowance: it never goes out; answers its text and attachments. */

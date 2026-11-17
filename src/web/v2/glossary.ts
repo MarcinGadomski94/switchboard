@@ -568,10 +568,35 @@ export const PHONE_TABS = {
 /** The agent view's tabs. */
 export const AGENT_TAB_LABELS = {
   chat: 'Chat',
+  cli: 'CLI',
   changes: 'Changes',
   results: 'Results',
   timeline: 'Timeline',
   helpers: 'Helpers',
+} as const;
+
+/** D171 · the agent's CLI tab (`docs/terminals.md` → *CLI mode*). */
+export const CLI_MODE_WORDS = {
+  title: 'CLI mode',
+  intro: 'Run this conversation in the real claude CLI, right here: every slash command and key works. The Chat tab keeps following it, and questions and permissions still come to Needs you.',
+  enter: 'Switch to CLI mode',
+  entering: 'Starting the CLI…',
+  back: 'Back to chat mode',
+  backing: 'Back to chat mode…',
+  backHint: 'The CLI ends (Ctrl-C) and Switchboard runs the same conversation again.',
+  turnRunning: 'A turn is running. Switch when it ends, or stop it now.',
+  wait: 'Switch when the turn ends',
+  waiting: 'Waiting for the turn to end…',
+  stopTurn: 'Stop the turn and switch',
+  inCli: 'In CLI mode: the conversation runs in the CLI tab. The chat follows it; a message you send here reaches the CLI when it pauses.',
+  openCli: 'Open CLI tab',
+  notClaude: (cli: string): string => `The CLI tab is not available for ${cli} agents yet.`,
+  chat: 'A conversation stays in chat: it is read-only, in plan mode.',
+  hooked: 'This agent already runs in its own terminal, outside Switchboard.',
+  archived: 'This agent is archived: reopen it first.',
+  moved: (machine: string): string => `This agent moved to ${machine}.`,
+  offline: 'Its computer is offline.',
+  failed: 'It didn’t switch. Try again.',
 } as const;
 
 /** The v2 Settings sections. */

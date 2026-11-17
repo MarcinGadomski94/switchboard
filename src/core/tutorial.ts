@@ -1911,6 +1911,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D171: an agent's conversation as the interactive claude in a terminal (docs/terminals.md → CLI mode).
+  {
+    id: 'cli-mode',
+    decision: 'D171',
+    version: V2_4_44,
+    title: 'An agent in the native Claude Code CLI',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'cli-tab',
+        title: 'The CLI tab',
+        what: 'A Claude Code agent’s page has a CLI tab next to Chat. Opening it switches the agent to CLI mode: the same conversation runs as the interactive claude, its own terminal screen, on the agent’s computer (and on your paired phone). If a turn is running, wait for it or stop it first. Chat keeps following it, and its questions and permissions still come to Needs you. Back to chat mode ends the CLI and Switchboard runs the conversation again.',
+        todo: ['Open a Claude Code agent and its CLI tab.', 'Back to chat mode returns it to Switchboard.'],
+        anchors: ['v2-agent-cli-tab', 'v2-nav-agents', 'v2-tab-agents'],
+        v2Route: '/agents',
+        missing: 'Open a Claude Code agent in Agents: the CLI tab is next to Chat. ',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

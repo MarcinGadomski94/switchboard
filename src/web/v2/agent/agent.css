@@ -2485,3 +2485,28 @@
     min-height: var(--v2-touch);
   }
 }
+
+/* ── D171 · the CLI tab: the agent's terminal fills the body ── */
+.sb2 .v2-ag-cli {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px 8px;
+}
+
+.sb2 .v2-ag-cli-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--v2-fs-s);
+}
+
+.sb2 .v2-ag-cli-start {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding-top: 24px;
+}
