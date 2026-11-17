@@ -43,7 +43,7 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 
 ## Paired computers
 
-- The profiles (id, name, colour, password hash, clock, deletion) sync with **every** paired computer over `POST /peer/v1/user-profiles` (bearer auth on the Tailscale-only peer listener): a full exchange each time a connection comes (back) online, the changed records on every change. Last write wins per profile (a hybrid clock; equal clocks by value). Default is never deleted by a peer. A hash of another shape is dropped. Each computer's default accounts stay its own.
+- The profiles (id, name, colour, password hash, clock, deletion; D173 admin and access, D176 `decidedFor`) sync with **every** paired computer over `POST /peer/v1/user-profiles` (bearer auth on the Tailscale-only peer listener): a full exchange each time a connection comes (back) online, the changed records on every change; D176: the records a paired computer's exchange wrote go on to the other paired computers. Last write wins per profile (a hybrid clock; equal clocks by value). Default is never deleted by a peer. A hash of another shape is dropped. Each computer's default accounts stay its own.
 - A paired computer's agents show in their own profile (`Session.userProfileId` on the wire; an older computer's are Default's).
 - A move between computers keeps the agent's profile: the move runs in the initiating request's profile, which is the agent's (strict scope).
 - Sidebar folders carry their profile in the D71 records (`userProfileId`; an older computer's arrive as Default's).
@@ -78,6 +78,17 @@ An **admin** profile decides which computers each profile may use. Settings → 
 - **On every computer:** its lists, ids, the hub and pushes hide its agents on the computers it may not use (remote sessions `r~<machine>~…` included); `/api/machines` and `machineState` hide those computers (the status pill and Computers pages show only the allowed ones); a move or take-over to one is refused (403 `not-allowed-there`).
 - **Its agents keep running:** losing a computer hides them, it stops nothing; giving the computer back shows them again.
 - **Not security:** an admin organises who works where in Switchboard; anyone signed in to the computer can still read its files (`docs/security.md`).
+
+### Computers the admin can't see (D176)
+
+Paired computers form a chain, not a circle: your PC, your home PC and a shared Mac Studio are paired, and a colleague's laptop is paired **only** with the Mac Studio. The profile exchange passes every record on, so a checklist set on your PC reaches the laptop through the Mac Studio. Under D173 a checklist meant "only these computers": the laptop was not on it (your PC could not list it), so the colleague's own profile was locked out of their own Switchboard.
+
+- **A checklist decides only for the computers it was set for.** With the list, the profile keeps `decidedFor` (migration 0061 `decided_for`): the computers the checklist showed. A computer outside it was never decided and **stays allowed**; one inside it follows the ticks. *All computers* is unchanged. A D173 list saved before (no `decidedFor`) still decides for every computer until it is saved again.
+- **The checklist lists the computers known through a paired one** ("ThinkPad · through Mac Studio"): each paired computer reports its own paired computers (id, name) in the profile exchange (`computers`, both ways, at every exchange; a new or removed pairing is announced to the other paired computers at once). `GET /api/user-profiles` answers them as `otherComputers`.
+- **A computer that appears later** (paired after the list was set) shows "not decided yet: allowed", ticked, until the admin saves the list again (then it is decided too). The row reads *Not on …* (the computers it is blocked on) for these lists, *Only …* for a D173 list.
+- **Passed on at once:** a change a paired computer sends is passed on to the other paired computers right away (before, a computer paired only with the sender learned it at its next reconnect). It ends: a record already the same there is not written, so not passed on again.
+- **Merge (D172):** allowed where either profile was allowed: either on every computer → every computer; else the lists joined, decided only where both decided (`mergedAccess`).
+- **Limit, mixed versions:** a computer before D176 ignores `decidedFor` and applies the list as D173 did, and passes the record on without it. A computer with D176 that gets a record without `decidedFor` keeps its own while the list is the same. Update every computer in the chain (the Mac Studio too).
 
 ## Also scoped (closed before the first release of D165)
 

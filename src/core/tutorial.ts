@@ -192,6 +192,8 @@ const V2_4_44 = '2.4.44';
 const V2_4_46 = '2.4.46';
 /** The version D174 (For review and side by side) and D175 (pinned conversations) ship in (the next release after 2.4.46; adjust if it ships later). */
 const V2_4_47 = '2.4.47';
+/** The version D176 (computers known through a paired one) ships in (the next release after 2.4.47; adjust if it ships later). */
+const V2_4_48 = '2.4.48';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2004,6 +2006,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-pin-conversation', 'v2-agent-menu', 'v2-rail-pins', 'v2-nav-agents', 'v2-tab-more'],
         v2Route: '/agents',
         missing: 'Start a conversation first (+ New › Conversation), then pin it from its ⋯ menu.',
+      },
+    ],
+  },
+  // D176: a checklist decides only for the computers it lists; computers known through a paired one are listed (docs/profiles.md).
+  {
+    id: 'profile-access-through',
+    decision: 'D176',
+    version: V2_4_48,
+    title: 'Computer access never locks out a computer you can’t see',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'through',
+        title: 'Computers paired through another one',
+        what: 'Computers… now also lists the computers paired only with one of yours (“through Mac Studio”). A list decides only for the computers it showed: a computer not on it, like a colleague’s laptop paired only with a shared computer, stays allowed, so no one is locked out of their own Switchboard. One paired later reads “not decided yet: allowed” until you save.',
+        todo: ['Open Settings → Profiles, then Computers… on a profile (as an admin).'],
+        anchors: ['v2-profile-access', 'v2-nav-settings', 'v2-tab-more'],
+        v2Route: '/settings/profiles',
+        missing: 'Settings → Profiles: an admin opens Computers… on a profile.',
       },
     ],
   },
