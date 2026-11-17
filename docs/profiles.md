@@ -67,6 +67,18 @@ Settings → Profiles → **Merge…** on a profile: pick the other one (this co
 - **On the paired computers**: the two records travel (the survivor's new name / colour / hash, the tombstone naming it); each computer moves its own data of the merged-away id to the survivor. When the merged-away profile is **that computer's own Default**, it can't go: that computer's Default **adopts** the survivor's peer-link id (`userProfiles.defaultWireId`), takes its name / colour / password, and its local copy of the survivor folds into it. So merging this PC's Default with the Mac's makes one profile that is both computers' Default.
 - **Browsers and phones**: a browser whose cookie names the merged-away profile is in no profile any more (its cookie no longer matches a live profile): it lands in the Open-in profile, or asks for the survivor's password. Phones of it are moved to the survivor.
 
+## Admins and computer access (D173)
+
+An **admin** profile decides which computers each profile may use. Settings → Profiles shows an *Admin* chip and, on every profile, the computers it may use (*All computers*, or *Only …*); an admin changes both with **Computers…** (its own password confirms). Non-admins see them read-only.
+
+- **The first admin (bootstrap, ASSUMED):** while no profile is an admin, a profile with a password may make itself admin with its password. Afterwards only an admin (its password) marks or unmarks admins and changes access (`PUT /api/user-profiles/{id}/admin { admin, adminPassword }`, `PUT /api/user-profiles/{id}/access { computers: 'all' | [machine ids], adminPassword }`).
+- **The rules:** at least one admin stays (409 `last-admin`); an admin has a password (making a password-less profile admin: 409 `needs-password`; removing an admin's password: 409 `admin-needs-password`). Admins get nothing else: everything else is as before.
+- **Stored and synced:** `user_profiles.admin` and `computers` (machine ids; `NULL` = every computer; migration 0060) travel with the profile over the profile exchange (one clock per record: the last change of the record wins). A merge (D172) keeps admin if either was and joins the two lists.
+- **On a computer a profile may not use:** it is not in the rail switcher (the row's *Switch* is hidden; the route answers 403 `not-allowed-here`); a browser whose cookie names it falls back (Open in, else no profile); its phones get nothing; a paired computer's request or terminal in it is refused (403 / close 4403).
+- **On every computer:** its lists, ids, the hub and pushes hide its agents on the computers it may not use (remote sessions `r~<machine>~…` included); `/api/machines` and `machineState` hide those computers (the status pill and Computers pages show only the allowed ones); a move or take-over to one is refused (403 `not-allowed-there`).
+- **Its agents keep running:** losing a computer hides them, it stops nothing; giving the computer back shows them again.
+- **Not security:** an admin organises who works where in Switchboard; anyone signed in to the computer can still read its files (`docs/security.md`).
+
 ## Also scoped (closed before the first release of D165)
 
 - **History** (`GET /api/history`): a conversation that is a Switchboard session shows only in its profile; `POST /api/history/{claudeSessionId}/continue` answers 404 for one another profile holds.
@@ -101,6 +113,8 @@ A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`,
 | `tests/server/user-profiles/profiles.test.ts` | three profiles (Default, Ann with a password, Bo): the lists, the password switch (wrong, 429, a forged cookie, a new password), 404 for another profile's agent, folders per profile, move, delete (archive), a locked Default, a new agent's profile, the hub transform, the peers' merge |
 | `tests/server/peers/user-profiles.test.ts` | two real Switchboards: a profile and its password sync, a rename comes back, a delete goes everywhere |
 | `tests/server/user-profiles/scope-holes.test.ts` | three profiles: History and its continue, Insights / usage rows and the per-profile answer, crews' needs-you / state / suggestions, Plans' state, terminal sessions and hooking, the hub's Inbox count, plan and crew events, a sidebar position |
+| `tests/core/user-profiles-access.test.ts` | D173: the access rule, the bootstrap, the admin rules |
+| `tests/server/peers/user-profile-access.test.ts` | D173 with two real Switchboards: the bootstrap, a non-admin refused, the last admin, Bo limited to A (refused on B, B's agents hidden on A, forwards and moves refused, its agent kept), syncing both ways |
 | `tests/e2e/v2-profiles.spec.ts` | the rail switcher with three profiles and a password |
 | `tests/server/user-profiles/folder-binding.test.ts` | D169: bind with the owner's password, the other profile's agent moves; hidden from Bo and Default on every folder route, a new agent, scans, the take-over target listing, a chat's folders, saving it again; a paired computer's request in Bo's profile; unbind; a deleted owner; phones refused |
 | `tests/server/backup/roundtrip.test.ts` | D169: a bound folder stays bound after a restore ("start as a new computer") |
