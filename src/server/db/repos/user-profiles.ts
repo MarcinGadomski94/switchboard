@@ -25,6 +25,8 @@ export interface UserProfileRecord {
   readonly admin: boolean;
   /** D173 (0060): the computers (machine ids) the profile may use; `null` = every computer. */
   readonly computers: readonly string[] | null;
+  /** D176 (0061): the computers `computers` was decided for (others stay allowed); `null` = every computer. */
+  readonly decidedFor: readonly string[] | null;
 }
 
 const SPEC: TableSpec<UserProfileRecord> = {
@@ -42,6 +44,7 @@ const SPEC: TableSpec<UserProfileRecord> = {
     mergedInto: ['merged_into', 'text'],
     admin: ['admin', 'bool'],
     computers: ['computers', 'json'],
+    decidedFor: ['decided_for', 'json'],
   },
 };
 
@@ -79,16 +82,16 @@ export class UserProfileRepository {
 
   async create(input: Pick<UserProfileRecord, 'id' | 'name' | 'color' | 'passwordHash' | 'clock'>): Promise<UserProfileRecord> {
     const ts = this.#ctx.now();
-    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null, mergedInto: null, admin: false, computers: null });
+    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null, mergedInto: null, admin: false, computers: null, decidedFor: null });
   }
 
-  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt' | 'mergedInto' | 'admin' | 'computers'>>): Promise<UserProfileRecord | null> {
+  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt' | 'mergedInto' | 'admin' | 'computers' | 'decidedFor'>>): Promise<UserProfileRecord | null> {
     return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
   }
 
   /** Writes a paired computer's record as it is (the sync's merge decided it wins). */
   async put(record: UserProfileRecord): Promise<void> {
-    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, mergedInto: record.mergedInto, admin: record.admin, computers: record.computers, updatedAt: this.#ctx.now() });
+    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, mergedInto: record.mergedInto, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor, updatedAt: this.#ctx.now() });
     else this.#table.insert({ ...record });
   }
 

@@ -53,6 +53,7 @@ import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens
 import { labelInboxItems } from '../team/hooks.ts';
 // Project memory (D107) hook (follow-up 2026-10-16): a paired machine's memoryChanged retries a pending member-memory copy (docs/memory-removal.md).
 import { memoryPeerChanged } from '../memory/hooks.ts';
+import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
 import { INTERNAL_SCOPE_HEADER, INTERNAL_SECRET, USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
 
@@ -955,6 +956,8 @@ export class PeerService implements PeerHandlers {
     });
     this.#records.set(record.id, record);
     this.#connect(record.id, true);
+    // D176: the other paired computers learn this one's new pairing (their access checklists list it).
+    this.#announceComputers(record.id);
     return this.#machine(record);
   }
 
@@ -997,6 +1000,9 @@ export class PeerService implements PeerHandlers {
     this.#peerPower.delete(id);
     this.#peerUpdate.delete(id);
     this.#peerStats.delete(id);
+    // D176: what it reported of its own pairings goes; the others learn it is no longer paired here.
+    this.#peerComputers.delete(id);
+    this.#announceComputers(null);
     this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
     this.#saveTimers.delete(id);
@@ -1587,6 +1593,68 @@ export class PeerService implements PeerHandlers {
     this.#userProfiles = service;
   }
 
+  // ── D176 · the computers known through a paired computer (docs/profiles.md → Admins and computer access) ──
+
+  /** D176: each paired computer's own paired computers, as it last reported them in the profile exchange. */
+  readonly #peerComputers = new Map<string, ReadonlyArray<{ readonly id: string; readonly name: string }>>();
+
+  /** D176: this computer's paired computers (id, name) as told to paired computer `forMachine` (not itself). */
+  #pairedComputers(forMachine: string): Array<{ id: string; name: string }> {
+    return [...this.#records.values()].filter((record) => record.id !== forMachine).map((record) => ({ id: record.id, name: record.name }));
+  }
+
+  /** D176: remembers what paired computer `machineId` reported of its own pairings (a malformed list is ignored). */
+  #notePeerComputers(machineId: string, value: unknown): void {
+    if (!Array.isArray(value) || value.length > 200) return;
+    const list: Array<{ id: string; name: string }> = [];
+    for (const entry of value) {
+      const raw = typeof entry === 'object' && entry !== null ? (entry as { id?: unknown; name?: unknown }) : {};
+      if (!isMachineId(raw.id)) continue;
+      list.push({ id: raw.id, name: cleanMachineName(raw.name) ?? raw.id });
+    }
+    this.#peerComputers.set(machineId, list);
+  }
+
+  /**
+   * D176: records a paired computer's exchange wrote here go on to the other paired computers (a
+   * computer paired only with this one learns a change now, not at its next reconnect). It ends: a
+   * record already the same there is not written, so not passed on again.
+   */
+  #relayProfiles(fromMachine: string, written: readonly UserProfileRecord[]): void {
+    const service = this.#userProfiles;
+    if (!service || written.length === 0) return;
+    const records = service.wireOfRecords(written);
+    for (const id of this.#records.keys()) if (id !== fromMachine) void this.#exchangeProfiles(id, false, records);
+  }
+
+  /** D176: tells every paired computer (but `except`) this computer's paired computers now (a profile exchange without records). */
+  #announceComputers(except: string | null): void {
+    for (const id of this.#records.keys()) if (id !== except) void this.#exchangeProfiles(id, false, []);
+  }
+
+  /**
+   * D176: the computers this one knows only through a paired computer: reported by a paired computer,
+   * neither this computer nor paired with it. Each once (the first paired computer, by name, that
+   * reported it), sorted by name.
+   */
+  computersThrough(): Array<{ id: string; name: string; through: string }> {
+    const self = this.#self?.id ?? null;
+    const out = new Map<string, { id: string; name: string; through: string }>();
+    const peers = [...this.#peerComputers.entries()].map(([id, list]) => ({ via: this.#records.get(id)?.name ?? id, list })).sort((a, b) => a.via.localeCompare(b.via));
+    for (const { via, list } of peers) {
+      for (const computer of list) {
+        if (computer.id === self || this.#records.has(computer.id) || out.has(computer.id)) continue;
+        out.set(computer.id, { id: computer.id, name: computer.name, through: via });
+      }
+    }
+    return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** D176: every computer this one knows besides itself: the paired ones and the ones known through them (ids). */
+  knownComputers(): string[] {
+    return [...this.#records.keys(), ...this.computersThrough().map((computer) => computer.id)];
+  }
+
   /** D165: profiles changed here: each online paired computer gets the records written. */
   userProfilesChanged(records: readonly UserProfileWire[]): void {
     if (records.length === 0) return;
@@ -1598,10 +1666,12 @@ export class PeerService implements PeerHandlers {
     const connection = this.#connections.get(machineId);
     if (!service || !connection || connection.state !== 'online') return;
     try {
-      const answer = await connection.request('POST', USER_PROFILES_SYNC_PATH, { v: 1, full, profiles: records ?? (await service.wire(machineId)) }, { timeoutMs: 30_000 });
-      const body = answer.body as { profiles?: unknown } | null;
+      const answer = await connection.request('POST', USER_PROFILES_SYNC_PATH, { v: 1, full, profiles: records ?? (await service.wire(machineId)), computers: this.#pairedComputers(machineId) }, { timeoutMs: 30_000 });
+      const body = answer.body as { profiles?: unknown; computers?: unknown } | null;
+      // D176: its own paired computers (an older computer sends none).
+      if (answer.status === 200 && body) this.#notePeerComputers(machineId, body.computers);
       // D172: the ids are the other computer's: translated per profile (its Default stays its own).
-      if (answer.status === 200 && body && Array.isArray(body.profiles)) await service.merge(body.profiles, machineId);
+      if (answer.status === 200 && body && Array.isArray(body.profiles)) this.#relayProfiles(machineId, await service.merge(body.profiles, machineId));
     } catch (error) {
       this.#log('warn', `profiles sync with ${machineId}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1612,11 +1682,13 @@ export class PeerService implements PeerHandlers {
     if (this.#closed) return { status: 503, body: { error: 'closing' } };
     const service = this.#userProfiles;
     if (!service) return { status: 404, body: { error: 'not-found' } };
-    const input = typeof body === 'object' && body !== null ? (body as { v?: unknown; full?: unknown; profiles?: unknown }) : {};
+    const input = typeof body === 'object' && body !== null ? (body as { v?: unknown; full?: unknown; profiles?: unknown; computers?: unknown }) : {};
     if (input.v !== 1 || !Array.isArray(input.profiles) || input.profiles.length > 200) return { status: 422, body: { error: 'invalid' } };
+    // D176: the caller's own paired computers (an older computer sends none).
+    this.#notePeerComputers(machine.id, input.computers);
     // D172: the caller's ids are translated per profile (its Default stays its own, never this computer's).
-    await service.merge(input.profiles, machine.id);
-    return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire(machine.id) : [] } };
+    this.#relayProfiles(machine.id, await service.merge(input.profiles, machine.id));
+    return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire(machine.id) : [], computers: this.#pairedComputers(machine.id) } };
   }
 
   /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */
@@ -1658,6 +1730,8 @@ export class PeerService implements PeerHandlers {
     });
     this.#records.set(record.id, record);
     this.#connect(record.id, true);
+    // D176: the other paired computers learn this one's new pairing (their access checklists list it).
+    this.#announceComputers(record.id);
     return { status: 200, body: { id: self.id, name: self.name, token: inbound } };
   }
 

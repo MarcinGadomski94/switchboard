@@ -333,6 +333,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     synced: (records) => peersRef?.userProfilesChanged(records),
     // D172: this computer's machine id (its Default's own id on the peer link); unknown until Peers exists.
     selfId: async () => (peersRef ? (await peersRef.self()).id : null),
+    // D176: the computers known here (paired, and known through a paired one) for the access checklist.
+    knownComputers: () => peersRef?.knownComputers() ?? [],
+    otherComputers: () => peersRef?.computersThrough() ?? [],
     rekeyOutside: async (from, to) => {
       await teamServiceOf(app)?.rekeyProfile(from, to);
       terminalsRef?.rekeyProfile(from, to);

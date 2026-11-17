@@ -59,8 +59,22 @@ export interface UserProfile {
   readonly admin?: boolean;
   /** D173: the computers (machine ids) it may use; `null` = every computer. Absent from an older server. */
   readonly computers?: readonly string[] | null;
+  /**
+   * D176: the computers the access list was decided for (the ones the admin could see when setting it);
+   * a computer outside it stays allowed. `null` = decided for every computer (D173's plain list, or
+   * every computer allowed). Absent from an older server.
+   */
+  readonly decidedFor?: readonly string[] | null;
   /** D173: whether it may be used on this computer ({@link profileAllowedOn}); the switcher lists only these. */
   readonly allowedHere?: boolean;
+}
+
+/** D176: a computer this one knows only through a paired computer (the access checklist lists it too). */
+export interface ComputerThrough {
+  readonly id: string;
+  readonly name: string;
+  /** The paired computer it was learned from (its name). */
+  readonly through: string;
 }
 
 /** `GET /api/user-profiles`: the profiles and this browser's active one (`null`: none chosen yet / locked). */
@@ -69,6 +83,8 @@ export interface UserProfilesView {
   readonly activeId: string | null;
   /** 2026-11-16: the profile a browser opens in before it chose one ({@link USER_PROFILE_START_SETTING}); absent from an older server. */
   readonly startId?: string;
+  /** D176: computers known only through a paired computer (not paired with this one); absent from an older server. */
+  readonly otherComputers?: readonly ComputerThrough[];
 }
 
 /** A trimmed, valid name, else `null`. */
@@ -118,10 +134,42 @@ export function scopeSees(scope: ProfileScope, profileId: string): boolean {
  * D173 (`docs/profiles.md` → *Admins and computer access*): whether a profile whose access list is
  * `computers` may be used on computer `machineId`. `null` (or absent) = every computer, the default;
  * an unknown machine id (`null`) is allowed (nothing to check against yet).
+ *
+ * D176: `decidedFor` = the computers the list was decided for (what the admin's computer could see
+ * when the list was set); a computer outside it was never decided and stays allowed (a profile's own
+ * computer the admin never saw is never locked). `null` / absent = decided for every computer (D173).
  */
-export function profileAllowedOn(computers: readonly string[] | null | undefined, machineId: string | null): boolean {
+export function profileAllowedOn(computers: readonly string[] | null | undefined, machineId: string | null, decidedFor?: readonly string[] | null): boolean {
   if (computers === null || computers === undefined || machineId === null) return true;
+  if (decidedFor !== null && decidedFor !== undefined && !decidedFor.includes(machineId)) return true;
   return computers.includes(machineId);
+}
+
+/**
+ * D176: the access of two profiles merged into one (D172): a computer is allowed when either allowed
+ * it. Either on every computer → every computer; else the union of the lists, decided only where both
+ * decided (an older list, `decidedFor` `null`, decided everywhere).
+ */
+export function mergedAccess(
+  a: { readonly computers: readonly string[] | null; readonly decidedFor: readonly string[] | null },
+  b: { readonly computers: readonly string[] | null; readonly decidedFor: readonly string[] | null },
+): { readonly computers: readonly string[] | null; readonly decidedFor: readonly string[] | null } {
+  if (a.computers === null || b.computers === null) return { computers: null, decidedFor: null };
+  const computers = [...new Set([...a.computers, ...b.computers])];
+  if (a.decidedFor === null && b.decidedFor === null) return { computers, decidedFor: null };
+  if (a.decidedFor === null) return { computers, decidedFor: [...b.decidedFor!] };
+  if (b.decidedFor === null) return { computers, decidedFor: [...a.decidedFor] };
+  const other = new Set(b.decidedFor);
+  return { computers, decidedFor: a.decidedFor.filter((id) => other.has(id)) };
+}
+
+/**
+ * D176: the computers a profile is blocked on among `known` (decided for and not in its list), for the
+ * row's summary; `null` when the list is D173's plain one (no `decidedFor`) or every computer.
+ */
+export function blockedComputers(computers: readonly string[] | null | undefined, decidedFor: readonly string[] | null | undefined): readonly string[] | null {
+  if (computers === null || computers === undefined || decidedFor === null || decidedFor === undefined) return null;
+  return decidedFor.filter((id) => !computers.includes(id));
 }
 
 /** D173: an access list as given (`'all'`, `null` or machine ids), cleaned: `null` = every computer; else unique ids. */

@@ -344,8 +344,9 @@ export const api = {
     request<{ readonly survivor: UserProfile; readonly mergedAway: string }>('POST', '/api/user-profiles/merge', input),
   // D173: admins and the computers a profile may use (an admin's password; the bootstrap: a profile making itself the first admin).
   setUserProfileAdmin: (id: string, admin: boolean, adminPassword: string) => request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/admin`, { admin, adminPassword }),
-  setUserProfileAccess: (id: string, computers: 'all' | readonly string[], adminPassword: string) =>
-    request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/access`, { computers, adminPassword }),
+  /** D173; D176: `decidedFor` = the computers the checklist showed (a computer outside it stays allowed). */
+  setUserProfileAccess: (id: string, computers: 'all' | readonly string[], adminPassword: string, decidedFor?: readonly string[]) =>
+    request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/access`, { computers, adminPassword, ...(computers !== 'all' && decidedFor ? { decidedFor } : {}) }),
   setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>

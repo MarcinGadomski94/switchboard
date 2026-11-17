@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import type { MachinesView } from '../../../core/peers.ts';
 import { USER_PROFILE_COLORS, type UserProfile } from '../../../core/user-profiles.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { Button, Card, Dialog, Field, Select, useToast } from '../components/index.ts';
 import { PROFILE_WORDS as W } from '../glossary.ts';
 import { ProfileDot, useSwitchProfile, useUserProfiles } from '../profiles/Profiles.tsx';
+import { type KnownComputer, accessChanged, accessRows, accessSummary, knownComputers } from './access-model.ts';
 
 /**
  * D165 · Settings → Profiles (`docs/profiles.md`): every profile (any number) with its colour,
@@ -13,12 +13,15 @@ import { ProfileDot, useSwitchProfile, useUserProfiles } from '../profiles/Profi
  * colour, set / change / remove its password, its default account per CLI on this computer,
  * switch to it, delete it (its open agents are archived; Default stays). D173: its Admin chip and the
  * computers it may use; an admin (or the first admin, the bootstrap) changes them with *Computers…*.
+ * D176: the checklist also lists the computers known only through a paired one; a computer it never
+ * listed stays allowed.
  */
 export function ProfilesSection() {
   const { view, reload } = useUserProfiles();
   const machines = useApi(api.machines);
   const actor = view?.profiles.find((profile) => profile.id === view.activeId) ?? null;
   const anyAdmin = (view?.profiles ?? []).some((profile) => profile.admin === true);
+  const known = knownComputers(machines.data, view?.otherComputers);
   const { ask, dialog } = useSwitchProfile();
   const [adding, setAdding] = useState(false);
   return (
@@ -28,7 +31,7 @@ export function ProfilesSection() {
       <Card>
         <ul className="v2-profile-list" data-testid="v2-profile-list">
           {(view?.profiles ?? []).map((profile) => (
-            <ProfileRow key={profile.id} profile={profile} all={view?.profiles ?? []} active={profile.id === view?.activeId} actor={actor} anyAdmin={anyAdmin} machines={machines.data} onSwitch={() => ask(profile)} onChanged={reload} />
+            <ProfileRow key={profile.id} profile={profile} all={view?.profiles ?? []} active={profile.id === view?.activeId} actor={actor} anyAdmin={anyAdmin} known={known} onSwitch={() => ask(profile)} onChanged={reload} />
           ))}
         </ul>
       </Card>
@@ -79,10 +82,10 @@ function colorOptions() {
   return USER_PROFILE_COLORS.map((color) => ({ value: color, label: color[0]!.toUpperCase() + color.slice(1) }));
 }
 
-/** D173: the computers' names for an access list (`null`: every computer); an unknown id shows as itself. */
-function computerNames(computers: readonly string[] | null | undefined, machines: MachinesView | null): readonly string[] | null {
-  if (computers === null || computers === undefined) return null;
-  return computers.map((id) => (id === machines?.self.id ? `${machines.self.name} (${W.thisComputer})` : (machines?.machines.find((machine) => machine.id === id)?.name ?? id)));
+/** D173 / D176: the row's summary of the computers a profile may use. */
+function computersText(profile: UserProfile, known: readonly KnownComputer[]): string {
+  const summary = accessSummary(profile, known, W.thisComputer);
+  return summary.kind === 'all' ? W.allComputers : summary.kind === 'not-on' ? W.notOnSummary(summary.names) : W.computersSummary(summary.names);
 }
 
 interface RowProps {
@@ -92,12 +95,13 @@ interface RowProps {
   /** D173: this browser's profile (`null`: none chosen). */
   readonly actor: UserProfile | null;
   readonly anyAdmin: boolean;
-  readonly machines: MachinesView | null;
+  /** D173 / D176: this computer, the paired ones and the ones known through them. */
+  readonly known: readonly KnownComputer[];
   readonly onSwitch: () => void;
   readonly onChanged: () => void;
 }
 
-function ProfileRow({ profile, all, active, actor, anyAdmin, machines, onSwitch, onChanged }: RowProps) {
+function ProfileRow({ profile, all, active, actor, anyAdmin, known, onSwitch, onChanged }: RowProps) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [merging, setMerging] = useState(false);
@@ -122,7 +126,7 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, machines, onSwitch,
         {profile.computers !== undefined ? (
           <span className="v2-muted v2-profile-computers" data-testid="v2-profile-computers" data-tour="v2-profile-access">
             {' '}
-            · {W.computersSummary(computerNames(profile.computers, machines))}
+            · {computersText(profile, known)}
           </span>
         ) : null}
       </span>
@@ -152,7 +156,7 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, machines, onSwitch,
       {merging ? <MergeProfileDialog profile={profile} others={others} onClose={() => setMerging(false)} onChanged={onChanged} /> : null}
       {editing ? <EditProfileDialog profile={profile} active={active} onClose={() => setEditing(false)} onChanged={onChanged} /> : null}
       {deleting ? <DeleteProfileDialog profile={profile} onClose={() => setDeleting(false)} onChanged={onChanged} /> : null}
-      {access && actor ? <AccessDialog profile={profile} actor={actor} bootstrap={bootstrap && actor.admin !== true} machines={machines} onClose={() => setAccess(false)} onChanged={onChanged} /> : null}
+      {access && actor ? <AccessDialog profile={profile} actor={actor} bootstrap={bootstrap && actor.admin !== true} known={known} onClose={() => setAccess(false)} onChanged={onChanged} /> : null}
     </li>
   );
 }
@@ -160,24 +164,28 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, machines, onSwitch,
 /**
  * D173 · *Computers…*: whether the profile is an admin and which computers it may use (all, or a
  * checklist of this computer and the paired ones). The admin's (this browser's profile's) password
- * confirms. The bootstrap (no admin yet): only *Admin*, for this browser's own profile.
+ * confirms. The bootstrap (no admin yet): only *Admin*, for this browser's own profile. D176: the
+ * checklist lists the computers known only through a paired one too ("through …"); one the list was
+ * never decided for shows "not decided yet: allowed" (ticked) until saved; one not listed at all stays allowed.
  */
-function AccessDialog({ profile, actor, bootstrap, machines, onClose, onChanged }: { readonly profile: UserProfile; readonly actor: UserProfile; readonly bootstrap: boolean; readonly machines: MachinesView | null; readonly onClose: () => void; readonly onChanged: () => void }) {
+function AccessDialog({ profile, actor, bootstrap, known, onClose, onChanged }: { readonly profile: UserProfile; readonly actor: UserProfile; readonly bootstrap: boolean; readonly known: readonly KnownComputer[]; readonly onClose: () => void; readonly onChanged: () => void }) {
   const toast = useToast();
+  const rows = accessRows(profile, known);
   const [admin, setAdmin] = useState(profile.admin === true || bootstrap);
   const [all, setAll] = useState(profile.computers === null || profile.computers === undefined);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set(profile.computers ?? []));
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set(rows.filter((row) => row.checked && profile.computers !== null && profile.computers !== undefined).map((row) => row.id)));
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const choices = machines ? [{ id: machines.self.id, name: `${machines.self.name} (${W.thisComputer})` }, ...machines.machines.map((machine) => ({ id: machine.id, name: machine.name }))] : [];
-  const sameAccess = all ? profile.computers === null || profile.computers === undefined : profile.computers !== null && profile.computers !== undefined && profile.computers.length === picked.size && profile.computers.every((id) => picked.has(id));
+  /** D176: rows ticked or unticked in this dialog (an undecided one stops saying so). */
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
+  const sameAccess = !accessChanged(profile, rows, all, picked);
   const save = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       if (admin !== (profile.admin === true)) await api.setUserProfileAdmin(profile.id, admin, password);
-      if (!bootstrap && !sameAccess) await api.setUserProfileAccess(profile.id, all ? 'all' : [...picked], password);
+      if (!bootstrap && !sameAccess) await api.setUserProfileAccess(profile.id, all ? 'all' : [...picked], password, rows.map((row) => row.id));
       toast({ text: W.accessSaved(profile.name) });
       onChanged();
       onClose();
@@ -215,14 +223,20 @@ function AccessDialog({ profile, actor, bootstrap, machines, onClose, onChanged 
           <label className="v2-check">
             <input type="radio" name="v2-profile-computers" checked={!all} onChange={() => setAll(false)} data-testid="v2-profile-computers-some" /> {W.onlyThese}
           </label>
+          {!all ? (
+            <p className="v2-muted" data-testid="v2-profile-computers-note">
+              {W.onlyTheseNote}
+            </p>
+          ) : null}
           {!all
-            ? choices.map((choice) => (
-                <label key={choice.id} className="v2-check v2-profile-computer" data-machine={choice.id}>
+            ? rows.map((choice) => (
+                <label key={choice.id} className="v2-check v2-profile-computer" data-machine={choice.id} data-through={choice.through ?? undefined} data-undecided={choice.undecided && !touched.has(choice.id) ? 'true' : undefined}>
                   <input
                     type="checkbox"
                     checked={picked.has(choice.id)}
                     onChange={(event) => {
                       const on = event.currentTarget.checked;
+                      setTouched((now) => new Set(now).add(choice.id));
                       setPicked((now) => {
                         const next = new Set(now);
                         if (on) next.add(choice.id);
@@ -231,7 +245,9 @@ function AccessDialog({ profile, actor, bootstrap, machines, onClose, onChanged 
                       });
                     }}
                   />{' '}
-                  {choice.name}
+                  {choice.self ? `${choice.name} (${W.thisComputer})` : choice.name}
+                  {choice.through ? <span className="v2-muted"> · {W.through(choice.through)}</span> : null}
+                  {choice.undecided && !touched.has(choice.id) ? <span className="v2-muted"> · {W.undecided}</span> : null}
                 </label>
               ))
             : null}

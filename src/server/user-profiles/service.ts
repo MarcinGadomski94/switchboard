@@ -11,7 +11,9 @@ import {
   USER_PROFILE_SWITCH_ATTEMPTS,
   USER_PROFILE_SWITCH_WINDOW_MS,
   adminChangeProblem,
+  type ComputerThrough,
   mayManageAccess,
+  mergedAccess,
   profileAllowedOn,
   readComputerAccess,
   type UserProfile,
@@ -63,6 +65,8 @@ export interface UserProfileWire {
   readonly admin?: boolean;
   /** D173: the computers it may use (machine ids); `null` / absent = every computer. */
   readonly computers?: readonly string[] | null;
+  /** D176: the computers `computers` was decided for (others stay allowed); `null` = every computer; absent = an older computer (the merge keeps what is here while the list is the same). */
+  readonly decidedFor?: readonly string[] | null;
 }
 
 /** D172: the settings key of this computer's own Default's peer-link id (absent: `default-<machine id>`). */
@@ -91,6 +95,10 @@ export interface UserProfileServiceOptions {
   readonly selfId?: () => Promise<string | null>;
   /** D172: re-keys what lives outside the main db (crews in team.db, open terminals) from one profile to another. */
   readonly rekeyOutside?: (from: string, to: string) => Promise<void> | void;
+  /** D176: the computers this one knows besides itself: the paired ones, and the ones known only through them (ids). */
+  readonly knownComputers?: () => readonly string[];
+  /** D176: the computers known only through a paired computer (for the access checklist). */
+  readonly otherComputers?: () => readonly ComputerThrough[];
   readonly now?: () => number;
 }
 
@@ -263,12 +271,17 @@ export class UserProfileService {
   /** D173: whether profile `profileId` may be used on computer `machineId` (sync: the cached records; unknown = allowed). */
   allowedOn(profileId: string, machineId: string | null): boolean {
     const record = this.#profiles?.get(profileId);
-    return !record || profileAllowedOn(record.computers, machineId);
+    return !record || profileAllowedOn(record.computers, machineId, record.decidedFor);
   }
 
   /** D173: whether profile `profileId` may be used on this computer. */
   allowedHere(profileId: string): boolean {
     return this.allowedOn(profileId, this.#self);
+  }
+
+  /** D176: the computers known only through a paired computer (the access checklist lists them too). */
+  otherComputers(): readonly ComputerThrough[] {
+    return this.#o.otherComputers?.() ?? [];
   }
 
   /** D173: this computer's machine id (`null` while unknown). */
@@ -318,8 +331,11 @@ export class UserProfileService {
   }
 
   /**
-   * D173 · `PUT /api/user-profiles/{id}/access { computers: 'all' | [machine ids], adminPassword }`: the
-   * computers a profile may use (only an admin, its password). `'all'` / `null` = every computer.
+   * D173 · `PUT /api/user-profiles/{id}/access { computers: 'all' | [machine ids], decidedFor?, adminPassword }`:
+   * the computers a profile may use (only an admin, its password). `'all'` / `null` = every computer.
+   * D176: `decidedFor` = the computers the checklist showed (absent: every computer this one knows,
+   * itself, the paired ones and the ones known through them); the listed ones count as decided too. A
+   * computer outside it was never decided and stays allowed.
    */
   async setAccess(id: string, body: unknown, actor: ProfileScope): Promise<UserProfile> {
     const record = await this.get(id);
@@ -327,8 +343,11 @@ export class UserProfileService {
     const input = isRecord(body) ? body : {};
     const computers = readComputerAccess(input['computers']);
     if (computers === undefined) throw new UserProfileError(422, 'invalid', "Give computers: 'all' or a list of computer ids.");
+    const shown = input['decidedFor'] === undefined ? undefined : readComputerAccess(input['decidedFor']);
+    if (shown === null || (input['decidedFor'] !== undefined && shown === undefined)) throw new UserProfileError(422, 'invalid', 'Give decidedFor: a list of computer ids.');
     await this.#checkManager(actor, { target: id, makingAdmin: false }, input['adminPassword']);
-    const updated = (await this.#o.store.userProfiles.update(id, { computers, clock: this.#clock() })) ?? record;
+    const decidedFor = computers === null ? null : [...new Set([...(shown ?? [...(this.#self ? [this.#self] : []), ...(this.#o.knownComputers?.() ?? [])]), ...computers])];
+    const updated = (await this.#o.store.userProfiles.update(id, { computers, decidedFor, clock: this.#clock() })) ?? record;
     await this.#changed([updated]);
     return this.#view(updated, await this.#defaultAccounts());
   }
@@ -352,7 +371,8 @@ export class UserProfileService {
       // D173
       admin: record.admin,
       computers: record.computers,
-      allowedHere: profileAllowedOn(record.computers, this.#self),
+      decidedFor: record.decidedFor,
+      allowedHere: profileAllowedOn(record.computers, this.#self, record.decidedFor),
     };
   }
 
@@ -510,7 +530,7 @@ export class UserProfileService {
     const record = await this.get(id);
     if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
     // D173: a profile an admin did not allow on this computer can't be used here.
-    if (!profileAllowedOn(record.computers, this.#self)) throw new UserProfileError(403, 'not-allowed-here', `“${record.name}” can’t be used on this computer: an admin limited it to other computers.`);
+    if (!profileAllowedOn(record.computers, this.#self, record.decidedFor)) throw new UserProfileError(403, 'not-allowed-here', `“${record.name}” can’t be used on this computer: an admin limited it to other computers.`);
     await this.#check(record, input['password']);
     return { profile: this.#view(record, await this.#defaultAccounts()), cookie: this.cookieFor(record) };
   }
@@ -562,12 +582,12 @@ export class UserProfileService {
       if (given.length !== expected.length || !timingSafeEqual(given, expected)) continue;
       const record = records.get(id);
       // D173: a cookie for a profile not allowed on this computer counts as none (the fallback below).
-      if (record && record.deletedAt === null && tagOf(record.passwordHash) === tag && profileAllowedOn(record.computers, this.#self)) return id;
+      if (record && record.deletedAt === null && tagOf(record.passwordHash) === tag && profileAllowedOn(record.computers, this.#self, record.decidedFor)) return id;
     }
     // 2026-11-16: no valid cookie: the start profile (Settings → Profiles → Open in), while it has no password (D173: and is allowed here).
     const start = await this.startProfileId();
     const fallback = records.get(start);
-    return fallback && fallback.passwordHash === null && profileAllowedOn(fallback.computers, this.#self) ? start : null;
+    return fallback && fallback.passwordHash === null && profileAllowedOn(fallback.computers, this.#self, fallback.decidedFor) ? start : null;
   }
 
   // ── moving agents ───────────────────────────────────────────────────────
@@ -723,12 +743,15 @@ export class UserProfileService {
       const linkId = wire.id === DEFAULT_USER_PROFILE_ID && fromMachine ? (this.#peerDefaults[fromMachine] ?? homeDefaultId(fromMachine)) : wire.id;
       const localId = linkId === this.selfWireId() || (this.#self !== null && linkId === homeDefaultId(this.#self)) ? DEFAULT_USER_PROFILE_ID : linkId;
       const own = records.get(localId);
+      // D176: an older computer sends no `decidedFor`: the one here stays while the list is the same (it decided nothing new).
+      const decidedFor = wire.decidedFor !== undefined ? wire.decidedFor : own && sameList(own.computers, wire.computers ?? null) ? own.decidedFor : null;
+      const listDecided = (wire.computers ?? null) === null ? null : decidedFor;
       if (localId === DEFAULT_USER_PROFILE_ID && wire.deletedAt) {
         // This computer's Default was merged into another profile on a paired computer: adopt its id.
         if (wire.mergedInto && this.#localOf(wire.mergedInto) !== DEFAULT_USER_PROFILE_ID) written.push(...(await this.#adoptDefault(wire.mergedInto)));
         continue;
       }
-      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt, admin: wire.admin ?? false, computers: wire.computers ?? null })))) continue;
+      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt, admin: wire.admin ?? false, computers: wire.computers ?? null, decidedFor: listDecided })))) continue;
       const deletedAt = localId === DEFAULT_USER_PROFILE_ID ? null : wire.deletedAt;
       const next: UserProfileRecord = {
         id: localId,
@@ -743,6 +766,7 @@ export class UserProfileService {
         // D173: profile attributes, last write wins with the record (an older computer: not an admin, every computer).
         admin: wire.admin ?? false,
         computers: wire.computers ?? null,
+        decidedFor: listDecided,
       };
       await this.#o.store.userProfiles.put(next);
       this.#invalidate();
@@ -833,9 +857,9 @@ export class UserProfileService {
     }
     // D173 (ASSUMED): the merged profile is an admin when either was; it may use every computer either could (all when either could).
     const admin = a.admin || b.admin;
-    const computers = a.computers === null || b.computers === null ? null : [...new Set([...a.computers, ...b.computers])];
+    const { computers, decidedFor } = mergedAccess(a, b);
     if (admin && keepPassword.passwordHash === null) throw new UserProfileError(409, 'needs-password', 'The merged profile is an admin, so it needs a password: keep the password of the one that has one.');
-    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, clock: this.#clock() })) ?? survivor;
+    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, decidedFor, clock: this.#clock() })) ?? survivor;
     const tomb = (await this.#o.store.userProfiles.update(gone.id, { deletedAt: new Date(this.#now()).toISOString(), passwordHash: null, mergedInto: this.#toLink(survivor.id), clock: this.#clock() })) ?? gone;
     this.#invalidate();
     await this.#records();
@@ -863,7 +887,7 @@ function tagOf(passwordHash: string | null): string {
 }
 
 function toWire(record: UserProfileRecord): UserProfileWire {
-  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt, admin: record.admin, computers: record.computers };
+  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor };
 }
 
 function readWire(value: unknown): UserProfileWire | null {
@@ -882,7 +906,15 @@ function readWire(value: unknown): UserProfileWire | null {
   // D173: an older computer sends neither: not an admin, every computer. A malformed list counts as every computer.
   const admin = value['admin'] === true;
   const computers = readComputerAccess(value['computers'] ?? null) ?? null;
-  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto, admin, computers };
+  // D176: absent (an older computer) stays absent: the merge keeps the list's `decidedFor` here. Malformed = decided everywhere (D173).
+  const decidedFor = 'decidedFor' in value ? (value['decidedFor'] === null ? null : (readComputerAccess(value['decidedFor']) ?? null)) : undefined;
+  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto, admin, computers, ...(decidedFor !== undefined ? { decidedFor } : {}) };
+}
+
+/** D176: two access lists hold the same computers (order aside). */
+function sameList(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((id) => b.includes(id));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

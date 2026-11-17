@@ -78,7 +78,7 @@ describe('D172 · identity across computers', () => {
 describe('D172 · merging profiles on purpose', () => {
   async function profile(name: string, password: string | null, createdAt: string): Promise<string> {
     const id = randomUUID();
-    await store.userProfiles.put({ id, name, color: 'green', passwordHash: password ? await hashPassword(password) : null, clock: '1', createdAt, updatedAt: createdAt, deletedAt: null, mergedInto: null, admin: false, computers: null });
+    await store.userProfiles.put({ id, name, color: 'green', passwordHash: password ? await hashPassword(password) : null, clock: '1', createdAt, updatedAt: createdAt, deletedAt: null, mergedInto: null, admin: false, computers: null, decidedFor: null });
     return id;
   }
 

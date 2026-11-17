@@ -8,7 +8,7 @@ import { UserProfileError, type UserProfileService } from '../user-profiles/serv
  * D165 · the profiles' routes (`docs/profiles.md`, contract → *Profiles*):
  *
  * - `GET /api/user-profiles` → `{ profiles, activeId, startId }` (`activeId`: this browser's profile, `null` = none chosen yet;
- *   `startId`: the profile a browser opens in before it chose one).
+ *   `startId`: the profile a browser opens in before it chose one; D176 `otherComputers`: the computers known only through a paired one).
  * - `PUT /api/user-profiles/start` `{ id }` → `{ startId }` (2026-11-16, Settings → Profiles → *Open in*).
  * - `POST /api/user-profiles` `{ name, color?, password? }` → 201 the profile.
  * - `PUT /api/user-profiles/{id}` `{ name?, color?, password?, currentPassword?, defaultAccounts? }`; editing a
@@ -38,7 +38,7 @@ export async function registerUserProfileRoutes(app: FastifyInstance, context: A
 
   app.get('/api/user-profiles', async (request): Promise<UserProfilesView> => {
     const scope = request.userProfileScope;
-    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null, startId: await service.startProfileId() };
+    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null, startId: await service.startProfileId(), otherComputers: service.otherComputers() };
   });
 
   // 2026-11-16: the profile a browser opens in before it chose one (before `/:profileId`: a static path wins anyway).

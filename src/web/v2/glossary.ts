@@ -758,6 +758,11 @@ export const PROFILE_WORDS = {
   onlyThese: 'Only these computers',
   thisComputer: 'this computer',
   computersSummary: (names: readonly string[] | null): string => (names === null ? 'All computers' : names.length === 0 ? 'No computer' : `Only ${names.join(', ')}`),
+  // D176: a checklist decides only for the computers it lists; the others stay allowed.
+  notOnSummary: (names: readonly string[]): string => `Not on ${names.join(', ')}`,
+  onlyTheseNote: 'Unticked computers can’t use this profile. A computer not listed here (paired later, or with none of these) stays allowed.',
+  through: (name: string): string => `through ${name}`,
+  undecided: 'not decided yet: allowed',
   adminPassword: (name: string): string => `${name}'s password (the admin's)`,
   accessSaved: (name: string): string => `${name} saved.`,
   notHere: 'Not on this computer',
