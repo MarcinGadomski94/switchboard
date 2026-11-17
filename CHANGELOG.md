@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.43 (2026-11-17)
+
+### Backup and restore
+- **Move your whole setup to another PC:** Settings → Backup → Back up now (or `switchboard backup`) writes one file with everything: settings, agents and their conversations, folders, projects, crews, tasks, artifacts, attachments, the accounts added in Settings → Accounts, and Switchboard's own secrets, the whole file encrypted with your passphrase. **Restore…** (or `switchboard restore <file>`) puts it into a fresh install on the new PC: it asks where each folder is now and moves the agents' conversations to match, and whether the PC takes over the old one's identity or starts as a new computer (the default). Automatic daily backups (last 7 kept) once you set a passphrase. Sign in once to the CLIs' own logins afterwards. See `docs/backup.md` (D168).
+
+### Profiles
+- **Bind a folder to a profile:** Settings → Folders → Bind to profile… makes a folder its owner's alone: the other profiles don't see it and nothing of theirs starts there (also from a paired computer). Binding moves the other profiles' agents in it to the owner (listed first). Each computer binds its own folders. Database migration. See `docs/profiles.md` (D169).
+
 ## 2.4.42 (2026-11-17)
 
 ### v2 theme
