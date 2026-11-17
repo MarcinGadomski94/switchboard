@@ -184,6 +184,8 @@ const V2_4_34 = '2.4.34';
 const V2_4_38 = '2.4.38';
 /** The version D167 (self-correcting estimates) ships in (the next release after 2.4.39; adjust if it ships later). */
 const V2_4_40 = '2.4.40';
+/** The version D168 (backup and restore) ships in (the next release after 2.4.42; adjust if it ships later). */
+const V2_4_43 = '2.4.43';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1850,6 +1852,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-project-time-left', 'v2-nav-projects', 'v2-tab-more'],
         v2Route: '/projects',
         missing: 'No project has time left right now: the likely time shows on a running project.',
+      },
+    ],
+  },
+  {
+    id: 'backup-restore',
+    decision: 'D168',
+    version: V2_4_43,
+    title: 'Back up everything, restore on another computer',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'backup',
+        title: 'One encrypted file with everything',
+        what: 'Settings → Backup puts everything this Switchboard has (agents and their conversations, folders, projects, crews, tasks, artifacts, settings, accounts and the keychain values it keeps) into one file encrypted with your passphrase, now or every day. Restore it on a new computer: map the folders that are elsewhere there, and every agent continues where it was.',
+        todo: ['Open Settings → Backup and make a backup.'],
+        anchors: ['v2-backup-now', 'v2-nav-settings'],
+        v2Route: '/settings/backup',
+        missing: 'Settings → Backup: Back up now, Automatic backups and Restore a backup.',
       },
     ],
   },

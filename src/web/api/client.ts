@@ -1,6 +1,7 @@
 import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { UserProfile, UserProfilesView } from '../../core/user-profiles.ts';
+import type { BackupInspection, BackupLastRun, BackupStatus } from '../../core/backup.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
 import type { SidebarFolderArchiveResult } from '../../core/sidebar-folder-archive.ts';
@@ -329,6 +330,14 @@ export const api = {
   updateUserProfile: (id: string, patch: { readonly name?: string; readonly color?: string; readonly password?: string | null; readonly currentPassword?: string; readonly defaultAccounts?: Readonly<Record<string, string | null>> }) =>
     request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}`, patch),
   deleteUserProfile: (id: string, password?: string) => request<{ readonly archived: number }>('DELETE', `/api/user-profiles/${encodeURIComponent(id)}`, password ? { password } : {}),
+  // D168: Settings → Backup (docs/backup.md).
+  backupStatus: () => request<BackupStatus>('GET', '/api/backup'),
+  backupNow: (passphrase: string) => request<BackupLastRun>('POST', '/api/backup', { passphrase }),
+  setBackupAuto: (patch: { readonly enabled?: boolean; readonly folder?: string | null; readonly keep?: number; readonly passphrase?: string }) => request<BackupStatus>('PUT', '/api/backup/auto', patch),
+  inspectBackup: (file: string, passphrase: string, map: Readonly<Record<string, string>>) => request<BackupInspection>('POST', '/api/backup/inspect', { file, passphrase, map }),
+  restoreBackup: (input: { readonly file: string; readonly passphrase: string; readonly map: Readonly<Record<string, string>>; readonly identity: 'keep' | 'new'; readonly replace: boolean; readonly allowMissing: boolean }) =>
+    request<{ readonly restart: 'restarting' | 'manual' }>('POST', '/api/backup/restore', input),
+  cancelRestore: () => request<void>('DELETE', '/api/backup/restore'),
   setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>

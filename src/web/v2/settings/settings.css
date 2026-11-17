@@ -768,3 +768,38 @@
 .sb2 .v2-profile-note {
   font-size: 12.5px;
 }
+/* D168 · Settings → Backup: three cards (Back up now, Automatic backups, Restore) and the last restore's report. */
+.sb2 [data-testid='v2-settings-backup-section'] .v2-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.sb2 [data-testid='v2-settings-backup-section'] h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.sb2 .v2-backup-files ul,
+.sb2 .v2-backup-report ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.sb2 .v2-backup-files li {
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-backup-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-backup-report[data-ok='false'] {
+  color: var(--v2-red, inherit);
+}

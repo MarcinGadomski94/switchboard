@@ -151,6 +151,6 @@ describe('the grouped Advanced list', () => {
   });
 
   it('orders the Settings sections everyday ones first', () => {
-    expect(V2_SETTINGS_SECTIONS).toEqual(['usage', 'rules', 'appearance', 'profiles', 'computers', 'phones', 'advanced']);
+    expect(V2_SETTINGS_SECTIONS).toEqual(['usage', 'rules', 'appearance', 'profiles', 'computers', 'phones', 'backup', 'advanced']);
   });
 });

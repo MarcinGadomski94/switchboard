@@ -71,7 +71,7 @@ export interface BackupPreview {
   readonly switchboardVersion: string;
   readonly createdAt: string;
   /** The old computer's OS (`win32`, `darwin`, `linux`) and its name (D48's), for the restore's words. */
-  readonly platform: NodeJS.Platform;
+  readonly platform: string;
   readonly machineName: string | null;
   readonly machineId: string | null;
   readonly home: string;
@@ -238,6 +238,37 @@ export function isBackupFileName(name: string): boolean {
 export function backupsToPrune(names: readonly string[], keep: number): string[] {
   const own = names.filter((name) => name.includes('-auto') && isBackupFileName(name)).sort();
   return own.slice(0, Math.max(0, own.length - keep));
+}
+
+/** The last backup's outcome (`backup.state`). */
+export interface BackupLastRun {
+  readonly at: string;
+  readonly ok: boolean;
+  readonly trigger: 'manual' | 'automatic';
+  readonly file: string | null;
+  readonly size: number | null;
+  readonly error: string | null;
+}
+
+/** `GET /api/backup`. */
+export interface BackupStatus {
+  readonly auto: BackupAutoSettings & { readonly hasKey: boolean };
+  readonly folder: string;
+  readonly defaultFolder: string;
+  readonly running: 'backup' | 'restore' | null;
+  readonly last: BackupLastRun | null;
+  readonly files: ReadonlyArray<{ readonly name: string; readonly size: number; readonly at: string }>;
+  readonly lastRestore: RestoreReport | null;
+  /** Whether this Switchboard restarts by itself (under the login service) to apply a restore. */
+  readonly restartsItself: boolean;
+}
+
+/** `POST /api/backup/inspect`. */
+export interface BackupInspection {
+  readonly preview: Omit<BackupPreview, 'conversations'> & { readonly conversations: number };
+  readonly refusal: string | null;
+  readonly agentsHere: number;
+  readonly missingFolders: ReadonlyArray<{ readonly from: string; readonly to: string }>;
 }
 
 /** The restore's report (shown after the restart and printed by the CLI). */

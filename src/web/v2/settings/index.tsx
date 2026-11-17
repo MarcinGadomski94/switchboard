@@ -10,6 +10,7 @@ import { ClassicFrame } from './ClassicFrame.tsx';
 import { ComputersSection } from './ComputersSection.tsx';
 import { PhonesSection } from './PhonesSection.tsx';
 import { ProfilesSection } from './ProfilesSection.tsx';
+import { BackupSection } from './BackupSection.tsx';
 import { AppearanceSection, RulesSection } from './sections.tsx';
 import { shownSection } from './settings-map.ts';
 import { SettingsSearch, settingsQuery, useSettingFlash } from './SettingsSearch.tsx';
@@ -24,6 +25,7 @@ const SECTION_ICONS: Readonly<Record<V2SettingsSection, string>> = {
   computers: 'desktop',
   phones: 'phone',
   profiles: 'agents',
+  backup: 'download',
   rules: 'rules',
   appearance: 'sun',
   advanced: 'sliders',
@@ -39,6 +41,8 @@ function Section({ section, sub }: { readonly section: V2SettingsSection; readon
       return <PhonesSection />;
     case 'profiles':
       return <ProfilesSection />;
+    case 'backup':
+      return <BackupSection />;
     case 'rules':
       return <RulesSection />;
     case 'appearance':

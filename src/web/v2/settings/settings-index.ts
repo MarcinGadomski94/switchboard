@@ -81,6 +81,10 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   // ── Profiles (v2, D165) ──
   entry('profiles.list', at('profiles'), 'Profiles', 'Many people on one Switchboard: each agent belongs to a profile; a password to switch', 'profile profiles user users people person password switch lock account default', tid('v2-profile-list')),
   entry('profiles.add', at('profiles'), 'Add a profile', 'A name, a colour and an optional password', 'add new profile person user', tid('v2-profile-add')),
+  // ── Backup (v2, D168) ──
+  entry('backup.now', at('backup'), 'Back up now', 'An encrypted backup of everything (agents, folders, projects, settings, conversations) to move to another computer', 'backup back up export save copy move computer migrate encrypted passphrase', tid('v2-backup-now')),
+  entry('backup.auto', at('backup'), 'Automatic backups', 'A daily encrypted backup into a folder, the newest kept', 'backup automatic daily schedule keep folder', tid('v2-backup-auto')),
+  entry('backup.restore', at('backup'), 'Restore a backup', 'Restore a backup into this Switchboard (a new computer): map the folders, choose the identity', 'restore import move computer migrate', tid('v2-backup-restore')),
   // ── Phones (v2) ──
   entry('phones.access', at('phones'), 'Phone access', W.phonesSub, 'phone mobile device tablet tailscale remote https', tid('v2-phone-access')),
   entry('phones.pair', at('phones'), W.pairPhone, W.pairNote, 'qr code pair phone device mobile', tid('v2-pair-phone')),
