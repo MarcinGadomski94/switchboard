@@ -1,5 +1,5 @@
 import { Icon, StatusBadge } from '../components/index.ts';
-import { RAIL_LABELS, TERMS, WORDS } from '../glossary.ts';
+import { RAIL_LABELS, TERMINAL_WORDS, TERMS, WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { RecentList } from '../shared/RecentList.tsx';
 import type { StatusPill } from './status-model.ts';
@@ -14,6 +14,7 @@ const LINKS = [
   { to: '/tasks', icon: 'task', label: TERMS.task.many },
   { to: '/routines', icon: 'routine', label: TERMS.routine.many },
   { to: '/notes', icon: 'book', label: TERMS.notes.many },
+  { to: '/terminals', icon: 'cmd', label: TERMINAL_WORDS.title },
   { to: '/insights', icon: 'insights', label: WORDS.insights },
   { to: '/settings', icon: 'settings', label: RAIL_LABELS.settings },
 ] as const;

@@ -34,7 +34,7 @@ const plain = { id: 'f3', path: '/x/notes', name: 'notes', displayName: 'notes',
 
 describe('+ New · kinds', () => {
   it('has the prototype’s seven kinds in order, each with words', () => {
-    expect(NEW_KINDS).toEqual(['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in']);
+    expect(NEW_KINDS).toEqual(['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in', 'terminal']);
     for (const kind of NEW_KINDS) expect(NEW_WORDS.kinds[kind].label.length).toBeGreaterThan(0);
   });
 });
@@ -125,7 +125,7 @@ describe('+ New · task, routine, project, teammate, crew', () => {
   });
 
   it('Teammate and Crew hand over to the Crews dialogs (lane X: one New teammate / New crew) and From a terminal to the bring-in list (D16); the rest are the sheet’s forms', () => {
-    expect(NEW_KINDS.filter(opensDialog)).toEqual(['teammate', 'crew', 'bring-in']);
+    expect(NEW_KINDS.filter(opensDialog)).toEqual(['teammate', 'crew', 'bring-in', 'terminal']);
     expect(NEW_KINDS.filter((kind) => !opensDialog(kind))).toEqual(['agent', 'conversation', 'task', 'project', 'routine']);
   });
 });

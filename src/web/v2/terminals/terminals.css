@@ -1,0 +1,95 @@
+/* D170 · Terminals (docs/terminals.md). */
+
+.sb2 .v2-terminals-computer {
+  margin: 16px 0 0;
+}
+
+.sb2 .v2-terminals-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: var(--v2-fs-s);
+  color: var(--v2-muted);
+  font-weight: 600;
+}
+
+.sb2 .v2-terminal-note {
+  margin: 8px 0 0;
+  font-size: var(--v2-fs-s);
+}
+
+/* One terminal: the head, then the screen filling the rest of the page. */
+.sb2 .v2-terminal-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding-bottom: 8px;
+}
+
+.sb2 .v2-terminal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+.sb2 .v2-terminal-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb2 .v2-terminal-title > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-terminal {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--v2-r);
+  overflow: hidden;
+  background: var(--v2-term-bg);
+}
+
+.sb2 .v2-terminal-screen {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 0 8px 10px;
+}
+
+.sb2 .v2-terminal-screen .xterm {
+  height: 100%;
+}
+
+/* The phone's key bar: Esc, Tab, a sticky Ctrl, arrows, ^C. */
+.sb2 .v2-terminal-keys {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  overflow-x: auto;
+  border-top: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-terminal-key {
+  flex: 0 0 auto;
+  min-width: 44px;
+  height: 36px;
+  border: 1px solid var(--v2-border-strong);
+  border-radius: 8px;
+  background: var(--v2-surface);
+  color: var(--v2-text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.sb2 .v2-terminal-key[aria-pressed='true'] {
+  background: var(--v2-accent-soft);
+  border-color: var(--v2-accent);
+}

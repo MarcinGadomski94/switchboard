@@ -18,7 +18,7 @@ import { simpleBlockers, toSimpleBody } from '../../modals/simple-session.ts';
 import { NEW_WORDS } from '../glossary.ts';
 
 /** What the + New sheet can make (the prototype's types, in its order). */
-export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in'] as const;
+export const NEW_KINDS = ['agent', 'conversation', 'task', 'project', 'routine', 'teammate', 'crew', 'bring-in', 'terminal'] as const;
 /** One of {@link NEW_KINDS}. */
 export type NewKindId = (typeof NEW_KINDS)[number];
 
@@ -261,11 +261,11 @@ export function projectProblems(project: ProjectForm): Partial<Record<'title' | 
  * (lane P's New teammate / New crew) and Bring in a terminal conversation (D16 in v2,
  * `BringInSheet.tsx`).
  */
-export const DIALOG_KINDS = ['teammate', 'crew', 'bring-in'] as const;
+export const DIALOG_KINDS = ['teammate', 'crew', 'bring-in', 'terminal'] as const;
 /** One of {@link DIALOG_KINDS}. */
 export type DialogKindId = (typeof DIALOG_KINDS)[number];
 /** The kinds the Crews dialogs make. */
-export type CrewKindId = Exclude<DialogKindId, 'bring-in'>;
+export type CrewKindId = Exclude<DialogKindId, 'bring-in' | 'terminal'>;
 
 /**
  * D131 · lane X · `true` for a kind the + New sheet hands to a dialog of its own: the Crews

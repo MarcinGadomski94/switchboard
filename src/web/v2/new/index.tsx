@@ -1,5 +1,6 @@
 import type { NewSessionPrefill } from '../../../core/api.ts';
 import { openStore } from '../shared/open-store.ts';
+import { NewTerminalDialog } from '../terminals/NewTerminalDialog.tsx';
 import { BringInSheet } from './BringInSheet.tsx';
 import { NewCrewDialogs } from './CrewDialogs.tsx';
 import { NewSheetBody } from './NewSheet.tsx';
@@ -43,6 +44,8 @@ export function NewSheet() {
   const kind = request.kind;
   // D16 in v2: From a terminal opens the bring-in list (this computer's terminal conversations).
   if (kind === 'bring-in') return <BringInSheet key={key} onClose={sheet.close} />;
+  // D170: a terminal on this computer or a paired one.
+  if (kind === 'terminal') return <NewTerminalDialog key={key} machine={request.machine ?? null} onClose={sheet.close} />;
   // Teammate and Crew open the Crews dialogs (one New teammate / New crew for the whole app, lane X).
   if (opensDialog(kind)) return <NewCrewDialogs key={key} kind={kind} onClose={sheet.close} />;
   return <NewSheetBody key={key} request={{ ...request, kind }} onClose={sheet.close} onDialog={(next) => openNew({ ...request, kind: next })} />;

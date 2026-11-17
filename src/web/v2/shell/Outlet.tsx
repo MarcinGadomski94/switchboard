@@ -9,6 +9,7 @@ import { ResultsPage } from '../results/index.tsx';
 import type { V2Route } from '../routes.ts';
 import { SearchPage } from '../search/index.tsx';
 import { SettingsPage, SharePage, ToolPage } from '../settings/index.tsx';
+import { TerminalPage, TerminalsPage } from '../terminals/index.tsx';
 import { MorePage } from './MorePage.tsx';
 import type { StatusPill } from './status-model.ts';
 import type { RailCounts } from './useShellData.ts';
@@ -58,5 +59,9 @@ export function Outlet({ route, search, pill, counts }: { readonly route: V2Rout
       return <SharePage />;
     case 'more':
       return <MorePage pill={pill} counts={counts} />;
+    case 'terminals':
+      return <TerminalsPage />;
+    case 'terminal':
+      return <TerminalPage key={`${route.machine ?? 'local'}/${route.id}`} machine={route.machine} id={route.id} />;
   }
 }

@@ -186,6 +186,8 @@ const V2_4_38 = '2.4.38';
 const V2_4_40 = '2.4.40';
 /** The version D168 (backup and restore) ships in (the next release after 2.4.42; adjust if it ships later). */
 const V2_4_43 = '2.4.43';
+/** The version D170 (terminals) ships in (the next release after 2.4.43; adjust if it ships later). */
+const V2_4_44 = '2.4.44';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1888,6 +1890,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-folder-bind', 'v2-nav-settings'],
         v2Route: '/settings/advanced/workspace',
         missing: 'Settings → Advanced → Folders: each saved folder has Bind to profile….',
+      },
+    ],
+  },
+  {
+    id: 'terminals',
+    decision: 'D170',
+    version: V2_4_44,
+    title: 'Terminals on this computer and your paired one',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open a terminal',
+        what: 'The Terminals page (and ＋ New → New terminal) opens a real terminal (PowerShell, cmd, bash, zsh…) on this computer or on your paired one, in a folder you pick, right in Switchboard, and on your paired phone too, with a key bar for Esc, Tab, Ctrl and the arrows. It keeps running when you leave the page; Close ends it and everything it started.',
+        todo: ['Open the Terminals page and start a terminal.'],
+        anchors: ['v2-terminals-new', 'v2-tab-more'],
+        v2Route: '/terminals',
+        missing: 'Terminals: from the command palette (Ctrl+K → Terminals) or ＋ New → New terminal.',
       },
     ],
   },

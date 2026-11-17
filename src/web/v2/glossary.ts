@@ -636,6 +636,35 @@ export const BACKUP_WORDS = {
   keptAside: (where: string): string => `The data that was here is kept in ${where}.`,
 } as const;
 
+/** D170 · Terminals' words (+ New › Terminal, the Terminals page, a terminal's page). */
+export const TERMINAL_WORDS = {
+  title: 'Terminals',
+  sub: 'Shells on this computer and your paired ones',
+  newTitle: 'New terminal',
+  open: 'Open terminal',
+  opening: 'Opening…',
+  computer: 'Computer',
+  thisComputer: 'This computer',
+  shell: 'Shell',
+  folder: 'Start in',
+  home: 'Home folder',
+  none: 'No terminals open.',
+  noneSub: 'Open one with + New › Terminal, here or on a paired computer.',
+  newTerminal: 'New terminal',
+  close: 'Close',
+  closeTitle: 'Close this terminal and end what runs in it',
+  reopen: 'Open',
+  exited: (code: number | null): string => (code === null ? 'Ended' : `Ended (exit ${code})`),
+  clients: (count: number): string => (count === 0 ? 'Nobody attached' : count === 1 ? '1 attached' : `${count} attached`),
+  connecting: 'Connecting…',
+  reconnecting: 'Reconnecting…',
+  gone: 'This terminal is closed.',
+  unreachable: (name: string): string => `${name} can't be reached right now.`,
+  backToList: 'All terminals',
+  security: 'A terminal is a full shell on that computer, with your user account’s rights. Anyone who can open Switchboard here (or a paired phone in this profile) can use it.',
+  keys: { esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', up: '↑', down: '↓', left: '←', right: '→', ctrlC: '^C' },
+} as const;
+
 /** D165 · Profiles' words (the rail switcher, Settings → Profiles, Move to profile…). */
 export const PROFILE_WORDS = {
   choose: 'Choose a profile',
@@ -1080,6 +1109,8 @@ export const NEW_WORDS = {
     teammate: { label: 'Teammate', sub: 'A long-lived role in a crew', go: 'Add teammate', icon: 'crew' },
     crew: { label: 'Crew', sub: 'A team of teammates', go: 'Create crew', icon: 'crew' },
     'bring-in': { label: 'From a terminal', sub: 'Bring in a conversation', go: CONTINUE_IN_SWITCHBOARD, icon: 'download' },
+    // D170: a shell on this computer or a paired one.
+    terminal: { label: 'Terminal', sub: 'A shell on a computer', go: 'Open terminal', icon: 'cmd' },
   },
   whichFolder: 'Which project folder?',
   noFolders: 'No project folder yet. Add one in Settings › Advanced › Code projects.',
@@ -1226,6 +1257,7 @@ export const PALETTE_WORDS = {
     newTeammate: 'New teammate',
     newCrew: 'New crew',
     bringIn: 'Bring in a terminal conversation',
+    newTerminal: 'New terminal',
     quickTask: 'task … quick capture',
     searchEverything: 'Search everything',
     classic: 'Switch to the classic theme',

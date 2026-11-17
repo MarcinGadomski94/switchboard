@@ -19,6 +19,7 @@
  * | `/settings[/:section[/:sub]]` | Settings (R): `usage`, `computers`, `phones`, `rules`, `appearance`, `advanced[/<classic section>]` |
  * | `/notes`, `/routines`, `/tasks` | Notes, Routines, Tasks (A) |
  * | `/tools/:id`, `/share` | An embedded tool, a phone's share (R) |
+ * | `/terminals`, `/terminals/:machine/:id` | D170: the terminals, one terminal (`local` = this computer) |
  * | `/more` | The phone's More tab (F: the shell) |
  *
  * Every classic address still opens the same page in v2 (push notifications,
@@ -39,7 +40,9 @@ export type V2SettingsSection = (typeof V2_SETTINGS_SECTIONS)[number];
 
 /** A parsed v2 address. */
 export type V2Route =
-  | { readonly area: 'home' | 'needs-you' | 'agents' | 'projects' | 'crews' | 'results' | 'search' | 'insights' | 'notes' | 'routines' | 'tasks' | 'share' | 'more' }
+  | { readonly area: 'home' | 'needs-you' | 'agents' | 'projects' | 'crews' | 'results' | 'search' | 'insights' | 'notes' | 'routines' | 'tasks' | 'share' | 'more' | 'terminals' }
+  /** D170: one terminal (`machine` `null` = this computer; `local` in the path). */
+  | { readonly area: 'terminal'; readonly machine: string | null; readonly id: string }
   | {
       readonly area: 'agent';
       readonly id: string;
@@ -77,7 +80,7 @@ function isEventId(value: string | undefined): value is string {
   return value !== undefined && /^[1-9][0-9]{0,15}$/.test(value);
 }
 
-const SIMPLE: ReadonlyArray<V2Route['area']> = ['needs-you', 'agents', 'projects', 'crews', 'results', 'search', 'insights', 'notes', 'routines', 'tasks', 'share', 'more'];
+const SIMPLE: ReadonlyArray<V2Route['area']> = ['needs-you', 'agents', 'projects', 'crews', 'results', 'search', 'insights', 'notes', 'routines', 'tasks', 'share', 'more', 'terminals'];
 
 /** Parses a v2 pathname; an unknown one is Home. */
 export function parseV2Route(pathname: string): V2Route {
@@ -97,6 +100,7 @@ export function parseV2Route(pathname: string): V2Route {
   if (head === 'projects' && a && b === 'graph' && parts.length === 3) return { area: 'project-graph', id: a };
   if (head === 'crews' && a && parts.length === 2) return { area: 'crew', id: a };
   if (head === 'tools' && a) return { area: 'tool', id: a };
+  if (head === 'terminals' && a && b && parts.length === 3) return { area: 'terminal', machine: a === 'local' ? null : a, id: b };
   if (head === 'settings') {
     const section = (V2_SETTINGS_SECTIONS as readonly string[]).includes(a ?? '') ? (a as V2SettingsSection) : null;
     return { area: 'settings', section, sub: section ? (b ?? null) : null };
@@ -124,6 +128,8 @@ export function v2Path(route: V2Route): string {
       return `/crews/${enc(route.id)}`;
     case 'tool':
       return `/tools/${enc(route.id)}`;
+    case 'terminal':
+      return `/terminals/${enc(route.machine ?? 'local')}/${enc(route.id)}`;
     case 'settings':
       if (!route.section) return '/settings';
       return `/settings/${route.section}${route.sub ? `/${enc(route.sub)}` : ''}`;

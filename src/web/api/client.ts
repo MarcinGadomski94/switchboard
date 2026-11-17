@@ -1,6 +1,7 @@
 import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { UserProfile, UserProfilesView } from '../../core/user-profiles.ts';
+import type { TerminalInfo, TerminalsView } from '../../core/terminals.ts';
 import type { BackupInspection, BackupLastRun, BackupStatus } from '../../core/backup.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { SearchAnswer } from '../../core/search.ts';
@@ -670,7 +671,20 @@ export function machineApi(machine: string | null) {
     hooks: () => request<HooksStatus>('GET', onMachine(machine, '/api/hooks')),
     installHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/install')),
     removeHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/remove')),
+    // D170: the machine's terminals (its socket: `terminalSocketUrl`).
+    terminals: () => request<TerminalsView>('GET', onMachine(machine, '/api/terminals')),
+    openTerminal: (body: { readonly shell?: string; readonly folderId?: string; readonly cwd?: string; readonly cols?: number; readonly rows?: number }) => request<TerminalInfo>('POST', onMachine(machine, '/api/terminals'), body),
+    terminal: (id: string) => request<TerminalInfo>('GET', onMachine(machine, `/api/terminals/${enc(id)}`)),
+    closeTerminal: (id: string) => request<null>('DELETE', onMachine(machine, `/api/terminals/${enc(id)}`)),
   } as const;
+}
+
+/** D170: the WebSocket URL of terminal `id` on `machine` (`null` = this computer), on this page's origin. */
+export function terminalSocketUrl(machine: string | null, id: string): string {
+  // This file also compiles without the DOM types (the server's tsconfig): read the page's location loosely.
+  const page = (globalThis as { location?: { protocol: string; host: string } }).location ?? { protocol: 'http:', host: '127.0.0.1' };
+  const scheme = page.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${scheme}//${page.host}${onMachine(machine, `/api/terminals/${enc(id)}/socket`)}`;
 }
 
 /** The client's type (for test doubles). */
