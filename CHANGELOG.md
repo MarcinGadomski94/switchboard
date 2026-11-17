@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.41 (2026-11-17)
+
+### Profiles
+- **Move a conversation to another profile:** a conversation's ⋯ menu now has Move to profile… like an agent's (it was left out).
+
 ## 2.4.40 (2026-11-16)
 
 ### Agents
