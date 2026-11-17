@@ -39,6 +39,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET|POST', /^\/api\/terminals$/],
   ['GET|DELETE', /^\/api\/terminals\/[^/]+$/],
   ['GET', /^\/api\/terminals\/[^/]+\/socket$/],
+  // D171: an agent's CLI tab from a paired phone too (switch to CLI mode / back to chat mode; its terminal is the socket above).
+  ['POST|DELETE', /^\/api\/sessions\/[^/]+\/cli-mode$/],
   // Sessions.
   ['GET|POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],

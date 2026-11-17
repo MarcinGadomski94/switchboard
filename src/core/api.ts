@@ -901,6 +901,13 @@ export interface Session {
    */
   readonly review?: ReviewPending | null;
   /**
+   * Additive (D171, `docs/terminals.md` → *CLI mode*): the agent runs its conversation as the
+   * interactive `claude` in a D170 terminal of its computer (`terminalId`; a paired computer's agent:
+   * that computer's terminal, reached through `session.machine`), followed through its hooks like a
+   * hooked session; absent / `null` = chat mode (headless, as before).
+   */
+  readonly cliMode?: { readonly terminalId: string } | null;
+  /**
    * Additive (D163, `docs/mcp.md` → *Sign-in where it happens*): the MCP servers its running
    * CLI reported as needing a sign-in at its latest turn start (`system/init` → `needs-auth`);
    * absent when none (and for a session with no running process).

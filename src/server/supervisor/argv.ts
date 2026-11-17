@@ -127,6 +127,52 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
   ];
 }
 
+/** Input of {@link buildInteractiveClaudeArgs}. */
+export interface InteractiveClaudeArgsInput {
+  /** The conversation (`--resume <id>`; the id never changes). */
+  readonly claudeSessionId: string;
+  readonly name: string;
+  readonly permissionMode: string;
+  readonly model?: string | null;
+  readonly effort?: string | null;
+  readonly standingInstruction?: string | null;
+  readonly mcpArgs?: readonly string[];
+  readonly addDirs?: readonly string[];
+  /**
+   * The D48 hooks for this process only (`--settings <json>`: hooks passed per session, never the
+   * developer's own settings files; D6 / M0.1 verified `--settings` hooks fire, D48's probes ran
+   * them in interactive `claude`).
+   */
+  readonly settings: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * D171 (`docs/terminals.md` → *CLI mode*): the argv of the agent's conversation as the
+ * **interactive** `claude` (the native TUI, in a D170 terminal): the same launch context as
+ * {@link buildClaudeArgs} (the permission mode, `--model` / `--effort`, the standing instruction,
+ * the switchboard MCP tools, the extra folders, `--name`) without the headless surface (no `-p`, no
+ * stream-json, no `--permission-prompt-tool stdio`: the TUI asks itself, and the D48
+ * PermissionRequest hook brings the request to Needs you), resuming the same conversation, plus
+ * the D48 hooks through `--settings`.
+ */
+export function buildInteractiveClaudeArgs(input: InteractiveClaudeArgsInput): string[] {
+  return [
+    '--resume',
+    input.claudeSessionId,
+    '--permission-mode',
+    input.permissionMode,
+    ...(input.model ? ['--model', input.model] : []),
+    ...(input.effort ? ['--effort', input.effort] : []),
+    ...(input.standingInstruction ? ['--append-system-prompt', input.standingInstruction] : []),
+    ...(input.mcpArgs ?? []),
+    ...(input.addDirs ?? []).flatMap((dir) => ['--add-dir', dir]),
+    '--name',
+    input.name,
+    '--settings',
+    JSON.stringify(input.settings),
+  ];
+}
+
 /** Variables that tie a child to a parent Claude Code session (M0.1): never passed on. */
 export function isScrubbedEnvKey(key: string): boolean {
   return key === 'CLAUDECODE' || key === 'CLAUDE_PID' || key === 'CLAUDE_EFFORT' || key.startsWith('CLAUDE_CODE_');

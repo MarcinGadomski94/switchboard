@@ -66,6 +66,10 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   // D106
   'not-a-chat': 409,
   chat: 409,
+  // D171: the CLI tab's refusals (in CLI mode already, a hooked terminal session, a moved one).
+  'cli-mode': 409,
+  hooked: 409,
+  moved: 409,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,

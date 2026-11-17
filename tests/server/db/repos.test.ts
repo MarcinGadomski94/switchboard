@@ -110,6 +110,8 @@ describe('sessions', () => {
       userProfileId: 'default',
       // D166 (0056): nothing to review yet.
       review: null,
+      // D171 (0058): chat mode.
+      cliTerminalId: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

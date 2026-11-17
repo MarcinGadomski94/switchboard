@@ -68,6 +68,9 @@ import { appVersion } from './updates/wire.ts';
 import os from 'node:os';
 import { registerBackupRoutes } from './api/backup.ts';
 import { registerTerminalRoutes } from './api/terminals.ts';
+import { registerCliModeRoutes } from './api/cli-mode.ts';
+import { CliModeService } from './cli-mode/service.ts';
+import { HookedContinuer } from './hooks/continue.ts';
 import { terminalIdleHours } from '../core/terminals.ts';
 import { TerminalService } from './terminals/service.ts';
 import { serveTerminalSocket } from './terminals/socket.ts';
@@ -846,8 +849,21 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
   peers.useTerminals((scope, terminalId, socket) => serveTerminalSocket(terminals, scope, terminalId, socket));
   await registerTerminalRoutes(app, { terminals, folders, peers });
+  // D171 (docs/terminals.md → CLI mode): an agent's CLI tab, its conversation as the interactive claude in one of these terminals.
+  const cliMode = new CliModeService({
+    store: options.store,
+    bus,
+    supervisor,
+    hooks,
+    continuer: new HookedContinuer({ store: options.store, bus, hooks, supervisor }),
+    terminals,
+    onError: (error) => app.log.warn({ err: error }, 'switchboard cli mode'),
+  });
+  registerCliModeRoutes(app, cliMode);
   app.addHook('onReady', async () => {
     terminals.start();
+    // A terminal never outlives Switchboard: an agent still in CLI mode is back in chat mode (idle).
+    await cliMode.recover().catch((error: unknown) => app.log.warn({ err: error }, 'switchboard cli mode'));
   });
   app.addHook('preClose', async () => {
     peers.useTerminals(null);

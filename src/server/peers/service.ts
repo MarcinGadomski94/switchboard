@@ -144,6 +144,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/fresh$/],
   // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.
   ['POST', /^\/api\/sessions\/[^/]+\/continue-in-switchboard$/],
+  // D171: that computer's agent switches to CLI mode / back to chat mode there (the terminal runs on its computer).
+  ['POST', /^\/api\/sessions\/[^/]+\/cli-mode$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/cli-mode$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   // D103: Edit / Remove of a message held on that machine (its supervisor holds it; a peer before D103 answers 404).
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/withdraw$/],
@@ -1394,7 +1397,9 @@ export class PeerService implements PeerHandlers {
       (method === 'POST' && (path === '/api/sessions' || path === '/api/plans/jira/import' || path.startsWith('/api/takeover/') || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
       path.endsWith('/hook') ||
       // D72: stopping a running terminal's claude takes up to its grace time plus the wait for it to leave the registry.
-      path.split('?')[0]?.endsWith('/continue-in-switchboard') === true;
+      path.split('?')[0]?.endsWith('/continue-in-switchboard') === true ||
+      // D171: entering CLI mode may stop a turn; Back to chat mode waits for the CLI to exit, then D72's continue.
+      path.split('?')[0]?.endsWith('/cli-mode') === true;
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
     const snapshot = snapshotOf(method, path, kind);

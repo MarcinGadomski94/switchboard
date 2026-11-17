@@ -579,6 +579,15 @@ export class HookService {
     this.#activity.delete(sessionId);
   }
 
+  /**
+   * D171 (`docs/terminals.md` → *CLI mode*): the conversation `claudeSessionId` runs as an interactive
+   * `claude` in a Switchboard terminal now (the session is hooked again): its hooks are followed (it
+   * leaves the set of conversations Switchboard runs itself, whose hook calls are answered at once).
+   */
+  adopted(claudeSessionId: string): void {
+    this.#supervised.delete(claudeSessionId);
+  }
+
   /** `true` when `sessionId` is an open hooked session. */
   /** D75: `true` while a hooked session's waiter is held (a message sent now reaches the agent at its next idle). */
   async hasWaiter(sessionId: string): Promise<boolean> {

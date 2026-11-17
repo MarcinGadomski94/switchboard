@@ -140,7 +140,9 @@ const SESSION_KEYS = keys<Session>()([
   'mcpSignIn',
   // additive, D166 (only while the agent has file-changing turns not reviewed yet)
   'review',
-]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt' && key !== 'deletesAt' && key !== 'keptReason' && key !== 'mcpSignIn' && key !== 'review');
+  // additive, D171 (only while the agent is in CLI mode)
+  'cliMode',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged' && key !== 'kind' && key !== 'lookAt' && key !== 'deletesAt' && key !== 'keptReason' && key !== 'mcpSignIn' && key !== 'review' && key !== 'cliMode');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',

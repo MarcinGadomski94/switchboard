@@ -189,6 +189,11 @@ export interface SessionRecord {
    * edits are read after (`docs/inbox.md` → *To review*); `null` / absent = nothing yet.
    */
   readonly review?: SessionReview | null;
+  /**
+   * D171 (0058): the D170 terminal running this agent's interactive `claude` while it is in CLI mode
+   * (`docs/terminals.md` → *CLI mode*); `null` / absent = chat mode.
+   */
+  readonly cliTerminalId?: string | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -287,6 +292,7 @@ const SPEC: TableSpec<SessionRecord> = {
     turnWait: ['turn_wait', 'json'],
     userProfileId: ['user_profile_id', 'text'],
     review: ['review', 'json'],
+    cliTerminalId: ['cli_terminal_id', 'text'],
   },
 };
 

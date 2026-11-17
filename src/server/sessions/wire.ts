@@ -317,6 +317,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     ...mcpSignInOf(store, record),
     // D166: its file-changing turns not reviewed yet (absent when none; an archived agent's are not shown).
     ...(record.closedAt === null && readSessionReview(record.review).pending ? { review: readSessionReview(record.review).pending } : {}),
+    // D171: in CLI mode, the terminal running its interactive claude (absent in chat mode).
+    ...(record.cliTerminalId ? { cliMode: { terminalId: record.cliTerminalId } } : {}),
   };
 }
 

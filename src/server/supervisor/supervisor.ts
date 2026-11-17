@@ -42,8 +42,8 @@ import { sessionInstruction } from '../sessions/instruction.ts';
 import { CHAT_PERMISSION_MODE, CHAT_REMOTE_REFUSAL, CHAT_TERMINAL_REFUSAL, LOOK_AT_UPDATED_DIVIDER, chatRefusal, chatRefusedLabel, isSwitchboardTool } from '../../core/chats.ts';
 // Team (D100) hook: a member session's charter rides on the standing instruction (docs/team-removal.md).
 import { teamAccessEnv } from '../team/hooks.ts';
-import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
-import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
+import { type AgentMcpLaunch, claudeMcpArgs } from '../todos/agent-mcp.ts';
+import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildInteractiveClaudeArgs, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
 import type { ProcessExit } from './process.ts';
 import type { AgentProcess } from '../cli/agent-process.ts';
@@ -434,7 +434,13 @@ export type SupervisorErrorCode =
   | 'not-held'
   /** D106: the action is a chat's (folders to look at), or a session's that a chat refuses (Remote Control, the terminal, a take-over). */
   | 'not-a-chat'
-  | 'chat';
+  | 'chat'
+  /** D171: the session is in CLI mode already. */
+  | 'cli-mode'
+  /** D171: a hooked terminal session started outside Switchboard (it already runs in its own terminal). */
+  | 'hooked'
+  /** D171: the session moved to another computer. */
+  | 'moved';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -2600,6 +2606,106 @@ export class SessionSupervisor {
     }
     await this.#emitSession(sessionId);
     return this.#get(sessionId);
+  }
+
+  // ── CLI mode (D171, docs/terminals.md → CLI mode) ──────────────────────
+
+  /**
+   * D171: why session `session` cannot switch to CLI mode now, `null` when it can (the CLI tab's
+   * refusal, the route's 409 message): Claude Code agents only; never a conversation (D106: it stays
+   * in plan mode in Switchboard); never a hooked terminal session started outside Switchboard (it
+   * already runs in its own terminal); never closed or moved; it needs its folder.
+   */
+  cliModeRefusal(session: SessionRecord): { readonly code: SupervisorErrorCode; readonly message: string } | null {
+    const name = session.title ?? session.name;
+    if (session.cliTerminalId) return { code: 'cli-mode', message: `${name} is in CLI mode already` };
+    if (session.provider !== 'claude') return { code: 'not-available', message: `The CLI tab is not available for ${CLI_LABELS[session.provider]} agents yet` };
+    if (session.kind === 'chat') return { code: 'chat', message: 'A conversation stays in Switchboard (it is read-only, in plan mode)' };
+    if (session.hooked) return { code: 'hooked', message: `${name} already runs in its own terminal` };
+    if (session.closedAt !== null) return { code: 'closed', message: `${name} is archived: reopen it first` };
+    if (session.movedTo) return { code: 'moved', message: `${name} moved to ${session.movedTo.machineName}` };
+    if (!session.cwd) return { code: 'folder-missing', message: `${name} has no working folder` };
+    return null;
+  }
+
+  /**
+   * D171: the interactive `claude` of session `sessionId` (`buildInteractiveClaudeArgs`), with the same
+   * launch context as {@link #spawn}: the CLI command, the account's environment (D63: its config dir),
+   * the build defaults and the session marker (D127), a crew member's access values (D100-T2), the
+   * standing instruction (D64), the switchboard MCP tools (D68), the model / effort (D31), the extra
+   * folders (D152) and the observed permission mode, plus `settings` (the D48 hooks for this process).
+   */
+  async cliModeLaunch(sessionId: string, settings: Readonly<Record<string, unknown>>): Promise<{ readonly command: readonly string[]; readonly args: readonly string[]; readonly env: Record<string, string>; readonly cwd: string }> {
+    const session = await this.#get(sessionId);
+    const refusal = this.cliModeRefusal(session);
+    if (refusal) throw new SupervisorError(refusal.code, refusal.message);
+    const cwd = session.cwd as string;
+    const profileEnv = (await this.#accounts?.envFor(session.profileId, 'claude')) ?? {};
+    const teamAccess = await teamAccessEnv(this.#store, session.id);
+    let agentMcp: AgentMcpLaunch | null = null;
+    try {
+      agentMcp = (await this.#agentMcp?.(session)) ?? null;
+    } catch (error) {
+      this.#onError(error);
+    }
+    const observed = session.observedPermissionMode;
+    const args = buildInteractiveClaudeArgs({
+      claudeSessionId: session.claudeSessionId,
+      name: session.title ?? session.name,
+      permissionMode: observed && observed !== 'default' ? observed : DEFAULT_PERMISSION_MODE,
+      model: session.model,
+      effort: session.effort,
+      standingInstruction: await sessionInstruction(this.#store, session),
+      ...(agentMcp ? { mcpArgs: claudeMcpArgs(agentMcp) } : {}),
+      addDirs: session.extraDirs ?? [],
+      settings,
+    });
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries({ ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id })) {
+      if (typeof value === 'string') env[key] = value;
+    }
+    return { command: this.#command, args, env, cwd };
+  }
+
+  /**
+   * D171: session `sessionId` leaves Switchboard's headless process for CLI mode: a running turn is
+   * refused (`turn-running`) unless `stopTurn` (then the D7 interrupt first); its process is stopped as
+   * Continue in terminal does (`detach`), and the record becomes hooked (D48: its terminal claude is
+   * followed through its hooks) and not attached. The caller starts the terminal and stores its id.
+   * @throws {SupervisorError} the {@link cliModeRefusal} codes, `turn-running`, `closing`.
+   */
+  async enterCliMode(sessionId: string, options: { readonly stopTurn?: boolean } = {}): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    const refusal = this.cliModeRefusal(session);
+    if (refusal) throw new SupervisorError(refusal.code, refusal.message);
+    const live = this.#live.get(sessionId);
+    if (live && !live.stopping && live.proc.running && live.recorder.turnBusy()) {
+      if (!options.stopTurn) throw new SupervisorError('turn-running', `${session.title ?? session.name} is in the middle of a turn: wait for it to end, or stop the turn first`);
+      await this.interrupt(sessionId);
+    }
+    const now = this.#live.get(sessionId);
+    if (now) await this.#stop(now, 'detach');
+    await this.#store.sessions.update(sessionId, { hooked: true, attached: false, status: 'idle', pid: null });
+    await this.#setMainAgentStatus(sessionId, 'idle');
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
+  }
+
+  /**
+   * D171: session `sessionId` is back in chat mode **without** a process (its terminal never started,
+   * or it ended with Switchboard: a restart): not hooked, attached, idle, its terminal id cleared, with
+   * a `label` line in its chat. The next message resumes it headless as usual.
+   */
+  async restoreChatMode(sessionId: string, label: string): Promise<void> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) return;
+    // `stopReason` cleared too: the restart recovery would take a `detach` left from entering CLI mode for a cut-short Continue in terminal.
+    await this.#store.sessions.update(sessionId, { hooked: false, attached: true, detachedAt: null, cliTerminalId: null, stopReason: null, ...(session.status === 'run' || session.status === 'need' ? { status: 'idle' as const } : {}), pid: null });
+    if (session.status === 'run' || session.status === 'need') await this.#setMainAgentStatus(sessionId, 'idle');
+    await this.#recordStandalone(sessionId, 'continued', label);
+    await this.#emitSession(sessionId);
   }
 
   // ── remote sessions continued locally (D25, docs/supervisor.md → Teleport) ─

@@ -76,6 +76,8 @@ interface Terminal {
   readonly clients: Set<TerminalClient>;
   exited: { code: number | null; signal: number | null } | null;
   readonly disposers: Array<{ dispose(): void }>;
+  /** D171: told once when the program ends. */
+  onEnd?: ((why: 'exited' | 'closed' | 'idle' | 'stopping') => void) | undefined;
 }
 
 /** Options of {@link TerminalService}. */
@@ -244,7 +246,16 @@ export class TerminalService {
    * Starts `program` in folder `cwd` (already checked by the caller) for profile `owner`.
    * @throws {TerminalError} 409 `too-many` at the cap, 503 `unavailable` when the pseudo-terminal cannot load or start.
    */
-  async create(input: { readonly program: TerminalProgram; readonly cwd: string; readonly owner: string | null; readonly cols: number; readonly rows: number; readonly env?: Readonly<Record<string, string>> }): Promise<TerminalInfo> {
+  async create(input: {
+    readonly program: TerminalProgram;
+    readonly cwd: string;
+    readonly owner: string | null;
+    readonly cols: number;
+    readonly rows: number;
+    readonly env?: Readonly<Record<string, string>>;
+    /** D171: called once when the program ends (it exited, or the terminal was closed / swept / stopped). */
+    readonly onEnd?: (why: 'exited' | 'closed' | 'idle' | 'stopping') => void;
+  }): Promise<TerminalInfo> {
     if (this.#closed) throw new TerminalError(503, 'stopping', 'Switchboard is stopping');
     if (this.#terminals.size >= this.max) throw new TerminalError(409, 'too-many', `At most ${this.max} terminals can be open on this computer. Close one first.`);
     let spawn: PtySpawner;
@@ -260,7 +271,7 @@ export class TerminalService {
       throw new TerminalError(503, 'unavailable', `${input.program.title} could not start: ${error instanceof Error ? error.message : String(error)}`);
     }
     const now = this.#now();
-    const terminal: Terminal = { id: randomUUID(), owner: input.owner, program: input.program, cwd: input.cwd, createdAt: now, cols: input.cols, rows: input.rows, lastActiveAt: now, unattendedSince: now, pty, scrollback: '', clients: new Set(), exited: null, disposers: [] };
+    const terminal: Terminal = { id: randomUUID(), owner: input.owner, program: input.program, cwd: input.cwd, createdAt: now, cols: input.cols, rows: input.rows, lastActiveAt: now, unattendedSince: now, pty, scrollback: '', clients: new Set(), exited: null, disposers: [], ...(input.onEnd ? { onEnd: input.onEnd } : {}) };
     const limit = this.#o.scrollbackChars ?? TERMINAL_SCROLLBACK_CHARS;
     terminal.disposers.push(
       pty.onData((data) => {
@@ -271,6 +282,7 @@ export class TerminalService {
       pty.onExit((event) => {
         terminal.exited = { code: typeof event.exitCode === 'number' ? event.exitCode : null, signal: typeof event.signal === 'number' && event.signal !== 0 ? event.signal : null };
         this.#broadcast(terminal, { t: 'exit', code: terminal.exited.code, signal: terminal.exited.signal });
+        this.#ended(terminal, 'exited');
       }),
     );
     this.#terminals.set(terminal.id, terminal);
@@ -338,6 +350,8 @@ export class TerminalService {
     }
     terminal.clients.clear();
     for (const disposer of terminal.disposers) disposer.dispose();
+    // D171: the reason first (an exit the kill causes is this end, not one of its own).
+    this.#ended(terminal, reason);
     if (!terminal.exited) {
       try {
         terminal.pty.kill();
@@ -345,6 +359,42 @@ export class TerminalService {
         this.#o.onError?.(error);
       }
     }
+  }
+
+  /** D171: the terminal's `onEnd`, once. */
+  #ended(terminal: Terminal, why: 'exited' | 'closed' | 'idle' | 'stopping'): void {
+    const onEnd = terminal.onEnd;
+    if (!onEnd) return;
+    terminal.onEnd = undefined;
+    try {
+      onEnd(why);
+    } catch (error) {
+      this.#o.onError?.(error);
+    }
+  }
+
+  /** D171: whether terminal `id` is open (any profile). */
+  has(id: string): boolean {
+    return this.#terminals.has(id);
+  }
+
+  /** D171: types `data` into terminal `id` regardless of profile (the agent's own CLI-mode terminal; Switchboard's own call). */
+  write(id: string, data: string): void {
+    const terminal = this.#terminals.get(id);
+    if (!terminal || terminal.exited) return;
+    terminal.pty.write(data);
+  }
+
+  /** D171: whether terminal `id`'s program has exited (or the terminal is gone). */
+  exited(id: string): boolean {
+    const terminal = this.#terminals.get(id);
+    return !terminal || terminal.exited !== null;
+  }
+
+  /** D171: closes terminal `id` regardless of profile (Switchboard's own call: Back to chat mode). */
+  closeAny(id: string): void {
+    const terminal = this.#terminals.get(id);
+    if (terminal) this.#end(terminal, 'closed');
   }
 
   /** Every terminal ends (Switchboard stops). */
