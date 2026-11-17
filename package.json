@@ -45,6 +45,8 @@
     "service:uninstall": "node tools/service/uninstall.ts",
     "frame-helper:safari": "node tools/frame-helper/build-safari.ts",
     "release:package": "node tools/release/package.ts",
+    "backup": "node tools/backup/cli.ts backup",
+    "restore": "node tools/backup/cli.ts restore",
     "version": "node tools/release/server-json.ts"
   },
   "dependencies": {

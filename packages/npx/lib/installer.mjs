@@ -261,6 +261,9 @@ Usage: npx @marcingadomski94/switchboard [options]
   --purge            with --uninstall: also remove the data folder
   --help             this text
 
+  backup [--out <file or folder>]       an encrypted backup of everything (asks for a passphrase)
+  restore <file> [--map <old>=<new>]... restore a backup into this computer's Switchboard (stopped)
+
 Running it again upgrades to the latest release or repairs the installed one.
 No sudo, no shell profile changes, no telemetry.`;
 
@@ -632,6 +635,30 @@ class Installer {
     return names.every((name) => /^(switchboard-|\.staging-)/.test(name) || name === 'switchboard.log' || name === 'switchboard.pid');
   }
 
+  /**
+   * D168: `switchboard backup|restore …` runs the installed app's own tool (`tools/backup/cli.ts`,
+   * the newest installed version that has it), with this terminal (the passphrase is asked there).
+   * @param {readonly string[]} argv the command and its arguments
+   * @returns {Promise<number>} its exit code
+   */
+  async runTool(argv) {
+    await this.canonical();
+    const candidates = [
+      ...(await readdir(this.dir).catch(() => [])).filter((name) => name.startsWith('switchboard-')).map((name) => this.lib.join(this.dir, name)),
+      ...(await readdir(this.lib.join(this.dataDir, 'versions')).catch(() => [])).map((name) => this.lib.join(this.dataDir, 'versions', name)),
+    ];
+    const withTool = [];
+    for (const candidate of candidates) if (await exists(this.lib.join(candidate, 'tools', 'backup', 'cli.ts'))) withTool.push(candidate);
+    const versionOf = (/** @type {string} */ dir) => releaseVersion(this.lib.basename(dir).replace(/^switchboard-/, '')) ?? '0.0.0';
+    const newest = withTool.sort((a, b) => compareVersions(versionOf(b), versionOf(a)))[0];
+    if (!newest) fail(`no installed Switchboard with backup and restore was found in ${this.dir} (update it first)`);
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [this.lib.join('tools', 'backup', 'cli.ts'), ...argv], { cwd: newest, env: this.env, shell: false, stdio: 'inherit' });
+      child.once('error', reject);
+      child.once('close', (code) => resolve(code ?? 1));
+    });
+  }
+
   async uninstall() {
     await this.canonical();
     this.log(`Uninstalling Switchboard from ${this.dir}`);
@@ -694,6 +721,20 @@ class Installer {
  */
 export async function main(argv, io = {}) {
   const log = io.log ?? ((line) => console.log(line));
+  // D168: backup and restore run the installed app's own tool.
+  if (argv[0] === 'backup' || argv[0] === 'restore') {
+    const env = io.env ?? process.env;
+    try {
+      const installer = new Installer(/** @type {Options} */ (parseArgs([])), { env, platform: process.platform, home: env['HOME'] && process.platform !== 'win32' ? env['HOME'] : os.homedir(), log, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) });
+      return await installer.runTool(argv);
+    } catch (error) {
+      if (error instanceof InstallError) {
+        console.error(`switchboard ${argv[0]}: ${error.message}`);
+        return 1;
+      }
+      throw error;
+    }
+  }
   const options = parseArgs(argv);
   if (typeof options === 'string') {
     console.error(`switchboard install: ${options}`);
