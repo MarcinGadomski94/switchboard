@@ -65,6 +65,10 @@ import { UsageService } from './insights/usage.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
 import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
+import os from 'node:os';
+import { registerBackupRoutes } from './api/backup.ts';
+import { BackupService, type BackupServiceOptions } from './backup/service.ts';
+import { defaultSecretStore } from './team/access/secret-store.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
 import { UserProfileService } from './user-profiles/service.ts';
@@ -229,6 +233,12 @@ export interface AppOptions {
   readonly ci?: PrWatcher;
   /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
   readonly peerSearchTimeoutMs?: number;
+  /**
+   * D168 (`docs/backup.md`): what Settings → Backup needs beyond the data folder: the restart a
+   * restore takes (main.ts: the login service's one start), the keychain (default: the OS's,
+   * in-memory under tests), a cheaper key derivation (tests). The demo has no backup.
+   */
+  readonly backup?: Partial<Pick<BackupServiceOptions, 'restart' | 'restartsItself' | 'secrets' | 'kdf' | 'env' | 'home' | 'version'>>;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
   /**
@@ -821,6 +831,29 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, review, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   apiContextRef = apiContext;
   await registerApiRoutes(app, apiContext);
+  // D168 (docs/backup.md): Settings → Backup (local only; never in demo mode).
+  if (!options.config.demo) {
+    const backup = new BackupService({
+      dataDir: options.config.dataDir,
+      env: options.backup?.env ?? process.env,
+      home: options.backup?.home ?? os.homedir(),
+      version: options.backup?.version ?? (await appVersion().catch(() => '0.0.0')),
+      settings: options.store.settings,
+      secrets: options.backup?.secrets === undefined ? defaultSecretStore() : options.backup.secrets,
+      ...(options.backup?.restart ? { restart: options.backup.restart } : {}),
+      ...(options.backup?.restartsItself ? { restartsItself: options.backup.restartsItself } : {}),
+      ...(options.backup?.kdf ? { kdf: options.backup.kdf } : {}),
+      onError: (error) => app.log.warn({ err: error }, 'switchboard backup: the automatic backup failed'),
+    });
+    await registerBackupRoutes(app, backup);
+    app.addHook('onReady', async () => {
+      backup.start();
+    });
+    app.addHook('onClose', async () => {
+      backup.stop();
+      await backup.idle();
+    });
+  }
   // D132: Team, Plans and Project memory graduated (always on); their stored 1.x switches go.
   await forgetGraduatedSwitches(options.store.settings);
   // ── Team (D100) hook: the Team service and its routes (docs/team-removal.md). ──

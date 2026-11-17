@@ -18,7 +18,10 @@ import { createLoginService } from './service/login-service.ts';
 import { loadServiceRedirect } from './service/target.ts';
 import { loadUpdateConfig } from './updates/config.ts';
 import type { UpdateService } from './updates/service.ts';
-import { createUpdateService } from './updates/wire.ts';
+import { appVersion, createRestarter, createUpdateService } from './updates/wire.ts';
+import os from 'node:os';
+import { applyPendingRestore } from './backup/restore.ts';
+import { defaultSecretStore } from './team/access/secret-store.ts';
 import { machineUpdateOf } from '../core/updates.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
@@ -59,6 +62,14 @@ async function main(): Promise<void> {
   // D55 (docs/updates.md): the updater's variables (off, repo, test redirects).
   const updateConfig = loadUpdateConfig(process.env, { serviceRedirect: serviceRedirect !== null });
   if (config.demo) assertDemoDataDir(config.dataDir);
+  // D168 (docs/backup.md → Restoring): a restore Settings prepared is applied before anything opens the data folder.
+  if (!config.demo) {
+    const report = await applyPendingRestore({ dataDir: config.dataDir, env: process.env, home: os.homedir(), version: await appVersion().catch(() => '0.0.0'), secrets: defaultSecretStore() }).catch((error: unknown) => {
+      console.error('switchboard backup: the prepared restore could not be applied:', error);
+      return null;
+    });
+    if (report) console.info(report.ok ? `switchboard backup: restored ${report.agents} agents from ${report.fromMachine ?? 'a backup'}` : `switchboard backup: the restore failed, the data is as it was: ${report.error ?? ''}`);
+  }
   const token = await loadOrCreateToken(config.dataDir);
   const store = await openStore(storeFile(config.dataDir));
   // D95: WAL checkpoint + optimize while the database is idle (docs/performance.md).
@@ -184,7 +195,9 @@ async function main(): Promise<void> {
     const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name, remoteInbox: () => peers.remoteInbox() });
     // D109 (docs/ci.md): the shared PR watcher; its timer starts once the port is ours. The demo's worktrees are not real.
     const ci = createPrWatcher(config, store, bus, systemItems, supervisor, hooks, worktrees);
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, ...(usage ? { usage } : {}), logger: true, ...(config.requestLogs ? { requestLogs: true } : {}) });
+    // D168: a restore restarts Switchboard the way an update does (the login service's one start).
+    const restarter = createRestarter({ config, redirect: serviceRedirect, exit: () => requestExit(), testUnderService: updateConfig.testUnderService });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ci, backup: { restart: restarter.restart, restartsItself: restarter.restartsItself }, ...(usage ? { usage } : {}), logger: true, ...(config.requestLogs ? { requestLogs: true } : {}) });
     appLog = app.log;
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.

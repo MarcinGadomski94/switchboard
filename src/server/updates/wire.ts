@@ -12,6 +12,29 @@ import { npmCi, resolveNpm } from './npm.ts';
 import { type RestartEnvironment, defaultManager, detectRestartMode, restartIntoService } from './restart.ts';
 import { type UpdateItems, UpdateService } from './service.ts';
 
+/**
+ * D168: the restart a restore takes, the updater's own (the login service's one start, D140):
+ * `restartsItself` says whether this process runs under the login service; `restart` asks for the
+ * start and lets this process end (`exit`).
+ */
+export function createRestarter(options: { readonly config: ServerConfig; readonly redirect: ServiceRedirect | null; readonly exit: () => void; readonly env?: NodeJS.ProcessEnv; readonly testUnderService?: boolean }): { readonly restartsItself: () => Promise<boolean>; readonly restart: () => Promise<void> } {
+  const env = options.env ?? process.env;
+  const location = serviceLocation({ platform: process.platform, dataDir: options.config.dataDir, env, redirect: options.redirect });
+  const restartEnv: RestartEnvironment = {
+    location,
+    manager: options.redirect?.manager ?? defaultManager(location),
+    env,
+    pid: process.pid,
+    execArgv: process.execArgv,
+    uid: currentUid(),
+    ...(options.testUnderService ? { testUnderService: true } : {}),
+  };
+  return {
+    restartsItself: async () => (await detectRestartMode(restartEnv)) === 'service',
+    restart: () => restartIntoService({ ...restartEnv, exit: options.exit, log: updatePaths(options.config.dataDir).log }),
+  };
+}
+
 /** The version in `<appDir>/package.json` (startup read). */
 export async function appVersion(appDir: string = APP_DIR): Promise<string> {
   const parsed = JSON.parse(await readFile(path.join(appDir, 'package.json'), 'utf8')) as { version?: unknown };

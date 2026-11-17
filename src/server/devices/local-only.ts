@@ -242,6 +242,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   [WRITE, /^\/api\/mcp\/cli\/[^/]+\/servers(?:\/.*)?$/],
   // D163: an agent's MCP sign-in and its reconnect (the sign-in's localhost callback is on this computer, like /api/mcp/auth).
   ['POST', /^\/api\/sessions\/[^/]+\/mcp-sign-in\/[^/]+(?:\/reconnect)?$/],
+  // D168: backup and restore (the whole setup, its secrets in an encrypted file): this computer only.
+  ['*', /^\/api\/backup(?:\/.*)?$/],
   // Updates: anything but D140's check / install / dismiss (allowed above); Start at login.
   [WRITE, /^\/api\/updates\/(?!(?:check|install|dismiss)$).+$/],
   ['PUT', /^\/api\/service$/],
