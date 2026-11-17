@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.42 (2026-11-17)
+
+### v2 theme
+- **Your message bubbles keep your line breaks:** each Enter you typed is a new line in the bubble, blank lines stay paragraphs; Markdown (bold, lists, code) still renders.
+
 ## 2.4.41 (2026-11-17)
 
 ### Profiles
