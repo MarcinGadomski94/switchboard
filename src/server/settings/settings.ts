@@ -1,4 +1,5 @@
 import { open } from 'node:fs/promises';
+import { TERMINAL_IDLE_MAX_HOURS } from '../../core/terminals.ts';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -98,6 +99,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       // D127: the idle stop of a session's leftover processes (0 = off).
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < IDLE_STOP_MIN_MINUTES || raw > IDLE_STOP_MAX_MINUTES) {
         errors.push({ field: key, message: `${key} must be a whole number ${IDLE_STOP_MIN_MINUTES}–${IDLE_STOP_MAX_MINUTES} (0 = off)` });
+        continue;
+      }
+    } else if (key === 'terminals.idleHours') {
+      // D170: an unattended terminal's lifetime (0 = never).
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw > TERMINAL_IDLE_MAX_HOURS) {
+        errors.push({ field: key, message: `${key} must be a whole number 0–${TERMINAL_IDLE_MAX_HOURS} (0 = never)` });
         continue;
       }
     } else if (key === 'sessions.archiveDays') {

@@ -1,5 +1,6 @@
 import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { ATTACHMENT_UPLOAD_BODY_MAX } from '../../core/attachments.ts';
 import { wantsDeltas } from '../../core/agent-delta.ts';
@@ -53,6 +54,12 @@ export interface PeerHandlers {
   sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D165 · `POST /peer/v1/user-profiles`: the caller's profile records (merged; a full exchange answers every record). */
   userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /**
+   * D170 · `GET /peer/v1/terminals/{id}/socket` (WebSocket): the caller's browser attaches to a terminal
+   * of this computer, in the profile the caller's request works in (`null`: none named, everything).
+   * Closes the socket itself when the terminal is not there.
+   */
+  terminalSocket(machine: MachineRecord, terminalId: string, profile: string | null, socket: import('ws').WebSocket): void;
 }
 
 /** D71: body limit of the sidebar exchange (a whole layout's records). */
@@ -133,6 +140,14 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   app.post('/peer/v1/user-profiles', async (request, reply) => {
     const answer = await handlers.userProfiles(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+  // D170: a terminal's socket for the caller's browser (the same guard ran on the upgrade: Host, no Origin, the bearer).
+  app.register(websocket);
+  app.register(async (scope) => {
+    scope.get<{ Params: { id: string } }>('/peer/v1/terminals/:id/socket', { websocket: true }, (socket, request) => {
+      const profile = request.headers['x-switchboard-user-profile'];
+      handlers.terminalSocket(request.peerMachine as MachineRecord, request.params.id, typeof profile === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(profile) ? profile : null, socket);
+    });
   });
   app.get<{ Querystring: { delta?: string } }>('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();

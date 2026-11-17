@@ -211,4 +211,9 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
     if (!isPublic && !hasValidTokenCookie(request, token)) return deny(reply, 401, 'unauthorized');
     return undefined;
   });
+  // D170: a WebSocket upgrade answered without switching protocols (refused by the guard, a 404, …):
+  // its socket is not one the HTTP server tracks, so it is ended here, never left open.
+  app.addHook('onResponse', async (request, reply) => {
+    if (request.headers.upgrade !== undefined && reply.statusCode !== 101) request.raw.socket?.destroy();
+  });
 }

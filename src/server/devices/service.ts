@@ -385,6 +385,12 @@ export class DeviceService {
       markDeviceRequest(req);
       app.routing(req, res);
     });
+    // D170: a terminal's WebSocket (wss through `tailscale serve`): marked as a device request like every
+    // other, then handed to the app's upgrade handling, so the device guard decides on it too.
+    server.on('upgrade', (req, socket, head) => {
+      markDeviceRequest(req);
+      app.server.emit('upgrade', req, socket, head);
+    });
     server.on('connection', (socket: Socket) => {
       this.#sockets.add(socket);
       socket.once('close', () => this.#sockets.delete(socket));

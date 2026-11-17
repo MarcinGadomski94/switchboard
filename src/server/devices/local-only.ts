@@ -35,6 +35,10 @@ const WRITE = 'POST|PUT|DELETE|PATCH';
 export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D165: the profiles list (a phone works in the profile Settings → Devices gives it).
   ['GET', /^\/api\/user-profiles$/],
+  // D170 (developer ruling): terminals from a paired phone too (list, open, one, its socket, close), in the phone's profile.
+  ['GET|POST', /^\/api\/terminals$/],
+  ['GET|DELETE', /^\/api\/terminals\/[^/]+$/],
+  ['GET', /^\/api\/terminals\/[^/]+\/socket$/],
   // Sessions.
   ['GET|POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],

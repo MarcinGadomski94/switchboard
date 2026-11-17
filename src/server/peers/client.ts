@@ -648,6 +648,37 @@ export class PeerConnection {
   }
 
   /**
+   * D170 · opens a WebSocket to the peer (`path` under `/peer/v1`, e.g. a terminal's socket) with
+   * this pair's bearer token and the profile the local request works in (Node's built-in
+   * WebSocket; its non-standard `headers` option carries them). Resolves once open.
+   * @throws {PeerUnreachableError} no address, or the peer refused / could not be reached.
+   */
+  async openSocket(path: string, profile: string | null, options: { readonly timeoutMs?: number } = {}): Promise<WebSocket> {
+    const target = await this.#options.target();
+    if (!target) throw new PeerUnreachableError('the machine is not paired');
+    if (!target.address) throw new PeerUnreachableError('the machine has not told an address (its peer listener is off)');
+    const headers: Record<string, string> = { authorization: `Bearer ${target.token}`, ...(profile ? { [USER_PROFILE_HEADER]: profile } : {}) };
+    const Socket = WebSocket as unknown as new (url: string, init: { headers: Record<string, string> }) => WebSocket;
+    const socket = new Socket(`ws://${target.address}${path}`, { headers });
+    socket.binaryType = 'arraybuffer';
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        socket.close();
+        reject(new PeerUnreachableError(`${target.address} did not open the socket in time`));
+      }, options.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS);
+      socket.addEventListener('open', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+      socket.addEventListener('error', () => {
+        clearTimeout(timer);
+        reject(new PeerUnreachableError(`${target.address} refused or dropped the socket`));
+      }, { once: true });
+    });
+    return socket;
+  }
+
+  /**
    * D57: a GET whose answer is bytes (an attachment the peer serves): the body is
    * not parsed, and {@link PEER_RAW_HEADERS} come along. Throws
    * {@link PeerUnreachableError} like {@link request}.

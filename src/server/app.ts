@@ -67,6 +67,10 @@ import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
 import os from 'node:os';
 import { registerBackupRoutes } from './api/backup.ts';
+import { registerTerminalRoutes } from './api/terminals.ts';
+import { terminalIdleHours } from '../core/terminals.ts';
+import { TerminalService } from './terminals/service.ts';
+import { serveTerminalSocket } from './terminals/socket.ts';
 import { BackupService, type BackupServiceOptions } from './backup/service.ts';
 import { defaultSecretStore } from './team/access/secret-store.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
@@ -239,6 +243,8 @@ export interface AppOptions {
    * in-memory under tests), a cheaper key derivation (tests). The demo has no backup.
    */
   readonly backup?: Partial<Pick<BackupServiceOptions, 'restart' | 'restartsItself' | 'secrets' | 'kdf' | 'env' | 'home' | 'version'>>;
+  /** D170: the terminals (tests pass their own, e.g. with a fake home or a short idle limit). */
+  readonly terminals?: TerminalService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
   /**
@@ -831,6 +837,22 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, review, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
   apiContextRef = apiContext;
   await registerApiRoutes(app, apiContext);
+  // D170 (docs/terminals.md): terminals on this computer (and, through the peer link, on a paired one).
+  const terminals =
+    options.terminals ??
+    new TerminalService({
+      idleMs: async () => terminalIdleHours(await options.store.settings.get('terminals.idleHours')) * 3600_000,
+      onError: (error) => app.log.warn({ err: error }, 'switchboard terminals'),
+    });
+  peers.useTerminals((scope, terminalId, socket) => serveTerminalSocket(terminals, scope, terminalId, socket));
+  await registerTerminalRoutes(app, { terminals, folders, peers });
+  app.addHook('onReady', async () => {
+    terminals.start();
+  });
+  app.addHook('preClose', async () => {
+    peers.useTerminals(null);
+    terminals.closeAll();
+  });
   // D168 (docs/backup.md): Settings → Backup (local only; never in demo mode).
   if (!options.config.demo) {
     const backup = new BackupService({

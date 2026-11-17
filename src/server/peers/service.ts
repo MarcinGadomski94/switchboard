@@ -156,6 +156,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/chats$/],
   ['PUT', /^\/api\/chats\/[^/]+\/look-at$/],
   ['DELETE', /^\/api\/chats\/[^/]+$/],
+  // D170: that computer's terminals (list, open, one, close); their sockets go through `/peer/v1/terminals/{id}/socket`.
+  ['GET', /^\/api\/terminals(?:\/[^/]+)?$/],
+  ['POST', /^\/api\/terminals$/],
+  ['DELETE', /^\/api\/terminals\/[^/]+$/],
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/questions\/batch\/[^/]+\/answers$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],
@@ -1529,6 +1533,35 @@ export class PeerService implements PeerHandlers {
     if (typeof enabled !== 'boolean') throw new PeerError(422, 'invalid', 'the body must be { enabled: true | false }');
     await this.#sidebar.setEnabled(id, enabled);
     return this.#machine(this.#records.get(id) ?? record);
+  }
+
+  // ── D170 · terminals (docs/terminals.md → Paired computers) ──
+
+  #terminalHost: ((scope: string | null, terminalId: string, socket: import('ws').WebSocket) => void) | null = null;
+
+  /** D170: serves a terminal socket of this computer (set by the app); without one the socket closes at once (4404). */
+  useTerminals(host: ((scope: string | null, terminalId: string, socket: import('ws').WebSocket) => void) | null): void {
+    this.#terminalHost = host;
+  }
+
+  /** D170 · `GET /peer/v1/terminals/{id}/socket`: the caller's browser attaches to one of this computer's terminals, in its profile. */
+  terminalSocket(_machine: MachineRecord, terminalId: string, profile: string | null, socket: import('ws').WebSocket): void {
+    if (!this.#terminalHost) {
+      socket.close(4404, 'not found');
+      return;
+    }
+    this.#terminalHost(profile ?? '*', terminalId, socket);
+  }
+
+  /**
+   * D170: opens the socket of terminal `terminalId` on paired computer `machineId` for a browser of
+   * this computer working in `profile`.
+   * @throws {PeerUnreachableError} the machine is unknown, not connected, or refused.
+   */
+  async openTerminalSocket(machineId: string, terminalId: string, profile: string | null): Promise<WebSocket> {
+    const connection = this.#connections.get(machineId);
+    if (!connection || connection.state !== 'online') throw new PeerUnreachableError(`${machineId} is not connected`);
+    return connection.openSocket(`/peer/v1/terminals/${encodeURIComponent(terminalId)}/socket`, profile);
   }
 
   // ── D165 · the user profiles, synced with every paired computer (docs/profiles.md → Paired computers) ──

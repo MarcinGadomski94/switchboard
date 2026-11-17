@@ -76,6 +76,8 @@ export interface DeviceWorldOptions {
   /** Push deliveries' fetch (default the real one, to the fake push service). */
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
+  /** D170: the terminals (a deterministic program instead of a shell). */
+  readonly terminals?: import('../../src/server/terminals/service.ts').TerminalService;
 }
 
 /** One HTTP request over a real socket to 127.0.0.1:`port` with full control of Host. */
@@ -164,7 +166,7 @@ async function startOnce(options: DeviceWorldOptions): Promise<DeviceWorld> {
     port: uiPort,
   };
   const devices = new DeviceService({ config, store, bus, machineName: async () => 'devbox', ...(options.fetch ? { fetch: options.fetch } : {}), ...(options.now ? { now: options.now } : {}), onError: () => undefined });
-  const app = await buildApp({ config, token, store, webRoot, bus, devices, agentTools: false });
+  const app = await buildApp({ config, token, store, webRoot, bus, devices, agentTools: false, ...(options.terminals ? { terminals: options.terminals } : {}) });
   const cleanup = async (): Promise<void> => {
     await app.close().catch(() => undefined);
     await devices.close();

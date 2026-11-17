@@ -117,6 +117,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'power.estimate': { cpuIdleW: null, cpuMaxW: null, baseW: null },
       // D127: the idle stop of a session's leftover processes (minutes; 0 = off).
       'processes.idleStopMinutes': 10,
+      // D170: an unattended terminal's lifetime (hours; 0 = never).
+      'terminals.idleHours': 12,
       // D137: the archive's period (days; 0 = never) and its sweep's record.
       'sessions.archiveDays': 14,
       'sessions.archiveSweep': expect.objectContaining({ lastDeleted: null }) as unknown as KnownSettings['sessions.archiveSweep'],
