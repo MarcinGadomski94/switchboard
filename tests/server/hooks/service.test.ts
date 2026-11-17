@@ -193,9 +193,11 @@ describe('D48 P4 hooked subagents (ruling D48-hooked-subagents)', () => {
     // A workflow agent's file (D51's): not read here.
     await writeFile(path.join(dir, 'workflows', 'run-1', 'agent-wf.jsonl'), ndjson([prompt]));
     await hookCall(r, 'event', { hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: {} });
-    const detail = await until('the subagent', async () => {
+    // The agent row can land a moment before its chat is imported (a CI race, 2026-11-17): wait for both.
+    const detail = await until('the subagent and its chat', async () => {
       const d = (await api(r, 'GET', `/api/sessions/${session.id}`)).json() as SessionDetail;
-      return d.agents.some((agent) => agent.kind === 'subagent') ? d : null;
+      const sub = d.agents.find((agent) => agent.kind === 'subagent');
+      return sub && d.events.filter((event) => event.agentId === sub.id).length >= 2 ? d : null;
     });
     const agent = detail.agents.find((entry) => entry.kind === 'subagent');
     expect(agent).toMatchObject({ name: 'Explore', description: 'Find the flaky test', toolUseId: 'toolu_agent_1', status: 'run' });
